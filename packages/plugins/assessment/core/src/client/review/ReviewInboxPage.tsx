@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
+import { AwaitingSection } from './AwaitingSection.tsx'
 import {
   groupByDay,
   groupByItem,
@@ -76,6 +77,13 @@ function Queue({
     ...query.assessment.listReviewInbox.queryOptions({ query: { batchId } }),
     refetchInterval: 30_000,
   })
+  // the same read the section below makes; one request either way, and the
+  // header can say how much is out with somebody else without owning the list
+  const asked = useQuery({
+    ...query.assessment.listAwaitingSupplements.queryOptions({ query: { batchId } }),
+    refetchInterval: 30_000,
+  })
+  const awaiting = asked.data?.items.length ?? 0
   const all = useMemo(
     () => (inbox.data?.items ?? []).filter((item) => item.batchId === batchId),
     [inbox.data, batchId],
@@ -159,13 +167,28 @@ function Queue({
             />
           </div>
           <span className="flex-1" />
-          <Stats pending={all.length} handledToday={inbox.data?.handledToday ?? 0} />
+          <Stats
+            pending={all.length}
+            handledToday={inbox.data?.handledToday ?? 0}
+            awaiting={awaiting}
+          />
         </div>
 
+        {/* An empty queue is only half the story: work this step asked
+            somebody else for is still work, and a full-screen "all done"
+            over the top of it would hide the very filings that are waiting
+            on a reply. So the empty screen shrinks to a line whenever there
+            is anything outstanding underneath. */}
         {all.length === 0 ? (
           // two different quiet days: everything handled, or nothing has
           // arrived yet. The counter is what tells them apart
-          (inbox.data?.handledToday ?? 0) > 0 ? (
+          awaiting > 0 ? (
+            <p className="rounded-xl border px-5 py-4 text-sm text-muted-foreground">
+              {format(
+                (inbox.data?.handledToday ?? 0) > 0 ? m.reviewAllDoneTitle : m.reviewNothingTitle,
+              )}
+            </p>
+          ) : (inbox.data?.handledToday ?? 0) > 0 ? (
             <EmptyScreen
               mark={<DoneMark />}
               title={format(m.reviewAllDoneTitle)}
@@ -189,17 +212,31 @@ function Queue({
         ) : (
           <ByPerson batchId={batchId} rows={rows} />
         )}
+
+        {/* below the queue, never inside it, and never filtered with it: the
+            question/unit filters are about what can be decided now */}
+        <AwaitingSection batchId={batchId} />
       </div>
     </AsyncSection>
   )
 }
 
 /** how much is waiting and how much moved, beside the filters they describe */
-function Stats({ pending, handledToday }: { pending: number; handledToday: number }) {
+function Stats({
+  pending,
+  handledToday,
+  awaiting,
+}: {
+  pending: number
+  handledToday: number
+  /** out with somebody else; shown only when there is any, never as a zero */
+  awaiting: number
+}) {
   const { format } = useI18n()
   return (
     <div className="flex items-end gap-5">
       <Stat label={format(m.reviewStatPending)} value={pending} />
+      {awaiting > 0 && <Stat label={format(m.reviewAwaitingTitle)} value={awaiting} />}
       <Stat label={format(m.reviewStatToday)} value={handledToday} />
     </div>
   )

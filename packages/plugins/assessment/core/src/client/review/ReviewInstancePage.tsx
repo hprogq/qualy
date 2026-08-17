@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeftIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   ChevronUpIcon,
   DownloadIcon,
   InfoIcon,
@@ -58,9 +59,10 @@ import {
 import type { BatchDto } from '../phase/model.ts'
 import type { ReviewDto } from './model.ts'
 import { RejectDialog, EscalateDialog, type WordedDecision } from './decision-dialogs.tsx'
-import { SupplementDialog } from './SupplementDialog.tsx'
+import { SupplementDialog, type WordedSupplement } from './SupplementDialog.tsx'
 import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.ts'
-import { HistorySheet, VersionPicker } from './history.tsx'
+import { VersionPicker } from './history.tsx'
+import { EntryHistory } from '../entry/EntryHistory.tsx'
 import { attachmentContentUrl } from '../entry/model.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { Appear, CountdownRing, DoneMark, Drill, Stagger } from '@qualy/ui/reveal'
@@ -74,12 +76,13 @@ import { Appear, CountdownRing, DoneMark, Drill, Stagger } from '@qualy/ui/revea
 // screen. Sending back and escalating each carry a word, so they open their
 // dialog instead of arming silently.
 
-/** one decision this sitting, wherever it has got to */
+/** one disposition this sitting, wherever it has got to */
 interface SessionEntry {
   readonly instanceId: string
   readonly participantName: string
   readonly itemTitle: string
-  readonly decision: 'approve' | 'reject' | 'escalate'
+  /** asking for material ends the reviewer's turn too, so it is one of these */
+  readonly decision: 'approve' | 'reject' | 'escalate' | 'supplement'
   readonly status: 'waiting' | 'sent' | 'failed'
 }
 
@@ -181,10 +184,47 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const overlaid = useRef(false)
   overlaid.current = dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null
 
+  /**
+   * Log what was just staged and put the next filing on screen.
+   *
+   * Every disposition ends the reviewer's turn on this one - a decision, and
+   * asking for material just as much - so every one of them moves on. Leaving
+   * the ask on screen meant walking back to the queue to find the next.
+   */
+  const stageAndAdvance = (
+    staged: StagedDecision,
+    decision: SessionEntry['decision'],
+    itemTitle: string,
+    participantName: string,
+  ) => {
+    setLog((current) => [
+      ...current,
+      { instanceId, participantName, itemTitle, decision, status: 'waiting' },
+    ])
+    deferred.stage(staged)
+    setArmed(null)
+    setWord('')
+    setDialog(null)
+    const next = remaining.find((row) => row.instanceId !== instanceId)
+    if (next !== undefined) goTo(next.instanceId)
+  }
+
+  /** asking for more material, through the same window everything else uses */
+  const stageSupplement = (worded: WordedSupplement) => {
+    if (review === undefined) return
+    stageAndAdvance(
+      { kind: 'supplement', instanceId, participantName: review.participantName, payload: worded },
+      'supplement',
+      review.itemTitle,
+      review.participantName,
+    )
+  }
+
   /** stage a round-moving decision, log it, and put the next one on screen */
   const stageDecision = (decision: 'approve' | 'reject' | 'escalate', worded?: WordedDecision) => {
     if (review === undefined) return
     const staged: StagedDecision = {
+      kind: 'decision',
       instanceId,
       decision,
       participantName: review.participantName,
@@ -201,22 +241,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
           : {}),
       },
     }
-    setLog((current) => [
-      ...current,
-      {
-        instanceId,
-        participantName: review.participantName,
-        itemTitle: review.itemTitle,
-        decision,
-        status: 'waiting',
-      },
-    ])
-    deferred.stage(staged)
-    setArmed(null)
-    setWord('')
-    setDialog(null)
-    const next = remaining.find((row) => row.instanceId !== instanceId)
-    if (next !== undefined) goTo(next.instanceId)
+    stageAndAdvance(staged, decision, review.itemTitle, review.participantName)
   }
 
   /** taking the ask back; the round returns to the queue as it stood */
@@ -331,6 +356,13 @@ function Workbench({ batch }: { batch: BatchDto }) {
         case 'E':
           event.preventDefault()
           if (decisions.includes('escalate')) setDialog('escalate')
+          return
+        case 's':
+        case 'S':
+          // the ask has to be written before it can be staged, so the letter
+          // opens the box rather than arming anything
+          event.preventDefault()
+          if (review?.capabilities.canRequestSupplement === true) setDialog('supplement')
           return
         case 'c':
         case 'C':
@@ -539,9 +571,14 @@ function Workbench({ batch }: { batch: BatchDto }) {
         )}
         {review !== undefined && (
           <>
-            <HistorySheet
+            {/* the same account the person who filed reads, told the same
+                way: one claim has one story, and a reviewer reading a
+                different rendering of it is reading a different thing */}
+            <EntryHistory
               open={trailOpen}
               entryId={review.entryId}
+              itemTitle={review.itemTitle}
+              subject={review.participantName}
               onClose={() => setTrailOpen(false)}
             />
             <VersionPicker
@@ -577,15 +614,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
           />
         )}
         {dialog === 'supplement' && review !== undefined && (
-          <SupplementDialog
-            open
-            instanceId={instanceId}
-            onClose={() => setDialog(null)}
-            onDone={() => {
-              setDialog(null)
-              refresh()
-            }}
-          />
+          <SupplementDialog onClose={() => setDialog(null)} onConfirm={stageSupplement} />
         )}
       </div>
     </AsyncSection>
@@ -673,6 +702,7 @@ const DECISION_LABEL: Record<SessionEntry['decision'], MessageDescriptor> = {
   approve: m.reviewApprove,
   reject: m.reviewReject,
   escalate: m.reviewEscalate,
+  supplement: m.reviewSupplementAsked,
 }
 
 /** where the run stands: a thin band of what is done and what is left */
@@ -888,6 +918,14 @@ function MainColumn({
         <div className="flex items-center gap-2.5 border-b pb-2">
           <h3 className="text-sm font-semibold">{format(m.reviewPrior)}</h3>
           <Badge variant="secondary">{format(m.reviewStateRound, { round: review.roundNo })}</Badge>
+          <span className="flex-1" />
+          {/* What this round says is only the last part of the story, and the
+              rest of it decides how to read this part. The key alone was not
+              a way in: nobody finds H without being told. */}
+          <Button variant="ghost" size="sm" className="text-xs" onClick={onTrail}>
+            {format(m.reviewTrailFullOpen)}
+            <ChevronRightIcon aria-hidden />
+          </Button>
         </div>
         {previous !== null && (
           <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5">
@@ -1592,7 +1630,11 @@ function UndoPill({
       </CountdownRing>
       <p className="flex items-baseline gap-2 text-sm whitespace-nowrap">
         <span className="font-semibold">{staged.participantName}</span>
-        {format(DECISION_LABEL[staged.decision as SessionEntry['decision']] ?? m.reviewApprove)}
+        {format(
+          staged.kind === 'supplement'
+            ? DECISION_LABEL.supplement
+            : (DECISION_LABEL[staged.decision as SessionEntry['decision']] ?? m.reviewApprove),
+        )}
       </p>
       <p className="text-xs whitespace-nowrap text-muted-foreground">
         {format(m.reviewUndoPending, { seconds: left })}
@@ -1614,6 +1656,7 @@ function KeysPanel({ onClose }: { onClose: () => void }) {
     ['A', m.reviewKeyApprove],
     ['R', m.reviewKeyReject],
     ['E', m.reviewKeyEscalate],
+    ['S', m.reviewKeySupplement],
     ['C', m.reviewKeyComment],
     ['J / K', m.reviewKeyMove],
     ['1–9', m.reviewKeyFiles],

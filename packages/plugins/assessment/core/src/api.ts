@@ -816,6 +816,35 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // What this reviewer's step is waiting on somebody else for: its own
+    // list, because the queue is what can be decided now and a round paused
+    // for material cannot (§32.65 ⑤).
+    HttpApiEndpoint.get('listAwaitingSupplements', '/assessment/review/supplement-requests', {
+      query: Schema.Struct({ ...pageQuery, batchId: id }),
+      success: Schema.Struct({
+        items: Schema.Array(
+          Schema.Struct({
+            requestId: Schema.String,
+            instanceId: Schema.String,
+            entryId: Schema.String,
+            requestNo: Schema.Number,
+            /** open: still with the person who filed. answered: back here. */
+            status: Schema.Literals(['open', 'answered']),
+            participantName: Schema.String,
+            businessNo: Schema.NullOr(Schema.String),
+            itemTitle: Schema.String,
+            /** what was asked for, by label, for the one line that says it */
+            asks: Schema.Array(Schema.String),
+            requestedAt: Schema.String,
+            answeredAt: Schema.NullOr(Schema.String),
+          }),
+        ),
+        nextCursor: Schema.NullOr(Schema.String),
+      }),
+      error: [BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.get('getReviewInstance', '/assessment/review/instances/:instanceId', {
       params: Schema.Struct({ instanceId: id }),
       success: Schema.Struct({ review: reviewDetailView }),

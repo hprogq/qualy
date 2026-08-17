@@ -1,24 +1,24 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
 import { FileIcon, PlusIcon, TypeIcon, XIcon } from 'lucide-react'
-import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { Textarea } from '@qualy/ui/textarea'
-import { toast } from '@qualy/ui/toast'
-import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { entryRefusalMessage } from '../entry/refusals.ts'
 
 // Asking for more backing without moving the round. The builder offers two
 // shapes and only two - a written answer or files - so an ask can never grow
 // into a second form the filing was not written under; anything richer than
 // that is a rejection with a suggested version, which is the other door.
+//
+// The dialog composes the ask and hands it back; it does not send it. Asking
+// is a disposition like approving, so it goes out through the same five
+// second window - which is also the only way to take back a wording nobody
+// should have been shown.
 
 interface Piece {
   label: string
@@ -26,52 +26,24 @@ interface Piece {
   required: boolean
 }
 
+/** an ask as the dialog hands it over, before anything is sent */
+export interface WordedSupplement {
+  readonly instructions: string
+  readonly requirements: readonly Piece[]
+}
+
 export function SupplementDialog({
-  open,
-  instanceId,
   onClose,
-  onDone,
+  onConfirm,
 }: {
-  /** false while it animates shut; it keeps drawing what it was showing */
-  open: boolean
-  instanceId: string
   onClose: () => void
-  onDone: () => void
+  onConfirm: (worded: WordedSupplement) => void
 }) {
-  const api = useApi(assessmentApi)
-  const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { format } = useI18n()
   const [instructions, setInstructions] = useState('')
   const [pieces, setPieces] = useState<readonly Piece[]>([
     { label: '', kind: 'file', required: true },
   ])
-  const [problem, setProblem] = useState<string | null>(null)
-
-  const send = useMutation({
-    mutationFn: () =>
-      run(
-        api.assessment.requestSupplement({
-          params: { instanceId },
-          payload: {
-            instructions: instructions.trim(),
-            requirements: pieces.map((piece) => ({
-              label: piece.label.trim(),
-              kind: piece.kind,
-              required: piece.required,
-            })),
-          },
-        }),
-      ),
-    onMutate: () => setProblem(null),
-    onSuccess: () => {
-      toast.success(format(m.supplementSent))
-      onDone()
-    },
-    onError: (error: unknown) => {
-      const refusal = entryRefusalMessage(error)
-      setProblem(refusal === null ? formatError(error) : format(refusal))
-    },
-  })
 
   const edit = (index: number, next: Partial<Piece>) =>
     setPieces((current) =>
@@ -88,7 +60,7 @@ export function SupplementDialog({
 
   return (
     <FormDialog
-      open={open}
+      open
       title={format(m.supplementDialogTitle)}
       description={format(m.supplementDialogHint)}
       onClose={onClose}
@@ -97,7 +69,19 @@ export function SupplementDialog({
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
-          <Button disabled={send.isPending || !ready} onClick={() => send.mutate()}>
+          <Button
+            disabled={!ready}
+            onClick={() =>
+              onConfirm({
+                instructions: instructions.trim(),
+                requirements: pieces.map((piece) => ({
+                  label: piece.label.trim(),
+                  kind: piece.kind,
+                  required: piece.required,
+                })),
+              })
+            }
+          >
             {format(m.supplementSend)}
           </Button>
         </div>
@@ -163,8 +147,6 @@ export function SupplementDialog({
             </Button>
           </div>
         </div>
-
-        <Feedback message={problem} />
       </div>
     </FormDialog>
   )

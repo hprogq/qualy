@@ -39,6 +39,7 @@ export function EntryHistory({
   open,
   entryId,
   itemTitle,
+  subject,
   onClose,
 }: {
   /** false while it animates shut; it keeps drawing what it was showing */
@@ -46,6 +47,15 @@ export function EntryHistory({
   entryId: string
   /** the question this claim answers, for the panel's second line */
   itemTitle?: string | undefined
+  /**
+   * Whose claim this is, when the reader is not that person.
+   *
+   * The account is one account and it is told the same way to everybody,
+   * but not in the same voice: "I submitted version 2" is the right sentence
+   * for the person who submitted it and the wrong one for the reviewer
+   * reading over their shoulder. Absent, the reader is the subject.
+   */
+  subject?: string | undefined
   onClose: () => void
 }) {
   const query = useApiQuery(assessmentApi)
@@ -81,7 +91,7 @@ export function EntryHistory({
         onRetry={() => void history.refetch()}
         skeleton={<Skeleton className="h-40 w-full" />}
       >
-        {data !== undefined && <Trail data={data} />}
+        {data !== undefined && <Trail data={data} subject={subject} />}
       </AsyncSection>
     </SidePanel>
   )
@@ -92,9 +102,9 @@ type Round = History['rounds'][number]
 type Revision = History['revisions'][number]
 type Supplement = Round['supplements'][number]
 
-function Trail({ data }: { data: History }) {
+function Trail({ data, subject }: { data: History; subject: string | undefined }) {
   const { format } = useI18n()
-  const nodes = useNodes(data)
+  const nodes = useNodes(data, subject)
   if (nodes.length === 0) {
     return <p className="text-sm text-muted-foreground">{format(m.entryTrailEmpty)}</p>
   }
@@ -135,7 +145,7 @@ function Trail({ data }: { data: History }) {
  * them in, so two things recorded in the same transaction still read the way
  * they were written.
  */
-function useNodes(data: History): readonly Node[] {
+function useNodes(data: History, subject: string | undefined): readonly Node[] {
   const { format } = useI18n()
   const nodes: Node[] = []
   const roundOfRevision = new Map<string, number>()
@@ -149,7 +159,13 @@ function useNodes(data: History): readonly Node[] {
       at: revision.createdAt,
       kind: 'version',
       weight: 'plain',
-      render: () => <Version revision={revision} openedRound={roundOfRevision.get(revision.id)} />,
+      render: () => (
+        <Version
+          revision={revision}
+          openedRound={roundOfRevision.get(revision.id)}
+          subject={subject}
+        />
+      ),
     })
   }
 
@@ -172,7 +188,11 @@ function useNodes(data: History): readonly Node[] {
           kind: 'suggestion',
           weight: 'plain',
           render: () => (
-            <Suggestion payload={event.suggestedPayload} formConfig={revision?.formConfig} />
+            <Suggestion
+              payload={event.suggestedPayload}
+              formConfig={revision?.formConfig}
+              subject={subject}
+            />
           ),
         })
       }
@@ -183,7 +203,7 @@ function useNodes(data: History): readonly Node[] {
         at: supplement.requestedAt,
         kind: 'ask',
         weight: supplement.status === 'open' ? 'alert' : 'plain',
-        render: () => <Ask supplement={supplement} />,
+        render: () => <Ask supplement={supplement} subject={subject} />,
       })
       if (supplement.response !== null) {
         const revision = data.revisions.find((one) => one.id === round.revisionId)
@@ -193,7 +213,11 @@ function useNodes(data: History): readonly Node[] {
           kind: 'answer',
           weight: 'strong',
           render: () => (
-            <Answer supplement={supplement} revisionNo={revision?.revisionNo ?? null} />
+            <Answer
+              supplement={supplement}
+              revisionNo={revision?.revisionNo ?? null}
+              subject={subject}
+            />
           ),
         })
       }
@@ -268,15 +292,21 @@ function Quoted({ children, tone }: { children: ReactNode; tone?: 'alert' }) {
 function Version({
   revision,
   openedRound,
+  subject,
 }: {
   revision: Revision
   openedRound: number | undefined
+  subject: string | undefined
 }) {
   const { format } = useI18n()
   return (
     <>
       <Line
-        title={format(m.entryTrailVersion, { no: revision.revisionNo })}
+        title={
+          subject === undefined
+            ? format(m.entryTrailVersion, { no: revision.revisionNo })
+            : format(m.entryTrailVersionBy, { who: subject, no: revision.revisionNo })
+        }
         aside={
           openedRound === undefined ? undefined : (
             <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
@@ -326,7 +356,7 @@ function Act({ event, roundNo }: { event: Round['events'][number]; roundNo: numb
   )
 }
 
-function Ask({ supplement }: { supplement: Supplement }) {
+function Ask({ supplement, subject }: { supplement: Supplement; subject: string | undefined }) {
   const { format } = useI18n()
   const standing: MessageDescriptor =
     supplement.status === 'answered'
@@ -337,7 +367,7 @@ function Ask({ supplement }: { supplement: Supplement }) {
   return (
     <>
       <Line
-        title={format(m.entrySupplementTitle)}
+        title={format(subject === undefined ? m.entrySupplementTitle : m.entryTrailAskOut)}
         tone="alert"
         aside={
           <Badge variant="secondary" className="shrink-0 font-normal">
@@ -367,14 +397,29 @@ function Ask({ supplement }: { supplement: Supplement }) {
   )
 }
 
-function Answer({ supplement, revisionNo }: { supplement: Supplement; revisionNo: number | null }) {
+function Answer({
+  supplement,
+  revisionNo,
+  subject,
+}: {
+  supplement: Supplement
+  revisionNo: number | null
+  subject: string | undefined
+}) {
   const { format } = useI18n()
   const response = supplement.response
   if (response === null) return null
   const answers = (response.payload ?? {}) as Record<string, unknown>
   return (
     <>
-      <Line title={format(m.entryTrailAnswered)} at={response.respondedAt} />
+      <Line
+        title={
+          subject === undefined
+            ? format(m.entryTrailAnswered)
+            : format(m.entryTrailAnsweredBy, { who: subject })
+        }
+        at={response.respondedAt}
+      />
       <div className="flex flex-col gap-2 rounded-lg bg-muted p-3">
         <dl className="grid grid-cols-[4rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
           {supplement.requirements
@@ -399,7 +444,9 @@ function Answer({ supplement, revisionNo }: { supplement: Supplement; revisionNo
             themselves: it did not overwrite what they had already filed */}
         {revisionNo !== null && (
           <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
-            {format(m.entryTrailAnswerKept, { no: revisionNo })}
+            {format(subject === undefined ? m.entryTrailAnswerKept : m.entryTrailAnswerKeptOut, {
+              no: revisionNo,
+            })}
           </p>
         )}
       </div>
@@ -407,7 +454,15 @@ function Answer({ supplement, revisionNo }: { supplement: Supplement; revisionNo
   )
 }
 
-function Suggestion({ payload, formConfig }: { payload: unknown; formConfig?: unknown }) {
+function Suggestion({
+  payload,
+  formConfig,
+  subject,
+}: {
+  payload: unknown
+  formConfig?: unknown
+  subject: string | undefined
+}) {
   const { format } = useI18n()
   return (
     <div className="flex flex-col gap-2 rounded-lg bg-muted p-3">
@@ -420,7 +475,7 @@ function Suggestion({ payload, formConfig }: { payload: unknown; formConfig?: un
       </div>
       <PayloadLines payload={payload} formConfig={formConfig} />
       <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
-        {format(m.entrySuggestionHint)}
+        {format(subject === undefined ? m.entrySuggestionHint : m.entrySuggestionHintOut)}
       </p>
     </div>
   )

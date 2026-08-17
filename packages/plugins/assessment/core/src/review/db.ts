@@ -1269,6 +1269,133 @@ export const insertSupplementAttachments = (input: {
           .execute(),
       )
 
+/** one outstanding ask, as the reviewer's own list of them reads it */
+export interface AwaitingRow {
+  requestId: string
+  instanceId: string
+  entryId: string
+  requestNo: number
+  /** open: still with the participant. answered: back here, not yet judged. */
+  status: 'open' | 'answered'
+  participantName: string
+  businessNo: string | null
+  itemTitle: string
+  /** the labels of what was asked for, for the one line that says it */
+  asks: readonly string[]
+  requestedAt: number
+  requestedAtIso: string
+  answeredAt: number | null
+}
+
+/**
+ * What this reviewer's step is waiting on somebody else for (§32.65 ⑤).
+ *
+ * Two kinds of row, and they are the same fact at two moments: an ask still
+ * with the person who filed, and one they have answered - which puts the
+ * round back in the ordinary queue, where it would otherwise arrive looking
+ * like any other and give no sign that it is the answer to a question this
+ * step asked.
+ *
+ * Standing is the same `mayReview` the queue asks, not "requests I made":
+ * a step is held by whoever holds the role there, so a colleague's ask is
+ * this reviewer's business too.
+ */
+export const awaitingPage = (input: {
+  tenantId: string
+  batchId: string
+  userId: string
+  after?: readonly [string, string] | undefined
+  limit: number
+}) =>
+  db
+    .query((k) => {
+      let query = k
+        .selectFrom('ReviewSupplementRequest as sr')
+        .innerJoin('ReviewInstance as ri', (join) =>
+          join.onRef('ri.tenantId', '=', 'sr.tenantId').onRef('ri.id', '=', 'sr.reviewInstanceId'),
+        )
+        .innerJoin('Entry as e', (join) =>
+          join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
+        )
+        .innerJoin('AssessmentItem as i', (join) =>
+          join.onRef('i.tenantId', '=', 'e.tenantId').onRef('i.id', '=', 'e.itemId'),
+        )
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .innerJoin('User as su', (join) =>
+          join.onRef('su.tenantId', '=', 'bp.tenantId').onRef('su.id', '=', 'bp.userId'),
+        )
+        .innerJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+        )
+        .select([
+          'sr.id as requestId',
+          'sr.reviewInstanceId as instanceId',
+          'ri.entryId',
+          'sr.requestNo',
+          'sr.status',
+          'sr.requirements',
+          'su.displayName as participantName',
+          'su.businessNo',
+          'i.title as itemTitle',
+        ])
+        .select([
+          epoch('sr.created_at').as('requestedMs'),
+          sql<string>`sr.created_at::text`.as('requestedIso'),
+          epoch('sr.answered_at').as('answeredMs'),
+        ])
+        .where('sr.tenantId', '=', input.tenantId)
+        .where('e.batchId', '=', input.batchId)
+        .where((eb) =>
+          eb.or([
+            // still with the person who filed
+            eb.and([eb('sr.status', '=', 'open'), eb('ri.state', '=', 'awaiting_supplement')]),
+            // answered, and the round it belongs to is back open here
+            eb.and([eb('sr.status', '=', 'answered'), eb('ri.state', 'in', ['active', 'blocked'])]),
+          ]),
+        )
+        .where(
+          mayReview({
+            tenantId: sql`${input.tenantId}`,
+            batchId: sql.ref('e.batch_id'),
+            nodeId: sql.ref('ri.current_node_id'),
+            roleIds: sql.ref('ri.current_role_ids'),
+            userId: sql`${input.userId}`,
+            subjectUserId: sql.ref('bp.user_id'),
+            actorId: sql.ref('er.actor_id'),
+          }),
+        )
+        // newest ask first: the list is read as "what did I send out lately"
+        .orderBy('sr.createdAt', 'desc')
+        .orderBy('sr.id', 'desc')
+        .limit(input.limit)
+      if (input.after !== undefined) {
+        query = query.where(
+          sql<boolean>`(sr.created_at, sr.id) < (${input.after[0]}::timestamptz, ${input.after[1]}::uuid)`,
+        )
+      }
+      return query.execute()
+    })
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row): AwaitingRow => ({
+          requestId: row.requestId,
+          instanceId: row.instanceId,
+          entryId: row.entryId,
+          requestNo: row.requestNo,
+          status: row.status as AwaitingRow['status'],
+          participantName: row.participantName,
+          businessNo: row.businessNo,
+          itemTitle: row.itemTitle,
+          asks: requirementsOf(row.requirements).map((asked) => asked.label),
+          requestedAt: msOf(row.requestedMs),
+          requestedAtIso: row.requestedIso,
+          answeredAt: row.answeredMs == null ? null : msOf(row.answeredMs),
+        })),
+      ),
+    )
+
 /**
  * Every attachment a supplement answer of this entry's rounds ever cited.
  * The reuse set beside entry_revision_attachments: a file already part of

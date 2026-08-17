@@ -47,6 +47,7 @@ import {
 import { nodePathOf } from '../entry/db.ts'
 import {
   activeReviewBatches,
+  awaitingPage,
   closeSupplementRequest,
   completeInstance,
   decisionsToday,
@@ -246,6 +247,21 @@ export interface ReviewDecisionInput {
   readonly suggestedPayload?: unknown
 }
 
+/** one ask this reviewer's step is waiting on somebody else for */
+export interface AwaitingItem {
+  readonly requestId: string
+  readonly instanceId: string
+  readonly entryId: string
+  readonly requestNo: number
+  readonly status: 'open' | 'answered'
+  readonly participantName: string
+  readonly businessNo: string | null
+  readonly itemTitle: string
+  readonly asks: readonly string[]
+  readonly requestedAt: number
+  readonly answeredAt: number | null
+}
+
 export interface ReviewMethods {
   readonly listReviewInbox: (
     tenantId: string,
@@ -255,6 +271,11 @@ export interface ReviewMethods {
     { items: readonly ReviewInboxItem[]; nextCursor: string | null; handledToday: number },
     BadRequest
   >
+  readonly listAwaitingSupplements: (
+    tenantId: string,
+    page: { batchId: string; cursor?: string; limit?: string },
+    as: Principal,
+  ) => Effect.Effect<{ items: readonly AwaitingItem[]; nextCursor: string | null }, BadRequest>
   readonly getReviewInstance: (
     tenantId: string,
     instanceId: string,
@@ -657,6 +678,54 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       }
     },
   )
+
+  /**
+   * What this reviewer's step is waiting on somebody else for.
+   *
+   * Its own list rather than a corner of the queue: the queue is what can be
+   * decided now, and a round paused for material cannot. Kept beside it all
+   * the same, because an ask nobody can see is an ask nobody follows up.
+   */
+  const listAwaitingSupplements: ReviewMethods['listAwaitingSupplements'] = Effect.fn(
+    'Assessment.listAwaitingSupplements',
+  )(function* (tenantId, page, as) {
+    const fingerprint = `review-awaiting:${page.batchId}:${as.userId}`
+    const key = readQueryCursor(page.cursor, fingerprint, ['text', 'uuid'])
+    if (key === null) return yield* cursorUnusable()
+    const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+    const rows = yield* dieQuery(
+      withDb(
+        awaitingPage({
+          tenantId,
+          batchId: page.batchId,
+          userId: as.userId,
+          after: key === undefined ? undefined : [key[0]!, key[1]!],
+          limit: limit + 1,
+        }),
+      ),
+    )
+    const pageRows = rows.slice(0, limit)
+    const last = pageRows[pageRows.length - 1]
+    return {
+      items: pageRows.map((row) => ({
+        requestId: row.requestId,
+        instanceId: row.instanceId,
+        entryId: row.entryId,
+        requestNo: row.requestNo,
+        status: row.status,
+        participantName: row.participantName,
+        businessNo: row.businessNo,
+        itemTitle: row.itemTitle,
+        asks: row.asks,
+        requestedAt: row.requestedAt,
+        answeredAt: row.answeredAt,
+      })),
+      nextCursor:
+        rows.length > limit && last !== undefined
+          ? encodeQueryCursor(fingerprint, [last.requestedAtIso, last.requestId])
+          : null,
+    }
+  })
 
   const getReviewInstance: ReviewMethods['getReviewInstance'] = Effect.fn(
     'Assessment.getReviewInstance',
@@ -1467,6 +1536,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
 
   return {
     listReviewInbox,
+    listAwaitingSupplements,
     getReviewInstance,
     decideReview,
     appealReview,

@@ -120,6 +120,8 @@ const entry = (over: Partial<EntryDto> = {}): EntryDto => ({
 /** the reads every batch screen makes before it draws anything */
 const ambient = {
   getBatch: () => Effect.succeed({ batch: batch() }),
+  // the queue's other half; empty unless a case says otherwise
+  listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
   getEntryHistory: () => Effect.succeed({ entry: entry(), revisions: [], events: [], rounds: [] }),
   listScoreGroups: () =>
     Effect.succeed({

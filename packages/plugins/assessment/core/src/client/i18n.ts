@@ -712,6 +712,7 @@ const i18n = definePluginMessages({
     },
     reviewColumnItem: { id: 'assessment/review/column-item', defaultMessage: 'Question' },
     reviewColumnWho: { id: 'assessment/review/column-who', defaultMessage: 'From' },
+    reviewColumnStatus: { id: 'assessment/review/column-status', defaultMessage: 'Standing' },
     reviewColumnWhen: { id: 'assessment/review/column-when', defaultMessage: 'Submitted' },
     reviewApplicant: { id: 'assessment/review/applicant', defaultMessage: 'Applicant' },
     reviewRound: { id: 'assessment/review/round', defaultMessage: 'Round' },
@@ -1356,6 +1357,22 @@ const i18n = definePluginMessages({
       defaultMessage: 'Comparing',
     },
     reviewVersionBy: { id: 'assessment/review/version-by', defaultMessage: 'Filed by {who}' },
+    reviewVersionsFoot: {
+      id: 'assessment/review/versions-foot',
+      defaultMessage: 'What changed is marked on the filing itself.',
+    },
+    reviewVersionsConfirm: {
+      id: 'assessment/review/versions-confirm',
+      defaultMessage: 'Compare version {no}',
+    },
+    reviewVersionsConfirmNone: {
+      id: 'assessment/review/versions-confirm-none',
+      defaultMessage: 'Pick a version',
+    },
+    reviewTrailFullOpen: {
+      id: 'assessment/review/trail-full-open',
+      defaultMessage: 'The whole account of this claim',
+    },
     reviewTrailTitle: { id: 'assessment/review/trail-title', defaultMessage: 'The whole story' },
     reviewTrailOpen: { id: 'assessment/review/trail-open', defaultMessage: 'Full story' },
     reviewTrailRound: { id: 'assessment/review/trail-round', defaultMessage: 'Round {no}' },
@@ -1441,6 +1458,55 @@ const i18n = definePluginMessages({
     reviewSupplementAsk: {
       id: 'assessment/review/supplement-ask',
       defaultMessage: 'Request material',
+    },
+    reviewSupplementAsked: {
+      id: 'assessment/review/supplement-asked',
+      defaultMessage: 'asked for material',
+    },
+    reviewKeySupplement: {
+      id: 'assessment/review/key-supplement',
+      defaultMessage: 'Ask for more material',
+    },
+    // the queue's other half: what this step is waiting on somebody else for
+    reviewAwaitingTitle: {
+      id: 'assessment/review/awaiting-title',
+      defaultMessage: 'Waiting on material',
+    },
+    reviewAwaitingCount: { id: 'assessment/review/awaiting-count', defaultMessage: '{count}' },
+    reviewAwaitingBack: {
+      id: 'assessment/review/awaiting-back',
+      defaultMessage: '{count} answered',
+    },
+    reviewAwaitingNote: {
+      id: 'assessment/review/awaiting-note',
+      defaultMessage: 'Not counted as waiting on you; answered ones return to the queue',
+    },
+    reviewAwaitingColAsk: { id: 'assessment/review/awaiting-col-ask', defaultMessage: 'Question' },
+    reviewAwaitingColWaited: {
+      id: 'assessment/review/awaiting-col-waited',
+      defaultMessage: 'Waiting',
+    },
+    reviewAwaitingColAskedAt: {
+      id: 'assessment/review/awaiting-col-asked-at',
+      defaultMessage: 'Asked',
+    },
+    reviewAwaitingWant: {
+      id: 'assessment/review/awaiting-want',
+      defaultMessage: 'Asked for　{what}',
+    },
+    reviewAwaitingAnswered: {
+      id: 'assessment/review/awaiting-answered',
+      defaultMessage: 'Answered, waiting on you',
+    },
+    reviewAwaitingGo: { id: 'assessment/review/awaiting-go', defaultMessage: 'Take it up' },
+    reviewAwaitingFoot: {
+      id: 'assessment/review/awaiting-foot',
+      defaultMessage:
+        'Withdrawing a request puts the filing straight back in the queue; whatever was added stays in its account.',
+    },
+    reviewAwaitingHint: {
+      id: 'assessment/review/awaiting-hint',
+      defaultMessage: 'Filings you asked more of stay here until they come back.',
     },
     reviewTipSupplement: {
       id: 'assessment/review/tip-supplement',
@@ -1565,6 +1631,28 @@ const i18n = definePluginMessages({
     entryTrailVersion: {
       id: 'assessment/entry/trail-version',
       defaultMessage: 'I submitted version {no}',
+    },
+    // the same moments, told to somebody who is not the person they are
+    // about: a reviewer reading "I submitted" is reading the wrong sentence
+    entryTrailVersionBy: {
+      id: 'assessment/entry/trail-version-by',
+      defaultMessage: '{who} submitted version {no}',
+    },
+    entryTrailAnsweredBy: {
+      id: 'assessment/entry/trail-answered-by',
+      defaultMessage: '{who} added the material',
+    },
+    entryTrailAskOut: {
+      id: 'assessment/entry/trail-ask-out',
+      defaultMessage: 'More material was requested',
+    },
+    entryTrailAnswerKeptOut: {
+      id: 'assessment/entry/trail-answer-kept-out',
+      defaultMessage: 'Kept beside version {no} rather than over it; both are on record.',
+    },
+    entrySuggestionHintOut: {
+      id: 'assessment/entry/suggestion-hint-out',
+      defaultMessage: 'For reference only; whether to take it up is theirs to decide.',
     },
     entryTrailRoundOpened: {
       id: 'assessment/entry/trail-round-opened',

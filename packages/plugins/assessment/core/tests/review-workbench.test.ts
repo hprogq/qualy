@@ -595,6 +595,88 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.decided.outcome).toBe('approved')
   })
 
+  it('lists what the step is waiting on somebody else for, to whoever holds it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-awaiting')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+
+          const before = yield* assessment.listAwaitingSupplements(
+            f.t,
+            { batchId: g.batch.id },
+            reviewer,
+          )
+          yield* assessment.requestSupplement(
+            f.t,
+            instanceId,
+            {
+              instructions: '请补充盖章那一面，并写明机构全称。',
+              requirements: [{ label: '机构全称', kind: 'text', required: true }],
+            },
+            reviewer,
+          )
+          const waiting = yield* assessment.listAwaitingSupplements(
+            f.t,
+            { batchId: g.batch.id },
+            reviewer,
+          )
+          // the person it is waiting on is not a reviewer here, and learns
+          // nothing about the step's own list
+          const forSubject = yield* assessment.listAwaitingSupplements(
+            f.t,
+            { batchId: g.batch.id },
+            s1,
+          )
+
+          const mine = yield* assessment.getEntry(f.t, entry.id, s1)
+          yield* assessment.answerSupplement(
+            f.t,
+            mine.supplement!.requestId,
+            { payload: { f1: '市中心血站城东采血点' } },
+            s1,
+          )
+          const answered = yield* assessment.listAwaitingSupplements(
+            f.t,
+            { batchId: g.batch.id },
+            reviewer,
+          )
+          // judged, and it leaves the list with the round it belonged to
+          yield* assessment.decideReview(f.t, instanceId, { decision: 'approve' }, reviewer)
+          const after = yield* assessment.listAwaitingSupplements(
+            f.t,
+            { batchId: g.batch.id },
+            reviewer,
+          )
+          return { before, waiting, forSubject, answered, after }
+        }),
+      ),
+    )
+    expect(result.before.items).toHaveLength(0)
+    expect(result.waiting.items).toHaveLength(1)
+    expect(result.waiting.items[0]).toMatchObject({
+      status: 'open',
+      itemTitle: expect.any(String) as string,
+      asks: ['机构全称'],
+    })
+    expect(result.forSubject.items).toHaveLength(0)
+    // answered, and still listed - back in the queue, but the reviewer who
+    // asked has to be able to find it as the answer to their own question
+    expect(result.answered.items[0]?.status).toBe('answered')
+    expect(result.after.items).toHaveLength(0)
+  })
+
   it('lets the ask be taken back, and a withdrawal close over it', async () => {
     const result = ok(
       await run(

@@ -834,6 +834,7 @@ export class Assessment extends Context.Service<
     readonly interveneOnEntry: EntryMethods['interveneOnEntry']
     /** the single review stage: a queue answered, a round closed exactly once */
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
+    readonly listAwaitingSupplements: ReviewMethods['listAwaitingSupplements']
     readonly getReviewInstance: ReviewMethods['getReviewInstance']
     readonly decideReview: ReviewMethods['decideReview']
     readonly appealReview: ReviewMethods['appealReview']
@@ -4530,6 +4531,30 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           })),
           nextCursor: page.nextCursor,
           handledToday: page.handledToday,
+        }
+      }),
+    )
+    .handle(
+      'listAwaitingSupplements',
+      Effect.fn('assessment.listAwaitingSupplements.handler')(function* ({ query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const page = yield* assessment.listAwaitingSupplements(
+          principal.tenantId,
+          {
+            batchId: query.batchId,
+            ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+            ...(query.limit !== undefined ? { limit: query.limit } : {}),
+          },
+          principal,
+        )
+        return {
+          items: page.items.map((item) => ({
+            ...item,
+            requestedAt: new Date(item.requestedAt).toISOString(),
+            answeredAt: item.answeredAt === null ? null : new Date(item.answeredAt).toISOString(),
+          })),
+          nextCursor: page.nextCursor,
         }
       }),
     )

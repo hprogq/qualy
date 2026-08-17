@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
+import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
+import { assessmentMessages as m } from '../i18n.ts'
 import { fieldsOf } from '../entry/model.ts'
 
 // What the review screens agree on: the queue row, the three ways it is
@@ -20,6 +22,13 @@ export type InboxItemDto = ApiResult<
 >['items'][number]
 
 export type ReviewDto = ApiResult<typeof assessmentApi, 'assessment', 'getReviewInstance'>['review']
+
+/** one ask this reviewer's step is waiting on somebody else for */
+export type AwaitingDto = ApiResult<
+  typeof assessmentApi,
+  'assessment',
+  'listAwaitingSupplements'
+>['items'][number]
 
 /**
  * The slice of the queue a run walks: everything, one question's rows, or
@@ -160,6 +169,34 @@ export const timeLabel = (iso: string): string =>
 
 export const clockLabel = (iso: string): string =>
   new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+
+/**
+ * How long ago, in the reader's own words.
+ *
+ * "Two days" is what somebody deciding whether to chase a request actually
+ * wants; a timestamp makes them do the subtraction. The exact instant is
+ * still shown beside it, because a record has to say when.
+ */
+export function useHowLongAgo(): (iso: string) => string {
+  const { format, locale } = useI18n()
+  return (iso: string) => {
+    const delta = new Date(iso).getTime() - Date.now()
+    const abs = Math.abs(delta)
+    if (abs < 60_000) return format(m.justNow)
+    const [unit, size]: [Intl.RelativeTimeFormatUnit, number] =
+      abs < 3_600_000
+        ? ['minute', 60_000]
+        : abs < 86_400_000
+          ? ['hour', 3_600_000]
+          : abs < 2_592_000_000
+            ? ['day', 86_400_000]
+            : ['month', 2_592_000_000]
+    return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(
+      Math.round(delta / size),
+      unit,
+    )
+  }
+}
 
 /** one version of a filing, as the history endpoint answers it */
 export interface HistoryRevision {

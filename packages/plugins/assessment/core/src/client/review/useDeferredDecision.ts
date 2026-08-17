@@ -17,24 +17,50 @@ import { assessmentApi } from '../api.ts'
 // carried the decision and the second came back "somebody already handled
 // this" - about the reviewer's own submission, a second earlier.
 
-export interface StagedDecision {
-  readonly instanceId: string
-  readonly decision: 'approve' | 'reject' | 'escalate' | 'comment'
-  readonly payload: {
-    readonly decision: 'approve' | 'reject' | 'escalate' | 'comment'
-    readonly reason?: string
-    readonly comment?: string
-    readonly suggestedPayload?: unknown
-  }
-  /** what the pill says while the window is open */
-  readonly participantName: string
-}
+/**
+ * What is waiting to go out.
+ *
+ * Asking for material is a disposition like any other - it ends the
+ * reviewer's turn on this filing and moves them on - so it waits in the same
+ * window rather than going out the moment the dialog closes. Getting the
+ * wording wrong used to mean withdrawing a request the other person had
+ * already been shown.
+ */
+export type StagedDecision =
+  | {
+      readonly kind: 'decision'
+      readonly instanceId: string
+      readonly decision: 'approve' | 'reject' | 'escalate' | 'comment'
+      readonly payload: {
+        readonly decision: 'approve' | 'reject' | 'escalate' | 'comment'
+        readonly reason?: string
+        readonly comment?: string
+        readonly suggestedPayload?: unknown
+      }
+      /** what the pill says while the window is open */
+      readonly participantName: string
+    }
+  | {
+      readonly kind: 'supplement'
+      readonly instanceId: string
+      readonly payload: {
+        readonly instructions: string
+        readonly requirements: readonly {
+          readonly label: string
+          readonly kind: 'text' | 'file'
+          readonly required: boolean
+        }[]
+      }
+      readonly participantName: string
+    }
 
 const WINDOW_MS = 5_000
 
-/** the wire path of the decision endpoint, for the send that outlives the page */
-const beaconPath = (instanceId: string) =>
-  `/api/assessment/review/instances/${instanceId}/decisions`
+/** the wire path whatever is waiting goes out on, for the send that outlives the page */
+const beaconPath = (staged: StagedDecision) =>
+  staged.kind === 'supplement'
+    ? `/api/assessment/review/instances/${staged.instanceId}/supplement-requests`
+    : `/api/assessment/review/instances/${staged.instanceId}/decisions`
 
 export function useDeferredDecision({
   onCommitted,
@@ -61,10 +87,15 @@ export function useDeferredDecision({
   const send = useCallback(
     (staged: StagedDecision) => {
       void run(
-        api.assessment.decideReview({
-          params: { instanceId: staged.instanceId },
-          payload: staged.payload as never,
-        }),
+        staged.kind === 'supplement'
+          ? api.assessment.requestSupplement({
+              params: { instanceId: staged.instanceId },
+              payload: staged.payload as never,
+            })
+          : api.assessment.decideReview({
+              params: { instanceId: staged.instanceId },
+              payload: staged.payload as never,
+            }),
       ).then(
         () => committed.current(staged),
         (error: unknown) => failed.current(staged, error),
@@ -127,7 +158,7 @@ export function useDeferredDecision({
       stopTimer()
       if (staged === null) return
       navigator.sendBeacon(
-        beaconPath(staged.instanceId),
+        beaconPath(staged),
         new Blob([JSON.stringify(staged.payload)], { type: 'application/json' }),
       )
     }
