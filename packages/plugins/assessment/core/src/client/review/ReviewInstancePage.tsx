@@ -933,6 +933,7 @@ function MainColumn({
       ? []
       : valuesOf(against.formConfig, against.payload).map((v) => [v.key, v] as const),
   )
+  const lingeringAgainst = useLingering(against)
   const changes =
     against === null
       ? 0
@@ -1035,7 +1036,7 @@ function MainColumn({
       </section>
 
       <section className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1.5 border-b pb-2">
+        <div className="flex flex-col border-b pb-2">
           <div className="flex flex-wrap items-center gap-2.5">
             <h3 className="text-sm font-semibold">{format(m.reviewPayloadTitle)}</h3>
             <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
@@ -1063,11 +1064,20 @@ function MainColumn({
               </>
             )}
           </div>
-          <p className="min-h-4 text-xs text-muted-foreground">
-            {against === null
-              ? ''
-              : format(m.reviewCompareCount, { count: changes, no: against.revisionNo })}
-          </p>
+          {/* It closes over rather than leaving a blank line behind: the
+              row reserved its height so nothing would jump, which traded a
+              jump for a permanent gap above the rule. Collapsing gives the
+              space back on the way out, so neither happens. The version it
+              was reading against lingers through the exit - the sentence has
+              to stay whole while it is leaving. */}
+          <Appear show={against !== null} collapse>
+            <p className="pt-1.5 text-xs text-muted-foreground">
+              {format(m.reviewCompareCount, {
+                count: changes,
+                no: lingeringAgainst?.revisionNo ?? 0,
+              })}
+            </p>
+          </Appear>
         </div>
         <dl className="flex flex-col gap-3">
           {fields.map((field) => {
@@ -1105,7 +1115,7 @@ function MainColumn({
                     </span>
                   )}
                 </dt>
-                <dd className="flex min-w-0 flex-col gap-1.5 text-sm">
+                <dd className="flex min-w-0 flex-col text-sm">
                   {field.type === 'attachment' ? (
                     cited.length === 0 ? (
                       <span className="text-muted-foreground">—</span>
@@ -1140,20 +1150,20 @@ function MainColumn({
                       which is the opposite of what it is. */}
                   {field.type === 'attachment' ? (
                     <Appear show={gone.length > 0} collapse>
-                      <span className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+                      <span className="flex min-w-0 flex-col gap-1 pt-1.5 text-xs text-muted-foreground">
                         <span>{format(m.reviewFileGone)}</span>
                         {gone.map((attachmentId) => (
-                          <AttachmentLink
-                            key={attachmentId}
-                            attachmentId={attachmentId}
-                            variant="line"
-                          />
+                          // struck through, or a reviewer scanning the column
+                          // reads it as one more file that is there
+                          <span key={attachmentId} className="min-w-0 line-through">
+                            <AttachmentLink attachmentId={attachmentId} variant="line" />
+                          </span>
                         ))}
                       </span>
                     </Appear>
                   ) : (
                     <Appear show={changed} collapse>
-                      <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                      <span className="flex items-baseline gap-2 pt-1.5 text-xs text-muted-foreground">
                         <span className="shrink-0">{format(m.reviewComparePrevious)}</span>
                         {before === '' ? (
                           <span>{format(m.reviewCompareBlank)}</span>
