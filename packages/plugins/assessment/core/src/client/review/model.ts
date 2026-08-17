@@ -224,15 +224,33 @@ export function useEntryHistory(entryId: string, enabled: boolean) {
   })
 }
 
+/**
+ * One payload value as something two versions can be compared on.
+ *
+ * A file field's answer is the set of files it cites, so its comparable form
+ * is that set: swapping one certificate for another is a change, and reading
+ * it as "no value" made a version look untouched where the whole point of
+ * the resubmission was the new photograph.
+ */
+export const valueOf = (raw: unknown): string =>
+  typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join(',') : ''
+
+/** the attachments an answer cites, in the order they were filed */
+export const idsOf = (raw: unknown): readonly string[] =>
+  Array.isArray(raw) ? raw.map((one) => String(one)) : []
+
 /** one filing's answers, under the labels of the form it was written on */
 export const valuesOf = (
   formConfig: unknown,
   payload: unknown,
-): readonly { key: string; label: string; value: string }[] =>
-  fieldsOf(formConfig)
-    .filter((field) => field.type !== 'attachment')
-    .map((field) => {
-      const record = (payload ?? {}) as Record<string, unknown>
-      const raw = record[field.key]
-      return { key: field.key, label: field.label, value: typeof raw === 'string' ? raw : '' }
-    })
+): readonly { key: string; label: string; value: string; ids: readonly string[] }[] =>
+  fieldsOf(formConfig).map((field) => {
+    const record = (payload ?? {}) as Record<string, unknown>
+    const raw = record[field.key]
+    return {
+      key: field.key,
+      label: field.label,
+      value: valueOf(raw),
+      ids: field.type === 'attachment' ? idsOf(raw) : [],
+    }
+  })

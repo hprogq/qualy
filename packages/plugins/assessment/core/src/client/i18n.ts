@@ -1326,8 +1326,11 @@ const i18n = definePluginMessages({
       id: 'assessment/review/filed-version',
       defaultMessage: 'Version {no}\u3000{at}',
     },
-    reviewCompare: { id: 'assessment/review/compare', defaultMessage: 'Compare' },
-    reviewPickVersion: { id: 'assessment/review/pick-version', defaultMessage: 'Version' },
+    // the button says what pressing it does, not what the screen is doing:
+    // a toggle labelled with its own state reads as a claim, not a control
+    reviewCompareOn: { id: 'assessment/review/compare-on', defaultMessage: 'Compare versions' },
+    reviewCompareOff: { id: 'assessment/review/compare-off', defaultMessage: 'Stop comparing' },
+    reviewPickVersion: { id: 'assessment/review/pick-version', defaultMessage: 'Pick a version' },
     reviewCompareCount: {
       id: 'assessment/review/compare-count',
       defaultMessage:
@@ -2160,6 +2163,8 @@ const i18n = definePluginMessages({
     fileKindImage: { id: 'assessment/files/kind-image', defaultMessage: 'Images' },
     fileKindWord: { id: 'assessment/files/kind-word', defaultMessage: 'Word documents' },
     fileKindSheet: { id: 'assessment/files/kind-sheet', defaultMessage: 'Spreadsheets' },
+    fileKindSlides: { id: 'assessment/files/kind-slides', defaultMessage: 'Slides' },
+    fileKindArchive: { id: 'assessment/files/kind-archive', defaultMessage: 'Archives' },
     itemsAcceptOther: {
       id: 'assessment/items/accept-other',
       defaultMessage: 'Also accept other formats',

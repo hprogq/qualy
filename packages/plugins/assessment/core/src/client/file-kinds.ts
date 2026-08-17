@@ -37,6 +37,8 @@ export const FILE_KINDS: readonly FileKind[] = [
   { id: 'image', name: m.fileKindImage, tokens: ['image/*'] },
   { id: 'word', name: m.fileKindWord, tokens: ['.doc', '.docx'] },
   { id: 'sheet', name: m.fileKindSheet, tokens: ['.xls', '.xlsx', '.csv'] },
+  { id: 'slides', name: m.fileKindSlides, tokens: ['.ppt', '.pptx'] },
+  { id: 'archive', name: m.fileKindArchive, tokens: ['.zip', '.rar', '.7z'] },
 ]
 
 /**

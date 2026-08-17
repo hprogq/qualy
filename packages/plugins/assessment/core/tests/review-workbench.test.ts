@@ -122,10 +122,11 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     )
     // the row carries the filing under its own labels, three at most, in
     // the form's own order - never a written summary
+    // a file field would keep its place here too, carrying its own count
     expect(result.row.values).toEqual([
-      { label: '竞赛名称', value: '中国机器人大赛' },
-      { label: '等级与名次', value: '市级 一等奖' },
-      { label: '获奖日期', value: '2026-05-09' },
+      { label: '竞赛名称', value: '中国机器人大赛', files: null },
+      { label: '等级与名次', value: '市级 一等奖', files: null },
+      { label: '获奖日期', value: '2026-05-09', files: null },
     ])
     expect(result.row.unitName).toBe('Class A1')
     expect(result.row.route).toBe('normal')

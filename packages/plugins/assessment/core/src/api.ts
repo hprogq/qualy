@@ -550,10 +550,17 @@ const reviewInboxItem = Schema.Struct({
   route: Schema.Literals(['normal', 'escalation']),
   /**
    * The filing itself, projected: the judged revision's own answers under
-   * the question's real field labels, never a written summary. Attachment
-   * fields stay out - the count stands in for them.
+   * the question's real field labels, never a written summary. A field that
+   * asks for files keeps its place and carries how many were filed under it
+   * (`files`) rather than being folded into one count at the end of the row.
    */
-  values: Schema.Array(Schema.Struct({ label: Schema.String, value: Schema.String })),
+  values: Schema.Array(
+    Schema.Struct({
+      label: Schema.String,
+      value: Schema.String,
+      files: Schema.NullOr(Schema.Number),
+    }),
+  ),
   attachmentCount: Schema.Number,
   submittedAt: Schema.String,
 })
@@ -614,7 +621,13 @@ const reviewDetailView = Schema.Struct({
         Schema.Struct({
           entryId: Schema.String,
           /** its own answers, for reading one against another */
-          values: Schema.Array(Schema.Struct({ label: Schema.String, value: Schema.String })),
+          values: Schema.Array(
+            Schema.Struct({
+              label: Schema.String,
+              value: Schema.String,
+              files: Schema.NullOr(Schema.Number),
+            }),
+          ),
           status: Schema.String,
           current: Schema.Boolean,
         }),

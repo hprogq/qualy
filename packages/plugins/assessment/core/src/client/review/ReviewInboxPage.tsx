@@ -8,6 +8,7 @@ import { AsyncSection } from '@qualy/ui/admin'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
+import { cn } from '@qualy/ui/cn'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Skeleton } from '@qualy/ui/skeleton'
@@ -251,6 +252,24 @@ function Stat({ label, value }: { label: string; value: number }) {
   )
 }
 
+/**
+ * One answer in a list cell.
+ *
+ * A field that asks for files is a field: it keeps its own column under its
+ * own name and says how many were filed under it. Folding every such field
+ * into a single "materials" count at the end of the row made "the
+ * certificate" and "a photo of the ceremony" into the same fact.
+ */
+function FiledValue({ pair }: { pair: InboxItemDto['values'][number] }) {
+  const { format } = useI18n()
+  if (pair.files === null) return <>{pair.value}</>
+  return (
+    <span className={cn(pair.files === 0 && 'text-muted-foreground')}>
+      {format(m.reviewFilesCount, { count: pair.files })}
+    </span>
+  )
+}
+
 /** where the round stands, as one small chip on the row */
 function StateChip({ row }: { row: InboxItemDto }) {
   const { format } = useI18n()
@@ -312,7 +331,6 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
                   </span>
                 ))}
               </span>
-              <span>{format(m.reviewColumnFiles)}</span>
               <span>{format(m.reviewColumnWhen)}</span>
               <span />
             </div>
@@ -336,12 +354,9 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
                     <span className="flex min-w-0 gap-3">
                       {row.values.map((pair, index) => (
                         <span key={index} className="min-w-0 flex-1 truncate">
-                          {pair.value}
+                          <FiledValue pair={pair} />
                         </span>
                       ))}
-                    </span>
-                    <span className="text-xs whitespace-nowrap text-muted-foreground">
-                      {format(m.reviewFilesCount, { count: row.attachmentCount })}
                     </span>
                     <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
                       {timeLabel(row.submittedAt)}
@@ -360,7 +375,7 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
   )
 }
 
-const GRID_ITEM = '11rem minmax(0,1fr) 4rem 7rem 6rem'
+const GRID_ITEM = '11rem minmax(0,1fr) 7rem 6rem'
 const GRID_TIME = '4rem 11rem 12rem minmax(0,1fr) 6rem'
 const GRID_PERSON = '12rem minmax(0,1fr) 4rem 7rem 6rem'
 
@@ -466,7 +481,6 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
             >
               <span>{format(m.reviewColumnItem)}</span>
               <span>{format(m.reviewColumnSummary)}</span>
-              <span>{format(m.reviewColumnFiles)}</span>
               <span>{format(m.reviewColumnWhen)}</span>
               <span />
             </div>

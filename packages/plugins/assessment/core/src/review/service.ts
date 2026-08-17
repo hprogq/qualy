@@ -96,8 +96,16 @@ export interface ReviewInboxItem {
   readonly unitName: string | null
   readonly roundNo: number
   readonly route: 'normal' | 'escalation'
-  /** the filing's own answers under the question's real labels, never prose */
-  readonly values: readonly { readonly label: string; readonly value: string }[]
+  /**
+   * The filing's own answers under the question's real labels, never prose.
+   * A file field carries a count rather than a value; the browser says how
+   * that reads.
+   */
+  readonly values: readonly {
+    readonly label: string
+    readonly value: string
+    readonly files: number | null
+  }[]
   readonly attachmentCount: number
   readonly submittedAt: number
 }
@@ -183,7 +191,11 @@ export interface ReviewContextView {
   }
   readonly siblings: readonly {
     readonly entryId: string
-    readonly values: readonly { readonly label: string; readonly value: string }[]
+    readonly values: readonly {
+      readonly label: string
+      readonly value: string
+      readonly files: number | null
+    }[]
     readonly status: string
     readonly current: boolean
   }[]
@@ -370,29 +382,41 @@ const refuse = (action: string, reason: string) => new EntryActionRefused({ acti
 
 /**
  * A filing's answers under its form's own labels, for a list column or a
- * one-line sibling. The fields are the question's real fields in their own
- * order - never a written summary - and attachment fields stay out because
- * a count stands in for them.
+ * one-line sibling.
+ *
+ * The question's real fields in their own order, never a written summary -
+ * and that includes the ones that ask for files. Those used to be dropped
+ * and replaced by one "materials" count at the end of the row, which turned
+ * "certificate" and "photo of the award" into the same word: a number. A
+ * file field is a field, so it keeps its place and its name, and says how
+ * many were filed under it. How that count reads is the browser's business;
+ * the server counts.
  */
 const summaryValues = (
   formConfig: unknown,
   payload: unknown,
   most = 3,
-): readonly { label: string; value: string }[] => {
+): readonly { label: string; value: string; files: number | null }[] => {
   const fields = (formConfig as { fields?: unknown } | null)?.fields
   if (!Array.isArray(fields)) return []
   const record = (payload ?? {}) as Record<string, unknown>
-  const out: { label: string; value: string }[] = []
+  const out: { label: string; value: string; files: number | null }[] = []
   for (const field of fields as readonly {
     key?: string
     label?: string
     type?: string
   }[]) {
     if (out.length >= most) break
-    if (field.type === 'attachment' || typeof field.key !== 'string') continue
+    if (typeof field.key !== 'string') continue
     const value = record[field.key]
+    const label = typeof field.label === 'string' ? field.label : field.key
+    if (field.type === 'attachment') {
+      out.push({ label, value: '', files: Array.isArray(value) ? value.length : 0 })
+      continue
+    }
     out.push({
-      label: typeof field.label === 'string' ? field.label : field.key,
+      label,
+      files: null,
       value:
         typeof value === 'string'
           ? value

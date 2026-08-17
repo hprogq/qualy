@@ -52,6 +52,8 @@ import {
   timeLabel,
   clockLabel,
   useEntryHistory,
+  idsOf,
+  valueOf,
   valuesOf,
   type HistoryRevision,
   type InboxItemDto,
@@ -163,6 +165,23 @@ function Workbench({ batch }: { batch: BatchDto }) {
       search: runRaw === '' ? {} : { run: runRaw },
     })
 
+  // Nothing more to do here, and something else waiting.
+  //
+  // Two ways to end up looking at a filing this sitting already dealt with:
+  // deciding the last one in the run, and then work arriving while the done
+  // screen was up. Either way the rail no longer holds it, so the screen was
+  // showing one filing and the list beside it another. Narrow on purpose -
+  // only filings THIS sitting decided - or opening a paused round from the
+  // queue's other half would bounce the reader somewhere they did not ask
+  // for.
+  const settledHere = decidedIds.has(instanceId)
+  useEffect(() => {
+    if (!settledHere) return
+    const next = remaining[0]
+    if (next !== undefined) goTo(next.instanceId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settledHere, remaining.length])
+
   const [armed, setArmed] = useState<'approve' | 'comment' | null>(null)
   const [word, setWord] = useState('')
   const [dialog, setDialog] = useState<'reject' | 'escalate' | 'supplement' | null>(null)
@@ -174,8 +193,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const lingeringStaged = useLingering(deferred.pending)
   const [trailOpen, setTrailOpen] = useState(false)
   const [versionsOpen, setVersionsOpen] = useState(false)
-  // which earlier version the filing is read against; null is not comparing
-  const [comparing, setComparing] = useState<string | null>(null)
+  // Which earlier version the filing is read against; null is not comparing.
+  // On by default: a resubmission is read for what changed in it, and having
+  // to ask for that every time made the question "did they fix it" cost a
+  // keystroke on every filing in the run.
+  const [comparing, setComparing] = useState<string | null>('previous')
   const wordRef = useRef<HTMLInputElement | null>(null)
   // Whether something over the workbench owns the keyboard. Read from a ref
   // because the window listener runs in the same native event as the panel
@@ -440,8 +462,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
       >
         <div className="grid min-h-0 flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]">
           <QueueRail
-            rows={scopeRows}
-            log={log}
+            rows={remaining}
             currentId={instanceId}
             remainingCount={remaining.length}
             onOpen={goTo}
@@ -467,7 +488,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   <RunStrip
                     at={log.length + (currentIndex === -1 ? 1 : currentIndex + 1)}
                     total={total}
-                    log={log}
+                    done={log.length}
                     batchId={batch.id}
                   />
                 )}
@@ -544,11 +565,20 @@ function Workbench({ batch }: { batch: BatchDto }) {
           </div>
         </div>
 
-        <Appear show={deferred.pending !== null} className="absolute bottom-20 left-[16rem] z-10">
-          {lingeringStaged !== null && (
-            <UndoPill staged={lingeringStaged} deadline={deferred.deadline} onUndo={undoStaged} />
-          )}
-        </Appear>
+        {/* Centred across the workbench, by a row that spans it rather than
+            by a transform: the pill's own entrance animates one, and an
+            inline transform beats a class every time. It used to be pushed
+            off the queue rail by a hard-coded 16rem, which put it wherever
+            that rail happened to be - and off the screen when it was not
+            there at all. The row ignores the pointer so the filing under it
+            stays readable. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-20 z-10 flex justify-center">
+          <Appear show={deferred.pending !== null} className="pointer-events-auto">
+            {lingeringStaged !== null && (
+              <UndoPill staged={lingeringStaged} deadline={deferred.deadline} onUndo={undoStaged} />
+            )}
+          </Appear>
+        </div>
         {keysOpen && <KeysPanel onClose={() => setKeysOpen(false)} />}
         {writing && (
           <WritingBox
@@ -621,24 +651,29 @@ function Workbench({ batch }: { batch: BatchDto }) {
   )
 }
 
-/** the run's own rows down the left, decided ones dimmed with their word */
+/**
+ * What is still to do in this run, down the left.
+ *
+ * A filing leaves the list the moment its disposition is staged, not when
+ * the five seconds are up: from the reviewer's side it is dealt with, and a
+ * row that lingers greyed out for five seconds reads as one that did not
+ * take. Taking it back with ⌘Z puts it back, because then it really was not
+ * dealt with.
+ */
 function QueueRail({
   rows,
-  log,
   currentId,
   remainingCount,
   onOpen,
   onBack,
 }: {
   rows: readonly InboxItemDto[]
-  log: readonly SessionEntry[]
   currentId: string
   remainingCount: number
   onOpen: (id: string) => void
   onBack: () => void
 }) {
   const { format } = useI18n()
-  const decided = new Map(log.map((entry) => [entry.instanceId, entry.decision]))
   return (
     <aside className="hidden min-h-0 flex-col lg:flex">
       <div className="flex items-center gap-1.5 border-b py-2 pr-3.5 pl-2">
@@ -658,20 +693,17 @@ function QueueRail({
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {rows.map((row) => {
-          const said = decided.get(row.instanceId)
           const current = row.instanceId === currentId
           return (
             <li key={row.instanceId}>
               <button
                 type="button"
-                disabled={said !== undefined}
                 onClick={() => onOpen(row.instanceId)}
                 className={cn(
                   'flex w-full items-center gap-2 rounded-lg border-l-2 px-2.5 py-2 text-left transition-colors',
                   current
                     ? 'border-l-foreground bg-accent'
                     : 'border-l-transparent hover:bg-accent/50',
-                  said !== undefined && 'opacity-50',
                 )}
               >
                 <span className="flex min-w-0 flex-1 flex-col">
@@ -680,15 +712,9 @@ function QueueRail({
                   </span>
                   <span className="truncate text-xs text-muted-foreground">{row.itemTitle}</span>
                 </span>
-                {said !== undefined ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {format(DECISION_LABEL[said])}
-                  </span>
-                ) : (
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {clockLabel(row.submittedAt)}
-                  </span>
-                )}
+                <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {clockLabel(row.submittedAt)}
+                </span>
               </button>
             </li>
           )
@@ -705,16 +731,25 @@ const DECISION_LABEL: Record<SessionEntry['decision'], MessageDescriptor> = {
   supplement: m.reviewSupplementAsked,
 }
 
-/** where the run stands: a thin band of what is done and what is left */
+/**
+ * Where the run stands: one segment per filing, filled behind the reader and
+ * marked at the one they are on.
+ *
+ * It used to light only what was finished, so the segment for the filing on
+ * screen stayed grey until it had been dealt with - the bar was always one
+ * behind what the reader was looking at.
+ */
 function RunStrip({
   at,
   total,
-  log,
+  done,
   batchId,
 }: {
+  /** which filing of the run is on screen, counting from one */
   at: number
   total: number
-  log: readonly SessionEntry[]
+  /** how many have been dealt with this sitting */
+  done: number
   batchId: string
 }) {
   const { format } = useI18n()
@@ -729,8 +764,8 @@ function RunStrip({
           <span
             key={index}
             className={cn(
-              'h-1 flex-1 rounded-full',
-              index < log.length ? 'bg-foreground' : 'bg-border',
+              'h-1 flex-1 rounded-full transition-colors',
+              index < done ? 'bg-foreground' : index === at - 1 ? 'bg-foreground/45' : 'bg-border',
             )}
           />
         ))}
@@ -875,7 +910,10 @@ function MainColumn({
   onTrail: () => void
 }) {
   const { format } = useI18n()
-  const fields = fieldsOf(review.form.formConfig).filter((field) => field.type !== 'attachment')
+  // every field the question asks, files included and in their own places:
+  // a field that asks for a certificate is not "materials", it is the
+  // certificate, and folding it away left the reading order with a hole
+  const fields = fieldsOf(review.form.formConfig)
   const record = (review.revision.payload ?? {}) as Record<string, unknown>
   const previous = review.context?.previous ?? null
   // the version being read against, resolved from the entry's own history;
@@ -890,18 +928,16 @@ function MainColumn({
       : comparing === 'previous'
         ? (earlier[earlier.length - 1] ?? null)
         : (earlier.find((one) => one.id === comparing) ?? null)
-  const was = new Map(
+  const was = new Map<string, { value: string; ids: readonly string[] }>(
     against === null
       ? []
-      : valuesOf(against.formConfig, against.payload).map((v) => [v.key, v.value]),
+      : valuesOf(against.formConfig, against.payload).map((v) => [v.key, v] as const),
   )
   const changes =
     against === null
       ? 0
-      : fields.filter((field) => {
-          const now = typeof record[field.key] === 'string' ? (record[field.key] as string) : ''
-          return (was.get(field.key) ?? '') !== now
-        }).length
+      : fields.filter((field) => (was.get(field.key)?.value ?? '') !== valueOf(record[field.key]))
+          .length
   return (
     <main className="flex min-w-0 flex-col gap-6 overflow-y-auto p-5">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
@@ -1002,32 +1038,34 @@ function MainColumn({
             {review.revision.revisionNo > 1 && (
               <>
                 <Button
-                  variant={comparing === null ? 'ghost' : 'secondary'}
+                  variant={comparing === null ? 'outline' : 'secondary'}
                   size="sm"
                   className="text-xs"
                   onClick={() => onCompare(comparing === null ? 'previous' : null)}
                 >
-                  {format(m.reviewCompare)}
+                  {format(comparing === null ? m.reviewCompareOn : m.reviewCompareOff)}
                   <Kbd>D</Kbd>
                 </Button>
-                <Button variant="ghost" size="sm" className="text-xs" onClick={onVersions}>
+                <Button variant="outline" size="sm" className="text-xs" onClick={onVersions}>
                   {format(m.reviewPickVersion)}
                   <Kbd>⇧D</Kbd>
                 </Button>
               </>
             )}
           </div>
-          {against !== null && (
-            <p className="text-xs text-muted-foreground">
-              {format(m.reviewCompareCount, { count: changes, no: against.revisionNo })}
-            </p>
-          )}
+          <p className="min-h-4 text-xs text-muted-foreground">
+            {against === null
+              ? ''
+              : format(m.reviewCompareCount, { count: changes, no: against.revisionNo })}
+          </p>
         </div>
         <dl className="flex flex-col gap-2">
           {fields.map((field) => {
-            const now = typeof record[field.key] === 'string' ? (record[field.key] as string) : ''
-            const before = was.get(field.key) ?? ''
+            const now = valueOf(record[field.key])
+            const previous = was.get(field.key)
+            const before = previous?.value ?? ''
             const changed = against !== null && before !== now
+            const cited = field.type === 'attachment' ? idsOf(record[field.key]) : []
             return (
               <div
                 key={field.key}
@@ -1038,12 +1076,41 @@ function MainColumn({
               >
                 <dt className="text-sm whitespace-nowrap text-muted-foreground">{field.label}</dt>
                 <dd className="flex min-w-0 flex-col gap-0.5 text-sm">
-                  <span className={cn(changed && 'font-medium')}>{now === '' ? '—' : now}</span>
+                  {field.type === 'attachment' ? (
+                    cited.length === 0 ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span className="flex min-w-0 flex-col gap-1">
+                        {cited.map((attachmentId) => (
+                          <AttachmentLink
+                            key={attachmentId}
+                            attachmentId={attachmentId}
+                            variant="line"
+                          />
+                        ))}
+                      </span>
+                    )
+                  ) : (
+                    <span className={cn(changed && 'font-medium')}>{now === '' ? '—' : now}</span>
+                  )}
                   <Appear show={changed}>
                     <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
                       <span className="shrink-0">{format(m.reviewComparePrevious)}</span>
                       {before === '' ? (
                         <span>{format(m.reviewCompareBlank)}</span>
+                      ) : field.type === 'attachment' ? (
+                        // what was cited last time, by name: a struck-out row
+                        // of identifiers would say a change happened without
+                        // saying what changed
+                        <span className="flex min-w-0 flex-col gap-0.5 line-through">
+                          {(previous?.ids ?? []).map((attachmentId) => (
+                            <AttachmentLink
+                              key={attachmentId}
+                              attachmentId={attachmentId}
+                              variant="line"
+                            />
+                          ))}
+                        </span>
                       ) : (
                         <span className="min-w-0 line-through">{before}</span>
                       )}
