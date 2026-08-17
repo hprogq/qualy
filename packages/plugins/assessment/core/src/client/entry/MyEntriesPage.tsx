@@ -40,9 +40,45 @@ import { lastDay, trimAmount, type EntryDto, type ItemDto } from './model.ts'
 // think "what is in here, and what have I done about it". Selecting a group
 // answers the first, selecting a question answers the second.
 
+/**
+ * Whether the two panes are standing side by side.
+ *
+ * The same query the layout switches on, asked in javascript for the one
+ * thing css cannot decide: what pressing back should mean. Narrow, a layer
+ * is somewhere the reader went and back is how anybody leaves it; wide, the
+ * layers are furniture beside a list, and clicking ten questions must not
+ * cost ten presses of back to undo.
+ */
+function useSideBySide(): boolean {
+  const [beside, setBeside] = useState(true)
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 64rem)')
+    const read = () => setBeside(query.matches)
+    read()
+    query.addEventListener('change', read)
+    return () => query.removeEventListener('change', read)
+  }, [])
+  return beside
+}
+
+/**
+ * One piece of this screen that lives in the address.
+ *
+ * Every layer of this page - which question is open, whose account is being
+ * read, which claim is being written - is a query parameter rather than
+ * component state, so a reload keeps it, a link carries it, and the phone's
+ * back key walks out of it one layer at a time instead of leaving the page.
+ * Closing sets it to '' and the parameter goes: an empty one left behind
+ * would open the layer again on the next reload.
+ */
+function useLayer(key: string): [string, (next: string) => void] {
+  const beside = useSideBySide()
+  return usePageQueryState(key, '', { history: beside ? 'replace' : 'push' })
+}
+
 export default function MyEntriesPage() {
   const { format } = useI18n()
-  const [selected, setSelected] = usePageQueryState('open')
+  const [selected, setSelected] = useLayer('open')
   return (
     // wide, not default and not full: at the default width the detail pane
     // is 728px however wide the screen is, and unbounded a claim's line
@@ -183,14 +219,11 @@ function Body({
   const mine = useQuery(
     query.assessment.listMyEntries.queryOptions({ params: { batchId }, query: {} }),
   )
-  const [filing, setFiling] = useState<{
-    item: ItemDto
-    entry: EntryDto | null
-    trail: readonly string[]
-  } | null>(null)
-  const lingeringFiling = useLingering(filing)
-  const [history, setHistory] = useState<string | null>(null)
-  const lingeringHistory = useLingering(history)
+  // 'new' is a claim about to exist on whichever question is open; anything
+  // else names the claim being rewritten. The question itself is never
+  // repeated here - `open` already says which one this is about.
+  const [filing, setFiling] = useLayer('entry')
+  const [history, setHistory] = useLayer('history')
   const [appealing, setAppealing] = useState<EntryDto | null>(null)
   const lingeringAppeal = useLingering(appealing)
   const [answering, setAnswering] = useState<EntryDto | null>(null)
@@ -296,6 +329,24 @@ function Body({
   // asked for it - unasked, the list is the page.
   const chosen = rows.some((row) => row.id === selected)
 
+  // The claim being written, resolved from the address rather than carried
+  // in state: 'new' is one about to exist on the open question, anything
+  // else is one of that question's own claims by id. A parameter naming a
+  // claim that is not there any more simply opens nothing.
+  const writing =
+    filing === '' || open?.kind !== 'item' || open.item === undefined
+      ? null
+      : {
+          item: open.item,
+          trail: open.trail,
+          entry:
+            filing === 'new'
+              ? null
+              : ((entriesByItem.get(open.id) ?? []).find((one) => one.id === filing) ?? null),
+        }
+  const lingeringFiling = useLingering(writing)
+  const lingeringHistory = useLingering(history === '' ? null : history)
+
   return (
     <AsyncSection
       pending={items.isPending || mine.isPending || groups.isPending || standing.isPending}
@@ -368,7 +419,7 @@ function Body({
                   entries={entriesByItem.get(open.id) ?? []}
                   standing={(standing.data ?? null) as Standing | null}
                   busy={setStatus.isPending || declare.isPending}
-                  onFile={(entry) => setFiling({ item: open.item!, entry, trail: open.trail })}
+                  onFile={(entry) => setFiling(entry?.id ?? 'new')}
                   onDeclare={() => declare.mutate({ itemId: open.id })}
                   onHistory={setHistory}
                   onStatus={(entryId, status) => setStatus.mutate({ entryId, status })}
@@ -385,7 +436,7 @@ function Body({
       {lingeringFiling !== null && mine.data !== undefined && (
         <EntryDialog
           key={lingeringFiling.entry?.id ?? `new:${lingeringFiling.item.id}`}
-          open={filing !== null}
+          open={writing !== null}
           batchId={batchId}
           materialRange={materialRange}
           participantId={mine.data.participantId}
@@ -395,19 +446,19 @@ function Body({
           siblings={(entriesByItem.get(lingeringFiling.item.id) ?? []).filter(
             (one) => one.id !== lingeringFiling.entry?.id,
           )}
-          onClose={() => setFiling(null)}
+          onClose={() => setFiling('')}
           onSaved={() => {
-            setFiling(null)
+            setFiling('')
             refresh()
           }}
         />
       )}
       {lingeringHistory !== null && (
         <EntryHistory
-          open={history !== null}
+          open={history !== ''}
           entryId={lingeringHistory}
           itemTitle={titleOfEntry(rows, entriesByItem, lingeringHistory)}
-          onClose={() => setHistory(null)}
+          onClose={() => setHistory('')}
         />
       )}
       {lingeringAppeal?.currentReviewInstanceId != null && (

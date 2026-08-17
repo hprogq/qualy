@@ -4,7 +4,7 @@ import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
 import { components } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The entry workflow as a person drives it: filing a claim on a question,
 // following what a reviewer did to it, judging one from the queue, and
@@ -398,6 +398,45 @@ describe('filing a claim', () => {
     await expect.element(page.getByText('我补充了材料')).toBeVisible()
     await expect.element(page.getByText('市中心血站城东采血点')).toBeVisible()
     await expect.element(page.getByText('我提交了第 1 版')).toBeVisible()
+  })
+
+  it('keeps every layer in the address, and takes it back out on close', async () => {
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [entry({ status: 'rejected' })],
+            nextCursor: null,
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    // choosing a question is going somewhere: the address says which one,
+    // so a reload lands back on it and a link carries it to somebody else
+    await page.getByRole('button', { name: /退役复学/ }).click()
+    await vi.waitFor(() => expect(addressNow()).toContain(`open=${ITEM_ID}`))
+
+    // and so are the two layers over it - state in a component survives
+    // neither a reload nor the phone's back key
+    await page.getByRole('button', { name: '查看经过' }).click()
+    await vi.waitFor(() => expect(addressNow()).toContain(`history=${ENTRY_ID}`))
+
+    // closing takes the parameter out rather than leaving it empty: a spent
+    // parameter left behind would open the layer again on the next reload,
+    // and the layer underneath keeps its own
+    await page.getByRole('button', { name: /关闭|Close/ }).click()
+    await vi.waitFor(() => expect(addressNow()).not.toContain('history='))
+    expect(addressNow()).toContain(`open=${ITEM_ID}`)
+
+    await page.getByRole('button', { name: '修改' }).click()
+    await vi.waitFor(() => expect(addressNow()).toContain(`entry=${ENTRY_ID}`))
+    await page.getByRole('button', { name: 'Close' }).click()
+    await vi.waitFor(() => expect(addressNow()).not.toContain('entry='))
+    expect(addressNow()).toContain(`open=${ITEM_ID}`)
   })
 
   it('keeps the filing button when the places are full, with the reason on hover', async () => {

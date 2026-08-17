@@ -1,5 +1,5 @@
 import { StrictMode, type ReactNode } from 'react'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
 import { RuntimeProvider, type ComponentRegistry } from '@qualy/web-runtime'
@@ -98,6 +98,7 @@ export function renderScreen({
       <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
         <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
           <MemoryRouter initialEntries={[route]}>
+            <Address />
             {routes ? (
               <Routes>
                 {routes.map((entry) => (
@@ -115,6 +116,27 @@ export function renderScreen({
     </StrictMode>,
   )
 }
+
+/**
+ * The address, where a test can read it.
+ *
+ * The router is a memory router, so `window.location` says nothing about
+ * where the screen thinks it is. Screens that keep state in the query - which
+ * record is open, which panel is showing - are only testable against the
+ * address itself: asserting that a panel is on screen says nothing about
+ * whether a reload or a back press would find it.
+ */
+function Address() {
+  const location = useLocation()
+  return (
+    <span data-testid="address" style={{ display: 'none' }}>
+      {`${location.pathname}${location.search}`}
+    </span>
+  )
+}
+
+/** what the address holds right now, for a test that just pressed something */
+export const addressNow = () => document.querySelector('[data-testid="address"]')?.textContent ?? ''
 
 // mounts the subject under a real route so a screen reading `:userId` gets
 // it from the router rather than from a prop the harness made up

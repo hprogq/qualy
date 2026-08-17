@@ -440,7 +440,17 @@ export function FormDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={size === 'wide' ? 'sm:max-w-4xl' : 'sm:max-w-lg'}>
+      {/* Never taller than the window, and the middle row is what gives:
+          a form long enough to outgrow a phone used to push its own footer
+          off the bottom, where the button that saves it could not be
+          reached. The three rows are the header, the body and the footer -
+          a dialog without a footer simply leaves the last one empty. */}
+      <DialogContent
+        className={cn(
+          'max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]',
+          size === 'wide' ? 'sm:max-w-4xl' : 'sm:max-w-lg',
+        )}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
@@ -471,7 +481,9 @@ export function SidePanel({
 }) {
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent side="right" className="sm:max-w-xl">
+      {/* the whole width on a phone: three quarters of a 390px screen is a
+          panel with a dead strip beside it and nothing readable inside */}
+      <SheetContent side="right" className="max-sm:w-full sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           {description && <SheetDescription>{description}</SheetDescription>}
