@@ -61,6 +61,7 @@ import {
   holderNamesAt,
   nextSupplementNo,
   previousConclusion,
+  revisionBefore,
   reviewEventsOf,
   scoreGroupOf,
   setInstanceSupplementState,
@@ -207,6 +208,18 @@ export interface ReviewContextView {
     readonly comment: string | null
     readonly actorName: string | null
     readonly at: number
+  } | null
+  /**
+   * The version just before the judged one, with the form it answered.
+   * Carried with the review because the workbench opens comparing against
+   * it: fetched separately it arrives a request late and flashes into a
+   * page already being read.
+   */
+  readonly previousRevision: {
+    readonly id: string
+    readonly revisionNo: number
+    readonly formConfig: unknown
+    readonly payload: unknown
   } | null
   /** the rounds before that, one line each: has this been asked twice? */
   readonly earlier: readonly {
@@ -548,6 +561,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         )?.calculator?.config?.value
         const others = yield* siblingEntries(tenantId, row.itemId, row.participantId)
         const previous = yield* previousConclusion(tenantId, row.entryId, row.roundNo)
+        const before = yield* revisionBefore(tenantId, row.entryId, revision.revisionNo)
         const older = yield* earlierConclusions(tenantId, row.entryId, row.roundNo)
         context = {
           worth: {
@@ -573,6 +587,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   comment: previous.comment,
                   actorName: previous.actorName,
                   at: previous.createdAt,
+                },
+          previousRevision:
+            before === undefined
+              ? null
+              : {
+                  id: before.id,
+                  revisionNo: before.revisionNo,
+                  formConfig: before.formConfig,
+                  payload: before.payload,
                 },
           // everything before the one shown in full, most recent first
           earlier: older.filter((one) => one.at !== previous?.createdAt),

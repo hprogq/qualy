@@ -86,6 +86,7 @@ export const FROZEN_ROUTES = [
   'POST /assessment/review/instances/{instanceId}/supplement-requests',
   'PUT /assessment/review/supplement-requests/{requestId}/status',
   'POST /assessment/review/supplement-requests/{requestId}/responses',
+  'GET /assessment/attachments',
   'POST /assessment/attachments/uploads',
   'POST /assessment/attachments/uploads/{reservationId}/complete',
   'GET /assessment/attachments/{attachmentId}',

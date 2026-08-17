@@ -487,14 +487,18 @@ describe('filing a claim', () => {
             ],
             nextCursor: null,
           }),
-        describeAttachment: () =>
+        listAttachmentDescriptors: () =>
           Effect.succeed({
-            id: '88888888-8888-4888-8888-888888888888',
-            filename: '退役证明.pdf',
-            declaredMime: 'application/pdf',
-            size: '204800',
-            status: 'bound',
-            delivery: { kind: 'content' as const },
+            attachments: [
+              {
+                id: '88888888-8888-4888-8888-888888888888',
+                filename: '退役证明.pdf',
+                declaredMime: 'application/pdf',
+                size: '204800',
+                status: 'bound',
+                delivery: { kind: 'content' as const },
+              },
+            ],
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,

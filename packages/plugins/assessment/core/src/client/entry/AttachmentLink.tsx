@@ -1,15 +1,13 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
-import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
 import { FileTile } from '@qualy/ui/dropzone'
 import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
-import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { DocumentLightbox } from './DocumentLightbox.tsx'
+import { useAttachmentDescriptor } from './use-attachment-descriptor.ts'
 import {
   attachmentContentUrl,
   LOOKS_LIKE_A_DOCUMENT,
@@ -60,13 +58,9 @@ export function AttachmentLink({
    */
   mark?: 'added' | 'supplement' | undefined
 }) {
-  const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
-  const descriptor = useQuery({
-    ...query.assessment.describeAttachment.queryOptions({ params: { attachmentId } }),
-    staleTime: 30_000,
-  })
-  const data = descriptor.data
+  const descriptor = useAttachmentDescriptor(attachmentId)
+  const data = descriptor.data ?? undefined
   const href =
     data?.delivery.kind === 'redirect' ? data.delivery.url : attachmentContentUrl(attachmentId)
   const name = data?.filename ?? format(m.entryFileUnnamed)

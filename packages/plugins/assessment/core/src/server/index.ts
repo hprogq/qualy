@@ -849,6 +849,7 @@ export class Assessment extends Context.Service<
     readonly prepareAttachmentUpload: AttachmentMethods['prepareAttachmentUpload']
     readonly completeAttachmentUpload: AttachmentMethods['completeAttachmentUpload']
     readonly describeAttachment: AttachmentMethods['describeAttachment']
+    readonly describeAttachments: AttachmentMethods['describeAttachments']
     /** the score tree and the items on it; the save gauntlet lives behind these */
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
@@ -3563,6 +3564,7 @@ const reviewDto = (review: ReviewDetailView) => ({
                   actorName: review.context.previous.actorName,
                   at: new Date(review.context.previous.at).toISOString(),
                 },
+          previousRevision: review.context.previousRevision,
           earlier: review.context.earlier.map((one) => ({
             ...one,
             at: new Date(one.at).toISOString(),
@@ -4336,6 +4338,25 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.reservationId,
           principal,
         )
+      }),
+    )
+    .handle(
+      'listAttachmentDescriptors',
+      Effect.fn('assessment.listAttachmentDescriptors.handler')(function* ({ query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        // bounded loudly rather than truncated quietly: a page that asks for
+        // more than this is a page bug, and half an answer would hide it
+        if (query.id.length > 60) {
+          return yield* new BadRequest({ message: 'at most 60 attachments per request' })
+        }
+        return {
+          attachments: yield* assessment.describeAttachments(
+            principal.tenantId,
+            query.id,
+            principal,
+          ),
+        }
       }),
     )
     .handle(

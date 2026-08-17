@@ -856,6 +856,30 @@ export const siblingEntries = (tenantId: string, itemId: string, participantId: 
     )
 
 /** how the round before this one ended, with the word that ended it */
+/**
+ * The version filed just before the judged one, with the form it answered.
+ *
+ * Served with the review rather than fetched after it: the workbench opens
+ * with the comparison on, and a comparison that arrives a request later
+ * flashes into a page the reviewer is already reading. Its own form, not the
+ * judged one's - the question may have changed between versions.
+ */
+export const revisionBefore = (tenantId: string, entryId: string, beforeRevisionNo: number) =>
+  db.query((k) =>
+    k
+      .selectFrom('EntryRevision as er')
+      .innerJoin('AssessmentItemRevision as ir', (join) =>
+        join.onRef('ir.tenantId', '=', 'er.tenantId').onRef('ir.id', '=', 'er.itemRevisionId'),
+      )
+      .select(['er.id', 'er.revisionNo', 'er.payload', 'ir.formConfig'])
+      .where('er.tenantId', '=', tenantId)
+      .where('er.entryId', '=', entryId)
+      .where('er.revisionNo', '<', beforeRevisionNo)
+      .orderBy('er.revisionNo', 'desc')
+      .limit(1)
+      .executeTakeFirst(),
+  )
+
 export interface PreviousConclusionRow {
   roundNo: number
   kind: string

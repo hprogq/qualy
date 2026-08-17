@@ -68,6 +68,17 @@ export interface AttachmentMethods {
     attachmentId: string,
     as: Principal,
   ) => Effect.Effect<AttachmentDescriptor, AttachmentUnavailable>
+  /**
+   * Many files described in one crossing, for a screen that cites many.
+   * Authorization stays per file - each id is admitted or omitted on its own
+   * answer, and an id this reader may not touch simply is not in the reply,
+   * indistinguishable from one that does not exist.
+   */
+  readonly describeAttachments: (
+    tenantId: string,
+    attachmentIds: readonly string[],
+    as: Principal,
+  ) => Effect.Effect<readonly AttachmentDescriptor[]>
 }
 
 export interface AttachmentDeps {
@@ -208,5 +219,27 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
     return { ...metaView(opened.meta), delivery: { kind: 'content' as const } }
   })
 
-  return { openAttachment, prepareAttachmentUpload, completeAttachmentUpload, describeAttachment }
+  const describeAttachments: AttachmentMethods['describeAttachments'] = Effect.fn(
+    'Assessment.describeAttachments',
+  )(function* (tenantId, attachmentIds, as) {
+    const described = yield* Effect.forEach(
+      [...new Set(attachmentIds)],
+      (attachmentId) =>
+        describeAttachment(tenantId, attachmentId, as).pipe(
+          Effect.catchTag('ASSESSMENT_ATTACHMENT_NOT_FOUND', () => Effect.succeed(null)),
+        ),
+      // each description authorizes against the citation graph; a page of
+      // fifty files must not open fifty concurrent walks of it
+      { concurrency: 4 },
+    )
+    return described.filter((one) => one !== null)
+  })
+
+  return {
+    openAttachment,
+    prepareAttachmentUpload,
+    completeAttachmentUpload,
+    describeAttachment,
+    describeAttachments,
+  }
 }

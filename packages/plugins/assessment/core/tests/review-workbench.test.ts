@@ -236,6 +236,9 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
       reason: '材料不清晰',
       comment: '证书照片缺少落款',
     })
+    // the version before the judged one travels with the page read, so the
+    // workbench's default comparison never waits on a second request
+    expect(context.previousRevision).toMatchObject({ revisionNo: 1 })
     expect(context.worth).toMatchObject({
       each: '3.00',
       maxEntries: 1,
@@ -340,6 +343,9 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.round2.roundNo).toBe(2)
     // the same filing, unrewritten
     expect(result.round2.revision.revisionNo).toBe(1)
+    // and nothing before it: resent as it stood, there is no earlier
+    // version for a comparison to read
+    expect(result.round2.context!.previousRevision).toBeNull()
     expect(result.abandoned.status).toBe('voided')
     // maxEntries is 1 on this question, and the abandoned claim freed it
     expect(result.again.id).not.toBe(result.abandoned.id)

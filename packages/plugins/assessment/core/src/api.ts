@@ -333,6 +333,23 @@ const decimalAmount = Schema.String.check(Schema.isPattern(/^-?\d{1,8}(?:\.\d{1,
 /** validated jsonb, carried opaquely: the driver is the schema's owner */
 const configJson = Schema.Unknown
 
+/** what a stored file is and how to fetch it, as both attachment doors say it */
+const attachmentDescriptor = Schema.Struct({
+  id: Schema.String,
+  filename: Schema.String,
+  declaredMime: Schema.String,
+  size: Schema.String,
+  status: Schema.String,
+  delivery: Schema.Union([
+    Schema.Struct({
+      kind: Schema.Literals(['redirect']),
+      url: Schema.String,
+      expiresInSeconds: Schema.Number,
+    }),
+    Schema.Struct({ kind: Schema.Literals(['content']) }),
+  ]),
+})
+
 const itemRevisionView = Schema.Struct({
   id: Schema.String,
   revisionNo: Schema.Number,
@@ -658,6 +675,15 @@ const reviewDetailView = Schema.Struct({
           at: Schema.String,
         }),
       ),
+      /** the version just before the judged one, for the default comparison */
+      previousRevision: Schema.NullOr(
+        Schema.Struct({
+          id: Schema.String,
+          revisionNo: Schema.Number,
+          formConfig: configJson,
+          payload: configJson,
+        }),
+      ),
       /** the rounds before that, one line each */
       earlier: Schema.Array(
         Schema.Struct({
@@ -956,25 +982,22 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     ).middleware(Authenticated),
   )
   .add(
+    // Many files at once, for a screen that cites many: one crossing instead
+    // of one per file. A keyed multi-get rather than an open collection, so
+    // it is bounded by the ids asked for and carries no cursor; ids the
+    // reader may not touch are omitted, indistinguishable from absent ones.
+    HttpApiEndpoint.get('listAttachmentDescriptors', '/assessment/attachments', {
+      query: Schema.Struct({ id: Schema.ArrayEnsure(id) }),
+      success: Schema.Struct({ attachments: Schema.Array(attachmentDescriptor) }),
+      error: [BadRequest, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     // what the file is and how to fetch it: a short-lived url for stores
     // that sign their own, or this api's own content door
     HttpApiEndpoint.get('describeAttachment', '/assessment/attachments/:attachmentId', {
       params: Schema.Struct({ attachmentId: id }),
-      success: Schema.Struct({
-        id: Schema.String,
-        filename: Schema.String,
-        declaredMime: Schema.String,
-        size: Schema.String,
-        status: Schema.String,
-        delivery: Schema.Union([
-          Schema.Struct({
-            kind: Schema.Literals(['redirect']),
-            url: Schema.String,
-            expiresInSeconds: Schema.Number,
-          }),
-          Schema.Struct({ kind: Schema.Literals(['content']) }),
-        ]),
-      }),
+      success: attachmentDescriptor,
       error: [AttachmentUnavailable, AccessDenied],
     }).middleware(Authenticated),
   )

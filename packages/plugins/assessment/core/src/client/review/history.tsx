@@ -79,6 +79,15 @@ export function VersionPicker({
   useEffect(() => {
     if (open) setChosen(comparingId)
   }, [open, comparingId])
+  // The screen behind says 'previous' rather than naming a version - the
+  // default comparison exists before the history has loaded. Resolved here,
+  // derived rather than stored: resolving into state would race the fetch,
+  // and until it resolves the list showed no selection at all - every row
+  // alike, the confirm button dead, nothing saying which version the
+  // comparison on screen was reading.
+  const previousId =
+    [...revisions].reverse().find((one) => one.revisionNo < judgedRevisionNo)?.id ?? null
+  const chosenId = chosen === 'previous' ? previousId : chosen
 
   /**
    * How the round that judged this version ended, in one phrase.
@@ -99,7 +108,7 @@ export function VersionPicker({
     return { outcome: round.outcome!, who: said?.actorName ?? null }
   }
 
-  const picked = revisions.find((one) => one.id === chosen)
+  const picked = revisions.find((one) => one.id === chosenId)
 
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
@@ -132,17 +141,22 @@ export function VersionPicker({
                   const ended = outcomeOf(revision.id)
                   return (
                     <li key={revision.id}>
+                      {/* Three states a glance apart: the judged version is
+                          greyed and refuses the cursor - it is what the
+                          comparison reads, not something to read against;
+                          the one being compared stands marked; the rest
+                          offer themselves. */}
                       <button
                         type="button"
                         disabled={judged}
                         onClick={() => setChosen(revision.id)}
                         className={cn(
                           'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
-                          revision.id === chosen
-                            ? 'border-foreground bg-accent/60'
-                            : judged
-                              ? 'cursor-default'
-                              : 'hover:bg-accent/50',
+                          judged
+                            ? 'cursor-not-allowed border-transparent bg-muted/40 text-muted-foreground'
+                            : revision.id === chosenId
+                              ? 'cursor-pointer border-foreground bg-accent/60'
+                              : 'cursor-pointer hover:bg-accent/50',
                         )}
                       >
                         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -161,9 +175,9 @@ export function VersionPicker({
                           )}
                         </span>
                         {judged ? (
-                          <Badge variant="secondary">{format(m.reviewVersionJudged)}</Badge>
-                        ) : revision.id === chosen ? (
-                          <Badge variant="outline">{format(m.reviewVersionComparing)}</Badge>
+                          <Badge variant="outline">{format(m.reviewVersionJudged)}</Badge>
+                        ) : revision.id === chosenId ? (
+                          <Badge>{format(m.reviewVersionComparing)}</Badge>
                         ) : (
                           ended !== null && (
                             <Badge variant="outline" className="font-normal">

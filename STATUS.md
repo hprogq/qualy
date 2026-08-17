@@ -5668,3 +5668,39 @@ positioned 祖先——工作台根节点(`relative`,撤销胶囊需要它)。**
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier `All matched files use Prettier
 code style!`。
+
+### 版本选择三态、对照随页加载、附件批量描述(2026-08-17)
+
+**选择版本 Sheet 的三态**。此前所有行一个样式,根因不止样式:页面传进来的 `comparingId` 常是
+哨兵值 `'previous'`,不匹配任何 revision id,于是默认对照下没有任何行呈选中态、确认键也是死的。
+现在哨兵在渲染时解析成真实的上一版 id(派生而非写状态,避免与请求赛跑);送审中的版本置灰 +
+`cursor-not-allowed`(它是对照的读数,不是可对照的对象),对照中的行高亮 + 实心徽章,其余正常 +
+`cursor-pointer`。
+
+**对照信息随页面一起到**。此前对照数据走第二个请求,页面先画一帧没有对照的,再闪现(或播一次
+没人触发的入场动画)。裁决:能一起加载就一起加载——`context.previousRevision`(id、版本号、
+**它自己的** formConfig、payload——题目在两版之间可能改过)随 getReviewInstance 一起下发,
+查询 `revisionBefore` 只在页面读取时执行;默认对照零额外请求、首帧完整。手选版本仍走历史
+接口,而能手选的前提是打开过选择 Sheet——它已经把历史拉进了缓存。`Appear` 按数据就位与否
+keying,晚到的数据重挂进场(`initial={false}` 静默首帧),用户自己的开关照常有动画。
+review-workbench 断言:改版重交后 `previousRevision.revisionNo === 1`;原样重交后为 null。
+
+**附件批量描述**。每个 AttachmentLink 各自请求 describeAttachment,一页三十份材料就是三十个
+请求。新端点 `GET /assessment/attachments`(键控多取,按请求的 id 集有界,无 cursor;
+`Schema.ArrayEnsure` 单值/数组都收,>60 个 id 硬拒不静默截断),授权仍逐文件走单文件那扇门的
+同一判定,无权/不存在一律缺席不报错。浏览器侧 `use-attachment-descriptor.ts`:同一宏任务内
+落地的加载合并成一次调用,按 client 实例分组(测试的 fake client 互不串),每文件的缓存条目
+保留(30s staleTime,已描述过的文件零请求)。AttachmentLink 对外接口不变。frozen-routes 增
+`GET /assessment/attachments`。**未做**:批量端点的授权省略语义没有独立的 node fixture(需要
+storage 上传闭环,现有测试没有先例),其逐文件判定复用已被测的 describeAttachment 路径。
+
+**Effect 依据(实际读过)**:`repos/effect/packages/effect/src/Schema.ts:4682`(ArrayEnsure:
+解码单值或数组归一为数组,单元素编码回单值);`repos/effect/packages/effect/test/unstable/
+httpapi/HttpApiClient.test.ts:290-330`(数组 query 编码为重复键 `?tags=1&tags=2`);
+`repos/effect/packages/effect/src/unstable/http/HttpServerRequest.ts:120-160`(单值解析为
+string,重复键为数组——正是需要 ArrayEnsure 的原因);`repos/effect/packages/effect/src/
+unstable/httpapi/HttpApiBuilder.ts:700-780`(query 经 ParsedSearchParams + decodeUnknownEffect);
+`repos/effect/packages/effect/src/Effect.ts:779`(forEach 带 concurrency 选项)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped(review-workbench
+两处新断言在内);`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。

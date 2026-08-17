@@ -1209,9 +1209,18 @@ function FilingColumn({
   // certificate, and folding it away left the reading order with a hole
   const fields = fieldsOf(review.form.formConfig)
   const record = (review.revision.payload ?? {}) as Record<string, unknown>
-  // the version being read against, resolved from the entry's own history;
-  // asked for only while a comparison is on
-  const history = useEntryHistory(review.entryId, comparing !== null)
+  // The version being read against. The default - the one just before this -
+  // travels with the review itself, so the page's first paint already holds
+  // the comparison it opens with; only a version picked by hand comes from
+  // the entry's history, and the picker has that cached before anything can
+  // be picked. What cannot load together would have to flash in, and this
+  // screen opens comparing.
+  const shipped = review.context?.previousRevision ?? null
+  const wantsHistory = comparing !== null && comparing !== 'previous'
+  const history = useEntryHistory(review.entryId, wantsHistory)
+  // Keyed so a late fetch never performs an entrance: a fresh mount shows
+  // its settled state, and only the user's own toggles animate.
+  const arrived = !wantsHistory || !history.isPending
   const revisions = ((history.data as { revisions?: readonly HistoryRevision[] } | undefined)
     ?.revisions ?? []) as readonly HistoryRevision[]
   const earlier = revisions.filter((one) => one.revisionNo < review.revision.revisionNo)
@@ -1219,7 +1228,7 @@ function FilingColumn({
     comparing === null
       ? null
       : comparing === 'previous'
-        ? (earlier[earlier.length - 1] ?? null)
+        ? shipped
         : (earlier.find((one) => one.id === comparing) ?? null)
   const was = new Map<string, { value: string; ids: readonly string[] }>(
     against === null
@@ -1279,7 +1288,7 @@ function FilingColumn({
               space back on the way out, so neither happens. The version it
               was reading against lingers through the exit - the sentence has
               to stay whole while it is leaving. */}
-          <Appear show={against !== null} collapse>
+          <Appear key={String(arrived)} show={against !== null} collapse>
             <p className="pt-1.5 text-xs text-muted-foreground">
               {format(m.reviewCompareCount, {
                 count: changes,
@@ -1376,7 +1385,7 @@ function FilingColumn({
                       cards it would read as one of the materials on offer,
                       which is the opposite of what it is. */}
                   {field.type === 'attachment' ? (
-                    <Appear show={gone.length > 0} collapse>
+                    <Appear key={String(arrived)} show={gone.length > 0} collapse>
                       {/* Further from the cards than they stand from each
                           other, nearer than the next field: it belongs to
                           this question, and a row of tiles is a heavy enough
@@ -1396,7 +1405,7 @@ function FilingColumn({
                       </span>
                     </Appear>
                   ) : (
-                    <Appear show={changed} collapse>
+                    <Appear key={String(arrived)} show={changed} collapse>
                       <span className="flex items-baseline gap-2 pt-1.5 text-xs text-muted-foreground">
                         <span className="shrink-0 rounded bg-muted px-1.5 py-0.5">
                           {format(m.reviewComparePrevious)}
