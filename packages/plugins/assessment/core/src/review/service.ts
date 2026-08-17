@@ -201,6 +201,7 @@ export interface ReviewContextView {
     readonly current: boolean
   }[]
   readonly previous: {
+    readonly roundNo: number
     readonly kind: string
     readonly reason: string | null
     readonly comment: string | null
@@ -566,6 +567,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             previous === null
               ? null
               : {
+                  roundNo: previous.roundNo,
                   kind: previous.kind,
                   reason: previous.reason,
                   comment: previous.comment,

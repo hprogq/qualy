@@ -3556,6 +3556,7 @@ const reviewDto = (review: ReviewDetailView) => ({
             review.context.previous === null
               ? null
               : {
+                  roundNo: review.context.previous.roundNo,
                   kind: review.context.previous.kind,
                   reason: review.context.previous.reason,
                   comment: review.context.previous.comment,

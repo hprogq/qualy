@@ -1248,7 +1248,7 @@ const i18n = definePluginMessages({
     reviewPrior: { id: 'assessment/review/prior', defaultMessage: 'Said so far' },
     reviewPreviousTitle: {
       id: 'assessment/review/previous-title',
-      defaultMessage: 'Last round\u2019s conclusion',
+      defaultMessage: 'Why it was sent back',
     },
     reviewPreviousHint: {
       id: 'assessment/review/previous-hint',
@@ -1259,7 +1259,10 @@ const i18n = definePluginMessages({
       id: 'assessment/review/insight-soon',
       defaultMessage: 'No hints yet.',
     },
-    reviewAboutTitle: { id: 'assessment/review/about-title', defaultMessage: 'This question' },
+    reviewAboutTitle: {
+      id: 'assessment/review/about-title',
+      defaultMessage: 'What this question is worth',
+    },
     reviewAboutEach: {
       id: 'assessment/review/about-each',
       defaultMessage: 'Counts when approved',
@@ -1276,10 +1279,6 @@ const i18n = definePluginMessages({
     reviewSiblingsTitle: {
       id: 'assessment/review/siblings-title',
       defaultMessage: 'Their other claims',
-    },
-    reviewSiblingsCount: {
-      id: 'assessment/review/siblings-count',
-      defaultMessage: '{count} on this question',
     },
     reviewSiblingThis: { id: 'assessment/review/sibling-this', defaultMessage: 'This one' },
     reviewSiblingsFull: {
@@ -1462,6 +1461,18 @@ const i18n = definePluginMessages({
     reviewAwaitingYou: {
       id: 'assessment/review/awaiting-you',
       defaultMessage: 'Waiting on your decision',
+    },
+    reviewStagePassed: {
+      id: 'assessment/review/stage-passed',
+      defaultMessage: 'Done',
+    },
+    reviewAboutGroupCapNamed: {
+      id: 'assessment/review/about-group-cap-named',
+      defaultMessage: '{group} cap',
+    },
+    reviewSiblingsKeys: {
+      id: 'assessment/review/siblings-keys',
+      defaultMessage: '⌥ 1 to {count}',
     },
     reviewInsightCaveat: {
       id: 'assessment/review/insight-caveat',

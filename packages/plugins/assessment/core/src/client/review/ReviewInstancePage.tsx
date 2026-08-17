@@ -1028,9 +1028,20 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
         </div>
         {previous !== null && (
           <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5">
+            <div className="flex items-baseline gap-2">
+              <p className="shrink-0 text-sm font-semibold">{format(m.reviewPreviousTitle)}</p>
+              <Badge variant="secondary" className="shrink-0 bg-background">
+                {format(m.reviewStateRound, { round: previous.roundNo })}
+              </Badge>
+              <span className="flex-1" />
+              <p className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                {timeLabel(previous.at)}
+              </p>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold">{format(m.reviewPreviousTitle)}</p>
-              <Badge variant="outline" className="bg-background">
+              {/* what was done, in the colour of what it was: a refusal read
+                  in the same ink as a note is one a tired reader scrolls past */}
+              <Badge variant="outline" className="bg-background text-destructive">
                 {format(reviewEventMessage(previous.kind).message, {
                   who: previous.actorName ?? format(m.eventSomebody),
                 })}
@@ -1040,8 +1051,6 @@ function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => voi
                   {previous.reason}
                 </Badge>
               )}
-              <span className="flex-1" />
-              <p className="text-xs text-muted-foreground tabular-nums">{timeLabel(previous.at)}</p>
             </div>
             {previous.comment !== null && (
               <p className="border-l-2 border-muted-foreground/30 pl-3 text-sm leading-relaxed">
@@ -1497,31 +1506,48 @@ function ContextRail({
     [locale],
   )
   const context = review.context
+  // Four flat blocks under hairlines, not four bordered cards: at 19rem a
+  // card's border and padding cost more width than they buy, and boxing each
+  // block makes four peers read as four unrelated panels. The rail answers
+  // one question - what is this judged against - in four parts.
   return (
-    <aside className="flex min-w-0 flex-col gap-4 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
-      <Basis compact />
+    <aside className="flex min-w-0 flex-col gap-2.5 overflow-y-auto border-t p-4 lg:border-t-0 lg:border-l">
+      {/* the clause. Reserved, not written: nothing in the round carries the
+          wording yet, so the block holds its place. */}
+      <section className="flex shrink-0 flex-col gap-1.5">
+        <div className="flex items-center gap-2">
+          <p className="shrink-0 text-xs font-semibold text-muted-foreground">
+            {format(m.myEntriesBasis)}
+          </p>
+        </div>
+        <p className="border-l-2 border-muted-foreground/30 pl-2.5 text-sm leading-relaxed text-pretty text-muted-foreground">
+          {format(m.myEntriesBasisSoon)}
+        </p>
+      </section>
 
-      <section className="flex flex-col gap-2.5 rounded-xl border p-3.5">
-        <p className="text-sm font-semibold">{format(m.reviewChainTitle)}</p>
+      <section className="flex shrink-0 flex-col gap-2 border-t pt-2.5">
+        <p className="text-xs font-semibold text-muted-foreground">{format(m.reviewChainTitle)}</p>
         <Route
-          title={format(m.reviewRouteNormal)}
           stages={review.chain.normal}
           here={review.chain.route === 'normal' ? review.chain.stageId : null}
+          title={review.chain.escalation.length > 0 ? format(m.reviewRouteNormal) : null}
           listed={listed}
         />
         {review.chain.escalation.length > 0 && (
           <Route
-            title={format(m.reviewRouteEscalation)}
             stages={review.chain.escalation}
             here={review.chain.route === 'escalation' ? review.chain.stageId : null}
+            title={format(m.reviewRouteEscalation)}
             listed={listed}
           />
         )}
       </section>
 
       {context !== null && (
-        <section className="flex flex-col gap-2 rounded-xl border p-3.5 text-sm">
-          <p className="font-semibold">{format(m.reviewAboutTitle)}</p>
+        <section className="flex shrink-0 flex-col gap-1.5 border-t pt-2.5">
+          <p className="text-xs font-semibold text-muted-foreground">
+            {format(m.reviewAboutTitle)}
+          </p>
           {context.worth.each !== null && (
             <AboutRow label={format(m.reviewAboutEach)} value={trimAmount(context.worth.each)} />
           )}
@@ -1530,7 +1556,13 @@ function ContextRail({
           )}
           {context.worth.groupCap !== null && (
             <AboutRow
-              label={format(m.reviewAboutGroupCap)}
+              // the group by name when there is one: "所属分组上限" makes a
+              // reader work out which group, and the answer is on screen
+              label={
+                context.worth.groupName === null
+                  ? format(m.reviewAboutGroupCap)
+                  : format(m.reviewAboutGroupCapNamed, { group: context.worth.groupName })
+              }
               value={trimAmount(context.worth.groupCap)}
             />
           )}
@@ -1542,12 +1574,18 @@ function ContextRail({
       )}
 
       {context !== null && context.siblings.length > 0 && (
-        <section className="flex flex-col gap-2 rounded-xl border p-3.5">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold">{format(m.reviewSiblingsTitle)}</p>
+        <section className="flex shrink-0 flex-col gap-2 border-t pt-2.5">
+          <div className="flex items-baseline gap-2">
+            <p className="shrink-0 text-xs font-semibold text-muted-foreground">
+              {format(m.reviewSiblingsTitle)}
+            </p>
             <span className="flex-1" />
-            <span className="text-xs whitespace-nowrap text-muted-foreground">
-              {format(m.reviewSiblingsCount, { count: context.siblings.length })}
+            {/* the keys, once, over the list they open - rather than the
+                count, which the list itself already shows */}
+            <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+              {format(m.reviewSiblingsKeys, {
+                count: Math.min(context.siblings.length, 9),
+              })}
             </span>
           </div>
           <ul className="flex flex-col gap-0.5">
@@ -1564,10 +1602,19 @@ function ContextRail({
                     aria-hidden
                     className={cn(
                       'size-1.5 shrink-0 rounded-full',
-                      sibling.current ? 'bg-foreground' : 'bg-muted-foreground/40',
+                      sibling.current
+                        ? 'bg-foreground'
+                        : sibling.status === 'rejected' || sibling.status === 'needs_revision'
+                          ? 'bg-destructive'
+                          : 'bg-muted-foreground/40',
                     )}
                   />
-                  <span className={cn('min-w-0 flex-1 truncate', sibling.current && 'font-medium')}>
+                  <span
+                    className={cn(
+                      'min-w-0 flex-1 truncate',
+                      sibling.current ? 'font-medium' : 'text-muted-foreground',
+                    )}
+                  >
                     {sibling.current && (
                       <span className="pr-1.5 text-muted-foreground">
                         {format(m.reviewSiblingThis)}
@@ -1589,7 +1636,7 @@ function ContextRail({
           </ul>
           {context.worth.maxEntries !== null &&
             context.siblings.length >= context.worth.maxEntries && (
-              <p className="border-t pt-2 text-xs text-muted-foreground">
+              <p className="text-xs leading-relaxed text-muted-foreground">
                 {format(m.reviewSiblingsFull)}
               </p>
             )}
@@ -1615,42 +1662,69 @@ function Route({
   here,
   listed,
 }: {
-  title: string
+  /** named only when there are two routes to tell apart */
+  title: string | null
   stages: ReviewDto['chain']['normal']
   here: string | null
   listed: Intl.ListFormat
 }) {
   const { format } = useI18n()
+  const at = stages.findIndex((stage) => stage.id === here)
   return (
-    <div className="flex flex-col gap-1">
-      <p className="text-xs font-medium text-muted-foreground">{title}</p>
-      <ol className="flex flex-col gap-1.5 text-sm">
-        {stages.map((stage) => (
-          <li
-            key={stage.id}
-            className={cn('rounded-md px-2 py-1', stage.id === here && 'bg-accent/60')}
-          >
-            <p className="flex flex-wrap items-baseline gap-x-2">
-              <span className="font-medium">
-                {stage.nodeName ??
-                  format(
-                    stage.skipped === 'no-holder' ? m.reviewStageNoHolder : m.reviewStageSkipped,
-                  )}
+    <div className="flex flex-col gap-1.5">
+      {title !== null && <p className="text-xs text-muted-foreground">{title}</p>}
+      <ol className="flex flex-col gap-1.5">
+        {stages.map((stage, index) => {
+          const current = stage.id === here
+          // behind the step this round stands at, so it has been through
+          const passed = at !== -1 && index < at
+          return (
+            <li key={stage.id} className="flex items-start gap-2">
+              <span
+                className={cn(
+                  'mt-px flex size-5 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums',
+                  current
+                    ? 'border-foreground bg-foreground text-background'
+                    : passed
+                      ? 'border-transparent bg-muted text-foreground'
+                      : 'border-border text-muted-foreground',
+                )}
+              >
+                {index + 1}
               </span>
-              {stage.id === here && (
-                <span className="text-xs text-primary">{format(m.reviewStageHere)}</span>
-              )}
-            </p>
-            <p className="text-xs text-muted-foreground">{listed.format(stage.roleNames)}</p>
-            {stage.nodeName !== null && stage.reviewers !== null && (
-              <p className="text-xs text-muted-foreground">
-                {stage.reviewers.length === 0
-                  ? format(m.reviewStageNobody)
-                  : format(m.reviewStageReviewers, { who: listed.format(stage.reviewers) })}
-              </p>
-            )}
-          </li>
-        ))}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex min-w-0 items-baseline gap-2">
+                  {/* node and role on one line: which office, in what
+                      capacity, is one fact about this step */}
+                  <span className={cn('min-w-0 truncate text-sm', current && 'font-medium')}>
+                    {stage.nodeName === null
+                      ? format(
+                          stage.skipped === 'no-holder'
+                            ? m.reviewStageNoHolder
+                            : m.reviewStageSkipped,
+                        )
+                      : `${stage.nodeName}／${listed.format(stage.roleNames)}`}
+                  </span>
+                  <span className="flex-1" />
+                  {/* what happened at this step, where the eye already is:
+                      a step with nothing beside it is one still ahead */}
+                  {(current || passed) && (
+                    <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                      {format(current ? m.reviewStageHere : m.reviewStagePassed)}
+                    </span>
+                  )}
+                </div>
+                {stage.nodeName !== null && stage.reviewers !== null && (
+                  <span className="min-w-0 truncate text-xs text-muted-foreground">
+                    {stage.reviewers.length === 0
+                      ? format(m.reviewStageNobody)
+                      : format(m.reviewStageReviewers, { who: listed.format(stage.reviewers) })}
+                  </span>
+                )}
+              </div>
+            </li>
+          )
+        })}
       </ol>
     </div>
   )

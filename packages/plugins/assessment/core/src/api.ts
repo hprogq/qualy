@@ -650,6 +650,7 @@ const reviewDetailView = Schema.Struct({
       /** how the previous round ended, shown so a resubmission is read against it */
       previous: Schema.NullOr(
         Schema.Struct({
+          roundNo: Schema.Number,
           kind: Schema.String,
           reason: Schema.NullOr(Schema.String),
           comment: Schema.NullOr(Schema.String),

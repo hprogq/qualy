@@ -857,6 +857,7 @@ export const siblingEntries = (tenantId: string, itemId: string, participantId: 
 
 /** how the round before this one ended, with the word that ended it */
 export interface PreviousConclusionRow {
+  roundNo: number
   kind: string
   reason: string | null
   comment: string | null
@@ -880,7 +881,7 @@ export const previousConclusion = (tenantId: string, entryId: string, beforeRoun
         .leftJoin('User as u', (join) =>
           join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
         )
-        .select(['re.kind', 're.reason', 're.comment', 'u.displayName as actorName'])
+        .select(['re.kind', 're.reason', 're.comment', 'u.displayName as actorName', 'ri.roundNo'])
         .select([epoch('re.created_at').as('createdMs')])
         .where('re.tenantId', '=', tenantId)
         .where('ri.entryId', '=', entryId)
@@ -903,6 +904,7 @@ export const previousConclusion = (tenantId: string, entryId: string, beforeRoun
         row === undefined
           ? null
           : ({
+              roundNo: row.roundNo,
               kind: row.kind,
               reason: row.reason,
               comment: row.comment,
