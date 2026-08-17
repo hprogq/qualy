@@ -30,6 +30,7 @@ const PARTICIPANT_ID = '44444444-4444-4444-8444-444444444444'
 const INSTANCE_ID = '55555555-5555-4555-8555-555555555555'
 const REVISION_ID = '66666666-6666-4666-8666-666666666666'
 const GROUP_ID = '77777777-7777-4777-8777-777777777777'
+const REQUEST_ID = '88888888-8888-4888-8888-888888888888'
 
 const PAGES = [
   { id: 'assessment/batch-my-entries', path: '/assessment/batches/:batchId/my-entries' },
@@ -275,6 +276,7 @@ describe('filing a claim', () => {
                     at: '2026-03-04T00:00:00.000Z',
                   },
                 ],
+                supplements: [],
               },
             ],
           }),
@@ -286,9 +288,116 @@ describe('filing a claim', () => {
     await page.getByRole('button', { name: '查看经过' }).click()
     await expect.element(page.getByText('证明日期与填报不符，请核对。')).toBeVisible()
     await expect.element(page.getByText('审核人的修改建议')).toBeVisible()
-    await expect.element(page.getByText('仅供参考。请自行修改后重新提交。')).toBeVisible()
+    await expect.element(page.getByText('采纳与否由你决定，请自行修改后重新提交。')).toBeVisible()
     // advice is read, never applied: nothing offers to copy it in
     expect(page.getByRole('button', { name: '套用' }).elements()).toHaveLength(0)
+  })
+
+  it('puts the reviewer’s request on the claim, and both halves of it in the account', async () => {
+    const asked = {
+      requestId: REQUEST_ID,
+      instanceId: INSTANCE_ID,
+      requestNo: 1,
+      instructions: '献血证只拍到正面，请补充盖章那一面。',
+      requirements: [
+        { key: 'f1', label: '献血证盖章面', kind: 'file' as const, required: true },
+        { key: 'f2', label: '机构全称', kind: 'text' as const, required: true },
+      ],
+      requestedByName: '王敏',
+      requestedAt: '2026-03-05T00:00:00.000Z',
+    }
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [
+              entry({
+                status: 'in_review',
+                currentReviewInstanceId: INSTANCE_ID,
+                supplement: asked,
+                capabilities: {
+                  edit: { state: 'hidden' as const, reason: null },
+                  submit: { state: 'hidden' as const, reason: null },
+                  withdraw: { state: 'hidden' as const, reason: null },
+                  appeal: { state: 'hidden' as const, reason: null },
+                  abandon: { state: 'hidden' as const, reason: null },
+                },
+              }),
+            ],
+            nextCursor: null,
+          }),
+        getEntryHistory: () =>
+          Effect.succeed({
+            entry: entry({ status: 'in_review' }),
+            events: [],
+            revisions: [
+              {
+                id: REVISION_ID,
+                revisionNo: 1,
+                itemRevisionId: REVISION_ID,
+                payload: { summary: '入伍经历' },
+                note: null,
+                source: 'self',
+                actorId: PARTICIPANT_ID,
+                subjectId: PARTICIPANT_ID,
+                attachments: [],
+                createdAt: '2026-03-02T00:00:00.000Z',
+              },
+            ],
+            rounds: [
+              {
+                id: INSTANCE_ID,
+                roundNo: 1,
+                state: 'active',
+                outcome: null,
+                revisionId: REVISION_ID,
+                submittedAt: '2026-03-03T00:00:00.000Z',
+                completedAt: null,
+                events: [],
+                supplements: [
+                  {
+                    id: REQUEST_ID,
+                    requestNo: 1,
+                    status: 'answered',
+                    instructions: asked.instructions,
+                    requirements: asked.requirements,
+                    requestedBy: PARTICIPANT_ID,
+                    requestedByName: '王敏',
+                    requestedAt: asked.requestedAt,
+                    answeredAt: '2026-03-06T00:00:00.000Z',
+                    cancelledAt: null,
+                    response: {
+                      payload: { f2: '市中心血站城东采血点' },
+                      attachments: [],
+                      respondedAt: '2026-03-06T00:00:00.000Z',
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    // the claim says what is being asked of it, in the reviewer's own words,
+    // and names every piece rather than only that something is wanted
+    await expect.element(page.getByText('审核人请你补充材料').first()).toBeVisible()
+    await expect
+      .element(page.getByText('献血证只拍到正面，请补充盖章那一面。').first())
+      .toBeVisible()
+    await expect.element(page.getByText('献血证盖章面')).toBeVisible()
+    // the status the card wears is the one that is waiting on the reader
+    await expect.element(page.getByText('待补材料')).toBeVisible()
+
+    // and the account carries the ask and the answer as two moments
+    await page.getByRole('button', { name: '查看经过' }).click()
+    await expect.element(page.getByText('我补充了材料')).toBeVisible()
+    await expect.element(page.getByText('市中心血站城东采血点')).toBeVisible()
+    await expect.element(page.getByText('我提交了第 1 版')).toBeVisible()
   })
 
   it('keeps the filing button when the places are full, with the reason on hover', async () => {
@@ -356,7 +465,7 @@ describe('filing a claim', () => {
     await expect.element(button).toBeVisible()
     await expect.element(button).toBeDisabled()
     await page.getByText('去申报').hover()
-    await expect.element(page.getByText('这个题目允许的条数已经填满了。')).toBeVisible()
+    await expect.element(page.getByText('已达该题最大填报条目数。')).toBeVisible()
     // a cited file in the card is one line, not a tile: its name is a link
     await expect.element(page.getByRole('link', { name: '退役证明.pdf' })).toBeVisible()
   })

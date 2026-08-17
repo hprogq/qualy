@@ -10,6 +10,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
+import { ChevronLeftIcon } from 'lucide-react'
 import { cn } from '@qualy/ui/cn'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
 import { Separator } from '@qualy/ui/separator'
@@ -96,6 +97,10 @@ function Totals() {
   const range = detail.data?.batch.materialRange
 
   return (
+    // On a phone only the granted total stays. The other three are answers
+    // the list underneath gives again - how many are waiting, how many are
+    // drafts, what window they must fall in - and three rows of statistics
+    // above a list is a screen that has to be scrolled before it can be read.
     <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
       <Stat
         label={format(m.myEntriesCounted)}
@@ -103,14 +108,20 @@ function Totals() {
         strong
       />
       <Stat
+        className="max-sm:hidden"
         label={format(m.entryStatusInReview)}
         value={format(m.myEntriesRows, { count: pending })}
       />
-      <Stat label={format(m.entryStatusDraft)} value={format(m.myEntriesRows, { count: drafts })} />
+      <Stat
+        className="max-sm:hidden"
+        label={format(m.entryStatusDraft)}
+        value={format(m.myEntriesRows, { count: drafts })}
+      />
       {range !== undefined && (
         <>
           <Separator orientation="vertical" className="hidden self-stretch sm:block" />
           <Stat
+            className="max-sm:hidden"
             label={format(m.myEntriesWindow)}
             value={format(m.myEntriesWindowValue, {
               start: range.start,
@@ -123,9 +134,19 @@ function Totals() {
   )
 }
 
-function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Stat({
+  label,
+  value,
+  strong,
+  className,
+}: {
+  label: string
+  value: string
+  strong?: boolean
+  className?: string
+}) {
   return (
-    <span className="flex flex-col gap-0.5">
+    <span className={cn('flex flex-col gap-0.5', className)}>
       <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
       <span
         className={cn('tabular-nums', strong ? 'text-lg font-semibold' : 'text-sm font-medium')}
@@ -269,6 +290,11 @@ function Body({
   const fallback = rows.find((row) => row.kind === 'item') ?? rows[0]
   const open = rows.find((row) => row.id === selected) ?? fallback ?? null
   const move = useMove(rows, open?.id ?? null)
+  // whether the reader picked a row, as against having been shown one. The
+  // fallback is what fills the pane beside the list; on a phone, where only
+  // one of the two shows, being shown something is not the same as having
+  // asked for it - unasked, the list is the page.
+  const chosen = rows.some((row) => row.id === selected)
 
   return (
     <AsyncSection
@@ -301,10 +327,29 @@ function Body({
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">{format(m.myEntriesEmpty)}</p>
       ) : (
+        // Beside each other where there is room, and one at a time where
+        // there is not: on a phone the two stacked meant scrolling past the
+        // whole paper to reach the question you had just chosen. Both panes
+        // stay in the DOM and a breakpoint picks which one shows, so widening
+        // the window brings the other back with no re-render and no flash.
         <div className="flex flex-1 flex-col items-start gap-6 lg:flex-row">
-          <Structure rows={rows} openId={open?.id ?? null} onOpen={onSelect} />
+          <Structure
+            rows={rows}
+            openId={open?.id ?? null}
+            onOpen={onSelect}
+            className={cn(chosen && 'max-lg:hidden')}
+          />
 
-          <div className="min-w-0 flex-1">
+          <div className={cn('min-w-0 flex-1', !chosen && 'max-lg:hidden')}>
+            {/* the way back to the list, only where the list is not beside it */}
+            <button
+              type="button"
+              onClick={() => onSelect('')}
+              className="mb-3 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+            >
+              <ChevronLeftIcon aria-hidden className="size-4" />
+              {format(m.myEntriesBack)}
+            </button>
             {open?.kind === 'group' && (
               <Drill move={move} drillKey={open.id}>
                 <GroupDetail
@@ -361,6 +406,7 @@ function Body({
         <EntryHistory
           open={history !== null}
           entryId={lingeringHistory}
+          itemTitle={titleOfEntry(rows, entriesByItem, lingeringHistory)}
           onClose={() => setHistory(null)}
         />
       )}
@@ -389,6 +435,20 @@ function Body({
       )}
     </AsyncSection>
   )
+}
+
+/** the question a claim answers, for the panel that tells the claim's story */
+const titleOfEntry = (
+  rows: readonly StructureRow[],
+  entriesByItem: ReadonlyMap<string, readonly EntryDto[]>,
+  entryId: string,
+): string | undefined => {
+  for (const [itemId, entries] of entriesByItem) {
+    if (entries.some((entry) => entry.id === entryId)) {
+      return rows.find((row) => row.id === itemId)?.name
+    }
+  }
+  return undefined
 }
 
 /**
@@ -469,10 +529,13 @@ function Structure({
   rows,
   openId,
   onOpen,
+  className,
 }: {
   rows: readonly StructureRow[]
   openId: string | null
   onOpen: (id: string) => void
+  /** whether this pane is the one showing, where only one of the two is */
+  className?: string | undefined
 }) {
   const { format } = useI18n()
   const [showing, setShowing] = useState<'all' | 'todo'>('all')
@@ -490,7 +553,7 @@ function Structure({
     <div
       ref={measure}
       style={height === null ? undefined : { height }}
-      className="flex w-full shrink-0 flex-col gap-2.5 lg:sticky lg:top-0 lg:w-88"
+      className={cn('flex w-full shrink-0 flex-col gap-2.5 lg:sticky lg:top-0 lg:w-88', className)}
     >
       <div className="flex shrink-0 items-center gap-3">
         <Tabs value={showing} onValueChange={(next) => setShowing(next as 'all' | 'todo')}>

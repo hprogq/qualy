@@ -695,6 +695,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/suggestion-hint',
       defaultMessage: 'For reference only. Edit your own entry and submit it again.',
     },
+    entrySuggestionAdvisory: {
+      id: 'assessment/entry/suggestion-advisory',
+      defaultMessage: 'Advice',
+    },
     // ------------------------------------------------------------------
     // the review queue
     recordNoStanding: {
@@ -1526,6 +1530,70 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/supplement-title',
       defaultMessage: 'The reviewer asked for more material',
     },
+    supplementNeeds: { id: 'assessment/supplement/needs', defaultMessage: 'What to provide' },
+    entrySupplementAsked: {
+      id: 'assessment/entry/supplement-asked',
+      defaultMessage:
+        '{who} asked on {at}. Review continues once you add it; what you already filed stays as it is.',
+    },
+    entryDraftSavedFoot: {
+      id: 'assessment/entry/draft-saved-foot',
+      defaultMessage: 'Not submitted yet, saved {at}',
+    },
+    // what a claim's number is: granted, waiting, or worth this much if approved
+    entryScoreCounted: { id: 'assessment/entry/score-counted', defaultMessage: 'Counted' },
+    entryScorePending: { id: 'assessment/entry/score-pending', defaultMessage: 'Not counted yet' },
+    entryScoreIfApproved: {
+      id: 'assessment/entry/score-if-approved',
+      defaultMessage: 'If approved',
+    },
+    entryStatusAwaitingSupplement: {
+      id: 'assessment/entry/status-awaiting-supplement',
+      defaultMessage: 'Material requested',
+    },
+    entryVersionNo: { id: 'assessment/entry/version-no', defaultMessage: 'Version {no}' },
+    itemCounted: { id: 'assessment/entry/item-counted', defaultMessage: 'Counted here' },
+    // the claim's story, as one timeline
+    entryTrailSubtitle: {
+      id: 'assessment/entry/trail-subtitle',
+      defaultMessage: '{item}　{versions} versions, {rounds} rounds, {asks} requests for material',
+    },
+    entryTrailFoot: {
+      id: 'assessment/entry/trail-foot',
+      defaultMessage: 'Newest first. This is a record; nothing here can be changed.',
+    },
+    entryTrailVersion: {
+      id: 'assessment/entry/trail-version',
+      defaultMessage: 'I submitted version {no}',
+    },
+    entryTrailRoundOpened: {
+      id: 'assessment/entry/trail-round-opened',
+      defaultMessage: 'Round {no} began',
+    },
+    entryTrailAnswered: {
+      id: 'assessment/entry/trail-answered',
+      defaultMessage: 'I added the material',
+    },
+    entryTrailAnswerKept: {
+      id: 'assessment/entry/trail-answer-kept',
+      defaultMessage: 'Kept beside version {no} rather than over it; the reviewer sees both.',
+    },
+    entryTrailAskCancelled: {
+      id: 'assessment/entry/trail-ask-cancelled',
+      defaultMessage: 'Withdrawn by the reviewer',
+    },
+    entryTrailAskWaiting: {
+      id: 'assessment/entry/trail-ask-waiting',
+      defaultMessage: 'Waiting for you',
+    },
+    entryTrailReason: { id: 'assessment/entry/trail-reason', defaultMessage: 'Reason　{value}' },
+    entryTrailRound: { id: 'assessment/entry/trail-round', defaultMessage: 'Round {no}' },
+    entryTrailEmpty: {
+      id: 'assessment/entry/trail-empty',
+      defaultMessage: 'Nothing has happened to this claim yet.',
+    },
+    // narrow screens show one pane at a time
+    myEntriesBack: { id: 'assessment/entry/back-to-list', defaultMessage: 'All questions' },
     entrySupplementAnswer: {
       id: 'assessment/entry/supplement-answer',
       defaultMessage: 'Add material',

@@ -3,7 +3,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
-import { PencilIcon, PlusIcon } from 'lucide-react'
+import { AlertCircleIcon, PlusIcon } from 'lucide-react'
 import { assessmentMessages as m } from '../i18n.ts'
 import { entryRefusalReason } from './refusals.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
@@ -20,6 +20,7 @@ import {
   chainLength,
   eachWorth,
   entryScore,
+  itemScore,
   mayFile,
   roomLeft,
   type Standing,
@@ -32,6 +33,12 @@ import {
 // allowed, how many people have to agree - because those are what decide
 // whether it is worth filing another. Then the claims themselves, each shown
 // as the answers that were given rather than as a row to expand.
+//
+// Every claim is the same card, draft or filed. A draft is not a different
+// kind of thing - it is this claim, before it was handed on - so it keeps the
+// frame, the field layout and the row of actions, and says what it is with a
+// dashed edge, a paler ground and a hollow dot. Two shapes made the reader
+// learn twice where to look for the same answer.
 
 export function ItemDetail({
   row,
@@ -70,8 +77,8 @@ export function ItemDetail({
   const room = roomLeft(item, entries)
   const steps = chainLength(item)
   const live = entries.filter((entry) => entry.status !== 'voided')
-  // both are the reader's to finish: one they have not sent yet, one that
-  // came back asking for more
+  // counted separately only to say how many of each there are; they are all
+  // drawn as the same card, in the order they were filed
   const drafts = live.filter(
     (entry) => entry.status === 'draft' || entry.status === 'needs_revision',
   )
@@ -79,6 +86,7 @@ export function ItemDetail({
     (entry) => entry.status !== 'draft' && entry.status !== 'needs_revision',
   )
   const draft = drafts[0]
+  const counted = itemScore(standing, item.id)
   // Recording takes effect on the spot; the chain configured on the question
   // is the way back in if somebody contests it, not a queue this claim sits
   // in. Naming it here would tell the reader to wait for something that is
@@ -126,52 +134,60 @@ export function ItemDetail({
             )}
           </div>
         </div>
-        {/* A draft already holds one of the question's places, so finishing
-            it is open even once there is no room for another. A question
-            whose places are full keeps its button, disabled with the reason
-            on hover: a control that vanishes reads as a page that lost
-            something, and the reason it cannot be pressed is exactly what
-            the reader wants to know. Questions that were never this
-            person's to file - recorded ones, withdrawn ones - show nothing,
-            because there the button never existed. */}
-        {granted ? null : declared ? (
-          mayFile(item, entries) && draft === undefined ? (
-            <Button className="shrink-0" disabled={busy} onClick={onDeclare}>
+        <div className="flex shrink-0 items-center gap-4">
+          {/* what this question has actually granted, beside the way to add
+              to it: the claims below each carry their own number, and this is
+              the one they add up to */}
+          {counted !== null && (
+            <span className="flex flex-col gap-0.5 text-right">
+              <span className="text-xs whitespace-nowrap text-muted-foreground">
+                {format(m.itemCounted)}
+              </span>
+              <span className="text-lg leading-none font-semibold tabular-nums">
+                {trimAmount(counted)}
+              </span>
+            </span>
+          )}
+          {/* One way in, whatever is already filed: an unfinished draft is
+              picked up from its own card below, which is where it is being
+              read. A question whose places are full keeps the button,
+              disabled with the reason on hover - a control that vanishes
+              reads as a page that lost something. Questions that were never
+              this person's to file show nothing. */}
+          {granted ? null : declared ? (
+            mayFile(item, entries) && draft === undefined ? (
+              <Button className="shrink-0" disabled={busy} onClick={onDeclare}>
+                <PlusIcon aria-hidden />
+                {format(m.entryDeclare)}
+              </Button>
+            ) : null
+          ) : mayFile(item, entries) ? (
+            <Button className="shrink-0" onClick={() => onFile(null)}>
               <PlusIcon aria-hidden />
-              {format(m.entryDeclare)}
+              {format(m.entryNew)}
             </Button>
-          ) : null
-        ) : draft !== undefined && item.status === 'active' ? (
-          <Button className="shrink-0" onClick={() => onFile(draft)}>
-            <PencilIcon aria-hidden />
-            {format(m.myEntriesResumeDraft)}
-          </Button>
-        ) : mayFile(item, entries) ? (
-          <Button className="shrink-0" onClick={() => onFile(null)}>
-            <PlusIcon aria-hidden />
-            {format(m.entryNew)}
-          </Button>
-        ) : (
-          item.status === 'active' &&
-          item.currentRevision?.entrySource === 'student' &&
-          (roomLeft(item, entries) ?? 1) <= 0 && (
-            <TooltipProvider>
-              <Tooltip>
-                {/* a disabled button swallows pointer events, so the span
-                    around it is what the tooltip listens to */}
-                <TooltipTrigger asChild>
-                  <span tabIndex={0} className="shrink-0">
-                    <Button disabled className="pointer-events-none">
-                      <PlusIcon aria-hidden />
-                      {format(m.entryNew)}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{format(m.refuseMaxEntries)}</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )
-        )}
+          ) : (
+            item.status === 'active' &&
+            item.currentRevision?.entrySource === 'student' &&
+            (roomLeft(item, entries) ?? 1) <= 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  {/* a disabled button swallows pointer events, so the span
+                      around it is what the tooltip listens to */}
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0} className="shrink-0">
+                      <Button disabled className="pointer-events-none">
+                        <PlusIcon aria-hidden />
+                        {format(m.entryNew)}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{format(m.refuseMaxEntries)}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )
+          )}
+        </div>
       </div>
 
       {description !== '' && <p className="text-sm leading-relaxed text-pretty">{description}</p>}
@@ -205,45 +221,18 @@ export function ItemDetail({
         </p>
       )}
 
-      {drafts.map((entry) => (
-        <div
-          key={entry.id}
-          className="flex flex-wrap items-center gap-3 rounded-xl border px-3.5 py-3"
-        >
-          <Standing status={entry.status} revised={entry.currentReviewInstanceId !== null} />
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-sm">{summary(entry, item)}</span>
-            <span className="text-xs text-muted-foreground">
-              {format(m.myEntriesDraftSaved, { when: when(entry) })}
-            </span>
-          </span>
-          {!declared && (
-            <Button variant="outline" size="sm" onClick={() => onFile(entry)}>
-              {format(m.myEntriesResume)}
-            </Button>
-          )}
-          <Offered
-            can={entry.capabilities.submit}
-            busy={busy}
-            size="sm"
-            label={format(m.entrySubmit)}
-            onPress={() => onStatus(entry.id, 'in_review')}
-          />
-        </div>
-      ))}
-
       {/* Cards, two abreast where the pane is wide enough: four claims fit
           one screen instead of a scroll, and comparing two of them stops
           meaning holding one in your head. One column again below that -
           squeezed cards truncate the very answers they exist to show. */}
-      {filed.length > 0 && (
+      {live.length > 0 && (
         <div className="grid items-start gap-4 xl:grid-cols-2">
-          {filed.map((entry) => (
+          {live.map((entry) => (
             <FiledEntry
               key={entry.id}
               entry={entry}
               item={item}
-              score={entryScore(standing, entry.id)}
+              score={entryScore(standing, entry.id) ?? (each === undefined ? null : each)}
               busy={busy}
               onHistory={() => onHistory(entry.id)}
               onEdit={() => onFile(entry)}
@@ -284,14 +273,56 @@ function FiledEntry({
   const declared = item.itemType === 'declaration'
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
+  const tone = toneOf(entry)
+  const revisionNo = entry.currentRevision?.revisionNo
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <Standing status={entry.status} revised={entry.currentReviewInstanceId !== null} />
-        <p className="text-xs whitespace-nowrap text-muted-foreground">{when(entry)}</p>
+    <div
+      className={cn(
+        'flex min-w-0 flex-col gap-3 rounded-xl border p-4',
+        tone === 'draft' ? 'border-dashed bg-muted/30' : 'bg-card',
+        tone === 'attention' && 'border-destructive/35',
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Standing
+          status={entry.status}
+          revised={entry.currentReviewInstanceId !== null}
+          asked={entry.supplement !== null}
+        />
+        {revisionNo !== undefined && entry.status !== 'draft' && (
+          <p className="text-xs whitespace-nowrap text-muted-foreground">
+            {format(m.entryVersionNo, { no: revisionNo })}
+          </p>
+        )}
+        <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+          {when(entry)}
+        </p>
         <span className="flex-1" />
-        {score !== null && <p className="text-sm tabular-nums">{score}</p>}
+        {/* A number on its own cannot say whether it is money in the bank or
+            an estimate. The word above it does, and only the granted one is
+            drawn in full ink. */}
+        {score !== null && (
+          <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+            <span className="text-xs text-muted-foreground">
+              {format(
+                tone === 'ok'
+                  ? m.entryScoreCounted
+                  : tone === 'wait'
+                    ? m.entryScorePending
+                    : m.entryScoreIfApproved,
+              )}
+            </span>
+            <span
+              className={cn(
+                'text-base tabular-nums',
+                tone === 'ok' ? 'font-semibold' : 'font-medium text-muted-foreground',
+              )}
+            >
+              {trimAmount(score)}
+            </span>
+          </span>
+        )}
       </div>
 
       {/* The label column is fixed rather than sized to the longest label:
@@ -333,44 +364,69 @@ function FiledEntry({
         })}
       </dl>
 
-      {/* the reviewer's ask sits on the claim it is about: what they wrote,
-          and the one press that answers it */}
+      {/* The reviewer's ask, on the claim it is about: what they wrote in
+          full - it is an instruction, not a heading - then the pieces they
+          named, then the one press that answers it. */}
       {entry.supplement !== null && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg bg-amber-500/10 px-3 py-2.5">
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-sm font-medium">{format(m.entrySupplementTitle)}</span>
-            <span className="truncate text-xs text-muted-foreground">
-              {entry.supplement.instructions}
-            </span>
-          </span>
-          <Button size="sm" disabled={busy} onClick={onSupplement}>
+        <div className="flex flex-col gap-2.5 rounded-lg bg-muted p-3">
+          <div className="flex items-center gap-2">
+            <AlertCircleIcon aria-hidden className="size-4 shrink-0 text-destructive" />
+            <p className="min-w-0 flex-1 text-sm font-medium">{format(m.entrySupplementTitle)}</p>
+          </div>
+          <p className="border-l-2 border-destructive/30 pl-2.5 text-sm leading-relaxed text-pretty">
+            {entry.supplement.instructions}
+          </p>
+          {entry.supplement.requirements.length > 0 && (
+            <div className="flex flex-col gap-1.5 border-t pt-2.5">
+              <p className="text-xs text-muted-foreground">{format(m.supplementNeeds)}</p>
+              {entry.supplement.requirements.map((asked) => (
+                <span key={asked.key} className="flex items-center gap-2 text-sm">
+                  <span
+                    aria-hidden
+                    className="size-1 shrink-0 rounded-full bg-muted-foreground/50"
+                  />
+                  <span className="min-w-0 truncate">{asked.label}</span>
+                  <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                    {format(asked.kind === 'file' ? m.supplementAddFile : m.supplementAddText)}
+                  </span>
+                  {asked.required && (
+                    <span className="shrink-0 text-xs whitespace-nowrap text-destructive">
+                      {format(m.supplementPieceRequired)}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          <Button size="sm" className="self-stretch" disabled={busy} onClick={onSupplement}>
             {format(m.entrySupplementAnswer)}
           </Button>
         </div>
       )}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
-        <Button variant="outline" size="sm" onClick={onHistory}>
-          {format(m.entryHistoryOpen)}
-        </Button>
+        {/* a draft nobody has ever seen has no story to open yet */}
+        {(entry.status !== 'draft' || entry.currentReviewInstanceId !== null) && (
+          <Button variant="outline" size="sm" onClick={onHistory}>
+            {format(m.entryHistoryOpen)}
+          </Button>
+        )}
         {!declared && (
           <Offered
             can={entry.capabilities.edit}
             busy={busy}
-            label={format(m.entryEdit)}
+            label={format(entry.status === 'draft' ? m.myEntriesResume : m.entryEdit)}
             onPress={onEdit}
           />
         )}
         {/* a rejected filing may go back as it stands; the round said no to
             the filing and the answer may be "look again" */}
-        {entry.status !== 'draft' && (
-          <Offered
-            can={entry.capabilities.submit}
-            busy={busy}
-            label={format(m.entryResubmit)}
-            onPress={() => onStatus('in_review')}
-          />
-        )}
+        <Offered
+          can={entry.capabilities.submit}
+          busy={busy}
+          label={format(entry.status === 'draft' ? m.entrySubmit : m.entryResubmit)}
+          onPress={() => onStatus('in_review')}
+        />
         <Offered
           can={entry.capabilities.withdraw}
           busy={busy}
@@ -395,9 +451,44 @@ function FiledEntry({
           }}
         />
       </div>
+
+      {/* the one sentence the card can say truthfully without the whole
+          story: where this claim is waiting, and on whom */}
+      {entry.supplement !== null ? (
+        <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
+          {format(m.entrySupplementAsked, {
+            at: new Date(entry.supplement.requestedAt).toLocaleString(),
+            who: entry.supplement.requestedByName ?? format(m.eventSomebody),
+          })}
+        </p>
+      ) : (
+        entry.status === 'draft' && (
+          <p className="text-xs text-muted-foreground">
+            {format(m.entryDraftSavedFoot, { at: when(entry) })}
+          </p>
+        )
+      )}
     </div>
   )
 }
+
+/**
+ * What a claim's card looks like it is: granted, waiting on somebody else,
+ * waiting on the reader, or not handed on yet.
+ *
+ * One value rather than a switch per detail, so the edge, the dot and the
+ * word above the number cannot drift apart.
+ */
+type CardTone = 'ok' | 'wait' | 'draft' | 'attention'
+
+const toneOf = (entry: EntryDto): CardTone =>
+  entry.status === 'approved'
+    ? 'ok'
+    : entry.supplement !== null || entry.status === 'rejected' || entry.status === 'needs_revision'
+      ? 'attention'
+      : entry.status === 'in_review'
+        ? 'wait'
+        : 'draft'
 
 /**
  * One act on one claim, in whatever state the server offered it: a button,
@@ -449,33 +540,57 @@ function Offered({
   )
 }
 
-/** where a claim stands, as a dot and a word */
-function Standing({ status, revised }: { status: EntryDto['status']; revised?: boolean }) {
+/**
+ * Where a claim stands, as a dot and a word.
+ *
+ * The dot carries the weight: filled and dark for what counts, hollow for a
+ * draft nobody has been handed yet, red for whatever is waiting on the
+ * reader. The pill's own edge follows, so a card can be read across the pane
+ * without reading the word.
+ */
+function Standing({
+  status,
+  revised,
+  asked,
+}: {
+  status: EntryDto['status']
+  revised?: boolean
+  /** a reviewer is waiting for material, which outranks "in review" */
+  asked?: boolean
+}) {
   const { format } = useI18n()
-  if (status === 'draft' && revised === true) {
-    // a draft with a round behind it is not a fresh draft: it exists
-    // because something was asked of it
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap">
-        <span aria-hidden className="size-1.5 rounded-full bg-amber-500" />
-        {format(m.entryStatusRevising)}
-      </span>
-    )
-  }
+  const word =
+    asked === true
+      ? m.entryStatusAwaitingSupplement
+      : status === 'draft' && revised === true
+        ? // a draft with a round behind it is not a fresh draft: it exists
+          // because something was asked of it
+          m.entryStatusRevising
+        : entryStatusMessage[status]
+  const alert = asked === true || status === 'rejected' || status === 'needs_revision'
+  const hollow = status === 'draft' && asked !== true
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap">
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap',
+        alert && 'border-destructive/35 text-destructive',
+        hollow && 'text-muted-foreground',
+      )}
+    >
       <span
         aria-hidden
         className={cn(
           'size-1.5 rounded-full',
-          status === 'approved'
-            ? 'bg-foreground'
-            : status === 'rejected'
+          hollow
+            ? 'border border-muted-foreground/50'
+            : alert
               ? 'bg-destructive'
-              : 'bg-muted-foreground/50',
+              : status === 'approved'
+                ? 'bg-foreground'
+                : 'bg-muted-foreground/60',
         )}
       />
-      {format(entryStatusMessage[status])}
+      {format(word)}
     </span>
   )
 }

@@ -1020,9 +1020,16 @@ export interface SupplementRow {
   } | null
 }
 
-/** every ask this round made, oldest first, each with its answer if any */
-export const supplementsOf = (tenantId: string, instanceId: string) =>
+/**
+ * Every ask these rounds made, oldest first within each, with its answer.
+ *
+ * Batched over rounds because the claim's whole story asks for all of them
+ * at once: a round at a time would put a query per round behind one screen.
+ */
+export const supplementsOfInstances = (tenantId: string, instanceIds: readonly string[]) =>
   Effect.gen(function* () {
+    const byInstance = new Map<string, SupplementRow[]>()
+    if (instanceIds.length === 0) return byInstance as ReadonlyMap<string, readonly SupplementRow[]>
     const requests = yield* db.query((k) =>
       k
         .selectFrom('ReviewSupplementRequest as sr')
@@ -1034,6 +1041,7 @@ export const supplementsOf = (tenantId: string, instanceId: string) =>
         )
         .select([
           'sr.id',
+          'sr.reviewInstanceId',
           'sr.requestNo',
           'sr.status',
           'sr.instructions',
@@ -1050,7 +1058,7 @@ export const supplementsOf = (tenantId: string, instanceId: string) =>
           epoch('re.created_at').as('respondedMs'),
         ])
         .where('sr.tenantId', '=', tenantId)
-        .where('sr.reviewInstanceId', '=', instanceId)
+        .where('sr.reviewInstanceId', 'in', [...instanceIds])
         .orderBy('sr.requestNo')
         .execute(),
     )
@@ -1067,29 +1075,40 @@ export const supplementsOf = (tenantId: string, instanceId: string) =>
               .orderBy('position')
               .execute(),
           )
-    return requests.map((row): SupplementRow => ({
-      id: row.id,
-      requestNo: row.requestNo,
-      status: row.status as SupplementRow['status'],
-      instructions: row.instructions,
-      requirements: requirementsOf(row.requirements),
-      requestedBy: row.requestedBy,
-      requestedByName: row.requestedByName,
-      requestedAt: msOf(row.requestedMs),
-      answeredAt: row.answeredMs == null ? null : msOf(row.answeredMs),
-      cancelledAt: row.cancelledMs == null ? null : msOf(row.cancelledMs),
-      response:
-        row.responseId === null
-          ? null
-          : {
-              payload: row.responsePayload,
-              attachments: cited
-                .filter((one) => one.responseId === row.responseId)
-                .map((one) => ({ attachmentId: one.attachmentId, position: one.position })),
-              respondedAt: msOf(row.respondedMs),
-            },
-    }))
+    for (const row of requests) {
+      const bucket = byInstance.get(row.reviewInstanceId) ?? []
+      bucket.push({
+        id: row.id,
+        requestNo: row.requestNo,
+        status: row.status as SupplementRow['status'],
+        instructions: row.instructions,
+        requirements: requirementsOf(row.requirements),
+        requestedBy: row.requestedBy,
+        requestedByName: row.requestedByName,
+        requestedAt: msOf(row.requestedMs),
+        answeredAt: row.answeredMs == null ? null : msOf(row.answeredMs),
+        cancelledAt: row.cancelledMs == null ? null : msOf(row.cancelledMs),
+        response:
+          row.responseId === null
+            ? null
+            : {
+                payload: row.responsePayload,
+                attachments: cited
+                  .filter((one) => one.responseId === row.responseId)
+                  .map((one) => ({ attachmentId: one.attachmentId, position: one.position })),
+                respondedAt: msOf(row.respondedMs),
+              },
+      })
+      byInstance.set(row.reviewInstanceId, bucket)
+    }
+    return byInstance as ReadonlyMap<string, readonly SupplementRow[]>
   })
+
+/** the same for one round, which is what the workbench reads */
+export const supplementsOf = (tenantId: string, instanceId: string) =>
+  supplementsOfInstances(tenantId, [instanceId]).pipe(
+    Effect.map((byInstance) => byInstance.get(instanceId) ?? []),
+  )
 
 /** one request with the round it belongs to, for the answer and cancel doors */
 export interface SupplementRequestRow {
@@ -1290,6 +1309,8 @@ export interface OpenSupplementRow {
   requestNo: number
   instructions: string
   requirements: readonly SupplementRequirement[]
+  /** who asked, by name: the card says whose request this is */
+  requestedByName: string | null
   requestedAt: number
 }
 
@@ -1305,6 +1326,9 @@ export const openSupplementsOfEntries = (tenantId: string, entryIds: readonly st
                 .onRef('ri.tenantId', '=', 'sr.tenantId')
                 .onRef('ri.id', '=', 'sr.reviewInstanceId'),
             )
+            .leftJoin('User as u', (join) =>
+              join.onRef('u.tenantId', '=', 'sr.tenantId').onRef('u.id', '=', 'sr.requestedBy'),
+            )
             .select([
               'ri.entryId',
               'sr.id as requestId',
@@ -1312,6 +1336,7 @@ export const openSupplementsOfEntries = (tenantId: string, entryIds: readonly st
               'sr.requestNo',
               'sr.instructions',
               'sr.requirements',
+              'u.displayName as requestedByName',
             ])
             .select([epoch('sr.created_at').as('requestedMs')])
             .where('sr.tenantId', '=', tenantId)
@@ -1329,6 +1354,7 @@ export const openSupplementsOfEntries = (tenantId: string, entryIds: readonly st
               requestNo: row.requestNo,
               instructions: row.instructions,
               requirements: requirementsOf(row.requirements),
+              requestedByName: row.requestedByName,
               requestedAt: msOf(row.requestedMs),
             })),
           ),

@@ -516,6 +516,7 @@ const entryView = Schema.Struct({
       requestNo: Schema.Number,
       instructions: Schema.String,
       requirements: Schema.Array(supplementRequirement),
+      requestedByName: Schema.NullOr(Schema.String),
       requestedAt: Schema.String,
     }),
   ),
@@ -980,6 +981,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
                 at: Schema.String,
               }),
             ),
+            /** what this round asked for beyond the filing, and what came back */
+            supplements: Schema.Array(reviewSupplementView),
           }),
         ),
       }),

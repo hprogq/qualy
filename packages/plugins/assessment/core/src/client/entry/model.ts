@@ -33,6 +33,7 @@ export interface EntrySupplementDto {
   requestNo: number
   instructions: string
   requirements: readonly SupplementRequirementDto[]
+  requestedByName: string | null
   requestedAt: string
 }
 

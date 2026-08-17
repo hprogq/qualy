@@ -3518,6 +3518,7 @@ const entryDto = (entry: EntryView) => ({
           requestNo: entry.supplement.requestNo,
           instructions: entry.supplement.instructions,
           requirements: entry.supplement.requirements,
+          requestedByName: entry.supplement.requestedByName,
           requestedAt: new Date(entry.supplement.requestedAt).toISOString(),
         },
   capabilities: entry.capabilities,
@@ -3566,29 +3567,32 @@ const reviewDto = (review: ReviewDetailView) => ({
     suggestedPayload: event.suggestedPayload,
     at: new Date(event.at).toISOString(),
   })),
-  supplements: review.supplements.map((supplement) => ({
-    id: supplement.id,
-    requestNo: supplement.requestNo,
-    status: supplement.status,
-    instructions: supplement.instructions,
-    requirements: supplement.requirements,
-    requestedBy: supplement.requestedBy,
-    requestedByName: supplement.requestedByName,
-    requestedAt: new Date(supplement.requestedAt).toISOString(),
-    answeredAt:
-      supplement.answeredAt === null ? null : new Date(supplement.answeredAt).toISOString(),
-    cancelledAt:
-      supplement.cancelledAt === null ? null : new Date(supplement.cancelledAt).toISOString(),
-    response:
-      supplement.response === null
-        ? null
-        : {
-            payload: supplement.response.payload,
-            attachments: supplement.response.attachments,
-            respondedAt: new Date(supplement.response.respondedAt).toISOString(),
-          },
-  })),
+  supplements: review.supplements.map(supplementDto),
   capabilities: review.capabilities,
+})
+
+/** one ask and its answer, on the wire: the workbench and the claim's story
+ *  read the same shape, so a change to it reaches both */
+const supplementDto = (supplement: ReviewDetailView['supplements'][number]) => ({
+  id: supplement.id,
+  requestNo: supplement.requestNo,
+  status: supplement.status,
+  instructions: supplement.instructions,
+  requirements: supplement.requirements,
+  requestedBy: supplement.requestedBy,
+  requestedByName: supplement.requestedByName,
+  requestedAt: new Date(supplement.requestedAt).toISOString(),
+  answeredAt: supplement.answeredAt === null ? null : new Date(supplement.answeredAt).toISOString(),
+  cancelledAt:
+    supplement.cancelledAt === null ? null : new Date(supplement.cancelledAt).toISOString(),
+  response:
+    supplement.response === null
+      ? null
+      : {
+          payload: supplement.response.payload,
+          attachments: supplement.response.attachments,
+          respondedAt: new Date(supplement.response.respondedAt).toISOString(),
+        },
 })
 
 const itemDto = (item: ItemView) => ({
@@ -4419,6 +4423,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             submittedAt: new Date(round.submittedAt).toISOString(),
             completedAt:
               round.completedAt === null ? null : new Date(round.completedAt).toISOString(),
+            supplements: round.supplements.map(supplementDto),
             events: round.events.map((event) => ({
               kind: event.kind,
               actorId: event.actorId,

@@ -58,8 +58,10 @@ import {
 } from '../review/chain.ts'
 import {
   openSupplementsOfEntries,
+  supplementsOfInstances,
   type OpenSupplementRow,
   type SupplementRequirement,
+  type SupplementRow,
 } from '../review/db.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
@@ -95,6 +97,7 @@ export interface EntrySupplementView {
   readonly requestNo: number
   readonly instructions: string
   readonly requirements: readonly SupplementRequirement[]
+  readonly requestedByName: string | null
   readonly requestedAt: number
 }
 
@@ -179,6 +182,15 @@ export interface EntryRoundView {
     readonly suggestedPayload: unknown
     readonly at: number
   }[]
+  /**
+   * What this round asked for beyond the filing, and what came back.
+   *
+   * Part of the round's own account rather than a separate list: an ask and
+   * its answer are two more things that happened to this claim, and the
+   * screen that tells its story reads them in the same order as everything
+   * else.
+   */
+  readonly supplements: readonly SupplementRow[]
 }
 
 export interface EntryHistoryView {
@@ -513,6 +525,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               requestNo: supplement.requestNo,
               instructions: supplement.instructions,
               requirements: supplement.requirements,
+              requestedByName: supplement.requestedByName,
               requestedAt: supplement.requestedAt,
             },
       // discovery, not authorization - the gate is asked again at the act -
@@ -1152,6 +1165,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           )
           const ownEvents = yield* entryEventsOf(tenantId, entryId)
           const asked = yield* openSupplementsOfEntries(tenantId, [entryId])
+          const supplements = yield* supplementsOfInstances(
+            tenantId,
+            rounds.map((round) => round.id),
+          )
           return {
             entry: view(
               entry,
@@ -1194,6 +1211,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 suggestedPayload: event.suggestedPayload,
                 at: event.createdAt,
               })),
+              supplements: supplements.get(round.id) ?? [],
             })),
             events: ownEvents.map((event) => ({
               kind: event.kind,
