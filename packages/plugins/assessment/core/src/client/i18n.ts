@@ -1462,6 +1462,13 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Materials sit under the field that asked for them. A file this version took out is named in grey below it, so what the last reviewer saw can still be checked.',
     },
+    reviewThisRound: { id: 'assessment/review/this-round', defaultMessage: 'This round' },
+    reviewAwaitingYou: {
+      id: 'assessment/review/awaiting-you',
+      defaultMessage: 'Waiting on your decision',
+    },
+    reviewQueueFold: { id: 'assessment/review/queue-fold', defaultMessage: 'Fold the queue away' },
+    reviewQueueUnfold: { id: 'assessment/review/queue-unfold', defaultMessage: 'Show the queue' },
     reviewSupplementAsk: {
       id: 'assessment/review/supplement-ask',
       defaultMessage: 'Request material',

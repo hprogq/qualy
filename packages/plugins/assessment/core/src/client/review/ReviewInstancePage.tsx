@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeftIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
   DownloadIcon,
@@ -181,6 +182,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
     if (next !== undefined) goTo(next.instanceId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settledHere, remaining.length])
+
+  // The queue is furniture, not a layer: it stays where it was left, and a
+  // reload finds it there, but pressing back should never be about it.
+  const [rail, setRail] = usePageQueryState('queue')
+  const railOpen = rail !== 'off'
 
   const [armed, setArmed] = useState<'approve' | 'comment' | null>(null)
   const [word, setWord] = useState('')
@@ -472,11 +478,20 @@ function Workbench({ batch }: { batch: BatchDto }) {
         style={height === null ? undefined : { height }}
         className="relative flex min-h-96 flex-col"
       >
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <div
+          className={cn(
+            'grid min-h-0 flex-1',
+            railOpen
+              ? 'lg:grid-cols-[11rem_minmax(0,1fr)]'
+              : 'lg:grid-cols-[2.75rem_minmax(0,1fr)]',
+          )}
+        >
           <QueueRail
             rows={remaining}
             currentId={instanceId}
             remainingCount={remaining.length}
+            open={railOpen}
+            onToggle={() => setRail(railOpen ? 'off' : '')}
             onOpen={goTo}
             onBack={() => navigate('assessment/batch-reviews', { params: { batchId: batch.id } })}
           />
@@ -512,17 +527,22 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   canNext={currentIndex !== -1 && currentIndex < remaining.length - 1}
                   onMove={move}
                 />
+                {/* Three columns on a wide screen: what has been said, what
+                    was filed, and the terms it is judged under. The filing is
+                    the widest and the only one that scrolls far; the other
+                    two are meant to be taken in at a glance while working
+                    down it. Stacked below that, in the same reading order. */}
                 <Drill
                   move="next"
                   drillKey={instanceId}
-                  className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_19rem]"
+                  className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_19rem]"
                 >
-                  <MainColumn
+                  <FlowColumn review={review} onTrail={() => setTrailOpen(true)} />
+                  <FilingColumn
                     review={review}
                     comparing={comparing}
                     onCompare={setComparing}
                     onVersions={() => setVersionsOpen(true)}
-                    onTrail={() => setTrailOpen(true)}
                   />
                   <ContextRail review={review} onOpenSibling={setOpenSibling} />
                 </Drill>
@@ -682,19 +702,29 @@ function QueueRail({
   rows,
   currentId,
   remainingCount,
+  open,
+  onToggle,
   onOpen,
   onBack,
 }: {
   rows: readonly InboxItemDto[]
   currentId: string
   remainingCount: number
+  /** whether the column is showing its list, or folded to a strip */
+  open: boolean
+  onToggle: () => void
   onOpen: (id: string) => void
   onBack: () => void
 }) {
   const { format } = useI18n()
   return (
-    <aside className="hidden min-h-0 flex-col lg:flex">
-      <div className="flex items-center gap-1.5 border-b py-2 pr-3.5 pl-2">
+    <aside className="hidden min-h-0 flex-col overflow-hidden lg:flex">
+      <div
+        className={cn(
+          'flex shrink-0 items-center gap-1.5 border-b py-2',
+          open ? 'pr-2 pl-2' : 'flex-col gap-2 px-1.5',
+        )}
+      >
         {/* the way out: a workbench with no door back is a dead end */}
         <Button
           variant="ghost"
@@ -704,12 +734,39 @@ function QueueRail({
         >
           <ArrowLeftIcon aria-hidden />
         </Button>
-        <p className="text-xs font-semibold">{format(m.reviewQueueTitle)}</p>
-        <Badge variant="secondary" className="tabular-nums">
-          {remainingCount}
-        </Badge>
+        {open && (
+          <>
+            <p className="text-xs font-semibold">{format(m.reviewQueueTitle)}</p>
+            <Badge variant="secondary" className="tabular-nums">
+              {remainingCount}
+            </Badge>
+            <span className="flex-1" />
+          </>
+        )}
+        {/* Folded to a strip rather than to nothing: the door back and the
+            control that brings the list back are both here, and a column
+            that vanishes takes them with it. */}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={format(open ? m.reviewQueueFold : m.reviewQueueUnfold)}
+          onClick={onToggle}
+        >
+          {open ? (
+            <ChevronLeftIcon aria-hidden />
+          ) : (
+            <span className="flex flex-col items-center">
+              <ChevronRightIcon aria-hidden className="size-4" />
+            </span>
+          )}
+        </Button>
+        {!open && remainingCount > 0 && (
+          <Badge variant="secondary" className="tabular-nums">
+            {remainingCount}
+          </Badge>
+        )}
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      <ul className={cn('min-h-0 flex-1 overflow-y-auto p-1.5', !open && 'hidden')}>
         {rows.map((row) => {
           const current = row.instanceId === currentId
           return (
@@ -913,62 +970,20 @@ function EdgeButton({
 }
 
 /** the reading order: what was said, what was filed, what backs it up */
-function MainColumn({
-  review,
-  comparing,
-  onCompare,
-  onVersions,
-  onTrail,
-}: {
-  review: ReviewDto
-  /** an earlier revision id, 'previous' for the one just before, or null */
-  comparing: string | null
-  onCompare: (next: string | null) => void
-  onVersions: () => void
-  onTrail: () => void
-}) {
+/**
+ * How the filing got here and what has been said about it.
+ *
+ * Its own column beside the filing rather than a section above it: reading
+ * the second meant scrolling past the first, and a reviewer checking a
+ * resubmission against what was asked of it last time needs both at once.
+ * This one is short enough to fit a screen; the filing beside it is what
+ * scrolls.
+ */
+function FlowColumn({ review, onTrail }: { review: ReviewDto; onTrail: () => void }) {
   const { format } = useI18n()
-  // every field the question asks, files included and in their own places:
-  // a field that asks for a certificate is not "materials", it is the
-  // certificate, and folding it away left the reading order with a hole
-  const fields = fieldsOf(review.form.formConfig)
-  const record = (review.revision.payload ?? {}) as Record<string, unknown>
   const previous = review.context?.previous ?? null
-  // the version being read against, resolved from the entry's own history;
-  // asked for only while a comparison is on
-  const history = useEntryHistory(review.entryId, comparing !== null)
-  const revisions = ((history.data as { revisions?: readonly HistoryRevision[] } | undefined)
-    ?.revisions ?? []) as readonly HistoryRevision[]
-  const earlier = revisions.filter((one) => one.revisionNo < review.revision.revisionNo)
-  const against =
-    comparing === null
-      ? null
-      : comparing === 'previous'
-        ? (earlier[earlier.length - 1] ?? null)
-        : (earlier.find((one) => one.id === comparing) ?? null)
-  const was = new Map<string, { value: string; ids: readonly string[] }>(
-    against === null
-      ? []
-      : valuesOf(against.formConfig, against.payload).map((v) => [v.key, v] as const),
-  )
-  const lingeringAgainst = useLingering(against)
-  const changes =
-    against === null
-      ? 0
-      : fields.filter((field) => (was.get(field.key)?.value ?? '') !== valueOf(record[field.key]))
-          .length
-  // The materials, numbered once across the whole filing in the order the
-  // questions ask for them - the same numbers the 1-9 keys open. A file
-  // taken out this version has no number: it is not one of the things to
-  // look at, it is a record of what used to be.
-  const slots = new Map(
-    fields
-      .filter((field) => field.type === 'attachment')
-      .flatMap((field) => idsOf(record[field.key]))
-      .map((attachmentId, index) => [attachmentId, index + 1]),
-  )
   return (
-    <main className="flex min-w-0 flex-col gap-6 overflow-y-auto p-5">
+    <section className="flex min-w-0 flex-col gap-4 overflow-y-auto p-5">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
         <div className="flex items-start gap-3 rounded-xl bg-muted/60 p-4">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -978,7 +993,6 @@ function MainColumn({
           </div>
         </div>
       )}
-
       <section className="flex flex-col gap-3">
         <div className="flex items-center gap-2.5 border-b pb-2">
           <h3 className="text-sm font-semibold">{format(m.reviewPrior)}</h3>
@@ -1014,6 +1028,16 @@ function MainColumn({
             <p className="text-xs text-muted-foreground">{format(m.reviewPreviousHint)}</p>
           </div>
         )}
+        {/* what has happened since this round opened, told apart from the
+            history above it: the card is why it came back, these are what
+            has been said about the answer to that */}
+        <div className="flex items-baseline gap-2.5">
+          <p className="text-xs font-medium">{format(m.reviewThisRound)}</p>
+          <span className="flex-1" />
+          {review.state !== 'completed' && review.capabilities.canDecide && (
+            <p className="text-xs text-muted-foreground">{format(m.reviewAwaitingYou)}</p>
+          )}
+        </div>
         {review.events.length === 0 ? (
           <p className="text-sm text-muted-foreground">—</p>
         ) : (
@@ -1053,7 +1077,76 @@ function MainColumn({
           </ol>
         )}
       </section>
+    </section>
+  )
+}
 
+/**
+ * What was actually filed, in the order it was asked for.
+ *
+ * The wider of the two middle columns, and the only one meant to scroll: a
+ * filing is worked down item by item, and everything else on the screen is
+ * there to be glanced at while doing it.
+ */
+function FilingColumn({
+  review,
+  comparing,
+  onCompare,
+  onVersions,
+}: {
+  review: ReviewDto
+  /** an earlier revision id, 'previous' for the one just before, or null */
+  comparing: string | null
+  onCompare: (next: string | null) => void
+  onVersions: () => void
+}) {
+  const { format } = useI18n()
+  // every field the question asks, files included and in their own places:
+  // a field that asks for a certificate is not "materials", it is the
+  // certificate, and folding it away left the reading order with a hole
+  const fields = fieldsOf(review.form.formConfig)
+  const record = (review.revision.payload ?? {}) as Record<string, unknown>
+  // the version being read against, resolved from the entry's own history;
+  // asked for only while a comparison is on
+  const history = useEntryHistory(review.entryId, comparing !== null)
+  const revisions = ((history.data as { revisions?: readonly HistoryRevision[] } | undefined)
+    ?.revisions ?? []) as readonly HistoryRevision[]
+  const earlier = revisions.filter((one) => one.revisionNo < review.revision.revisionNo)
+  const against =
+    comparing === null
+      ? null
+      : comparing === 'previous'
+        ? (earlier[earlier.length - 1] ?? null)
+        : (earlier.find((one) => one.id === comparing) ?? null)
+  const was = new Map<string, { value: string; ids: readonly string[] }>(
+    against === null
+      ? []
+      : valuesOf(against.formConfig, against.payload).map((v) => [v.key, v] as const),
+  )
+  const lingeringAgainst = useLingering(against)
+  const changes =
+    against === null
+      ? 0
+      : fields.filter((field) => (was.get(field.key)?.value ?? '') !== valueOf(record[field.key]))
+          .length
+  // The materials, numbered once across the whole filing in the order the
+  // questions ask for them - the same numbers the 1-9 keys open. A file
+  // taken out this version has no number: it is not one of the things to
+  // look at, it is a record of what used to be.
+  const slots = new Map(
+    fields
+      .filter((field) => field.type === 'attachment')
+      .flatMap((field) => idsOf(record[field.key]))
+      .map((attachmentId, index) => [attachmentId, index + 1]),
+  )
+  return (
+    <main className="flex min-w-0 flex-col gap-5 overflow-y-auto border-l p-5">
+      {/* reserved: machine reading arrives later, and the reading order
+          already keeps its place */}
+      <section className="flex flex-col gap-1.5 rounded-xl border border-dashed p-4">
+        <p className="text-sm font-medium">{format(m.reviewInsight)}</p>
+        <p className="text-sm text-muted-foreground">{format(m.reviewInsightSoon)}</p>
+      </section>
       <section className="flex flex-col gap-3">
         <div className="flex flex-col border-b pb-2">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -1234,13 +1327,6 @@ function MainColumn({
           </Button>
         </div>
       )}
-
-      {/* reserved: machine reading arrives later, and the reading order
-          already keeps its place */}
-      <section className="flex flex-col gap-1.5 rounded-xl border border-dashed p-4">
-        <p className="text-sm font-medium">{format(m.reviewInsight)}</p>
-        <p className="text-sm text-muted-foreground">{format(m.reviewInsightSoon)}</p>
-      </section>
     </main>
   )
 }
