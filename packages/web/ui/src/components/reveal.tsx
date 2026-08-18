@@ -256,6 +256,22 @@ export function DoneMark({ className }: { className?: string }) {
   )
 }
 
+// One mark shared by many rows: whichever row renders it, it is the same
+// element, so framer slides it there from wherever it last stood instead of
+// blinking out and in. For a selection that follows something - a scroll, a
+// keyboard - through a list.
+export function Mark({ id, className }: { id: string; className?: string }) {
+  const reduced = useReducedMotion() === true
+  return (
+    <motion.span
+      layoutId={id}
+      aria-hidden
+      className={className}
+      transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 550, damping: 45 }}
+    />
+  )
+}
+
 // Children arriving one after another rather than all at once.
 //
 // For a screen whose parts are read in order - a mark, then what it means,

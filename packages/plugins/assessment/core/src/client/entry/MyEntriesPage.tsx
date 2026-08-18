@@ -11,6 +11,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { cn } from '@qualy/ui/cn'
+import { Mark } from '@qualy/ui/reveal'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -518,6 +519,19 @@ function PaneScroller({ children }: { children: ReactNode }) {
   )
 }
 
+/** whether the reader asked for less motion, for the rail's own scrolling */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false)
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const read = () => setReduced(media.matches)
+    read()
+    media.addEventListener('change', read)
+    return () => media.removeEventListener('change', read)
+  }, [])
+  return reduced
+}
+
 /** the groups above a row, outermost first, with the ids that open them */
 const crumbsOf = (
   rows: readonly StructureRow[],
@@ -555,7 +569,17 @@ function Structure({
   onOpen: (id: string) => void
 }) {
   const { format } = useI18n()
+  const reduced = usePrefersReducedMotion()
   const [showing, setShowing] = useState<'all' | 'todo'>('all')
+  // the rail reads along: when the paper's scroll moves the mark, the rail
+  // scrolls its own list just enough to keep the marked row in view
+  const railRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (openId === null) return
+    railRef.current
+      ?.querySelector(`[data-rail-row="${openId}"]`)
+      ?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' })
+  }, [openId, reduced])
   // The summary card at the top IS the paper's root: when the round has one
   // top group holding everything, that group's name and numbers go up there
   // and the list starts straight at its children - a root row over children
@@ -603,7 +627,7 @@ function Structure({
   return (
     // its own column now: the page's index, scrolling inside itself beside
     // the paper, one section of the page above it when the two stack
-    <div className="relative flex min-w-0 flex-col lg:min-h-0">
+    <div ref={railRef} className="relative flex min-w-0 flex-col lg:min-h-0">
       <div className="flex h-12 shrink-0 items-center border-b px-4">
         <p className="text-sm font-semibold">{format(m.paperStructure)}</p>
       </div>
@@ -679,14 +703,24 @@ function Structure({
                   <li key={row.id}>
                     <button
                       type="button"
+                      data-rail-row={row.id}
                       onClick={() => onOpen(row.id)}
                       style={{ paddingLeft: `${depth * 14 + 10}px` }}
                       className={cn(
-                        'relative flex w-full items-center gap-2 rounded-lg py-1.5 pr-2.5 text-left transition-colors',
-                        openId === row.id ? 'bg-accent' : 'hover:bg-accent/50',
+                        'relative isolate flex w-full items-center gap-2 rounded-lg py-1.5 pr-2.5 text-left transition-colors',
+                        openId !== row.id && 'hover:bg-accent/50',
                         row.kind === 'group' && row.depth === 0 && index > 0 && 'mt-1',
                       )}
                     >
+                      {/* one mark, moving: the same accent a click leaves,
+                          sliding to whichever row the paper has brought
+                          under the toolbar instead of blinking row to row */}
+                      {openId === row.id && (
+                        <Mark
+                          id="rail-mark"
+                          className="absolute inset-0 -z-10 rounded-lg bg-accent"
+                        />
+                      )}
                       {/* the joints of the tree: an elbow into this row, and the
                       sibling line running past it while siblings remain */}
                       {showing === 'all' && depth > 0 && (

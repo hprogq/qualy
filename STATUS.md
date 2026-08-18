@@ -5946,3 +5946,16 @@ catalogs 7 passed。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
+
+### 试卷页三处再优化(2026-08-18)
+
+- **评分依据占位框恢复**(用户裁决:关联功能即将落地,座位留着),白底与题干浅底区分。
+- **题干与申报两半区分**:左半题干加 `bg-muted/30` 浅底——试卷的题干栏着色、作答区留白,
+  一眼分清哪边是题哪边是答。
+- **卷面结构跟随滚动**:纸面滚动把高亮移到新行时,左栏自身也 `scrollIntoView(nearest)` 把该行
+  保进视野(prefers-reduced-motion 时瞬移);高亮块改为 framer `layoutId` 共享元素——新增
+  @qualy/ui/reveal 的 `Mark` 原语(动效词汇留在 ui 包,插件不直接依赖 motion),同一块
+  accent 在行间滑动而不是逐行闪烁,spring 550/45,reduced 时零时长。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。

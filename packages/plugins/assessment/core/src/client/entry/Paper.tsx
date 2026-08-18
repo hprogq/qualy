@@ -270,7 +270,7 @@ function Question({
     <div data-paper-row={row.id} className="scroll-mt-16 px-6 pb-3.5">
       <div className="grid overflow-hidden rounded-xl border bg-card lg:grid-cols-[23.5rem_minmax(0,1fr)]">
         {/* the question itself: what it asks, what it pays, the way in */}
-        <div className="flex min-w-0 flex-col gap-2.5 border-b p-4.5 lg:border-r lg:border-b-0">
+        <div className="flex min-w-0 flex-col gap-2.5 border-b bg-muted/30 p-4.5 lg:border-r lg:border-b-0">
           <div className="flex items-baseline gap-2.5">
             <span aria-hidden className="shrink-0 text-xs font-semibold text-muted-foreground">
               {no}
@@ -288,6 +288,14 @@ function Question({
           {terms.length > 0 && (
             <p className="text-xs leading-relaxed text-muted-foreground">{terms.join('，')}</p>
           )}
+          {/* the clause this question scores under; the association feature
+              takes this seat next */}
+          <p className="flex items-baseline gap-2 rounded-lg border bg-background px-2.5 py-1.5 text-xs">
+            <span className="shrink-0 text-muted-foreground">{format(m.myEntriesBasis)}</span>
+            <span className="min-w-0 truncate text-muted-foreground">
+              {format(m.myEntriesBasisSoon)}
+            </span>
+          </p>
           <span className="min-h-2 flex-1" />
           <div className="flex items-center gap-3">
             {!granted && !recorded && item.maxEntries !== null && (
