@@ -10,6 +10,7 @@ import {
 } from '@qualy/ui/breadcrumb'
 import { Button } from '@qualy/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from '@qualy/ui/empty'
+import { Reveal, Stagger } from '@qualy/ui/reveal'
 import { cn } from '@qualy/ui/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { CheckIcon, ChevronRightIcon, FileTextIcon, PlusIcon } from 'lucide-react'
@@ -223,33 +224,35 @@ export function ItemDetail({
           </div>
 
           {live.length === 0 && (
-            <Empty className="min-h-64 flex-1 rounded-xl border border-dashed">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <FileTextIcon aria-hidden />
-                </EmptyMedia>
-                <EmptyDescription>
-                  {format(recorded ? m.myEntriesRecordedNone : m.myEntriesNoneYet)}
-                </EmptyDescription>
-              </EmptyHeader>
-              {/* the way in stands under the sentence that explains it */}
-              <EmptyContent>
-                {/* quieter than the toolbar's own: the bar keeps the one
+            <Reveal className="flex min-h-64 flex-1 flex-col">
+              <Empty className="min-h-64 flex-1 rounded-xl border border-dashed">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <FileTextIcon aria-hidden />
+                  </EmptyMedia>
+                  <EmptyDescription>
+                    {format(recorded ? m.myEntriesRecordedNone : m.myEntriesNoneYet)}
+                  </EmptyDescription>
+                </EmptyHeader>
+                {/* the way in stands under the sentence that explains it */}
+                <EmptyContent>
+                  {/* quieter than the toolbar's own: the bar keeps the one
                     primary way in, and this one is the same door offered
                     where the eye already is */}
-                <FileButton
-                  item={item}
-                  entries={entries}
-                  granted={granted}
-                  declared={declared}
-                  busy={busy}
-                  hasDraft={false}
-                  variant="outline"
-                  onFile={() => onFile(null)}
-                  onDeclare={onDeclare}
-                />
-              </EmptyContent>
-            </Empty>
+                  <FileButton
+                    item={item}
+                    entries={entries}
+                    granted={granted}
+                    declared={declared}
+                    busy={busy}
+                    hasDraft={false}
+                    variant="outline"
+                    onFile={() => onFile(null)}
+                    onDeclare={onDeclare}
+                  />
+                </EmptyContent>
+              </Empty>
+            </Reveal>
           )}
           {live.length > 0 && listed.length === 0 && (
             <p className="text-sm text-muted-foreground">{format(m.myEntriesFilterNone)}</p>
@@ -260,7 +263,11 @@ export function ItemDetail({
               the dashed card at the end holds the next place - or says the
               places are gone - so capacity is read where claims are read. */}
           {listed.length > 0 && (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-stretch gap-3">
+            <Stagger
+              key={`${item.id}:${showing}`}
+              step={0.05}
+              className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-stretch gap-3"
+            >
               {listed.map((entry) => (
                 <ClaimCard
                   key={entry.id}
@@ -283,7 +290,7 @@ export function ItemDetail({
                   onDeclare={onDeclare}
                 />
               )}
-            </div>
+            </Stagger>
           )}
         </div>
 

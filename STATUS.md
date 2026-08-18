@@ -5888,3 +5888,17 @@ entry-workflow 的成绩用例改为两位小数与合成限额行断言,ambient
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿;catalogs 7 passed。
+
+### 我的填报补动效(2026-08-18)
+
+沿用 @qualy/ui/reveal 的既有动效词汇,三处,全部尊重 prefers-reduced-motion:
+
+- **条目卡 Stagger 入场**(step 0.05,key 为「题目 id + 筛选页签」):换题或换页签是重新阅读的
+  时刻,卡片按序到场;同 key 重渲染不重播。虚线占位卡作为最后一个子级一并入列。
+- **申报详情抽屉页签 Swap**:填写内容 ↔ 审核经过 原位交叉淡入,替换可见而非闪切。
+- **空态卡 Reveal**:淡入上移一次,不表演。
+
+Drill(换题的整面转场)与 Sheet 自身的进出场此前已有,不重复叠加。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。

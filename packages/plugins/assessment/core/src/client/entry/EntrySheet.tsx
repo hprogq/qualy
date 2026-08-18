@@ -15,6 +15,7 @@ import {
 } from '@qualy/ui/breadcrumb'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
+import { Swap } from '@qualy/ui/reveal'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -163,7 +164,8 @@ export function EntrySheet({
         </div>
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-5 px-5 py-4">
+          {/* the two tabs replace each other in place, seen to change */}
+          <Swap swapKey={tab} className="flex flex-col gap-5 px-5 py-4">
             {tab === 'trail' ? (
               <EntryTrail entryId={entry.id} />
             ) : (
@@ -350,7 +352,7 @@ export function EntrySheet({
                 ))}
               </>
             )}
-          </div>
+          </Swap>
         </ScrollArea>
 
         {/* The acts, once, where the whole claim is on screen: quitting on
