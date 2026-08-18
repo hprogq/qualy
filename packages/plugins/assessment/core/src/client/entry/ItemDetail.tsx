@@ -1,44 +1,32 @@
+import { useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
-import { AlertCircleIcon, PlusIcon } from 'lucide-react'
+import { ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { assessmentMessages as m } from '../i18n.ts'
-import { entryRefusalReason } from './refusals.ts'
-import { AttachmentLink } from './AttachmentLink.tsx'
-import { Basis } from './Basis.tsx'
-import {
-  entryStatusMessage,
-  fieldsOf,
-  trimAmount,
-  type ActionAvailability,
-  type EntryDto,
-  type ItemDto,
-} from './model.ts'
+import { EntryStanding } from './EntryStanding.tsx'
+import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
 import {
   chainLength,
   eachWorth,
   entryScore,
   itemScore,
   mayFile,
-  roomLeft,
   type Standing,
   type StructureRow,
 } from './standing.ts'
 
 // One question, and what this person has put into it.
 //
-// The question's own terms come first - what a claim is worth, how many are
-// allowed, how many people have to agree - because those are what decide
-// whether it is worth filing another. Then the claims themselves, each shown
-// as the answers that were given rather than as a row to expand.
-//
-// Every claim is the same card, draft or filed. A draft is not a different
-// kind of thing - it is this claim, before it was handed on - so it keeps the
-// frame, the field layout and the row of actions, and says what it is with a
-// dashed edge, a paler ground and a hollow dot. Two shapes made the reader
-// learn twice where to look for the same answer.
+// The question's terms read as one sentence under its name; what the round
+// has granted from it stands at the right with the places used. The claims
+// are cards that say just enough to be told apart - the designated list
+// fields and one line for everything else - because the whole claim, its
+// account and its acts live in the drawer one press away. A card that tried
+// to say everything ended up a page per claim, and comparing two claims
+// meant reading two pages.
 
 export function ItemDetail({
   row,
@@ -47,10 +35,7 @@ export function ItemDetail({
   busy,
   onFile,
   onDeclare,
-  onHistory,
-  onStatus,
-  onAppeal,
-  onSupplement,
+  onDetail,
 }: {
   row: StructureRow
   entries: readonly EntryDto[]
@@ -59,13 +44,11 @@ export function ItemDetail({
   onFile: (entry: EntryDto | null) => void
   /** a declaration's one press: file and hand on, no dialog */
   onDeclare: () => void
-  onHistory: (entryId: string) => void
-  onStatus: (entryId: string, status: 'in_review' | 'draft' | 'voided') => void
-  onAppeal: (entry: EntryDto) => void
-  /** answering the reviewer's ask for more material */
-  onSupplement: (entry: EntryDto) => void
+  /** the drawer that holds the whole claim */
+  onDetail: (entry: EntryDto) => void
 }) {
   const { format } = useI18n()
+  const [showing, setShowing] = useState<'all' | 'todo' | 'done'>('all')
   const item = row.item
   if (item === undefined) return null
 
@@ -74,125 +57,86 @@ export function ItemDetail({
       '',
   ).trim()
   const each = eachWorth(item)
-  const room = roomLeft(item, entries)
   const steps = chainLength(item)
   const live = entries.filter((entry) => entry.status !== 'voided')
-  // counted separately only to say how many of each there are; they are all
-  // drawn as the same card, in the order they were filed
-  const drafts = live.filter(
-    (entry) => entry.status === 'draft' || entry.status === 'needs_revision',
-  )
   const filed = live.filter(
     (entry) => entry.status !== 'draft' && entry.status !== 'needs_revision',
   )
-  const draft = drafts[0]
+  const done = live.filter((entry) => entry.status === 'approved')
+  const todo = live.filter((entry) => entry.status !== 'approved')
   const counted = itemScore(standing, item.id)
-  // Recording takes effect on the spot; the chain configured on the question
-  // is the way back in if somebody contests it, not a queue this claim sits
-  // in. Naming it here would tell the reader to wait for something that is
-  // not going to happen.
   const recorded = item.currentRevision?.entrySource === 'administrative'
-  // granted to everybody on the roster: nothing to file, nothing to wait for
   const granted = item.itemType === 'constant'
-  // declared, not composed: the press is the filing, so no dialog ever opens
   const declared = item.itemType === 'declaration'
+  // the group this question scores into, for the rail that says where
+  const group = standing?.groups.find((one) => one.groupId === row.parentId) ?? null
+
+  // the question's terms as one readable line, not a row of chips: what one
+  // claim is worth, how many fit, who has to agree
+  const headParts = [
+    each !== undefined ? format(m.myEntriesHeadEach, { value: trimAmount(each) }) : null,
+    granted
+      ? format(m.myEntriesGranted)
+      : item.maxEntries !== null
+        ? format(m.myEntriesHeadMost, { count: item.maxEntries })
+        : null,
+    recorded
+      ? format(m.myEntriesRecorded)
+      : steps > 0
+        ? format(m.myEntriesHeadSteps, { count: steps })
+        : null,
+  ].filter((part): part is string => part !== null)
+
+  const listed = showing === 'all' ? live : showing === 'done' ? done : todo
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="flex min-w-0 flex-col gap-2">
+    <div className="flex flex-col gap-4">
+      {/* the title bar: where this stands in the paper, what it is, and the
+          two numbers that say how much of it is already spent */}
+      <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-1">
           {row.trail.length > 0 && (
             <p className="truncate text-xs text-muted-foreground">{row.trail.join(' › ')}</p>
           )}
-          <h2 className="min-w-0 text-xl font-semibold tracking-tight">{item.title}</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            {each !== undefined && (
-              <Badge variant="secondary" className="font-normal">
-                {format(m.entryCountsFor, { value: trimAmount(each) })}
-              </Badge>
-            )}
-            {granted ? (
-              <Badge variant="outline" className="font-normal">
-                {format(m.myEntriesGranted)}
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="font-normal">
-                {item.maxEntries === null
-                  ? format(m.itemsPreviewNoMax)
-                  : format(m.myEntriesRoom, { most: item.maxEntries, used: live.length })}
-              </Badge>
-            )}
-            {steps > 0 && !recorded && (
-              <Badge variant="secondary" className="font-normal">
-                {format(m.myEntriesChain, { count: steps })}
-              </Badge>
-            )}
-            {recorded && (
-              <Badge variant="outline" className="font-normal">
-                {format(m.myEntriesRecorded)}
-              </Badge>
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1">
+            <h2 className="min-w-0 text-lg font-semibold tracking-tight">{item.title}</h2>
+            {headParts.length > 0 && (
+              <p className="min-w-0 truncate text-xs text-muted-foreground">
+                {headParts.join('，')}
+              </p>
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-4">
-          {/* what this question has actually granted, beside the way to add
-              to it: the claims below each carry their own number, and this is
-              the one they add up to */}
-          {counted !== null && (
-            <span className="flex flex-col gap-0.5 text-right">
-              <span className="text-xs whitespace-nowrap text-muted-foreground">
-                {format(m.itemCounted)}
+        <span className="flex-1" />
+        <div className="flex shrink-0 items-center gap-5">
+          {!granted && !recorded && item.maxEntries !== null && (
+            <span className="flex flex-col items-end gap-1">
+              <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+                <span className="text-xs text-muted-foreground">{format(m.myEntriesQuota)}</span>
+                <span className="text-sm tabular-nums">
+                  {filed.length} / {item.maxEntries}
+                </span>
               </span>
-              <span className="text-lg leading-none font-semibold tabular-nums">
-                {trimAmount(counted)}
+              <span className="block h-0.75 w-16 overflow-hidden rounded-full bg-muted">
+                <span
+                  className="block h-full rounded-full bg-foreground"
+                  style={{
+                    width: `${Math.min(100, Math.round((filed.length / item.maxEntries) * 100))}%`,
+                  }}
+                />
               </span>
             </span>
           )}
-          {/* One way in, whatever is already filed: an unfinished draft is
-              picked up from its own card below, which is where it is being
-              read. A question whose places are full keeps the button,
-              disabled with the reason on hover - a control that vanishes
-              reads as a page that lost something. Questions that were never
-              this person's to file show nothing. */}
-          {granted ? null : declared ? (
-            mayFile(item, entries) && draft === undefined ? (
-              <Button className="shrink-0" disabled={busy} onClick={onDeclare}>
-                <PlusIcon aria-hidden />
-                {format(m.entryDeclare)}
-              </Button>
-            ) : null
-          ) : mayFile(item, entries) ? (
-            <Button className="shrink-0" onClick={() => onFile(null)}>
-              <PlusIcon aria-hidden />
-              {format(m.entryNew)}
-            </Button>
-          ) : (
-            item.status === 'active' &&
-            item.currentRevision?.entrySource === 'student' &&
-            (roomLeft(item, entries) ?? 1) <= 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  {/* a disabled button swallows pointer events, so the span
-                      around it is what the tooltip listens to */}
-                  <TooltipTrigger asChild>
-                    <span tabIndex={0} className="shrink-0">
-                      <Button disabled className="pointer-events-none">
-                        <PlusIcon aria-hidden />
-                        {format(m.entryNew)}
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{format(m.refuseMaxEntries)}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )
-          )}
+          <span className="flex flex-col items-end gap-0.5">
+            <span className="text-xs whitespace-nowrap text-muted-foreground">
+              {format(m.myEntriesCountedHere)}
+            </span>
+            <span className="text-lg leading-none font-semibold tabular-nums">
+              {two(counted ?? '0')}
+            </span>
+          </span>
         </div>
       </div>
-
-      {description !== '' && <p className="text-sm leading-relaxed text-pretty">{description}</p>}
-
-      <Basis />
 
       {item.status === 'voided' && (
         <p className="rounded-lg bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
@@ -200,110 +144,196 @@ export function ItemDetail({
         </p>
       )}
 
-      <div className="flex items-baseline justify-between gap-3 border-b pb-2">
-        <h3 className="text-sm font-semibold">
-          {format(recorded ? m.myEntriesRecordedFiled : m.myEntriesFiled)}
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          {recorded
-            ? format(m.myEntriesRows, { count: filed.length })
-            : format(m.myEntriesFiledCount, {
-                filed: filed.length,
-                drafts: drafts.length,
-                room: room ?? -1,
-              })}
-        </p>
-      </div>
-
-      {live.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          {format(recorded ? m.myEntriesRecordedNone : m.myEntriesNoneYet)}
-        </p>
-      )}
-
-      {/* Cards, two abreast where the pane is wide enough: four claims fit
-          one screen instead of a scroll, and comparing two of them stops
-          meaning holding one in your head. One column again below that -
-          squeezed cards truncate the very answers they exist to show. */}
-      {live.length > 0 && (
-        <div className="grid items-start gap-4 xl:grid-cols-2">
-          {live.map((entry) => (
-            <FiledEntry
-              key={entry.id}
-              entry={entry}
+      {/* claims on the left, the question's own terms on the right: the
+          reference column keeps out of the reading column's way */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_15.5rem] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 border-b pb-2">
+            {live.length > 0 && (
+              <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">
+                {(
+                  [
+                    ['all', m.myEntriesClaimsAll, live.length],
+                    ['todo', m.myEntriesClaimsTodo, todo.length],
+                    ['done', m.myEntriesClaimsDone, done.length],
+                  ] as const
+                ).map(([key, label, count]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setShowing(key)}
+                    className={cn(
+                      'inline-flex h-6 items-center gap-1 rounded-md px-2.5 whitespace-nowrap',
+                      showing === key
+                        ? 'bg-background font-medium shadow-sm'
+                        : 'text-muted-foreground',
+                    )}
+                  >
+                    {format(label)}
+                    <span className="tabular-nums">{count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <span className="flex-1" />
+            {live.length > 0 && (
+              <p className="text-xs whitespace-nowrap text-muted-foreground">
+                {format(m.myEntriesClaimsNote, { todo: todo.length, done: done.length })}
+              </p>
+            )}
+            <FileButton
               item={item}
-              score={entryScore(standing, entry.id) ?? (each === undefined ? null : each)}
+              entries={entries}
+              granted={granted}
+              declared={declared}
               busy={busy}
-              onHistory={() => onHistory(entry.id)}
-              onEdit={() => onFile(entry)}
-              onStatus={(status) => onStatus(entry.id, status)}
-              onAppeal={() => onAppeal(entry)}
-              onSupplement={() => onSupplement(entry)}
+              hasDraft={live.some((entry) => entry.status === 'draft')}
+              onFile={() => onFile(null)}
+              onDeclare={onDeclare}
             />
-          ))}
+          </div>
+
+          {live.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              {format(recorded ? m.myEntriesRecordedNone : m.myEntriesNoneYet)}
+            </p>
+          )}
+          {live.length > 0 && listed.length === 0 && (
+            <p className="text-sm text-muted-foreground">{format(m.myEntriesFilterNone)}</p>
+          )}
+
+          {/* two abreast where the pane is wide enough: four claims fit one
+              screen, and comparing two stops meaning holding one in your head */}
+          {listed.length > 0 && (
+            <div className="grid items-stretch gap-3 xl:grid-cols-2">
+              {listed.map((entry) => (
+                <ClaimCard
+                  key={entry.id}
+                  entry={entry}
+                  item={item}
+                  score={entryScore(standing, entry.id) ?? (each === undefined ? null : each)}
+                  onOpen={() => onDetail(entry)}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* what the question is and how it scores, kept beside the claims:
+            reading a claim against the rule should not cost a journey */}
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
+          <div className="flex flex-col gap-2 rounded-xl bg-muted/60 px-3.5 py-3">
+            <p className="text-sm font-semibold">{format(m.itemDescTitle)}</p>
+            {description !== '' && (
+              <p className="text-sm leading-relaxed text-pretty">{description}</p>
+            )}
+            <p
+              className={cn(
+                'text-xs leading-relaxed text-pretty text-muted-foreground',
+                description !== '' && 'border-t pt-2',
+              )}
+            >
+              {format(m.myEntriesBasisSoon)}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 border-t pt-3">
+            <p className="text-sm font-semibold">{format(m.itemScoringTitle)}</p>
+            {each !== undefined && <ScoreRow label={format(m.itemScoreEach)} value={two(each)} />}
+            {each !== undefined && item.maxEntries !== null && (
+              <ScoreRow
+                label={format(m.itemScoreMaxHere)}
+                value={two(String(Number(each) * item.maxEntries))}
+              />
+            )}
+            {group !== null && (
+              <ScoreRow
+                label={format(m.itemGroupSubtotal, { group: group.name })}
+                value={two(group.final)}
+              />
+            )}
+            {group?.cap != null && (
+              <ScoreRow
+                label={format(m.itemGroupCapNamed, { group: group.name })}
+                value={two(group.cap)}
+              />
+            )}
+          </div>
+        </aside>
+      </div>
     </div>
   )
 }
 
-/** one claim, shown as the answers that were given */
-function FiledEntry({
+/** one scoring fact, ruled across to its number */
+function ScoreRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline gap-2 text-sm">
+      <span className="min-w-0 truncate text-muted-foreground">{label}</span>
+      <span aria-hidden className="h-px min-w-0 flex-1 bg-border" />
+      <span className="shrink-0 tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+/** amounts on this screen speak with two decimals, the way the ledger does */
+const two = (value: string): string => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : value
+}
+
+/**
+ * One claim, as just enough to be told apart: its standing, when, why it
+ * came back, what it is worth, the designated list fields, and one row that
+ * is the way into everything else.
+ */
+function ClaimCard({
   entry,
   item,
   score,
-  busy,
-  onHistory,
-  onEdit,
-  onStatus,
-  onAppeal,
-  onSupplement,
+  onOpen,
 }: {
   entry: EntryDto
   item: ItemDto
   score: string | null
-  busy: boolean
-  onHistory: () => void
-  onEdit: () => void
-  onStatus: (status: 'in_review' | 'draft' | 'voided') => void
-  onAppeal: () => void
-  onSupplement: () => void
+  onOpen: () => void
 }) {
   const { format } = useI18n()
-  const declared = item.itemType === 'declaration'
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const tone = toneOf(entry)
   const revisionNo = entry.currentRevision?.revisionNo
+  // the designated list fields; until the question names them, its first
+  // three stand in - the drawer always has the rest
+  const shown = fields.slice(0, 3)
+  const more = fields.length - shown.length
 
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-col gap-3 rounded-xl border p-4',
+        'flex min-w-0 flex-col gap-2.5 rounded-xl border p-3.5',
         tone === 'draft' ? 'border-dashed bg-muted/30' : 'bg-card',
         tone === 'attention' && 'border-destructive/35',
       )}
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Standing
+      <div className="flex min-w-0 items-center gap-2">
+        <EntryStanding
           status={entry.status}
           revised={entry.currentReviewInstanceId !== null}
           asked={entry.supplement !== null}
         />
-        {revisionNo !== undefined && entry.status !== 'draft' && (
-          <p className="text-xs whitespace-nowrap text-muted-foreground">
-            {format(m.entryVersionNo, { no: revisionNo })}
-          </p>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground tabular-nums">
+          {entry.status === 'draft' || revisionNo === undefined
+            ? format(m.entryDraftSavedFoot, { at: when(entry) })
+            : `${format(m.entryVersionNo, { no: revisionNo })}　${when(entry)}`}
+        </span>
+        {entry.refusal?.reason != null && (
+          <span className="shrink-0 rounded-md bg-destructive/8 px-1.5 py-px text-xs whitespace-nowrap text-destructive">
+            {entry.refusal.reason}
+          </span>
         )}
-        <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-          {when(entry)}
-        </p>
-        <span className="flex-1" />
-        {/* A number on its own cannot say whether it is money in the bank or
-            an estimate. The word above it does, and only the granted one is
-            drawn in full ink. */}
         {score !== null && (
-          <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+          <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
             <span className="text-xs text-muted-foreground">
               {format(
                 tone === 'ok'
@@ -315,7 +345,7 @@ function FiledEntry({
             </span>
             <span
               className={cn(
-                'text-base tabular-nums',
+                'text-[15px] tabular-nums',
                 tone === 'ok' ? 'font-semibold' : 'font-medium text-muted-foreground',
               )}
             >
@@ -325,40 +355,25 @@ function FiledEntry({
         )}
       </div>
 
-      {/* The label column is fixed rather than sized to the longest label:
-          two cards side by side then read as one table, and the answers line
-          up across the pane instead of stepping in and out with whatever
-          each claim happened to be asked. Written answers stay on one line -
-          a card is for telling claims apart, and the whole text is one press
-          away in the history. */}
-      <dl className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-        {fields.map((field) => {
+      <dl className="flex flex-col gap-1.5">
+        {shown.map((field) => {
           const value = payload[field.key]
           return (
-            <div key={field.key} className="col-span-2 grid grid-cols-subgrid">
-              <dt className="min-w-0 [overflow-wrap:anywhere] text-muted-foreground">
+            <div key={field.key} className="flex min-w-0 items-baseline gap-2.5">
+              <dt className="w-16 shrink-0 truncate text-xs text-muted-foreground">
                 {field.label}
               </dt>
-              <dd className="min-w-0">
+              <dd className="min-w-0 flex-1 truncate text-sm">
                 {field.type === 'attachment' ? (
                   Array.isArray(value) && value.length > 0 ? (
-                    <span className="flex min-w-0 flex-col gap-1">
-                      {value.map((id) => (
-                        <AttachmentLink key={String(id)} attachmentId={String(id)} variant="line" />
-                      ))}
-                    </span>
+                    format(m.reviewFilesCount, { count: value.length })
                   ) : (
-                    <span className="text-muted-foreground">{format(m.entryFieldCleared)}</span>
+                    <span className="text-muted-foreground">{format(m.myEntriesFilesNone)}</span>
                   )
+                ) : typeof value === 'string' && value !== '' ? (
+                  value
                 ) : (
-                  <span
-                    className={cn('block truncate', field.type === 'date' && 'tabular-nums')}
-                    title={typeof value === 'string' && value !== '' ? value : undefined}
-                  >
-                    {typeof value === 'string' && value !== ''
-                      ? value
-                      : format(m.entryFieldCleared)}
-                  </span>
+                  <span className="text-muted-foreground">{format(m.entryFieldCleared)}</span>
                 )}
               </dd>
             </div>
@@ -366,155 +381,96 @@ function FiledEntry({
         })}
       </dl>
 
-      {/* Why it came back, on the claim it came back to. A status word on
-          its own is an instruction with the instruction missing: the reader
-          is being asked to do something and the sentence saying what is one
-          screen away in the account. Same shape as the request for material
-          below it, because from here they are the same kind of thing - work
-          handed back with a reason. */}
-      {entry.refusal !== null && (
-        <div className="flex flex-col gap-2 rounded-lg bg-muted p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <AlertCircleIcon aria-hidden className="size-4 shrink-0 text-destructive" />
-            <p className="text-sm font-medium">
-              {format(
-                entry.refusal.kind === 'rejected' ? m.entryRefusedTitle : m.entryReturnedTitle,
-              )}
-            </p>
-            {entry.refusal.reason !== null && (
-              <Badge variant="outline" className="font-normal">
-                {entry.refusal.reason}
-              </Badge>
-            )}
-          </div>
-          {(entry.refusal.comment ?? '') !== '' && (
-            <p className="border-l-2 border-destructive/30 pl-2.5 text-sm leading-relaxed text-pretty">
-              {entry.refusal.comment}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground">
-            {format(m.entryRefusedBy, {
-              who: entry.refusal.actorName ?? format(m.eventSomebody),
-              at: new Date(entry.refusal.at).toLocaleString(),
-            })}
-          </p>
-        </div>
-      )}
-
-      {/* The reviewer's ask, on the claim it is about: what they wrote in
-          full - it is an instruction, not a heading - then the pieces they
-          named, then the one press that answers it. */}
-      {entry.supplement !== null && (
-        <div className="flex flex-col gap-2.5 rounded-lg bg-muted p-3">
-          <div className="flex items-center gap-2">
-            <AlertCircleIcon aria-hidden className="size-4 shrink-0 text-destructive" />
-            <p className="min-w-0 flex-1 text-sm font-medium">{format(m.entrySupplementTitle)}</p>
-          </div>
-          <p className="border-l-2 border-destructive/30 pl-2.5 text-sm leading-relaxed text-pretty">
-            {entry.supplement.instructions}
-          </p>
-          {entry.supplement.requirements.length > 0 && (
-            <div className="flex flex-col gap-1.5 border-t pt-2.5">
-              <p className="text-xs text-muted-foreground">{format(m.supplementNeeds)}</p>
-              {entry.supplement.requirements.map((asked) => (
-                <span key={asked.key} className="flex items-center gap-2 text-sm">
-                  <span
-                    aria-hidden
-                    className="size-1 shrink-0 rounded-full bg-muted-foreground/50"
-                  />
-                  <span className="min-w-0 truncate">{asked.label}</span>
-                  <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                    {format(asked.kind === 'file' ? m.supplementAddFile : m.supplementAddText)}
-                  </span>
-                  {asked.required && (
-                    <span className="shrink-0 text-xs whitespace-nowrap text-destructive">
-                      {format(m.supplementPieceRequired)}
-                    </span>
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
-          <Button size="sm" className="self-stretch" disabled={busy} onClick={onSupplement}>
-            {format(m.entrySupplementAnswer)}
-          </Button>
-        </div>
-      )}
-
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
-        {/* a draft nobody has ever seen has no story to open yet */}
-        {(entry.status !== 'draft' || entry.currentReviewInstanceId !== null) && (
-          <Button variant="outline" size="sm" onClick={onHistory}>
-            {format(m.entryHistoryOpen)}
-          </Button>
-        )}
-        {!declared && (
-          <Offered
-            can={entry.capabilities.edit}
-            busy={busy}
-            label={format(entry.status === 'draft' ? m.myEntriesResume : m.entryEdit)}
-            onPress={onEdit}
-          />
-        )}
-        {/* a rejected filing may go back as it stands; the round said no to
-            the filing and the answer may be "look again" */}
-        <Offered
-          can={entry.capabilities.submit}
-          busy={busy}
-          label={format(entry.status === 'draft' ? m.entrySubmit : m.entryResubmit)}
-          onPress={() => onStatus('in_review')}
-        />
-        <Offered
-          can={entry.capabilities.withdraw}
-          busy={busy}
-          label={format(m.entryWithdraw)}
-          onPress={() => onStatus('draft')}
-        />
-        {/* two different things, offered as two: change the material and
-            submit again, or leave it and say the conclusion is wrong */}
-        <Offered
-          can={entry.capabilities.appeal}
-          busy={busy}
-          label={format(m.entryAppeal)}
-          onPress={onAppeal}
-        />
-        <Offered
-          can={entry.capabilities.abandon}
-          busy={busy}
-          tone="quiet"
-          label={format(m.entryAbandon)}
-          onPress={() => {
-            if (window.confirm(format(m.entryAbandonConfirm))) onStatus('voided')
-          }}
-        />
-      </div>
-
-      {/* the one sentence the card can say truthfully without the whole
-          story: where this claim is waiting, and on whom */}
-      {entry.supplement !== null ? (
-        <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
-          {format(m.entrySupplementAsked, {
-            at: new Date(entry.supplement.requestedAt).toLocaleString(),
-            who: entry.supplement.requestedByName ?? format(m.eventSomebody),
-          })}
-        </p>
-      ) : (
-        entry.status === 'draft' && (
-          <p className="text-xs text-muted-foreground">
-            {format(m.entryDraftSavedFoot, { at: when(entry) })}
-          </p>
-        )
-      )}
+      {/* the whole row is the way in: what the card has no room for is one
+          press away, never a maze of buttons on the card itself */}
+      <button
+        type="button"
+        onClick={onOpen}
+        className="mt-auto flex w-full cursor-pointer items-center gap-2.5 border-t pt-2 text-left"
+      >
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {more > 0
+            ? format(m.myEntriesMoreFields, { count: more })
+            : format(m.myEntriesNoMoreFields)}
+        </span>
+        <span className="shrink-0 text-xs font-medium whitespace-nowrap">
+          {format(m.myEntriesViewDetail)}
+        </span>
+        <ChevronRightIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      </button>
     </div>
   )
+}
+
+/** one way in, whatever is already filed; full places keep the button with
+    the reason on hover - a control that vanishes reads as a page that lost
+    something */
+function FileButton({
+  item,
+  entries,
+  granted,
+  declared,
+  busy,
+  hasDraft,
+  onFile,
+  onDeclare,
+}: {
+  item: ItemDto
+  entries: readonly EntryDto[]
+  granted: boolean
+  declared: boolean
+  busy: boolean
+  hasDraft: boolean
+  onFile: () => void
+  onDeclare: () => void
+}) {
+  const { format } = useI18n()
+  if (granted) return null
+  if (declared) {
+    return mayFile(item, entries) && !hasDraft ? (
+      <Button size="sm" className="shrink-0" disabled={busy} onClick={onDeclare}>
+        <PlusIcon aria-hidden />
+        {format(m.entryDeclare)}
+      </Button>
+    ) : null
+  }
+  if (mayFile(item, entries)) {
+    return (
+      <Button size="sm" className="shrink-0" onClick={onFile}>
+        <PlusIcon aria-hidden />
+        {format(m.entryNew)}
+      </Button>
+    )
+  }
+  if (
+    item.status === 'active' &&
+    item.currentRevision?.entrySource === 'student' &&
+    item.maxEntries !== null
+  ) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          {/* a disabled button swallows pointer events, so the span around
+              it is what the tooltip listens to */}
+          <TooltipTrigger asChild>
+            <span tabIndex={0} className="shrink-0">
+              <Button size="sm" disabled className="pointer-events-none">
+                <PlusIcon aria-hidden />
+                {format(m.entryNew)}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{format(m.refuseMaxEntries)}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+  return null
 }
 
 /**
  * What a claim's card looks like it is: granted, waiting on somebody else,
  * waiting on the reader, or not handed on yet.
- *
- * One value rather than a switch per detail, so the edge, the dot and the
- * word above the number cannot drift apart.
  */
 type CardTone = 'ok' | 'wait' | 'draft' | 'attention'
 
@@ -527,120 +483,10 @@ const toneOf = (entry: EntryDto): CardTone =>
         ? 'wait'
         : 'draft'
 
-/**
- * One act on one claim, in whatever state the server offered it: a button,
- * a disabled button with the reason on hover, or nothing. The reason is the
- * refusal vocabulary the error catalog already speaks.
- */
-function Offered({
-  can,
-  busy,
-  label,
-  size = 'sm',
-  tone,
-  onPress,
-}: {
-  can: ActionAvailability
-  busy: boolean
-  label: string
-  size?: 'sm' | 'default'
-  tone?: 'quiet'
-  onPress: () => void
-}) {
-  const { format } = useI18n()
-  if (can.state === 'hidden') return null
-  const button = (
-    <Button
-      variant="outline"
-      size={size}
-      disabled={busy || can.state === 'blocked'}
-      className={cn(
-        can.state === 'blocked' && 'pointer-events-none',
-        tone === 'quiet' && 'text-muted-foreground',
-      )}
-      onClick={onPress}
-    >
-      {label}
-    </Button>
-  )
-  if (can.state === 'available') return button
-  const why = can.reason === null ? null : entryRefusalReason(can.reason)
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span tabIndex={0}>{button}</span>
-        </TooltipTrigger>
-        <TooltipContent>{format(why ?? m.entryBlockedNow)}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
-
-/**
- * Where a claim stands, as a dot and a word.
- *
- * The dot carries the weight: filled and dark for what counts, hollow for a
- * draft nobody has been handed yet, red for whatever is waiting on the
- * reader. The pill's own edge follows, so a card can be read across the pane
- * without reading the word.
- */
-function Standing({
-  status,
-  revised,
-  asked,
-}: {
-  status: EntryDto['status']
-  revised?: boolean
-  /** a reviewer is waiting for material, which outranks "in review" */
-  asked?: boolean
-}) {
-  const { format } = useI18n()
-  const word =
-    asked === true
-      ? m.entryStatusAwaitingSupplement
-      : status === 'draft' && revised === true
-        ? // a draft with a round behind it is not a fresh draft: it exists
-          // because something was asked of it
-          m.entryStatusRevising
-        : entryStatusMessage[status]
-  const alert = asked === true || status === 'rejected' || status === 'needs_revision'
-  const hollow = status === 'draft' && asked !== true
-  return (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap',
-        alert && 'border-destructive/35 text-destructive',
-        hollow && 'text-muted-foreground',
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          'size-1.5 rounded-full',
-          hollow
-            ? 'border border-muted-foreground/50'
-            : alert
-              ? 'bg-destructive'
-              : status === 'approved'
-                ? 'bg-foreground'
-                : 'bg-muted-foreground/60',
-        )}
-      />
-      {format(word)}
-    </span>
-  )
-}
-
-/** the first answer this claim gave, which is how its owner recognises it */
-const summary = (entry: EntryDto, item: ItemDto): string => {
-  const fields = fieldsOf(item.currentRevision?.formConfig)
-  const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
-  const said = fields
-    .map((field) => payload[field.key])
-    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
-  return said.length === 0 ? item.title : said.join('　')
-}
-
 const when = (entry: EntryDto): string =>
-  new Date(entry.currentRevision?.createdAt ?? entry.createdAt).toLocaleString()
+  new Date(entry.currentRevision?.createdAt ?? entry.createdAt).toLocaleString(undefined, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })

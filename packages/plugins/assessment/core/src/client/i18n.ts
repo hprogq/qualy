@@ -1693,6 +1693,130 @@ const i18n = definePluginMessages({
       defaultMessage: 'Material requested',
     },
     entryVersionNo: { id: 'assessment/entry/version-no', defaultMessage: 'Version {no}' },
+    myEntriesHeadEach: {
+      id: 'assessment/my-entries/head-each',
+      defaultMessage: '{value} each',
+    },
+    myEntriesHeadMost: {
+      id: 'assessment/my-entries/head-most',
+      defaultMessage: 'up to {count}',
+    },
+    myEntriesHeadSteps: {
+      id: 'assessment/my-entries/head-steps',
+      defaultMessage: '{count, plural, one {# reviewer} other {# reviewers}}',
+    },
+    myEntriesQuota: {
+      id: 'assessment/my-entries/quota',
+      defaultMessage: 'Places used',
+    },
+    myEntriesCountedHere: {
+      id: 'assessment/my-entries/counted-here',
+      defaultMessage: 'Counted from this question',
+    },
+    myEntriesClaimsAll: {
+      id: 'assessment/my-entries/claims-all',
+      defaultMessage: 'All',
+    },
+    myEntriesClaimsTodo: {
+      id: 'assessment/my-entries/claims-todo',
+      defaultMessage: 'Open',
+    },
+    myEntriesClaimsDone: {
+      id: 'assessment/my-entries/claims-done',
+      defaultMessage: 'Approved',
+    },
+    myEntriesClaimsNote: {
+      id: 'assessment/my-entries/claims-note',
+      defaultMessage: '{todo, plural, other {# open}}, {done, plural, other {# approved}}',
+    },
+    myEntriesMoreFields: {
+      id: 'assessment/my-entries/more-fields',
+      defaultMessage: '{count, plural, other {# more fields not shown}}',
+    },
+    myEntriesNoMoreFields: {
+      id: 'assessment/my-entries/no-more-fields',
+      defaultMessage: 'Everything else is inside',
+    },
+    myEntriesViewDetail: {
+      id: 'assessment/my-entries/view-detail',
+      defaultMessage: 'View details',
+    },
+    myEntriesFilesNone: {
+      id: 'assessment/my-entries/files-none',
+      defaultMessage: 'Nothing uploaded yet',
+    },
+    myEntriesPaperCap: {
+      id: 'assessment/my-entries/paper-cap',
+      defaultMessage: 'Out of {value}',
+    },
+    myEntriesPaperMeta: {
+      id: 'assessment/my-entries/paper-meta',
+      defaultMessage: '{groups, plural, other {# groups}}, {items, plural, other {# questions}}',
+    },
+    myEntriesPaperUnit: {
+      id: 'assessment/my-entries/paper-unit',
+      defaultMessage: 'pts',
+    },
+    entrySheetTitle: {
+      id: 'assessment/entry-sheet/title',
+      defaultMessage: 'This claim',
+    },
+    entrySheetContent: {
+      id: 'assessment/entry-sheet/content',
+      defaultMessage: 'Filed content',
+    },
+    entrySheetTrail: {
+      id: 'assessment/entry-sheet/trail',
+      defaultMessage: 'Review account',
+    },
+    entrySheetContentCount: {
+      id: 'assessment/entry-sheet/content-count',
+      defaultMessage: '{count, plural, other {# fields}}',
+    },
+    entrySheetTrailCount: {
+      id: 'assessment/entry-sheet/trail-count',
+      defaultMessage: '{count, plural, other {# versions}}',
+    },
+    entrySheetOwn: {
+      id: 'assessment/entry-sheet/own',
+      defaultMessage: 'Filled in by me',
+    },
+    entrySheetSupHead: {
+      id: 'assessment/entry-sheet/sup-head',
+      defaultMessage: 'Added at the reviewer\u2019s request',
+    },
+    entrySheetSupNote: {
+      id: 'assessment/entry-sheet/sup-note',
+      defaultMessage: 'Round {round}, asked {asked}, answered {answered}',
+    },
+    entrySheetSupAsk: {
+      id: 'assessment/entry-sheet/sup-ask',
+      defaultMessage: 'What the reviewer asked for',
+    },
+    itemDescTitle: {
+      id: 'assessment/item/desc-title',
+      defaultMessage: 'About this question',
+    },
+    itemScoringTitle: {
+      id: 'assessment/item/scoring-title',
+      defaultMessage: 'Scoring details',
+    },
+    itemScoreEach: {
+      id: 'assessment/item/score-each',
+      defaultMessage: 'Per approved claim',
+    },
+    itemScoreMaxHere: {
+      id: 'assessment/item/score-max-here',
+      defaultMessage: 'At most from this question',
+    },
+    itemGroupSubtotal: {
+      id: 'assessment/item/group-subtotal',
+      defaultMessage: '{group} subtotal',
+    },
+    itemGroupCapNamed: {
+      id: 'assessment/item/group-cap-named',
+      defaultMessage: '{group} cap',
+    },
     itemCounted: { id: 'assessment/entry/item-counted', defaultMessage: 'Counted here' },
     // the claim's story, as one timeline
     entryTrailSubtitle: {

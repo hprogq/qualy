@@ -26,7 +26,7 @@ import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AppealDialog } from './AppealDialog.tsx'
 import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
-import { EntryHistory } from './EntryHistory.tsx'
+import { EntrySheet } from './EntrySheet.tsx'
 import { GroupDetail } from './GroupDetail.tsx'
 import { ItemDetail } from './ItemDetail.tsx'
 import { ROW_TAG, standingRows, type Standing, type StructureRow } from './standing.ts'
@@ -93,6 +93,7 @@ export default function MyEntriesPage() {
       {(batch) => (
         <Body
           batchId={batch.id}
+          batchName={batch.name}
           materialRange={batch.materialRange}
           selected={selected}
           onSelect={setSelected}
@@ -141,7 +142,7 @@ function Totals() {
     <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
       <Stat
         label={format(m.myEntriesCounted)}
-        value={standing.data === undefined ? '—' : trimAmount(standing.data.total)}
+        value={standing.data === undefined ? '—' : Number(standing.data.total).toFixed(2)}
         strong
       />
       <Stat
@@ -196,11 +197,13 @@ function Stat({
 
 function Body({
   batchId,
+  batchName,
   materialRange,
   selected,
   onSelect,
 }: {
   batchId: string
+  batchName: string
   materialRange: { start: string; end: string }
   /** which row of the structure is open, by id; '' is the first one that is */
   selected: string
@@ -224,7 +227,7 @@ function Body({
   // else names the claim being rewritten. The question itself is never
   // repeated here - `open` already says which one this is about.
   const [filing, setFiling] = useLayer('entry')
-  const [history, setHistory] = useLayer('history')
+  const [detail, setDetail] = useLayer('detail')
   const [appealing, setAppealing] = useState<EntryDto | null>(null)
   const lingeringAppeal = useLingering(appealing)
   const [answering, setAnswering] = useState<EntryDto | null>(null)
@@ -346,7 +349,22 @@ function Body({
               : ((entriesByItem.get(open.id) ?? []).find((one) => one.id === filing) ?? null),
         }
   const lingeringFiling = useLingering(writing)
-  const lingeringHistory = useLingering(history === '' ? null : history)
+  // the claim the drawer is holding, resolved from the address: a parameter
+  // naming a claim that is gone simply opens nothing
+  const detailed = (() => {
+    if (detail === '') return null
+    for (const [itemId, list] of entriesByItem) {
+      const found = list.find((one) => one.id === detail)
+      if (found !== undefined) {
+        const itemRow = rows.find((one) => one.id === itemId)
+        if (itemRow?.item !== undefined) {
+          return { entry: found, item: itemRow.item, trail: itemRow.trail }
+        }
+      }
+    }
+    return null
+  })()
+  const lingeringDetail = useLingering(detailed)
 
   return (
     <AsyncSection
@@ -387,6 +405,8 @@ function Body({
         <div className="flex flex-1 flex-col items-start gap-6 lg:flex-row">
           <Structure
             rows={rows}
+            batchName={batchName}
+            standing={(standing.data ?? null) as Standing | null}
             openId={open?.id ?? null}
             onOpen={onSelect}
             className={cn(chosen && 'max-lg:hidden')}
@@ -422,10 +442,7 @@ function Body({
                   busy={setStatus.isPending || declare.isPending}
                   onFile={(entry) => setFiling(entry?.id ?? 'new')}
                   onDeclare={() => declare.mutate({ itemId: open.id })}
-                  onHistory={setHistory}
-                  onStatus={(entryId, status) => setStatus.mutate({ entryId, status })}
-                  onAppeal={setAppealing}
-                  onSupplement={setAnswering}
+                  onDetail={(entry) => setDetail(entry.id)}
                 />
               </Drill>
             )}
@@ -454,12 +471,19 @@ function Body({
           }}
         />
       )}
-      {lingeringHistory !== null && (
-        <EntryHistory
-          open={history !== ''}
-          entryId={lingeringHistory}
-          itemTitle={titleOfEntry(rows, entriesByItem, lingeringHistory)}
-          onClose={() => setHistory('')}
+      {/* the drawer that holds the whole claim; its account is a tab inside */}
+      {lingeringDetail !== null && (
+        <EntrySheet
+          open={detailed !== null}
+          entry={detailed?.entry ?? lingeringDetail.entry}
+          item={lingeringDetail.item}
+          trail={lingeringDetail.trail}
+          busy={setStatus.isPending || declare.isPending}
+          onClose={() => setDetail('')}
+          onEdit={() => setFiling(lingeringDetail.entry.id)}
+          onStatus={(status) => setStatus.mutate({ entryId: lingeringDetail.entry.id, status })}
+          onAppeal={() => setAppealing(lingeringDetail.entry)}
+          onSupplement={() => setAnswering(lingeringDetail.entry)}
         />
       )}
       {lingeringAppeal?.currentReviewInstanceId != null && (
@@ -487,20 +511,6 @@ function Body({
       )}
     </AsyncSection>
   )
-}
-
-/** the question a claim answers, for the panel that tells the claim's story */
-const titleOfEntry = (
-  rows: readonly StructureRow[],
-  entriesByItem: ReadonlyMap<string, readonly EntryDto[]>,
-  entryId: string,
-): string | undefined => {
-  for (const [itemId, entries] of entriesByItem) {
-    if (entries.some((entry) => entry.id === entryId)) {
-      return rows.find((row) => row.id === itemId)?.name
-    }
-  }
-  return undefined
 }
 
 /**
@@ -538,11 +548,15 @@ function useMove(rows: readonly StructureRow[], openId: string | null): DrillMov
  */
 function Structure({
   rows,
+  batchName,
+  standing,
   openId,
   onOpen,
   className,
 }: {
   rows: readonly StructureRow[]
+  batchName: string
+  standing: Standing | null
   openId: string | null
   onOpen: (id: string) => void
   /** whether this pane is the one showing, where only one of the two is */
@@ -550,13 +564,52 @@ function Structure({
 }) {
   const { format } = useI18n()
   const [showing, setShowing] = useState<'all' | 'todo'>('all')
-  const questions = rows.filter((row) => row.kind === 'item').length
-  const todo = rows.filter((row) => row.todo).length
+  // The summary card at the top IS the paper's root: when the round has one
+  // top group holding everything, that group's name and numbers go up there
+  // and the list starts straight at its children - a root row over children
+  // saying the same thing said it twice. Papers with several top groups
+  // have no single root to lift, so the batch stands in.
+  const root =
+    rows.length > 0 &&
+    rows[0]!.kind === 'group' &&
+    rows.filter((row) => row.depth === 0).length === 1
+      ? rows[0]!
+      : null
+  const body = root === null ? rows : rows.slice(1).map((row) => ({ ...row, depth: row.depth - 1 }))
+  const questions = body.filter((row) => row.kind === 'item').length
+  const todo = body.filter((row) => row.todo).length
   // narrowed to what is outstanding, the sections above it are scaffolding
   // for rows that are no longer there
-  const listed = showing === 'all' ? rows : rows.filter((row) => row.todo)
+  const listed = showing === 'all' ? body : body.filter((row) => row.todo)
   // stops at the page's own bottom padding rather than running into it
   const [measure, height] = useRestOfTheScroller(24, 240)
+
+  // the card's numbers: the root group's own ledger, or the paper-wide sum
+  const capSum =
+    root !== null && root.cap != null && root.cap !== ''
+      ? Number(root.cap)
+      : body
+          .filter((row) => row.kind === 'group' && row.depth === 0)
+          .reduce((sum, row) => sum + (row.cap == null || row.cap === '' ? 0 : Number(row.cap)), 0)
+  const got =
+    root !== null && root.right !== ''
+      ? Number(root.right)
+      : standing === null
+        ? 0
+        : Number(standing.total)
+  const groupCount = body.filter((row) => row.kind === 'group' && row.depth === 0).length
+
+  // Which rows still have a sibling below them at their own depth, and which
+  // open a subtree: the connector lines are drawn per row from these two
+  // facts, the way a file tree draws them.
+  const joints = listed.map((row, index) => {
+    const after = listed.slice(index + 1).find((one) => one.depth <= row.depth)
+    const next = listed[index + 1]
+    return {
+      last: after === undefined || after.depth < row.depth,
+      hasKids: next !== undefined && next.depth > row.depth,
+    }
+  })
 
   return (
     // the structure is the page's index, so it stays put and scrolls inside
@@ -582,57 +635,162 @@ function Structure({
           {format(m.myEntriesQuestions, { count: questions })}
         </p>
       </div>
+
+      {/* the round in one card over the list of it: its name, what it has
+          granted, and how much paper there is */}
+      <div className="flex shrink-0 flex-col gap-2 rounded-xl border bg-muted/40 px-3 py-2.5">
+        <div className="flex items-baseline gap-2">
+          <span className="min-w-0 truncate text-xs font-semibold">{root?.name ?? batchName}</span>
+          <span className="flex-1" />
+          <span className="shrink-0 text-[17px] leading-none font-semibold tabular-nums">
+            {got.toFixed(2)}
+          </span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {format(m.myEntriesPaperUnit)}
+          </span>
+        </div>
+        {capSum > 0 && (
+          <span className="block h-0.75 overflow-hidden rounded-full bg-border">
+            <span
+              className="block h-full rounded-full bg-foreground"
+              style={{ width: `${Math.min(100, Math.round((got / capSum) * 100))}%` }}
+            />
+          </span>
+        )}
+        <div className="flex items-baseline gap-2 text-[11px] text-muted-foreground">
+          {capSum > 0 && (
+            <span className="shrink-0 whitespace-nowrap">
+              {format(m.myEntriesPaperCap, { value: capSum.toFixed(0) })}
+            </span>
+          )}
+          <span className="flex-1" />
+          <span className="shrink-0 whitespace-nowrap">
+            {format(m.myEntriesPaperMeta, { groups: groupCount, items: questions })}
+          </span>
+        </div>
+      </div>
+
       {listed.length === 0 ? (
         <p className="rounded-xl border px-3 py-4 text-sm text-muted-foreground">
           {format(m.myEntriesFilterNone)}
         </p>
       ) : (
-        <ul className="relative flex min-h-0 flex-col gap-0.5 overflow-y-auto rounded-xl border p-1.5 lg:flex-1">
-          {listed.map((row) => (
-            <li key={row.id}>
-              <button
-                type="button"
-                onClick={() => onOpen(row.id)}
-                style={{
-                  paddingLeft: `${(showing === 'all' ? row.depth : 0) * 0.875 + 0.625}rem`,
-                }}
-                className={cn(
-                  'flex w-full items-center gap-2 rounded-lg border-l-2 py-1.5 pr-2.5 text-left transition-colors',
-                  openId === row.id
-                    ? 'border-l-foreground bg-accent'
-                    : 'border-l-transparent hover:bg-accent/50',
-                )}
-              >
-                {row.kind === 'group' ? (
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">{row.name}</span>
-                ) : (
-                  <>
+        <ul className="relative flex min-h-0 flex-col overflow-y-auto rounded-xl border p-1.5 lg:flex-1">
+          {listed.map((row, index) => {
+            const depth = showing === 'all' ? row.depth : 0
+            const joint = joints[index]!
+            const hollow = row.tag === 'open' || row.tag === 'voided'
+            const alert = row.todo && (row.tag === 'needs_revision' || row.tag === 'draft')
+            const capNum =
+              row.cap === null || row.cap === undefined || row.cap === '' ? 0 : Number(row.cap)
+            const gotNum = row.right === '' ? 0 : Number(row.right)
+            return (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpen(row.id)}
+                  style={{ paddingLeft: `${depth * 14 + 10}px` }}
+                  className={cn(
+                    'relative flex w-full items-center gap-2 rounded-lg py-1.5 pr-2.5 text-left transition-colors',
+                    openId === row.id ? 'bg-accent' : 'hover:bg-accent/50',
+                    row.kind === 'group' && row.depth === 0 && index > 0 && 'mt-1',
+                  )}
+                >
+                  {/* the joints of the tree: an elbow into this row, and the
+                      sibling line running past it while siblings remain */}
+                  {showing === 'all' && depth > 0 && (
+                    <>
+                      <span
+                        aria-hidden
+                        className="absolute top-0 h-1/2 w-2.5 rounded-bl-[7px] border-b border-l border-border"
+                        style={{ left: `${(depth - 1) * 14 + 12}px` }}
+                      />
+                      {!joint.last && (
+                        <span
+                          aria-hidden
+                          className="absolute inset-y-0 w-px bg-border"
+                          style={{ left: `${(depth - 1) * 14 + 12}px` }}
+                        />
+                      )}
+                    </>
+                  )}
+                  {showing === 'all' && row.kind === 'group' && joint.hasKids && (
+                    <span
+                      aria-hidden
+                      className="absolute bottom-0 h-1/2 w-px bg-border"
+                      style={{ left: `${depth * 14 + 12}px` }}
+                    />
+                  )}
+                  {row.kind === 'group' ? (
+                    <span aria-hidden className="size-[7px] shrink-0 rounded-[2px] bg-border" />
+                  ) : (
                     <span
                       aria-hidden
                       className={cn(
-                        'size-1.5 shrink-0 rounded-full',
-                        row.todo ? 'bg-foreground' : 'bg-muted-foreground/40',
+                        'size-[7px] shrink-0 rounded-full',
+                        alert
+                          ? 'bg-destructive'
+                          : hollow
+                            ? 'border border-muted-foreground/45'
+                            : 'bg-muted-foreground/60',
                       )}
                     />
-                    <span className="min-w-0 flex-1 truncate text-sm">{row.name}</span>
-                    {row.tag !== null && (
-                      <span className="max-w-28 shrink-0 truncate text-xs text-muted-foreground">
-                        {format(ROW_TAG[row.tag])}
-                      </span>
-                    )}
-                  </>
-                )}
-                <span
-                  className={cn(
-                    'shrink-0 text-xs tabular-nums',
-                    row.kind === 'group' ? 'text-muted-foreground' : 'text-foreground',
                   )}
-                >
-                  {row.right}
-                </span>
-              </button>
-            </li>
-          ))}
+                  <span
+                    className={cn(
+                      'min-w-0 flex-1 truncate text-sm',
+                      row.kind === 'group' && 'font-semibold',
+                      openId === row.id && 'font-semibold',
+                      row.kind === 'item' && row.tag === 'recorded' && 'text-muted-foreground',
+                    )}
+                  >
+                    {row.name}
+                  </span>
+                  {row.kind === 'item' && row.tag !== null && row.tag !== 'recorded' && (
+                    <span
+                      className={cn(
+                        'max-w-24 shrink-0 truncate text-xs',
+                        alert ? 'text-destructive' : 'text-muted-foreground',
+                      )}
+                    >
+                      {format(ROW_TAG[row.tag])}
+                    </span>
+                  )}
+                  {row.kind === 'group' ? (
+                    // the group's own ledger line: how much, of how much
+                    <span className="flex w-16 shrink-0 flex-col items-end gap-1">
+                      <span className="flex items-baseline gap-0.5 whitespace-nowrap">
+                        <span className="text-xs font-semibold tabular-nums">
+                          {row.right === '' ? '0' : trimAmount(row.right)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {capNum > 0
+                            ? `/ ${trimAmount(String(capNum))}`
+                            : format(m.myEntriesPaperUnit)}
+                        </span>
+                      </span>
+                      {capNum > 0 && (
+                        <span className="block h-0.75 w-full overflow-hidden rounded-full bg-border">
+                          <span
+                            className="block h-full rounded-full bg-foreground"
+                            style={{
+                              width: `${Math.round(Math.min(1, gotNum / capNum) * 100)}%`,
+                            }}
+                          />
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    row.right !== '' && (
+                      <span className="shrink-0 text-xs whitespace-nowrap tabular-nums">
+                        {trimAmount(row.right)} {format(m.myEntriesPaperUnit)}
+                      </span>
+                    )
+                  )}
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

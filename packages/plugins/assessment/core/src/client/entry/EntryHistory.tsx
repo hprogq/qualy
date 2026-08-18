@@ -97,6 +97,35 @@ export function EntryHistory({
   )
 }
 
+/**
+ * The account alone, for a host that brings its own shell: the detail
+ * drawer shows it as one tab beside the filed content, and a second panel
+ * around it there would be a drawer inside a drawer.
+ */
+export function EntryTrail({
+  entryId,
+  subject,
+}: {
+  entryId: string
+  subject?: string | undefined
+}) {
+  const query = useApiQuery(assessmentApi)
+  const { format, formatError } = useI18n()
+  const history = useQuery(query.assessment.getEntryHistory.queryOptions({ params: { entryId } }))
+  return (
+    <AsyncSection
+      pending={history.isPending}
+      error={history.error ? formatError(history.error) : null}
+      loadingLabel={format(commonMessages.loading)}
+      retryLabel={format(commonMessages.retry)}
+      onRetry={() => void history.refetch()}
+      skeleton={<Skeleton className="h-40 w-full" />}
+    >
+      {history.data !== undefined && <Trail data={history.data} subject={subject} />}
+    </AsyncSection>
+  )
+}
+
 type History = ApiResult<typeof assessmentApi, 'assessment', 'getEntryHistory'>
 type Round = History['rounds'][number]
 type Revision = History['revisions'][number]
