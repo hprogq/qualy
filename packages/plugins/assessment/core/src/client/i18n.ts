@@ -1737,6 +1737,22 @@ const i18n = definePluginMessages({
       id: 'assessment/my-entries/no-more-fields',
       defaultMessage: 'The account and actions are inside',
     },
+    myEntriesAddMore: {
+      id: 'assessment/my-entries/add-more',
+      defaultMessage: 'File another',
+    },
+    myEntriesAddRoom: {
+      id: 'assessment/my-entries/add-room',
+      defaultMessage: '{count, plural, other {Room for # more}}',
+    },
+    myEntriesAddFull: {
+      id: 'assessment/my-entries/add-full',
+      defaultMessage: 'All places used',
+    },
+    myEntriesAddFullHint: {
+      id: 'assessment/my-entries/add-full-hint',
+      defaultMessage: '{count, plural, other {This question takes at most #}}',
+    },
     myEntriesViewDetail: {
       id: 'assessment/my-entries/view-detail',
       defaultMessage: 'View details',

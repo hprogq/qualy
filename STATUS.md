@@ -5844,3 +5844,20 @@ EntryHistory 抽出的 EntryTrail,与独立面板同一渲染);填写内容 = �
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
+
+### 条目卡片区按 1a 更新:列数随条目数走,末尾常驻虚线卡(2026-08-18)
+
+设计稿改动两处,照做:
+
+- **网格 `xl:grid-cols-2` → `repeat(auto-fill, minmax(340px, 1fr))`**:列数随宽度与条目数自适应,
+  卡片保持约 340px 的块状比例——只有一条时它与虚线卡并排各占一半,不再拉成整宽横条。
+- **末尾常驻一张虚线卡**:有余位时是「再申报一条 / 还可申报 N 条」(可点,声明题走一键声明,
+  无上限题提示沿用「不限条数」);满了改灰色「已达申报条数上限 / 本题最多 N 条,不能再新增」,
+  占位仍在——位置消失会让读者拿卡片数去对屏幕另一角的数字。组织侧登记、全员计入、非 active
+  的题不出现;只在「全部」页签下出现(筛选视图里它会把筛选结果读成容量)。
+
+**保留的先前裁决**:零条时仍是满高 Empty 卡 + 说明 + outline 去申报(用户后来定的),虚线卡
+只在已有条目时接在末尾。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。

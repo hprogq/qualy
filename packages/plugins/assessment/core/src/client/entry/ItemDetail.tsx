@@ -12,7 +12,7 @@ import { Button } from '@qualy/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from '@qualy/ui/empty'
 import { cn } from '@qualy/ui/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
-import { ChevronRightIcon, FileTextIcon, PlusIcon } from 'lucide-react'
+import { CheckIcon, ChevronRightIcon, FileTextIcon, PlusIcon } from 'lucide-react'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from './EntryStanding.tsx'
 import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
@@ -22,6 +22,7 @@ import {
   entryScore,
   itemScore,
   mayFile,
+  roomLeft,
   type Standing,
   type StructureRow,
 } from './standing.ts'
@@ -254,10 +255,12 @@ export function ItemDetail({
             <p className="text-sm text-muted-foreground">{format(m.myEntriesFilterNone)}</p>
           )}
 
-          {/* two abreast where the pane is wide enough: four claims fit one
-              screen, and comparing two stops meaning holding one in your head */}
+          {/* Columns follow the count: cards keep their block proportions
+              at ~340px instead of one claim stretching into a ribbon, and
+              the dashed card at the end holds the next place - or says the
+              places are gone - so capacity is read where claims are read. */}
           {listed.length > 0 && (
-            <div className="grid items-stretch gap-3 xl:grid-cols-2">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] items-stretch gap-3">
               {listed.map((entry) => (
                 <ClaimCard
                   key={entry.id}
@@ -267,6 +270,19 @@ export function ItemDetail({
                   onOpen={() => onDetail(entry)}
                 />
               ))}
+              {showing === 'all' && (
+                <AddCard
+                  item={item}
+                  entries={entries}
+                  declared={declared}
+                  granted={granted}
+                  recorded={recorded}
+                  busy={busy}
+                  hasDraft={live.some((entry) => entry.status === 'draft')}
+                  onFile={() => onFile(null)}
+                  onDeclare={onDeclare}
+                />
+              )}
             </div>
           )}
         </div>
@@ -451,6 +467,87 @@ function ClaimCard({
         <ChevronRightIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       </button>
     </div>
+  )
+}
+
+/**
+ * The place after the last claim: dashed, because it is not a claim yet.
+ * With room it is the way to the next one and says how many are left; full,
+ * it stays and says so - a place that vanished would leave the reader
+ * counting cards against a number somewhere else on screen.
+ */
+function AddCard({
+  item,
+  entries,
+  declared,
+  granted,
+  recorded,
+  busy,
+  hasDraft,
+  onFile,
+  onDeclare,
+}: {
+  item: ItemDto
+  entries: readonly EntryDto[]
+  declared: boolean
+  granted: boolean
+  recorded: boolean
+  busy: boolean
+  hasDraft: boolean
+  onFile: () => void
+  onDeclare: () => void
+}) {
+  const { format } = useI18n()
+  if (granted || recorded) return null
+  if (item.status !== 'active' || item.currentRevision?.entrySource !== 'student') return null
+  const room = roomLeft(item, entries)
+  const open = mayFile(item, entries) && !(declared && hasDraft)
+  const full = room !== null && room <= 0
+  if (!open && !full) return null
+  const inner = (
+    <>
+      <span
+        className={cn(
+          'flex size-6 shrink-0 items-center justify-center rounded-full bg-muted',
+          open ? 'text-foreground' : 'text-muted-foreground',
+        )}
+      >
+        {open ? (
+          <PlusIcon aria-hidden className="size-3.5" />
+        ) : (
+          <CheckIcon aria-hidden className="size-3.5" />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col gap-px text-left">
+        <span className={cn('text-sm font-medium', !open && 'text-muted-foreground')}>
+          {format(open ? m.myEntriesAddMore : m.myEntriesAddFull)}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {open
+            ? room !== null
+              ? format(m.myEntriesAddRoom, { count: room })
+              : format(m.itemsPreviewNoMax)
+            : format(m.myEntriesAddFullHint, { count: item.maxEntries ?? 0 })}
+        </span>
+      </span>
+    </>
+  )
+  if (!open) {
+    return (
+      <div className="flex min-w-0 items-center justify-center gap-2.5 rounded-xl border border-dashed p-3.5">
+        {inner}
+      </div>
+    )
+  }
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={declared ? onDeclare : onFile}
+      className="flex min-w-0 cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-dashed p-3.5 transition-colors hover:bg-accent/50"
+    >
+      {inner}
+    </button>
   )
 }
 
