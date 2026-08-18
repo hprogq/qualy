@@ -491,10 +491,6 @@ const i18n = definePluginMessages({
     navGroupPersonal: { id: 'assessment/nav-group/personal', defaultMessage: 'My part' },
     navGroupWork: { id: 'assessment/nav-group/work', defaultMessage: 'Handling' },
     myEntriesTab: { id: 'assessment/entry/tab', defaultMessage: 'My entries' },
-    myEntriesHint: {
-      id: 'assessment/entry/hint',
-      defaultMessage: 'Your claims, and where each one has got to.',
-    },
     myEntriesEmpty: {
       id: 'assessment/entry/empty',
       defaultMessage: 'Nothing to file yet. Questions appear here once the round opens them.',
@@ -530,7 +526,6 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-review-open',
       defaultMessage: 'This is being reviewed. Wait for the outcome.',
     },
-    entryHistoryOpen: { id: 'assessment/entry/history-open', defaultMessage: 'History' },
     entryIssueRequired: {
       id: 'assessment/entry/issue-required',
       defaultMessage: 'needs an answer',
@@ -1711,21 +1706,11 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/returned-title',
       defaultMessage: 'This was sent back for revision',
     },
-    entryRefusedBy: { id: 'assessment/entry/refused-by', defaultMessage: '{who}, {at}' },
     entrySupplementTitle: {
       id: 'assessment/entry/supplement-title',
       defaultMessage: 'The reviewer asked for more material',
     },
     supplementNeeds: { id: 'assessment/supplement/needs', defaultMessage: 'What to provide' },
-    entrySupplementAsked: {
-      id: 'assessment/entry/supplement-asked',
-      defaultMessage:
-        '{who} asked on {at}. Review continues once you add it; what you already filed stays as it is.',
-    },
-    entryDraftSavedFoot: {
-      id: 'assessment/entry/draft-saved-foot',
-      defaultMessage: 'Not submitted yet, saved {at}',
-    },
     // what a claim's number is: granted, waiting, or worth this much if approved
     entryScoreCounted: { id: 'assessment/entry/score-counted', defaultMessage: 'Counted' },
     entryScorePending: { id: 'assessment/entry/score-pending', defaultMessage: 'Not counted yet' },
@@ -1754,53 +1739,81 @@ const i18n = definePluginMessages({
       id: 'assessment/my-entries/quota',
       defaultMessage: 'Places used',
     },
-    myEntriesCountedHere: {
-      id: 'assessment/my-entries/counted-here',
-      defaultMessage: 'Counted from this question',
+    paperStructure: {
+      id: 'assessment/paper/structure',
+      defaultMessage: 'Paper structure',
     },
-    myEntriesClaimsAll: {
-      id: 'assessment/my-entries/claims-all',
-      defaultMessage: 'All',
+    paperViewAll: {
+      id: 'assessment/paper/view-all',
+      defaultMessage: 'Whole paper',
     },
-    myEntriesClaimsTodo: {
-      id: 'assessment/my-entries/claims-todo',
-      defaultMessage: 'Open',
+    paperViewTodo: {
+      id: 'assessment/paper/view-todo',
+      defaultMessage: 'To do only',
     },
-    myEntriesClaimsDone: {
-      id: 'assessment/my-entries/claims-done',
-      defaultMessage: 'Approved',
+    paperBandShare: {
+      id: 'assessment/paper/band-share',
+      defaultMessage: '{pct}% of the paper',
     },
-    myEntriesClaimsNote: {
-      id: 'assessment/my-entries/claims-note',
-      defaultMessage: '{todo, plural, other {# open}}, {done, plural, other {# approved}}',
+    paperCap: {
+      id: 'assessment/paper/cap',
+      defaultMessage: 'cap {value}',
     },
-    myEntriesMoreFields: {
-      id: 'assessment/my-entries/more-fields',
-      defaultMessage: '{count, plural, other {# more fields not shown}}',
+    paperColContent: {
+      id: 'assessment/paper/col-content',
+      defaultMessage: 'Content',
     },
-    myEntriesNoMoreFields: {
-      id: 'assessment/my-entries/no-more-fields',
-      defaultMessage: 'The account and actions are inside',
+    paperColVersion: {
+      id: 'assessment/paper/col-version',
+      defaultMessage: 'Version and time',
     },
-    myEntriesAddMore: {
-      id: 'assessment/my-entries/add-more',
-      defaultMessage: 'File another',
+    paperColStatus: {
+      id: 'assessment/paper/col-status',
+      defaultMessage: 'Status',
     },
-    myEntriesAddRoom: {
-      id: 'assessment/my-entries/add-room',
-      defaultMessage: '{count, plural, other {Room for # more}}',
+    paperColScore: {
+      id: 'assessment/paper/col-score',
+      defaultMessage: 'Score',
+    },
+    paperUnsubmitted: {
+      id: 'assessment/paper/unsubmitted',
+      defaultMessage: 'Unsubmitted',
+    },
+    paperFoldMore: {
+      id: 'assessment/paper/fold-more',
+      defaultMessage: '{count, plural, other {# more}}',
+    },
+    paperFoldLess: {
+      id: 'assessment/paper/fold-less',
+      defaultMessage: 'Fold',
+    },
+    paperEmptyTitle: {
+      id: 'assessment/paper/empty-title',
+      defaultMessage: 'No claims yet',
+    },
+    paperEmptyHint: {
+      id: 'assessment/paper/empty-hint',
+      defaultMessage: 'Start the first one on the left; a draft can wait',
+    },
+    paperEmptyRecorded: {
+      id: 'assessment/paper/empty-recorded',
+      defaultMessage: 'Recorded by the organisation',
+    },
+    paperEmptyRecordedHint: {
+      id: 'assessment/paper/empty-recorded-hint',
+      defaultMessage: 'Nothing to file; the amount follows what is recorded',
+    },
+    paperEmptyGranted: {
+      id: 'assessment/paper/empty-granted',
+      defaultMessage: 'Granted to everybody',
+    },
+    paperEmptyGrantedHint: {
+      id: 'assessment/paper/empty-granted-hint',
+      defaultMessage: 'Nothing to file; this question applies to the whole roster',
     },
     myEntriesAddFull: {
       id: 'assessment/my-entries/add-full',
       defaultMessage: 'All places used',
-    },
-    myEntriesAddFullHint: {
-      id: 'assessment/my-entries/add-full-hint',
-      defaultMessage: '{count, plural, other {This question takes at most #}}',
-    },
-    myEntriesViewDetail: {
-      id: 'assessment/my-entries/view-detail',
-      defaultMessage: 'View details',
     },
     myEntriesFilesNone: {
       id: 'assessment/my-entries/files-none',
@@ -1854,31 +1867,6 @@ const i18n = definePluginMessages({
       id: 'assessment/entry-sheet/sup-ask',
       defaultMessage: 'What the reviewer asked for',
     },
-    itemDescTitle: {
-      id: 'assessment/item/desc-title',
-      defaultMessage: 'About this question',
-    },
-    itemScoringTitle: {
-      id: 'assessment/item/scoring-title',
-      defaultMessage: 'Scoring details',
-    },
-    itemScoreEach: {
-      id: 'assessment/item/score-each',
-      defaultMessage: 'Per approved claim',
-    },
-    itemScoreMaxHere: {
-      id: 'assessment/item/score-max-here',
-      defaultMessage: 'At most from this question',
-    },
-    itemGroupSubtotal: {
-      id: 'assessment/item/group-subtotal',
-      defaultMessage: '{group} subtotal',
-    },
-    itemGroupCapNamed: {
-      id: 'assessment/item/group-cap-named',
-      defaultMessage: '{group} cap',
-    },
-    itemCounted: { id: 'assessment/entry/item-counted', defaultMessage: 'Counted here' },
     // the claim's story, as one timeline
     entryTrailSubtitle: {
       id: 'assessment/entry/trail-subtitle',
@@ -1937,7 +1925,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Nothing has happened to this claim yet.',
     },
     // narrow screens show one pane at a time
-    myEntriesBack: { id: 'assessment/entry/back-to-list', defaultMessage: 'All questions' },
     entrySupplementAnswer: {
       id: 'assessment/entry/supplement-answer',
       defaultMessage: 'Add material',
@@ -2546,77 +2533,13 @@ const i18n = definePluginMessages({
 
     /** the filing screen: the round's structure, and one's own claims in it */
     myEntriesCounted: { id: 'assessment/entry/counted', defaultMessage: 'Counted' },
-    myEntriesRows: {
-      id: 'assessment/entry/rows',
-      defaultMessage: '{count, plural, =0 {none} one {# entry} other {# entries}}',
-    },
     myEntriesQuestions: {
       id: 'assessment/entry/questions',
       defaultMessage: '{count, plural, one {# question} other {# questions}}',
     },
-    myEntriesGroupBadge: { id: 'assessment/entry/group-badge', defaultMessage: 'Section' },
-    myEntriesItemBadge: { id: 'assessment/entry/item-badge', defaultMessage: 'Question' },
     myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'No filing needed' },
     myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open to you' },
-    myEntriesInGroup: { id: 'assessment/entry/in-group', defaultMessage: 'Yours here' },
-    myEntriesHolds: { id: 'assessment/entry/holds', defaultMessage: 'Inside this section' },
-    myEntriesHoldsCount: {
-      id: 'assessment/entry/holds-count',
-      defaultMessage: '{count, plural, one {# row} other {# rows}}',
-    },
-    myEntriesHoldsEmpty: {
-      id: 'assessment/entry/holds-empty',
-      defaultMessage: 'Nothing in this section is yours to answer.',
-    },
-    myEntriesMakeup: { id: 'assessment/entry/makeup', defaultMessage: 'How it adds up' },
-    myEntriesFromItems: {
-      id: 'assessment/entry/from-items',
-      defaultMessage: 'From questions here',
-    },
-    myEntriesFromChildren: {
-      id: 'assessment/entry/from-children',
-      defaultMessage: 'From sections inside',
-    },
-    myEntriesGroupTotal: { id: 'assessment/entry/group-total', defaultMessage: 'Section total' },
-    myEntriesMakeupNote: {
-      id: 'assessment/entry/makeup-note',
-      defaultMessage: 'Approved entries only.',
-    },
-    myEntriesRoom: {
-      id: 'assessment/entry/room',
-      defaultMessage: '{used} of {most} filed',
-    },
-    myEntriesChain: {
-      id: 'assessment/entry/chain',
-      defaultMessage: '{count, plural, one {# reviewer} other {# reviewers in turn}}',
-    },
-    myEntriesFiled: { id: 'assessment/entry/filed', defaultMessage: 'What you have filed' },
-    myEntriesRecordedFiled: {
-      id: 'assessment/entry/recorded-filed',
-      defaultMessage: 'What has been recorded',
-    },
-    myEntriesRecordedNone: {
-      id: 'assessment/entry/recorded-none',
-      defaultMessage: 'Nothing recorded here yet.',
-    },
-    myEntriesFiledCount: {
-      id: 'assessment/entry/filed-count',
-      defaultMessage:
-        '{filed, plural, =0 {nothing submitted} other {# submitted}}{drafts, plural, =0 {} other {, # draft}}',
-    },
-    myEntriesNoneYet: {
-      id: 'assessment/entry/none-yet',
-      defaultMessage: 'Nothing filed here yet.',
-    },
-    myEntriesDraftSaved: {
-      id: 'assessment/entry/draft-saved',
-      defaultMessage: 'Not submitted, saved {when}',
-    },
     myEntriesResume: { id: 'assessment/entry/resume', defaultMessage: 'Keep filling in' },
-    myEntriesResumeDraft: {
-      id: 'assessment/entry/resume-draft',
-      defaultMessage: 'Keep filling in the draft',
-    },
     entryLastRoom: {
       id: 'assessment/entry/last-room',
       defaultMessage: 'This is the last one this question will take from you.',
@@ -2634,11 +2557,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'A draft can be picked up again any time.',
     },
     entrySaveDraft: { id: 'assessment/entry/save-draft', defaultMessage: 'Save as draft' },
-    myEntriesWindow: { id: 'assessment/entry/window', defaultMessage: 'Material window' },
-    myEntriesWindowValue: {
-      id: 'assessment/entry/window-value',
-      defaultMessage: '{start} to {end}',
-    },
     myEntriesFilterAll: { id: 'assessment/entry/filter-all', defaultMessage: 'All' },
     myEntriesFilterTodo: {
       id: 'assessment/entry/filter-todo',
@@ -2647,10 +2565,6 @@ const i18n = definePluginMessages({
     myEntriesFilterNone: {
       id: 'assessment/entry/filter-none',
       defaultMessage: 'Nothing is waiting on you.',
-    },
-    myEntriesHeadroom: {
-      id: 'assessment/entry/headroom',
-      defaultMessage: '{value} to the cap',
     },
     myEntriesBasis: { id: 'assessment/entry/basis', defaultMessage: 'Scoring basis' },
     myEntriesBasisSoon: {

@@ -215,8 +215,9 @@ describe('filing a claim', () => {
       payload: { summary: '2024 年入伍，2026 年退役复学' },
     })
 
-    // handing it on happens where the whole claim is on screen: the drawer
-    await page.getByRole('button', { name: '查看详情' }).click()
+    // handing it on happens where the whole claim is on screen: the drawer,
+    // opened from the claim's own row on the paper
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
     await page.getByRole('button', { name: '提交' }).first().click()
     await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
   })
@@ -294,7 +295,7 @@ describe('filing a claim', () => {
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
-    await page.getByRole('button', { name: '查看详情' }).click()
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
     await page.getByRole('button', { name: /审核经过/ }).click()
     await expect.element(page.getByText('证明日期与填报不符，请核对。')).toBeVisible()
     await expect.element(page.getByText('审核人的修改建议')).toBeVisible()
@@ -393,12 +394,12 @@ describe('filing a claim', () => {
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
-    // the status the card wears is the one that is waiting on the reader
+    // the status the row wears is the one that is waiting on the reader
     await expect.element(page.getByText('待补材料').first()).toBeVisible()
 
     // the ask itself, in the reviewer's own words with every piece named,
-    // waits in the drawer with the rest of the claim
-    await page.getByRole('button', { name: '查看详情' }).click()
+    // waits in the drawer behind the claim's own row
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
     await expect.element(page.getByText('审核人请你补充材料').first()).toBeVisible()
     await expect
       .element(page.getByText('献血证只拍到正面，请补充盖章那一面。').first())
@@ -429,12 +430,12 @@ describe('filing a claim', () => {
 
     // choosing a question is going somewhere: the address says which one,
     // so a reload lands back on it and a link carries it to somebody else
-    await page.getByRole('button', { name: /退役复学/ }).click()
+    await page.getByRole('button', { name: '退役复学', exact: true }).click()
     await vi.waitFor(() => expect(addressNow()).toContain(`open=${ITEM_ID}`))
 
     // and so are the two layers over it - state in a component survives
     // neither a reload nor the phone's back key
-    await page.getByRole('button', { name: '查看详情' }).click()
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
     await vi.waitFor(() => expect(addressNow()).toContain(`detail=${ENTRY_ID}`))
 
     // closing takes the parameter out rather than leaving it empty: a spent
@@ -444,7 +445,7 @@ describe('filing a claim', () => {
     await vi.waitFor(() => expect(addressNow()).not.toContain('detail='))
     expect(addressNow()).toContain(`open=${ITEM_ID}`)
 
-    await page.getByRole('button', { name: '查看详情' }).click()
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
     await page.getByRole('button', { name: '修改' }).click()
     await vi.waitFor(() => expect(addressNow()).toContain(`entry=${ENTRY_ID}`))
     await page.getByRole('button', { name: 'Close' }).click()
@@ -515,14 +516,9 @@ describe('filing a claim', () => {
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
-    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    // the button stands, disabled, instead of vanishing with the last place
-    const button = page.getByRole('button', { name: '去申报' })
-    await expect.element(button).toBeVisible()
-    await expect.element(button).toBeDisabled()
-    await page.getByText('去申报').hover()
-    await expect.element(page.getByText('已达该题最大填报条目数。')).toBeVisible()
-    // the card counts the files; the files themselves are in the drawer
+    // the paper says the places are used, in words where the button stood
+    await expect.element(page.getByText('已达申报条数上限').first()).toBeVisible()
+    // the row counts the files; the files themselves are in the drawer
     await expect.element(page.getByText('1 份')).toBeVisible()
   })
 })
