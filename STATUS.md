@@ -5959,3 +5959,13 @@ catalogs 7 passed。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
+
+### 申报详情抽屉的字号重调(2026-08-18)
+
+抽屉宽 768px,原字号还是窄抽屉的比例:标题 15px、字段名 12px、答案 14px,读起来整体偏小。
+按「答案是抽屉里最大的东西」重排:标题 text-base;分节标题(本人填写/按审核人要求补充)
+xs→sm,靠字重与颜色分层;字段名 xs→sm;**答案与备注 sm→base**;补充答复与本人填写同一档;
+时间戳、计数等元数据保持 xs。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。

@@ -108,7 +108,7 @@ export function EntrySheet({
               </BreadcrumbList>
             </Breadcrumb>
             <div className="flex flex-wrap items-center gap-2">
-              <SheetTitle className="shrink-0 text-[15px] font-semibold">
+              <SheetTitle className="shrink-0 text-base font-semibold">
                 {format(m.entrySheetTitle)}
               </SheetTitle>
               <EntryStanding
@@ -244,7 +244,7 @@ export function EntrySheet({
                     reminder, this is the filing */}
                 <section className="flex flex-col gap-3">
                   <div className="flex items-baseline gap-2.5">
-                    <p className="shrink-0 text-xs font-semibold text-muted-foreground">
+                    <p className="shrink-0 text-sm font-semibold text-muted-foreground">
                       {format(m.entrySheetOwn)}
                     </p>
                     <span aria-hidden className="h-px min-w-0 flex-1 bg-border" />
@@ -258,7 +258,7 @@ export function EntrySheet({
                     const value = payload[field.key]
                     return (
                       <div key={field.key} className="flex flex-col gap-1">
-                        <p className="text-xs [overflow-wrap:anywhere] text-muted-foreground">
+                        <p className="text-sm [overflow-wrap:anywhere] text-muted-foreground">
                           {field.label}
                         </p>
                         {field.type === 'attachment' ? (
@@ -278,7 +278,7 @@ export function EntrySheet({
                             </p>
                           )
                         ) : (
-                          <p className="text-sm leading-relaxed [overflow-wrap:anywhere]">
+                          <p className="text-base leading-relaxed [overflow-wrap:anywhere]">
                             {typeof value === 'string' && value !== ''
                               ? value
                               : format(m.entryFieldCleared)}
@@ -289,8 +289,8 @@ export function EntrySheet({
                   })}
                   {(entry.currentRevision?.note ?? null) !== null && (
                     <div className="flex flex-col gap-1">
-                      <p className="text-xs text-muted-foreground">{format(m.entryNote)}</p>
-                      <p className="text-sm leading-relaxed [overflow-wrap:anywhere]">
+                      <p className="text-sm text-muted-foreground">{format(m.entryNote)}</p>
+                      <p className="text-base leading-relaxed [overflow-wrap:anywhere]">
                         {entry.currentRevision!.note}
                       </p>
                     </div>
@@ -303,7 +303,7 @@ export function EntrySheet({
                 {answered.map((ask) => (
                   <section key={ask.id} className="flex flex-col gap-3">
                     <div className="flex items-baseline gap-2.5">
-                      <p className="shrink-0 text-xs font-semibold text-muted-foreground">
+                      <p className="shrink-0 text-sm font-semibold text-muted-foreground">
                         {format(m.entrySheetSupHead)}
                       </p>
                       <span aria-hidden className="h-px min-w-0 flex-1 bg-border" />
@@ -322,7 +322,7 @@ export function EntrySheet({
                       const value = (ask.response!.payload as Record<string, unknown>)[piece.key]
                       return (
                         <div key={piece.key} className="flex flex-col gap-1">
-                          <p className="text-xs [overflow-wrap:anywhere] text-muted-foreground">
+                          <p className="text-sm [overflow-wrap:anywhere] text-muted-foreground">
                             {piece.label}
                           </p>
                           {piece.kind === 'file' ? (
@@ -341,7 +341,7 @@ export function EntrySheet({
                               <p className="text-sm text-muted-foreground">—</p>
                             )
                           ) : (
-                            <p className="text-sm leading-relaxed [overflow-wrap:anywhere]">
+                            <p className="text-base leading-relaxed [overflow-wrap:anywhere]">
                               {typeof value === 'string' && value !== '' ? value : '—'}
                             </p>
                           )}
