@@ -121,6 +121,10 @@ const entry = (over: Partial<EntryDto> = {}): EntryDto => ({
 /** the reads every batch screen makes before it draws anything */
 const ambient = {
   getBatch: () => Effect.succeed({ batch: batch() }),
+  // the result page reads the filings for its counts; empty unless a case
+  // says otherwise
+  listMyEntries: () =>
+    Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
   // the queue's other half; empty unless a case says otherwise
   listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
   getEntryHistory: () => Effect.succeed({ entry: entry(), revisions: [], events: [], rounds: [] }),
@@ -761,8 +765,12 @@ describe('reading one’s standing', () => {
             groups: [
               {
                 groupId: GROUP_ID,
+                parentGroupId: null,
+                depth: 0,
                 name: '文体',
                 itemsTotal: '3.00',
+                childrenTotal: '0',
+                raw: '3.00',
                 final: '2.00',
                 cap: '2.00',
                 floor: null,
@@ -789,11 +797,12 @@ describe('reading one’s standing', () => {
       [{ path: '/assessment/batches/:batchId/my-result', element: <MyResultPage /> }],
     )
 
-    // amounts render without their bookkeeping zeros
-    await expect.element(page.getByText('2', { exact: true })).toBeVisible()
+    // the ledger speaks with two decimals throughout
+    await expect.element(page.getByText('2.00', { exact: true }).first()).toBeVisible()
     await expect.element(page.getByText('实时预览')).toBeVisible()
-    await expect.element(page.getByText('3', { exact: true })).toBeVisible()
-    await expect.element(page.getByText('分组限额')).toBeVisible()
-    await expect.element(page.getByText('-1', { exact: true })).toBeVisible()
+    await expect.element(page.getByText('3.00', { exact: true }).first()).toBeVisible()
+    // the limit is one line, worded from the group's own figures
+    await expect.element(page.getByText(/合计 3\.00，按分组限额 2\.00 计入/)).toBeVisible()
+    await expect.element(page.getByText('-1.00', { exact: true })).toBeVisible()
   })
 })

@@ -830,6 +830,55 @@ const i18n = definePluginMessages({
       id: 'assessment/result/provisional',
       defaultMessage: 'Provisional',
     },
+    resultFull: {
+      id: 'assessment/result/full',
+      defaultMessage: 'Out of {value} this round',
+    },
+    resultCountedIn: {
+      id: 'assessment/result/counted-in',
+      defaultMessage: 'Approved and counted',
+    },
+    resultPendingLabel: {
+      id: 'assessment/result/pending-label',
+      defaultMessage: 'In review, not counted yet',
+    },
+    resultPendingCount: {
+      id: 'assessment/result/pending-count',
+      defaultMessage: '{count, plural, other {#}}',
+    },
+    resultTrimmed: {
+      id: 'assessment/result/trimmed',
+      defaultMessage: 'Held back by limits',
+    },
+    resultTableHead: {
+      id: 'assessment/result/table-head',
+      defaultMessage: 'Groups and questions',
+    },
+    resultCapChip: {
+      id: 'assessment/result/cap-chip',
+      defaultMessage: 'Cap {value}',
+    },
+    resultNoCap: {
+      id: 'assessment/result/no-cap',
+      defaultMessage: 'No cap',
+    },
+    resultEmptyTitle: {
+      id: 'assessment/result/empty-title',
+      defaultMessage: 'Nothing counted yet',
+    },
+    resultEmptyBody: {
+      id: 'assessment/result/empty-body',
+      defaultMessage:
+        'Approved claims appear here. Claims in review do not count yet; follow each one in My filings.',
+    },
+    resultGoEntries: {
+      id: 'assessment/result/go-entries',
+      defaultMessage: 'Go to my filings',
+    },
+    resultEmptyCounts: {
+      id: 'assessment/result/empty-counts',
+      defaultMessage: '{pending, plural, other {# in review}}, {drafts, plural, other {# drafts}}',
+    },
     resultTotal: { id: 'assessment/result/total', defaultMessage: 'Total' },
     resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'From questions' },
     resultGroupChildren: {
@@ -850,10 +899,6 @@ const i18n = definePluginMessages({
     resultLineAdjustment: {
       id: 'assessment/result/line-adjustment',
       defaultMessage: 'Group limit',
-    },
-    resultEmpty: {
-      id: 'assessment/result/empty',
-      defaultMessage: 'Nothing counts yet. Approved claims appear here.',
     },
     // ------------------------------------------------------------------
     // recording on someone's behalf
