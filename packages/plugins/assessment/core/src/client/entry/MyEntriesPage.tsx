@@ -4,6 +4,7 @@ import {
   useApi,
   useApiQuery,
   usePageQueryState,
+  usePageQueryUpdate,
   usePageRouteParams,
   useRunApi,
 } from '@qualy/web-runtime'
@@ -128,6 +129,14 @@ function Body({
   // repeated here - `open` already says which one this is about.
   const [filing, setFiling] = useLayer('entry')
   const [detail, setDetail] = useLayer('detail')
+  // moving two layers at once - open this question AND start a claim on
+  // it - must be one address write: two writes from one click race on the
+  // router's snapshot and the second silently drops the first, which is a
+  // filing dialog that opens on the wrong question or not at all
+  const beside = useSideBySide()
+  const updateQuery = usePageQueryUpdate()
+  const openAndFile = (itemId: string, entryId: string) =>
+    updateQuery({ open: itemId, entry: entryId }, { history: beside ? 'replace' : 'push' })
   const [appealing, setAppealing] = useState<EntryDto | null>(null)
   const lingeringAppeal = useLingering(appealing)
   const [answering, setAnswering] = useState<EntryDto | null>(null)
@@ -498,10 +507,7 @@ function Body({
                     standing={(standing.data ?? null) as Standing | null}
                     showTodoOnly={paperView === 'todo'}
                     busy={setStatus.isPending || declare.isPending}
-                    onFile={(item, entry) => {
-                      onSelect(item.id)
-                      setFiling(entry?.id ?? 'new')
-                    }}
+                    onFile={(item, entry) => openAndFile(item.id, entry?.id ?? 'new')}
                     onDeclare={(item) => declare.mutate({ itemId: item.id })}
                     onDetail={(entry) => setDetail(entry.id)}
                   />
@@ -542,7 +548,7 @@ function Body({
           trail={lingeringDetail.trail}
           busy={setStatus.isPending || declare.isPending}
           onClose={() => setDetail('')}
-          onEdit={() => setFiling(lingeringDetail.entry.id)}
+          onEdit={() => openAndFile(lingeringDetail.item.id, lingeringDetail.entry.id)}
           onStatus={(status) => setStatus.mutate({ entryId: lingeringDetail.entry.id, status })}
           onAppeal={() => setAppealing(lingeringDetail.entry)}
           onSupplement={() => setAnswering(lingeringDetail.entry)}

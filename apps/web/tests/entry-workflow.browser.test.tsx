@@ -453,6 +453,29 @@ describe('filing a claim', () => {
     expect(addressNow()).toContain(`open=${ITEM_ID}`)
   })
 
+  it('opens the form for the question that was clicked, wherever the address was', async () => {
+    // the regression: opening a question AND starting a claim is one click
+    // but two address layers, and two separate writes raced on the router's
+    // snapshot - the second dropped the first, and with a group in ?open=
+    // the dialog never opened at all
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries?open=${GROUP_ID}`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await page.getByRole('button', { name: '去申报' }).first().click()
+    // both layers landed in one write: the question and the fresh claim
+    await vi.waitFor(() => expect(addressNow()).toContain(`open=${ITEM_ID}`))
+    expect(addressNow()).toContain('entry=new')
+    // and the form is the clicked question's own
+    await expect.element(page.getByLabelText('事项说明')).toBeVisible()
+  })
+
   it('keeps the filing button when the places are full, with the reason on hover', async () => {
     screen(
       {

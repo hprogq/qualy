@@ -320,6 +320,38 @@ export function usePageQueryState(
   return [value, set]
 }
 
+/**
+ * Several address keys written in one navigation.
+ *
+ * The router's functional updater reads the location the component rendered
+ * with, not the result of an earlier call in the same tick - so two
+ * usePageQueryState writes from one click race, and the second silently
+ * drops the first. A handler that has to move two layers at once - open
+ * this question AND start writing a claim on it - says so in one write.
+ */
+export function usePageQueryUpdate(): (
+  changes: Record<string, string>,
+  options?: { history?: 'replace' | 'push' },
+) => void {
+  const [, setParams] = useSearchParams()
+  return useCallback(
+    (changes, options) => {
+      setParams(
+        (current) => {
+          const updated = new URLSearchParams(current)
+          for (const [key, next] of Object.entries(changes)) {
+            if (next === '') updated.delete(key)
+            else updated.set(key, next)
+          }
+          return updated
+        },
+        { replace: (options?.history ?? 'replace') === 'replace' },
+      )
+    },
+    [setParams],
+  )
+}
+
 // The named `:name` segments of the route this screen is mounted at. The
 // caller says which names it expects, and a missing one is a loud failure:
 // a screen quietly reading undefined out of the router is a link bug that

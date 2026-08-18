@@ -6012,3 +6012,20 @@ xs→sm,靠字重与颜色分层;字段名 xs→sm;**答案与备注 sm→base**
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
+
+### 「去申报」时灵时不灵:同击双写竞态(2026-08-19)
+
+一次点击要同时动两个地址层——`?open=<题>` 与 `?entry=new`。React Router 的函数式
+setSearchParams 不在同一 tick 内串联:第二次写基于组件渲染时的快照,把第一次写静默丢弃。
+`open` 停在旧值时,若那是个分组行,`writing` 恒为 null,表单永远不开;若是别的题,表单开错题。
+
+修法:web-runtime 新增 `usePageQueryUpdate`——多键一次导航原子写;页面的「去申报」与抽屉内
+「修改」都改走 `openAndFile(itemId, entryId)` 单写。新增回归用例:从 `?open=<分组>` 出发点
+去申报,断言两参数同时落地且表单开在被点的题上(entry-workflow 10/10)。
+
+另:用户描述的「点了没反应,过一会儿突然弹出、且好使后一直好使」的部分现象与本竞态不完全吻合,
+高度疑似开发期 HMR 重载窗口(测试与本会话改码同时进行);已请用户在无编辑期复测,若仍复现,
+下一嫌疑是模态层叠残留的 body pointer-events,备有探针方案。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 59 passed;`pnpm build` 通过;prettier 全绿。
