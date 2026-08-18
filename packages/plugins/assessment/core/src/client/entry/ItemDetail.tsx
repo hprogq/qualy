@@ -1,10 +1,18 @@
 import { useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbSeparator,
+} from '@qualy/ui/breadcrumb'
 import { Button } from '@qualy/ui/button'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from '@qualy/ui/empty'
 import { cn } from '@qualy/ui/cn'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
-import { ChevronRightIcon, PlusIcon } from 'lucide-react'
+import { ChevronRightIcon, FileTextIcon, PlusIcon } from 'lucide-react'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from './EntryStanding.tsx'
 import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
@@ -30,6 +38,8 @@ import {
 
 export function ItemDetail({
   row,
+  crumbs,
+  onCrumb,
   entries,
   standing,
   busy,
@@ -38,6 +48,9 @@ export function ItemDetail({
   onDetail,
 }: {
   row: StructureRow
+  /** the groups above this question, with the ids that open them */
+  crumbs: readonly { id: string; name: string }[]
+  onCrumb: (id: string) => void
   entries: readonly EntryDto[]
   standing: Standing | null
   busy: boolean
@@ -90,18 +103,35 @@ export function ItemDetail({
   const listed = showing === 'all' ? live : showing === 'done' ? done : todo
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:flex-1">
       {/* the title bar: where this stands in the paper, what it is, and the
           two numbers that say how much of it is already spent */}
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          {row.trail.length > 0 && (
-            <p className="truncate text-xs text-muted-foreground">{row.trail.join(' › ')}</p>
+        <div className="flex min-w-0 flex-col gap-2.5">
+          {crumbs.length > 0 && (
+            <Breadcrumb>
+              <BreadcrumbList className="flex-nowrap text-xs sm:gap-1.5">
+                {crumbs.map((crumb, index) => (
+                  <BreadcrumbItem key={crumb.id} className="min-w-0">
+                    {index > 0 && <BreadcrumbSeparator />}
+                    <BreadcrumbLink asChild>
+                      <button
+                        type="button"
+                        className="min-w-0 cursor-pointer truncate"
+                        onClick={() => onCrumb(crumb.id)}
+                      >
+                        {crumb.name}
+                      </button>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                ))}
+              </BreadcrumbList>
+            </Breadcrumb>
           )}
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="min-w-0 text-xl font-semibold tracking-tight">{item.title}</h2>
+            <h2 className="min-w-0 text-2xl font-semibold tracking-tight">{item.title}</h2>
             {headParts.length > 0 && (
-              <p className="min-w-0 truncate text-[13px] text-muted-foreground">
+              <p className="min-w-0 truncate text-sm text-muted-foreground">
                 {headParts.join('，')}
               </p>
             )}
@@ -146,11 +176,11 @@ export function ItemDetail({
 
       {/* claims on the left, the question's own terms on the right: the
           reference column keeps out of the reading column's way */}
-      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_15.5rem] lg:items-start">
+      <div className="flex flex-col gap-5 lg:grid lg:flex-1 lg:grid-cols-[minmax(0,1fr)_15.5rem]">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2.5 border-b pb-2">
             {(!granted || live.length > 0) && (
-              <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">
+              <div className="flex items-center rounded-lg bg-muted p-0.5 text-sm">
                 {(
                   [
                     ['all', m.myEntriesClaimsAll, live.length],
@@ -163,7 +193,7 @@ export function ItemDetail({
                     type="button"
                     onClick={() => setShowing(key)}
                     className={cn(
-                      'inline-flex h-6 items-center gap-1 rounded-md px-2.5 whitespace-nowrap',
+                      'inline-flex h-7 items-center gap-1 rounded-md px-2.5 whitespace-nowrap',
                       showing === key
                         ? 'bg-background font-medium shadow-sm'
                         : 'text-muted-foreground',
@@ -192,9 +222,33 @@ export function ItemDetail({
           </div>
 
           {live.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              {format(recorded ? m.myEntriesRecordedNone : m.myEntriesNoneYet)}
-            </p>
+            <Empty className="min-h-64 flex-1 rounded-xl border border-dashed">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <FileTextIcon aria-hidden />
+                </EmptyMedia>
+                <EmptyDescription>
+                  {format(recorded ? m.myEntriesRecordedNone : m.myEntriesNoneYet)}
+                </EmptyDescription>
+              </EmptyHeader>
+              {/* the way in stands under the sentence that explains it */}
+              <EmptyContent>
+                {/* quieter than the toolbar's own: the bar keeps the one
+                    primary way in, and this one is the same door offered
+                    where the eye already is */}
+                <FileButton
+                  item={item}
+                  entries={entries}
+                  granted={granted}
+                  declared={declared}
+                  busy={busy}
+                  hasDraft={false}
+                  variant="outline"
+                  onFile={() => onFile(null)}
+                  onDeclare={onDeclare}
+                />
+              </EmptyContent>
+            </Empty>
           )}
           {live.length > 0 && listed.length === 0 && (
             <p className="text-sm text-muted-foreground">{format(m.myEntriesFilterNone)}</p>
@@ -219,7 +273,7 @@ export function ItemDetail({
 
         {/* what the question is and how it scores, kept beside the claims:
             reading a claim against the rule should not cost a journey */}
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
           <div className="flex flex-col gap-2 rounded-xl bg-muted/60 px-3.5 py-3">
             <p className="text-sm font-semibold">{format(m.itemDescTitle)}</p>
             {description !== '' && (
@@ -358,7 +412,7 @@ function ClaimCard({
           const value = payload[field.key]
           return (
             <div key={field.key} className="flex min-w-0 items-baseline gap-2.5">
-              <dt className="w-16 shrink-0 truncate text-xs text-muted-foreground">
+              <dt className="w-20 shrink-0 truncate text-sm text-muted-foreground">
                 {field.label}
               </dt>
               <dd className="min-w-0 flex-1 truncate text-sm">
@@ -410,6 +464,7 @@ function FileButton({
   declared,
   busy,
   hasDraft,
+  variant = 'default',
   onFile,
   onDeclare,
 }: {
@@ -419,6 +474,7 @@ function FileButton({
   declared: boolean
   busy: boolean
   hasDraft: boolean
+  variant?: 'default' | 'outline'
   onFile: () => void
   onDeclare: () => void
 }) {
@@ -426,7 +482,7 @@ function FileButton({
   if (granted) return null
   if (declared) {
     return mayFile(item, entries) && !hasDraft ? (
-      <Button size="sm" className="shrink-0" disabled={busy} onClick={onDeclare}>
+      <Button size="sm" variant={variant} className="shrink-0" disabled={busy} onClick={onDeclare}>
         <PlusIcon aria-hidden />
         {format(m.entryDeclare)}
       </Button>
@@ -434,7 +490,7 @@ function FileButton({
   }
   if (mayFile(item, entries)) {
     return (
-      <Button size="sm" className="shrink-0" onClick={onFile}>
+      <Button size="sm" variant={variant} className="shrink-0" onClick={onFile}>
         <PlusIcon aria-hidden />
         {format(m.entryNew)}
       </Button>

@@ -113,7 +113,7 @@ export function VersionPicker({
 
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+      <SheetContent className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-md">
         <SheetHeader className="border-b">
           <SheetTitle className="text-sm">{format(m.reviewVersionsTitle)}</SheetTitle>
           <p className="text-xs text-muted-foreground">

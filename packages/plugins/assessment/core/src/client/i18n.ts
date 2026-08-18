@@ -1735,7 +1735,7 @@ const i18n = definePluginMessages({
     },
     myEntriesNoMoreFields: {
       id: 'assessment/my-entries/no-more-fields',
-      defaultMessage: 'Everything else is inside',
+      defaultMessage: 'The account and actions are inside',
     },
     myEntriesViewDetail: {
       id: 'assessment/my-entries/view-detail',
@@ -1759,7 +1759,7 @@ const i18n = definePluginMessages({
     },
     entrySheetTitle: {
       id: 'assessment/entry-sheet/title',
-      defaultMessage: 'This claim',
+      defaultMessage: 'Claim details',
     },
     entrySheetContent: {
       id: 'assessment/entry-sheet/content',

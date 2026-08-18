@@ -6,6 +6,13 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Badge } from '@qualy/ui/badge'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@qualy/ui/breadcrumb'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
 import { ScrollArea } from '@qualy/ui/scroll-area'
@@ -79,12 +86,26 @@ export function EntrySheet({
 
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl" showCloseButton={false}>
+      <SheetContent
+        className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-3xl"
+        showCloseButton={false}
+      >
         <div className="flex shrink-0 items-start gap-3 border-b px-5 py-4">
           <div className="flex min-w-0 flex-col gap-1">
-            <p className="truncate text-xs text-muted-foreground">
-              {[...trail, item.title].join(' › ')}
-            </p>
+            <Breadcrumb>
+              <BreadcrumbList className="flex-nowrap text-xs sm:gap-1.5">
+                {trail.map((name, index) => (
+                  <BreadcrumbItem key={index} className="min-w-0">
+                    {index > 0 && <BreadcrumbSeparator />}
+                    <span className="min-w-0 truncate">{name}</span>
+                  </BreadcrumbItem>
+                ))}
+                <BreadcrumbItem className="min-w-0">
+                  {trail.length > 0 && <BreadcrumbSeparator />}
+                  <BreadcrumbPage className="min-w-0 truncate">{item.title}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
             <div className="flex flex-wrap items-center gap-2">
               <SheetTitle className="shrink-0 text-[15px] font-semibold">
                 {format(m.entrySheetTitle)}

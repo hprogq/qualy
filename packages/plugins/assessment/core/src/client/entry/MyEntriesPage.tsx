@@ -139,7 +139,7 @@ function Totals() {
     // the list underneath gives again - how many are waiting, how many are
     // drafts, what window they must fall in - and three rows of statistics
     // above a list is a screen that has to be scrolled before it can be read.
-    <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+    <div className="flex flex-wrap gap-x-6 gap-y-2 [align-items:last_baseline]">
       <Stat
         label={format(m.myEntriesCounted)}
         value={standing.data === undefined ? '—' : Number(standing.data.total).toFixed(2)}
@@ -184,7 +184,7 @@ function Stat({
   className?: string
 }) {
   return (
-    <span className={cn('flex flex-col gap-0.5', className)}>
+    <span className={cn('flex flex-col gap-0.5', strong && 'relative top-[0.1em]', className)}>
       <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
       <span
         className={cn(
@@ -415,7 +415,12 @@ function Body({
             className={cn(chosen && 'max-lg:hidden')}
           />
 
-          <div className={cn('min-w-0 flex-1', !chosen && 'max-lg:hidden')}>
+          <div
+            className={cn(
+              'flex min-w-0 flex-1 flex-col lg:self-stretch',
+              !chosen && 'max-lg:hidden',
+            )}
+          >
             {/* the way back to the list, only where the list is not beside it */}
             <button
               type="button"
@@ -437,9 +442,11 @@ function Body({
               </Drill>
             )}
             {open?.kind === 'item' && (
-              <Drill move={move} drillKey={open.id}>
+              <Drill move={move} drillKey={open.id} className="flex flex-col lg:flex-1">
                 <ItemDetail
                   row={open}
+                  crumbs={crumbsOf(rows, open)}
+                  onCrumb={onSelect}
                   entries={entriesByItem.get(open.id) ?? []}
                   standing={(standing.data ?? null) as Standing | null}
                   busy={setStatus.isPending || declare.isPending}
@@ -514,6 +521,22 @@ function Body({
       )}
     </AsyncSection>
   )
+}
+
+/** the groups above a row, outermost first, with the ids that open them */
+const crumbsOf = (
+  rows: readonly StructureRow[],
+  row: StructureRow,
+): readonly { id: string; name: string }[] => {
+  const out: { id: string; name: string }[] = []
+  let at = row.parentId
+  while (at !== null) {
+    const group = rows.find((one) => one.id === at)
+    if (group === undefined) break
+    out.unshift({ id: group.id, name: group.name })
+    at = group.parentId
+  }
+  return out
 }
 
 /**

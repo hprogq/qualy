@@ -199,7 +199,7 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    await page.getByRole('button', { name: '去申报' }).click()
+    await page.getByRole('button', { name: '去申报' }).first().click()
     await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
     // keeping it is one press and handing it on is another, so a claim can be
     // written down before anybody is asked to look at it

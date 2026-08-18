@@ -5821,3 +5821,26 @@ EntryHistory 抽出的 EntryTrail,与独立面板同一渲染);填写内容 = �
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿;catalogs 7 passed。
+
+### 我的填报连环打磨(2026-08-18,一组会话内反馈)
+
+- **面包屑换 shadcn Breadcrumb**,且可点击:分组段是地方不是文字,点击直达该分组面板
+  (MyEntriesPage 现算祖先链 `crumbsOf`,带 id 传入);抽屉头部同套组件,当前题为 BreadcrumbPage。
+- **题名两级放大**(text-lg→xl→2xl,用户两次嫌小),与面包屑间距 gap-1.5→2→2.5,规则句 13px→sm。
+  整页小字上调一档:卡片字段标签 xs→sm(标签列 w-16→20)、查看详情行 xs→sm、页签 xs→sm(h-6→7)、
+  卷面卡名称 xs→sm。
+- **申报详情抽屉宽度**:三次反馈后才找到真因——SheetContent 自带
+  `data-[side=right]:sm:max-w-sm`(384px),带变体前缀与裸 `sm:max-w-*` 在 tailwind-merge 里
+  是不同组,两个类都存活、组件的赢。用同前缀 `data-[side=right]:sm:max-w-3xl` 覆盖,实测 768px;
+  选择版本 Sheet 同坑同修(它的 sm:max-w-md 从来没生效过)。「这条申报」改名「申报详情」。
+- **页头统计对齐**:混合字号 bottom 对齐读作基线错位,容器改 `[align-items:last_baseline]`
+  (实测 computed 生效);仍差的最后一丝是 CJK 墨迹低于拉丁基线 ~0.1em,按用户指示给大号统计
+  整体(含标签)`relative top-[0.1em]`。
+- **空态**:两句改产品语(「这道题还没有申报记录。」「这道题由组织侧登记,暂无你的记录。」),
+  换满宽 Empty 卡并在 lg 下撑满与左栏等高的窗格(实测 576px);卡内加「去申报」——按用户纠正,
+  右上角的主按钮保留,卡内的用 outline 变体区分。
+- 「完整内容与经过在详情里」→「审核经过与操作见详情」;「按时间从新到旧排列…」提示删除;
+  空题的筛选页签显示全 0 而不是消失。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
