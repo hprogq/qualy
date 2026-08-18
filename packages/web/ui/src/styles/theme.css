@@ -17,6 +17,14 @@
 @custom-variant data-open (&[data-state='open']);
 @custom-variant data-closed (&[data-state='closed']);
 
+/* The photo viewer portals to <body>. While a modal sheet is open, Radix
+ * sets pointer-events:none on everything outside its content - which is
+ * exactly where the viewer lands - so every click fell through the viewer
+ * onto the sheet beneath it. The viewer re-enables itself. */
+.PhotoView-Portal {
+  pointer-events: auto;
+}
+
 /* shadcn-style design tokens for tailwind v4; dark mode flips the variables
    on the .dark class */
 :root {

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import type * as React from 'react'
 import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -46,18 +47,24 @@ import {
  * cached image is already complete before the load handler is attached, so
  * the ref checks rather than waits.
  */
-function ArrivingImg({ src, alt, className }: { src: string; alt: string; className?: string }) {
+function ArrivingImg({ className, onLoad, ...rest }: React.ComponentProps<'img'>) {
   const [ready, setReady] = useState(false)
   return (
+    // The rest props are the lightbox's lifeline: PhotoView hands its child
+    // the click that opens the viewer by cloning it, and a component that
+    // keeps only the props it knows swallows that click - every photograph
+    // on the product silently stopped opening.
     <img
-      src={src}
-      alt={alt}
       loading="lazy"
       decoding="async"
+      {...rest}
       ref={(node) => {
         if (node !== null && node.complete) setReady(true)
       }}
-      onLoad={() => setReady(true)}
+      onLoad={(event) => {
+        setReady(true)
+        onLoad?.(event)
+      }}
       className={cn(
         'transition-opacity duration-300',
         ready ? 'opacity-100' : 'opacity-0',

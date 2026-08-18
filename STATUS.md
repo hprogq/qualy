@@ -5969,3 +5969,23 @@ xs→sm,靠字重与颜色分层;字段名 xs→sm;**答案与备注 sm→base**
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
+
+### 图片预览器与 Sheet 的两层冲突(2026-08-18)
+
+两个 bug,一个来源链:
+
+- **Sheet 里点图片打不开预览器**:`ArrivingImg`(渐显封装)只接收 src/alt/className——
+  react-photo-view 的 `PhotoView` 是用 cloneElement 往子元素注入 onClick 来开预览器的,
+  被组件吞掉后全产品的图片预览都静默失效。改为透传全部 img props(onLoad 链式合并)。
+- **预览器开在 Sheet 上时点击穿透、Esc 双杀**:Radix 模态 Sheet 会把 content 之外(含 body 上的
+  预览器 portal)设为 `pointer-events:none`,点击全部落到底下的 Sheet;Sheet 又在 document 上
+  监听 Esc 与 outside-pointerdown。三处修法:`.PhotoView-Portal { pointer-events: auto }`
+  (theme.css);共享 Sheet 组件的 `onEscapeKeyDown` 在预览器开着时 preventDefault(Esc 归
+  预览器,再按才关 Sheet);`onInteractOutside` 对目标在 `.PhotoView-Portal` 内的交互
+  preventDefault(预览器内的点击不算「Sheet 外」)。
+
+实测(harness):portal computed pointer-events auto;Esc 第一次只关预览器、Sheet 仍在,
+第二次才关 Sheet;用户实机确认。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过(portal 规则已进产物);prettier 全绿。
