@@ -71,7 +71,7 @@ export function Paper({
   let questionNo = 0
 
   return (
-    <div className="flex flex-col pb-10">
+    <div className="flex flex-col bg-muted/20 pb-10">
       {kept.map((row) => {
         if (row.kind === 'group' && row.depth === 0) {
           bandNo += 1
@@ -133,7 +133,7 @@ function Band({
   const got = row.right === '' ? 0 : Number(row.right)
   const pct = cap === null || cap === 0 ? 0 : Math.min(100, Math.round((got / cap) * 100))
   return (
-    <div data-paper-row={row.id} className="scroll-mt-16 px-6 pt-7 pb-4 first:pt-5">
+    <div data-paper-row={row.id} className="scroll-mt-16 px-6 pt-8 pb-4 first:pt-5">
       <div className="flex items-center gap-4 overflow-hidden rounded-xl border bg-linear-to-r from-muted/70 to-background to-65% px-4.5 py-3.5">
         <span
           aria-hidden
@@ -270,7 +270,7 @@ function Question({
     <div data-paper-row={row.id} className="scroll-mt-16 px-6 pb-3.5">
       <div className="grid overflow-hidden rounded-xl border bg-card lg:grid-cols-[23.5rem_minmax(0,1fr)]">
         {/* the question itself: what it asks, what it pays, the way in */}
-        <div className="flex min-w-0 flex-col gap-2 border-b p-4 lg:border-r lg:border-b-0">
+        <div className="flex min-w-0 flex-col gap-2.5 border-b p-4.5 lg:border-r lg:border-b-0">
           <div className="flex items-baseline gap-2.5">
             <span aria-hidden className="shrink-0 text-xs font-semibold text-muted-foreground">
               {no}
@@ -288,14 +288,6 @@ function Question({
           {terms.length > 0 && (
             <p className="text-xs leading-relaxed text-muted-foreground">{terms.join('，')}</p>
           )}
-          {/* the clause this question scores under; reserved until the data
-              carries one */}
-          <p className="flex items-baseline gap-2 rounded-lg border px-2.5 py-1.5 text-xs">
-            <span className="shrink-0 text-muted-foreground">{format(m.myEntriesBasis)}</span>
-            <span className="min-w-0 truncate text-muted-foreground">
-              {format(m.myEntriesBasisSoon)}
-            </span>
-          </p>
           <span className="min-h-2 flex-1" />
           <div className="flex items-center gap-3">
             {!granted && !recorded && item.maxEntries !== null && (
@@ -378,8 +370,8 @@ function Question({
             </>
           ) : (
             // why this side is empty: never filed, or never theirs to file
-            <div className="flex min-h-32 flex-1 flex-col items-center justify-center gap-2.5 p-4">
-              <span className="flex size-8.5 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <div className="flex min-h-28 flex-1 flex-col items-center justify-center gap-2 p-4">
+              <span className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 {granted || recorded ? (
                   <CheckIcon aria-hidden className="size-4" />
                 ) : (

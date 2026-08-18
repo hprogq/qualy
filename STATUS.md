@@ -5933,3 +5933,16 @@ scroll-mt);滚动跟随的边界数学经几何 dump 验证正确(此前探针�
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过(渐变 stop 类已进产物);prettier 全绿;
 catalogs 7 passed。
+
+### 试卷页的整洁小修(2026-08-18)
+
+- **删掉每道题重复的「评分依据 尚未关联」占位框**:一处保留是占位,每题一框是噪音;数据到了
+  再回来(Basis 组件与键仍被表单对话框和审核台引用,未动)。
+- **纸面加一层 `bg-muted/20` 底色**:白底描边卡浮在白底上只剩线条,浅底让题卡立起来,
+  段头渐变也有了对照。
+- **节奏**:新段头上方留白加大(pt-7→8),与段内行距拉开档;题目左栏 gap 2→2.5、padding
+  4→4.5,条件句不再贴着说明。
+- **空态托盘收敛**(min-h-32→28、图标 8.5→8):一页里多个未申报题时,空态不再喧宾夺主。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
