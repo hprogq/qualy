@@ -71,7 +71,7 @@ export function Paper({
   let questionNo = 0
 
   return (
-    <div className="flex flex-col bg-muted/20 pb-10">
+    <div className="flex flex-col pb-10">
       {kept.map((row) => {
         if (row.kind === 'group' && row.depth === 0) {
           bandNo += 1
@@ -137,7 +137,7 @@ function Band({
       <div className="flex items-center gap-4 overflow-hidden rounded-xl border bg-linear-to-r from-muted/70 to-background to-65% px-4.5 py-3.5">
         <span
           aria-hidden
-          className="shrink-0 font-mono text-xl leading-none font-semibold tracking-tight text-muted-foreground/80"
+          className="shrink-0 text-3xl leading-none font-semibold tracking-tight text-muted-foreground/50"
         >
           {no}
         </span>
@@ -180,12 +180,9 @@ function SubBand({ row, no }: { row: StructureRow; no: string }) {
   const { format } = useI18n()
   const cap = row.cap == null || row.cap === '' ? null : Number(row.cap)
   return (
-    <div data-paper-row={row.id} className="scroll-mt-16 px-6 pt-2 pb-3">
+    <div data-paper-row={row.id} className="scroll-mt-24 px-6 pt-2 pb-3">
       <div className="flex h-10 items-center gap-3 overflow-hidden rounded-lg border bg-linear-to-r from-muted/60 to-background to-55% px-4">
-        <span
-          aria-hidden
-          className="shrink-0 font-mono text-sm font-semibold tracking-tight text-muted-foreground/80"
-        >
+        <span aria-hidden className="shrink-0 text-sm font-semibold text-muted-foreground/70">
           {no}
         </span>
         <h3 className="min-w-0 truncate text-sm font-semibold">{row.name}</h3>
@@ -270,15 +267,12 @@ function Question({
   const shown = unfolded ? live : live.slice(0, 6)
 
   return (
-    <div data-paper-row={row.id} className="scroll-mt-16 px-6 pb-3.5">
+    <div data-paper-row={row.id} className="scroll-mt-24 px-6 pb-4">
       <div className="grid overflow-hidden rounded-xl border bg-card lg:grid-cols-[23.5rem_minmax(0,1fr)]">
         {/* the question itself: what it asks, what it pays, the way in */}
         <div className="flex min-w-0 flex-col gap-2.5 border-b bg-muted/30 p-4.5 lg:border-r lg:border-b-0">
           <div className="flex items-baseline gap-2.5">
-            <span
-              aria-hidden
-              className="shrink-0 font-mono text-xs font-semibold tracking-tight text-muted-foreground/80"
-            >
+            <span aria-hidden className="shrink-0 text-xs font-semibold text-muted-foreground/70">
               {no}
             </span>
             <h3 className="min-w-0 flex-1 text-base leading-snug font-semibold">{item.title}</h3>

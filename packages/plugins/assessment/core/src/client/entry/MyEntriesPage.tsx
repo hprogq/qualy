@@ -11,7 +11,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { cn } from '@qualy/ui/cn'
-import { Mark } from '@qualy/ui/reveal'
+import { Appear, Glide } from '@qualy/ui/reveal'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -266,6 +266,11 @@ function Body({
   // somewhere, and a hundred history entries per page would prove it.
   const paperRef = useRef<HTMLDivElement | null>(null)
   const [passing, setPassing] = useState('')
+  // While a click's smooth scroll is in flight, the spy would call out every
+  // row it passes and the rail's mark would strobe through all of them. The
+  // steering lock holds the mark on the destination until the scroll gets
+  // there (or gives up).
+  const steering = useRef<{ id: string; until: number } | null>(null)
   useEffect(() => {
     const pane = paperRef.current
     if (pane === null) return
@@ -274,12 +279,19 @@ function Body({
     let frame = 0
     const read = () => {
       frame = 0
-      const edge = viewport.getBoundingClientRect().top + 64
+      // past the toolbar and the sticky band both: what counts as "under
+      // the reader" is what stands clear of everything pinned above it
+      const edge = viewport.getBoundingClientRect().top + 96
       let current = ''
       for (const el of viewport.querySelectorAll('[data-paper-row]')) {
         if (el.getBoundingClientRect().top <= edge) {
           current = el.getAttribute('data-paper-row') ?? ''
         } else break
+      }
+      const held = steering.current
+      if (held !== null) {
+        if (current === held.id || Date.now() > held.until) steering.current = null
+        else return
       }
       setPassing(current)
     }
@@ -297,6 +309,8 @@ function Body({
   /** a rail click: name it in the address, then bring it under the reader */
   const goTo = (id: string) => {
     onSelect(id)
+    steering.current = { id, until: Date.now() + 1500 }
+    setPassing(id)
     paperRef.current
       ?.querySelector(`[data-paper-row="${id}"]`)
       ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -313,6 +327,35 @@ function Body({
     }
     // reading the address is not a scroll; the spy fills in from here
   }, [rows.length, selected])
+
+  // the band the reader is inside, for the strip pinned under the toolbar:
+  // shown only while the band's own card is off the top, because a strip
+  // repeating a card still on screen names the place twice
+  const currentBand = (() => {
+    if (passing === '') return null
+    const rooted =
+      rows.length > 0 &&
+      rows[0]!.kind === 'group' &&
+      rows.filter((row) => row.depth === 0).length === 1
+    const bandDepth = rooted ? 1 : 0
+    let at: StructureRow | null = rows.find((row) => row.id === passing) ?? null
+    if (at === null) return null
+    if (at.kind === 'group' && at.depth === bandDepth) return null
+    while (at !== null && !(at.kind === 'group' && at.depth === bandDepth)) {
+      const parent: string | null = at.parentId
+      at = parent === null ? null : (rows.find((row) => row.id === parent) ?? null)
+    }
+    return at
+  })()
+  const bandNoOf = (band: StructureRow): string => {
+    const rooted =
+      rows.length > 0 &&
+      rows[0]!.kind === 'group' &&
+      rows.filter((row) => row.depth === 0).length === 1
+    const bandDepth = rooted ? 1 : 0
+    const tops = rows.filter((row) => row.kind === 'group' && row.depth === bandDepth)
+    return String(tops.findIndex((row) => row.id === band.id) + 1).padStart(2, '0')
+  }
 
   const [paperView, setPaperView] = useState<'all' | 'todo'>('all')
   const entries = (mine.data?.entries ?? []) as readonly EntryDto[]
@@ -368,6 +411,34 @@ function Body({
               ref={paperRef}
               className="relative flex min-w-0 flex-col border-t lg:min-h-0 lg:border-t-0 lg:border-l"
             >
+              {/* the low bar naming the section being read: pinned to the
+                  pane, not the content - inside the scroller it rode away
+                  with the paper and only flashed past. The display card
+                  stays in the paper; this is its short understudy, gone
+                  whenever the card itself is on screen. */}
+              <div className="pointer-events-none absolute inset-x-0 top-13 z-[5] max-lg:hidden">
+                <Appear show={currentBand !== null}>
+                  <div className="border-b bg-background/95 backdrop-blur-sm">
+                    <div className="mx-auto flex h-9 w-full max-w-6xl items-center gap-2.5 px-6">
+                      <span className="shrink-0 text-sm font-semibold text-muted-foreground/60">
+                        {currentBand !== null ? bandNoOf(currentBand) : ''}
+                      </span>
+                      <span className="min-w-0 truncate text-sm font-semibold">
+                        {currentBand?.name}
+                      </span>
+                      <span className="flex-1" />
+                      <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                        {currentBand === null || currentBand.right === ''
+                          ? ''
+                          : Number(currentBand.right).toFixed(2)}
+                        {currentBand?.cap != null && currentBand.cap !== ''
+                          ? ` / ${trimAmount(String(currentBand.cap))}`
+                          : ''}
+                      </span>
+                    </div>
+                  </div>
+                </Appear>
+              </div>
               <PaneScroller>
                 {/* the paper's own toolbar: the page's name and numbers ride
                     the top of the scroll */}
@@ -519,19 +590,6 @@ function PaneScroller({ children }: { children: ReactNode }) {
   )
 }
 
-/** whether the reader asked for less motion, for the rail's own scrolling */
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false)
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const read = () => setReduced(media.matches)
-    read()
-    media.addEventListener('change', read)
-    return () => media.removeEventListener('change', read)
-  }, [])
-  return reduced
-}
-
 /** the groups above a row, outermost first, with the ids that open them */
 const crumbsOf = (
   rows: readonly StructureRow[],
@@ -569,17 +627,43 @@ function Structure({
   onOpen: (id: string) => void
 }) {
   const { format } = useI18n()
-  const reduced = usePrefersReducedMotion()
   const [showing, setShowing] = useState<'all' | 'todo'>('all')
   // the rail reads along: when the paper's scroll moves the mark, the rail
   // scrolls its own list just enough to keep the marked row in view
   const railRef = useRef<HTMLDivElement | null>(null)
+  const listRef = useRef<HTMLUListElement | null>(null)
+  // where the mark stands: the active row's box within the list. Measured,
+  // not rendered per row - a permanently mounted mark that slides has no
+  // unmount between two positions for the eye to catch as a blink.
+  const [markBox, setMarkBox] = useState<{ top: number; height: number } | null>(null)
+  useEffect(() => {
+    const list = listRef.current
+    if (list === null || openId === null) {
+      setMarkBox(null)
+      return
+    }
+    const row = list.querySelector(`[data-rail-row="${openId}"]`)
+    if (!(row instanceof HTMLElement)) {
+      setMarkBox(null)
+      return
+    }
+    setMarkBox({ top: row.offsetTop, height: row.offsetHeight })
+  }, [openId, showing, rows])
   useEffect(() => {
     if (openId === null) return
-    railRef.current
-      ?.querySelector(`[data-rail-row="${openId}"]`)
-      ?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' })
-  }, [openId, reduced])
+    const viewport = railRef.current?.querySelector('[data-slot="scroll-area-viewport"]')
+    const row = railRef.current?.querySelector(`[data-rail-row="${openId}"]`)
+    if (!(viewport instanceof HTMLElement) || !(row instanceof Element)) return
+    // plain arithmetic instead of scrollIntoView: nearest-edge scrolling
+    // that nothing can cancel, and it never tugs any other scroller
+    const port = viewport.getBoundingClientRect()
+    const at = row.getBoundingClientRect()
+    if (at.top < port.top + 8) {
+      viewport.scrollTop += at.top - port.top - 8
+    } else if (at.bottom > port.bottom - 8) {
+      viewport.scrollTop += at.bottom - port.bottom + 8
+    }
+  }, [openId])
   // The summary card at the top IS the paper's root: when the round has one
   // top group holding everything, that group's name and numbers go up there
   // and the list starts straight at its children - a root row over children
@@ -690,7 +774,14 @@ function Structure({
               {format(m.myEntriesFilterNone)}
             </p>
           ) : (
-            <ul className="relative flex min-h-0 flex-col">
+            <ul ref={listRef} className="isolate relative flex min-h-0 flex-col">
+              {markBox !== null && (
+                <Glide
+                  top={markBox.top}
+                  height={markBox.height}
+                  className="-z-10 rounded-lg bg-accent"
+                />
+              )}
               {listed.map((row, index) => {
                 const depth = showing === 'all' ? row.depth : 0
                 const joint = joints[index]!
@@ -712,15 +803,6 @@ function Structure({
                         row.kind === 'group' && row.depth === 0 && index > 0 && 'mt-1',
                       )}
                     >
-                      {/* one mark, moving: the same accent a click leaves,
-                          sliding to whichever row the paper has brought
-                          under the toolbar instead of blinking row to row */}
-                      {openId === row.id && (
-                        <Mark
-                          id="rail-mark"
-                          className="absolute inset-0 -z-10 rounded-lg bg-accent"
-                        />
-                      )}
                       {/* the joints of the tree: an elbow into this row, and the
                       sibling line running past it while siblings remain */}
                       {showing === 'all' && depth > 0 && (

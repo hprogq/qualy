@@ -5989,3 +5989,26 @@ xs→sm,靠字重与颜色分层;字段名 xs→sm;**答案与备注 sm→base**
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过(portal 规则已进产物);prettier 全绿。
+
+### 试卷页:段头替身条、常驻滑块、方案 A 定稿(2026-08-19)
+
+多轮往复后定稿(全宽实验与"一段一张大表"两案均被否,已回退):
+
+- **纸面形态(方案 A)**:白底(整页灰纹撤销)、题目独立圆角卡、编号正常字体、一级段头数字
+  text-3xl/50 章节号化、题距 pb-4、申报表格末行也有封底线。
+- **段头 sticky 改为"替身条"**:展示用的大圆角渐变卡留在纸面原处;另做一条 h-9 的矮横条
+  (背景 95% + backdrop-blur + 底边线,内容对齐阅读列:编号 · 分组名 · 小计/上限),
+  **绝对定位钉在窗格层**工具条正下——第一版误放进滚动内容里,`absolute top-13` 锚在内容
+  坐标上跟着纸面滚走,只在特定几像素闪现;移到窗格层后实测钉在恒定 y。只在该分组自己的卡
+  滚出顶部后出现(同处不报两次名),Appear 淡入淡出。
+- **rail 高亮闪白根治**:`layoutId` 跨挂载接力在双 commit 下断链会闪白。改为**常驻单件滑块**:
+  @qualy/ui/reveal 的 `Mark` 替换为 `Glide`(永久挂载的 absolute span,spring 追随
+  top/height),Structure 量测活动行几何喂给它——没有卸载/挂载,就没有可闪的帧。实测 rail
+  中 bg-accent 元素恒为 1。
+- **配套**:点击转向锁(平滑滚动途中 spy 不逐行改高亮,Mark/Glide 一步滑到目标)、rail 跟随
+  滚动用最近边视口数学(不可被取消、不牵动其他滚动容器)、spy 边界 +96 适配矮条。
+
+实测:卡在屏时无条;滚进题目后条出现、连续滚动中 top 恒定;高亮元素全程唯一。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。

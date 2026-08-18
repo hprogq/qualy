@@ -256,18 +256,28 @@ export function DoneMark({ className }: { className?: string }) {
   )
 }
 
-// One mark shared by many rows: whichever row renders it, it is the same
-// element, so framer slides it there from wherever it last stood instead of
-// blinking out and in. For a selection that follows something - a scroll, a
-// keyboard - through a list.
-export function Mark({ id, className }: { id: string; className?: string }) {
+// One mark for a whole list, permanently mounted: it slides to wherever the
+// caller measures the active row, so there is never an unmount between two
+// positions for the eye to catch. For a selection that follows something -
+// a scroll, a keyboard - through a list of rows.
+export function Glide({
+  top,
+  height,
+  className,
+}: {
+  top: number
+  height: number
+  className?: string
+}) {
   const reduced = useReducedMotion() === true
   return (
     <motion.span
-      layoutId={id}
       aria-hidden
-      className={className}
+      initial={false}
+      animate={{ top, height }}
       transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 550, damping: 45 }}
+      className={className}
+      style={{ position: 'absolute', left: 0, right: 0 }}
     />
   )
 }
