@@ -94,14 +94,14 @@ export function ItemDetail({
       {/* the title bar: where this stands in the paper, what it is, and the
           two numbers that say how much of it is already spent */}
       <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-        <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1.5">
           {row.trail.length > 0 && (
             <p className="truncate text-xs text-muted-foreground">{row.trail.join(' › ')}</p>
           )}
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1">
-            <h2 className="min-w-0 text-lg font-semibold tracking-tight">{item.title}</h2>
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h2 className="min-w-0 text-xl font-semibold tracking-tight">{item.title}</h2>
             {headParts.length > 0 && (
-              <p className="min-w-0 truncate text-xs text-muted-foreground">
+              <p className="min-w-0 truncate text-[13px] text-muted-foreground">
                 {headParts.join('，')}
               </p>
             )}
@@ -149,7 +149,7 @@ export function ItemDetail({
       <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_15.5rem] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2.5 border-b pb-2">
-            {live.length > 0 && (
+            {(!granted || live.length > 0) && (
               <div className="flex items-center rounded-lg bg-muted p-0.5 text-xs">
                 {(
                   [
@@ -176,11 +176,9 @@ export function ItemDetail({
               </div>
             )}
             <span className="flex-1" />
-            {live.length > 0 && (
-              <p className="text-xs whitespace-nowrap text-muted-foreground">
-                {format(m.myEntriesClaimsNote, { todo: todo.length, done: done.length })}
-              </p>
-            )}
+            <p className="text-xs whitespace-nowrap text-muted-foreground">
+              {format(m.myEntriesClaimsNote, { todo: todo.length, done: done.length })}
+            </p>
             <FileButton
               item={item}
               entries={entries}

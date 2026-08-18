@@ -1823,10 +1823,6 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/trail-subtitle',
       defaultMessage: '{item}　{versions} versions, {rounds} rounds, {asks} requests for material',
     },
-    entryTrailFoot: {
-      id: 'assessment/entry/trail-foot',
-      defaultMessage: 'Newest first. This is a record; nothing here can be changed.',
-    },
     entryTrailVersion: {
       id: 'assessment/entry/trail-version',
       defaultMessage: 'I submitted version {no}',

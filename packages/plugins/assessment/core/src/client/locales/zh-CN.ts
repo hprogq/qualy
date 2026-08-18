@@ -464,7 +464,6 @@ export default {
   'assessment/item/group-cap-named': '{group} 上限',
   'assessment/entry/item-counted': '本题已计入',
   'assessment/entry/trail-subtitle': '{item}　共 {versions} 版，{rounds} 轮审核，{asks} 次补充',
-  'assessment/entry/trail-foot': '按时间从新到旧排列，经过只读，不能修改。',
   'assessment/entry/trail-version': '我提交了第 {no} 版',
   'assessment/entry/trail-version-by': '{who} 提交了第 {no} 版',
   'assessment/entry/trail-answered-by': '{who} 补充了材料',

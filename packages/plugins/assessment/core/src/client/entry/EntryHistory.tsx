@@ -158,9 +158,6 @@ function Trail({ data, subject }: { data: History; subject: string | undefined }
           </div>
         ))}
       </div>
-      <p className="pl-[25px] text-xs leading-relaxed text-muted-foreground">
-        {format(m.entryTrailFoot)}
-      </p>
     </div>
   )
 }

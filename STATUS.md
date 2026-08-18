@@ -5807,3 +5807,17 @@ EntryHistory 抽出的 EntryTrail,与独立面板同一渲染);填写内容 = �
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿。
+
+### 我的填报的四处收尾(2026-08-18)
+
+- 查看详情抽屉 35rem → `sm:max-w-2xl`:装全字段与文件卡片的抽屉,560px 是设计画布的比例
+  不是产品的宽度。
+- 「按时间从新到旧排列,经过只读,不能修改。」提示删除(键随文案一起从两个 catalog 移除)。
+- 空题不再留白:全部/待处理/已通过 页签与计数说明在零条时照样显示(全 0),原来它们随第一条
+  申报才出现,页面读起来像少了一块。
+- 页头统计值加 `leading-none`:大号「已计入」与小号计数正常行高下基线不齐,底对齐读成两个高度。
+- 题名 text-lg → text-xl、与面包屑的间距放宽、规则句 13px:题名和它自己的元数据一样大时读作
+  标签,不是标题。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 58 passed;`pnpm build` 通过;prettier 全绿;catalogs 7 passed。

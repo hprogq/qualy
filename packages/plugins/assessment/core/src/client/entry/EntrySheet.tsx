@@ -79,10 +79,7 @@ export function EntrySheet({
 
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-[35rem]"
-        showCloseButton={false}
-      >
+      <SheetContent className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl" showCloseButton={false}>
         <div className="flex shrink-0 items-start gap-3 border-b px-5 py-4">
           <div className="flex min-w-0 flex-col gap-1">
             <p className="truncate text-xs text-muted-foreground">

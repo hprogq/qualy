@@ -187,7 +187,10 @@ function Stat({
     <span className={cn('flex flex-col gap-0.5', className)}>
       <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
       <span
-        className={cn('tabular-nums', strong ? 'text-lg font-semibold' : 'text-sm font-medium')}
+        className={cn(
+          'leading-none tabular-nums',
+          strong ? 'text-lg font-semibold' : 'text-sm font-medium',
+        )}
       >
         {value}
       </span>
