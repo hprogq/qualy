@@ -258,7 +258,7 @@ export function EntrySheet({
                     const value = payload[field.key]
                     return (
                       <div key={field.key} className="flex flex-col gap-1">
-                        <p className="text-sm [overflow-wrap:anywhere] text-muted-foreground">
+                        <p className="text-[13px] [overflow-wrap:anywhere] text-muted-foreground">
                           {field.label}
                         </p>
                         {field.type === 'attachment' ? (
@@ -278,7 +278,7 @@ export function EntrySheet({
                             </p>
                           )
                         ) : (
-                          <p className="text-base leading-relaxed [overflow-wrap:anywhere]">
+                          <p className="text-[15px] leading-relaxed [overflow-wrap:anywhere]">
                             {typeof value === 'string' && value !== ''
                               ? value
                               : format(m.entryFieldCleared)}
@@ -289,8 +289,8 @@ export function EntrySheet({
                   })}
                   {(entry.currentRevision?.note ?? null) !== null && (
                     <div className="flex flex-col gap-1">
-                      <p className="text-sm text-muted-foreground">{format(m.entryNote)}</p>
-                      <p className="text-base leading-relaxed [overflow-wrap:anywhere]">
+                      <p className="text-[13px] text-muted-foreground">{format(m.entryNote)}</p>
+                      <p className="text-[15px] leading-relaxed [overflow-wrap:anywhere]">
                         {entry.currentRevision!.note}
                       </p>
                     </div>
@@ -322,7 +322,7 @@ export function EntrySheet({
                       const value = (ask.response!.payload as Record<string, unknown>)[piece.key]
                       return (
                         <div key={piece.key} className="flex flex-col gap-1">
-                          <p className="text-sm [overflow-wrap:anywhere] text-muted-foreground">
+                          <p className="text-[13px] [overflow-wrap:anywhere] text-muted-foreground">
                             {piece.label}
                           </p>
                           {piece.kind === 'file' ? (
@@ -341,7 +341,7 @@ export function EntrySheet({
                               <p className="text-sm text-muted-foreground">—</p>
                             )
                           ) : (
-                            <p className="text-base leading-relaxed [overflow-wrap:anywhere]">
+                            <p className="text-[15px] leading-relaxed [overflow-wrap:anywhere]">
                               {typeof value === 'string' && value !== '' ? value : '—'}
                             </p>
                           )}
