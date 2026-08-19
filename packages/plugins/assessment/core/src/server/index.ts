@@ -3616,6 +3616,7 @@ const itemDto = (item: ItemView) => ({
   maxEntries: item.maxEntries,
   sortOrder: item.sortOrder,
   status: item.status,
+  voidReason: item.voidReason,
   currentRevision:
     item.currentRevision === null
       ? null

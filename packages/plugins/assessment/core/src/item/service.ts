@@ -98,6 +98,9 @@ export interface ItemView {
   readonly maxEntries: number | null
   readonly sortOrder: number
   readonly status: 'draft' | 'active' | 'voided'
+  /** why the question was withdrawn; a withdrawn question says so wherever
+   * it is read, and a reason nobody can see is a reason nobody trusts */
+  readonly voidReason: string | null
   readonly currentRevision: ItemRevisionView | null
   readonly createdAt: EpochMillis
 }
@@ -282,6 +285,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     maxEntries: row.maxEntries,
     sortOrder: row.sortOrder,
     status: row.status,
+    voidReason: row.voidReason,
     currentRevision: revision === null ? null : toRevisionView(revision),
     createdAt: row.createdAt,
   })

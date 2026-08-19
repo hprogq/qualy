@@ -194,6 +194,8 @@ export interface ItemRow {
   maxEntries: number | null
   sortOrder: number
   status: 'draft' | 'active' | 'voided'
+  /** why the question was withdrawn, as the administrator wrote it */
+  voidReason: string | null
   currentRevisionId: string | null
   createdAt: number
 }
@@ -207,6 +209,7 @@ const itemColumns = [
   'maxEntries',
   'sortOrder',
   'status',
+  'voidReason',
   'currentRevisionId',
 ] as const
 
@@ -219,6 +222,7 @@ const toItem = (row: Record<string, unknown>): ItemRow => ({
   maxEntries: row['maxEntries'] == null ? null : Number(row['maxEntries']),
   sortOrder: Number(row['sortOrder']),
   status: String(row['status']) as ItemRow['status'],
+  voidReason: row['voidReason'] == null ? null : String(row['voidReason']),
   currentRevisionId: row['currentRevisionId'] == null ? null : String(row['currentRevisionId']),
   createdAt: msOf(row['createdMs']),
 })

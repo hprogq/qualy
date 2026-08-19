@@ -371,6 +371,8 @@ const itemView = Schema.Struct({
   maxEntries: Schema.NullOr(Schema.Number),
   sortOrder: Schema.Number,
   status: Schema.Literals(['draft', 'active', 'voided']),
+  /** why it was withdrawn, for the paper to say so where it stands */
+  voidReason: Schema.NullOr(Schema.String),
   currentRevision: Schema.NullOr(itemRevisionView),
   createdAt: Schema.String,
 })

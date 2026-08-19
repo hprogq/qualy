@@ -80,6 +80,8 @@ export interface ItemDto {
   maxEntries: number | null
   sortOrder: number
   status: string
+  /** why the question was withdrawn, when it was */
+  voidReason: string | null
   currentRevision: {
     id: string
     revisionNo: number
