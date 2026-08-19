@@ -6208,3 +6208,20 @@ BreadcrumbItem(<li> 套 <li> 是非法 HTML,react 每次渲染都告警)。
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 96 files / 672 passed / 17 skipped
 (含新迁移升级用例与 PGlite lineage 重放);`pnpm test:browser` 68 passed;`pnpm build` 通过;
 prettier 全绿。
+
+### 退回模态框:事由数字键与选中态、批次设置事由排序(2026-08-19)
+
+- **数字键选事由**:1–9 直选(ReasonPicker 自持 document keydown,仅列表在场时挂;⌘/⌃/⌥ 与输入框
+  内不抢)。与建议格的数字冲突裁决:**裸数字归事由**(每次退回必选),建议格跳转让位到 ⌥数字
+  (行内 Kbd 提示同步改为 ⌥+n);⌥G 开合建议不变。
+- **焦点交接**:用户实测发现说明框默认聚焦把数字吞进句子。改为:配置了事由时光标先不进说明框
+  (数字落在事由上),**选中即把光标交给说明框**——数字选原因、接着打字,手不离键盘;未配置事由
+  时照旧直接聚焦说明。RejectDialog 与 EscalateDialog 同款。
+- **选中态**:选中的事由实心化(primary 底白字 + 对勾 + Kbd 反白),描边加粗的旧态一眼扫不出。
+- **批次设置排序**:事由 chips 按 FieldTable 的拖拽家法可拖动排序(qualy/reason dataTransfer、
+  左右半判定、inset 2px 落点标线、grip 图标),顺序即审核对话框的展示与数字键顺序(hint 注明)。
+- 浏览器用例:Digit2 选中第二项(实心 + 对勾)→ 焦点已在说明框 → 仅事由不可提交 → 提交载荷带
+  reason 文字快照。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 672 passed / 17 skipped;
+`pnpm test:browser` 69 passed;`pnpm build` 通过;prettier 全绿。

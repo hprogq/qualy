@@ -779,6 +779,63 @@ describe('judging a submission', () => {
       payload: { decision: 'reject', comment: '证明日期与填报不符，请核对。' },
     })
   })
+
+  it('picks a reason by its digit, shows it picked, and sends its words', async () => {
+    const decided = vi.fn(() =>
+      Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),
+    )
+    screen(
+      {
+        getBatch: () =>
+          Effect.succeed({
+            batch: {
+              ...batch(),
+              reviewReasons: { reject: ['材料不清晰', '与已有申报重复'], escalate: [] },
+            },
+          }),
+        listReviewInbox: () =>
+          Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+        getReviewInstance: () => Effect.succeed({ review }),
+        decideReview: decided as never,
+      },
+      `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+
+    await page.getByRole('button', { name: /退回/ }).click()
+    const confirm = page.getByRole('dialog').getByRole('button', { name: /确认退回/ })
+    await expect.element(page.getByRole('dialog').getByText('材料不清晰')).toBeVisible()
+
+    // the second reason answers to its digit, and the pick is worn solid
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '2', code: 'Digit2', bubbles: true }),
+    )
+    await vi.waitFor(() => {
+      const picked = document.querySelector('[data-state="on"]')
+      expect(picked?.textContent).toContain('与已有申报重复')
+      expect(picked?.querySelector('svg')).not.toBeNull()
+    })
+    // the pick hands the cursor to the words: digits first, sentence next
+    expect(document.activeElement?.tagName).toBe('TEXTAREA')
+
+    // a reason alone does not send: the written word is still required
+    await expect.element(confirm).toBeDisabled()
+    await page.getByLabelText('给申报人的说明').fill('与三月的献血申报是同一件事。')
+    await confirm.click()
+    await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
+    expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({
+      payload: {
+        decision: 'reject',
+        reason: '与已有申报重复',
+        comment: '与三月的献血申报是同一件事。',
+      },
+    })
+  })
 })
 
 describe('reading one’s standing', () => {

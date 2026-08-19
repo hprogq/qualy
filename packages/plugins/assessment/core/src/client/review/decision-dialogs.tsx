@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { CheckIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -25,7 +26,14 @@ export interface WordedDecision {
   suggestedPayload?: unknown
 }
 
-/** the configured labels, one pickable at a time; absent list, absent block */
+/**
+ * The configured labels, one pickable at a time; absent list, absent block.
+ *
+ * Every label up to the ninth answers to its bare digit - picking the
+ * reason is the one thing every send-back and escalation does, so the
+ * plainest keys belong to it. The chosen one goes solid with a check: an
+ * outline that only thickened was invisible from the corner of an eye.
+ */
 function ReasonPicker({
   reasons,
   value,
@@ -36,6 +44,26 @@ function ReasonPicker({
   onChange: (next: string) => void
 }) {
   const { format } = useI18n()
+  // read from the document, like the dialog's other keys - but never over
+  // the comment box: a digit typed into a sentence is a digit, so the keys
+  // only answer while the cursor is out of the fields. The dialog holds the
+  // cursor back until a reason is picked, which is what makes them land.
+  useEffect(() => {
+    if (reasons.length === 0) return
+    const down = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const typing =
+        event.target instanceof HTMLElement && event.target.closest('input, textarea') !== null
+      if (typing) return
+      const digit = event.code.startsWith('Digit') ? Number(event.code.slice(5)) : Number(event.key)
+      if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, reasons.length)) {
+        event.preventDefault()
+        onChange(reasons[digit - 1]!)
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [reasons, onChange])
   if (reasons.length === 0) return null
   return (
     <div className="flex flex-col gap-2">
@@ -56,11 +84,25 @@ function ReasonPicker({
         value={value}
         onValueChange={(next) => onChange(next)}
       >
-        {reasons.map((reason) => (
-          <ToggleGroupItem key={reason} value={reason} className="whitespace-nowrap">
-            {reason}
-          </ToggleGroupItem>
-        ))}
+        {reasons.map((reason, index) => {
+          const picked = value === reason
+          return (
+            <ToggleGroupItem
+              key={reason}
+              value={reason}
+              className={cn(
+                'whitespace-nowrap',
+                'data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground',
+              )}
+            >
+              {picked && <CheckIcon aria-hidden className="size-3.5" />}
+              {reason}
+              {index < 9 && (
+                <Kbd className={cn(picked && 'bg-white/20 text-white')}>{index + 1}</Kbd>
+              )}
+            </ToggleGroupItem>
+          )
+        })}
       </ToggleGroup>
     </div>
   )
@@ -95,25 +137,26 @@ export function RejectDialog({
   // empty means "keep theirs": only what the reviewer actually typed becomes
   // part of the suggestion, so a box left alone never overwrites anything
   const [suggested, setSuggested] = useState<Record<string, string>>({})
+  const commentBox = useRef<HTMLTextAreaElement | null>(null)
   const ready = comment.trim() !== '' && (reasons.length === 0 || reason !== '')
 
   // The dialog opens with the cursor in the box, so its keys are read from
   // the document rather than from the panel - a handler on the panel hears
   // nothing once focus moves anywhere else, and heard the letter twice while
-  // it was inside. ⌥ carries them through while writing; bare keys work
-  // whenever the cursor is not in a field.
+  // it was inside. Bare digits belong to the reasons; ⌥ carries G and the
+  // slot digits through, writing or not.
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       const typing =
         event.target instanceof HTMLElement && event.target.closest('input, textarea') !== null
-      const reachable = event.altKey || !typing
       if (event.metaKey || event.ctrlKey) return
-      if (!reachable) return
       if (event.key === 'g' || event.key === 'G' || event.code === 'KeyG') {
+        if (!event.altKey && typing) return
         event.preventDefault()
         setSuggesting((on) => !on)
         return
       }
+      if (!event.altKey) return
       const digit = event.code.startsWith('Digit') ? Number(event.code.slice(5)) : Number(event.key)
       if (Number.isInteger(digit) && digit >= 1 && digit <= fields.length) {
         event.preventDefault()
@@ -185,15 +228,28 @@ export function RejectDialog({
           }
         }}
       >
-        <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
+        <ReasonPicker
+          reasons={reasons}
+          value={reason}
+          onChange={(next) => {
+            setReason(next)
+            // the pick answers the first question; the cursor moves on to
+            // the second so the hands never leave the keyboard
+            commentBox.current?.focus()
+          }}
+        />
         <Field label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
           {(id) => (
             <Textarea
               id={id}
+              ref={commentBox}
               value={comment}
               rows={3}
+              // With reasons to pick, the cursor waits: focus in the box
+              // would swallow the digits that pick them. Without any, the
+              // words are the first question and the cursor starts there.
               // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
+              autoFocus={reasons.length === 0}
               onChange={(event) => setComment(event.target.value)}
             />
           )}
@@ -278,7 +334,12 @@ function FieldRow({
   return (
     <>
       <span className="flex items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
-        {slot <= 9 && <Kbd>{slot}</Kbd>}
+        {slot <= 9 && (
+          <KbdGroup>
+            <Kbd>⌥</Kbd>
+            <Kbd>{slot}</Kbd>
+          </KbdGroup>
+        )}
         {label}
       </span>
       <span
@@ -323,6 +384,7 @@ export function EscalateDialog({
   const { format } = useI18n()
   const [reason, setReason] = useState('')
   const [comment, setComment] = useState('')
+  const commentBox = useRef<HTMLTextAreaElement | null>(null)
   const stages = review.chain.escalation
   const ready = comment.trim() !== '' && (reasons.length === 0 || reason !== '')
 
@@ -367,7 +429,14 @@ export function EscalateDialog({
           }
         }}
       >
-        <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
+        <ReasonPicker
+          reasons={reasons}
+          value={reason}
+          onChange={(next) => {
+            setReason(next)
+            commentBox.current?.focus()
+          }}
+        />
         <Field
           label={format(m.reviewEscalateCommentLabel)}
           hint={format(m.reviewEscalateCommentHint)}
@@ -375,10 +444,12 @@ export function EscalateDialog({
           {(id) => (
             <Textarea
               id={id}
+              ref={commentBox}
               value={comment}
               rows={3}
+              // the same handover as the send-back: digits first, words next
               // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus
+              autoFocus={reasons.length === 0}
               onChange={(event) => setComment(event.target.value)}
             />
           )}

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
+import { GripVerticalIcon, PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -10,6 +10,7 @@ import { DateRangePicker } from '@qualy/ui/date-range-picker'
 import { FieldGroup } from '@qualy/ui/field'
 import { Input } from '@qualy/ui/input'
 import { Badge } from '@qualy/ui/badge'
+import { cn } from '@qualy/ui/cn'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
@@ -97,33 +98,81 @@ function ReasonList({
 }) {
   const { format } = useI18n()
   const [draft, setDraft] = useState('')
+  // where a dragged label would land, marked while it hovers
+  const [drop, setDrop] = useState<{ reason: string; edge: 'before' | 'after' } | null>(null)
   const add = () => {
     const label = draft.trim()
     if (label === '') return
     if (!reasons.includes(label)) onChange([...reasons, label])
     setDraft('')
   }
+  const edgeOf = (event: React.DragEvent) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    return event.clientX < box.left + box.width / 2 ? ('before' as const) : ('after' as const)
+  }
+  const move = (dragged: string, target: string, edge: 'before' | 'after') => {
+    if (dragged === target) return
+    const order = reasons.filter((one) => one !== dragged)
+    const at = order.indexOf(target)
+    order.splice(edge === 'before' ? at : at + 1, 0, dragged)
+    onChange(order)
+  }
   return (
     <div className="flex flex-col gap-2">
       {/* an empty list is a configuration, not a blank: say what it does */}
       {reasons.length === 0 && <p className="text-xs text-muted-foreground">{emptyNote}</p>}
       {reasons.length > 0 && (
+        // the order here is the order the reviewer's dialog offers, and the
+        // digits it hands out; a chip drags to its place the way the form
+        // fields do
         <div className="flex flex-wrap gap-1.5">
-          {reasons.map((reason) => (
-            <Badge key={reason} variant="outline" className="gap-1 pr-1">
-              {reason}
-              {!disabled && (
-                <button
-                  type="button"
-                  className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
-                  onClick={() => onChange(reasons.filter((one) => one !== reason))}
-                >
-                  <XIcon aria-hidden className="size-3" />
-                  <span className="sr-only">{reason}</span>
-                </button>
-              )}
-            </Badge>
-          ))}
+          {reasons.map((reason) => {
+            const marked = drop?.reason === reason ? drop.edge : null
+            return (
+              <Badge
+                key={reason}
+                variant="outline"
+                draggable={!disabled}
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('qualy/reason', reason)
+                  event.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes('qualy/reason')) return
+                  event.preventDefault()
+                  setDrop({ reason, edge: edgeOf(event) })
+                }}
+                onDragLeave={() => setDrop((mark) => (mark?.reason === reason ? null : mark))}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  setDrop(null)
+                  const dragged = event.dataTransfer.getData('qualy/reason')
+                  if (dragged !== '') move(dragged, reason, edgeOf(event))
+                }}
+                className={cn(
+                  'gap-1 pr-1',
+                  !disabled && 'cursor-grab',
+                  marked === 'before' && 'shadow-[inset_2px_0_0_0_var(--primary)]',
+                  marked === 'after' && 'shadow-[inset_-2px_0_0_0_var(--primary)]',
+                )}
+              >
+                {!disabled && (
+                  <GripVerticalIcon aria-hidden className="size-3 text-muted-foreground/60" />
+                )}
+                {reason}
+                {!disabled && (
+                  <button
+                    type="button"
+                    className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                    onClick={() => onChange(reasons.filter((one) => one !== reason))}
+                  >
+                    <XIcon aria-hidden className="size-3" />
+                    <span className="sr-only">{reason}</span>
+                  </button>
+                )}
+              </Badge>
+            )
+          })}
         </div>
       )}
       <div className="flex items-center gap-2">
