@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Dialog as SheetPrimitive } from 'radix-ui'
 
 import { cn } from '../lib/utils.ts'
+import { releaseStuckBody } from '../lib/modal-guard.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
 
@@ -54,6 +55,8 @@ function SheetContent({
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
 }) {
+  // see modal-guard: verify radix actually let go of the body on the way out
+  React.useEffect(() => releaseStuckBody, [])
   return (
     <SheetPortal>
       <SheetOverlay />

@@ -2,6 +2,7 @@ import * as React from 'react'
 import { AlertDialog as AlertDialogPrimitive } from 'radix-ui'
 
 import { cn } from '../lib/utils.ts'
+import { releaseStuckBody } from '../lib/modal-guard.ts'
 import { Button } from './button.tsx'
 
 function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
@@ -41,6 +42,8 @@ function AlertDialogContent({
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
   size?: 'default' | 'sm'
 }) {
+  // see modal-guard: verify radix actually let go of the body on the way out
+  React.useEffect(() => releaseStuckBody, [])
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />

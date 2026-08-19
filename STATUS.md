@@ -6166,3 +6166,20 @@ narrow 时就把三个插槽预挂载在一个 hidden 容器里(chunk 与身份�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 68 passed;`pnpm build` 通过;prettier 全绿。
+
+### CI 浏览器套件间歇失败:radix body pointer-events 泄漏(2026-08-19)
+
+CI 在 entry-workflow「存草稿→点行→提交」处 13 秒重试 `<html> intercepts pointer events` 后超时;
+本地 6 连跑全绿。实查 @radix-ui/react-dismissable-layer@1.1.19 源码:body 的 `pointer-events:none`
+由模块级单变量 originalBodyPointerEvents + Set 计数管理,两层模态交接(填报 Dialog 退场动画未完、
+详情 Sheet 已挂载)时清理顺序错位可把 body 永久留在 none——页面看着正常、点什么都没反应,刷新才好。
+与用户此前实机"有时点不动、一旦好使就一直好使"完全同症(当时疑为 HMR,现定案)。
+
+三处修复:①@qualy/ui 新增 modal-guard `releaseStuckBody`——Dialog/AlertDialog/Sheet 三个 content
+卸载时等 500ms(退场动画完毕)后核验:无任何 open 的模态内容而 body 仍 none 即放开;后开的模态
+自己会重新上锁,清理不可能与之竞争。②entry-workflow 在两模态交接处补 waitFor(dialog-content 为
+null)——测试考的是流程,不该在慢机器上考 radix 的层叠竞态。③EntrySheet 面包屑分隔符移出
+BreadcrumbItem(<li> 套 <li> 是非法 HTML,react 每次渲染都告警)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 68 passed(li 告警消失);`pnpm build` 通过;prettier 全绿。

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircleIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
@@ -95,14 +95,19 @@ export function EntrySheet({
           <div className="flex min-w-0 flex-col gap-1">
             <Breadcrumb>
               <BreadcrumbList className="flex-nowrap text-xs sm:gap-1.5">
+                {/* the separator is a list item of its own, never nested in
+                    one: an <li> inside an <li> is invalid HTML and react
+                    says so on every render */}
                 {trail.map((name, index) => (
-                  <BreadcrumbItem key={index} className="min-w-0">
+                  <Fragment key={index}>
                     {index > 0 && <BreadcrumbSeparator />}
-                    <span className="min-w-0 truncate">{name}</span>
-                  </BreadcrumbItem>
+                    <BreadcrumbItem className="min-w-0">
+                      <span className="min-w-0 truncate">{name}</span>
+                    </BreadcrumbItem>
+                  </Fragment>
                 ))}
+                {trail.length > 0 && <BreadcrumbSeparator />}
                 <BreadcrumbItem className="min-w-0">
-                  {trail.length > 0 && <BreadcrumbSeparator />}
                   <BreadcrumbPage className="min-w-0 truncate">{item.title}</BreadcrumbPage>
                 </BreadcrumbItem>
               </BreadcrumbList>

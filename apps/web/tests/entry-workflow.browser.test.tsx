@@ -216,6 +216,14 @@ describe('filing a claim', () => {
       payload: { summary: '2024 年入伍，2026 年退役复学' },
     })
 
+    // Let the filing dialog finish leaving before the next modal opens. Two
+    // modal layers trading places is the radix pointer-events leak the ui
+    // package now guards against; this test is about the workflow, and on a
+    // slow runner the overlap turned it into a 15s retry loop instead.
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull(),
+    )
+
     // handing it on happens where the whole claim is on screen: the drawer,
     // opened from the claim's own row on the paper
     await page.getByRole('button', { name: /2024 年入伍/ }).click()

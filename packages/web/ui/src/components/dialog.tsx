@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 
 import { cn } from '../lib/utils.ts'
+import { releaseStuckBody } from '../lib/modal-guard.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
 
@@ -45,6 +46,8 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  // see modal-guard: verify radix actually let go of the body on the way out
+  React.useEffect(() => releaseStuckBody, [])
   return (
     <DialogPortal>
       <DialogOverlay />
