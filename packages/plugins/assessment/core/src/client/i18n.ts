@@ -2090,10 +2090,10 @@ const i18n = definePluginMessages({
       defaultMessage: 'It leaves your queue.',
     },
     // the reason lists, configured with the batch
-    settingsReasons: { id: 'assessment/settings/reasons', defaultMessage: 'Review reasons' },
     settingsReasonsHint: {
       id: 'assessment/settings/reasons-hint',
-      defaultMessage: 'What a reviewer picks from when sending back or escalating.',
+      defaultMessage:
+        'Rejecting asks for one main reason plus a written note. Edits here only affect later reviews; decided ones keep the words they used.',
     },
     settingsRejectReasons: {
       id: 'assessment/settings/reject-reasons',
@@ -2103,14 +2103,26 @@ const i18n = definePluginMessages({
       id: 'assessment/settings/escalate-reasons',
       defaultMessage: 'Escalation reasons',
     },
+    settingsEscalateHint: {
+      id: 'assessment/settings/escalate-hint',
+      defaultMessage: 'Escalating picks one of these the same way.',
+    },
     settingsReasonPlaceholder: {
       id: 'assessment/settings/reason-placeholder',
       defaultMessage: 'New reason',
     },
     settingsReasonAdd: { id: 'assessment/settings/reason-add', defaultMessage: 'Add' },
-    settingsReasonsEmpty: {
-      id: 'assessment/settings/reasons-empty',
-      defaultMessage: 'Leave empty to ask only for a written note.',
+    settingsRejectReasonsNone: {
+      id: 'assessment/settings/reject-reasons-none',
+      defaultMessage: 'No preset reasons; rejecting asks only for a written note.',
+    },
+    settingsEscalateReasonsNone: {
+      id: 'assessment/settings/escalate-reasons-none',
+      defaultMessage: 'No preset reasons; escalating asks only for a written note.',
+    },
+    settingsReasonRestore: {
+      id: 'assessment/settings/reason-restore',
+      defaultMessage: 'Restore system defaults',
     },
     reviewOnEscalationRoute: {
       id: 'assessment/review/on-escalation-route',

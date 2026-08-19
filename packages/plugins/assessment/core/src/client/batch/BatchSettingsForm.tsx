@@ -13,6 +13,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
+import { DEFAULT_REVIEW_REASONS } from '../../review/reasons.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { refusalMessage, refusalsOf } from '../refusals.ts'
 import { ReopenDialog } from './ReopenDialog.tsx'
@@ -81,11 +82,17 @@ function ReasonList({
   id,
   reasons,
   disabled,
+  emptyNote,
+  defaults,
   onChange,
 }: {
   id: string
   reasons: readonly string[]
   disabled: boolean
+  /** what an empty list means for the reviewer, said instead of nothing */
+  emptyNote: string
+  /** the system's list, offered back whenever this one has drifted from it */
+  defaults: readonly string[]
   onChange: (next: readonly string[]) => void
 }) {
   const { format } = useI18n()
@@ -98,6 +105,8 @@ function ReasonList({
   }
   return (
     <div className="flex flex-col gap-2">
+      {/* an empty list is a configuration, not a blank: say what it does */}
+      {reasons.length === 0 && <p className="text-xs text-muted-foreground">{emptyNote}</p>}
       {reasons.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {reasons.map((reason) => (
@@ -142,6 +151,13 @@ function ReasonList({
           <PlusIcon aria-hidden />
           {format(m.settingsReasonAdd)}
         </Button>
+        {/* the way back to the shipped list, only while this one differs;
+            it changes the draft like any edit, so saving is still the act */}
+        {!disabled && JSON.stringify(reasons) !== JSON.stringify(defaults) && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(defaults)}>
+            {format(m.settingsReasonRestore)}
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -338,16 +354,20 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                   id={id}
                   reasons={rejectReasons}
                   disabled={!editable}
+                  emptyNote={format(m.settingsRejectReasonsNone)}
+                  defaults={DEFAULT_REVIEW_REASONS.reject}
                   onChange={setRejectReasons}
                 />
               )}
             </Field>
-            <Field label={format(m.settingsEscalateReasons)} hint={format(m.settingsReasonsEmpty)}>
+            <Field label={format(m.settingsEscalateReasons)} hint={format(m.settingsEscalateHint)}>
               {(id) => (
                 <ReasonList
                   id={id}
                   reasons={escalateReasons}
                   disabled={!editable}
+                  emptyNote={format(m.settingsEscalateReasonsNone)}
+                  defaults={DEFAULT_REVIEW_REASONS.escalate}
                   onChange={setEscalateReasons}
                 />
               )}

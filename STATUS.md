@@ -6183,3 +6183,28 @@ BreadcrumbItem(<li> 套 <li> 是非法 HTML,react 每次渲染都告警)。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
 `pnpm test:browser` 68 passed(li 告警消失);`pnpm build` 通过;prettier 全绿。
+
+### 退回事由开箱即用:系统默认复制到批次(2026-08-19)
+
+审核页的 ReasonPicker、服务端 required/not-offered 强校验、事件文字快照本就完整;缺的是最后一步——
+新批次从列默认 '{}' 起步,审核人永远没有原因可选。按裁决落地:**功能保留、不建理由主表、默认值在
+创建批次时复制进现有 JSONB、批次此后自管、事件继续存文字快照**。
+
+- `src/review/reasons.ts`:DEFAULT_REVIEW_REASONS 纯数据叶(双端可引,不是 i18n 文案——它与批次名
+  同类,是管理员可编辑的业务数据)。退回八条(申报信息不完整/证明材料无法清晰辨识/申报内容与证明
+  材料不一致/现有材料不足以支持申报内容/不符合本项认定条件/相关时间不在有效范围内/与已有申报重复/
+  其他原因),复核四条(材料真实性存疑/认定标准存在争议/超出当前审核范围/其他原因);两表都以
+  「其他原因」收尾——服务端拒绝表外文字,封闭列表会把预设都不符的审核人逼进死角。
+- createBatch → insertBatch 落入默认(数据库默认 '{}' 仍作底层兜底,产品默认归应用层)。
+- custom 迁移 20260819143000_default-review-reasons **只回填 '{}'**:配置过的原样,显式
+  '{"reject":[],"escalate":[]}'(管理员主动关闭)原样——升级测试三形态并测(旧 lineage 建库→插三种
+  批次→跑迁移→逐一断言)。
+- BatchSettingsForm:每列表配「恢复系统默认」(仅在与默认不同且可编辑时出现,改 draft 不直接落库);
+  退回提示改为裁决文案(选主要原因+具体说明,改删只影响之后);空列表显式说明(未设置预设……仅填写
+  说明),复核列表拿到自己的提示与空文案;删掉无消费者的 settings/reasons 与语义错位的 reasons-empty。
+- 测试 fixture(runningBatch 与 provisional-scoring 自建 round)在创建后显式关闭预设——那些用例
+  考的是别的事;原因机制用例自行配置;新增用例断言"裸 createBatch 即带默认、两表以其他原因收尾"。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 96 files / 672 passed / 17 skipped
+(含新迁移升级用例与 PGlite lineage 重放);`pnpm test:browser` 68 passed;`pnpm build` 通过;
+prettier 全绿。

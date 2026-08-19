@@ -46,6 +46,13 @@ const scoringBatch = (
       },
       admin,
     )
+    // presets off, as in the shared round fixture: scoring is the subject
+    yield* assessment.updateBatch(
+      f.t,
+      batch.id,
+      { reviewReasons: { reject: [], escalate: [] } },
+      admin,
+    )
     yield* assessment.replacePlan(
       f.t,
       batch.id,

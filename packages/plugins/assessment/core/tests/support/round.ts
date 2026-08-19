@@ -235,6 +235,15 @@ export const runningBatch = (f: Seeded, over?: { profile?: readonly string[] }) 
       },
       f.principal(f.admin),
     )
+    // a fresh batch ships with the system's default review reasons; these
+    // rounds are about everything else, so the presets are switched off and
+    // the tests about reasons configure their own lists
+    yield* assessment.updateBatch(
+      f.t,
+      batch.id,
+      { reviewReasons: { reject: [], escalate: [] } },
+      f.principal(f.admin),
+    )
     yield* assessment.replacePlan(
       f.t,
       batch.id,

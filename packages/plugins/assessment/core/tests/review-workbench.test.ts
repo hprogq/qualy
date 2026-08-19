@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
+import { DEFAULT_REVIEW_REASONS } from '../src/review/reasons.ts'
 import { errorOf, GATED, ok, run, runningBatch, seed } from './support/round.ts'
 
 // What the workbench reads and what it is held to: the queue row carrying
@@ -14,6 +15,38 @@ import { errorOf, GATED, ok, run, runningBatch, seed } from './support/round.ts'
 const REVIEW_OPEN = [...GATED, 'assessment.review.process', 'assessment.review.escalate']
 
 describe.runIf(postgresAvailable)('the review workbench', () => {
+  it('opens a fresh batch with the system reason lists already on it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-defaults')
+          const assessment = yield* Assessment
+          // straight from creation, before any fixture switches presets off:
+          // the reviewer's picker must work without an administrator ever
+          // having visited the settings page
+          return yield* assessment.createBatch(
+            f.t,
+            {
+              name: 'Fresh',
+              materialRange: { start: '2026-03-01', end: '2026-09-01' },
+              import: { orgNodeIds: [f.root], userTypeIds: [f.studentType] },
+            },
+            f.principal(f.admin),
+          )
+        }),
+      ),
+    )
+    expect(result.reviewReasons).toEqual({
+      reject: [...DEFAULT_REVIEW_REASONS.reject],
+      escalate: [...DEFAULT_REVIEW_REASONS.escalate],
+    })
+    // both lists end in the open reason: the server refuses labels outside
+    // the list, and a closed list corners whoever none of the presets fit
+    expect(result.reviewReasons.reject.at(-1)).toBe('其他原因')
+    expect(result.reviewReasons.escalate.at(-1)).toBe('其他原因')
+  })
+
   let db: Awaited<ReturnType<typeof createTestContext>>
 
   beforeAll(async () => {

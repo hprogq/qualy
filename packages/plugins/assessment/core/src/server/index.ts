@@ -139,6 +139,7 @@ import {
   type PhaseRow,
   type TemplateRow,
 } from './db.ts'
+import { DEFAULT_REVIEW_REASONS } from '../review/reasons.ts'
 
 // The assessment service: the engine's answers, wired to rows. Every write
 // serializes on its batch row, "entered" is decided by the clock, and the
@@ -1860,6 +1861,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
               descriptionMd: input.descriptionMd ?? null,
               materialStart: input.materialRange.start,
               materialEnd: input.materialRange.end,
+              // the system's defaults, copied in and owned by the batch from
+              // here on: editing them later is this batch's business alone
+              reviewReasons: DEFAULT_REVIEW_REASONS,
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
             })
             const batchId = created.id as string

@@ -591,3 +591,64 @@ describe.runIf(postgresAvailable)('the entry-appeal-naming migration', () => {
     }
   })
 })
+
+// Backfilling default review reasons only reaches batches that were never
+// initialised: replaying into an empty database exercises the UPDATE against
+// zero rows, which proves neither the fill nor - more importantly - what it
+// must leave alone.
+
+const REASONS = '20260819143000_default-review-reasons.sql'
+
+describe.runIf(postgresAvailable)('the default-review-reasons migration', () => {
+  it('fills the never-initialised shape and leaves every decision alone', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, REASONS))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-review-reasons-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file !== REASONS) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('review-reasons-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenant = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('reasons', 'Reasons') returning id`,
+        )
+      ).id
+      const batch = (label: string, reasons: string) =>
+        db.row<{ id: string }>(
+          `insert into assessment_batches (tenant_id, name, material_range, review_reasons)
+           values ($1, $2, daterange('2026-03-01', '2026-09-01'), $3::jsonb) returning id`,
+          [tenant, label, reasons],
+        )
+      const untouched = (await batch('Never initialised', '{}')).id
+      const configured = (await batch('Configured', '{"reject": ["材料不清晰"], "escalate": []}'))
+        .id
+      const switchedOff = (await batch('Switched off', '{"reject": [], "escalate": []}')).id
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const read = async (id: string) =>
+        (
+          await db.row<{ review_reasons: { reject?: string[]; escalate?: string[] } }>(
+            `select review_reasons from assessment_batches where id = $1`,
+            [id],
+          )
+        ).review_reasons
+      // the blank shape got the defaults, ending in the open reason
+      const filled = await read(untouched)
+      expect(filled.reject?.length).toBeGreaterThan(0)
+      expect(filled.reject?.at(-1)).toBe('其他原因')
+      expect(filled.escalate?.at(-1)).toBe('其他原因')
+      // an administrator's list, and an administrator's explicit "none",
+      // both stand exactly as they were
+      expect(await read(configured)).toEqual({ reject: ['材料不清晰'], escalate: [] })
+      expect(await read(switchedOff)).toEqual({ reject: [], escalate: [] })
+    } finally {
+      await db.dispose()
+    }
+  })
+})

@@ -400,6 +400,8 @@ export const insertBatch = (input: {
   materialStart: string
   materialEnd: string
   timezone?: string
+  /** the reason lists this batch opens with; its own to edit from here on */
+  reviewReasons: { reject: readonly string[]; escalate: readonly string[] }
 }) =>
   db.query((k) =>
     k
@@ -409,6 +411,7 @@ export const insertBatch = (input: {
         name: input.name,
         descriptionMd: input.descriptionMd,
         materialRange: sql`daterange(${input.materialStart}::date, ${input.materialEnd}::date)`,
+        reviewReasons: sql`${JSON.stringify(input.reviewReasons)}::jsonb`,
         ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
       } as never)
       .returning('id')
