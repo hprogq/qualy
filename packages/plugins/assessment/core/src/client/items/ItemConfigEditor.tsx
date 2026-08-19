@@ -481,8 +481,14 @@ export function ItemConfigEditor({
   const save = useMutation({
     mutationFn: ({ reason, effects }: { reason: string | null; effects?: ChangeEffects }) => {
       const config = configOf(draft)
+      // one grant per person: the count is not the administrator's to set on
+      // a question nobody files
       const maxEntries =
-        draft.maxEntries.trim() === '' ? null : Math.max(1, Number(draft.maxEntries))
+        draft.itemType === 'constant'
+          ? 1
+          : draft.maxEntries.trim() === ''
+            ? null
+            : Math.max(1, Number(draft.maxEntries))
       if (item === null) {
         return run(
           api.assessment.createItem({
@@ -892,7 +898,7 @@ export function ItemConfigEditor({
                   control it is given to its own width */}
               <div className="flex flex-wrap items-start gap-5">
                 <div className="w-38">
-                  <Field label={format(m.itemsFixedValue)}>
+                  <Field label={format(granted ? m.itemsGrantedValue : m.itemsFixedValue)}>
                     {(id) => (
                       <InputGroup>
                         <InputGroupInput
@@ -908,74 +914,85 @@ export function ItemConfigEditor({
                     )}
                   </Field>
                 </div>
-                <div className="w-52">
-                  <Field label={format(m.itemsFolding)} hint={format(m.itemsFoldingHint)}>
-                    {(id) => (
-                      <Select
-                        value={draft.folding}
-                        onValueChange={(next) => patch({ folding: next as Draft['folding'] })}
-                      >
-                        <SelectTrigger id={id} className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="sum" description={format(m.itemsFoldingSumHint)}>
-                            {format(m.itemsFoldingSum)}
-                          </SelectItem>
-                          <SelectItem value="max" description={format(m.itemsFoldingMaxHint)}>
-                            {format(m.itemsFoldingMax)}
-                          </SelectItem>
-                          <SelectItem value="top-n" description={format(m.itemsFoldingTopNHint)}>
-                            {format(m.itemsFoldingTopN)}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </Field>
-                </div>
-                {draft.folding === 'top-n' && (
-                  <div className="w-28">
-                    <Field label={format(m.itemsFoldingN)}>
-                      {(id) => (
-                        <Input
-                          id={id}
-                          className="tabular-nums"
-                          value={draft.topN}
-                          onChange={(event) => patch({ topN: event.target.value })}
-                        />
-                      )}
-                    </Field>
-                  </div>
-                )}
-                <div className="w-60">
-                  <Field label={format(m.itemsFieldMax)}>
-                    {(id) => (
-                      <div className="flex items-center gap-2.5">
-                        <Input
-                          id={id}
-                          type="number"
-                          min={1}
-                          className="w-24 tabular-nums"
-                          disabled={entries === null}
-                          value={draft.maxEntries}
-                          onChange={(event) => patch({ maxEntries: event.target.value })}
-                        />
-                        <label className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
-                          <Checkbox
-                            checked={entries === null}
-                            onCheckedChange={(next) =>
-                              patch({ maxEntries: next === true ? '' : '1' })
-                            }
-                          />
-                          {format(m.itemsMaxEntriesAny)}
-                        </label>
+                {/* how several claims fold together, and how many one
+                    person may file: both are questions about filing, and a
+                    question granted to everybody is never filed */}
+                {!granted && (
+                  <>
+                    <div className="w-52">
+                      <Field label={format(m.itemsFolding)} hint={format(m.itemsFoldingHint)}>
+                        {(id) => (
+                          <Select
+                            value={draft.folding}
+                            onValueChange={(next) => patch({ folding: next as Draft['folding'] })}
+                          >
+                            <SelectTrigger id={id} className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="sum" description={format(m.itemsFoldingSumHint)}>
+                                {format(m.itemsFoldingSum)}
+                              </SelectItem>
+                              <SelectItem value="max" description={format(m.itemsFoldingMaxHint)}>
+                                {format(m.itemsFoldingMax)}
+                              </SelectItem>
+                              <SelectItem
+                                value="top-n"
+                                description={format(m.itemsFoldingTopNHint)}
+                              >
+                                {format(m.itemsFoldingTopN)}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </Field>
+                    </div>
+                    {draft.folding === 'top-n' && (
+                      <div className="w-28">
+                        <Field label={format(m.itemsFoldingN)}>
+                          {(id) => (
+                            <Input
+                              id={id}
+                              className="tabular-nums"
+                              value={draft.topN}
+                              onChange={(event) => patch({ topN: event.target.value })}
+                            />
+                          )}
+                        </Field>
                       </div>
                     )}
-                  </Field>
-                </div>
+                    <div className="w-60">
+                      <Field label={format(m.itemsFieldMax)}>
+                        {(id) => (
+                          <div className="flex items-center gap-2.5">
+                            <Input
+                              id={id}
+                              type="number"
+                              min={1}
+                              className="w-24 tabular-nums"
+                              disabled={entries === null}
+                              value={draft.maxEntries}
+                              onChange={(event) => patch({ maxEntries: event.target.value })}
+                            />
+                            <label className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
+                              <Checkbox
+                                checked={entries === null}
+                                onCheckedChange={(next) =>
+                                  patch({ maxEntries: next === true ? '' : '1' })
+                                }
+                              />
+                              {format(m.itemsMaxEntriesAny)}
+                            </label>
+                          </div>
+                        )}
+                      </Field>
+                    </div>
+                  </>
+                )}
               </div>
               <ScoringSummary
-                ceiling={ceiling}
+                granted={granted}
+                ceiling={granted ? amountOf(unitsOf(draft.fixedValue.trim())) : ceiling}
                 entries={entries}
                 each={draft.fixedValue}
                 placement={placement}
@@ -1251,11 +1268,14 @@ function InlineAdd({ label, onClick }: { label: string; onClick: () => void }) {
 
 /** the arithmetic behind the number, so nobody has to reconstruct it */
 function ScoringSummary({
+  granted,
   ceiling,
   entries,
   each,
   placement,
 }: {
+  /** granted to everybody: one amount per person, never a count of claims */
+  granted: boolean
   ceiling: string | null
   entries: number | null
   each: string
@@ -1286,9 +1306,11 @@ function ScoringSummary({
           could not be changed, sitting under a heading with the same name as
           the section around it. */}
       <p className="text-xs leading-relaxed text-muted-foreground">
-        {entries === null
-          ? format(m.itemsCeilingHowAny)
-          : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: entries })}
+        {granted
+          ? format(m.itemsCeilingHowGranted, { value: trimAmount(each.trim()) })
+          : entries === null
+            ? format(m.itemsCeilingHowAny)
+            : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: entries })}
         {` ${format(m.itemsCeilingSource, { name: format(m.itemsScoringMethodFixed) })}`}
         {chain !== '' && ` ${format(m.itemsCeilingNote, { chain })}`}
       </p>
@@ -1592,11 +1614,17 @@ function ParticipantPreview({ draft }: { draft: Draft }) {
         </h4>
         <p className="text-xs leading-relaxed text-muted-foreground">
           {draft.description.trim() === '' ? '' : `${draft.description.trim()} `}
-          {draft.maxEntries.trim() === ''
-            ? format(m.itemsPreviewNoMax)
-            : format(m.itemsPreviewMax, { count: Number(draft.maxEntries) })}
-          {format(m.listSeparator)}
-          {format(m.itemsPreviewValue, { value: trimAmount(draft.fixedValue.trim()) })}
+          {draft.itemType === 'constant' ? (
+            format(m.itemsCeilingHowGranted, { value: trimAmount(draft.fixedValue.trim()) })
+          ) : (
+            <>
+              {draft.maxEntries.trim() === ''
+                ? format(m.itemsPreviewNoMax)
+                : format(m.itemsPreviewMax, { count: Number(draft.maxEntries) })}
+              {format(m.listSeparator)}
+              {format(m.itemsPreviewValue, { value: trimAmount(draft.fixedValue.trim()) })}
+            </>
+          )}
         </p>
         {draft.itemType === 'constant' ? (
           <p className="text-xs text-muted-foreground">{format(m.itemsGrantedBody)}</p>
