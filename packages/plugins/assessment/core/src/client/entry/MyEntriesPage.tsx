@@ -12,7 +12,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { cn } from '@qualy/ui/cn'
-import { Appear, Glide } from '@qualy/ui/reveal'
+import { Appear, Glide, Sift, SiftRow, Swap } from '@qualy/ui/reveal'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
@@ -94,6 +94,60 @@ export default function MyEntriesPage() {
       )}
     </BatchScreen>
   )
+}
+
+/**
+ * The line a row has to reach before it counts as the one being read: clear
+ * of the band strip pinned over the top of the scroller, which is the only
+ * thing above the paper now that the toolbar stands outside it.
+ */
+const READING_EDGE = 44
+
+/**
+ * The paper's own scroller, where it has one.
+ *
+ * Side by side the paper scrolls inside itself; stacked it is part of the
+ * page and the page's scroller is the right one to move.
+ */
+const paneViewport = (pane: HTMLElement | null): HTMLElement | null => {
+  const found = pane?.querySelector('[data-slot="scroll-area-viewport"]')
+  return found instanceof HTMLElement ? found : null
+}
+
+/**
+ * Bring a row under the reader, reporting whether it could.
+ *
+ * Arithmetic rather than `scrollIntoView`, which scrolls every scrollable
+ * ancestor it can find: in a pane that scrolls inside itself that means the
+ * shell moves too, taking the toolbar and the rail off the top of the window
+ * with it.
+ */
+const bring = (
+  pane: HTMLElement | null,
+  id: string,
+  how: 'smooth' | 'instant',
+): { moved: boolean; top: number | null } => {
+  const row = pane?.querySelector(`[data-paper-row="${id}"]`)
+  if (!(row instanceof HTMLElement)) return { moved: false, top: null }
+  const viewport = paneViewport(pane)
+  if (viewport === null) {
+    // stacked: the page is the scroller, and moving it is the point
+    row.scrollIntoView({ behavior: how === 'smooth' ? 'smooth' : 'auto', block: 'start' })
+    return { moved: true, top: null }
+  }
+  // a band card wants the top of the pane; a question wants to clear the
+  // strip that names the band it is in
+  const clear = row.hasAttribute('data-paper-band') ? 0 : READING_EDGE
+  const at =
+    viewport.scrollTop + row.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+  // where it will come to rest: the end of the paper stops short of what a
+  // row near the bottom asks for, and the mark has to know that
+  const top = Math.min(
+    Math.max(0, at - clear),
+    Math.max(0, viewport.scrollHeight - viewport.clientHeight),
+  )
+  viewport.scrollTo({ top, behavior: how })
+  return { moved: true, top }
 }
 
 function Body({
@@ -273,34 +327,66 @@ function Body({
   // is the one the rail highlights, with the same mark a click leaves. The
   // address is written only by clicks - a scroll is reading, not going
   // somewhere, and a hundred history entries per page would prove it.
-  const paperRef = useRef<HTMLDivElement | null>(null)
+  // Held as state, not a ref: the paper mounts on its own schedule - the
+  // rows exist for the moment between the questions arriving and the last
+  // read the page waits for - and everything that watches the paper has to
+  // start watching when it appears, not when the rows change.
+  const [paper, setPaper] = useState<HTMLElement | null>(null)
   const [passing, setPassing] = useState('')
-  // While a click's smooth scroll is in flight, the spy would call out every
-  // row it passes and the rail's mark would strobe through all of them. The
+  // which band's card has gone above the toolbar, and so wants naming in the
+  // strip; a band whose card is still on screen names itself
+  const [passedBand, setPassedBand] = useState('')
+  // While a click's scroll is in flight, the spy would call out every row it
+  // passes and the rail's mark would strobe through all of them. The
   // steering lock holds the mark on the destination until the scroll gets
   // there (or gives up).
-  const steering = useRef<{ id: string; until: number } | null>(null)
+  const steering = useRef<{ id: string; top: number; until: number } | null>(null)
   useEffect(() => {
-    const pane = paperRef.current
-    if (pane === null) return
-    const viewport = pane.querySelector('[data-slot="scroll-area-viewport"]')
-    if (!(viewport instanceof HTMLElement)) return
+    const viewport = paneViewport(paper)
+    if (viewport === null) return
     let frame = 0
     const read = () => {
       frame = 0
-      // past the toolbar and the sticky band both: what counts as "under
-      // the reader" is what stands clear of everything pinned above it
-      const edge = viewport.getBoundingClientRect().top + 96
+      const port = viewport.getBoundingClientRect()
+      // past the toolbar and the pinned band both: what counts as "under the
+      // reader" is what stands clear of everything pinned above it
+      const edge = port.top + READING_EDGE
+      // The tail of the paper can never reach that line: a last band of two
+      // questions stops the scroll long before its rows climb that high, and
+      // a rail that never lights them is a rail that lies. At the end of the
+      // scroll the reader is reading whatever the end shows, so the last row
+      // on screen is the one being read.
+      const stopped = viewport.scrollTop >= viewport.scrollHeight - viewport.clientHeight - 2
       let current = ''
       for (const el of viewport.querySelectorAll('[data-paper-row]')) {
-        if (el.getBoundingClientRect().top <= edge) {
+        const box = el.getBoundingClientRect()
+        if (box.top <= edge || (stopped && box.top < port.bottom)) {
           current = el.getAttribute('data-paper-row') ?? ''
         } else break
       }
+      // the strip is geometry, not inference: it names the band whose own
+      // card has left the top of the pane, so it never repeats a card the
+      // reader can still see
+      let band = ''
+      for (const el of viewport.querySelectorAll('[data-paper-band]')) {
+        if (el.getBoundingClientRect().bottom <= port.top + 1) {
+          band = el.getAttribute('data-paper-band') ?? ''
+        } else break
+      }
+      setPassedBand(band)
       const held = steering.current
       if (held !== null) {
-        if (current === held.id || Date.now() > held.until) steering.current = null
-        else return
+        // parked where the click put it: the reader has not moved since, so
+        // the row they asked for is still the row they are reading - true
+        // as well of a row near the end, which the scroll stops short of
+        // bringing all the way up
+        if (Math.abs(viewport.scrollTop - held.top) <= 4) {
+          setPassing(held.id)
+          return
+        }
+        // still on its way there
+        if (Date.now() <= held.until) return
+        steering.current = null
       }
       setPassing(current)
     }
@@ -313,55 +399,56 @@ function Body({
       viewport.removeEventListener('scroll', on)
       if (frame !== 0) cancelAnimationFrame(frame)
     }
-  }, [rows.length])
+    // the scroller itself is swapped out when the two panes stop standing
+    // side by side, and the new one needs its own listener
+  }, [paper, beside, rows.length])
 
   /** a rail click: name it in the address, then bring it under the reader */
   const goTo = (id: string) => {
     onSelect(id)
-    steering.current = { id, until: Date.now() + 1500 }
     setPassing(id)
-    paperRef.current
-      ?.querySelector(`[data-paper-row="${id}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const { top } = bring(paper, id, 'smooth')
+    steering.current = top === null ? null : { id, top, until: Date.now() + 1500 }
   }
-  // the address's row, once, when the page arrives already naming one
+  // The row the page ARRIVED at, jumped to once and never again: a row the
+  // reader names later by clicking the rail is theirs to scroll to smoothly,
+  // and an instant jump racing that scroll is what makes the first click of
+  // a session snap while every later one glides. The jump waits for its row
+  // to exist, too - the groups arrive before the questions do, and a landing
+  // spent on the commit in between scrolls to nothing at all.
+  const arrivedAt = useRef(selected)
   const landed = useRef(false)
   useEffect(() => {
-    if (landed.current || rows.length === 0) return
-    landed.current = true
-    if (selected !== '') {
-      paperRef.current
-        ?.querySelector(`[data-paper-row="${selected}"]`)
-        ?.scrollIntoView({ block: 'start' })
-    }
+    if (landed.current || arrivedAt.current === '') return
+    // side by side the paper scrolls inside itself, and until that scroller
+    // exists the only thing a jump can move is the shell around it
+    if (beside && paneViewport(paper) === null) return
+    landed.current = bring(paper, arrivedAt.current, 'instant').moved
     // reading the address is not a scroll; the spy fills in from here
-  }, [rows.length, selected])
+  }, [paper, beside, rows.length])
 
-  // the band the reader is inside, for the strip pinned under the toolbar:
-  // shown only while the band's own card is off the top, because a strip
-  // repeating a card still on screen names the place twice
-  const currentBand = (() => {
-    if (passing === '') return null
-    const rooted =
-      rows.length > 0 &&
-      rows[0]!.kind === 'group' &&
-      rows.filter((row) => row.depth === 0).length === 1
-    const bandDepth = rooted ? 1 : 0
-    let at: StructureRow | null = rows.find((row) => row.id === passing) ?? null
-    if (at === null) return null
-    if (at.kind === 'group' && at.depth === bandDepth) return null
-    while (at !== null && !(at.kind === 'group' && at.depth === bandDepth)) {
-      const parent: string | null = at.parentId
-      at = parent === null ? null : (rows.find((row) => row.id === parent) ?? null)
-    }
-    return at
-  })()
+  // the depth the bands sit at: one down when a single root group holds the
+  // whole paper, since the summary card stands in for that one
+  const bandDepth =
+    rows.length > 0 &&
+    rows[0]!.kind === 'group' &&
+    rows.filter((row) => row.depth === 0).length === 1
+      ? 1
+      : 0
+  const isBand = (id: string): boolean => {
+    const at = rows.find((row) => row.id === id)
+    return at !== undefined && at.kind === 'group' && at.depth === bandDepth
+  }
+  // The band named by the strip pinned under the toolbar: the one whose own
+  // card has gone off the top, because a strip repeating a card still on
+  // screen names the place twice. A click that sent the reader to a band
+  // whose card is on screen quiets it too - naming the band before the one
+  // they asked for reads as a wrong answer.
+  const currentBand =
+    passedBand === '' || (passing !== passedBand && isBand(passing))
+      ? null
+      : (rows.find((row) => row.id === passedBand) ?? null)
   const bandNoOf = (band: StructureRow): string => {
-    const rooted =
-      rows.length > 0 &&
-      rows[0]!.kind === 'group' &&
-      rows.filter((row) => row.depth === 0).length === 1
-    const bandDepth = rooted ? 1 : 0
     const tops = rows.filter((row) => row.kind === 'group' && row.depth === bandDepth)
     return String(tops.findIndex((row) => row.id === band.id) + 1).padStart(2, '0')
   }
@@ -417,7 +504,7 @@ function Body({
             />
 
             <div
-              ref={paperRef}
+              ref={setPaper}
               className="relative flex min-w-0 flex-col border-t lg:min-h-0 lg:border-t-0 lg:border-l"
             >
               {/* the low bar naming the section being read: pinned to the
@@ -425,7 +512,7 @@ function Body({
                   with the paper and only flashed past. The display card
                   stays in the paper; this is its short understudy, gone
                   whenever the card itself is on screen. */}
-              <div className="pointer-events-none absolute inset-x-0 top-13 z-[5] max-lg:hidden">
+              <div className="pointer-events-none absolute inset-x-0 top-12 z-[5] max-lg:hidden">
                 <Appear show={currentBand !== null}>
                   <div className="border-b bg-background/95 backdrop-blur-sm">
                     <div className="mx-auto flex h-9 w-full max-w-6xl items-center gap-2.5 px-6">
@@ -448,59 +535,65 @@ function Body({
                   </div>
                 </Appear>
               </div>
-              <PaneScroller>
-                {/* the paper's own toolbar: the page's name and numbers ride
-                    the top of the scroll */}
-                <div className="sticky top-0 z-10 border-b bg-background">
-                  <div className="mx-auto flex h-13 w-full max-w-6xl items-center gap-3 px-6">
-                    <h1 className="shrink-0 text-base font-semibold">{format(m.myEntriesTab)}</h1>
-                    <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />
-                    <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
-                      <span className="text-xs text-muted-foreground">
-                        {format(m.myEntriesCounted)}
-                      </span>
-                      <span className="text-lg leading-none font-semibold tabular-nums">
-                        {standing.data === undefined ? '—' : Number(standing.data.total).toFixed(2)}
+              {/* The paper's own toolbar, outside the scroller rather than
+                  stuck to the top of it: a sticky bar still belongs to the
+                  content, so the paper's overscroll carried the page's name
+                  and its numbers along for the ride. Out here it is the
+                  pane's own edge, level with the rail's heading beside it. */}
+              <div className="flex h-12 shrink-0 items-center border-b bg-background">
+                <div className="mx-auto flex h-full w-full max-w-6xl items-center gap-3 px-6">
+                  <h1 className="shrink-0 text-base font-semibold">{format(m.myEntriesTab)}</h1>
+                  <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />
+                  <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
+                    <span className="text-xs text-muted-foreground">
+                      {format(m.myEntriesCounted)}
+                    </span>
+                    <span className="text-lg leading-none font-semibold tabular-nums">
+                      {standing.data === undefined ? '—' : Number(standing.data.total).toFixed(2)}
+                    </span>
+                  </span>
+                  <span className="flex-1" />
+                  <span className="hidden shrink-0 items-center gap-3 rounded-lg bg-muted px-2.5 py-1.5 text-xs whitespace-nowrap text-muted-foreground sm:inline-flex">
+                    <span className="inline-flex items-baseline gap-1">
+                      {format(m.entryStatusInReview)}
+                      <span className="font-semibold text-foreground tabular-nums">
+                        {pendingCount}
                       </span>
                     </span>
-                    <span className="flex-1" />
-                    <span className="hidden shrink-0 items-center gap-3 rounded-lg bg-muted px-2.5 py-1.5 text-xs whitespace-nowrap text-muted-foreground sm:inline-flex">
-                      <span className="inline-flex items-baseline gap-1">
-                        {format(m.entryStatusInReview)}
-                        <span className="font-semibold text-foreground tabular-nums">
-                          {pendingCount}
-                        </span>
-                      </span>
-                      <span className="inline-flex items-baseline gap-1">
-                        {format(m.entryStatusDraft)}
-                        <span className="font-semibold text-foreground tabular-nums">
-                          {draftCount}
-                        </span>
-                      </span>
-                      <span className="inline-flex items-baseline gap-1">
-                        {format(m.entryStatusNeedsRevision)}
-                        <span
-                          className={cn(
-                            'font-semibold tabular-nums',
-                            backCount > 0 ? 'text-destructive' : 'text-foreground',
-                          )}
-                        >
-                          {backCount}
-                        </span>
+                    <span className="inline-flex items-baseline gap-1">
+                      {format(m.entryStatusDraft)}
+                      <span className="font-semibold text-foreground tabular-nums">
+                        {draftCount}
                       </span>
                     </span>
-                    <Tabs
-                      value={paperView}
-                      onValueChange={(next) => setPaperView(next as 'all' | 'todo')}
-                    >
-                      <TabsList>
-                        <TabsTrigger value="all">{format(m.paperViewAll)}</TabsTrigger>
-                        <TabsTrigger value="todo">{format(m.paperViewTodo)}</TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                  </div>
+                    <span className="inline-flex items-baseline gap-1">
+                      {format(m.entryStatusNeedsRevision)}
+                      <span
+                        className={cn(
+                          'font-semibold tabular-nums',
+                          backCount > 0 ? 'text-destructive' : 'text-foreground',
+                        )}
+                      >
+                        {backCount}
+                      </span>
+                    </span>
+                  </span>
+                  <Tabs
+                    value={paperView}
+                    onValueChange={(next) => setPaperView(next as 'all' | 'todo')}
+                  >
+                    <TabsList>
+                      <TabsTrigger value="all">{format(m.paperViewAll)}</TabsTrigger>
+                      <TabsTrigger value="todo">{format(m.paperViewTodo)}</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
                 </div>
-                <div className="mx-auto w-full max-w-6xl">
+              </div>
+              <PaneScroller>
+                {/* the same paper, narrowed: it fades over itself so the
+                    switch reads as this paper changing rather than another
+                    one arriving */}
+                <Swap swapKey={paperView} className="w-full">
                   <Paper
                     rows={rows}
                     entriesByItem={entriesByItem}
@@ -511,7 +604,7 @@ function Body({
                     onDeclare={(item) => declare.mutate({ itemId: item.id })}
                     onDetail={(entry) => setDetail(entry.id)}
                   />
-                </div>
+                </Swap>
               </PaneScroller>
             </div>
           </div>
@@ -747,7 +840,12 @@ function Structure({
                 {root?.name ?? batchName}
               </span>
               <span className="flex-1" />
-              <span className="shrink-0 text-lg leading-none font-semibold tabular-nums">
+              <span
+                className={cn(
+                  'shrink-0 text-lg leading-none font-semibold tabular-nums',
+                  got === 0 && 'text-muted-foreground',
+                )}
+              >
                 {got.toFixed(2)}
               </span>
               <span className="shrink-0 text-xs text-muted-foreground">
@@ -780,7 +878,7 @@ function Structure({
               {format(m.myEntriesFilterNone)}
             </p>
           ) : (
-            <ul ref={listRef} className="isolate relative flex min-h-0 flex-col">
+            <ul ref={listRef} className="relative isolate flex min-h-0 flex-col">
               {markBox !== null && (
                 <Glide
                   top={markBox.top}
@@ -788,122 +886,149 @@ function Structure({
                   className="-z-10 rounded-lg bg-accent"
                 />
               )}
-              {listed.map((row, index) => {
-                const depth = showing === 'all' ? row.depth : 0
-                const joint = joints[index]!
-                const hollow = row.tag === 'open' || row.tag === 'voided'
-                const alert = row.todo && (row.tag === 'needs_revision' || row.tag === 'draft')
-                const capNum =
-                  row.cap === null || row.cap === undefined || row.cap === '' ? 0 : Number(row.cap)
-                const gotNum = row.right === '' ? 0 : Number(row.right)
-                return (
-                  <li key={row.id}>
-                    <button
-                      type="button"
-                      data-rail-row={row.id}
-                      onClick={() => onOpen(row.id)}
-                      style={{ paddingLeft: `${depth * 14 + 10}px` }}
-                      className={cn(
-                        'relative isolate flex w-full items-center gap-2 rounded-lg py-1.5 pr-2.5 text-left transition-colors',
-                        openId !== row.id && 'hover:bg-accent/50',
-                        row.kind === 'group' && row.depth === 0 && index > 0 && 'mt-1',
-                      )}
-                    >
-                      {/* the joints of the tree: an elbow into this row, and the
-                      sibling line running past it while siblings remain */}
-                      {showing === 'all' && depth > 0 && (
-                        <>
-                          <span
-                            aria-hidden
-                            className="absolute top-0 h-1/2 w-2.5 rounded-bl-[7px] border-b border-l border-border"
-                            style={{ left: `${(depth - 1) * 14 + 12}px` }}
-                          />
-                          {!joint.last && (
-                            <span
-                              aria-hidden
-                              className="absolute inset-y-0 w-px bg-border"
-                              style={{ left: `${(depth - 1) * 14 + 12}px` }}
-                            />
-                          )}
-                        </>
-                      )}
-                      {showing === 'all' && row.kind === 'group' && joint.hasKids && (
-                        <span
-                          aria-hidden
-                          className="absolute bottom-0 h-1/2 w-px bg-border"
-                          style={{ left: `${depth * 14 + 12}px` }}
-                        />
-                      )}
-                      {row.kind === 'group' ? (
-                        <span aria-hidden className="size-[7px] shrink-0 rounded-[2px] bg-border" />
-                      ) : (
-                        <span
-                          aria-hidden
-                          className={cn(
-                            'size-[7px] shrink-0 rounded-full',
-                            alert
-                              ? 'bg-destructive'
-                              : hollow
-                                ? 'border border-muted-foreground/45'
-                                : 'bg-muted-foreground/60',
-                          )}
-                        />
-                      )}
-                      <span
+              <Sift>
+                {listed.map((row, index) => {
+                  const depth = showing === 'all' ? row.depth : 0
+                  const joint = joints[index]!
+                  const hollow = row.tag === 'open' || row.tag === 'voided'
+                  const gone = row.tag === 'voided'
+                  const alert = row.todo && (row.tag === 'needs_revision' || row.tag === 'draft')
+                  const capNum =
+                    row.cap === null || row.cap === undefined || row.cap === ''
+                      ? 0
+                      : Number(row.cap)
+                  const gotNum = row.right === '' ? 0 : Number(row.right)
+                  return (
+                    <SiftRow key={row.id}>
+                      <button
+                        type="button"
+                        data-rail-row={row.id}
+                        // the mark behind the row is paint; this is the part a
+                        // screen reader can hear
+                        aria-current={openId === row.id ? 'true' : undefined}
+                        onClick={() => onOpen(row.id)}
+                        style={{ paddingLeft: `${depth * 14 + 10}px` }}
                         className={cn(
-                          'min-w-0 flex-1 truncate text-sm',
-                          row.kind === 'group' && 'font-semibold',
-                          openId === row.id && 'font-semibold',
-                          row.kind === 'item' && row.tag === 'recorded' && 'text-muted-foreground',
+                          'relative isolate flex w-full items-center gap-2 rounded-lg py-1.5 pr-2.5 text-left transition-colors',
+                          openId !== row.id && 'hover:bg-accent/50',
+                          row.kind === 'group' && row.depth === 0 && index > 0 && 'mt-1',
+                          // withdrawn: still listed, because what was filed
+                          // under it is still there to read, but it takes
+                          // less room and wears the fact on its name
+                          gone && 'py-1',
                         )}
                       >
-                        {row.name}
-                      </span>
-                      {row.kind === 'item' && row.tag !== null && row.tag !== 'recorded' && (
+                        {/* the joints of the tree: an elbow into this row, and the
+                      sibling line running past it while siblings remain */}
+                        {showing === 'all' && depth > 0 && (
+                          <>
+                            <span
+                              aria-hidden
+                              className="absolute top-0 h-1/2 w-2.5 rounded-bl-[7px] border-b border-l border-border"
+                              style={{ left: `${(depth - 1) * 14 + 12}px` }}
+                            />
+                            {!joint.last && (
+                              <span
+                                aria-hidden
+                                className="absolute inset-y-0 w-px bg-border"
+                                style={{ left: `${(depth - 1) * 14 + 12}px` }}
+                              />
+                            )}
+                          </>
+                        )}
+                        {showing === 'all' && row.kind === 'group' && joint.hasKids && (
+                          <span
+                            aria-hidden
+                            className="absolute bottom-0 h-1/2 w-px bg-border"
+                            style={{ left: `${depth * 14 + 12}px` }}
+                          />
+                        )}
+                        {row.kind === 'group' ? (
+                          <span
+                            aria-hidden
+                            className="size-[7px] shrink-0 rounded-[2px] bg-border"
+                          />
+                        ) : (
+                          <span
+                            aria-hidden
+                            className={cn(
+                              'size-[7px] shrink-0 rounded-full',
+                              alert
+                                ? 'bg-destructive'
+                                : hollow
+                                  ? 'border border-muted-foreground/45'
+                                  : 'bg-muted-foreground/60',
+                            )}
+                          />
+                        )}
                         <span
                           className={cn(
-                            'max-w-24 shrink-0 truncate text-xs',
-                            alert ? 'text-destructive' : 'text-muted-foreground',
+                            'min-w-0 flex-1 truncate text-sm',
+                            row.kind === 'group' && 'font-semibold',
+                            openId === row.id && 'font-semibold',
+                            row.kind === 'item' &&
+                              row.tag === 'recorded' &&
+                              'text-muted-foreground',
+                            gone &&
+                              'text-xs font-normal text-muted-foreground line-through decoration-muted-foreground/40',
                           )}
                         >
-                          {format(ROW_TAG[row.tag])}
+                          {row.name}
                         </span>
-                      )}
-                      {row.kind === 'group' ? (
-                        // the group's own ledger line: how much, of how much
-                        <span className="flex w-16 shrink-0 flex-col items-end gap-1">
-                          <span className="flex items-baseline gap-0.5 whitespace-nowrap">
-                            <span className="text-xs font-semibold tabular-nums">
-                              {row.right === '' ? '0' : trimAmount(row.right)}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {capNum > 0
-                                ? `/ ${trimAmount(String(capNum))}`
-                                : format(m.myEntriesPaperUnit)}
-                            </span>
+                        {row.kind === 'item' && row.tag !== null && row.tag !== 'recorded' && (
+                          <span
+                            className={cn(
+                              'max-w-24 shrink-0 truncate text-xs',
+                              alert ? 'text-destructive' : 'text-muted-foreground',
+                            )}
+                          >
+                            {format(ROW_TAG[row.tag])}
                           </span>
-                          {capNum > 0 && (
-                            <span className="block h-0.75 w-full overflow-hidden rounded-full bg-border">
+                        )}
+                        {row.kind === 'group' ? (
+                          // the group's own ledger line: how much, of how much
+                          <span className="flex w-16 shrink-0 flex-col items-end gap-1">
+                            <span className="flex items-baseline gap-0.5 whitespace-nowrap">
                               <span
-                                className="block h-full rounded-full bg-foreground"
-                                style={{
-                                  width: `${Math.round(Math.min(1, gotNum / capNum) * 100)}%`,
-                                }}
-                              />
+                                className={cn(
+                                  'text-xs font-semibold tabular-nums',
+                                  gotNum === 0 && 'text-muted-foreground',
+                                )}
+                              >
+                                {row.right === '' ? '0' : trimAmount(row.right)}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {capNum > 0
+                                  ? `/ ${trimAmount(String(capNum))}`
+                                  : format(m.myEntriesPaperUnit)}
+                              </span>
                             </span>
-                          )}
-                        </span>
-                      ) : (
-                        row.right !== '' && (
-                          <span className="shrink-0 text-xs whitespace-nowrap tabular-nums">
-                            {trimAmount(row.right)} {format(m.myEntriesPaperUnit)}
+                            {capNum > 0 && (
+                              <span className="block h-0.75 w-full overflow-hidden rounded-full bg-border">
+                                <span
+                                  className="block h-full rounded-full bg-foreground"
+                                  style={{
+                                    width: `${Math.round(Math.min(1, gotNum / capNum) * 100)}%`,
+                                  }}
+                                />
+                              </span>
+                            )}
                           </span>
-                        )
-                      )}
-                    </button>
-                  </li>
-                )
-              })}
+                        ) : (
+                          // a question that has granted nothing yet says
+                          // nothing: a 0 beside every untouched row reads as a
+                          // page full of failures
+                          gotNum > 0 && (
+                            <span className="shrink-0 text-xs whitespace-nowrap tabular-nums">
+                              {trimAmount(row.right)} {format(m.myEntriesPaperUnit)}
+                            </span>
+                          )
+                        )}
+                      </button>
+                    </SiftRow>
+                  )
+                })}
+              </Sift>
             </ul>
           )}
         </div>

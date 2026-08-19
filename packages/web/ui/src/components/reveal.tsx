@@ -377,3 +377,36 @@ export function Appear({
     </AnimatePresence>
   )
 }
+
+// A list that narrows in place.
+//
+// Rows that no longer belong fade out of the way and the ones that stay
+// slide up into the room they left, so a filter reads as this list getting
+// shorter rather than as a different list arriving. `popLayout` takes the
+// leaving rows out of the flow at once, which is what lets the rest move
+// while they are still fading.
+export function Sift({ children }: { children: ReactNode }) {
+  return (
+    <AnimatePresence initial={false} mode="popLayout">
+      {children}
+    </AnimatePresence>
+  )
+}
+
+/** one row of a {@link Sift} list, which needs a stable `key` of its own */
+export function SiftRow({ className, children }: { className?: string; children: ReactNode }) {
+  const reduced = useReducedMotion()
+  const still = reduced === true
+  return (
+    <motion.li
+      layout={still ? false : 'position'}
+      initial={still ? false : { opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={still ? { opacity: 0 } : { opacity: 0, y: -4, transition: { duration: 0.12 } }}
+      transition={{ duration: still ? 0 : 0.2, ease: [0.4, 0, 0.2, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.li>
+  )
+}

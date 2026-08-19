@@ -90,6 +90,18 @@ function Standing({ batchId }: { batchId: string }) {
   // a line names its item; which group that item adds up in is the item's
   // own configuration, so no line can be placed until both have landed
   const groupOfItem = new Map((items.data?.items ?? []).map((item) => [item.id, item.scoreGroupId]))
+  // Every question of the round stands in the ledger, not only the ones that
+  // came to something: a page listing three of a reader's twenty questions
+  // reads as a page that lost the other seventeen, and "nothing yet" is an
+  // answer they need as much as an amount.
+  const askedOf = new Map<string, LedgerItem[]>()
+  for (const item of (items.data?.items ?? []) as readonly LedgerItem[]) {
+    if (item.status === 'draft') continue
+    const bucket = askedOf.get(item.scoreGroupId)
+    if (bucket === undefined) askedOf.set(item.scoreGroupId, [item])
+    else bucket.push(item)
+  }
+  for (const bucket of askedOf.values()) bucket.sort((a, b) => a.sortOrder - b.sortOrder)
   const groups = data === undefined ? [] : inTreeOrder(data.groups)
   const parents = new Set(
     groups.flatMap((group) => (group.parentGroupId === null ? [] : [group.parentGroupId])),
@@ -238,11 +250,17 @@ function Standing({ batchId }: { batchId: string }) {
                         (line.itemId !== undefined &&
                           groupOfItem.get(line.itemId) === group.groupId)),
                   )
+                  const spokenFor = new Set(
+                    lines.flatMap((line) => (line.itemId === undefined ? [] : [line.itemId])),
+                  )
                   return (
                     <GroupRows
                       key={group.groupId}
                       group={group}
                       lines={lines}
+                      silent={(askedOf.get(group.groupId) ?? []).filter(
+                        (item) => !spokenFor.has(item.id),
+                      )}
                       hasChildren={parents.has(group.groupId)}
                     />
                   )
@@ -285,6 +303,16 @@ type ResultGroup = {
   floor: string | null
 }
 
+/** what the ledger needs of a question that scored nothing */
+type LedgerItem = {
+  id: string
+  title: string
+  scoreGroupId: string
+  sortOrder: number
+  status: string
+  currentRevision: { entrySource: 'student' | 'administrative' } | null
+}
+
 type ResultLine = {
   lineId: string
   kind: string
@@ -296,10 +324,13 @@ type ResultLine = {
 function GroupRows({
   group,
   lines,
+  silent,
   hasChildren,
 }: {
   group: ResultGroup
   lines: readonly ResultLine[]
+  /** the group's questions that came to nothing, listed at 0 with the reason */
+  silent: readonly LedgerItem[]
   hasChildren: boolean
 }) {
   const { format } = useI18n()
@@ -366,6 +397,33 @@ function GroupRows({
           </div>
         )
       })}
+      {silent.map((item) => (
+        <div key={item.id} className={cn(COLS, 'h-9.5')}>
+          <span className="flex min-w-0 items-center gap-2" style={linePad}>
+            <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
+            <span
+              className={cn(
+                'min-w-0 truncate text-sm text-muted-foreground',
+                item.status === 'voided' && 'line-through decoration-muted-foreground/40',
+              )}
+            >
+              {item.title}
+            </span>
+            <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+              {format(
+                item.status === 'voided'
+                  ? m.resultLineVoided
+                  : item.currentRevision?.entrySource === 'administrative'
+                    ? m.paperEmptyRecorded
+                    : m.resultLineNone,
+              )}
+            </span>
+          </span>
+          <span />
+          <span />
+          <span className="text-right text-sm text-muted-foreground tabular-nums">{two(0)}</span>
+        </div>
+      ))}
       {(capped || floored) && (
         <div className={cn(COLS, 'h-9.5')}>
           <span className="flex min-w-0 items-center gap-2" style={linePad}>

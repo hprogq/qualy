@@ -68,6 +68,7 @@ const item = (over: Partial<ItemDto> = {}): ItemDto => ({
   maxEntries: 1,
   sortOrder: 0,
   status: 'active',
+  voidReason: null,
   currentRevision: {
     id: REVISION_ID,
     revisionNo: 1,
@@ -476,7 +477,7 @@ describe('filing a claim', () => {
     await expect.element(page.getByLabelText('事项说明')).toBeVisible()
   })
 
-  it('keeps the filing button when the places are full, with the reason on hover', async () => {
+  it('says the places are used up where the way in stood', async () => {
     screen(
       {
         listItems: () =>
@@ -539,8 +540,8 @@ describe('filing a claim', () => {
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
-    // the paper says the places are used, in words where the button stood
-    await expect.element(page.getByText('已达申报条数上限').first()).toBeVisible()
+    // the paper says the places are used, in a badge where the button stood
+    await expect.element(page.getByText('申报条数已满').first()).toBeVisible()
     // the row counts the files; the files themselves are in the drawer
     await expect.element(page.getByText('1 份')).toBeVisible()
   })

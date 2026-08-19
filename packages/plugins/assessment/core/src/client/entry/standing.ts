@@ -43,7 +43,7 @@ export interface Standing {
 export type RowTag = 'voided' | 'needs_revision' | 'draft' | 'in_review' | 'recorded' | 'open'
 
 export const ROW_TAG: Record<RowTag, MessageDescriptor> = {
-  voided: m.itemVoided,
+  voided: m.itemsStatusVoided,
   needs_revision: m.entryStatusNeedsRevision,
   draft: m.entryStatusDraft,
   in_review: m.entryStatusInReview,

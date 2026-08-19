@@ -887,6 +887,7 @@ const i18n = definePluginMessages({
       id: 'assessment/result/line-excluded',
       defaultMessage: 'Sent back · not counted',
     },
+    resultLineNone: { id: 'assessment/result/line-none', defaultMessage: 'Nothing filed' },
     resultLineVoided: {
       id: 'assessment/result/line-voided',
       defaultMessage: 'Question withdrawn · not counted',
@@ -1797,11 +1798,17 @@ const i18n = definePluginMessages({
     },
     paperEmptyRecorded: {
       id: 'assessment/paper/empty-recorded',
-      defaultMessage: 'Recorded by the organisation',
+      defaultMessage: 'Awaiting staff entry',
     },
     paperEmptyRecordedHint: {
       id: 'assessment/paper/empty-recorded-hint',
-      defaultMessage: 'Nothing to file; the amount follows what is recorded',
+      defaultMessage: 'Staff have not recorded anything yet',
+    },
+    paperEmptyFile: { id: 'assessment/paper/empty-file', defaultMessage: 'Add a claim' },
+    paperGrantedEach: { id: 'assessment/paper/granted-each', defaultMessage: '{value} per person' },
+    paperVoidedWhy: {
+      id: 'assessment/paper/voided-why',
+      defaultMessage: 'Withdrawn because: {reason}',
     },
     paperEmptyGranted: {
       id: 'assessment/paper/empty-granted',
@@ -2448,6 +2455,11 @@ const i18n = definePluginMessages({
       id: 'assessment/items/ceiling-how',
       defaultMessage: '{value} × {count, plural, one {# entry} other {# entries}}.',
     },
+    itemsGrantedValue: { id: 'assessment/items/granted-value', defaultMessage: 'Per person' },
+    itemsCeilingHowGranted: {
+      id: 'assessment/items/ceiling-how-granted',
+      defaultMessage: '{value} for every participant on the roster.',
+    },
     itemsCeilingHowAny: {
       id: 'assessment/items/ceiling-how-any',
       defaultMessage: 'No limit on entries, so this question has no upper limit of its own.',
@@ -2537,7 +2549,7 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/questions',
       defaultMessage: '{count, plural, one {# question} other {# questions}}',
     },
-    myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'No filing needed' },
+    myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'Recorded by staff' },
     myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open to you' },
     myEntriesResume: { id: 'assessment/entry/resume', defaultMessage: 'Keep filling in' },
     entryLastRoom: {
