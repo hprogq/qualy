@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
 import { components } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // Reading the paper is scrolling, and the rail beside it has to keep up.
 // Three things have to hold at once: an address lands the paper on the row
@@ -201,6 +201,50 @@ describe('reading the paper', () => {
     paperScroller().dispatchEvent(new Event('scroll'))
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(marked()).toMatch(/^学业发展/)
+  })
+
+  it('folds the structure into a drawer on a phone, and a pick scrolls the paper', async () => {
+    await page.viewport(390, 844)
+    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+
+    await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
+    // no rail beside the paper; the toolbar offers the drawer instead
+    const scroller = document.querySelector('main') as HTMLElement
+    expect(scroller.querySelectorAll('[data-slot="scroll-area-viewport"]')).toHaveLength(0)
+
+    await page.getByRole('button', { name: '结构' }).click()
+    await expect.poll(() => addressNow()).toContain('rail=1')
+    await page.getByRole('button', { name: /^学科竞赛获奖/ }).click()
+
+    // one write moved both layers: the pick landed in the address, the
+    // drawer's layer cleared, and the paper scrolled to the row
+    await expect.poll(() => addressNow()).toContain(`open=${TAIL}`)
+    expect(addressNow()).not.toContain('rail=1')
+    await expect.poll(() => scroller.scrollTop).toBeGreaterThan(200)
+  })
+
+  it('pins the section strip under the phone toolbar once its card scrolls past', async () => {
+    await page.viewport(390, 844)
+    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+
+    await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
+    const scroller = document.querySelector('main') as HTMLElement
+    const strip = () =>
+      Array.from(document.querySelectorAll('.backdrop-blur-sm')).some(
+        (el) => el.textContent?.includes('品德行为表现') === true,
+      )
+    // reading the top of the paper: the band's own card is on screen, so
+    // nothing repeats its name
+    expect(strip()).toBe(false)
+    scroller.scrollTop = 600
+    await expect.poll(strip).toBe(true)
+    // and it is pinned: more scroll does not carry it away
+    const at = document.querySelector('.backdrop-blur-sm')!.getBoundingClientRect().top
+    scroller.scrollTop = 800
+    await expect.poll(strip).toBe(true)
+    expect(
+      Math.round(document.querySelector('.backdrop-blur-sm')!.getBoundingClientRect().top),
+    ).toBe(Math.round(at))
   })
 
   it('glides to a question clicked in the rail, the first time as much as the tenth', async () => {

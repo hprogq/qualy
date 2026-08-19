@@ -7,6 +7,7 @@ import { cn } from '@qualy/ui/cn'
 import {
   CheckIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   CircleSlashIcon,
   ClockIcon,
   FileTextIcon,
@@ -33,9 +34,15 @@ import {
 // whole claim lives. The rail beside it follows the scroll; this file only
 // reports which row is under the reader through `data-paper-row`.
 //
+// One paper, three widths. Under 768 the question is a single column and a
+// claim is two lines of one row; to 1024 the terms stand beside a
+// three-column table with the version folded into the content cell; wider,
+// the four-column table. The same rows, the same drawer behind them - only
+// the columns give way, never the content.
+//
 // Rules run edge to edge while the writing stays inside one measure: the
 // paper reads as sheets divided by lines, not as a stack of floating cards.
-const MEASURE = 'mx-auto w-full max-w-6xl px-6'
+const MEASURE = 'mx-auto w-full max-w-6xl px-4 lg:px-6'
 
 export function Paper({
   rows,
@@ -102,7 +109,8 @@ export function Paper({
   }
 
   return (
-    <div className="flex flex-col pb-16">
+    // room at the foot for the shell's floating capsule where it floats
+    <div className="flex flex-col pb-16 max-lg:pb-28">
       {kept.map((row) => {
         if (row.kind === 'group' && row.depth === 0) {
           return (
@@ -146,7 +154,14 @@ const two = (value: string | number): string => {
   return Number.isFinite(parsed) ? parsed.toFixed(2) : String(value)
 }
 
-/** a top group's band: number, name, progress, and its ledger line */
+/**
+ * A top group's band: number, name, progress, and its ledger line.
+ *
+ * Three arrangements of the same facts: a phone gives the name a line and
+ * the progress the next one, a tablet holds everything on one 42px line,
+ * and a laptop affords the display card. Which one shows is the width's
+ * business alone.
+ */
 function Band({
   row,
   no,
@@ -161,13 +176,78 @@ function Band({
   const cap = row.cap == null || row.cap === '' ? null : Number(row.cap)
   const got = row.right === '' ? 0 : Number(row.right)
   const pct = cap === null || cap === 0 ? 0 : Math.min(100, Math.round((got / cap) * 100))
+  const ledger = (gotSize: string, capSize: string) => (
+    <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
+      <span
+        className={cn(
+          gotSize,
+          'leading-none font-semibold tabular-nums',
+          got === 0 && 'text-muted-foreground',
+        )}
+      >
+        {two(got)}
+      </span>
+      {cap !== null && (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {format(m.paperCap, { value: trimAmount(String(cap)) })}
+        </span>
+      )}
+    </span>
+  )
+  const bar = (className: string) =>
+    cap !== null && (
+      <span className={cn('block overflow-hidden rounded-full bg-border', className)}>
+        <span className="block h-full rounded-full bg-foreground" style={{ width: `${pct}%` }} />
+      </span>
+    )
   return (
     <div
       data-paper-row={row.id}
       data-paper-band={row.id}
-      className="scroll-mt-16 border-b bg-linear-to-r from-muted/70 to-background to-65%"
+      className="scroll-mt-30 border-b bg-linear-to-r from-muted/70 to-background to-65% lg:scroll-mt-16"
     >
-      <div className={cn(MEASURE, 'flex items-center gap-6 py-4')}>
+      {/* phone: the name gets a line, the progress gets the next */}
+      <div className={cn(MEASURE, 'flex flex-col gap-2 py-3 md:hidden')}>
+        <div className="flex items-center gap-2.5">
+          <span
+            aria-hidden
+            className="shrink-0 text-lg leading-none font-semibold tracking-tight text-muted-foreground/60 tabular-nums"
+          >
+            {no}
+          </span>
+          <h2 className="min-w-0 flex-1 truncate text-base leading-tight font-semibold">
+            {row.name}
+          </h2>
+          {ledger('text-lg', 'text-[11px]')}
+        </div>
+        <div className="flex items-center gap-2.5">
+          {bar('h-1 min-w-0 flex-1')}
+          {share !== null && (
+            <span className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground">
+              {format(m.paperBandShare, { pct: Math.round(share * 100) })}
+            </span>
+          )}
+        </div>
+      </div>
+      {/* tablet: one line, worth its 42px and no more */}
+      <div className={cn(MEASURE, 'hidden h-10.5 items-center gap-3.5 md:flex lg:hidden')}>
+        <span
+          aria-hidden
+          className="shrink-0 text-[15px] leading-none font-semibold tracking-tight text-muted-foreground/60 tabular-nums"
+        >
+          {no}
+        </span>
+        <h2 className="min-w-0 truncate text-sm leading-tight font-semibold">{row.name}</h2>
+        {share !== null && (
+          <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+            {format(m.paperBandShare, { pct: Math.round(share * 100) })}
+          </span>
+        )}
+        <span className="flex-1" />
+        {ledger('text-base', 'text-xs')}
+      </div>
+      {/* laptop and wider: the display card the section deserves */}
+      <div className={cn(MEASURE, 'hidden items-center gap-6 py-4 lg:flex')}>
         <span
           aria-hidden
           className="shrink-0 text-3xl leading-none font-semibold tracking-tight text-muted-foreground/50"
@@ -177,14 +257,7 @@ function Band({
         <div className="flex min-w-0 flex-col gap-1.5">
           <h2 className="min-w-0 truncate text-lg leading-tight font-semibold">{row.name}</h2>
           <div className="flex items-center gap-2.5">
-            {cap !== null && (
-              <span className="block h-0.75 w-24 shrink-0 overflow-hidden rounded-full bg-border">
-                <span
-                  className="block h-full rounded-full bg-foreground"
-                  style={{ width: `${pct}%` }}
-                />
-              </span>
-            )}
+            {bar('h-0.75 w-24 shrink-0')}
             {share !== null && (
               <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
                 {format(m.paperBandShare, { pct: Math.round(share * 100) })}
@@ -193,21 +266,7 @@ function Band({
           </div>
         </div>
         <span className="flex-1" />
-        <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
-          <span
-            className={cn(
-              'text-xl leading-none font-semibold tabular-nums',
-              got === 0 && 'text-muted-foreground',
-            )}
-          >
-            {two(got)}
-          </span>
-          {cap !== null && (
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {format(m.paperCap, { value: trimAmount(String(cap)) })}
-            </span>
-          )}
-        </span>
+        {ledger('text-xl', 'text-xs')}
       </div>
     </div>
   )
@@ -220,18 +279,21 @@ function SubBand({ row, no }: { row: StructureRow; no: string }) {
   return (
     <div
       data-paper-row={row.id}
-      className="scroll-mt-24 border-b bg-linear-to-r from-muted/45 to-background to-55%"
+      className="scroll-mt-34 border-b bg-linear-to-r from-muted/45 to-background to-55% lg:scroll-mt-24"
     >
-      <div className={cn(MEASURE, 'flex h-11 items-center gap-4')}>
-        <span aria-hidden className="shrink-0 text-sm font-semibold text-muted-foreground/70">
+      <div className={cn(MEASURE, 'flex h-9 items-center gap-3 lg:h-11 lg:gap-4')}>
+        <span
+          aria-hidden
+          className="shrink-0 text-xs font-semibold text-muted-foreground/70 lg:text-sm"
+        >
           {no}
         </span>
-        <h3 className="min-w-0 truncate text-sm font-semibold">{row.name}</h3>
+        <h3 className="min-w-0 truncate text-[13px] font-semibold lg:text-sm">{row.name}</h3>
         <span className="flex-1" />
         <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
           <span
             className={cn(
-              'text-base font-semibold tabular-nums',
+              'text-sm font-semibold tabular-nums lg:text-base',
               (row.right === '' || Number(row.right) === 0) && 'text-muted-foreground',
             )}
           >
@@ -248,8 +310,13 @@ function SubBand({ row, no }: { row: StructureRow; no: string }) {
   )
 }
 
-/** the claims table's columns, shared by its header and rows */
-const CLAIM_COLS = 'grid grid-cols-[minmax(0,1fr)_8.5rem_6rem_5.5rem] items-center gap-3 px-4'
+/**
+ * The claims table's columns, shared by its header and rows: three of them
+ * on a tablet with the version folded into the content cell, four on a
+ * laptop. The header only exists where there are columns to head.
+ */
+const CLAIM_COLS =
+  'grid grid-cols-[minmax(0,1fr)_6rem_5.5rem] items-center gap-3 px-4 lg:grid-cols-[minmax(0,1fr)_8.5rem_6rem_5.5rem]'
 
 /**
  * One question: its terms on the left at a fixed measure, its claims on the
@@ -298,6 +365,7 @@ function Question({
   const full = !granted && !recorded && room !== null && room <= 0
   const declaredAlready = declared && live.some((entry) => entry.status === 'draft')
   const mayAdd = !full && mayFile(item, entries) && !declaredAlready
+  const add = () => (declared ? onDeclare(item) : onFile(item, null))
 
   // A question granted to everybody is administrative in the data, because
   // nobody fills it in - but nobody records it either, so it must not say so.
@@ -327,7 +395,7 @@ function Question({
     <div
       className={cn(
         MEASURE,
-        'grid gap-6 py-7 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-10',
+        'grid gap-4 py-5 md:grid-cols-[17rem_minmax(0,1fr)] md:gap-6 md:py-6 lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-8 lg:py-7 xl:grid-cols-[21rem_minmax(0,1fr)] xl:gap-10',
         voided && 'pt-2 opacity-75',
       )}
     >
@@ -340,24 +408,32 @@ function Question({
           >
             {no}.
           </span>
-          <h3 className="min-w-0 flex-1 text-base leading-snug font-semibold">{item.title}</h3>
+          <h3 className="min-w-0 flex-1 text-[15px] leading-snug font-semibold md:text-base">
+            {item.title}
+          </h3>
           {counted !== null && Number(counted) > 0 && (
-            <span className="shrink-0 text-base font-semibold whitespace-nowrap tabular-nums">
+            <span className="shrink-0 text-[15px] font-semibold whitespace-nowrap tabular-nums md:text-base">
               {two(counted)}
             </span>
           )}
         </div>
         {description !== '' && <p className="text-sm leading-relaxed text-pretty">{description}</p>}
-        {/* what the question pays and asks for, a term to a line, closing
-              with the clause it scores under - the association feature takes
-              that seat next */}
+        {/* what the question pays and asks for - one line on a phone, a term
+            to a line where there is height to spend - closing with the
+            clause it scores under; the association feature takes that seat
+            next */}
         <div className="flex flex-col rounded-lg border bg-muted/30 text-xs">
           {terms.length > 0 && (
-            <ul className="flex flex-col gap-1.5 px-3 py-2.5 text-muted-foreground">
-              {terms.map((term) => (
-                <li key={term}>{term}</li>
-              ))}
-            </ul>
+            <>
+              <p className="px-3 py-2 leading-relaxed text-muted-foreground md:hidden">
+                {terms.join('，')}
+              </p>
+              <ul className="hidden flex-col gap-1.5 px-3 py-2.5 text-muted-foreground md:flex">
+                {terms.map((term) => (
+                  <li key={term}>{term}</li>
+                ))}
+              </ul>
+            </>
           )}
           <p
             className={cn(
@@ -369,8 +445,10 @@ function Question({
             <span className="min-w-0 truncate">{format(m.myEntriesBasisSoon)}</span>
           </p>
         </div>
-        <span className="min-h-2 flex-1" />
-        <div className="flex items-center gap-3">
+        <span className="hidden min-h-2 flex-1 md:block" />
+        {/* the way in and the quota live in the claims list on a phone,
+            where the thumb already is */}
+        <div className="hidden items-center gap-3 md:flex">
           {!granted && !recorded && item.maxEntries !== null && (
             <span className="flex shrink-0 items-baseline gap-1.5 text-xs whitespace-nowrap">
               <span className="text-muted-foreground">{format(m.myEntriesQuota)}</span>
@@ -401,12 +479,7 @@ function Question({
             </Badge>
           ) : (
             mayAdd && (
-              <Button
-                size="sm"
-                className="shrink-0"
-                disabled={busy}
-                onClick={() => (declared ? onDeclare(item) : onFile(item, null))}
-              >
+              <Button size="sm" className="shrink-0" disabled={busy} onClick={add}>
                 <PlusIcon aria-hidden />
                 {format(declared ? m.entryDeclare : m.entryNew)}
               </Button>
@@ -425,16 +498,24 @@ function Question({
       <div className="flex min-w-0 flex-col">
         <div
           className={cn(
-            'flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border',
-            granted ? 'border-dashed bg-muted/20' : 'bg-card',
+            'flex min-w-0 flex-1 flex-col md:overflow-hidden md:rounded-xl md:border',
+            granted
+              ? 'overflow-hidden rounded-xl border border-dashed bg-muted/20'
+              : cn('md:bg-card', live.length > 0 && 'max-md:border-t'),
           )}
         >
           {!granted && (
             <div
-              className={cn(CLAIM_COLS, 'h-8 border-b bg-muted/40 text-xs text-muted-foreground')}
+              className={cn(
+                CLAIM_COLS,
+                'h-8 border-b bg-muted/40 text-xs text-muted-foreground max-md:hidden',
+              )}
             >
-              <span>{format(m.paperColContent)}</span>
-              <span>{format(m.paperColVersion)}</span>
+              <span>
+                <span className="lg:hidden">{format(m.paperColContentVersion)}</span>
+                <span className="max-lg:hidden">{format(m.paperColContent)}</span>
+              </span>
+              <span className="max-lg:hidden">{format(m.paperColVersion)}</span>
               <span>{format(m.paperColStatus)}</span>
               <span className="text-right">{format(m.paperColScore)}</span>
             </div>
@@ -454,7 +535,7 @@ function Question({
                 <button
                   type="button"
                   onClick={() => setUnfolded((now) => !now)}
-                  className="flex h-9 w-full cursor-pointer items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                  className="flex h-9 w-full cursor-pointer items-center justify-center gap-1.5 border-b text-xs text-muted-foreground transition-colors last:border-b-0 hover:text-foreground md:border-b-0"
                 >
                   {unfolded
                     ? format(m.paperFoldLess)
@@ -472,12 +553,23 @@ function Question({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => (declared ? onDeclare(item) : onFile(item, null))}
-                  className="flex min-h-11 w-full flex-1 cursor-pointer items-center justify-center gap-1.5 bg-muted/20 text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+                  onClick={add}
+                  className="flex min-h-11 w-full flex-1 cursor-pointer items-center justify-center gap-1.5 text-[13px] font-medium text-foreground transition-colors max-md:border-b md:bg-muted/20 md:text-xs md:font-normal md:text-muted-foreground md:hover:bg-accent/40 md:hover:text-foreground"
                 >
                   <PlusIcon aria-hidden className="size-3.5" />
-                  {format(declared ? m.entryDeclare : m.entryNew)}
+                  {format(declared ? m.entryDeclare : m.paperEmptyFile)}
                 </button>
+              )}
+              {/* the quota, spoken where the next claim would have gone */}
+              {full && (
+                <span className="flex h-10 items-center justify-center gap-1.5 text-xs text-muted-foreground max-md:border-b md:hidden">
+                  {format(m.myEntriesAddFull)}
+                  {item.maxEntries !== null && (
+                    <span className="tabular-nums">
+                      {live.length} / {item.maxEntries}
+                    </span>
+                  )}
+                </span>
               )}
             </>
           ) : (
@@ -489,7 +581,7 @@ function Question({
             <div
               className={cn(
                 'flex min-h-28 flex-1 flex-col items-center justify-center gap-2.5 p-4',
-                !granted && 'bg-muted/25',
+                !granted && 'bg-muted/25 max-md:rounded-xl max-md:border',
               )}
             >
               <span className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -512,12 +604,7 @@ function Question({
                 )}
               </span>
               {mayAdd ? (
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => (declared ? onDeclare(item) : onFile(item, null))}
-                >
+                <Button size="xs" variant="outline" disabled={busy} onClick={add}>
                   <PlusIcon aria-hidden />
                   {format(declared ? m.entryDeclare : m.paperEmptyFile)}
                 </Button>
@@ -542,7 +629,10 @@ function Question({
   )
 
   return (
-    <div data-paper-row={row.id} className={cn('scroll-mt-24 border-b', voided && 'bg-muted/15')}>
+    <div
+      data-paper-row={row.id}
+      className={cn('scroll-mt-34 border-b lg:scroll-mt-24', voided && 'bg-muted/15')}
+    >
       {voided ? (
         <>
           {/* A withdrawn question stays on the paper - what was filed under
@@ -567,7 +657,7 @@ function Question({
               {format(m.itemsStatusVoided)}
             </span>
             {item.voidReason !== null && item.voidReason.trim() !== '' && (
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground max-md:hidden">
                 {format(m.paperVoidedWhy, { reason: item.voidReason })}
               </span>
             )}
@@ -591,7 +681,14 @@ function Question({
   )
 }
 
-/** one claim as one table row: enough to be told apart, and the way in */
+/**
+ * One claim as one table row: enough to be told apart, and the way in.
+ *
+ * The cells come and go with the width - a phone folds the status and the
+ * time under the content and stacks the amount over its word, a tablet
+ * folds only the time - but it is one row of one list at every width, and
+ * it opens the same drawer.
+ */
 function ClaimRow({
   entry,
   item,
@@ -620,29 +717,52 @@ function ClaimRow({
   const lead = said(fields[0])
   const sub = said(fields[1])
   const ok = entry.status === 'approved'
+  const verWhen = (
+    <>
+      <span className="shrink-0">
+        {entry.status === 'draft' || revisionNo === undefined
+          ? format(m.paperUnsubmitted)
+          : format(m.entryVersionNo, { no: revisionNo })}
+      </span>
+      <span className="min-w-0 truncate tabular-nums">{when(entry)}</span>
+    </>
+  )
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_8.5rem_6rem_5.5rem] items-center gap-3 border-b px-4 py-3.5 text-left transition-colors last:border-b-0 hover:bg-accent/50"
+      className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b py-2.5 text-left transition-colors last:border-b-0 md:grid-cols-[minmax(0,1fr)_6rem_5.5rem] md:px-4 md:py-3.5 lg:grid-cols-[minmax(0,1fr)_8.5rem_6rem_5.5rem] hover:bg-accent/50"
     >
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="max-w-44 shrink-0 truncate text-sm font-medium">
-          {lead === '' ? item.title : lead}
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="max-w-44 shrink-0 truncate text-sm font-medium">
+            {lead === '' ? item.title : lead}
+          </span>
+          {sub !== '' && (
+            <span className="min-w-0 truncate text-xs text-muted-foreground max-md:hidden">
+              {sub}
+            </span>
+          )}
         </span>
-        {sub !== '' && (
-          <span className="min-w-0 truncate text-xs text-muted-foreground">{sub}</span>
-        )}
-      </span>
-      <span className="flex min-w-0 items-baseline gap-2 text-xs whitespace-nowrap text-muted-foreground">
-        <span className="shrink-0">
-          {entry.status === 'draft' || revisionNo === undefined
-            ? format(m.paperUnsubmitted)
-            : format(m.entryVersionNo, { no: revisionNo })}
+        {/* the folded cells, under the content where the width folds them */}
+        <span className="flex min-w-0 items-center gap-2.5 md:hidden">
+          <EntryStanding
+            status={entry.status}
+            revised={entry.currentReviewInstanceId !== null}
+            asked={entry.supplement !== null}
+          />
+          <span className="flex min-w-0 items-baseline gap-2 text-[11px] whitespace-nowrap text-muted-foreground">
+            {verWhen}
+          </span>
         </span>
-        <span className="min-w-0 truncate tabular-nums">{when(entry)}</span>
+        <span className="hidden min-w-0 items-baseline gap-2 text-[11px] whitespace-nowrap text-muted-foreground md:flex lg:hidden">
+          {verWhen}
+        </span>
       </span>
-      <span className="min-w-0">
+      <span className="hidden min-w-0 items-baseline gap-2 text-xs whitespace-nowrap text-muted-foreground lg:flex">
+        {verWhen}
+      </span>
+      <span className="min-w-0 max-md:hidden">
         <EntryStanding
           status={entry.status}
           revised={entry.currentReviewInstanceId !== null}
@@ -650,8 +770,8 @@ function ClaimRow({
         />
       </span>
       {score !== null ? (
-        <span className="flex items-baseline justify-end gap-1.5 whitespace-nowrap">
-          <span className="text-xs text-muted-foreground">
+        <span className="flex flex-col items-end gap-0.5 whitespace-nowrap md:flex-row md:items-baseline md:justify-end md:gap-1.5">
+          <span className="text-[10.5px] text-muted-foreground md:text-xs">
             {format(
               ok
                 ? m.entryScoreCounted
@@ -672,6 +792,7 @@ function ClaimRow({
       ) : (
         <span />
       )}
+      <ChevronRightIcon aria-hidden className="size-3.5 text-muted-foreground/60 md:hidden" />
     </button>
   )
 }

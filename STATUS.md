@@ -6090,3 +6090,41 @@ py-3.5;③表格底部多一个"下一条申报"的座位,吃掉剩余高度。�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 96 files / 670 passed / 17 skipped;
 `pnpm test:browser` 8 files / 63 passed;`pnpm build` 通过(staged web assets);prettier 全绿。
+
+### 移动端外壳与我的填报三宽度(2026-08-19,设计稿 6a/7a/7b/7c)
+
+**壳(layout-default,WorkspaceShell,对全部 workspace 页面通用)**:<lg(1024)时顶部应用栏折叠
+(transition-[height] + inert,不是卸载,跨断点丝滑)、侧栏收到 w-0(同款宽度过渡)、上下文栏原样
+(去掉旧的抽屉开关与 pl-9 让位 hack,批次名拿回整行);底部中央出现导航胶囊(44px、双横线 + 「导航」、
+safe-area 锚定、Appear 出入场),点开底拉框:工作区页面两列格(navigationGroups 分组、徽标槽照旧、
+当前页高亮)+ 底部「其他页面」条(折叠掉的应用栏去处:测评/组织)。**返回键语义**:抽屉开合放在
+history entry 的 location.state 上——打开 push、关闭 navigate(-1) 消费自己那条、系统返回手势即关;
+从抽屉导航后返回会回到"抽屉开着"的那层,与页面 query-layer 纪律一致。AppShell 未动(本轮只做
+workspace 页面)。
+
+**我的填报(7a/7b/7c,一张卷三处断点)**:
+- Paper 段头三形态:手机两行(名一行、进度条一行)/平板 42px 单行/笔记本维持展示卡;子段头、题目
+  网格(md 17rem、lg 19rem、xl 21rem 左栏;MEASURE px-4→lg:px-6)、条目表按宽度掉列:lg 四列、
+  md 三列(版次时间折进内容格第二行,表头「内容与版次」)、手机去表头一条两行(状态点+版次时间在
+  第二行、计分上下叠、行尾 chevron);新增申报/条数已满在手机上落到条目列表底部;左栏底部动作行
+  md 起才显示。
+- 工具条:手机两行(标题+meta+已计入 / 整卷·只看待办全宽 + 「结构」键),平板单行含「结构」键,
+  lg 起无结构键;<lg 整块 sticky 顶部,**36px 段头替身条钉在其下沿**(滚过段头卡才出现,Appear
+  collapse;桌面绝对定位替身条按设计稿删除——桌面有常驻结构栏定位)。
+- 结构 <lg 收进底拉框(?rail=1 query 层,返回可关):Structure 加 variant='sheet'(不带汇总卡,
+  表头行 = 卷面结构 + meta + 全部/待办),树与 rail 同一份;点行走 goTo——**open 与 rail 清除在
+  同一笔 updateQuery 原子写**(双写竞态的老坑),滚动照旧 bring() 算术定位。
+- 窄屏滚动监听:paneViewport 缺席时向上找 overflow-y auto 祖先(pageScroller);判定基线统一为
+  「sticky 工具条底沿」(桌面上工具条在滚动容器外,底沿即容器顶,同一公式两形态通用);bring()
+  在窄屏把 sticky 高度计入 clear,strip 的 36px 恒计(滚完它必然在)。
+- Safari:viewport-fit=cover、-webkit-tap-highlight 透明、text-size-adjust 100%、胶囊与底拉框
+  safe-area-inset-bottom。
+
+**验证(浏览器真跑)**:壳 2 例新增(390×844 顶栏链接零可见+胶囊开抽屉见页面与其他页面、Esc 关闭
+消费历史;从抽屉导航落地即关);试卷 2 例新增(结构键开抽屉→点行:rail=1 出现、open=<id> 落地且
+rail 清除、页面滚动;段头条滚过 600px 出现且再滚不动)。截图核对 390/834/1280 三宽度与设计稿
+7a/7b/7c 对齐。**已知偏离**:6a 底拉框顶部的「所在批次」行未做(上下文栏本就常驻批次切换器,用户
+明示 6a 内容除外);底部动作条与胶囊的碰撞插槽(审核决定条场景)留待做审核页移动端时一并落。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 96 files / 670 passed / 17 skipped;
+`pnpm test:browser` 8 files / 67 passed(新增 4 例);`pnpm build` 通过;prettier 全绿。

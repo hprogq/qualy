@@ -1744,6 +1744,10 @@ const i18n = definePluginMessages({
       id: 'assessment/paper/structure',
       defaultMessage: 'Paper structure',
     },
+    paperStructureShort: {
+      id: 'assessment/paper/structure-short',
+      defaultMessage: 'Contents',
+    },
     paperViewAll: {
       id: 'assessment/paper/view-all',
       defaultMessage: 'Whole paper',
@@ -1763,6 +1767,10 @@ const i18n = definePluginMessages({
     paperColContent: {
       id: 'assessment/paper/col-content',
       defaultMessage: 'Content',
+    },
+    paperColContentVersion: {
+      id: 'assessment/paper/col-content-version',
+      defaultMessage: 'Content and version',
     },
     paperColVersion: {
       id: 'assessment/paper/col-version',
