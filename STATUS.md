@@ -6128,3 +6128,29 @@ rail 清除、页面滚动;段头条滚过 600px 出现且再滚不动)。截图
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 96 files / 670 passed / 17 skipped;
 `pnpm test:browser` 8 files / 67 passed(新增 4 例);`pnpm build` 通过;prettier 全绿。
+
+### 底拉框二稿:本人在头、页面在中、账户在底(2026-08-19,设计稿 t6 更新版)
+
+设计稿 6a 更新后重做底拉框。壳保持零业务知识:@qualy/ui-contract 新增三个插槽
+(app-shell/drawer-identity / drawer-account / drawer-sign-out),auth 认领——壳只负责三段容器,
+身份与账户是谁拥有会话谁来填。
+
+- **头部(auth/DrawerIdentity)**:头像垂直居中,两行——名字 + 学工号(未绑定时斜体提示,与桌面
+  右上角一致)+ 类型徽标;第二行是**所在节点名**(不是设计稿初版的 '…/2023 级/软件工程 2302 班'
+  截断路径)。点击同一行翻成一整行书写式完整路径(根→叶,'/' 相连,可换行),再点收回;两态同字号
+  同行高,名字与组织行的间距不再跳动,也没有树状列表把导航挤下去。
+- **底部(壳容器)**:第一行 auth/DrawerAccount——外观三态(与桌面菜单同一 ThemeChoicePicker,
+  抽成 identity-bits 共享)+ 语言二态;第二行 其他模块(各模块带自己的图标——navigationGroups 的
+  icon 经 useAppNavigation 携带,assessment/main 补 list-checks,org/organization 原有 users)+
+  行尾 auth/DrawerSignOut 退出登录(匿名时不渲染,登录入口在头部)。文案 其他页面→其他模块。
+- **session 只请求一次**:折叠的顶栏里 UserMenu 在进入页面时已取过 session;抽屉每次打开都是新
+  挂载,react-query 默认 staleTime 0 导致再取一次(用户抓包发现)。三个观察者(UserMenu/
+  DrawerIdentity/DrawerSignOut)统一 staleTime 30s,浏览器断言 sessionCalls === 1(开-关-开)。
+  首开期间头部渲染同形骨架,不再"导航先出现、身份突然弹入"。
+- **门禁修复**:fast-refresh 规则拒绝组件文件导出 initialsOf——拆成纯模块 initials.ts,
+  identity-bits.tsx 只剩组件;测试 harness 补 ThemeProvider(与 App 同序,主题组件在测试里
+  与真实环境一致)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 96 files / 670 passed / 17 skipped
+(含 fast-refresh);`pnpm test:browser` 8 files / 68 passed(壳新增身份/账户/单请求集成用例);
+`pnpm build` 通过;prettier 全绿。

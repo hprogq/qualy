@@ -16,8 +16,8 @@ const i18n = definePluginMessages({
       defaultMessage: 'Navigation',
     },
     otherPages: {
-      id: 'layout/shell/other-pages',
-      defaultMessage: 'Other pages',
+      id: 'layout/shell/other-modules',
+      defaultMessage: 'Other modules',
     },
   },
   locales: {

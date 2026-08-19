@@ -2,7 +2,7 @@ import { StrictMode, type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
-import { RuntimeProvider, type ComponentRegistry } from '@qualy/web-runtime'
+import { ThemeProvider, RuntimeProvider, type ComponentRegistry } from '@qualy/web-runtime'
 import { Effect } from 'effect'
 
 import { catalogs, errorMessages } from 'virtual:qualy/plugins'
@@ -96,22 +96,26 @@ export function renderScreen({
   return render(
     <StrictMode>
       <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-        <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
-          <MemoryRouter initialEntries={[route]}>
-            <Address />
-            {routes ? (
-              <Routes>
-                {routes.map((entry) => (
-                  <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
-                ))}
-              </Routes>
-            ) : path ? (
-              <RouteHost path={path}>{children}</RouteHost>
-            ) : (
-              children
-            )}
-          </MemoryRouter>
-        </RuntimeProvider>
+        {/* the same order the app composes: theme around the runtime, so a
+            component reading the theme works here exactly as it does there */}
+        <ThemeProvider>
+          <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
+            <MemoryRouter initialEntries={[route]}>
+              <Address />
+              {routes ? (
+                <Routes>
+                  {routes.map((entry) => (
+                    <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
+                  ))}
+                </Routes>
+              ) : path ? (
+                <RouteHost path={path}>{children}</RouteHost>
+              ) : (
+                children
+              )}
+            </MemoryRouter>
+          </RuntimeProvider>
+        </ThemeProvider>
       </I18nProvider>
     </StrictMode>,
   )

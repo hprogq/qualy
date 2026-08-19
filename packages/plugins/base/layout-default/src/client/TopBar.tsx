@@ -17,6 +17,8 @@ export interface AppEntry {
   label: ResolvedNavigationItem['label']
   path: string
   items: readonly ResolvedNavigationItem[]
+  /** the module's own mark, for surfaces that draw one; the top bar does not */
+  icon?: string
 }
 
 function Brand({ to }: { to?: string }) {

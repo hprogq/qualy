@@ -15,6 +15,9 @@ import {
   peoplePicker,
   permissionOf,
   personCard,
+  drawerAccount,
+  drawerIdentity,
+  drawerSignOut,
   sidebarUser,
 } from '@qualy/ui-contract'
 import { config } from './server/auth-config.ts'
@@ -84,6 +87,28 @@ const plugin = Plugin.define(
     key: sidebarUser.key,
     id: 'auth/user-menu',
     component: Ui.react('./client/UserMenu.tsx'),
+    visibility: PUBLIC,
+  }),
+  // the same account, on the narrow shell's navigation drawer: who is in at
+  // the head, preferences and the way out at the foot. Public for the same
+  // reason the top bar's corner is - the head offers sign-in to anonymous
+  // visitors, and the foot's controls are browser preferences.
+  Ui.slot({
+    key: drawerIdentity.key,
+    id: 'auth/drawer-identity',
+    component: Ui.react('./client/DrawerIdentity.tsx'),
+    visibility: PUBLIC,
+  }),
+  Ui.slot({
+    key: drawerAccount.key,
+    id: 'auth/drawer-account',
+    component: Ui.react('./client/DrawerAccount.tsx'),
+    visibility: PUBLIC,
+  }),
+  Ui.slot({
+    key: drawerSignOut.key,
+    id: 'auth/drawer-sign-out',
+    component: Ui.react('./client/DrawerSignOut.tsx'),
     visibility: PUBLIC,
   }),
   // A person, wherever another screen names one. Behind the same permission

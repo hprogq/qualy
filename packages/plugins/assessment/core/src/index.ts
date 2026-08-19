@@ -74,6 +74,7 @@ const plugin = Plugin.define(
           id: 'assessment/main',
           label: message('assessment/nav-group/main', 'Assessment'),
           order: 20,
+          icon: 'list-checks',
         },
         visibility: PUBLIC,
       },

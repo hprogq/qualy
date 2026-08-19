@@ -57,7 +57,9 @@ export function useAppNavigation(): AppNavigation {
       const path = items.map(pathOf).find((candidate) => candidate !== undefined)
       // an application whose every page is invisible to this viewer is not an
       // application they have
-      return path === undefined ? [] : [{ id: group.id, label: group.label, path, items }]
+      return path === undefined
+        ? []
+        : [{ id: group.id, label: group.label, path, items, icon: group.icon }]
     })
 
   // an entry belonging to no registered group is an application of one page
@@ -67,7 +69,9 @@ export function useAppNavigation(): AppNavigation {
     .sort(byOrder)
     .flatMap((item) => {
       const path = pathOf(item)
-      return path === undefined ? [] : [{ id: item.id, label: item.label, path, items: [] }]
+      return path === undefined
+        ? []
+        : [{ id: item.id, label: item.label, path, items: [], icon: item.icon }]
     })
 
   const all = [...apps, ...loose]

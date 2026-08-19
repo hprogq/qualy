@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { PanelLeftIcon } from 'lucide-react'
 import {
+  drawerAccount,
+  drawerIdentity,
+  drawerSignOut,
   navigationGroups,
   workspaceContext,
   workspaceNavigation,
@@ -370,14 +373,20 @@ function CapableWorkspaceShell() {
           className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
         >
           <SheetTitle className="sr-only">{format(m.navCapsule)}</SheetTitle>
-          <span
-            aria-hidden
-            className="mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30"
-          />
+          {/* the person at the head, the pages in the middle, the account at
+              the foot - and the shell owns none of the head or the foot's
+              controls: whoever owns sessions fills those seats */}
+          <div className="flex shrink-0 flex-col gap-1 bg-muted/50 px-3.5 pt-2.5 pb-2">
+            <span
+              aria-hidden
+              className="mx-auto h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30"
+            />
+            <UiSlot token={drawerIdentity} />
+          </div>
           {/* the same entries the rail carries, two to a row because a
               phone-wide column of 46px bars wastes the little height a
               drawer has */}
-          <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3.5 pt-3 pb-4">
+          <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto border-t px-3.5 pt-3.5 pb-4">
             {loose.length > 0 && (
               <div className="grid grid-cols-2 gap-2">
                 {loose.map((item) => (
@@ -410,22 +419,32 @@ function CapableWorkspaceShell() {
               </section>
             ))}
           </nav>
-          {/* the applications the folded top bar carried: destinations, not
-              tabs, so no selected state */}
-          {apps.length > 0 && (
-            <div className="flex shrink-0 flex-col gap-2 border-t bg-muted/40 px-4 pt-3 pb-[max(1.375rem,env(safe-area-inset-bottom))]">
-              <p className="text-[11px] font-medium text-muted-foreground">
+          <div className="flex shrink-0 flex-col gap-2.5 border-t bg-muted/40 px-4 pt-2.5 pb-[max(1.375rem,env(safe-area-inset-bottom))]">
+            <UiSlot token={drawerAccount} />
+            {/* the applications the folded top bar carried - destinations,
+                not tabs - with the way out at the row's end */}
+            <div className="flex items-center gap-4 border-t pt-2.5">
+              <span className="shrink-0 text-[11px] font-medium whitespace-nowrap text-muted-foreground">
                 {format(m.otherPages)}
-              </p>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
+              </span>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
                 {apps.map((app) => (
-                  <NavLink key={app.id} to={app.path} className="text-[13px] text-foreground">
-                    <LocalizedText value={app.label} />
+                  <NavLink
+                    key={app.id}
+                    to={app.path}
+                    className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground"
+                  >
+                    <NavIcon name={app.icon} className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 truncate">
+                      <LocalizedText value={app.label} />
+                    </span>
                   </NavLink>
                 ))}
               </div>
+              <span className="flex-1" />
+              <UiSlot token={drawerSignOut} />
             </div>
-          )}
+          </div>
         </SheetContent>
       </Sheet>
     </div>

@@ -1,3 +1,4 @@
+import { lazy } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -22,8 +23,8 @@ const manifest = () => ({
   ...emptyManifest(),
   collections: {
     'app-shell/navigation-groups': [
-      { id: 'app/assessment', label: text('测评'), order: 10 },
-      { id: 'app/organization', label: text('组织与权限'), order: 40 },
+      { id: 'app/assessment', label: text('测评'), order: 10, icon: 'list-checks' },
+      { id: 'app/organization', label: text('组织与权限'), order: 40, icon: 'users' },
       { id: 'batch/admin', label: text('批次管理'), order: 30 },
     ],
     'app-shell/navigation-primary': [
@@ -189,7 +190,7 @@ describe('the workspace shell', () => {
     // applications the folded bar carried at the foot
     await page.getByRole('button', { name: '导航' }).click()
     await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
-    await expect.element(page.getByText('其他页面')).toBeVisible()
+    await expect.element(page.getByText('其他模块')).toBeVisible()
     await expect.element(page.getByRole('link', { name: '测评' })).toBeVisible()
 
     // closing consumes the history entry the drawer stands on: the escape
@@ -205,6 +206,102 @@ describe('the workspace shell', () => {
         .elements()
         .filter((el) => el.checkVisibility()),
     ).toHaveLength(0)
+  })
+
+  it('seats the person at the drawer head and the account at its foot', async () => {
+    await page.viewport(390, 844)
+    let sessionCalls = 0
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...manifest(),
+              slots: {
+                'app-shell/drawer-identity': [
+                  { id: 'auth/drawer-identity', component: 'auth/DrawerIdentity', order: 0 },
+                ],
+                'app-shell/drawer-account': [
+                  { id: 'auth/drawer-account', component: 'auth/DrawerAccount', order: 0 },
+                ],
+                'app-shell/drawer-sign-out': [
+                  { id: 'auth/drawer-sign-out', component: 'auth/DrawerSignOut', order: 0 },
+                ],
+              },
+            }),
+        },
+        auth: {
+          getSession: () => {
+            sessionCalls += 1
+            return Effect.succeed({
+              user: {
+                id: '99999999-9999-4999-8999-999999999999',
+                displayName: '林知远',
+                businessNo: '2023214015',
+                userType: { id: 't-1', code: 'student', name: '本科生' },
+                primaryOrgNode: {
+                  id: 'n-5',
+                  code: null,
+                  name: '软件工程 2302 班',
+                  orgType: { id: 'ot-4', code: 'class', name: '班级' },
+                  lineage: [
+                    { id: 'n-1', name: 'YY 大学', typeName: '学校' },
+                    { id: 'n-2', name: '软件学院', typeName: '学院' },
+                    { id: 'n-3', name: '软件工程', typeName: '专业' },
+                    { id: 'n-4', name: '2023 级', typeName: '年级' },
+                    { id: 'n-5', name: '软件工程 2302 班', typeName: '班级' },
+                  ],
+                },
+                tenant: { id: 'tn-1', slug: 'main', name: '本部' },
+              },
+            })
+          },
+        },
+      } as never),
+      registry: {
+        'auth/DrawerIdentity': lazy(() => components['auth/DrawerIdentity']!() as Promise<never>),
+        'auth/DrawerAccount': lazy(() => components['auth/DrawerAccount']!() as Promise<never>),
+        'auth/DrawerSignOut': lazy(() => components['auth/DrawerSignOut']!() as Promise<never>),
+      },
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/phases',
+          element: <WorkspaceShell />,
+        },
+      ] as never,
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+    })
+
+    await page.getByRole('button', { name: '导航' }).click()
+
+    // the head says who, and where they stand - the node's own name, not
+    // the whole ancestry
+    await expect.element(page.getByText('林知远')).toBeVisible()
+    await expect.element(page.getByText('软件工程 2302 班')).toBeVisible()
+    expect(page.getByText('2023 级', { exact: false }).elements()).toHaveLength(0)
+
+    // the ancestry waits behind a tap and arrives as one written line
+    await page.getByRole('button', { name: /软件工程 2302 班/ }).click()
+    await expect.element(page.getByText(/软件学院 \/ 软件工程 \/ 2023 级/)).toBeVisible()
+    // and folds back to the plain name
+    await page.getByRole('button', { name: /软件学院/ }).click()
+    expect(page.getByText('2023 级', { exact: false }).elements()).toHaveLength(0)
+
+    // the foot carries the preferences and the way out, and the module row
+    // wears each module's own mark
+    await expect.element(page.getByRole('button', { name: '退出登录' })).toBeVisible()
+    await expect.element(page.getByText('外观')).toBeVisible()
+    const moduleLink = page.getByRole('link', { name: '测评' }).element()
+    expect(moduleLink.querySelector('svg')).not.toBeNull()
+
+    // one identity, told once: the folded top bar's account corner asked at
+    // page entry, and the drawer reads that answer instead of asking again -
+    // however many times it opens
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
+    await page.getByRole('button', { name: '导航' }).click()
+    await expect.element(page.getByText('林知远')).toBeVisible()
+    expect(sessionCalls).toBe(1)
   })
 
   it('navigating from the drawer lands with the drawer closed', async () => {

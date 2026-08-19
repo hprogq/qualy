@@ -1,14 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
-import {
-  PageLink,
-  useApi,
-  useApiQuery,
-  useRunApi,
-  useSessionTransition,
-  useTheme,
-  type ThemeChoice,
-} from '@qualy/web-runtime'
+import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
 import { isAuthenticationError, localeNames, useI18n, useLocale } from '@qualy/web-i18n'
 import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
@@ -27,10 +19,10 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
-import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
-import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { authMessages as m } from './i18n.ts'
 import { authApi } from './api.ts'
+import { ThemeChoicePicker } from './identity-bits.tsx'
+import { initialsOf } from './initials.ts'
 
 // The account at the end of the top bar: an avatar and a name, opening a menu
 // with the whole identity - their number, their type, where they stand in the
@@ -40,23 +32,6 @@ import { authApi } from './api.ts'
 // Anonymous visitors get a sign-in link, and a session state that simply
 // cannot be determined says so instead of guessing.
 
-/** latin names shrink to initials, cjk names keep their first characters */
-const initialsOf = (name: string): string => {
-  const trimmed = name.trim()
-  if (trimmed === '') return '?'
-  const words = trimmed.split(/\s+/)
-  if (words.length >= 2) {
-    return words
-      .slice(0, 2)
-      .map((word) => [...word][0]!.toUpperCase())
-      .join('')
-  }
-  const characters = [...trimmed]
-  return /^[\x20-\x7e]+$/.test(trimmed)
-    ? characters[0]!.toUpperCase()
-    : characters.slice(0, 2).join('')
-}
-
 export default function UserMenu() {
   const api = useApi(authApi)
   const run = useRunApi()
@@ -65,7 +40,9 @@ export default function UserMenu() {
   const endSession = useSessionTransition()
   const [locale, setLocale] = useLocale()
   const [signOutError, setSignOutError] = useState<string | null>(null)
-  const me = useQuery({ ...orpc.auth.getSession.queryOptions(), retry: false })
+  // one identity, told once: surfaces that remount (the drawer, this menu
+  // after a layout change) read the cached answer instead of asking again
+  const me = useQuery({ ...orpc.auth.getSession.queryOptions(), retry: false, staleTime: 30_000 })
 
   if (me.isPending) return null
   if (me.isError) {
@@ -200,32 +177,5 @@ function PreferenceRow({ label, children }: { label: string; children: ReactNode
       <span className="text-sm text-muted-foreground">{label}</span>
       {children}
     </div>
-  )
-}
-
-function ThemeChoicePicker() {
-  const { choice, setChoice } = useTheme()
-  const { format } = useI18n()
-  const options: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
-    { value: 'light', label: format(m.themeLight), icon: SunIcon },
-    { value: 'dark', label: format(m.themeDark), icon: MoonIcon },
-    { value: 'system', label: format(m.themeSystem), icon: MonitorIcon },
-  ]
-  return (
-    <ToggleGroup
-      type="single"
-      spacing={0}
-      variant="outline"
-      size="sm"
-      value={choice}
-      aria-label={format(m.appearance)}
-      onValueChange={(next) => next !== '' && setChoice(next as ThemeChoice)}
-    >
-      {options.map((option) => (
-        <ToggleGroupItem key={option.value} value={option.value} aria-label={option.label}>
-          <option.icon />
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
   )
 }

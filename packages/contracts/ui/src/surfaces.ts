@@ -201,6 +201,30 @@ export const sidebarUser = defineUiSlot({
 })
 
 /**
+ * Who is signed in, at the head of the narrow shell's navigation drawer.
+ *
+ * The drawer is the shell's, the person is not: whoever owns sessions
+ * contributes the identity block here, the same way the top bar's account
+ * corner works, and a build without an identity owner simply has no header.
+ */
+export const drawerIdentity = defineUiSlot({
+  key: 'app-shell/drawer-identity',
+  cardinality: 'one',
+})
+
+/** account preferences on the drawer's foot: appearance, language */
+export const drawerAccount = defineUiSlot({
+  key: 'app-shell/drawer-account',
+  cardinality: 'one',
+})
+
+/** the way out, standing at the end of the drawer's last row */
+export const drawerSignOut = defineUiSlot({
+  key: 'app-shell/drawer-sign-out',
+  cardinality: 'one',
+})
+
+/**
  * What is being worked on, said by whoever knows: the workspace shell renders
  * this above its rail and knows nothing about batches, courses or whatever
  * else a workspace turns out to be about.
