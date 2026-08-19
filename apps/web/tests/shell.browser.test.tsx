@@ -190,7 +190,7 @@ describe('the workspace shell', () => {
     // applications the folded bar carried at the foot
     await page.getByRole('button', { name: '导航' }).click()
     await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
-    await expect.element(page.getByText('其他模块')).toBeVisible()
+    await expect.element(page.getByTestId('drawer-modules')).toBeVisible()
     await expect.element(page.getByRole('link', { name: '测评' })).toBeVisible()
 
     // closing consumes the history entry the drawer stands on: the escape
@@ -296,7 +296,7 @@ describe('the workspace shell', () => {
     // the foot carries the preferences and the way out, and the module row
     // wears each module's own mark
     await expect.element(page.getByRole('button', { name: '退出登录' })).toBeVisible()
-    await expect.element(drawer.getByText('外观')).toBeVisible()
+    await expect.element(drawer.getByTestId('drawer-account')).toBeVisible()
     const moduleLink = page.getByRole('link', { name: '测评' }).element()
     expect(moduleLink.querySelector('svg')).not.toBeNull()
 

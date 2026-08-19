@@ -6277,3 +6277,31 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 674 passed / 17 skipped;
 `pnpm test:browser` 69 passed;`pnpm build` 通过;prettier 全绿。
+
+### 浏览器测试分层:定位与断言分家(2026-08-20)
+
+用户改了一轮中文文案,浏览器套件 24 例当场红——业务行为一点没变。裁决:**不是文案不该改,是这些
+测试耦合过重**;并且明确否掉"把测试里的中文换成新的中文"这种修法(等于把雷埋回去)。三层纪律已
+写进 CLAUDE.md 测试分层与禁止清单:
+
+- **定位**照旧可用用户看得见的名字(role+name、label)——控件改名让测试红是合理的信号。
+- **业务断言不得依赖界面文案**:给没有天然语义的元素加钩子,断言事实与值。本轮加的钩子:
+  `stage-clock`(data-span/form/unit/count/rest——倒计时"两单位还是一单位"是显示决策,不是措辞)、
+  `phase-when`/`phase-standing`/`phase-schedule`/`phase-refusal`(data-reason)、`phase-plan-empty`、
+  `batch-list-empty`(data-empty=none|filtered)、`batch-pager`(data-page/pages)、
+  `import-candidates`(data-ready/count)、`access-origin`(data-origin)、`access-sync-notice`
+  (data-kind/pending/lapsed)、`access-permission-<code>` 与权限勾选框的 `data-permission`
+  (按权限码断言"这一关只开放这些动作",而不是按标签文字)、`entry-standing`(data-entry-standing)、
+  `trail-node`(data-kind)、`claim-row`(data-files)、`file-claim`(三个申报入口同一名)、
+  `supplement-ask`、`decision-staged`(data-decision)、`run-done`(data-handled)、`result-mode`
+  (data-mode)、`result-total`、`group-adjustment`、`type-summary`(data-users/placement)、
+  `type-no-login`、`placement-panel`、`grant-nothing-offered`、`feedback`(data-tone)、
+  `drawer-modules`、`drawer-account`。
+- **只有以文案为对象的测试断言原文**:新增 apps/web/tests/localization.browser.test.tsx(3 例)——
+  插值落位(本批次满分 10.00)、第二人称声部(你提交了申报/你提交了第 1 版 + 审核人保留姓名)、
+  切 en-US 后同屏渲染英文默认值且中文不出现。catalog 完整性仍归 catalogs.test 门禁。
+- **fixture 数据不是 copy**:批次名、人名、参评人填的字、题目字段标签照常直接断言——它们不随
+  文案改版移动。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 674 passed / 17 skipped;
+`pnpm test:browser` 9 files / 72 passed(新增 localization 3 例);`pnpm build` 通过;prettier 全绿。

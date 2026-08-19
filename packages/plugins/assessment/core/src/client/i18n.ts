@@ -19,54 +19,55 @@ import type * as assessmentErrors from '../server/errors.ts'
 
 const participantCount = defineMessage<{ count: number }>()({
   id: 'assessment/roster/count',
-  defaultMessage: '{count, plural, =0 {Nobody enrolled yet} one {# person} other {# people}}',
+  defaultMessage:
+    '{count, plural, =0 {No participants yet} one {# participant} other {# participants}}',
 })
 
 const opensCount = defineMessage<{ count: number }>()({
   id: 'assessment/phase/opens-count',
   defaultMessage:
-    '{count, plural, =0 {Opens nothing yet} one {Opens # action} other {Opens # actions}}',
+    '{count, plural, =0 {No actions enabled} one {# action enabled} other {# actions enabled}}',
 })
 
 const addPeopleConfirm = defineMessage<{ count: number }>()({
   id: 'assessment/roster/add-confirm',
-  defaultMessage: '{count, plural, =0 {Add} one {Add # person} other {Add # people}}',
+  defaultMessage: '{count, plural, =0 {Add} one {Add # participant} other {Add # participants}}',
 })
 
 const toastImported = defineMessage<{ count: number }>()({
   id: 'assessment/toast/imported',
-  defaultMessage: '{count, plural, one {# person added} other {# people added}}',
+  defaultMessage: '{count, plural, one {# participant imported} other {# participants imported}}',
 })
 
 const toastAdded = defineMessage<{ count: number }>()({
   id: 'assessment/toast/added',
-  defaultMessage: '{count, plural, one {# person added} other {# people added}}',
+  defaultMessage: '{count, plural, one {# participant added} other {# participants added}}',
 })
 
 const toastMerged = defineMessage<{ count: number }>()({
   id: 'assessment/toast/merged',
-  defaultMessage: '{count, plural, one {# change accepted} other {# changes accepted}}',
+  defaultMessage: '{count, plural, one {# change applied} other {# changes applied}}',
 })
 
 const importCandidates = defineMessage<{ count: number }>()({
   id: 'assessment/roster/import-candidates',
   defaultMessage:
-    '{count, plural, =0 {Nobody new to add} one {# person will be added} other {# people will be added}}',
+    '{count, plural, =0 {No new participants to add} one {# participant will be added} other {# participants will be added}}',
 })
 
 const alsoActiveIn = defineMessage<{ batches: string }>()({
   id: 'assessment/roster/also-active',
-  defaultMessage: 'Already taking part in {batches}',
+  defaultMessage: 'Also participating in: {batches}',
 })
 
 const accessSourceCount = defineMessage<{ count: number }>()({
   id: 'assessment/access/source-count',
-  defaultMessage: '{count, plural, =0 {Nobody yet} one {# person} other {# people}}',
+  defaultMessage: '{count, plural, =0 {No staff yet} one {# person} other {# people}}',
 })
 
 const accessRoleAt = defineMessage<{ role: string }>()({
   id: 'assessment/access/role-at',
-  defaultMessage: 'as {role}',
+  defaultMessage: 'Role: {role}',
 })
 
 const accessSyncSelected = defineMessage<{ count: number }>()({
@@ -76,18 +77,17 @@ const accessSyncSelected = defineMessage<{ count: number }>()({
 
 const accessDeniedCount = defineMessage<{ count: number }>()({
   id: 'assessment/access/denied-count',
-  defaultMessage: '{count, plural, one {# action withheld} other {# actions withheld}}',
+  defaultMessage: '{count, plural, one {# permission disabled} other {# permissions disabled}}',
 })
 
 const discardTitle = defineMessage<{ count: number }>()({
   id: 'assessment/plan/discard-title',
-  defaultMessage:
-    'Discard {count, plural, one {# unsaved change} other {# unsaved changes}} to the plan?',
+  defaultMessage: 'Discard {count, plural, one {# unsaved change} other {# unsaved changes}}?',
 })
 
 const describeTitle = defineMessage<{ name: string }>()({
   id: 'assessment/phase/describe-title',
-  defaultMessage: 'What \u201c{name}\u201d is for',
+  defaultMessage: 'Stage details: \u201c{name}\u201d',
 })
 
 const scheduleTitle = defineMessage<{ name: string }>()({
@@ -102,7 +102,7 @@ const startNowTitle = defineMessage<{ name: string }>()({
 
 const unscheduleTitle = defineMessage<{ name: string }>()({
   id: 'assessment/schedule/unschedule-title',
-  defaultMessage: 'Withdraw the start time of \u201c{name}\u201d?',
+  defaultMessage: 'Cancel the schedule for \u201c{name}\u201d?',
 })
 
 const pendingShort = defineMessage<{ count: number }>()({
@@ -114,13 +114,13 @@ const pendingShort = defineMessage<{ count: number }>()({
 const batchSummary = defineMessage<{ count: number; from: string; until: string }>()({
   id: 'assessment/batch/summary',
   defaultMessage:
-    '{count, plural, one {# participant} other {# participants}}, counting materials from {from} to {until}',
+    '{count, plural, one {# participant} other {# participants}} · materials from {from} to {until}',
 })
 
 const batchSummaryDraft = defineMessage<{ units: number; from: string; until: string }>()({
   id: 'assessment/batch/summary-draft',
   defaultMessage:
-    'Covers {units, plural, one {# unit} other {# units}}, counting materials from {from} to {until}',
+    '{units, plural, one {# unit} other {# units}} · materials from {from} to {until}',
 })
 
 const pageOfTotal = defineMessage<{ page: number; pages: number }>()({
@@ -135,113 +135,115 @@ const totalCount = defineMessage<{ count: number }>()({
 
 const leftDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/left-days',
-  defaultMessage: '{count, plural, one {# day left} other {# days left}}',
+  defaultMessage: '{count, plural, one {# day remaining} other {# days remaining}}',
 })
 const leftHours = defineMessage<{ count: number }>()({
   id: 'assessment/progress/left-hours',
-  defaultMessage: '{count, plural, one {# hour left} other {# hours left}}',
+  defaultMessage: '{count, plural, one {# hour remaining} other {# hours remaining}}',
 })
 const leftMinutes = defineMessage<{ minutes: number; seconds: number }>()({
   id: 'assessment/progress/left-minutes',
-  defaultMessage: '{minutes}m {seconds}s left',
+  defaultMessage: '{minutes}m {seconds}s remaining',
 })
 const leftDaysHours = defineMessage<{ days: number; hours: number }>()({
   id: 'assessment/progress/left-days-hours',
-  defaultMessage: '{days}d {hours}h left',
+  defaultMessage: '{days}d {hours}h remaining',
 })
 const leftHoursMinutes = defineMessage<{ hours: number; minutes: number }>()({
   id: 'assessment/progress/left-hours-minutes',
-  defaultMessage: '{hours}h {minutes}m left',
+  defaultMessage: '{hours}h {minutes}m remaining',
 })
 const leftMinutesOnly = defineMessage<{ count: number }>()({
   id: 'assessment/progress/left-minutes-only',
-  defaultMessage: '{count}m left',
+  defaultMessage: '{count}m remaining',
 })
 const leftSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/left-seconds',
-  defaultMessage: '{count}s left',
+  defaultMessage: '{count}s remaining',
 })
 // The countdown with no room for a sentence, on a bar narrow enough to have
 // dropped the stage's name: it says whose clock it is in one word, because
 // without it a bare number on a page about a batch reads as the batch's.
 const bareDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-days',
-  defaultMessage: '{count, plural, one {# day left in stage} other {# days left in stage}}',
+  defaultMessage: '{count, plural, one {Stage · # day left} other {Stage · # days left}}',
 })
 const bareHours = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-hours',
-  defaultMessage: '{count, plural, one {# hour left in stage} other {# hours left in stage}}',
+  defaultMessage: '{count, plural, one {Stage · # hour left} other {Stage · # hours left}}',
 })
 const bareMinutes = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-minutes',
-  defaultMessage: '{count, plural, one {# minute left in stage} other {# minutes left in stage}}',
+  defaultMessage: '{count, plural, one {Stage · # minute left} other {Stage · # minutes left}}',
 })
 const bareSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-seconds',
-  defaultMessage: '{count, plural, one {# second left in stage} other {# seconds left in stage}}',
+  defaultMessage: '{count, plural, one {Stage · # second left} other {Stage · # seconds left}}',
 })
 const bareSinceDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-since-days',
-  defaultMessage: '{count, plural, one {# day into stage} other {# days into stage}}',
+  defaultMessage: '{count, plural, one {Stage · # day elapsed} other {Stage · # days elapsed}}',
 })
 const bareSinceHours = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-since-hours',
-  defaultMessage: '{count, plural, one {# hour into stage} other {# hours into stage}}',
+  defaultMessage: '{count, plural, one {Stage · # hour elapsed} other {Stage · # hours elapsed}}',
 })
 const bareSinceMinutes = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-since-minutes',
-  defaultMessage: '{count, plural, one {# minute into stage} other {# minutes into stage}}',
+  defaultMessage:
+    '{count, plural, one {Stage · # minute elapsed} other {Stage · # minutes elapsed}}',
 })
 const bareSinceSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/bare-since-seconds',
-  defaultMessage: '{count, plural, one {# second into stage} other {# seconds into stage}}',
+  defaultMessage:
+    '{count, plural, one {Stage · # second elapsed} other {Stage · # seconds elapsed}}',
 })
 const sinceDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/since-days',
-  defaultMessage: '{count, plural, one {running for # day} other {running for # days}}',
+  defaultMessage: '{count, plural, one {Running for # day} other {Running for # days}}',
 })
 const sinceHours = defineMessage<{ count: number }>()({
   id: 'assessment/progress/since-hours',
-  defaultMessage: '{count, plural, one {running for # hour} other {running for # hours}}',
+  defaultMessage: '{count, plural, one {Running for # hour} other {Running for # hours}}',
 })
 const sinceMinutes = defineMessage<{ minutes: number; seconds: number }>()({
   id: 'assessment/progress/since-minutes',
-  defaultMessage: 'running for {minutes}m {seconds}s',
+  defaultMessage: 'Running for {minutes}m {seconds}s',
 })
 const sinceDaysHours = defineMessage<{ days: number; hours: number }>()({
   id: 'assessment/progress/since-days-hours',
-  defaultMessage: 'running for {days}d {hours}h',
+  defaultMessage: 'Running for {days}d {hours}h',
 })
 const sinceHoursMinutes = defineMessage<{ hours: number; minutes: number }>()({
   id: 'assessment/progress/since-hours-minutes',
-  defaultMessage: 'running for {hours}h {minutes}m',
+  defaultMessage: 'Running for {hours}h {minutes}m',
 })
 const sinceMinutesOnly = defineMessage<{ count: number }>()({
   id: 'assessment/progress/since-minutes-only',
-  defaultMessage: 'running for {count}m',
+  defaultMessage: 'Running for {count}m',
 })
 const sinceSeconds = defineMessage<{ count: number }>()({
   id: 'assessment/progress/since-seconds',
-  defaultMessage: 'running for {count}s',
+  defaultMessage: 'Running for {count}s',
 })
 
 // the round as the people in it read it: when a stage began, when it gives
 // way to the next, and nothing about who arranges any of it
 const flowFrom = defineMessage<{ when: string }>()({
   id: 'assessment/flow/from',
-  defaultMessage: 'from {when}',
+  defaultMessage: 'Starts {when}',
 })
 const flowEarlier = defineMessage<{ count: number }>()({
   id: 'assessment/flow/earlier',
-  defaultMessage: '{count, plural, one {# earlier stage} other {# earlier stages}}',
+  defaultMessage: '{count, plural, one {Show # earlier stage} other {Show # earlier stages}}',
 })
 const flowFromPending = defineMessage<{ when: string }>()({
   id: 'assessment/flow/from-pending',
-  defaultMessage: 'from {when}, end to be decided',
+  defaultMessage: 'Starts {when}; end time not set',
 })
 const flowUntil = defineMessage<{ when: string }>()({
   id: 'assessment/flow/until',
-  defaultMessage: 'until {when}',
+  defaultMessage: 'Ends {when}',
 })
 
 /** how far along the plan is, when the stage names have no room */
@@ -257,7 +259,7 @@ const stageCount = defineMessage<{ total: number }>()({
 
 const materialWindow = defineMessage<{ from: string; until: string }>()({
   id: 'assessment/batch/material-window',
-  defaultMessage: 'Materials {from} to {until}',
+  defaultMessage: 'Materials: {from} to {until}',
 })
 
 const coversUnits = defineMessage<{ count: number }>()({
@@ -272,19 +274,19 @@ const enrolled = defineMessage<{ count: number }>()({
 
 const includedAt = defineMessage<{ time: string }>()({
   id: 'assessment/roster/included-at',
-  defaultMessage: 'On the list since {time}',
+  defaultMessage: 'Added {time}',
 })
 
 // a group whose own limit moved it says both numbers, so the one that counts
 // is never an unexplained figure next to what its questions came to
 const groupCapped = defineMessage<{ raw: string; cap: string }>()({
   id: 'assessment/result/group-capped',
-  defaultMessage: 'Adds up to {raw}, held to the group limit {cap}',
+  defaultMessage: 'Subtotal {raw}; capped at {cap}',
 })
 
 const groupFloored = defineMessage<{ raw: string; floor: string }>()({
   id: 'assessment/result/group-floored',
-  defaultMessage: 'Adds up to {raw}, lifted to the group lower limit {floor}',
+  defaultMessage: 'Subtotal {raw}; minimum applied: {floor}',
 })
 
 const i18n = definePluginMessages({
@@ -295,7 +297,7 @@ const i18n = definePluginMessages({
     batchesTitle: { id: 'assessment/batch/title', defaultMessage: 'Assessment batches' },
     batchesHint: {
       id: 'assessment/batch/hint',
-      defaultMessage: "Manage each assessment round's scope, stage plan and roster.",
+      defaultMessage: 'Manage assessment batches, stage plans, and participant rosters.',
     },
     batchesEmpty: {
       id: 'assessment/batch/empty',
@@ -304,18 +306,18 @@ const i18n = definePluginMessages({
     newBatch: { id: 'assessment/batch/new', defaultMessage: 'New batch' },
     batchesEmptyHint: {
       id: 'assessment/batch/empty-hint',
-      defaultMessage: 'Create a batch to manage its scope, stages and roster here.',
+      defaultMessage: 'Create a batch to configure its stages, participants, and assessment items.',
     },
     searchPlaceholder: {
       id: 'assessment/batch/search',
-      defaultMessage: 'Search by name',
+      defaultMessage: 'Search batch names',
     },
     filterStatus: { id: 'assessment/batch/filter-status', defaultMessage: 'Status' },
     filterAll: { id: 'assessment/batch/filter-all', defaultMessage: 'All' },
     noMatchTitle: { id: 'assessment/batch/no-match', defaultMessage: 'No matching batches' },
     noMatchHint: {
       id: 'assessment/batch/no-match-hint',
-      defaultMessage: 'Try a different keyword or clear the status filter.',
+      defaultMessage: 'Try another keyword or clear the status filter.',
     },
     clearFilters: { id: 'assessment/batch/clear-filters', defaultMessage: 'Clear filters' },
     previousPage: { id: 'assessment/action/previous-page', defaultMessage: 'Previous' },
@@ -343,27 +345,27 @@ const i18n = definePluginMessages({
     sinceSeconds,
     batchSummary,
     batchSummaryDraft,
-    backToList: { id: 'assessment/batch/back', defaultMessage: 'All batches' },
+    backToList: { id: 'assessment/batch/back', defaultMessage: 'Back to batches' },
 
     // the batch form
     nameLabel: { id: 'assessment/batch/name', defaultMessage: 'Name' },
     namePlaceholder: {
       id: 'assessment/batch/name-placeholder',
-      defaultMessage: 'e.g. 2026 spring assessment',
+      defaultMessage: 'e.g. Spring 2026 comprehensive assessment',
     },
     materialRange: {
       id: 'assessment/batch/material-range',
-      defaultMessage: 'Material period',
+      defaultMessage: 'Material date range',
     },
-    pickDateRange: { id: 'assessment/action/pick-date-range', defaultMessage: 'Select a period' },
-    stepBasics: { id: 'assessment/batch/step-basics', defaultMessage: 'Details' },
-    stepScope: { id: 'assessment/batch/step-scope', defaultMessage: 'First participants' },
+    pickDateRange: { id: 'assessment/action/pick-date-range', defaultMessage: 'Select date range' },
+    stepBasics: { id: 'assessment/batch/step-basics', defaultMessage: 'Basic information' },
+    stepScope: { id: 'assessment/batch/step-scope', defaultMessage: 'Initial participants' },
     back: { id: 'assessment/action/back', defaultMessage: 'Back' },
     next: { id: 'assessment/action/next', defaultMessage: 'Next' },
     scopeLegend: { id: 'assessment/batch/scope', defaultMessage: 'Import from these units' },
     scopeEmpty: {
       id: 'assessment/batch/scope-empty',
-      defaultMessage: 'No units available to manage.',
+      defaultMessage: 'No manageable organization units are available.',
     },
     userTypesLegend: {
       id: 'assessment/batch/user-types',
@@ -371,7 +373,7 @@ const i18n = definePluginMessages({
     },
     userTypesEmpty: {
       id: 'assessment/batch/user-types-empty',
-      defaultMessage: 'No user types available.',
+      defaultMessage: 'No participant types are available.',
     },
     create: { id: 'assessment/action/create', defaultMessage: 'Create batch' },
     cancel: { id: 'assessment/action/cancel', defaultMessage: 'Cancel' },
@@ -380,81 +382,81 @@ const i18n = definePluginMessages({
     statusDraft: { id: 'assessment/status/draft', defaultMessage: 'Draft' },
     // a batch whose first stage has a time but has not arrived yet: running
     // is a promise it has made, not a state it is in
-    statusPending: { id: 'assessment/status/pending', defaultMessage: 'Starts as scheduled' },
+    statusPending: { id: 'assessment/status/pending', defaultMessage: 'Scheduled' },
     statusActive: { id: 'assessment/status/active', defaultMessage: 'In progress' },
     statusArchived: { id: 'assessment/status/archived', defaultMessage: 'Archived' },
     deleteBatch: { id: 'assessment/action/delete', defaultMessage: 'Delete batch' },
     deleteConfirmTitle: {
       id: 'assessment/action/delete-confirm-title',
-      defaultMessage: 'Delete this batch?',
+      defaultMessage: 'Delete the batch?',
     },
     deleteConfirmBody: {
       id: 'assessment/action/delete-confirm-body',
       defaultMessage:
-        'Nothing has run yet, so nothing is lost but the setup: the stages, their permissions and the coverage go with it.',
+        'The batch has not started. Deleting it removes its configuration and cannot be undone.',
     },
     reopen: { id: 'assessment/action/reopen', defaultMessage: 'Reopen batch' },
-    reopenTitle: { id: 'assessment/action/reopen-title', defaultMessage: 'Reopen this batch?' },
+    reopenTitle: { id: 'assessment/action/reopen-title', defaultMessage: 'Reopen the batch?' },
     reopenBody: {
       id: 'assessment/action/reopen-body',
       defaultMessage:
-        'A new stage is added at the end and starts now; earlier stages and their data are unchanged.',
+        'A new stage will be added at the end and started immediately. Existing stages and data remain unchanged.',
     },
-    reopenReason: { id: 'assessment/action/reopen-reason', defaultMessage: 'Why' },
+    reopenReason: { id: 'assessment/action/reopen-reason', defaultMessage: 'Reason for reopening' },
     reopenReasonPlaceholder: {
       id: 'assessment/action/reopen-reason-placeholder',
-      defaultMessage: 'e.g. some materials were missed and have to be submitted',
+      defaultMessage: 'e.g. some materials were omitted and supplementary submission is required',
     },
-    reopenPhaseName: { id: 'assessment/action/reopen-phase', defaultMessage: 'The stage to open' },
+    reopenPhaseName: { id: 'assessment/action/reopen-phase', defaultMessage: 'New stage' },
     reopenPhaseHint: {
       id: 'assessment/action/reopen-phase-hint',
-      defaultMessage: 'A new stage, not the earlier one running again.',
+      defaultMessage: 'Creates a new stage instead of running an earlier stage again.',
     },
     reopenPhasePlaceholder: {
       id: 'assessment/action/reopen-phase-placeholder',
-      defaultMessage: 'e.g. supplementary submission',
+      defaultMessage: 'e.g. Supplementary submission period',
     },
     archive: { id: 'assessment/action/archive', defaultMessage: 'Archive' },
     archiveConfirmTitle: {
       id: 'assessment/action/archive-confirm-title',
-      defaultMessage: 'Archive this batch?',
+      defaultMessage: 'Archive the batch?',
     },
     archiveConfirmBody: {
       id: 'assessment/action/archive-confirm-body',
       defaultMessage:
-        'The batch becomes read-only and results stay visible. It can be reopened later, with a reason.',
+        'The batch will become read-only while existing data and results remain available. It can be reopened later.',
     },
     draftBanner: {
       id: 'assessment/batch/draft-banner',
-      defaultMessage: 'Not started. Schedule the first stage to start it.',
+      defaultMessage: 'The batch has not started. Schedule the first stage to activate it.',
     },
 
     // ------------------------------------------------------------------
     // the stage plan
     switchBatch: { id: 'assessment/batch/switch', defaultMessage: 'Switch batch' },
-    notStartedYet: { id: 'assessment/batch/not-started', defaultMessage: 'Not started yet' },
-    plannedStart: { id: 'assessment/batch/planned-start', defaultMessage: 'Starts' },
-    noStagesYet: { id: 'assessment/batch/no-stages', defaultMessage: 'No stages arranged yet' },
+    notStartedYet: { id: 'assessment/batch/not-started', defaultMessage: 'Not started' },
+    plannedStart: { id: 'assessment/batch/planned-start', defaultMessage: 'Scheduled start' },
+    noStagesYet: { id: 'assessment/batch/no-stages', defaultMessage: 'No stages configured' },
     currentStage: { id: 'assessment/batch/current-stage', defaultMessage: 'Current stage' },
-    flowTitle: { id: 'assessment/flow/title', defaultMessage: 'How this round runs' },
+    flowTitle: { id: 'assessment/flow/title', defaultMessage: 'Stage progress' },
     flowFrom,
     flowUntil,
-    viewFullFlow: { id: 'assessment/flow/view', defaultMessage: 'See the whole flow' },
+    viewFullFlow: { id: 'assessment/flow/view', defaultMessage: 'View all stages' },
     flowBackToCurrent: {
       id: 'assessment/flow/back-to-current',
-      defaultMessage: 'Back to the stage in hand',
+      defaultMessage: 'Back to current stage',
     },
     // a stage with no time still says something about its time: an empty
     // line reads as a screen that failed to load one
-    flowPending: { id: 'assessment/flow/pending', defaultMessage: 'Time to be decided' },
-    flowEndPending: { id: 'assessment/flow/end-pending', defaultMessage: 'End to be decided' },
+    flowPending: { id: 'assessment/flow/pending', defaultMessage: 'Start time not set' },
+    flowEndPending: { id: 'assessment/flow/end-pending', defaultMessage: 'End time not set' },
     flowEarlier,
     flowFromPending,
     // said on every stage: a rail of dates leaves the reader counting which
     // of them is behind and which is still to come
-    flowStatusEnded: { id: 'assessment/flow/status-ended', defaultMessage: 'Over' },
-    flowStatusCurrent: { id: 'assessment/flow/status-current', defaultMessage: 'Under way' },
-    flowStatusFuture: { id: 'assessment/flow/status-future', defaultMessage: 'To come' },
+    flowStatusEnded: { id: 'assessment/flow/status-ended', defaultMessage: 'Ended' },
+    flowStatusCurrent: { id: 'assessment/flow/status-current', defaultMessage: 'In progress' },
+    flowStatusFuture: { id: 'assessment/flow/status-future', defaultMessage: 'Not started' },
     bareDays,
     bareHours,
     bareMinutes,
@@ -463,43 +465,44 @@ const i18n = definePluginMessages({
     bareSinceHours,
     bareSinceMinutes,
     bareSinceSeconds,
-    enterBatch: { id: 'assessment/batch/enter', defaultMessage: 'Open' },
-    configureBatch: { id: 'assessment/batch/configure', defaultMessage: 'Keep setting up' },
+    enterBatch: { id: 'assessment/batch/enter', defaultMessage: 'Open assessment' },
+    configureBatch: { id: 'assessment/batch/configure', defaultMessage: 'Continue setup' },
     draftHint: {
       id: 'assessment/batch/draft-hint',
-      defaultMessage: 'Arrange the stages, then schedule the first one to start it.',
+      defaultMessage: 'Configure the stages and schedule the first one to activate the batch.',
     },
-    groupRunning: { id: 'assessment/batch/group-running', defaultMessage: 'Under way' },
+    groupRunning: { id: 'assessment/batch/group-running', defaultMessage: 'In progress' },
     groupPending: { id: 'assessment/batch/group-pending', defaultMessage: 'Starting soon' },
     groupDraft: { id: 'assessment/batch/group-draft', defaultMessage: 'Drafts' },
-    groupEnded: { id: 'assessment/batch/group-ended', defaultMessage: 'Finished' },
-    filterEnded: { id: 'assessment/batch/filter-ended', defaultMessage: 'Finished' },
-    endedOn: { id: 'assessment/batch/ended-on', defaultMessage: 'Finished {date}' },
+    groupEnded: { id: 'assessment/batch/group-ended', defaultMessage: 'Ended' },
+    filterEnded: { id: 'assessment/batch/filter-ended', defaultMessage: 'Ended' },
+    endedOn: { id: 'assessment/batch/ended-on', defaultMessage: 'Ended {date}' },
     tabPhases: { id: 'assessment/phase/tab', defaultMessage: 'Stages' },
     tabRoster: { id: 'assessment/roster/tab', defaultMessage: 'Participants' },
     tabOverview: { id: 'assessment/overview/tab', defaultMessage: 'Overview' },
     overviewHint: {
       id: 'assessment/overview/hint',
-      defaultMessage: 'Where this batch stands, and what is waiting on you.',
+      defaultMessage: 'View batch progress and items requiring your attention.',
     },
     overviewPlaceholder: {
       id: 'assessment/overview/placeholder',
-      defaultMessage: 'Nothing here yet.',
+      defaultMessage: 'No content available.',
     },
     // ------------------------------------------------------------------
     // one's own filings
-    navGroupPersonal: { id: 'assessment/nav-group/personal', defaultMessage: 'My part' },
-    navGroupWork: { id: 'assessment/nav-group/work', defaultMessage: 'Handling' },
+    navGroupPersonal: { id: 'assessment/nav-group/personal', defaultMessage: 'Personal' },
+    navGroupWork: { id: 'assessment/nav-group/work', defaultMessage: 'Work' },
     myEntriesTab: { id: 'assessment/entry/tab', defaultMessage: 'My entries' },
     myEntriesEmpty: {
       id: 'assessment/entry/empty',
-      defaultMessage: 'Nothing to file yet. Questions appear here once the round opens them.',
+      defaultMessage:
+        'No items are currently open for submission. Available items will appear when the stage opens.',
     },
     itemVoided: {
       id: 'assessment/entry/item-voided',
-      defaultMessage: 'This question was withdrawn and no longer counts.',
+      defaultMessage: 'The item has been disabled and no longer counts.',
     },
-    entryNew: { id: 'assessment/entry/new', defaultMessage: 'File a claim' },
+    entryNew: { id: 'assessment/entry/new', defaultMessage: 'New entry' },
     entryEdit: { id: 'assessment/entry/edit', defaultMessage: 'Edit' },
     entrySubmit: { id: 'assessment/entry/submit', defaultMessage: 'Submit' },
     entryWithdraw: { id: 'assessment/entry/withdraw', defaultMessage: 'Withdraw' },
@@ -507,344 +510,381 @@ const i18n = definePluginMessages({
     entryAppeal: { id: 'assessment/entry/appeal', defaultMessage: 'Appeal' },
     entryAppealTitle: {
       id: 'assessment/entry/appeal-title',
-      defaultMessage: 'Appeal this decision',
+      defaultMessage: 'Appeal the review decision',
     },
     entryAppealHint: {
       id: 'assessment/entry/appeal-hint',
-      defaultMessage: 'The material stays as it is. To change it, edit and submit again instead.',
+      defaultMessage:
+        'Appealing does not change the submitted material. Edit and resubmit if the material itself needs to change.',
     },
     entryAppealReason: {
       id: 'assessment/entry/appeal-reason',
-      defaultMessage: 'Why the decision is wrong',
+      defaultMessage: 'Reason for appeal',
     },
     entryAppealed: { id: 'assessment/entry/appealed', defaultMessage: 'Appeal submitted.' },
     refuseNothingToAppeal: {
       id: 'assessment/entry/refuse-nothing-to-appeal',
-      defaultMessage: 'There is no decision here to appeal.',
+      defaultMessage: 'No review decision is currently available for appeal.',
     },
     refuseReviewOpen: {
       id: 'assessment/entry/refuse-review-open',
-      defaultMessage: 'This is being reviewed. Wait for the outcome.',
+      defaultMessage:
+        'The submission is still under review. An appeal can be filed after a decision is reached.',
     },
     entryIssueRequired: {
       id: 'assessment/entry/issue-required',
-      defaultMessage: 'needs an answer',
+      defaultMessage: 'is required',
     },
     entryIssueOutOfRange: {
       id: 'assessment/entry/issue-out-of-range',
-      defaultMessage: 'is outside the dates this round counts',
+      defaultMessage: 'is outside the material date range',
     },
     entryIssueNotADate: {
       id: 'assessment/entry/issue-not-a-date',
-      defaultMessage: 'is not a date',
+      defaultMessage: 'must be a valid date',
     },
-    entryIssueTooLong: { id: 'assessment/entry/issue-too-long', defaultMessage: 'is too long' },
+    entryIssueTooLong: {
+      id: 'assessment/entry/issue-too-long',
+      defaultMessage: 'exceeds the character limit',
+    },
     entryIssueTooMany: {
       id: 'assessment/entry/issue-too-many',
-      defaultMessage: 'has more files than allowed',
+      defaultMessage: 'contains more files than allowed',
     },
     entryIssueFileTooLarge: {
       id: 'assessment/entry/issue-file-too-large',
-      defaultMessage: 'has a file over the size limit',
+      defaultMessage: 'contains a file that exceeds the size limit',
     },
     entryIssueFileType: {
       id: 'assessment/entry/issue-file-type',
-      defaultMessage: 'has a file of a kind this question does not take',
+      defaultMessage: 'contains an unsupported file type',
     },
     entryIssueFileMissing: {
       id: 'assessment/entry/issue-file-missing',
-      defaultMessage: 'names a file that is no longer there',
+      defaultMessage: 'references a file that no longer exists',
     },
     entryIssueFileNotYours: {
       id: 'assessment/entry/issue-file-not-yours',
-      defaultMessage: 'names a file somebody else uploaded',
+      defaultMessage: 'references a file uploaded by another user',
     },
     entryIssueFileElsewhere: {
       id: 'assessment/entry/issue-file-elsewhere',
-      defaultMessage: 'names a file already used by another entry',
+      defaultMessage: 'references a file already used by another entry',
     },
-    entryIssueOther: { id: 'assessment/entry/issue-other', defaultMessage: 'cannot be accepted' },
+    entryIssueOther: {
+      id: 'assessment/entry/issue-other',
+      defaultMessage: 'did not pass validation',
+    },
     refuseNotYours: {
       id: 'assessment/entry/refuse-not-yours',
-      defaultMessage: 'This entry is not yours to change.',
+      defaultMessage: 'Only the owner of the entry can modify it.',
     },
     refuseNotActive: {
       id: 'assessment/entry/refuse-not-active',
-      defaultMessage: 'You are no longer taking part in this round.',
+      defaultMessage: 'You are no longer a participant in this batch.',
     },
     refuseOutOfReach: {
       id: 'assessment/entry/refuse-out-of-reach',
-      defaultMessage: 'This participant is outside the units you look after.',
+      defaultMessage: 'The participant is outside your assigned organization scope.',
     },
     refuseNotEditable: {
       id: 'assessment/entry/refuse-not-editable',
-      defaultMessage: 'It is being reviewed. Withdraw it first to change it.',
+      defaultMessage: 'The entry is under review. Withdraw it before making changes.',
     },
     refuseNeedsRevision: {
       id: 'assessment/entry/refuse-needs-revision',
-      defaultMessage: 'The form has changed since this draft. Fill in what it now asks for.',
+      defaultMessage:
+        'The item requirements have changed. Complete the fields required by the current version before resubmitting.',
     },
     refuseNotSubmittable: {
       id: 'assessment/entry/refuse-not-submittable',
-      defaultMessage: 'Only a draft can be submitted.',
+      defaultMessage: 'Only draft entries can be submitted.',
     },
     refuseNotWithdrawable: {
       id: 'assessment/entry/refuse-not-withdrawable',
-      defaultMessage: 'It has already been decided and cannot be withdrawn.',
+      defaultMessage:
+        'A review decision has already been recorded, so the entry cannot be withdrawn.',
     },
     refuseMaxEntries: {
       id: 'assessment/entry/refuse-max-entries',
-      defaultMessage: 'You have already filed as many as this question allows.',
+      defaultMessage: 'The submission limit for this item has been reached.',
     },
     refuseItemVoided: {
       id: 'assessment/entry/refuse-item-voided',
-      defaultMessage: 'This question is no longer open.',
+      defaultMessage: 'The item has been disabled.',
     },
     refuseItemUnconfigured: {
       id: 'assessment/entry/refuse-item-unconfigured',
-      defaultMessage: 'This question is not fully set up yet. Tell whoever runs the round.',
+      defaultMessage: 'The item has not been fully configured. Contact a batch administrator.',
     },
     refuseReviewLevelMissing: {
       id: 'assessment/entry/refuse-review-level-missing',
       defaultMessage:
-        'This question is reviewed at a level you do not sit under, so it cannot be submitted. Tell whoever runs the round.',
+        'The configured review level does not exist in your organization path, so the entry cannot be submitted. Contact a batch administrator.',
     },
     refuseBasisRequired: {
       id: 'assessment/entry/refuse-basis-required',
-      defaultMessage: 'A record needs its basis.',
+      defaultMessage: 'A basis is required for a staff-recorded entry.',
     },
     refuseNotParticipant: {
       id: 'assessment/entry/refuse-not-participant',
-      defaultMessage: 'You are not taking part in this round.',
+      defaultMessage: 'You are not a participant in this batch.',
     },
     refuseNoPermission: {
       id: 'assessment/entry/refuse-no-permission',
-      defaultMessage: 'You are not allowed to do this in this round.',
+      defaultMessage: 'You do not have permission to perform this action in the batch.',
     },
     refuseNotReviewer: {
       id: 'assessment/entry/refuse-not-reviewer',
-      defaultMessage: 'You are not a reviewer for this submission.',
+      defaultMessage: 'You are not assigned to review this submission.',
     },
     refusePhaseClosed: {
       id: 'assessment/entry/refuse-phase-closed',
-      defaultMessage: 'The round is not open for this right now.',
+      defaultMessage: 'The current stage does not allow this action.',
     },
     refuseOutOfScope: {
       id: 'assessment/entry/refuse-out-of-scope',
-      defaultMessage: 'The current stage does not cover this question or this person.',
+      defaultMessage: 'The current stage does not cover the selected item or participant.',
     },
     refuseOther: {
       id: 'assessment/entry/refuse-other',
-      defaultMessage: 'This cannot be done to the entry right now.',
+      defaultMessage: 'The action is not available for the entry in its current state.',
     },
     entryNote: { id: 'assessment/entry/note', defaultMessage: 'Note' },
     entryStatusDraft: { id: 'assessment/entry/status-draft', defaultMessage: 'Draft' },
     entryStatusInReview: { id: 'assessment/entry/status-in-review', defaultMessage: 'In review' },
     entryStatusRevising: {
       id: 'assessment/entry/status-revising',
-      defaultMessage: 'To resubmit',
+      defaultMessage: 'Awaiting resubmission',
     },
     entryResubmit: { id: 'assessment/entry/resubmit', defaultMessage: 'Resubmit' },
-    entryAbandon: { id: 'assessment/entry/abandon', defaultMessage: 'Give up this claim' },
+    entryAbandon: { id: 'assessment/entry/abandon', defaultMessage: 'Abandon entry' },
     entryAbandonConfirm: {
       id: 'assessment/entry/abandon-confirm',
-      defaultMessage: 'Give up this claim? Its place on the question opens up; the record stays.',
+      defaultMessage:
+        'Abandon the entry? One submission slot will become available, while the historical record is retained.',
     },
     entryBlockedNow: {
       id: 'assessment/entry/blocked-now',
-      defaultMessage: 'Not open right now.',
+      defaultMessage: 'The required action is not available in the current stage.',
     },
     refuseNotAbandonable: {
       id: 'assessment/entry/refuse-not-abandonable',
-      defaultMessage: 'Withdraw it from review first.',
+      defaultMessage: 'Withdraw the entry from review before abandoning it.',
     },
     entryStatusNeedsRevision: {
       id: 'assessment/entry/status-needs-revision',
-      defaultMessage: 'More needed',
+      defaultMessage: 'Additional material required',
     },
     entryStatusApproved: { id: 'assessment/entry/status-approved', defaultMessage: 'Approved' },
-    entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Sent back' },
-    entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Void' },
+    entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Returned' },
+    entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Voided' },
     entryFileUploading: { id: 'assessment/entry/file-uploading', defaultMessage: 'Uploading…' },
     entryFileRemove: { id: 'assessment/entry/file-remove', defaultMessage: 'Remove' },
     entryFileFailed: {
       id: 'assessment/entry/file-failed',
-      defaultMessage: 'The upload did not finish. Try the file again.',
+      defaultMessage: 'The file could not be uploaded. Try again.',
     },
-    entryFieldCleared: { id: 'assessment/entry/field-cleared', defaultMessage: 'left empty' },
-    entryFileUnnamed: { id: 'assessment/entry/file-unnamed', defaultMessage: 'Attached file' },
+    entryFieldCleared: { id: 'assessment/entry/field-cleared', defaultMessage: 'Not provided' },
+    entryFileUnnamed: { id: 'assessment/entry/file-unnamed', defaultMessage: 'Attachment' },
     entryHistoryTitle: {
       id: 'assessment/entry/history-title',
-      defaultMessage: 'The whole account',
+      defaultMessage: 'Submission history',
     },
-    entryHistoryRound: { id: 'assessment/entry/history-round', defaultMessage: 'Round {round}' },
+    entryHistoryRound: {
+      id: 'assessment/entry/history-round',
+      defaultMessage: 'Review round {round}',
+    },
     entryHistoryRevision: {
       id: 'assessment/entry/history-revision',
       defaultMessage: 'Version {no}',
     },
     entrySuggestionTitle: {
       id: 'assessment/entry/suggestion-title',
-      defaultMessage: 'What the reviewer suggested',
+      defaultMessage: 'Reviewer suggestions',
     },
     entrySuggestionHint: {
       id: 'assessment/entry/suggestion-hint',
-      defaultMessage: 'For reference only. Edit your own entry and submit it again.',
+      defaultMessage: 'Suggestions are optional. Make any appropriate changes before resubmitting.',
     },
     entrySuggestionAdvisory: {
       id: 'assessment/entry/suggestion-advisory',
-      defaultMessage: 'Advice',
+      defaultMessage: 'For reference',
     },
     // ------------------------------------------------------------------
     // the review queue
     recordNoStanding: {
       id: 'assessment/record/no-standing',
-      defaultMessage: 'You have no recording authority in this round.',
+      defaultMessage: 'You do not have permission to record entries in this batch.',
     },
-    reviewTab: { id: 'assessment/review/tab', defaultMessage: 'Review work' },
+    reviewTab: { id: 'assessment/review/tab', defaultMessage: 'Review' },
     reviewHint: {
       id: 'assessment/review/hint',
-      defaultMessage: 'Submissions waiting for your decision, oldest first.',
+      defaultMessage: 'Submissions awaiting your review, oldest first.',
     },
-    reviewColumnItem: { id: 'assessment/review/column-item', defaultMessage: 'Question' },
-    reviewColumnWho: { id: 'assessment/review/column-who', defaultMessage: 'From' },
-    reviewColumnStatus: { id: 'assessment/review/column-status', defaultMessage: 'Standing' },
+    reviewColumnItem: { id: 'assessment/review/column-item', defaultMessage: 'Item' },
+    reviewColumnWho: { id: 'assessment/review/column-who', defaultMessage: 'Applicant' },
+    reviewColumnStatus: { id: 'assessment/review/column-status', defaultMessage: 'Status' },
     reviewColumnWhen: { id: 'assessment/review/column-when', defaultMessage: 'Submitted' },
     reviewApplicant: { id: 'assessment/review/applicant', defaultMessage: 'Applicant' },
-    reviewRound: { id: 'assessment/review/round', defaultMessage: 'Round' },
-    reviewSubmittedAt: { id: 'assessment/review/submitted-at', defaultMessage: 'Submitted' },
-    reviewTrail: { id: 'assessment/review/trail', defaultMessage: 'What has happened' },
+    reviewRound: { id: 'assessment/review/round', defaultMessage: 'Review round' },
+    reviewSubmittedAt: { id: 'assessment/review/submitted-at', defaultMessage: 'Submitted at' },
+    reviewTrail: { id: 'assessment/review/trail', defaultMessage: 'Review history' },
     entryCountsFor: {
       id: 'assessment/entry/counts-for',
-      defaultMessage: 'Counts {value} when approved',
+      defaultMessage: 'Counts for {value} when approved',
     },
-    reviewOpen: { id: 'assessment/review/open', defaultMessage: 'Open' },
+    reviewOpen: { id: 'assessment/review/open', defaultMessage: 'Review' },
     reviewDetailTab: { id: 'assessment/review/detail-tab', defaultMessage: 'Review' },
     reviewApprove: { id: 'assessment/review/approve', defaultMessage: 'Approve' },
-    reviewReject: { id: 'assessment/review/reject', defaultMessage: 'Send back' },
+    reviewReject: { id: 'assessment/review/reject', defaultMessage: 'Return' },
     reviewComment: {
       id: 'assessment/review/comment',
-      defaultMessage: 'A word for whoever filed it',
+      defaultMessage: 'Review note',
     },
     reviewCommentHint: {
       id: 'assessment/review/comment-hint',
-      defaultMessage: 'Say what to fix. This is required when sending back.',
+      defaultMessage:
+        'Explain what needs to be corrected. A note is required when returning a submission.',
     },
     reviewSuggestToggle: {
       id: 'assessment/review/suggest-toggle',
-      defaultMessage: 'Attach a suggested version',
+      defaultMessage: 'Add suggested revisions',
     },
-    eventSubmitted: { id: 'assessment/event/submitted', defaultMessage: '{who} submitted it' },
-    eventApproved: { id: 'assessment/event/approved', defaultMessage: '{who} approved this step' },
-    eventRejected: { id: 'assessment/event/rejected', defaultMessage: '{who} sent it back' },
+    eventSubmitted: {
+      id: 'assessment/event/submitted',
+      defaultMessage: '{who} submitted the entry',
+    },
+    eventApproved: {
+      id: 'assessment/event/approved',
+      defaultMessage: '{who} approved this review step',
+    },
+    eventRejected: {
+      id: 'assessment/event/rejected',
+      defaultMessage: '{who} returned the submission',
+    },
     eventReturnedForRevision: {
       id: 'assessment/event/returned-for-revision',
-      defaultMessage: '{who} sent it back for more',
+      defaultMessage: '{who} returned the submission and requested additional material',
     },
     eventForwarded: {
       id: 'assessment/event/forwarded',
-      defaultMessage: '{who} passed it on',
+      defaultMessage: '{who} moved the submission to the next review step',
     },
     eventEscalated: {
       id: 'assessment/event/escalated',
-      defaultMessage: '{who} escalated it for review',
+      defaultMessage: '{who} escalated the submission for further review',
     },
     eventAppealed: {
       id: 'assessment/event/appealed',
-      defaultMessage: '{who} contested the decision',
+      defaultMessage: '{who} appealed the review decision',
     },
     eventAbandoned: {
       id: 'assessment/event/abandoned',
-      defaultMessage: '{who} gave the claim up',
+      defaultMessage: '{who} abandoned the entry',
     },
     eventRerouted: {
       id: 'assessment/event/rerouted',
-      defaultMessage: 'The review route was changed by an administrator',
+      defaultMessage: 'An administrator changed the review workflow',
     },
     outcomeSuperseded: {
       id: 'assessment/outcome/superseded',
-      defaultMessage: 'Continued in a later round',
+      defaultMessage: 'Continued in a new review round',
     },
     originAppeal: { id: 'assessment/origin/appeal', defaultMessage: 'Appeal' },
     originReroute: {
       id: 'assessment/origin/reroute',
-      defaultMessage: 'Continued after a route change',
+      defaultMessage: 'Continued after a workflow change',
     },
     originReopen: { id: 'assessment/origin/reopen', defaultMessage: 'Reopened' },
-    eventComment: { id: 'assessment/event/comment', defaultMessage: '{who} left a note' },
+    eventComment: { id: 'assessment/event/comment', defaultMessage: '{who} added a review note' },
     eventRecommendApprove: {
       id: 'assessment/event/recommend-approve',
-      defaultMessage: '{who} advised approving it',
+      defaultMessage: '{who} recommended approval',
     },
     eventRecommendReject: {
       id: 'assessment/event/recommend-reject',
-      defaultMessage: '{who} advised sending it back',
+      defaultMessage: '{who} recommended returning the submission',
     },
-    eventWithdrawn: { id: 'assessment/event/withdrawn', defaultMessage: '{who} withdrew it' },
+    eventWithdrawn: {
+      id: 'assessment/event/withdrawn',
+      defaultMessage: '{who} withdrew the entry',
+    },
     eventNoReviewer: {
       id: 'assessment/event/no-reviewer',
-      defaultMessage: 'No reviewer at this step yet; waiting',
+      defaultMessage: 'No reviewer is currently available for this step',
     },
     eventReviewerFound: {
       id: 'assessment/event/reviewer-found',
-      defaultMessage: 'A reviewer is available again; the review continues',
+      defaultMessage: 'A reviewer is now available and the review has resumed',
     },
     eventItemVoided: {
       id: 'assessment/event/item-voided',
-      defaultMessage: 'The question was withdrawn, so this review ended',
+      defaultMessage: 'The item was disabled, ending the current review',
     },
-    eventOther: { id: 'assessment/event/other', defaultMessage: 'Something happened here' },
-    eventSomebody: { id: 'assessment/event/somebody', defaultMessage: 'Somebody' },
+    eventOther: { id: 'assessment/event/other', defaultMessage: 'The record was updated' },
+    eventSomebody: { id: 'assessment/event/somebody', defaultMessage: 'Someone' },
     eventYouSubmitted: {
       id: 'assessment/event/you-submitted',
-      defaultMessage: 'You submitted the claim',
+      defaultMessage: 'You submitted the entry',
     },
     eventYouWithdrew: {
       id: 'assessment/event/you-withdrew',
-      defaultMessage: 'You withdrew the claim',
+      defaultMessage: 'You withdrew the entry',
     },
-    eventYouAppealed: { id: 'assessment/event/you-appealed', defaultMessage: 'You appealed' },
+    eventYouAppealed: {
+      id: 'assessment/event/you-appealed',
+      defaultMessage: 'You filed an appeal',
+    },
     eventYouAbandoned: {
       id: 'assessment/event/you-abandoned',
-      defaultMessage: 'You gave the claim up',
+      defaultMessage: 'You abandoned the entry',
     },
     eventYouSupplemented: {
       id: 'assessment/event/you-supplemented',
-      defaultMessage: 'You supplied the material',
+      defaultMessage: 'You submitted additional material',
     },
     outcomeApproved: { id: 'assessment/outcome/approved', defaultMessage: 'Approved' },
-    outcomeRejected: { id: 'assessment/outcome/rejected', defaultMessage: 'Sent back' },
+    outcomeRejected: { id: 'assessment/outcome/rejected', defaultMessage: 'Returned' },
     outcomeCancelled: { id: 'assessment/outcome/cancelled', defaultMessage: 'Ended' },
     outcomeOther: { id: 'assessment/outcome/other', defaultMessage: 'Closed' },
-    reviewStageReviewers: { id: 'assessment/review/stage-reviewers', defaultMessage: 'Now: {who}' },
+    reviewStageReviewers: {
+      id: 'assessment/review/stage-reviewers',
+      defaultMessage: 'Current reviewers: {who}',
+    },
     reviewStageNobody: {
       id: 'assessment/review/stage-nobody',
-      defaultMessage: 'Nobody can review here yet',
+      defaultMessage: 'No reviewer is currently available',
     },
-    reviewSaid: { id: 'assessment/review/said', defaultMessage: 'Noted on this review.' },
+    reviewSaid: { id: 'assessment/review/said', defaultMessage: 'Review note saved.' },
     reviewStageNoHolder: {
       id: 'assessment/review/stage-no-holder',
-      defaultMessage: 'Skipped: nobody above this participant holds that role',
+      defaultMessage: 'Skipped: no matching role holder was found above the participant',
     },
-    reviewDecided: { id: 'assessment/review/decided', defaultMessage: 'Decision recorded.' },
+    reviewDecided: { id: 'assessment/review/decided', defaultMessage: 'Review decision recorded.' },
     reviewSubmittedBy: {
       id: 'assessment/review/submitted-by',
-      defaultMessage: '{name} · round {round}',
+      defaultMessage: '{name} · review round {round}',
     },
-    reviewPayloadTitle: { id: 'assessment/review/payload-title', defaultMessage: 'What was filed' },
+    reviewPayloadTitle: {
+      id: 'assessment/review/payload-title',
+      defaultMessage: 'Submission content',
+    },
     // ------------------------------------------------------------------
     // one's own provisional standing
-    resultTab: { id: 'assessment/result/tab', defaultMessage: 'My standing' },
+    resultTab: { id: 'assessment/result/tab', defaultMessage: 'My score' },
     resultHint: {
       id: 'assessment/result/hint',
-      defaultMessage: 'Where your approved claims put you right now. Nothing here is final.',
+      defaultMessage:
+        'Current score based on approved entries. Final results are determined by the published outcome.',
     },
     resultProvisional: {
       id: 'assessment/result/provisional',
-      defaultMessage: 'Provisional',
+      defaultMessage: 'Current score',
     },
     resultFull: {
       id: 'assessment/result/full',
-      defaultMessage: 'Out of {value} this round',
+      defaultMessage: 'Total possible: {value}',
     },
     resultCountedIn: {
       id: 'assessment/result/counted-in',
@@ -852,7 +892,7 @@ const i18n = definePluginMessages({
     },
     resultPendingLabel: {
       id: 'assessment/result/pending-label',
-      defaultMessage: 'In review, not counted yet',
+      defaultMessage: 'Under review · not counted yet',
     },
     resultPendingCount: {
       id: 'assessment/result/pending-count',
@@ -860,54 +900,55 @@ const i18n = definePluginMessages({
     },
     resultTrimmed: {
       id: 'assessment/result/trimmed',
-      defaultMessage: 'Held back by limits',
+      defaultMessage: 'Excluded by scoring limits',
     },
     resultTableHead: {
       id: 'assessment/result/table-head',
-      defaultMessage: 'Groups and questions',
+      defaultMessage: 'Groups and items',
     },
     resultCapChip: {
       id: 'assessment/result/cap-chip',
-      defaultMessage: 'Cap {value}',
+      defaultMessage: 'Limit {value}',
     },
     resultNoCap: {
       id: 'assessment/result/no-cap',
-      defaultMessage: 'No cap',
+      defaultMessage: 'No limit',
     },
     resultEmptyTitle: {
       id: 'assessment/result/empty-title',
-      defaultMessage: 'Nothing counted yet',
+      defaultMessage: 'No approved items counted yet',
     },
     resultEmptyBody: {
       id: 'assessment/result/empty-body',
       defaultMessage:
-        'Approved claims appear here. Claims in review do not count yet; follow each one in My filings.',
+        'Approved entries will appear here. Entries under review are not counted yet; progress can be checked under My entries.',
     },
     resultGoEntries: {
       id: 'assessment/result/go-entries',
-      defaultMessage: 'Go to my filings',
+      defaultMessage: 'View my entries',
     },
     resultEmptyCounts: {
       id: 'assessment/result/empty-counts',
-      defaultMessage: '{pending, plural, other {# in review}}, {drafts, plural, other {# drafts}}',
+      defaultMessage:
+        '{pending, plural, other {# under review}}, {drafts, plural, other {# drafts}}',
     },
     resultTotal: { id: 'assessment/result/total', defaultMessage: 'Total' },
-    resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'From questions' },
+    resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'Item subtotal' },
     resultGroupChildren: {
       id: 'assessment/result/group-children',
-      defaultMessage: 'From groups inside',
+      defaultMessage: 'Subgroup subtotal',
     },
-    resultGroupFinal: { id: 'assessment/result/group-final', defaultMessage: 'Counted' },
+    resultGroupFinal: { id: 'assessment/result/group-final', defaultMessage: 'Counted score' },
     resultGroupCapped: groupCapped,
     resultGroupFloored: groupFloored,
     resultLineExcluded: {
       id: 'assessment/result/line-excluded',
-      defaultMessage: 'Sent back · not counted',
+      defaultMessage: 'Returned · not counted',
     },
-    resultLineNone: { id: 'assessment/result/line-none', defaultMessage: 'Nothing filed' },
+    resultLineNone: { id: 'assessment/result/line-none', defaultMessage: 'Not submitted' },
     resultLineVoided: {
       id: 'assessment/result/line-voided',
-      defaultMessage: 'Question withdrawn · not counted',
+      defaultMessage: 'Item disabled · not counted',
     },
     resultLineAdjustment: {
       id: 'assessment/result/line-adjustment',
@@ -915,35 +956,36 @@ const i18n = definePluginMessages({
     },
     // ------------------------------------------------------------------
     // recording on someone's behalf
-    recordTab: { id: 'assessment/record/tab', defaultMessage: 'Record for someone' },
+    recordTab: { id: 'assessment/record/tab', defaultMessage: 'Record on behalf' },
     recordHint: {
       id: 'assessment/record/hint',
       defaultMessage:
-        'Record something about a participant. It needs a basis and takes effect at once.',
+        'Record an item for a participant. A basis is required, and the entry takes effect immediately.',
     },
     recordEmpty: {
       id: 'assessment/record/empty',
-      defaultMessage: 'No administrative questions in this round.',
+      defaultMessage: 'No staff-recorded items are configured for this batch.',
     },
-    recordWho: { id: 'assessment/record/who', defaultMessage: 'About whom' },
+    recordWho: { id: 'assessment/record/who', defaultMessage: 'Participant' },
     recordBasis: { id: 'assessment/record/basis', defaultMessage: 'Basis' },
     recordBasisHint: {
       id: 'assessment/record/basis-hint',
-      defaultMessage: 'The document this fact rests on, e.g. a file number. Required.',
+      defaultMessage:
+        'Provide a verifiable source, such as a document title or reference number. Required.',
     },
-    recordSubmit: { id: 'assessment/record/submit', defaultMessage: 'Record it' },
+    recordSubmit: { id: 'assessment/record/submit', defaultMessage: 'Record' },
     recordDone: { id: 'assessment/record/done', defaultMessage: 'Recorded.' },
     // ------------------------------------------------------------------
     // configuring the questions
-    itemsTab: { id: 'assessment/items/tab', defaultMessage: 'Questions' },
+    itemsTab: { id: 'assessment/items/tab', defaultMessage: 'Item configuration' },
     itemsHint: {
       id: 'assessment/items/hint',
       defaultMessage:
-        'Arrange this round\u2019s groups and questions, and set how each question is filed and reviewed.',
+        'Configure groups and assessment items, including submission, scoring, and review rules.',
     },
     itemsStuckTitle: {
       id: 'assessment/items/stuck-title',
-      defaultMessage: 'These steps have no reviewer',
+      defaultMessage: 'Review steps without an available reviewer',
     },
     itemsStuckRow: {
       id: 'assessment/items/stuck-row',
@@ -952,124 +994,126 @@ const i18n = definePluginMessages({
     },
     itemsStuckHint: {
       id: 'assessment/items/stuck-hint',
-      defaultMessage: 'Grant one of these roles at the unit and the submissions continue.',
+      defaultMessage:
+        'Assign any listed role in the relevant unit to resume the affected reviews automatically.',
     },
     itemsOutlineAddItem: {
       id: 'assessment/items/outline-add-item',
-      defaultMessage: 'Add question',
+      defaultMessage: 'Add item',
     },
     itemsOutlineAddGroup: {
       id: 'assessment/items/outline-add-group',
       defaultMessage: 'Add subgroup',
     },
-    itemsCapChip: { id: 'assessment/items/cap-chip', defaultMessage: 'up to {value} pts' },
-    itemsGroupUnnamed: { id: 'assessment/items/group-unnamed', defaultMessage: 'Untitled group' },
+    itemsCapChip: { id: 'assessment/items/cap-chip', defaultMessage: 'Limit {value} pts' },
+    itemsGroupUnnamed: { id: 'assessment/items/group-unnamed', defaultMessage: 'Unnamed group' },
     itemsGroupNew: { id: 'assessment/items/group-new', defaultMessage: 'New group' },
     itemsGroupEditing: { id: 'assessment/items/group-editing', defaultMessage: 'Group settings' },
     itemsGroupCapHint: {
       id: 'assessment/items/group-cap-hint',
-      defaultMessage: 'Leave empty for no upper limit.',
+      defaultMessage: 'Leave blank for no upper limit.',
     },
     itemsGroupFloorHint: {
       id: 'assessment/items/group-floor-hint',
-      defaultMessage: 'Leave empty for no lower limit.',
+      defaultMessage: 'Leave blank for no lower limit.',
     },
     itemsGroupName: { id: 'assessment/items/group-name', defaultMessage: 'Name' },
-    itemsGroupParent: { id: 'assessment/items/group-parent', defaultMessage: 'Sits inside' },
+    itemsGroupParent: { id: 'assessment/items/group-parent', defaultMessage: 'Parent group' },
     itemsGroupParentHint: {
       id: 'assessment/items/group-parent-hint',
-      defaultMessage: 'Move it by choosing another section.',
+      defaultMessage: 'Select another group to move the current group.',
     },
     itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Upper limit' },
     itemsGroupFloor: { id: 'assessment/items/group-floor', defaultMessage: 'Lower limit' },
-    itemsGroupRemove: { id: 'assessment/items/group-remove', defaultMessage: 'Remove' },
+    itemsGroupRemove: { id: 'assessment/items/group-remove', defaultMessage: 'Delete' },
     itemsGroupsReasonHint: {
       id: 'assessment/items/groups-reason-hint',
-      defaultMessage: 'The round is running; changes need a reason.',
+      defaultMessage: 'Changes to an active batch require a reason.',
     },
     itemsGroupRefusedHasItems: {
       id: 'assessment/items/group-refused-has-items',
-      defaultMessage: 'still has questions in it, so it cannot be removed.',
+      defaultMessage: 'still contains assessment items and cannot be deleted.',
     },
     itemsGroupRefusedHasChildren: {
       id: 'assessment/items/group-refused-has-children',
-      defaultMessage: 'still has groups inside it, so it cannot be removed.',
+      defaultMessage: 'still contains subgroups and cannot be deleted.',
     },
     itemsGroupRefusedFloorAboveCap: {
       id: 'assessment/items/group-refused-floor-above-cap',
-      defaultMessage: 'has a lower limit above its upper limit.',
+      defaultMessage: 'has a lower limit greater than its upper limit.',
     },
     itemsGroupRefusedReason: {
       id: 'assessment/items/group-refused-reason',
-      defaultMessage: 'An upper limit changed in a running round. Say why below.',
+      defaultMessage: 'An upper limit changed while the batch is active. Provide a reason below.',
     },
     itemsGroupRefusedParent: {
       id: 'assessment/items/group-refused-parent',
-      defaultMessage: 'cannot sit where it was put.',
+      defaultMessage: 'cannot be moved to the selected location.',
     },
     itemsGroupRefusedNotFound: {
       id: 'assessment/items/group-refused-not-found',
-      defaultMessage: 'is no longer in this round. Refresh to see the current groups.',
+      defaultMessage: 'is no longer part of this batch. Refresh to view the current structure.',
     },
     itemsGroupRefusedOnePaper: {
       id: 'assessment/items/group-refused-one-paper',
-      defaultMessage: 'must sit inside the round, which already has its outermost group.',
+      defaultMessage:
+        'must remain inside the scoring structure, which already has a top-level group.',
     },
     itemsGroupRefusedOther: {
       id: 'assessment/items/group-refused-other',
       defaultMessage: 'could not be saved.',
     },
     itemsGroupsSaved: { id: 'assessment/items/groups-saved', defaultMessage: 'Groups saved.' },
-    itemsListTitle: { id: 'assessment/items/list-title', defaultMessage: 'Questions' },
+    itemsListTitle: { id: 'assessment/items/list-title', defaultMessage: 'Items' },
     itemsFieldTitle: { id: 'assessment/items/field-title', defaultMessage: 'Title' },
-    itemsFieldGroup: { id: 'assessment/items/field-group', defaultMessage: 'Score group' },
+    itemsFieldGroup: { id: 'assessment/items/field-group', defaultMessage: 'Group' },
     itemsFieldMax: {
       id: 'assessment/items/field-max',
-      defaultMessage: 'Entries per person',
+      defaultMessage: 'Entries per participant',
     },
     itemsFieldEntrySource: {
       id: 'assessment/items/field-entry-source',
-      defaultMessage: 'Who files it',
+      defaultMessage: 'Submission method',
     },
     itemsEntrySourceStudent: {
       id: 'assessment/items/entry-source-student',
-      defaultMessage: 'Participants file it themselves',
+      defaultMessage: 'Submitted by participants',
     },
     itemsEntrySourceAdministrative: {
       id: 'assessment/items/entry-source-administrative',
-      defaultMessage: 'Staff record it, with a basis',
+      defaultMessage: 'Recorded by staff with a basis',
     },
-    itemsFieldUnnamed: { id: 'assessment/items/field-unnamed', defaultMessage: 'Untitled field' },
+    itemsFieldUnnamed: { id: 'assessment/items/field-unnamed', defaultMessage: 'Unnamed field' },
     itemsStageSettings: {
       id: 'assessment/items/stage-settings',
-      defaultMessage: 'Step settings',
+      defaultMessage: 'Review step settings',
     },
     itemsTitlePlaceholder: {
       id: 'assessment/items/title-placeholder',
-      defaultMessage: 'e.g. Award in a discipline competition',
+      defaultMessage: 'e.g. Discipline competition award',
     },
     itemsMoveReasonTitle: {
       id: 'assessment/items/move-reason-title',
-      defaultMessage: 'Why this question moved',
+      defaultMessage: 'Reason for moving the item',
     },
-    itemsReasonTitle: { id: 'assessment/items/reason-title', defaultMessage: 'Why this changed' },
+    itemsReasonTitle: { id: 'assessment/items/reason-title', defaultMessage: 'Reason for change' },
     itemsReasonHint: {
       id: 'assessment/items/reason-hint',
       defaultMessage:
-        'The round is running and this changes what counts. Everyone affected reads this.',
+        'The batch is active and the change may affect scoring rules. The reason will be visible to affected users.',
     },
-    itemsNew: { id: 'assessment/items/new', defaultMessage: 'New question' },
+    itemsNew: { id: 'assessment/items/new', defaultMessage: 'New item' },
     itemsPublishAfterSave: {
       id: 'assessment/items/publish-after-save',
-      defaultMessage: 'Save it first, then publish.',
+      defaultMessage: 'Save before publishing.',
     },
     itemsPublish: { id: 'assessment/items/publish', defaultMessage: 'Publish' },
     itemsStatusComposing: { id: 'assessment/items/status-composing', defaultMessage: 'Draft' },
     itemsStatusDraft: { id: 'assessment/items/status-draft', defaultMessage: 'Unpublished' },
     itemsPublished: { id: 'assessment/items/published', defaultMessage: 'Published.' },
-    itemsFieldAdd: { id: 'assessment/items/form-add', defaultMessage: 'Add a field' },
-    itemsFieldRemove: { id: 'assessment/items/form-remove', defaultMessage: 'Remove' },
-    itemsFieldLabel: { id: 'assessment/items/field-label', defaultMessage: 'Label' },
+    itemsFieldAdd: { id: 'assessment/items/form-add', defaultMessage: 'Add field' },
+    itemsFieldRemove: { id: 'assessment/items/form-remove', defaultMessage: 'Delete field' },
+    itemsFieldLabel: { id: 'assessment/items/field-label', defaultMessage: 'Display name' },
     itemsFieldType: { id: 'assessment/items/field-type', defaultMessage: 'Type' },
     itemsTypeText: { id: 'assessment/items/type-text', defaultMessage: 'Text' },
     itemsTypeDate: { id: 'assessment/items/type-date', defaultMessage: 'Date' },
@@ -1077,79 +1121,82 @@ const i18n = definePluginMessages({
     itemsFieldRequired: { id: 'assessment/items/field-required', defaultMessage: 'Required' },
     itemsFieldMaxLength: {
       id: 'assessment/items/field-max-length',
-      defaultMessage: 'Longest text',
+      defaultMessage: 'Maximum characters',
     },
     itemsFieldMinDate: { id: 'assessment/items/field-min-date', defaultMessage: 'Earliest date' },
     itemsDateWindow: {
       id: 'assessment/items/date-window',
-      defaultMessage: 'This round only counts material from {from} to {until}.',
+      defaultMessage: 'Only materials dated from {from} to {until} count in this batch.',
     },
     itemsFieldMaxDate: { id: 'assessment/items/field-max-date', defaultMessage: 'Latest date' },
-    itemsFieldMaxCount: { id: 'assessment/items/field-max-count', defaultMessage: 'Most files' },
+    itemsFieldMaxCount: { id: 'assessment/items/field-max-count', defaultMessage: 'Maximum files' },
     itemsFieldMaxSize: {
       id: 'assessment/items/field-max-size',
-      defaultMessage: 'Largest file (MB)',
+      defaultMessage: 'Maximum file size (MB)',
     },
     itemsFieldAccept: {
       id: 'assessment/items/field-accept',
-      defaultMessage: 'Accepted kinds',
+      defaultMessage: 'Allowed file types',
     },
     itemsFixedValue: {
       id: 'assessment/items/fixed-value',
-      defaultMessage: 'Each approved entry counts',
+      defaultMessage: 'Score per approved entry',
     },
     itemsEscalationTitle: {
       id: 'assessment/items/escalation-title',
-      defaultMessage: 'Escalation route',
+      defaultMessage: 'Escalation workflow',
     },
     itemsEscalationHint: {
       id: 'assessment/items/escalation-hint',
-      defaultMessage: 'Where a reviewer sends what they cannot judge; the last step decides.',
+      defaultMessage:
+        'Reviewers can escalate submissions that require further review; the final step determines the outcome.',
     },
     itemsEscalationEmpty: {
       id: 'assessment/items/escalation-empty',
-      defaultMessage: 'With no steps here, a reviewer cannot escalate.',
+      defaultMessage:
+        'At least one escalation step is required before reviewers can escalate submissions.',
     },
-    itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add a step' },
-    itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Remove step' },
+    itemsStageAdd: { id: 'assessment/items/stage-add', defaultMessage: 'Add review step' },
+    itemsStageRemove: { id: 'assessment/items/stage-remove', defaultMessage: 'Delete step' },
     itemsStageKind: {
       id: 'assessment/items/stage-kind',
-      defaultMessage: 'How the reviewer is found',
+      defaultMessage: 'Reviewer assignment method',
     },
     itemsStageRoleAt: {
       id: 'assessment/items/stage-role-at',
-      defaultMessage: 'At a chosen level',
+      defaultMessage: 'At a specified organization level',
     },
     itemsStageNearestRole: {
       id: 'assessment/items/stage-nearest-role',
-      defaultMessage: 'Nearest holder, walking up',
+      defaultMessage: 'Nearest matching role upward',
     },
     itemsStageNearestHint: {
       id: 'assessment/items/stage-nearest-hint',
-      defaultMessage: 'Walks up from the participant\u2019s unit to the nearest holder.',
+      defaultMessage:
+        'Searches upward from the participant\u2019s unit for the nearest person holding the selected role.',
     },
     itemsStageRole: { id: 'assessment/items/stage-role', defaultMessage: 'Role' },
-    entryDeclare: { id: 'assessment/entry/declare', defaultMessage: 'Claim it' },
+    entryDeclare: { id: 'assessment/entry/declare', defaultMessage: 'Confirm submission' },
     entryDeclaredFiled: {
       id: 'assessment/entry/declared-filed',
-      defaultMessage: 'Claimed; it goes to review.',
+      defaultMessage: 'Submitted and sent for review.',
     },
     entryDeclaredCounted: {
       id: 'assessment/entry/declared-counted',
-      defaultMessage: 'Claimed and counted.',
+      defaultMessage: 'Submitted and counted.',
     },
     myEntriesGranted: {
       id: 'assessment/entry/granted',
-      defaultMessage: 'Granted; nothing to file',
+      defaultMessage: 'Automatically counted · no submission required',
     },
-    itemsKind: { id: 'assessment/items/kind', defaultMessage: 'Kind of question' },
+    itemsKind: { id: 'assessment/items/kind', defaultMessage: 'Item type' },
     itemsKindEvidence: {
       id: 'assessment/items/kind-evidence',
-      defaultMessage: 'Form-based',
+      defaultMessage: 'Form entry',
     },
     itemsKindEvidenceHint: {
       id: 'assessment/items/kind-evidence-hint',
-      defaultMessage: 'Fill in details or upload material, then submit',
+      defaultMessage: 'Enter information or upload supporting material before submitting',
     },
     itemsKindDeclaration: {
       id: 'assessment/items/kind-declaration',
@@ -1157,7 +1204,7 @@ const i18n = definePluginMessages({
     },
     itemsKindDeclarationHint: {
       id: 'assessment/items/kind-declaration-hint',
-      defaultMessage: 'Nothing to fill in; confirm and submit',
+      defaultMessage: 'No fields required; confirm and submit',
     },
     itemsKindConstant: {
       id: 'assessment/items/kind-constant',
@@ -1165,99 +1212,106 @@ const i18n = definePluginMessages({
     },
     itemsKindConstantHint: {
       id: 'assessment/items/kind-constant-hint',
-      defaultMessage: 'No action needed; the system scores it',
+      defaultMessage: 'No participant action required; the system applies the score automatically',
     },
     itemsDeclaredHint: {
       id: 'assessment/items/declared-hint',
-      defaultMessage: 'One press claims it; nothing is written',
+      defaultMessage: 'A single confirmation completes the submission',
     },
     itemsDeclaredBody: {
       id: 'assessment/items/declared-body',
       defaultMessage:
-        'Participants claim this question with one press. Say what they are claiming in the description above.',
+        'Participants submit the item by confirming once. Use the description above to state exactly what they are confirming.',
     },
-    itemsGrantedTitle: { id: 'assessment/items/granted-title', defaultMessage: 'Who gets it' },
+    itemsGrantedTitle: {
+      id: 'assessment/items/granted-title',
+      defaultMessage: 'Eligible participants',
+    },
     itemsGrantedHint: {
       id: 'assessment/items/granted-hint',
-      defaultMessage: 'Nobody files anything and nobody reviews it',
+      defaultMessage: 'No submission or review required',
     },
     itemsGrantedBody: {
       id: 'assessment/items/granted-body',
-      defaultMessage: 'Everybody on the roster is granted the amount below.',
+      defaultMessage: 'Every participant in the batch receives the value configured below.',
     },
     itemsReviewWorkflow: {
       id: 'assessment/items/review-workflow',
-      defaultMessage: 'Reviewed step by step',
+      defaultMessage: 'Use review workflow',
     },
-    itemsReviewNone: { id: 'assessment/items/review-none', defaultMessage: 'No review' },
+    itemsReviewNone: { id: 'assessment/items/review-none', defaultMessage: 'No review required' },
     itemsReviewNoneHint: {
       id: 'assessment/items/review-none-hint',
-      defaultMessage: 'Submitting counts it at once.',
+      defaultMessage: 'The score is counted immediately after submission.',
     },
     resultDerived: {
       id: 'assessment/result/derived',
-      defaultMessage: 'Granted by the round',
+      defaultMessage: 'Automatically counted',
     },
-    itemsFolding: { id: 'assessment/items/folding', defaultMessage: 'How approvals count' },
+    itemsFolding: { id: 'assessment/items/folding', defaultMessage: 'Multiple-entry scoring' },
     itemsFoldingHint: {
       id: 'assessment/items/folding-hint',
-      defaultMessage: 'How several approved filings become this question\u2019s score',
+      defaultMessage: 'Controls how multiple approved entries contribute to the item score',
     },
-    itemsFoldingSum: { id: 'assessment/items/folding-sum', defaultMessage: 'Add them up' },
+    itemsFoldingSum: {
+      id: 'assessment/items/folding-sum',
+      defaultMessage: 'Add all approved entries',
+    },
     itemsFoldingMax: {
       id: 'assessment/items/folding-max',
-      defaultMessage: 'Only the highest counts',
+      defaultMessage: 'Count only the highest',
     },
     itemsFoldingTopN: {
       id: 'assessment/items/folding-top-n',
-      defaultMessage: 'The highest few count',
+      defaultMessage: 'Count the top N entries',
     },
-    itemsFoldingN: { id: 'assessment/items/folding-n', defaultMessage: 'How many' },
+    itemsFoldingN: { id: 'assessment/items/folding-n', defaultMessage: 'Number of entries' },
     itemsFoldingSumHint: {
       id: 'assessment/items/folding-sum-hint',
-      defaultMessage: 'Every approved filing counts',
+      defaultMessage: 'Every approved entry contributes to the score',
     },
     itemsFoldingMaxHint: {
       id: 'assessment/items/folding-max-hint',
-      defaultMessage: 'One filing counts: the highest',
+      defaultMessage: 'Only the approved entry with the highest score is counted',
     },
     itemsFoldingTopNHint: {
       id: 'assessment/items/folding-top-n-hint',
-      defaultMessage: 'The N highest count, added up',
+      defaultMessage: 'The N highest approved entries are added together',
     },
     resultNotCounted: {
       id: 'assessment/result/not-counted',
-      defaultMessage: 'Approved; the question counts other filings instead',
+      defaultMessage: 'Approved, but another entry is counted under this item\u2019s scoring rule',
     },
-    reviewChainTitle: { id: 'assessment/review/chain-title', defaultMessage: 'Review route' },
-    reviewStageHere: { id: 'assessment/review/stage-here', defaultMessage: 'Now here' },
+    reviewChainTitle: { id: 'assessment/review/chain-title', defaultMessage: 'Review workflow' },
+    reviewStageHere: { id: 'assessment/review/stage-here', defaultMessage: 'Current step' },
     reviewStageSkipped: {
       id: 'assessment/review/stage-skipped',
-      defaultMessage: 'Skipped: no such unit above this participant',
+      defaultMessage:
+        'Skipped: the participant\u2019s organization path does not contain this level',
     },
-    reviewEscalate: { id: 'assessment/review/escalate', defaultMessage: 'Escalate for review' },
-    reviewRouteNormal: { id: 'assessment/review/route-normal', defaultMessage: 'Ordinary review' },
+    reviewEscalate: { id: 'assessment/review/escalate', defaultMessage: 'Escalate' },
+    reviewRouteNormal: { id: 'assessment/review/route-normal', defaultMessage: 'Standard review' },
     reviewRouteEscalation: {
       id: 'assessment/review/route-escalation',
-      defaultMessage: 'Escalation',
+      defaultMessage: 'Escalation review',
     },
     reviewCommentAction: {
       id: 'assessment/review/comment-action',
-      defaultMessage: 'Leave a note',
+      defaultMessage: 'Add note',
     },
-    reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'What to say' },
+    reviewSayTitle: { id: 'assessment/review/say-title', defaultMessage: 'Review note' },
     // the review queue, laid out three ways
-    reviewStatPending: { id: 'assessment/review/stat-pending', defaultMessage: 'Waiting for me' },
-    reviewStatToday: { id: 'assessment/review/stat-today', defaultMessage: 'Handled today' },
-    reviewTabByItem: { id: 'assessment/review/tab-by-item', defaultMessage: 'By question' },
-    reviewTabByTime: { id: 'assessment/review/tab-by-time', defaultMessage: 'By submitted' },
+    reviewStatPending: { id: 'assessment/review/stat-pending', defaultMessage: 'Awaiting review' },
+    reviewStatToday: { id: 'assessment/review/stat-today', defaultMessage: 'Reviewed today' },
+    reviewTabByItem: { id: 'assessment/review/tab-by-item', defaultMessage: 'By item' },
+    reviewTabByTime: { id: 'assessment/review/tab-by-time', defaultMessage: 'By submission time' },
     reviewTabByPerson: {
       id: 'assessment/review/tab-by-person',
       defaultMessage: 'By participant',
     },
     reviewFilterAllItems: {
       id: 'assessment/review/filter-all-items',
-      defaultMessage: 'All questions',
+      defaultMessage: 'All items',
     },
     reviewFilterAllUnits: {
       id: 'assessment/review/filter-all-units',
@@ -1265,15 +1319,15 @@ const i18n = definePluginMessages({
     },
     reviewSearchPlaceholder: {
       id: 'assessment/review/search-placeholder',
-      defaultMessage: 'Search name, number or content',
+      defaultMessage: 'Search name, ID, or submission content',
     },
     reviewMatchesNone: {
       id: 'assessment/review/matches-none',
-      defaultMessage: 'Nothing waiting matches.',
+      defaultMessage: 'No pending submissions match the current filters.',
     },
     reviewGroupCount: {
       id: 'assessment/review/group-count',
-      defaultMessage: '{count} waiting',
+      defaultMessage: '{count} pending',
     },
     reviewColumnParticipant: {
       id: 'assessment/review/column-participant',
@@ -1284,68 +1338,68 @@ const i18n = definePluginMessages({
     reviewColumnState: { id: 'assessment/review/column-state', defaultMessage: 'Status' },
     reviewStateWaiting: {
       id: 'assessment/review/state-waiting',
-      defaultMessage: 'Waiting for me',
+      defaultMessage: 'Awaiting review',
     },
     reviewStateRound: { id: 'assessment/review/state-round', defaultMessage: 'Round {round}' },
     reviewStateEscalated: {
       id: 'assessment/review/state-escalated',
-      defaultMessage: 'Escalated',
+      defaultMessage: 'Under escalation review',
     },
     reviewFilesCount: { id: 'assessment/review/files-count', defaultMessage: '{count} files' },
     reviewNoStandingHint: {
       id: 'assessment/review/no-standing-hint',
-      defaultMessage: 'To take part, ask whoever runs this round to assign you a reviewing role.',
+      defaultMessage: 'Contact a batch administrator to be assigned an appropriate review role.',
     },
     // the workbench: one submission, judged in a run
-    reviewQueueTitle: { id: 'assessment/review/queue-title', defaultMessage: 'Queue' },
+    reviewQueueTitle: { id: 'assessment/review/queue-title', defaultMessage: 'Pending reviews' },
     reviewRunPosition: {
       id: 'assessment/review/run-position',
       defaultMessage: '{at}/{count}',
     },
-    reviewRunExit: { id: 'assessment/review/run-exit', defaultMessage: 'Leave the run' },
-    reviewPrior: { id: 'assessment/review/prior', defaultMessage: 'Said so far' },
+    reviewRunExit: { id: 'assessment/review/run-exit', defaultMessage: 'Exit continuous review' },
+    reviewPrior: { id: 'assessment/review/prior', defaultMessage: 'Review history' },
     reviewPreviousTitle: {
       id: 'assessment/review/previous-title',
-      defaultMessage: 'Why it was sent back',
+      defaultMessage: 'Previous return reasons',
     },
     reviewPreviousHint: {
       id: 'assessment/review/previous-hint',
-      defaultMessage: 'Check the asked-for changes were made.',
+      defaultMessage: 'Confirm whether the requested changes have been addressed.',
     },
-    reviewInsight: { id: 'assessment/review/insight', defaultMessage: 'Smart review' },
+    reviewInsight: { id: 'assessment/review/insight', defaultMessage: 'Review assistance' },
     reviewInsightSoon: {
       id: 'assessment/review/insight-soon',
-      defaultMessage: 'No hints yet.',
+      defaultMessage: 'No review assistance is currently available.',
     },
     reviewAboutTitle: {
       id: 'assessment/review/about-title',
-      defaultMessage: 'Scoring',
+      defaultMessage: 'Scoring rules',
     },
     reviewAboutEach: {
       id: 'assessment/review/about-each',
-      defaultMessage: 'Counts when approved',
+      defaultMessage: 'Score when approved',
     },
     reviewAboutMax: {
       id: 'assessment/review/about-max',
-      defaultMessage: 'Entries per person',
+      defaultMessage: 'Submission limit per participant',
     },
-    reviewAboutGroupCap: { id: 'assessment/review/about-group-cap', defaultMessage: 'Group cap' },
+    reviewAboutGroupCap: { id: 'assessment/review/about-group-cap', defaultMessage: 'Group limit' },
     reviewSiblingsTitle: {
       id: 'assessment/review/siblings-title',
-      defaultMessage: 'Their other claims',
+      defaultMessage: 'Other entries from this participant',
     },
-    reviewSiblingThis: { id: 'assessment/review/sibling-this', defaultMessage: 'This one' },
+    reviewSiblingThis: { id: 'assessment/review/sibling-this', defaultMessage: 'Current entry' },
     reviewSiblingsFull: {
       id: 'assessment/review/siblings-full',
-      defaultMessage: 'Approving reaches their limit on this question.',
+      defaultMessage: 'Approval will reach the submission limit for this item.',
     },
     reviewCommentPlaceholder: {
       id: 'assessment/review/comment-placeholder',
-      defaultMessage: 'Say why',
+      defaultMessage: 'Enter a review note',
     },
     reviewCommentPlaceholderAdvise: {
       id: 'assessment/review/comment-placeholder-advise',
-      defaultMessage: 'Your opinion, for the step that decides',
+      defaultMessage: 'Enter your review opinion',
     },
     reviewActionNote: { id: 'assessment/review/action-note', defaultMessage: 'Note' },
     reviewSubmitDecision: {
@@ -1354,21 +1408,24 @@ const i18n = definePluginMessages({
     },
     reviewSubmitHint: {
       id: 'assessment/review/submit-hint',
-      defaultMessage: 'Five seconds to take it back after submitting.',
+      defaultMessage: 'The decision can be undone for 5 seconds after submission.',
     },
     reviewSubmitHintAdvise: {
       id: 'assessment/review/submit-hint-advise',
-      defaultMessage: 'This step gives an opinion, not a decision.',
+      defaultMessage: 'This review step records an opinion rather than a final decision.',
     },
     reviewPickDecision: {
       id: 'assessment/review/pick-decision',
-      defaultMessage: 'Choose a decision first.',
+      defaultMessage: 'Select a review decision first.',
     },
     reviewUndo: { id: 'assessment/review/undo', defaultMessage: 'Undo' },
-    reviewWriteMore: { id: 'assessment/review/write-more', defaultMessage: 'Write in a box' },
-    reviewBackToQueue: { id: 'assessment/review/back-to-queue', defaultMessage: 'Back to queue' },
+    reviewWriteMore: { id: 'assessment/review/write-more', defaultMessage: 'Expand input' },
+    reviewBackToQueue: {
+      id: 'assessment/review/back-to-queue',
+      defaultMessage: 'Back to pending reviews',
+    },
     reviewRunStart: { id: 'assessment/review/run-start', defaultMessage: 'Start reviewing' },
-    reviewFiled: { id: 'assessment/review/filed', defaultMessage: 'What was filed' },
+    reviewFiled: { id: 'assessment/review/filed', defaultMessage: 'Submission content' },
     reviewFiledVersion: {
       id: 'assessment/review/filed-version',
       defaultMessage: 'Version {no}\u3000{at}',
@@ -1376,18 +1433,24 @@ const i18n = definePluginMessages({
     // the button says what pressing it does, not what the screen is doing:
     // a toggle labelled with its own state reads as a claim, not a control
     reviewCompareOn: { id: 'assessment/review/compare-on', defaultMessage: 'Compare versions' },
-    reviewCompareOff: { id: 'assessment/review/compare-off', defaultMessage: 'Stop comparing' },
-    reviewPickVersion: { id: 'assessment/review/pick-version', defaultMessage: 'Pick a version' },
+    reviewCompareOff: { id: 'assessment/review/compare-off', defaultMessage: 'Stop comparison' },
+    reviewPickVersion: {
+      id: 'assessment/review/pick-version',
+      defaultMessage: 'Select comparison version',
+    },
     reviewCompareCount: {
       id: 'assessment/review/compare-count',
       defaultMessage:
-        '{count, plural, =0 {No change against version {no}} one {# change against version {no}} other {# changes against version {no}}}',
+        '{count, plural, =0 {No changes from version {no}} one {# change from version {no}} other {# changes from version {no}}}',
     },
-    reviewComparePrevious: { id: 'assessment/review/compare-previous', defaultMessage: 'Was' },
-    reviewCompareBlank: { id: 'assessment/review/compare-blank', defaultMessage: 'Not filled in' },
+    reviewComparePrevious: {
+      id: 'assessment/review/compare-previous',
+      defaultMessage: 'Previous value',
+    },
+    reviewCompareBlank: { id: 'assessment/review/compare-blank', defaultMessage: 'Not provided' },
     reviewVersionsTitle: {
       id: 'assessment/review/versions-title',
-      defaultMessage: 'Which version to compare against',
+      defaultMessage: 'Select a version to compare',
     },
     reviewVersionsSubtitle: {
       id: 'assessment/review/versions-subtitle',
@@ -1396,133 +1459,138 @@ const i18n = definePluginMessages({
     reviewVersionName: { id: 'assessment/review/version-name', defaultMessage: 'Version {no}' },
     reviewVersionJudged: {
       id: 'assessment/review/version-judged',
-      defaultMessage: 'Being judged',
+      defaultMessage: 'Current review version',
     },
     reviewVersionComparing: {
       id: 'assessment/review/version-comparing',
-      defaultMessage: 'Comparing',
+      defaultMessage: 'Comparison version',
     },
-    reviewVersionBy: { id: 'assessment/review/version-by', defaultMessage: 'Filed by {who}' },
+    reviewVersionBy: { id: 'assessment/review/version-by', defaultMessage: 'Submitted by {who}' },
     reviewVersionsFoot: {
       id: 'assessment/review/versions-foot',
-      defaultMessage: 'What changed is marked on the filing itself.',
+      defaultMessage: 'Changes will be highlighted in the submission content.',
     },
     reviewVersionsConfirm: {
       id: 'assessment/review/versions-confirm',
-      defaultMessage: 'Compare version {no}',
+      defaultMessage: 'Compare with version {no}',
     },
     reviewVersionsConfirmNone: {
       id: 'assessment/review/versions-confirm-none',
-      defaultMessage: 'Pick a version',
+      defaultMessage: 'Select a version',
     },
     reviewTrailFullOpen: {
       id: 'assessment/review/trail-full-open',
-      defaultMessage: 'The whole account of this claim',
+      defaultMessage: 'View full history',
     },
-    reviewTrailTitle: { id: 'assessment/review/trail-title', defaultMessage: 'The whole story' },
-    reviewTrailOpen: { id: 'assessment/review/trail-open', defaultMessage: 'Full story' },
-    reviewTrailRound: { id: 'assessment/review/trail-round', defaultMessage: 'Round {no}' },
+    reviewTrailTitle: {
+      id: 'assessment/review/trail-title',
+      defaultMessage: 'Complete review history',
+    },
+    reviewTrailOpen: { id: 'assessment/review/trail-open', defaultMessage: 'View full history' },
+    reviewTrailRound: { id: 'assessment/review/trail-round', defaultMessage: 'Review round {no}' },
     reviewDownloadAll: { id: 'assessment/review/download-all', defaultMessage: 'Download all' },
     reviewTipApprove: {
       id: 'assessment/review/tip-approve',
-      defaultMessage: 'Counts towards their score',
+      defaultMessage: 'Approve and count toward the participant\u2019s score',
     },
     reviewTipReject: {
       id: 'assessment/review/tip-reject',
-      defaultMessage: 'Goes back for them to revise',
+      defaultMessage: 'Return to the participant for revision and resubmission',
     },
     reviewTipEscalate: {
       id: 'assessment/review/tip-escalate',
-      defaultMessage: 'Goes to the escalation route',
+      defaultMessage: 'Move the submission to the escalation workflow',
     },
     reviewTipComment: {
       id: 'assessment/review/tip-comment',
-      defaultMessage: 'Records a word; it stays with you',
+      defaultMessage: 'Record a note without changing the review status',
     },
     reviewTipSubmit: {
       id: 'assessment/review/tip-submit',
-      defaultMessage: 'Sends what you chose',
+      defaultMessage: 'Submit the selected review decision',
     },
     reviewHintArmedApprove: {
       id: 'assessment/review/hint-armed-approve',
-      defaultMessage: 'Approve counts it towards their score. Five seconds to take it back.',
+      defaultMessage:
+        'Approval counts the entry toward the participant\u2019s score. The decision can be undone for 5 seconds.',
     },
     reviewHintArmedComment: {
       id: 'assessment/review/hint-armed-comment',
-      defaultMessage: 'A note is recorded and nothing moves.',
+      defaultMessage: 'A note is recorded without changing the review status.',
     },
     reviewHintPickFirst: {
       id: 'assessment/review/hint-pick-first',
-      defaultMessage: 'Choose a decision, then submit.',
+      defaultMessage: 'Select a review decision before submitting.',
     },
     reviewHintLastStep: {
       id: 'assessment/review/hint-last-step',
-      defaultMessage: 'This is the last step: approving ends the round.',
+      defaultMessage: 'This is the final review step. Approval completes the review.',
     },
     // the three ways a queue is empty
     reviewAllDoneTitle: {
       id: 'assessment/review/all-done-title',
-      defaultMessage: 'Everything waiting for you is handled',
+      defaultMessage: 'All current review tasks are complete',
     },
     reviewAllDoneBody: {
       id: 'assessment/review/all-done-body',
-      defaultMessage: '{count} handled today.',
+      defaultMessage: '{count} reviewed today.',
     },
     reviewNothingTitle: {
       id: 'assessment/review/nothing-title',
-      defaultMessage: 'Nothing is waiting for you',
+      defaultMessage: 'No pending review tasks',
     },
     reviewNothingBody: {
       id: 'assessment/review/nothing-body',
-      defaultMessage: 'New submissions appear here on their own.',
+      defaultMessage: 'New review tasks will appear automatically when they become available.',
     },
     reviewNoRoleTitle: {
       id: 'assessment/review/no-role-title',
-      defaultMessage: 'You review nothing in this round',
+      defaultMessage: 'You do not have review permission for this batch',
     },
     reviewFirstOne: {
       id: 'assessment/review/first-one',
-      defaultMessage: 'Already at the first one',
+      defaultMessage: 'Already at the first entry',
     },
     reviewLastOne: {
       id: 'assessment/review/last-one',
-      defaultMessage: 'Already at the last one',
+      defaultMessage: 'Already at the last entry',
     },
     reviewUndoPending: {
       id: 'assessment/review/undo-pending',
-      defaultMessage: 'Submitting in {seconds}s; undo until then',
+      defaultMessage: 'Submitting in {seconds}s · undo before submission',
     },
     reviewEscBannerTitle: {
       id: 'assessment/review/esc-banner-title',
-      defaultMessage: 'This round is on the escalation route',
+      defaultMessage: 'The submission is in the escalation workflow',
     },
     reviewEscBannerBody: {
       id: 'assessment/review/esc-banner-body',
-      defaultMessage: 'The last step decides; your opinion goes with it.',
+      defaultMessage:
+        'Your review opinion will be included with the information provided to the final reviewer.',
     },
     // the supplement exchange: ask for more backing, answer, take back
-    reviewFileAdded: { id: 'assessment/review/file-added', defaultMessage: 'New' },
+    reviewFileAdded: { id: 'assessment/review/file-added', defaultMessage: 'Added' },
     reviewFileGone: {
       id: 'assessment/review/file-gone',
-      defaultMessage: 'Taken out this version',
+      defaultMessage: 'Removed in this version',
     },
     reviewFilesNote: {
       id: 'assessment/review/files-note',
       defaultMessage:
-        'Materials sit under the field that asked for them. A file this version took out is named in grey below it, so what the last reviewer saw can still be checked.',
+        'Materials are grouped under their corresponding fields. Files removed in this version remain listed for comparison with the previous version.',
     },
-    reviewThisRound: { id: 'assessment/review/this-round', defaultMessage: 'This round' },
+    reviewThisRound: { id: 'assessment/review/this-round', defaultMessage: 'Current review round' },
     reviewAwaitingYou: {
       id: 'assessment/review/awaiting-you',
-      defaultMessage: 'Waiting on your decision',
+      defaultMessage: 'Awaiting your review',
     },
     reviewStagePassed: {
       id: 'assessment/review/stage-passed',
-      defaultMessage: 'Done',
+      defaultMessage: 'Approved',
     },
     reviewAboutGroupCapNamed: {
       id: 'assessment/review/about-group-cap-named',
-      defaultMessage: '{group} cap',
+      defaultMessage: '{group} limit',
     },
     reviewSiblingsKeys: {
       id: 'assessment/review/siblings-keys',
@@ -1530,23 +1598,25 @@ const i18n = definePluginMessages({
     },
     reviewInsightCaveat: {
       id: 'assessment/review/insight-caveat',
-      defaultMessage: 'May be wrong; check it yourself',
+      defaultMessage: 'May contain errors; verify manually',
     },
     reviewFileSupplement: {
       id: 'assessment/review/file-supplement',
-      defaultMessage: 'Supplement',
+      defaultMessage: 'Additional material',
     },
     reviewSupplementSection: {
       id: 'assessment/review/supplement-section',
-      defaultMessage: 'Supplied on request',
+      defaultMessage: 'Additional material',
     },
     reviewSupplementSectionNote: {
       id: 'assessment/review/supplement-section-note',
-      defaultMessage: 'Asked for by a reviewer, so the questions differ from the ones above',
+      defaultMessage:
+        'Provided in response to a reviewer request and separate from the original submission fields',
     },
     reviewPreviousWithdrawn: {
       id: 'assessment/review/previous-withdrawn',
-      defaultMessage: 'Last round went unjudged: the participant withdrew it',
+      defaultMessage:
+        'The previous round ended before review because the participant withdrew the entry',
     },
     reviewEarlierWithdrawn: {
       id: 'assessment/review/earlier-withdrawn',
@@ -1554,127 +1624,140 @@ const i18n = definePluginMessages({
     },
     reviewEarlierReturned: {
       id: 'assessment/review/earlier-returned',
-      defaultMessage: 'Sent back',
+      defaultMessage: 'Returned for revision',
     },
     reviewEarlierRounds: {
       id: 'assessment/review/earlier-rounds',
-      defaultMessage: 'Rounds before that',
+      defaultMessage: 'Earlier review rounds',
     },
     reviewEarlierCount: {
       id: 'assessment/review/earlier-count',
-      defaultMessage: '{count, plural, one {# more} other {# more}}',
+      defaultMessage: '{count, plural, one {# earlier round} other {# earlier rounds}}',
     },
     reviewHadSupplements: {
       id: 'assessment/review/had-supplements',
-      defaultMessage: 'Material was requested',
+      defaultMessage: 'Additional material was requested',
     },
-    reviewKeysHint: { id: 'assessment/review/keys-hint', defaultMessage: 'Keyboard ?' },
-    reviewQueueFold: { id: 'assessment/review/queue-fold', defaultMessage: 'Fold the queue away' },
-    reviewQueueUnfold: { id: 'assessment/review/queue-unfold', defaultMessage: 'Show the queue' },
+    reviewKeysHint: { id: 'assessment/review/keys-hint', defaultMessage: 'Keyboard shortcuts ?' },
+    reviewQueueFold: {
+      id: 'assessment/review/queue-fold',
+      defaultMessage: 'Collapse pending reviews',
+    },
+    reviewQueueUnfold: {
+      id: 'assessment/review/queue-unfold',
+      defaultMessage: 'Expand pending reviews',
+    },
     reviewSupplementAsk: {
       id: 'assessment/review/supplement-ask',
-      defaultMessage: 'Request material',
+      defaultMessage: 'Request additional material',
     },
     reviewSupplementAsked: {
       id: 'assessment/review/supplement-asked',
-      defaultMessage: 'asked for material',
+      defaultMessage: 'Additional material requested',
     },
     reviewKeySiblings: {
       id: 'assessment/review/key-siblings',
-      defaultMessage: 'Open one of their other claims',
+      defaultMessage: 'Open another entry from the participant',
     },
     reviewKeySupplement: {
       id: 'assessment/review/key-supplement',
-      defaultMessage: 'Ask for more material',
+      defaultMessage: 'Request additional material',
     },
     // the queue's other half: what this step is waiting on somebody else for
     reviewAwaitingEmpty: {
       id: 'assessment/review/awaiting-empty',
-      defaultMessage: 'Nothing is out with anybody right now.',
+      defaultMessage: 'No submissions are currently awaiting additional material.',
     },
     reviewAwaitingTitle: {
       id: 'assessment/review/awaiting-title',
-      defaultMessage: 'Waiting on material',
+      defaultMessage: 'Awaiting additional material',
     },
     reviewAwaitingCount: { id: 'assessment/review/awaiting-count', defaultMessage: '{count}' },
     reviewAwaitingBack: {
       id: 'assessment/review/awaiting-back',
-      defaultMessage: '{count} answered',
+      defaultMessage: '{count} completed',
     },
     reviewAwaitingNote: {
       id: 'assessment/review/awaiting-note',
-      defaultMessage: 'Not counted as waiting on you; answered ones return to the queue',
+      defaultMessage:
+        'Not included in the pending review count; completed submissions return to the review queue',
     },
-    reviewAwaitingColAsk: { id: 'assessment/review/awaiting-col-ask', defaultMessage: 'Question' },
+    reviewAwaitingColAsk: {
+      id: 'assessment/review/awaiting-col-ask',
+      defaultMessage: 'Item and request',
+    },
     reviewAwaitingColWaited: {
       id: 'assessment/review/awaiting-col-waited',
-      defaultMessage: 'Waiting',
+      defaultMessage: 'Waiting time',
     },
     reviewAwaitingColAskedAt: {
       id: 'assessment/review/awaiting-col-asked-at',
-      defaultMessage: 'Asked',
+      defaultMessage: 'Requested at',
     },
     reviewAwaitingWant: {
       id: 'assessment/review/awaiting-want',
-      defaultMessage: 'Asked for　{what}',
+      defaultMessage: 'Requested: {what}',
     },
     reviewAwaitingAnswered: {
       id: 'assessment/review/awaiting-answered',
-      defaultMessage: 'Answered, waiting on you',
+      defaultMessage: 'Material submitted · awaiting review',
     },
-    reviewAwaitingGo: { id: 'assessment/review/awaiting-go', defaultMessage: 'Take it up' },
+    reviewAwaitingGo: { id: 'assessment/review/awaiting-go', defaultMessage: 'Review' },
     reviewAwaitingFoot: {
       id: 'assessment/review/awaiting-foot',
       defaultMessage:
-        'Withdrawing a request puts the filing straight back in the queue; whatever was added stays in its account.',
+        'Withdrawing the request returns the submission to the review queue immediately. Any material already submitted remains in the review history.',
     },
     reviewAwaitingHint: {
       id: 'assessment/review/awaiting-hint',
-      defaultMessage: 'Filings you asked more of stay here until they come back.',
+      defaultMessage:
+        'Submissions remain in this section until the requested material is provided.',
     },
     reviewTipSupplement: {
       id: 'assessment/review/tip-supplement',
-      defaultMessage: 'Asks for more backing; the filing stays as it is',
+      defaultMessage:
+        'Request additional supporting material without changing the original submission',
     },
     supplementDialogTitle: {
       id: 'assessment/supplement/dialog-title',
-      defaultMessage: 'Request supporting material',
+      defaultMessage: 'Request additional material',
     },
     supplementDialogHint: {
       id: 'assessment/supplement/dialog-hint',
-      defaultMessage: 'Say what to add. It returns to your queue once submitted.',
+      defaultMessage:
+        'Specify what is required. The submission returns to your review queue after the participant responds.',
     },
     supplementInstructionsLabel: {
       id: 'assessment/supplement/instructions-label',
-      defaultMessage: 'What to add, and why',
+      defaultMessage: 'Requirements and reason',
     },
     supplementPiecesLabel: {
       id: 'assessment/supplement/pieces-label',
-      defaultMessage: 'What you are asking for',
+      defaultMessage: 'Required material',
     },
     supplementAddText: {
       id: 'assessment/supplement/add-text',
-      defaultMessage: 'Written answer',
+      defaultMessage: 'Written explanation',
     },
-    supplementAddFile: { id: 'assessment/supplement/add-file', defaultMessage: 'Files' },
+    supplementAddFile: { id: 'assessment/supplement/add-file', defaultMessage: 'File' },
     supplementPieceLabel: {
       id: 'assessment/supplement/piece-label',
-      defaultMessage: 'Name this piece',
+      defaultMessage: 'Material name',
     },
     supplementPieceRequired: {
       id: 'assessment/supplement/piece-required',
       defaultMessage: 'Required',
     },
-    supplementPieceRemove: { id: 'assessment/supplement/piece-remove', defaultMessage: 'Remove' },
+    supplementPieceRemove: { id: 'assessment/supplement/piece-remove', defaultMessage: 'Delete' },
     supplementSend: { id: 'assessment/supplement/send', defaultMessage: 'Send request' },
     supplementSent: { id: 'assessment/supplement/sent', defaultMessage: 'Request sent.' },
     supplementWaitingTitle: {
       id: 'assessment/supplement/waiting-title',
-      defaultMessage: 'Waiting for requested material',
+      defaultMessage: 'Awaiting additional material',
     },
     supplementWaitingBody: {
       id: 'assessment/supplement/waiting-body',
-      defaultMessage: 'It returns to the queue once {who} submits.',
+      defaultMessage: 'The submission will return to the review queue after {who} responds.',
     },
     supplementWithdraw: {
       id: 'assessment/supplement/withdraw',
@@ -1686,7 +1769,7 @@ const i18n = definePluginMessages({
     },
     supplementSectionTitle: {
       id: 'assessment/supplement/section-title',
-      defaultMessage: 'Requested material',
+      defaultMessage: 'Additional material',
     },
     supplementRequestHeading: {
       id: 'assessment/supplement/request-heading',
@@ -1694,7 +1777,7 @@ const i18n = definePluginMessages({
     },
     supplementStatusOpen: {
       id: 'assessment/supplement/status-open',
-      defaultMessage: 'Waiting',
+      defaultMessage: 'Awaiting response',
     },
     supplementStatusAnswered: {
       id: 'assessment/supplement/status-answered',
@@ -1706,29 +1789,29 @@ const i18n = definePluginMessages({
     },
     eventSupplementRequested: {
       id: 'assessment/event/supplement-requested',
-      defaultMessage: '{who} asked for more material',
+      defaultMessage: '{who} requested additional material',
     },
     eventSupplementSubmitted: {
       id: 'assessment/event/supplement-submitted',
-      defaultMessage: '{who} added the requested material',
+      defaultMessage: '{who} submitted additional material',
     },
     eventSupplementCancelled: {
       id: 'assessment/event/supplement-cancelled',
-      defaultMessage: '{who} withdrew the request',
+      defaultMessage: '{who} withdrew the material request',
     },
     entryRefusedTitle: {
       id: 'assessment/entry/refused-title',
-      defaultMessage: 'The reviewer sent this back',
+      defaultMessage: 'The reviewer returned the submission',
     },
     entryReturnedTitle: {
       id: 'assessment/entry/returned-title',
-      defaultMessage: 'This was sent back for revision',
+      defaultMessage: 'The submission was returned for revision',
     },
     entrySupplementTitle: {
       id: 'assessment/entry/supplement-title',
-      defaultMessage: 'The reviewer asked for more material',
+      defaultMessage: 'The reviewer requested additional material',
     },
-    supplementNeeds: { id: 'assessment/supplement/needs', defaultMessage: 'What to provide' },
+    supplementNeeds: { id: 'assessment/supplement/needs', defaultMessage: 'Required material' },
     // what a claim's number is: granted, waiting, or worth this much if approved
     entryScoreCounted: { id: 'assessment/entry/score-counted', defaultMessage: 'Counted' },
     entryScorePending: { id: 'assessment/entry/score-pending', defaultMessage: 'Not counted yet' },
@@ -1738,48 +1821,48 @@ const i18n = definePluginMessages({
     },
     entryStatusAwaitingSupplement: {
       id: 'assessment/entry/status-awaiting-supplement',
-      defaultMessage: 'Material requested',
+      defaultMessage: 'Additional material required',
     },
     entryVersionNo: { id: 'assessment/entry/version-no', defaultMessage: 'Version {no}' },
     myEntriesHeadEach: {
       id: 'assessment/my-entries/head-each',
-      defaultMessage: '{value} each',
+      defaultMessage: '{value} per entry',
     },
     myEntriesHeadMost: {
       id: 'assessment/my-entries/head-most',
-      defaultMessage: 'up to {count}',
+      defaultMessage: 'Up to {count}',
     },
     myEntriesHeadSteps: {
       id: 'assessment/my-entries/head-steps',
-      defaultMessage: '{count, plural, one {# reviewer} other {# reviewers}}',
+      defaultMessage: '{count, plural, one {# review step} other {# review steps}}',
     },
     myEntriesQuota: {
       id: 'assessment/my-entries/quota',
-      defaultMessage: 'Places used',
+      defaultMessage: 'Entries used',
     },
     paperStructure: {
       id: 'assessment/paper/structure',
-      defaultMessage: 'Paper structure',
+      defaultMessage: 'Scoring structure',
     },
     paperStructureShort: {
       id: 'assessment/paper/structure-short',
-      defaultMessage: 'Contents',
+      defaultMessage: 'Structure',
     },
     paperViewAll: {
       id: 'assessment/paper/view-all',
-      defaultMessage: 'Whole paper',
+      defaultMessage: 'All items',
     },
     paperViewTodo: {
       id: 'assessment/paper/view-todo',
-      defaultMessage: 'To do only',
+      defaultMessage: 'Pending only',
     },
     paperBandShare: {
       id: 'assessment/paper/band-share',
-      defaultMessage: '{pct}% of the paper',
+      defaultMessage: '{pct}% of total score',
     },
     paperCap: {
       id: 'assessment/paper/cap',
-      defaultMessage: 'cap {value}',
+      defaultMessage: 'Limit {value}',
     },
     paperColContent: {
       id: 'assessment/paper/col-content',
@@ -1803,7 +1886,7 @@ const i18n = definePluginMessages({
     },
     paperUnsubmitted: {
       id: 'assessment/paper/unsubmitted',
-      defaultMessage: 'Unsubmitted',
+      defaultMessage: 'Not submitted',
     },
     paperFoldMore: {
       id: 'assessment/paper/fold-more',
@@ -1811,15 +1894,16 @@ const i18n = definePluginMessages({
     },
     paperFoldLess: {
       id: 'assessment/paper/fold-less',
-      defaultMessage: 'Fold',
+      defaultMessage: 'Collapse',
     },
     paperEmptyTitle: {
       id: 'assessment/paper/empty-title',
-      defaultMessage: 'No claims yet',
+      defaultMessage: 'No entries yet',
     },
     paperEmptyHint: {
       id: 'assessment/paper/empty-hint',
-      defaultMessage: 'Start the first one on the left; a draft can wait',
+      defaultMessage:
+        'Select an item on the left to create an entry. Drafts can be saved at any time.',
     },
     paperEmptyRecorded: {
       id: 'assessment/paper/empty-recorded',
@@ -1827,37 +1911,40 @@ const i18n = definePluginMessages({
     },
     paperEmptyRecordedHint: {
       id: 'assessment/paper/empty-recorded-hint',
-      defaultMessage: 'Staff have not recorded anything yet',
+      defaultMessage: 'No staff entry has been recorded yet',
     },
-    paperEmptyFile: { id: 'assessment/paper/empty-file', defaultMessage: 'Add a claim' },
-    paperGrantedEach: { id: 'assessment/paper/granted-each', defaultMessage: '{value} per person' },
+    paperEmptyFile: { id: 'assessment/paper/empty-file', defaultMessage: 'New entry' },
+    paperGrantedEach: {
+      id: 'assessment/paper/granted-each',
+      defaultMessage: '{value} per participant',
+    },
     paperVoidedWhy: {
       id: 'assessment/paper/voided-why',
-      defaultMessage: 'Withdrawn because: {reason}',
+      defaultMessage: 'Disabled because: {reason}',
     },
     paperEmptyGranted: {
       id: 'assessment/paper/empty-granted',
-      defaultMessage: 'Granted to everybody',
+      defaultMessage: 'Automatically counted',
     },
     paperEmptyGrantedHint: {
       id: 'assessment/paper/empty-granted-hint',
-      defaultMessage: 'Nothing to file; this question applies to the whole roster',
+      defaultMessage: 'No submission is required; the score is applied automatically',
     },
     myEntriesAddFull: {
       id: 'assessment/my-entries/add-full',
-      defaultMessage: 'All places used',
+      defaultMessage: 'Submission limit reached',
     },
     myEntriesFilesNone: {
       id: 'assessment/my-entries/files-none',
-      defaultMessage: 'Nothing uploaded yet',
+      defaultMessage: 'No files uploaded',
     },
     myEntriesPaperCap: {
       id: 'assessment/my-entries/paper-cap',
-      defaultMessage: 'Out of {value}',
+      defaultMessage: 'Total {value}',
     },
     myEntriesPaperMeta: {
       id: 'assessment/my-entries/paper-meta',
-      defaultMessage: '{groups, plural, other {# groups}}, {items, plural, other {# questions}}',
+      defaultMessage: '{groups, plural, other {# groups}}, {items, plural, other {# items}}',
     },
     myEntriesPaperUnit: {
       id: 'assessment/my-entries/paper-unit',
@@ -1865,15 +1952,15 @@ const i18n = definePluginMessages({
     },
     entrySheetTitle: {
       id: 'assessment/entry-sheet/title',
-      defaultMessage: 'Claim details',
+      defaultMessage: 'Entry details',
     },
     entrySheetContent: {
       id: 'assessment/entry-sheet/content',
-      defaultMessage: 'Filed content',
+      defaultMessage: 'Submission content',
     },
     entrySheetTrail: {
       id: 'assessment/entry-sheet/trail',
-      defaultMessage: 'Review account',
+      defaultMessage: 'Review history',
     },
     entrySheetContentCount: {
       id: 'assessment/entry-sheet/content-count',
@@ -1885,24 +1972,25 @@ const i18n = definePluginMessages({
     },
     entrySheetOwn: {
       id: 'assessment/entry-sheet/own',
-      defaultMessage: 'Filled in by me',
+      defaultMessage: 'Original submission',
     },
     entrySheetSupHead: {
       id: 'assessment/entry-sheet/sup-head',
-      defaultMessage: 'Added at the reviewer\u2019s request',
+      defaultMessage: 'Added at reviewer request',
     },
     entrySheetSupNote: {
       id: 'assessment/entry-sheet/sup-note',
-      defaultMessage: 'Round {round}, asked {asked}, answered {answered}',
+      defaultMessage: 'Round {round}, requested {asked}, completed {answered}',
     },
     entrySheetSupAsk: {
       id: 'assessment/entry-sheet/sup-ask',
-      defaultMessage: 'What the reviewer asked for',
+      defaultMessage: 'Reviewer request',
     },
     // the claim's story, as one timeline
     entryTrailSubtitle: {
       id: 'assessment/entry/trail-subtitle',
-      defaultMessage: '{item}　{versions} versions, {rounds} rounds, {asks} requests for material',
+      defaultMessage:
+        '{item}　{versions} versions, {rounds} review rounds, {asks} material requests',
     },
     entryTrailVersion: {
       id: 'assessment/entry/trail-version',
@@ -1916,45 +2004,48 @@ const i18n = definePluginMessages({
     },
     entryTrailAnsweredBy: {
       id: 'assessment/entry/trail-answered-by',
-      defaultMessage: '{who} added the material',
+      defaultMessage: '{who} submitted additional material',
     },
     entryTrailAskOut: {
       id: 'assessment/entry/trail-ask-out',
-      defaultMessage: 'More material was requested',
+      defaultMessage: 'Additional material requested',
     },
     entryTrailAnswerKeptOut: {
       id: 'assessment/entry/trail-answer-kept-out',
-      defaultMessage: 'Kept beside version {no} rather than over it; both are on record.',
+      defaultMessage:
+        'Stored separately from version {no}; the original submission remains unchanged.',
     },
     entrySuggestionHintOut: {
       id: 'assessment/entry/suggestion-hint-out',
-      defaultMessage: 'For reference only; whether to take it up is theirs to decide.',
+      defaultMessage:
+        'Suggestions are for reference only; the participant decides whether to apply them.',
     },
     entryTrailRoundOpened: {
       id: 'assessment/entry/trail-round-opened',
-      defaultMessage: 'Round {no} began',
+      defaultMessage: 'Review round {no} started',
     },
     entryTrailAnswered: {
       id: 'assessment/entry/trail-answered',
-      defaultMessage: 'You added the material',
+      defaultMessage: 'You submitted additional material',
     },
     entryTrailAnswerKept: {
       id: 'assessment/entry/trail-answer-kept',
-      defaultMessage: 'Kept beside version {no} rather than over it; the reviewer sees both.',
+      defaultMessage:
+        'Stored separately from version {no}; reviewers can view both the original and additional material.',
     },
     entryTrailAskCancelled: {
       id: 'assessment/entry/trail-ask-cancelled',
-      defaultMessage: 'Withdrawn by the reviewer',
+      defaultMessage: 'Material request withdrawn',
     },
     entryTrailAskWaiting: {
       id: 'assessment/entry/trail-ask-waiting',
-      defaultMessage: 'Waiting for you',
+      defaultMessage: 'Awaiting your additional material',
     },
-    entryTrailReason: { id: 'assessment/entry/trail-reason', defaultMessage: 'Reason　{value}' },
-    entryTrailRound: { id: 'assessment/entry/trail-round', defaultMessage: 'Round {no}' },
+    entryTrailReason: { id: 'assessment/entry/trail-reason', defaultMessage: 'Reason: {value}' },
+    entryTrailRound: { id: 'assessment/entry/trail-round', defaultMessage: 'Review round {no}' },
     entryTrailEmpty: {
       id: 'assessment/entry/trail-empty',
-      defaultMessage: 'Nothing has happened to this claim yet.',
+      defaultMessage: 'No submission or review history is available yet.',
     },
     // narrow screens show one pane at a time
     entrySupplementAnswer: {
@@ -1963,57 +2054,61 @@ const i18n = definePluginMessages({
     },
     entrySupplementDialogTitle: {
       id: 'assessment/entry/supplement-dialog-title',
-      defaultMessage: 'Add the requested material',
+      defaultMessage: 'Provide requested material',
     },
     entrySupplementSent: {
       id: 'assessment/entry/supplement-sent',
-      defaultMessage: 'Sent back to review.',
+      defaultMessage: 'Additional material submitted; review resumed.',
     },
     refuseSupplementOpen: {
       id: 'assessment/refuse/supplement-open',
-      defaultMessage: 'Material has already been requested here.',
+      defaultMessage: 'An additional-material request is already open for this submission.',
     },
     refuseRequestClosed: {
       id: 'assessment/refuse/request-closed',
-      defaultMessage: 'This request is no longer open.',
+      defaultMessage: 'The material request has already been closed.',
     },
     refuseAwaitingSupplement: {
       id: 'assessment/refuse/awaiting-supplement',
-      defaultMessage: 'Waiting for requested material.',
+      defaultMessage: 'The submission is awaiting additional material.',
     },
     refuseReviewNotOpen: {
       id: 'assessment/refuse/review-not-open',
-      defaultMessage: 'This round is not open for decisions.',
+      defaultMessage: 'The current review round does not allow this action.',
     },
     // the keyboard panel
-    reviewKeysTitle: { id: 'assessment/review/keys-title', defaultMessage: 'Keyboard' },
+    reviewKeysTitle: { id: 'assessment/review/keys-title', defaultMessage: 'Keyboard shortcuts' },
     reviewKeysToggle: {
       id: 'assessment/review/keys-toggle',
-      defaultMessage: '? opens and closes this panel',
+      defaultMessage: 'Press ? to open or close this panel',
     },
     reviewKeysFoot: {
       id: 'assessment/review/keys-foot',
-      defaultMessage: 'Letters choose, \u2318\u21b5 submits. While typing, letters are text.',
+      defaultMessage:
+        'Letter keys select actions; \u2318\u21b5 submits. Shortcuts are disabled while typing.',
     },
     reviewKeySubmit: {
       id: 'assessment/review/key-submit',
-      defaultMessage: 'Submit \u2014 the only key that does',
+      defaultMessage: 'Submit review decision',
     },
     reviewKeyUndo: {
       id: 'assessment/review/key-undo',
-      defaultMessage: 'Undo the last one, within 5 seconds',
+      defaultMessage: 'Undo the previous decision within 5 seconds',
     },
-    reviewKeyApprove: { id: 'assessment/review/key-approve', defaultMessage: 'Choose approve' },
-    reviewKeyReject: { id: 'assessment/review/key-reject', defaultMessage: 'Choose send back' },
+    reviewKeyApprove: { id: 'assessment/review/key-approve', defaultMessage: 'Select approve' },
+    reviewKeyReject: { id: 'assessment/review/key-reject', defaultMessage: 'Select return' },
     reviewKeyEscalate: {
       id: 'assessment/review/key-escalate',
-      defaultMessage: 'Choose escalate',
+      defaultMessage: 'Select escalate',
     },
-    reviewKeyComment: { id: 'assessment/review/key-comment', defaultMessage: 'Choose note' },
-    reviewKeyMove: { id: 'assessment/review/key-move', defaultMessage: 'Next, previous' },
+    reviewKeyComment: { id: 'assessment/review/key-comment', defaultMessage: 'Select note' },
+    reviewKeyMove: {
+      id: 'assessment/review/key-move',
+      defaultMessage: 'Next entry / previous entry',
+    },
     reviewKeyFiles: {
       id: 'assessment/review/key-files',
-      defaultMessage: 'Open the numbered file',
+      defaultMessage: 'Open the numbered material',
     },
     reviewKeyCompare: {
       id: 'assessment/review/key-compare',
@@ -2021,40 +2116,46 @@ const i18n = definePluginMessages({
     },
     reviewKeyVersions: {
       id: 'assessment/review/key-versions',
-      defaultMessage: 'Choose which version to compare',
+      defaultMessage: 'Select a comparison version',
     },
-    reviewKeyTrail: { id: 'assessment/review/key-trail', defaultMessage: 'Open the whole story' },
+    reviewKeyTrail: {
+      id: 'assessment/review/key-trail',
+      defaultMessage: 'Open full review history',
+    },
     reviewKeyCancel: {
       id: 'assessment/review/key-cancel',
-      defaultMessage: 'Clear the choice, or close this panel',
+      defaultMessage: 'Clear the selection or close the panel',
     },
     // a run finished
     reviewDoneTitle: {
       id: 'assessment/review/done-title',
-      defaultMessage: 'All {count} in this run are done',
+      defaultMessage: 'All {count} submissions in this group have been reviewed',
     },
-    reviewDoneSpent: { id: 'assessment/review/done-spent', defaultMessage: 'Time' },
+    reviewDoneSpent: { id: 'assessment/review/done-spent', defaultMessage: 'Time spent' },
     reviewDoneNext: {
       id: 'assessment/review/done-next',
-      defaultMessage: 'Next: {title} ({count})',
+      defaultMessage: 'Continue with {title} ({count})',
     },
-    reviewDoneBack: { id: 'assessment/review/done-back', defaultMessage: 'Back to the queue' },
+    reviewDoneBack: {
+      id: 'assessment/review/done-back',
+      defaultMessage: 'Back to pending reviews',
+    },
     reviewDoneLeft: {
       id: 'assessment/review/done-left',
-      defaultMessage: '{count} left in the queue',
+      defaultMessage: '{count} submissions remain',
     },
     reviewDoneList: {
       id: 'assessment/review/done-list',
-      defaultMessage: 'This run\u2019s decisions',
+      defaultMessage: 'Review decisions in this group',
     },
     reviewDoneFinal: {
       id: 'assessment/review/done-final',
-      defaultMessage: 'Submitted; no longer undoable.',
+      defaultMessage: 'Submitted and no longer eligible for undo.',
     },
     // the two dialogs that carry a word
     reviewRejectTitle: {
       id: 'assessment/review/reject-title',
-      defaultMessage: 'Send back to {name}',
+      defaultMessage: 'Return to {name}',
     },
     reviewRejectSubtitle: {
       id: 'assessment/review/reject-subtitle',
@@ -2063,23 +2164,29 @@ const i18n = definePluginMessages({
     reviewReasonLabel: { id: 'assessment/review/reason-label', defaultMessage: 'Reason' },
     reviewReasonHint: {
       id: 'assessment/review/reason-hint',
-      defaultMessage: 'Pick one',
+      defaultMessage: 'Select one',
     },
     reviewSuggestField: { id: 'assessment/review/suggest-field', defaultMessage: 'Field' },
-    reviewSuggestTheirs: { id: 'assessment/review/suggest-theirs', defaultMessage: 'As filed' },
-    reviewSuggestMine: { id: 'assessment/review/suggest-mine', defaultMessage: 'Suggested' },
-    reviewSuggestKeep: { id: 'assessment/review/suggest-keep', defaultMessage: 'Unchanged' },
+    reviewSuggestTheirs: {
+      id: 'assessment/review/suggest-theirs',
+      defaultMessage: 'Participant entry',
+    },
+    reviewSuggestMine: {
+      id: 'assessment/review/suggest-mine',
+      defaultMessage: 'Suggested revision',
+    },
+    reviewSuggestKeep: { id: 'assessment/review/suggest-keep', defaultMessage: 'Keep unchanged' },
     reviewSuggestHint: {
       id: 'assessment/review/suggest-hint',
-      defaultMessage: 'They may take it or leave it.',
+      defaultMessage: 'The participant may choose whether to apply the suggestion.',
     },
     reviewRejectFoot: {
       id: 'assessment/review/reject-foot',
-      defaultMessage: 'They will see what you write here.',
+      defaultMessage: 'The participant will be able to see the review note.',
     },
     reviewRejectConfirm: {
       id: 'assessment/review/reject-confirm',
-      defaultMessage: 'Send back',
+      defaultMessage: 'Confirm return',
     },
     reviewEscalateSubtitle: {
       id: 'assessment/review/escalate-subtitle',
@@ -2087,34 +2194,37 @@ const i18n = definePluginMessages({
     },
     reviewEscalateCommentLabel: {
       id: 'assessment/review/escalate-comment-label',
-      defaultMessage: 'What to check',
+      defaultMessage: 'Items requiring further review',
     },
     reviewEscalateCommentHint: {
       id: 'assessment/review/escalate-comment-hint',
-      defaultMessage: 'The participant never sees this',
+      defaultMessage: 'Visible to reviewers only',
     },
-    reviewEscalateFlow: { id: 'assessment/review/escalate-flow', defaultMessage: 'Where it goes' },
+    reviewEscalateFlow: {
+      id: 'assessment/review/escalate-flow',
+      defaultMessage: 'Escalation workflow',
+    },
     reviewEscalateStageAdvise: {
       id: 'assessment/review/escalate-stage-advise',
-      defaultMessage: 'Opinions only',
+      defaultMessage: 'Opinion only',
     },
     reviewEscalateStageDecide: {
       id: 'assessment/review/escalate-stage-decide',
-      defaultMessage: 'Decides',
+      defaultMessage: 'Final decision',
     },
     reviewEscalateFoot: {
       id: 'assessment/review/escalate-foot',
-      defaultMessage: 'It leaves your queue.',
+      defaultMessage: 'After submission, the entry will leave your review queue.',
     },
     // the reason lists, configured with the batch
     settingsReasonsHint: {
       id: 'assessment/settings/reasons-hint',
       defaultMessage:
-        'Rejecting asks for one main reason plus a written note. Edits here only affect later reviews; decided ones keep the words they used.',
+        'Returning a submission requires a primary reason and a written note. Changes to these reasons affect future reviews only; existing review records remain unchanged.',
     },
     settingsRejectReasons: {
       id: 'assessment/settings/reject-reasons',
-      defaultMessage: 'Send-back reasons',
+      defaultMessage: 'Return reasons',
     },
     settingsEscalateReasons: {
       id: 'assessment/settings/escalate-reasons',
@@ -2122,20 +2232,22 @@ const i18n = definePluginMessages({
     },
     settingsEscalateHint: {
       id: 'assessment/settings/escalate-hint',
-      defaultMessage: 'Escalating picks one of these the same way.',
+      defaultMessage: 'A primary reason is also selected when escalating a submission.',
     },
     settingsReasonPlaceholder: {
       id: 'assessment/settings/reason-placeholder',
-      defaultMessage: 'New reason',
+      defaultMessage: 'Reason name',
     },
     settingsReasonAdd: { id: 'assessment/settings/reason-add', defaultMessage: 'Add' },
     settingsRejectReasonsNone: {
       id: 'assessment/settings/reject-reasons-none',
-      defaultMessage: 'No preset reasons; rejecting asks only for a written note.',
+      defaultMessage:
+        'No preset return reasons are configured; reviewers will provide a written note instead.',
     },
     settingsEscalateReasonsNone: {
       id: 'assessment/settings/escalate-reasons-none',
-      defaultMessage: 'No preset reasons; escalating asks only for a written note.',
+      defaultMessage:
+        'No preset escalation reasons are configured; reviewers will provide a written note instead.',
     },
     settingsReasonRestore: {
       id: 'assessment/settings/reason-restore',
@@ -2143,174 +2255,199 @@ const i18n = definePluginMessages({
     },
     reviewOnEscalationRoute: {
       id: 'assessment/review/on-escalation-route',
-      defaultMessage: 'This has been escalated; the last step decides.',
+      defaultMessage:
+        'The submission is in the escalation workflow; the final review step determines the outcome.',
     },
-    itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basics' },
-    itemsTabFields: { id: 'assessment/items/tab-fields', defaultMessage: 'Form fields' },
+    itemsTabBasics: { id: 'assessment/items/tab-basics', defaultMessage: 'Basic information' },
+    itemsTabFields: { id: 'assessment/items/tab-fields', defaultMessage: 'Submission fields' },
     itemsTabScoring: { id: 'assessment/items/tab-scoring', defaultMessage: 'Scoring' },
-    itemsTabReview: { id: 'assessment/items/tab-review', defaultMessage: 'Review route' },
+    itemsTabReview: { id: 'assessment/items/tab-review', defaultMessage: 'Review workflow' },
     itemsFieldDescription: {
       id: 'assessment/items/field-description',
-      defaultMessage: 'Filing instructions',
+      defaultMessage: 'Submission instructions',
     },
     itemsFlowSubmit: { id: 'assessment/items/flow-submit', defaultMessage: 'Submitted' },
     itemsFlowSubmitBy: {
       id: 'assessment/items/flow-submit-by',
-      defaultMessage: 'by the participant',
+      defaultMessage: 'By participant',
     },
     itemsFlowDone: { id: 'assessment/items/flow-done', defaultMessage: 'Review complete' },
     itemsFlowDoneSub: {
       id: 'assessment/items/flow-done-sub',
-      defaultMessage: 'approved entries count',
+      defaultMessage: 'Approved entries are counted',
     },
-    itemsStageWalkUp: { id: 'assessment/items/stage-walk-up', defaultMessage: 'Walks up' },
+    itemsStageWalkUp: { id: 'assessment/items/stage-walk-up', defaultMessage: 'Search upward' },
     itemsTreeSummaryNoCap: {
       id: 'assessment/items/tree-summary-no-cap',
-      defaultMessage: '{count, plural, one {# question} other {# questions}}',
+      defaultMessage: '{count, plural, one {# item} other {# items}}',
     },
     itemsBasicsHint: {
       id: 'assessment/items/basics-hint',
-      defaultMessage: 'The title and the note appear on the filing screen.',
+      defaultMessage: 'The title and instructions are shown on the participant submission screen.',
     },
     itemsFieldsHint: {
       id: 'assessment/items/fields-hint',
-      defaultMessage: 'Filled in this order. Drag to change it.',
+      defaultMessage: 'Participants complete the fields in this order. Drag to reorder them.',
     },
     itemsScoringHint: {
       id: 'assessment/items/scoring-hint',
-      defaultMessage: 'Every approved entry counts for this. A deduction is a negative number.',
+      defaultMessage: 'Set the score for each approved entry. Use a negative value for deductions.',
     },
     itemsChainHintNew: {
       id: 'assessment/items/chain-hint-new',
-      defaultMessage: 'In order after submitting; the last step decides.',
+      defaultMessage:
+        'Submissions move through the review steps in order; the final step determines the outcome.',
     },
     itemsImpactTitle: {
       id: 'assessment/items/impact-title',
-      defaultMessage: 'This change reaches work already under way',
+      defaultMessage: 'The change affects work already in progress',
     },
     itemsImpactHint: {
       id: 'assessment/items/impact-hint',
-      defaultMessage: 'Choose what happens to it, then save.',
+      defaultMessage: 'Choose how existing submissions should be handled before saving.',
     },
     itemsImpactInReview: {
       id: 'assessment/items/impact-in-review',
-      defaultMessage: '{count} of {total} entries in review no longer fit the form',
+      defaultMessage:
+        '{count} of {total} submissions under review no longer satisfy the updated form',
     },
     itemsImpactApproved: {
       id: 'assessment/items/impact-approved',
-      defaultMessage: '{count} of {total} approved entries no longer fit the form',
+      defaultMessage: '{count} of {total} approved submissions no longer satisfy the updated form',
     },
     itemsImpactKeepEntries: {
       id: 'assessment/items/impact-keep-entries',
-      defaultMessage: 'Leave them as they are',
+      defaultMessage: 'Keep existing submissions unchanged',
     },
     itemsImpactKeepApproved: {
       id: 'assessment/items/impact-keep-approved',
-      defaultMessage: 'Leave the results standing',
+      defaultMessage: 'Keep existing review results',
     },
     itemsImpactReturnEntries: {
       id: 'assessment/items/impact-return-entries',
-      defaultMessage: 'Ask for more and send them back',
+      defaultMessage: 'Return affected submissions for revision',
     },
     itemsImpactRounds: {
       id: 'assessment/items/impact-rounds',
-      defaultMessage: '{open} reviews are running, {blocked} of them waiting for a reviewer',
+      defaultMessage: '{open} reviews are in progress, including {blocked} waiting for a reviewer',
     },
     itemsImpactRoundsKeep: {
       id: 'assessment/items/impact-rounds-keep',
-      defaultMessage: 'Only new reviews follow the new route',
+      defaultMessage:
+        'Existing reviews keep the old workflow; new reviews use the updated workflow',
     },
     itemsImpactRoundsBlocked: {
       id: 'assessment/items/impact-rounds-blocked',
-      defaultMessage: 'Also move the ones waiting for a reviewer',
+      defaultMessage: 'Move only reviews waiting for a reviewer to the updated workflow',
     },
     itemsImpactRoundsAll: {
       id: 'assessment/items/impact-rounds-all',
-      defaultMessage: 'Move every running review',
+      defaultMessage: 'Move all active reviews to the updated workflow',
     },
     itemsImpactStageGone: {
       id: 'assessment/items/impact-stage-gone',
       defaultMessage:
-        '{count} of them stand at a step this route no longer has, and stay where they are.',
+        '{count} submissions are currently at a review step removed from the updated workflow and will remain on the existing workflow.',
     },
     itemsChainHintRecorded: {
       id: 'assessment/items/chain-hint-recorded',
-      defaultMessage: 'A record counts at once; this runs only if somebody contests it.',
+      defaultMessage:
+        'Staff-recorded entries count immediately; the review workflow is used only if the result is contested.',
     },
     structureDragHint: {
       id: 'assessment/items/structure-drag-hint',
-      defaultMessage: 'Drag a row to reorder it or move it into another group.',
+      defaultMessage: 'Drag a row to reorder it or move it to another group.',
     },
     structureSearch: {
       id: 'assessment/items/structure-search',
-      defaultMessage: 'Find a group or question',
+      defaultMessage: 'Search groups or items',
     },
     structureStatusAll: { id: 'assessment/items/structure-status-all', defaultMessage: 'All' },
-    structureStatusLive: { id: 'assessment/items/structure-status-live', defaultMessage: 'Live' },
+    structureStatusLive: {
+      id: 'assessment/items/structure-status-live',
+      defaultMessage: 'Published',
+    },
     structureNew: { id: 'assessment/items/structure-new', defaultMessage: 'New' },
-    structureNewItem: { id: 'assessment/items/structure-new-item', defaultMessage: 'Question' },
+    structureNewItem: { id: 'assessment/items/structure-new-item', defaultMessage: 'Item' },
     structureColOrdinal: { id: 'assessment/items/structure-col-ordinal', defaultMessage: 'No.' },
     structureColName: { id: 'assessment/items/structure-col-name', defaultMessage: 'Name' },
-    structureColEach: { id: 'assessment/items/structure-col-each', defaultMessage: 'Each' },
-    structureColMost: { id: 'assessment/items/structure-col-most', defaultMessage: 'Per person' },
-    structureColSource: { id: 'assessment/items/structure-col-source', defaultMessage: 'Filed by' },
-    structureColChain: { id: 'assessment/items/structure-col-chain', defaultMessage: 'Review' },
+    structureColEach: {
+      id: 'assessment/items/structure-col-each',
+      defaultMessage: 'Score per entry',
+    },
+    structureColMost: { id: 'assessment/items/structure-col-most', defaultMessage: 'Entry limit' },
+    structureColSource: {
+      id: 'assessment/items/structure-col-source',
+      defaultMessage: 'Submission method',
+    },
+    structureColChain: {
+      id: 'assessment/items/structure-col-chain',
+      defaultMessage: 'Review workflow',
+    },
     structureColStatus: { id: 'assessment/items/structure-col-status', defaultMessage: 'Status' },
     structureNoMatch: {
       id: 'assessment/items/structure-no-match',
-      defaultMessage: 'Nothing here matches.',
+      defaultMessage: 'No content matches the current filters.',
     },
     structureUncapped: {
       id: 'assessment/items/structure-uncapped',
-      defaultMessage: 'no upper limit',
+      defaultMessage: 'No upper limit',
     },
-    structureUnlimited: { id: 'assessment/items/structure-unlimited', defaultMessage: 'any' },
+    structureUnlimited: { id: 'assessment/items/structure-unlimited', defaultMessage: 'Unlimited' },
     structureSteps: {
       id: 'assessment/items/structure-steps',
       defaultMessage: '{count, plural, one {# step} other {# steps}}',
     },
     paperStartTitle: {
       id: 'assessment/items/paper-start-title',
-      defaultMessage: 'Start this round a paper',
+      defaultMessage: 'Set up the scoring structure',
     },
     paperStartHint: {
       id: 'assessment/items/paper-start-hint',
-      defaultMessage: 'Name it and set the total; sections and questions come after.',
+      defaultMessage: 'Set a name and total score, then add groups and assessment items.',
     },
     paperStartGuided: {
       id: 'assessment/items/paper-start-guided',
-      defaultMessage: 'Name it and set the total',
+      defaultMessage: 'Set a name and total score',
     },
     paperStartGuidedHint: {
       id: 'assessment/items/paper-start-guided-hint',
-      defaultMessage: 'Sections and questions can be added and removed at any time afterwards.',
+      defaultMessage: 'Groups and items can be added or removed later.',
     },
     paperStartSuggested: {
       id: 'assessment/items/paper-start-suggested',
-      defaultMessage: 'suggested',
+      defaultMessage: 'Recommended',
     },
-    paperStartBlank: { id: 'assessment/items/paper-start-blank', defaultMessage: 'Leave it open' },
+    paperStartBlank: {
+      id: 'assessment/items/paper-start-blank',
+      defaultMessage: 'No total score for now',
+    },
     paperStartBlankHint: {
       id: 'assessment/items/paper-start-blank-hint',
-      defaultMessage: 'No total for now. Set one whenever the rules are settled.',
+      defaultMessage:
+        'Leave the total unrestricted for now and set it after the scoring rules are finalized.',
     },
     paperDefaultName: {
       id: 'assessment/items/paper-default-name',
-      defaultMessage: 'This batch',
+      defaultMessage: 'Assessment structure',
     },
-    paperCreateTitle: { id: 'assessment/items/paper-create-title', defaultMessage: 'The paper' },
+    paperCreateTitle: {
+      id: 'assessment/items/paper-create-title',
+      defaultMessage: 'Scoring structure',
+    },
     paperCreateHint: {
       id: 'assessment/items/paper-create-hint',
-      defaultMessage: 'Name it and set the total.',
+      defaultMessage: 'Set a name and total score.',
     },
     paperCreate: { id: 'assessment/items/paper-create', defaultMessage: 'Create' },
-    paperTotal: { id: 'assessment/items/paper-total', defaultMessage: 'Total' },
+    paperTotal: { id: 'assessment/items/paper-total', defaultMessage: 'Total score' },
     paperTotalHint: {
       id: 'assessment/items/paper-total-hint',
-      defaultMessage: 'The sections inside cannot add up past it. Empty means no upper limit.',
+      defaultMessage:
+        'The upper limits of top-level groups cannot exceed the total. Leave blank for no total-score limit.',
     },
-    paperFloorNone: { id: 'assessment/items/paper-floor-none', defaultMessage: 'no lower limit' },
-    paperEdit: { id: 'assessment/items/paper-edit', defaultMessage: 'Edit the paper' },
+    paperFloorNone: { id: 'assessment/items/paper-floor-none', defaultMessage: 'No lower limit' },
+    paperEdit: { id: 'assessment/items/paper-edit', defaultMessage: 'Edit scoring structure' },
     itemsTreeTitle: { id: 'assessment/items/tree-title', defaultMessage: 'Structure' },
     itemsPreviewTitle: {
       id: 'assessment/items/preview-title',
@@ -2318,7 +2455,7 @@ const i18n = definePluginMessages({
     },
     itemsPreviewMax: {
       id: 'assessment/items/preview-max',
-      defaultMessage: '{count, plural, one {At most # entry} other {At most # entries}}',
+      defaultMessage: '{count, plural, one {Up to # entry} other {Up to # entries}}',
     },
     itemsPreviewNoMax: {
       id: 'assessment/items/preview-no-max',
@@ -2326,76 +2463,78 @@ const i18n = definePluginMessages({
     },
     itemsPreviewValue: {
       id: 'assessment/items/preview-value',
-      defaultMessage: '{value} pts on approval',
+      defaultMessage: '{value} pts when approved',
     },
     itemsPreviewUpload: {
       id: 'assessment/items/preview-upload',
       defaultMessage: '{count, plural, one {Up to # file} other {Up to # files}}',
     },
-    itemsUntitled: { id: 'assessment/items/untitled', defaultMessage: 'Untitled question' },
+    itemsUntitled: { id: 'assessment/items/untitled', defaultMessage: 'Unnamed item' },
     itemsReviewCovered: {
       id: 'assessment/items/review-covered',
       defaultMessage:
-        '{count, plural, one {The one unit at this level has someone who can review} other {All # units at this level have someone who can review}}',
+        '{count, plural, one {The unit at this level has an available reviewer} other {All # units at this level have an available reviewer}}',
     },
     itemsReviewUncovered: {
       id: 'assessment/items/review-uncovered',
-      defaultMessage: '{names}: nobody holds any of these roles yet, so submissions there wait.',
+      defaultMessage:
+        '{names}: no one currently holds any selected review role, so affected submissions will wait.',
     },
     itemsReviewNoUnits: {
       id: 'assessment/items/review-no-units',
       defaultMessage:
-        'Nobody in this round sits under a unit of this kind, so nothing can be reviewed here.',
+        'No participants in this batch belong to a unit at the selected level, so review cannot be configured at this level.',
     },
     itemsReviewLevel: {
       id: 'assessment/items/review-level',
-      defaultMessage: 'Reviewed at which level',
+      defaultMessage: 'Review level',
     },
-    itemsReviewRoles: { id: 'assessment/items/review-roles', defaultMessage: 'Reviewed by whom' },
+    itemsReviewRoles: { id: 'assessment/items/review-roles', defaultMessage: 'Reviewer roles' },
     itemsReviewRolesHint: {
       id: 'assessment/items/review-roles-hint',
-      defaultMessage: 'People holding one of these roles at that exact unit.',
+      defaultMessage: 'Reviewers are people holding any selected role in the relevant unit.',
     },
     itemsFormEmpty: {
       id: 'assessment/items/form-empty',
-      defaultMessage: 'No fields yet. A question needs at least one.',
+      defaultMessage: 'No fields have been added. At least one field is required.',
     },
-    itemsFieldReason: { id: 'assessment/items/field-reason', defaultMessage: 'Reason' },
-    itemsSaved: { id: 'assessment/items/saved', defaultMessage: 'Question saved.' },
-    itemsVoid: { id: 'assessment/items/void', defaultMessage: 'Withdraw' },
-    itemsVoidTitle: { id: 'assessment/items/void-title', defaultMessage: 'Withdraw this question' },
+    itemsFieldReason: { id: 'assessment/items/field-reason', defaultMessage: 'Reason for change' },
+    itemsSaved: { id: 'assessment/items/saved', defaultMessage: 'Item saved.' },
+    itemsVoid: { id: 'assessment/items/void', defaultMessage: 'Disable' },
+    itemsVoidTitle: { id: 'assessment/items/void-title', defaultMessage: 'Disable the item' },
     itemsVoidHint: {
       id: 'assessment/items/void-hint',
       defaultMessage:
-        'Open entries end here; decided ones keep their outcome. Say why - everyone affected reads it.',
+        'Incomplete submissions will be voided; existing review outcomes remain unchanged. Provide a reason, which will be visible to affected users.',
     },
     itemsVoidReason: { id: 'assessment/items/void-reason', defaultMessage: 'Reason' },
-    itemsRestore: { id: 'assessment/items/restore', defaultMessage: 'Reopen' },
+    itemsRestore: { id: 'assessment/items/restore', defaultMessage: 'Re-enable' },
     itemsDelete: { id: 'assessment/items/delete', defaultMessage: 'Delete' },
-    itemsStatusVoided: { id: 'assessment/items/status-voided', defaultMessage: 'Withdrawn' },
+    itemsStatusVoided: { id: 'assessment/items/status-voided', defaultMessage: 'Disabled' },
 
     /** what the whole paper adds up to, read above its structure */
     /** what goes between two things named in a row; a locale picks its own */
     paperAllocated: {
       id: 'assessment/items/paper-allocated',
-      defaultMessage: 'Sections hold {sum} of {total}',
+      defaultMessage: 'Group limits allocated: {sum} of {total}',
     },
     paperAllocatedFree: {
       id: 'assessment/items/paper-allocated-free',
-      defaultMessage: 'Sections hold {sum}',
+      defaultMessage: 'Combined group limits: {sum}',
     },
     paperCapOver: {
       id: 'assessment/items/paper-cap-over',
-      defaultMessage: 'Sections add up to {sum}, past the total {total}',
+      defaultMessage: 'Combined group limits are {sum}, exceeding the total score of {total}',
     },
     paperCapUnset: {
       id: 'assessment/items/paper-cap-unset',
-      defaultMessage: 'Some top sections have no upper limit, so the paper has none either',
+      defaultMessage:
+        'At least one top-level group has no upper limit, so the scoring structure has no overall upper limit',
     },
     listSeparator: { id: 'assessment/items/list-separator', defaultMessage: ', ' },
     structureSubtotal: {
       id: 'assessment/items/structure-subtotal',
-      defaultMessage: 'holds {sum}',
+      defaultMessage: 'Subtotal {sum}',
     },
     structureRowAddGroup: {
       id: 'assessment/items/structure-row-add-group',
@@ -2405,72 +2544,75 @@ const i18n = definePluginMessages({
     structureOpen: { id: 'assessment/items/structure-open', defaultMessage: 'Open' },
 
     /** one question, opened out of the structure */
-    itemsBack: { id: 'assessment/items/back', defaultMessage: 'Back to the structure' },
+    itemsBack: { id: 'assessment/items/back', defaultMessage: 'Back to structure' },
     itemsPaperPosition: {
       id: 'assessment/items/paper-position',
-      defaultMessage: 'Question {index} of {total}',
+      defaultMessage: 'Item {index} of {total}',
     },
     itemsPublishedVersion: {
       id: 'assessment/items/published-version',
-      defaultMessage: 'Published, version {no}',
+      defaultMessage: 'Published · version {no}',
     },
     itemsDraftVersion: {
       id: 'assessment/items/draft-version',
-      defaultMessage: 'Unpublished, version {no}',
+      defaultMessage: 'Unpublished · version {no}',
     },
     itemsLimitMaxLength: {
       id: 'assessment/items/limit-max-length',
-      defaultMessage: 'up to {count} characters',
+      defaultMessage: 'Up to {count} characters',
     },
     itemsLimitDates: { id: 'assessment/items/limit-dates', defaultMessage: '{from} to {until}' },
     itemsLimitFiles: {
       id: 'assessment/items/limit-files',
-      defaultMessage: '{count, plural, one {# file} other {up to # files}}',
+      defaultMessage: '{count, plural, one {Up to # file} other {Up to # files}}',
     },
     itemsFixedValueUnit: { id: 'assessment/items/fixed-value-unit', defaultMessage: 'pts' },
     itemsMaxEntriesAny: { id: 'assessment/items/max-entries-any', defaultMessage: 'No limit' },
     itemsScoringMethodFixed: {
       id: 'assessment/items/scoring-method-fixed',
-      defaultMessage: 'Fixed value per entry',
+      defaultMessage: 'Fixed score per entry',
     },
     itemsCeiling: {
       id: 'assessment/items/ceiling',
-      defaultMessage: 'Most this question can count',
+      defaultMessage: 'Maximum score from this item',
     },
     // the file kinds an administrator picks from, shared by the question's
     // own fields and by a reviewer asking for more material
     itemsGrantedRoster: {
       id: 'assessment/items/granted-roster',
-      defaultMessage: 'This round\u2019s roster',
+      defaultMessage: 'Batch participant roster',
     },
     itemsGrantedRosterCount: {
       id: 'assessment/items/granted-roster-count',
-      defaultMessage: '{count, plural, one {# person} other {# people}}',
+      defaultMessage: '{count, plural, one {# participant} other {# participants}}',
     },
     fileKindPdf: { id: 'assessment/files/kind-pdf', defaultMessage: 'PDF' },
     fileKindImage: { id: 'assessment/files/kind-image', defaultMessage: 'Images' },
     fileKindWord: { id: 'assessment/files/kind-word', defaultMessage: 'Word documents' },
     fileKindSheet: { id: 'assessment/files/kind-sheet', defaultMessage: 'Spreadsheets' },
-    fileKindSlides: { id: 'assessment/files/kind-slides', defaultMessage: 'Slides' },
+    fileKindSlides: { id: 'assessment/files/kind-slides', defaultMessage: 'Presentations' },
     fileKindArchive: { id: 'assessment/files/kind-archive', defaultMessage: 'Archives' },
     itemsAcceptOther: {
       id: 'assessment/items/accept-other',
-      defaultMessage: 'Also accept other formats',
+      defaultMessage: 'Also allow other formats',
     },
     itemsAcceptOtherHint: {
       id: 'assessment/items/accept-other-hint',
       defaultMessage:
-        'Comma separated; extensions start with a dot. A format written wrong is refused at upload, so check one real file against it.',
+        'Separate extensions with commas and include the leading dot. Invalid entries will cause uploads to be rejected, so verify them against actual files.',
     },
-    itemsAcceptResolved: { id: 'assessment/items/accept-resolved', defaultMessage: 'Accepts' },
-    itemsAcceptAny: { id: 'assessment/items/accept-any', defaultMessage: 'Anything' },
+    itemsAcceptResolved: {
+      id: 'assessment/items/accept-resolved',
+      defaultMessage: 'Allowed formats',
+    },
+    itemsAcceptAny: { id: 'assessment/items/accept-any', defaultMessage: 'Any format' },
     itemsAcceptUnwritable: {
       id: 'assessment/items/accept-unwritable',
-      defaultMessage: 'Not a format: {tokens}',
+      defaultMessage: 'Invalid formats: {tokens}',
     },
     itemsFieldCount: {
       id: 'assessment/items/field-count',
-      defaultMessage: '{count, plural, =0 {No fields yet} one {# field} other {# fields}}',
+      defaultMessage: '{count, plural, =0 {No fields} one {# field} other {# fields}}',
     },
     itemsRequiredCount: {
       id: 'assessment/items/required-count',
@@ -2478,32 +2620,35 @@ const i18n = definePluginMessages({
     },
     itemsFieldOpenHint: {
       id: 'assessment/items/field-open-hint',
-      defaultMessage: 'Open a line to change it',
+      defaultMessage: 'Select a field to edit its settings',
     },
     itemsKindLocked: {
       id: 'assessment/items/kind-locked',
-      defaultMessage: 'The kind cannot change once the question exists.',
+      defaultMessage: 'The item type cannot be changed after creation.',
     },
     itemsCeilingSource: {
       id: 'assessment/items/ceiling-source',
-      defaultMessage: 'The amount comes from {name}.',
+      defaultMessage: 'Score source: {name}.',
     },
     itemsCeilingHow: {
       id: 'assessment/items/ceiling-how',
       defaultMessage: '{value} × {count, plural, one {# entry} other {# entries}}.',
     },
-    itemsGrantedValue: { id: 'assessment/items/granted-value', defaultMessage: 'Per person' },
+    itemsGrantedValue: {
+      id: 'assessment/items/granted-value',
+      defaultMessage: 'Score per participant',
+    },
     itemsCeilingHowGranted: {
       id: 'assessment/items/ceiling-how-granted',
       defaultMessage: '{value} for every participant on the roster.',
     },
     itemsCeilingHowAny: {
       id: 'assessment/items/ceiling-how-any',
-      defaultMessage: 'No limit on entries, so this question has no upper limit of its own.',
+      defaultMessage: 'Entry count is unlimited, so the item has no upper limit of its own.',
     },
     itemsCeilingSectionCapped: {
       id: 'assessment/items/ceiling-section-capped',
-      defaultMessage: '{name} up to {value}',
+      defaultMessage: '{name} limit {value}',
     },
     itemsCeilingSectionFree: {
       id: 'assessment/items/ceiling-section-free',
@@ -2511,7 +2656,8 @@ const i18n = definePluginMessages({
     },
     itemsCeilingNote: {
       id: 'assessment/items/ceiling-note',
-      defaultMessage: 'Section limits: {chain}. Anything past them is cut at settlement.',
+      defaultMessage:
+        'Group path: {chain}. Scores above a group limit are capped during calculation.',
     },
     /** the same answer as itemsReviewUncovered, in the width a chain step has */
     itemsReviewUncoveredCount: {
@@ -2519,46 +2665,49 @@ const i18n = definePluginMessages({
       defaultMessage:
         '{count, plural, one {# unit has no reviewer} other {# units have no reviewer}}',
     },
-    itemsStageUnset: { id: 'assessment/items/stage-unset', defaultMessage: 'Not set up yet' },
+    itemsStageUnset: { id: 'assessment/items/stage-unset', defaultMessage: 'Not configured' },
     itemsStageUnsetHint: {
       id: 'assessment/items/stage-unset-hint',
-      defaultMessage: 'Say where and who reviews here.',
+      defaultMessage: 'Select the review level and reviewer roles.',
     },
     itemsEscalated: { id: 'assessment/items/escalated', defaultMessage: 'Escalated' },
-    itemsEscalationBy: { id: 'assessment/items/escalation-by', defaultMessage: 'By a reviewer' },
+    itemsEscalationBy: {
+      id: 'assessment/items/escalation-by',
+      defaultMessage: 'Initiated by a reviewer',
+    },
     itemsEscalationSettled: {
       id: 'assessment/items/escalation-settled',
-      defaultMessage: 'Escalation settled',
+      defaultMessage: 'Escalation complete',
     },
     itemsEscalationSettledSub: {
       id: 'assessment/items/escalation-settled-sub',
-      defaultMessage: 'The last step decides',
+      defaultMessage: 'The final review step determines the outcome',
     },
     itemsCannotSave: {
       id: 'assessment/items/cannot-save',
-      defaultMessage: 'Not saved yet: {reasons}.',
+      defaultMessage: 'Cannot save yet: {reasons}.',
     },
-    itemsNeedTitle: { id: 'assessment/items/need-title', defaultMessage: 'the title is empty' },
-    itemsNeedGroup: { id: 'assessment/items/need-group', defaultMessage: 'no section chosen' },
+    itemsNeedTitle: { id: 'assessment/items/need-title', defaultMessage: 'item title is missing' },
+    itemsNeedGroup: { id: 'assessment/items/need-group', defaultMessage: 'no group is selected' },
     itemsNeedValue: {
       id: 'assessment/items/need-value',
-      defaultMessage: 'no value per approved entry',
+      defaultMessage: 'score per approved entry is missing',
     },
     itemsNeedFieldLabel: {
       id: 'assessment/items/need-field-label',
-      defaultMessage: 'a form field has no name',
+      defaultMessage: 'a submission field has no name',
     },
     itemsNeedStage: {
       id: 'assessment/items/need-stage',
-      defaultMessage: 'a review step is not set up',
+      defaultMessage: 'a review step is incomplete',
     },
     itemsEscalationAddStep: {
       id: 'assessment/items/escalation-add-step',
-      defaultMessage: 'Add an escalation step',
+      defaultMessage: 'Add escalation step',
     },
     itemsPlacementTitle: {
       id: 'assessment/items/placement-title',
-      defaultMessage: 'Where it counts',
+      defaultMessage: 'Scoring position',
     },
     itemsPlacementSubtotal: {
       id: 'assessment/items/placement-subtotal',
@@ -2566,10 +2715,10 @@ const i18n = definePluginMessages({
     },
     itemsPlacementCap: {
       id: 'assessment/items/placement-cap',
-      defaultMessage: '{name} upper limit',
+      defaultMessage: '{name} limit',
     },
-    itemsPlacementPaper: { id: 'assessment/items/placement-paper', defaultMessage: 'Round total' },
-    itemsVersionTitle: { id: 'assessment/items/version-title', defaultMessage: 'Versions' },
+    itemsPlacementPaper: { id: 'assessment/items/placement-paper', defaultMessage: 'Batch total' },
+    itemsVersionTitle: { id: 'assessment/items/version-title', defaultMessage: 'Version' },
     itemsVersionNote: {
       id: 'assessment/items/version-note',
       defaultMessage: 'Version {no}, saved {date}.',
@@ -2578,198 +2727,204 @@ const i18n = definePluginMessages({
       id: 'assessment/items/version-new',
       defaultMessage: 'Not saved yet.',
     },
-    paperStartAction: { id: 'assessment/items/paper-start-action', defaultMessage: 'Start' },
+    paperStartAction: { id: 'assessment/items/paper-start-action', defaultMessage: 'Start setup' },
 
     /** the filing screen: the round's structure, and one's own claims in it */
     myEntriesCounted: { id: 'assessment/entry/counted', defaultMessage: 'Counted' },
     myEntriesQuestions: {
       id: 'assessment/entry/questions',
-      defaultMessage: '{count, plural, one {# question} other {# questions}}',
+      defaultMessage: '{count, plural, one {# item} other {# items}}',
     },
     myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'Recorded by staff' },
-    myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open to you' },
-    myEntriesResume: { id: 'assessment/entry/resume', defaultMessage: 'Keep filling in' },
+    myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open for submission' },
+    myEntriesResume: { id: 'assessment/entry/resume', defaultMessage: 'Continue editing' },
     entryLastRoom: {
       id: 'assessment/entry/last-room',
-      defaultMessage: 'This is the last one this question will take from you.',
+      defaultMessage: 'One submission slot remains for this item.',
     },
     entryAlreadyFiled: {
       id: 'assessment/entry/already-filed',
-      defaultMessage: 'Already filed here',
+      defaultMessage: 'Already submitted',
     },
     entryNoDuplicates: {
       id: 'assessment/entry/no-duplicates',
-      defaultMessage: 'Do not file the same achievement twice.',
+      defaultMessage: 'Do not submit the same achievement more than once.',
     },
     entryDraftKept: {
       id: 'assessment/entry/draft-kept',
-      defaultMessage: 'A draft can be picked up again any time.',
+      defaultMessage: 'Saved drafts can be continued at any time.',
     },
     entrySaveDraft: { id: 'assessment/entry/save-draft', defaultMessage: 'Save as draft' },
     myEntriesFilterAll: { id: 'assessment/entry/filter-all', defaultMessage: 'All' },
     myEntriesFilterTodo: {
       id: 'assessment/entry/filter-todo',
-      defaultMessage: 'Waiting on you',
+      defaultMessage: 'Action required',
     },
     myEntriesFilterNone: {
       id: 'assessment/entry/filter-none',
-      defaultMessage: 'Nothing is waiting on you.',
+      defaultMessage: 'No items currently require your action.',
     },
     myEntriesBasis: { id: 'assessment/entry/basis', defaultMessage: 'Scoring basis' },
     myEntriesBasisSoon: {
       id: 'assessment/entry/basis-soon',
-      defaultMessage: 'No clause linked yet.',
+      defaultMessage: 'No scoring rule has been linked yet.',
     },
-    entryNth: { id: 'assessment/entry/nth', defaultMessage: 'Claim {n}' },
-    entryFlow: { id: 'assessment/entry/flow', defaultMessage: 'After you submit' },
-    entryFlowStep: { id: 'assessment/entry/flow-step', defaultMessage: 'Reviewer {n}' },
+    entryNth: { id: 'assessment/entry/nth', defaultMessage: 'Entry {n}' },
+    entryFlow: { id: 'assessment/entry/flow', defaultMessage: 'Review workflow' },
+    entryFlowStep: { id: 'assessment/entry/flow-step', defaultMessage: 'Review step {n}' },
     entryFlowNote: {
       id: 'assessment/entry/flow-note',
-      defaultMessage: 'You can withdraw and change it until the first reviewer acts.',
+      defaultMessage:
+        'The entry can be withdrawn and edited until the first reviewer takes action.',
     },
     entryFileDrop: {
       id: 'assessment/entry/file-drop',
-      defaultMessage: 'Drop files here, or click to choose',
+      defaultMessage: 'Drop files here or click to select',
     },
     entryFileRoom: {
       id: 'assessment/entry/file-room',
-      defaultMessage: '{count, plural, one {# more allowed} other {# more allowed}}',
+      defaultMessage: '{count, plural, one {# more file allowed} other {# more files allowed}}',
     },
     entryDateWithin: {
       id: 'assessment/entry/date-within',
-      defaultMessage: 'Must fall between {start} and {end}',
+      defaultMessage: 'Date must be between {start} and {end}',
     },
 
-    tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Staffs' },
-    tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Settings' },
+    tabAccess: { id: 'assessment/access/tab', defaultMessage: 'Staff permissions' },
+    tabSettings: { id: 'assessment/settings/tab', defaultMessage: 'Batch settings' },
     settingsHint: {
       id: 'assessment/settings/hint',
-      defaultMessage: 'Change what this batch is called and what it covers.',
+      defaultMessage: 'Edit the batch name, material date range, and other settings.',
     },
-    settingsBasics: { id: 'assessment/settings/basics', defaultMessage: 'The batch itself' },
+    settingsBasics: { id: 'assessment/settings/basics', defaultMessage: 'Basic information' },
     settingsBasicsHint: {
       id: 'assessment/settings/basics-hint',
-      defaultMessage: 'The material range decides which achievements may be reported here.',
+      defaultMessage:
+        'The material date range determines which achievements may be submitted in this batch.',
     },
     settingsNote: { id: 'assessment/settings/note', defaultMessage: 'Notes' },
     settingsNoteHint: {
       id: 'assessment/settings/note-hint',
-      defaultMessage: 'Seen by whoever works on this batch.',
+      defaultMessage:
+        'Visible to batch participants and staff. Do not include sensitive information.',
     },
-    settingsUnsaved: { id: 'assessment/settings/unsaved', defaultMessage: 'Not saved yet' },
-    settingsLifecycle: { id: 'assessment/settings/lifecycle', defaultMessage: 'This round' },
+    settingsUnsaved: { id: 'assessment/settings/unsaved', defaultMessage: 'Not saved' },
+    settingsLifecycle: { id: 'assessment/settings/lifecycle', defaultMessage: 'Batch status' },
     settingsLifecycleHint: {
       id: 'assessment/settings/lifecycle-hint',
-      defaultMessage: 'An archived batch is read-only: no more filing, no more reviewing.',
+      defaultMessage:
+        'Archived batches are read-only and no longer allow submissions, reviews, or configuration changes.',
     },
     phasesHint: {
       id: 'assessment/phase/hint',
-      defaultMessage: 'Arrange the stages of this batch and choose what each one opens.',
+      defaultMessage:
+        'Configure stage order, start times, and the actions available during each stage.',
     },
     phasesEmpty: {
       id: 'assessment/phase/empty',
-      defaultMessage: 'No stages yet. Add them from a template, or one at a time.',
+      defaultMessage: 'No stages have been added. Add stages manually or from a template.',
     },
-    addPhase: { id: 'assessment/phase/add', defaultMessage: 'Add a stage' },
+    addPhase: { id: 'assessment/phase/add', defaultMessage: 'Add stage' },
     colStage: { id: 'assessment/plan/col-stage', defaultMessage: 'Stage' },
-    colOpens: { id: 'assessment/plan/col-opens', defaultMessage: 'Opens' },
-    colPlannedStart: { id: 'assessment/plan/col-start', defaultMessage: 'Starts' },
+    colOpens: { id: 'assessment/plan/col-opens', defaultMessage: 'Available actions' },
+    colPlannedStart: { id: 'assessment/plan/col-start', defaultMessage: 'Start time' },
     colStatus: { id: 'assessment/plan/col-status', defaultMessage: 'Status' },
-    descriptionLabel: { id: 'assessment/phase/description', defaultMessage: 'What it is for' },
-    entryNoteLabel: { id: 'assessment/phase/entry-note', defaultMessage: 'Waiting on' },
+    descriptionLabel: { id: 'assessment/phase/description', defaultMessage: 'Stage description' },
+    entryNoteLabel: { id: 'assessment/phase/entry-note', defaultMessage: 'Scheduling note' },
     entryNoteHint: {
       id: 'assessment/phase/entry-note-hint',
-      defaultMessage: 'Shown to everybody until this stage has a time.',
+      defaultMessage: 'Shown to participants until a start time is scheduled for the stage.',
     },
     entryNotePlaceholder: {
       id: 'assessment/phase/entry-note-placeholder',
-      defaultMessage: 'e.g. the college has to approve the list first',
+      defaultMessage: 'e.g. Expected to begin after the participant list is approved',
     },
     descriptionPlaceholder: {
       id: 'assessment/phase/description-placeholder',
-      defaultMessage: 'What happens in this stage',
+      defaultMessage: 'Describe the main work performed during this stage',
     },
     notScheduled: { id: 'assessment/plan/not-scheduled', defaultMessage: 'Not scheduled' },
     awaitingEarlier: {
       id: 'assessment/plan/awaiting-earlier',
-      defaultMessage: 'Schedule the stage above first',
+      defaultMessage: 'Schedule the previous stage first',
     },
     lockedBySchedule: { id: 'assessment/plan/locked', defaultMessage: 'Scheduled' },
-    upNextBadge: { id: 'assessment/plan/up-next', defaultMessage: 'Ready for a time' },
+    upNextBadge: { id: 'assessment/plan/up-next', defaultMessage: 'Ready to schedule' },
     enterEditing: {
       id: 'assessment/plan/enter-editing',
       defaultMessage: 'Add or edit stages',
     },
     unscheduledFrom: {
       id: 'assessment/plan/unscheduled-from',
-      defaultMessage: 'The stages below have no time yet',
+      defaultMessage: 'The following stages are not yet scheduled',
     },
-    insertHere: { id: 'assessment/plan/insert-here', defaultMessage: 'Add a stage here' },
-    editDetails: { id: 'assessment/phase/edit-details', defaultMessage: 'Details' },
+    insertHere: { id: 'assessment/plan/insert-here', defaultMessage: 'Add stage here' },
+    editDetails: { id: 'assessment/phase/edit-details', defaultMessage: 'Edit details' },
     saveShort: { id: 'assessment/plan/save-short', defaultMessage: 'Save' },
     moveUp: { id: 'assessment/plan/move-up', defaultMessage: 'Move up' },
     moveDown: { id: 'assessment/plan/move-down', defaultMessage: 'Move down' },
     done: { id: 'assessment/action/done', defaultMessage: 'Done' },
     pendingShort,
-    goSchedule: { id: 'assessment/schedule/go', defaultMessage: 'Set a time' },
+    goSchedule: { id: 'assessment/schedule/go', defaultMessage: 'Set start time' },
     scheduleTitle,
     describeTitle,
     describeBody: {
       id: 'assessment/phase/describe-body',
       defaultMessage:
-        'Shown wherever this stage appears, to administrators and participants alike.',
+        'The stage name and description are visible to administrators and participants.',
     },
-    startModeLegend: { id: 'assessment/schedule/mode', defaultMessage: 'When it begins' },
-    startModeLater: { id: 'assessment/schedule/mode-later', defaultMessage: 'At a set time' },
+    startModeLegend: { id: 'assessment/schedule/mode', defaultMessage: 'Start method' },
+    startModeLater: { id: 'assessment/schedule/mode-later', defaultMessage: 'Scheduled start' },
     startModeLaterHint: {
       id: 'assessment/schedule/mode-later-hint',
-      defaultMessage: 'The batch enters this stage on its own, at the time you choose.',
+      defaultMessage: 'The batch automatically enters the stage at the selected time.',
     },
-    justNow: { id: 'assessment/plan/just-now', defaultMessage: 'just now' },
+    justNow: { id: 'assessment/plan/just-now', defaultMessage: 'Just now' },
     scheduleBody: {
       id: 'assessment/schedule/body',
-      defaultMessage: 'The batch enters this stage at the time you choose.',
+      defaultMessage: 'The batch automatically enters the stage at the selected time.',
     },
-    scheduleConfirm: { id: 'assessment/schedule/confirm', defaultMessage: 'Schedule it' },
-    plannedStartLabel: { id: 'assessment/schedule/planned-at', defaultMessage: 'Starts at' },
+    scheduleConfirm: { id: 'assessment/schedule/confirm', defaultMessage: 'Confirm schedule' },
+    plannedStartLabel: { id: 'assessment/schedule/planned-at', defaultMessage: 'Start time' },
     startNow: { id: 'assessment/schedule/start-now', defaultMessage: 'Start now' },
     startNowTitle,
     startNowBody: {
       id: 'assessment/schedule/start-now-body',
-      defaultMessage: 'The stage running now ends and this one begins, from this moment.',
+      defaultMessage: 'The current stage will end immediately and the selected stage will begin.',
     },
-    unschedule: { id: 'assessment/schedule/unschedule', defaultMessage: 'Withdraw' },
+    unschedule: { id: 'assessment/schedule/unschedule', defaultMessage: 'Cancel schedule' },
     unscheduleTitle,
-    templateAdd: { id: 'assessment/template/add', defaultMessage: 'Add from a template' },
+    templateAdd: { id: 'assessment/template/add', defaultMessage: 'Add from template' },
     templateAddBody: {
       id: 'assessment/template/add-body',
       defaultMessage:
-        'The template\u2019s stages are added to the end, with no times of their own.',
+        'Stages from the template are appended in order without start times and can be scheduled individually afterwards.',
     },
     'refusal.schedule-out-of-order': {
       id: 'assessment/refusal/schedule-out-of-order',
-      defaultMessage: 'Stages take their times in order: schedule the one above this first.',
+      defaultMessage: 'Stages must be scheduled in order. Schedule the previous stage first.',
     },
     'refusal.unschedule-not-from-tail': {
       id: 'assessment/refusal/unschedule-not-from-tail',
-      defaultMessage: 'Withdraw the last scheduled stage first; times are given back from the end.',
+      defaultMessage:
+        'Cancel the last scheduled stage first; schedules must be removed in reverse order.',
     },
     'refusal.scheduled-phase-immutable': {
       id: 'assessment/refusal/scheduled-phase-immutable',
-      defaultMessage: 'A stage that already has a time cannot be moved or removed.',
+      defaultMessage: 'A scheduled stage cannot be moved or deleted.',
     },
-    removePhase: { id: 'assessment/phase/remove', defaultMessage: 'Remove stage' },
+    removePhase: { id: 'assessment/phase/remove', defaultMessage: 'Delete stage' },
 
     // how a stage starts
     displayNameLabel: { id: 'assessment/phase/display-name', defaultMessage: 'Stage name' },
     unnamedSegment: { id: 'assessment/plan/unnamed', defaultMessage: 'Unnamed stage' },
-    newBadge: { id: 'assessment/plan/new-badge', defaultMessage: 'Not saved yet' },
+    newBadge: { id: 'assessment/plan/new-badge', defaultMessage: 'Not saved' },
     discardTitle,
     discardEdits: { id: 'assessment/plan/discard', defaultMessage: 'Discard changes' },
-    pickDate: { id: 'assessment/phase/pick-date', defaultMessage: 'Pick a date' },
-    pickTime: { id: 'assessment/phase/pick-time', defaultMessage: 'Pick a time' },
+    pickDate: { id: 'assessment/phase/pick-date', defaultMessage: 'Select date' },
+    pickTime: { id: 'assessment/phase/pick-time', defaultMessage: 'Select time' },
     clearTime: { id: 'assessment/phase/clear-time', defaultMessage: 'Clear' },
-    currentBadge: { id: 'assessment/phase/current', defaultMessage: 'Now' },
+    currentBadge: { id: 'assessment/phase/current', defaultMessage: 'In progress' },
     endedBadge: { id: 'assessment/phase/ended', defaultMessage: 'Ended' },
     opensCount,
 
@@ -2782,34 +2937,34 @@ const i18n = definePluginMessages({
     // templates - two different things, both optional
     timelineTemplateLabel: {
       id: 'assessment/template/timeline-label',
-      defaultMessage: 'Timeline',
+      defaultMessage: 'Timeline template',
     },
     timelineTemplateEmpty: {
       id: 'assessment/template/timeline-empty',
-      defaultMessage: 'No timeline templates yet; stages can be added manually.',
+      defaultMessage: 'No timeline templates are available. Stages can still be added manually.',
     },
     timelineTemplateChoose: {
       id: 'assessment/template/timeline-choose',
-      defaultMessage: 'Choose a timeline…',
+      defaultMessage: 'Select a timeline template…',
     },
     phaseTemplateLegend: {
       id: 'assessment/template/phase-legend',
-      defaultMessage: 'Fill this stage from a preset',
+      defaultMessage: 'Apply stage template',
     },
     phaseTemplateChoose: {
       id: 'assessment/template/phase-choose',
-      defaultMessage: 'Choose a preset…',
+      defaultMessage: 'Select a stage template…',
     },
-    phaseTemplateApply: { id: 'assessment/template/phase-apply', defaultMessage: 'Fill in' },
+    phaseTemplateApply: { id: 'assessment/template/phase-apply', defaultMessage: 'Apply' },
 
     // what a stage opens
     profileTitle: {
       id: 'assessment/profile/title',
-      defaultMessage: 'Actions open during this stage',
+      defaultMessage: 'Actions available during this stage',
     },
     profileHint: {
       id: 'assessment/profile/hint',
-      defaultMessage: 'Applies to this stage only; role permissions are unchanged.',
+      defaultMessage: 'Applies only during this stage and does not change global role permissions.',
     },
 
     // ------------------------------------------------------------------
@@ -2817,50 +2972,53 @@ const i18n = definePluginMessages({
     rosterHint: {
       id: 'assessment/roster/hint',
       defaultMessage:
-        'Manage who takes part in this batch, and act on what changed in the organization.',
+        'Manage batch participants and process roster changes caused by organization updates.',
     },
     importFromOrganization: {
       id: 'assessment/roster/import',
-      defaultMessage: 'Import from the organization',
+      defaultMessage: 'Import from organization',
     },
     importTitle: { id: 'assessment/roster/import-title', defaultMessage: 'Import participants' },
     importHint: {
       id: 'assessment/roster/import-hint',
-      defaultMessage: 'Anybody already on the list is skipped.',
+      defaultMessage: 'Participants already on the roster are skipped automatically.',
     },
     importChoose: {
       id: 'assessment/roster/import-choose',
-      defaultMessage: 'Choose units and participant types.',
+      defaultMessage: 'Select organization units and participant types.',
     },
     importConfirm: { id: 'assessment/roster/import-confirm', defaultMessage: 'Import' },
     importCandidates,
     toastImported,
     toastAdded,
     toastMerged,
-    toastExcluded: { id: 'assessment/toast/excluded', defaultMessage: 'Taken off the list' },
-    toastRestored: { id: 'assessment/toast/restored', defaultMessage: 'Back on the list' },
+    toastExcluded: { id: 'assessment/toast/excluded', defaultMessage: 'Removed from roster' },
+    toastRestored: { id: 'assessment/toast/restored', defaultMessage: 'Restored to roster' },
     toastAdjusted: { id: 'assessment/toast/adjusted', defaultMessage: 'Saved' },
     toastBatchCreated: { id: 'assessment/toast/batch-created', defaultMessage: 'Batch created' },
     toastBatchSaved: { id: 'assessment/toast/batch-saved', defaultMessage: 'Saved' },
     toastBatchArchived: { id: 'assessment/toast/batch-archived', defaultMessage: 'Batch archived' },
     toastBatchReopened: { id: 'assessment/toast/batch-reopened', defaultMessage: 'Batch reopened' },
     toastBatchDeleted: { id: 'assessment/toast/batch-deleted', defaultMessage: 'Batch deleted' },
-    toastPlanSaved: { id: 'assessment/toast/plan-saved', defaultMessage: 'Phases saved' },
-    toastPhaseScheduled: { id: 'assessment/toast/phase-scheduled', defaultMessage: 'Time set' },
+    toastPlanSaved: { id: 'assessment/toast/plan-saved', defaultMessage: 'Stage plan saved' },
+    toastPhaseScheduled: {
+      id: 'assessment/toast/phase-scheduled',
+      defaultMessage: 'Start time saved',
+    },
     toastPhaseAdvanced: {
       id: 'assessment/toast/phase-advanced',
-      defaultMessage: 'Moved to the next phase',
+      defaultMessage: 'Advanced to the next stage',
     },
     toastLapsedCleared: {
       id: 'assessment/toast/lapsed-cleared',
-      defaultMessage: 'Withdrawn records cleared',
+      defaultMessage: 'Expired records cleared',
     },
-    toastStaffAdded: { id: 'assessment/toast/staff-added', defaultMessage: 'Brought in' },
+    toastStaffAdded: { id: 'assessment/toast/staff-added', defaultMessage: 'Staff member added' },
     toastStaffRemoved: {
       id: 'assessment/toast/staff-removed',
-      defaultMessage: 'Removed from this batch',
+      defaultMessage: 'Removed from the batch',
     },
-    addPeople: { id: 'assessment/roster/add', defaultMessage: 'Add people' },
+    addPeople: { id: 'assessment/roster/add', defaultMessage: 'Add participants' },
     addPeopleTitle: { id: 'assessment/roster/add-title', defaultMessage: 'Add participants' },
     addPeopleHint: {
       id: 'assessment/roster/add-hint',
@@ -2869,9 +3027,9 @@ const i18n = definePluginMessages({
     addPeopleConfirm,
     pickerUnavailable: {
       id: 'assessment/roster/picker-unavailable',
-      defaultMessage: 'You cannot browse people in this deployment.',
+      defaultMessage: 'Your account does not have permission to browse people.',
     },
-    rosterUnits: { id: 'assessment/roster/units', defaultMessage: 'Units' },
+    rosterUnits: { id: 'assessment/roster/units', defaultMessage: 'Organization unit' },
     rosterEmpty: {
       id: 'assessment/roster/empty',
       defaultMessage: 'No participants yet.',
@@ -2881,24 +3039,24 @@ const i18n = definePluginMessages({
       id: 'assessment/roster/column-status',
       defaultMessage: 'Status',
     },
-    participantActive: { id: 'assessment/roster/active', defaultMessage: 'Taking part' },
+    participantActive: { id: 'assessment/roster/active', defaultMessage: 'Participating' },
     excludedBadge: { id: 'assessment/roster/excluded', defaultMessage: 'Removed' },
     exclude: { id: 'assessment/roster/exclude', defaultMessage: 'Remove' },
     excludeTitle: {
       id: 'assessment/roster/exclude-title',
-      defaultMessage: 'Take {name} off the list?',
+      defaultMessage: 'Remove {name} from the roster?',
     },
     excludeBody: {
       id: 'assessment/roster/exclude-body',
       defaultMessage:
-        'They stop taking part from now on. Everything they have submitted stays, and they can be added again later.',
+        'The participant will no longer take part in the batch. Existing submissions and review records are retained, and the participant can be added again later.',
     },
-    restore: { id: 'assessment/roster/restore', defaultMessage: 'Bring back' },
+    restore: { id: 'assessment/roster/restore', defaultMessage: 'Restore' },
     participantCount,
     alsoActiveIn,
     noBusinessNoShort: {
       id: 'assessment/roster/no-business-no',
-      defaultMessage: 'No student or staff ID',
+      defaultMessage: 'No institutional ID',
     },
     includedAt,
 
@@ -2907,71 +3065,75 @@ const i18n = definePluginMessages({
     accessHint: {
       id: 'assessment/access/hint',
       defaultMessage:
-        'Manage what each person may do in this batch, or sync with the organization.',
+        'Manage staff permissions for this batch and process permission changes from the organization.',
     },
     accessEmpty: {
       id: 'assessment/access/empty',
-      defaultMessage: 'Nobody works on this batch yet.',
+      defaultMessage: 'No staff members are assigned to this batch.',
     },
     accessEmptyHint: {
       id: 'assessment/access/empty-hint',
-      defaultMessage: 'People who hold a role in the organization appear here once you sync.',
+      defaultMessage: 'Sync organization permissions or add staff members manually.',
     },
     accessColumnPerson: { id: 'assessment/access/column-person', defaultMessage: 'Person' },
-    accessColumnSources: { id: 'assessment/access/column-sources', defaultMessage: 'Granted by' },
+    accessColumnSources: {
+      id: 'assessment/access/column-sources',
+      defaultMessage: 'Permission source',
+    },
     accessColumnPermissions: {
       id: 'assessment/access/column-permissions',
-      defaultMessage: 'In this batch',
+      defaultMessage: 'Batch permissions',
     },
     accessOriginInherited: {
       id: 'assessment/access/origin-inherited',
-      defaultMessage: 'From the organization',
+      defaultMessage: 'Organization role',
     },
     accessOriginExplicit: {
       id: 'assessment/access/origin-explicit',
-      defaultMessage: 'Added for this batch',
+      defaultMessage: 'Batch-specific assignment',
     },
     accessSourceLapsed: {
       id: 'assessment/access/source-lapsed',
-      defaultMessage: 'Withdrawn elsewhere',
+      defaultMessage: 'Organization permission expired',
     },
     accessNothing: {
       id: 'assessment/access/nothing',
-      defaultMessage: 'Nothing, for now',
+      defaultMessage: 'None',
     },
     accessAdjust: { id: 'assessment/access/adjust', defaultMessage: 'Adjust' },
     accessAdjustTitle: {
       id: 'assessment/access/adjust-title',
-      defaultMessage: 'Adjust what {name} may do in this batch',
+      defaultMessage: 'Adjust {name}\u2019s batch permissions',
     },
     accessAdjustHint: {
       id: 'assessment/access/adjust-hint',
       defaultMessage:
-        'Turning something off applies to this batch only and leaves their role in the organization unchanged.',
+        'Changes apply only to this batch and do not modify the user\u2019s organization roles.',
     },
-    accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Remove from this batch' },
+    accessRemove: { id: 'assessment/access/remove', defaultMessage: 'Remove from batch' },
     accessRemoveTitle: {
       id: 'assessment/access/remove-title',
-      defaultMessage: 'Remove {name} from this batch?',
+      defaultMessage: 'Remove {name} from the batch?',
     },
     accessRemoveBody: {
       id: 'assessment/access/remove-body',
       defaultMessage:
-        'They will no longer be able to work on this batch. What they have already done is kept.',
+        'The user will no longer be able to work on this batch. Existing activity records are retained.',
     },
     accessSyncTitle: {
       id: 'assessment/access/sync-title',
-      defaultMessage: 'Permissions changed in the organization',
+      defaultMessage: 'Organization permissions changed',
     },
     // the bar: what happened, and the one thing to do about it
     accessSyncPrompt: {
       id: 'assessment/access/sync-prompt',
-      defaultMessage: 'Permissions changed in the organization. Review the changes to merge them.',
+      defaultMessage:
+        'Organization permissions changed. Review the changes before applying them to this batch.',
     },
     accessSyncLapsedPrompt: {
       id: 'assessment/access/sync-lapsed-prompt',
       defaultMessage:
-        'Some permissions were withdrawn in the organization and no longer apply here.',
+        'Some organization permissions were revoked and the corresponding batch permissions are no longer active.',
     },
     accessSyncOpen: { id: 'assessment/access/sync-open', defaultMessage: 'Review changes' },
     accessSyncSelectPage: {
@@ -2980,82 +3142,87 @@ const i18n = definePluginMessages({
     },
     accessSyncHint: {
       id: 'assessment/access/sync-hint',
-      defaultMessage: 'Confirm whether to merge the following changes into this batch.',
+      defaultMessage: 'Select the organization permission changes to apply to this batch.',
     },
-    accessSyncNew: { id: 'assessment/access/sync-new', defaultMessage: 'Newly authorized' },
-    accessSyncWidened: { id: 'assessment/access/sync-widened', defaultMessage: 'More permissions' },
+    accessSyncNew: { id: 'assessment/access/sync-new', defaultMessage: 'New authorization' },
+    accessSyncWidened: {
+      id: 'assessment/access/sync-widened',
+      defaultMessage: 'Additional permissions',
+    },
     accessSyncLapsed: {
       id: 'assessment/access/sync-lapsed',
-      defaultMessage: 'No longer authorized',
+      defaultMessage: 'Authorization revoked',
     },
     accessSyncLapsedHint: {
       id: 'assessment/access/sync-lapsed-hint',
-      defaultMessage: 'Withdrawn in the organization and already in effect here.',
+      defaultMessage:
+        'The organization authorization was revoked and the corresponding batch permission is already inactive.',
     },
-    accessSyncApply: { id: 'assessment/access/sync-apply', defaultMessage: 'Accept changes' },
+    accessSyncApply: { id: 'assessment/access/sync-apply', defaultMessage: 'Apply changes' },
     accessSyncClear: {
       id: 'assessment/access/sync-clear',
-      defaultMessage: 'Clear withdrawn records',
+      defaultMessage: 'Clear expired records',
     },
     accessSyncQuiet: {
       id: 'assessment/access/sync-quiet',
-      defaultMessage: 'Nothing to merge from the organization.',
+      defaultMessage: 'Batch permissions are consistent with the organization.',
     },
     accessSourceCount,
     accessRoleAt,
     accessDeniedCount,
     accessSyncSelected,
-    addStaff: { id: 'assessment/access/add-staff', defaultMessage: 'Assign a new staff' },
+    addStaff: { id: 'assessment/access/add-staff', defaultMessage: 'Add staff member' },
     addStaffTitle: {
       id: 'assessment/access/add-staff-title',
-      defaultMessage: 'Assign a new staff for this batch',
+      defaultMessage: 'Add staff member to this batch',
     },
     addStaffHint: {
       id: 'assessment/access/add-staff-hint',
-      defaultMessage: 'What they may do applies to this batch only.',
+      defaultMessage: 'Assigned permissions apply only to this batch.',
     },
     addStaffStepWho: { id: 'assessment/access/add-staff-step-who', defaultMessage: 'Person' },
     addStaffStepWhere: { id: 'assessment/access/add-staff-step-where', defaultMessage: 'Unit' },
     addStaffStepAs: { id: 'assessment/access/add-staff-step-as', defaultMessage: 'Role' },
     addStaffWhereHint: {
       id: 'assessment/access/add-staff-where-hint',
-      defaultMessage: 'Which part of this batch they will work on.',
+      defaultMessage:
+        'Select the organization scope the user will be responsible for in this batch.',
     },
     addStaffAsHint: {
       id: 'assessment/access/add-staff-as-hint',
-      defaultMessage: 'What they may do here comes from the role.',
+      defaultMessage: 'The selected role determines the user\u2019s permissions in this batch.',
     },
     roleRefusedUserType: {
       id: 'assessment/access/role-refused-user-type',
-      defaultMessage: 'Not for this kind of user',
+      defaultMessage: 'The role is not available for this user type',
     },
     roleRefusedAuthority: {
       id: 'assessment/access/role-refused-authority',
-      defaultMessage: 'Not yours to give',
+      defaultMessage: 'You do not have permission to assign this role',
     },
     roleRefusedUnavailable: {
       id: 'assessment/access/role-refused-unavailable',
-      defaultMessage: 'No longer available',
+      defaultMessage: 'The role is no longer available',
     },
     roleRefusedBeyondBatch: {
       id: 'assessment/access/role-refused-beyond-batch',
-      defaultMessage: 'Reaches beyond this batch',
+      defaultMessage: 'The role includes permissions outside the batch scope',
     },
     addStaffNoRoles: {
       id: 'assessment/access/add-staff-no-roles',
-      defaultMessage: 'No role you can give here',
+      defaultMessage: 'No assignable roles are available',
     },
-    addStaffConfirm: { id: 'assessment/access/add-staff-confirm', defaultMessage: 'Bring in' },
+    addStaffConfirm: { id: 'assessment/access/add-staff-confirm', defaultMessage: 'Add' },
 
     // ------------------------------------------------------------------
     // the three families the gate itself distinguishes
     permissionGroupEntry: {
       id: 'assessment/permission-group/entry',
-      defaultMessage: 'Filling in',
+      defaultMessage: 'Submission',
     },
     permissionGroupReview: {
       id: 'assessment/permission-group/review',
-      defaultMessage: 'Reviewing',
+      defaultMessage: 'Review',
     },
     permissionGroupResult: {
       id: 'assessment/permission-group/result',
@@ -3065,68 +3232,70 @@ const i18n = definePluginMessages({
     // one sentence per gated code: what opening it lets a participant do
     'permission-hint.assessment.entry.create': {
       id: 'assessment/permission-hint/entry-create',
-      defaultMessage: 'Start new entries against the questions open in this batch.',
+      defaultMessage: 'Create new entries for items available in the current stage.',
     },
     'permission-hint.assessment.entry.edit': {
       id: 'assessment/permission-hint/entry-edit',
-      defaultMessage: 'Change entries that have not been submitted yet.',
+      defaultMessage: 'Edit owned entries that have not yet been submitted.',
     },
     'permission-hint.assessment.entry.submit': {
       id: 'assessment/permission-hint/entry-submit',
-      defaultMessage: 'Hand a draft entry over for review.',
+      defaultMessage: 'Submit draft entries to the review workflow.',
     },
     'permission-hint.assessment.entry.withdraw': {
       id: 'assessment/permission-hint/entry-withdraw',
-      defaultMessage: 'Take a submitted entry back while it is still unreviewed.',
+      defaultMessage: 'Withdraw submitted entries before the first reviewer takes action.',
     },
     'permission-hint.assessment.entry.proxy': {
       id: 'assessment/permission-hint/entry-proxy',
-      defaultMessage: 'Submit on a student behalf; the entry stays theirs.',
+      defaultMessage:
+        'Create and submit entries on behalf of participants while keeping the entries assigned to them.',
     },
     'permission-hint.assessment.entry.record': {
       id: 'assessment/permission-hint/entry-record',
-      defaultMessage: 'Record findings the institution establishes itself.',
+      defaultMessage:
+        'Record institutionally recognized items that do not require participant submission.',
     },
     // still spoken of on the phase editor: the gate opens and closes it by
     // name whoever it belongs to, and it belongs to the participant (§32.14)
     'permission-hint.assessment.entry.appeal': {
       id: 'assessment/permission-hint/entry-appeal',
-      defaultMessage: 'Ask for a settled entry to be looked at again.',
+      defaultMessage: 'Appeal an entry that already has a review decision.',
     },
     'permission-hint.assessment.review.escalate': {
       id: 'assessment/permission-hint/review-escalate',
-      defaultMessage: 'Let a reviewer hand on a matter they cannot settle.',
+      defaultMessage: 'Escalate submissions that require further review.',
     },
     'permission-hint.assessment.review.process': {
       id: 'assessment/permission-hint/review-process',
-      defaultMessage: 'Approve, reject or return submitted entries.',
+      defaultMessage: 'Review submitted entries and approve or return them.',
     },
     'permission-hint.assessment.review.reopen': {
       id: 'assessment/permission-hint/review-reopen',
-      defaultMessage: 'Reopen a review that was already concluded.',
+      defaultMessage: 'Reopen a review that has already ended.',
     },
     'permission-hint.assessment.result.view-peers': {
       id: 'assessment/permission-hint/result-view-peers',
-      defaultMessage: 'See the results of other participants.',
+      defaultMessage: 'View the results of other participants.',
     },
     'permission-hint.assessment.ranking.view': {
       id: 'assessment/permission-hint/ranking-view',
-      defaultMessage: 'See the ranking of the batch.',
+      defaultMessage: 'View the batch ranking.',
     },
     'permission-hint.assessment.publication.manage': {
       id: 'assessment/permission-hint/publication-manage',
-      defaultMessage: 'Announce, publish and withdraw the results of this batch.',
+      defaultMessage: 'Announce, publish, or withdraw the batch results.',
     },
 
     // one label per gated code; the matrix is built from PHASE_GATED_CODES,
     // so a code without a label here does not compile
     'permission.assessment.entry.create': {
       id: 'assessment/permission/entry-create',
-      defaultMessage: 'Start a new entry',
+      defaultMessage: 'Create entries',
     },
     'permission.assessment.entry.edit': {
       id: 'assessment/permission/entry-edit',
-      defaultMessage: 'Edit their drafts',
+      defaultMessage: 'Edit drafts',
     },
     'permission.assessment.entry.submit': {
       id: 'assessment/permission/entry-submit',
@@ -3134,23 +3303,23 @@ const i18n = definePluginMessages({
     },
     'permission.assessment.entry.withdraw': {
       id: 'assessment/permission/entry-withdraw',
-      defaultMessage: 'Take a submission back',
+      defaultMessage: 'Withdraw submissions',
     },
     'permission.assessment.entry.proxy': {
       id: 'assessment/permission/entry-proxy',
-      defaultMessage: 'Submit on behalf of a student',
+      defaultMessage: 'Submit on behalf of participants',
     },
     'permission.assessment.entry.record': {
       id: 'assessment/permission/entry-record',
-      defaultMessage: 'Record official findings',
+      defaultMessage: 'Record recognized items',
     },
     'permission.assessment.entry.appeal': {
       id: 'assessment/permission/entry-appeal',
-      defaultMessage: 'Ask for another look',
+      defaultMessage: 'File appeals',
     },
     'permission.assessment.review.escalate': {
       id: 'assessment/permission/review-escalate',
-      defaultMessage: 'Escalate for review',
+      defaultMessage: 'Escalate reviews',
     },
     'permission.assessment.review.process': {
       id: 'assessment/permission/review-process',
@@ -3158,211 +3327,219 @@ const i18n = definePluginMessages({
     },
     'permission.assessment.review.reopen': {
       id: 'assessment/permission/review-reopen',
-      defaultMessage: 'Reopen a finished review',
+      defaultMessage: 'Reopen completed reviews',
     },
     'permission.assessment.result.view-peers': {
       id: 'assessment/permission/result-view-peers',
-      defaultMessage: 'See classmates’ results',
+      defaultMessage: 'View other participants\u2019 results',
     },
     'permission.assessment.ranking.view': {
       id: 'assessment/permission/ranking-view',
-      defaultMessage: 'See the ranking',
+      defaultMessage: 'View ranking',
     },
     // not gated by a phase, so the phase editor never lists it; the access
     // page does, because a role can carry it into a round
     'permission.assessment.publication.manage': {
       id: 'assessment/permission/publication-manage',
-      defaultMessage: 'Announce and publish results',
+      defaultMessage: 'Manage result publication',
     },
 
     // ------------------------------------------------------------------
     // the engine's refusals, in words an administrator can act on
     'refusal.phase-not-found': {
       id: 'assessment/refusal/phase-not-found',
-      defaultMessage: 'One of the stages is no longer part of this plan. Reload and try again.',
+      defaultMessage:
+        'One or more stages are no longer part of the current plan. Refresh and try again.',
     },
     'refusal.actual-immutable': {
       id: 'assessment/refusal/actual-immutable',
-      defaultMessage: 'A stage that has already started keeps its start time.',
+      defaultMessage: 'The start time of a stage that has already begun cannot be changed.',
     },
     'refusal.phase-already-entered': {
       id: 'assessment/refusal/phase-already-entered',
-      defaultMessage: 'This stage has already started, so its timing can no longer be changed.',
+      defaultMessage: 'The stage has already started, so its schedule can no longer be changed.',
     },
     'refusal.ended-phase-name-only': {
       id: 'assessment/refusal/ended-phase-name-only',
-      defaultMessage: 'Only the name of a finished stage can still be changed.',
+      defaultMessage: 'Only the name of an ended stage can still be changed.',
     },
     'refusal.display-name-blank': {
       id: 'assessment/refusal/display-name-blank',
-      defaultMessage: 'Every stage needs a name.',
+      defaultMessage: 'A stage name is required.',
     },
     'refusal.planned-not-in-future': {
       id: 'assessment/refusal/planned-not-in-future',
-      defaultMessage: 'The start time has to be in the future.',
+      defaultMessage: 'The start time must be in the future.',
     },
     'refusal.planned-out-of-order': {
       id: 'assessment/refusal/planned-out-of-order',
-      defaultMessage: 'Stage times have to follow the order of the stages.',
+      defaultMessage: 'Scheduled start times must follow the stage order.',
     },
     'refusal.profile-code-not-gated': {
       id: 'assessment/refusal/profile-code-not-gated',
-      defaultMessage: 'One of the selected actions is not something a stage can open or close.',
+      defaultMessage: 'One or more selected actions cannot be controlled by stage availability.',
     },
     'refusal.insert-not-after-current': {
       id: 'assessment/refusal/insert-not-after-current',
       defaultMessage:
-        'While the batch is running, a new stage can only go in after the one happening now.',
+        'While the batch is active, new stages can only be added after the current stage.',
     },
     'refusal.plan-empty': {
       id: 'assessment/refusal/plan-empty',
-      defaultMessage: 'Add at least one stage before activating the batch.',
+      defaultMessage: 'At least one valid stage is required before the batch can start.',
     },
     'refusal.template-requires-draft': {
       id: 'assessment/refusal/template-requires-draft',
-      defaultMessage: 'A ready-made timeline can only be applied while the batch is still a draft.',
+      defaultMessage: 'Timeline templates can only be applied while the batch is still a draft.',
     },
     'refusal.phase-removed': {
       id: 'assessment/refusal/phase-removed',
-      defaultMessage: 'Stages cannot be removed once the batch is in progress.',
+      defaultMessage: 'A stage cannot be deleted after it has started.',
     },
     'refusal.reorder-not-allowed': {
       id: 'assessment/refusal/reorder-not-allowed',
-      defaultMessage: 'Stages cannot be reordered once the batch is in progress.',
+      defaultMessage: 'Started stages cannot be reordered.',
     },
     'refusal.phase-key-immutable': {
       id: 'assessment/refusal/phase-key-immutable',
-      defaultMessage: 'A stage keeps its identity once the batch is in progress.',
+      defaultMessage:
+        'The participant type associated with a stage cannot be changed after the batch starts.',
     },
     'refusal.scope-in-template': {
       id: 'assessment/refusal/scope-in-template',
-      defaultMessage: 'A reusable template cannot point at one batch’s questions or people.',
+      defaultMessage:
+        'Reusable templates cannot reference items or participants from a specific batch.',
     },
     'refusal.participant-not-in-batch': {
       id: 'assessment/refusal/participant-not-in-batch',
-      defaultMessage: 'One of the selected people is not a participant of this batch.',
+      defaultMessage: 'One or more selected users are not participants in this batch.',
     },
     'refusal.item-not-in-batch': {
       id: 'assessment/refusal/item-not-in-batch',
-      defaultMessage: 'One of the selected questions does not belong to this batch.',
+      defaultMessage: 'One or more selected items do not belong to this batch.',
     },
     'refusal.phase-template-shape': {
       id: 'assessment/refusal/phase-template-shape',
       defaultMessage:
-        'A stage preset describes a single stage - its name and actions - without any dates.',
+        'A stage template defines the basic information and available actions for a single stage, without scheduling information.',
     },
     'refusal.template-not-a-timeline': {
       id: 'assessment/refusal/template-not-a-timeline',
       defaultMessage:
-        'That is a preset for a single stage, not a timeline, so it cannot replace the whole plan.',
+        'The selected template defines a single stage rather than a complete timeline and cannot replace the stage plan.',
     },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof assessmentErrors>>()({
     ASSESSMENT_BATCH_NOT_FOUND: {
       id: 'assessment/error/batch-not-found',
-      defaultMessage: 'This batch no longer exists.',
+      defaultMessage: 'The batch could not be found.',
     },
     ASSESSMENT_PHASE_NOT_FOUND: {
       id: 'assessment/error/phase-not-found',
-      defaultMessage: 'That stage is not part of this batch any more. Reload and try again.',
+      defaultMessage: 'The stage is no longer part of the batch. Refresh and try again.',
     },
     ASSESSMENT_PARTICIPANT_NOT_FOUND: {
       id: 'assessment/error/participant-not-found',
-      defaultMessage: 'That person is not on this batch’s list of participants.',
+      defaultMessage: 'The user is not on the participant roster for this batch.',
     },
     ASSESSMENT_PARTICIPANT_INVALID: {
       id: 'assessment/error/participant-invalid',
-      defaultMessage: 'Could not update the participant list.',
+      defaultMessage:
+        'The participant roster could not be updated. Check the selected information and try again.',
     },
     ASSESSMENT_TEMPLATE_NOT_FOUND: {
       id: 'assessment/error/template-not-found',
-      defaultMessage: 'That template no longer exists.',
+      defaultMessage: 'The template could not be found or has been deleted.',
     },
     ASSESSMENT_TEMPLATE_CONFLICT: {
       id: 'assessment/error/template-conflict',
-      defaultMessage: 'A template with that name already exists.',
+      defaultMessage: 'A template with the same name already exists.',
     },
     ASSESSMENT_BATCH_READ_ONLY: {
       id: 'assessment/error/batch-read-only',
-      defaultMessage: 'This batch is archived, so nothing about it can be changed.',
+      defaultMessage: 'The batch is archived and cannot be modified.',
     },
     ASSESSMENT_BATCH_STATUS_INVALID: {
       id: 'assessment/error/batch-status-invalid',
-      defaultMessage: 'The batch cannot be moved to that state from where it is now.',
+      defaultMessage: 'The current batch status does not allow this operation.',
     },
     ASSESSMENT_BATCH_NO_PARTICIPANTS: {
       id: 'assessment/error/batch-no-participants',
-      defaultMessage: 'Choose who is assessed - at least one user type - before activating.',
+      defaultMessage: 'Add or import at least one participant before starting the batch.',
     },
     ASSESSMENT_BATCH_REFERENCE_INVALID: {
       id: 'assessment/error/batch-reference-invalid',
-      defaultMessage: 'One of the selected units or user types does not exist any more.',
+      defaultMessage: 'One or more selected units or participant types are no longer valid.',
     },
     ASSESSMENT_PLAN_INVALID: {
       id: 'assessment/error/plan-invalid',
-      defaultMessage: 'Could not save the stage settings. Fix the problems listed and try again.',
+      defaultMessage: 'The stage plan could not be saved. Correct the listed issues and try again.',
     },
     ASSESSMENT_ADVANCE_INVALID: {
       id: 'assessment/error/advance-invalid',
-      defaultMessage: 'That stage cannot be started this way.',
+      defaultMessage:
+        'The batch cannot advance to the selected stage. Check the stage settings and prerequisites.',
     },
     ASSESSMENT_ACCESS_INVALID: {
       id: 'assessment/error/access-invalid',
-      defaultMessage: 'That change to who may work on this batch was refused.',
+      defaultMessage:
+        'The permission change could not be applied. Check the selected settings and try again.',
     },
     ASSESSMENT_MATERIAL_RANGE_INVALID: {
       id: 'assessment/error/material-range-invalid',
       defaultMessage:
-        'The new material window would leave existing entries outside it. Deal with those entries first.',
+        'The new material date range conflicts with existing entries. Resolve the affected entries before changing the range.',
     },
     ASSESSMENT_ENTRY_NOT_FOUND: {
       id: 'assessment/error/entry-not-found',
-      defaultMessage: 'This entry no longer exists.',
+      defaultMessage: 'The entry could not be found or has been deleted.',
     },
     ASSESSMENT_ENTRY_ACTION_REFUSED: {
       id: 'assessment/error/entry-action-refused',
-      defaultMessage: 'This cannot be done to the entry right now.',
+      defaultMessage: 'The action is not available for the entry in its current state.',
     },
     ASSESSMENT_ENTRY_PAYLOAD_INVALID: {
       id: 'assessment/error/entry-payload-invalid',
-      defaultMessage: 'The filing could not be saved. Fix the fields listed and try again.',
+      defaultMessage: 'The entry could not be saved. Correct the listed fields and try again.',
     },
     ASSESSMENT_ITEM_ACTION_REFUSED: {
       id: 'assessment/error/item-action-refused',
-      defaultMessage: 'This cannot be done to the question right now.',
+      defaultMessage: 'The action is not available for the item in its current state.',
     },
     ASSESSMENT_ATTACHMENT_NOT_FOUND: {
       id: 'assessment/error/attachment-not-found',
-      defaultMessage: 'This file no longer exists.',
+      defaultMessage: 'The file could not be found or has been deleted.',
     },
     ASSESSMENT_REVIEW_NOT_FOUND: {
       id: 'assessment/error/review-not-found',
-      defaultMessage: 'This review no longer exists.',
+      defaultMessage: 'The review task could not be found.',
     },
     ASSESSMENT_REVIEW_CONFLICT: {
       id: 'assessment/error/review-conflict',
-      defaultMessage: 'This round was already closed by someone else. Refresh to see the outcome.',
+      defaultMessage:
+        'The review task has already been handled by another reviewer. Refresh to view the latest result.',
     },
     ASSESSMENT_ITEM_NOT_FOUND: {
       id: 'assessment/error/item-not-found',
-      defaultMessage: 'This question no longer exists.',
+      defaultMessage: 'The item could not be found or has been deleted.',
     },
     ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED: {
       id: 'assessment/error/item-change-decision-required',
-      defaultMessage: 'Say what should happen to the work already under way.',
+      defaultMessage: 'Choose how existing work affected by the change should be handled.',
     },
     ASSESSMENT_ITEM_CONFIG_INVALID: {
       id: 'assessment/error/item-config-invalid',
-      defaultMessage: 'Could not save the question. Fix the problems listed and try again.',
+      defaultMessage: 'The item could not be saved. Correct the listed issues and try again.',
     },
     ASSESSMENT_SCORE_GROUP_INVALID: {
       id: 'assessment/error/score-group-invalid',
-      defaultMessage: 'Could not save the score groups. Fix the problems listed and try again.',
+      defaultMessage:
+        'The scoring groups could not be saved. Correct the listed issues and try again.',
     },
     ASSESSMENT_SCORE_GROUP_VERSION_CONFLICT: {
       id: 'assessment/error/score-group-version-conflict',
       defaultMessage:
-        'Someone else changed the score groups while you were editing. Refresh and make your change again.',
+        'The scoring groups were changed by another user while you were editing. Refresh and apply the changes again.',
     },
   }),
   locales: {

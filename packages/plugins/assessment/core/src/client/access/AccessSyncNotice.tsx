@@ -28,7 +28,15 @@ export function AccessSyncNotice({
   const decide = pendingTotal > 0
 
   return (
-    <Alert className="pr-28">
+    // what the round is being told about its own staffing, as counts: a
+    // decision owed, or a lapse to be aware of
+    <Alert
+      data-testid="access-sync-notice"
+      data-kind={decide ? 'decide' : 'lapsed'}
+      data-pending={String(pendingTotal)}
+      data-lapsed={String(lapsedTotal)}
+      className="pr-28"
+    >
       {decide ? <TriangleAlertIcon /> : <InfoIcon />}
       <AlertTitle className="line-clamp-none font-normal">
         {format(decide ? m.accessSyncPrompt : m.accessSyncLapsedPrompt)}

@@ -83,7 +83,14 @@ export function ImportDialog({
           />
         </DialogBody>
         <DialogFooter className="sm:justify-between">
-          <span className="text-sm text-muted-foreground">
+          <span
+            // how many this import would add, as a number; the sentence
+            // around it is copy and changes without the count changing
+            data-testid="import-candidates"
+            data-ready={String(ready && candidates.data !== undefined)}
+            data-count={ready && candidates.data ? String(candidates.data.candidates) : ''}
+            className="text-sm text-muted-foreground"
+          >
             {ready && candidates.data
               ? format(m.importCandidates, { count: candidates.data.candidates })
               : format(m.importChoose)}

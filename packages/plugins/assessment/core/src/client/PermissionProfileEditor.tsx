@@ -120,7 +120,15 @@ function PermissionRow({
   // wall, and the choice here is not one of a few big alternatives
   return (
     <Field orientation="horizontal">
-      <Checkbox id={id} checked={checked} disabled={disabled} onCheckedChange={onToggle} />
+      {/* the action it governs, beside the words for it: which actions a
+          stage may open is the fact, and its label is copy */}
+      <Checkbox
+        id={id}
+        data-permission={code}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onToggle}
+      />
       <FieldContent>
         <FieldLabel htmlFor={id} className="font-normal">
           {format(m[`permission.${code}`])}

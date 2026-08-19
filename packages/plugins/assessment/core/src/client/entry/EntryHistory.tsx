@@ -142,7 +142,14 @@ function Trail({ data, subject }: { data: History; subject: string | undefined }
       {/* the thread itself: one border, and every node hangs a dot on it */}
       <div className="ml-[5px] flex flex-col border-l pl-5">
         {nodes.map((node) => (
-          <div key={node.key} className="relative flex min-w-0 flex-col gap-1.5 pb-5">
+          <div
+            key={node.key}
+            // what kind of thing happened, said as a fact: a test about the
+            // account's shape asks for the nodes, not for their sentences
+            data-testid="trail-node"
+            data-kind={node.kind}
+            className="relative flex min-w-0 flex-col gap-1.5 pb-5"
+          >
             <span
               aria-hidden
               className={cn(

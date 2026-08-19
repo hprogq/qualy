@@ -203,7 +203,14 @@ export function Feedback({
 }) {
   if (!message) return null
   return (
-    <Alert variant={tone === 'error' ? 'destructive' : 'default'} role="alert">
+    // what kind of answer this is, beside the sentence carrying it: a test
+    // about "it saved" asks for the tone, not for the wording of the note
+    <Alert
+      data-testid="feedback"
+      data-tone={tone}
+      variant={tone === 'error' ? 'destructive' : 'default'}
+      role="alert"
+    >
       <AlertDescription>{message}</AlertDescription>
     </Alert>
   )

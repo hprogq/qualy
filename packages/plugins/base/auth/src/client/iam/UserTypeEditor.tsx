@@ -223,7 +223,7 @@ export function UserTypeEditor({
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void catalog.refetch()}
       >
-        <div className="space-y-2">
+        <div data-testid="placement-panel" className="space-y-2">
           <p className="text-xs text-muted-foreground">{format(m.placementHint)}</p>
           {userType.placementPolicy.mode === 'tenant-root' ? (
             <p className="text-sm">{format(m.placementTenantRoot)}</p>

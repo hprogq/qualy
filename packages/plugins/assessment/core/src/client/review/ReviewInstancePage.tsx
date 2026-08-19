@@ -2181,7 +2181,13 @@ function UndoPill({
     return () => clearInterval(tick)
   }, [deadline])
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-background px-3.5 py-2.5 shadow-lg">
+    <div
+      // the decision is staged and can still be taken back: a fact, said
+      // once here rather than read out of the sentence beside the clock
+      data-testid="decision-staged"
+      data-decision={staged.kind === 'supplement' ? 'supplement' : staged.decision}
+      className="flex items-center gap-3 rounded-xl border bg-background px-3.5 py-2.5 shadow-lg"
+    >
       <CountdownRing seconds={5} remaining={started.current}>
         {left}
       </CountdownRing>
@@ -2286,7 +2292,12 @@ function DoneScreen({
   })()
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
+    <div
+      // the run is finished, and this many were handled in it
+      data-testid="run-done"
+      data-handled={String(log.length)}
+      className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6"
+    >
       <Stagger className="flex w-full max-w-xl flex-col gap-5" step={0.08}>
         <div className="flex items-center gap-4">
           <DoneMark className="size-12 shrink-0" />

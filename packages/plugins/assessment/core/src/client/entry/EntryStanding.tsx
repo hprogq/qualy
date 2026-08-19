@@ -35,6 +35,10 @@ export function EntryStanding({
   const hollow = status === 'draft' && asked !== true
   return (
     <span
+      // the standing itself, beside the word for it: a test about what a
+      // claim is doing asks this, not the sentence the word happens to be
+      data-testid="entry-standing"
+      data-entry-standing={asked === true ? 'awaiting_supplement' : status}
       className={cn(
         'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap',
         alert && 'border-destructive/35 text-destructive',

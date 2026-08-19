@@ -165,7 +165,15 @@ function PermissionRow({
   const id = useId()
   return (
     <Field orientation="horizontal">
-      <Checkbox id={id} checked={granted} disabled={disabled} onCheckedChange={onToggle} />
+      {/* named by the action it grants, so a test asks for the authority
+          rather than for the words describing it */}
+      <Checkbox
+        id={id}
+        data-testid={`access-permission-${code}`}
+        checked={granted}
+        disabled={disabled}
+        onCheckedChange={onToggle}
+      />
       <FieldContent>
         <FieldLabel htmlFor={id} className="font-normal">
           {format(permissionLabel(code))}

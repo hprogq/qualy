@@ -150,11 +150,19 @@ function Standing({ batchId }: { batchId: string }) {
                 <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
                   {format(m.resultTotal)}
                 </p>
-                <Badge variant="outline" className="font-normal text-muted-foreground">
+                <Badge
+                  data-testid="result-mode"
+                  data-mode={data.mode}
+                  variant="outline"
+                  className="font-normal text-muted-foreground"
+                >
                   {format(m.resultProvisional)}
                 </Badge>
               </div>
-              <p className="text-[34px] leading-none font-semibold tracking-tight tabular-nums">
+              <p
+                data-testid="result-total"
+                className="text-[34px] leading-none font-semibold tracking-tight tabular-nums"
+              >
                 {two(data.total)}
               </p>
               {full !== null && (
@@ -425,7 +433,7 @@ function GroupRows({
         </div>
       ))}
       {(capped || floored) && (
-        <div className={cn(COLS, 'h-9.5')}>
+        <div data-testid="group-adjustment" className={cn(COLS, 'h-9.5')}>
           <span className="flex min-w-0 items-center gap-2" style={linePad}>
             <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
             <span className="min-w-0 text-sm text-pretty text-muted-foreground">

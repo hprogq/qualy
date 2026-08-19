@@ -110,7 +110,11 @@ function useParts(props: PhaseRowProps) {
         {props.refusals.length > 0 && (
           <ul className="mt-1 space-y-0.5 text-xs text-destructive">
             {props.refusals.map((refusal, at) => (
-              <li key={at}>{props.sentenceOf(refusal)}</li>
+              // the ground it was refused on, beside the sentence that says
+              // it: which refusal landed on which stage is the fact
+              <li key={at} data-testid="phase-refusal" data-reason={refusal.reason}>
+                {props.sentenceOf(refusal)}
+              </li>
             ))}
           </ul>
         )}
@@ -131,7 +135,7 @@ function useParts(props: PhaseRowProps) {
 
   const when =
     entered !== null ? (
-      <span className="flex min-w-0 flex-col">
+      <span data-testid="phase-when" data-when="entered" className="flex min-w-0 flex-col">
         <span className="flex items-center gap-1.5 text-sm">
           <CircleCheckIcon
             aria-hidden
@@ -142,7 +146,7 @@ function useParts(props: PhaseRowProps) {
         <span className="pl-5 text-xs text-muted-foreground">{relative(entered)}</span>
       </span>
     ) : planned !== null ? (
-      <span className="flex min-w-0 flex-col">
+      <span data-testid="phase-when" data-when="planned" className="flex min-w-0 flex-col">
         <span className="flex items-center gap-1.5 text-sm">
           <CalendarClockIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate font-medium">{timeOf(planned)}</span>
@@ -150,13 +154,23 @@ function useParts(props: PhaseRowProps) {
         <span className="pl-5 text-xs text-muted-foreground">{relative(planned)}</span>
       </span>
     ) : (
-      <span className="flex flex-wrap items-center gap-2">
+      <span
+        data-testid="phase-when"
+        data-when="unscheduled"
+        className="flex flex-wrap items-center gap-2"
+      >
         <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <CircleDashedIcon aria-hidden className="size-3.5 shrink-0" />
           {format(m.notScheduled)}
         </span>
         {!readOnly && !editing && index === shape.frontier && (
-          <Button size="sm" variant="outline" className="h-7" onClick={props.onSchedule}>
+          <Button
+            data-testid="phase-schedule"
+            size="sm"
+            variant="outline"
+            className="h-7"
+            onClick={props.onSchedule}
+          >
             {format(m.goSchedule)}
           </Button>
         )}
@@ -164,7 +178,15 @@ function useParts(props: PhaseRowProps) {
     )
 
   const status = (
-    <div className="flex flex-wrap items-center justify-end gap-1.5">
+    <div
+      // which standing this stage is in, said as a fact: the badges' words
+      // are copy, "this stage is the current one" is not
+      data-testid="phase-standing"
+      data-standing={
+        current ? 'current' : ended ? 'ended' : isNew ? 'new' : structural ? 'open' : 'locked'
+      }
+      className="flex flex-wrap items-center justify-end gap-1.5"
+    >
       {current ? (
         <Badge>{format(m.currentBadge)}</Badge>
       ) : ended ? (

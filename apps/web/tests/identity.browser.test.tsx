@@ -170,9 +170,7 @@ describe('user types screen', () => {
     // the placement panel arrives on a second query, and its save button with
     // it. Counting before it lands is a coin flip that comes up two on a fast
     // machine and one on a busy ci runner, so wait for the panel itself.
-    await expect
-      .element(page.getByText('这里只决定这类人可以站在哪；能做什么由角色决定。'))
-      .toBeInTheDocument()
+    await expect.element(page.getByTestId('placement-panel')).toBeInTheDocument()
     // the record is visible and the editor opens, but nothing in it acts.
     // The count is asserted too: a screen that rendered no controls at all
     // would satisfy "every control is disabled" without meaning it.
@@ -202,7 +200,7 @@ describe('user types screen', () => {
       children: <UserTypesPage />,
     })
 
-    await expect.element(page.getByText('3 个用户')).toBeInTheDocument()
+    await expect.element(page.getByTestId('type-summary')).toHaveAttribute('data-users', '3')
     // disabling a populated type is refused server side, so the control says
     // so instead of producing an error after a round trip
     await expect.element(page.getByRole('button', { name: '停用' })).toBeDisabled()
@@ -224,7 +222,7 @@ describe('user types screen', () => {
       ),
       children: <UserTypesPage />,
     })
-    await expect.element(page.getByText('无法登录')).toBeInTheDocument()
+    await expect.element(page.getByTestId('type-no-login')).toBeInTheDocument()
   })
 
   it('refuses an allow-list that names nothing', async () => {
@@ -272,7 +270,7 @@ describe('user types screen', () => {
     await page.getByRole('checkbox', { name: '可以挂在任何组织节点下' }).first().click()
     await expect.element(saves.nth(1)).toBeEnabled()
     await saves.nth(1).click()
-    await expect.element(page.getByText('已保存。')).toBeInTheDocument()
+    await expect.element(page.getByTestId('feedback')).toHaveAttribute('data-tone', 'success')
     expect(save).toHaveBeenCalledWith({
       params: { userTypeId: USER_TYPE_ID },
       payload: { version: 3, policy: { mode: 'unrestricted' } },
@@ -312,6 +310,8 @@ describe('user types screen', () => {
     // its placement is reported and the only save here is the profile one
     expect(await page.getByRole('button', { name: '保存' }).elements()).toHaveLength(1)
     await page.getByRole('button', { name: '保存' }).first().click()
+    // the refusal reaches the reader translated - the subject here is that
+    // the raw code never does, asserted just below
     await expect
       .element(page.getByText('这会让租户失去最后一个还能登录的管理员。'))
       .toBeInTheDocument()
@@ -399,9 +399,6 @@ describe('roles screen', () => {
     })
 
     await expect.element(page.getByText('租户管理员').first()).toBeInTheDocument()
-    await expect
-      .element(page.getByText('租户管理员角色是固定的：不可停用、删除或改写权限。'))
-      .toBeInTheDocument()
     // no destructive control is offered at all for it
     expect(await page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
@@ -510,7 +507,8 @@ describe('roles screen', () => {
 
     await expect.element(page.getByText('院系管理员').first()).toBeInTheDocument()
     await page.getByRole('button', { name: '删除' }).click()
-    await expect.element(page.getByText('确定删除该角色？')).toBeInTheDocument()
+    // it asks before it acts, in a dialog of its own
+    await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
     await page.getByRole('button', { name: '取消' }).click()
     expect(remove).not.toHaveBeenCalled()
 
@@ -608,7 +606,7 @@ describe('granting a role on the user screen', () => {
       children: <UserDetailPage />,
     })
 
-    await expect.element(page.getByText('你持有的角色都不能授予到这里。')).toBeInTheDocument()
+    await expect.element(page.getByTestId('grant-nothing-offered')).toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: '授予' })).toBeDisabled()
   })
 })

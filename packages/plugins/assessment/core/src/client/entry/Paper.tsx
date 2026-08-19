@@ -479,7 +479,13 @@ function Question({
             </Badge>
           ) : (
             mayAdd && (
-              <Button size="sm" className="shrink-0" disabled={busy} onClick={add}>
+              <Button
+                data-testid="file-claim"
+                size="sm"
+                className="shrink-0"
+                disabled={busy}
+                onClick={add}
+              >
                 <PlusIcon aria-hidden />
                 {format(declared ? m.entryDeclare : m.entryNew)}
               </Button>
@@ -552,6 +558,7 @@ function Question({
               {mayAdd && (
                 <button
                   type="button"
+                  data-testid="file-claim"
                   disabled={busy}
                   onClick={add}
                   className="flex min-h-11 w-full flex-1 cursor-pointer items-center justify-center gap-1.5 text-[13px] font-medium text-foreground transition-colors max-md:border-b md:bg-muted/20 md:text-xs md:font-normal md:text-muted-foreground md:hover:bg-accent/40 md:hover:text-foreground"
@@ -604,7 +611,13 @@ function Question({
                 )}
               </span>
               {mayAdd ? (
-                <Button size="xs" variant="outline" disabled={busy} onClick={add}>
+                <Button
+                  data-testid="file-claim"
+                  size="xs"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={add}
+                >
                   <PlusIcon aria-hidden />
                   {format(declared ? m.entryDeclare : m.paperEmptyFile)}
                 </Button>
@@ -717,6 +730,15 @@ function ClaimRow({
   const lead = said(fields[0])
   const sub = said(fields[1])
   const ok = entry.status === 'approved'
+  // how many files this claim cites, as a number rather than as the phrase
+  // counting them: the drawer is where the files themselves are
+  const files = fields
+    .filter((field) => field.type === 'attachment')
+    .reduce(
+      (count, field) =>
+        count + (Array.isArray(payload[field.key]) ? (payload[field.key] as unknown[]).length : 0),
+      0,
+    )
   const verWhen = (
     <>
       <span className="shrink-0">
@@ -730,6 +752,8 @@ function ClaimRow({
   return (
     <button
       type="button"
+      data-testid="claim-row"
+      data-files={String(files)}
       onClick={onOpen}
       className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b py-2.5 text-left transition-colors last:border-b-0 md:grid-cols-[minmax(0,1fr)_6rem_5.5rem] md:px-4 md:py-3.5 lg:grid-cols-[minmax(0,1fr)_8.5rem_6rem_5.5rem] hover:bg-accent/50"
     >

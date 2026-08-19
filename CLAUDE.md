@@ -100,6 +100,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - node 套件(`pnpm test`)跑服务/契约/授权与 HTTP(真实 URL、状态码);`*.browser.test.tsx` 经 `pnpm test:browser`(Vitest Browser Mode + Chromium,root 是 apps/web——拥有 react 的包)跑组件,覆盖模拟 DOM 盖不住的部分;harness 放 `apps/web/tests/support/`。断言按 role/label 查询,不查内部 state。
 - **禁止**为白盒测试暴露生产内部;资源所有者可提供显式 `<包>/testkit` 子路径(如 @qualy/plugin-database/testkit),testkit 不进包根导出,生产源码不得 import 任何 testkit(门禁守)。
 - **业务插件测试不得自己持有数据库**:scratch 库全生命周期归 `createTestContext()`(按生产路径注册数据库插件,`migrations: 'apply'`);fixture 播种一律 testkit 的 `runSql`。正常路径永不 force;force 只在普通 drop 失败后清残留,且所有错误一并 AggregateError 抛出。约束测试照旧直接写非法 SQL(走 `db.query()`/`runSql`)。直接用 `pg` 只允许 database 基础设施、迁移升级测试与以 PoolClient 为公开入参的脚本测试;业务插件包不得声明 `pg`(tools/tests/test-layers.test.ts 守)。
+- **浏览器测试的三层纪律(2026-08-20 立)**:①**定位**可以用用户看得见的名字——`getByRole(角色, {name})`、`getByLabelText`,那正是使用者识别控件的方式,控件改名时测试跟着改是应该的;②**业务断言不得依赖界面文案**——空状态、状态片、计数句、提示、拒绝语都是 copy,改文案不改行为却让测试全红,是耦合过重。给没有天然语义的元素加稳定钩子(`data-testid` + 承载事实的 `data-*`,如 `data-entry-standing`、`data-count`、`data-origin`),断言那个事实与它的值;③**只有以文案为对象的测试才断言原文**,集中在 `apps/web/tests/localization.browser.test.tsx`(ICU 复数、插值落位、第二人称声部、切 locale),数量保持很少。**fixture 里的业务数据不是 copy**(批次名、人名、参评人填的字),照常直接断言。定位优先级:role+name → label → 稳定 testid → 文本(仅当文本就是测试对象)→ CSS 选择器(最后手段);不要为省事给一切加 testid,`getByRole('button', {name})` 同时验证了可访问性,比 testid 更值钱。
 - **实查**:ORM 包裹驱动错误,SQLSTATE 埋在 cause 树里(`pgCode`/`constraintOf` 走整棵树);timestamptz 回来是字符串,断言断值不断 JS 类型。
 - **迁移的数据步骤要有升级测试**(建旧库形态 → 跑迁移 → 断言),空库重放证明不了 UPDATE/DELETE 分支。
 
@@ -115,4 +116,5 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 手改 qualy.lock.json;回改已应用迁移;修改已编译进中央迁移的 baseline 片段。
 - 根脚本与根配置枚举可选业务插件。
 - 组件内裸中文;客户端裸内部路径;裸 `limit N`。
+- 浏览器测试的业务断言绑界面文案(见测试分层第三条)。
 - 生产源码在入口/CLI/前端 runtime/测试边界之外 `Effect.run*`。

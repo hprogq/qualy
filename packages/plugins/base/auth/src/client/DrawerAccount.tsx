@@ -13,7 +13,7 @@ export default function DrawerAccount() {
   const { format } = useI18n()
   const [locale, setLocale] = useLocale()
   return (
-    <div className="flex items-center gap-2.5">
+    <div data-testid="drawer-account" className="flex items-center gap-2.5">
       <span className="shrink-0 text-[11px] font-medium whitespace-nowrap text-muted-foreground">
         {format(m.appearance)}
       </span>

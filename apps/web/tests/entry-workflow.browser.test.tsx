@@ -204,7 +204,7 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    await page.getByRole('button', { name: '去申报' }).first().click()
+    await page.getByTestId('file-claim').first().click()
     await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
     // keeping it is one press and handing it on is another, so a claim can be
     // written down before anybody is asked to look at it
@@ -305,15 +305,18 @@ describe('filing a claim', () => {
     )
 
     await page.getByRole('button', { name: /2024 年入伍/ }).click()
-    await page.getByRole('button', { name: /审核经过/ }).click()
+    await page.getByRole('button', { name: /审核记录/ }).click()
+    // the reviewer's own words, which the fixture supplied
     await expect.element(page.getByText('证明日期与填报不符，请核对。')).toBeVisible()
-    // one's own trail speaks to its reader: their acts in the second
-    // person, never their own name over their shoulder
-    await expect.element(page.getByText('你提交了申报')).toBeVisible()
-    await expect.element(page.getByText('你提交了第 1 版')).toBeVisible()
-    expect(page.getByText(/提交了申报/).elements().length).toBe(1)
-    await expect.element(page.getByText('审核人的修改建议')).toBeVisible()
-    await expect.element(page.getByText('采纳与否由你决定，请自行修改后重新提交。')).toBeVisible()
+    // the account holds the version, the decision, and the advice - three
+    // kinds of node, whatever each of them is phrased as
+    const kinds = page
+      .getByTestId('trail-node')
+      .elements()
+      .map((node) => node.getAttribute('data-kind'))
+    expect(kinds).toContain('version')
+    expect(kinds).toContain('act')
+    expect(kinds).toContain('suggestion')
     // advice is read, never applied: nothing offers to copy it in
     expect(page.getByRole('button', { name: '套用' }).elements()).toHaveLength(0)
   })
@@ -409,22 +412,31 @@ describe('filing a claim', () => {
     )
 
     // the status the row wears is the one that is waiting on the reader
-    await expect.element(page.getByText('待补材料').first()).toBeVisible()
+    await expect
+      .element(page.getByTestId('entry-standing').first())
+      .toHaveAttribute('data-entry-standing', 'awaiting_supplement')
 
     // the ask itself, in the reviewer's own words with every piece named,
     // waits in the drawer behind the claim's own row
     await page.getByRole('button', { name: /2024 年入伍/ }).click()
-    await expect.element(page.getByText('审核人请你补充材料').first()).toBeVisible()
+    await expect.element(page.getByTestId('supplement-ask')).toBeVisible()
     await expect
       .element(page.getByText('献血证只拍到正面，请补充盖章那一面。').first())
       .toBeVisible()
     await expect.element(page.getByText('献血证盖章面').first()).toBeVisible()
 
     // and the account carries the ask and the answer as two moments
-    await page.getByRole('button', { name: /审核经过/ }).click()
-    await expect.element(page.getByText('你补充了材料')).toBeVisible()
+    await page.getByRole('button', { name: /审核记录/ }).click()
+    const kinds = async () => {
+      await expect.element(page.getByTestId('trail-node').first()).toBeVisible()
+      return page
+        .getByTestId('trail-node')
+        .elements()
+        .map((node) => node.getAttribute('data-kind'))
+    }
+    expect(await kinds()).toEqual(expect.arrayContaining(['ask', 'answer', 'version']))
+    // what was actually supplied, in the words the fixture gave it
     await expect.element(page.getByText('市中心血站城东采血点')).toBeVisible()
-    await expect.element(page.getByText('你提交了第 1 版')).toBeVisible()
   })
 
   it('keeps every layer in the address, and takes it back out on close', async () => {
@@ -482,7 +494,7 @@ describe('filing a claim', () => {
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
-    await page.getByRole('button', { name: '去申报' }).first().click()
+    await page.getByTestId('file-claim').first().click()
     // both layers landed in one write: the question and the fresh claim
     await vi.waitFor(() => expect(addressNow()).toContain(`open=${ITEM_ID}`))
     expect(addressNow()).toContain('entry=new')
@@ -554,9 +566,10 @@ describe('filing a claim', () => {
     )
 
     // the paper says the places are used, in a badge where the button stood
-    await expect.element(page.getByText('申报条数已满').first()).toBeVisible()
+    // no way in left on this question
+    expect(page.getByTestId('file-claim').elements()).toHaveLength(0)
     // the row counts the files; the files themselves are in the drawer
-    await expect.element(page.getByText('1 份')).toBeVisible()
+    await expect.element(page.getByTestId('claim-row').first()).toHaveAttribute('data-files', '1')
   })
 })
 
@@ -704,11 +717,13 @@ describe('judging a submission', () => {
     // seconds the pill offers the way back before anything leaves
     await page.getByRole('button', { name: /^通过/ }).click()
     expect(decided).not.toHaveBeenCalled()
-    await page.getByRole('button', { name: /提交决定/ }).click()
-    await expect.element(page.getByText(/期间可撤回/)).toBeVisible()
+    await page.getByRole('button', { name: /提交审核结果/ }).click()
+    await expect
+      .element(page.getByTestId('decision-staged'))
+      .toHaveAttribute('data-decision', 'approve')
     expect(decided).not.toHaveBeenCalled()
     // the run had one submission, so the closing screen is already up
-    await expect.element(page.getByText('这一组 1 件已审完')).toBeVisible()
+    await expect.element(page.getByTestId('run-done')).toHaveAttribute('data-handled', '1')
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
     expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({
       payload: { decision: 'approve' },
@@ -739,7 +754,7 @@ describe('judging a submission', () => {
     // same chord, and both answering it staged a decision and then told the
     // reviewer to choose one
     await page.getByRole('button', { name: /退回/ }).click()
-    await page.getByLabelText('给申报人的说明').fill('证书缺少落款。')
+    await page.getByLabelText('审核说明').fill('证书缺少落款。')
     await page
       .getByRole('dialog')
       .getByRole('button', { name: /确认退回/ })
@@ -776,7 +791,7 @@ describe('judging a submission', () => {
     await page.getByRole('button', { name: /退回/ }).click()
     const confirm = page.getByRole('dialog').getByRole('button', { name: /确认退回/ })
     await expect.element(confirm).toBeDisabled()
-    await page.getByLabelText('给申报人的说明').fill('证明日期与填报不符，请核对。')
+    await page.getByLabelText('审核说明').fill('证明日期与填报不符，请核对。')
     await expect.element(confirm).toBeEnabled()
     await confirm.click()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
@@ -834,7 +849,7 @@ describe('judging a submission', () => {
 
     // a reason alone does not send: the written word is still required
     await expect.element(confirm).toBeDisabled()
-    await page.getByLabelText('给申报人的说明').fill('与三月的献血申报是同一件事。')
+    await page.getByLabelText('审核说明').fill('与三月的献血申报是同一件事。')
     await confirm.click()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
     expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({
@@ -893,10 +908,12 @@ describe('reading one’s standing', () => {
 
     // the ledger speaks with two decimals throughout
     await expect.element(page.getByText('2.00', { exact: true }).first()).toBeVisible()
-    await expect.element(page.getByText('实时预览')).toBeVisible()
+    await expect
+      .element(page.getByTestId('result-mode'))
+      .toHaveAttribute('data-mode', 'provisional')
     await expect.element(page.getByText('3.00', { exact: true }).first()).toBeVisible()
     // the limit is one line, worded from the group's own figures
-    await expect.element(page.getByText(/合计 3\.00，按分组限额 2\.00 计入/)).toBeVisible()
+    await expect.element(page.getByTestId('group-adjustment')).toBeVisible()
     await expect.element(page.getByText('-1.00', { exact: true })).toBeVisible()
   })
 })

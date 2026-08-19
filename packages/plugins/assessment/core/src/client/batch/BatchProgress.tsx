@@ -168,7 +168,22 @@ export function BatchProgress({
         <span aria-hidden className="h-3.5 w-px shrink-0 bg-border max-md:hidden" />
       )}
       {said !== null && (
-        <span className={cn('inline-flex shrink-0 items-center gap-1.5 font-medium', tone)}>
+        <span
+          // What the clock says, as a fact rather than as a sentence: the
+          // kind of span and its own number, so a test about "39 minutes
+          // left" asks for 39 rather than for the phrasing around it.
+          data-testid="stage-clock"
+          data-span={progress.kind}
+          data-form={form}
+          {...(progress.kind === 'until' || progress.kind === 'since'
+            ? {
+                'data-unit': progress.span.unit,
+                'data-count': String(progress.span.value),
+                'data-rest': String(progress.span.rest),
+              }
+            : {})}
+          className={cn('inline-flex shrink-0 items-center gap-1.5 font-medium', tone)}
+        >
           {filled !== null && <Ring fraction={filled} />}
           {progress.kind === 'starts' && (
             <span className="text-muted-foreground">{format(m.plannedStart)}</span>

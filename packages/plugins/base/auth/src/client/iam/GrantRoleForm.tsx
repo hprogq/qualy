@@ -152,7 +152,9 @@ export function GrantRoleForm({
       {/* an empty list is an answer, not a missing one: this caller holds
           nothing that may be passed on at this target */}
       {!options.isPending && roles.length === 0 && (
-        <p className="w-full text-sm text-muted-foreground">{format(m.grantRolesEmpty)}</p>
+        <p data-testid="grant-nothing-offered" className="w-full text-sm text-muted-foreground">
+          {format(m.grantRolesEmpty)}
+        </p>
       )}
     </form>
   )

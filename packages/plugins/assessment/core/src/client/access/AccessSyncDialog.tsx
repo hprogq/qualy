@@ -123,7 +123,7 @@ export function AccessSyncDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent data-testid="access-sync" className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{format(m.accessSyncTitle)}</DialogTitle>
           <DialogDescription>{format(m.accessSyncHint)}</DialogDescription>
@@ -251,6 +251,7 @@ function ChangeRow({
           ) : (
             <label key={code} className="flex items-center gap-2 text-sm">
               <Checkbox
+                data-testid={`access-permission-${code}`}
                 checked={held.has(code)}
                 disabled={disabled}
                 onCheckedChange={() => onToggle(code)}

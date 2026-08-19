@@ -387,7 +387,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         }
       >
         {drafts.length === 0 ? (
-          <div className="space-y-4 rounded-lg border border-dashed p-8 text-center">
+          <div
+            data-testid="phase-plan-empty"
+            className="space-y-4 rounded-lg border border-dashed p-8 text-center"
+          >
             <p className="text-sm text-muted-foreground">{format(m.phasesEmpty)}</p>
             {!readOnly && (
               <div className="flex justify-center gap-2">

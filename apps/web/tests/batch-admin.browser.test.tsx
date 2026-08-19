@@ -359,8 +359,12 @@ describe('the countdown', () => {
       },
       `/assessment/batches/${BATCH_ID}/phases`,
     )
-    // a day and change reads as days and hours, never down to the minute
-    await expect.element(page.getByText('剩余 1 天 3 小时')).toBeVisible()
+    // a day and change reads as days and hours, never down to the minute:
+    // the units are the decision, the sentence around them is copy
+    const clock = page.getByTestId('stage-clock')
+    await expect.element(clock).toHaveAttribute('data-unit', 'days')
+    await expect.element(clock).toHaveAttribute('data-count', '1')
+    await expect.element(clock).toHaveAttribute('data-rest', '3')
   })
 
   it('says the larger unit alone when nothing is left under it', async () => {
@@ -374,7 +378,11 @@ describe('the countdown', () => {
       },
       `/assessment/batches/${BATCH_ID}/phases`,
     )
-    await expect.element(page.getByText('剩余 3 小时')).toBeVisible()
+    const clock = page.getByTestId('stage-clock')
+    await expect.element(clock).toHaveAttribute('data-unit', 'hours')
+    await expect.element(clock).toHaveAttribute('data-count', '3')
+    // nothing under it, so the smaller unit is not said at all
+    await expect.element(clock).toHaveAttribute('data-rest', '0')
   })
 
   it('names the stage in the clock once the bar is too narrow to show it', async () => {
@@ -387,8 +395,11 @@ describe('the countdown', () => {
       `/assessment/batches/${BATCH_ID}/phases`,
     )
     // one unit, and whose clock it is: the stage's name has gone from the
-    // bar, so a bare number would read as the batch's own countdown
-    await expect.element(page.getByText('阶段余 39 分')).toBeVisible()
+    // bar, so the clock switches to the form that carries it
+    const clock = page.getByTestId('stage-clock')
+    await expect.element(clock).toHaveAttribute('data-form', 'bare')
+    await expect.element(clock).toHaveAttribute('data-unit', 'minutes')
+    await expect.element(clock).toHaveAttribute('data-count', '39')
     await page.viewport(1280, 800)
   })
 })
@@ -409,13 +420,13 @@ describe('the batch overview', () => {
     // when it gives way, said without a label in front of it
     await expect.element(page.getByText('正式填报').first()).toBeVisible()
 
-    // and the flow itself is one click away wherever the reader is
-    await page.getByRole('button', { name: '查看完整流程' }).click()
+    // and the flow itself is one click away wherever the reader is: the
+    // panel lists the round's own stages, by their names in the fixture
+    await page.getByRole('button', { name: '查看全部阶段' }).click()
     const panel = page.getByRole('dialog')
-    await expect.element(panel.getByText('测评流程')).toBeVisible()
     await expect.element(panel.getByText('审核')).toBeVisible()
-    // read-only: no word of how the plan is arranged
-    expect(await panel.getByText('未排期').elements()).toHaveLength(0)
+    // read-only: nothing in it offers to arrange the plan
+    expect(panel.getByTestId('phase-schedule').elements()).toHaveLength(0)
   })
 
   it('folds the stages the round has left behind, and opens them on a click', async () => {
@@ -540,8 +551,8 @@ describe('the batch lifecycle', () => {
     const dialog = page.getByRole('dialog')
     // neither half of it is optional: without both, reopening stays shut
     await expect.element(dialog.getByRole('button', { name: '重新开启' })).toBeDisabled()
-    await dialog.getByLabelText('开启事由').fill('发现部分材料漏报')
-    await dialog.getByLabelText('要开启的阶段').fill('补充填报期')
+    await dialog.getByLabelText('重新开启原因').fill('发现部分材料漏报')
+    await dialog.getByLabelText('新增阶段').fill('补充填报期')
     await dialog.getByRole('button', { name: '重新开启' }).click()
 
     await vi.waitFor(() => expect(setBatchStatus).toHaveBeenCalledTimes(1))
@@ -570,7 +581,7 @@ describe('creating a batch', () => {
     await expect.element(dialog.getByRole('button', { name: '下一步' })).toBeDisabled()
     await dialog.getByRole('textbox', { name: '名称' }).fill('2026 秋季综测')
     // the calendar names a day by its whole date, so the day is matched inside it
-    await dialog.getByRole('button', { name: '材料时间范围' }).click()
+    await dialog.getByRole('button', { name: '材料统计时间范围' }).click()
     await page
       .getByRole('button', { name: /月10日/ })
       .first()
@@ -614,7 +625,7 @@ describe('the stage plan', () => {
     const putPhases = vi.fn((_request: Request) => Effect.succeed({ phases: [], warnings: [] }))
     screen({ putPhases })
 
-    await expect.element(page.getByText('暂无阶段。可从模板添加，或手动新增。')).toBeVisible()
+    await expect.element(page.getByTestId('phase-plan-empty')).toBeVisible()
 
     await page.getByRole('button', { name: '新增阶段', exact: true }).click()
     // a phase is named where a name has room to be read
@@ -639,10 +650,17 @@ describe('the stage plan', () => {
     const schedulePhase = vi.fn((_request: Request) => Effect.succeed({ phases: [] }))
     screen({ schedulePhase, getPhases: () => Effect.succeed(twoPhases()) })
 
-    // the first unscheduled stage is the only one that can take a time
-    await expect.element(page.getByRole('button', { name: '去排期' })).toBeVisible()
-    expect(page.getByRole('button', { name: '去排期' }).elements()).toHaveLength(1)
-    await expect.element(page.getByText('请先为上一阶段排期')).toBeVisible()
+    // the first unscheduled stage is the only one that can take a time; the
+    // one behind it waits, which is a fact about the plan rather than the
+    // sentence the row happens to print
+    await expect.element(page.getByTestId('phase-schedule')).toBeVisible()
+    expect(page.getByTestId('phase-schedule').elements()).toHaveLength(1)
+    expect(
+      page
+        .getByTestId('phase-when')
+        .elements()
+        .filter((el) => el.getAttribute('data-when') === 'unscheduled'),
+    ).toHaveLength(2)
   })
 
   it('withdraws a time from the last stage that has one', async () => {
@@ -673,7 +691,7 @@ describe('the stage plan', () => {
     })
 
     // starting now lives with scheduling: they are the same decision
-    await page.getByRole('button', { name: '去排期' }).click()
+    await page.getByTestId('phase-schedule').click()
     const dialog = page.getByRole('dialog')
     await dialog.getByRole('radio', { name: /立即开始/ }).click()
     await dialog.getByRole('button', { name: '立即开始' }).click()
@@ -690,15 +708,20 @@ describe('the stage plan', () => {
     await page.getByRole('button', { name: '编辑详情' }).first().click()
     const panel = page.getByRole('dialog')
 
-    // the gate's own registry, and nothing else
-    await expect.element(panel.getByRole('checkbox', { name: '提交审核' })).toBeVisible()
-    await expect.element(panel.getByRole('checkbox', { name: '审核提交的内容' })).toBeVisible()
+    // the gate's own registry, and nothing else: the actions themselves,
+    // not the words the interface happens to name them with
+    const offered = panel
+      .getByRole('checkbox')
+      .elements()
+      .map((box) => box.getAttribute('data-permission'))
+    expect(offered).toContain('assessment.entry.submit')
+    expect(offered).toContain('assessment.review.process')
     // its own switch: an appeal window opens reviewing without opening escalations
-    await expect.element(panel.getByRole('checkbox', { name: '提请复核' })).toBeVisible()
-    for (const absent of ['登录', '管理组织架构', '管理测评批次', '查看角色']) {
-      await expect.element(panel.getByRole('checkbox', { name: absent })).not.toBeInTheDocument()
-    }
-    expect(panel.getByRole('checkbox').elements()).toHaveLength(12)
+    expect(offered).toContain('assessment.review.escalate')
+    // nothing from outside the gate's registry - no login, no organization
+    // administration, no batch administration
+    expect(offered.some((code) => code !== null && !code.startsWith('assessment.'))).toBe(false)
+    expect(offered).toHaveLength(12)
   })
 
   it('fills one stage from a stage preset, as a starting point only', async () => {
@@ -708,7 +731,7 @@ describe('the stage plan', () => {
     await page.getByRole('button', { name: '编辑详情' }).first().click()
     const panel = page.getByRole('dialog')
     await panel.getByLabelText('应用时间线模板').selectOptions('填报阶段预设')
-    await panel.getByRole('button', { name: '填入' }).click()
+    await panel.getByRole('button', { name: '应用' }).click()
     await expect.element(panel.getByRole('checkbox', { name: '提交审核' })).toBeChecked()
     await expect.element(panel.getByRole('checkbox', { name: '查看排名' })).not.toBeChecked()
     await panel.getByRole('button', { name: '完成' }).click()
@@ -760,7 +783,9 @@ describe('the stage plan', () => {
     await panel.getByLabelText('阶段名称').fill('审核整理期')
     await panel.getByRole('button', { name: '完成' }).click()
     await page.getByRole('button', { name: '保存' }).click()
-    await expect.element(page.getByText('已排期的阶段不能移动或删除。')).toBeVisible()
+    await expect
+      .element(page.getByTestId('phase-refusal'))
+      .toHaveAttribute('data-reason', 'scheduled-phase-immutable')
   })
 })
 
@@ -826,8 +851,9 @@ describe('the participants tab', () => {
 
     await page.getByRole('button', { name: '从组织导入' }).click()
     // nothing can be imported until something is chosen
-    await expect.element(page.getByText('请选择组织单位与人员类型。')).toBeVisible()
-    await expect.element(page.getByText('从这些单位取人')).toBeVisible()
+    await expect
+      .element(page.getByTestId('import-candidates'))
+      .toHaveAttribute('data-ready', 'false')
     // every unit says what kind of thing it is, and the same kinds are what
     // the filter offers: that is how somebody picks the right one out of a
     // tree of similar names
@@ -846,7 +872,8 @@ describe('the participants tab', () => {
     await page.getByRole('checkbox', { name: '学生' }).click()
 
     // and the number is said before the button will do anything
-    await expect.element(page.getByText('将新增 3 人')).toBeVisible()
+    // how many it would add is the number, not the sentence carrying it
+    await expect.element(page.getByTestId('import-candidates')).toHaveAttribute('data-count', '3')
     await page.getByRole('button', { name: '导入' }).click()
     await vi.waitFor(() => expect(importParticipants).toHaveBeenCalledTimes(1))
     expect(importParticipants.mock.calls[0]![0]).toMatchObject({
@@ -894,11 +921,13 @@ describe('who may work on a batch', () => {
     })
 
     await expect.element(page.getByText('王审核')).toBeVisible()
-    await expect.element(page.getByText('组织授权')).toBeVisible()
+    await expect
+      .element(page.getByTestId('access-origin'))
+      .toHaveAttribute('data-origin', 'inherited')
 
     await page.getByRole('button', { name: '调整' }).click()
     // the dialog offers exactly what this batch holds, by name
-    const box = page.getByRole('checkbox', { name: '审核提交的内容' })
+    const box = page.getByTestId('access-permission-assessment.review.process')
     await expect.element(box).toBeChecked()
     await box.click()
 
@@ -969,7 +998,9 @@ describe('who may work on a batch', () => {
     })
 
     // the page opens on one line and one action, not on the list
-    await expect.element(page.getByText('组织侧权限发生变动', { exact: false })).toBeVisible()
+    await expect
+      .element(page.getByTestId('access-sync-notice'))
+      .toHaveAttribute('data-kind', 'decide')
     expect(page.getByText('新来的老师').elements()).toHaveLength(0)
 
     await page.getByRole('button', { name: '查看变更' }).click()
@@ -979,7 +1010,7 @@ describe('who may work on a batch', () => {
     expect(page.getByRole('checkbox').elements()).toHaveLength(2)
 
     // and nothing is taken until something is ticked
-    await page.getByRole('checkbox', { name: '审核提交的内容' }).click()
+    await page.getByTestId('access-permission-assessment.review.process').click()
     await page.getByRole('button', { name: '接受变更' }).click()
     await vi.waitFor(() => expect(applyAccessSync).toHaveBeenCalledTimes(1))
     expect(applyAccessSync.mock.calls[0]![0]).toMatchObject({
@@ -1006,14 +1037,21 @@ describe('who may work on a batch', () => {
       removeStaff,
     })
 
-    await expect.element(page.getByText('本批次临时')).toBeVisible()
+    // two people, one of them this batch's own doing: only that one may be
+    // removed here, which is a fact about where the authority came from
+    await expect.element(page.getByTestId('access-origin').first()).toBeVisible()
+    const origins = page
+      .getByTestId('access-origin')
+      .elements()
+      .map((badge) => badge.getAttribute('data-origin'))
+    expect(origins).toEqual(['inherited', 'explicit'])
     // one control, on the row this batch is responsible for
     const remove = page.getByRole('button', { name: '移出本批次' })
     await expect.element(remove).toBeVisible()
     await remove.click()
 
     // and it is a question before it is an action
-    await expect.element(page.getByText('将 临时来的 移出本批次？')).toBeVisible()
+    await expect.element(page.getByText('确认将 临时来的 移出本批次？')).toBeVisible()
     await page.getByRole('alertdialog').getByRole('button', { name: '移出本批次' }).click()
     await vi.waitFor(() => expect(removeStaff).toHaveBeenCalledTimes(1))
     expect(removeStaff.mock.calls[0]![0]).toMatchObject({ params: { sourceId: PARTICIPANT_ID } })

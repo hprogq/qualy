@@ -193,7 +193,11 @@ export default function BatchListPage() {
             {rows.length === 0 ? (
               // an empty list and an empty result set are different situations,
               // and only one of them is answered by clearing a filter
-              <Empty className="rounded-lg border border-dashed">
+              <Empty
+                data-testid="batch-list-empty"
+                data-empty={filtered ? 'filtered' : 'none'}
+                className="rounded-lg border border-dashed"
+              >
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     {filtered ? <SearchIcon /> : <LayersIcon />}
@@ -277,7 +281,12 @@ export default function BatchListPage() {
                   ),
                 )}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">
+                  <span
+                    data-testid="batch-pager"
+                    data-page={String(pageIndex + 1)}
+                    data-pages={String(pageCount)}
+                    className="text-sm text-muted-foreground"
+                  >
                     {/* how many there are is said beside the title; here is
                       only where in them this page falls */}
                     {pageCount > 1

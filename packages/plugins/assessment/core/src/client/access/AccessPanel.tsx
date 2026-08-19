@@ -336,7 +336,11 @@ function SubjectRow({
           {subject.sources.map((source) => (
             <li key={source.sourceId} className="flex min-w-0 items-center gap-1.5">
               <span className="truncate text-sm">{source.roleName}</span>
-              <Badge variant={source.origin === 'explicit' ? 'outline' : 'secondary'}>
+              <Badge
+                data-testid="access-origin"
+                data-origin={source.origin}
+                variant={source.origin === 'explicit' ? 'outline' : 'secondary'}
+              >
                 {format(
                   source.origin === 'explicit' ? m.accessOriginExplicit : m.accessOriginInherited,
                 )}

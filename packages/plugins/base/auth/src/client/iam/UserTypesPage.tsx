@@ -59,12 +59,19 @@ export default function UserTypesPage() {
                       {/* a type that opens no channel is one nobody can sign
                           in with, which is worth saying on the row itself */}
                       {!type.allowLocalLogin && !type.allowSsoLogin && (
-                        <span className="ml-2 text-xs text-destructive">
+                        // no channel to sign in through: a fact about the
+                        // type, marked as one beside the words for it
+                        <span data-testid="type-no-login" className="ml-2 text-xs text-destructive">
                           {format(m.noLoginBadge)}
                         </span>
                       )}
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span
+                      data-testid="type-summary"
+                      data-users={String(type.userCount)}
+                      data-placement={type.placementPolicy.mode}
+                      className="text-xs text-muted-foreground"
+                    >
                       {format(m.userCount, { count: type.userCount })}
                       {` · ${
                         type.placementPolicy.mode === 'allow-list'

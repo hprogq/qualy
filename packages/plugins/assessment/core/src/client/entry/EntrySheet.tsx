@@ -205,7 +205,10 @@ export function EntrySheet({
 
                 {/* the open ask, with its answer one press away */}
                 {entry.supplement !== null && (
-                  <div className="flex flex-col gap-2.5 rounded-xl bg-muted p-3">
+                  <div
+                    data-testid="supplement-ask"
+                    className="flex flex-col gap-2.5 rounded-xl bg-muted p-3"
+                  >
                     <div className="flex items-center gap-2">
                       <AlertCircleIcon aria-hidden className="size-4 shrink-0 text-destructive" />
                       <p className="min-w-0 flex-1 text-sm font-medium">

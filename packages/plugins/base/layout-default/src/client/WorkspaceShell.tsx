@@ -440,7 +440,7 @@ function CapableWorkspaceShell() {
             <UiSlot token={drawerAccount} loading={<Skeleton className="h-7 w-full" />} />
             {/* the applications the folded top bar carried - destinations,
                 not tabs - with the way out at the row's end */}
-            <div className="flex items-center gap-4 border-t pt-2.5">
+            <div data-testid="drawer-modules" className="flex items-center gap-4 border-t pt-2.5">
               <span className="shrink-0 text-[11px] font-medium whitespace-nowrap text-muted-foreground">
                 {format(m.otherPages)}
               </span>
