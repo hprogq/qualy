@@ -1252,10 +1252,12 @@ const FlowColumn = memo(function FlowColumn({
             )}
           </div>
         )}
-        {/* what has happened since this round opened, told apart from the
+        {/* What has happened since this round opened, told apart from the
             history above it: the card is why it came back, these are what
-            has been said about the answer to that */}
-        <div className="flex items-baseline gap-2 border-t pt-2">
+            has been said about the answer to that. The rule draws only
+            where there IS history - a first round has nothing to be told
+            apart from, and the pane's own header already drew a line. */}
+        <div className={cn('flex items-baseline gap-2', previous !== null && 'border-t pt-2')}>
           <p className="text-xs font-semibold text-muted-foreground">{format(m.reviewThisRound)}</p>
           <span className="flex-1" />
           {review.state !== 'completed' && review.capabilities.canDecide && (
