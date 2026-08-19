@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation, useParams } from 'react-router'
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { PanelLeftIcon } from 'lucide-react'
 import {
   navigationGroups,
@@ -16,8 +16,9 @@ import {
 } from '@qualy/web-runtime'
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
 import { cn } from '@qualy/ui/cn'
+import { Appear } from '@qualy/ui/reveal'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
-import { useIsMobile } from '@qualy/ui/use-mobile'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { TopBar } from './TopBar.tsx'
 import { NavIcon } from './icons.tsx'
 import { useAppNavigation } from './useAppNavigation.ts'
@@ -30,6 +31,17 @@ import { layoutMessages as m } from './i18n.ts'
 // course, whatever the workspace turns out to be about - and the shell fills
 // them from the route it is mounted at. It knows nothing else about them: the
 // bar above the rail is a slot, filled by whoever does know.
+//
+// Below the width where two columns fit, the shell changes shape rather than
+// stacking: the application bar folds away (switching applications is too
+// rare to hold 56px of a phone), the rail folds to nothing, and one capsule
+// floats at the foot of the screen. It opens a bottom drawer carrying the
+// same entries the rail carries plus the applications the folded bar carried.
+// The context bar stays exactly where it was - it already knows how to be
+// narrow.
+
+/** where the shell stops being two columns and becomes the capsule shape */
+const SHELL_BREAKPOINT = 1024
 
 const byOrder = (a: { order?: number }, b: { order?: number }) => (a.order ?? 0) - (b.order ?? 0)
 
@@ -54,6 +66,35 @@ const fill = (path: string, params: Readonly<Record<string, string | undefined>>
     filled.push(encodeURIComponent(value))
   }
   return filled.join('/')
+}
+
+/**
+ * Whether the navigation drawer is open, kept on the history entry rather
+ * than in component state.
+ *
+ * On a phone the drawer is somewhere the reader went, and the back key is
+ * how anybody leaves such a place: opening pushes an entry, the system back
+ * gesture pops it, and a page reached through the drawer keeps the drawer
+ * underneath it on the way back. Component state would make back leave the
+ * page instead, which on a phone reads as the app closing on them.
+ */
+const NAV_STATE = 'workspaceNav'
+function useNavDrawer() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const open = (location.state as Record<string, unknown> | null)?.[NAV_STATE] === true
+  const show = () => {
+    void navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { state: { [NAV_STATE]: true } },
+    )
+  }
+  const hide = () => {
+    // consume the entry the drawer stands on, so closing and the back key
+    // are the same move and history never fills with spent drawers
+    if (open) void navigate(-1)
+  }
+  return { open, show, hide }
 }
 
 function RailEntry({
@@ -105,6 +146,39 @@ function RailEntry({
   )
 }
 
+/** one cell of the drawer's grid: the same entry, sized for a thumb */
+function DrawerEntry({
+  id,
+  label,
+  to,
+  exact,
+}: {
+  id: string
+  label: ResolvedNavigationItem['label']
+  to: string
+  exact: boolean
+}) {
+  return (
+    <NavLink
+      end={exact}
+      to={to}
+      className={({ isActive }) =>
+        cn(
+          'flex h-11.5 items-center gap-2 rounded-[11px] border px-3 text-sm transition-colors',
+          isActive
+            ? 'border-accent bg-accent font-medium text-accent-foreground'
+            : 'bg-background text-foreground',
+        )
+      }
+    >
+      <span className="min-w-0 flex-1 truncate">
+        <LocalizedText value={label} />
+      </span>
+      <UiSlot token={workspaceNavigationBadge} context={{ navigationId: id }} />
+    </NavLink>
+  )
+}
+
 export default function WorkspaceShell() {
   return (
     <WorkspaceCapabilityScope>
@@ -120,17 +194,10 @@ function CapableWorkspaceShell() {
   const capabilities = useWorkspaceCapabilities()
   const params = useParams()
   const { format } = useI18n()
-  const isMobile = useIsMobile()
-  const [railOpen, setRailOpen] = useState(!isMobile)
-  useEffect(() => setRailOpen(!isMobile), [isMobile])
-  // On a phone the rail is a sheet over the page, so arriving somewhere is
-  // the end of it: leaving it open would put the page the reader just chose
-  // behind the thing they chose it from. On a desktop the rail is the
-  // furniture beside the page and stays as it was left.
-  const { pathname } = useLocation()
-  useEffect(() => {
-    if (isMobile) setRailOpen(false)
-  }, [pathname, isMobile])
+  const narrow = useIsBelow(SHELL_BREAKPOINT)
+  const drawer = useNavDrawer()
+  const [railOpen, setRailOpen] = useState(!narrow)
+  useEffect(() => setRailOpen(!narrow), [narrow])
 
   // an entry carrying a capability token waits for the open workspace to
   // publish its set, and renders only while the set holds it; a gated entry
@@ -176,18 +243,16 @@ function CapableWorkspaceShell() {
   // way out, the entries reflowing to one character a line on the way back
   // in. Held at one width and clipped, nothing inside it moves at all; the
   // entries only fade, which changes no layout.
-  const rail = (fixed: boolean) => (
-    <nav
-      className={cn('flex h-full flex-col gap-5 overflow-y-auto p-3', fixed ? 'w-56' : 'w-full')}
-    >
-      {!isMobile && <div className="flex">{toggle(format(m.toggleSidebar))}</div>}
+  const rail = (
+    <nav className="flex h-full w-56 flex-col gap-5 overflow-y-auto p-3">
+      <div className="flex">{toggle(format(m.toggleSidebar))}</div>
       <div
         // out of reach as well as out of sight: a link nobody can see is
         // still a link the keyboard walks into and the screen reader reads
-        {...(fixed && !railOpen ? { inert: true, 'aria-hidden': true } : {})}
+        {...(!railOpen || narrow ? { inert: true, 'aria-hidden': true } : {})}
         className={cn(
           'flex flex-col gap-5 transition-opacity duration-150',
-          fixed && !railOpen && 'opacity-0',
+          (!railOpen || narrow) && 'opacity-0',
         )}
       >
         {loose.length > 0 && (
@@ -229,56 +294,140 @@ function CapableWorkspaceShell() {
 
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
-      <TopBar apps={apps} activeApp={activeApp} />
+      {/* Folded rather than removed below the breakpoint, so crossing it is
+          the bar sliding away, not the page jumping. Switching applications
+          is too rare on a phone to hold this row; the drawer carries them. */}
+      <div
+        {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
+        className={cn(
+          'shrink-0 overflow-hidden transition-[height] duration-200 ease-linear',
+          narrow ? 'h-0' : 'h-14',
+        )}
+      >
+        <TopBar apps={apps} activeApp={activeApp} />
+      </div>
       {/* its height is fixed rather than found: the slot arrives a moment after
           the shell does, and a bar that grows from empty to filled moves every
           page below it just as the reader starts reading */}
       <div className="relative flex h-13 shrink-0 items-center border-b bg-background px-2 sm:px-4">
-        {/* Only on a phone, where the rail is a sheet with no edge of its own
-            to reach; on a desktop it keeps its own control, open or shut.
-            Over the bar rather than in it: in the row it would push the slot
-            aside, and whatever the slot centres would be centred on what was
-            left of the bar instead of on the screen. The slot keeps its own
-            left margin clear (data-bar-start). */}
-        {isMobile && <div className="absolute left-2 z-10">{toggle(format(m.toggleSidebar))}</div>}
-        {/* the same width the control takes, and at the same breakpoint it
-            appears at: below that the two sat on top of each other */}
-        <div className="min-w-0 flex-1 max-md:[&_[data-bar-start]]:pl-9">
+        <div className="min-w-0 flex-1">
           <UiSlot token={workspaceContext} />
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
-        {isMobile ? (
-          <Sheet open={railOpen} onOpenChange={setRailOpen}>
-            <SheetContent side="left" className="w-64 p-0">
-              <SheetTitle className="sr-only">{format(m.toggleSidebar)}</SheetTitle>
-              {rail(false)}
-            </SheetContent>
-          </Sheet>
-        ) : (
-          // Collapsed to a strip rather than to nothing: the control that
-          // brings it back stays where it was taken from, so reopening does
-          // not mean going up to the bar and hunting for it.
-          <aside
-            className={cn(
-              'h-full shrink-0 overflow-hidden border-r transition-[width] duration-200 ease-linear',
-              railOpen ? 'w-56' : 'w-13',
-            )}
-          >
-            {rail(true)}
-          </aside>
-        )}
+        {/* Collapsed to a strip rather than to nothing, so the control that
+            brings it back stays where it was taken from; on a narrow screen
+            collapsed all the way, because the drawer has taken over. */}
+        <aside
+          // fully out of reach while folded: clipped is not gone, and the
+          // keyboard would still walk into the toggle behind the fold
+          {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
+          className={cn(
+            'h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-linear',
+            narrow ? 'w-0' : railOpen ? 'w-56 border-r' : 'w-13 border-r',
+          )}
+        >
+          {rail}
+        </aside>
         {/* auto, not scroll: the screens that fill the viewport - the review
             workbench, my filings - then carry a scrollbar that can never
-            move, which reads as a page with somewhere to go. Measured before
-            changing it: where scrollbars overlay, `scroll` and `auto` both
-            reserve nothing, so the width the old comment protected is the
-            same either way; a reserved gutter is what costs 15px of blank
-            strip (see AppShell). */}
+            move, which reads as a page with somewhere to go. */}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           <Outlet />
         </main>
       </div>
+
+      {/* The one capsule the narrow shell owns. It does navigation and
+          nothing else - no badge, no page actions, no slots for either - and
+          any tap on it opens the drawer. Gone while the drawer is up: it is
+          the drawer's handle, not a peer. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[max(1.125rem,env(safe-area-inset-bottom))] z-40 flex justify-center">
+        <Appear show={narrow && !drawer.open}>
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={drawer.show}
+            className="pointer-events-auto flex h-11 cursor-pointer items-center gap-2.5 rounded-[14px] border bg-background/90 px-4 shadow-[0_10px_28px_-10px_rgba(0,0,0,0.3)] backdrop-blur-sm"
+          >
+            <span aria-hidden className="flex flex-col items-center gap-[3px]">
+              <span className="h-[1.5px] w-3.5 rounded-full bg-foreground" />
+              <span className="h-[1.5px] w-3.5 rounded-full bg-foreground" />
+            </span>
+            <span className="text-[13px] font-medium">{format(m.navCapsule)}</span>
+          </button>
+        </Appear>
+      </div>
+
+      <Sheet
+        open={narrow && drawer.open}
+        onOpenChange={(next) => {
+          if (!next) drawer.hide()
+        }}
+      >
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
+        >
+          <SheetTitle className="sr-only">{format(m.navCapsule)}</SheetTitle>
+          <span
+            aria-hidden
+            className="mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30"
+          />
+          {/* the same entries the rail carries, two to a row because a
+              phone-wide column of 46px bars wastes the little height a
+              drawer has */}
+          <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3.5 pt-3 pb-4">
+            {loose.length > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                {loose.map((item) => (
+                  <DrawerEntry
+                    key={item.id}
+                    id={item.id}
+                    label={item.label}
+                    to={item.to}
+                    exact={hasEntriesBelow(item.to, paths)}
+                  />
+                ))}
+              </div>
+            )}
+            {sections.map((section) => (
+              <section key={section.id} className="flex flex-col gap-1.5">
+                <p className="text-xs text-muted-foreground">
+                  <LocalizedText value={section.label} />
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {section.items.map((item) => (
+                    <DrawerEntry
+                      key={item.id}
+                      id={item.id}
+                      label={item.label}
+                      to={item.to}
+                      exact={hasEntriesBelow(item.to, paths)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </nav>
+          {/* the applications the folded top bar carried: destinations, not
+              tabs, so no selected state */}
+          {apps.length > 0 && (
+            <div className="flex shrink-0 flex-col gap-2 border-t bg-muted/40 px-4 pt-3 pb-[max(1.375rem,env(safe-area-inset-bottom))]">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                {format(m.otherPages)}
+              </p>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {apps.map((app) => (
+                  <NavLink key={app.id} to={app.path} className="text-[13px] text-foreground">
+                    <LocalizedText value={app.label} />
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

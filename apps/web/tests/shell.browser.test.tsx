@@ -161,6 +161,72 @@ describe('the workspace shell', () => {
     await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()
   })
 
+  it('folds the top bar away on a phone and hands navigation to the capsule', async () => {
+    await page.viewport(390, 844)
+    shell(
+      <WorkspaceShell />,
+      '/assessment/batches/:batchId/phases',
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+
+    // the application bar is folded, not merely shrunk: its links are out of
+    // reach, and the rail beside the page is folded with it
+    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
+    expect(
+      page
+        .getByRole('link', { name: '组织与权限' })
+        .elements()
+        .filter((el) => el.checkVisibility()),
+    ).toHaveLength(0)
+    expect(
+      page
+        .getByRole('link', { name: '阶段安排' })
+        .elements()
+        .filter((el) => el.checkVisibility()),
+    ).toHaveLength(0)
+
+    // the capsule opens the drawer: the workspace's own pages first, the
+    // applications the folded bar carried at the foot
+    await page.getByRole('button', { name: '导航' }).click()
+    await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
+    await expect.element(page.getByText('其他页面')).toBeVisible()
+    await expect.element(page.getByRole('link', { name: '测评' })).toBeVisible()
+
+    // closing consumes the history entry the drawer stands on: the escape
+    // key here is the phone's back gesture in this harness
+    await page
+      .getByRole('link', { name: '阶段安排' })
+      .element()
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
+    expect(
+      page
+        .getByRole('link', { name: '阶段安排' })
+        .elements()
+        .filter((el) => el.checkVisibility()),
+    ).toHaveLength(0)
+  })
+
+  it('navigating from the drawer lands with the drawer closed', async () => {
+    await page.viewport(390, 844)
+    shell(
+      <WorkspaceShell />,
+      '/assessment/batches/:batchId/phases',
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+
+    await page.getByRole('button', { name: '导航' }).click()
+    await page.getByRole('link', { name: '阶段安排' }).click()
+    // the destination stands clear; the drawer went with the navigation
+    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
+    expect(
+      page
+        .getByRole('link', { name: '阶段安排' })
+        .elements()
+        .filter((el) => el.checkVisibility()),
+    ).toHaveLength(0)
+  })
+
   it('keeps the control that closes the rail inside the rail, and offers it back', async () => {
     await page.viewport(1280, 800)
     shell(

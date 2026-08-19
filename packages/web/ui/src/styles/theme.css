@@ -151,5 +151,11 @@
   }
   html {
     @apply font-sans;
+    /* a phone browser's own flourishes, declined: the grey tap flash reads
+       as a second, unstyled button under every control, and the automatic
+       text inflation re-sizes copy the layout already sized */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 }

@@ -11,6 +11,14 @@ const i18n = definePluginMessages({
       id: 'layout/shell/toggle-sidebar',
       defaultMessage: 'Toggle sidebar',
     },
+    navCapsule: {
+      id: 'layout/shell/nav',
+      defaultMessage: 'Navigation',
+    },
+    otherPages: {
+      id: 'layout/shell/other-pages',
+      defaultMessage: 'Other pages',
+    },
   },
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),
