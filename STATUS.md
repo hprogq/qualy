@@ -6253,3 +6253,27 @@ subject 缺席(读者即申报人)走第二人称,审核人的动作在任何读
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 672 passed / 17 skipped;
 `pnpm test:browser` 69 passed;prettier 全绿。
+
+### 审核读取边界:提交即失权(2026-08-20,按裁决)
+
+用户实测发现:审核提交后仍能经 URL 读整个审核页(getReviewInstance 200),而同页的
+/entries/:id/revisions 已按设计 404——两个门各写了一套读取授权。定案规则:**审核员的读取权来自
+「当前仍承担这条申报的审核职责」,不来自「曾经审核过」**;approve/reject/escalate 提交即失权,
+待补材料(awaiting_supplement)与停摆(blocked)是未完成任务、保留;申报本人与批次管理范围照旧。
+
+实现:review/db.ts 单源 `OPEN_REVIEW_STATES`(mayReviewEntry 的 SQL 状态表改由它拼出);
+review/service 拆两谓词——**mayAct(仅当前节点匹配,供动作端点:状态机继续给精确拒绝,同节点
+两审核人赛跑时后到者得到 REVIEW_CONFLICT「已被处理」而不是装不存在,beacon 重发依赖这一点)**、
+**mayRead(开放态 ∧ 当前节点,getReviewInstance 用它)**;附件侧 citingInstances 与
+supplementCitingInstances 两条 reviewer 形查询补 `ri.state in OPEN_REVIEW_STATES`(entry 形、
+subject/管理员路径不动)。客户端:工作台 done 屏对"本次会话刚裁决的实例"的 404 静默(那是边界
+在生效,不是要盖在收尾屏上的错误)。
+
+回归矩阵(review-access.test.ts,PG 真跑,反向验证过——撤掉修复 2 例当场红):两级链上
+班级审核人/同节点搭档/学院审核人三视角 × instance/history/attachment 三门,逐节点断言
+approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节点齐开、completed 后最后一级也关、
+本人与管理员恒开;补充材料期间三态保留、答复后保留、reject 后即关。errorOf 复用仓库助手
+(Effect v4 cause 是 failures[],自写 _tag 判断会把一切失败读成放行——排查中踩过)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 674 passed / 17 skipped;
+`pnpm test:browser` 69 passed;`pnpm build` 通过;prettier 全绿。

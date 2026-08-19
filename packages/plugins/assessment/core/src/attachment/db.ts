@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import { db } from '../server/db.ts'
+import { OPEN_REVIEW_STATES } from '../review/db.ts'
 
 // Who stands around an attachment: every entry whose history cites it, and
 // every review round that judged a revision citing it. The authorizer walks
@@ -116,6 +117,9 @@ export const citingInstances = (tenantId: string, attachmentId: string) =>
         .distinct()
         .where('ri.tenantId', '=', tenantId)
         .where('era.attachmentId', '=', attachmentId)
+        // only rounds that still have reviewers: a decided round's last
+        // stage must not keep handing its people the files
+        .where('ri.state', 'in', [...OPEN_REVIEW_STATES])
         .execute(),
     )
     .pipe(
@@ -164,6 +168,8 @@ export const supplementCitingInstances = (tenantId: string, attachmentId: string
         .distinct()
         .where('rsa.tenantId', '=', tenantId)
         .where('rsa.attachmentId', '=', attachmentId)
+        // the same boundary as the revision-cited rounds above
+        .where('ri.state', 'in', [...OPEN_REVIEW_STATES])
         .execute(),
     )
     .pipe(

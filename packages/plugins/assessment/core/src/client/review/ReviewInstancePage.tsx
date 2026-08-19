@@ -478,7 +478,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
   return (
     <AsyncSection
       pending={inbox.isPending && detail.isPending}
-      error={detail.error ? formatError(detail.error) : null}
+      // A round this sitting decided stops being this reviewer's to read
+      // the moment the decision lands, and the refetch behind the done
+      // screen comes back not-found. That is the access rule working, not
+      // an error to show over the reader's own closing screen.
+      error={detail.error && !settledHere ? formatError(detail.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => {

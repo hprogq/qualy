@@ -138,6 +138,22 @@ export const reviewersAt = (input: {
         )
         .pipe(Effect.map(({ rows }) => rows.map((row) => String(row.user_id))))
 
+/**
+ * The states in which a round still belongs to its stage's reviewers.
+ *
+ * This list is the reviewer's read-and-act boundary in one place: a
+ * reviewer's reach is their unfinished duty, not their history, so the
+ * moment a decision hands the round on or ends it, the stage they matched
+ * stops answering for them. An open ask (`awaiting_supplement`) keeps the
+ * round theirs, because their task has not ended; a stalled stage
+ * (`blocked`) likewise still awaits somebody at it.
+ */
+export const OPEN_REVIEW_STATES = ['active', 'blocked', 'awaiting_supplement'] as const
+
+/** whether the state still has reviewers at all, for the read predicates */
+export const isOpenReviewState = (state: string): boolean =>
+  (OPEN_REVIEW_STATES as readonly string[]).includes(state)
+
 /** one person against one instance's stage, for the decision endpoints */
 export const userMayReview = (input: {
   tenantId: string
@@ -1571,7 +1587,7 @@ export const mayReviewEntry = (input: { tenantId: string; userId: string; entryI
           join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
           where ri.tenant_id = ${input.tenantId}
             and ri.entry_id = ${input.entryId}
-            and ri.state in ('active', 'blocked', 'awaiting_supplement')
+            and ri.state in (${sql.join(OPEN_REVIEW_STATES.map((state) => sql`${state}`))})
             and ${mayReview({
               tenantId: sql`${input.tenantId}`,
               batchId: sql.ref('e.batch_id'),

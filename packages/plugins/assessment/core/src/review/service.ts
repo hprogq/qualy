@@ -69,6 +69,7 @@ import {
   supplementAttachmentHistory,
   supplementRequestOf,
   supplementsOf,
+  isOpenReviewState,
   userMayReview,
   type InboxRow,
   type ReviewInstanceDetailRow,
@@ -659,6 +660,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       } satisfies ReviewDetailView
     })
 
+  /**
+   * Whether this person matches the round's CURRENT stage. For acting that
+   * is the whole question - the state machine behind each act answers
+   * "closed" and "waiting" precisely, and the reviewer who just lost a race
+   * to a peer deserves "somebody already handled this", not "nothing here".
+   * For READING it is only half: see mayRead, which also requires the round
+   * to still be open, because a reviewer's reach is their unfinished duty
+   * and ends with their decision.
+   */
   const mayAct = (tenantId: string, row: ReviewInstanceDetailRow, as: Principal) =>
     userMayReview({
       tenantId,
@@ -671,6 +681,18 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         actorId: row.actorId,
       },
     })
+
+  /**
+   * Whether this person may READ the round as its reviewer: the same
+   * boundary the entry side's mayReviewEntry expresses in SQL - an open
+   * round, and the reader at its current stage. A completed round keeps its
+   * last stage on the row, and matching that stage used to keep reading
+   * alive after the decision had handed the round on; the state gate is
+   * what makes "submitted and moved on" mean "gone". An open ask keeps the
+   * round with its reviewer, because their task has not ended.
+   */
+  const mayRead = (tenantId: string, row: ReviewInstanceDetailRow, as: Principal) =>
+    isOpenReviewState(row.state) ? mayAct(tenantId, row, as) : Effect.succeed(false)
 
   const listReviewInbox: ReviewMethods['listReviewInbox'] = Effect.fn('Assessment.listReviewInbox')(
     function* (tenantId, page, as) {
@@ -793,10 +815,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   )(function* (tenantId, instanceId, as) {
     const row = yield* dieQuery(withDb(instanceOf(tenantId, instanceId)))
     if (row === null) return yield* new ReviewNotFound()
-    // who may see a round: its subject, whoever may judge its stage, and
-    // staff whose administrative reach covers the batch - anyone else learns
-    // nothing, not even that it exists
-    const judge = yield* dieQuery(withDb(mayAct(tenantId, row, as)))
+    // who may see a round: its subject, whoever is judging its OPEN stage,
+    // and staff whose administrative reach covers the batch - anyone else,
+    // the reviewers of every finished stage included, learns nothing, not
+    // even that it exists
+    const judge = yield* dieQuery(withDb(mayRead(tenantId, row, as)))
     if (row.subjectUserId !== as.userId && !judge) {
       const admin = yield* deps.rosterReach(as, tenantId, row.batchId)
       if (!admin) return yield* new ReviewNotFound()

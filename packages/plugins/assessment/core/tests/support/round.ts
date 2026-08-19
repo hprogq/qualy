@@ -223,7 +223,10 @@ export const seed = (slug: string) =>
 export type Seeded = Effect.Success<ReturnType<typeof seed>>
 
 /** a running batch in its entry phase, one student item, roster imported */
-export const runningBatch = (f: Seeded, over?: { profile?: readonly string[] }) =>
+export const runningBatch = (
+  f: Seeded,
+  over?: { profile?: readonly string[]; stages?: readonly unknown[] },
+) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
     const batch = yield* assessment.createBatch(
@@ -282,11 +285,13 @@ export const runningBatch = (f: Seeded, over?: { profile?: readonly string[] }) 
           reviewPolicy: {
             normal: {
               stages: [
-                {
-                  id: 'class',
-                  selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
-                  quorum: { type: 'any' },
-                },
+                ...(over?.stages ?? [
+                  {
+                    id: 'class',
+                    selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                    quorum: { type: 'any' },
+                  },
+                ]),
               ],
             },
             escalation: { stages: [] },
