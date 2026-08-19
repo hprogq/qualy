@@ -794,6 +794,23 @@ const i18n = definePluginMessages({
     },
     eventOther: { id: 'assessment/event/other', defaultMessage: 'Something happened here' },
     eventSomebody: { id: 'assessment/event/somebody', defaultMessage: 'Somebody' },
+    eventYouSubmitted: {
+      id: 'assessment/event/you-submitted',
+      defaultMessage: 'You submitted the claim',
+    },
+    eventYouWithdrew: {
+      id: 'assessment/event/you-withdrew',
+      defaultMessage: 'You withdrew the claim',
+    },
+    eventYouAppealed: { id: 'assessment/event/you-appealed', defaultMessage: 'You appealed' },
+    eventYouAbandoned: {
+      id: 'assessment/event/you-abandoned',
+      defaultMessage: 'You gave the claim up',
+    },
+    eventYouSupplemented: {
+      id: 'assessment/event/you-supplemented',
+      defaultMessage: 'You supplied the material',
+    },
     outcomeApproved: { id: 'assessment/outcome/approved', defaultMessage: 'Approved' },
     outcomeRejected: { id: 'assessment/outcome/rejected', defaultMessage: 'Sent back' },
     outcomeCancelled: { id: 'assessment/outcome/cancelled', defaultMessage: 'Ended' },
@@ -1889,7 +1906,7 @@ const i18n = definePluginMessages({
     },
     entryTrailVersion: {
       id: 'assessment/entry/trail-version',
-      defaultMessage: 'I submitted version {no}',
+      defaultMessage: 'You submitted version {no}',
     },
     // the same moments, told to somebody who is not the person they are
     // about: a reviewer reading "I submitted" is reading the wrong sentence
@@ -1919,7 +1936,7 @@ const i18n = definePluginMessages({
     },
     entryTrailAnswered: {
       id: 'assessment/entry/trail-answered',
-      defaultMessage: 'I added the material',
+      defaultMessage: 'You added the material',
     },
     entryTrailAnswerKept: {
       id: 'assessment/entry/trail-answer-kept',

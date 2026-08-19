@@ -37,6 +37,28 @@ const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
   rerouted: m.eventRerouted,
 }
 
+/**
+ * The same acts, spoken to the person who did them.
+ *
+ * The account is one account, but "示例学生 提交了申报" is the wrong
+ * sentence on 示例学生's own screen - their trail already speaks to them
+ * ("等你补充", "由你决定"), and naming them in the third person beside
+ * that reads as somebody else's file. Only the acts the filer themself
+ * performs have a second voice; everything a reviewer did keeps its name
+ * in every reading.
+ */
+const OWN_VOICE: Record<string, MessageDescriptor> = {
+  submitted: m.eventYouSubmitted,
+  'cancelled-by-submitter': m.eventYouWithdrew,
+  appealed: m.eventYouAppealed,
+  'abandoned-by-submitter': m.eventYouAbandoned,
+  'supplement-submitted': m.eventYouSupplemented,
+}
+
+/** the sentence for an act of the reader's own, where it has one */
+export const ownReviewEventMessage = (kind: string): MessageDescriptor | undefined =>
+  OWN_VOICE[kind]
+
 /** the sentence for one event, and whether it needs the actor's name in it */
 export const reviewEventMessage = (
   kind: string,

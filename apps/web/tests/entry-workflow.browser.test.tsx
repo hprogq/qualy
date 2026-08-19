@@ -307,6 +307,11 @@ describe('filing a claim', () => {
     await page.getByRole('button', { name: /2024 年入伍/ }).click()
     await page.getByRole('button', { name: /审核经过/ }).click()
     await expect.element(page.getByText('证明日期与填报不符，请核对。')).toBeVisible()
+    // one's own trail speaks to its reader: their acts in the second
+    // person, never their own name over their shoulder
+    await expect.element(page.getByText('你提交了申报')).toBeVisible()
+    await expect.element(page.getByText('你提交了第 1 版')).toBeVisible()
+    expect(page.getByText(/提交了申报/).elements().length).toBe(1)
     await expect.element(page.getByText('审核人的修改建议')).toBeVisible()
     await expect.element(page.getByText('采纳与否由你决定，请自行修改后重新提交。')).toBeVisible()
     // advice is read, never applied: nothing offers to copy it in
@@ -417,9 +422,9 @@ describe('filing a claim', () => {
 
     // and the account carries the ask and the answer as two moments
     await page.getByRole('button', { name: /审核经过/ }).click()
-    await expect.element(page.getByText('我补充了材料')).toBeVisible()
+    await expect.element(page.getByText('你补充了材料')).toBeVisible()
     await expect.element(page.getByText('市中心血站城东采血点')).toBeVisible()
-    await expect.element(page.getByText('我提交了第 1 版')).toBeVisible()
+    await expect.element(page.getByText('你提交了第 1 版')).toBeVisible()
   })
 
   it('keeps every layer in the address, and takes it back out on close', async () => {

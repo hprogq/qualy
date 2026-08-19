@@ -13,7 +13,7 @@ import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { fieldsOf } from './model.ts'
-import { reviewEventMessage } from '../review/events.ts'
+import { ownReviewEventMessage, reviewEventMessage } from '../review/events.ts'
 
 // The whole account of one claim, as one line down the page.
 //
@@ -203,7 +203,7 @@ function useNodes(data: History, subject: string | undefined): readonly Node[] {
         at: event.at,
         kind: 'act',
         weight: decisive ? 'alert' : event.kind === 'approved' ? 'strong' : 'plain',
-        render: () => <Act event={event} roundNo={round.roundNo} />,
+        render: () => <Act event={event} roundNo={round.roundNo} subject={subject} />,
       })
       // advice, not a fact about the past: its own block, and it says so
       if (event.suggestedPayload != null) {
@@ -260,12 +260,7 @@ function useNodes(data: History, subject: string | undefined): readonly Node[] {
       weight: 'plain',
       render: () => (
         <div className="flex flex-col gap-1">
-          <Line
-            title={format(reviewEventMessage(event.kind).message, {
-              who: event.actorName ?? format(m.eventSomebody),
-            })}
-            at={event.at}
-          />
+          <Line title={actTitle(format, event, subject)} at={event.at} />
           {event.reason !== null && <Quoted>{event.reason}</Quoted>}
         </div>
       ),
@@ -355,18 +350,38 @@ function Version({
   )
 }
 
-function Act({ event, roundNo }: { event: Round['events'][number]; roundNo: number }) {
-  const { format } = useI18n()
+/**
+ * One event's headline in the right voice: the reader's own acts speak to
+ * them where the reader is the filer, and carry the actor's name for
+ * everybody else.
+ */
+const actTitle = (
+  format: ReturnType<typeof useI18n>['format'],
+  event: { kind: string; actorName?: string | null },
+  subject: string | undefined,
+): string => {
+  const own = subject === undefined ? ownReviewEventMessage(event.kind) : undefined
+  if (own !== undefined) return format(own)
   const said = reviewEventMessage(event.kind)
+  return format(
+    said.message,
+    said.needsActor ? { who: event.actorName ?? format(m.eventSomebody) } : {},
+  )
+}
+
+function Act({
+  event,
+  roundNo,
+  subject,
+}: {
+  event: Round['events'][number]
+  roundNo: number
+  subject: string | undefined
+}) {
+  const { format } = useI18n()
   return (
     <>
-      <Line
-        title={format(
-          said.message,
-          said.needsActor ? { who: event.actorName ?? format(m.eventSomebody) } : {},
-        )}
-        at={event.at}
-      />
+      <Line title={actTitle(format, event, subject)} at={event.at} />
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs whitespace-nowrap text-muted-foreground">
           {format(m.entryTrailRound, { no: roundNo })}

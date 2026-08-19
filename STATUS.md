@@ -6236,3 +6236,20 @@ prettier 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 672 passed / 17 skipped;
 `pnpm test:browser` 69 passed;prettier 全绿。
+
+### 申报经过的声部混杂(2026-08-20)
+
+参评人自己的「审核经过」里三种口径并存:轮内事件永远第三人称报名字(「示例学生 提交了申报」——
+读者就是示例学生本人)、版本行用「我」(我提交了第 2 版)、补充与建议用「你」(等你补充、由你
+决定)。审核端整卷经过(EntryHistory 带 subject)本来就是全三人称,没有问题。
+
+修法:events.ts 增 OWN_VOICE 表——只有申报人自己的动作(submitted/cancelled-by-submitter/
+appealed/abandoned-by-submitter/supplement-submitted)有第二声部(你提交了申报/你撤回了申报/
+你发起了申诉/你放弃了申报/你补充了材料);EntryHistory 的 Act 与轮外事件按 subject 选声部,
+subject 缺席(读者即申报人)走第二人称,审核人的动作在任何读法里都保留名字。「我」全部并入
+「你」:trail-version→你提交了第 {no} 版、trail-answered→你补充了材料(en 同步 I→You)。
+浏览器断言:本人经过里「你提交了申报」「你提交了第 1 版」可见,且「提交了申报」仅一处(没有
+本人名字的第三人称行)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 672 passed / 17 skipped;
+`pnpm test:browser` 69 passed;prettier 全绿。
