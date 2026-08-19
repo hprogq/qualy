@@ -6225,3 +6225,14 @@ prettier 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 672 passed / 17 skipped;
 `pnpm test:browser` 69 passed;`pnpm build` 通过;prettier 全绿。
+
+### 键盘打开退回框时首个事由带环(2026-08-19)
+
+按 R 打开(键盘发起)时 radix 把焦点落到第一个可聚焦控件——第一个事由 chip 戴上 focus-visible
+环,读起来像"已选中";鼠标打开无环(focus-visible 启发式)。修法:FormDialog 增 `restfulFocus`
+——onOpenAutoFocus preventDefault,焦点落在对话框容器本身(FocusScope 的兜底),数字键照落、Tab
+仍可及、没有控件戴环。两个决定对话框在配置了事由时启用;未配置时说明框照旧 autoFocus。浏览器
+断言:打开后 activeElement 不在 toggle-group 内。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 672 passed / 17 skipped;
+`pnpm test:browser` 69 passed;prettier 全绿。

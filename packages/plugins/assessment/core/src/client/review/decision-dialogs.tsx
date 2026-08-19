@@ -189,6 +189,7 @@ export function RejectDialog({
     <FormDialog
       open={open}
       size="wide"
+      restfulFocus={reasons.length > 0}
       title={format(m.reviewRejectTitle, { name: review.participantName })}
       description={format(m.reviewRejectSubtitle, {
         item: review.itemTitle,
@@ -396,6 +397,7 @@ export function EscalateDialog({
   return (
     <FormDialog
       open={open}
+      restfulFocus={reasons.length > 0}
       size="wide"
       title={format(m.reviewEscalate)}
       description={format(m.reviewEscalateSubtitle, {

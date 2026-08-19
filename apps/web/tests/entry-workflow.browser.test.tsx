@@ -811,6 +811,10 @@ describe('judging a submission', () => {
     const confirm = page.getByRole('dialog').getByRole('button', { name: /确认退回/ })
     await expect.element(page.getByRole('dialog').getByText('材料不清晰')).toBeVisible()
 
+    // the focus rests on the dialog, not on the first option: a ring there
+    // reads as "this one is chosen" when nothing is
+    expect(document.activeElement?.closest('[data-slot="toggle-group"]')).toBeNull()
+
     // the second reason answers to its digit, and the pick is worn solid
     document.body.dispatchEvent(
       new KeyboardEvent('keydown', { key: '2', code: 'Digit2', bubbles: true }),

@@ -415,6 +415,7 @@ export function FormDialog({
   title,
   description,
   size = 'default',
+  restfulFocus = false,
   onClose,
   children,
   footer,
@@ -434,6 +435,13 @@ export function FormDialog({
    * it and stop being context.
    */
   size?: 'default' | 'wide'
+  /**
+   * Open with the focus resting on the dialog itself rather than on its
+   * first control. For a dialog whose first control is a choice made by
+   * key: opened from the keyboard, the default focus paints a ring on the
+   * first option, which reads as "this one is chosen" when nothing is.
+   */
+  restfulFocus?: boolean
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
@@ -446,6 +454,9 @@ export function FormDialog({
           reached. The three rows are the header, the body and the footer -
           a dialog without a footer simply leaves the last one empty. */}
       <DialogContent
+        // prevented, the focus scope settles on the dialog container: keys
+        // still land, tab still reaches every control, nothing wears a ring
+        {...(restfulFocus ? { onOpenAutoFocus: (event: Event) => event.preventDefault() } : {})}
         className={cn(
           'max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]',
           size === 'wide' ? 'sm:max-w-4xl' : 'sm:max-w-lg',
