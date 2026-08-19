@@ -272,17 +272,23 @@ describe('the workspace shell', () => {
       route: `/assessment/batches/${BATCH_ID}/phases`,
     })
 
+    // the seats are warmed before the first tap: the identity is already
+    // mounted out of sight, so opening the drawer assembles nothing
+    await expect.poll(() => page.getByText('林知远').elements().length).toBeGreaterThan(0)
+
     await page.getByRole('button', { name: '导航' }).click()
 
     // the head says who, and where they stand - the node's own name, not
-    // the whole ancestry
-    await expect.element(page.getByText('林知远')).toBeVisible()
-    await expect.element(page.getByText('软件工程 2302 班')).toBeVisible()
+    // the whole ancestry (queries scoped to the drawer: the warm copy is
+    // still standing out of sight)
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer.getByText('林知远')).toBeVisible()
+    await expect.element(drawer.getByText('软件工程 2302 班')).toBeVisible()
     expect(page.getByText('2023 级', { exact: false }).elements()).toHaveLength(0)
 
     // the ancestry waits behind a tap and arrives as one written line
     await page.getByRole('button', { name: /软件工程 2302 班/ }).click()
-    await expect.element(page.getByText(/软件学院 \/ 软件工程 \/ 2023 级/)).toBeVisible()
+    await expect.element(drawer.getByText(/软件学院 \/ 软件工程 \/ 2023 级/)).toBeVisible()
     // and folds back to the plain name
     await page.getByRole('button', { name: /软件学院/ }).click()
     expect(page.getByText('2023 级', { exact: false }).elements()).toHaveLength(0)
@@ -290,7 +296,7 @@ describe('the workspace shell', () => {
     // the foot carries the preferences and the way out, and the module row
     // wears each module's own mark
     await expect.element(page.getByRole('button', { name: '退出登录' })).toBeVisible()
-    await expect.element(page.getByText('外观')).toBeVisible()
+    await expect.element(drawer.getByText('外观')).toBeVisible()
     const moduleLink = page.getByRole('link', { name: '测评' }).element()
     expect(moduleLink.querySelector('svg')).not.toBeNull()
 
@@ -300,7 +306,7 @@ describe('the workspace shell', () => {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
     await page.getByRole('button', { name: '导航' }).click()
-    await expect.element(page.getByText('林知远')).toBeVisible()
+    await expect.element(page.getByRole('dialog').getByText('林知远')).toBeVisible()
     expect(sessionCalls).toBe(1)
   })
 

@@ -20,6 +20,7 @@ import {
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
 import { cn } from '@qualy/ui/cn'
 import { Appear } from '@qualy/ui/reveal'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { TopBar } from './TopBar.tsx'
@@ -361,6 +362,19 @@ function CapableWorkspaceShell() {
         </Appear>
       </div>
 
+      {/* The drawer's seats are separate chunks, and fetched only when the
+          drawer first opened they arrived one by one - the drawer visibly
+          assembled itself. Mounted here out of sight as soon as the shell
+          is narrow, the chunks and the session behind the identity are
+          already warm when the capsule is first pressed. */}
+      {narrow && (
+        <div hidden aria-hidden>
+          <UiSlot token={drawerIdentity} />
+          <UiSlot token={drawerAccount} />
+          <UiSlot token={drawerSignOut} />
+        </div>
+      )}
+
       <Sheet
         open={narrow && drawer.open}
         onOpenChange={(next) => {
@@ -381,7 +395,10 @@ function CapableWorkspaceShell() {
               aria-hidden
               className="mx-auto h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30"
             />
-            <UiSlot token={drawerIdentity} />
+            <UiSlot
+              token={drawerIdentity}
+              loading={<Skeleton className="mx-1 mt-1 mb-0.5 h-11 rounded-lg" />}
+            />
           </div>
           {/* the same entries the rail carries, two to a row because a
               phone-wide column of 46px bars wastes the little height a
@@ -420,7 +437,7 @@ function CapableWorkspaceShell() {
             ))}
           </nav>
           <div className="flex shrink-0 flex-col gap-2.5 border-t bg-muted/40 px-4 pt-2.5 pb-[max(1.375rem,env(safe-area-inset-bottom))]">
-            <UiSlot token={drawerAccount} />
+            <UiSlot token={drawerAccount} loading={<Skeleton className="h-7 w-full" />} />
             {/* the applications the folded top bar carried - destinations,
                 not tabs - with the way out at the row's end */}
             <div className="flex items-center gap-4 border-t pt-2.5">

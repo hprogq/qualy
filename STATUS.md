@@ -6154,3 +6154,15 @@ rail 清除、页面滚动;段头条滚过 600px 出现且再滚不动)。截图
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 96 files / 670 passed / 17 skipped
 (含 fast-refresh);`pnpm test:browser` 8 files / 68 passed(壳新增身份/账户/单请求集成用例);
 `pnpm build` 通过;prettier 全绿。
+
+### 底拉框首开跳动:chunk 预热(2026-08-19)
+
+用户抓包发现首次点开底拉框时有三个网络请求 DrawerIdentity/DrawerAccount/DrawerSignOut——不是
+API,是三个插槽组件的懒加载 chunk:首开才拉取,内容逐个到位,抽屉当着人面自己组装。修法:壳在
+narrow 时就把三个插槽预挂载在一个 hidden 容器里(chunk 与身份背后的 session 一并预热,打开即整体
+呈现);可见抽屉里再给 identity/account 两个插槽配 loading 骨架兜底(冷启动首拍也不跳)。浏览器
+断言:开抽屉前 hidden 副本里已有用户名;可见断言全部改为 dialog 作用域(躲开常驻的预热副本)。
+另:测评图标缺失是用户忘重启后端——描述器值 boot 时进 registry,客户端 HMR 带不动;重启后已现。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 670 passed / 17 skipped;
+`pnpm test:browser` 68 passed;`pnpm build` 通过;prettier 全绿。
