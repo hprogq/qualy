@@ -336,6 +336,49 @@ describe('filing a claim', () => {
     expect(page.getByRole('button', { name: '套用' }).elements()).toHaveLength(0)
   })
 
+  it('shows the question\u2019s routes by step name, and never who holds them', async () => {
+    screen(
+      {
+        listItems: () =>
+          Effect.succeed({
+            items: [
+              item({
+                currentRevision: {
+                  ...item().currentRevision!,
+                  reviewPolicy: {
+                    normal: {
+                      stages: [
+                        { id: 'n1', label: '班委初审', selector: {}, quorum: { type: 'any' } },
+                        { id: 'n2', label: '专业复审', selector: {}, quorum: { type: 'any' } },
+                      ],
+                    },
+                    escalation: {
+                      stages: [
+                        { id: 'd1', label: '年级合议', selector: {}, quorum: { type: 'all' } },
+                        { id: 'd2', selector: {}, quorum: { type: 'any' } },
+                      ],
+                    },
+                  },
+                },
+              }),
+            ],
+            capabilities: { canManage: false },
+          }),
+        listMyEntries: () =>
+          Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    const block = page.getByTestId('question-chain')
+    await expect.element(block).toBeVisible()
+    // step names the administrator gave, joined as a route; the unnamed
+    // step falls back to its number - and nothing names a level or a role
+    await expect.element(block.getByText('班委初审 → 专业复审')).toBeVisible()
+    await expect.element(block.getByText(/年级合议 → 第 2 个审核环节/)).toBeVisible()
+  })
+
   it('tells each round as its own section, its end and beginning said out loud', async () => {
     const ROUND_4 = '88888888-8888-4888-8888-888888888884'
     const ROUND_5 = '88888888-8888-4888-8888-888888888885'

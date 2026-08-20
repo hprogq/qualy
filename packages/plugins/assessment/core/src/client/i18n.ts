@@ -2022,10 +2022,6 @@ const i18n = definePluginMessages({
       id: 'assessment/my-entries/head-most',
       defaultMessage: 'Up to {count}',
     },
-    myEntriesHeadSteps: {
-      id: 'assessment/my-entries/head-steps',
-      defaultMessage: '{count, plural, one {# review step} other {# review steps}}',
-    },
     myEntriesQuota: {
       id: 'assessment/my-entries/quota',
       defaultMessage: 'Entries used',

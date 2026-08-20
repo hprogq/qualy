@@ -14,7 +14,7 @@ import { toast } from '@qualy/ui/toast'
 import { assessmentMessages as m } from '../i18n.ts'
 import { Basis } from './Basis.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
-import { chainLength, eachWorth, roomLeft } from './standing.ts'
+import { chainNamesOf, eachWorth, roomLeft } from './standing.ts'
 import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
 
 // Filing or revising one claim, without leaving the question it belongs to.
@@ -83,7 +83,7 @@ export function EntryDialog({
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const labelOf = (key: string) => fields.find((field) => field.key === key)?.label ?? key
   const each = eachWorth(item)
-  const steps = chainLength(item)
+  const chain = chainNamesOf(item)
   const room = roomLeft(item, siblings)
 
   const doors = {
@@ -224,14 +224,13 @@ export function EntryDialog({
             </div>
           )}
 
-          {steps > 0 && (
+          {chain.normal.length > 0 && (
             <div className="flex flex-col gap-2.5 rounded-xl border p-4">
               <p className="text-sm font-semibold">{format(m.entryFlow)}</p>
-              {/* Who each step lands on is the round's business and not this
-                  reader's to be told - the roles are named nowhere they can
-                  read. How many hands it passes through before it counts is
-                  what changes whether they submit now. */}
-              {Array.from({ length: steps }, (_, index) => (
+              {/* Steps by the names the administrator gave them, and only
+                  the names: who each step lands on is the round's business
+                  and not this reader's to be told. */}
+              {chain.normal.map((label, index) => (
                 <span key={index} className="flex items-center gap-2 text-xs">
                   <span
                     aria-hidden
@@ -239,9 +238,21 @@ export function EntryDialog({
                   >
                     {index + 1}
                   </span>
-                  {format(m.entryFlowStep, { n: index + 1 })}
+                  <span className="min-w-0">
+                    {label ?? format(m.entryFlowStep, { n: index + 1 })}
+                  </span>
                 </span>
               ))}
+              {chain.escalation.length > 0 && (
+                <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs text-muted-foreground">
+                  <span className="shrink-0">{format(m.reviewRouteEscalation)}</span>
+                  <span className="min-w-0 leading-relaxed">
+                    {chain.escalation
+                      .map((label, index) => label ?? format(m.entryFlowStep, { n: index + 1 }))
+                      .join(' → ')}
+                  </span>
+                </p>
+              )}
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {format(m.entryFlowNote)}
               </p>

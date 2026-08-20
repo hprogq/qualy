@@ -2,7 +2,7 @@ import { Effect, Exit, Layer, Scope } from 'effect'
 import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
-import { createServer } from 'node:http'
+import { createServer, get as httpGet } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
@@ -37,13 +37,27 @@ const shell = (url: string, migrations: 'apply' | 'off' = 'apply') =>
     Layer.provideMerge(readinessLayer),
   )
 
-const status = async (path: string) => {
-  try {
-    return (await fetch(`${base}${path}`)).status
-  } catch {
-    return 0
-  }
-}
+/**
+ * One request over one connection, closed with the response.
+ *
+ * Deliberately not fetch: undici keeps its sockets alive between calls, and
+ * a kept-alive socket is exactly what lets a "closed" server answer one more
+ * request - or lets its close linger - depending on load. These cases assert
+ * on the closed port, so every probe must leave nothing behind.
+ */
+const probe = (url: string): Promise<{ status: number; body: string }> =>
+  new Promise((resolve) => {
+    const request = httpGet(url, { agent: false }, (response) => {
+      let body = ''
+      response.on('data', (chunk: unknown) => {
+        body += String(chunk)
+      })
+      response.on('end', () => resolve({ status: response.statusCode ?? 0, body }))
+    })
+    request.on('error', () => resolve({ status: 0, body: '' }))
+  })
+
+const status = async (path: string) => (await probe(`${base}${path}`)).status
 
 // Not concurrent: both cases assert on one port, and one of them asserts that
 // nothing is listening on it. Running them together had the second read the
@@ -66,10 +80,10 @@ describe('readiness without anything to probe', () => {
     const scope = await Effect.runPromise(Scope.make())
     try {
       await Effect.runPromise(Layer.buildWithScope(bare, scope))
-      const response = await fetch(`http://127.0.0.1:${barePort}/health/ready`)
+      const response = await probe(`http://127.0.0.1:${barePort}/health/ready`)
       expect(response.status).toBe(200)
-      expect(await response.json()).toEqual({ status: 'ready' })
-      expect((await fetch(`http://127.0.0.1:${barePort}/health/live`)).status).toBe(200)
+      expect(JSON.parse(response.body)).toEqual({ status: 'ready' })
+      expect((await probe(`http://127.0.0.1:${barePort}/health/live`)).status).toBe(200)
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
     }

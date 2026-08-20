@@ -17,7 +17,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from './EntryStanding.tsx'
 import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
 import {
-  chainLength,
+  chainNamesOf,
   eachWorth,
   entryScore,
   itemScore,
@@ -354,7 +354,7 @@ function Question({
       '',
   ).trim()
   const each = eachWorth(item)
-  const steps = chainLength(item)
+  const chain = chainNamesOf(item)
   const live = entries.filter((entry) => entry.status !== 'voided')
   const counted = itemScore(standing, item.id)
   const recorded = item.currentRevision?.entrySource === 'administrative'
@@ -380,14 +380,23 @@ function Question({
       : item.maxEntries !== null
         ? format(m.myEntriesHeadMost, { count: item.maxEntries })
         : null,
-    granted
-      ? null
-      : recorded
-        ? format(m.myEntriesRecorded)
-        : steps > 0
-          ? format(m.myEntriesHeadSteps, { count: steps })
-          : null,
+    granted ? null : recorded ? format(m.myEntriesRecorded) : null,
   ].filter((part): part is string => part !== null)
+  // The routes by their step names and nothing else: who a step lands on -
+  // levels, roles, people - is the round's business, not this reader's.
+  const stepName = (label: string | null, index: number) =>
+    label ?? format(m.entryFlowStep, { n: index + 1 })
+  const routes =
+    granted || recorded
+      ? []
+      : [
+          chain.normal.length > 0
+            ? { name: format(m.reviewRouteNormal), steps: chain.normal.map(stepName) }
+            : null,
+          chain.escalation.length > 0
+            ? { name: format(m.reviewRouteEscalation), steps: chain.escalation.map(stepName) }
+            : null,
+        ].filter((route): route is { name: string; steps: string[] } => route !== null)
 
   const shown = unfolded ? live : live.slice(0, 6)
 
@@ -435,10 +444,26 @@ function Question({
               </ul>
             </>
           )}
+          {routes.length > 0 && (
+            <div
+              data-testid="question-chain"
+              className={cn(
+                'flex flex-col gap-1 px-3 py-2 text-muted-foreground',
+                terms.length > 0 && 'border-t',
+              )}
+            >
+              {routes.map((route) => (
+                <p key={route.name} className="flex items-baseline gap-2">
+                  <span className="shrink-0">{route.name}</span>
+                  <span className="min-w-0 leading-relaxed">{route.steps.join(' → ')}</span>
+                </p>
+              ))}
+            </div>
+          )}
           <p
             className={cn(
               'flex items-baseline gap-2 px-3 py-2 text-muted-foreground',
-              terms.length > 0 && 'border-t',
+              (terms.length > 0 || routes.length > 0) && 'border-t',
             )}
           >
             <span className="shrink-0">{format(m.myEntriesBasis)}</span>

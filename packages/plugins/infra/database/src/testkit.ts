@@ -248,7 +248,24 @@ async function teardown(options: {
     }
   }
   try {
-    await options.admin.query(`drop database "${options.name}"`)
+    // A backend whose socket just closed can take a few more milliseconds to
+    // leave pg_stat_activity, and a drop in that window is refused as "being
+    // accessed" - a race, not a leak (seen on CI, where the shell suite's
+    // settle check had already watched the connection count return to its
+    // baseline). A short retry absorbs exactly that; a connection actually
+    // held outlives it and still fails the run below.
+    let lastRefusal: unknown
+    let dropped = false
+    for (let attempt = 0; attempt < 10 && !dropped; attempt += 1) {
+      try {
+        await options.admin.query(`drop database "${options.name}"`)
+        dropped = true
+      } catch (refusal) {
+        lastRefusal = refusal
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+    }
+    if (!dropped) throw lastRefusal
   } catch (error) {
     errors.push(error)
     // What the server had to say about itself when the drop was refused.

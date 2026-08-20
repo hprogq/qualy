@@ -109,9 +109,41 @@ export const eachWorth = (item: ItemDto): string | undefined =>
   )?.calculator?.config?.value
 
 /** how many people have to agree before a claim counts */
-export const chainLength = (item: ItemDto): number => {
-  const policy = item.currentRevision?.reviewPolicy as { stages?: unknown[] } | undefined
-  return Array.isArray(policy?.stages) ? policy.stages.length : 0
+/**
+ * The two review routes as the participant may know them: step names and
+ * nothing else. Who each step lands on - levels, roles, people - is the
+ * round's business; a name like "班委初审" is the whole of what this reader
+ * is owed. Unnamed steps come back null and the caller numbers them.
+ */
+export const chainNamesOf = (
+  item: ItemDto,
+): { normal: readonly (string | null)[]; escalation: readonly (string | null)[] } => {
+  const stored = item.currentRevision?.reviewPolicy as
+    | ({
+        mode?: unknown
+        normal?: { stages?: unknown }
+        escalation?: { stages?: unknown }
+        /** the one list with a marker in it, before the routes were two */
+        stages?: unknown
+        normalTerminal?: number
+      } | null)
+    | undefined
+  if (stored == null || stored.mode === 'none') return { normal: [], escalation: [] }
+  const nameOf = (stage: unknown): string | null => {
+    const label = (stage as { label?: unknown } | null)?.label
+    return typeof label === 'string' && label.trim() !== '' ? label.trim() : null
+  }
+  const listOf = (held: unknown): readonly (string | null)[] =>
+    Array.isArray(held) ? held.map(nameOf) : []
+  if (stored.normal !== undefined || stored.escalation !== undefined) {
+    return {
+      normal: listOf(stored.normal?.stages),
+      escalation: listOf(stored.escalation?.stages),
+    }
+  }
+  const flat = Array.isArray(stored.stages) ? stored.stages.map(nameOf) : []
+  const terminal = typeof stored.normalTerminal === 'number' ? stored.normalTerminal : 0
+  return { normal: flat.slice(0, terminal + 1), escalation: flat.slice(terminal + 1) }
 }
 
 export const standingRows = ({

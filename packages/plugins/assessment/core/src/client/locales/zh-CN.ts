@@ -502,7 +502,6 @@ export default {
   'assessment/entry/version-no': '第 {no} 版',
   'assessment/my-entries/head-each': '每条计 {value} 分',
   'assessment/my-entries/head-most': '最多 {count} 条',
-  'assessment/my-entries/head-steps': '需经过 {count} 个审核环节',
   'assessment/my-entries/quota': '已申报条数',
   'assessment/paper/structure': '评分结构',
   'assessment/paper/structure-short': '结构',

@@ -6708,3 +6708,22 @@ truncate 只吃中间。改为 flex-wrap:原因保底 `basis-36` 并带 title �
 单位名兜底,与链视图同规则;卡片小字「仅提供意见」是裁决链改版前的旧语义,更正为
 「可通过认定，或转交下一环节」(复核中间环节可径直通过)。`pnpm typecheck` 零错;
 `pnpm test:browser` 86 passed;prettier 全绿。
+
+### 我的申报页展示审核链条;effect-shell CI 抖动修复(2026-08-21 追加)
+
+- **我的申报页与填报弹窗展示审核链条**(按用户裁决只给链条与环节名,不给组织层级/角色):
+  standing.ts 新增 `chainNamesOf`(客户端安全解析新旧两种 policy 形态,label 缺省回退
+  「第 N 个审核环节」);题目卡条款盒新增「常规审核 A → B」「复核 C → D」两行;填报弹窗的
+  「审核流程」块由匿名的「第 N 个审核环节」改为真实环节名并补复核一行——旧 `chainLength`
+  只识别 legacy `{stages}` 形态,对现行双路线策略一直静默返回 0,该块此前实际从不渲染,
+  顺带删除孤儿键 head-steps。浏览器新增题目卡链条例(命名环节 join、未命名回退编号、
+  不出现层级/角色字样)。
+- **effect-shell CI 抖动**:两处根因防御。①测试内 fetch 换 node:http 单连接探针
+  (`agent: false`,响应即断)——undici keep-alive 的存活 socket 会让「已关闭」的端口再答
+  一次 200 或拖住 server close,正是 CI 上第二例读到 200 的机理;②testkit 落库 drop 前对
+  「being accessed by other users」做 10×50ms 重试——连接数已回落到基线后,后端进程离开
+  pg_stat_activity 仍有毫秒级尾巴,这是竞态不是泄漏;真正被占用的库会耗尽重试照常报错,
+  force 兜底与 AggregateError 语义不变。effect-shell 连跑五次全绿。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 691 passed / 17 skipped;
+`pnpm test:browser` 11 files / 87 passed(题目卡链条 1 例新增);prettier 全绿。
