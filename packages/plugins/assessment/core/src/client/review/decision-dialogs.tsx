@@ -8,10 +8,13 @@ import { Checkbox } from '@qualy/ui/checkbox'
 import { cn } from '@qualy/ui/cn'
 import { Input } from '@qualy/ui/input'
 import { Kbd, KbdGroup } from '@qualy/ui/kbd'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Textarea } from '@qualy/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { assessmentMessages as m } from '../i18n.ts'
 import { fieldsOf } from '../entry/model.ts'
+import { HoldKey } from './touch.tsx'
+import { useFinePointer } from './pointer.ts'
 import type { ReviewDto } from './model.ts'
 
 // The two decisions that carry a word: sending back, and escalating. Each
@@ -44,12 +47,13 @@ function ReasonPicker({
   onChange: (next: string) => void
 }) {
   const { format } = useI18n()
+  const fine = useFinePointer()
   // read from the document, like the dialog's other keys - but never over
   // the comment box: a digit typed into a sentence is a digit, so the keys
   // only answer while the cursor is out of the fields. The dialog holds the
   // cursor back until a reason is picked, which is what makes them land.
   useEffect(() => {
-    if (reasons.length === 0) return
+    if (!fine || reasons.length === 0) return
     const down = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return
       const typing =
@@ -63,7 +67,7 @@ function ReasonPicker({
     }
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)
-  }, [reasons, onChange])
+  }, [fine, reasons, onChange])
   if (reasons.length === 0) return null
   return (
     <div className="flex flex-col gap-2">
@@ -97,7 +101,7 @@ function ReasonPicker({
             >
               {picked && <CheckIcon aria-hidden className="size-3.5" />}
               {reason}
-              {index < 9 && (
+              {fine && index < 9 && (
                 <Kbd className={cn(picked && 'bg-white/20 text-white')}>{index + 1}</Kbd>
               )}
             </ToggleGroupItem>
@@ -105,6 +109,68 @@ function ReasonPicker({
         })}
       </ToggleGroup>
     </div>
+  )
+}
+
+/**
+ * The touch face of a worded decision: a sheet from the foot of the screen,
+ * confirmed by a press held down.
+ *
+ * The same questions as the dialog - the reason, the word - but where the
+ * thumb is: a centred modal on a phone floats out of reach of the hand
+ * that has to answer it, and the hold replaces the ⌘↵ that needs a
+ * keyboard. The suggestion grid stays a desktop affordance; three columns
+ * of comparison have no honest rendering at 390px.
+ */
+function DecisionSheet({
+  open,
+  title,
+  hint,
+  holdLabel,
+  waiting,
+  ready,
+  onClose,
+  onConfirm,
+  children,
+}: {
+  open: boolean
+  title: string
+  hint: string
+  holdLabel: string
+  waiting: string
+  ready: boolean
+  onClose: () => void
+  onConfirm: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent
+        side="bottom"
+        className="max-h-[85dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
+      >
+        <span
+          aria-hidden
+          className="mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30"
+        />
+        <SheetHeader className="gap-0.5 px-4 pt-1.5 pb-2">
+          <SheetTitle className="text-[15px]">{title}</SheetTitle>
+          <SheetDescription className="text-xs">{hint}</SheetDescription>
+        </SheetHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+          {children}
+        </div>
+        <div className="shrink-0 border-t px-4 pt-3 pb-[max(1.125rem,env(safe-area-inset-bottom))]">
+          <HoldKey
+            label={holdLabel}
+            waiting={waiting}
+            ready={ready}
+            testId="hold-confirm"
+            onHeld={onConfirm}
+          />
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -129,6 +195,7 @@ export function RejectDialog({
   onConfirm: (decision: WordedDecision) => void
 }) {
   const { format } = useI18n()
+  const fine = useFinePointer()
   const [reason, setReason] = useState('')
   const [comment, setComment] = useState('')
   const [suggesting, setSuggesting] = useState(false)
@@ -146,6 +213,7 @@ export function RejectDialog({
   // it was inside. Bare digits belong to the reasons; ⌥ carries G and the
   // slot digits through, writing or not.
   useEffect(() => {
+    if (!fine) return
     const down = (event: KeyboardEvent) => {
       const typing =
         event.target instanceof HTMLElement && event.target.closest('input, textarea') !== null
@@ -169,7 +237,7 @@ export function RejectDialog({
     }
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)
-  }, [fields.length])
+  }, [fine, fields.length])
 
   const confirm = () => {
     if (!ready) return
@@ -183,6 +251,33 @@ export function RejectDialog({
         ? { suggestedPayload: { ...filed, ...changes } }
         : {}),
     })
+  }
+
+  if (!fine) {
+    return (
+      <DecisionSheet
+        open={open}
+        title={format(m.reviewReject)}
+        hint={format(m.reviewRejectFoot)}
+        holdLabel={format(m.reviewHoldToReject)}
+        waiting={format(m.reviewSheetFillFirst)}
+        ready={ready}
+        onClose={onClose}
+        onConfirm={confirm}
+      >
+        <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
+        <Field label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
+          {(id) => (
+            <Textarea
+              id={id}
+              value={comment}
+              rows={3}
+              onChange={(event) => setComment(event.target.value)}
+            />
+          )}
+        </Field>
+      </DecisionSheet>
+    )
   }
 
   return (
@@ -250,7 +345,7 @@ export function RejectDialog({
               // would swallow the digits that pick them. Without any, the
               // words are the first question and the cursor starts there.
               // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus={reasons.length === 0}
+              autoFocus={fine && reasons.length === 0}
               onChange={(event) => setComment(event.target.value)}
             />
           )}
@@ -383,6 +478,7 @@ export function EscalateDialog({
   onConfirm: (decision: WordedDecision) => void
 }) {
   const { format } = useI18n()
+  const fine = useFinePointer()
   const [reason, setReason] = useState('')
   const [comment, setComment] = useState('')
   const commentBox = useRef<HTMLTextAreaElement | null>(null)
@@ -392,6 +488,36 @@ export function EscalateDialog({
   const confirm = () => {
     if (!ready) return
     onConfirm({ ...(reason === '' ? {} : { reason }), comment: comment.trim() })
+  }
+
+  if (!fine) {
+    return (
+      <DecisionSheet
+        open={open}
+        title={format(m.reviewEscalate)}
+        hint={format(m.reviewEscalateFoot)}
+        holdLabel={format(m.reviewHoldToEscalate)}
+        waiting={format(m.reviewSheetFillFirst)}
+        ready={ready}
+        onClose={onClose}
+        onConfirm={confirm}
+      >
+        <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
+        <Field
+          label={format(m.reviewEscalateCommentLabel)}
+          hint={format(m.reviewEscalateCommentHint)}
+        >
+          {(id) => (
+            <Textarea
+              id={id}
+              value={comment}
+              rows={3}
+              onChange={(event) => setComment(event.target.value)}
+            />
+          )}
+        </Field>
+      </DecisionSheet>
+    )
   }
 
   return (
@@ -451,7 +577,7 @@ export function EscalateDialog({
               rows={3}
               // the same handover as the send-back: digits first, words next
               // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus={reasons.length === 0}
+              autoFocus={fine && reasons.length === 0}
               onChange={(event) => setComment(event.target.value)}
             />
           )}

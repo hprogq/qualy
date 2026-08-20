@@ -6416,3 +6416,29 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test:browser` 78 passed;`pnpm test` 675 passed /
 17 skipped;`pnpm build` 通过;prettier 全绿。
+
+### 决定栏与决定弹层的触摸端返工(2026-08-20 晚)
+
+- **锚点条滑块闪白**:Marker 用 motion `layoutId` 在 chip 间交接,交叉淡入把新旧两个元素各画半透明一瞬,
+  浅底上就是旧位置闪白。换成 reveal 的新原语 `GlideAcross`(Glide 的水平双胞胎):单个常驻元素,
+  PartStrip 量出当前 chip 的 offsetLeft/offsetWidth 后位移过去,构造上不存在交叉淡入。Marker 删除。
+- **决定键排布**:仓库 Button 基类是 `rounded-4xl`,44px 高的胶囊里 13px 字悬在中间,难看的来源。
+  触摸键改 `rounded-xl` + `flex-auto min-w-0 px-2`——整行占满、余量均分但每个键保住自己的字宽
+  (纯 flex-1 均分会把 390px 摊成五个 66px,「要求补充材料」放不下)。
+- **HoldKey 重做并抽成共享组件**(review/touch.tsx;useFinePointer/useMedia 因 fast-refresh 门禁
+  拆到 review/pointer.ts):文字一次画在键色、一次画在填充色里,后者按**键的实测宽度**(ResizeObserver)
+  裁切——之前用 100vw 估宽,键窄于屏幕时文字被压扁、看起来从左边挤进来;现在两层文字重合静止,
+  眼睛看到的只有背景扫过。armed 未按时加 `animate-pulse` 底色脉冲邀请长按;文案改成动作指令:
+  「长按提交」(waiting 仍是「先选择一项决定」)。
+- **退回/提请复核在触摸端改为底拉框**(设计稿 2a):把手、标题+一句提示、事由 chips、说明 textarea、
+  底部 `HoldKey`(「长按提交退回」/「长按提请复核」,未填完显示「先填写必填内容」);建议改法表格是
+  桌面 affordance,390px 无诚实排法,sheet 不含。数字快捷键、⌥G、Kbd 角标、autoFocus 全部 gate 在
+  fine 指针上——触摸端弹层里不再出现任何键盘痕迹。
+- **modal-guard 提前一次检查**(250ms + 600ms 兜底):单次 500ms 检查留出的半秒死窗口足够 CI 点一次
+  空气。
+- **CI 修复**:entry-workflow 提交用例的 `getByRole('button', {name:'提交'}).first()` 撞上子串匹配
+  ——行内状态片「未提交」也含「提交」,慢 runner 上解析到抽屉遮罩下的行按钮,重试到超时。改为先断言
+  抽屉可见、再在抽屉作用域内按真实名字「提交审核」定位。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 675 passed / 17 skipped(fast-refresh
+门禁曾红,拆出 pointer.ts 后绿);`pnpm test:browser` 10 files / 78 passed;`pnpm build` 通过;prettier 全绿。

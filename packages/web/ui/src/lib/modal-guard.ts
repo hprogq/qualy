@@ -14,7 +14,7 @@
  * race one on.
  */
 export const releaseStuckBody = (): void => {
-  window.setTimeout(() => {
+  const check = () => {
     if (document.body.style.pointerEvents !== 'none') return
     const open = document.querySelector(
       '[data-slot="dialog-content"][data-state="open"], ' +
@@ -22,5 +22,10 @@ export const releaseStuckBody = (): void => {
         '[data-slot="sheet-content"][data-state="open"]',
     )
     if (open === null) document.body.style.pointerEvents = ''
-  }, 500)
+  }
+  // twice: once as soon as any exit animation can have finished, and once
+  // late as a backstop - the single late check left the page dead for half
+  // a second, long enough for a click to land on nothing
+  window.setTimeout(check, 250)
+  window.setTimeout(check, 600)
 }

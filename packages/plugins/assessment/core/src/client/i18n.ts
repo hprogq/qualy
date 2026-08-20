@@ -1405,6 +1405,22 @@ const i18n = definePluginMessages({
       defaultMessage: 'About this question',
     },
     reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Queue' },
+    reviewHoldToSubmit: {
+      id: 'assessment/review/hold-to-submit',
+      defaultMessage: 'Hold to submit',
+    },
+    reviewHoldToReject: {
+      id: 'assessment/review/hold-to-reject',
+      defaultMessage: 'Hold to send back',
+    },
+    reviewHoldToEscalate: {
+      id: 'assessment/review/hold-to-escalate',
+      defaultMessage: 'Hold to escalate',
+    },
+    reviewSheetFillFirst: {
+      id: 'assessment/review/sheet-fill-first',
+      defaultMessage: 'Complete the required fields first',
+    },
     reviewHoldWaiting: {
       id: 'assessment/review/hold-waiting',
       defaultMessage: 'Choose a decision first',

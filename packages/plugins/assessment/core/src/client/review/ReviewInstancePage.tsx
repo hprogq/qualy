@@ -80,7 +80,9 @@ import { VersionPicker } from './history.tsx'
 import { EntryHistory } from '../entry/EntryHistory.tsx'
 import { attachmentContentUrl } from '../entry/model.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
-import { Appear, CountdownRing, DoneMark, Drill, Marker, Stagger } from '@qualy/ui/reveal'
+import { Appear, CountdownRing, DoneMark, Drill, GlideAcross, Stagger } from '@qualy/ui/reveal'
+import { HoldKey } from './touch.tsx'
+import { useFinePointer, useMedia } from './pointer.ts'
 
 // The workbench: one submission a screen, walked in a run.
 //
@@ -1202,6 +1204,25 @@ function PartStrip({
     }
   }, [scroller, beside])
 
+  // Where the mark stands, measured off the chip it marks. One persistent
+  // element carried between chips: the layoutId handoff drew both chips
+  // half-faded mid-flight, which over a white row read as a blink of white
+  // at the place the mark had just left.
+  const row = useRef<HTMLDivElement | null>(null)
+  const [mark, setMark] = useState<{ left: number; width: number } | null>(null)
+  useEffect(() => {
+    const strip = row.current
+    if (strip === null || beside) return
+    const place = () => {
+      const chip = strip.querySelector<HTMLElement>(`[data-part="${at}"]`)
+      if (chip !== null) setMark({ left: chip.offsetLeft, width: chip.offsetWidth })
+    }
+    place()
+    const watch = new ResizeObserver(place)
+    watch.observe(strip)
+    return () => watch.disconnect()
+  }, [at, beside])
+
   const goTo = (part: WorkbenchPart) => {
     const node = scroller?.querySelector(`[data-workbench-part="${part}"]`)
     if (!(node instanceof HTMLElement) || scroller === null) return
@@ -1226,7 +1247,14 @@ function PartStrip({
       )}
       {...(beside ? { inert: true, 'aria-hidden': true } : {})}
     >
-      <div className="flex h-9 items-center gap-0.5 px-2">
+      <div ref={row} className="relative flex h-9 items-center gap-0.5 px-2">
+        {mark !== null && (
+          <GlideAcross
+            left={mark.left}
+            width={mark.width}
+            className="top-[5px] h-[26px] rounded-md bg-muted"
+          />
+        )}
         {WORKBENCH_PARTS.map((part) => (
           <button
             key={part}
@@ -1240,13 +1268,6 @@ function PartStrip({
               part === at ? 'font-medium text-foreground' : 'text-muted-foreground',
             )}
           >
-            {/* Painted, not layered under: a negative z-index falls behind
-                whichever ancestor paints a background, and the mark spent a
-                while invisible exactly that way. First in the DOM, with the
-                words positioned over it, is the order that cannot lose. */}
-            {part === at && (
-              <Marker id="workbench-anchor-mark" className="absolute inset-0 rounded-md bg-muted" />
-            )}
             <span className="relative flex items-baseline gap-1.5">
               {format(PART_LABEL[part])}
               {/* the chip that is up says where in the thing it is: the
@@ -1388,41 +1409,6 @@ function Pane({
 /** whether the columns stand beside each other: the same line css draws at */
 function useBeside(): boolean {
   return useMedia('(min-width: 64rem)', true)
-}
-
-/**
- * Whether this is a pointer that can hover and click precisely.
- *
- * Coarse pointers get the touch shape of the bar: a decision is chosen with
- * a tap and sent with a press held down, because a thumb lands where it did
- * not mean to and a submission cannot be taken back except in the five
- * seconds after it. Fine pointers keep the keyboard - a tablet with a
- * keyboard attached still reports fine, which is the answer we want.
- */
-function useFinePointer(): boolean {
-  return useMedia('(pointer: fine)', true)
-}
-
-/**
- * A media query, read before the first paint and watched after it.
- *
- * Read rather than assumed: starting on a guess and correcting in an effect
- * meant a phone drew the wide shape for one frame, and the panes that swap
- * a scroller for a plain column threw away everything inside them doing it.
- * `initial` is only for a window that is not there to ask.
- */
-function useMedia(query: string, initial: boolean): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window === 'undefined' ? initial : window.matchMedia(query).matches,
-  )
-  useEffect(() => {
-    const media = window.matchMedia(query)
-    const read = () => setMatches(media.matches)
-    read()
-    media.addEventListener('change', read)
-    return () => media.removeEventListener('change', read)
-  }, [query])
-  return matches
 }
 
 const FlowColumn = memo(function FlowColumn({
@@ -2346,12 +2332,7 @@ function DecisionBar({
   const lastStep = route[route.length - 1]?.id === review.chain.stageId
   return (
     <footer className="flex shrink-0 flex-col gap-2 border-t px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:px-4 lg:py-3">
-      <div
-        className={cn(
-          'flex flex-wrap items-center gap-2',
-          !fine && 'max-lg:justify-center max-lg:gap-1.5',
-        )}
-      >
+      <div className={cn('flex flex-wrap items-center gap-2', !fine && 'max-lg:gap-1.5')}>
         {/* One line at the bar, because the bar is one line; anything longer
             is written in a box that is actually a box. Off the bar entirely
             on a touch screen - whatever its width: a text box there summons
@@ -2468,12 +2449,16 @@ function DecisionBar({
             </Button>
           </Explained>
         ) : (
-          <HoldToSubmit
-            label={format(m.reviewSubmitDecision)}
-            waiting={format(m.reviewHoldWaiting)}
-            ready={armed !== null && !busy}
-            onSubmit={onSubmit}
-          />
+          // a row of its own under a thumb; on a tablet's wider bar it
+          // stands in the row where the submit key stands for a mouse
+          <span className="max-lg:order-last max-lg:basis-full lg:w-44">
+            <HoldKey
+              label={format(m.reviewHoldToSubmit)}
+              waiting={format(m.reviewHoldWaiting)}
+              ready={armed !== null && !busy}
+              onHeld={onSubmit}
+            />
+          </span>
         )}
       </div>
       {/* What the bar says depends on what is chosen: a line that reads the
@@ -2500,120 +2485,17 @@ function DecisionBar({
 }
 
 /**
- * How the decision keys sit under a thumb: taller and roomier, at every
- * width - the shape follows the pointer, never the window. A width rule
- * here meant a desktop window dragged narrower watched the keys grow and
- * the type shrink mid-drag, which reads as breakage, not adaptation.
+ * How the decision keys sit under a thumb: taller, sharing the row's full
+ * width, and squared off from the buttons' own pill - at 13px in a 44px
+ * capsule the words rattled around in the middle of their key. The shape
+ * follows the pointer, never the window: a width rule here meant a desktop
+ * window dragged narrower watched the keys grow mid-drag.
  *
- * Not a shared row. Sharing looks right only while the keys happen to fit
- * one line, and how many there are is the route's business - the first set
- * with five in it put four on one line and stretched the fifth across the
- * next, which made the one left over read as the important one.
+ * `flex-auto`, not `flex-1`: the spare width is shared equally but every
+ * key keeps at least its own words - an even split gave five keys of a
+ * 390px row about 66px each, and 要求补充材料 does not fit in 66px.
  */
-const TOUCH_KEY = 'h-11 px-3.5 text-[13px]'
-
-/** how long a thumb has to stay down before the decision goes out */
-const HOLD_MS = 900
-
-/**
- * Submit, for a pointer that is a thumb.
- *
- * A tap chooses; only a press held down sends. A decision cannot be taken
- * back except in the five seconds after it, and on a phone the send would
- * otherwise be one stray touch away from the four keys above it - a distance
- * a mouse has and a thumb does not. Letting go early is not a slow press, it
- * is a change of mind: nothing goes out, and the fill runs back to where it
- * started so the reader can see that nothing did.
- */
-function HoldToSubmit({
-  label,
-  waiting,
-  ready,
-  onSubmit,
-}: {
-  label: string
-  /** what it says while nothing has been chosen to send */
-  waiting: string
-  ready: boolean
-  onSubmit: () => void
-}) {
-  const [held, setHeld] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const stop = useCallback(() => {
-    if (timer.current !== null) clearTimeout(timer.current)
-    timer.current = null
-    setHeld(false)
-  }, [])
-  useEffect(() => stop, [stop])
-  // a decision cleared out from under the press takes the press with it
-  useEffect(() => {
-    if (!ready) stop()
-  }, [ready, stop])
-
-  const start = () => {
-    if (!ready || timer.current !== null) return
-    setHeld(true)
-    timer.current = setTimeout(() => {
-      timer.current = null
-      setHeld(false)
-      onSubmit()
-    }, HOLD_MS)
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={!ready}
-      data-testid="hold-submit"
-      data-holding={held ? 'yes' : 'no'}
-      // Pointer events rather than touch: one set of handlers answers a
-      // finger, a stylus and a mouse alike, and the capture keeps the press
-      // alive when the thumb slides off the edge of the key mid-hold.
-      onPointerDown={(event) => {
-        try {
-          // so the press survives a thumb sliding off the edge of the key
-          event.currentTarget.setPointerCapture(event.pointerId)
-        } catch {
-          // a pointer id the platform has no record of; the press still counts
-        }
-        start()
-      }}
-      onPointerUp={stop}
-      onPointerCancel={stop}
-      onContextMenu={(event) => event.preventDefault()}
-      // a row of its own under a thumb; on a tablet's wider bar it stands in
-      // the row where the submit key stands for a mouse. The same height as
-      // the keys above it either way - two heights in one bar read as a
-      // mistake, not an emphasis.
-      className="relative flex h-11 w-full shrink-0 touch-none items-center justify-center overflow-hidden rounded-lg border font-medium select-none disabled:opacity-60 max-lg:order-last max-lg:basis-full lg:w-44"
-    >
-      <span
-        aria-hidden
-        style={{ width: held ? '100%' : '0%' }}
-        className={cn(
-          'absolute inset-y-0 left-0 bg-primary ease-linear motion-reduce:transition-none',
-          held ? 'transition-[width] duration-[900ms]' : 'transition-[width] duration-150',
-        )}
-      />
-      {/* the words are drawn twice: once in the ink of the key and once in
-          the ink of the fill, clipped to it, so the fill sweeping across
-          reads them out rather than sliding under them */}
-      <span className="relative text-sm">{ready ? label : waiting}</span>
-      <span
-        aria-hidden
-        style={{ width: held ? '100%' : '0%' }}
-        className={cn(
-          'absolute inset-y-0 left-0 flex items-center justify-center overflow-hidden ease-linear motion-reduce:transition-none',
-          held ? 'transition-[width] duration-[900ms]' : 'transition-[width] duration-150',
-        )}
-      >
-        <span className="absolute flex w-[calc(100vw-1.5rem)] justify-center text-sm text-primary-foreground">
-          {ready ? label : waiting}
-        </span>
-      </span>
-    </button>
-  )
-}
+const TOUCH_KEY = 'h-11 min-w-0 flex-auto rounded-xl px-2 text-[13px]'
 
 /**
  * A box for a word too long for the bar.

@@ -225,9 +225,14 @@ describe('filing a claim', () => {
     )
 
     // handing it on happens where the whole claim is on screen: the drawer,
-    // opened from the claim's own row on the paper
+    // opened from the claim's own row on the paper. The press is scoped to
+    // the drawer: an unscoped 提交 also matches the row's own status chip,
+    // which sits under the drawer's overlay - on a slow runner the click
+    // aimed there and retried against the overlay until it timed out.
     await page.getByRole('button', { name: /2024 年入伍/ }).click()
-    await page.getByRole('button', { name: '提交' }).first().click()
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer).toBeVisible()
+    await drawer.getByRole('button', { name: '提交审核' }).click()
 
     // handing it on is asked for out loud: the press opens the question and
     // sends nothing, so a mis-aimed click costs a second press and not a

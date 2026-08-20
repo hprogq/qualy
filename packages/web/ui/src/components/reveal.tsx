@@ -283,25 +283,32 @@ export function Glide({
 }
 
 /**
- * One mark that travels between the things it can mark.
+ * Glide's horizontal twin: one persistent mark sliding along a row.
  *
- * Rendered inside whichever of them is current, and given the same `id` in
- * every one of them: the mark then moves from where it was to where it is
- * now instead of blinking out of one and into another. For a row of chips
- * or tabs, where what is marked changes as the reader moves rather than as
- * the layout does.
- *
- * Only one element may carry a given id at a time - two would fight over
- * where the mark belongs and it would land between them.
+ * One element, moved - never a `layoutId` handed from chip to chip: the
+ * crossfade that swaps two elements draws both half-transparent for a
+ * moment, and over a light ground the mark visibly blinks at the place it
+ * left. The caller measures where the mark belongs and this carries it
+ * there.
  */
-export function Marker({ id, className }: { id: string; className?: string }) {
+export function GlideAcross({
+  left,
+  width,
+  className,
+}: {
+  left: number
+  width: number
+  className?: string
+}) {
   const reduced = useReducedMotion() === true
   return (
     <motion.span
       aria-hidden
-      layoutId={id}
+      initial={false}
+      animate={{ x: left, width }}
       transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
       className={className}
+      style={{ position: 'absolute', left: 0 }}
     />
   )
 }
