@@ -512,18 +512,22 @@ function Workbench({ batch }: { batch: BatchDto }) {
           />
           <div
             data-review-route={review?.chain.route ?? 'normal'}
-            className="flex min-h-0 min-w-0 flex-1 flex-col border-t lg:border-t-0 lg:border-l"
+            className="relative flex min-h-0 min-w-0 flex-1 flex-col border-t lg:border-t-0 lg:border-l"
           >
-            {/* the escalation environment, worn rather than explained: a thin
-                caution band over the whole workbench, at every width, so the
-                mode is recognized before a single word is read */}
+            {/* the escalation environment, worn rather than explained: a cool
+                light strip laid over the workbench's own top border - taking
+                the grey hairline's place rather than underlining it - whose
+                glow falls onto the work below, so the mode is recognized
+                before a single word is read. One colour edge to edge, and a
+                slow breath rather than a blink: the light of "under closer
+                review", not of "danger" */}
             {review !== undefined &&
               review.chain.route === 'escalation' &&
               review.state !== 'completed' && (
                 <span
                   aria-hidden
                   data-testid="escalation-band"
-                  className="h-1 w-full shrink-0 bg-[repeating-linear-gradient(135deg,var(--color-amber-400)_0px,var(--color-amber-400)_10px,var(--color-amber-600)_10px,var(--color-amber-600)_20px)] opacity-70"
+                  className="pointer-events-none absolute inset-x-0 -top-px z-10 h-8 animate-pulse border-t-2 border-sky-500/50 bg-gradient-to-b from-sky-500/10 to-transparent [animation-duration:2.8s] dark:border-sky-400/40 dark:from-sky-400/10"
                 />
               )}
             {done ? (

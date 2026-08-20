@@ -185,7 +185,7 @@ export default {
   'assessment/items/tab': '项目配置',
   'assessment/items/hint': '配置本批次的分组与项目，并设置各项目的申报、计分和审核方式。',
   'assessment/items/stuck-title': '以下审核环节暂无审核人',
-  'assessment/items/stuck-row': '{unit} · {roles} · {count} 条申报正在等待',
+  'assessment/items/stuck-row': '{unit} - {roles} / {count} 条申报正在等待',
   'assessment/items/stuck-conflict': '现有审核人员均需回避',
   'assessment/items/stuck-seat': '合议席位待人接手',
   'assessment/items/stuck-hint': '为对应单位分配上述任一角色后，相关申报将自动继续审核。',

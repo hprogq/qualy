@@ -6735,3 +6735,11 @@ truncate 只吃中间。改为 flex-wrap:原因保底 `basis-36` 并带 title �
 aria-hidden 滞留在页面上,role 查询看不见导航栏。改为 `userEvent.keyboard('{Escape}')`
 真实按键路径,并在重开前 poll 到 dialog 真正离场。本地连跑三次全绿;
 `pnpm test:browser` 11 files / 87 passed。
+
+### 复核警示条改为呼吸灯(2026-08-21 追加)
+
+顶部 amber 斜纹带(工地警戒线质感)按用户反馈多轮收敛,最终形态:工作台顶边的淡蓝灯条。
+2px sky 实线绝对定位盖在列自身灰色 border 的位置上(取代它,不是「灰线下面又垫一条彩线」),
+左右同色不做横向渐变,向下 32px 照射渐变,整体 2.8s animate-pulse 缓慢呼吸;
+「加强审核中」的指示灯色,不是「危险」的警戒色。testid 与断言不变。review-layout 9 例全绿;
+`pnpm typecheck` 零错;prettier 全绿。

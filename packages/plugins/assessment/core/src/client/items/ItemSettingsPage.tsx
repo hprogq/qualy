@@ -515,7 +515,7 @@ function Editor({
                         fixes, so the row says which one it is looking at */}
                     {row.reason !== 'no-assignee' && (
                       <span className="text-muted-foreground">
-                        {' · '}
+                        {' - '}
                         {format(
                           row.reason === 'panel-seat-unfilled'
                             ? m.itemsStuckSeat
