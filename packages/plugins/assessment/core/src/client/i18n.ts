@@ -1404,9 +1404,10 @@ const i18n = definePluginMessages({
       id: 'assessment/review/about-section',
       defaultMessage: 'About this question',
     },
-    reviewHoldHint: {
-      id: 'assessment/review/hold-hint',
-      defaultMessage: 'Hold to send; let go early and nothing is sent.',
+    reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Queue' },
+    reviewHoldWaiting: {
+      id: 'assessment/review/hold-waiting',
+      defaultMessage: 'Choose a decision first',
     },
     reviewBackToTop: { id: 'assessment/review/back-to-top', defaultMessage: 'Back to top' },
     reviewAboutTitle: {
@@ -1444,10 +1445,6 @@ const i18n = definePluginMessages({
       id: 'assessment/review/submit-decision',
       defaultMessage: 'Submit decision',
     },
-    reviewSubmitHint: {
-      id: 'assessment/review/submit-hint',
-      defaultMessage: 'The decision can be undone for 5 seconds after submission.',
-    },
     reviewSubmitHintAdvise: {
       id: 'assessment/review/submit-hint-advise',
       defaultMessage: 'This review step records an opinion rather than a final decision.',
@@ -1464,6 +1461,10 @@ const i18n = definePluginMessages({
     },
     reviewRunStart: { id: 'assessment/review/run-start', defaultMessage: 'Start reviewing' },
     reviewFiled: { id: 'assessment/review/filed', defaultMessage: 'Submission content' },
+    reviewFiledVersionShort: {
+      id: 'assessment/review/filed-version-short',
+      defaultMessage: 'v{no}',
+    },
     reviewFiledVersion: {
       id: 'assessment/review/filed-version',
       defaultMessage: 'Version {no}\u3000{at}',

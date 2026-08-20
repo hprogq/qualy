@@ -250,30 +250,25 @@ describe('one workbench, three widths', () => {
     expect(parts()).toEqual(['flow', 'filing', 'about'])
   })
 
-  it('gives the terms a column of their own only where one fits', async () => {
+  it('keeps three columns and trades the queue rail away on a laptop', async () => {
     page.viewport(1280, 800)
     open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
-    // two columns and a key: the third would take 21rem off the filing,
-    // which is the one part that has to be read closely
-    expect(parts()).toEqual(['flow', 'filing'])
-    await expect.element(page.getByTestId('about-key')).toBeVisible()
-
-    // the key pushes the terms out over the filing rather than replacing it
-    await page.getByTestId('about-key').click()
-    await expect.element(page.getByRole('dialog')).toBeVisible()
-    expect(
-      page.getByRole('dialog').element().querySelectorAll('a, button, li').length,
-    ).toBeGreaterThan(0)
+    // the columns get the width first: all three stand, and the queue
+    // becomes the key at the left of the header instead of a rail
+    expect(parts()).toEqual(['flow', 'filing', 'about'])
+    await expect.element(page.getByTestId('queue-key')).toBeVisible()
+    await expect.element(page.getByText('李明')).not.toBeVisible()
   })
 
-  it('stands the terms in the third column when there is room', async () => {
+  it('stands the queue rail beside the columns only on a desk', async () => {
     page.viewport(1680, 950)
     open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
     expect(parts()).toEqual(['flow', 'filing', 'about'])
-    // nothing to push out when it is already standing there
-    await expect.element(page.getByTestId('about-key')).not.toBeVisible()
+    // the rail names the rest of the queue; the header key stands down
+    await expect.element(page.getByText('李明')).toBeVisible()
+    await expect.element(page.getByTestId('queue-key')).not.toBeVisible()
   })
 
   it('keeps the queue inside the width it is given', async () => {

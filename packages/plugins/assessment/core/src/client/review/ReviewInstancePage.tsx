@@ -12,7 +12,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
-  BookOpenIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -48,7 +47,6 @@ import {
 import { Kbd } from '@qualy/ui/kbd'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { ScrollArea } from '@qualy/ui/scroll-area'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -102,6 +100,17 @@ import { Appear, CountdownRing, DoneMark, Drill, Marker, Stagger } from '@qualy/
 type WorkbenchPart = 'flow' | 'filing' | 'about'
 
 const WORKBENCH_PARTS: readonly WorkbenchPart[] = ['flow', 'filing', 'about']
+
+/**
+ * The seam between two stacked parts: a shallow full-bleed band rather than
+ * a hairline. Three sections of one page need more than a border to stop
+ * reading as one; when a section runs short the band is still only 10px, so
+ * it never turns into a field of nothing. Beside the columns there is no
+ * seam to draw - the grid drops it entirely.
+ */
+function PartBand() {
+  return <span aria-hidden className="h-2.5 shrink-0 border-y bg-muted/70 lg:hidden" />
+}
 
 const PART_LABEL: Record<WorkbenchPart, MessageDescriptor> = {
   flow: m.reviewPrior,
@@ -243,9 +252,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // spies on it mounts in the same commit, and a ref would still be null
   // when its effect first looked.
   const [stack, setStack] = useState<HTMLDivElement | null>(null)
-  // the terms, where they have no column of their own
-  const [aboutOpen, setAboutOpen] = useState(false)
-  const lingeringAbout = useLingering(aboutOpen ? 'open' : null)
   // Which earlier version the filing is read against; null is not comparing.
   // On by default: a resubmission is read for what changed in it, and having
   // to ask for that every time made the question "did they fix it" cost a
@@ -263,8 +269,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // that just closed itself: through a render closure it saw "no overlay"
   // and ran the page's own ⌘↵ a moment after the panel had already acted.
   const overlaid = useRef(false)
-  overlaid.current =
-    dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null || aboutOpen
+  overlaid.current = dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null
 
   /**
    * Log what was just staged and put the next filing on screen.
@@ -600,29 +605,35 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   onBack={() =>
                     navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
                   }
-                  onAbout={() => setAboutOpen(true)}
                 />
                 {/* Three columns on a wide screen: what has been said, what
                     was filed, and the terms it is judged under. The filing is
                     the widest and the only one that scrolls far; the other
                     two are meant to be taken in at a glance while working
                     down it. Stacked below that, in the same reading order. */}
-                <PartStrip scroller={stack} events={review.events.length} drillKey={instanceId} />
+                <PartStrip
+                  scroller={stack}
+                  round={review.roundNo}
+                  revision={review.revision.revisionNo}
+                  drillKey={instanceId}
+                />
                 <Drill move="next" drillKey={instanceId} className="flex min-h-0 flex-1 flex-col">
                   {/* One scroller stacked, one per column beside: the strip
                       above spies on this node either way, and beside each
                       other it never moves, so the strip is not there. */}
                   <div
                     ref={setStack}
-                    className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:grid lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden 2xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_21rem]"
+                    className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:grid lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_21rem] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden"
                   >
                     <FlowColumn review={review} onTrail={openTrail} />
+                    <PartBand />
                     <FilingColumn
                       review={review}
                       comparing={comparing}
                       onCompare={setComparing}
                       onVersions={openVersions}
                     />
+                    <PartBand />
                     <ContextRail review={review} onOpenSibling={setOpenSibling} />
                   </div>
                 </Drill>
@@ -700,15 +711,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
             onClose={() => setWriting(false)}
           />
         )}
-        <AboutSheet
-          open={aboutOpen}
-          review={lingeringAbout === null ? null : (review ?? null)}
-          onOpenSibling={(entryId) => {
-            setAboutOpen(false)
-            setOpenSibling(entryId)
-          }}
-          onClose={() => setAboutOpen(false)}
-        />
         {review !== undefined && (
           <SiblingSheet
             open={openSibling !== null}
@@ -830,7 +832,10 @@ const QueueRail = memo(function QueueRail({
     // shell's own rail does; the grid track it sits in is `auto` and follows.
     <aside
       className={cn(
-        'hidden min-h-0 flex-col overflow-hidden transition-[width] duration-200 ease-linear lg:flex',
+        // Present only where it costs the three columns nothing: the design
+        // gives the columns the width first, and the queue is a key in the
+        // header until a desk has room for both.
+        'hidden min-h-0 flex-col overflow-hidden transition-[width] duration-200 ease-linear min-[84rem]:flex',
         open ? 'w-52' : 'w-11',
       )}
     >
@@ -1015,7 +1020,6 @@ function PersonStrip({
   canNext,
   onMove,
   onBack,
-  onAbout,
 }: {
   review: ReviewDto
   at: number | null
@@ -1025,39 +1029,49 @@ function PersonStrip({
   onMove: (step: 1 | -1) => void
   /** the way out, where the queue rail is not there to hold one */
   onBack: () => void
-  /** the terms, where they have no column of their own */
-  onAbout: () => void
 }) {
   const { format } = useI18n()
+  const fine = useFinePointer()
+  const round = review.context?.worth.groupName
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2 lg:gap-3 lg:px-4">
-      {/* The door back, for the widths where the queue rail is folded away
-          and took its own with it. A workbench with no way out is a trap,
-          and on a phone the system back key is the reader's other one. */}
-      <Button variant="outline" size="sm" className="shrink-0 lg:hidden" onClick={onBack}>
-        <ChevronLeftIcon aria-hidden />
-        {format(m.reviewQueueTitle)}
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2 lg:gap-2.5 lg:px-4">
+      {/* The door back, for every width where the queue rail is not beside:
+          a small key, the way the rail's own header key is small, because
+          the person being judged owns this bar. On a phone the system back
+          key is the reader's other way out. */}
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="queue-key"
+        className="h-8 shrink-0 gap-1 px-2 text-xs min-[84rem]:hidden"
+        onClick={onBack}
+      >
+        <ChevronLeftIcon aria-hidden className="size-3.5" />
+        {format(m.reviewQueueKey)}
+        <span className="text-muted-foreground tabular-nums max-lg:hidden">{of}</span>
       </Button>
-      <Avatar className="hidden size-9 lg:flex">
+      <Avatar className="size-8 lg:size-9">
         <AvatarFallback className="text-sm font-semibold">
           {review.participantName.slice(0, 1)}
         </AvatarFallback>
       </Avatar>
       <div className="flex min-w-0 flex-col gap-px">
-        <div className="flex items-baseline gap-2.5">
-          <h2 className="text-base font-semibold whitespace-nowrap">{review.participantName}</h2>
+        <div className="flex items-baseline gap-2 lg:gap-2.5">
+          <h2 className="text-[15px] font-semibold whitespace-nowrap lg:text-base">
+            {review.participantName}
+          </h2>
           {review.businessNo !== null && (
             <span className="text-xs text-muted-foreground tabular-nums">{review.businessNo}</span>
           )}
           {review.unitName !== null && (
-            <span className="min-w-0 truncate text-xs text-muted-foreground">
+            <span className="hidden min-w-0 truncate text-xs text-muted-foreground lg:block">
               {review.unitName}
             </span>
           )}
         </div>
         <p className="min-w-0 truncate text-xs text-muted-foreground">
-          {review.context?.worth.groupName !== null && review.context?.worth.groupName !== undefined
-            ? `${review.context.worth.groupName} › ${review.itemTitle}`
+          {round !== null && round !== undefined
+            ? `${round} › ${review.itemTitle}`
             : review.itemTitle}
         </p>
       </div>
@@ -1076,24 +1090,16 @@ function PersonStrip({
           {format(m.reviewHadSupplements)}
         </Badge>
       )}
-      {/* the terms, on the widths where they are not a column: a key that
-          pushes out the layer, in the header where the other two keys of
-          this filing already are */}
-      <Button
-        variant="outline"
-        size="sm"
-        data-testid="about-key"
-        className="shrink-0 2xl:hidden"
-        onClick={onAbout}
-      >
-        <BookOpenIcon aria-hidden />
-        <span className="max-lg:sr-only">{format(m.reviewAboutSection)}</span>
-      </Button>
-      <span className="hidden shrink-0 text-xs font-medium whitespace-nowrap lg:inline">
-        {format(m.reviewKeysHint)}
-      </span>
+      {/* the keys hint belongs to a keyboard; without one the letters are
+          not mounted and the panel would document controls that do not
+          exist here */}
+      {fine && (
+        <span className="hidden shrink-0 text-xs font-medium whitespace-nowrap lg:inline">
+          {format(m.reviewKeysHint)}
+        </span>
+      )}
       {at !== null && (
-        <p className="hidden text-xs whitespace-nowrap text-muted-foreground tabular-nums sm:block">
+        <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
           {format(m.reviewRunPosition, { at, count: of })}
         </p>
       )}
@@ -1129,12 +1135,15 @@ function PersonStrip({
  */
 function PartStrip({
   scroller,
-  events,
+  round,
+  revision,
   drillKey,
 }: {
   scroller: HTMLElement | null
-  /** how many things have been said this round, said on the first chip */
-  events: number
+  /** which round this is, said on the flow chip */
+  round: number
+  /** which version is being read, said on the filing chip */
+  revision: number
   /** a new filing starts at the top again, whatever the last one was on */
   drillKey: string
 }) {
@@ -1210,11 +1219,11 @@ function PartStrip({
       // folded rather than removed, the way the shell folds its own bars
       className={cn(
         'shrink-0 overflow-hidden border-b transition-[height] duration-200 ease-linear',
-        beside ? 'h-0 border-b-0' : 'h-10',
+        beside ? 'h-0 border-b-0' : 'h-9',
       )}
       {...(beside ? { inert: true, 'aria-hidden': true } : {})}
     >
-      <div className="flex h-10 items-center gap-1 px-2">
+      <div className="flex h-9 items-center gap-0.5 px-2">
         {WORKBENCH_PARTS.map((part) => (
           <button
             key={part}
@@ -1224,20 +1233,32 @@ function PartStrip({
             data-reading={part === at ? 'yes' : 'no'}
             onClick={() => goTo(part)}
             className={cn(
-              'relative flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs whitespace-nowrap transition-colors',
+              'relative flex h-[26px] shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs whitespace-nowrap transition-colors',
               part === at ? 'font-medium text-foreground' : 'text-muted-foreground',
             )}
           >
+            {/* Painted, not layered under: a negative z-index falls behind
+                whichever ancestor paints a background, and the mark spent a
+                while invisible exactly that way. First in the DOM, with the
+                words positioned over it, is the order that cannot lose. */}
             {part === at && (
-              <Marker
-                id="workbench-anchor-mark"
-                className="absolute inset-0 -z-10 rounded-lg bg-muted"
-              />
+              <Marker id="workbench-anchor-mark" className="absolute inset-0 rounded-md bg-muted" />
             )}
-            {format(PART_LABEL[part])}
-            {part === 'flow' && events > 0 && (
-              <span className="text-[11px] text-muted-foreground tabular-nums">{events}</span>
-            )}
+            <span className="relative flex items-baseline gap-1.5">
+              {format(PART_LABEL[part])}
+              {/* the chip that is up says where in the thing it is: the
+                  round for the flow, the version for the filing */}
+              {part === at && part === 'flow' && (
+                <span className="text-[11px] font-normal text-muted-foreground tabular-nums">
+                  {format(m.reviewStateRound, { round })}
+                </span>
+              )}
+              {part === at && part === 'filing' && (
+                <span className="text-[11px] font-normal text-muted-foreground tabular-nums">
+                  {format(m.reviewFiledVersionShort, { no: revision })}
+                </span>
+              )}
+            </span>
           </button>
         ))}
         <span className="flex-1" />
@@ -1245,7 +1266,7 @@ function PartStrip({
           <button
             type="button"
             onClick={() => scroller?.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="flex h-7 shrink-0 items-center gap-1 px-2 text-[11px] whitespace-nowrap text-muted-foreground"
+            className="flex h-[26px] shrink-0 items-center gap-1 px-2 text-[11px] whitespace-nowrap text-muted-foreground"
           >
             <ChevronUpIcon aria-hidden className="size-3" />
             {format(m.reviewBackToTop)}
@@ -1346,7 +1367,7 @@ function Pane({
         'relative flex min-w-0 flex-col lg:min-h-0',
         // stacked, the strip above stands over the top of whatever it
         // anchored to, so each part starts below the strip's own height
-        'scroll-mt-10 lg:scroll-mt-0',
+        'scroll-mt-9 lg:scroll-mt-0',
         className,
       )}
     >
@@ -1364,19 +1385,6 @@ function Pane({
 /** whether the columns stand beside each other: the same line css draws at */
 function useBeside(): boolean {
   return useMedia('(min-width: 64rem)', true)
-}
-
-/**
- * Whether the terms stand in a column of their own.
- *
- * Two columns fit from 64rem, but the third only earns its 21rem well above
- * that: at 1280 it takes the filing down to a width where a certificate and
- * its fields stop being readable side by side. Under it the terms are a key
- * in the header that pushes out a layer, and stacked they are the last
- * section of the page.
- */
-function useThirdColumn(): boolean {
-  return useMedia('(min-width: 96rem)', true)
 }
 
 /**
@@ -1422,6 +1430,7 @@ const FlowColumn = memo(function FlowColumn({
   onTrail: () => void
 }) {
   const { format } = useI18n()
+  const fine = useFinePointer()
   const previous = review.context?.previous ?? null
   const earlier = review.context?.earlier ?? []
   // A withdrawal is not a refusal: nobody judged anything, and dressing it
@@ -1445,7 +1454,10 @@ const FlowColumn = memo(function FlowColumn({
         </div>
       )}
       <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b pb-2">
+        {/* Only beside the other columns. Stacked, the anchor strip already
+            says which part this is and which round it is on, and a second
+            heading under it read as a third voice saying the same thing. */}
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b pb-2 max-lg:hidden">
           <h3 className="shrink-0 text-sm font-semibold whitespace-nowrap">
             {format(m.reviewPrior)}
           </h3>
@@ -1463,7 +1475,7 @@ const FlowColumn = memo(function FlowColumn({
             onClick={onTrail}
           >
             {format(m.reviewTrailFullOpen)}
-            <Kbd>H</Kbd>
+            {fine && <Kbd>H</Kbd>}
           </Button>
         </div>
         {previous !== null && (
@@ -1570,7 +1582,12 @@ const FlowColumn = memo(function FlowColumn({
             has been said about the answer to that. The rule draws only
             where there IS history - a first round has nothing to be told
             apart from, and the pane's own header already drew a line. */}
-        <div className={cn('flex items-baseline gap-2', previous !== null && 'border-t pt-2')}>
+        <div
+          className={cn(
+            'flex items-baseline gap-2 max-lg:hidden',
+            previous !== null && 'border-t pt-2',
+          )}
+        >
           <p className="text-xs font-semibold text-muted-foreground">{format(m.reviewThisRound)}</p>
           <span className="flex-1" />
           {review.state !== 'completed' && review.capabilities.canDecide && (
@@ -1630,6 +1647,21 @@ const FlowColumn = memo(function FlowColumn({
             })}
           </ol>
         )}
+        {/* the stacked page's way into the whole story, sitting where the
+            story just ended; beside the columns the heading row carries it */}
+        <button
+          type="button"
+          onClick={onTrail}
+          className="flex items-center gap-1 self-start pl-[26px] text-xs text-muted-foreground lg:hidden"
+        >
+          {format(m.reviewTrailFullOpen)}
+          {earlier.length > 0 && (
+            <span className="tabular-nums">
+              {format(m.reviewEarlierCount, { count: earlier.length })}
+            </span>
+          )}
+          <ChevronRightIcon aria-hidden className="size-3" />
+        </button>
       </section>
     </Pane>
   )
@@ -1655,6 +1687,7 @@ const FilingColumn = memo(function FilingColumn({
   onVersions: () => void
 }) {
   const { format } = useI18n()
+  const fine = useFinePointer()
   // every field the question asks, files included and in their own places:
   // a field that asks for a certificate is not "materials", it is the
   // certificate, and folding it away left the reading order with a hole
@@ -1703,11 +1736,13 @@ const FilingColumn = memo(function FilingColumn({
       .map((attachmentId, index) => [attachmentId, index + 1]),
   )
   return (
-    <Pane as="main" part="filing" className="border-t lg:border-t-0 lg:border-l" inner="gap-4 p-5">
-      <section className="flex flex-col gap-3.5">
-        <div className="flex flex-col border-b pb-2">
+    <Pane as="main" part="filing" className="lg:border-l" inner="gap-4 p-5">
+      <section className="flex min-h-0 flex-1 flex-col gap-3.5">
+        <div className="flex flex-col border-b pb-2 max-lg:border-b-0 max-lg:pb-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h3 className="text-sm font-semibold">{format(m.reviewPayloadTitle)}</h3>
+            {/* stacked, the strip names the part; the version and the
+                compare key are what is left to say */}
+            <h3 className="text-sm font-semibold max-lg:hidden">{format(m.reviewPayloadTitle)}</h3>
             <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
               {format(m.reviewFiledVersion, {
                 no: review.revision.revisionNo,
@@ -1724,11 +1759,11 @@ const FilingColumn = memo(function FilingColumn({
                   onClick={() => onCompare(comparing === null ? 'previous' : null)}
                 >
                   {format(comparing === null ? m.reviewCompareOn : m.reviewCompareOff)}
-                  <Kbd>D</Kbd>
+                  {fine && <Kbd>D</Kbd>}
                 </Button>
                 <Button variant="outline" size="sm" className="text-xs" onClick={onVersions}>
                   {format(m.reviewPickVersion)}
-                  <Kbd>⇧D</Kbd>
+                  {fine && <Kbd>⇧D</Kbd>}
                 </Button>
               </>
             )}
@@ -1748,25 +1783,6 @@ const FilingColumn = memo(function FilingColumn({
             </p>
           </Appear>
         </div>
-        {/* Reserved for machine reading, and it sits under the heading
-            rather than above it: what a reader checks first is the filing,
-            and a banner over the title would put a note about a feature
-            that does not exist yet ahead of the thing being reviewed. */}
-        <section className="flex items-start gap-2.5 rounded-xl border border-dashed p-3">
-          <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-              <p className="shrink-0 text-sm font-medium">{format(m.reviewInsight)}</p>
-              <span className="flex-1" />
-              <p className="shrink-0 text-xs text-muted-foreground">
-                {format(m.reviewInsightCaveat)}
-              </p>
-            </div>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {format(m.reviewInsightSoon)}
-            </p>
-          </div>
-        </section>
         <dl className="flex flex-col">
           {fields.map((field) => {
             const now = valueOf(record[field.key])
@@ -1880,6 +1896,24 @@ const FilingColumn = memo(function FilingColumn({
             </div>
           )}
         </dl>
+        {/* What the machine noticed, pinned under the filing it read: the
+            checks are about these fields, and the reader meets them after
+            the evidence rather than as a banner over it. Sticky beside the
+            columns so it stays in reach while a long filing scrolls; in the
+            stacked page it is simply the section's last word. The caveat is
+            part of the block: a machine's note without its error bar reads
+            as a verdict. */}
+        <aside className="order-last mt-auto flex flex-col gap-1 border-t pt-2.5 lg:sticky lg:bottom-0 lg:-mx-5 lg:-mb-5 lg:bg-background lg:px-5 lg:pb-4">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <p className="shrink-0 text-xs text-muted-foreground">{format(m.reviewInsight)}</p>
+            <p className="min-w-0 truncate text-xs text-muted-foreground">
+              {format(m.reviewInsightCaveat)}
+            </p>
+          </div>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {format(m.reviewInsightSoon)}
+          </p>
+        </aside>
       </section>
 
       {/* What a reviewer asked for mid-round and what came back, after the
@@ -2006,9 +2040,9 @@ const ContextRail = memo(function ContextRail({
     <Pane
       as="aside"
       part="about"
-      // between the two widths the terms are a key in the header, not a
-      // column: at 64rem the filing needs every pixel the third would take
-      className="border-t lg:hidden lg:border-t-0 2xl:flex 2xl:border-l"
+      // stacked it is the page's closing reference block, washed a shade
+      // down so the reading matter above it keeps the white
+      className="max-lg:bg-muted/30 lg:border-l"
       inner="gap-3 p-4"
     >
       <AboutParts review={review} onOpenSibling={onOpenSibling} />
@@ -2035,6 +2069,7 @@ function AboutParts({
   onOpenSibling: (entryId: string) => void
 }) {
   const { format, locale } = useI18n()
+  const fine = useFinePointer()
   const listed = useMemo(
     () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),
     [locale],
@@ -2050,14 +2085,14 @@ function AboutParts({
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
       <section className="flex shrink-0 flex-col gap-2 rounded-xl bg-muted/60 px-3 py-2.5">
-        <p className="text-sm font-semibold">{format(m.myEntriesBasis)}</p>
+        <p className="text-xs text-muted-foreground">{format(m.myEntriesBasis)}</p>
         <p className="text-sm leading-relaxed text-pretty text-muted-foreground">
           {format(m.myEntriesBasisSoon)}
         </p>
       </section>
 
       <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
-        <p className="text-sm font-semibold">{format(m.reviewChainTitle)}</p>
+        <p className="text-xs text-muted-foreground">{format(m.reviewChainTitle)}</p>
         <Route
           stages={review.chain.normal}
           here={review.chain.route === 'normal' ? review.chain.stageId : null}
@@ -2076,7 +2111,7 @@ function AboutParts({
 
       {context !== null && (
         <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
-          <p className="text-sm font-semibold">{format(m.reviewAboutTitle)}</p>
+          <p className="text-xs text-muted-foreground">{format(m.reviewAboutTitle)}</p>
           {context.worth.each !== null && (
             <AboutRow label={format(m.reviewAboutEach)} value={trimAmount(context.worth.each)} />
           )}
@@ -2101,15 +2136,19 @@ function AboutParts({
       {context !== null && context.siblings.length > 0 && (
         <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
           <div className="flex items-baseline gap-2">
-            <p className="shrink-0 text-sm font-semibold">{format(m.reviewSiblingsTitle)}</p>
+            <p className="shrink-0 text-xs text-muted-foreground">
+              {format(m.reviewSiblingsTitle)}
+            </p>
             <span className="flex-1" />
             {/* the keys, once, over the list they open - rather than the
                 count, which the list itself already shows */}
-            <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-              {format(m.reviewSiblingsKeys, {
-                count: Math.min(context.siblings.length, 9),
-              })}
-            </span>
+            {fine && (
+              <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                {format(m.reviewSiblingsKeys, {
+                  count: Math.min(context.siblings.length, 9),
+                })}
+              </span>
+            )}
           </div>
           <ul className="flex flex-col gap-0.5">
             {context.siblings.map((sibling, index) => (
@@ -2152,7 +2191,7 @@ function AboutParts({
                       entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther,
                     )}
                   </span>
-                  {index < 9 && <Kbd className="shrink-0">{`⌥${index + 1}`}</Kbd>}
+                  {fine && index < 9 && <Kbd className="shrink-0">{`⌥${index + 1}`}</Kbd>}
                 </button>
               </li>
             ))}
@@ -2307,31 +2346,37 @@ function DecisionBar({
       <div className="flex flex-wrap items-center gap-2 max-lg:justify-center max-lg:gap-1.5">
         {/* One line at the bar, because the bar is one line; anything longer
             is written in a box that is actually a box. Off the bar entirely
-            on a touch screen: a text box there summons a keyboard over the
-            very filing being judged, and the box that is a box is one press
-            away on the note key. */}
-        <InputGroup className="hidden min-w-48 flex-1 lg:flex">
-          <InputGroupInput
-            ref={wordRef}
-            value={word}
-            placeholder={format(
-              advising ? m.reviewCommentPlaceholderAdvise : m.reviewCommentPlaceholder,
-            )}
-            onChange={(event) => onWord(event.target.value)}
-          />
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton
-              size="icon-xs"
-              aria-label={format(m.reviewWriteMore)}
-              onClick={onExpand}
-            >
-              <Maximize2Icon aria-hidden />
-            </InputGroupButton>
-          </InputGroupAddon>
-        </InputGroup>
+            on a touch screen - whatever its width: a text box there summons
+            a keyboard over the very filing being judged, and the box that
+            is a box is one press away on the note key. */}
+        {fine && (
+          <InputGroup className="min-w-48 flex-1">
+            <InputGroupInput
+              ref={wordRef}
+              value={word}
+              placeholder={format(
+                advising ? m.reviewCommentPlaceholderAdvise : m.reviewCommentPlaceholder,
+              )}
+              onChange={(event) => onWord(event.target.value)}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                size="icon-xs"
+                aria-label={format(m.reviewWriteMore)}
+                onClick={onExpand}
+              >
+                <Maximize2Icon aria-hidden />
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+        )}
         {review.capabilities.canRequestSupplement && (
           <Explained why={format(m.reviewTipSupplement)}>
-            <Button variant="outline" className={KEY} onClick={() => onDialog('supplement')}>
+            <Button
+              variant="outline"
+              className={cn(KEY, !fine && 'h-11')}
+              onClick={() => onDialog('supplement')}
+            >
               {format(m.reviewSupplementAsk)}
             </Button>
           </Explained>
@@ -2340,7 +2385,7 @@ function DecisionBar({
           <Explained why={format(m.reviewTipComment)}>
             <Button
               variant={armed === 'comment' ? 'secondary' : 'outline'}
-              className={KEY}
+              className={cn(KEY, !fine && 'h-11')}
               onClick={() => {
                 const next = armed === 'comment' ? null : 'comment'
                 onArm(next)
@@ -2350,15 +2395,19 @@ function DecisionBar({
               }}
             >
               {format(m.reviewActionNote)}
-              <Kbd className="max-lg:hidden">C</Kbd>
+              {fine && <Kbd>C</Kbd>}
             </Button>
           </Explained>
         )}
         {decisions.includes('escalate') && (
           <Explained why={format(m.reviewTipEscalate)}>
-            <Button variant="outline" className={KEY} onClick={() => onDialog('escalate')}>
+            <Button
+              variant="outline"
+              className={cn(KEY, !fine && 'h-11')}
+              onClick={() => onDialog('escalate')}
+            >
               {format(m.reviewEscalate)}
-              <Kbd className="max-lg:hidden">E</Kbd>
+              {fine && <Kbd>E</Kbd>}
             </Button>
           </Explained>
         )}
@@ -2368,12 +2417,13 @@ function DecisionBar({
               variant="outline"
               className={cn(
                 KEY,
+                !fine && 'h-11',
                 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70',
               )}
               onClick={() => onDialog('reject')}
             >
               {format(m.reviewReject)}
-              <Kbd className="bg-rose-500/10 text-rose-700 max-lg:hidden dark:text-rose-300">R</Kbd>
+              {fine && <Kbd className="bg-rose-500/10 text-rose-700 dark:text-rose-300">R</Kbd>}
             </Button>
           </Explained>
         )}
@@ -2383,15 +2433,16 @@ function DecisionBar({
               variant="outline"
               className={cn(
                 KEY,
+                !fine && 'h-11',
                 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
                 armed === 'approve' && 'ring-2 ring-emerald-500/40',
               )}
               onClick={() => onArm(armed === 'approve' ? null : 'approve')}
             >
               {format(m.reviewApprove)}
-              <Kbd className="bg-emerald-500/10 text-emerald-700 max-lg:hidden dark:text-emerald-300">
-                A
-              </Kbd>
+              {fine && (
+                <Kbd className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">A</Kbd>
+              )}
             </Button>
           </Explained>
         )}
@@ -2410,35 +2461,34 @@ function DecisionBar({
               <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
             </Button>
           </Explained>
-        ) : null}
+        ) : (
+          <HoldToSubmit
+            label={format(m.reviewSubmitDecision)}
+            waiting={format(m.reviewHoldWaiting)}
+            ready={armed !== null && !busy}
+            onSubmit={onSubmit}
+          />
+        )}
       </div>
-      {!fine && (
-        <HoldToSubmit
-          label={format(m.reviewSubmitDecision)}
-          waiting={format(m.reviewHintPickFirst)}
-          ready={armed !== null && !busy}
-          onSubmit={onSubmit}
-        />
-      )}
       {/* What the bar says depends on what is chosen: a line that reads the
-          same whatever is about to happen is a line nobody reads. Under the
-          held key it is how the holding works until something is chosen to
-          hold for - the key itself is already saying to choose one. */}
-      <p className="text-xs text-pretty text-muted-foreground max-lg:text-center">
-        {!fine && armed === null && !advising
-          ? format(m.reviewHoldHint)
-          : format(
-              advising
-                ? m.reviewSubmitHintAdvise
-                : armed === 'approve'
-                  ? lastStep
-                    ? m.reviewHintLastStep
-                    : m.reviewHintArmedApprove
-                  : armed === 'comment'
-                    ? m.reviewHintArmedComment
-                    : m.reviewHintPickFirst,
-            )}
-      </p>
+          same whatever is about to happen is a line nobody reads. Only
+          beside a keyboard - the touch bar's slab already answers with its
+          own label, and a paragraph under a thumb is furniture. */}
+      {fine && (
+        <p className="text-xs text-pretty text-muted-foreground">
+          {format(
+            advising
+              ? m.reviewSubmitHintAdvise
+              : armed === 'approve'
+                ? lastStep
+                  ? m.reviewHintLastStep
+                  : m.reviewHintArmedApprove
+                : armed === 'comment'
+                  ? m.reviewHintArmedComment
+                  : m.reviewHintPickFirst,
+          )}
+        </p>
+      )}
     </footer>
   )
 }
@@ -2523,7 +2573,9 @@ function HoldToSubmit({
       onPointerUp={stop}
       onPointerCancel={stop}
       onContextMenu={(event) => event.preventDefault()}
-      className="relative flex h-12 w-full shrink-0 touch-none items-center justify-center overflow-hidden rounded-xl border font-medium select-none disabled:opacity-60"
+      // a row of its own under a thumb; on a tablet's wider bar it stands in
+      // the row where the submit key stands for a mouse
+      className="relative flex h-12 w-full shrink-0 touch-none items-center justify-center overflow-hidden rounded-xl border font-medium select-none disabled:opacity-60 max-lg:order-last max-lg:basis-full lg:h-11 lg:w-44 lg:rounded-lg"
     >
       <span
         aria-hidden
@@ -2642,43 +2694,6 @@ function SiblingSheet({
         </dl>
       </DialogContent>
     </Dialog>
-  )
-}
-
-/**
- * The terms, pushed out from the side, for the widths that have no room to
- * stand them in a column.
- *
- * A layer rather than a page: reading what the question is worth is
- * something done while looking at the filing, and a screen that replaced
- * the filing to answer it would cost the reader their place.
- */
-function AboutSheet({
-  open,
-  review,
-  onOpenSibling,
-  onClose,
-}: {
-  open: boolean
-  /** null while the layer is shutting on a filing that has already gone */
-  review: ReviewDto | null
-  onOpenSibling: (entryId: string) => void
-  onClose: () => void
-}) {
-  const { format } = useI18n()
-  return (
-    <Sheet open={open && review !== null} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-md">
-        <SheetHeader className="border-b">
-          <SheetTitle className="text-sm">{format(m.reviewAboutSection)}</SheetTitle>
-        </SheetHeader>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-3 p-4">
-            {review !== null && <AboutParts review={review} onOpenSibling={onOpenSibling} />}
-          </div>
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
   )
 }
 

@@ -6365,3 +6365,36 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 674 passed / 17 skipped;
 `pnpm test:browser` 10 files / 78 passed;`pnpm build` 通过;prettier 全绿。
+
+### 审核页面按新版设计稿返工(2026-08-20 下午)
+
+设计稿更新(2b/2c 重定义、新增 3a),按稿逐项落地:
+
+- **三栏与桌面同构,让位的是队列**。上一版把第三栏推到 96rem、中间宽度用 Sheet 推出——新稿裁决相反:
+  lg 起三栏(0.82fr/1.18fr/21rem)永远都在,**放不下的是队列栏**(`min-[84rem]:` 起才并列);中间宽度
+  队列收成标题栏左侧的小键(「队列 N」),点击回队列页。书本 icon 与 AboutSheet 整个删除。
+- **3a 一页三形状**:窄屏正文不再重复段名(名字只在锚点条)——审核流程/申报内容的标题行 `max-lg:hidden`,
+  完整经过入口移到流程末尾一行、对照键留在版本行;段与段之间用 10px 通栏浅灰带(`PartBand`)替代 border,
+  条目信息一节整体浅底(`max-lg:bg-muted/30`),第三栏标题全部降为 caption(text-xs muted)。
+- **锚点条按稿重做**:36px 高,当前 chip 圆角背景 + 后缀(审核流程→第 N 轮,申报内容→第 N 版)。
+  之前"只有文字没有背景"的病根是 Marker 用了 `-z-10`——负 z-index 会沉到任何绘制背景的祖先(壳层
+  `bg-background`)之下,标记其实一直在、只是被盖住。改为 DOM 顺序在前、文字 `relative` 盖上,不再依赖
+  负层级。
+- **键盘痕迹全部跟指针走,不跟宽度走**:快捷键 Kbd 角标(C/E/R/A、D/⇧D、H、⌥N)、快捷键提示、说明输入框,
+  原先按 lg 显隐——平板(lg 且 coarse)全都露了出来。现在一律 `useFinePointer()` 条件渲染:touch 端无论
+  多宽都没有键盘家具;决定键 coarse 时 h-11,按住提交在平板并入按键行(lg:w-44)、手机独占一行。
+- **设计注释文案下页面**:「按住约一秒才提交,中途松开不生效。」「提交后 5 秒内可撤回。」是稿上给实现者
+  的说明,已从 hint 行与消息表删除(reviewHoldHint 删除、hint-armed-approve 与 submit-hint 去掉 5 秒
+  从句);touch 端整条 hint 段落不再渲染,等待态由按住键自己的「先选择一项决定」承担。
+- **标题栏**:返回键从「< 待审核列表」大按钮改为小「队列」键(h-8,窄屏无计数);参评人头像窄屏也显示
+  (size-8,与 PC 一致);快捷键提示仅 fine。
+- **智能审阅移位**:从审核流程栏的虚线卡移到申报内容底部(`order-last mt-auto`,lg 起 `sticky bottom-0`
+  吸附,内容长时钉在栏底、短时紧随字段),PC 同步;免责短句并入同一块。
+- **后端修复:审核员不得看到草稿**。`siblingEntries` 原先只排除 voided,「该参评人员的其他申报」把
+  参评人**从未提交**的草稿也发给了审核员。改为 `status not in ('voided','draft')`;新增回归测试
+  (review-workbench:同题一条已提交、一条草稿,页面读取的 siblings 只含已提交那条),反向验证过
+  (还原旧条件该例即红)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 675 passed / 17 skipped(新增草稿回归 1 例);
+`pnpm test:browser` 10 files / 78 passed(review-layout 6 例改为断言新布局:1280 三栏+队列键、1680 队列栏);
+`pnpm build` 通过;prettier 全绿。

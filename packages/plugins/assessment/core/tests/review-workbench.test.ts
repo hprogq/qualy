@@ -288,6 +288,87 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.round2.unitName).toBe('Class A1')
   })
 
+  it('shows a reviewer only what was handed in, never a sibling still on the desk', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-drafts')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const reviewer = f.principal(f.reviewer)
+          const s1 = f.principal(f.s1)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+
+          // a question that admits several claims, so one can be judged
+          // while another is still being written
+          const contest = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '学科竞赛获奖',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: 3,
+              config: {
+                entrySource: 'student',
+                formConfig: { files: {} },
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  normal: {
+                    stages: [
+                      {
+                        id: 'class',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                  },
+                  escalation: { stages: [] },
+                },
+              },
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, contest.id, { status: 'active' }, admin)
+
+          const submitted = yield* assessment.createEntry(
+            f.t,
+            { itemId: contest.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, submitted.id, 'in_review', s1)
+          // the second claim never leaves the participant's desk
+          yield* assessment.createEntry(
+            f.t,
+            { itemId: contest.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+
+          const page = yield* assessment.getReviewInstance(
+            f.t,
+            sent.currentReviewInstanceId!,
+            reviewer,
+          )
+          return { entryId: submitted.id, page }
+        }),
+      ),
+    )
+    // A draft has never been submitted: to its writer it is a work surface,
+    // to a reviewer it does not exist. The submitted claim alone is the
+    // whole sibling list.
+    const siblings = result.page.context!.siblings
+    expect(siblings.map((one) => one.entryId)).toEqual([result.entryId])
+  })
+
   it('opens the claim\u2019s whole story to whoever is judging it, and to nobody else', async () => {
     const result = ok(
       await run(

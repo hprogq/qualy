@@ -855,7 +855,11 @@ export const siblingEntries = (tenantId: string, itemId: string, participantId: 
         .where('e.tenantId', '=', tenantId)
         .where('e.itemId', '=', itemId)
         .where('e.participantId', '=', participantId)
-        .where('e.status', '<>', 'voided')
+        // Only what has been handed in. A draft is the participant's own
+        // desk: it has never been submitted, and a reviewer reading it would
+        // be reading something nobody showed them. Voided claims left the
+        // paper entirely.
+        .where('e.status', 'not in', ['voided', 'draft'])
         .orderBy('e.createdAt')
         .orderBy('e.id')
         .execute(),
