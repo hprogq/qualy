@@ -26,6 +26,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // an active role's duties change live under every holder and every future
+  // appointment, so that save states its blast radius before it lands
+  const [confirmingPermissions, setConfirmingPermissions] = useState(false)
   const [name, setName] = useState(role.name)
   const [description, setDescription] = useState(role.description ?? '')
   const [permissions, setPermissions] = useState<string[]>([...role.permissions])
@@ -62,10 +65,12 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   // lock a tenant out of its own administration; it also appoints everything
   // by being what it is, so it has no appointment list to edit
   const locked = role.systemKey !== null
-  // who this office may appoint. The candidates are every role of the
-  // tenant, because appointment edges are not confined to a kind: a tenant
-  // office can appoint org offices and the other way round is meaningless
-  // only by convention, not by rule.
+  // Who this office may appoint. Candidates are roles of the SAME kind
+  // only - an org office held somewhere can never execute a tenant-wide
+  // appointment, and the server refuses the edge - and the office must
+  // itself carry the matching grant administration before it can appoint
+  // anybody: an edge that waits for some other role of the holder's to make
+  // it work is exactly what the model no longer allows.
   const allRoles = useQuery(orpc.access.listRoles.queryOptions({ query: {} }))
   const grantable = useQuery({
     ...orpc.access.getRoleGrantableRoles.queryOptions({ params: { roleId: role.id } }),
@@ -106,14 +111,15 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       }),
     ),
   )
-  const savePermissions = useMutation(
-    run(() =>
+  const savePermissions = useMutation({
+    ...run(() =>
       api.access.setRolePermissions({
         params: { roleId: role.id },
         payload: { version: role.version, codes: permissions },
       }),
     ),
-  )
+    onSettled: () => setConfirmingPermissions(false),
+  })
   const saveEligibility = useMutation(
     run(() =>
       api.access.setRoleEligibility({
@@ -262,12 +268,38 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             size="sm"
             variant="outline"
             disabled={!editable || savePermissions.isPending}
-            onClick={() => savePermissions.mutate(undefined as never)}
+            onClick={() => {
+              // A draft is nobody's duty yet and saves quietly. An active
+              // role IS a duty: everyone holding it changes the moment this
+              // lands, and every office appointing it hands out the new
+              // shape from now on - said out loud, with the real numbers.
+              const changed =
+                [...permissions].sort().join(',') !== [...role.permissions].sort().join(',')
+              if (role.status === 'active' && changed) {
+                setConfirmingPermissions(true)
+                return
+              }
+              savePermissions.mutate(undefined as never)
+            }}
           >
             {format(m.save)}
           </Button>
         </div>
       </AsyncSection>
+
+      <ConfirmDialog
+        open={confirmingPermissions}
+        title={format(m.confirmPermissionsTitle)}
+        description={format(m.confirmPermissionsBody, {
+          holders: role.grantCount,
+          appointers: grantable.data?.appointedBy.length ?? 0,
+        })}
+        confirmLabel={format(m.save)}
+        cancelLabel={format(m.cancel)}
+        pending={savePermissions.isPending}
+        onConfirm={() => savePermissions.mutate(undefined as never)}
+        onCancel={() => setConfirmingPermissions(false)}
+      />
 
       {/* every role says who may hold it; only an anchored one says where
           the duty applies */}
@@ -361,31 +393,45 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             void grantable.refetch()
           }}
         >
-          <div className="space-y-2">
-            <CheckboxGroup
-              legend={format(m.grantableLegend)}
-              emptyLabel={format(m.noOptions)}
-              disabled={!editable}
-              options={(allRoles.data?.roles ?? [])
-                .filter((candidate) => candidate.systemKey === null)
-                .map((candidate) => ({
-                  value: candidate.id,
-                  label: candidate.name,
-                  hint: candidate.code,
-                }))}
-              selected={grantableIds}
-              onChange={setGrantableIds}
-            />
-            <p className="text-xs text-muted-foreground">{format(m.grantableHint)}</p>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!editable || saveGrantable.isPending}
-              onClick={() => saveGrantable.mutate(undefined as never)}
-            >
-              {format(m.save)}
-            </Button>
-          </div>
+          {permissions.includes(
+            role.kind === 'tenant' ? 'iam.tenant-grant.manage' : 'iam.grant.manage',
+          ) ? (
+            <div className="space-y-2">
+              <CheckboxGroup
+                legend={format(m.grantableLegend)}
+                emptyLabel={format(m.noOptions)}
+                disabled={!editable}
+                options={(allRoles.data?.roles ?? [])
+                  .filter(
+                    (candidate) =>
+                      candidate.systemKey === null &&
+                      candidate.id !== role.id &&
+                      candidate.kind === role.kind,
+                  )
+                  .map((candidate) => ({
+                    value: candidate.id,
+                    label: candidate.name,
+                    hint: candidate.code,
+                  }))}
+                selected={grantableIds}
+                onChange={setGrantableIds}
+              />
+              <p className="text-xs text-muted-foreground">{format(m.grantableHint)}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!editable || saveGrantable.isPending}
+                onClick={() => saveGrantable.mutate(undefined as never)}
+              >
+                {format(m.save)}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{format(m.grantableLegend)}</p>
+              <p className="text-xs text-muted-foreground">{format(m.grantableNeedsManage)}</p>
+            </div>
+          )}
         </AsyncSection>
       )}
 

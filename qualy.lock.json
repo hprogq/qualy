@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:b3748fb2d8f00350a166319f713bfeda016f0ade424a858b0ed2fd6c83bc42a3",
-  "resolutionHash": "sha256:5bbfa702925090f164b4cedbc37574af04fdf3b2d564ee3a23e6b62d56a56eca",
+  "resolutionHash": "sha256:01494872d1fa457d190ead226c1e8829dee5434994f59f050b668f5be3e25c8c",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -167,13 +167,12 @@
             "iam.authorization.inspect",
             "iam.grant.manage",
             "iam.grant.read",
-            "iam.org-role.bind",
+            "iam.role.appointment.manage",
             "iam.role.escalate",
             "iam.role.manage",
             "iam.role.read",
             "iam.tenant-grant.manage",
-            "iam.tenant-grant.read",
-            "iam.tenant-role.bind"
+            "iam.tenant-grant.read"
           ]
         }
       }

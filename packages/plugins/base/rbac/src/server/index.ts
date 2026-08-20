@@ -865,13 +865,16 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const access = yield* Access
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
-        yield* rbac.require(principal, 'iam.role.manage')
+        // the appointment graph is security policy of its own: who appoints
+        // whom routes authority, so redrawing it is not ordinary role editing
+        yield* rbac.require(principal, 'iam.role.appointment.manage')
         return {
           version: yield* access.roles.setGrantableRoles(
             principal.tenantId,
             params.roleId,
             payload.roleIds,
             payload.version,
+            principal,
           ),
         }
       }),

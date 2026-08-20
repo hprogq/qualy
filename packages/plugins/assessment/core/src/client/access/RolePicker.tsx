@@ -15,12 +15,13 @@ import { assessmentMessages as m } from '../i18n.ts'
 export interface RoleCandidate {
   id: string
   name: string
-  refusal: 'user-type' | 'authority' | 'unavailable' | 'beyond-batch' | null
+  refusal: 'user-type' | 'authority' | 'self-escalation' | 'unavailable' | 'beyond-batch' | null
 }
 
 const REASONS = {
   'user-type': m.roleRefusedUserType,
   authority: m.roleRefusedAuthority,
+  'self-escalation': m.roleRefusedSelfEscalation,
   unavailable: m.roleRefusedUnavailable,
   'beyond-batch': m.roleRefusedBeyondBatch,
 } as const

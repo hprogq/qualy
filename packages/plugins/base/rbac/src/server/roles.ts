@@ -5,11 +5,14 @@ import {
   db,
   admitsOrgType,
   admitsUserType,
+  appointmentCycleExists,
+  grantRuleSources,
   grantRuleTargets,
   lockTenant,
   oneRoleProjected,
   replaceGrantRuleTargets,
   rolePermissionCodes,
+  rolesForAppointment,
   rolesOfTenant,
   type RoleRow as RoleProjection,
 } from './db.ts'
@@ -20,6 +23,7 @@ import { RoleNotFound } from './grants.ts'
 import { assertMayDefineRole, type Authority } from './escalation.ts'
 
 import {
+  RoleAppointmentInvalid,
   GrantStranded,
   PermissionNotFound,
   RoleConflict,
@@ -846,7 +850,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       )
     }),
 
-    /** the roles this role may appoint people to */
+    /** the roles this role may appoint people to, and the ones that appoint it */
     getGrantableRoles: Effect.fn('Rbac.roles.getGrantableRoles')(function* (
       tenantId: string,
       roleId: string,
@@ -854,11 +858,27 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       const role = yield* oneRole(tenantId, roleId).pipe(Effect.orDie)
       if (!role) return yield* new RoleNotFound()
       const roleIds = yield* grantRuleTargets(tenantId, roleId).pipe(Effect.orDie)
-      return { roleIds: [...roleIds].sort(), version: role.version }
+      // the other direction too: editing this role's duties changes what
+      // those offices will hand out from now on, and the editor says so
+      const appointedBy = yield* grantRuleSources(tenantId, roleId).pipe(Effect.orDie)
+      return { roleIds: [...roleIds].sort(), appointedBy, version: role.version }
     }),
 
     /**
-     * The appointment edges, replaced whole.
+     * The appointment edges, replaced whole - and held to what an edge now
+     * means (re-ruled 2026-08-20): a persistent grant of appointment
+     * authority, not a hint the grant re-litigates against permission sets.
+     * So the edge itself must be sound when written. Self-edges and cycles
+     * are refused (the graph stays the DAG it claims to be); an office may
+     * only appoint offices of its own kind, because an org office held
+     * somewhere can never execute a tenant-wide appointment; and the
+     * granter must itself carry the matching grant administration - an edge
+     * that only works when its holder happens to hold some other role is a
+     * latent promise nobody can read off the configuration. New edges are
+     * also measured against their author: declaring that an office appoints
+     * a role is handing that role out at one remove, so it takes the same
+     * authority defining the role would - everything the target carries, or
+     * `iam.role.escalate`.
      *
      * The canonical administrator has none to edit: it bypasses the table
      * because it is already the whole of the tenant's authority, and a list
@@ -869,17 +889,42 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       roleId: string,
       targetRoleIds: readonly string[],
       expectedVersion: number,
+      actor: Principal,
     ) {
+      const authority = authorityFor(actor)
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
           const role = yield* lockRole(tenantId, roleId, expectedVersion)
           if (role.systemKey !== null) return yield* new RoleIsSystem()
           const wanted = [...new Set(targetRoleIds)]
-          if (wanted.length > 0) {
-            const found = yield* countRoles(tenantId, wanted)
-            if (found !== wanted.length) return yield* new RoleNotFound()
+          if (wanted.includes(role.id)) {
+            return yield* new RoleAppointmentInvalid({ reason: 'self' })
+          }
+          const targets = yield* rolesForAppointment(tenantId, wanted)
+          if (targets.length !== wanted.length) return yield* new RoleNotFound()
+          const granterCodes = new Set(yield* rolePermissionCodes(tenantId, role.id))
+          for (const target of targets) {
+            if (target.kind !== role.kind) {
+              return yield* new RoleAppointmentInvalid({ reason: 'kind' })
+            }
+            const needed = role.kind === 'tenant' ? 'iam.tenant-grant.manage' : 'iam.grant.manage'
+            if (!granterCodes.has(needed)) {
+              return yield* new RoleAppointmentInvalid({ reason: 'granter-capability' })
+            }
+          }
+          // only what this save ADDS is measured against its author: edges
+          // already standing are policy in force, not this edit's doing
+          const standing = new Set(yield* grantRuleTargets(tenantId, role.id))
+          const added = targets.filter((target) => !standing.has(target.id))
+          if (added.length > 0) {
+            yield* assertMayDefineRole(authority, [
+              ...new Set(added.flatMap((target) => target.codes)),
+            ])
           }
           yield* replaceGrantRuleTargets(tenantId, role.id, wanted)
+          if (yield* appointmentCycleExists(tenantId, role.id)) {
+            return yield* new RoleAppointmentInvalid({ reason: 'cycle' })
+          }
           yield* bumpRole(tenantId, role.id)
           return role.version + 1
         }),

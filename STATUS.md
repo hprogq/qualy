@@ -6599,3 +6599,38 @@ CHECK 拒绝置空);`pnpm test:browser` 10 files / 81 passed(复核环境 1 例�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 687 passed / 17 skipped;
 `pnpm test:browser` 11 files / 84 passed(item-chain 3 例新增);prettier 全绿。
+
+### 授权模型重裁:自授禁令 → 自我提权禁令;任命图成为真实授权(2026-08-20)
+
+按用户裁决重构 rbac 授予模型(CLAUDE.md 访问模型段已同步改写):
+
+- **blanket 自授禁令废除**:`GRANT_SELF_FORBIDDEN` 错误、grantRole/revoke/options 里的
+  `actor === target` 拦截全部删除。自授的新边界是**不得扩权**——目标角色权威 ⊆ 自身现有权威且
+  coverage 不更宽(`assertNoSelfEscalation`,复用原 escalation 比较但**无任何逃生**);自撤开放,
+  照常受 grant-manage 与最后管理员保护约束。系统管理员(all-active)因此可直接给自己挂审核员等
+  业务身份——最初那个「管理员进不了审核链」的场景不再需要第二个账号演戏。
+- **对他人授予不再比较权限集合**:任命权完全由 `role_grant_rules` 承载(WHERE=grant-manage,
+  WHAT=任命边,WHO=eligibility,SCOPE=覆盖);人事角色无须亲自持有其任命岗位的业务权限。
+  `iam.org-role.bind`/`iam.tenant-role.bind` 两枚逃生权限从目录删除
+  (迁移 20260820160000_drop-bind-permissions.sql,含升级测试:旧库带 bind 的角色 → 跑迁移 →
+  只剩真实权限、目录零残留)。
+- **任命图写入时自洽**(`setGrantableRoles` 重写):拒自环、递归 CTE 拒成环(tenant lock 内无
+  TOCTOU)、只可任命同 kind、granter 自身必须携带对应 grant-manage(杜绝潜伏边);新增边按
+  角色定义同一标准量作者权威(`assertMayDefineRole`,`iam.role.escalate` 逃生);编辑任命图
+  改需新权限 `iam.role.appointment.manage`。新错误 `ROLE_APPOINTMENT_INVALID`
+  (reason: self|cycle|kind|granter-capability)。
+- **改活跃角色权限 = 改职位本身**:RoleEditor 保存前 ConfirmDialog 展示影响面(grantCount
+  持有人数 + 入边任命角色数,`getRoleGrantableRoles` 响应新增 appointedBy);任命边不因目标
+  角色扩权而隐式失效。角色编辑器的任命候选收敛为同 kind、非系统、非自身,且角色未持有
+  grant-manage 时整段替换为提示;options 探针的自授越权单列 refusal `self-escalation`
+  (rbac contract + assessment schema + RolePicker 文案),GRANT_ESCALATION_REFUSED 文案改为
+  自授语义。
+- **测试**:effect-rbac 25 例全绿——原「不许自任/自撤」两例按新语义改写(自授职内成功、
+  自撤需 grant-manage、最后管理员仍拒),新增「人事角色可授出自己不具备的岗位、自授即拒、
+  canonical 自授成功、picker 单列 self-escalation」与「任命图五律(自环/异 kind/潜伏边/成环/
+  作者越权)」两套;assessment「管理员自我 staffing」期望翻转为成功;seed 权限数 25→24;
+  migration-upgrade 新增 bind 清理升级例。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 690 passed / 17 skipped;
+`pnpm test:browser` 11 files / 84 passed;`pnpm qualy resolve` 重写 lock(新迁移入 lineage);
+prettier 全绿。

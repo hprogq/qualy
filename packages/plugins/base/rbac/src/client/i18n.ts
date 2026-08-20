@@ -35,9 +35,19 @@ const escalationMessage = defineMessage<{ count: number }>()({
   defaultMessage:
     'A role cannot be given {count, plural, one {# permission} other {# permissions}} you do not hold yourself.',
 })
-const bindMessage = defineMessage<{ count: number }>()({
+const selfEscalationMessage = defineMessage<{ count: number }>()({
   id: 'rbac/error/grant-escalation-refused',
-  defaultMessage: 'That role carries authority beyond your own, so you cannot grant it.',
+  defaultMessage: 'Granting yourself that role would add authority you do not hold.',
+})
+const confirmPermissionsBody = defineMessage<{ holders: number; appointers: number }>()({
+  id: 'rbac/roles/confirm-permissions-body',
+  defaultMessage:
+    'This takes effect immediately for {holders, plural, =0 {no current holders} one {1 current holder} other {# current holders}}, and {appointers, plural, =0 {no role} one {1 role} other {# roles}} appointing this one will hand out the new duties from now on.',
+})
+const appointmentMessage = defineMessage<{ reason: string }>()({
+  id: 'rbac/error/role-appointment-invalid',
+  defaultMessage:
+    '{reason, select, self {A role cannot appoint itself.} cycle {That would make the appointment relations circular.} kind {A role may only appoint roles of its own kind.} other {The role needs grant administration before it can appoint anybody.}}',
 })
 const strandedMessage = defineMessage<{ assignmentCount: number }>()({
   id: 'rbac/error/grant-stranded',
@@ -78,8 +88,19 @@ const i18n = definePluginMessages({
     },
     grantableHint: {
       id: 'rbac/roles/grantable-hint',
-      defaultMessage: 'Holders can grant only these, within where they administer grants.',
+      defaultMessage:
+        'Appointment authority in force: holders appoint exactly these offices, within where they administer grants.',
     },
+    grantableNeedsManage: {
+      id: 'rbac/roles/grantable-needs-manage',
+      defaultMessage:
+        'Give this role grant administration first; only then can it appoint anybody.',
+    },
+    confirmPermissionsTitle: {
+      id: 'rbac/roles/confirm-permissions-title',
+      defaultMessage: 'Change what this role does?',
+    },
+    confirmPermissionsBody,
     // chosen at creation because it cannot be changed afterwards: it decides
     // whether the duty is anchored, and with it what the role may hold
     kindLegend: { id: 'rbac/field/kind', defaultMessage: 'Where this role applies' },
@@ -179,10 +200,6 @@ const i18n = definePluginMessages({
         id: 'rbac/error/grant-rule-refused',
         defaultMessage: 'None of your roles may appoint people to this one.',
       },
-      GRANT_SELF_FORBIDDEN: {
-        id: 'rbac/error/grant-self-forbidden',
-        defaultMessage: 'Your own roles are for someone else to change.',
-      },
       GRANT_USER_NOT_FOUND: {
         id: 'rbac/error/grant-user-not-found',
         defaultMessage: 'That user is not in this tenant.',
@@ -216,8 +233,12 @@ const i18n = definePluginMessages({
         values: (data) => ({ count: data.permissions.length }),
       },
       GRANT_ESCALATION_REFUSED: {
-        message: bindMessage,
+        message: selfEscalationMessage,
         values: (data) => ({ count: data.permissions.length }),
+      },
+      ROLE_APPOINTMENT_INVALID: {
+        message: appointmentMessage,
+        values: (data) => ({ reason: data.reason }),
       },
       ROLE_USER_TYPE_NOT_FOUND: {
         id: 'rbac/error/role-user-type-not-found',

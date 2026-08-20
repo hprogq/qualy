@@ -1575,7 +1575,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             id: Schema.String,
             name: Schema.String,
             refusal: Schema.NullOr(
-              Schema.Literals(['user-type', 'authority', 'unavailable', 'beyond-batch']),
+              Schema.Literals([
+                'user-type',
+                'authority',
+                'self-escalation',
+                'unavailable',
+                'beyond-batch',
+              ]),
             ),
           }),
         ),

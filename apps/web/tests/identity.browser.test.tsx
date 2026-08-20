@@ -131,7 +131,7 @@ const identityStubs = (over: Stubs<'identity'> = {}): Stubs<'identity'> => ({
 const accessStubs = (over: Stubs<'access'> = {}): Stubs<'access'> => ({
   listPermissions: () => Effect.succeed({ permissions: [] }),
   getRoleOptions: () => Effect.succeed({ userTypes: [], orgTypes: [] }),
-  getRoleGrantableRoles: () => Effect.succeed({ roleIds: [], version: 1 }),
+  getRoleGrantableRoles: () => Effect.succeed({ roleIds: [], appointedBy: [], version: 1 }),
   listRoles: () =>
     Effect.succeed({ roles: [], capabilities: { canManage: false, canEscalate: false } }),
   getUserRoleGrants: () => Effect.succeed({ grants: [] }),

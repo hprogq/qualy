@@ -14,18 +14,22 @@ export { GrantEscalationRefused, RoleEscalationRefused }
 // allowed to grant them, so whoever could edit roles could put any grantable
 // capability into one and hand it to themselves.
 //
-// The rule that holds is the one Kubernetes settled on. Defining a role may
-// only use permissions the author already holds; granting a role may only hand
-// out authority the granter already has, at coverage no wider than their own.
-// Both have a named, auditable exception which only someone who already holds
-// it can pass on.
+// The rule that holds is the one Kubernetes settled on, applied where the
+// power can actually grow. Defining a role - and, by the same measure,
+// declaring that some office appoints it - may only use permissions the
+// author already holds, with `iam.role.escalate` as the named, auditable
+// exception. Granting a role to somebody ELSE compares nothing: whether that
+// office is yours to fill is the appointment graph's question, and being
+// obliged to personally hold a reviewer's every capability in order to
+// appoint reviewers made every personnel role a copy of the duties it
+// staffs. Granting a role to YOURSELF is the one move where a grant is an
+// escalation, so there the comparison stays - with no exception, because an
+// escape hatch on self-service is not an escape hatch, it is the hole.
 //
 // Everything here reads on the caller's transaction, so it sees the same role
 // and grant rows the write is about to change.
 
 export const ESCALATE = 'iam.role.escalate'
-export const TENANT_BIND = 'iam.tenant-role.bind'
-export const ORG_BIND = 'iam.org-role.bind'
 
 /** what the guards need to know about the actor, however it is answered */
 export interface Authority {
@@ -60,29 +64,32 @@ export const assertMayDefineRole = Effect.fn('Rbac.assertMayDefineRole')(functio
 })
 
 /**
- * Granting a role: the granter may only hand out authority they hold, at
- * coverage no wider than their own.
+ * Granting a role to oneself: the one grant that is an escalation.
  *
- * Authority over the recipient is a different question, answered by the caller
- * before this runs: being allowed to edit someone's grants says nothing about
- * how much power may be put in them.
+ * A self-grant may change what the holder IS - the business identity a
+ * review chain's selector matches - but it must not change what they CAN DO:
+ * the role's authority must fit inside what they already hold, at coverage
+ * no wider than their own. No escape hatch, deliberately: any capability
+ * that let its own holder wave this through would be self-service
+ * escalation with extra steps.
+ *
+ * Third-party grants no longer come here at all. Whether an office is yours
+ * to fill is the appointment graph's question (`role_grant_rules`), settled
+ * when the edge is written.
  */
-export const assertMayGrantRole = Effect.fn('Rbac.assertMayGrantRole')(function* (
+export const assertNoSelfEscalation = Effect.fn('Rbac.assertNoSelfEscalation')(function* (
   authority: Authority,
   role: { codes: readonly string[]; allActive: boolean },
   target: GrantTarget,
 ) {
-  const escape = target.kind === 'tenant' ? TENANT_BIND : ORG_BIND
-
   if (target.kind === 'tenant') {
     const held = yield* authority.tenantWide()
     // an all-active role carries every active capability, so only someone who
-    // holds every active capability may hand it on
+    // already holds every active capability gains nothing by taking it
     const required = (role.allActive ? authority.activeCodes() : role.codes).filter(
       (code) => !held.has(code),
     )
     if (required.length === 0) return
-    if (held.has(escape)) return
     return yield* new GrantEscalationRefused({ permissions: required.sort().slice(0, 20) })
   }
 
@@ -93,11 +100,6 @@ export const assertMayGrantRole = Effect.fn('Rbac.assertMayGrantRole')(function*
     return mine === undefined || REACH_RANK[mine] < wanted
   })
   if (short.length === 0 && !role.allActive) return
-  // The escape hatch answers to coverage too. Holding the bind at one node
-  // alone is not authority to hand out a grant reaching its whole subtree,
-  // or the weakest possible bind would be the strongest.
-  const bindReach = reach.get(escape)
-  if (bindReach !== undefined && REACH_RANK[bindReach] >= wanted) return
   return yield* new GrantEscalationRefused({
     permissions: (role.allActive ? ['*'] : short.sort()).slice(0, 20),
   })

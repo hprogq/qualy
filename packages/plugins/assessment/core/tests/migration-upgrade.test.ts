@@ -766,3 +766,63 @@ describe.runIf(postgresAvailable)('the review-panels migration', () => {
     }
   })
 })
+
+describe.runIf(postgresAvailable)('the drop-bind-permissions migration', () => {
+  const BINDS = '20260820160000_drop-bind-permissions.sql'
+
+  it('takes both escape hatches out of the catalog and off the roles that had them', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, BINDS))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-binds-upgrade-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file !== BINDS) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('binds-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('binds', 'Binds') returning id`,
+      )
+      const bind = await one(
+        `insert into permissions (code, plugin, name, target_kind)
+         values ('iam.org-role.bind', 'rbac', 'bind', 'org-node') returning id`,
+      )
+      const keeper = await one(
+        `insert into permissions (code, plugin, name, target_kind)
+         values ('iam.grant.manage', 'rbac', 'manage', 'org-node')
+         on conflict (code) do update set code = excluded.code returning id`,
+      )
+      const role = await one(
+        `insert into roles (tenant_id, code, name, kind, status, permission_mode)
+         values ($1, 'steward', 'Steward', 'org', 'active', 'explicit') returning id`,
+        [tenant],
+      )
+      await db.query(
+        `insert into role_permissions (tenant_id, role_id, permission_id) values ($1, $2, $3), ($1, $2, $4)`,
+        [tenant, role, bind, keeper],
+      )
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const codes = await db.query(
+        `select p.code from role_permissions rp join permissions p on p.id = rp.permission_id
+         where rp.role_id = $1 order by p.code`,
+        [role],
+      )
+      // the escape hatch is gone from the role and from the catalog; the
+      // role's real capability is untouched
+      expect(codes.rows).toEqual([{ code: 'iam.grant.manage' }])
+      const gone = await db.query(
+        `select code from permissions where code in ('iam.org-role.bind', 'iam.tenant-role.bind')`,
+      )
+      expect(gone.rows).toHaveLength(0)
+    } finally {
+      await db.dispose()
+    }
+  })
+})

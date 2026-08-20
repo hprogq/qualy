@@ -38,16 +38,10 @@ export const permissions = [
     name: '管理组织范围的角色授予',
     target: 'org-node',
   },
-  // The counterpart to escalate, on the granting side. Split from the
-  // tenant one on purpose: this is an org-node permission, so "may hand out
-  // roles stronger than your own" can itself be delegated to one college
-  // instead of the whole tenant.
-  {
-    code: 'iam.org-role.bind',
-    name: '授予超出自身权限的组织角色',
-    description: '允许在该组织范围内授予自己尚未持有其全部权限的角色',
-    target: 'org-node',
-  },
+  // No bind escape hatches beside these any more (re-ruled 2026-08-20):
+  // granting to somebody else stopped comparing permission sets - the
+  // appointment graph is the whole of that authority - and a self-grant
+  // must never escalate, with no permission able to say otherwise.
   {
     code: 'iam.tenant-grant.read',
     name: '查看租户级角色授予',
@@ -58,9 +52,13 @@ export const permissions = [
     name: '管理租户级角色授予',
     target: 'tenant',
   },
+  // The appointment graph is security policy, not role cosmetics: whoever
+  // can redraw who-appoints-whom can route authority. Editing it is its own
+  // capability, apart from editing role definitions.
   {
-    code: 'iam.tenant-role.bind',
-    name: '授予超出自身权限的租户角色',
+    code: 'iam.role.appointment.manage',
+    name: '管理角色任命关系',
+    description: '允许配置各角色可任命哪些角色',
     target: 'tenant',
   },
   // reading why someone holds what they hold names roles and grants, which

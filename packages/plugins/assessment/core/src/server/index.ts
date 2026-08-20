@@ -588,7 +588,8 @@ export class Assessment extends Context.Service<
         roles: readonly {
           id: string
           name: string
-          refusal: 'user-type' | 'authority' | 'unavailable' | 'beyond-batch' | null
+          refusal:
+            'user-type' | 'authority' | 'self-escalation' | 'unavailable' | 'beyond-batch' | null
         }[]
       },
       BatchNotFound | AccessDenied
@@ -2433,7 +2434,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const roles: {
         id: string
         name: string
-        refusal: 'user-type' | 'authority' | 'unavailable' | 'beyond-batch' | null
+        refusal:
+          'user-type' | 'authority' | 'self-escalation' | 'unavailable' | 'beyond-batch' | null
       }[] = []
       for (const role of grantable) {
         if (role.refusal !== null) {

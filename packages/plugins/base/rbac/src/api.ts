@@ -1,4 +1,5 @@
 import {
+  RoleAppointmentInvalid,
   AccessTargetRequired,
   GrantEscalationRefused,
   GrantExists,
@@ -6,7 +7,6 @@ import {
   GrantNotEligible,
   GrantNotFound,
   GrantRuleRefused,
-  GrantSelfForbidden,
   GrantStranded,
   GrantUserNotFound,
   PermissionNotFound,
@@ -346,6 +346,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
       params: Schema.Struct({ roleId: id }),
       success: Schema.Struct({
         roleIds: Schema.Array(Schema.String),
+        /** the offices that appoint this one: what a duty edit will echo through */
+        appointedBy: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         version: Schema.Number,
       }),
       error: [RoleNotFound, AccessDenied],
@@ -359,7 +361,15 @@ export const accessApiGroup = HttpApiGroup.make('access')
         roleIds: Schema.Array(id),
       }),
       success: Schema.Struct({ version: Schema.Number }),
-      error: [RoleNotFound, RoleVersionConflict, RoleIsSystem, RoleConflict, AccessDenied],
+      error: [
+        RoleNotFound,
+        RoleVersionConflict,
+        RoleIsSystem,
+        RoleConflict,
+        RoleAppointmentInvalid,
+        RoleEscalationRefused,
+        AccessDenied,
+      ],
     }).middleware(Authenticated),
   )
   .add(
@@ -426,7 +436,6 @@ export const accessApiGroup = HttpApiGroup.make('access')
         GrantNotEligible,
         GrantEscalationRefused,
         GrantRuleRefused,
-        GrantSelfForbidden,
         TenantAdminRequired,
         AccessDenied,
       ],
@@ -436,14 +445,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.delete('deleteRoleGrant', '/iam/role-grants/:grantId', {
       params: Schema.Struct({ grantId: id }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
-      error: [
-        GrantNotFound,
-        GrantSelfForbidden,
-        RoleNotFound,
-        TenantAdminRequired,
-        LastAdministrator,
-        AccessDenied,
-      ],
+      error: [GrantNotFound, RoleNotFound, TenantAdminRequired, LastAdministrator, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

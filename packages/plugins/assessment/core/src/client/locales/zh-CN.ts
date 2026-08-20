@@ -1073,6 +1073,7 @@ export default {
   'assessment/access/add-staff-as-hint': '选择该用户在本批次中承担的角色。',
   'assessment/access/role-refused-user-type': '该用户类型不能设置该角色',
   'assessment/access/role-refused-authority': '你没有授予该角色的权限',
+  'assessment/access/role-refused-self-escalation': '不能通过给自己授予该角色获得新的权限',
   'assessment/access/role-refused-unavailable': '该角色当前不可用',
   'assessment/access/role-refused-beyond-batch': '该角色包含超出批次范围的权限',
   'assessment/access/add-staff-no-roles': '当前没有可授予的角色',

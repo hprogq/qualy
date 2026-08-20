@@ -160,28 +160,36 @@ export class GrantRuleRefused extends Schema.TaggedErrorClass<GrantRuleRefused>(
   { httpApiStatus: 403, identifier: 'GrantRuleRefused' },
 ) {}
 
-/**
- * Nobody hands a role to themselves, or takes their own away.
- *
- * Ordinary governance: authority is conferred by somebody else. A resignation
- * would be its own business action, not a self-edit on the grants screen.
- */
-export class GrantSelfForbidden extends Schema.TaggedErrorClass<GrantSelfForbidden>()(
-  'GRANT_SELF_FORBIDDEN',
-  {},
-  { httpApiStatus: 403, identifier: 'GrantSelfForbidden' },
-) {}
-
 export class RoleEscalationRefused extends Schema.TaggedErrorClass<RoleEscalationRefused>()(
   'ROLE_ESCALATION_REFUSED',
   { permissions: Schema.Array(Schema.String) },
   { httpApiStatus: 403, identifier: 'RoleEscalationRefused' },
 ) {}
 
+/**
+ * A self-grant that would grow its own holder (§CLAUDE 访问模型, re-ruled
+ * 2026-08-20): giving yourself a role is allowed exactly while it adds no
+ * authority you do not already hold. Third-party grants never raise this -
+ * the appointment graph is their whole answer.
+ */
 export class GrantEscalationRefused extends Schema.TaggedErrorClass<GrantEscalationRefused>()(
   'GRANT_ESCALATION_REFUSED',
   { permissions: Schema.Array(Schema.String) },
   { httpApiStatus: 403, identifier: 'GrantEscalationRefused' },
+) {}
+
+/**
+ * An appointment edge that cannot hold. `self` and `cycle` keep the graph a
+ * DAG; `kind` keeps offices appointing offices of their own kind - an org
+ * office held somewhere can never execute a tenant-wide appointment;
+ * `granter-capability` refuses the latent edge: an office that cannot
+ * administer grants anywhere must not claim to appoint anybody, waiting for
+ * some other role of the holder's to make it true.
+ */
+export class RoleAppointmentInvalid extends Schema.TaggedErrorClass<RoleAppointmentInvalid>()(
+  'ROLE_APPOINTMENT_INVALID',
+  { reason: Schema.Literals(['self', 'cycle', 'kind', 'granter-capability']) },
+  { httpApiStatus: 422, identifier: 'RoleAppointmentInvalid' },
 ) {}
 
 /** an org capability asked about without saying where */

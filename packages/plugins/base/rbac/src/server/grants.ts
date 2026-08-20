@@ -31,7 +31,7 @@ import {
   userExists,
 } from './db.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
-import { assertMayGrantRole, type Authority } from './escalation.ts'
+import { assertNoSelfEscalation, type Authority } from './escalation.ts'
 
 import {
   GrantExists,
@@ -39,7 +39,6 @@ import {
   GrantNotEligible,
   GrantNotFound,
   GrantRuleRefused,
-  GrantSelfForbidden,
   GrantUserNotFound,
   RoleNotFound,
   TenantAdminRequired,
@@ -52,7 +51,6 @@ export {
   GrantNotEligible,
   GrantNotFound,
   GrantRuleRefused,
-  GrantSelfForbidden,
   GrantUserNotFound,
   RoleNotFound,
   TenantAdminRequired,
@@ -60,14 +58,15 @@ export {
 
 // Handing a role to somebody, and taking it back.
 //
-// Five separate questions, deliberately not merged. Whether the caller may
+// Four separate questions, deliberately not merged. Whether the caller may
 // touch grants of that reach at all (where); whether the office is theirs to
-// appoint (what, by the role_grant_rules edges); whether they may touch this
-// particular role; whether this role can be held by this person here; and how
-// much power the role carries relative to the caller's own. Being allowed to
-// edit someone's grants says nothing about how strong a role may be put in
-// them, and holding a role's every permission says nothing about being the
-// one who appoints it.
+// appoint (what, by the role_grant_rules edges - the whole of appointment
+// authority, settled when the edge was written); whether they may touch this
+// particular role; and whether this role can be held by this person here.
+// Only a SELF-grant asks a fifth: that the role adds no authority its taker
+// does not already hold - the one grant that is an escalation. Holding a
+// role's every permission says nothing about being the one who appoints it,
+// and appointing an office does not require personally holding its duties.
 
 const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
@@ -97,7 +96,7 @@ export interface GrantScope {
 }
 
 /** why a role cannot be given here, in words a screen can act on */
-export type RoleRefusal = 'user-type' | 'authority' | 'unavailable'
+export type RoleRefusal = 'user-type' | 'authority' | 'self-escalation' | 'unavailable'
 
 /**
  * Whether a grant is inside a scope, for a query that has outer-joined its node.
@@ -519,9 +518,13 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
       ? 'user-type'
       : tag === 'ROLE_NOT_FOUND'
         ? 'unavailable'
-        : // escalation, or a role this caller may not administer: both say the
-          // same thing to a reader - it is not theirs to give
-          'authority'
+        : // only a self-grant can raise it now, and "this would grow you" is
+          // a different sentence from "this office is not yours to fill"
+          tag === 'GRANT_ESCALATION_REFUSED'
+          ? 'self-escalation'
+          : // an office not this caller's to appoint, or a role they may not
+            // administer: both read the same - it is not theirs to give
+            'authority'
 
   /**
    * The roles that could be granted to this person here, right now.
@@ -579,7 +582,6 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     for (const role of candidates) {
       const verdict = yield* transaction(
         Effect.gen(function* () {
-          if (actor.userId === request.userId) return yield* new GrantSelfForbidden()
           yield* eligible(tenantId, {
             userId: request.userId,
             roleId: role.id,
@@ -587,11 +589,15 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           })
           yield* mayAdministerRole(actor, tenantId, role.id)
           yield* mayAppointRole(actor, tenantId, role.id, request.target)
-          yield* assertMayGrantRole(
-            authorityFor(actor),
-            yield* carriedBy(tenantId, role.id),
-            request.target,
-          )
+          // one's own name in the recipient line is the one case where a
+          // grant could grow its granter; everyone else is the graph's call
+          if (actor.userId === request.userId) {
+            yield* assertNoSelfEscalation(
+              authorityFor(actor),
+              yield* carriedBy(tenantId, role.id),
+              request.target,
+            )
+          }
           return true
         }),
       ).pipe(
@@ -601,12 +607,10 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         Effect.catchTag(
           [
             'GRANT_NOT_ELIGIBLE',
+            // a self-grant that would grow its taker
             'GRANT_ESCALATION_REFUSED',
-            // the office is not this caller's to appoint, or the person is
-            // the caller: either way not on offer, with authority named as
-            // the reason
+            // the office is not this caller's to appoint
             'GRANT_RULE_REFUSED',
-            'GRANT_SELF_FORBIDDEN',
             // in the oRPC refusal set too: a role the caller may not
             // administer is one they cannot be offered. ACCESS_DENIED is not
             // listed because nothing in this probe raises it any more - the
@@ -637,15 +641,15 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
   /**
    * The one road to a RoleGrant, whether or not it is confined to a resource.
    *
-   * Every question is asked here, in order: nobody appoints themselves; the
-   * actor administers grants of that reach there; the administrator role's
-   * own reservation (first among the role questions, because its refusal has
-   * the more specific sentence and a rule row must not shadow it); the
-   * office is theirs to appoint; the role admits this person and this
-   * anchor; and its authority does not exceed the actor's own. A resource
-   * changes none of it - confining authority to one object is not a shorter
-   * route to holding it - so the org side and every consumer share this one
-   * function, and cannot drift apart question by question.
+   * Every question is asked here, in order: the actor administers grants of
+   * that reach there; the administrator role's own reservation (first among
+   * the role questions, because its refusal has the more specific sentence
+   * and a rule row must not shadow it); the office is theirs to appoint;
+   * the role admits this person and this anchor; and - only when the
+   * recipient is the actor - that it adds no authority they lack. A
+   * resource changes none of it - confining authority to one object is not
+   * a shorter route to holding it - so the org side and every consumer
+   * share this one function, and cannot drift apart question by question.
    *
    * All of it inside the tenant lock: checked outside it, the role could be
    * disabled or the person re-typed in the gap and the insert would still
@@ -669,18 +673,21 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // failure handler and cannot see a defect.
     return yield* write(tenantId, () =>
       Effect.gen(function* () {
-        // authority is conferred by somebody else; a resignation would be
-        // its own business action, not a self-edit here
-        if (actor.userId === input.userId) return yield* new GrantSelfForbidden()
         yield* mayAdministerGrantsAt(actor, input.target)
         yield* mayAdministerRole(actor, tenantId, input.roleId)
         yield* mayAppointRole(actor, tenantId, input.roleId, input.target)
         yield* eligible(tenantId, input)
-        yield* assertMayGrantRole(
-          authorityFor(actor),
-          yield* carriedBy(tenantId, input.roleId),
-          input.target,
-        )
+        // Taking a role oneself is allowed exactly while it adds nothing:
+        // identity may change, authority may not (re-ruled 2026-08-20).
+        // Third-party grants compare nothing - the appointment edge is the
+        // whole of that answer.
+        if (actor.userId === input.userId) {
+          yield* assertNoSelfEscalation(
+            authorityFor(actor),
+            yield* carriedBy(tenantId, input.roleId),
+            input.target,
+          )
+        }
         const anchor =
           input.target.kind === 'org-node'
             ? { nodeId: input.target.orgNodeId, coverage: input.target.coverage }
@@ -755,7 +762,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         Effect.gen(function* () {
           const grant = yield* oneGrant(tenantId, grantId)
           if (!grant) return yield* new GrantNotFound()
-          if (grant.userId === actor.userId) return yield* new GrantSelfForbidden()
+          // one's own grant is revocable like any other: shedding a role
+          // never grows anybody, and the last administrator is still kept
+          // by the check below reading the state this removal leaves
           const target: GrantTarget =
             grant.orgNodeId === null
               ? { kind: 'tenant' }

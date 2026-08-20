@@ -3381,6 +3381,10 @@ const i18n = definePluginMessages({
       id: 'assessment/access/role-refused-authority',
       defaultMessage: 'You do not have permission to assign this role',
     },
+    roleRefusedSelfEscalation: {
+      id: 'assessment/access/role-refused-self-escalation',
+      defaultMessage: 'Granting yourself this role would add authority you do not hold',
+    },
     roleRefusedUnavailable: {
       id: 'assessment/access/role-refused-unavailable',
       defaultMessage: 'The role is no longer available',

@@ -13,7 +13,12 @@ export default {
   'rbac/field/code': 'code',
   'rbac/field/description': '描述',
   'rbac/roles/grantable-legend': '本角色可任命的角色',
-  'rbac/roles/grantable-hint': '持有本角色的人只能授予勾选的角色，且不超出其管理授权的范围。',
+  'rbac/roles/grantable-hint': '任命授权：持有本角色的人可在其管理授权的范围内任命勾选的角色。',
+  'rbac/roles/grantable-needs-manage':
+    '本角色未持有角色授予权限，先为其勾选相应权限后才能配置任命对象。',
+  'rbac/roles/confirm-permissions-title': '修改该角色的职责？',
+  'rbac/roles/confirm-permissions-body':
+    '修改将立即影响{holders, plural, =0 {当前没有持有人} other {当前 # 名持有人}}；{appointers, plural, =0 {暂无角色以其为任命对象} other {今后由 # 个角色任命的新持有人也将获得新职责}}。',
   'rbac/field/permissions': '权限',
   'rbac/field/kind': '这个角色在哪里生效',
   'rbac/field/kind-org': '在某个组织节点上',
@@ -50,8 +55,9 @@ export default {
   'rbac/error/permission-not-found': '有 {count} 个权限当前不可用。',
   'rbac/error/role-escalation-refused': '不能把自己尚未持有的 {count} 个权限放进角色。',
   'rbac/error/grant-rule-refused': '你持有的角色都不能任命这个角色。',
-  'rbac/error/grant-self-forbidden': '自己的角色要由他人调整。',
-  'rbac/error/grant-escalation-refused': '该角色的权限超出你自身范围，不能授予。',
+  'rbac/error/grant-escalation-refused': '不能通过给自己授予该角色获得新的权限。',
+  'rbac/error/role-appointment-invalid':
+    '{reason, select, self {角色不能任命自己。} cycle {任命关系不能构成循环。} kind {角色只能任命同类角色。} other {该角色未持有角色授予权限，不能任命任何角色。}}',
   'rbac/error/role-version-conflict': '该角色已被他人修改，请刷新后重试。',
   'rbac/error/role-not-draft': '只有草稿状态的角色可以激活。',
   'rbac/error/grant-not-found': '未找到该授权。',

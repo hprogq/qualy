@@ -253,6 +253,84 @@ export const grantRuleTargets = (tenantId: string, granterRoleId: string) =>
     )
     .pipe(Effect.map((rows) => rows.map((row) => row.targetRoleId as string)))
 
+/** the offices that appoint this one, for the editor and the impact dialog */
+export const grantRuleSources = (tenantId: string, targetRoleId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('RoleGrantRule as rule')
+        .innerJoin('Role as r', (join) =>
+          join.onRef('r.tenantId', '=', 'rule.tenantId').onRef('r.id', '=', 'rule.granterRoleId'),
+        )
+        .select(['r.id', 'r.name'])
+        .where('rule.tenantId', '=', tenantId)
+        .where('rule.targetRoleId', '=', targetRoleId)
+        .orderBy('r.name')
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => ({ id: row.id as string, name: row.name }))))
+
+/**
+ * Whether the appointment graph, as it stands, lets this role reach itself.
+ *
+ * The DAG invariant, checked after the write inside the same tenant-locked
+ * transaction: role mutations are serialized on that lock, so two edits
+ * cannot each look acyclic and land a cycle together. Any new cycle must
+ * pass through the role whose edges were just replaced, so walking out from
+ * that one role is the whole question.
+ */
+export const appointmentCycleExists = (tenantId: string, roleId: string) =>
+  db
+    .query((k) =>
+      sql<{ cycled: boolean }>`
+        with recursive walk (role_id) as (
+          select rule.target_role_id
+          from role_grant_rules rule
+          where rule.tenant_id = ${tenantId} and rule.granter_role_id = ${roleId}
+          union
+          select rule.target_role_id
+          from role_grant_rules rule
+          join walk on walk.role_id = rule.granter_role_id
+          where rule.tenant_id = ${tenantId}
+        )
+        select exists (select 1 from walk where walk.role_id = ${roleId}) as cycled
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.cycled)))
+
+/** what appointment validation needs to know about each named target */
+export const rolesForAppointment = (tenantId: string, roleIds: readonly string[]) =>
+  roleIds.length === 0
+    ? Effect.succeed([] as readonly { id: string; kind: 'tenant' | 'org'; codes: string[] }[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('Role as r')
+            .leftJoin('RolePermission as rp', (join) =>
+              join.onRef('rp.tenantId', '=', 'r.tenantId').onRef('rp.roleId', '=', 'r.id'),
+            )
+            .leftJoin('Permission as p', (join) => join.onRef('p.id', '=', 'rp.permissionId'))
+            .select(['r.id', 'r.kind', 'p.code'])
+            .where('r.tenantId', '=', tenantId)
+            .where('r.id', 'in', [...roleIds])
+            .execute(),
+        )
+        .pipe(
+          Effect.map((rows) => {
+            const byId = new Map<string, { id: string; kind: 'tenant' | 'org'; codes: string[] }>()
+            for (const row of rows) {
+              const held = byId.get(row.id) ?? {
+                id: row.id,
+                kind: row.kind as 'tenant' | 'org',
+                codes: [],
+              }
+              if (row.code !== null) held.codes.push(row.code)
+              byId.set(row.id, held)
+            }
+            return [...byId.values()]
+          }),
+        )
+
 /** the appointment edges, replaced whole like every other role set */
 export const replaceGrantRuleTargets = (
   tenantId: string,

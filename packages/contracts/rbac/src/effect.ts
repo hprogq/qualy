@@ -263,7 +263,7 @@ export interface RoleCandidate {
   readonly code: string
   readonly name: string
   /** null when this caller could give it here and now */
-  readonly refusal: 'user-type' | 'authority' | 'unavailable' | null
+  readonly refusal: 'user-type' | 'authority' | 'self-escalation' | 'unavailable' | null
 }
 
 /** one duty somebody holds, and the place it applies */

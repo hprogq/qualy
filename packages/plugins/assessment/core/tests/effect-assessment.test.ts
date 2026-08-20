@@ -989,9 +989,10 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
           wrongOrgType: yield* attempt(classesOnly, [f.root]),
           // a role its owner has taken out of circulation
           notAssignable: yield* attempt(shelved),
-          // the administrator staffing THEMSELVES: this is where "I can add
-          // myself but then cannot remove myself" used to begin, and it now
-          // dies at the grant, in rbac, before the asymmetry can exist
+          // the administrator staffing THEMSELVES: allowed since the
+          // 2026-08-20 re-ruling - the canonical administrator already holds
+          // every capability, so the role adds identity and no authority,
+          // and shedding it again is an ordinary self-revocation
           themselves: yield* Effect.exit(
             assessment.addStaff(
               f.tenant,
@@ -1009,7 +1010,7 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
     expect(tagOf(wrongUserType)).toBe('ACCESS_DENIED')
     expect(tagOf(wrongOrgType)).toBe('ACCESS_DENIED')
     expect(tagOf(notAssignable)).toBe('ACCESS_DENIED')
-    expect(tagOf(themselves)).toBe('ACCESS_DENIED')
+    expect(Exit.isSuccess(themselves)).toBe(true)
     expect(Exit.isSuccess(allowed)).toBe(true)
   })
 
