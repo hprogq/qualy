@@ -1,130 +1,156 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronsRightIcon } from 'lucide-react'
+import { cn } from '@qualy/ui/cn'
 
-// The act that reviewing keys to under a thumb. Its pointer-reading hooks
+// The act that confirms a decision under a thumb. Its pointer-reading hooks
 // live next door in pointer.ts - the fast-refresh gate holds a component
 // file to exporting components alone.
 
-/** how long a thumb has to stay down before the act goes out */
-const HOLD_MS = 900
+/** how far along the track a release still counts as meant */
+const FAR_ENOUGH = 0.85
 
 /**
- * An act keyed to a press held down, for a pointer that is a thumb.
+ * An act keyed to a drag across, for a pointer that is a thumb.
  *
- * A tap chooses; only the full hold sends. Letting go early is a change of
- * mind: nothing goes out and the fill runs back. The words never move - the
- * label is drawn once in the key's ink and once in the fill's, the second
- * clipped to however far the fill has swept, so the sweep reads the label
- * out rather than pushing a copy of it across. The clipped copy is sized to
- * the key's measured width; sizing it to the viewport squeezed it anywhere
- * the key was narrower than the screen.
+ * A tap does nothing and a hold does nothing: only carrying the handle to
+ * the far end sends, and letting go early runs it back. A held press was
+ * tried first and lost - the platform answers a long press with text
+ * selection and a magnifier, which turned every deliberate confirm into a
+ * fight with the browser. A drag is the one gesture nothing else claims.
  */
-export function HoldKey({
+export function SlideKey({
   label,
   waiting,
   ready,
-  testId = 'hold-submit',
-  onHeld,
+  testId = 'slide-confirm',
+  onConfirmed,
 }: {
-  /** what holding it does, said as an instruction: nobody guesses a hold */
+  /** what completing the slide does, said as an instruction */
   label: string
-  /** what stands in the way while it cannot be held */
+  /** what stands in the way while it cannot be slid */
   waiting: string
   ready: boolean
   testId?: string
-  onHeld: () => void
+  onConfirmed: () => void
 }) {
-  const [held, setHeld] = useState(false)
-  const [width, setWidth] = useState(0)
-  const node = useRef<HTMLButtonElement | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const track = useRef<HTMLDivElement | null>(null)
+  /** how far the handle has been carried, in px from the track's left */
+  const [at, setAt] = useState(0)
+  // The same distance again, readable at event time: a fast flick lands
+  // pointermove and pointerup in one frame, and the release handler's
+  // closure still holds the render before the move - judged off state, a
+  // clean full carry read as zero and nothing went out.
+  const carried = useRef(0)
+  const [dragging, setDragging] = useState(false)
+  const [span, setSpan] = useState(0)
+  const grip = useRef<{ pointer: number; start: number; from: number } | null>(null)
+  const sent = useRef(false)
 
   useEffect(() => {
-    const key = node.current
-    if (key === null) return
-    const measure = () => setWidth(key.clientWidth)
+    const rail = track.current
+    if (rail === null) return
+    const measure = () => {
+      const handle = rail.querySelector('[data-slide-handle]')
+      const width = handle instanceof HTMLElement ? handle.offsetWidth : 0
+      setSpan(Math.max(0, rail.clientWidth - width - 8))
+    }
     measure()
     const watch = new ResizeObserver(measure)
-    watch.observe(key)
+    watch.observe(rail)
     return () => watch.disconnect()
   }, [])
 
-  const stop = useCallback(() => {
-    if (timer.current !== null) clearTimeout(timer.current)
-    timer.current = null
-    setHeld(false)
+  const letGo = useCallback(() => {
+    grip.current = null
+    carried.current = 0
+    setDragging(false)
+    setAt(0)
   }, [])
-  useEffect(() => stop, [stop])
-  // an act cleared out from under the press takes the press with it
+
+  // an act cleared out from under the drag takes the drag with it
   useEffect(() => {
-    if (!ready) stop()
-  }, [ready, stop])
+    if (!ready) letGo()
+    sent.current = false
+  }, [ready, letGo])
 
-  const start = () => {
-    if (!ready || timer.current !== null) return
-    setHeld(true)
-    timer.current = setTimeout(() => {
-      timer.current = null
-      setHeld(false)
-      onHeld()
-    }, HOLD_MS)
+  const move = (event: React.PointerEvent) => {
+    const held = grip.current
+    if (held === null || held.pointer !== event.pointerId) return
+    const next = Math.min(span, Math.max(0, held.from + event.clientX - held.start))
+    carried.current = next
+    setAt(next)
   }
 
-  const sweep = {
-    width: held ? '100%' : '0%',
-    transitionDuration: held ? `${HOLD_MS}ms` : '150ms',
+  const release = (event: React.PointerEvent) => {
+    const held = grip.current
+    if (held === null || held.pointer !== event.pointerId) return
+    const across = span > 0 && carried.current >= span * FAR_ENOUGH
+    if (across && !sent.current) {
+      sent.current = true
+      grip.current = null
+      setDragging(false)
+      setAt(span)
+      onConfirmed()
+      return
+    }
+    letGo()
   }
-  const words = ready ? label : waiting
 
   return (
-    <button
-      ref={node}
-      type="button"
-      disabled={!ready}
+    <div
+      ref={track}
       data-testid={testId}
-      data-holding={held ? 'yes' : 'no'}
-      // Pointer events rather than touch: one set of handlers answers a
-      // finger, a stylus and a mouse alike, and the capture keeps the press
-      // alive when the thumb slides off the edge of the key mid-hold.
-      onPointerDown={(event) => {
-        try {
-          event.currentTarget.setPointerCapture(event.pointerId)
-        } catch {
-          // a pointer id the platform has no record of; the press still counts
-        }
-        start()
-      }}
-      onPointerUp={stop}
-      onPointerCancel={stop}
-      onContextMenu={(event) => event.preventDefault()}
-      className="relative flex h-11 w-full shrink-0 touch-none items-center justify-center overflow-hidden rounded-xl border text-sm font-medium select-none disabled:opacity-60"
-    >
-      {/* a quiet invitation while it waits to be held: the pulse is what
-          says this key is not a tap, before the words are even read */}
-      {ready && !held && (
-        <span
-          aria-hidden
-          className="absolute inset-0 animate-pulse rounded-[inherit] bg-primary/10"
-        />
+      data-slide-at={span > 0 ? Math.round((at / span) * 100) : 0}
+      className={cn(
+        'relative h-11 w-full touch-none overflow-hidden rounded-xl border bg-muted/50 select-none',
+        !ready && 'opacity-60',
       )}
-      {/* the fill is the only thing that moves */}
+    >
+      {/* the trail the handle has covered, so progress reads as progress */}
       <span
         aria-hidden
-        style={sweep}
-        className="absolute inset-y-0 left-0 bg-primary transition-[width] ease-linear motion-reduce:transition-none"
+        style={{ width: at + 44 }}
+        className={cn('absolute inset-y-0 left-0 bg-primary/10', !dragging && 'transition-[width]')}
       />
-      <span className="relative">{words}</span>
       <span
-        aria-hidden
-        style={sweep}
-        className="absolute inset-y-0 left-0 overflow-hidden transition-[width] ease-linear motion-reduce:transition-none"
+        className={cn(
+          'absolute inset-0 flex items-center justify-center text-sm font-medium transition-opacity',
+          dragging && at > span * 0.3 ? 'opacity-30' : 'opacity-100',
+          ready ? 'text-foreground' : 'text-muted-foreground',
+        )}
       >
-        <span
-          style={{ width }}
-          className="absolute inset-y-0 left-0 flex items-center justify-center text-primary-foreground"
-        >
-          {words}
-        </span>
+        {ready ? label : waiting}
       </span>
-    </button>
+      <button
+        type="button"
+        data-slide-handle
+        disabled={!ready}
+        aria-label={label}
+        style={{ transform: `translateX(${at}px)` }}
+        // Pointer events with capture: one set of handlers answers a finger,
+        // a stylus and a mouse alike, and the capture keeps the drag alive
+        // when it strays off the handle mid-carry.
+        onPointerDown={(event) => {
+          if (!ready) return
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId)
+          } catch {
+            // a pointer id the platform has no record of; the drag still counts
+          }
+          grip.current = { pointer: event.pointerId, start: event.clientX, from: carried.current }
+          setDragging(true)
+        }}
+        onPointerMove={move}
+        onPointerUp={release}
+        onPointerCancel={letGo}
+        onContextMenu={(event) => event.preventDefault()}
+        className={cn(
+          'absolute top-1 bottom-1 left-1 flex w-11 items-center justify-center rounded-[9px] bg-primary text-primary-foreground',
+          !dragging && 'transition-transform',
+        )}
+      >
+        <ChevronsRightIcon aria-hidden className="size-4" />
+      </button>
+    </div>
   )
 }

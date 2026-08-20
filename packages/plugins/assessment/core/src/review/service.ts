@@ -246,7 +246,7 @@ export interface ReviewContextView {
  * word for it meant a reviewer had to know which kind of chain they were
  * standing in before they knew which button meant what.
  */
-export type ReviewDecision = 'approve' | 'reject' | 'escalate' | 'comment'
+export type ReviewDecision = 'approve' | 'reject' | 'escalate'
 
 /**
  * What may be said from where the round stands.
@@ -267,11 +267,10 @@ const decisionsAt = (
 ): readonly ReviewDecision[] => {
   const endable = round.rejectPolicy === 'any-stage' || isRouteEnd(policy, here)
   if (here.route === 'escalation') {
-    return endable ? ['approve', 'reject', 'comment'] : ['approve', 'comment']
+    return endable ? ['approve', 'reject'] : ['approve']
   }
   const said: ReviewDecision[] = endable ? ['approve', 'reject'] : ['approve']
   if (mayEscalate && escalationOpen(policy)) said.push('escalate')
-  said.push('comment')
   return said
 }
 
@@ -963,17 +962,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
               })
 
-            // an opinion moves nothing; it is said and the round stays where
-            // it is, waiting for whoever will decide
-            if (action === 'comment') {
-              yield* say(action)
-              const written = (yield* instanceOf(tenantId, instanceId))!
-              return yield* assembleDetail(tenantId, written, {
-                canDecide: true,
-                resolveReviewers: false,
-                canRequestSupplement: true,
-              })
-            }
+            // Every decision carries its opinion with it; a freestanding
+            // note is no longer an act. Rounds decided before this carry
+            // `comment` events in their trail, and the readers still render
+            // them - only the writing of new ones is gone.
 
             // ending the round: a rejection wherever it may be said, or an
             // approval at the last step of the route being walked

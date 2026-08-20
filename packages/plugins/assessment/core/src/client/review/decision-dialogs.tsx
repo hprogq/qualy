@@ -13,7 +13,7 @@ import { Textarea } from '@qualy/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { assessmentMessages as m } from '../i18n.ts'
 import { fieldsOf } from '../entry/model.ts'
-import { HoldKey } from './touch.tsx'
+import { SlideKey } from './touch.tsx'
 import { useFinePointer } from './pointer.ts'
 import type { ReviewDto } from './model.ts'
 
@@ -114,7 +114,7 @@ function ReasonPicker({
 
 /**
  * The touch face of a worded decision: a sheet from the foot of the screen,
- * confirmed by a press held down.
+ * confirmed by a slide across.
  *
  * The same questions as the dialog - the reason, the word - but where the
  * thumb is: a centred modal on a phone floats out of reach of the hand
@@ -122,11 +122,11 @@ function ReasonPicker({
  * keyboard. The suggestion grid stays a desktop affordance; three columns
  * of comparison have no honest rendering at 390px.
  */
-function DecisionSheet({
+export function DecisionSheet({
   open,
   title,
   hint,
-  holdLabel,
+  slideLabel,
   waiting,
   ready,
   onClose,
@@ -136,7 +136,8 @@ function DecisionSheet({
   open: boolean
   title: string
   hint: string
-  holdLabel: string
+  /** the slider's instruction, naming the act it completes */
+  slideLabel: string
   waiting: string
   ready: boolean
   onClose: () => void
@@ -161,16 +162,109 @@ function DecisionSheet({
           {children}
         </div>
         <div className="shrink-0 border-t px-4 pt-3 pb-[max(1.125rem,env(safe-area-inset-bottom))]">
-          <HoldKey
-            label={holdLabel}
-            waiting={waiting}
-            ready={ready}
-            testId="hold-confirm"
-            onHeld={onConfirm}
-          />
+          <SlideKey label={slideLabel} waiting={waiting} ready={ready} onConfirmed={onConfirm} />
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+/**
+ * Approving, with room for a word.
+ *
+ * The lightest of the four: no reason list, no suggestion grid, one
+ * optional opinion. It exists so that approving is the same shape as every
+ * other act - the act opens, says what it needs, and is confirmed - rather
+ * than the one decision that fires on a bare press.
+ */
+export function ApproveDialog({
+  open,
+  review,
+  onClose,
+  onConfirm,
+}: {
+  /** false while it animates shut; it keeps drawing what it was showing */
+  open: boolean
+  review: ReviewDto
+  onClose: () => void
+  onConfirm: (decision: WordedDecision) => void
+}) {
+  const { format } = useI18n()
+  const fine = useFinePointer()
+  const [comment, setComment] = useState('')
+  const confirm = () => onConfirm({ comment: comment.trim() })
+
+  const body = (
+    <Field label={format(m.reviewComment)} hint={fine ? format(m.reviewApproveHint) : undefined}>
+      {(id) => (
+        <Textarea
+          id={id}
+          value={comment}
+          rows={3}
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus={fine}
+          onChange={(event) => setComment(event.target.value)}
+        />
+      )}
+    </Field>
+  )
+
+  if (!fine) {
+    return (
+      <DecisionSheet
+        open={open}
+        title={format(m.reviewApprove)}
+        hint={format(m.reviewApproveSheetHint)}
+        slideLabel={format(m.reviewSlideApprove)}
+        waiting={format(m.reviewSheetFillFirst)}
+        ready
+        onClose={onClose}
+        onConfirm={confirm}
+      >
+        {body}
+      </DecisionSheet>
+    )
+  }
+
+  return (
+    <FormDialog
+      open={open}
+      title={format(m.reviewApproveTitle, { name: review.participantName })}
+      description={format(m.reviewRejectSubtitle, {
+        item: review.itemTitle,
+        no: review.revision.revisionNo,
+      })}
+      onClose={onClose}
+      footer={
+        <div className="flex w-full items-center justify-end gap-3">
+          <Button variant="outline" onClick={onClose}>
+            {format(commonMessages.cancel)}
+            <Kbd>Esc</Kbd>
+          </Button>
+          <Button
+            className="bg-emerald-600/90 text-white hover:bg-emerald-600 dark:bg-emerald-700/80 dark:hover:bg-emerald-700"
+            onClick={confirm}
+          >
+            {format(m.reviewApprove)}
+            <Kbd className="bg-white/20 text-white">⌘↵</Kbd>
+          </Button>
+        </div>
+      }
+    >
+      <div
+        className="flex flex-col gap-5"
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault()
+            // the page listens for this chord too; one press is one act
+            event.stopPropagation()
+            confirm()
+          }
+        }}
+      >
+        {body}
+      </div>
+    </FormDialog>
   )
 }
 
@@ -259,7 +353,7 @@ export function RejectDialog({
         open={open}
         title={format(m.reviewReject)}
         hint={format(m.reviewRejectFoot)}
-        holdLabel={format(m.reviewHoldToReject)}
+        slideLabel={format(m.reviewSlideReject)}
         waiting={format(m.reviewSheetFillFirst)}
         ready={ready}
         onClose={onClose}
@@ -496,7 +590,7 @@ export function EscalateDialog({
         open={open}
         title={format(m.reviewEscalate)}
         hint={format(m.reviewEscalateFoot)}
-        holdLabel={format(m.reviewHoldToEscalate)}
+        slideLabel={format(m.reviewSlideEscalate)}
         waiting={format(m.reviewSheetFillFirst)}
         ready={ready}
         onClose={onClose}

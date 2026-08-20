@@ -289,58 +289,65 @@ describe('one workbench, three widths', () => {
 })
 
 describe('sending, under a thumb', () => {
-  it('takes a press held down, and lets a tap go', async () => {
+  it('opens the act as a sheet, and sends only on a full slide', async () => {
     const restore = asThumb()
     try {
       page.viewport(390, 844)
-      open()
+      const decided = vi.fn(() =>
+        Effect.succeed({ review: { ...review, state: 'completed', outcome: 'approved' } }),
+      )
+      open({ decideReview: decided as never })
       await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
+      // a decision is an act with its own panel: the tap opens it and sends
+      // nothing
       await page.getByRole('button', { name: /^通过/ }).click()
-      const hold = page.getByTestId('hold-submit')
-      await expect.element(hold).toBeVisible()
-
-      // a tap is not a send: the press has to survive the full hold, and
-      // the key says so by never starting
-      await hold.click()
-      await new Promise((done) => setTimeout(done, 300))
+      await expect.element(page.getByRole('dialog')).toBeVisible()
       expect(page.getByTestId('decision-staged').elements()).toHaveLength(0)
 
-      // held down, and only then
-      const key = hold.element()
-      key.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
-      await expect.element(hold).toHaveAttribute('data-holding', 'yes')
-      await vi.waitFor(
-        () => expect(page.getByTestId('decision-staged').elements()).toHaveLength(1),
-        { timeout: 3000 },
+      // a tap on the slider is not a send, and neither is half a carry
+      const slider = page.getByTestId('slide-confirm')
+      await expect.element(slider).toBeVisible()
+      const handle = document.querySelector('[data-slide-handle]')!
+      const track = slider.element().getBoundingClientRect()
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientX: track.left + 20 }),
       )
+      handle.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          pointerId: 1,
+          clientX: track.left + track.width * 0.4,
+        }),
+      )
+      handle.dispatchEvent(
+        new PointerEvent('pointerup', {
+          bubbles: true,
+          pointerId: 1,
+          clientX: track.left + track.width * 0.4,
+        }),
+      )
+      await new Promise((done) => setTimeout(done, 250))
+      expect(page.getByTestId('decision-staged').elements()).toHaveLength(0)
+
+      // carried all the way across, the act goes out
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, pointerId: 2, clientX: track.left + 20 }),
+      )
+      handle.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          pointerId: 2,
+          clientX: track.right + 40,
+        }),
+      )
+      handle.dispatchEvent(
+        new PointerEvent('pointerup', { bubbles: true, pointerId: 2, clientX: track.right + 40 }),
+      )
+      await vi.waitFor(() => expect(page.getByTestId('decision-staged').elements()).toHaveLength(1))
       await expect
         .element(page.getByTestId('decision-staged'))
         .toHaveAttribute('data-decision', 'approve')
-    } finally {
-      restore()
-    }
-  })
-
-  it('drops the hold when the press is let go early', async () => {
-    const restore = asThumb()
-    try {
-      page.viewport(390, 844)
-      open()
-      await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
-      await page.getByRole('button', { name: /^通过/ }).click()
-
-      const hold = page.getByTestId('hold-submit')
-      const key = hold.element()
-      key.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
-      await expect.element(hold).toHaveAttribute('data-holding', 'yes')
-      await new Promise((done) => setTimeout(done, 200))
-      key.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }))
-      await expect.element(hold).toHaveAttribute('data-holding', 'no')
-
-      // well past the full hold, and nothing went out
-      await new Promise((done) => setTimeout(done, 1200))
-      expect(page.getByTestId('decision-staged').elements()).toHaveLength(0)
     } finally {
       restore()
     }

@@ -725,11 +725,12 @@ describe('judging a submission', () => {
     // own label in the reading pane
     await page.getByRole('button', { name: /张三/ }).click()
     await expect.element(page.getByText('入伍经历与退役时间').first()).toBeVisible()
-    // choosing is not submitting: 通过 arms, 提交决定 stages, and for five
-    // seconds the pill offers the way back before anything leaves
+    // choosing is not submitting: 通过 opens the act's own panel, where the
+    // opinion is optional, and only the panel's confirm stages anything -
+    // then for five seconds the pill offers the way back
     await page.getByRole('button', { name: /^通过/ }).click()
     expect(decided).not.toHaveBeenCalled()
-    await page.getByRole('button', { name: /提交审核结果/ }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /^通过/ }).click()
     await expect
       .element(page.getByTestId('decision-staged'))
       .toHaveAttribute('data-decision', 'approve')
@@ -766,7 +767,7 @@ describe('judging a submission', () => {
     // same chord, and both answering it staged a decision and then told the
     // reviewer to choose one
     await page.getByRole('button', { name: /退回/ }).click()
-    await page.getByLabelText('审核说明').fill('证书缺少落款。')
+    await page.getByLabelText('审核意见').fill('证书缺少落款。')
     await page
       .getByRole('dialog')
       .getByRole('button', { name: /确认退回/ })
@@ -803,7 +804,7 @@ describe('judging a submission', () => {
     await page.getByRole('button', { name: /退回/ }).click()
     const confirm = page.getByRole('dialog').getByRole('button', { name: /确认退回/ })
     await expect.element(confirm).toBeDisabled()
-    await page.getByLabelText('审核说明').fill('证明日期与填报不符，请核对。')
+    await page.getByLabelText('审核意见').fill('证明日期与填报不符，请核对。')
     await expect.element(confirm).toBeEnabled()
     await confirm.click()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
@@ -861,7 +862,7 @@ describe('judging a submission', () => {
 
     // a reason alone does not send: the written word is still required
     await expect.element(confirm).toBeDisabled()
-    await page.getByLabelText('审核说明').fill('与三月的献血申报是同一件事。')
+    await page.getByLabelText('审核意见').fill('与三月的献血申报是同一件事。')
     await confirm.click()
     await vi.waitFor(() => expect(decided).toHaveBeenCalledOnce(), { timeout: 8000 })
     expect((decided.mock.calls[0] as unknown[])[0]).toMatchObject({

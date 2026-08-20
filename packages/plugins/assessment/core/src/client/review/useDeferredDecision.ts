@@ -30,9 +30,9 @@ export type StagedDecision =
   | {
       readonly kind: 'decision'
       readonly instanceId: string
-      readonly decision: 'approve' | 'reject' | 'escalate' | 'comment'
+      readonly decision: 'approve' | 'reject' | 'escalate'
       readonly payload: {
-        readonly decision: 'approve' | 'reject' | 'escalate' | 'comment'
+        readonly decision: 'approve' | 'reject' | 'escalate'
         readonly reason?: string
         readonly comment?: string
         readonly suggestedPayload?: unknown

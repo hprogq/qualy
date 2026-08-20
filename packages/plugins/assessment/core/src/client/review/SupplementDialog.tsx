@@ -9,6 +9,8 @@ import { Input } from '@qualy/ui/input'
 import { Label } from '@qualy/ui/label'
 import { Textarea } from '@qualy/ui/textarea'
 import { assessmentMessages as m } from '../i18n.ts'
+import { DecisionSheet } from './decision-dialogs.tsx'
+import { useFinePointer } from './pointer.ts'
 
 // Asking for more backing without moving the round. The builder offers two
 // shapes and only two - a written answer or files - so an ask can never grow
@@ -43,6 +45,7 @@ export function SupplementDialog({
   onConfirm: (worded: WordedSupplement) => void
 }) {
   const { format } = useI18n()
+  const fine = useFinePointer()
   const [instructions, setInstructions] = useState('')
   const [pieces, setPieces] = useState<readonly Piece[]>([
     { label: '', kind: 'file', required: true },
@@ -61,6 +64,98 @@ export function SupplementDialog({
     pieces.length > 0 &&
     pieces.every((piece) => piece.label.trim() !== '')
 
+  const confirm = () =>
+    onConfirm({
+      instructions: instructions.trim(),
+      requirements: pieces.map((piece) => ({
+        label: piece.label.trim(),
+        kind: piece.kind,
+        required: piece.required,
+      })),
+    })
+
+  const body = (
+    <div className="flex flex-col gap-4">
+      <Field label={format(m.supplementInstructionsLabel)} required>
+        {(id) => (
+          <Textarea
+            id={id}
+            rows={3}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus={fine}
+            value={instructions}
+            onChange={(event) => setInstructions(event.target.value)}
+          />
+        )}
+      </Field>
+
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">{format(m.supplementPiecesLabel)}</p>
+        {pieces.map((piece, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <span className="flex w-24 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {piece.kind === 'file' ? (
+                <FileIcon aria-hidden className="size-3.5" />
+              ) : (
+                <TypeIcon aria-hidden className="size-3.5" />
+              )}
+              {format(piece.kind === 'file' ? m.supplementAddFile : m.supplementAddText)}
+            </span>
+            <Input
+              value={piece.label}
+              placeholder={format(m.supplementPieceLabel)}
+              className="flex-1"
+              onChange={(event) => edit(index, { label: event.target.value })}
+            />
+            <Label className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
+              <Checkbox
+                checked={piece.required}
+                onCheckedChange={(checked) => edit(index, { required: checked === true })}
+              />
+              {format(m.supplementPieceRequired)}
+            </Label>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              disabled={pieces.length <= 1}
+              onClick={() => remove(index)}
+            >
+              <XIcon aria-hidden />
+              <span className="sr-only">{format(m.supplementPieceRemove)}</span>
+            </Button>
+          </div>
+        ))}
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => add('file')}>
+            <PlusIcon aria-hidden />
+            {format(m.supplementAddFile)}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => add('text')}>
+            <PlusIcon aria-hidden />
+            {format(m.supplementAddText)}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+
+  if (!fine) {
+    return (
+      <DecisionSheet
+        open={open}
+        title={format(m.supplementDialogTitle)}
+        hint={format(m.supplementDialogHint)}
+        slideLabel={format(m.reviewSlideSupplement)}
+        waiting={format(m.reviewSheetFillFirst)}
+        ready={ready}
+        onClose={onClose}
+        onConfirm={confirm}
+      >
+        {body}
+      </DecisionSheet>
+    )
+  }
+
   return (
     <FormDialog
       open={open}
@@ -72,85 +167,13 @@ export function SupplementDialog({
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
-          <Button
-            disabled={!ready}
-            onClick={() =>
-              onConfirm({
-                instructions: instructions.trim(),
-                requirements: pieces.map((piece) => ({
-                  label: piece.label.trim(),
-                  kind: piece.kind,
-                  required: piece.required,
-                })),
-              })
-            }
-          >
+          <Button disabled={!ready} onClick={confirm}>
             {format(m.supplementSend)}
           </Button>
         </div>
       }
     >
-      <div className="flex flex-col gap-4">
-        <Field label={format(m.supplementInstructionsLabel)} required>
-          {(id) => (
-            <Textarea
-              id={id}
-              rows={3}
-              autoFocus
-              value={instructions}
-              onChange={(event) => setInstructions(event.target.value)}
-            />
-          )}
-        </Field>
-
-        <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium">{format(m.supplementPiecesLabel)}</p>
-          {pieces.map((piece, index) => (
-            <div key={index} className="flex items-center gap-2">
-              <span className="flex w-24 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                {piece.kind === 'file' ? (
-                  <FileIcon aria-hidden className="size-3.5" />
-                ) : (
-                  <TypeIcon aria-hidden className="size-3.5" />
-                )}
-                {format(piece.kind === 'file' ? m.supplementAddFile : m.supplementAddText)}
-              </span>
-              <Input
-                value={piece.label}
-                placeholder={format(m.supplementPieceLabel)}
-                className="flex-1"
-                onChange={(event) => edit(index, { label: event.target.value })}
-              />
-              <Label className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
-                <Checkbox
-                  checked={piece.required}
-                  onCheckedChange={(checked) => edit(index, { required: checked === true })}
-                />
-                {format(m.supplementPieceRequired)}
-              </Label>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={pieces.length <= 1}
-                onClick={() => remove(index)}
-              >
-                <XIcon aria-hidden />
-                <span className="sr-only">{format(m.supplementPieceRemove)}</span>
-              </Button>
-            </div>
-          ))}
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => add('file')}>
-              <PlusIcon aria-hidden />
-              {format(m.supplementAddFile)}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => add('text')}>
-              <PlusIcon aria-hidden />
-              {format(m.supplementAddText)}
-            </Button>
-          </div>
-        </div>
-      </div>
+      {body}
     </FormDialog>
   )
 }

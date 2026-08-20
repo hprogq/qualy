@@ -6442,3 +6442,32 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 675 passed / 17 skipped(fast-refresh
 门禁曾红,拆出 pointer.ts 后绿);`pnpm test:browser` 10 files / 78 passed;`pnpm build` 通过;prettier 全绿。
+
+### 审核动作模型:取消独立「备注」,意见随动作走(2026-08-20 深夜)
+
+领域裁决(经与用户对话定案):**不是「备注与退回意见合并」,而是取消「备注」作为独立审核动作**——
+通过/退回/提请复核是动作,「审核意见」是每个动作携带的附属信息;「退回原因」仍是独立的结构化字段
+(批次配置列表校验不动)。补充材料保持独立接口,不塞进 ReviewDecision。
+
+- **服务端**:`ReviewDecision` 收为 `'approve' | 'reject' | 'escalate'`;`decisionsAt()` 不再派发
+  comment;decideReview 删除「意见不推进流程」分支;API schema 同步。**不加**「每人每轮一条」的唯一
+  约束——一个审核事件天然只有一份意见。历史 `kind='comment'` 事件只读保留,渲染照旧;handledToday
+  的计数 SQL 保留 comment(只有历史行会命中)。无数据库迁移。
+- **工作台**:底栏状态机(armed/word/sayNote/submitArmed/WritingBox/输入框)整体删除,只剩四个真正
+  改变业务状态的键,按轻到重排:要求补充材料 → 提请复核 → 退回 → 通过(桌面右对齐,行尾是句号位)。
+  点击任一键打开该动作自己的面板:桌面 Dialog(⌘↵ 确认、Esc 关闭重选),移动端底拉框。新增最轻的
+  `ApproveDialog`(一个可选「审核意见」);SupplementDialog 也补了 Sheet 形态。五秒撤回窗口保持不变。
+  键盘:A/R/S/E 一律「打开面板」,⌘↵ 归面板所有,页面级 chord 与 C 键删除;KeysPanel 同步改写。
+- **滑动提交替代长按**:长按会触发系统文字选择/放大镜,`HoldKey` 删除,新 `SlideKey`(验证码式滑块):
+  把手从左拖到右 ≥85% 松手才发出,中途松开回弹;进度轨迹上色、文字随进度淡出。**修了一个真实竞态**:
+  快速一划时 pointermove 与 pointerup 落在同一帧,release 闭包里的 `at` 还是上一次渲染的 0,干净的
+  整滑被判为零——逻辑距离改走 ref,渲染值照旧走 state。
+- **DoneScreen** 删掉「本组审核结果」逐条列表分区(reviewDoneList/reviewDoneFinal 文案一并退役)。
+- **文案**:`assessment/review/comment` 统一为「审核意见」;16 条退役消息(备注/提交决定/armed 提示/
+  长按系)从 descriptor 与 zh-CN 成对删除;快捷键面板词条改为「打开××面板/确认当前动作」。
+- **测试**:review-flow 的 decisions 集合断言去掉 comment;entry-workflow 通过用例改走面板流(点通过
+  →面板→面板内确认),审核说明→审核意见的按名定位跟进;review-layout 触摸用例重写为「点开底拉框、
+  半滑不发出、整滑发出」。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 675 passed / 17 skipped;
+`pnpm test:browser` 10 files / 77 passed;`pnpm build` 通过;prettier 全绿。

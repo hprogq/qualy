@@ -922,7 +922,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('decideReview', '/assessment/review/instances/:instanceId/decisions', {
       params: Schema.Struct({ instanceId: id }),
       payload: Schema.Struct({
-        decision: Schema.Literals(['approve', 'reject', 'escalate', 'comment']),
+        decision: Schema.Literals(['approve', 'reject', 'escalate']),
         /**
          * One of the batch's configured reason labels, for reject and
          * escalate. Required exactly when the batch configured a list for

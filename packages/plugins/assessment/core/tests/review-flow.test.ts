@@ -625,17 +625,12 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     // the ordinary route offers to escalate; the escalation route does not
     expect(result.onNormal.chain.route).toBe('normal')
     expect(result.onNormal.chain.stageId).toBe('n1')
-    expect([...result.onNormal.chain.decisions].sort()).toEqual([
-      'approve',
-      'comment',
-      'escalate',
-      'reject',
-    ])
+    expect([...result.onNormal.chain.decisions].sort()).toEqual(['approve', 'escalate', 'reject'])
     // raising it leaves the ordinary route entirely rather than carrying on
     expect(result.raised.chain.route).toBe('escalation')
     expect(result.raised.chain.stageId).toBe('d1')
     // a filing-time escalation can be ended anywhere, and happens only once
-    expect([...result.escalated.chain.decisions].sort()).toEqual(['approve', 'comment', 'reject'])
+    expect([...result.escalated.chain.decisions].sort()).toEqual(['approve', 'reject'])
     expect(refusalOf(result.noSecondEscalation)?.reason).toBe('decision-not-available')
     expect(result.passedOn.chain.stageId).toBe('d2')
     expect(result.settled.outcome).toBe('approved')
@@ -1033,9 +1028,9 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
 
     // and only its last step can turn it down
-    expect([...result.midway.chain.decisions].sort()).toEqual(['approve', 'comment'])
+    expect([...result.midway.chain.decisions].sort()).toEqual(['approve'])
     expect(refusalOf(result.rejectTooSoon)?.reason).toBe('decision-not-available')
-    expect([...result.atEnd.chain.decisions].sort()).toEqual(['approve', 'comment', 'reject'])
+    expect([...result.atEnd.chain.decisions].sort()).toEqual(['approve', 'reject'])
     expect(result.settled.outcome).toBe('rejected')
   })
 })

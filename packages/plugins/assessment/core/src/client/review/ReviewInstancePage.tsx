@@ -1,13 +1,4 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircleIcon,
@@ -18,7 +9,6 @@ import {
   ChevronUpIcon,
   DownloadIcon,
   InfoIcon,
-  Maximize2Icon,
   TriangleAlertIcon,
 } from 'lucide-react'
 import {
@@ -38,17 +28,10 @@ import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from '@qualy/ui/input-group'
 import { Kbd } from '@qualy/ui/kbd'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
@@ -73,7 +56,12 @@ import {
 } from './model.ts'
 import type { BatchDto } from '../phase/model.ts'
 import type { ReviewDto } from './model.ts'
-import { RejectDialog, EscalateDialog, type WordedDecision } from './decision-dialogs.tsx'
+import {
+  ApproveDialog,
+  EscalateDialog,
+  RejectDialog,
+  type WordedDecision,
+} from './decision-dialogs.tsx'
 import { SupplementDialog, type WordedSupplement } from './SupplementDialog.tsx'
 import { useDeferredDecision, type StagedDecision } from './useDeferredDecision.ts'
 import { VersionPicker } from './history.tsx'
@@ -81,7 +69,6 @@ import { EntryHistory } from '../entry/EntryHistory.tsx'
 import { attachmentContentUrl } from '../entry/model.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { Appear, CountdownRing, DoneMark, Drill, GlideAcross, Stagger } from '@qualy/ui/reveal'
-import { HoldKey } from './touch.tsx'
 import { useFinePointer, useMedia } from './pointer.ts'
 
 // The workbench: one submission a screen, walked in a run.
@@ -234,11 +221,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const [rail, setRail] = usePageQueryState('queue')
   const railOpen = rail !== 'off'
 
-  const [armed, setArmed] = useState<'approve' | 'comment' | null>(null)
-  const [word, setWord] = useState('')
-  const [dialog, setDialog] = useState<'reject' | 'escalate' | 'supplement' | null>(null)
+  // Every decision is an act with its own panel; nothing arms silently.
+  const [dialog, setDialog] = useState<'approve' | 'reject' | 'escalate' | 'supplement' | null>(
+    null,
+  )
   const [keysOpen, setKeysOpen] = useState(false)
-  const [writing, setWriting] = useState(false)
   const [openSibling, setOpenSibling] = useState<string | null>(null)
   const lingeringSibling = useLingering(openSibling)
   // which dialog to keep drawn while it shuts; a conditionally mounted one
@@ -259,7 +246,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // to ask for that every time made the question "did they fix it" cost a
   // keystroke on every filing in the run.
   const [comparing, setComparing] = useState<string | null>('previous')
-  const wordRef = useRef<HTMLInputElement | null>(null)
   // The bar at the bottom is where this screen is acted on, so the shell's
   // own floating control stands down for as long as it is up. The way back
   // to the queue is the key at the left of the header instead - and where
@@ -271,7 +257,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // that just closed itself: through a render closure it saw "no overlay"
   // and ran the page's own ⌘↵ a moment after the panel had already acted.
   const overlaid = useRef(false)
-  overlaid.current = dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null
+  overlaid.current = dialog !== null || trailOpen || versionsOpen || openSibling !== null
 
   /**
    * Log what was just staged and put the next filing on screen.
@@ -291,8 +277,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
       { instanceId, participantName, itemTitle, decision, status: 'waiting' },
     ])
     deferred.stage(staged)
-    setArmed(null)
-    setWord('')
     setDialog(null)
     const next = remaining.find((row) => row.instanceId !== instanceId)
     if (next !== undefined) goTo(next.instanceId)
@@ -320,11 +304,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
       payload: {
         decision,
         ...(worded?.reason !== undefined ? { reason: worded.reason } : {}),
-        ...(worded !== undefined
-          ? { comment: worded.comment }
-          : word.trim() !== ''
-            ? { comment: word.trim() }
-            : {}),
+        // an approval's opinion is optional, and an empty box means none
+        ...(worded !== undefined && worded.comment !== '' ? { comment: worded.comment } : {}),
         ...(worded?.suggestedPayload !== undefined
           ? { suggestedPayload: worded.suggestedPayload }
           : {}),
@@ -349,40 +330,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
     onError: (error) => toast.error(formatError(error)),
   })
 
-  /** a note moves nothing, so it goes out at once and the round stays put */
-  const sayNote = useMutation({
-    mutationFn: () =>
-      run(
-        api.assessment.decideReview({
-          params: { instanceId },
-          payload: { decision: 'comment', comment: word.trim() },
-        }),
-      ),
-    onSuccess: () => {
-      toast.success(format(m.reviewSaid))
-      setArmed(null)
-      setWord('')
-      void detail.refetch()
-    },
-    onError: (error) => toast.error(formatError(error)),
-  })
-
   const decisions = review?.chain.decisions ?? []
-  const submitArmed = () => {
-    if (armed === 'approve' && decisions.includes('approve')) {
-      stageDecision('approve')
-      return
-    }
-    if (armed === 'comment' && decisions.includes('comment')) {
-      if (word.trim() === '') {
-        wordRef.current?.focus()
-        return
-      }
-      sayNote.mutate()
-      return
-    }
-    toast.info(format(m.reviewPickDecision))
-  }
 
   const undoStaged = () => {
     const staged = deferred.undo()
@@ -411,11 +359,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
       // the photo viewer holds its own keys: Esc closes it, arrows page it
       if (document.querySelector('.PhotoView-Portal') !== null) return
       const mod = event.metaKey || event.ctrlKey
-      if (mod && event.key === 'Enter') {
-        event.preventDefault()
-        submitArmed()
-        return
-      }
+      // ⌘↵ lives inside each act's panel now: confirming is the panel's to
+      // do, and a chord with nothing open has nothing to confirm
       if (mod && event.key.toLowerCase() === 'z') {
         event.preventDefault()
         undoStaged()
@@ -447,7 +392,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
         case 'a':
         case 'A':
           event.preventDefault()
-          if (decisions.includes('approve')) setArmed('approve')
+          if (decisions.includes('approve')) setDialog('approve')
           return
         case 'r':
         case 'R':
@@ -467,14 +412,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
           // opens the box rather than arming anything
           event.preventDefault()
           if (review?.capabilities.canRequestSupplement === true) setDialog('supplement')
-          return
-        case 'c':
-        case 'C':
-          event.preventDefault()
-          if (decisions.includes('comment')) {
-            setArmed('comment')
-            wordRef.current?.focus()
-          }
           return
         case 'd':
           event.preventDefault()
@@ -501,7 +438,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
           return
         case 'Escape':
           if (keysOpen) setKeysOpen(false)
-          else setArmed(null)
           return
         default: {
           const slot = Number(event.key)
@@ -639,21 +575,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     <ContextRail review={review} onOpenSibling={setOpenSibling} />
                   </div>
                 </Drill>
-                {bar && (
-                  <DecisionBar
-                    review={review}
-                    decisions={decisions}
-                    armed={armed}
-                    word={word}
-                    wordRef={wordRef}
-                    busy={sayNote.isPending}
-                    onWord={setWord}
-                    onArm={setArmed}
-                    onDialog={setDialog}
-                    onExpand={() => setWriting(true)}
-                    onSubmit={submitArmed}
-                  />
-                )}
+                {bar && <DecisionBar review={review} decisions={decisions} onDialog={setDialog} />}
                 {review.state === 'awaiting_supplement' && (
                   <footer className="flex flex-wrap items-center gap-3 border-t px-5 py-3">
                     <InfoIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -705,14 +627,6 @@ function Workbench({ batch }: { batch: BatchDto }) {
           </Appear>
         </div>
         {keysOpen && <KeysPanel onClose={() => setKeysOpen(false)} />}
-        {writing && (
-          <WritingBox
-            value={word}
-            advising={review?.chain.route === 'escalation'}
-            onChange={setWord}
-            onClose={() => setWriting(false)}
-          />
-        )}
         {review !== undefined && (
           <SiblingSheet
             open={openSibling !== null}
@@ -752,6 +666,14 @@ function Workbench({ batch }: { batch: BatchDto }) {
           </>
         )}
 
+        {lingeringDialog === 'approve' && review !== undefined && (
+          <ApproveDialog
+            open={dialog === 'approve'}
+            review={review}
+            onClose={() => setDialog(null)}
+            onConfirm={(worded) => stageDecision('approve', worded)}
+          />
+        )}
         {lingeringDialog === 'reject' && review !== undefined && (
           <RejectDialog
             open={dialog === 'reject'}
@@ -2302,27 +2224,11 @@ function Explained({ why, children }: { why: string; children: ReactNode }) {
 function DecisionBar({
   review,
   decisions,
-  armed,
-  word,
-  wordRef,
-  busy,
-  onWord,
-  onArm,
   onDialog,
-  onExpand,
-  onSubmit,
 }: {
   review: ReviewDto
   decisions: readonly string[]
-  armed: 'approve' | 'comment' | null
-  word: string
-  wordRef: RefObject<HTMLInputElement | null>
-  busy: boolean
-  onWord: (next: string) => void
-  onArm: (next: 'approve' | 'comment' | null) => void
-  onDialog: (next: 'reject' | 'escalate' | 'supplement') => void
-  onExpand: () => void
-  onSubmit: () => void
+  onDialog: (next: 'approve' | 'reject' | 'escalate' | 'supplement') => void
 }) {
   const { format } = useI18n()
   const fine = useFinePointer()
@@ -2332,33 +2238,14 @@ function DecisionBar({
   const lastStep = route[route.length - 1]?.id === review.chain.stageId
   return (
     <footer className="flex shrink-0 flex-col gap-2 border-t px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:px-4 lg:py-3">
+      {/* Only acts. Every key opens its own panel, where the opinion is
+          written and the act confirmed - there is no separate submit and no
+          freestanding note, so nothing on this bar half-happens. Reading
+          order runs mild to final: the asks first, the decisions last, the
+          one that ends the round at the far end where a row's own full stop
+          goes. */}
       <div className={cn('flex flex-wrap items-center gap-2', !fine && 'max-lg:gap-1.5')}>
-        {/* One line at the bar, because the bar is one line; anything longer
-            is written in a box that is actually a box. Off the bar entirely
-            on a touch screen - whatever its width: a text box there summons
-            a keyboard over the very filing being judged, and the box that
-            is a box is one press away on the note key. */}
-        {fine && (
-          <InputGroup className="min-w-48 flex-1">
-            <InputGroupInput
-              ref={wordRef}
-              value={word}
-              placeholder={format(
-                advising ? m.reviewCommentPlaceholderAdvise : m.reviewCommentPlaceholder,
-              )}
-              onChange={(event) => onWord(event.target.value)}
-            />
-            <InputGroupAddon align="inline-end">
-              <InputGroupButton
-                size="icon-xs"
-                aria-label={format(m.reviewWriteMore)}
-                onClick={onExpand}
-              >
-                <Maximize2Icon aria-hidden />
-              </InputGroupButton>
-            </InputGroupAddon>
-          </InputGroup>
-        )}
+        {fine && <span className="flex-1" />}
         {review.capabilities.canRequestSupplement && (
           <Explained why={format(m.reviewTipSupplement)}>
             <Button
@@ -2367,24 +2254,7 @@ function DecisionBar({
               onClick={() => onDialog('supplement')}
             >
               {format(m.reviewSupplementAsk)}
-            </Button>
-          </Explained>
-        )}
-        {decisions.includes('comment') && (
-          <Explained why={format(m.reviewTipComment)}>
-            <Button
-              variant={armed === 'comment' ? 'secondary' : 'outline'}
-              className={cn(!fine && TOUCH_KEY)}
-              onClick={() => {
-                const next = armed === 'comment' ? null : 'comment'
-                onArm(next)
-                // no box on the bar to write in on a touch screen, so
-                // choosing to say something opens the one that is a box
-                if (next === 'comment' && !fine) onExpand()
-              }}
-            >
-              {format(m.reviewActionNote)}
-              {fine && <Kbd>C</Kbd>}
+              {fine && <Kbd>S</Kbd>}
             </Button>
           </Explained>
         )}
@@ -2422,9 +2292,8 @@ function DecisionBar({
               className={cn(
                 !fine && TOUCH_KEY,
                 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
-                armed === 'approve' && 'ring-2 ring-emerald-500/40',
               )}
-              onClick={() => onArm(armed === 'approve' ? null : 'approve')}
+              onClick={() => onDialog('approve')}
             >
               {format(m.reviewApprove)}
               {fine && (
@@ -2433,50 +2302,17 @@ function DecisionBar({
             </Button>
           </Explained>
         )}
-        {/* The one solid on the bar: choosing is soft, committing is not.
-            Where the pointer is a thumb it is a press held down, and it
-            takes the whole width on its own row - the four keys above it
-            are chosen among, this one is the act. */}
-        {fine ? (
-          <Explained why={format(m.reviewTipSubmit)}>
-            <Button
-              disabled={busy || armed === null}
-              className="bg-primary/90 hover:bg-primary"
-              onClick={onSubmit}
-            >
-              {format(m.reviewSubmitDecision)}
-              <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
-            </Button>
-          </Explained>
-        ) : (
-          // a row of its own under a thumb; on a tablet's wider bar it
-          // stands in the row where the submit key stands for a mouse
-          <span className="max-lg:order-last max-lg:basis-full lg:w-44">
-            <HoldKey
-              label={format(m.reviewHoldToSubmit)}
-              waiting={format(m.reviewHoldWaiting)}
-              ready={armed !== null && !busy}
-              onHeld={onSubmit}
-            />
-          </span>
-        )}
       </div>
-      {/* What the bar says depends on what is chosen: a line that reads the
-          same whatever is about to happen is a line nobody reads. Only
-          beside a keyboard - the touch bar's slab already answers with its
-          own label, and a paragraph under a thumb is furniture. */}
+      {/* one line for what the next act will mean here, which is the part a
+          reader cannot see from the buttons alone */}
       {fine && (
-        <p className="text-xs text-pretty text-muted-foreground">
+        <p className="text-right text-xs text-pretty text-muted-foreground">
           {format(
             advising
               ? m.reviewSubmitHintAdvise
-              : armed === 'approve'
-                ? lastStep
-                  ? m.reviewHintLastStep
-                  : m.reviewHintArmedApprove
-                : armed === 'comment'
-                  ? m.reviewHintArmedComment
-                  : m.reviewHintPickFirst,
+              : lastStep
+                ? m.reviewHintLastStep
+                : m.reviewHintPickFirst,
           )}
         </p>
       )}
@@ -2497,59 +2333,6 @@ function DecisionBar({
  */
 const TOUCH_KEY = 'h-11 min-w-0 flex-auto rounded-xl px-2 text-[13px]'
 
-/**
- * A box for a word too long for the bar.
- *
- * The bar holds one line because a bar is one line; a sentence that outgrows
- * it should not make the row of buttons jump, so it gets a real box instead.
- * The text is the same text either way.
- */
-function WritingBox({
-  value,
-  advising,
-  onChange,
-  onClose,
-}: {
-  value: string
-  advising: boolean
-  onChange: (next: string) => void
-  onClose: () => void
-}) {
-  const { format } = useI18n()
-  return (
-    <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-sm">{format(m.reviewComment)}</DialogTitle>
-        </DialogHeader>
-        <Textarea
-          rows={8}
-          value={value}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus
-          placeholder={format(
-            advising ? m.reviewCommentPlaceholderAdvise : m.reviewCommentPlaceholder,
-          )}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault()
-              onClose()
-            }
-          }}
-        />
-        <div className="flex justify-end">
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.close)}
-            <Kbd>Esc</Kbd>
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-/** one of the participant's other claims on this question, read in full */
 function SiblingSheet({
   open,
   itemTitle,
@@ -2643,13 +2426,12 @@ function UndoPill({
 function KeysPanel({ onClose }: { onClose: () => void }) {
   const { format } = useI18n()
   const keys: readonly [string, MessageDescriptor][] = [
-    ['⌘↵', m.reviewKeySubmit],
-    ['⌘Z', m.reviewKeyUndo],
     ['A', m.reviewKeyApprove],
     ['R', m.reviewKeyReject],
     ['E', m.reviewKeyEscalate],
     ['S', m.reviewKeySupplement],
-    ['C', m.reviewKeyComment],
+    ['⌘↵', m.reviewKeySubmit],
+    ['⌘Z', m.reviewKeyUndo],
     ['J / K', m.reviewKeyMove],
     ['1–9', m.reviewKeyFiles],
     ['D', m.reviewKeyCompare],
@@ -2765,39 +2547,6 @@ function DoneScreen({
             {format(m.reviewDoneLeft, { count: inboxRows.length })}
           </p>
         </div>
-        {log.length > 0 && (
-          <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-4">
-            <p className="text-sm font-medium">{format(m.reviewDoneList)}</p>
-            <ul className="flex flex-col gap-1.5">
-              {log.map((entry) => (
-                <li key={entry.instanceId} className="flex items-center gap-2.5 text-sm">
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'size-1.5 shrink-0 rounded-full',
-                      entry.decision === 'reject'
-                        ? 'bg-destructive'
-                        : entry.decision === 'escalate'
-                          ? 'bg-muted-foreground/60'
-                          : 'bg-foreground',
-                    )}
-                  />
-                  <span className="min-w-0 flex-1 truncate">
-                    {entry.participantName}
-                    <span className="pl-2 text-muted-foreground">{entry.itemTitle}</span>
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {format(DECISION_LABEL[entry.decision])}
-                    {entry.status === 'failed' && ' ✕'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="border-t pt-2 text-xs text-muted-foreground">
-              {format(m.reviewDoneFinal)}
-            </p>
-          </div>
-        )}
       </Stagger>
     </div>
   )

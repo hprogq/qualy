@@ -761,7 +761,7 @@ const i18n = definePluginMessages({
     reviewReject: { id: 'assessment/review/reject', defaultMessage: 'Return' },
     reviewComment: {
       id: 'assessment/review/comment',
-      defaultMessage: 'Review note',
+      defaultMessage: 'Review opinion',
     },
     reviewCommentHint: {
       id: 'assessment/review/comment-hint',
@@ -877,7 +877,6 @@ const i18n = definePluginMessages({
       id: 'assessment/review/stage-nobody',
       defaultMessage: 'No reviewer is currently available',
     },
-    reviewSaid: { id: 'assessment/review/said', defaultMessage: 'Review note saved.' },
     reviewStageNoHolder: {
       id: 'assessment/review/stage-no-holder',
       defaultMessage: 'Skipped: no matching role holder was found above the participant',
@@ -1405,25 +1404,37 @@ const i18n = definePluginMessages({
       defaultMessage: 'About this question',
     },
     reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Queue' },
-    reviewHoldToSubmit: {
-      id: 'assessment/review/hold-to-submit',
-      defaultMessage: 'Hold to submit',
+    reviewApproveTitle: {
+      id: 'assessment/review/approve-title',
+      defaultMessage: 'Approve {name}’s submission',
     },
-    reviewHoldToReject: {
-      id: 'assessment/review/hold-to-reject',
-      defaultMessage: 'Hold to send back',
+    reviewApproveSheetHint: {
+      id: 'assessment/review/approve-sheet-hint',
+      defaultMessage: 'The opinion is optional; the participant will see it.',
     },
-    reviewHoldToEscalate: {
-      id: 'assessment/review/hold-to-escalate',
-      defaultMessage: 'Hold to escalate',
+    reviewApproveHint: {
+      id: 'assessment/review/approve-hint',
+      defaultMessage: 'Optional; the participant will see it.',
+    },
+    reviewSlideApprove: {
+      id: 'assessment/review/slide-approve',
+      defaultMessage: 'Slide to approve',
+    },
+    reviewSlideReject: {
+      id: 'assessment/review/slide-reject',
+      defaultMessage: 'Slide to send back',
+    },
+    reviewSlideEscalate: {
+      id: 'assessment/review/slide-escalate',
+      defaultMessage: 'Slide to escalate',
+    },
+    reviewSlideSupplement: {
+      id: 'assessment/review/slide-supplement',
+      defaultMessage: 'Slide to send the request',
     },
     reviewSheetFillFirst: {
       id: 'assessment/review/sheet-fill-first',
       defaultMessage: 'Complete the required fields first',
-    },
-    reviewHoldWaiting: {
-      id: 'assessment/review/hold-waiting',
-      defaultMessage: 'Choose a decision first',
     },
     reviewBackToTop: { id: 'assessment/review/back-to-top', defaultMessage: 'Back to top' },
     reviewAboutTitle: {
@@ -1456,21 +1467,11 @@ const i18n = definePluginMessages({
       id: 'assessment/review/comment-placeholder-advise',
       defaultMessage: 'Enter your review opinion',
     },
-    reviewActionNote: { id: 'assessment/review/action-note', defaultMessage: 'Note' },
-    reviewSubmitDecision: {
-      id: 'assessment/review/submit-decision',
-      defaultMessage: 'Submit decision',
-    },
     reviewSubmitHintAdvise: {
       id: 'assessment/review/submit-hint-advise',
       defaultMessage: 'This review step records an opinion rather than a final decision.',
     },
-    reviewPickDecision: {
-      id: 'assessment/review/pick-decision',
-      defaultMessage: 'Select a review decision first.',
-    },
     reviewUndo: { id: 'assessment/review/undo', defaultMessage: 'Undo' },
-    reviewWriteMore: { id: 'assessment/review/write-more', defaultMessage: 'Expand input' },
     reviewBackToQueue: {
       id: 'assessment/review/back-to-queue',
       defaultMessage: 'Back to pending reviews',
@@ -1555,23 +1556,6 @@ const i18n = definePluginMessages({
     reviewTipEscalate: {
       id: 'assessment/review/tip-escalate',
       defaultMessage: 'Move the submission to the escalation workflow',
-    },
-    reviewTipComment: {
-      id: 'assessment/review/tip-comment',
-      defaultMessage: 'Record a note without changing the review status',
-    },
-    reviewTipSubmit: {
-      id: 'assessment/review/tip-submit',
-      defaultMessage: 'Submit the selected review decision',
-    },
-    reviewHintArmedApprove: {
-      id: 'assessment/review/hint-armed-approve',
-      defaultMessage:
-        'Approval counts the entry toward the participant\u2019s score. The decision can be undone for 5 seconds.',
-    },
-    reviewHintArmedComment: {
-      id: 'assessment/review/hint-armed-comment',
-      defaultMessage: 'A note is recorded without changing the review status.',
     },
     reviewHintPickFirst: {
       id: 'assessment/review/hint-pick-first',
@@ -2153,19 +2137,18 @@ const i18n = definePluginMessages({
     },
     reviewKeySubmit: {
       id: 'assessment/review/key-submit',
-      defaultMessage: 'Submit review decision',
+      defaultMessage: 'Confirm the open act',
     },
     reviewKeyUndo: {
       id: 'assessment/review/key-undo',
       defaultMessage: 'Undo the previous decision within 5 seconds',
     },
-    reviewKeyApprove: { id: 'assessment/review/key-approve', defaultMessage: 'Select approve' },
-    reviewKeyReject: { id: 'assessment/review/key-reject', defaultMessage: 'Select return' },
+    reviewKeyApprove: { id: 'assessment/review/key-approve', defaultMessage: 'Open approve' },
+    reviewKeyReject: { id: 'assessment/review/key-reject', defaultMessage: 'Open send back' },
     reviewKeyEscalate: {
       id: 'assessment/review/key-escalate',
-      defaultMessage: 'Select escalate',
+      defaultMessage: 'Open escalate',
     },
-    reviewKeyComment: { id: 'assessment/review/key-comment', defaultMessage: 'Select note' },
     reviewKeyMove: {
       id: 'assessment/review/key-move',
       defaultMessage: 'Next entry / previous entry',
@@ -2188,7 +2171,7 @@ const i18n = definePluginMessages({
     },
     reviewKeyCancel: {
       id: 'assessment/review/key-cancel',
-      defaultMessage: 'Clear the selection or close the panel',
+      defaultMessage: 'Close the open panel',
     },
     // a run finished
     reviewDoneTitle: {
@@ -2207,14 +2190,6 @@ const i18n = definePluginMessages({
     reviewDoneLeft: {
       id: 'assessment/review/done-left',
       defaultMessage: '{count} submissions remain',
-    },
-    reviewDoneList: {
-      id: 'assessment/review/done-list',
-      defaultMessage: 'Review decisions in this group',
-    },
-    reviewDoneFinal: {
-      id: 'assessment/review/done-final',
-      defaultMessage: 'Submitted and no longer eligible for undo.',
     },
     // the two dialogs that carry a word
     reviewRejectTitle: {
