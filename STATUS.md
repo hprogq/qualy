@@ -6701,3 +6701,10 @@ truncate 只吃中间。改为 flex-wrap:原因保底 `basis-36` 并带 title �
 每行 scrollWidth ≤ clientWidth、原因宽度 > 60px、卡片自身无横向溢出;红验证过
 (还原单行布局该例即红,原因被压到 45px)。`pnpm test:browser` 11 files / 86 passed;
 `pnpm typecheck` 零错;prettier 全绿。
+
+### 提请复核模态框的流程预览补环节名(2026-08-21 追加)
+
+「提请复核」模态框的转入后流程卡此前只显示单位名(stage.nodeName),现改为环节名称优先、
+单位名兜底,与链视图同规则;卡片小字「仅提供意见」是裁决链改版前的旧语义,更正为
+「可通过认定，或转交下一环节」(复核中间环节可径直通过)。`pnpm typecheck` 零错;
+`pnpm test:browser` 86 passed;prettier 全绿。

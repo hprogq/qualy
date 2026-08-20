@@ -2427,7 +2427,7 @@ const i18n = definePluginMessages({
     },
     reviewEscalateStageAdvise: {
       id: 'assessment/review/escalate-stage-advise',
-      defaultMessage: 'Opinion only',
+      defaultMessage: 'May settle the claim, or hand it to the next step',
     },
     reviewEscalateStageDecide: {
       id: 'assessment/review/escalate-stage-decide',
