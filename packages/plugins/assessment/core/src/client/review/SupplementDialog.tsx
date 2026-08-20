@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileIcon, PlusIcon, TypeIcon, XIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -6,6 +6,7 @@ import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
+import { Kbd, KbdGroup } from '@qualy/ui/kbd'
 import { Label } from '@qualy/ui/label'
 import { Textarea } from '@qualy/ui/textarea'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -55,9 +56,52 @@ export function SupplementDialog({
     setPieces((current) =>
       current.map((piece, at) => (at === index ? { ...piece, ...next } : piece)),
     )
-  const add = (kind: Piece['kind']) =>
-    setPieces((current) => [...current, { label: '', kind, required: true }])
+  const add = (kind: Piece['kind']) => {
+    setPieces((current) => {
+      // the new row's slot is where the cursor goes: asking for a piece and
+      // then reaching for the mouse to name it defeats the shortcut
+      requestAnimationFrame(() =>
+        document
+          .querySelector<HTMLInputElement>(`[data-piece-slot="${current.length + 1}"]`)
+          ?.focus(),
+      )
+      return [...current, { label: '', kind, required: true }]
+    })
+  }
   const remove = (index: number) => setPieces((current) => current.filter((_, at) => at !== index))
+
+  // The same chords the send-back panel taught: ⌥ letters act while the
+  // cursor is writing, ⌘↵ sends the finished ask. Read off the document so
+  // a chord pressed inside the instructions box still lands.
+  useEffect(() => {
+    if (!fine || !open) return
+    const down = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault()
+        event.stopPropagation()
+        if (ready) confirm()
+        return
+      }
+      if (!event.altKey || event.metaKey || event.ctrlKey) return
+      if (event.code === 'KeyF') {
+        event.preventDefault()
+        add('file')
+        return
+      }
+      if (event.code === 'KeyT') {
+        event.preventDefault()
+        add('text')
+        return
+      }
+      const digit = event.code.startsWith('Digit') ? Number(event.code.slice(5)) : NaN
+      if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, pieces.length)) {
+        event.preventDefault()
+        document.querySelector<HTMLInputElement>(`[data-piece-slot="${digit}"]`)?.select()
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  })
 
   const ready =
     instructions.trim() !== '' &&
@@ -103,10 +147,17 @@ export function SupplementDialog({
             </span>
             <Input
               value={piece.label}
+              data-piece-slot={index + 1}
               placeholder={format(m.supplementPieceLabel)}
               className="flex-1"
               onChange={(event) => edit(index, { label: event.target.value })}
             />
+            {fine && index < 9 && (
+              <KbdGroup className="shrink-0">
+                <Kbd>⌥</Kbd>
+                <Kbd>{index + 1}</Kbd>
+              </KbdGroup>
+            )}
             <Label className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
               <Checkbox
                 checked={piece.required}
@@ -129,10 +180,22 @@ export function SupplementDialog({
           <Button variant="outline" size="sm" onClick={() => add('file')}>
             <PlusIcon aria-hidden />
             {format(m.supplementAddFile)}
+            {fine && (
+              <KbdGroup>
+                <Kbd>⌥</Kbd>
+                <Kbd>F</Kbd>
+              </KbdGroup>
+            )}
           </Button>
           <Button variant="outline" size="sm" onClick={() => add('text')}>
             <PlusIcon aria-hidden />
             {format(m.supplementAddText)}
+            {fine && (
+              <KbdGroup>
+                <Kbd>⌥</Kbd>
+                <Kbd>T</Kbd>
+              </KbdGroup>
+            )}
           </Button>
         </div>
       </div>
@@ -169,6 +232,7 @@ export function SupplementDialog({
           </Button>
           <Button disabled={!ready} onClick={confirm}>
             {format(m.supplementSend)}
+            <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
           </Button>
         </div>
       }

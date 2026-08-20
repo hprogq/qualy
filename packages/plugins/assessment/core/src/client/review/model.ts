@@ -171,6 +171,27 @@ export const clockLabel = (iso: string): string =>
   new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 
 /**
+ * A clock that admits which day it is.
+ *
+ * A bare 18:16 reads the same for today and for yesterday, and a queue
+ * sorted by age turned that into two identical rows a day apart. Today
+ * keeps the clock - the hour is what orders today's work; any other day
+ * shows the day instead, because "which day" is then the whole answer and
+ * an hour behind it is noise.
+ */
+export function useDayClock(): (iso: string) => string {
+  const { format } = useI18n()
+  return (iso: string) => {
+    const at = new Date(iso)
+    const floor = (day: Date) => new Date(day.getFullYear(), day.getMonth(), day.getDate())
+    const days = Math.round((floor(new Date()).getTime() - floor(at).getTime()) / 86_400_000)
+    if (days <= 0) return clockLabel(iso)
+    if (days === 1) return format(m.timeYesterday)
+    return at.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })
+  }
+}
+
+/**
  * How long ago, in the reader's own words.
  *
  * "Two days" is what somebody deciding whether to chase a request actually

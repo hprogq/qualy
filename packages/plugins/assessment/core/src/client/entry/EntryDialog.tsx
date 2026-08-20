@@ -10,6 +10,7 @@ import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
 import { assessmentApi } from '../api.ts'
 import { entryRefusalMessage } from './refusals.ts'
+import { toast } from '@qualy/ui/toast'
 import { assessmentMessages as m } from '../i18n.ts'
 import { Basis } from './Basis.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
@@ -127,7 +128,11 @@ export function EntryDialog({
       setProblem(null)
       setIssues([])
     },
-    onSuccess: onSaved,
+    // which of its two jobs the press did: kept a draft, or handed it on
+    onSuccess: (_result, andSubmit) => {
+      toast.success(format(andSubmit ? m.entrySubmittedToast : m.entryDraftSavedToast))
+      onSaved()
+    },
     onError: (error: unknown) => {
       const raised = error as { issues?: readonly { field: string; reason: string }[] }
       if (Array.isArray(raised.issues)) setIssues(raised.issues)

@@ -817,6 +817,46 @@ describe('judging a submission', () => {
     })
   })
 
+  it('builds a supplement ask from the keyboard alone', async () => {
+    screen(
+      {
+        listReviewInbox: () =>
+          Effect.succeed({ items: [inboxRow()], nextCursor: null, handledToday: 0 }),
+        getReviewInstance: () => Effect.succeed({ review }),
+      },
+      `/assessment/batches/${BATCH_ID}/reviews/${INSTANCE_ID}`,
+      [
+        {
+          path: '/assessment/batches/:batchId/reviews/:instanceId',
+          element: <ReviewInstancePage />,
+        },
+      ],
+    )
+
+    await page.getByTestId('act-supplement').click()
+    const panel = page.getByRole('dialog')
+    await expect.element(panel).toBeVisible()
+
+    // one requirement row to start with; ⌥T asks for a written answer and
+    // hands the cursor to the new row's name
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-piece-slot]')).toHaveLength(1))
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { code: 'KeyT', altKey: true, bubbles: true }),
+    )
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-piece-slot]')).toHaveLength(2))
+    await vi.waitFor(() =>
+      expect(document.activeElement?.getAttribute('data-piece-slot')).toBe('2'),
+    )
+
+    // ⌥1 walks back to the first row's name without the mouse
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { code: 'Digit1', altKey: true, bubbles: true }),
+    )
+    await vi.waitFor(() =>
+      expect(document.activeElement?.getAttribute('data-piece-slot')).toBe('1'),
+    )
+  })
+
   it('picks a reason by its digit, shows it picked, and sends its words', async () => {
     const decided = vi.fn(() =>
       Effect.succeed({ review: { ...review, state: 'completed' as const, outcome: 'rejected' } }),

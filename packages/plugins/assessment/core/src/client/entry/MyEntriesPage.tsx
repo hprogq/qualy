@@ -270,7 +270,20 @@ function Body({
           payload: { status: input.status },
         }),
       ),
-    onSuccess: refresh,
+    // said out loud, per act: three different things just happened to the
+    // claim, and a silently refreshed list reports none of them
+    onSuccess: (_result, input) => {
+      toast.success(
+        format(
+          input.status === 'in_review'
+            ? m.entrySubmittedToast
+            : input.status === 'draft'
+              ? m.entryWithdrawnToast
+              : m.entryAbandonedToast,
+        ),
+      )
+      refresh()
+    },
     onError: (error: unknown) => {
       const refusal = entryRefusalMessage(error)
       toast.error(refusal === null ? formatError(error) : format(refusal))

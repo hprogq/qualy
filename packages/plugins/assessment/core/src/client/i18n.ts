@@ -1404,6 +1404,23 @@ const i18n = definePluginMessages({
       defaultMessage: 'About this question',
     },
     reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Queue' },
+    timeYesterday: { id: 'assessment/time/yesterday', defaultMessage: 'Yesterday' },
+    entrySubmittedToast: {
+      id: 'assessment/entry/submitted-toast',
+      defaultMessage: 'Submitted for review.',
+    },
+    entryDraftSavedToast: {
+      id: 'assessment/entry/draft-saved-toast',
+      defaultMessage: 'Draft saved.',
+    },
+    entryWithdrawnToast: {
+      id: 'assessment/entry/withdrawn-toast',
+      defaultMessage: 'Submission withdrawn; it is a draft again.',
+    },
+    entryAbandonedToast: {
+      id: 'assessment/entry/abandoned-toast',
+      defaultMessage: 'Claim abandoned.',
+    },
     reviewTipApproveMid: {
       id: 'assessment/review/tip-approve-mid',
       defaultMessage: 'Pass this step; the next step of the route takes over',

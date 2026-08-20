@@ -47,6 +47,7 @@ import {
   summaryOf,
   timeLabel,
   clockLabel,
+  useDayClock,
   useEntryHistory,
   idsOf,
   valueOf,
@@ -494,9 +495,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
           that is the whole point - what is being decided scrolls, and what
           decides it stays under the thumb. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        {/* the track is `auto`: the rail owns its width and animates it, and
-            a grid told two widths would snap between them instead */}
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)]">
+        {/* Flex, not a two-track grid: with the rail display:none below its
+            width, the content fell into the grid's `auto` track and the 1fr
+            track sat empty beside it - the whole workbench at half width,
+            found as a left-leaning done screen. The rail owns and animates
+            its width as a shrink-0 flex child just as well. */}
+        <div className="flex min-h-0 flex-1">
           <QueueRail
             rows={remaining}
             currentId={instanceId}
@@ -506,7 +510,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             onOpen={goTo}
             onBack={() => navigate('assessment/batch-reviews', { params: { batchId: batch.id } })}
           />
-          <div className="flex min-w-0 flex-col border-t lg:min-h-0 lg:border-t-0 lg:border-l">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col border-t lg:border-t-0 lg:border-l">
             {done ? (
               <DoneScreen
                 batchId={batch.id}
@@ -752,72 +756,55 @@ const QueueRail = memo(function QueueRail({
   onBack: () => void
 }) {
   const { format } = useI18n()
+  const dayClock = useDayClock()
   return (
-    // The rail owns its width and slides between the two, the same way the
-    // shell's own rail does; the grid track it sits in is `auto` and follows.
+    // The rail is always its full width; the aside around it is what
+    // narrows and clips. Animating the contents' own layout warped every
+    // row mid-flight - the shell's rail solved this the same way, and the
+    // two folds should feel like one mechanism.
     <aside
       className={cn(
-        // Present only where it costs the three columns nothing: the design
-        // gives the columns the width first, and the queue is a key in the
-        // header until a desk has room for both.
-        'hidden min-h-0 flex-col overflow-hidden transition-[width] duration-200 ease-linear min-[84rem]:flex',
-        open ? 'w-52' : 'w-11',
+        'relative hidden min-h-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-linear min-[84rem]:flex',
+        open ? 'w-56' : 'w-11',
       )}
     >
-      <div
+      <nav
+        {...(!open ? { inert: true, 'aria-hidden': true } : {})}
         className={cn(
-          'flex shrink-0 items-center border-b py-2',
-          open ? 'gap-1 pr-1.5 pl-1' : 'flex-col gap-1.5 px-1.5',
+          'flex h-full w-56 shrink-0 flex-col transition-opacity duration-150',
+          !open && 'opacity-0',
         )}
       >
-        {/* the way out: a workbench with no door back is a dead end */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={format(m.reviewBackToQueue)}
-          onClick={onBack}
-        >
-          <ArrowLeftIcon aria-hidden />
-        </Button>
-        {open && (
-          <>
-            {/* the count as plain text beside the name: a chip here cost the
-                title its room, and 待审队列 broke one character per line */}
-            <p className="min-w-0 truncate text-xs font-semibold">{format(m.reviewQueueTitle)}</p>
-            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              {remainingCount}
-            </span>
-            <span className="flex-1" />
-          </>
-        )}
-        {/* Folded to a strip rather than to nothing: the door back and the
-            control that brings the list back are both here, and a column
-            that vanishes takes them with it. */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={format(open ? m.reviewQueueFold : m.reviewQueueUnfold)}
-          onClick={onToggle}
-        >
-          {open ? <ChevronLeftIcon aria-hidden /> : <ChevronRightIcon aria-hidden />}
-        </Button>
-      </div>
-      {/* One list, two renderings: open it names everybody, folded each row
-          is the face of its name - the queue stays readable at a glance and
-          the current one stays findable, instead of the fold hiding who is
-          still waiting. */}
-      <ScrollArea className="min-h-0 flex-1">
-        <ul
-          className={cn(
-            'relative flex flex-col',
-            open ? 'gap-px p-1.5' : 'items-center gap-1.5 py-1.5',
-          )}
-        >
-          {rows.map((row) => {
-            const current = row.instanceId === currentId
-            return (
-              <li key={row.instanceId} className={cn(!open && 'flex justify-center')}>
-                {open ? (
+        <div className="flex shrink-0 items-center gap-1 border-b py-2 pr-1.5 pl-1">
+          {/* the way out: a workbench with no door back is a dead end */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={format(m.reviewBackToQueue)}
+            onClick={onBack}
+          >
+            <ArrowLeftIcon aria-hidden />
+          </Button>
+          <p className="min-w-0 truncate text-sm font-semibold">{format(m.reviewQueueTitle)}</p>
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+            {remainingCount}
+          </span>
+          <span className="flex-1" />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={format(m.reviewQueueFold)}
+            onClick={onToggle}
+          >
+            <ChevronLeftIcon aria-hidden />
+          </Button>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <ul className="flex flex-col gap-px p-1.5">
+            {rows.map((row) => {
+              const current = row.instanceId === currentId
+              return (
+                <li key={row.instanceId}>
                   <button
                     type="button"
                     onClick={() => onOpen(row.instanceId)}
@@ -837,46 +824,50 @@ const QueueRail = memo(function QueueRail({
                       </span>
                     </span>
                     <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {clockLabel(row.submittedAt)}
+                      {dayClock(row.submittedAt)}
                     </span>
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    title={`${row.participantName}　${row.itemTitle}`}
-                    onClick={() => onOpen(row.instanceId)}
-                    className="rounded-full"
-                  >
-                    <Avatar
-                      className={cn(
-                        'size-8 transition-shadow',
-                        current && 'ring-2 ring-foreground ring-offset-1 ring-offset-background',
-                      )}
-                    >
-                      <AvatarFallback className="text-[10px] font-medium">
-                        {faceOf(row.participantName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="sr-only">{row.participantName}</span>
-                  </button>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      </ScrollArea>
+                </li>
+              )
+            })}
+          </ul>
+        </ScrollArea>
+      </nav>
+      {/* Folded, the rail is a handle and a number - nothing more. It used
+          to keep a column of grey faces, which at 32px against a dark ring
+          read like a wall of memorial portraits; who is waiting is the open
+          list's answer, and folded only "how many" fits honestly. */}
+      <div
+        {...(open ? { inert: true, 'aria-hidden': true } : {})}
+        className={cn(
+          'absolute inset-y-0 left-0 flex w-11 flex-col items-center gap-1.5 py-2 transition-opacity duration-150',
+          open && 'pointer-events-none opacity-0',
+        )}
+      >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={format(m.reviewQueueUnfold)}
+          onClick={onToggle}
+        >
+          <ChevronRightIcon aria-hidden />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={format(m.reviewBackToQueue)}
+          onClick={onBack}
+        >
+          <ArrowLeftIcon aria-hidden />
+        </Button>
+        <span aria-hidden className="my-0.5 h-px w-5 bg-border" />
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
+          {remainingCount}
+        </span>
+      </div>
     </aside>
   )
 })
-
-/**
- * What stands in for a name at avatar size: the first two characters, or the
- * first two letters upcased for a name written in an alphabet. Two rather
- * than one because a rail of queued people is full of shared surnames, and a
- * column reading 王 王 王 names nobody.
- */
-const faceOf = (name: string): string =>
-  /^[a-zA-Z]/.test(name) ? name.slice(0, 2).toUpperCase() : name.slice(0, 2)
 
 const DECISION_LABEL: Record<SessionEntry['decision'], MessageDescriptor> = {
   approve: m.reviewApprove,
@@ -1392,17 +1383,24 @@ const FlowColumn = memo(function FlowColumn({
         </div>
         {previous !== null && (
           <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5">
-            <div className="flex items-baseline gap-2">
-              <p className="min-w-0 text-sm font-semibold">
+            {/* Wrap, never squeeze - and by the column's own width, not the
+                window's: pinning the badge and the time to the title's line
+                left the title min-content wide in a narrow column, which
+                set a long sentence one character per line. The title keeps
+                at least its basis and the datum pair drops below when the
+                line cannot hold all three. */}
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <p className="min-w-0 flex-1 basis-44 text-sm font-semibold text-pretty">
                 {format(withdrawn ? m.reviewPreviousWithdrawn : m.reviewPreviousTitle)}
               </p>
-              <Badge variant="secondary" className="shrink-0 bg-background">
-                {format(m.reviewStateRound, { round: previous.roundNo })}
-              </Badge>
-              <span className="flex-1" />
-              <p className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                {timeLabel(previous.at)}
-              </p>
+              <span className="flex shrink-0 items-baseline gap-2">
+                <Badge variant="secondary" className="bg-background">
+                  {format(m.reviewStateRound, { round: previous.roundNo })}
+                </Badge>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {timeLabel(previous.at)}
+                </span>
+              </span>
             </div>
             {/* One line, and the name gives way first. A reviewer's full
                 title runs long, and left to wrap it pushed the reason onto a
@@ -1955,7 +1953,7 @@ const ContextRail = memo(function ContextRail({
       // stacked it is the page's closing reference block, washed a shade
       // down so the reading matter above it keeps the white
       className="max-lg:bg-muted/30 lg:border-l"
-      inner="gap-3 p-4"
+      inner="gap-4 p-4 lg:p-5"
     >
       <AboutParts review={review} onOpenSibling={onOpenSibling} />
     </Pane>
@@ -1997,14 +1995,18 @@ function AboutParts({
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
       <section className="flex shrink-0 flex-col gap-2 rounded-xl bg-muted/60 px-3 py-2.5">
-        <p className="text-xs text-muted-foreground">{format(m.myEntriesBasis)}</p>
+        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+          {format(m.myEntriesBasis)}
+        </p>
         <p className="text-sm leading-relaxed text-pretty text-muted-foreground">
           {format(m.myEntriesBasisSoon)}
         </p>
       </section>
 
-      <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
-        <p className="text-xs text-muted-foreground">{format(m.reviewChainTitle)}</p>
+      <section className="flex shrink-0 flex-col gap-2.5 border-t pt-4">
+        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+          {format(m.reviewChainTitle)}
+        </p>
         <Route
           stages={review.chain.normal}
           here={review.chain.route === 'normal' ? review.chain.stageId : null}
@@ -2022,8 +2024,10 @@ function AboutParts({
       </section>
 
       {context !== null && (
-        <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
-          <p className="text-xs text-muted-foreground">{format(m.reviewAboutTitle)}</p>
+        <section className="flex shrink-0 flex-col gap-2.5 border-t pt-4">
+          <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+            {format(m.reviewAboutTitle)}
+          </p>
           {context.worth.each !== null && (
             <AboutRow label={format(m.reviewAboutEach)} value={trimAmount(context.worth.each)} />
           )}
@@ -2046,9 +2050,9 @@ function AboutParts({
       )}
 
       {context !== null && context.siblings.length > 0 && (
-        <section className="flex shrink-0 flex-col gap-2 border-t pt-3">
+        <section className="flex shrink-0 flex-col gap-2.5 border-t pt-4">
           <div className="flex items-baseline gap-2">
-            <p className="shrink-0 text-xs text-muted-foreground">
+            <p className="shrink-0 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
               {format(m.reviewSiblingsTitle)}
             </p>
             <span className="flex-1" />
@@ -2151,7 +2155,9 @@ function Route({
   const at = stages.findIndex((stage) => stage.id === here)
   return (
     <div className="flex flex-col gap-1.5">
-      {title !== null && <p className="text-xs text-muted-foreground">{title}</p>}
+      {/* the route's name is part of the map, not another caption: the
+          caption above says what the block is, this says which road */}
+      {title !== null && <p className="text-sm font-medium">{title}</p>}
       <ol className="flex flex-col gap-1.5">
         {stages.map((stage, index) => {
           const current = stage.id === here
