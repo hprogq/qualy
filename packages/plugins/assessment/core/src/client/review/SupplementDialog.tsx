@@ -181,11 +181,13 @@ export function SupplementDialog({
             <PlusIcon aria-hidden />
             {format(m.supplementAddFile)}
             {fine && (
-              // outlined, because the outline button's own wash is the same
-              // grey the chip defaults to, and the key vanished into it
+              // Ringed inside, not bordered: the outline button's own wash is
+              // the same grey the chip defaults to, and the key vanished into
+              // it - but a border adds to the box and made this ⌥ two pixels
+              // wider than its siblings in the rows above. A ring is paint.
               <KbdGroup>
-                <Kbd className="border bg-background">⌥</Kbd>
-                <Kbd className="border bg-background">F</Kbd>
+                <Kbd className="bg-background ring-1 ring-border ring-inset">⌥</Kbd>
+                <Kbd className="bg-background ring-1 ring-border ring-inset">F</Kbd>
               </KbdGroup>
             )}
           </Button>
@@ -194,8 +196,8 @@ export function SupplementDialog({
             {format(m.supplementAddText)}
             {fine && (
               <KbdGroup>
-                <Kbd className="border bg-background">⌥</Kbd>
-                <Kbd className="border bg-background">T</Kbd>
+                <Kbd className="bg-background ring-1 ring-border ring-inset">⌥</Kbd>
+                <Kbd className="bg-background ring-1 ring-border ring-inset">T</Kbd>
               </KbdGroup>
             )}
           </Button>

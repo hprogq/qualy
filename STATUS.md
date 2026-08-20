@@ -6529,7 +6529,8 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
   只有「几个在等」是诚实的。
 - 决定键行左内边距对齐调整(px-3 → 与内容列一致)。
 - 补:⌥F/⌥T 角标在 outline 按钮的灰底上靠色不可见(Kbd 默认 bg-muted ≈ 按钮 bg-input/30),
-  改白底加边线。
+  改白底描边;边线用 inset ring 而不是 border——border 计入盒宽,把 ⌥ 从 20 撑到 22,与上排
+  ⌥1 不同框(探针断言两处 kbd 同为 20x20)。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 676 passed / 17 skipped;
 `pnpm test:browser` 10 files / 80 passed(补充材料键盘 1 例新增);`pnpm build` 通过;prettier 全绿。
