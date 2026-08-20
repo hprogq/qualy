@@ -6736,10 +6736,9 @@ aria-hidden 滞留在页面上,role 查询看不见导航栏。改为 `userEvent
 真实按键路径,并在重开前 poll 到 dialog 真正离场。本地连跑三次全绿;
 `pnpm test:browser` 11 files / 87 passed。
 
-### 复核警示条改为呼吸灯(2026-08-21 追加)
+### 复核警示条最终裁掉,并入头部徽章(2026-08-21 追加)
 
-顶部 amber 斜纹带(工地警戒线质感)按用户反馈多轮收敛,最终形态:工作台顶边的淡蓝灯条。
-2px sky 实线绝对定位盖在列自身灰色 border 的位置上(取代它,不是「灰线下面又垫一条彩线」),
-左右同色不做横向渐变,向下 32px 照射渐变,整体 2.8s animate-pulse 缓慢呼吸;
-「加强审核中」的指示灯色,不是「危险」的警戒色。testid 与断言不变。review-layout 9 例全绿;
-`pnpm typecheck` 零错;prettier 全绿。
+顶部 amber 斜纹带(工地警戒线质感)按用户反馈多轮收敛,结论是独立灯条本身取消:贴在
+哪条边上都与既有灰色 border 打架。模式指示并进头部本就全宽显示的「复核」徽章——sky
+淡蓝底,警示三角换成 6px 圆点指示灯,轮次进行中 2.8s animate-pulse 缓慢呼吸、已结束
+常亮;流程栏里的复核说明横幅不变。testid 改为 escalation-light,review-layout 断言同步。浏览器套件 87 例全绿;`pnpm typecheck` 零错;prettier 全绿。

@@ -9,7 +9,6 @@ import {
   ChevronUpIcon,
   DownloadIcon,
   InfoIcon,
-  TriangleAlertIcon,
 } from 'lucide-react'
 import {
   useApi,
@@ -512,24 +511,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
           />
           <div
             data-review-route={review?.chain.route ?? 'normal'}
-            className="relative flex min-h-0 min-w-0 flex-1 flex-col border-t lg:border-t-0 lg:border-l"
+            className="flex min-h-0 min-w-0 flex-1 flex-col border-t lg:border-t-0 lg:border-l"
           >
-            {/* the escalation environment, worn rather than explained: a cool
-                light strip laid over the workbench's own top border - taking
-                the grey hairline's place rather than underlining it - whose
-                glow falls onto the work below, so the mode is recognized
-                before a single word is read. One colour edge to edge, and a
-                slow breath rather than a blink: the light of "under closer
-                review", not of "danger" */}
-            {review !== undefined &&
-              review.chain.route === 'escalation' &&
-              review.state !== 'completed' && (
-                <span
-                  aria-hidden
-                  data-testid="escalation-band"
-                  className="pointer-events-none absolute inset-x-0 -top-px z-10 h-8 animate-pulse border-t-2 border-sky-500/50 bg-gradient-to-b from-sky-500/10 to-transparent [animation-duration:2.8s] dark:border-sky-400/40 dark:from-sky-400/10"
-                />
-              )}
             {done ? (
               <DoneScreen
                 batchId={batch.id}
@@ -1012,9 +995,21 @@ function PersonStrip({
       </div>
       <span className="flex-1" />
       {review.chain.route === 'escalation' && (
-        // at every width: the mode must survive the narrowest header
-        <Badge variant="outline" className="shrink-0 text-xs">
-          <TriangleAlertIcon aria-hidden />
+        // at every width: the mode must survive the narrowest header. An
+        // indicator light rather than a warning triangle - the ladder is a
+        // closer look, not a hazard - breathing only while the round is live
+        <Badge
+          variant="outline"
+          data-testid="escalation-light"
+          className="shrink-0 border-sky-500/30 bg-sky-500/10 text-xs text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-300"
+        >
+          <span
+            aria-hidden
+            className={cn(
+              'size-1.5 rounded-full bg-sky-500 dark:bg-sky-400',
+              review.state !== 'completed' && 'animate-pulse [animation-duration:2.8s]',
+            )}
+          />
           {format(m.reviewRouteEscalation)}
         </Badge>
       )}
