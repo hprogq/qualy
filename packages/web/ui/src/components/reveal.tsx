@@ -282,6 +282,30 @@ export function Glide({
   )
 }
 
+/**
+ * One mark that travels between the things it can mark.
+ *
+ * Rendered inside whichever of them is current, and given the same `id` in
+ * every one of them: the mark then moves from where it was to where it is
+ * now instead of blinking out of one and into another. For a row of chips
+ * or tabs, where what is marked changes as the reader moves rather than as
+ * the layout does.
+ *
+ * Only one element may carry a given id at a time - two would fight over
+ * where the mark belongs and it would land between them.
+ */
+export function Marker({ id, className }: { id: string; className?: string }) {
+  const reduced = useReducedMotion() === true
+  return (
+    <motion.span
+      aria-hidden
+      layoutId={id}
+      transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
+      className={className}
+    />
+  )
+}
+
 // Children arriving one after another rather than all at once.
 //
 // For a screen whose parts are read in order - a mark, then what it means,

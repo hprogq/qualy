@@ -12,8 +12,10 @@ import {
   type ResolvedNavigationItem,
 } from '@qualy/ui-contract'
 import {
+  ScreenFootScope,
   UiSlot,
   useUiCollection,
+  useScreenFootClaimed,
   WorkspaceCapabilityScope,
   useWorkspaceCapabilities,
 } from '@qualy/web-runtime'
@@ -186,7 +188,9 @@ function DrawerEntry({
 export default function WorkspaceShell() {
   return (
     <WorkspaceCapabilityScope>
-      <CapableWorkspaceShell />
+      <ScreenFootScope>
+        <CapableWorkspaceShell />
+      </ScreenFootScope>
     </WorkspaceCapabilityScope>
   )
 }
@@ -200,6 +204,8 @@ function CapableWorkspaceShell() {
   const { format } = useI18n()
   const narrow = useIsBelow(SHELL_BREAKPOINT)
   const drawer = useNavDrawer()
+  // a screen whose own bar ends at the bottom edge has asked for that corner
+  const footTaken = useScreenFootClaimed()
   const [railOpen, setRailOpen] = useState(!narrow)
   useEffect(() => setRailOpen(!narrow), [narrow])
 
@@ -346,7 +352,7 @@ function CapableWorkspaceShell() {
           any tap on it opens the drawer. Gone while the drawer is up: it is
           the drawer's handle, not a peer. */}
       <div className="pointer-events-none fixed inset-x-0 bottom-[max(1.125rem,env(safe-area-inset-bottom))] z-40 flex justify-center">
-        <Appear show={narrow && !drawer.open}>
+        <Appear show={narrow && !drawer.open && !footTaken}>
           <button
             type="button"
             aria-haspopup="dialog"

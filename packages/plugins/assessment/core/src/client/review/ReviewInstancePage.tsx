@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
+  BookOpenIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -25,6 +26,7 @@ import {
   useApi,
   useApiQuery,
   usePageNavigate,
+  useClaimScreenFoot,
   usePageQueryState,
   usePageRouteParams,
   useRunApi,
@@ -46,6 +48,7 @@ import {
 import { Kbd } from '@qualy/ui/kbd'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { ScrollArea } from '@qualy/ui/scroll-area'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -79,7 +82,7 @@ import { VersionPicker } from './history.tsx'
 import { EntryHistory } from '../entry/EntryHistory.tsx'
 import { attachmentContentUrl } from '../entry/model.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
-import { Appear, CountdownRing, DoneMark, Drill, Stagger } from '@qualy/ui/reveal'
+import { Appear, CountdownRing, DoneMark, Drill, Marker, Stagger } from '@qualy/ui/reveal'
 
 // The workbench: one submission a screen, walked in a run.
 //
@@ -89,6 +92,22 @@ import { Appear, CountdownRing, DoneMark, Drill, Stagger } from '@qualy/ui/revea
 // it can be taken back; then it is submitted and the next one is already on
 // screen. Sending back and escalating each carry a word, so they open their
 // dialog instead of arming silently.
+
+/**
+ * The three parts of a workbench, in reading order: what has been said about
+ * the filing, the filing itself, and the terms it is judged under. Beside
+ * each other they are columns; stacked they are sections of one page, and
+ * the strip under the header anchors to them by these names.
+ */
+type WorkbenchPart = 'flow' | 'filing' | 'about'
+
+const WORKBENCH_PARTS: readonly WorkbenchPart[] = ['flow', 'filing', 'about']
+
+const PART_LABEL: Record<WorkbenchPart, MessageDescriptor> = {
+  flow: m.reviewPrior,
+  filing: m.reviewPayloadTitle,
+  about: m.reviewAboutSection,
+}
 
 /** one disposition this sitting, wherever it has got to */
 interface SessionEntry {
@@ -220,18 +239,32 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // the other person may already be answering the request
   const [withdrawing, setWithdrawing] = useState<string | null>(null)
   const [versionsOpen, setVersionsOpen] = useState(false)
+  // The stacked scroller, held as state rather than a ref: the strip that
+  // spies on it mounts in the same commit, and a ref would still be null
+  // when its effect first looked.
+  const [stack, setStack] = useState<HTMLDivElement | null>(null)
+  // the terms, where they have no column of their own
+  const [aboutOpen, setAboutOpen] = useState(false)
+  const lingeringAbout = useLingering(aboutOpen ? 'open' : null)
   // Which earlier version the filing is read against; null is not comparing.
   // On by default: a resubmission is read for what changed in it, and having
   // to ask for that every time made the question "did they fix it" cost a
   // keystroke on every filing in the run.
   const [comparing, setComparing] = useState<string | null>('previous')
   const wordRef = useRef<HTMLInputElement | null>(null)
+  // The bar at the bottom is where this screen is acted on, so the shell's
+  // own floating control stands down for as long as it is up. The way back
+  // to the queue is the key at the left of the header instead - and where
+  // there is no bar (a round already closed, the screen that ends a run),
+  // the foot goes back to the shell rather than leaving a phone with
+  // neither.
   // Whether something over the workbench owns the keyboard. Read from a ref
   // because the window listener runs in the same native event as the panel
   // that just closed itself: through a render closure it saw "no overlay"
   // and ran the page's own ⌘↵ a moment after the panel had already acted.
   const overlaid = useRef(false)
-  overlaid.current = dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null
+  overlaid.current =
+    dialog !== null || trailOpen || versionsOpen || writing || openSibling !== null || aboutOpen
 
   /**
    * Log what was just staged and put the next filing on screen.
@@ -360,6 +393,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // the letters are choices, never acts: only ⌘↵ submits, and while the
   // cursor is in a box the letters belong to the text
   useEffect(() => {
+    // Only where there is a keyboard to press them. A phone's on-screen
+    // keyboard opens for a text box and closes with it, so a bare letter
+    // there is never a decision - but a soft keyboard can still fire one
+    // while something else has focus, and A meaning "approve" is not a key
+    // to leave lying under a thumb.
+    if (!window.matchMedia('(pointer: fine)').matches) return
     const down = (event: KeyboardEvent) => {
       if (overlaid.current) return
       // the photo viewer holds its own keys: Esc closes it, arrows page it
@@ -476,6 +515,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // over only when this sitting decided something: an already-closed round
   // opened from elsewhere is a page to read, not a run to finish
   const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
+  const bar = !done && review !== undefined && review.capabilities.canDecide && decisions.length > 0
+  useClaimScreenFoot(bar)
 
   return (
     <AsyncSection
@@ -501,11 +542,17 @@ function Workbench({ batch }: { batch: BatchDto }) {
           read too short, and left a screenful of nothing under the decision
           bar. Every ancestor up to the shell's main is a flex column, so
           filling what is left needs no arithmetic and nothing to keep in
-          step. Below lg the columns stack and the page scrolls as a page. */}
-      <div className="relative flex min-h-96 flex-col lg:min-h-0 lg:flex-1">
+          step.
+
+          A screenful at every width, narrow included: the parts stack into
+          one scroller between the header and the bar, rather than the page
+          growing and the decision going off the bottom of it. On a phone
+          that is the whole point - what is being decided scrolls, and what
+          decides it stays under the thumb. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
         {/* the track is `auto`: the rail owns its width and animates it, and
             a grid told two widths would snap between them instead */}
-        <div className="grid lg:min-h-0 lg:flex-1 lg:grid-cols-[auto_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)] lg:grid-cols-[auto_minmax(0,1fr)]">
           <QueueRail
             rows={remaining}
             currentId={instanceId}
@@ -531,6 +578,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
               </div>
             ) : (
               <>
+                {/* the run's standing, for a screen with room for it: narrow,
+                    the header already says which of how many this is, and a
+                    second bar would cost a tenth of the phone to say it
+                    again */}
                 {scopeRows.length > 0 && (
                   <RunStrip
                     at={log.length + (currentIndex === -1 ? 1 : currentIndex + 1)}
@@ -546,27 +597,36 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   canPrev={currentIndex > 0}
                   canNext={currentIndex !== -1 && currentIndex < remaining.length - 1}
                   onMove={move}
+                  onBack={() =>
+                    navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
+                  }
+                  onAbout={() => setAboutOpen(true)}
                 />
                 {/* Three columns on a wide screen: what has been said, what
                     was filed, and the terms it is judged under. The filing is
                     the widest and the only one that scrolls far; the other
                     two are meant to be taken in at a glance while working
                     down it. Stacked below that, in the same reading order. */}
-                <Drill
-                  move="next"
-                  drillKey={instanceId}
-                  className="grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_21rem] lg:grid-rows-[minmax(0,1fr)]"
-                >
-                  <FlowColumn review={review} onTrail={openTrail} />
-                  <FilingColumn
-                    review={review}
-                    comparing={comparing}
-                    onCompare={setComparing}
-                    onVersions={openVersions}
-                  />
-                  <ContextRail review={review} onOpenSibling={setOpenSibling} />
+                <PartStrip scroller={stack} events={review.events.length} drillKey={instanceId} />
+                <Drill move="next" drillKey={instanceId} className="flex min-h-0 flex-1 flex-col">
+                  {/* One scroller stacked, one per column beside: the strip
+                      above spies on this node either way, and beside each
+                      other it never moves, so the strip is not there. */}
+                  <div
+                    ref={setStack}
+                    className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:grid lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden 2xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_21rem]"
+                  >
+                    <FlowColumn review={review} onTrail={openTrail} />
+                    <FilingColumn
+                      review={review}
+                      comparing={comparing}
+                      onCompare={setComparing}
+                      onVersions={openVersions}
+                    />
+                    <ContextRail review={review} onOpenSibling={setOpenSibling} />
+                  </div>
                 </Drill>
-                {review.capabilities.canDecide && decisions.length > 0 && (
+                {bar && (
                   <DecisionBar
                     review={review}
                     decisions={decisions}
@@ -624,7 +684,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             that rail happened to be - and off the screen when it was not
             there at all. The row ignores the pointer so the filing under it
             stays readable. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-20 z-10 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 bottom-36 z-10 flex justify-center lg:bottom-20">
           <Appear show={deferred.pending !== null} className="pointer-events-auto">
             {lingeringStaged !== null && (
               <UndoPill staged={lingeringStaged} deadline={deferred.deadline} onUndo={undoStaged} />
@@ -640,6 +700,15 @@ function Workbench({ batch }: { batch: BatchDto }) {
             onClose={() => setWriting(false)}
           />
         )}
+        <AboutSheet
+          open={aboutOpen}
+          review={lingeringAbout === null ? null : (review ?? null)}
+          onOpenSibling={(entryId) => {
+            setAboutOpen(false)
+            setOpenSibling(entryId)
+          }}
+          onClose={() => setAboutOpen(false)}
+        />
         {review !== undefined && (
           <SiblingSheet
             open={openSibling !== null}
@@ -910,7 +979,7 @@ function RunStrip({
   const { format } = useI18n()
   const navigate = usePageNavigate()
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b bg-muted/40 px-4 py-2">
+    <div className="hidden shrink-0 items-center gap-3 border-b bg-muted/40 px-4 py-2 lg:flex">
       <p className="shrink-0 text-xs text-muted-foreground tabular-nums">
         {format(m.reviewRunPosition, { at, count: total })}
       </p>
@@ -945,6 +1014,8 @@ function PersonStrip({
   canPrev,
   canNext,
   onMove,
+  onBack,
+  onAbout,
 }: {
   review: ReviewDto
   at: number | null
@@ -952,11 +1023,22 @@ function PersonStrip({
   canPrev: boolean
   canNext: boolean
   onMove: (step: 1 | -1) => void
+  /** the way out, where the queue rail is not there to hold one */
+  onBack: () => void
+  /** the terms, where they have no column of their own */
+  onAbout: () => void
 }) {
   const { format } = useI18n()
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
-      <Avatar className="size-9">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2 lg:gap-3 lg:px-4">
+      {/* The door back, for the widths where the queue rail is folded away
+          and took its own with it. A workbench with no way out is a trap,
+          and on a phone the system back key is the reader's other one. */}
+      <Button variant="outline" size="sm" className="shrink-0 lg:hidden" onClick={onBack}>
+        <ChevronLeftIcon aria-hidden />
+        {format(m.reviewQueueTitle)}
+      </Button>
+      <Avatar className="hidden size-9 lg:flex">
         <AvatarFallback className="text-sm font-semibold">
           {review.participantName.slice(0, 1)}
         </AvatarFallback>
@@ -981,7 +1063,7 @@ function PersonStrip({
       </div>
       <span className="flex-1" />
       {review.chain.route === 'escalation' && (
-        <Badge variant="outline" className="text-xs">
+        <Badge variant="outline" className="hidden text-xs lg:inline-flex">
           <TriangleAlertIcon aria-hidden />
           {format(m.reviewRouteEscalation)}
         </Badge>
@@ -989,20 +1071,33 @@ function PersonStrip({
       {/* this filing has been round the supplement loop before: worth knowing
           before reading it, and only the round itself can say so */}
       {review.supplements.length > 0 && (
-        <Badge variant="outline" className="shrink-0 whitespace-nowrap">
+        <Badge variant="outline" className="hidden shrink-0 whitespace-nowrap lg:inline-flex">
           <AlertCircleIcon aria-hidden />
           {format(m.reviewHadSupplements)}
         </Badge>
       )}
-      <span className="shrink-0 text-xs font-medium whitespace-nowrap">
+      {/* the terms, on the widths where they are not a column: a key that
+          pushes out the layer, in the header where the other two keys of
+          this filing already are */}
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="about-key"
+        className="shrink-0 2xl:hidden"
+        onClick={onAbout}
+      >
+        <BookOpenIcon aria-hidden />
+        <span className="max-lg:sr-only">{format(m.reviewAboutSection)}</span>
+      </Button>
+      <span className="hidden shrink-0 text-xs font-medium whitespace-nowrap lg:inline">
         {format(m.reviewKeysHint)}
       </span>
       {at !== null && (
-        <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+        <p className="hidden text-xs whitespace-nowrap text-muted-foreground tabular-nums sm:block">
           {format(m.reviewRunPosition, { at, count: of })}
         </p>
       )}
-      <span className="flex gap-1">
+      <span className="hidden gap-1 lg:flex">
         <EdgeButton
           can={canPrev}
           why={format(m.reviewFirstOne)}
@@ -1018,6 +1113,151 @@ function PersonStrip({
     </header>
   )
 }
+
+/**
+ * Where the reader is in a workbench that has become one page.
+ *
+ * Stacked, the three parts run one after another and nothing says which is
+ * which once the headings have scrolled past. This names them, marks the one
+ * being read, and scrolls to any of them - a position, not a set of tabs:
+ * every part stays on the page, and the back key still leaves for the queue
+ * rather than stepping between them.
+ *
+ * Beside each other there is nothing to say, so it folds to nothing rather
+ * than disappearing: crossing the width is the strip closing over, not the
+ * work below it jumping up.
+ */
+function PartStrip({
+  scroller,
+  events,
+  drillKey,
+}: {
+  scroller: HTMLElement | null
+  /** how many things have been said this round, said on the first chip */
+  events: number
+  /** a new filing starts at the top again, whatever the last one was on */
+  drillKey: string
+}) {
+  const { format } = useI18n()
+  const beside = useBeside()
+  const [at, setAt] = useState<WorkbenchPart>('flow')
+  // how far down it is, which is the only thing the way back has to know
+  const [away, setAway] = useState(false)
+  // While a press is travelling to its part, the spy would call every part
+  // it passes the one being read and drag the mark backwards through them.
+  // The press says where it is going; the spy is believed again once it
+  // agrees, or once the reader takes over by scrolling somewhere else.
+  const going = useRef<WorkbenchPart | null>(null)
+
+  useEffect(() => {
+    setAt('flow')
+    setAway(false)
+    going.current = null
+  }, [drillKey])
+
+  useEffect(() => {
+    if (scroller === null || beside) return
+    const spy = () => {
+      setAway(scroller.scrollTop > 8)
+      // the part under the strip: the last one whose top has passed it
+      const edge = scroller.getBoundingClientRect().top + PART_EDGE
+      let reading: WorkbenchPart = 'flow'
+      for (const node of scroller.querySelectorAll('[data-workbench-part]')) {
+        if (!(node instanceof HTMLElement)) continue
+        if (node.getBoundingClientRect().top - 1 > edge) break
+        reading = (node.dataset['workbenchPart'] ?? 'flow') as WorkbenchPart
+      }
+      // the end of the scroll can never bring the last part to the edge, so
+      // arriving at the bottom is the same answer as reaching it
+      if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
+        const last = scroller.querySelectorAll('[data-workbench-part]')
+        const tail = last[last.length - 1]
+        if (tail instanceof HTMLElement) {
+          reading = (tail.dataset['workbenchPart'] ?? reading) as WorkbenchPart
+        }
+      }
+      if (going.current !== null && going.current !== reading) return
+      going.current = null
+      setAt(reading)
+    }
+    spy()
+    scroller.addEventListener('scroll', spy, { passive: true })
+    const watch = new ResizeObserver(spy)
+    watch.observe(scroller)
+    return () => {
+      scroller.removeEventListener('scroll', spy)
+      watch.disconnect()
+    }
+  }, [scroller, beside])
+
+  const goTo = (part: WorkbenchPart) => {
+    const node = scroller?.querySelector(`[data-workbench-part="${part}"]`)
+    if (!(node instanceof HTMLElement) || scroller === null) return
+    going.current = part
+    setAt(part)
+    // arithmetic rather than scrollIntoView, which walks up the tree and
+    // takes the shell's own scroller with it
+    const top =
+      scroller.scrollTop + node.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    scroller.scrollTo({
+      top: Math.max(0, top - (part === 'flow' ? 0 : PART_EDGE - 4)),
+      behavior: 'smooth',
+    })
+  }
+
+  return (
+    <div
+      // folded rather than removed, the way the shell folds its own bars
+      className={cn(
+        'shrink-0 overflow-hidden border-b transition-[height] duration-200 ease-linear',
+        beside ? 'h-0 border-b-0' : 'h-10',
+      )}
+      {...(beside ? { inert: true, 'aria-hidden': true } : {})}
+    >
+      <div className="flex h-10 items-center gap-1 px-2">
+        {WORKBENCH_PARTS.map((part) => (
+          <button
+            key={part}
+            type="button"
+            data-testid="workbench-anchor"
+            data-part={part}
+            data-reading={part === at ? 'yes' : 'no'}
+            onClick={() => goTo(part)}
+            className={cn(
+              'relative flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs whitespace-nowrap transition-colors',
+              part === at ? 'font-medium text-foreground' : 'text-muted-foreground',
+            )}
+          >
+            {part === at && (
+              <Marker
+                id="workbench-anchor-mark"
+                className="absolute inset-0 -z-10 rounded-lg bg-muted"
+              />
+            )}
+            {format(PART_LABEL[part])}
+            {part === 'flow' && events > 0 && (
+              <span className="text-[11px] text-muted-foreground tabular-nums">{events}</span>
+            )}
+          </button>
+        ))}
+        <span className="flex-1" />
+        <Appear show={away}>
+          <button
+            type="button"
+            onClick={() => scroller?.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="flex h-7 shrink-0 items-center gap-1 px-2 text-[11px] whitespace-nowrap text-muted-foreground"
+          >
+            <ChevronUpIcon aria-hidden className="size-3" />
+            {format(m.reviewBackToTop)}
+          </button>
+        </Appear>
+      </div>
+    </div>
+  )
+}
+
+/** the line a part has to reach before it counts as the one being read */
+const PART_EDGE = 44
 
 /**
  * A pager that stays where it is at the edge: disabled with the reason on
@@ -1084,11 +1324,14 @@ function EdgeButton({
  */
 function Pane({
   as: As,
+  part,
   className,
   inner,
   children,
 }: {
   as: 'main' | 'section' | 'aside'
+  /** which part of the workbench this is, for the strip that anchors to it */
+  part: WorkbenchPart
   /** the pane frame: width, borders */
   className?: string
   /** the content column: padding and gap */
@@ -1097,7 +1340,16 @@ function Pane({
 }) {
   const beside = useBeside()
   return (
-    <As className={cn('relative flex min-w-0 flex-col lg:min-h-0', className)}>
+    <As
+      data-workbench-part={part}
+      className={cn(
+        'relative flex min-w-0 flex-col lg:min-h-0',
+        // stacked, the strip above stands over the top of whatever it
+        // anchored to, so each part starts below the strip's own height
+        'scroll-mt-10 lg:scroll-mt-0',
+        className,
+      )}
+    >
       {beside ? (
         <ScrollArea className="min-h-0 flex-1">
           <div className={cn('flex flex-col', inner)}>{children}</div>
@@ -1111,15 +1363,55 @@ function Pane({
 
 /** whether the columns stand beside each other: the same line css draws at */
 function useBeside(): boolean {
-  const [beside, setBeside] = useState(true)
+  return useMedia('(min-width: 64rem)', true)
+}
+
+/**
+ * Whether the terms stand in a column of their own.
+ *
+ * Two columns fit from 64rem, but the third only earns its 21rem well above
+ * that: at 1280 it takes the filing down to a width where a certificate and
+ * its fields stop being readable side by side. Under it the terms are a key
+ * in the header that pushes out a layer, and stacked they are the last
+ * section of the page.
+ */
+function useThirdColumn(): boolean {
+  return useMedia('(min-width: 96rem)', true)
+}
+
+/**
+ * Whether this is a pointer that can hover and click precisely.
+ *
+ * Coarse pointers get the touch shape of the bar: a decision is chosen with
+ * a tap and sent with a press held down, because a thumb lands where it did
+ * not mean to and a submission cannot be taken back except in the five
+ * seconds after it. Fine pointers keep the keyboard - a tablet with a
+ * keyboard attached still reports fine, which is the answer we want.
+ */
+function useFinePointer(): boolean {
+  return useMedia('(pointer: fine)', true)
+}
+
+/**
+ * A media query, read before the first paint and watched after it.
+ *
+ * Read rather than assumed: starting on a guess and correcting in an effect
+ * meant a phone drew the wide shape for one frame, and the panes that swap
+ * a scroller for a plain column threw away everything inside them doing it.
+ * `initial` is only for a window that is not there to ask.
+ */
+function useMedia(query: string, initial: boolean): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window === 'undefined' ? initial : window.matchMedia(query).matches,
+  )
   useEffect(() => {
-    const media = window.matchMedia('(min-width: 64rem)')
-    const read = () => setBeside(media.matches)
+    const media = window.matchMedia(query)
+    const read = () => setMatches(media.matches)
     read()
     media.addEventListener('change', read)
     return () => media.removeEventListener('change', read)
-  }, [])
-  return beside
+  }, [query])
+  return matches
 }
 
 const FlowColumn = memo(function FlowColumn({
@@ -1142,7 +1434,7 @@ const FlowColumn = memo(function FlowColumn({
           who: previous.actorName ?? format(m.eventSomebody),
         })
   return (
-    <Pane as="section" inner="gap-4 p-5">
+    <Pane as="section" part="flow" inner="gap-4 p-5">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
         <div className="flex items-start gap-3 rounded-xl bg-muted/60 p-4">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -1411,7 +1703,7 @@ const FilingColumn = memo(function FilingColumn({
       .map((attachmentId, index) => [attachmentId, index + 1]),
   )
   return (
-    <Pane as="main" className="border-l" inner="gap-4 p-5">
+    <Pane as="main" part="filing" className="border-t lg:border-t-0 lg:border-l" inner="gap-4 p-5">
       <section className="flex flex-col gap-3.5">
         <div className="flex flex-col border-b pb-2">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -1710,6 +2002,38 @@ const ContextRail = memo(function ContextRail({
   review: ReviewDto
   onOpenSibling: (entryId: string) => void
 }) {
+  return (
+    <Pane
+      as="aside"
+      part="about"
+      // between the two widths the terms are a key in the header, not a
+      // column: at 64rem the filing needs every pixel the third would take
+      className="border-t lg:hidden lg:border-t-0 2xl:flex 2xl:border-l"
+      inner="gap-3 p-4"
+    >
+      <AboutParts review={review} onOpenSibling={onOpenSibling} />
+    </Pane>
+  )
+})
+
+/**
+ * The terms this filing is judged under: what the clause says, whose hands
+ * it passes through, what it is worth, and what else the same person filed
+ * against the same question.
+ *
+ * Its own component because it is read in two shapes. Wide enough for three
+ * columns it is the third; under that it is a layer the header pushes out,
+ * and stacked it is the last section of the page. One rendering either way:
+ * a reviewer comparing what they were told at two window widths must not be
+ * comparing two different screens.
+ */
+function AboutParts({
+  review,
+  onOpenSibling,
+}: {
+  review: ReviewDto
+  onOpenSibling: (entryId: string) => void
+}) {
   const { format, locale } = useI18n()
   const listed = useMemo(
     () => new Intl.ListFormat(locale, { style: 'narrow', type: 'conjunction' }),
@@ -1722,7 +2046,7 @@ const ContextRail = memo(function ContextRail({
   // clause keeps a filled card, because it is quoted matter rather than this
   // screen's own words.
   return (
-    <Pane as="aside" className="border-t lg:border-t-0 lg:border-l" inner="gap-3 p-4">
+    <>
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
       <section className="flex shrink-0 flex-col gap-2 rounded-xl bg-muted/60 px-3 py-2.5">
@@ -1841,9 +2165,9 @@ const ContextRail = memo(function ContextRail({
             )}
         </section>
       )}
-    </Pane>
+    </>
   )
-})
+}
 
 function AboutRow({ label, value }: { label: string; value: string }) {
   return (
@@ -1973,16 +2297,20 @@ function DecisionBar({
   onSubmit: () => void
 }) {
   const { format } = useI18n()
+  const fine = useFinePointer()
   const advising = review.chain.route === 'escalation' && !decisions.includes('reject')
   // approving at the end of a route is the decision itself, not a hand-on
   const route = review.chain.route === 'escalation' ? review.chain.escalation : review.chain.normal
   const lastStep = route[route.length - 1]?.id === review.chain.stageId
   return (
-    <footer className="flex flex-col gap-2 border-t px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {/* one line at the bar, because the bar is one line; anything longer
-            is written in a box that is actually a box */}
-        <InputGroup className="min-w-48 flex-1">
+    <footer className="flex shrink-0 flex-col gap-2 border-t px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:px-4 lg:py-3">
+      <div className="flex flex-wrap items-center gap-2 max-lg:justify-center max-lg:gap-1.5">
+        {/* One line at the bar, because the bar is one line; anything longer
+            is written in a box that is actually a box. Off the bar entirely
+            on a touch screen: a text box there summons a keyboard over the
+            very filing being judged, and the box that is a box is one press
+            away on the note key. */}
+        <InputGroup className="hidden min-w-48 flex-1 lg:flex">
           <InputGroupInput
             ref={wordRef}
             value={word}
@@ -2003,7 +2331,7 @@ function DecisionBar({
         </InputGroup>
         {review.capabilities.canRequestSupplement && (
           <Explained why={format(m.reviewTipSupplement)}>
-            <Button variant="outline" onClick={() => onDialog('supplement')}>
+            <Button variant="outline" className={KEY} onClick={() => onDialog('supplement')}>
               {format(m.reviewSupplementAsk)}
             </Button>
           </Explained>
@@ -2012,18 +2340,25 @@ function DecisionBar({
           <Explained why={format(m.reviewTipComment)}>
             <Button
               variant={armed === 'comment' ? 'secondary' : 'outline'}
-              onClick={() => onArm(armed === 'comment' ? null : 'comment')}
+              className={KEY}
+              onClick={() => {
+                const next = armed === 'comment' ? null : 'comment'
+                onArm(next)
+                // no box on the bar to write in on a touch screen, so
+                // choosing to say something opens the one that is a box
+                if (next === 'comment' && !fine) onExpand()
+              }}
             >
               {format(m.reviewActionNote)}
-              <Kbd>C</Kbd>
+              <Kbd className="max-lg:hidden">C</Kbd>
             </Button>
           </Explained>
         )}
         {decisions.includes('escalate') && (
           <Explained why={format(m.reviewTipEscalate)}>
-            <Button variant="outline" onClick={() => onDialog('escalate')}>
+            <Button variant="outline" className={KEY} onClick={() => onDialog('escalate')}>
               {format(m.reviewEscalate)}
-              <Kbd>E</Kbd>
+              <Kbd className="max-lg:hidden">E</Kbd>
             </Button>
           </Explained>
         )}
@@ -2031,11 +2366,14 @@ function DecisionBar({
           <Explained why={format(m.reviewTipReject)}>
             <Button
               variant="outline"
-              className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+              className={cn(
+                KEY,
+                'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70',
+              )}
               onClick={() => onDialog('reject')}
             >
               {format(m.reviewReject)}
-              <Kbd className="bg-rose-500/10 text-rose-700 dark:text-rose-300">R</Kbd>
+              <Kbd className="bg-rose-500/10 text-rose-700 max-lg:hidden dark:text-rose-300">R</Kbd>
             </Button>
           </Explained>
         )}
@@ -2044,44 +2382,174 @@ function DecisionBar({
             <Button
               variant="outline"
               className={cn(
+                KEY,
                 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
                 armed === 'approve' && 'ring-2 ring-emerald-500/40',
               )}
               onClick={() => onArm(armed === 'approve' ? null : 'approve')}
             >
               {format(m.reviewApprove)}
-              <Kbd className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">A</Kbd>
+              <Kbd className="bg-emerald-500/10 text-emerald-700 max-lg:hidden dark:text-emerald-300">
+                A
+              </Kbd>
             </Button>
           </Explained>
         )}
-        {/* the one solid on the bar: choosing is soft, committing is not */}
-        <Explained why={format(m.reviewTipSubmit)}>
-          <Button
-            disabled={busy || armed === null}
-            className="bg-primary/90 hover:bg-primary"
-            onClick={onSubmit}
-          >
-            {format(m.reviewSubmitDecision)}
-            <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
-          </Button>
-        </Explained>
+        {/* The one solid on the bar: choosing is soft, committing is not.
+            Where the pointer is a thumb it is a press held down, and it
+            takes the whole width on its own row - the four keys above it
+            are chosen among, this one is the act. */}
+        {fine ? (
+          <Explained why={format(m.reviewTipSubmit)}>
+            <Button
+              disabled={busy || armed === null}
+              className="bg-primary/90 hover:bg-primary"
+              onClick={onSubmit}
+            >
+              {format(m.reviewSubmitDecision)}
+              <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
+            </Button>
+          </Explained>
+        ) : null}
       </div>
-      {/* what the bar says depends on what is chosen: a line that reads the
-          same whatever is about to happen is a line nobody reads */}
-      <p className="text-xs text-muted-foreground">
-        {format(
-          advising
-            ? m.reviewSubmitHintAdvise
-            : armed === 'approve'
-              ? lastStep
-                ? m.reviewHintLastStep
-                : m.reviewHintArmedApprove
-              : armed === 'comment'
-                ? m.reviewHintArmedComment
-                : m.reviewHintPickFirst,
-        )}
+      {!fine && (
+        <HoldToSubmit
+          label={format(m.reviewSubmitDecision)}
+          waiting={format(m.reviewHintPickFirst)}
+          ready={armed !== null && !busy}
+          onSubmit={onSubmit}
+        />
+      )}
+      {/* What the bar says depends on what is chosen: a line that reads the
+          same whatever is about to happen is a line nobody reads. Under the
+          held key it is how the holding works until something is chosen to
+          hold for - the key itself is already saying to choose one. */}
+      <p className="text-xs text-pretty text-muted-foreground max-lg:text-center">
+        {!fine && armed === null && !advising
+          ? format(m.reviewHoldHint)
+          : format(
+              advising
+                ? m.reviewSubmitHintAdvise
+                : armed === 'approve'
+                  ? lastStep
+                    ? m.reviewHintLastStep
+                    : m.reviewHintArmedApprove
+                  : armed === 'comment'
+                    ? m.reviewHintArmedComment
+                    : m.reviewHintPickFirst,
+            )}
       </p>
     </footer>
+  )
+}
+
+/**
+ * How the decision keys sit: taller and roomier where they are pressed with
+ * a thumb, and their own width either way.
+ *
+ * Not a shared row. Sharing looks right only while the keys happen to fit
+ * one line, and how many there are is the route's business - the first set
+ * with five in it put four on one line and stretched the fifth across the
+ * next, which made the one left over read as the important one.
+ */
+const KEY = 'max-lg:h-11 max-lg:px-3.5 max-lg:text-[13px]'
+
+/** how long a thumb has to stay down before the decision goes out */
+const HOLD_MS = 900
+
+/**
+ * Submit, for a pointer that is a thumb.
+ *
+ * A tap chooses; only a press held down sends. A decision cannot be taken
+ * back except in the five seconds after it, and on a phone the send would
+ * otherwise be one stray touch away from the four keys above it - a distance
+ * a mouse has and a thumb does not. Letting go early is not a slow press, it
+ * is a change of mind: nothing goes out, and the fill runs back to where it
+ * started so the reader can see that nothing did.
+ */
+function HoldToSubmit({
+  label,
+  waiting,
+  ready,
+  onSubmit,
+}: {
+  label: string
+  /** what it says while nothing has been chosen to send */
+  waiting: string
+  ready: boolean
+  onSubmit: () => void
+}) {
+  const [held, setHeld] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stop = useCallback(() => {
+    if (timer.current !== null) clearTimeout(timer.current)
+    timer.current = null
+    setHeld(false)
+  }, [])
+  useEffect(() => stop, [stop])
+  // a decision cleared out from under the press takes the press with it
+  useEffect(() => {
+    if (!ready) stop()
+  }, [ready, stop])
+
+  const start = () => {
+    if (!ready || timer.current !== null) return
+    setHeld(true)
+    timer.current = setTimeout(() => {
+      timer.current = null
+      setHeld(false)
+      onSubmit()
+    }, HOLD_MS)
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={!ready}
+      data-testid="hold-submit"
+      data-holding={held ? 'yes' : 'no'}
+      // Pointer events rather than touch: one set of handlers answers a
+      // finger, a stylus and a mouse alike, and the capture keeps the press
+      // alive when the thumb slides off the edge of the key mid-hold.
+      onPointerDown={(event) => {
+        try {
+          // so the press survives a thumb sliding off the edge of the key
+          event.currentTarget.setPointerCapture(event.pointerId)
+        } catch {
+          // a pointer id the platform has no record of; the press still counts
+        }
+        start()
+      }}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onContextMenu={(event) => event.preventDefault()}
+      className="relative flex h-12 w-full shrink-0 touch-none items-center justify-center overflow-hidden rounded-xl border font-medium select-none disabled:opacity-60"
+    >
+      <span
+        aria-hidden
+        style={{ width: held ? '100%' : '0%' }}
+        className={cn(
+          'absolute inset-y-0 left-0 bg-primary ease-linear motion-reduce:transition-none',
+          held ? 'transition-[width] duration-[900ms]' : 'transition-[width] duration-150',
+        )}
+      />
+      {/* the words are drawn twice: once in the ink of the key and once in
+          the ink of the fill, clipped to it, so the fill sweeping across
+          reads them out rather than sliding under them */}
+      <span className="relative text-sm">{ready ? label : waiting}</span>
+      <span
+        aria-hidden
+        style={{ width: held ? '100%' : '0%' }}
+        className={cn(
+          'absolute inset-y-0 left-0 flex items-center justify-center overflow-hidden ease-linear motion-reduce:transition-none',
+          held ? 'transition-[width] duration-[900ms]' : 'transition-[width] duration-150',
+        )}
+      >
+        <span className="absolute flex w-[calc(100vw-1.5rem)] justify-center text-sm text-primary-foreground">
+          {ready ? label : waiting}
+        </span>
+      </span>
+    </button>
   )
 }
 
@@ -2174,6 +2642,43 @@ function SiblingSheet({
         </dl>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * The terms, pushed out from the side, for the widths that have no room to
+ * stand them in a column.
+ *
+ * A layer rather than a page: reading what the question is worth is
+ * something done while looking at the filing, and a screen that replaced
+ * the filing to answer it would cost the reader their place.
+ */
+function AboutSheet({
+  open,
+  review,
+  onOpenSibling,
+  onClose,
+}: {
+  open: boolean
+  /** null while the layer is shutting on a filing that has already gone */
+  review: ReviewDto | null
+  onOpenSibling: (entryId: string) => void
+  onClose: () => void
+}) {
+  const { format } = useI18n()
+  return (
+    <Sheet open={open && review !== null} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-md">
+        <SheetHeader className="border-b">
+          <SheetTitle className="text-sm">{format(m.reviewAboutSection)}</SheetTitle>
+        </SheetHeader>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="flex flex-col gap-3 p-4">
+            {review !== null && <AboutParts review={review} onOpenSibling={onOpenSibling} />}
+          </div>
+        </ScrollArea>
+      </SheetContent>
+    </Sheet>
   )
 }
 

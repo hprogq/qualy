@@ -6329,3 +6329,39 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 674 passed / 17 skipped;
 `pnpm test:browser` 9 files / 72 passed;`pnpm build` 通过;prettier 全绿。
+
+### 审核页面的三种宽度(2026-08-20)
+
+按设计稿 2a/2b/2c/2d 改造审核工作台与待审队列。设计稿自带「改动落在这几行」,逐条落地:
+
+- **工作台在每个宽度都填满一屏**。原先只有 lg 以上是一屏三栏,窄屏整页生长、决定条掉到页面底部。现在
+  外层恒为 `min-h-0 flex-1`,三栏在窄屏接进**同一个滚动区**,页头与决定条一上一下钉住——手机上被审的
+  东西滚动,做决定的东西留在拇指底下。窄屏那条网格轨道要显式 `grid-cols-[minmax(0,1fr)]`:默认 auto 是
+  max-content,决定条整排键当场把工作台撑得比屏幕宽。
+- **三档而不是两档**。两栏从 64rem 起(2b 平板 1194、2c 笔记本 1280 是同一张脸);**第三栏(条目信息)
+  推到 96rem 以上**——1280 上它要吃掉申报内容 21rem,而申报内容是唯一需要细看的一栏。1280 以下条目信息
+  收进标题栏的键,推出右侧一层(2d);窄屏则是整页的最后一节。三种形态**同一份渲染**(`AboutParts`),
+  两个宽度看到两个版本的规则是不能接受的。
+- **锚点条 PartStrip**(窄屏,标题栏下 40px):审核流程 / 申报内容 / 条目信息,滚动侦测标记读者所在那一节,
+  点击平滑滚过去,滚动后右侧出现「回到顶部」。它标位置、不切页面,回退键仍然回队列。标记用新的
+  `Marker`(@qualy/ui/reveal,layoutId 平移)在三个 chip 之间移动;并列宽度下整条折成 h-0 而不是消失。
+- **触摸端按住提交**:`pointer: coarse` 时决定条换形——文字框让位(手机上弹起键盘会盖住被审的材料,写字
+  走「备注」开的那个真正的框),提交变成整行 `HoldToSubmit`,按满 900ms 才发出,中途松开不生效且填充回弹。
+  **快捷键只在 `pointer: fine` 挂载**:A=通过 这种字母键不该躺在拇指底下(平板接键盘仍报 fine)。
+- **窄屏的出口与底部**:标题栏左侧补「待审核列表」键(lg 以上由队列栏承担),头像/徽章/翻页键在窄屏收起。
+  底部那一格给了决定条——新增 `ScreenFootScope` / `useClaimScreenFoot`(@qualy/web-runtime,与
+  WorkspaceCapabilityScope 同一套路,计数而非布尔,换页时两屏并存不会互相抢),壳层据此把导航胶囊收起;
+  没有决定条时(轮次已结束、连审收尾屏)不认领,免得手机上两样都没有。撤回浮条窄屏抬到 bottom-36。
+- **待审队列**(2a 第一屏):三个分组视图的行都是写死的 `gridTemplateColumns`,390px 上 11rem 姓名之后
+  就没地方了,而外面那张卡是 `overflow-hidden`——**页面看着完整,时间与状态其实已经被裁掉**。窄屏改为
+  `max-md:flex-wrap`:姓名/学号/时间/状态一行,申报内容落到第二行;列名行 `max-md:hidden`。
+- 媒体查询改为**首帧同步读**(`useMedia` 惰性初值):原先初值猜 true 再由 effect 纠正,手机第一帧画的是
+  宽屏形态,而换滚动条的那两栏会把内容整个丢掉重建。
+
+**测试**:新增 apps/web/tests/review-layout.browser.test.tsx(6 例,唯一 import 真实样式表的套件——
+它断言的就是"某个宽度露出哪几部分",没有样式则所有断点是同一张脸)。断言全部落在 `data-workbench-part`、
+`data-reading`、`data-holding` 这类事实上,不绑文案。逐条反向验证过:去掉 `lg:hidden` → 平板那例红;
+按下即提交 → 「轻点不发出」红;去掉队列的 `max-md:flex-wrap` → 行的 scrollWidth 超出 clientWidth 那例红。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 674 passed / 17 skipped;
+`pnpm test:browser` 10 files / 78 passed;`pnpm build` 通过;prettier 全绿。

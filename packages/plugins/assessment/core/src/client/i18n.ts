@@ -1400,6 +1400,15 @@ const i18n = definePluginMessages({
       id: 'assessment/review/insight-soon',
       defaultMessage: 'No review assistance is currently available.',
     },
+    reviewAboutSection: {
+      id: 'assessment/review/about-section',
+      defaultMessage: 'About this question',
+    },
+    reviewHoldHint: {
+      id: 'assessment/review/hold-hint',
+      defaultMessage: 'Hold to send; let go early and nothing is sent.',
+    },
+    reviewBackToTop: { id: 'assessment/review/back-to-top', defaultMessage: 'Back to top' },
     reviewAboutTitle: {
       id: 'assessment/review/about-title',
       defaultMessage: 'Scoring rules',

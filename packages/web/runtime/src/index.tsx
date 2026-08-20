@@ -448,3 +448,4 @@ export {
   usePublishWorkspaceCapabilities,
   type WorkspaceCapabilities,
 } from './workspace-capabilities.tsx'
+export { ScreenFootScope, useScreenFootClaimed, useClaimScreenFoot } from './screen-foot.tsx'

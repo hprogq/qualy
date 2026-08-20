@@ -294,8 +294,24 @@ function useOpenRow(batchId: string) {
 }
 
 /** a whole row is one press; the chevron affordance is the row's hover */
+/**
+ * One queued filing.
+ *
+ * A table of columns where there is room for one, and two lines where there
+ * is not: who and when on the first, what they filed on the second. The
+ * track widths are inline, so narrow says `flex` instead of overriding
+ * them - a grid told 11rem of name on a 390px screen has nowhere to put the
+ * rest of the row, and the whole queue leaves the side of the phone.
+ */
 const ROW =
-  'grid w-full cursor-pointer items-center gap-3 border-b px-4 py-2.5 text-left text-sm transition-colors last:border-b-0 hover:bg-accent/50'
+  'grid w-full cursor-pointer items-center gap-3 border-b px-4 py-2.5 text-left text-sm transition-colors last:border-b-0 hover:bg-accent/50 max-md:flex max-md:flex-wrap max-md:gap-x-2 max-md:gap-y-1'
+
+/** the column names, which name nothing once the columns are gone */
+const HEAD =
+  'grid items-center gap-3 border-b px-4 py-1.5 text-xs text-muted-foreground max-md:hidden'
+
+/** what drops to a line of its own under the row's first line */
+const WRAPS = 'max-md:order-last max-md:basis-full'
 
 function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDto[] }) {
   const { format } = useI18n()
@@ -321,10 +337,7 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
                 <CornerDownLeftIcon aria-hidden />
               </Button>
             </header>
-            <div
-              className="grid items-center gap-3 border-b px-4 py-1.5 text-xs text-muted-foreground"
-              style={{ gridTemplateColumns: GRID_ITEM }}
-            >
+            <div className={HEAD} style={{ gridTemplateColumns: GRID_ITEM }}>
               <span>{format(m.reviewColumnParticipant)}</span>
               <span className="flex min-w-0 gap-3">
                 {group.columns.map((column, index) => (
@@ -345,7 +358,7 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
                     style={{ gridTemplateColumns: GRID_ITEM }}
                     onClick={() => open(row, run)}
                   >
-                    <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="flex min-w-0 items-baseline gap-2 max-md:flex-1">
                       <span className="min-w-0 truncate font-medium">{row.participantName}</span>
                       {row.businessNo !== null && (
                         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -353,7 +366,7 @@ function ByItem({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
                         </span>
                       )}
                     </span>
-                    <span className="flex min-w-0 gap-3">
+                    <span className={cn('flex min-w-0 gap-3', WRAPS)}>
                       {row.values.map((pair, index) => (
                         <span key={index} className="min-w-0 flex-1 truncate">
                           <FiledValue pair={pair} />
@@ -395,10 +408,7 @@ function ByTime({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
               {format(m.reviewGroupCount, { count: day.rows.length })}
             </span>
           </header>
-          <div
-            className="grid items-center gap-3 border-b px-4 py-1.5 text-xs text-muted-foreground"
-            style={{ gridTemplateColumns: GRID_TIME }}
-          >
+          <div className={HEAD} style={{ gridTemplateColumns: GRID_TIME }}>
             <span>{format(m.reviewColumnTime)}</span>
             <span>{format(m.reviewColumnParticipant)}</span>
             <span>{format(m.reviewColumnItem)}</span>
@@ -425,8 +435,10 @@ function ByTime({ batchId, rows }: { batchId: string; rows: readonly InboxItemDt
                       </span>
                     )}
                   </span>
-                  <span className="min-w-0 truncate">{row.itemTitle}</span>
-                  <span className="min-w-0 truncate text-muted-foreground">{rowSummary(row)}</span>
+                  <span className="min-w-0 truncate max-md:flex-1">{row.itemTitle}</span>
+                  <span className={cn('min-w-0 truncate text-muted-foreground', WRAPS)}>
+                    {rowSummary(row)}
+                  </span>
                   <span className="flex justify-end">
                     <StateChip row={row} />
                   </span>
@@ -477,10 +489,7 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
                 <CornerDownLeftIcon aria-hidden />
               </Button>
             </header>
-            <div
-              className="grid items-center gap-3 border-b px-4 py-1.5 text-xs text-muted-foreground"
-              style={{ gridTemplateColumns: GRID_PERSON }}
-            >
+            <div className={HEAD} style={{ gridTemplateColumns: GRID_PERSON }}>
               <span>{format(m.reviewColumnItem)}</span>
               <span>{format(m.reviewColumnSummary)}</span>
               <span>{format(m.reviewColumnWhen)}</span>
@@ -495,8 +504,10 @@ function ByPerson({ batchId, rows }: { batchId: string; rows: readonly InboxItem
                     style={{ gridTemplateColumns: GRID_PERSON }}
                     onClick={() => open(row, run)}
                   >
-                    <span className="min-w-0 truncate font-medium">{row.itemTitle}</span>
-                    <span className="min-w-0 truncate text-muted-foreground">
+                    <span className="min-w-0 truncate font-medium max-md:flex-1">
+                      {row.itemTitle}
+                    </span>
+                    <span className={cn('min-w-0 truncate text-muted-foreground', WRAPS)}>
                       {rowSummary(row)}
                     </span>
                     <span className="text-xs whitespace-nowrap text-muted-foreground">
