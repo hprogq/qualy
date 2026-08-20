@@ -6669,3 +6669,17 @@ prettier 全绿。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 691 passed / 17 skipped;
 `pnpm test:browser` 11 files / 85 passed;prettier 全绿。
+
+### 时间线文案定稿与 CI 修复(2026-08-21 追加)
+
+- 用户逐条定稿轮次时间线文案:版本节点区分「创建/更新申报内容,生成第 N 版」(第 N 版是结果不是
+  修改对象)、提交事件「你提交第 N 版申报进行审核」(消除「提交」的存草稿歧义并指明版本,工作台
+  完整经过里的 submitted 行同样带版本号);生命周期标记改为带轮次号的「进入第 N 轮审核/第 N 轮
+  审核完成」(「本轮」会误读为当前轮);reroute 三句、补充材料四句照用户原文更新;进行中/已结束
+  Badge 分色(emerald 描边 vs secondary)。en 目录同步,localization 文案套件断言更新。
+- **CI drop-guard 修复**:昨日的 20260820095421_drop-reject-policy.sql 缺 `-- destructive:
+approved` 标记,全史扫描在 CI 红了。补上标记(注释行,不动语句;这正是「已批准的 destructive
+  迁移永远带标记,全扫恒干净」约定的机制),本地 `qualy database drop-guard` 37 文件全绿。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 691 passed;`pnpm test:browser` 85 passed;
+`qualy database drop-guard` 全史 37 文件通过;prettier 全绿。

@@ -1556,6 +1556,18 @@ const FlowColumn = memo(function FlowColumn({
           <ol className="flex flex-col">
             {review.events.map((event, index) => {
               const said = reviewEventMessage(event.kind, event.actorName !== null)
+              // the submission names the version it carried in - the round
+              // judges exactly one, and the trail should say which
+              const title =
+                event.kind === 'submitted'
+                  ? format(m.entryTrailSubmittedBy, {
+                      who: event.actorName ?? format(m.eventSomebody),
+                      no: review.revision.revisionNo,
+                    })
+                  : format(
+                      said.message,
+                      said.needsActor ? { who: event.actorName ?? format(m.eventSomebody) } : {},
+                    )
               const last = index === review.events.length - 1
               return (
                 <li key={index} className="flex gap-2.5 pb-3 last:pb-0">
@@ -1573,14 +1585,7 @@ const FlowColumn = memo(function FlowColumn({
                   </span>
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <div className="flex flex-wrap items-baseline gap-x-2">
-                      <p className="text-sm font-medium">
-                        {format(
-                          said.message,
-                          said.needsActor
-                            ? { who: event.actorName ?? format(m.eventSomebody) }
-                            : {},
-                        )}
-                      </p>
+                      <p className="text-sm font-medium">{title}</p>
                       {event.reason !== null && <Badge variant="outline">{event.reason}</Badge>}
                       <span className="flex-1" />
                       <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">

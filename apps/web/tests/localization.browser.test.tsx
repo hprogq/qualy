@@ -226,9 +226,11 @@ describe('the words themselves', () => {
     await page.getByRole('button', { name: /审核记录/ }).click()
 
     // one's own account speaks to its reader; a reviewer keeps their name in
-    // every reading. Both halves are copy, and both are the subject here.
-    await expect.element(page.getByText('你提交了申报')).toBeVisible()
-    await expect.element(page.getByText('你提交了第 1 版')).toBeVisible()
+    // every reading. Both halves are copy, and both are the subject here -
+    // the submission names the version it carried, and the version node
+    // states its outcome rather than reading as its object.
+    await expect.element(page.getByText('你提交第 1 版申报进行审核')).toBeVisible()
+    await expect.element(page.getByText('你创建了申报内容，生成第 1 版')).toBeVisible()
     await expect.element(page.getByText(/王老师/)).toBeVisible()
   })
 

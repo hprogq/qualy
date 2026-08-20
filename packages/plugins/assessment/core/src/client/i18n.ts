@@ -774,7 +774,7 @@ const i18n = definePluginMessages({
     },
     eventSubmitted: {
       id: 'assessment/event/submitted',
-      defaultMessage: '{who} submitted the entry',
+      defaultMessage: '{who} submitted the claim for review',
     },
     eventApproved: {
       id: 'assessment/event/approved',
@@ -863,7 +863,7 @@ const i18n = definePluginMessages({
     eventSomebody: { id: 'assessment/event/somebody', defaultMessage: 'Someone' },
     eventYouSubmitted: {
       id: 'assessment/event/you-submitted',
-      defaultMessage: 'You submitted the entry',
+      defaultMessage: 'You submitted the claim for review',
     },
     eventYouWithdrew: {
       id: 'assessment/event/you-withdrew',
@@ -2184,13 +2184,29 @@ const i18n = definePluginMessages({
     },
     entryTrailVersion: {
       id: 'assessment/entry/trail-version',
-      defaultMessage: 'You submitted version {no}',
+      defaultMessage: 'You updated the claim, creating version {no}',
+    },
+    entryTrailVersionFirst: {
+      id: 'assessment/entry/trail-version-first',
+      defaultMessage: 'You created the claim, version {no}',
     },
     // the same moments, told to somebody who is not the person they are
     // about: a reviewer reading "I submitted" is reading the wrong sentence
     entryTrailVersionBy: {
       id: 'assessment/entry/trail-version-by',
-      defaultMessage: '{who} submitted version {no}',
+      defaultMessage: '{who} updated the claim, creating version {no}',
+    },
+    entryTrailVersionFirstBy: {
+      id: 'assessment/entry/trail-version-first-by',
+      defaultMessage: '{who} created the claim, version {no}',
+    },
+    entryTrailSubmitted: {
+      id: 'assessment/entry/trail-submitted',
+      defaultMessage: 'You submitted version {no} for review',
+    },
+    entryTrailSubmittedBy: {
+      id: 'assessment/entry/trail-submitted-by',
+      defaultMessage: '{who} submitted version {no} for review',
     },
     entryTrailAnsweredBy: {
       id: 'assessment/entry/trail-answered-by',

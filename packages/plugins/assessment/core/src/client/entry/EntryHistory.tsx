@@ -169,9 +169,16 @@ function Trail({ data, subject }: { data: History; subject: string | undefined }
               <h4 className="text-sm font-semibold">
                 {format(m.entryTrailRound, { no: item.round.roundNo })}
               </h4>
-              <Badge variant={item.round.state === 'completed' ? 'secondary' : 'outline'}>
-                {format(item.round.state === 'completed' ? m.entryRoundEnded : m.entryRoundOngoing)}
-              </Badge>
+              {item.round.state === 'completed' ? (
+                <Badge variant="secondary">{format(m.entryRoundEnded)}</Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-300 text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"
+                >
+                  {format(m.entryRoundOngoing)}
+                </Badge>
+              )}
             </div>
             <Thread nodes={item.nodes} />
           </section>
@@ -259,6 +266,8 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
     )
     const opener = roundOfRevision.get(round.revisionId)?.id === round.id ? 'version' : 'event'
     const ended = round.state === 'completed'
+    // which version this round judges, for the acts that should name it
+    const judgedNo = data.revisions.find((one) => one.id === round.revisionId)?.revisionNo ?? null
 
     if (round.origin === 'reroute') {
       // the section's own opener: one act of the administrator's, told as
@@ -299,6 +308,7 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
             event={event}
             subject={subject}
             roundNo={round.roundNo}
+            revisionNo={judgedNo}
             marker={endsRound ? 'ended' : opensRound ? 'started' : undefined}
             continuedBy={
               endsRound && event.kind === 'rerouted'
@@ -543,8 +553,13 @@ function Version({
       <Line
         title={
           subject === undefined
-            ? format(m.entryTrailVersion, { no: revision.revisionNo })
-            : format(m.entryTrailVersionBy, { who: subject, no: revision.revisionNo })
+            ? format(revision.revisionNo === 1 ? m.entryTrailVersionFirst : m.entryTrailVersion, {
+                no: revision.revisionNo,
+              })
+            : format(
+                revision.revisionNo === 1 ? m.entryTrailVersionFirstBy : m.entryTrailVersionBy,
+                { who: subject, no: revision.revisionNo },
+              )
         }
         at={revision.createdAt}
       />
@@ -584,21 +599,32 @@ function Act({
   event,
   subject,
   roundNo,
+  revisionNo,
   marker,
   continuedBy,
 }: {
   event: Round['events'][number]
   subject: string | undefined
   roundNo: number
+  /** the version the round judges, so a submission can name what it carried */
+  revisionNo?: number | null
   /** whether this act is the round's own beginning or end */
   marker?: 'started' | 'ended' | undefined
   /** the round that carries on from here, when a re-route ended this one */
   continuedBy?: number | null
 }) {
   const { format } = useI18n()
+  // "submitted" alone does not say WHAT went in; where the version is
+  // known, the sentence carries it
+  const title =
+    event.kind === 'submitted' && revisionNo != null
+      ? subject === undefined
+        ? format(m.entryTrailSubmitted, { no: revisionNo })
+        : format(m.entryTrailSubmittedBy, { who: subject, no: revisionNo })
+      : actTitle(format, event, subject)
   return (
     <>
-      <Line title={actTitle(format, event, subject)} at={event.at} />
+      <Line title={title} at={event.at} />
       {marker !== undefined && <LifecycleMark marker={marker} no={roundNo} />}
       {continuedBy != null && (
         <p className="text-xs text-muted-foreground">
