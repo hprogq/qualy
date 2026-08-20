@@ -6398,3 +6398,21 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 675 passed / 17 skipped(新增草稿回归 1 例);
 `pnpm test:browser` 10 files / 78 passed(review-layout 6 例改为断言新布局:1280 三栏+队列键、1680 队列栏);
 `pnpm build` 通过;prettier 全绿。
+
+### 决定栏与输入框:形状跟指针,不跟宽度(2026-08-20 傍晚)
+
+用户连报三个同源症状:①手机上决定键 44px、按住提交 48px 不同高;②笔记本缩窗到平板宽度,按键突然
+变高变小字;③「填写审核说明」placeholder 窄屏突然变大。根都是**用宽度断点近似触摸端**:
+
+- 按住提交统一为 h-11(与按键同高;平板并排 lg:w-44),一条栏里只有一个高度。
+- 决定键的触摸尺寸(h-11/px-3.5/13px)从 `max-lg:` 改为 `!fine && TOUCH_KEY`——形状只跟
+  `pointer: fine/coarse` 走,fine 指针在任何宽度都保持桌面尺寸,缩窗不再变形;探针断言 1280→1000
+  两次测量的整栏高度序列逐项相等。
+- @qualy/ui 的 Input/Textarea:`text-base md:text-sm` 改为 `text-base pointer-fine:text-sm`
+  (Tailwind 4 内置变体)。16px 本是 iOS 聚焦缩放的护栏,按宽度切导致桌面窄窗变大、宽 iPad 反而失去
+  护栏;现在 fine 一律 14px、coarse 一律 16px。探针:fine 指针 390px 窗口输入框 computed 14px。
+- 顺带修滚动侦测:内容一屏放得下时「到底即最后一节」规则把开屏标记放到了条目信息;补上「可滚动才算
+  到底」前提,短页开屏标第一节。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test:browser` 78 passed;`pnpm test` 675 passed /
+17 skipped;`pnpm build` 通过;prettier 全绿。

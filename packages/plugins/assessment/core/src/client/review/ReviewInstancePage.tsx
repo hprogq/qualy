@@ -1176,9 +1176,12 @@ function PartStrip({
         if (node.getBoundingClientRect().top - 1 > edge) break
         reading = (node.dataset['workbenchPart'] ?? 'flow') as WorkbenchPart
       }
-      // the end of the scroll can never bring the last part to the edge, so
-      // arriving at the bottom is the same answer as reaching it
-      if (scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
+      // The end of the scroll can never bring the last part to the edge, so
+      // arriving at the bottom is the same answer as reaching it - but only
+      // where there is a bottom to arrive at: a page short enough to fit
+      // whole has not been read to its end by merely opening it.
+      const scrollable = scroller.scrollHeight - scroller.clientHeight > 8
+      if (scrollable && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
         const last = scroller.querySelectorAll('[data-workbench-part]')
         const tail = last[last.length - 1]
         if (tail instanceof HTMLElement) {
@@ -2343,7 +2346,12 @@ function DecisionBar({
   const lastStep = route[route.length - 1]?.id === review.chain.stageId
   return (
     <footer className="flex shrink-0 flex-col gap-2 border-t px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:px-4 lg:py-3">
-      <div className="flex flex-wrap items-center gap-2 max-lg:justify-center max-lg:gap-1.5">
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-2',
+          !fine && 'max-lg:justify-center max-lg:gap-1.5',
+        )}
+      >
         {/* One line at the bar, because the bar is one line; anything longer
             is written in a box that is actually a box. Off the bar entirely
             on a touch screen - whatever its width: a text box there summons
@@ -2374,7 +2382,7 @@ function DecisionBar({
           <Explained why={format(m.reviewTipSupplement)}>
             <Button
               variant="outline"
-              className={cn(KEY, !fine && 'h-11')}
+              className={cn(!fine && TOUCH_KEY)}
               onClick={() => onDialog('supplement')}
             >
               {format(m.reviewSupplementAsk)}
@@ -2385,7 +2393,7 @@ function DecisionBar({
           <Explained why={format(m.reviewTipComment)}>
             <Button
               variant={armed === 'comment' ? 'secondary' : 'outline'}
-              className={cn(KEY, !fine && 'h-11')}
+              className={cn(!fine && TOUCH_KEY)}
               onClick={() => {
                 const next = armed === 'comment' ? null : 'comment'
                 onArm(next)
@@ -2403,7 +2411,7 @@ function DecisionBar({
           <Explained why={format(m.reviewTipEscalate)}>
             <Button
               variant="outline"
-              className={cn(KEY, !fine && 'h-11')}
+              className={cn(!fine && TOUCH_KEY)}
               onClick={() => onDialog('escalate')}
             >
               {format(m.reviewEscalate)}
@@ -2416,8 +2424,7 @@ function DecisionBar({
             <Button
               variant="outline"
               className={cn(
-                KEY,
-                !fine && 'h-11',
+                !fine && TOUCH_KEY,
                 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70',
               )}
               onClick={() => onDialog('reject')}
@@ -2432,8 +2439,7 @@ function DecisionBar({
             <Button
               variant="outline"
               className={cn(
-                KEY,
-                !fine && 'h-11',
+                !fine && TOUCH_KEY,
                 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
                 armed === 'approve' && 'ring-2 ring-emerald-500/40',
               )}
@@ -2494,15 +2500,17 @@ function DecisionBar({
 }
 
 /**
- * How the decision keys sit: taller and roomier where they are pressed with
- * a thumb, and their own width either way.
+ * How the decision keys sit under a thumb: taller and roomier, at every
+ * width - the shape follows the pointer, never the window. A width rule
+ * here meant a desktop window dragged narrower watched the keys grow and
+ * the type shrink mid-drag, which reads as breakage, not adaptation.
  *
  * Not a shared row. Sharing looks right only while the keys happen to fit
  * one line, and how many there are is the route's business - the first set
  * with five in it put four on one line and stretched the fifth across the
  * next, which made the one left over read as the important one.
  */
-const KEY = 'max-lg:h-11 max-lg:px-3.5 max-lg:text-[13px]'
+const TOUCH_KEY = 'h-11 px-3.5 text-[13px]'
 
 /** how long a thumb has to stay down before the decision goes out */
 const HOLD_MS = 900
@@ -2574,8 +2582,10 @@ function HoldToSubmit({
       onPointerCancel={stop}
       onContextMenu={(event) => event.preventDefault()}
       // a row of its own under a thumb; on a tablet's wider bar it stands in
-      // the row where the submit key stands for a mouse
-      className="relative flex h-12 w-full shrink-0 touch-none items-center justify-center overflow-hidden rounded-xl border font-medium select-none disabled:opacity-60 max-lg:order-last max-lg:basis-full lg:h-11 lg:w-44 lg:rounded-lg"
+      // the row where the submit key stands for a mouse. The same height as
+      // the keys above it either way - two heights in one bar read as a
+      // mistake, not an emphasis.
+      className="relative flex h-11 w-full shrink-0 touch-none items-center justify-center overflow-hidden rounded-lg border font-medium select-none disabled:opacity-60 max-lg:order-last max-lg:basis-full lg:w-44"
     >
       <span
         aria-hidden
