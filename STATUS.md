@@ -6691,3 +6691,13 @@ void-races 在 CI 上偶发红:decideReview 里为合议加的 `lockReviewInstan
 一边后 voidItem 静默回滚,断言 `item.status = voided` 读到 active。修复:实例行锁挪到
 `lockBatch` 之后(与全部写路径同序,合议投票的串行化不受影响,注释记下教训)。
 void-races 连跑三次全绿;`pnpm typecheck` 零错;`pnpm test` 98 files / 691 passed;prettier 全绿。
+
+### 更早轮次行窄列溢出修复(2026-08-21 追加)
+
+审核流程栏的「更早轮次」行在窄列上把退回原因挤到零宽、带秒时钟溢出卡片外:行是
+`[轮次 chip][原因 flex-1 truncate][时钟 shrink-0]` 的单行 flex,两端 shrink-0 之和超过列宽时
+truncate 只吃中间。改为 flex-wrap:原因保底 `basis-36` 并带 title 全文,放不下时时钟
+`ml-auto` 落到自己一行——按列宽自适应,不吃原因也不出卡。浏览器回归例(1024 三栏最窄列):
+每行 scrollWidth ≤ clientWidth、原因宽度 > 60px、卡片自身无横向溢出;红验证过
+(还原单行布局该例即红,原因被压到 45px)。`pnpm test:browser` 11 files / 86 passed;
+`pnpm typecheck` 零错;prettier 全绿。

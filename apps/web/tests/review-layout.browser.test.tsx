@@ -359,6 +359,62 @@ const onLadder = () => ({
   },
 })
 
+/** the same round returning with history behind it: a prior verdict and older rounds */
+const withHistory = () => ({
+  ...review,
+  context: {
+    ...review.context,
+    previous: {
+      roundNo: 4,
+      kind: 'rerouted',
+      reason: null,
+      comment: null,
+      actorName: null,
+      at: '2026-08-20T15:49:37.000Z',
+    },
+    earlier: [
+      {
+        roundNo: 3,
+        kind: 'cancelled-by-submitter',
+        reason: null,
+        actorName: null,
+        at: '2026-08-20T12:47:52.000Z',
+      },
+      {
+        roundNo: 1,
+        kind: 'rejected',
+        reason: '相关时间不在有效范围内',
+        actorName: '示例辅导员',
+        at: '2026-08-20T10:13:27.000Z',
+      },
+    ],
+  },
+})
+
+describe('the history under the flow pane', () => {
+  it('keeps the grounds readable and the clock inside the card, however narrow the column', async () => {
+    // three columns at exactly the beside breakpoint: the flow column at
+    // its narrowest real width, where the second-bearing clock used to run
+    // out of the card and squeeze the grounds to nothing
+    page.viewport(1024, 900)
+    open({ getReviewInstance: () => Effect.succeed({ review: withHistory() }) })
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+
+    const rows = page.getByTestId('earlier-row').elements()
+    expect(rows.length).toBe(2)
+    for (const row of rows) {
+      // nothing leaves the row's own box
+      expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+    }
+    // the grounds keep readable width rather than being truncated away
+    const grounds = page.getByText('相关时间不在有效范围内').first().element() as HTMLElement
+    expect(grounds.getBoundingClientRect().width).toBeGreaterThan(60)
+    // and the card itself holds everything, clock included
+    const card = grounds.closest('[class*="rounded-xl"]') as HTMLElement
+    expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth + 1)
+  })
+})
+
 describe('the escalation environment', () => {
   it('wears the caution band, names the steps, and hands the judge every earlier opinion', async () => {
     page.viewport(1440, 900)

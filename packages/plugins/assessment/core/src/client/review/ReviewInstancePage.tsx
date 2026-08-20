@@ -1501,19 +1501,33 @@ const FlowColumn = memo(function FlowColumn({
                     says exactly what happened. */}
                 {earlier.map((one, index) => {
                   const took = one.kind === 'cancelled-by-submitter'
+                  const grounds = took
+                    ? format(m.reviewEarlierWithdrawn)
+                    : (one.reason ?? format(m.reviewEarlierReturned))
                   return (
-                    <span key={index} className="flex items-baseline gap-2 text-sm">
+                    // Wrap by the column's own width, never squeeze: the
+                    // grounds are the row's point and keep a floor of their
+                    // own; when the line cannot also hold the clock, the
+                    // clock drops to its own line instead of erasing the
+                    // grounds or running out of the card.
+                    <span
+                      key={index}
+                      data-testid="earlier-row"
+                      className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm"
+                    >
                       <span className="shrink-0 text-xs text-muted-foreground">
                         {format(m.reviewStateRound, { round: one.roundNo })}
                       </span>
                       <span
-                        className={cn('min-w-0 flex-1 truncate', took && 'text-muted-foreground')}
+                        title={grounds}
+                        className={cn(
+                          'min-w-0 flex-1 basis-36 truncate',
+                          took && 'text-muted-foreground',
+                        )}
                       >
-                        {took
-                          ? format(m.reviewEarlierWithdrawn)
-                          : (one.reason ?? format(m.reviewEarlierReturned))}
+                        {grounds}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
                         {timeLabel(one.at)}
                       </span>
                     </span>
