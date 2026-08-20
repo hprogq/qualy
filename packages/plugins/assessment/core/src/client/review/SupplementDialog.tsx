@@ -181,9 +181,11 @@ export function SupplementDialog({
             <PlusIcon aria-hidden />
             {format(m.supplementAddFile)}
             {fine && (
+              // outlined, because the outline button's own wash is the same
+              // grey the chip defaults to, and the key vanished into it
               <KbdGroup>
-                <Kbd>⌥</Kbd>
-                <Kbd>F</Kbd>
+                <Kbd className="border bg-background">⌥</Kbd>
+                <Kbd className="border bg-background">F</Kbd>
               </KbdGroup>
             )}
           </Button>
@@ -192,8 +194,8 @@ export function SupplementDialog({
             {format(m.supplementAddText)}
             {fine && (
               <KbdGroup>
-                <Kbd>⌥</Kbd>
-                <Kbd>T</Kbd>
+                <Kbd className="border bg-background">⌥</Kbd>
+                <Kbd className="border bg-background">T</Kbd>
               </KbdGroup>
             )}
           </Button>

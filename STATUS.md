@@ -6528,6 +6528,8 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
   计数胶囊)——原来那列 32px 灰头像配黑圈像一排遗照,「谁在等」本来就是展开列表的答案,折叠态
   只有「几个在等」是诚实的。
 - 决定键行左内边距对齐调整(px-3 → 与内容列一致)。
+- 补:⌥F/⌥T 角标在 outline 按钮的灰底上靠色不可见(Kbd 默认 bg-muted ≈ 按钮 bg-input/30),
+  改白底加边线。
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 676 passed / 17 skipped;
 `pnpm test:browser` 10 files / 80 passed(补充材料键盘 1 例新增);`pnpm build` 通过;prettier 全绿。
