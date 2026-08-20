@@ -6683,3 +6683,11 @@ approved` 标记,全史扫描在 CI 红了。补上标记(注释行,不动语句
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 691 passed;`pnpm test:browser` 85 passed;
 `qualy database drop-guard` 全史 37 文件通过;prettier 全绿。
+
+### CI 死锁修复:实例行锁挪到批次锁之后(2026-08-21 追加)
+
+void-races 在 CI 上偶发红:decideReview 里为合议加的 `lockReviewInstance` 拿锁顺序是
+「实例行 → 批次」,而 void/重构/撤回路径是「批次 → 实例行 UPDATE」——ABBA 死锁,PG 杀掉
+一边后 voidItem 静默回滚,断言 `item.status = voided` 读到 active。修复:实例行锁挪到
+`lockBatch` 之后(与全部写路径同序,合议投票的串行化不受影响,注释记下教训)。
+void-races 连跑三次全绿;`pnpm typecheck` 零错;`pnpm test` 98 files / 691 passed;prettier 全绿。

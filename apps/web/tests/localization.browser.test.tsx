@@ -229,8 +229,8 @@ describe('the words themselves', () => {
     // every reading. Both halves are copy, and both are the subject here -
     // the submission names the version it carried, and the version node
     // states its outcome rather than reading as its object.
-    await expect.element(page.getByText('你提交第 1 版申报进行审核')).toBeVisible()
-    await expect.element(page.getByText('你创建了申报内容，生成第 1 版')).toBeVisible()
+    await expect.element(page.getByText('你提交了第 1 版材料，发起审核')).toBeVisible()
+    await expect.element(page.getByText('你填写了申报，生成第 1 版材料')).toBeVisible()
     await expect.element(page.getByText(/王老师/)).toBeVisible()
   })
 
