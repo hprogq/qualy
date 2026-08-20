@@ -342,7 +342,7 @@ export default {
   'assessment/time/yesterday': '昨天',
   'assessment/entry/submitted-toast': '已提交审核。',
   'assessment/entry/draft-saved-toast': '草稿已保存。',
-  'assessment/entry/withdrawn-toast': '已撤回，恢复为草稿。',
+  'assessment/entry/withdrawn-toast': '已撤回，该条目已恢复为草稿状态。',
   'assessment/entry/abandoned-toast': '已放弃申报。',
   'assessment/review/tip-approve-mid': '通过当前审核环节，交由下一复核节点处理',
   'assessment/review/tip-reject-mid': '记录不同意见，交由下一复核环节裁决',
