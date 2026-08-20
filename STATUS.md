@@ -6727,3 +6727,11 @@ truncate 只吃中间。改为 flex-wrap:原因保底 `basis-36` 并带 title �
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 691 passed / 17 skipped;
 `pnpm test:browser` 11 files / 87 passed(题目卡链条 1 例新增);prettier 全绿。
+
+### shell 套件 CI 抖动:合成 Escape 换真实按键(2026-08-21 追加)
+
+「seats the person at the drawer head」在 CI 偶发找不到「导航」键:合成
+`document.body.dispatchEvent(KeyboardEvent)` 关抽屉,退场动画在负载下被打断时 radix 的
+aria-hidden 滞留在页面上,role 查询看不见导航栏。改为 `userEvent.keyboard('{Escape}')`
+真实按键路径,并在重开前 poll 到 dialog 真正离场。本地连跑三次全绿;
+`pnpm test:browser` 11 files / 87 passed。

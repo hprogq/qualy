@@ -1,6 +1,6 @@
 import { lazy } from 'react'
 import { describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { components } from 'virtual:qualy/plugins'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -302,8 +302,13 @@ describe('the workspace shell', () => {
 
     // one identity, told once: the folded top bar's account corner asked at
     // page entry, and the drawer reads that answer instead of asking again -
-    // however many times it opens
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    // however many times it opens. A real Escape, not a synthetic event: the
+    // drawer closes through the same path a person's key takes, and the
+    // reopen waits for the dialog to actually be gone - an exit animation
+    // interrupted mid-flight leaves the page aria-hidden, where no role
+    // query can see the bar it is asking for.
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => page.getByRole('dialog').elements().length).toBe(0)
     await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
     await page.getByRole('button', { name: '导航' }).click()
     await expect.element(page.getByRole('dialog').getByText('林知远')).toBeVisible()
