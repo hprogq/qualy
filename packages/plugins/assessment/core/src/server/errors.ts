@@ -171,6 +171,8 @@ export class ItemChangeDecisionRequired extends Schema.TaggedErrorClass<ItemChan
       blocked: Schema.Number,
       sameStageMappable: Schema.Number,
       stageRemoved: Schema.Number,
+      /** mappable rounds whose walked-so-far differs under the new policy */
+      pastChanged: Schema.Number,
     }),
   },
   { httpApiStatus: 409, identifier: 'AssessmentItemChangeDecisionRequired' },

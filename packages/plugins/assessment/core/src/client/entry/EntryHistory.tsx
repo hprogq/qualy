@@ -15,25 +15,42 @@ import { AttachmentLink } from './AttachmentLink.tsx'
 import { fieldsOf } from './model.ts'
 import { ownReviewEventMessage, reviewEventMessage } from '../review/events.ts'
 
-// The whole account of one claim, as one line down the page.
+// The whole account of one claim, read the way records are read: newest
+// first, all the way down - and grouped by the unit a reader actually
+// reasons about, which is the review round.
 //
-// It used to nest: a box per version, a box per round inside it, a box per
-// event inside that - three borders deep, and the reader had to collate the
-// order themselves. It is one story and it happened in one order, so it is
-// drawn as one thread with a node per thing that happened, newest first.
-// What kind of thing each node is, it says in its own words; a rejection's
-// suggestion is a block of its own, marked as advice, because it is the one
-// thing here that is not a fact about the past.
+// A round is a section, not a badge beside every line. Rounds run newest
+// first; inside one, its own moments run newest first too, so the top of a
+// section says how the round stands or ended and the bottom says how it
+// began. Both ends are said in so many words - "this round began", "this
+// round ended" - because a lifecycle a reader must infer from event
+// wording is one they will infer wrongly. A policy re-route is one act
+// that ends one round and opens the next: the old section closes with
+// where the work went, the new one opens with where it came from, and the
+// same administrator's act is never listed as two.
 
-/** one thing that happened to a claim, whatever kind of thing it was */
+/** one thing that happened, whatever kind of thing it was */
 interface Node {
   readonly key: string
   readonly at: string
-  readonly kind: 'version' | 'act' | 'ask' | 'answer' | 'suggestion'
+  /** its place in the served ascending order, for same-instant ordering */
+  readonly seq: number
+  readonly kind: 'version' | 'act' | 'ask' | 'answer' | 'suggestion' | 'transition'
   /** how loudly the thread marks it: a decision against you, or the newest word */
   readonly weight: 'plain' | 'strong' | 'alert'
   readonly render: () => ReactNode
 }
+
+/** a round's worth of nodes, or one thing that belongs to no round */
+type TrailItem =
+  | {
+      readonly kind: 'round'
+      readonly key: string
+      readonly at: string
+      readonly round: Round
+      readonly nodes: readonly Node[]
+    }
+  | { readonly kind: 'loose'; readonly key: string; readonly at: string; readonly node: Node }
 
 export function EntryHistory({
   open,
@@ -133,84 +150,163 @@ type Supplement = Round['supplements'][number]
 
 function Trail({ data, subject }: { data: History; subject: string | undefined }) {
   const { format } = useI18n()
-  const nodes = useNodes(data, subject)
-  if (nodes.length === 0) {
+  const items = useTrail(data, subject)
+  if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">{format(m.entryTrailEmpty)}</p>
   }
   return (
-    <div className="flex flex-col gap-4 text-sm">
-      {/* the thread itself: one border, and every node hangs a dot on it */}
-      <div className="ml-[5px] flex flex-col border-l pl-5">
-        {nodes.map((node) => (
-          <div
-            key={node.key}
-            // what kind of thing happened, said as a fact: a test about the
-            // account's shape asks for the nodes, not for their sentences
-            data-testid="trail-node"
-            data-kind={node.kind}
-            className="relative flex min-w-0 flex-col gap-1.5 pb-5"
+    <div className="flex flex-col gap-5 text-sm">
+      {items.map((item) =>
+        item.kind === 'round' ? (
+          <section
+            key={item.key}
+            data-testid="trail-round"
+            data-round-no={item.round.roundNo}
+            data-standing={item.round.state === 'completed' ? 'ended' : 'ongoing'}
+            className="flex flex-col gap-3"
           >
-            <span
-              aria-hidden
-              className={cn(
-                'absolute top-1 -left-[25px] size-[9px] rounded-full border-[1.5px]',
-                node.weight === 'alert'
-                  ? 'border-destructive bg-destructive'
-                  : node.weight === 'strong'
-                    ? 'border-foreground bg-foreground'
-                    : 'border-muted-foreground bg-background',
-              )}
-            />
-            {node.render()}
-          </div>
-        ))}
-      </div>
+            <div className="flex items-baseline gap-2">
+              <h4 className="text-sm font-semibold">
+                {format(m.entryTrailRound, { no: item.round.roundNo })}
+              </h4>
+              <Badge variant={item.round.state === 'completed' ? 'secondary' : 'outline'}>
+                {format(item.round.state === 'completed' ? m.entryRoundEnded : m.entryRoundOngoing)}
+              </Badge>
+            </div>
+            <Thread nodes={item.nodes} />
+          </section>
+        ) : (
+          <Thread key={item.key} nodes={[item.node]} />
+        ),
+      )}
     </div>
   )
 }
 
+/** one border, and every node hangs a dot on it */
+function Thread({ nodes }: { nodes: readonly Node[] }) {
+  return (
+    <div className="ml-[5px] flex flex-col border-l pl-5">
+      {nodes.map((node) => (
+        <div
+          key={node.key}
+          // what kind of thing happened, said as a fact: a test about the
+          // account's shape asks for the nodes, not for their sentences
+          data-testid="trail-node"
+          data-kind={node.kind}
+          className="relative flex min-w-0 flex-col gap-1.5 pb-5 last:pb-1"
+        >
+          <span
+            aria-hidden
+            className={cn(
+              'absolute top-1 -left-[25px] size-[9px] rounded-full border-[1.5px]',
+              node.weight === 'alert'
+                ? 'border-destructive bg-destructive'
+                : node.weight === 'strong'
+                  ? 'border-foreground bg-foreground'
+                  : 'border-muted-foreground bg-background',
+            )}
+          />
+          {node.render()}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** newest first; the served order breaks the ties one transaction leaves */
+const newestFirst = (a: { at: string; seq: number }, b: { at: string; seq: number }) =>
+  Date.parse(b.at) - Date.parse(a.at) || b.seq - a.seq
+
 /**
- * Everything that happened, in one order.
- *
- * Versions, decisions, requests for material and the answers to them are
- * four tables and one story; they are merged on the only thing they all
- * carry, which is when they happened. Ties keep the order the server listed
- * them in, so two things recorded in the same transaction still read the way
- * they were written.
+ * The account as sections: one per round, newest round first, each round's
+ * own moments newest first inside it - plus, between them, whatever belongs
+ * to no round (a version drafted and never submitted, an administrator's
+ * hand on the claim itself).
  */
-function useNodes(data: History, subject: string | undefined): readonly Node[] {
+function useTrail(data: History, subject: string | undefined): readonly TrailItem[] {
   const { format } = useI18n()
-  const nodes: Node[] = []
-  const roundOfRevision = new Map<string, number>()
+  // the round a version opened, for seating the version inside it
+  const roundOfRevision = new Map<string, Round>()
   for (const round of data.rounds) {
-    if (!roundOfRevision.has(round.revisionId)) roundOfRevision.set(round.revisionId, round.roundNo)
+    if (!roundOfRevision.has(round.revisionId)) roundOfRevision.set(round.revisionId, round)
+  }
+  const byId = new Map(data.rounds.map((round) => [round.id, round]))
+  const successorOf = new Map<string, Round>()
+  for (const round of data.rounds) {
+    if (round.supersedesInstanceId !== null) {
+      const before = byId.get(round.supersedesInstanceId)
+      if (before !== undefined) successorOf.set(before.id, round)
+    }
+  }
+  /** the administrator's stated reason for a re-route, off the old round's own event */
+  const rerouteReasonOf = (round: Round): string | null => {
+    const before =
+      round.supersedesInstanceId === null ? undefined : byId.get(round.supersedesInstanceId)
+    const said = [...(before?.events ?? [])].reverse().find((event) => event.kind === 'rerouted')
+    return said?.comment ?? null
   }
 
-  for (const revision of data.revisions) {
-    nodes.push({
-      key: `v:${revision.id}`,
-      at: revision.createdAt,
-      kind: 'version',
-      weight: 'plain',
-      render: () => (
-        <Version
-          revision={revision}
-          openedRound={roundOfRevision.get(revision.id)}
-          subject={subject}
-        />
-      ),
-    })
-  }
+  const items: TrailItem[] = []
+  let seq = 0
 
   for (const round of data.rounds) {
-    for (const [index, event] of round.events.entries()) {
+    const nodes: Node[] = []
+    // a legacy re-routed round carried a copy of the administrator's event;
+    // the section opener below says the same thing once
+    const events = round.events.filter(
+      (event) => !(round.origin === 'reroute' && event.kind === 'rerouted'),
+    )
+    const opener = roundOfRevision.get(round.revisionId)?.id === round.id ? 'version' : 'event'
+    const ended = round.state === 'completed'
+
+    if (round.origin === 'reroute') {
+      // the section's own opener: one act of the administrator's, told as
+      // where this round came from rather than as a second copy of it
+      nodes.push({
+        key: `t:${round.id}`,
+        at: round.submittedAt,
+        seq: seq++,
+        kind: 'transition',
+        weight: 'plain',
+        render: () => (
+          <RerouteStart
+            no={round.roundNo}
+            from={
+              round.supersedesInstanceId === null
+                ? null
+                : (byId.get(round.supersedesInstanceId)?.roundNo ?? null)
+            }
+            reason={rerouteReasonOf(round)}
+            at={round.submittedAt}
+          />
+        ),
+      })
+    }
+
+    for (const [index, event] of events.entries()) {
       const decisive = event.kind === 'rejected' || event.kind === 'revision-required'
+      const opensRound = round.origin !== 'reroute' && opener === 'event' && index === 0
+      const endsRound = ended && index === events.length - 1
       nodes.push({
         key: `e:${round.id}:${index}`,
         at: event.at,
+        seq: seq++,
         kind: 'act',
         weight: decisive ? 'alert' : event.kind === 'approved' ? 'strong' : 'plain',
-        render: () => <Act event={event} roundNo={round.roundNo} subject={subject} />,
+        render: () => (
+          <Act
+            event={event}
+            subject={subject}
+            roundNo={round.roundNo}
+            marker={endsRound ? 'ended' : opensRound ? 'started' : undefined}
+            continuedBy={
+              endsRound && event.kind === 'rerouted'
+                ? (successorOf.get(round.id)?.roundNo ?? null)
+                : null
+            }
+          />
+        ),
       })
       // advice, not a fact about the past: its own block, and it says so
       if (event.suggestedPayload != null) {
@@ -218,6 +314,7 @@ function useNodes(data: History, subject: string | undefined): readonly Node[] {
         nodes.push({
           key: `s:${round.id}:${index}`,
           at: event.at,
+          seq: seq++,
           kind: 'suggestion',
           weight: 'plain',
           render: () => (
@@ -230,10 +327,12 @@ function useNodes(data: History, subject: string | undefined): readonly Node[] {
         })
       }
     }
+
     for (const supplement of round.supplements) {
       nodes.push({
         key: `a:${supplement.id}`,
         at: supplement.requestedAt,
+        seq: seq++,
         kind: 'ask',
         weight: supplement.status === 'open' ? 'alert' : 'plain',
         render: () => <Ask supplement={supplement} subject={subject} />,
@@ -243,6 +342,7 @@ function useNodes(data: History, subject: string | undefined): readonly Node[] {
         nodes.push({
           key: `r:${supplement.id}`,
           at: supplement.response.respondedAt,
+          seq: seq++,
           kind: 'answer',
           weight: 'strong',
           render: () => (
@@ -255,26 +355,90 @@ function useNodes(data: History, subject: string | undefined): readonly Node[] {
         })
       }
     }
+
+    // the version that opened this round sits at its foot: what was filed
+    // is how the round began
+    if (opener === 'version') {
+      const revision = data.revisions.find((one) => one.id === round.revisionId)
+      if (revision !== undefined) {
+        nodes.push({
+          key: `v:${revision.id}`,
+          at: revision.createdAt,
+          seq: -1,
+          kind: 'version',
+          weight: 'plain',
+          render: () => (
+            <Version
+              revision={revision}
+              subject={subject}
+              marker="started"
+              markerNo={round.roundNo}
+            />
+          ),
+        })
+      }
+    }
+
+    nodes.sort(newestFirst)
+    items.push({
+      kind: 'round',
+      key: `round:${round.id}`,
+      at: nodes[0]?.at ?? round.submittedAt,
+      round,
+      nodes,
+    })
+  }
+
+  // versions no round ever judged: drafts still on the desk, edits between
+  for (const revision of data.revisions) {
+    if (roundOfRevision.has(revision.id)) continue
+    items.push({
+      kind: 'loose',
+      key: `v:${revision.id}`,
+      at: revision.createdAt,
+      node: {
+        key: `v:${revision.id}`,
+        at: revision.createdAt,
+        seq: seq++,
+        kind: 'version',
+        weight: 'plain',
+        render: () => <Version revision={revision} subject={subject} />,
+      },
+    })
   }
 
   // what happened to the claim that no round explains - being sent back
   // because the question changed, most of all
   for (const [index, event] of data.events.entries()) {
-    nodes.push({
+    items.push({
+      kind: 'loose',
       key: `o:${index}`,
       at: event.at,
-      kind: 'act',
-      weight: 'plain',
-      render: () => (
-        <div className="flex flex-col gap-1">
-          <Line title={actTitle(format, event, subject)} at={event.at} />
-          {event.reason !== null && <Quoted>{event.reason}</Quoted>}
-        </div>
-      ),
+      node: {
+        key: `o:${index}`,
+        at: event.at,
+        seq: seq++,
+        kind: 'act',
+        weight: 'plain',
+        render: () => (
+          <div className="flex flex-col gap-1">
+            <Line title={actTitle(format, event, subject)} at={event.at} />
+            {event.reason !== null && <Quoted>{event.reason}</Quoted>}
+          </div>
+        ),
+      },
     })
   }
 
-  return nodes.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+  // Sections and loose pieces share one clock, newest first. A re-route
+  // ends one round and opens the next in the same instant, so the tie goes
+  // to the higher round: the section that says where the work went sits
+  // under the one that says where it now is.
+  return items.sort(
+    (a, b) =>
+      Date.parse(b.at) - Date.parse(a.at) ||
+      (b.kind === 'round' ? b.round.roundNo : -1) - (a.kind === 'round' ? a.round.roundNo : -1),
+  )
 }
 
 /** the head of a node: what it is, and when - always in that order */
@@ -303,6 +467,24 @@ function Line({
   )
 }
 
+/**
+ * The round's own lifecycle, said in so many words rather than inferred -
+ * and by number, because "this round" under an ended section reads as the
+ * one currently running.
+ */
+function LifecycleMark({ marker, no }: { marker: 'started' | 'ended'; no: number }) {
+  const { format } = useI18n()
+  return (
+    <p
+      data-testid="round-mark"
+      data-mark={marker}
+      className="text-xs font-medium text-muted-foreground"
+    >
+      {format(marker === 'started' ? m.entryRoundStartedMark : m.entryRoundEndedMark, { no })}
+    </p>
+  )
+}
+
 /** somebody's own words, quoted rather than restated */
 function Quoted({ children, tone }: { children: ReactNode; tone?: 'alert' }) {
   return (
@@ -317,14 +499,43 @@ function Quoted({ children, tone }: { children: ReactNode; tone?: 'alert' }) {
   )
 }
 
+/** how a re-routed round begins: where it came from, and on whose word */
+function RerouteStart({
+  no,
+  from,
+  reason,
+  at,
+}: {
+  no: number
+  from: number | null
+  reason: string | null
+  at: string
+}) {
+  const { format } = useI18n()
+  return (
+    <div className="flex flex-col gap-1">
+      <Line title={format(m.entryRoundReroutedStart)} at={at} />
+      <LifecycleMark marker="started" no={no} />
+      {from !== null && (
+        <p className="text-xs text-muted-foreground">
+          {format(m.entryRoundReroutedFrom, { no: from })}
+        </p>
+      )}
+      {reason !== null && reason !== '' && <Quoted>{reason}</Quoted>}
+    </div>
+  )
+}
+
 function Version({
   revision,
-  openedRound,
   subject,
+  marker,
+  markerNo,
 }: {
   revision: Revision
-  openedRound: number | undefined
   subject: string | undefined
+  marker?: 'started'
+  markerNo?: number
 }) {
   const { format } = useI18n()
   return (
@@ -335,24 +546,17 @@ function Version({
             ? format(m.entryTrailVersion, { no: revision.revisionNo })
             : format(m.entryTrailVersionBy, { who: subject, no: revision.revisionNo })
         }
-        aside={
-          openedRound === undefined ? undefined : (
-            <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-              {format(m.entryTrailRoundOpened, { no: openedRound })}
-            </p>
-          )
-        }
         at={revision.createdAt}
       />
-      <PayloadLines payload={revision.payload} formConfig={revision.formConfig} />
+      {marker !== undefined && markerNo !== undefined && (
+        <LifecycleMark marker={marker} no={markerNo} />
+      )}
+      <FiledFields
+        payload={revision.payload}
+        formConfig={revision.formConfig}
+        attachments={revision.attachments}
+      />
       {revision.note !== null && <p className="text-muted-foreground">{revision.note}</p>}
-      {revision.attachments.map((attachment) => (
-        <AttachmentLink
-          key={attachment.attachmentId}
-          attachmentId={attachment.attachmentId}
-          variant="line"
-        />
-      ))}
     </>
   )
 }
@@ -378,27 +582,36 @@ const actTitle = (
 
 function Act({
   event,
-  roundNo,
   subject,
+  roundNo,
+  marker,
+  continuedBy,
 }: {
   event: Round['events'][number]
-  roundNo: number
   subject: string | undefined
+  roundNo: number
+  /** whether this act is the round's own beginning or end */
+  marker?: 'started' | 'ended' | undefined
+  /** the round that carries on from here, when a re-route ended this one */
+  continuedBy?: number | null
 }) {
   const { format } = useI18n()
   return (
     <>
       <Line title={actTitle(format, event, subject)} at={event.at} />
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs whitespace-nowrap text-muted-foreground">
-          {format(m.entryTrailRound, { no: roundNo })}
-        </span>
-        {event.reason !== null && (
+      {marker !== undefined && <LifecycleMark marker={marker} no={roundNo} />}
+      {continuedBy != null && (
+        <p className="text-xs text-muted-foreground">
+          {format(m.entryRoundReroutedNext, { no: continuedBy })}
+        </p>
+      )}
+      {event.reason !== null && (
+        <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary" className="font-normal">
             {format(m.entryTrailReason, { value: event.reason })}
           </Badge>
-        )}
-      </div>
+        </div>
+      )}
       {event.comment !== null && event.comment !== '' && <Quoted>{event.comment}</Quoted>}
     </>
   )
@@ -521,7 +734,7 @@ function Suggestion({
           {format(m.entrySuggestionAdvisory)}
         </p>
       </div>
-      <PayloadLines payload={payload} formConfig={formConfig} />
+      <FiledFields payload={payload} formConfig={formConfig} />
       <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
         {format(subject === undefined ? m.entrySuggestionHint : m.entrySuggestionHintOut)}
       </p>
@@ -530,54 +743,102 @@ function Suggestion({
 }
 
 /**
- * Business data as the person filed it, under the names they answered.
- *
- * The account is of what was filed, so every value in the payload gets a
- * row: a form edited afterwards no longer names some of them, and those
- * stand under their raw handle rather than leaving the history short. Only
- * labels are free text - the keys are what the form guarantees unique.
+ * Business data as the person filed it, under the names they answered, in
+ * the order the form asked - file fields included. Files used to be pulled
+ * out and stacked at the bottom, which turned "certificate" and "photo of
+ * the award" into one anonymous pile; each file field keeps its place and
+ * its files sit under its own name. Values the form no longer names stand
+ * under their raw handle, and files nothing cites any more close the list:
+ * the account must never come up short.
  */
-function PayloadLines({ payload, formConfig }: { payload: unknown; formConfig?: unknown }) {
+function FiledFields({
+  payload,
+  formConfig,
+  attachments,
+}: {
+  payload: unknown
+  formConfig?: unknown
+  attachments?: readonly { readonly attachmentId: string }[]
+}) {
   const { format } = useI18n()
   if (typeof payload !== 'object' || payload === null) return null
   const record = payload as Record<string, unknown>
   const fields = fieldsOf(formConfig ?? null)
-  const named = fields.filter((field) => field.type !== 'attachment')
-  const labels = new Map(named.map((field) => [field.key, field.label]))
-  // cited files are listed as files, not as a line of ids
-  const cited = new Set(
-    fields.filter((field) => field.type === 'attachment').map((field) => field.key),
-  )
-  const keys = [
-    ...named.map((field) => field.key),
-    ...Object.keys(record).filter((key) => !labels.has(key) && !cited.has(key)),
-  ]
-  const rows = keys.flatMap((key) => {
-    const value = record[key]
+  const known = new Set(fields.map((field) => field.key))
+  const filesOf = (value: unknown): readonly string[] =>
+    Array.isArray(value) ? value.filter((one): one is string => typeof one === 'string') : []
+  const rows: {
+    key: string
+    label: string
+    value: { kind: 'text'; text: string } | { kind: 'files'; ids: readonly string[] }
+  }[] = []
+  for (const field of fields) {
+    const value = record[field.key]
+    if (field.type === 'attachment') {
+      const ids = filesOf(value)
+      if (ids.length > 0)
+        rows.push({ key: field.key, label: field.label, value: { kind: 'files', ids } })
+      continue
+    }
     // a field somebody filled and then cleared is part of what they filed:
     // the row stands and says it is empty, rather than reading as a field
     // that was never there
-    return typeof value === 'string' ? [{ key, label: labels.get(key) ?? key, value }] : []
-  })
-  if (rows.length === 0) return null
+    if (typeof value === 'string') {
+      rows.push({ key: field.key, label: field.label, value: { kind: 'text', text: value } })
+    }
+  }
+  for (const key of Object.keys(record)) {
+    if (known.has(key)) continue
+    const value = record[key]
+    if (typeof value === 'string') {
+      rows.push({ key, label: key, value: { kind: 'text', text: value } })
+    }
+  }
+  // files this version carries that no field claims any more: still filed,
+  // so still shown, at the end rather than nowhere
+  const cited = new Set(rows.flatMap((row) => (row.value.kind === 'files' ? row.value.ids : [])))
+  const orphaned = (attachments ?? []).map((one) => one.attachmentId).filter((id) => !cited.has(id))
+  if (rows.length === 0 && orphaned.length === 0) return null
   return (
-    <dl className="grid grid-cols-[4rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
-      {rows.map((row) => (
-        <div key={row.key} className="col-span-2 grid grid-cols-subgrid">
-          <dt className="min-w-0 truncate text-muted-foreground">{row.label}</dt>
-          <dd className={cn('min-w-0', row.value === '' && 'text-muted-foreground')}>
-            {row.value === '' ? format(m.entryFieldCleared) : row.value}
-          </dd>
-        </div>
+    <div className="flex flex-col gap-1.5">
+      <dl className="grid grid-cols-[4rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+        {rows.map((row) => (
+          <div key={row.key} className="col-span-2 grid grid-cols-subgrid">
+            <dt className="min-w-0 truncate text-muted-foreground">{row.label}</dt>
+            {row.value.kind === 'text' ? (
+              <dd className={cn('min-w-0', row.value.text === '' && 'text-muted-foreground')}>
+                {row.value.text === '' ? format(m.entryFieldCleared) : row.value.text}
+              </dd>
+            ) : (
+              <dd className="flex min-w-0 flex-col gap-1">
+                {row.value.ids.map((attachmentId) => (
+                  <AttachmentLink key={attachmentId} attachmentId={attachmentId} variant="line" />
+                ))}
+              </dd>
+            )}
+          </div>
+        ))}
+      </dl>
+      {orphaned.map((attachmentId) => (
+        <AttachmentLink key={attachmentId} attachmentId={attachmentId} variant="line" />
       ))}
-    </dl>
+    </div>
   )
 }
 
-const timeOf = (iso: string): string =>
-  new Date(iso).toLocaleString(undefined, {
+/**
+ * A record's clock: to the second, because records are compared and cited,
+ * and with the year whenever it is not this one - "12/31" across a year
+ * boundary reads as the wrong year with no warning.
+ */
+const timeOf = (iso: string): string => {
+  const then = new Date(iso)
+  return then.toLocaleString(undefined, {
+    ...(then.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
   })
+}

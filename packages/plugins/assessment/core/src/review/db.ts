@@ -1066,99 +1066,96 @@ export interface PreviousConclusionRow {
 }
 
 /**
- * The previous round's concluding word on the same entry: the latest event
- * that decided something on the newest earlier instance. Shown over a
- * resubmission so the reviewer reads it against what was asked last time.
- */
-export const previousConclusion = (tenantId: string, entryId: string, beforeRound: number) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('ReviewEvent as re')
-        .innerJoin('ReviewInstance as ri', (join) =>
-          join.onRef('ri.tenantId', '=', 're.tenantId').onRef('ri.id', '=', 're.reviewInstanceId'),
-        )
-        .leftJoin('User as u', (join) =>
-          join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
-        )
-        .select(['re.kind', 're.reason', 're.comment', 'u.displayName as actorName', 'ri.roundNo'])
-        .select([epoch('re.created_at').as('createdMs')])
-        .where('re.tenantId', '=', tenantId)
-        .where('ri.entryId', '=', entryId)
-        .where('ri.roundNo', '<', beforeRound)
-        .where('re.kind', 'in', [
-          'approved',
-          'rejected',
-          'returned-for-revision',
-          'revision-required',
-          'cancelled-by-submitter',
-        ])
-        .orderBy('ri.roundNo', 'desc')
-        .orderBy('re.createdAt', 'desc')
-        .orderBy('re.id', 'desc')
-        .limit(1)
-        .executeTakeFirst(),
-    )
-    .pipe(
-      Effect.map((row) =>
-        row === undefined
-          ? null
-          : ({
-              roundNo: row.roundNo,
-              kind: row.kind,
-              reason: row.reason,
-              comment: row.comment,
-              actorName: row.actorName,
-              createdAt: msOf(row.createdMs),
-            } satisfies PreviousConclusionRow),
-      ),
-    )
-
-/**
- * How every earlier round of this claim ended, newest first.
+ * Earlier rounds, one row per ROUND, never per event.
  *
- * The one before is shown in full; the ones before that are one line each -
- * a reviewer looking at a fourth submission wants to know whether the same
- * thing has been asked for three times, and that is a question the latest
- * round alone cannot answer.
+ * This used to be an event query with a whitelist of "conclusion kinds",
+ * and a round that ended a way the list did not name - a policy re-route,
+ * most recently - vanished from the workbench whole: the summary skipped to
+ * the round before it and presented that one's reasons as "the previous
+ * round". The round is the unit a reviewer reasons about, so the question
+ * is asked of review_instances: every earlier round exists exactly once
+ * here, and its concluding word is whatever its last event was - a kind
+ * nobody taught the display yet still shows up as a round that ended.
  */
-export const earlierConclusions = (tenantId: string, entryId: string, beforeRound: number) =>
+const roundSummaries = (tenantId: string, entryId: string, beforeRound: number) =>
   db
     .query((k) =>
       k
-        .selectFrom('ReviewEvent as re')
-        .innerJoin('ReviewInstance as ri', (join) =>
-          join.onRef('ri.tenantId', '=', 're.tenantId').onRef('ri.id', '=', 're.reviewInstanceId'),
+        .selectFrom('ReviewInstance as ri')
+        .leftJoinLateral(
+          (eb) =>
+            eb
+              .selectFrom('ReviewEvent as re')
+              .select(['re.kind', 're.reason', 're.comment', 're.actorId'])
+              .whereRef('re.tenantId', '=', 'ri.tenantId')
+              .whereRef('re.reviewInstanceId', '=', 'ri.id')
+              .orderBy('re.createdAt', 'desc')
+              .orderBy('re.id', 'desc')
+              .limit(1)
+              .as('last'),
+          (join) => join.onTrue(),
         )
         .leftJoin('User as u', (join) =>
-          join.onRef('u.tenantId', '=', 're.tenantId').onRef('u.id', '=', 're.actorId'),
+          join.onRef('u.tenantId', '=', 'ri.tenantId').onRef('u.id', '=', 'last.actorId'),
         )
-        .select(['ri.roundNo', 're.kind', 're.reason', 'u.displayName as actorName'])
-        .select([epoch('re.created_at').as('createdMs')])
-        .where('re.tenantId', '=', tenantId)
+        .select([
+          'ri.roundNo',
+          'ri.outcome',
+          'last.kind',
+          'last.reason',
+          'last.comment',
+          'u.displayName as actorName',
+        ])
+        .select([
+          sql<
+            number | null
+          >`(extract(epoch from coalesce(ri.completed_at, ri.created_at)) * 1000)::float8`.as(
+            'endedMs',
+          ),
+        ])
+        .where('ri.tenantId', '=', tenantId)
         .where('ri.entryId', '=', entryId)
         .where('ri.roundNo', '<', beforeRound)
-        .where('re.kind', 'in', [
-          'rejected',
-          'returned-for-revision',
-          'revision-required',
-          'cancelled-by-submitter',
-        ])
         .orderBy('ri.roundNo', 'desc')
-        .orderBy('re.createdAt', 'desc')
         .execute(),
     )
     .pipe(
       Effect.map((rows) =>
-        rows.map((row) => ({
+        rows.map((row): PreviousConclusionRow => ({
           roundNo: row.roundNo,
-          kind: row.kind,
-          reason: row.reason,
+          // the last event is the concluding word; a round somehow bare of
+          // events still reports how it ended rather than vanishing
+          kind: row.kind ?? row.outcome ?? 'completed',
+          reason: row.reason ?? null,
+          comment: row.comment ?? null,
           actorName: row.actorName,
-          at: msOf(row.createdMs),
+          createdAt: msOf(row.endedMs),
         })),
       ),
     )
+
+/** the round just before this one - exactly the one, whatever ended it */
+export const previousConclusion = (tenantId: string, entryId: string, beforeRound: number) =>
+  roundSummaries(tenantId, entryId, beforeRound).pipe(Effect.map((rows) => rows[0] ?? null))
+
+/**
+ * How every earlier round of this claim ended, newest first: one line per
+ * round - a reviewer looking at a fifth submission wants to know whether
+ * the same thing has been asked for three times, and a round must never be
+ * missing from that count because of how it happened to end.
+ */
+export const earlierConclusions = (tenantId: string, entryId: string, beforeRound: number) =>
+  roundSummaries(tenantId, entryId, beforeRound).pipe(
+    Effect.map((rows) =>
+      rows.map((row) => ({
+        roundNo: row.roundNo,
+        kind: row.kind,
+        reason: row.reason,
+        actorName: row.actorName,
+        at: row.createdAt,
+      })),
+    ),
+  )
 
 /**
  * Decisions this person recorded on this batch today, on the batch's own

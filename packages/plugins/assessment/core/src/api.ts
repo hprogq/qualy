@@ -410,6 +410,14 @@ const changeEffects = Schema.Struct({
       open: Schema.Literals(['keep', 'reroute-blocked', 'reroute-all']),
       /** a round whose current step the new policy no longer has */
       missingCurrentStage: Schema.Literals(['refuse', 'restart-route']),
+      /**
+       * Where migrated rounds land: at their current step (the default), or
+       * at the start of their own route - a full re-review under the new
+       * policy. Route, not process: a round already in escalation restarts
+       * escalation, because why it got there is a fact this edit cannot
+       * unmake.
+       */
+      landing: Schema.optional(Schema.Literals(['current-stage', 'route-start'])),
     }),
   ),
 })

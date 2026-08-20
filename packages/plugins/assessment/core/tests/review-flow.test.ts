@@ -1130,8 +1130,30 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const entry = yield* assessment.getEntry(f.t, stuck.entryId, f.principal(f.s1))
           // and the new round is one the stand-in can actually work
           const queue = yield* assessment.listReviewInbox(f.t, {}, f.principal(f.recorder))
+          // the administrator's one act stays one event, on the round it
+          // ended; the new round says how it began through origin alone
+          const saidPerRound = yield* runSql(sql`
+            select ri.round_no, re.kind from review_events re
+            join review_instances ri on ri.id = re.review_instance_id
+            where ri.entry_id = ${stuck.entryId}
+            order by ri.round_no, re.created_at, re.id`)
+          // the workbench summary names the round just before, whatever
+          // ended it: a re-routed round must never vanish from the account
+          const newRoundId = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from review_instances
+              where entry_id = ${stuck.entryId} and round_no = 2`),
+          ).id
+          const onNewRound = yield* assessment.getReviewInstance(
+            f.t,
+            newRoundId,
+            f.principal(f.recorder),
+          )
           return {
             report,
+            saidPerRound: (saidPerRound as { rows: { round_no: number; kind: string }[] }).rows,
+            previous: onNewRound.context?.previous ?? null,
+            earlier: onNewRound.context?.earlier ?? [],
             oldId: stuck.instanceId,
             rounds: (
               rounds as {
@@ -1153,7 +1175,21 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       ),
     )
 
-    expect(result.report.review).toMatchObject({ open: 1, blocked: 1, sameStageMappable: 1 })
+    expect(result.report.review).toMatchObject({
+      open: 1,
+      blocked: 1,
+      sameStageMappable: 1,
+      pastChanged: 0,
+    })
+    // one administrator act, one event - on the round it ended
+    expect(result.saidPerRound).toEqual([
+      { round_no: 1, kind: 'submitted' },
+      { round_no: 1, kind: 'assignee-not-found' },
+      { round_no: 1, kind: 'rerouted' },
+    ])
+    // the round before is THE round before: ended by a re-route, and said so
+    expect(result.previous).toMatchObject({ roundNo: 1, kind: 'rerouted' })
+    expect(result.earlier).toEqual([])
     // the round it was standing in ends as superseded, never edited in place
     expect(result.rounds[0]).toMatchObject({
       round_no: 1,
@@ -1174,6 +1210,140 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       result.rounds[1]!.round_no === 2 ? result.entry.currentReviewInstanceId : null,
     )
     expect(result.queue.map((one) => one.entryId)).toEqual([result.entry.id])
+  })
+
+  it('sends migrated rounds back to the start of their route when told to', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-restart')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: REVIEW_OPEN,
+            stages: [
+              {
+                id: 'n1',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+              {
+                id: 'n2',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const admin = f.principal(f.admin)
+          const second = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Second Judge', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const secondGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${second}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, second, secondGrant)
+          const { entryId, instanceId } = yield* submitted(f, g, g.p1, f.s1)
+          // walk to the second step, so the walked-so-far is real
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'approve' },
+            f.principal(f.reviewer),
+          )
+          // the same two steps, reordered: both survive, the past does not
+          const swapped = {
+            entrySource: 'student' as const,
+            formConfig: { files: {} },
+            scoringConfig: {
+              calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+              aggregator: { ref: 'sum@1', config: {} },
+            },
+            reviewPolicy: {
+              normal: {
+                stages: [
+                  {
+                    id: 'n2',
+                    selector: {
+                      kind: 'roleAt',
+                      nodeTypeId: f.classType,
+                      roleIds: [f.reviewRole],
+                    },
+                    quorum: { type: 'any' },
+                  },
+                  {
+                    id: 'n1',
+                    selector: {
+                      kind: 'roleAt',
+                      nodeTypeId: f.classType,
+                      roleIds: [f.reviewRole],
+                    },
+                    quorum: { type: 'any' },
+                  },
+                ],
+              },
+              escalation: { stages: [] },
+            },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.t, g.item.id, { config: swapped }, admin),
+          )
+          const report = errorOf<{
+            impactToken: string
+            review: { sameStageMappable: number; pastChanged: number }
+          }>(asked)!
+          yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: swapped,
+              reason: '\u8c03\u6574\u5ba1\u6838\u987a\u5e8f',
+              effects: {
+                impactToken: report.impactToken,
+                review: {
+                  open: 'reroute-all',
+                  missingCurrentStage: 'refuse',
+                  // the administrator asked for a full re-review: the round
+                  // lands at the start of its own route, not at its step
+                  landing: 'route-start',
+                },
+              },
+            },
+            admin,
+          )
+          const rounds = yield* runSql(sql`
+            select round_no, state, origin, current_stage_id
+            from review_instances where entry_id = ${entryId} order by round_no`)
+          return {
+            report,
+            rounds: (
+              rounds as {
+                rows: {
+                  round_no: number
+                  state: string
+                  origin: string
+                  current_stage_id: string
+                }[]
+              }
+            ).rows,
+          }
+        }),
+      ),
+    )
+
+    // both steps survive by identity, but what stands before the current one
+    // changed - and the report says so before anybody confirms anything
+    expect(result.report.review).toMatchObject({ sameStageMappable: 1, pastChanged: 1 })
+    // the fresh round starts the route over, at the route's own first step
+    expect(result.rounds[1]).toMatchObject({
+      round_no: 2,
+      state: 'active',
+      origin: 'reroute',
+      current_stage_id: 'n2',
+    })
   })
 
   it('walks an appeal down the ladder, open to the judges of the round it contests', async () => {

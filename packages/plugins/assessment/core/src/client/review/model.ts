@@ -159,13 +159,23 @@ export const summaryOf = (
 export const rowSummary = (row: InboxItemDto): string => summaryOf(row.values)
 
 /** when a moment happened, in the reader's clock, without seconds */
-export const timeLabel = (iso: string): string =>
-  new Date(iso).toLocaleString(undefined, {
+/**
+ * A record's clock: to the second, because trails and conclusions are
+ * compared and cited, and with the year whenever it is not this one. The
+ * queue keeps its own coarser day-aware clock - operating surfaces read at
+ * a glance, records read exactly.
+ */
+export const timeLabel = (iso: string): string => {
+  const then = new Date(iso)
+  return then.toLocaleString(undefined, {
+    ...(then.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
   })
+}
 
 export const clockLabel = (iso: string): string =>
   new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })

@@ -1354,7 +1354,10 @@ const FlowColumn = memo(function FlowColumn({
   const earlier = review.context?.earlier ?? []
   // A withdrawal is not a refusal: nobody judged anything, and dressing it
   // in the refusal card's words would invent a verdict that never happened.
+  // Nor is a policy re-route - the round ended without a word on the
+  // merits, and the card says that instead of borrowing a verdict.
   const withdrawn = previous?.kind === 'cancelled-by-submitter'
+  const rerouted = previous?.kind === 'rerouted'
   // an appeal round carries its grounds in its own opening event, and the
   // grounds are the one thing this judge must read first
   const appealed = review.events.find((event) => event.kind === 'appealed')
@@ -1421,7 +1424,15 @@ const FlowColumn = memo(function FlowColumn({
                 line cannot hold all three. */}
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <p className="min-w-0 flex-1 basis-44 text-sm font-semibold text-pretty">
-                {format(withdrawn ? m.reviewPreviousWithdrawn : m.reviewPreviousTitle)}
+                {format(
+                  withdrawn
+                    ? m.reviewPreviousWithdrawn
+                    : rerouted
+                      ? m.reviewPreviousRerouted
+                      : previous.kind === 'approved'
+                        ? m.reviewPreviousApproved
+                        : m.reviewPreviousTitle,
+                )}
               </p>
               <span className="flex shrink-0 items-baseline gap-2">
                 <Badge variant="secondary" className="bg-background">
@@ -1439,8 +1450,8 @@ const FlowColumn = memo(function FlowColumn({
                 it keeps its width and the name ellipses. Both carry their
                 full text as a tooltip. */}
             {/* the verdict chips only where a verdict exists: the withdrawn
-                card's title already says the whole of what happened */}
-            {!withdrawn && (
+                and re-routed cards' titles already say the whole of it */}
+            {!withdrawn && !rerouted && (
               <div className="flex min-w-0 items-center gap-2">
                 {/* what was done, in the colour of what it was: a refusal read
                     in the same ink as a note is one a tired reader scrolls past */}

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readPolicy, type ReviewRoute } from '../review/chain.ts'
+import { readPolicy, readResolved, type ReviewRoute } from '../review/chain.ts'
 import type { LiveEntryRow, OpenRoundRow } from './db.ts'
 
 // What a configuration change would do to work already under way, and the
@@ -27,6 +27,8 @@ export interface ChangeEffects {
   readonly review?: {
     readonly open: ReviewEffect
     readonly missingCurrentStage: OrphanEffect
+    /** where migrated rounds land; absent means their current step */
+    readonly landing?: 'current-stage' | 'route-start'
   }
 }
 
@@ -47,6 +49,13 @@ export interface ChangeImpact {
     readonly sameStageMappable: number
     /** rounds whose current step the new policy no longer has */
     readonly stageRemoved: number
+    /**
+     * Mappable rounds whose walked-so-far differs under the new policy:
+     * the steps before their current one are not the steps they actually
+     * passed. Continuing from the current step never re-runs those, and an
+     * administrator who just inserted one deserves to know it will not run.
+     */
+    readonly pastChanged: number
   }
 }
 
@@ -93,6 +102,33 @@ export const impactTokenOf = (input: {
 export const stageSurvives = (nextPolicy: unknown, route: ReviewRoute, stageId: string): boolean =>
   readPolicy(nextPolicy)[route].some((stage) => stage.id === stageId)
 
+/** the step ids a route walks before one step, in order */
+const prefixBefore = (ids: readonly string[], stageId: string): readonly string[] => {
+  const at = ids.indexOf(stageId)
+  return at === -1 ? ids : ids.slice(0, at)
+}
+
+/**
+ * Whether a round's walked-so-far still reads the same under the new
+ * policy: the step-id sequence before its current step, in its own frozen
+ * route, against the same sequence in the new one. Identity again, never
+ * position - reordering B and C changes the past even though both survive.
+ */
+export const pastSurvives = (
+  round: { effectiveChain: unknown; route: ReviewRoute; stageId: string },
+  nextPolicy: unknown,
+): boolean => {
+  const walked = prefixBefore(
+    readResolved(round.effectiveChain)[round.route].map((stage) => stage.id),
+    round.stageId,
+  )
+  const ahead = prefixBefore(
+    readPolicy(nextPolicy)[round.route].map((stage) => stage.id),
+    round.stageId,
+  )
+  return walked.length === ahead.length && walked.every((id, index) => id === ahead[index])
+}
+
 export const impactOf = (input: {
   currentRevisionId: string | null
   currentConfig: { formConfig: unknown; reviewPolicy: unknown } | null
@@ -123,6 +159,11 @@ export const impactOf = (input: {
       blocked: input.rounds.filter((round) => round.state === 'blocked').length,
       sameStageMappable: reviewChanged ? input.rounds.filter(survives).length : 0,
       stageRemoved: reviewChanged ? input.rounds.filter((round) => !survives(round)).length : 0,
+      pastChanged: reviewChanged
+        ? input.rounds.filter(
+            (round) => survives(round) && !pastSurvives(round, input.nextConfig.reviewPolicy),
+          ).length
+        : 0,
     },
   }
 }

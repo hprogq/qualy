@@ -605,7 +605,8 @@ export interface OpenRoundRow {
   state: 'active' | 'blocked' | 'awaiting_supplement'
   route: 'normal' | 'escalation'
   stageId: string
-  /** carried into the round that replaces it: an appeal stays an appeal */
+  /** the routes the round froze, for asking what stood before its step */
+  effectiveChain: unknown
 }
 
 export const openRoundsOfItem = (tenantId: string, itemId: string) =>
@@ -623,6 +624,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           'ri.state',
           'ri.currentRoute',
           'ri.currentStageId',
+          'ri.effectiveChain',
           'e.participantId',
         ])
         .where('ri.tenantId', '=', tenantId)
@@ -641,6 +643,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           state: row.state as OpenRoundRow['state'],
           route: row.currentRoute as OpenRoundRow['route'],
           stageId: String(row.currentStageId),
+          effectiveChain: row.effectiveChain,
         })),
       ),
     )

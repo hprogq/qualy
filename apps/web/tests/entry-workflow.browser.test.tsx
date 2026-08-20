@@ -289,6 +289,9 @@ describe('filing a claim', () => {
                 state: 'completed',
                 outcome: 'rejected',
                 revisionId: REVISION_ID,
+                origin: 'initial',
+                supersedesInstanceId: null,
+                appealedInstanceId: null,
                 submittedAt: '2026-03-03T00:00:00.000Z',
                 completedAt: '2026-03-04T00:00:00.000Z',
                 events: [
@@ -331,6 +334,133 @@ describe('filing a claim', () => {
     expect(kinds).toContain('suggestion')
     // advice is read, never applied: nothing offers to copy it in
     expect(page.getByRole('button', { name: '套用' }).elements()).toHaveLength(0)
+  })
+
+  it('tells each round as its own section, its end and beginning said out loud', async () => {
+    const ROUND_4 = '88888888-8888-4888-8888-888888888884'
+    const ROUND_5 = '88888888-8888-4888-8888-888888888885'
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [
+              entry({
+                status: 'in_review',
+                capabilities: {
+                  edit: { state: 'hidden' as const, reason: null },
+                  submit: { state: 'hidden' as const, reason: null },
+                  withdraw: { state: 'available' as const, reason: null },
+                  appeal: { state: 'hidden' as const, reason: null },
+                  abandon: { state: 'hidden' as const, reason: null },
+                },
+              }),
+            ],
+            nextCursor: null,
+          }),
+        getEntryHistory: () =>
+          Effect.succeed({
+            entry: entry({ status: 'in_review' }),
+            events: [],
+            revisions: [
+              {
+                id: REVISION_ID,
+                revisionNo: 1,
+                itemRevisionId: REVISION_ID,
+                payload: { summary: '入伍经历' },
+                note: null,
+                source: 'self',
+                actorId: PARTICIPANT_ID,
+                subjectId: PARTICIPANT_ID,
+                attachments: [],
+                createdAt: '2026-08-20T14:06:00.000Z',
+              },
+            ],
+            rounds: [
+              {
+                id: ROUND_4,
+                roundNo: 1,
+                state: 'completed',
+                outcome: 'superseded',
+                revisionId: REVISION_ID,
+                origin: 'initial',
+                supersedesInstanceId: null,
+                appealedInstanceId: null,
+                submittedAt: '2026-08-20T14:06:18.000Z',
+                completedAt: '2026-08-20T15:49:37.000Z',
+                events: [
+                  {
+                    kind: 'submitted',
+                    actorId: PARTICIPANT_ID,
+                    actorName: null,
+                    reason: null,
+                    comment: null,
+                    suggestedPayload: null,
+                    at: '2026-08-20T14:06:18.000Z',
+                  },
+                  {
+                    kind: 'rerouted',
+                    actorId: null,
+                    actorName: null,
+                    reason: null,
+                    comment: '改流程',
+                    suggestedPayload: null,
+                    at: '2026-08-20T15:49:37.000Z',
+                  },
+                ],
+                supplements: [],
+              },
+              {
+                id: ROUND_5,
+                roundNo: 2,
+                state: 'active',
+                outcome: null,
+                revisionId: REVISION_ID,
+                origin: 'reroute',
+                supersedesInstanceId: ROUND_4,
+                appealedInstanceId: null,
+                // the same instant the old round ended: the very tie that
+                // used to draw round 4 above round 5
+                submittedAt: '2026-08-20T15:49:37.000Z',
+                completedAt: null,
+                events: [],
+                supplements: [],
+              },
+            ],
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
+    await page.getByRole('button', { name: /审核记录/ }).click()
+    await expect.element(page.getByTestId('trail-round').first()).toBeVisible()
+
+    // rounds are sections, newest first - and the same-instant tie between
+    // the round a re-route ended and the one it opened goes to the newer
+    const sections = page.getByTestId('trail-round').elements()
+    expect(sections.map((one) => one.getAttribute('data-round-no'))).toEqual(['2', '1'])
+    expect(sections.map((one) => one.getAttribute('data-standing'))).toEqual(['ongoing', 'ended'])
+
+    // the new round opens with the handover, marked as this round beginning
+    const opener = sections[0]!.querySelector('[data-testid="trail-node"]')
+    expect(opener?.getAttribute('data-kind')).toBe('transition')
+    expect(opener?.querySelector('[data-testid="round-mark"]')?.getAttribute('data-mark')).toBe(
+      'started',
+    )
+
+    // the old round's top says it ended; its foot says how it began
+    const oldNodes = [...sections[1]!.querySelectorAll('[data-testid="trail-node"]')]
+    expect(
+      oldNodes[0]?.querySelector('[data-testid="round-mark"]')?.getAttribute('data-mark'),
+    ).toBe('ended')
+    expect(
+      oldNodes[oldNodes.length - 1]
+        ?.querySelector('[data-testid="round-mark"]')
+        ?.getAttribute('data-mark'),
+    ).toBe('started')
   })
 
   it('puts the reviewer’s request on the claim, and both halves of it in the account', async () => {

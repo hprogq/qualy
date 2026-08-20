@@ -683,7 +683,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   payload: before.payload,
                 },
           // everything before the one shown in full, most recent first
-          earlier: older.filter((one) => one.at !== previous?.createdAt),
+          earlier: older.filter((one) => one.roundNo !== previous?.roundNo),
         }
       }
       const stageView = (stage: ResolvedStage): ReviewStageView => {

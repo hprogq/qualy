@@ -526,16 +526,24 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         })
         // the step it is standing at, by name. If the new policy still has
         // it, the round carries on from there - which is the whole point of
-        // "this level has nobody, so I am editing this level".
+        // "this level has nobody, so I am editing this level". The
+        // administrator may instead send every migrated round back to the
+        // start of its own route: a full re-review under the new policy,
+        // route by route - a round already in escalation restarts
+        // escalation, never the ordinary chain.
         const here = routeOf(resolved, round.route).find((stage) => stage.id === round.stageId)
         const landing =
-          here !== undefined && here.nodeId !== null
-            ? here
-            : here !== undefined
-              ? enterableFrom(resolved, round.route, here.index)
-              : input.effects.review?.missingCurrentStage === 'restart-route'
-                ? enterableFrom(resolved, round.route, 0)
-                : null
+          input.effects.review?.landing === 'route-start'
+            ? enterableFrom(resolved, round.route, 0)
+            : here !== undefined && here.nodeId !== null
+              ? here
+              : here !== undefined
+                ? enterableFrom(resolved, round.route, here.index)
+                : input.effects.review?.missingCurrentStage === 'refuse'
+                  ? null
+                  : input.effects.review?.missingCurrentStage === 'restart-route'
+                    ? enterableFrom(resolved, round.route, 0)
+                    : null
         if (landing === null || landing.nodeId === null) {
           // no guessing: a round whose step is gone stays where it is unless
           // the administrator said to start its route over
@@ -595,15 +603,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           state: arrived.state,
           blockedReason: arrived.blockedReason,
         })
-        yield* insertReviewEvent({
-          tenantId: input.tenantId,
-          reviewInstanceId: opened,
-          kind: 'rerouted',
-          actorId: input.actorId,
-          route: landing.route,
-          stageId: landing.id,
-          comment: input.reason,
-        })
+        // The old round's `rerouted` event is the administrator's one act;
+        // the new round says how it began through origin + supersedes, and a
+        // second identical event here read as the same thing done twice.
         if (arrived.state === 'blocked') {
           yield* insertReviewEvent({
             tenantId: input.tenantId,

@@ -1791,6 +1791,14 @@ const i18n = definePluginMessages({
       defaultMessage:
         'The previous round ended before review because the participant withdrew the entry',
     },
+    reviewPreviousRerouted: {
+      id: 'assessment/review/previous-rerouted',
+      defaultMessage: 'The previous round ended when the review process was adjusted',
+    },
+    reviewPreviousApproved: {
+      id: 'assessment/review/previous-approved',
+      defaultMessage: 'The previous round approved this claim',
+    },
     reviewEarlierWithdrawn: {
       id: 'assessment/review/earlier-withdrawn',
       defaultMessage: 'Withdrawn by the participant',
@@ -2202,10 +2210,6 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Suggestions are for reference only; the participant decides whether to apply them.',
     },
-    entryTrailRoundOpened: {
-      id: 'assessment/entry/trail-round-opened',
-      defaultMessage: 'Review round {no} started',
-    },
     entryTrailAnswered: {
       id: 'assessment/entry/trail-answered',
       defaultMessage: 'You submitted additional material',
@@ -2225,6 +2229,34 @@ const i18n = definePluginMessages({
     },
     entryTrailReason: { id: 'assessment/entry/trail-reason', defaultMessage: 'Reason: {value}' },
     entryTrailRound: { id: 'assessment/entry/trail-round', defaultMessage: 'Review round {no}' },
+    entryRoundOngoing: {
+      id: 'assessment/entry/round-ongoing',
+      defaultMessage: 'In progress',
+    },
+    entryRoundEnded: {
+      id: 'assessment/entry/round-ended',
+      defaultMessage: 'Ended',
+    },
+    entryRoundStartedMark: {
+      id: 'assessment/entry/round-started-mark',
+      defaultMessage: 'Review round {no} began',
+    },
+    entryRoundEndedMark: {
+      id: 'assessment/entry/round-ended-mark',
+      defaultMessage: 'Review round {no} ended',
+    },
+    entryRoundReroutedStart: {
+      id: 'assessment/entry/round-rerouted-start',
+      defaultMessage: 'Review continued here after a process change',
+    },
+    entryRoundReroutedFrom: {
+      id: 'assessment/entry/round-rerouted-from',
+      defaultMessage: 'Carries on from round {no} under the adjusted process',
+    },
+    entryRoundReroutedNext: {
+      id: 'assessment/entry/round-rerouted-next',
+      defaultMessage: 'Round {no} carries on under the adjusted process',
+    },
     entryTrailEmpty: {
       id: 'assessment/entry/trail-empty',
       defaultMessage: 'No submission or review history is available yet.',
@@ -2520,7 +2552,33 @@ const i18n = definePluginMessages({
     itemsImpactStageGone: {
       id: 'assessment/items/impact-stage-gone',
       defaultMessage:
-        '{count} submissions are currently at a review step removed from the updated workflow and will remain on the existing workflow.',
+        '{count} submissions stand at a review step the updated workflow no longer has. Decide what happens to them:',
+    },
+    itemsImpactLanding: {
+      id: 'assessment/items/impact-landing',
+      defaultMessage: 'Where do the moved reviews continue?',
+    },
+    itemsImpactLandingContinue: {
+      id: 'assessment/items/impact-landing-continue',
+      defaultMessage: 'From the step each one stands at; steps already passed do not run again',
+    },
+    itemsImpactLandingRestart: {
+      id: 'assessment/items/impact-landing-restart',
+      defaultMessage:
+        'From the start of their own route - a full re-review under the updated workflow',
+    },
+    itemsImpactPastChanged: {
+      id: 'assessment/items/impact-past-changed',
+      defaultMessage:
+        'For {count} of them the steps before the current one changed in this update; steps added or reordered there will not run.',
+    },
+    itemsImpactOrphanKeep: {
+      id: 'assessment/items/impact-orphan-keep',
+      defaultMessage: 'Keep them on the existing workflow',
+    },
+    itemsImpactOrphanRestart: {
+      id: 'assessment/items/impact-orphan-restart',
+      defaultMessage: 'Restart them from the start of their own route on the updated workflow',
     },
     itemsChainHintRecorded: {
       id: 'assessment/items/chain-hint-recorded',

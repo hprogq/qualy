@@ -26,13 +26,19 @@ export interface ChangeImpact {
     readonly blocked: number
     readonly sameStageMappable: number
     readonly stageRemoved: number
+    /** mappable rounds whose walked-so-far differs under the new policy */
+    readonly pastChanged: number
   }
 }
 
 export interface ChangeEffects {
   impactToken: string
   form?: { inReview: 'keep' | 'return'; approved: 'keep' | 'return' }
-  review?: { open: 'keep' | 'reroute-blocked' | 'reroute-all'; missingCurrentStage: 'refuse' }
+  review?: {
+    open: 'keep' | 'reroute-blocked' | 'reroute-all'
+    missingCurrentStage: 'refuse' | 'restart-route'
+    landing?: 'current-stage' | 'route-start'
+  }
 }
 
 /** whether either question is actually being asked of this change */
@@ -63,6 +69,14 @@ export function ImpactDialog({
   const [rounds, setRounds] = useState<'keep' | 'reroute-blocked' | 'reroute-all'>(
     impact.review.blocked > 0 ? 'reroute-blocked' : 'keep',
   )
+  // where migrated rounds land: at the step they stand at, or back at the
+  // start of their own route for a full re-review under the new policy
+  const [landing, setLanding] = useState<'current-stage' | 'route-start'>('current-stage')
+  // and separately, what happens to a round whose step the new policy no
+  // longer has: guessing is exactly what step identities exist to prevent,
+  // so the administrator says - stay on the old process, or start the route
+  // over on the new one
+  const [orphans, setOrphans] = useState<'refuse' | 'restart-route'>('refuse')
   const asked = asking(impact)
 
   return (
@@ -84,10 +98,13 @@ export function ImpactDialog({
                 impactToken: impact.impactToken,
                 ...(asked.form ? { form: { inReview, approved } } : {}),
                 ...(asked.review
-                  ? // a round whose step this policy no longer has is left
-                    // where it is: guessing where it should land is exactly
-                    // what step identities exist to prevent
-                    { review: { open: rounds, missingCurrentStage: 'refuse' as const } }
+                  ? {
+                      review: {
+                        open: rounds,
+                        landing,
+                        missingCurrentStage: landing === 'route-start' ? 'restart-route' : orphans,
+                      },
+                    }
                   : {}),
               })
             }
@@ -152,10 +169,38 @@ export function ImpactDialog({
                 { value: 'reroute-all', label: format(m.itemsImpactRoundsAll) },
               ]}
             />
-            {impact.review.stageRemoved > 0 && (
+            {rounds !== 'keep' && (
+              <RadioGroup
+                name="landing"
+                variant="cards"
+                legend={format(m.itemsImpactLanding)}
+                selected={landing}
+                onChange={(next) => setLanding(next as 'current-stage' | 'route-start')}
+                options={[
+                  { value: 'current-stage', label: format(m.itemsImpactLandingContinue) },
+                  { value: 'route-start', label: format(m.itemsImpactLandingRestart) },
+                ]}
+              />
+            )}
+            {/* the steps already walked will not run again - said out loud
+                exactly when the new process disagrees about what they were */}
+            {rounds !== 'keep' && landing === 'current-stage' && impact.review.pastChanged > 0 && (
               <p className="text-xs leading-relaxed text-muted-foreground">
-                {format(m.itemsImpactStageGone, { count: impact.review.stageRemoved })}
+                {format(m.itemsImpactPastChanged, { count: impact.review.pastChanged })}
               </p>
+            )}
+            {rounds !== 'keep' && landing === 'current-stage' && impact.review.stageRemoved > 0 && (
+              <RadioGroup
+                name="orphans"
+                variant="cards"
+                legend={format(m.itemsImpactStageGone, { count: impact.review.stageRemoved })}
+                selected={orphans}
+                onChange={(next) => setOrphans(next as 'refuse' | 'restart-route')}
+                options={[
+                  { value: 'refuse', label: format(m.itemsImpactOrphanKeep) },
+                  { value: 'restart-route', label: format(m.itemsImpactOrphanRestart) },
+                ]}
+              />
             )}
           </div>
         )}

@@ -6634,3 +6634,38 @@ CHECK 拒绝置空);`pnpm test:browser` 10 files / 81 passed(复核环境 1 例�
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 690 passed / 17 skipped;
 `pnpm test:browser` 11 files / 84 passed;`pnpm qualy resolve` 重写 lock(新迁移入 lineage);
 prettier 全绿。
+
+### 申报记录改为轮次分组时间线;流程迁移三选一(2026-08-21)
+
+按用户裁决重做申报历史与流程迁移决策:
+
+- **申报记录以审核轮次为一级分组**(EntryHistory 重写):轮次倒序、轮内事件同样倒序;每轮 section
+  头部「第 N 轮审核 · 进行中/已结束」;开启事件与结束事件显式标注「第 N 轮审核开始/结束」
+  (data-testid round-mark,按用户当场追改用轮次号而非「本轮」);开启本轮的申报版本落在该轮
+  section 底部。原实现把五张表按 timestamp 混排,reroute 同事务同秒写入时 stable sort 把第 4 轮
+  排在第 5 轮之上——现在轮次锚点相同时按轮次号取新者,病根消除。
+- **reroute 成为轮次转换事实**:item/service 不再给新轮补写第二条 `rerouted` 事件(旧轮一条事件 +
+  新轮 origin/supersedesInstanceId 即完整事实);历史视图旧轮结尾展示「后续由第 N 轮按调整后的
+  流程继续」、新轮开头合成「因审核流程调整开始本轮审核/承接第 N 轮」(变更原因取自旧轮事件,
+  旧数据的重复事件在装配时吞并)。
+- **工作台「上一轮」改为真实轮次摘要**:previousConclusion/earlierConclusions 从事件白名单改为按
+  ReviewInstance 逐轮汇总(lateral 取末事件为结论词)——被 reroute 结束的第 4 轮不再从摘要里蒸发,
+  「更早轮次」一轮一行不跳号;上一轮卡片新增 rerouted(「上一轮因审核流程调整结束,未形成结论」,
+  不穿判词章)与 approved 标题变体。
+- **流程迁移决策升级**(ImpactDialog):切换范围三选(保留原流程/仅等待审核人/全部)之下新增
+  落点选择——「从各自当前环节继续」或「从所在路线首环节完整重审」(effects.review.landing
+  route-start,服务端 enterableFrom(route,0),复核中的申报重走复核而非普通链);当前环节已删的
+  申报单独二选(保留原流程/按新流程重审,原来前端写死 refuse 使「全部切换」名不符实);影响
+  报告新增 **pastChanged**(当前环节之前的环节序列按 id 对比发生变化的条数,前端明示「新增或
+  调序到当前环节之前的步骤不会执行」)。「按旧轮已审环节自动推导新链完成度」按裁决明确不做:
+  修改流程绝不能凭旧事件产生审核决定。
+- **展示细节**:历史/审核记录时间精确到秒(跨年附年份;队列保留粗粒度日感知时钟);申报版本的
+  附件不再堆底部——FiledFields 按冻结表单字段顺序逐字段展示,附件字段的文件挂在自己的字段名下,
+  无字段认领的文件收尾兜底。
+- **测试**:review-flow reroute 例增断言(rerouted 事件仅旧轮一条、previous.kind='rerouted' 不
+  跳轮、pastChanged=0),新增 route-start 重审例(两环节调序 → pastChanged=1、新轮落 n2);
+  entry-workflow 新增轮次分组回归例(同秒 tie 断 data-round-no 顺序 ['2','1']、新轮 transition
+  开启标记、旧轮首尾 ended/started 标记);fixtures 补 origin/supersedes 字段。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 691 passed / 17 skipped;
+`pnpm test:browser` 11 files / 85 passed;prettier 全绿。
