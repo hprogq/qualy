@@ -26,6 +26,9 @@ const WITH_ACTOR: Record<string, MessageDescriptor> = {
   'supplement-requested': m.eventSupplementRequested,
   'supplement-submitted': m.eventSupplementSubmitted,
   'supplement-cancelled': m.eventSupplementCancelled,
+  // a middle step of the escalation route objecting: an opinion that climbs
+  // with the round rather than a verdict on it
+  'opinion-rejected': m.eventOpinionRejected,
 }
 
 const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
@@ -35,6 +38,18 @@ const WITHOUT_ACTOR: Record<string, MessageDescriptor> = {
   // the route under the round changed, by an administrator's configuration
   // decision rather than by anything anybody said about the filing
   rerouted: m.eventRerouted,
+  // a step every holder of had judged an earlier step of this round
+  'stage-skipped': m.eventStageSkipped,
+}
+
+/**
+ * The same conclusions when the round itself reached them: a sitting of
+ * several reviewers concluding writes its transition with no actor, and
+ * "somebody approved" would invent a person where there was a procedure.
+ */
+const ROUND_VOICE: Record<string, MessageDescriptor> = {
+  approved: m.eventPanelApproved,
+  escalated: m.eventPanelEscalated,
 }
 
 /**
@@ -59,10 +74,19 @@ const OWN_VOICE: Record<string, MessageDescriptor> = {
 export const ownReviewEventMessage = (kind: string): MessageDescriptor | undefined =>
   OWN_VOICE[kind]
 
-/** the sentence for one event, and whether it needs the actor's name in it */
+/**
+ * The sentence for one event, and whether it needs the actor's name in it.
+ * `named` is whether the event actually carries a person: the same kind
+ * reads differently when the round itself did it.
+ */
 export const reviewEventMessage = (
   kind: string,
+  named = true,
 ): { message: MessageDescriptor; needsActor: boolean } => {
+  if (!named) {
+    const round = ROUND_VOICE[kind]
+    if (round !== undefined) return { message: round, needsActor: false }
+  }
   const withActor = WITH_ACTOR[kind]
   if (withActor !== undefined) return { message: withActor, needsActor: true }
   return { message: WITHOUT_ACTOR[kind] ?? m.eventOther, needsActor: false }

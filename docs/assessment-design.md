@@ -1160,18 +1160,11 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 再加一条可授予的权限等于让管理员给每个审核角色维护两份几乎相同的勾选，且「可授予」会暗示它能
 让不是审核人的人变成审核人。它与参评动作同类——只有当事人才有资格做，但阶段可以临时关闭。
 
-二、**中途驳回归阶段动作管，`rejectPolicy` 从领域模型移除**（2026-08-20 重裁，替代本条原文）。
-原规则把「复核中途能否驳回」冻结在 ReviewInstance 上，由创建路径（普通提交 any-stage / 申诉
-terminal-only）暗中决定——管理员在任何界面都看不见这条规则，也改不了它。重裁为：
-
-- 普通路线任意节点均可驳回；复核路线**末端永远可驳回**，中间节点是否可驳回由**当前生效阶段**的
-  动作 `assessment.review.reject-intermediate`（「允许复核中途退回」）决定，判定时实时读取。
-- 该动作与 `assessment.review.escalate` 同类：不是 RBAC 权限，是阶段开合的审核动作。
-- 申诉不再硬编码 terminal-only：学校若要申诉期仅末端可驳回，就在申诉处理阶段不开启这个动作——
-  差异来自管理员显式配置，而不是 `origin === 'appeal'` 的内部事实。
-- 代价（明知并接受）：进行中的复核会随阶段切换改变中间节点能否驳回。这正是「阶段权限」应有的
-  语义；原文担心的"9 月 15 日突然变化"如今是管理员配置阶段时可见、可预期的决定。
-- `review_instances.reject_policy` 列已随迁移删除（20260820095421_drop-reject-policy.sql）。
+二、**中途驳回归阶段动作管，`rejectPolicy` 从领域模型移除**（2026-08-20 重裁，替代本条原文；
+**同日再裁并作废**：`assessment.review.reject-intermediate` 阶段动作整体撤销，中途驳回改由复核链
+自身的裁决语义承载——中间节点的「退回」是随轮上提的意见而非终局，终局否定只属链尾，见 §32.66）。
+本条保留仅作沿革：`review_instances.reject_policy` 列已随迁移删除
+（20260820095421_drop-reject-policy.sql）。
 
 三、**普通提交与申诉是两个接口、两个 domain command，底层共用一套开轮逻辑**。
 
@@ -1322,3 +1315,28 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 **已裁决**(①—⑥ 已实现,⑦ 待触发):①聚合器可解释化(`AggregationResult` 逐条 included/reason)+ `max@1`(学生干部"最高职务计分",terms.md 明文)+ `top-n-sum@1`;②"基础分"不做 ScoreGroup.base,建模为 `derived` Item(constant driver,scorer 增加非 Entry 的 ScoreContribution,带 provenance);③ reviewPolicy 增加显式 `mode:'none'`(无需审核,提交即 approved,严禁用空 stages 暗示);④ declaration 轻题型(零字段一键申报);⑤补件机制 `ReviewSupplementRequest/Response`(受限 requirement builder:仅文字+文件;ReviewInstance 增 `awaiting_supplement`;申诉与普通审核共用;原 revision 永不因补件改动;开放的补件请求本身即回答能力,不受后续阶段变化锁死);⑥ `assessment.entry.resubmit` 更名为申诉语义的代码(migration + 码表同步);⑦申诉收紧到首次公示后 + 申诉可配置补证策略(`reason-only|allow-supplement`)。边界一句话:**改"申报了什么"走退回修改;只补"凭什么信"走补件;申诉冻结原材料,只挑战结论**。
 
 ⑤ 落地口径(2026-08-16):`awaiting_supplement` 是**开放态**——占 entry 的唯一开放轮次槽位,进 hasOpenRound / 影响分析 / cancelReviewInstance 的开放集,但不进审核队列(inbox 只取 active),补件期间 decideReview 一律拒绝(`awaiting-supplement`)。一轮同时只有一个 open 请求(部分唯一索引),暂停轮次的状态翻转即并发闸门。**可回答性 = 请求 open ∧ 轮次仍在 awaiting_supplement**:轮次被撤回/重路由/作废时请求按定义随之失效,不需要任何清扫;回答只验"本人 + 请求开放 + 批次未归档",刻意不过阶段门。requirement key 由服务端按位次派发(`f1..fn`,≤8 项),文字 ≤2000 字、文件 ≤10 个;回答的附件绑定沿用申报的信任规则(自己的 staged 文件,或本 entry 故事——含历次 revision 与历次补件——已引用过的文件),附件读取授权把补件引用并入 citing 集。请求/取消归当前 stage 的任意审核人(与 decide 同一 mayReview 谓词、同一阶段门),事件 `supplement-requested / supplement-submitted / supplement-cancelled` 记在轮次上,请求说明以 comment 随事件入 trail。路径:`POST …/instances/{id}/supplement-requests`、`PUT …/supplement-requests/{id}/status`、`POST …/supplement-requests/{id}/responses`。
+
+**32.66 复核链是逐级裁决链：任一环节可径直通过，终局否定只在链尾；同轮跨环节回避；合议席位冻结；环节命名**（2026-08-20，用户裁决）。
+
+一、**两条路线是两台不同的机器**。普通链保持逐级确认语义不变。复核链重定义为**逐级裁决链**（用户原话：「复核链条里的任何节点都是有资格直接通过条目审核的，如果某个节点不通过，才沿链条往下走」，类比阅卷的问题卷→三审→专家组）。单人（`any`）环节的裁决表：
+
+```
+普通链  中间：approve→下一环节｜reject→终局驳回｜escalate→进入复核链（阶段门控）
+普通链  末端：approve→终局通过｜reject→终局驳回｜escalate 同上
+复核链  中间：approve→整轮终局通过｜reject→意见随轮上提（事件 opinion-rejected，非终局）｜escalate→上提
+复核链  末端：approve/reject→终局；escalate 不可用（reason: route-end）
+```
+
+审核员的四个词（通过/退回/补材料/提复核）表达的是**个人判断**（reviewer disposition），系统把它映射为流转（workflow transition），审核员无须理解身处哪种机器。`assessment.review.reject-intermediate` 阶段动作撤销（§32.63 二作废）：「复核中间能否终局驳回」不再存在——中间的否定一律上提；若某校确需「中间一致否定即终局驳回」，将来作为**节点级政策**显式开放，触发再建。复核链内部的上提不受 `assessment.review.escalate` 阶段门控（该门只管普通链进入复核链）；申诉期即使关闭 escalate，申诉轮的中间环节仍可上提。ReviewActionView 的 reason 词表收敛为 `no-route | route-closed | phase-closed | route-end`。
+
+二、**同轮跨环节回避（仅约束复核环节）**。同一 ReviewInstance 一旦进入复核，其每个复核环节不得由本轮先前已作出正式判断者担任（判定来源：本轮 events 中 kind ∈ approved/rejected/escalated/opinion-rejected 的 actor，加上本轮非 superseded panel 的 vote 投票人；一条 SQL 谓词并入 mayReview 组合，收件箱/详情/决定/巡检同源）。普通链**不回避**（保留现状：同一人可先后出现在普通链多个环节）。申诉与重路由是**新轮**，不继承上一轮的回避集——被申诉决定的作出者可以再任申诉裁决人（用户明确撤回了「不能终裁」的旧默认；「他此时是在什么审核职责下作出什么决定」才是问题，`route+stageId+actorId` 已足以区分两次判断）。自审回避（subject/revision actor）不变。
+
+三、**到达裁决（enterStage/resolveArrival）**：进入复核环节时先问成员资格（members，组织占位+批次接纳），再问回避后余量（eligible）。members=0 是真实缺员——**永不跳过**，落位 blocked（`no-assignee`）；members>0 且 eligible=0 是回避规则生效——中间环节**跳过**（事件 `stage-skipped`，链视图标 `reviewer-conflict`），末端落位 blocked（`no-independent-reviewer`）。`review_instances.blocked_reason` 新列（`no-assignee | no-independent-reviewer | panel-seat-unfilled`，CHECK 与 state 同形），管理员告警按原因分行；审核员与学生永远看不到 BLOCKED 概念。appealReview 的入链走同一 resolver（补上了 ADR 0007 一直缺的自审跳过）。巡检升级为 panel-aware，继续双向自愈并维护 blocked_reason。
+
+四、**合议（quorum `all`，仅限复核链非末端环节；校验 reason `policy-quorum-all-normal` / `policy-quorum-all-terminal`；`atLeast` 继续拒绝）**。到达即以当时的 eligible 集为席位快照（`review_panels/review_panel_assignments/review_votes` 三表，部分唯一索引守并发）：3 人被回避 1 即 2 人合议——**成立前资格冲突改变人数，成立后席位数永久冻结**。裁决规则 v1 由位置推导不落配置：全员同意 ⇒ 整轮通过（事件 `approved`，actor 为空，轮次自己的声音）；否则（含全员否定）⇒ 上提（事件 `escalated`，actor 空）。成员 escalate ⇒ 立即短路上提（未投的票作废）；成员 supplement ⇒ 整轮暂停，**取消**恢复原 panel 原票，**答复**（证据变更）则 supersede 旧 panel、按当下 eligible 重组、旧票留档不计。席位规则：未投票成员失权 ⇒ 席位空缺（`eligibility-lost`），新合格者**投票时原子补位**（不做系统指派）；已投的票**不因事后撤权失效**（权限回答「现在能否新作为」，不回答「过去合法作为还算不算」）；无空缺时新增角色持有者不入本案。投票在同席结论前对所有人保密（votes 不写事件，open panel 不入 DTO）；resolved panel 的逐人意见经 chain.stage.opinions 交给后续裁决人（辅导员读到两造意见）。decisionsToday = 正式事件 + 本人 votes（合议票无逐票事件，不能让上午审了三十件的人被问候「已处理 0」）。
+
+五、**环节命名**。PolicyStage 增可选 `label`（非空 ≤50，校验 reason `policy-label-invalid`），编辑器必填（如「班委初审」「辅导员终审」），链视图以 label 为主、单位/角色组合为兜底与小字；旧策略无名仍可读。
+
+六、**审核员 UX 原则（验收标准）**：任何新审核功能若要求普通审核员学习第五个流程概念，先认定设计有问题。合议/补位/席位/BLOCKED 只存在于引擎、审计与负责人诊断；审核员只见四个词与「出现在待审=需要你审」。复核模式用环境而非说明表达：工作台顶部细警示带（amber 斜纹）+「复核」徽标全宽度可见；申诉轮 banner 直接展示申诉理由（appealed 事件 comment——该给的是「为什么需要重判」这一业务事实，不是 origin 字段）。「本轮经过」用业务语言（含 stage-skipped、panel 结论的无主语句式）；panel 生命周期细节（谁补位、何时失权）只在数据表/审计层。
+
+七、**明知并接受的边界**：①普通链自审冲突仍落 blocked 不跳过（ADR 0007 的中间跳过只在复核链落地；普通链等触发再议）；②合议限复核中间环节，末端与普通链不开（末端须一个终局声音）；③ `atLeast(n)` 与「最低有效复核人数」未建；④独立复核覆盖率预检（配置期提示「N 个专业复核人员与普通审核完全重合」）未建；⑤ blocked→active 依赖巡检分钟级收敛（实时校验保写路径正确，巡检保状态收敛）。以上各项按数据层冻结规则，事故或需求触发再建。

@@ -6534,3 +6534,49 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 676 passed / 17 skipped;
 `pnpm test:browser` 10 files / 80 passed(补充材料键盘 1 例新增);`pnpm build` 通过;prettier 全绿。
+
+### 复核链重裁:逐级裁决链、同轮回避、合议席位、环节命名(2026-08-20)
+
+按用户当日长裁决整体重构审核模型(领域定案入 assessment-design **§32.66**,§32.63 二作废):
+
+- **复核链改为逐级裁决链**:复核任一环节 approve ⇒ 整轮通过;中间环节 reject ⇒ 意见随轮上提
+  (新事件 `opinion-rejected`,非终局),终局否定只属链尾;中间环节 escalate ⇒ 上提且**不受**
+  escalate 阶段门控(门只管普通链入梯)。`assessment.review.reject-intermediate` 阶段动作整体撤销
+  (permissions/门/阶段编辑器/i18n/测试同步)。ReviewActionView reason 收敛为
+  `no-route|route-closed|phase-closed|route-end`。
+- **同轮跨环节回避**(仅复核环节):本轮已作正式判断者(events approved/rejected/escalated/
+  opinion-rejected + 非 superseded panel votes)不得再任后续复核环节,一条 SQL 谓词并入 mayReview
+  组合(收件箱/awaiting/详情/决定/巡检同源);普通链不回避;申诉/重路由是新轮不继承——被申诉
+  决定的作出者可再任申诉裁决人(测试显式断言其队列含申诉轮)。
+- **到达裁决 resolveArrival/stageArrival**:members=0 ⇒ blocked `no-assignee`(缺员永不跳过);
+  members>0 且 eligible=0 ⇒ 复核中间环节跳过(事件 `stage-skipped`,链视图标 reviewer-conflict)、
+  末端 blocked `no-independent-reviewer`。`review_instances.blocked_reason` 新列 + 同形 CHECK,
+  entry submit / decide / appeal / reroute / patrol 全部走同一 resolver;appealReview 补上 ADR 0007
+  欠账的自审跳过。管理员告警(reviewAlerts)按 reason 分行展示。
+- **合议**:quorum `all` 开闸,仅限复核链非末端(校验 reason policy-quorum-all-normal/-terminal,
+  atLeast 继续拒绝)。新表 `review_panels / review_panel_assignments / review_votes`(部分唯一索引
+  守并发:单开 panel、席位单占、一席一票)。到达即按 eligible 快照席位(3 人回避 1 ⇒ 2 人合议),
+  席位数冻结;全员同意 ⇒ 通过(事件 approved actor 空),否则含 0:N ⇒ 上提(escalated actor 空);
+  成员 escalate 短路;补件答复(证据变更)supersede 重组、取消原样恢复;未投票者失权成空缺
+  (eligibility-lost),新合格者投票时原子补位,已投票**不因撤权失效**;投票至同席结论前保密
+  (votes 不写事件,open panel 不进 DTO),resolved panel 意见经 chain.stage.opinions 交后续裁决人;
+  decideReview 全程持 instance 行锁;handledToday = 事件 + votes。巡检升级 panel-aware
+  (reconcile 失权席位、blocked_reason `panel-seat-unfilled`)。
+- **环节命名**:PolicyStage.label(≤50,校验 policy-label-invalid),编辑器必填(StageSheet 名称框 +
+  处理方式 any/all 选项,末端自动折回 any),链视图 label 为主、单位/角色为兜底小字。
+- **审核员 UX**:四词恒在;复核模式 = 顶部 amber 斜纹警示带(全宽度)+ 复核徽标全宽度可见;
+  申诉轮 banner 直接展示申诉理由(appealed 事件 comment);合议/补位/BLOCKED 概念不出引擎与
+  管理端;事件文案补齐(轮次自己的声音:panel-approved/panel-escalated 无主语句式)。
+- **迁移**:`20260820131214_review-panels.sql`(三新表 + blocked_reason + 回填 UPDATE 后加 CHECK;
+  实测踩到生成器把复合 CHECK 内 IN-list 输出成非法 `ARRAY[...][]`,实体侧改写为 IS NOT NULL 形式)。
+- **测试**:node 重写 review-flow 三例(梯上任一环节可结案+提审人回避、异议上提+终局链尾+巡检解锁、
+  回避跳过 vs 缺员阻塞)、appeal 例(原裁决人可审申诉、route-end);新增 **review-panel.test.ts 七例**
+  (席位快照/一致通过/分歧上提携意见/成员短路/票越撤权+补位+不扩席/无空缺不纳新/补件答复重组 vs
+  取消保留);policy/item-config/routes 断言更新。浏览器:batch-admin 阶段动作 13→12;stage fixtures
+  补 label/opinions;review-layout 新增「复核环境」例(警示带、申诉理由、环节名、意见方向 data-*、
+  route-end blocked)。旧行为的三个失败例先红后改,证明回避与裁决语义真实生效。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 687 passed / 17 skipped
+(含新增的 review-panels 升级测试:旧库血统建 blocked 行 → 跑迁移 → 断言回填 no-assignee 且
+CHECK 拒绝置空);`pnpm test:browser` 10 files / 81 passed(复核环境 1 例新增);`pnpm build`
+通过(staged web assets);prettier 全绿;`pnpm qualy resolve` + `pnpm qualy generate` 实跑出迁移。

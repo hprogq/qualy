@@ -603,11 +603,29 @@ const reviewInboxItem = Schema.Struct({
 const reviewStageView = Schema.Struct({
   id: Schema.String,
   index: Schema.Number,
+  /** the administrator's name for the step, when the policy carries one */
+  label: Schema.NullOr(Schema.String),
   nodeName: Schema.NullOr(Schema.String),
   roleNames: Schema.Array(Schema.String),
   /** who holds those roles there today; null when this response left it unresolved */
   reviewers: Schema.NullOr(Schema.Array(Schema.String)),
   skipped: Schema.NullOr(Schema.String),
+  /**
+   * What a concluded sitting at this step said, judgment by judgment - the
+   * evidence the judge after it reads. Null where none concluded; an open
+   * sitting's ballots are sealed and never appear.
+   */
+  opinions: Schema.NullOr(
+    Schema.Array(
+      Schema.Struct({
+        who: Schema.NullOr(Schema.String),
+        decision: Schema.Literals(['approve', 'reject']),
+        reason: Schema.NullOr(Schema.String),
+        comment: Schema.NullOr(Schema.String),
+        at: Schema.String,
+      }),
+    ),
+  ),
 })
 
 /** one act of the workbench: offered, or blocked with a stable reason code */
@@ -797,6 +815,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             nodeId: Schema.String,
             nodeName: Schema.String,
             roleNames: Schema.Array(Schema.String),
+            /** why these wait: a staffing gap and a conflict rule read differently */
+            reason: Schema.Literals([
+              'no-assignee',
+              'no-independent-reviewer',
+              'panel-seat-unfilled',
+            ]),
             waiting: Schema.Number,
           }),
         ),

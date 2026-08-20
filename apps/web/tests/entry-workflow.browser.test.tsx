@@ -617,10 +617,12 @@ describe('judging a submission', () => {
         {
           id: 'class',
           index: 0,
+          label: null,
           nodeName: '软件2023级2班',
           roleNames: ['审核员'],
           reviewers: ['张老师'],
           skipped: null,
+          opinions: null,
         },
       ],
       escalation: [],

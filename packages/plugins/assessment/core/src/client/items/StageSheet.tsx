@@ -5,6 +5,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
+import { Input } from '@qualy/ui/input'
 import { assessmentApi } from '../api.ts'
 import { Choice } from './Choice.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -23,10 +24,14 @@ export interface StageDraft {
    * one step is one more than a step can have.
    */
   key: string
+  /** what the administrator calls the step; required before saving */
+  label: string
   kind: 'roleAt' | 'nearestRole'
   nodeTypeId: string
   roleIds: string[]
   roleId: string
+  /** one reviewer answers for the step, or every eligible one weighs in */
+  participation: 'any' | 'all'
   /** which of the two routes this step belongs to; they share no steps */
   chain: 'normal' | 'escalation'
 }
@@ -36,6 +41,7 @@ export function StageSheet({
   batchId,
   stage,
   options,
+  panelable,
   onChange,
   onClose,
 }: {
@@ -44,6 +50,12 @@ export function StageSheet({
   batchId: string
   stage: StageDraft
   options: ItemOptions
+  /**
+   * Whether this step may sit as a panel: an escalation middle step and
+   * nothing else. The ordinary route confirms one voice at a time, and the
+   * escalation route's last step must speak with one final voice.
+   */
+  panelable: boolean
   onChange: (next: Partial<StageDraft>) => void
   onClose: () => void
 }) {
@@ -72,6 +84,18 @@ export function StageSheet({
         </div>
       }
     >
+      <Field label={format(m.itemsStageLabel)} hint={format(m.itemsStageLabelHint)}>
+        {(id) => (
+          <Input
+            id={id}
+            value={stage.label}
+            maxLength={50}
+            placeholder={format(m.itemsStageLabelPlaceholder)}
+            onChange={(event) => onChange({ label: event.target.value })}
+          />
+        )}
+      </Field>
+
       <Field label={format(m.itemsStageKind)}>
         {(id) => (
           <Choice
@@ -147,6 +171,27 @@ export function StageSheet({
               value={stage.roleId}
               options={options.roles.map((role) => ({ value: role.id, label: role.name }))}
               onChange={(roleId) => onChange({ roleId })}
+            />
+          )}
+        </Field>
+      )}
+
+      {panelable && (
+        <Field
+          label={format(m.itemsStageParticipation)}
+          hint={format(
+            stage.participation === 'all' ? m.itemsStageEveryoneHint : m.itemsStageAnyoneHint,
+          )}
+        >
+          {(id) => (
+            <Choice
+              id={id}
+              value={stage.participation}
+              options={[
+                { value: 'any', label: format(m.itemsStageAnyone) },
+                { value: 'all', label: format(m.itemsStageEveryone) },
+              ]}
+              onChange={(next) => onChange({ participation: next as StageDraft['participation'] })}
             />
           )}
         </Field>

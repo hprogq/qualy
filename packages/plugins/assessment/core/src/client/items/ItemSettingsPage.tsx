@@ -505,12 +505,24 @@ function Editor({
               <p className="text-sm font-medium text-destructive">{format(m.itemsStuckTitle)}</p>
               <ul className="pt-1 text-sm">
                 {(alerts.data?.groups ?? []).map((row) => (
-                  <li key={`${row.nodeId}:${row.roleNames.join(',')}`}>
+                  <li key={`${row.nodeId}:${row.roleNames.join(',')}:${row.reason}`}>
                     {format(m.itemsStuckRow, {
                       unit: row.nodeName,
                       roles: row.roleNames.join(format(m.listSeparator)),
                       count: row.waiting,
                     })}
+                    {/* a staffing gap and a recusal rule call for different
+                        fixes, so the row says which one it is looking at */}
+                    {row.reason !== 'no-assignee' && (
+                      <span className="text-muted-foreground">
+                        {' · '}
+                        {format(
+                          row.reason === 'panel-seat-unfilled'
+                            ? m.itemsStuckSeat
+                            : m.itemsStuckConflict,
+                        )}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

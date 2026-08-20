@@ -59,12 +59,35 @@ describe('the review policy shape', () => {
     expect(reasons('student', { normal: { stages: [stage()] } })).toEqual([])
   })
 
+  it('seats a panel only on an escalation middle step', () => {
+    // `all` is the sitting's shape (§32.66): the ordinary route confirms one
+    // voice at a time, and the escalation route's last step must speak with
+    // one final voice - a split there would have nowhere left to go
+    expect(reasons('student', policy([stage({ quorum: { type: 'all' } })]))).toContain(
+      'policy-quorum-all-normal',
+    )
+    expect(reasons('student', policy([stage()], [stage({ quorum: { type: 'all' } })]))).toContain(
+      'policy-quorum-all-terminal',
+    )
+    expect(
+      reasons('student', policy([stage()], [stage({ quorum: { type: 'all' } }), stage()])),
+    ).toEqual([])
+  })
+
   it('refuses the quorums the engine cannot yet count, by their own name', () => {
-    // in the grammar, not in the engine: a stored `all` run as `any` would
-    // be a configuration meaning something other than it says
-    for (const quorum of [{ type: 'all' }, { type: 'atLeast', count: 2 }]) {
-      expect(reasons('student', policy([stage({ quorum })]))).toContain('policy-quorum-not-counted')
-    }
+    // atLeast's count is policy that must hold even when eligibility shrinks
+    // the room, and no aggregation rule for it has been ruled
+    expect(
+      reasons('student', policy([stage({ quorum: { type: 'atLeast', count: 2 } })])),
+    ).toContain('policy-quorum-not-counted')
+  })
+
+  it('takes a spoken name for a step, and refuses a blank one', () => {
+    expect(reasons('student', policy([stage({ label: '班委初审' })]))).toEqual([])
+    expect(reasons('student', policy([stage({ label: '   ' })]))).toContain('policy-label-invalid')
+    expect(reasons('student', policy([stage({ label: '名'.repeat(51) })]))).toContain(
+      'policy-label-invalid',
+    )
   })
 
   it('refuses everything outside the grammar, by name', () => {

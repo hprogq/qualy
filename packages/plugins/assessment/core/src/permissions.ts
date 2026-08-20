@@ -114,10 +114,7 @@ export const PARTICIPANT_ACTION_CODES = [
  * identical ticks against every reviewing role and would buy nothing - what
  * varies is not who, it is when.
  */
-export const REVIEW_ACTION_CODES = [
-  'assessment.review.escalate',
-  'assessment.review.reject-intermediate',
-] as const
+export const REVIEW_ACTION_CODES = ['assessment.review.escalate'] as const
 
 export const BATCH_STAFF_CODES = [
   'assessment.entry.proxy',
@@ -139,7 +136,6 @@ export const PHASE_GATED_CODES = [
   'assessment.entry.appeal',
   'assessment.review.process',
   'assessment.review.escalate',
-  'assessment.review.reject-intermediate',
   'assessment.review.reopen',
   'assessment.result.view-peers',
   'assessment.ranking.view',

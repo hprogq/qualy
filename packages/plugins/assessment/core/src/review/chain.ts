@@ -38,9 +38,22 @@ export interface PolicyStage {
    * ahead of the current one would silently move every round back a level.
    */
   readonly id: string
+  /**
+   * What the administrator calls this step - "班委初审", "辅导员终审" - for
+   * every screen that walks the route. Optional because policies written
+   * before names existed stay readable; the unit-and-roles composite is the
+   * fallback, never the preferred spelling.
+   */
+  readonly label?: string
   readonly selector:
     | { readonly kind: 'roleAt'; readonly nodeTypeId: string; readonly roleIds: readonly string[] }
     | { readonly kind: 'nearestRole'; readonly roleId: string }
+  /**
+   * How many of the step's holders one judgment takes: `any` is one person
+   * answering for the step, `all` is a panel of everyone eligible when the
+   * round arrives (escalation middle steps only - see the validator).
+   * `atLeast` is named by the grammar and still refused.
+   */
   readonly quorum: { readonly type: 'any' | 'all' | 'atLeast'; readonly count?: number }
 }
 
@@ -54,6 +67,8 @@ export interface ReviewPolicy {
 /** one stage as the round froze it: where it landed, or why it did not */
 export interface ResolvedStage {
   readonly id: string
+  /** the administrator's name for the step; null on policies written before names */
+  readonly label: string | null
   readonly route: ReviewRoute
   /** where it sits in its own route, for reading the route back in order */
   readonly index: number
@@ -63,6 +78,9 @@ export interface ResolvedStage {
   readonly nodeId: string | null
   readonly skipped: 'no-such-level' | 'no-holder' | null
 }
+
+/** whether a round arriving at this stage sits a panel rather than one judge */
+export const isPanelStage = (stage: ResolvedStage): boolean => stage.quorum.type === 'all'
 
 export interface ResolvedPolicy {
   readonly normal: readonly ResolvedStage[]
@@ -126,8 +144,9 @@ export const readPolicy = (stored: unknown): ReviewPolicy => {
 }
 
 interface LegacyResolved {
-  stages?: readonly (Omit<ResolvedStage, 'id' | 'route'> & {
+  stages?: readonly (Omit<ResolvedStage, 'id' | 'label' | 'route'> & {
     id?: string
+    label?: string | null
     route?: string
   })[]
   normalTerminal?: number
@@ -151,6 +170,7 @@ export const readResolved = (stored: unknown): ResolvedPolicy => {
   const named = stages.map((stage, index): ResolvedStage => ({
     ...stage,
     id: stage.id ?? legacyStageId(index),
+    label: stage.label ?? null,
     route: index > terminal ? 'escalation' : 'normal',
     index: index > terminal ? index - terminal - 1 : index,
   }))
@@ -164,7 +184,12 @@ export const readResolved = (stored: unknown): ResolvedPolicy => {
 const renamed = (stages: readonly unknown[]): readonly ResolvedStage[] =>
   stages.map((stage) => {
     const one = stage as Omit<ResolvedStage, 'route'> & { route: string }
-    return { ...one, route: one.route === 'normal' ? 'normal' : 'escalation' }
+    return {
+      ...one,
+      // rounds frozen before steps had names read back nameless
+      label: one.label ?? null,
+      route: one.route === 'normal' ? 'normal' : 'escalation',
+    }
   })
 
 const resolveRoute = (input: {
@@ -178,8 +203,11 @@ const resolveRoute = (input: {
     const resolved: ResolvedStage[] = []
     for (const [index, stage] of input.stages.entries()) {
       const roleIds = stageRoles(stage.selector)
+      const label =
+        typeof stage.label === 'string' && stage.label.trim() !== '' ? stage.label.trim() : null
       const common = {
         id: stage.id,
+        label,
         route: input.route,
         index,
         selector: stage.selector,
@@ -293,3 +321,121 @@ export const holdersOf = (input: {
         subjectUserId: input.subjectUserId,
         actorId: input.actorId,
       })
+
+/** a subject nobody is, for asking about a stage rather than about a filing */
+export const NOBODY = '00000000-0000-0000-0000-000000000000'
+
+/**
+ * What a round arriving at one specific stage finds (§32.66).
+ *
+ * Two questions in order, because their answers mean different things.
+ * Membership - does anybody hold this step's roles here, accepted and all -
+ * decides whether the step is staffed at all; a step with nobody is a
+ * configuration gap the patrol owns (`no-assignee`), never something to
+ * step over. Eligibility then takes out the filing's own people and, on an
+ * escalation step, whoever already judged an earlier step of this round; a
+ * staffed step where nobody eligible remains is a conflict doing its job
+ * (`no-independent-reviewer`), which a route MAY step over where something
+ * comes after it.
+ */
+export interface StageArrival {
+  readonly state: 'active' | 'blocked'
+  readonly blockedReason: 'no-assignee' | 'no-independent-reviewer' | null
+  /** who can act, when anybody can: the panel constitution where one is due */
+  readonly eligible: readonly string[]
+}
+
+export const stageArrival = (input: {
+  tenantId: string
+  batchId: string
+  stage: ResolvedStage
+  subjectUserId: string
+  actorId: string
+  /** apply same-round independence against this round's earlier judges */
+  excludeJudgedOfInstanceId?: string
+}) =>
+  Effect.gen(function* () {
+    if (input.stage.nodeId === null) {
+      return { state: 'blocked', blockedReason: 'no-assignee', eligible: [] } as const
+    }
+    const at = {
+      tenantId: input.tenantId,
+      batchId: input.batchId,
+      nodeId: input.stage.nodeId,
+      roleIds: input.stage.roleIds,
+    }
+    const members = yield* reviewersAt({ ...at, subjectUserId: NOBODY, actorId: NOBODY })
+    if (members.length === 0) {
+      return { state: 'blocked', blockedReason: 'no-assignee', eligible: [] } as const
+    }
+    const eligible = yield* reviewersAt({
+      ...at,
+      subjectUserId: input.subjectUserId,
+      actorId: input.actorId,
+      ...(input.excludeJudgedOfInstanceId === undefined
+        ? {}
+        : { excludeJudgedOfInstanceId: input.excludeJudgedOfInstanceId }),
+    })
+    if (eligible.length === 0) {
+      return { state: 'blocked', blockedReason: 'no-independent-reviewer', eligible: [] } as const
+    }
+    return { state: 'active', blockedReason: null, eligible } as const
+  })
+
+/** where a route entering from `from` actually lands, and what it stepped over */
+export interface RouteArrival extends StageArrival {
+  readonly stage: ResolvedStage
+  /** staffed steps stepped over because only conflicted people held them */
+  readonly skipped: readonly ResolvedStage[]
+}
+
+/**
+ * Walks a route from `from` to the first step the round can stand at.
+ *
+ * `conflictSkip` is the escalation route's rule (§32.66): a middle step
+ * whose every holder already judged this round is stepped over - the
+ * conflict is the system's own doing and the route still has judges - while
+ * a genuinely unstaffed step always blocks, because somebody configured
+ * that duty and nobody is doing it. The ordinary route never skips: it
+ * resolves people live, and blocked there means blocked.
+ */
+export const resolveArrival = (input: {
+  tenantId: string
+  batchId: string
+  policy: ResolvedPolicy
+  route: ReviewRoute
+  from: number
+  subjectUserId: string
+  actorId: string
+  excludeJudgedOfInstanceId?: string
+  conflictSkip: boolean
+}) =>
+  Effect.gen(function* () {
+    const skipped: ResolvedStage[] = []
+    let at = input.from
+    for (;;) {
+      const stage = enterableFrom(input.policy, input.route, at)
+      if (stage === null) return null
+      const arrival = yield* stageArrival({
+        tenantId: input.tenantId,
+        batchId: input.batchId,
+        stage,
+        subjectUserId: input.subjectUserId,
+        actorId: input.actorId,
+        ...(input.excludeJudgedOfInstanceId === undefined
+          ? {}
+          : { excludeJudgedOfInstanceId: input.excludeJudgedOfInstanceId }),
+      })
+      if (
+        arrival.state === 'blocked' &&
+        arrival.blockedReason === 'no-independent-reviewer' &&
+        input.conflictSkip &&
+        enterableFrom(input.policy, input.route, stage.index + 1) !== null
+      ) {
+        skipped.push(stage)
+        at = stage.index + 1
+        continue
+      }
+      return { stage, ...arrival, skipped }
+    }
+  })

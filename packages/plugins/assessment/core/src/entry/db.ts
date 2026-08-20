@@ -592,6 +592,8 @@ export const insertReviewInstance = (input: {
   nodeId: string
   nodePath: string
   state: 'active' | 'blocked'
+  /** why nobody can act, when arriving blocked */
+  blockedReason?: string | null
 }) =>
   db
     .query((k) =>
@@ -600,14 +602,15 @@ export const insertReviewInstance = (input: {
           (tenant_id, entry_id, revision_id, round_no, origin, initiator,
            supersedes_instance_id, appealed_instance_id,
            policy_revision_id, effective_chain,
-           current_route, current_stage_id, state, current_role_ids, current_node_id,
-           current_node_path)
+           current_route, current_stage_id, state, blocked_reason,
+           current_role_ids, current_node_id, current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
                 ${input.origin ?? 'initial'}, ${input.initiator ?? 'participant'},
                 ${input.supersedesInstanceId ?? null}, ${input.appealedInstanceId ?? null},
                 ${input.policyRevisionId},
                 ${jsonb(input.effectivePolicy)},
                 ${input.route}, ${input.stageId}, ${input.state},
+                ${input.state === 'blocked' ? (input.blockedReason ?? 'no-assignee') : null},
                 ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[], ${input.nodeId},
                 ${input.nodePath}::ltree)
         returning id
@@ -632,6 +635,8 @@ export const advanceReviewInstance = (input: {
   nodeId: string
   nodePath: string
   state: 'active' | 'blocked'
+  /** why nobody can act at the step being entered, when arriving blocked */
+  blockedReason?: string | null
 }) =>
   db
     .query((k) =>
@@ -642,7 +647,9 @@ export const advanceReviewInstance = (input: {
             current_role_ids = ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[],
             current_node_id = ${input.nodeId},
             current_node_path = ${input.nodePath}::ltree,
-            state = ${input.state}
+            state = ${input.state},
+            blocked_reason =
+              ${input.state === 'blocked' ? (input.blockedReason ?? 'no-assignee') : null}
         where tenant_id = ${input.tenantId}
           and id = ${input.instanceId}
           and state in ('active', 'blocked')
@@ -675,16 +682,29 @@ export const cancelReviewInstance = (input: {
 }) =>
   db
     .query((k) =>
-      k
-        .updateTable('ReviewInstance')
-        .set({ state: 'completed', outcome: input.outcome, completedAt: sql`now()` })
-        .where('tenantId', '=', input.tenantId)
-        .where('id', '=', input.instanceId)
-        .where('state', 'in', ['active', 'blocked', 'awaiting_supplement'])
-        .returning(['id'])
-        .executeTakeFirst(),
+      // one statement, two writes: the round closes, and whatever sitting it
+      // still held dissolves with it - a panel left open on a closed round
+      // would go on admitting voters to nothing
+      sql<{ id: string }>`
+        with closed as (
+          update review_instances
+          set state = 'completed', outcome = ${input.outcome}, completed_at = now(),
+              blocked_reason = null
+          where tenant_id = ${input.tenantId} and id = ${input.instanceId}
+            and state in ('active', 'blocked', 'awaiting_supplement')
+          returning id
+        ), dissolved as (
+          update review_panels p
+          set state = 'superseded', closed_at = now()
+          from closed
+          where p.tenant_id = ${input.tenantId}
+            and p.review_instance_id = closed.id
+            and p.state = 'open'
+        )
+        select id from closed
+      `.execute(k),
     )
-    .pipe(Effect.map((row) => row !== undefined))
+    .pipe(Effect.map(({ rows }) => rows.length > 0))
 
 /**
  * Something that happened to a claim which no review round explains.

@@ -72,7 +72,12 @@ const checkSelector = (issues: PolicyIssue[], stage: Record<string, unknown>, at
   issues.push({ path: `${at}.selector`, reason: 'policy-selector-kind' })
 }
 
-const checkQuorum = (issues: PolicyIssue[], stage: Record<string, unknown>, at: string) => {
+const checkQuorum = (
+  issues: PolicyIssue[],
+  stage: Record<string, unknown>,
+  at: string,
+  place: { route: 'normal' | 'escalation'; last: boolean },
+) => {
   const quorum = stage['quorum']
   if (!isRecord(quorum)) {
     issues.push({ path: `${at}.quorum`, reason: 'policy-quorum-type' })
@@ -82,17 +87,42 @@ const checkQuorum = (issues: PolicyIssue[], stage: Record<string, unknown>, at: 
     unknownKeys(issues, quorum, `${at}.quorum`, ['type'])
     return
   }
-  if (quorum['type'] === 'all' || quorum['type'] === 'atLeast') {
-    // Named by the grammar, not yet counted by the engine: a panel is
-    // snapshotted on arrival and votes are tallied against it (§14, §32.28),
-    // and until that exists a stored `all` would be run as `any` - a
-    // configuration that means something other than it says. Refused here so
-    // that building the counting later means deleting this branch, never
+  if (quorum['type'] === 'all') {
+    unknownKeys(issues, quorum, `${at}.quorum`, ['type'])
+    // A panel is an escalation middle step's shape and nothing else's
+    // (§32.66). The ordinary route is a chain of single confirmations; the
+    // escalation route's last step must speak with one final voice - a
+    // split there would have nowhere left to go.
+    if (place.route === 'normal') {
+      issues.push({ path: `${at}.quorum`, reason: 'policy-quorum-all-normal' })
+    } else if (place.last) {
+      issues.push({ path: `${at}.quorum`, reason: 'policy-quorum-all-terminal' })
+    }
+    return
+  }
+  if (quorum['type'] === 'atLeast') {
+    // Named by the grammar, not yet counted by the engine: an `atLeast`
+    // count is policy - it must hold even when eligibility shrinks the
+    // room - and no aggregation rule for it has been ruled. Refused so
+    // that building it later means deleting this branch, never
     // reinterpreting what somebody already saved.
     issues.push({ path: `${at}.quorum`, reason: 'policy-quorum-not-counted' })
     return
   }
   issues.push({ path: `${at}.quorum`, reason: 'policy-quorum-type' })
+}
+
+/**
+ * The administrator's name for a step: short, spoken, optional. Optional
+ * because policies written before names stay readable - the editor asks for
+ * one on every step it saves.
+ */
+const checkLabel = (issues: PolicyIssue[], stage: Record<string, unknown>, at: string) => {
+  const label = stage['label']
+  if (label === undefined) return
+  if (typeof label !== 'string' || label.trim() === '' || label.trim().length > 50) {
+    issues.push({ path: `${at}.label`, reason: 'policy-label-invalid' })
+  }
 }
 
 /** the one spelling of a step id: minted by the pen, never typed by anybody */
@@ -122,7 +152,7 @@ const checkRoute = (
       issues.push({ path: at, reason: 'policy-not-an-object' })
       continue
     }
-    unknownKeys(issues, stage, at, ['id', 'selector', 'quorum'])
+    unknownKeys(issues, stage, at, ['id', 'label', 'selector', 'quorum'])
     const id = stage['id']
     if (typeof id !== 'string' || id === '' || id.length > 63 || !STAGE_ID.test(id)) {
       issues.push({ path: `${at}.id`, reason: 'policy-stage-id-required' })
@@ -134,7 +164,8 @@ const checkRoute = (
       seen.add(id)
     }
     checkSelector(issues, stage, at)
-    checkQuorum(issues, stage, at)
+    checkLabel(issues, stage, at)
+    checkQuorum(issues, stage, at, { route, last: index === stages.length - 1 })
   }
 }
 

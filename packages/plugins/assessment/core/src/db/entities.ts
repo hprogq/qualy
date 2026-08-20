@@ -1059,6 +1059,16 @@ export const ReviewInstance = defineEntity({
     /** the step by its permanent name, never by its position (§32.62) */
     currentStageId: p.string().length(63),
     state: p.string().length(31).defaultRaw(`'active'`),
+    /**
+     * Why nobody can act, whenever nobody can. One of `no-assignee` (the
+     * stage's roles have no accepted holder), `no-independent-reviewer`
+     * (holders exist, but every one of them already judged an earlier step
+     * of this round), `panel-seat-unfilled` (a seat of the sitting panel
+     * has nobody eligible left to take it). For the administrator's alert
+     * panel: a blocked round that cannot say why reads as a staffing gap
+     * even when it is a conflict rule doing exactly its job.
+     */
+    blockedReason: p.string().length(31).nullable(),
     outcome: p.string().length(31).nullable(),
     currentRoleIds: p.array().columnType('uuid[]'),
     currentNodeId: p.uuid(),
@@ -1098,6 +1108,14 @@ export const ReviewInstance = defineEntity({
     {
       name: 'chk_review_instances_lifecycle_shape',
       expression: `(state <> 'completed' AND completed_at IS NULL AND outcome IS NULL) OR (state = 'completed' AND completed_at IS NOT NULL AND outcome IS NOT NULL)`,
+    },
+    // a blocked round always says why, and only a blocked round says
+    // anything. Spelled as two arms rather than an IN-list for the same
+    // generator reason as the lifecycle shape; the value set is the
+    // writers' discipline
+    {
+      name: 'chk_review_instances_blocked_reason_shape',
+      expression: `(state <> 'blocked' AND blocked_reason IS NULL) OR (state = 'blocked' AND blocked_reason IS NOT NULL)`,
     },
   ],
   indexes: [
@@ -1176,6 +1194,166 @@ export const ReviewEvent = defineEntity({
       name: 'idx_review_events_tenant_instance_created',
       expression:
         'create index idx_review_events_tenant_instance_created on review_events (tenant_id, review_instance_id, created_at)',
+    },
+  ],
+})
+
+/**
+ * One sitting of several reviewers judging one step together (§32.66).
+ *
+ * Opened when a round enters an escalation stage whose quorum is `all`,
+ * constituted from whoever is eligible at that moment: the seat count is
+ * the panel's frozen denominator, and organizational change afterwards can
+ * refill a seat but never grow or shrink the sitting. `superseded` is a
+ * panel dissolved without a resolution - the round left it (withdrawn,
+ * rerouted) or its evidence changed under it (a supplement answered), and
+ * its votes stay readable as history that counted for nothing.
+ */
+export const ReviewPanel = defineEntity({
+  name: 'ReviewPanel',
+  tableName: 'review_panels',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('review_panels_tenant_id_tenants_id_fkey'),
+    reviewInstanceId: p.uuid(),
+    route: p.string().length(16),
+    stageId: p.string().length(63),
+    /** how many independent judgments this sitting takes; frozen at creation */
+    seatCount: p.integer(),
+    state: p.string().length(16).defaultRaw(`'open'`),
+    /** what the completed sitting amounted to; null until it resolves */
+    resolution: p.string().length(16).nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+    closedAt: p.datetime().nullable(),
+  },
+  checks: [
+    { name: 'chk_review_panels_seat_count_positive', expression: 'seat_count >= 1' },
+    {
+      name: 'chk_review_panels_state',
+      expression: `state IN ('open', 'resolved', 'superseded')`,
+    },
+    // Resolved says what and when; superseded says only when; open says
+    // neither. The resolution's value set ('approved' | 'escalated') is the
+    // writers' discipline rather than an arm here: an IN-list inside a
+    // compound check comes back from the generator as broken array sql
+    {
+      name: 'chk_review_panels_lifecycle_shape',
+      expression: `(state = 'open' AND resolution IS NULL AND closed_at IS NULL) OR (state = 'resolved' AND resolution IS NOT NULL AND closed_at IS NOT NULL) OR (state = 'superseded' AND resolution IS NULL AND closed_at IS NOT NULL)`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_review_panels_tenant_id_id',
+      expression:
+        'create unique index uq_review_panels_tenant_id_id on review_panels (tenant_id, id)',
+    },
+    // one sitting at a time: the round stands at one stage, and its stage
+    // holds one open panel - held by the database, not by the writer's care
+    {
+      name: 'uq_review_panels_open_instance',
+      expression: `create unique index uq_review_panels_open_instance on review_panels (review_instance_id) where ((state)::text = 'open'::text)`,
+    },
+    {
+      name: 'idx_review_panels_tenant_instance',
+      expression:
+        'create index idx_review_panels_tenant_instance on review_panels (tenant_id, review_instance_id)',
+    },
+  ],
+})
+
+/**
+ * Who holds one seat of a panel, for as long as they hold it.
+ *
+ * Append-only per occupancy: a member who loses eligibility before voting
+ * has the row ended (`ended_reason`), and a replacement is a new row on the
+ * same seat - the seat's story stays readable. A seat whose occupant voted
+ * never ends: the vote made it history.
+ */
+export const ReviewPanelAssignment = defineEntity({
+  name: 'ReviewPanelAssignment',
+  tableName: 'review_panel_assignments',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('review_panel_assignments_tenant_id_tenants_id_fkey'),
+    panelId: p.uuid(),
+    seatNo: p.integer(),
+    /** who sits there; a historical fact, deliberately without a foreign key */
+    userId: p.uuid(),
+    assignedAt: p.datetime().defaultRaw('now()'),
+    endedAt: p.datetime().nullable(),
+    endedReason: p.string().length(31).nullable(),
+  },
+  checks: [
+    { name: 'chk_review_panel_assignments_seat_positive', expression: 'seat_no >= 1' },
+    {
+      name: 'chk_review_panel_assignments_ended_shape',
+      expression: `(ended_at IS NULL AND ended_reason IS NULL) OR (ended_at IS NOT NULL AND ended_reason IS NOT NULL)`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_review_panel_assignments_tenant_id_id',
+      expression:
+        'create unique index uq_review_panel_assignments_tenant_id_id on review_panel_assignments (tenant_id, id)',
+    },
+    // one current occupant per seat, one seat per person - the two races a
+    // concurrent claim can run, both lost at the index
+    {
+      name: 'uq_review_panel_assignments_live_seat',
+      expression:
+        'create unique index uq_review_panel_assignments_live_seat on review_panel_assignments (panel_id, seat_no) where (ended_at IS NULL)',
+    },
+    {
+      name: 'uq_review_panel_assignments_live_user',
+      expression:
+        'create unique index uq_review_panel_assignments_live_user on review_panel_assignments (panel_id, user_id) where (ended_at IS NULL)',
+    },
+    {
+      name: 'idx_review_panel_assignments_tenant_panel',
+      expression:
+        'create index idx_review_panel_assignments_tenant_panel on review_panel_assignments (tenant_id, panel_id)',
+    },
+  ],
+})
+
+/**
+ * One member's judgment, cast once and never edited (§32.66).
+ *
+ * The authority on panel opinions: events narrate, votes count. Losing a
+ * role after voting does not reach back here - permission answers whether a
+ * new act may happen, never whether a past lawful one still counts.
+ */
+export const ReviewVote = defineEntity({
+  name: 'ReviewVote',
+  tableName: 'review_votes',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('review_votes_tenant_id_tenants_id_fkey'),
+    panelId: p.uuid(),
+    assignmentId: p.uuid(),
+    voterUserId: p.uuid(),
+    decision: p.string().length(16),
+    /** the configured label the voter picked, copied verbatim */
+    reason: p.string().length(100).nullable(),
+    comment: p.text().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_review_votes_decision',
+      expression: `decision IN ('approve', 'reject')`,
+    },
+  ],
+  indexes: [
+    // a seat occupancy speaks at most once
+    {
+      name: 'uq_review_votes_assignment',
+      expression: 'create unique index uq_review_votes_assignment on review_votes (assignment_id)',
+    },
+    {
+      name: 'idx_review_votes_tenant_panel',
+      expression:
+        'create index idx_review_votes_tenant_panel on review_votes (tenant_id, panel_id)',
     },
   ],
 })
@@ -1432,6 +1610,14 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, appealed_instance_id) references review_instances (tenant_id, id) on delete set null (appealed_instance_id)`,
   `alter table review_events add constraint fk_review_events_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
+  `alter table review_panels add constraint fk_review_panels_instance
+     foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
+  `alter table review_panel_assignments add constraint fk_review_panel_assignments_panel
+     foreign key (tenant_id, panel_id) references review_panels (tenant_id, id) on delete cascade`,
+  `alter table review_votes add constraint fk_review_votes_panel
+     foreign key (tenant_id, panel_id) references review_panels (tenant_id, id) on delete cascade`,
+  `alter table review_votes add constraint fk_review_votes_assignment
+     foreign key (tenant_id, assignment_id) references review_panel_assignments (tenant_id, id) on delete cascade`,
   `alter table review_supplement_requests add constraint fk_review_supplement_requests_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
   `alter table review_supplement_responses add constraint fk_review_supplement_responses_request
@@ -1473,6 +1659,9 @@ export const entities = [
   EntryRevisionAttachment,
   ReviewInstance,
   ReviewEvent,
+  ReviewPanel,
+  ReviewPanelAssignment,
+  ReviewVote,
   ReviewSupplementRequest,
   ReviewSupplementResponse,
   ReviewSupplementAttachment,

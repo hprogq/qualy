@@ -52,7 +52,7 @@ import {
 } from './db.ts'
 import {
   enterableFrom,
-  holdersOf,
+  stageArrival,
   policyModeOf,
   readPolicy,
   resolvePolicy,
@@ -970,18 +970,17 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               if (first === null) return yield* refuse(action, 'review-level-missing')
               const nodePath = yield* nodePathOf(tenantId, first.nodeId!)
               if (nodePath === null) return yield* refuse(action, 'review-level-missing')
-              const holders = yield* holdersOf({
+              // Nobody can act at the stage today - which is the round's
+              // problem, not this person's. The round is written down as
+              // blocked with its reason so the patrol and the alert panel
+              // own it, and it heals the moment somebody is appointed (§14).
+              const arrived = yield* stageArrival({
                 tenantId,
                 batchId: entry.batchId,
                 stage: first,
                 subjectUserId: participant.userId,
                 actorId: current!.actorId,
               })
-              // Nobody holds the stage's roles there today - which is the
-              // round's problem, not this person's. The round is written
-              // down as blocked so the patrol and the alert panel own it,
-              // and it heals the moment somebody is appointed (§14).
-              const arrived = holders.length > 0 ? 'active' : 'blocked'
 
               const roundNo = yield* nextRoundNo(tenantId, entryId)
               const instanceId = yield* insertReviewInstance({
@@ -998,7 +997,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 roleIds: first.roleIds,
                 nodeId: first.nodeId!,
                 nodePath,
-                state: arrived,
+                state: arrived.state,
+                blockedReason: arrived.blockedReason,
               })
               yield* insertReviewEvent({
                 tenantId,
@@ -1008,7 +1008,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 route: 'normal',
                 stageId: first.id,
               })
-              if (arrived === 'blocked') {
+              if (arrived.state === 'blocked') {
                 yield* insertReviewEvent({
                   tenantId,
                   reviewInstanceId: instanceId,

@@ -652,3 +652,117 @@ describe.runIf(postgresAvailable)('the default-review-reasons migration', () => 
     }
   })
 })
+
+describe.runIf(postgresAvailable)('the review-panels migration', () => {
+  const PANELS = '20260820131214_review-panels.sql'
+
+  it('backfills the one reason every already-blocked round had', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, PANELS))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-panels-upgrade-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file < PANELS) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('panels-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('panels', 'Panels') returning id`,
+      )
+      const orgType = await one(
+        `insert into org_types (tenant_id, code, name) values ($1, 'class', 'Class') returning id`,
+        [tenant],
+      )
+      const node = await one(
+        `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+         values ($1, $2, 'Class', 'panels', 0) returning id`,
+        [tenant, orgType],
+      )
+      const userType = await one(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'student', 'Student', 'unrestricted') returning id`,
+        [tenant],
+      )
+      const user = await one(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, 'Zhang San', $2, $3) returning id`,
+        [tenant, userType, node],
+      )
+      const batch = await one(
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, 'Old rounds', daterange('2026-03-01', '2026-09-01')) returning id`,
+        [tenant],
+      )
+      const group = await one(
+        `insert into score_groups (tenant_id, batch_id, name) values ($1, $2, '文体') returning id`,
+        [tenant, batch],
+      )
+      const item = await one(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id, status)
+         values ($1, $2, 'evidence', '退役复学', $3, 'active') returning id`,
+        [tenant, batch, group],
+      )
+      const itemRevision = await one(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
+         values ($1, $2, 1, 'student', '{}', '{}', '{}', '{}', $3) returning id`,
+        [tenant, item, user],
+      )
+      const participant = await one(
+        `insert into batch_participants (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage, user_type_id)
+         values ($1, $2, $3, $4, (select path from org_nodes where id = $4), '[]'::jsonb, $5)
+         returning id`,
+        [tenant, batch, user, node, userType],
+      )
+      const openRound = async (state: 'active' | 'blocked') => {
+        const entry = await one(
+          `insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
+           values ($1, $2, $3, $4, 'self', 'in_review') returning id`,
+          [tenant, batch, item, participant],
+        )
+        const revision = await one(
+          `insert into entry_revisions (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+           values ($1, $2, $3, $4, 1, '{}', $5, $5, 'self') returning id`,
+          [tenant, entry, item, itemRevision, user],
+        )
+        return one(
+          `insert into review_instances
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id,
+              effective_chain, current_route, current_stage_id, state, current_role_ids,
+              current_node_id, current_node_path)
+           values ($1, $2, $3, 1, 'initial', 'participant', $4, '{}'::jsonb, 'normal', 'n1', $5,
+                   '{}', $6, (select path from org_nodes where id = $6))
+           returning id`,
+          [tenant, entry, revision, itemRevision, state, node],
+        )
+      }
+      // rounds blocked before the reason column existed had exactly one
+      // cause - the old patrol wrote blocked only for a staffing gap
+      const waiting = await openRound('blocked')
+      const working = await openRound('active')
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const reasonOf = async (id: string) =>
+        (
+          await db.row<{ blocked_reason: string | null }>(
+            `select blocked_reason from review_instances where id = $1`,
+            [id],
+          )
+        ).blocked_reason
+      expect(await reasonOf(waiting)).toBe('no-assignee')
+      expect(await reasonOf(working)).toBeNull()
+      // and the check that guards the shape from now on is really in place
+      await expect(
+        db.query(`update review_instances set blocked_reason = null where id = $1`, [waiting]),
+      ).rejects.toThrow(/chk_review_instances_blocked_reason_shape/)
+    } finally {
+      await db.dispose()
+    }
+  })
+})

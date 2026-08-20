@@ -376,7 +376,9 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     // the two routes the domain describes are stored as written
     expect(Exit.isSuccess(result.twoRoutes)).toBe(true)
     expect(Exit.isSuccess(result.nearestRole)).toBe(true)
-    expect(issuesOf(result.quorumAll)).toContain('policy-quorum-not-counted')
+    // a panel is an escalation middle step's shape; the ordinary route
+    // refuses it by that name (§32.66)
+    expect(issuesOf(result.quorumAll)).toContain('policy-quorum-all-normal')
     // and what is outside the grammar is still named and refused
     expect(issuesOf(result.unknownSelector)).toContain('policy-selector-kind')
     expect(issuesOf(result.unnamedStage)).toContain('policy-stage-id-required')

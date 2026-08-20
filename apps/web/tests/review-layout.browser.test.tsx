@@ -87,10 +87,12 @@ const review = {
       {
         id: 'class',
         index: 0,
+        label: null,
         nodeName: '软件2023级2班',
         roleNames: ['审核员'],
         reviewers: ['张老师'],
         skipped: null,
+        opinions: null,
       },
     ],
     escalation: [],
@@ -289,6 +291,107 @@ describe('one workbench, three widths', () => {
       .first()
       .element()
     expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+  })
+})
+
+/** the same round standing on the ladder, contested and carrying opinions */
+const onLadder = () => ({
+  ...review,
+  chain: {
+    route: 'escalation' as const,
+    stageId: 'd2',
+    normal: review.chain.normal,
+    escalation: [
+      {
+        id: 'g1',
+        index: 0,
+        label: '年级合议',
+        nodeName: '软件2023级2班',
+        roleNames: ['年级负责人'],
+        reviewers: ['王老师', '李老师'],
+        skipped: null,
+        opinions: [
+          {
+            who: '王老师',
+            decision: 'approve' as const,
+            reason: null,
+            comment: '材料充分，可以认定',
+            at: '2026-03-04T00:00:00.000Z',
+          },
+          {
+            who: '李老师',
+            decision: 'reject' as const,
+            reason: null,
+            comment: '日期超出认定范围',
+            at: '2026-03-04T01:00:00.000Z',
+          },
+        ],
+      },
+      {
+        id: 'd2',
+        index: 1,
+        label: '辅导员终审',
+        nodeName: '软件2023级2班',
+        roleNames: ['辅导员'],
+        reviewers: ['陈老师'],
+        skipped: null,
+        opinions: null,
+      },
+    ],
+  },
+  events: [
+    ...review.events,
+    {
+      kind: 'appealed',
+      actorId: PARTICIPANT_ID,
+      actorName: '周予安',
+      reason: null,
+      comment: '原审核认定证书超期，但赛事实际举办日期在范围内',
+      suggestedPayload: null,
+      at: '2026-03-03T10:00:00.000Z',
+    },
+  ],
+  actions: {
+    approve: { state: 'available' as const, reason: null },
+    reject: { state: 'available' as const, reason: null },
+    escalate: { state: 'blocked' as const, reason: 'route-end' },
+    supplement: { state: 'available' as const, reason: null },
+  },
+})
+
+describe('the escalation environment', () => {
+  it('wears the caution band, names the steps, and hands the judge every earlier opinion', async () => {
+    page.viewport(1440, 900)
+    open({ getReviewInstance: () => Effect.succeed({ review: onLadder() }) })
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+
+    // the mode is worn, not explained: a band over the workbench, and the
+    // route attribute the shell styles by
+    await expect.element(page.getByTestId('escalation-band')).toBeVisible()
+    expect(document.querySelector('[data-review-route="escalation"]')).not.toBeNull()
+
+    // the appellant's grounds are business evidence, and they are on screen
+    // (twice, in fact: the banner leads with them and the trail records them)
+    await expect
+      .element(page.getByText('原审核认定证书超期，但赛事实际举办日期在范围内').first())
+      .toBeVisible()
+
+    // the administrator's names for the steps carry the route
+    await expect.element(page.getByText('年级合议')).toBeVisible()
+    await expect.element(page.getByText('辅导员终审')).toBeVisible()
+
+    // the concluded sitting's opinions, each with its direction on record
+    const opinions = page.getByTestId('stage-opinions')
+    await expect.element(opinions).toBeVisible()
+    const directions = [...opinions.element().querySelectorAll('[data-opinion]')].map((node) =>
+      node.getAttribute('data-opinion'),
+    )
+    expect(directions).toEqual(['approve', 'reject'])
+    await expect.element(page.getByText('日期超出认定范围')).toBeVisible()
+
+    // on the ladder's last rung the four acts stand, escalating explained away
+    await expect.element(page.getByTestId('act-escalate')).toHaveAttribute('data-offer', 'blocked')
+    await expect.element(page.getByTestId('act-reject')).toHaveAttribute('data-offer', 'available')
   })
 })
 

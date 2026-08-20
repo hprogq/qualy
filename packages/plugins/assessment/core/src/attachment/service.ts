@@ -120,7 +120,9 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
             tenantId,
             userId: as.userId,
             instance: {
+              id: instance.id,
               batchId: instance.batchId,
+              currentRoute: instance.currentRoute,
               currentNodeId: instance.currentNodeId,
               currentRoleIds: instance.currentRoleIds,
               subjectUserId: instance.subjectUserId,

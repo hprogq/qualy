@@ -65,6 +65,8 @@ describe('reading a stored policy', () => {
     expect(frozen.normal).toEqual([
       {
         id: 'legacy-0',
+        // frozen before steps had names: read back nameless, not undefined
+        label: null,
         route: 'normal',
         index: 0,
         selector,
@@ -92,6 +94,7 @@ const stage = (
   nodeId: string | null,
 ) => ({
   id,
+  label: null,
   route,
   index,
   selector,

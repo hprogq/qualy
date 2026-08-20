@@ -33,45 +33,59 @@ import type { GateDecision } from '../phase/gate.ts'
 import {
   escalationOpen,
   enterableFrom,
-  holdersOf,
+  isPanelStage,
   readPolicy,
+  resolveArrival,
   resolvePolicy,
   isRouteEnd,
   nextAfter,
-  routeOf,
+  stageArrival,
   stageById,
   type ResolvedPolicy,
   type ResolvedStage,
-  type ReviewRoute,
 } from './chain.ts'
 import { nodePathOf } from '../entry/db.ts'
 import {
   activeReviewBatches,
   awaitingPage,
+  claimPanelSeat,
+  createPanel,
   earlierConclusions,
   closeSupplementRequest,
   completeInstance,
   decisionsToday,
+  endPanelAssignment,
   inboxPage,
   insertSupplementAttachments,
   insertSupplementRequest,
   insertSupplementResponse,
+  insertVote,
   instanceOf,
   chainNames,
   holderNamesAt,
+  livePanelSeats,
+  lockReviewInstance,
   nextSupplementNo,
+  openPanelOf,
   previousConclusion,
+  resolvedPanelOpinions,
+  resolvePanel,
   revisionBefore,
   reviewEventsOf,
   scoreGroupOf,
+  setInstanceState,
   setInstanceSupplementState,
   siblingEntries,
+  supersedeOpenPanels,
   supplementAttachmentHistory,
   supplementRequestOf,
   supplementsOf,
   isOpenReviewState,
   userMayReview,
+  votesOfPanel,
+  votesToday,
   type InboxRow,
+  type PanelVoteRow,
   type ReviewInstanceDetailRow,
   type SupplementRequirement,
   type SupplementRow,
@@ -116,6 +130,8 @@ export interface ReviewInboxItem {
 export interface ReviewStageView {
   readonly id: string
   readonly index: number
+  /** the administrator's name for the step, when the policy carries one */
+  readonly label: string | null
   readonly nodeName: string | null
   readonly roleNames: readonly string[]
   /**
@@ -125,6 +141,20 @@ export interface ReviewStageView {
    */
   readonly reviewers: readonly string[] | null
   readonly skipped: string | null
+  /**
+   * What a concluded sitting at this step said, judgment by judgment: the
+   * next judge's evidence. Null where no sitting concluded, and always null
+   * while one is open - a sealed ballot stays sealed (§32.66).
+   */
+  readonly opinions:
+    | readonly {
+        readonly who: string | null
+        readonly decision: 'approve' | 'reject'
+        readonly reason: string | null
+        readonly comment: string | null
+        readonly at: number
+      }[]
+    | null
 }
 
 export interface ReviewChainView {
@@ -147,8 +177,7 @@ export interface ReviewChainView {
  */
 export interface ReviewActionView {
   readonly state: 'available' | 'blocked'
-  readonly reason:
-    'in-escalation' | 'no-route' | 'route-closed' | 'phase-closed' | 'terminal-only' | null
+  readonly reason: 'no-route' | 'route-closed' | 'phase-closed' | 'route-end' | null
 }
 
 export interface ReviewActionsView {
@@ -255,45 +284,49 @@ export interface ReviewContextView {
 }
 
 /**
- * What a reviewer can say (§14, §32.63).
+ * What a reviewer can say (§14, §32.66) - always their own judgment of
+ * the filing, never a workflow instruction. What the word then does is the
+ * route's business, and the two routes are different machines.
  *
- * Both routes are real review chains: approve carries the round to the next
- * step of the route it is on and ends it at the last one, reject ends it
- * wherever reject is on offer. Escalating hands the round to the other
- * route entirely rather than carrying on from where it was, so it is only
- * ever offered on the ordinary one.
+ * The ordinary route is a chain of confirmations: approve carries the round
+ * to the next step and ends it at the last, reject ends it anywhere,
+ * escalate hands it to the escalation route while the phase opens that.
  *
- * There is no separate vocabulary for advising. A middle step approving
- * already says "nothing here for me, pass it on", and inventing a second
- * word for it meant a reviewer had to know which kind of chain they were
- * standing in before they knew which button meant what.
+ * The escalation route is a ladder of settlements (§32.66, re-ruled
+ * 2026-08-20): every step of it is qualified to settle the matter
+ * positively, so approve ends the round wherever it is said. A middle
+ * step's reject is an opinion that climbs - the final negative word belongs
+ * to the route's end alone - and escalate climbs without an opinion.
+ * Nothing on the ladder is phase-gated: the phase gates entering it.
  */
 export type ReviewDecision = 'approve' | 'reject' | 'escalate'
 
 /**
- * What may be said from where the round stands.
- *
- * One function, asked by the reader and by the writer, so a button that
- * shows available is a button that works.
- *
- * The rejection rule (§32.63, re-ruled 2026-08-20): on the ordinary route
- * every step may reject; on the escalation route its end always may, and a
- * middle step only while the phase in force opens
- * `assessment.review.reject-intermediate`. The rule is the phase's, read at
- * decision time - the round no longer freezes one at birth, so an appeal is
- * terminal-only exactly when the administrator configured its phase that
- * way, not because of where the round came from.
+ * What may be said from where the round stands. One function, asked by the
+ * reader and by the writer, so a button that shows available is a button
+ * that works.
  */
 const decisionsAt = (
   policy: ResolvedPolicy,
   here: ResolvedStage,
-  gates: { mayEscalate: boolean; rejectIntermediate: boolean },
+  gates: { mayEscalate: boolean },
 ): readonly ReviewDecision[] => {
-  const endable = here.route === 'normal' || isRouteEnd(policy, here) || gates.rejectIntermediate
-  const said: ReviewDecision[] = endable ? ['approve', 'reject'] : ['approve']
-  if (here.route === 'normal' && gates.mayEscalate && escalationOpen(policy)) said.push('escalate')
+  const said: ReviewDecision[] = ['approve', 'reject']
+  if (here.route === 'normal') {
+    if (gates.mayEscalate && escalationOpen(policy)) said.push('escalate')
+  } else if (!isRouteEnd(policy, here)) {
+    said.push('escalate')
+  }
   return said
 }
+
+/** whether this word, said here, ends the round rather than moving it */
+const wordEnds = (policy: ResolvedPolicy, here: ResolvedStage, action: ReviewDecision): boolean =>
+  action === 'approve'
+    ? here.route === 'escalation' || isRouteEnd(policy, here)
+    : action === 'reject'
+      ? here.route === 'normal' || isRouteEnd(policy, here)
+      : false
 
 export interface ReviewDecisionInput {
   readonly decision: ReviewDecision
@@ -395,12 +428,8 @@ export interface ReviewDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
   /** the phase gate's word on assessment.review.process in this batch, now */
   readonly reviewGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
-  /** and on assessment.review.raise-escalation, which a phase opens separately */
+  /** and on assessment.review.escalate, which a phase opens separately */
   readonly escalateGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
-  readonly rejectIntermediateGate: (
-    tenantId: string,
-    batchId: string,
-  ) => Effect.Effect<GateDecision>
   /** administrative reach over the batch, the same door getEntry uses */
   readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
   readonly parseRange: (text: string) => { start: string; end: string }
@@ -525,8 +554,6 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     view: {
       canDecide: boolean
       mayEscalate?: boolean
-      /** whether the phase in force opens rejecting at a middle escalation step */
-      rejectIntermediate?: boolean
       resolveReviewers: boolean
       canCancelSupplement?: boolean
       /**
@@ -578,15 +605,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       const offered: readonly string[] =
         !view.canDecide || here === null
           ? []
-          : decisionsAt(policy, here, {
-              mayEscalate: view.mayEscalate === true,
-              rejectIntermediate: view.rejectIntermediate === true,
-            })
+          : decisionsAt(policy, here, { mayEscalate: view.mayEscalate === true })
       const act = (may: boolean, reason: ReviewActionView['reason']): ReviewActionView =>
         may ? { state: 'available', reason: null } : { state: 'blocked', reason }
+      // why escalating is off the table here, when it is: on the ladder the
+      // only cause is standing at its end; off it, no route, a route this
+      // person resolves to none of, or the phase
       const escalateReason: ReviewActionView['reason'] =
         row.currentRoute === 'escalation'
-          ? 'in-escalation'
+          ? 'route-end'
           : policy.escalation.length === 0
             ? 'no-route'
             : !escalationOpen(policy)
@@ -594,10 +621,20 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               : 'phase-closed'
       const actions: ReviewActionsView = {
         approve: act(offered.includes('approve'), null),
-        reject: act(offered.includes('reject'), 'terminal-only'),
+        reject: act(offered.includes('reject'), null),
         escalate: act(offered.includes('escalate'), escalateReason),
         supplement: act(view.canDecide, null),
       }
+      // what the concluded sittings said, for the judge now standing after
+      // them; and which steps this round stepped over, off its own trail
+      const opinionsByStage = view.resolveReviewers
+        ? yield* resolvedPanelOpinions(tenantId, row.id)
+        : new Map<string, readonly PanelVoteRow[]>()
+      const conflictSkipped = new Set(
+        events
+          .filter((event) => event.kind === 'stage-skipped' && event.stageId !== null)
+          .map((event) => event.stageId as string),
+      )
       // the surroundings only a page read pays for: the decision path runs
       // inside the batch lock, where every extra query is somebody waiting
       let context: ReviewContextView | null = null
@@ -649,14 +686,31 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           earlier: older.filter((one) => one.at !== previous?.createdAt),
         }
       }
-      const stageView = (stage: ResolvedStage): ReviewStageView => ({
-        id: stage.id,
-        index: stage.index,
-        nodeName: stage.nodeId === null ? null : (names.nodes.get(stage.nodeId) ?? null),
-        roleNames: stage.roleIds.map((roleId) => names.roles.get(roleId) ?? roleId),
-        reviewers: view.resolveReviewers ? (reviewersByStage.get(stage.id) ?? []) : null,
-        skipped: stage.skipped,
-      })
+      const stageView = (stage: ResolvedStage): ReviewStageView => {
+        const said = opinionsByStage.get(stage.id)
+        return {
+          id: stage.id,
+          index: stage.index,
+          label: stage.label,
+          nodeName: stage.nodeId === null ? null : (names.nodes.get(stage.nodeId) ?? null),
+          roleNames: stage.roleIds.map((roleId) => names.roles.get(roleId) ?? roleId),
+          reviewers: view.resolveReviewers ? (reviewersByStage.get(stage.id) ?? []) : null,
+          // the resolution-time reasons off the snapshot, and the run-time
+          // one off the round's own trail: a staffed step stepped over
+          // because only conflicted people held it
+          skipped: stage.skipped ?? (conflictSkipped.has(stage.id) ? 'reviewer-conflict' : null),
+          opinions:
+            said === undefined
+              ? null
+              : said.map((vote) => ({
+                  who: vote.voterName,
+                  decision: vote.decision,
+                  reason: vote.reason,
+                  comment: vote.comment,
+                  at: vote.createdAt,
+                })),
+        }
+      }
       return {
         id: row.id,
         state: row.state,
@@ -720,7 +774,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       tenantId,
       userId: as.userId,
       instance: {
+        id: row.id,
         batchId: row.batchId,
+        currentRoute: row.currentRoute,
         currentNodeId: row.currentNodeId,
         currentRoleIds: row.currentRoleIds,
         subjectUserId: row.subjectUserId,
@@ -769,16 +825,17 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       if (page.batchId !== undefined) {
         const batch = yield* dieQuery(withDb(oneBatch(tenantId, page.batchId)))
         if (batch !== null) {
-          handledToday = yield* dieQuery(
-            withDb(
-              decisionsToday({
-                tenantId,
-                batchId: page.batchId,
-                userId: as.userId,
-                timezone: batch.timezone,
-              }),
-            ),
-          )
+          const asked = {
+            tenantId,
+            batchId: page.batchId,
+            userId: as.userId,
+            timezone: batch.timezone,
+          }
+          // events and votes are two shapes of one day's work: a panel vote
+          // deliberately writes no event until its sitting concludes
+          handledToday =
+            (yield* dieQuery(withDb(decisionsToday(asked)))) +
+            (yield* dieQuery(withDb(votesToday(asked))))
         }
       }
       return {
@@ -877,13 +934,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     // and closes: during an appeal window there is nothing to escalate
     // about, because an appeal is already on the escalation route
     const escalationDecision = yield* deps.escalateGate(tenantId, row.batchId)
-    const intermediateDecision = yield* deps.rejectIntermediateGate(tenantId, row.batchId)
     return yield* dieQuery(
       withDb(
         assembleDetail(tenantId, row, {
           canDecide,
           mayEscalate: escalationDecision.allowed,
-          rejectIntermediate: intermediateDecision.allowed,
           resolveReviewers: true,
           canCancelSupplement:
             judge &&
@@ -906,6 +961,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            // the round row itself, taken first: panel votes, seat claims
+            // and the ordinary decision races all serialize here, and every
+            // read below is post-lock
+            yield* lockReviewInstance(tenantId, instanceId)
             const row = yield* instanceOf(tenantId, instanceId)
             if (row === null) return yield* new ReviewNotFound()
             const judge = yield* mayAct(tenantId, row, as)
@@ -932,22 +991,16 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             const here = stageById(policy, row.currentRoute, row.currentStageId)
             if (here === null) return yield* refuse(action, 'chain-unreadable')
             // Where this round stands decides what may be said here (§14,
-            // §32.62): an ordinary step carries or ends the round and may
-            // hand it to the escalation route; a middle step of the escalation route
-            // may only advise, because the decision belongs to its end.
+            // §32.66): the ordinary route confirms step by step and may hand
+            // the round to the escalation ladder while the phase opens that;
+            // every rung of the ladder may settle the matter, and only its
+            // last rung may finally refuse it.
             const escalationDecision =
-              action === 'escalate'
+              action === 'escalate' && here.route === 'normal'
                 ? yield* deps.escalateGate(tenantId, row.batchId)
-                : { allowed: true as const }
-            // only a middle step of the escalation route needs the phase's
-            // word on early rejection; everywhere else the answer is free
-            const intermediateDecision =
-              action === 'reject' && here.route === 'escalation' && !isRouteEnd(policy, here)
-                ? yield* deps.rejectIntermediateGate(tenantId, row.batchId)
                 : { allowed: true as const }
             const allowed = decisionsAt(policy, here, {
               mayEscalate: escalationDecision.allowed,
-              rejectIntermediate: intermediateDecision.allowed,
             })
             if (!allowed.includes(action)) {
               // an escalation refused by the phase says so in the phase's own
@@ -996,7 +1049,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             }
             let suggestion: unknown
             if (input.suggestedPayload !== undefined) {
-              if (action !== 'reject') {
+              // advice to the person who filed rides only a rejection that
+              // actually reaches them: a climbing opinion and a panel vote
+              // end nothing, and their words go to the next judge instead
+              if (!(action === 'reject' && wordEnds(policy, here, 'reject'))) {
                 return yield* new EntryPayloadInvalid({
                   issues: [{ field: 'suggestedPayload', reason: 'not-allowed' }],
                 })
@@ -1018,16 +1074,212 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 comment: comment === '' ? null : comment,
                 ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
               })
+            /** the round's own word, spoken by no one: a sitting concluding */
+            const sayFrom = (kind: string, actorId: string | null) =>
+              insertReviewEvent({
+                tenantId,
+                reviewInstanceId: instanceId,
+                kind,
+                actorId,
+                route: here.route,
+                stageId: here.id,
+              })
 
-            // Every decision carries its opinion with it; a freestanding
-            // note is no longer an act. Rounds decided before this carry
-            // `comment` events in their trail, and the readers still render
-            // them - only the writing of new ones is gone.
+            /**
+             * Climbs the ladder from `from`: the next rung somebody
+             * independent can stand at, stepping over rungs held only by
+             * this round's own earlier judges, blocking on a genuinely
+             * unstaffed one. The acting event is already written, so the
+             * walker's independence rule counts the very act being taken.
+             */
+            const climb = (from: number) =>
+              Effect.gen(function* () {
+                const landing = yield* resolveArrival({
+                  tenantId,
+                  batchId: row.batchId,
+                  policy,
+                  route: 'escalation',
+                  from,
+                  subjectUserId: row.subjectUserId,
+                  actorId: row.actorId,
+                  excludeJudgedOfInstanceId: instanceId,
+                  conflictSkip: true,
+                })
+                if (landing === null || landing.stage.nodeId === null) {
+                  return yield* refuse(action, 'chain-ends-here')
+                }
+                const nodePath = yield* nodePathOf(tenantId, landing.stage.nodeId)
+                if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
+                const moved = yield* advanceReviewInstance({
+                  tenantId,
+                  instanceId,
+                  fromRoute: here.route,
+                  fromStageId: here.id,
+                  toRoute: 'escalation',
+                  toStageId: landing.stage.id,
+                  roleIds: landing.stage.roleIds,
+                  nodeId: landing.stage.nodeId,
+                  nodePath,
+                  state: landing.state,
+                  blockedReason: landing.blockedReason,
+                })
+                if (!moved) return yield* new ReviewConflict()
+                // the steps stepped over, on the record: the chain view and
+                // the trail both read them off the round itself
+                for (const stepped of landing.skipped) {
+                  yield* insertReviewEvent({
+                    tenantId,
+                    reviewInstanceId: instanceId,
+                    kind: 'stage-skipped',
+                    actorId: null,
+                    route: 'escalation',
+                    stageId: stepped.id,
+                  })
+                }
+                if (landing.state === 'blocked') {
+                  yield* insertReviewEvent({
+                    tenantId,
+                    reviewInstanceId: instanceId,
+                    kind: 'assignee-not-found',
+                    actorId: null,
+                    route: 'escalation',
+                    stageId: landing.stage.id,
+                  })
+                } else if (isPanelStage(landing.stage)) {
+                  yield* createPanel({
+                    tenantId,
+                    reviewInstanceId: instanceId,
+                    route: 'escalation',
+                    stageId: landing.stage.id,
+                    members: landing.eligible,
+                  })
+                }
+              })
 
-            // ending the round: a rejection wherever it may be said, or an
-            // approval at the last step of the route being walked
-            const ends = action === 'reject' || (action === 'approve' && isRouteEnd(policy, here))
-            if (ends) {
+            /** what every path returns: the round as it now stands */
+            const written = () =>
+              Effect.gen(function* () {
+                const after = (yield* instanceOf(tenantId, instanceId))!
+                return yield* assembleDetail(tenantId, after, {
+                  canDecide: false,
+                  resolveReviewers: false,
+                })
+              })
+
+            if (isPanelStage(here)) {
+              // The sitting. Usually constituted when the round arrived; a
+              // round that arrived blocked and healed constitutes it on
+              // first contact, from whoever is eligible now.
+              let panel = yield* openPanelOf(tenantId, instanceId)
+              if (panel === null) {
+                const arrived = yield* stageArrival({
+                  tenantId,
+                  batchId: row.batchId,
+                  stage: here,
+                  subjectUserId: row.subjectUserId,
+                  actorId: row.actorId,
+                  excludeJudgedOfInstanceId: instanceId,
+                })
+                if (arrived.state !== 'active') return yield* new ReviewConflict()
+                yield* createPanel({
+                  tenantId,
+                  reviewInstanceId: instanceId,
+                  route: here.route,
+                  stageId: here.id,
+                  members: arrived.eligible,
+                })
+                panel = yield* openPanelOf(tenantId, instanceId)
+                if (panel === null) return yield* new ReviewConflict()
+              }
+              // live truth about the seats: an unvoted occupant who lost
+              // standing frees the seat here and now, not at the next patrol
+              const seats = yield* livePanelSeats(tenantId, panel.id)
+              const eligibleNow = new Set(
+                here.nodeId === null
+                  ? []
+                  : yield* reviewersAtStage(tenantId, row, here, instanceId),
+              )
+              for (const seat of seats) {
+                if (seat.voted === null && !eligibleNow.has(seat.userId)) {
+                  yield* endPanelAssignment({
+                    tenantId,
+                    assignmentId: seat.assignmentId,
+                    reason: 'eligibility-lost',
+                  })
+                }
+              }
+
+              if (action === 'escalate') {
+                // one member pulling the matter up ends the sitting: raising
+                // the level is safe, and the unturned ballots are moot
+                const closed = yield* resolvePanel({
+                  tenantId,
+                  panelId: panel.id,
+                  resolution: 'escalated',
+                })
+                if (!closed) return yield* new ReviewConflict()
+                yield* say('escalated')
+                yield* climb(here.index + 1)
+                return yield* written()
+              }
+
+              // approve and reject are ballots; the sitting concludes when
+              // every seat has spoken, and not a moment sooner - the point
+              // of a panel is every judgment, not the first
+              const own = seats.find(
+                (seat) =>
+                  seat.userId === as.userId && seat.voted === null && eligibleNow.has(seat.userId),
+              )
+              const taken =
+                own !== undefined
+                  ? { assignmentId: own.assignmentId }
+                  : yield* claimPanelSeat({ tenantId, panelId: panel.id, userId: as.userId })
+              if (taken === null) return yield* new ReviewConflict()
+              yield* insertVote({
+                tenantId,
+                panelId: panel.id,
+                assignmentId: taken.assignmentId,
+                voterUserId: as.userId,
+                decision: action,
+                reason: reason === '' ? null : reason,
+                comment: comment === '' ? null : comment,
+              })
+              const votes = yield* votesOfPanel(tenantId, panel.id)
+              if (votes.length >= panel.seatCount) {
+                const unanimous = votes.every((vote) => vote.decision === 'approve')
+                const closed = yield* resolvePanel({
+                  tenantId,
+                  panelId: panel.id,
+                  resolution: unanimous ? 'approved' : 'escalated',
+                })
+                if (!closed) return yield* new ReviewConflict()
+                if (unanimous) {
+                  const won = yield* completeInstance({
+                    tenantId,
+                    instanceId,
+                    outcome: 'approved',
+                  })
+                  if (!won) return yield* new ReviewConflict()
+                  yield* sayFrom('approved', null)
+                  yield* setEntryState({
+                    tenantId,
+                    entryId: row.entryId,
+                    from: ['in_review'],
+                    to: 'approved',
+                  })
+                } else {
+                  // anything short of every voice saying yes climbs, the
+                  // 0-for-all case included: the ladder's end owns the final
+                  // no, and it climbs with all the opinions attached
+                  yield* sayFrom('escalated', null)
+                  yield* climb(here.index + 1)
+                }
+              }
+              return yield* written()
+            }
+
+            // a single judge answers for this step
+            if (wordEnds(policy, here, action)) {
               // first writer wins; everyone else is told the round has closed
               const won = yield* completeInstance({
                 tenantId,
@@ -1042,69 +1294,90 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 from: ['in_review'],
                 to: action === 'approve' ? 'approved' : 'rejected',
               })
-              const written = (yield* instanceOf(tenantId, instanceId))!
-              return yield* assembleDetail(tenantId, written, {
-                canDecide: false,
-                resolveReviewers: false,
-              })
+              return yield* written()
             }
 
-            // onward: escalating leaves the ordinary route for the
-            // first step of the other one; everything else walks its own
-            // route to the next step that resolved to a unit
-            const next: ResolvedStage | null =
-              action === 'escalate'
-                ? enterableFrom(policy, 'escalation', 0)
-                : nextAfter(policy, here)
-            if (next === null || next.nodeId === null) {
-              return yield* refuse(action, 'chain-ends-here')
-            }
-            const nodePath = yield* nodePathOf(tenantId, next.nodeId)
-            if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
-            const holders = yield* holdersOf({
-              tenantId,
-              batchId: row.batchId,
-              stage: next,
-              subjectUserId: row.subjectUserId,
-              actorId: row.actorId,
-            })
-            // the arrival check, at every stage a round enters (§14): a
-            // stage with nobody in it is written down as blocked, which the
-            // patrol owns and heals - it is never the student's problem
-            const moved = yield* advanceReviewInstance({
-              tenantId,
-              instanceId,
-              fromRoute: here.route,
-              fromStageId: here.id,
-              toRoute: next.route,
-              toStageId: next.id,
-              roleIds: next.roleIds,
-              nodeId: next.nodeId,
-              nodePath,
-              state: holders.length > 0 ? 'active' : 'blocked',
-            })
-            if (!moved) return yield* new ReviewConflict()
-            yield* say(action === 'escalate' ? 'escalated' : 'approved')
-            if (holders.length === 0) {
-              yield* insertReviewEvent({
+            if (action === 'approve') {
+              // the ordinary route's onward step: this level has confirmed,
+              // the next one is owed the same look
+              const next = nextAfter(policy, here)
+              if (next === null || next.nodeId === null) {
+                return yield* refuse(action, 'chain-ends-here')
+              }
+              const nodePath = yield* nodePathOf(tenantId, next.nodeId)
+              if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
+              const arrived = yield* stageArrival({
                 tenantId,
-                reviewInstanceId: instanceId,
-                kind: 'assignee-not-found',
-                actorId: null,
-                route: next.route,
-                stageId: next.id,
+                batchId: row.batchId,
+                stage: next,
+                subjectUserId: row.subjectUserId,
+                actorId: row.actorId,
               })
+              // the arrival check, at every stage a round enters (§14): a
+              // stage with nobody in it is written down as blocked, which the
+              // patrol owns and heals - it is never the student's problem
+              const moved = yield* advanceReviewInstance({
+                tenantId,
+                instanceId,
+                fromRoute: here.route,
+                fromStageId: here.id,
+                toRoute: next.route,
+                toStageId: next.id,
+                roleIds: next.roleIds,
+                nodeId: next.nodeId,
+                nodePath,
+                state: arrived.state,
+                blockedReason: arrived.blockedReason,
+              })
+              if (!moved) return yield* new ReviewConflict()
+              yield* say('approved')
+              if (arrived.state === 'blocked') {
+                yield* insertReviewEvent({
+                  tenantId,
+                  reviewInstanceId: instanceId,
+                  kind: 'assignee-not-found',
+                  actorId: null,
+                  route: next.route,
+                  stageId: next.id,
+                })
+              }
+              return yield* written()
             }
-            const written = (yield* instanceOf(tenantId, instanceId))!
-            return yield* assembleDetail(tenantId, written, {
-              canDecide: false,
-              resolveReviewers: false,
-            })
+
+            // The climbing words. The word goes on the record first, then
+            // the ladder is walked: the walker's independence rule reads the
+            // trail, and the very act being taken must already count -
+            // whoever escalates or objects here is done with this round.
+            yield* say(action === 'escalate' ? 'escalated' : 'opinion-rejected')
+            yield* climb(here.route === 'normal' ? 0 : here.index + 1)
+            return yield* written()
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
     },
   )
+
+  /**
+   * The stage's eligible judges under the same-round rule, as a list of ids:
+   * the panel paths ask it to reconcile seats against the present.
+   */
+  const reviewersAtStage = (
+    tenantId: string,
+    row: ReviewInstanceDetailRow,
+    stage: ResolvedStage,
+    instanceId: string,
+  ) =>
+    Effect.gen(function* () {
+      const arrived = yield* stageArrival({
+        tenantId,
+        batchId: row.batchId,
+        stage,
+        subjectUserId: row.subjectUserId,
+        actorId: row.actorId,
+        excludeJudgedOfInstanceId: instanceId,
+      })
+      return arrived.eligible
+    })
 
   /**
    * A suggestion held to the judged revision's own configuration: it must
@@ -1156,10 +1429,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
    * Contesting a decision that has already been made.
    *
    * A round of its own, against the same filing: nothing was rewritten, and
-   * what is being disputed is the conclusion. It opens on the escalation route
-   * with only its last step able to end it, and both of those are frozen on
-   * the round rather than read from whatever phase is in force when somebody
-   * later presses a button (§32.63).
+   * what is being disputed is the conclusion. It opens on the escalation
+   * route and behaves like any other walk of it (§32.66): every rung may
+   * settle it positively, the last rung alone may finally refuse it.
    *
    * The other way out of a rejection is to change the material and submit
    * again, which is a different act on a different route. The two are
@@ -1223,21 +1495,28 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               policy: readPolicy(live.reviewPolicy),
               lineage: participant.anchorLineage,
             })
-            // an appeal walks the escalation route and nothing else; a question
-            // with none configured has nowhere to hear one
-            const first = enterableFrom(policy, 'escalation', 0)
-            if (first === null || first.nodeId === null) {
-              return yield* refuse('appeal', 'review-level-missing')
-            }
-            const nodePath = yield* nodePathOf(tenantId, first.nodeId)
-            if (nodePath === null) return yield* refuse('appeal', 'review-level-missing')
-            const holders = yield* holdersOf({
+            // An appeal walks the escalation route and nothing else; a
+            // question with none configured has nowhere to hear one. The
+            // walk applies the arrival rules (§32.66): a rung held only by
+            // conflicted people - the appellant themselves, say - is stepped
+            // over, a genuinely unstaffed one blocks. The prior round's
+            // judges are eligible again on purpose: an appeal is a fresh
+            // round, and their earlier word is a fact of the old one.
+            const landing = yield* resolveArrival({
               tenantId,
               batchId: row.batchId,
-              stage: first,
+              policy,
+              route: 'escalation',
+              from: 0,
               subjectUserId: participant.userId,
               actorId: row.actorId,
+              conflictSkip: true,
             })
+            if (landing === null || landing.stage.nodeId === null) {
+              return yield* refuse('appeal', 'review-level-missing')
+            }
+            const nodePath = yield* nodePathOf(tenantId, landing.stage.nodeId)
+            if (nodePath === null) return yield* refuse('appeal', 'review-level-missing')
             const roundNo = yield* nextRoundNo(tenantId, row.entryId)
             const opened = yield* insertReviewInstance({
               tenantId,
@@ -1252,11 +1531,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               policyRevisionId: live.id,
               effectivePolicy: policy,
               route: 'escalation',
-              stageId: first.id,
-              roleIds: first.roleIds,
-              nodeId: first.nodeId,
+              stageId: landing.stage.id,
+              roleIds: landing.stage.roleIds,
+              nodeId: landing.stage.nodeId,
               nodePath,
-              state: holders.length > 0 ? 'active' : 'blocked',
+              state: landing.state,
+              blockedReason: landing.blockedReason,
             })
             yield* insertReviewEvent({
               tenantId,
@@ -1264,17 +1544,35 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               kind: 'appealed',
               actorId: as.userId,
               route: 'escalation',
-              stageId: first.id,
+              stageId: landing.stage.id,
               comment: reason,
             })
-            if (holders.length === 0) {
+            for (const stepped of landing.skipped) {
+              yield* insertReviewEvent({
+                tenantId,
+                reviewInstanceId: opened,
+                kind: 'stage-skipped',
+                actorId: null,
+                route: 'escalation',
+                stageId: stepped.id,
+              })
+            }
+            if (landing.state === 'blocked') {
               yield* insertReviewEvent({
                 tenantId,
                 reviewInstanceId: opened,
                 kind: 'assignee-not-found',
                 actorId: null,
                 route: 'escalation',
-                stageId: first.id,
+                stageId: landing.stage.id,
+              })
+            } else if (isPanelStage(landing.stage)) {
+              yield* createPanel({
+                tenantId,
+                reviewInstanceId: opened,
+                route: 'escalation',
+                stageId: landing.stage.id,
+                members: landing.eligible,
               })
             }
             // the decision is being disputed, so it is no longer settled:
@@ -1655,6 +1953,54 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             route: row.currentRoute,
             stageId: row.currentStageId,
           })
+          // A sitting judges one body of evidence, and the answer changed
+          // it: ballots already cast no longer speak to what is on the
+          // table. The sitting dissolves - its votes stay as history that
+          // counted for nothing - and a fresh one is constituted from
+          // whoever is eligible now, which is usually the same people,
+          // asked again (§32.66). A sitting nobody had voted in carries on.
+          const here = stageById(row.effectivePolicy, row.currentRoute, row.currentStageId)
+          if (here !== null && isPanelStage(here)) {
+            const panel = yield* openPanelOf(tenantId, row.id)
+            if (panel !== null && (yield* votesOfPanel(tenantId, panel.id)).length > 0) {
+              yield* supersedeOpenPanels(tenantId, row.id)
+              const arrived = yield* stageArrival({
+                tenantId,
+                batchId: row.batchId,
+                stage: here,
+                subjectUserId: row.subjectUserId,
+                actorId: row.actorId,
+                excludeJudgedOfInstanceId: row.id,
+              })
+              if (arrived.state === 'active') {
+                yield* createPanel({
+                  tenantId,
+                  reviewInstanceId: row.id,
+                  route: here.route,
+                  stageId: here.id,
+                  members: arrived.eligible,
+                })
+              } else {
+                const parked = yield* setInstanceState({
+                  tenantId,
+                  instanceId: row.id,
+                  from: 'active',
+                  to: 'blocked',
+                  blockedReason: arrived.blockedReason,
+                })
+                if (parked) {
+                  yield* insertReviewEvent({
+                    tenantId,
+                    reviewInstanceId: row.id,
+                    kind: 'assignee-not-found',
+                    actorId: null,
+                    route: here.route,
+                    stageId: here.id,
+                  })
+                }
+              }
+            }
+          }
           const written = (yield* instanceOf(tenantId, row.id))!
           return yield* assembleDetail(tenantId, written, {
             canDecide: false,

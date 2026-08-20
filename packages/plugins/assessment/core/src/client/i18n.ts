@@ -796,6 +796,22 @@ const i18n = definePluginMessages({
       id: 'assessment/event/escalated',
       defaultMessage: '{who} escalated the submission for further review',
     },
+    eventOpinionRejected: {
+      id: 'assessment/event/opinion-rejected',
+      defaultMessage: '{who} objected to approval',
+    },
+    eventStageSkipped: {
+      id: 'assessment/event/stage-skipped',
+      defaultMessage: 'Step skipped: its reviewers are recused from this round',
+    },
+    eventPanelApproved: {
+      id: 'assessment/event/panel-approved',
+      defaultMessage: 'The review step approved unanimously',
+    },
+    eventPanelEscalated: {
+      id: 'assessment/event/panel-escalated',
+      defaultMessage: 'No unanimous approval; handed to the next review step',
+    },
     eventAppealed: {
       id: 'assessment/event/appealed',
       defaultMessage: '{who} appealed the review decision',
@@ -1012,6 +1028,14 @@ const i18n = definePluginMessages({
       defaultMessage:
         '{unit} · {roles} · {count, plural, one {# submission waiting} other {# submissions waiting}}',
     },
+    itemsStuckConflict: {
+      id: 'assessment/items/stuck-conflict',
+      defaultMessage: 'every current reviewer is recused from these rounds',
+    },
+    itemsStuckSeat: {
+      id: 'assessment/items/stuck-seat',
+      defaultMessage: 'panel seats are waiting for reviewers',
+    },
     itemsStuckHint: {
       id: 'assessment/items/stuck-hint',
       defaultMessage:
@@ -1189,6 +1213,39 @@ const i18n = definePluginMessages({
     itemsStageKind: {
       id: 'assessment/items/stage-kind',
       defaultMessage: 'Reviewer assignment method',
+    },
+    itemsStageLabel: {
+      id: 'assessment/items/stage-label',
+      defaultMessage: 'Step name',
+    },
+    itemsStageLabelHint: {
+      id: 'assessment/items/stage-label-hint',
+      defaultMessage: 'Shown wherever the route is displayed.',
+    },
+    itemsStageLabelPlaceholder: {
+      id: 'assessment/items/stage-label-placeholder',
+      defaultMessage: 'e.g. First review',
+    },
+    itemsStageParticipation: {
+      id: 'assessment/items/stage-participation',
+      defaultMessage: 'Handling',
+    },
+    itemsStageAnyone: {
+      id: 'assessment/items/stage-anyone',
+      defaultMessage: 'Any one reviewer',
+    },
+    itemsStageAnyoneHint: {
+      id: 'assessment/items/stage-anyone-hint',
+      defaultMessage: 'One reviewer answers for this step.',
+    },
+    itemsStageEveryone: {
+      id: 'assessment/items/stage-everyone',
+      defaultMessage: 'Everyone together',
+    },
+    itemsStageEveryoneHint: {
+      id: 'assessment/items/stage-everyone-hint',
+      defaultMessage:
+        'Every eligible reviewer weighs in: unanimous approval settles it, anything else hands it to the next review step.',
     },
     itemsStageRoleAt: {
       id: 'assessment/items/stage-role-at',
@@ -1425,9 +1482,13 @@ const i18n = definePluginMessages({
       id: 'assessment/review/tip-approve-mid',
       defaultMessage: 'Pass this step; the next step of the route takes over',
     },
-    reviewBlockedInEscalation: {
-      id: 'assessment/review/blocked-in-escalation',
-      defaultMessage: 'Already in the escalation route',
+    reviewTipRejectMid: {
+      id: 'assessment/review/tip-reject-mid',
+      defaultMessage: 'Record your objection; the next review step rules on it',
+    },
+    reviewTipEscalateMid: {
+      id: 'assessment/review/tip-escalate-mid',
+      defaultMessage: 'Hand this to the next review step',
     },
     reviewBlockedNoRoute: {
       id: 'assessment/review/blocked-no-route',
@@ -1441,9 +1502,9 @@ const i18n = definePluginMessages({
       id: 'assessment/review/blocked-phase-closed',
       defaultMessage: 'The current stage does not open escalation',
     },
-    reviewBlockedTerminalOnly: {
-      id: 'assessment/review/blocked-terminal-only',
-      defaultMessage: 'Only the final step of the escalation route may reject',
+    reviewBlockedRouteEnd: {
+      id: 'assessment/review/blocked-route-end',
+      defaultMessage: 'This is the final review step',
     },
     reviewBlockedUnavailable: {
       id: 'assessment/review/blocked-unavailable',
@@ -1511,10 +1572,6 @@ const i18n = definePluginMessages({
     reviewCommentPlaceholderAdvise: {
       id: 'assessment/review/comment-placeholder-advise',
       defaultMessage: 'Enter your review opinion',
-    },
-    reviewSubmitHintAdvise: {
-      id: 'assessment/review/submit-hint-advise',
-      defaultMessage: 'This review step records an opinion rather than a final decision.',
     },
     reviewUndo: { id: 'assessment/review/undo', defaultMessage: 'Undo' },
     reviewBackToQueue: {
@@ -1671,6 +1728,22 @@ const i18n = definePluginMessages({
     reviewStagePassed: {
       id: 'assessment/review/stage-passed',
       defaultMessage: 'Approved',
+    },
+    reviewStageStepped: {
+      id: 'assessment/review/stage-stepped',
+      defaultMessage: 'Skipped',
+    },
+    reviewOpinionApprove: {
+      id: 'assessment/review/opinion-approve',
+      defaultMessage: 'For approval',
+    },
+    reviewOpinionReject: {
+      id: 'assessment/review/opinion-reject',
+      defaultMessage: 'Against approval',
+    },
+    reviewAppealBannerTitle: {
+      id: 'assessment/review/appeal-banner-title',
+      defaultMessage: 'Appeal review',
     },
     reviewAboutGroupCapNamed: {
       id: 'assessment/review/about-group-cap-named',
@@ -3358,11 +3431,6 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/review-escalate',
       defaultMessage: 'Escalate submissions that require further review.',
     },
-    'permission-hint.assessment.review.reject-intermediate': {
-      id: 'assessment/permission-hint/review-reject-intermediate',
-      defaultMessage:
-        'Any step of the escalation route may reject outright; otherwise only its final step can.',
-    },
     'permission-hint.assessment.review.process': {
       id: 'assessment/permission-hint/review-process',
       defaultMessage: 'Review submitted entries and approve or return them.',
@@ -3417,10 +3485,6 @@ const i18n = definePluginMessages({
     'permission.assessment.review.escalate': {
       id: 'assessment/permission/review-escalate',
       defaultMessage: 'Escalate reviews',
-    },
-    'permission.assessment.review.reject-intermediate': {
-      id: 'assessment/permission/review-reject-intermediate',
-      defaultMessage: 'Reject mid-escalation',
     },
     'permission.assessment.review.process': {
       id: 'assessment/permission/review-process',

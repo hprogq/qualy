@@ -64,10 +64,12 @@ const nextStageId = (): string =>
 
 const blankStage = (options: ItemOptions, chain: 'normal' | 'escalation'): StageDraft => ({
   key: nextStageId(),
+  label: '',
   kind: 'roleAt',
   nodeTypeId: options.orgTypes[0]?.id ?? '',
   roleIds: [],
   roleId: options.roles[0]?.id ?? '',
+  participation: 'any',
   chain,
 })
 
@@ -206,18 +208,22 @@ const stagesOf = (stored: unknown, options: ItemOptions): StageDraft[] => {
     stage.selector?.kind === 'nearestRole'
       ? {
           key: id,
+          label: stage.label ?? '',
           kind: 'nearestRole',
           nodeTypeId: options.orgTypes[0]?.id ?? '',
           roleIds: [],
           roleId: stage.selector.roleId ?? options.roles[0]?.id ?? '',
+          participation: stage.quorum?.type === 'all' ? 'all' : 'any',
           chain,
         }
       : {
           key: id,
+          label: stage.label ?? '',
           kind: 'roleAt',
           nodeTypeId: stage.selector?.nodeTypeId ?? options.orgTypes[0]?.id ?? '',
           roleIds: stage.selector?.roleIds ?? [],
           roleId: options.roles[0]?.id ?? '',
+          participation: stage.quorum?.type === 'all' ? 'all' : 'any',
           chain,
         }
   if (Array.isArray(held?.normal?.stages) || Array.isArray(other?.stages)) {
@@ -238,16 +244,22 @@ const stagesOf = (stored: unknown, options: ItemOptions): StageDraft[] => {
 
 interface StoredStage {
   id?: string
+  label?: string
   selector?: { kind?: string; nodeTypeId?: string; roleIds?: string[]; roleId?: string }
+  quorum?: { type?: string }
 }
 
-const storedStage = (stage: StageDraft) => ({
+const storedStage = (stage: StageDraft, panelable: boolean) => ({
   id: stage.key,
+  ...(stage.label.trim() !== '' ? { label: stage.label.trim() } : {}),
   selector:
     stage.kind === 'roleAt'
       ? { kind: 'roleAt', nodeTypeId: stage.nodeTypeId, roleIds: stage.roleIds }
       : { kind: 'nearestRole', roleId: stage.roleId },
-  quorum: { type: 'any' },
+  // a panel only where the server allows one: an escalation middle step. A
+  // step dragged to the route's end quietly folds back to a single judge
+  // rather than saving a configuration the api would refuse.
+  quorum: { type: panelable && stage.participation === 'all' ? 'all' : 'any' },
 })
 
 /** the pen back into the configuration the api validates */
@@ -289,15 +301,20 @@ const aggregatorOf = (draft: Draft) =>
       ? { ref: 'top-n-sum@1', config: { n: Math.max(1, Number(draft.topN) || 1) } }
       : { ref: 'sum@1', config: {} }
 
-const reviewPolicyOf = (draft: Draft) =>
-  draft.reviewMode === 'none'
-    ? { mode: 'none' }
-    : {
-        normal: { stages: draft.stages.filter((one) => one.chain === 'normal').map(storedStage) },
-        escalation: {
-          stages: draft.stages.filter((one) => one.chain === 'escalation').map(storedStage),
-        },
-      }
+const reviewPolicyOf = (draft: Draft) => {
+  if (draft.reviewMode === 'none') return { mode: 'none' }
+  const escalation = draft.stages.filter((one) => one.chain === 'escalation')
+  return {
+    normal: {
+      stages: draft.stages
+        .filter((one) => one.chain === 'normal')
+        .map((one) => storedStage(one, false)),
+    },
+    escalation: {
+      stages: escalation.map((one, index) => storedStage(one, index < escalation.length - 1)),
+    },
+  }
+}
 
 const evidenceConfigOf = (draft: Draft) => ({
   entrySource: draft.entrySource,
@@ -604,9 +621,10 @@ export function ItemConfigEditor({
   }
 
   const stageReady = (stage: StageDraft) =>
-    stage.kind === 'roleAt'
+    stage.label.trim() !== '' &&
+    (stage.kind === 'roleAt'
       ? stage.nodeTypeId !== '' && stage.roleIds.length > 0
-      : stage.roleId !== ''
+      : stage.roleId !== '')
 
   /**
    * Everything standing between this and a save, in the words of the thing
@@ -1099,6 +1117,13 @@ export function ItemConfigEditor({
           batchId={batchId}
           stage={lingeringStage}
           options={options}
+          panelable={
+            lingeringStage.chain === 'escalation' &&
+            draft.stages
+              .filter((one) => one.chain === 'escalation')
+              .findIndex((one) => one.key === lingeringStage.key) <
+              draft.stages.filter((one) => one.chain === 'escalation').length - 1
+          }
           onChange={(next) => patchStage(lingeringStage.key, next)}
           onClose={() => setOpenStage(null)}
         />
@@ -1509,8 +1534,18 @@ function StageLabel({
         )}
         onClick={onOpen}
       >
-        {settled ? whoReviews(stage, options, format) : format(m.itemsStageUnset)}
+        {stage.label.trim() !== ''
+          ? stage.label.trim()
+          : settled
+            ? whoReviews(stage, options, format)
+            : format(m.itemsStageUnset)}
       </button>
+      {/* named steps keep saying who actually reviews, in small print */}
+      {stage.label.trim() !== '' && settled && (
+        <p className="text-xs break-words text-muted-foreground">
+          {whoReviews(stage, options, format)}
+        </p>
+      )}
       {settled ? (
         <StageCoverage batchId={batchId} stage={stage} />
       ) : (

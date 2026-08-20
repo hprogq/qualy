@@ -32,13 +32,17 @@ import { insertReviewEvent } from '../entry/db.ts'
 import {
   blockedGroups,
   chainNames,
+  endPanelAssignment,
+  livePanelSeats,
   mayReviewEntry,
   openInstances,
+  openPanelOf,
   reviewersAt,
   setInstanceState,
   stageNodesOf,
   tenantsWithOpenRounds,
 } from '../review/db.ts'
+import { stageById } from '../review/chain.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { participantRowByUser } from '../scoring/db.ts'
 import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/service.ts'
@@ -820,6 +824,7 @@ export class Assessment extends Context.Service<
           nodeId: string
           nodeName: string
           roleNames: readonly string[]
+          reason: 'no-assignee' | 'no-independent-reviewer' | 'panel-seat-unfilled'
           waiting: number
         }[]
       },
@@ -1811,16 +1816,6 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const now = yield* Clock.currentTimeMillis
         const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
         return decide(view, 'assessment.review.escalate', undefined)
-      }),
-    // whether the phase in force lets a middle step of the escalation route
-    // reject outright, instead of only its end (§32.63, re-ruled)
-    rejectIntermediateGate: (tenantId, batchId) =>
-      Effect.gen(function* () {
-        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
-        if (!batch) return { allowed: false, reason: 'no-active-phase' } as const
-        const now = yield* Clock.currentTimeMillis
-        const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
-        return decide(view, 'assessment.review.reject-intermediate', undefined)
       }),
     rosterReach: (as, tenantId, batchId) =>
       Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
@@ -3341,49 +3336,106 @@ export const make = Effect.fn('Assessment.make')(function* () {
       let released = 0
       for (const tenantId of tenants) {
         const rounds = yield* dieQuery(withDb(openInstances(tenantId)))
-        // one resolution per (roles, node) rather than per round: a class
-        // with forty waiting entries asks the same question forty times
-        const answers = new Map<string, boolean>()
+        // one membership resolution per (roles, node) rather than per round:
+        // a class with forty waiting entries asks the same question forty
+        // times. Membership only - the per-filing exclusions are per round.
+        const staffing = new Map<string, number>()
         for (const round of rounds) {
           const key = `${round.currentNodeId}:${[...round.currentRoleIds].sort().join(',')}`
-          let staffed = answers.get(key)
-          if (staffed === undefined) {
-            const holders = yield* dieQuery(
+          let members = staffing.get(key)
+          if (members === undefined) {
+            members = (yield* dieQuery(
               withDb(
                 reviewersAt({
                   tenantId,
                   batchId: round.batchId,
                   nodeId: round.currentNodeId,
                   roleIds: round.currentRoleIds,
-                  // the per-filing exclusions are asked per round below
                   subjectUserId: NOBODY,
                   actorId: NOBODY,
                 }),
               ),
-            )
-            staffed = holders.length > 0
-            answers.set(key, staffed)
+            )).length
+            staffing.set(key, members)
           }
-          // the round's own people can never judge it, so the count that
-          // decides its state is the one with them taken out
-          const actionable = staffed
-            ? (yield* dieQuery(
-                withDb(
-                  reviewersAt({
-                    tenantId,
-                    batchId: round.batchId,
-                    nodeId: round.currentNodeId,
-                    roleIds: round.currentRoleIds,
-                    subjectUserId: round.subjectUserId,
-                    actorId: round.actorId,
-                  }),
-                ),
-              )).length > 0
-            : false
+          // who could act on this very round: the filing's own people out,
+          // and on an escalation step whoever already judged an earlier one
+          const eligible =
+            members === 0
+              ? ([] as readonly string[])
+              : yield* dieQuery(
+                  withDb(
+                    reviewersAt({
+                      tenantId,
+                      batchId: round.batchId,
+                      nodeId: round.currentNodeId,
+                      roleIds: round.currentRoleIds,
+                      subjectUserId: round.subjectUserId,
+                      actorId: round.actorId,
+                      ...(round.currentRoute === 'escalation'
+                        ? { excludeJudgedOfInstanceId: round.id }
+                        : {}),
+                    }),
+                  ),
+                )
+          const stage = stageById(round.effectivePolicy, round.currentRoute, round.currentStageId)
+          let actionable = eligible.length > 0
+          let reason = members === 0 ? 'no-assignee' : 'no-independent-reviewer'
+          if (stage !== null && stage.quorum.type === 'all') {
+            const panel = yield* dieQuery(withDb(openPanelOf(tenantId, round.id)))
+            if (panel !== null) {
+              // A constituted sitting: the question is no longer "is anyone
+              // eligible" but "can this sitting still complete". Seats whose
+              // unvoted occupants lost standing are freed here, so the
+              // vacancy is visible to whoever could fill it.
+              const seats = yield* dieQuery(withDb(livePanelSeats(tenantId, panel.id)))
+              const still = new Set(eligible)
+              const occupied = new Set<string>()
+              let workable = 0
+              let held = 0
+              for (const seat of seats) {
+                if (seat.voted !== null) {
+                  held += 1
+                  occupied.add(seat.userId)
+                  continue
+                }
+                if (still.has(seat.userId)) {
+                  held += 1
+                  workable += 1
+                  occupied.add(seat.userId)
+                  continue
+                }
+                const freed = yield* dieQuery(
+                  withDb(
+                    endPanelAssignment({
+                      tenantId,
+                      assignmentId: seat.assignmentId,
+                      reason: 'eligibility-lost',
+                    }),
+                  ),
+                )
+                // a freeing that lost its race means the seat spoke after all
+                if (!freed) {
+                  held += 1
+                  occupied.add(seat.userId)
+                }
+              }
+              const vacancies = panel.seatCount - held
+              const fillable = eligible.filter((one) => !occupied.has(one))
+              actionable = workable > 0 || (vacancies > 0 && fillable.length > 0)
+              if (members > 0) reason = 'panel-seat-unfilled'
+            }
+          }
           if (round.state === 'active' && !actionable) {
             const moved = yield* dieQuery(
               withDb(
-                setInstanceState({ tenantId, instanceId: round.id, from: 'active', to: 'blocked' }),
+                setInstanceState({
+                  tenantId,
+                  instanceId: round.id,
+                  from: 'active',
+                  to: 'blocked',
+                  blockedReason: reason,
+                }),
               ),
             )
             if (moved) {
@@ -3402,7 +3454,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
           } else if (round.state === 'blocked' && actionable) {
             const moved = yield* dieQuery(
               withDb(
-                setInstanceState({ tenantId, instanceId: round.id, from: 'blocked', to: 'active' }),
+                setInstanceState({
+                  tenantId,
+                  instanceId: round.id,
+                  from: 'blocked',
+                  to: 'active',
+                  blockedReason: null,
+                }),
               ),
             )
             if (moved) {
@@ -3448,6 +3506,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           nodeId: group.nodeId,
           nodeName: group.nodeName,
           roleNames: group.roleIds.map((roleId) => roleNames.roles.get(roleId) ?? roleId),
+          reason: group.reason,
           waiting: group.waiting,
         })),
       }
@@ -3560,7 +3619,12 @@ const reviewDto = (review: ReviewDetailView) => ({
   completedAt: review.completedAt === null ? null : new Date(review.completedAt).toISOString(),
   revision: review.revision,
   form: review.form,
-  chain: review.chain,
+  chain: {
+    route: review.chain.route,
+    stageId: review.chain.stageId,
+    normal: review.chain.normal.map(stageDto),
+    escalation: review.chain.escalation.map(stageDto),
+  },
   actions: review.actions,
   context:
     review.context === null
@@ -3596,6 +3660,18 @@ const reviewDto = (review: ReviewDetailView) => ({
   })),
   supplements: review.supplements.map(supplementDto),
   capabilities: review.capabilities,
+})
+
+/** one step of a route on the wire; only the times change shape */
+const stageDto = (stage: ReviewDetailView['chain']['normal'][number]) => ({
+  ...stage,
+  opinions:
+    stage.opinions === null
+      ? null
+      : stage.opinions.map((opinion) => ({
+          ...opinion,
+          at: new Date(opinion.at).toISOString(),
+        })),
 })
 
 /** one ask and its answer, on the wire: the workbench and the claim's story

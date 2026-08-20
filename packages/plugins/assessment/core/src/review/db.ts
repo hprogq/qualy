@@ -105,6 +105,109 @@ const mayReview = (r: ReviewerRefs) => sql<boolean>`(
   and ${r.actorId} is distinct from ${r.userId}
 )`
 
+/** what acting on one specific round adds to stage membership */
+export interface RoundActorRefs extends ReviewerRefs {
+  /** the instance's id, as a value or column reference */
+  readonly instanceId: RawBuilder<unknown>
+  /** the route the round currently walks */
+  readonly route: RawBuilder<unknown>
+}
+
+/** the event kinds that count as a formal judgment by their actor */
+const JUDGED_KINDS = `('approved', 'rejected', 'escalated', 'opinion-rejected')`
+
+/**
+ * Same-round independence (§32.66): once a round is in the escalation
+ * process, no later step of it may be worked by somebody who already made
+ * a formal judgment at an earlier step of THIS round - the班委 who
+ * approved, the reviewer who escalated, the panel member who voted. The
+ * ordinary route resolves people live and keeps no such memory, and an
+ * appeal is a new round that starts clean: the prior round's deciders are
+ * eligible again, on purpose.
+ *
+ * Two sources of "already judged", because panels record votes rather
+ * than events: the round's formal events, and votes in any of its panels
+ * that still count (a superseded panel's votes were about evidence that
+ * has since changed, and voting again after a supplement is the point).
+ */
+const independentAt = (r: RoundActorRefs) => sql<boolean>`(
+  ${r.route} <> 'escalation'
+  or not (
+    exists (
+      select 1 from review_events xe
+      where xe.tenant_id = ${r.tenantId}
+        and xe.review_instance_id = ${r.instanceId}
+        and xe.actor_id = ${r.userId}
+        and xe.kind in ${sql.raw(JUDGED_KINDS)}
+    )
+    or exists (
+      select 1 from review_votes xv
+      join review_panels xp on xp.tenant_id = xv.tenant_id and xp.id = xv.panel_id
+      where xv.tenant_id = ${r.tenantId}
+        and xp.review_instance_id = ${r.instanceId}
+        and xv.voter_user_id = ${r.userId}
+        and xp.state <> 'superseded'
+    )
+  )
+)`
+
+/**
+ * A sitting panel admits its own unvoted members and lets a newcomer fill
+ * an empty seat; it never widens. Composed after `independentAt`, which
+ * already turns away everyone who voted, so the branches here only ask
+ * about seats. No open panel means the stage is not a sitting at all (or
+ * the sitting has not been constituted yet), and membership alone decides.
+ */
+const seatedOrSeatable = (r: {
+  readonly tenantId: RawBuilder<unknown>
+  readonly instanceId: RawBuilder<unknown>
+  readonly userId: RawBuilder<unknown>
+}) => sql<boolean>`(
+  not exists (
+    select 1 from review_panels op
+    where op.tenant_id = ${r.tenantId}
+      and op.review_instance_id = ${r.instanceId}
+      and op.state = 'open'
+  )
+  or exists (
+    select 1 from review_panels op
+    join review_panel_assignments pa
+      on pa.tenant_id = op.tenant_id and pa.panel_id = op.id
+    where op.tenant_id = ${r.tenantId}
+      and op.review_instance_id = ${r.instanceId}
+      and op.state = 'open'
+      and pa.user_id = ${r.userId}
+      and pa.ended_at is null
+  )
+  or exists (
+    select 1 from review_panels op
+    where op.tenant_id = ${r.tenantId}
+      and op.review_instance_id = ${r.instanceId}
+      and op.state = 'open'
+      and (
+        select count(*) from review_panel_assignments pa2
+        where pa2.tenant_id = op.tenant_id and pa2.panel_id = op.id and pa2.ended_at is null
+      ) < op.seat_count
+      and not exists (
+        select 1 from review_panel_assignments pa3
+        where pa3.tenant_id = op.tenant_id and pa3.panel_id = op.id
+          and pa3.user_id = ${r.userId} and pa3.ended_at is null
+      )
+  )
+)`
+
+/**
+ * The whole of "may act on this round now": stage membership, same-round
+ * independence, and a seat where the stage is a sitting. Every reader and
+ * writer of a round's queue asks this one composition, so "the queue
+ * shows what the decision refuses" cannot be written.
+ */
+const mayActOn = (r: RoundActorRefs) => sql<boolean>`(
+  ${mayReview(r)}
+  and ${independentAt(r)}
+  and ${seatedOrSeatable(r)}
+)`
+
 /** the stage's judges as submit must find them: enumerate, then hold each to the definition */
 export const reviewersAt = (input: {
   tenantId: string
@@ -113,6 +216,12 @@ export const reviewersAt = (input: {
   roleIds: readonly string[]
   subjectUserId: string
   actorId: string
+  /**
+   * Apply same-round independence against this round: whoever already made
+   * a formal judgment at an earlier step of it is not counted. Passed only
+   * when the stage being asked about is an escalation step of that round.
+   */
+  excludeJudgedOfInstanceId?: string
 }) =>
   input.roleIds.length === 0
     ? Effect.succeed([] as readonly string[])
@@ -134,6 +243,21 @@ export const reviewersAt = (input: {
                 subjectUserId: sql`${input.subjectUserId}`,
                 actorId: sql`${input.actorId}`,
               })}
+              and ${
+                input.excludeJudgedOfInstanceId === undefined
+                  ? sql<boolean>`true`
+                  : independentAt({
+                      tenantId: sql`${input.tenantId}`,
+                      batchId: sql`${input.batchId}`,
+                      nodeId: sql`${input.nodeId}`,
+                      roleIds: uuidArray(input.roleIds),
+                      userId: sql.ref('rg0.user_id'),
+                      subjectUserId: sql`${input.subjectUserId}`,
+                      actorId: sql`${input.actorId}`,
+                      instanceId: sql`${input.excludeJudgedOfInstanceId}`,
+                      route: sql`${'escalation'}`,
+                    })
+              }
           `.execute(k),
         )
         .pipe(Effect.map(({ rows }) => rows.map((row) => String(row.user_id))))
@@ -159,7 +283,9 @@ export const userMayReview = (input: {
   tenantId: string
   userId: string
   instance: {
+    id: string
     batchId: string
+    currentRoute: 'normal' | 'escalation'
     currentNodeId: string
     currentRoleIds: readonly string[]
     subjectUserId: string
@@ -171,7 +297,7 @@ export const userMayReview = (input: {
     : db
         .query((k) =>
           sql<{ ok: boolean }>`
-            select ${mayReview({
+            select ${mayActOn({
               tenantId: sql`${input.tenantId}`,
               batchId: sql`${input.instance.batchId}`,
               nodeId: sql`${input.instance.currentNodeId}`,
@@ -179,6 +305,8 @@ export const userMayReview = (input: {
               userId: sql`${input.userId}`,
               subjectUserId: sql`${input.instance.subjectUserId}`,
               actorId: sql`${input.instance.actorId}`,
+              instanceId: sql`${input.instance.id}`,
+              route: sql`${input.instance.currentRoute}`,
             })} as ok
           `.execute(k),
         )
@@ -437,7 +565,7 @@ export const inboxPage = (input: {
             .where('ri.state', '=', 'active')
             .where('e.batchId', 'in', [...input.batchIds])
             .where(
-              mayReview({
+              mayActOn({
                 tenantId: sql`${input.tenantId}`,
                 batchId: sql.ref('e.batch_id'),
                 nodeId: sql.ref('ri.current_node_id'),
@@ -445,6 +573,8 @@ export const inboxPage = (input: {
                 userId: sql`${input.userId}`,
                 subjectUserId: sql.ref('bp.user_id'),
                 actorId: sql.ref('er.actor_id'),
+                instanceId: sql.ref('ri.id'),
+                route: sql.ref('ri.current_route'),
               }),
             )
             .orderBy('ri.createdAt')
@@ -508,6 +638,8 @@ export const completeInstance = (input: {
 export interface ReviewEventRow {
   id: string
   kind: string
+  /** where the round stood when this was said; null on round-level events */
+  stageId: string | null
   actorId: string | null
   /** who did it, by name: an id in a trail explains nothing to a reader */
   actorName: string | null
@@ -528,6 +660,7 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
         .select([
           're.id',
           're.kind',
+          're.stageId',
           're.actorId',
           're.reason',
           're.comment',
@@ -546,6 +679,7 @@ export const reviewEventsOf = (tenantId: string, instanceId: string) =>
         rows.map((row): ReviewEventRow => ({
           id: row.id,
           kind: row.kind,
+          stageId: row.stageId,
           actorId: row.actorId,
           actorName: row.actorName,
           reason: row.reason,
@@ -675,6 +809,10 @@ export interface PatrolRow {
   id: string
   batchId: string
   state: 'active' | 'blocked'
+  currentRoute: 'normal' | 'escalation'
+  currentStageId: string
+  /** the frozen routes, for reading the current stage's quorum */
+  effectivePolicy: ResolvedPolicy
   currentNodeId: string
   currentRoleIds: readonly string[]
   subjectUserId: string
@@ -699,6 +837,9 @@ export const openInstances = (tenantId: string) =>
         .select([
           'ri.id',
           'ri.state',
+          'ri.currentRoute',
+          'ri.currentStageId',
+          'ri.effectiveChain',
           'ri.currentNodeId',
           'ri.currentRoleIds',
           'e.batchId',
@@ -715,6 +856,9 @@ export const openInstances = (tenantId: string) =>
           id: row.id,
           batchId: row.batchId,
           state: row.state as PatrolRow['state'],
+          currentRoute: row.currentRoute as PatrolRow['currentRoute'],
+          currentStageId: row.currentStageId,
+          effectivePolicy: readResolved(row.effectiveChain),
           currentNodeId: row.currentNodeId,
           currentRoleIds: row.currentRoleIds,
           subjectUserId: row.subjectUserId,
@@ -729,12 +873,17 @@ export const setInstanceState = (input: {
   instanceId: string
   from: 'active' | 'blocked'
   to: 'active' | 'blocked'
+  /** why nobody can act, when blocking; cleared on release */
+  blockedReason: string | null
 }) =>
   db
     .query((k) =>
       k
         .updateTable('ReviewInstance')
-        .set({ state: input.to })
+        .set({
+          state: input.to,
+          blockedReason: input.to === 'blocked' ? input.blockedReason : null,
+        })
         .where('tenantId', '=', input.tenantId)
         .where('id', '=', input.instanceId)
         .where('state', '=', input.from)
@@ -747,14 +896,21 @@ export const setInstanceState = (input: {
 export const blockedGroups = (tenantId: string, batchId: string) =>
   db
     .query((k) =>
-      sql<{ node_id: string; node_name: string; role_ids: string[]; waiting: string }>`
+      sql<{
+        node_id: string
+        node_name: string
+        role_ids: string[]
+        reason: string | null
+        waiting: string
+      }>`
         select ri.current_node_id as node_id, n.name as node_name,
-               ri.current_role_ids as role_ids, count(*)::text as waiting
+               ri.current_role_ids as role_ids, ri.blocked_reason as reason,
+               count(*)::text as waiting
         from review_instances ri
         join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
         join org_nodes n on n.tenant_id = ri.tenant_id and n.id = ri.current_node_id
         where ri.tenant_id = ${tenantId} and e.batch_id = ${batchId} and ri.state = 'blocked'
-        group by ri.current_node_id, n.name, ri.current_role_ids
+        group by ri.current_node_id, n.name, ri.current_role_ids, ri.blocked_reason
         order by n.name
       `.execute(k),
     )
@@ -764,6 +920,9 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
           nodeId: String(row.node_id),
           nodeName: String(row.node_name),
           roleIds: row.role_ids.map(String),
+          // why these wait: a staffing gap and a conflict rule read differently
+          reason: (row.reason ?? 'no-assignee') as
+            'no-assignee' | 'no-independent-reviewer' | 'panel-seat-unfilled',
           waiting: Number(row.waiting),
         })),
       ),
@@ -1023,9 +1182,38 @@ export const decisionsToday = (input: {
         where re.tenant_id = ${input.tenantId}
           and e.batch_id = ${input.batchId}
           and re.actor_id = ${input.userId}
-          and re.kind in ('approved', 'rejected', 'escalated', 'comment',
+          and re.kind in ('approved', 'rejected', 'escalated', 'opinion-rejected', 'comment',
                           'recommend-approve', 'recommend-reject')
           and re.created_at >=
+            date_trunc('day', now() at time zone ${input.timezone}) at time zone ${input.timezone}
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => Number(rows[0]!.count)))
+
+/**
+ * Panel votes this person cast on this batch today - counted beside the
+ * event-shaped decisions, because a vote deliberately writes no event of
+ * its own until its sitting concludes, and thirty filings judged in a
+ * morning must not greet their judge as zero.
+ */
+export const votesToday = (input: {
+  tenantId: string
+  batchId: string
+  userId: string
+  timezone: string
+}) =>
+  db
+    .query((k) =>
+      sql<{ count: string }>`
+        select count(*) as count
+        from review_votes v
+        join review_panels p on p.tenant_id = v.tenant_id and p.id = v.panel_id
+        join review_instances ri on ri.tenant_id = p.tenant_id and ri.id = p.review_instance_id
+        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+        where v.tenant_id = ${input.tenantId}
+          and e.batch_id = ${input.batchId}
+          and v.voter_user_id = ${input.userId}
+          and v.created_at >=
             date_trunc('day', now() at time zone ${input.timezone}) at time zone ${input.timezone}
       `.execute(k),
     )
@@ -1445,7 +1633,7 @@ export const awaitingPage = (input: {
           ]),
         )
         .where(
-          mayReview({
+          mayActOn({
             tenantId: sql`${input.tenantId}`,
             batchId: sql.ref('e.batch_id'),
             nodeId: sql.ref('ri.current_node_id'),
@@ -1453,6 +1641,8 @@ export const awaitingPage = (input: {
             userId: sql`${input.userId}`,
             subjectUserId: sql.ref('bp.user_id'),
             actorId: sql.ref('er.actor_id'),
+            instanceId: sql.ref('ri.id'),
+            route: sql.ref('ri.current_route'),
           }),
         )
         // newest ask first: the list is read as "what did I send out lately"
@@ -1589,7 +1779,7 @@ export const mayReviewEntry = (input: { tenantId: string; userId: string; entryI
           where ri.tenant_id = ${input.tenantId}
             and ri.entry_id = ${input.entryId}
             and ri.state in (${sql.join(OPEN_REVIEW_STATES.map((state) => sql`${state}`))})
-            and ${mayReview({
+            and ${mayActOn({
               tenantId: sql`${input.tenantId}`,
               batchId: sql.ref('e.batch_id'),
               nodeId: sql.ref('ri.current_node_id'),
@@ -1597,8 +1787,331 @@ export const mayReviewEntry = (input: { tenantId: string; userId: string; entryI
               userId: sql`${input.userId}`,
               subjectUserId: sql.ref('bp.user_id'),
               actorId: sql.ref('er.actor_id'),
+              instanceId: sql.ref('ri.id'),
+              route: sql.ref('ri.current_route'),
             })}
         ) as ok
       `.execute(k),
     )
     .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.ok)))
+
+// --- panels -----------------------------------------------------------------
+//
+// The sitting's rows and nothing else: who constitutes it, who took over a
+// seat, who said what. The service owns the arithmetic (when it resolves,
+// what a resolution means); these helpers own the races - every claim and
+// every conclusion is conditional, and the partial unique indexes are the
+// referee of last resort.
+
+/** the round row itself, taken for update: panel votes serialize on it */
+export const lockReviewInstance = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        select id from review_instances
+        where tenant_id = ${tenantId} and id = ${instanceId}
+        for update
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => rows.length > 0))
+
+export interface PanelRow {
+  id: string
+  reviewInstanceId: string
+  route: 'normal' | 'escalation'
+  stageId: string
+  seatCount: number
+  state: 'open' | 'resolved' | 'superseded'
+  resolution: string | null
+}
+
+export const openPanelOf = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewPanel')
+        .select(['id', 'reviewInstanceId', 'route', 'stageId', 'seatCount', 'state', 'resolution'])
+        .where('tenantId', '=', tenantId)
+        .where('reviewInstanceId', '=', instanceId)
+        .where('state', '=', 'open')
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : ({
+              id: row.id,
+              reviewInstanceId: row.reviewInstanceId,
+              route: row.route as PanelRow['route'],
+              stageId: row.stageId,
+              seatCount: row.seatCount,
+              state: row.state as PanelRow['state'],
+              resolution: row.resolution,
+            } satisfies PanelRow),
+      ),
+    )
+
+/**
+ * Constitutes the sitting: one panel, one seat per member found eligible at
+ * this moment. The seat count is frozen here and never changes; membership
+ * afterwards is replacement, not growth (§32.66).
+ */
+export const createPanel = (input: {
+  tenantId: string
+  reviewInstanceId: string
+  route: 'normal' | 'escalation'
+  stageId: string
+  members: readonly string[]
+}) =>
+  Effect.gen(function* () {
+    const panel = yield* db.query((k) =>
+      sql<{ id: string }>`
+        insert into review_panels (tenant_id, review_instance_id, route, stage_id, seat_count)
+        values (${input.tenantId}, ${input.reviewInstanceId}, ${input.route}, ${input.stageId},
+                ${input.members.length})
+        returning id
+      `.execute(k),
+    )
+    const panelId = String(panel.rows[0]!.id)
+    for (const [index, userId] of input.members.entries()) {
+      yield* db.query((k) =>
+        sql`
+          insert into review_panel_assignments (tenant_id, panel_id, seat_no, user_id)
+          values (${input.tenantId}, ${panelId}, ${index + 1}, ${userId})
+        `.execute(k),
+      )
+    }
+    return panelId
+  })
+
+export interface PanelSeatRow {
+  assignmentId: string
+  seatNo: number
+  userId: string
+  /** the vote this occupancy cast, if it has */
+  voted: 'approve' | 'reject' | null
+}
+
+/** the live seats of one panel, with whether each has spoken */
+export const livePanelSeats = (tenantId: string, panelId: string) =>
+  db
+    .query((k) =>
+      sql<{ id: string; seat_no: number; user_id: string; decision: string | null }>`
+        select pa.id, pa.seat_no, pa.user_id, v.decision
+        from review_panel_assignments pa
+        left join review_votes v on v.tenant_id = pa.tenant_id and v.assignment_id = pa.id
+        where pa.tenant_id = ${tenantId} and pa.panel_id = ${panelId} and pa.ended_at is null
+        order by pa.seat_no
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) =>
+        rows.map((row): PanelSeatRow => ({
+          assignmentId: String(row.id),
+          seatNo: Number(row.seat_no),
+          userId: String(row.user_id),
+          voted: row.decision === null ? null : (String(row.decision) as 'approve' | 'reject'),
+        })),
+      ),
+    )
+
+/** ends an unvoted occupancy; a seat that has spoken is history and never ends */
+export const endPanelAssignment = (input: {
+  tenantId: string
+  assignmentId: string
+  reason: string
+}) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        update review_panel_assignments pa
+        set ended_at = now(), ended_reason = ${input.reason}
+        where pa.tenant_id = ${input.tenantId} and pa.id = ${input.assignmentId}
+          and pa.ended_at is null
+          and not exists (select 1 from review_votes v where v.assignment_id = pa.id)
+        returning pa.id
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => rows.length > 0))
+
+/**
+ * Takes an empty seat, atomically: the seat number is whichever of 1..count
+ * has no live occupant, and the partial unique index turns the second of
+ * two simultaneous claims away.
+ */
+export const claimPanelSeat = (input: { tenantId: string; panelId: string; userId: string }) =>
+  db
+    .query((k) =>
+      sql<{ id: string; seat_no: number }>`
+        insert into review_panel_assignments (tenant_id, panel_id, seat_no, user_id)
+        select ${input.tenantId}, ${input.panelId}, free.seat_no, ${input.userId}
+        from (
+          select gs.seat_no
+          from review_panels p
+          cross join lateral generate_series(1, p.seat_count) as gs(seat_no)
+          where p.tenant_id = ${input.tenantId} and p.id = ${input.panelId}
+            and not exists (
+              select 1 from review_panel_assignments pa
+              where pa.panel_id = p.id and pa.seat_no = gs.seat_no and pa.ended_at is null
+            )
+          order by gs.seat_no
+          limit 1
+        ) as free
+        returning id, seat_no
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) =>
+        rows.length === 0 ? null : { assignmentId: String(rows[0]!.id), seatNo: rows[0]!.seat_no },
+      ),
+    )
+
+export const insertVote = (input: {
+  tenantId: string
+  panelId: string
+  assignmentId: string
+  voterUserId: string
+  decision: 'approve' | 'reject'
+  reason: string | null
+  comment: string | null
+}) =>
+  db.query((k) =>
+    sql`
+      insert into review_votes
+        (tenant_id, panel_id, assignment_id, voter_user_id, decision, reason, comment)
+      values (${input.tenantId}, ${input.panelId}, ${input.assignmentId}, ${input.voterUserId},
+              ${input.decision}, ${input.reason}, ${input.comment})
+    `.execute(k),
+  )
+
+export interface PanelVoteRow {
+  voterUserId: string
+  voterName: string | null
+  decision: 'approve' | 'reject'
+  reason: string | null
+  comment: string | null
+  createdAt: number
+}
+
+export const votesOfPanel = (tenantId: string, panelId: string) =>
+  db
+    .query((k) =>
+      sql<{
+        voter_user_id: string
+        voter_name: string | null
+        decision: string
+        reason: string | null
+        comment: string | null
+        created_ms: number
+      }>`
+        select v.voter_user_id, u.display_name as voter_name, v.decision, v.reason, v.comment,
+               (extract(epoch from v.created_at) * 1000)::float8 as created_ms
+        from review_votes v
+        left join users u on u.tenant_id = v.tenant_id and u.id = v.voter_user_id
+        where v.tenant_id = ${tenantId} and v.panel_id = ${panelId}
+        order by v.created_at, v.id
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) =>
+        rows.map((row): PanelVoteRow => ({
+          voterUserId: String(row.voter_user_id),
+          voterName: row.voter_name,
+          decision: String(row.decision) as PanelVoteRow['decision'],
+          reason: row.reason,
+          comment: row.comment,
+          createdAt: Number(row.created_ms),
+        })),
+      ),
+    )
+
+/** the sitting concludes, exactly once; the loser of a race writes nothing */
+export const resolvePanel = (input: {
+  tenantId: string
+  panelId: string
+  resolution: 'approved' | 'escalated'
+}) =>
+  db
+    .query((k) =>
+      k
+        .updateTable('ReviewPanel')
+        .set({ state: 'resolved', resolution: input.resolution, closedAt: sql`now()` })
+        .where('tenantId', '=', input.tenantId)
+        .where('id', '=', input.panelId)
+        .where('state', '=', 'open')
+        .returning(['id'])
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row !== undefined))
+
+/**
+ * Dissolves whatever sitting the round still holds, without a resolution:
+ * the round left (withdrawn, rerouted, returned) or its evidence changed
+ * under the sitting (a supplement was answered). Votes stay readable; they
+ * count for nothing.
+ */
+export const supersedeOpenPanels = (tenantId: string, instanceId: string) =>
+  db.query((k) =>
+    k
+      .updateTable('ReviewPanel')
+      .set({ state: 'superseded', closedAt: sql`now()` })
+      .where('tenantId', '=', tenantId)
+      .where('reviewInstanceId', '=', instanceId)
+      .where('state', '=', 'open')
+      .execute(),
+  )
+
+export interface StageOpinionRow {
+  stageId: string
+  votes: readonly PanelVoteRow[]
+}
+
+/**
+ * What the concluded sittings of this round said, per stage, for the next
+ * judge: a split panel's whole value is that the辅导员 reads both sides.
+ * Resolved panels only - an open sitting's votes are sealed from everybody,
+ * its own members first (§32.66), and a superseded sitting judged evidence
+ * that has since changed.
+ */
+export const resolvedPanelOpinions = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      sql<{
+        stage_id: string
+        voter_user_id: string
+        voter_name: string | null
+        decision: string
+        reason: string | null
+        comment: string | null
+        created_ms: number
+      }>`
+        select p.stage_id, v.voter_user_id, u.display_name as voter_name, v.decision,
+               v.reason, v.comment,
+               (extract(epoch from v.created_at) * 1000)::float8 as created_ms
+        from review_panels p
+        join review_votes v on v.tenant_id = p.tenant_id and v.panel_id = p.id
+        left join users u on u.tenant_id = v.tenant_id and u.id = v.voter_user_id
+        where p.tenant_id = ${tenantId} and p.review_instance_id = ${instanceId}
+          and p.state = 'resolved'
+        order by p.created_at, v.created_at, v.id
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) => {
+        const byStage = new Map<string, PanelVoteRow[]>()
+        for (const row of rows) {
+          const bucket = byStage.get(String(row.stage_id)) ?? []
+          bucket.push({
+            voterUserId: String(row.voter_user_id),
+            voterName: row.voter_name,
+            decision: String(row.decision) as PanelVoteRow['decision'],
+            reason: row.reason,
+            comment: row.comment,
+            createdAt: Number(row.created_ms),
+          })
+          byStage.set(String(row.stage_id), bucket)
+        }
+        return byStage as ReadonlyMap<string, readonly PanelVoteRow[]>
+      }),
+    )

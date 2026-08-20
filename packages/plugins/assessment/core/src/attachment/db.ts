@@ -43,7 +43,9 @@ export const citingEntries = (tenantId: string, attachmentId: string) =>
     )
 
 export interface CitingInstanceRow {
+  id: string
   batchId: string
+  currentRoute: 'normal' | 'escalation'
   currentNodeId: string
   currentRoleIds: readonly string[]
   subjectUserId: string
@@ -108,7 +110,9 @@ export const citingInstances = (tenantId: string, attachmentId: string) =>
           join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
         )
         .select([
+          'ri.id',
           'e.batchId',
+          'ri.currentRoute',
           'ri.currentNodeId',
           'ri.currentRoleIds',
           'bp.userId as subjectUserId',
@@ -125,7 +129,9 @@ export const citingInstances = (tenantId: string, attachmentId: string) =>
     .pipe(
       Effect.map((rows) =>
         rows.map((row): CitingInstanceRow => ({
+          id: row.id,
           batchId: row.batchId,
+          currentRoute: row.currentRoute as CitingInstanceRow['currentRoute'],
           currentNodeId: row.currentNodeId,
           currentRoleIds: row.currentRoleIds,
           subjectUserId: row.subjectUserId,
@@ -159,7 +165,9 @@ export const supplementCitingInstances = (tenantId: string, attachmentId: string
           join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
         )
         .select([
+          'ri.id',
           'e.batchId',
+          'ri.currentRoute',
           'ri.currentNodeId',
           'ri.currentRoleIds',
           'bp.userId as subjectUserId',
@@ -175,7 +183,9 @@ export const supplementCitingInstances = (tenantId: string, attachmentId: string
     .pipe(
       Effect.map((rows) =>
         rows.map((row): CitingInstanceRow => ({
+          id: row.id,
           batchId: row.batchId,
+          currentRoute: row.currentRoute as CitingInstanceRow['currentRoute'],
           currentNodeId: row.currentNodeId,
           currentRoleIds: row.currentRoleIds,
           subjectUserId: row.subjectUserId,

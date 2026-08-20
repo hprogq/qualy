@@ -28,7 +28,15 @@ import {
   participantOf,
   setEntryState,
 } from '../entry/db.ts'
-import { enterableFrom, holdersOf, readPolicy, resolvePolicy, routeOf } from '../review/chain.ts'
+import {
+  enterableFrom,
+  isPanelStage,
+  readPolicy,
+  resolvePolicy,
+  routeOf,
+  stageArrival,
+} from '../review/chain.ts'
+import { createPanel } from '../review/db.ts'
 import {
   decisionNeeded,
   impactOf,
@@ -557,7 +565,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           stageId: round.stageId,
           comment: input.reason,
         })
-        const holders = yield* holdersOf({
+        // a re-route is a fresh round: the old round's judges carry no
+        // exclusion into it, the same as an appeal's do not
+        const arrived = yield* stageArrival({
           tenantId: input.tenantId,
           batchId: input.item.batchId,
           stage: landing,
@@ -582,7 +592,8 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           roleIds: landing.roleIds,
           nodeId: landing.nodeId,
           nodePath,
-          state: holders.length > 0 ? 'active' : 'blocked',
+          state: arrived.state,
+          blockedReason: arrived.blockedReason,
         })
         yield* insertReviewEvent({
           tenantId: input.tenantId,
@@ -593,7 +604,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           stageId: landing.id,
           comment: input.reason,
         })
-        if (holders.length === 0) {
+        if (arrived.state === 'blocked') {
           yield* insertReviewEvent({
             tenantId: input.tenantId,
             reviewInstanceId: opened,
@@ -601,6 +612,16 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             actorId: null,
             route: landing.route,
             stageId: landing.id,
+          })
+        } else if (isPanelStage(landing)) {
+          // the landing is a sitting: constitute it from whoever is
+          // eligible on arrival, the same as any other entry to the stage
+          yield* createPanel({
+            tenantId: input.tenantId,
+            reviewInstanceId: opened,
+            route: landing.route,
+            stageId: landing.id,
+            members: arrived.eligible,
           })
         }
         yield* setEntryState({

@@ -510,7 +510,22 @@ function Workbench({ batch }: { batch: BatchDto }) {
             onOpen={goTo}
             onBack={() => navigate('assessment/batch-reviews', { params: { batchId: batch.id } })}
           />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col border-t lg:border-t-0 lg:border-l">
+          <div
+            data-review-route={review?.chain.route ?? 'normal'}
+            className="flex min-h-0 min-w-0 flex-1 flex-col border-t lg:border-t-0 lg:border-l"
+          >
+            {/* the escalation environment, worn rather than explained: a thin
+                caution band over the whole workbench, at every width, so the
+                mode is recognized before a single word is read */}
+            {review !== undefined &&
+              review.chain.route === 'escalation' &&
+              review.state !== 'completed' && (
+                <span
+                  aria-hidden
+                  data-testid="escalation-band"
+                  className="h-1 w-full shrink-0 bg-[repeating-linear-gradient(135deg,var(--color-amber-400)_0px,var(--color-amber-400)_10px,var(--color-amber-600)_10px,var(--color-amber-600)_20px)] opacity-70"
+                />
+              )}
             {done ? (
               <DoneScreen
                 batchId={batch.id}
@@ -993,7 +1008,8 @@ function PersonStrip({
       </div>
       <span className="flex-1" />
       {review.chain.route === 'escalation' && (
-        <Badge variant="outline" className="hidden text-xs lg:inline-flex">
+        // at every width: the mode must survive the narrowest header
+        <Badge variant="outline" className="shrink-0 text-xs">
           <TriangleAlertIcon aria-hidden />
           {format(m.reviewRouteEscalation)}
         </Badge>
@@ -1339,20 +1355,34 @@ const FlowColumn = memo(function FlowColumn({
   // A withdrawal is not a refusal: nobody judged anything, and dressing it
   // in the refusal card's words would invent a verdict that never happened.
   const withdrawn = previous?.kind === 'cancelled-by-submitter'
+  // an appeal round carries its grounds in its own opening event, and the
+  // grounds are the one thing this judge must read first
+  const appealed = review.events.find((event) => event.kind === 'appealed')
+  const spoken =
+    previous === null ? null : reviewEventMessage(previous.kind, previous.actorName !== null)
   const said =
-    previous === null
+    spoken === null || previous === null
       ? ''
-      : format(reviewEventMessage(previous.kind).message, {
-          who: previous.actorName ?? format(m.eventSomebody),
-        })
+      : format(
+          spoken.message,
+          spoken.needsActor ? { who: previous.actorName ?? format(m.eventSomebody) } : {},
+        )
   return (
     <Pane as="section" part="flow" inner="gap-4 p-5">
       {review.chain.route === 'escalation' && review.state !== 'completed' && (
         <div className="flex items-start gap-3 rounded-xl bg-muted/60 p-4">
           <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-sm font-medium">{format(m.reviewEscBannerTitle)}</p>
-            <p className="text-sm text-muted-foreground">{format(m.reviewEscBannerBody)}</p>
+            <p className="text-sm font-medium">
+              {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
+            </p>
+            {/* the appellant's grounds are business evidence, not chrome:
+                shown in their own words wherever they exist */}
+            {appealed !== undefined && appealed.comment !== null ? (
+              <p className="text-sm leading-relaxed text-pretty">{appealed.comment}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">{format(m.reviewEscBannerBody)}</p>
+            )}
           </div>
         </div>
       )}
@@ -1514,7 +1544,7 @@ const FlowColumn = memo(function FlowColumn({
           // bar the comment used to carry has nothing left to add.
           <ol className="flex flex-col">
             {review.events.map((event, index) => {
-              const said = reviewEventMessage(event.kind)
+              const said = reviewEventMessage(event.kind, event.actorName !== null)
               const last = index === review.events.length - 1
               return (
                 <li key={index} className="flex gap-2.5 pb-3 last:pb-0">
@@ -2179,8 +2209,8 @@ function Route({
               </span>
               <div className="flex min-w-0 flex-1 flex-col">
                 <div className="flex min-w-0 items-baseline gap-2">
-                  {/* node and role on one line: which office, in what
-                      capacity, is one fact about this step */}
+                  {/* the administrator's name for the step where one exists;
+                      the unit-and-roles composite only as the fallback */}
                   <span className={cn('min-w-0 truncate text-sm', current && 'font-medium')}>
                     {stage.nodeName === null
                       ? format(
@@ -2188,14 +2218,20 @@ function Route({
                             ? m.reviewStageNoHolder
                             : m.reviewStageSkipped,
                         )
-                      : `${stage.nodeName}／${listed.format(stage.roleNames)}`}
+                      : (stage.label ?? `${stage.nodeName}／${listed.format(stage.roleNames)}`)}
                   </span>
                   <span className="flex-1" />
                   {/* what happened at this step, where the eye already is:
                       a step with nothing beside it is one still ahead */}
                   {(current || passed) && (
                     <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                      {format(current ? m.reviewStageHere : m.reviewStagePassed)}
+                      {format(
+                        current
+                          ? m.reviewStageHere
+                          : stage.skipped === 'reviewer-conflict'
+                            ? m.reviewStageStepped
+                            : m.reviewStagePassed,
+                      )}
                     </span>
                   )}
                 </div>
@@ -2205,6 +2241,49 @@ function Route({
                       ? format(m.reviewStageNobody)
                       : format(m.reviewStageReviewers, { who: listed.format(stage.reviewers) })}
                   </span>
+                )}
+                {/* what the concluded sitting here said, name by name: the
+                    evidence the judge after it reads */}
+                {stage.opinions !== null && stage.opinions.length > 0 && (
+                  <div
+                    data-testid="stage-opinions"
+                    data-stage={stage.id}
+                    className="mt-1.5 flex flex-col gap-1.5 rounded-lg bg-muted/50 p-2.5"
+                  >
+                    {stage.opinions.map((opinion, said) => (
+                      <div key={said} className="flex min-w-0 flex-col gap-0.5">
+                        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs">
+                          <span className="font-medium">
+                            {opinion.who ?? format(m.eventSomebody)}
+                          </span>
+                          <span
+                            data-opinion={opinion.decision}
+                            className={
+                              opinion.decision === 'approve'
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-rose-600 dark:text-rose-400'
+                            }
+                          >
+                            {format(
+                              opinion.decision === 'approve'
+                                ? m.reviewOpinionApprove
+                                : m.reviewOpinionReject,
+                            )}
+                          </span>
+                          {opinion.reason !== null && (
+                            <span className="min-w-0 truncate text-muted-foreground">
+                              {opinion.reason}
+                            </span>
+                          )}
+                        </div>
+                        {opinion.comment !== null && (
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            {opinion.comment}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </li>
@@ -2236,11 +2315,12 @@ function DecisionBar({
   onDialog: (next: 'approve' | 'reject' | 'escalate' | 'supplement') => void
 }) {
   const { format } = useI18n()
-  const fine = useFinePointer()
-  const advising =
-    review.chain.route === 'escalation' && review.actions.reject.state !== 'available'
-  // approving at the end of a route is the decision itself, not a hand-on
-  const route = review.chain.route === 'escalation' ? review.chain.escalation : review.chain.normal
+  // What each word will do from here, told on hover. On the ladder every
+  // step's approval settles the matter, a middle step's rejection climbs
+  // with its opinion, and escalating climbs without one; the ordinary route
+  // reads as it always did.
+  const onLadder = review.chain.route === 'escalation'
+  const route = onLadder ? review.chain.escalation : review.chain.normal
   const lastStep = route[route.length - 1]?.id === review.chain.stageId
 
   return (
@@ -2263,7 +2343,7 @@ function DecisionBar({
           offer={review.actions.escalate}
           label={format(m.reviewEscalate)}
           kbd="E"
-          why={format(m.reviewTipEscalate)}
+          why={format(onLadder ? m.reviewTipEscalateMid : m.reviewTipEscalate)}
           className="max-sm:flex-none"
           onPress={() => onDialog('escalate')}
         />
@@ -2282,7 +2362,7 @@ function DecisionBar({
           offer={review.actions.reject}
           label={format(m.reviewReject)}
           kbd="R"
-          why={format(m.reviewTipReject)}
+          why={format(onLadder && !lastStep ? m.reviewTipRejectMid : m.reviewTipReject)}
           className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 max-sm:min-w-0 max-sm:flex-1 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
           kbdClassName="bg-rose-500/10 text-rose-700 dark:text-rose-300"
           onPress={() => onDialog('reject')}
@@ -2292,21 +2372,14 @@ function DecisionBar({
           offer={review.actions.approve}
           label={format(m.reviewApprove)}
           kbd="A"
-          // a middle step's approval hands the round on; only the last
-          // step's ends it - the same key must not promise both
-          why={format(lastStep ? m.reviewTipApprove : m.reviewTipApproveMid)}
+          // an ordinary middle step's approval hands the round on; the
+          // ladder's every step and the ordinary route's last one settle it
+          why={format(onLadder || lastStep ? m.reviewTipApprove : m.reviewTipApproveMid)}
           className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 max-sm:min-w-0 max-sm:flex-1 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
           kbdClassName="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
           onPress={() => onDialog('approve')}
         />
       </div>
-      {/* one line for what the next act will mean here, which is the part a
-          reader cannot see from the buttons alone */}
-      {fine && advising && (
-        <p className="text-right text-xs text-pretty text-muted-foreground">
-          {format(m.reviewSubmitHintAdvise)}
-        </p>
-      )}
     </footer>
   )
 }
@@ -2342,7 +2415,7 @@ function ActionKey({
   const { format } = useI18n()
   const fine = useFinePointer()
   const blocked = offer.state !== 'available'
-  const because = blocked ? format(actionBlockedMessage(act, offer.reason)) : why
+  const because = blocked ? format(actionBlockedMessage(offer.reason)) : why
   const key = (
     <Button
       variant="outline"
@@ -2391,20 +2464,16 @@ function ActionKey({
 }
 
 /** the words for a blocked act, keyed by the server's stable reason codes */
-const actionBlockedMessage = (
-  act: 'approve' | 'reject' | 'escalate' | 'supplement',
-  reason: string | null,
-): MessageDescriptor => {
-  if (act === 'reject' && reason === 'terminal-only') return m.reviewBlockedTerminalOnly
+const actionBlockedMessage = (reason: string | null): MessageDescriptor => {
   switch (reason) {
-    case 'in-escalation':
-      return m.reviewBlockedInEscalation
     case 'no-route':
       return m.reviewBlockedNoRoute
     case 'route-closed':
       return m.reviewBlockedRouteClosed
     case 'phase-closed':
       return m.reviewBlockedPhaseClosed
+    case 'route-end':
+      return m.reviewBlockedRouteEnd
     default:
       return m.reviewBlockedUnavailable
   }

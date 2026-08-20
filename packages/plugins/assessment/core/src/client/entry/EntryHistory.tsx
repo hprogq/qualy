@@ -369,7 +369,7 @@ const actTitle = (
 ): string => {
   const own = subject === undefined ? ownReviewEventMessage(event.kind) : undefined
   if (own !== undefined) return format(own)
-  const said = reviewEventMessage(event.kind)
+  const said = reviewEventMessage(event.kind, event.actorName != null)
   return format(
     said.message,
     said.needsActor ? { who: event.actorName ?? format(m.eventSomebody) } : {},

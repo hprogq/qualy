@@ -536,19 +536,33 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(errorOf<{ _tag: string }>(result.tampered)?._tag).toBe('BAD_REQUEST')
   })
 
-  it('lets a middle escalation step reject when the phase opens it', async () => {
+  it('carries a middle rung\u2019s objection up the ladder, with the opinion on record', async () => {
     const result = ok(
       await run(
         db.url,
         Effect.gen(function* () {
-          const f = yield* seed('rf-mid-reject')
+          const f = yield* seed('rf-mid-objection')
           const assessment = yield* Assessment
-          // the one difference from the case above: the phase says middle
-          // steps of the escalation route may reject outright
-          const g = yield* runningBatch(f, {
-            profile: [...REVIEW_OPEN, 'assessment.review.reject-intermediate'],
-          })
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const admin = f.principal(f.admin)
+          // a second and a third judge at the same class, because the ladder
+          // refuses whoever already judged an earlier step of the round
+          const another = (name: string) =>
+            Effect.gen(function* () {
+              const who = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                  values (${f.t}, ${name}, ${f.studentType}, ${f.classA}) returning id`),
+              ).id
+              const grant = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+                  values (${f.t}, ${who}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+              ).id
+              yield* accept(f.t, g.batch.id, who, grant)
+              return { who, grant }
+            })
+          const second = yield* another('Second Judge')
           const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
           const at = (id: string) => ({
             id,
@@ -560,7 +574,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             g.batch.id,
             {
               itemType: 'evidence',
-              title: '中途可退回的题',
+              title: '\u4e2d\u9014\u5f02\u8bae\u7684\u9898',
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
@@ -591,30 +605,71 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           yield* assessment.decideReview(
             f.t,
             instanceId,
-            { decision: 'escalate', comment: '拿不准，提请复核' },
+            { decision: 'escalate', comment: '\u62ff\u4e0d\u51c6\uff0c\u63d0\u8bf7\u590d\u6838' },
             reviewer,
           )
-          const midway = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
-          const rejected = yield* assessment.decideReview(
+          const judge2 = f.principal(second.who)
+          const midway = yield* assessment.getReviewInstance(f.t, instanceId, judge2)
+          // the objection is an opinion that climbs, never a verdict here
+          const objected = yield* assessment.decideReview(
             f.t,
             instanceId,
-            { decision: 'reject', comment: '复核确认不予认定' },
-            reviewer,
+            { decision: 'reject', comment: '\u590d\u6838\u8ba4\u4e3a\u4e0d\u5e94\u8ba4\u5b9a' },
+            judge2,
           )
-          return { midway, rejected }
+          // both judges of this round are spent: the ladder's last rung has
+          // nobody independent left, which blocks rather than skips
+          const parked = one<{ state: string; blocked_reason: string; current_stage_id: string }>(
+            yield* runSql(sql`
+              select state, blocked_reason, current_stage_id
+              from review_instances where id = ${instanceId}`),
+          )
+          // a third judge is appointed, and the patrol releases the round
+          const third = yield* another('Third Judge')
+          yield* assessment.patrolReviewRounds
+          const healed = one<{ state: string; blocked_reason: string | null }>(
+            yield* runSql(sql`
+              select state, blocked_reason from review_instances where id = ${instanceId}`),
+          )
+          const settled = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'reject', comment: '\u7ec8\u5ba1\u4e0d\u4e88\u8ba4\u5b9a' },
+            f.principal(third.who),
+          )
+          return { midway, objected, parked, healed, settled }
         }),
       ),
     )
-    // the same middle step that only advises by default now offers the
-    // rejection, and the act it offers goes through
+    // every rung may settle the matter, a middle rung may object or climb
     expect(result.midway.chain.route).toBe('escalation')
     expect(result.midway.chain.stageId).toBe('d1')
-    expect(result.midway.actions.reject).toEqual({ state: 'available', reason: null })
-    expect(result.rejected.state).toBe('completed')
-    expect(result.rejected.outcome).toBe('rejected')
+    expect(result.midway.actions).toMatchObject({
+      approve: { state: 'available' },
+      reject: { state: 'available' },
+      escalate: { state: 'available' },
+    })
+    // the objection moved the round, and said why nobody could take it yet
+    expect(result.objected.chain.stageId).toBe('d2')
+    expect(result.parked).toEqual({
+      state: 'blocked',
+      blocked_reason: 'no-independent-reviewer',
+      current_stage_id: 'd2',
+    })
+    expect(result.healed).toEqual({ state: 'active', blocked_reason: null })
+    expect(result.settled.outcome).toBe('rejected')
+    // the wait and the release are on the record between the words
+    expect(result.settled.events.map((event) => event.kind)).toEqual([
+      'submitted',
+      'escalated',
+      'opinion-rejected',
+      'assignee-not-found',
+      'assignee-found',
+      'rejected',
+    ])
   })
 
-  it('hands an escalation to the other route, and takes only one', async () => {
+  it('hands an escalation to the ladder, where any rung may settle it', async () => {
     const result = ok(
       await run(
         db.url,
@@ -623,6 +678,18 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const assessment = yield* Assessment
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const admin = f.principal(f.admin)
+          // a second judge at the class: the escalator is spent for this round
+          const second = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Second Judge', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const secondGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${second}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, second, secondGrant)
           const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
           const at = (id: string) => ({
             id,
@@ -636,7 +703,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             g.batch.id,
             {
               itemType: 'evidence',
-              title: '可提请复核的题',
+              title: '\u53ef\u63d0\u8bf7\u590d\u6838\u7684\u9898',
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
@@ -669,39 +736,37 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const raised = yield* assessment.decideReview(
             f.t,
             instanceId,
-            { decision: 'escalate', comment: '拿不准，提请复核' },
+            { decision: 'escalate', comment: '\u62ff\u4e0d\u51c6\uff0c\u63d0\u8bf7\u590d\u6838' },
             reviewer,
           )
-          // the escalation route is a review chain like the other one:
-          // approving a middle step passes it on, and whether that step may
-          // reject outright is the phase's word, not the round's origin
-          const escalated = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
-          const noSecondEscalation = yield* Effect.exit(
-            assessment.decideReview(
-              f.t,
-              instanceId,
-              { decision: 'escalate', comment: '再上一次' },
-              reviewer,
-            ),
+          // the escalator already judged this round: the ladder is closed to
+          // them - the queue empties and even reading is over
+          const escalatorQueue = yield* Effect.map(
+            assessment.listReviewInbox(f.t, {}, reviewer),
+            (page) => page.items,
           )
-          const passedOn = yield* assessment.decideReview(
+          const escalatorRead = yield* Effect.exit(
+            assessment.getReviewInstance(f.t, instanceId, reviewer),
+          )
+          // a rung of the ladder settles the matter itself: approval here is
+          // the round approved, not a hand-on to the next rung
+          const escalated = yield* assessment.getReviewInstance(
             f.t,
             instanceId,
-            { decision: 'approve' },
-            reviewer,
+            f.principal(second),
           )
           const settled = yield* assessment.decideReview(
             f.t,
             instanceId,
             { decision: 'approve' },
-            reviewer,
+            f.principal(second),
           )
-          return { onNormal, raised, escalated, noSecondEscalation, passedOn, settled }
+          return { onNormal, raised, escalatorQueue, escalatorRead, escalated, settled }
         }),
       ),
     )
 
-    // the ordinary route offers to escalate; the escalation route does not
+    // the ordinary route offers to escalate; the ladder is entered whole
     expect(result.onNormal.chain.route).toBe('normal')
     expect(result.onNormal.chain.stageId).toBe('n1')
     expect(result.onNormal.actions).toMatchObject({
@@ -712,22 +777,170 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     // raising it leaves the ordinary route entirely rather than carrying on
     expect(result.raised.chain.route).toBe('escalation')
     expect(result.raised.chain.stageId).toBe('d1')
-    // a middle step of the route advises unless the phase opens early
-    // rejection, and escalating again is never on the table
+    expect(result.escalatorQueue).toEqual([])
+    expect(errorOf<{ _tag: string }>(result.escalatorRead)?._tag).toBe(
+      'ASSESSMENT_REVIEW_NOT_FOUND',
+    )
+    // a middle rung of the ladder holds every word, escalating included
     expect(result.escalated.actions).toMatchObject({
       approve: { state: 'available' },
-      reject: { state: 'blocked', reason: 'terminal-only' },
-      escalate: { state: 'blocked', reason: 'in-escalation' },
+      reject: { state: 'available' },
+      escalate: { state: 'available' },
     })
-    expect(refusalOf(result.noSecondEscalation)?.reason).toBe('decision-not-available')
-    expect(result.passedOn.chain.stageId).toBe('d2')
     expect(result.settled.outcome).toBe('approved')
     expect(result.settled.events.map((event) => event.kind)).toEqual([
       'submitted',
       'escalated',
       'approved',
-      'approved',
     ])
+  })
+
+  it('steps over a rung held only by this round\u2019s own judges, and blocks on an empty one', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-rung-skip')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const admin = f.principal(f.admin)
+          // a role of its own for the last rung, held by somebody fresh
+          const finalRole = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status)
+              values (${f.t}, 'final-judge', 'Final judge', 'org', 'active') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.t}, ${finalRole}, p.id from permissions p
+            where p.code = 'assessment.review.process'`)
+          const closer = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Closer', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const closerGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${closer}, ${finalRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, closer, closerGrant)
+          // and a role nobody holds at all, for the vacancy case
+          const emptyRole = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status)
+              values (${f.t}, 'nobody-yet', 'Nobody yet', 'org', 'active') returning id`),
+          ).id
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          const at = (id: string, roleId: string) => ({
+            id,
+            selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [roleId] },
+            quorum: { type: 'any' },
+          })
+          const filed = (title: string, escalation: unknown[]) =>
+            Effect.gen(function* () {
+              const item = yield* assessment.createItem(
+                f.t,
+                g.batch.id,
+                {
+                  itemType: 'evidence',
+                  title,
+                  scoreGroupId: groups.groups[0]!.id,
+                  maxEntries: 1,
+                  config: {
+                    entrySource: 'student',
+                    formConfig: {},
+                    scoringConfig: {
+                      calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                      aggregator: { ref: 'sum@1', config: {} },
+                    },
+                    reviewPolicy: {
+                      normal: { stages: [at('n1', f.reviewRole)] },
+                      escalation: { stages: escalation },
+                    },
+                  },
+                },
+                admin,
+              )
+              yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+              return item
+            })
+          const s1 = f.principal(f.s1)
+          const reviewer = f.principal(f.reviewer)
+
+          // the first rung is held only by the escalator: stepped over, and
+          // the round lands on the fresh judge with the skip on record
+          const skippable = yield* filed('\u53ef\u8df3\u8fc7\u7684\u68af\u5b50', [
+            at('d1', f.reviewRole),
+            at('d2', finalRole),
+          ])
+          const first = yield* assessment.createEntry(
+            f.t,
+            { itemId: skippable.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const firstSent = yield* assessment.setEntryStatus(f.t, first.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            firstSent.currentReviewInstanceId!,
+            { decision: 'escalate', comment: '\u63d0\u8bf7\u590d\u6838' },
+            reviewer,
+          )
+          const landed = yield* assessment.getReviewInstance(
+            f.t,
+            firstSent.currentReviewInstanceId!,
+            f.principal(closer),
+          )
+
+          // a rung nobody holds at all never skips: the duty is configured
+          // and unstaffed, which is the administrator's to fix
+          const stuck = yield* filed('\u7f3a\u5458\u7684\u68af\u5b50', [
+            at('e1', emptyRole),
+            at('e2', finalRole),
+          ])
+          const second = yield* assessment.createEntry(
+            f.t,
+            { itemId: stuck.id, participantId: g.p2, payload: {} },
+            f.principal(f.s2),
+          )
+          const secondSent = yield* assessment.setEntryStatus(
+            f.t,
+            second.id,
+            'in_review',
+            f.principal(f.s2),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            secondSent.currentReviewInstanceId!,
+            { decision: 'escalate', comment: '\u63d0\u8bf7\u590d\u6838' },
+            reviewer,
+          )
+          const parked = one<{ state: string; blocked_reason: string; current_stage_id: string }>(
+            yield* runSql(sql`
+              select state, blocked_reason, current_stage_id
+              from review_instances where id = ${secondSent.currentReviewInstanceId!}`),
+          )
+          return { landed, parked }
+        }),
+      ),
+    )
+
+    expect(result.landed.chain.route).toBe('escalation')
+    expect(result.landed.chain.stageId).toBe('d2')
+    // the stepped-over rung says so, on the chain and in the trail
+    expect(result.landed.chain.escalation.find((stage) => stage.id === 'd1')?.skipped).toBe(
+      'reviewer-conflict',
+    )
+    expect(result.landed.events.map((event) => event.kind)).toEqual([
+      'submitted',
+      'escalated',
+      'stage-skipped',
+    ])
+    expect(result.parked).toEqual({
+      state: 'blocked',
+      blocked_reason: 'no-assignee',
+      current_stage_id: 'e1',
+    })
   })
 
   it('lets an administrator hand a claim back without pretending to judge it', async () => {
@@ -963,7 +1176,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(result.queue.map((one) => one.entryId)).toEqual([result.entry.id])
   })
 
-  it('walks an appeal down the escalation route, endable only at its last step', async () => {
+  it('walks an appeal down the ladder, open to the judges of the round it contests', async () => {
     const result = ok(
       await run(
         db.url,
@@ -980,6 +1193,18 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             ],
           })
           const admin = f.principal(f.admin)
+          // a second judge, for the rung after the first one's objection
+          const second = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Second Judge', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const secondGrant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${second}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, second, secondGrant)
           const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
           const at = (id: string) => ({
             id,
@@ -991,7 +1216,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             g.batch.id,
             {
               itemType: 'evidence',
-              title: '可申诉的题',
+              title: '\u53ef\u7533\u8bc9\u7684\u9898',
               scoreGroupId: groups.groups[0]!.id,
               maxEntries: 1,
               config: {
@@ -1024,19 +1249,19 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             assessment.decideReview(
               f.t,
               first,
-              { decision: 'escalate', comment: '想上报' },
+              { decision: 'escalate', comment: '\u60f3\u4e0a\u62a5' },
               reviewer,
             ),
           )
           yield* assessment.decideReview(
             f.t,
             first,
-            { decision: 'reject', comment: '材料不足' },
+            { decision: 'reject', comment: '\u6750\u6599\u4e0d\u8db3' },
             reviewer,
           )
           // somebody else's decision is not theirs to contest
           const stranger = yield* Effect.exit(
-            assessment.appealReview(f.t, first, { reason: '不服' }, f.principal(f.s2)),
+            assessment.appealReview(f.t, first, { reason: '\u4e0d\u670d' }, f.principal(f.s2)),
           )
           const wordless = yield* Effect.exit(
             assessment.appealReview(f.t, first, { reason: '  ' }, s1),
@@ -1044,25 +1269,36 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const appealed = yield* assessment.appealReview(
             f.t,
             first,
-            { reason: '证书原件已补交，请复核' },
+            { reason: '\u8bc1\u4e66\u539f\u4ef6\u5df2\u8865\u4ea4\uff0c\u8bf7\u590d\u6838' },
             s1,
           )
-          const second = appealed.id
+          const second_ = appealed.id
           // one open round per claim: the same decision cannot be contested twice
           const again = yield* Effect.exit(
-            assessment.appealReview(f.t, first, { reason: '再来一次' }, s1),
+            assessment.appealReview(f.t, first, { reason: '\u518d\u6765\u4e00\u6b21' }, s1),
           )
-          const midway = yield* assessment.getReviewInstance(f.t, second, reviewer)
-          const rejectTooSoon = yield* Effect.exit(
-            assessment.decideReview(f.t, second, { decision: 'reject', comment: '不行' }, reviewer),
+          // The judge who rejected the first round is eligible for the appeal
+          // on purpose (\u00a732.66): a fresh round means fresh standing, and the
+          // rejecter re-examining their own call is re-examination, not
+          // self-review. Their queue holds it.
+          const rejecterQueue = yield* Effect.map(
+            assessment.listReviewInbox(f.t, {}, reviewer),
+            (page) => page.items.map((one) => one.instanceId),
           )
-          yield* assessment.decideReview(f.t, second, { decision: 'approve' }, reviewer)
-          const atEnd = yield* assessment.getReviewInstance(f.t, second, reviewer)
+          const midway = yield* assessment.getReviewInstance(f.t, second_, reviewer)
+          // a middle rung's rejection is an opinion that climbs
+          const objected = yield* assessment.decideReview(
+            f.t,
+            second_,
+            { decision: 'reject', comment: '\u4ecd\u8ba4\u4e3a\u4e0d\u5e94\u8ba4\u5b9a' },
+            reviewer,
+          )
+          const atEnd = yield* assessment.getReviewInstance(f.t, second_, f.principal(second))
           const settled = yield* assessment.decideReview(
             f.t,
-            second,
-            { decision: 'reject', comment: '复核后仍不予认定' },
-            reviewer,
+            second_,
+            { decision: 'reject', comment: '\u590d\u6838\u540e\u4ecd\u4e0d\u4e88\u8ba4\u5b9a' },
+            f.principal(second),
           )
           const rounds = yield* runSql(sql`
             select round_no, origin, current_route, revision_id,
@@ -1074,11 +1310,13 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             wordless,
             appealed,
             again,
+            rejecterQueue,
             midway,
-            rejectTooSoon,
+            objected,
             atEnd,
             settled,
             firstId: first,
+            secondId: second_,
             rows: (
               rounds as {
                 rows: {
@@ -1113,16 +1351,26 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       appealed_instance_id: result.firstId,
     })
 
-    // and only its last step can turn it down
+    // the first round's rejecter takes the appeal like any other judge
+    expect(result.rejecterQueue).toContain(result.secondId)
     expect(result.midway.actions).toMatchObject({
       approve: { state: 'available' },
-      reject: { state: 'blocked', reason: 'terminal-only' },
+      reject: { state: 'available' },
+      // climbing is the ladder's own machinery, not the phase's
+      escalate: { state: 'available' },
     })
-    expect(refusalOf(result.rejectTooSoon)?.reason).toBe('decision-not-available')
+    // and their objection climbed to somebody who had not yet judged round 2
+    expect(result.objected.chain.stageId).toBe('d2')
     expect(result.atEnd.actions).toMatchObject({
       approve: { state: 'available' },
       reject: { state: 'available' },
+      escalate: { state: 'blocked', reason: 'route-end' },
     })
     expect(result.settled.outcome).toBe('rejected')
+    expect(result.settled.events.map((event) => event.kind)).toEqual([
+      'appealed',
+      'opinion-rejected',
+      'rejected',
+    ])
   })
 })
