@@ -90,6 +90,9 @@ export function StageSheet({
             id={id}
             value={stage.label}
             maxLength={50}
+            required
+            aria-required
+            aria-invalid={stage.label.trim() === '' || undefined}
             placeholder={format(m.itemsStageLabelPlaceholder)}
             onChange={(event) => onChange({ label: event.target.value })}
           />

@@ -6580,3 +6580,22 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 (含新增的 review-panels 升级测试:旧库血统建 blocked 行 → 跑迁移 → 断言回填 no-assignee 且
 CHECK 拒绝置空);`pnpm test:browser` 10 files / 81 passed(复核环境 1 例新增);`pnpm build`
 通过(staged web assets);prettier 全绿;`pnpm qualy resolve` + `pnpm qualy generate` 实跑出迁移。
+
+### 审核链编辑器可用性四修(2026-08-20 追加)
+
+- **未命名环节标红,不再穿缺省名**:环节名是必填项,链上未命名的环节标红显示「未命名环节」,
+  不再以「专业／审核员、组织管理员」这类单位+角色组合冒充已完成;序号圆点同样转红色虚线
+  (completeStage = 已命名 ∧ 已选审核人)。StageSheet 名称输入框 aria-required,提示语明写
+  「必填」。已命名环节的单位+角色组合降为小字辅助信息保留。
+- **删除键常驻**:普通链仅剩一个环节时删除键不再消失,改为 disabled + hover tooltip
+  「普通审核链至少保留一个环节」(span 包裹使禁用键可应答 hover)。
+- **环节可排序**:已有的 moveStage 接上 UI——每个环节下常驻 前移/后移 图标键,端点处 disabled;
+  控制行(前移/后移/删除)从 hover 显现改为常驻,悬停才出现的控件对不知道它存在的人等于不存在。
+- **加号常驻可见**:链条间隙的 + 从 opacity-0 hover 显现改为常驻,并缩小为 size-5 虚线圆
+  (与 size-6 实心序号圆区分开,悬停/聚焦转实线),不再需要碰运气 hover 才能发现如何加环节。
+- **测试**:新增 apps/web/tests/item-chain.browser.test.tsx 三例(未命名 → data-step-complete
+  事实断言、命名+选人后转 true;加号可见性以 computed opacity 断言——红验证过:恢复 opacity-0
+  即红;唯一环节删除键 disabled、双环节后移交换顺序、删余一个后重新入禁)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 98 files / 687 passed / 17 skipped;
+`pnpm test:browser` 11 files / 84 passed(item-chain 3 例新增);prettier 全绿。

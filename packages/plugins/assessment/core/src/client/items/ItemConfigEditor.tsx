@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@qualy/ui/input-group'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentApi } from '../api.ts'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -1053,6 +1054,7 @@ export function ItemConfigEditor({
                       options={options}
                       onOpen={setOpenStage}
                       onAdd={(at) => addStage('normal', at)}
+                      onMove={moveStage}
                       onRemove={(key) =>
                         setDraft((previous) => ({
                           ...previous,
@@ -1075,6 +1077,7 @@ export function ItemConfigEditor({
                           options={options}
                           onOpen={setOpenStage}
                           onAdd={(at) => addStage('escalation', at)}
+                          onMove={moveStage}
                           onRemove={(key) =>
                             setDraft((previous) => ({
                               ...previous,
@@ -1364,6 +1367,7 @@ function ChainFlow({
   options,
   onOpen,
   onAdd,
+  onMove,
   onRemove,
 }: {
   batchId: string
@@ -1373,6 +1377,8 @@ function ChainFlow({
   onOpen: (key: string) => void
   /** put one more here: 0 before the first step, steps.length after the last */
   onAdd: (at: number) => void
+  /** swap with the neighbour on that side; order is the chain's whole meaning */
+  onMove: (key: string, delta: -1 | 1) => void
   onRemove: (key: string) => void
 }) {
   const { format } = useI18n()
@@ -1400,7 +1406,10 @@ function ChainFlow({
           stage={one}
           options={options}
           removable={chain === 'escalation' || steps.length > 1}
+          atStart={index === 0}
+          atEnd={index === steps.length - 1}
           onOpen={() => onOpen(one.key)}
+          onMove={(delta) => onMove(one.key, delta)}
           onRemove={() => onRemove(one.key)}
         />
       ),
@@ -1450,13 +1459,18 @@ function ChainFlow({
  */
 function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
-    <span className="group/gap relative flex h-6 flex-1 items-center">
+    <span className="relative flex h-6 flex-1 items-center">
       <span aria-hidden className="h-px w-full bg-border" />
+      {/* Always on show, and visibly not a step: a step marker is a solid
+          size-6 circle with a number, this is a smaller dashed one with a
+          plus. Revealed-on-hover was tried and failed the only person it
+          was hidden from - somebody who does not yet know where steps come
+          from cannot know where to hover. */}
       <button
         type="button"
         aria-label={label}
         title={label}
-        className="absolute left-1/2 flex size-6 -translate-x-1/2 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 transition-opacity group-hover/gap:opacity-100 focus-visible:opacity-100"
+        className="absolute left-1/2 flex size-5 -translate-x-1/2 items-center justify-center rounded-full border border-dashed bg-background text-muted-foreground/70 transition-colors hover:border-solid hover:border-foreground/50 hover:text-foreground focus-visible:border-solid focus-visible:text-foreground"
         onClick={onAdd}
       >
         <PlusIcon aria-hidden className="size-3" />
@@ -1483,7 +1497,7 @@ function NodeLabel({ title, sub }: { title: string; sub: string }) {
   )
 }
 
-/** a step's own marker: its place in the order, or that it has none yet */
+/** a step's own marker: its place in the order, or that it is unfinished */
 function StageMarker({
   stage,
   options,
@@ -1497,7 +1511,7 @@ function StageMarker({
     <span
       className={cn(
         'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium',
-        settledStage(stage, options)
+        completeStage(stage, options)
           ? 'bg-foreground text-background'
           : 'border border-dashed border-destructive/60 text-destructive',
       )}
@@ -1512,36 +1526,47 @@ function StageLabel({
   stage,
   options,
   removable,
+  atStart,
+  atEnd,
   onOpen,
+  onMove,
   onRemove,
 }: {
   batchId: string
   stage: StageDraft
   options: ItemOptions
   removable: boolean
+  atStart: boolean
+  atEnd: boolean
   onOpen: () => void
+  onMove: (delta: -1 | 1) => void
   onRemove: () => void
 }) {
   const { format } = useI18n()
   const settled = settledStage(stage, options)
+  const named = stage.label.trim() !== ''
   return (
-    <div className="group flex min-w-0 flex-col gap-1">
+    <div
+      className="group flex min-w-0 flex-col gap-1"
+      data-testid="chain-step"
+      data-step-complete={named && settled}
+    >
+      {/* The step answers to the name its author gave it and to nothing
+          else: the name is required, so an unnamed step says so in red
+          rather than dressing itself in the unit-and-roles composite and
+          looking finished. */}
       <button
         type="button"
         className={cn(
           'min-w-0 text-left text-sm font-medium break-words underline-offset-4 hover:underline',
-          !settled && 'text-destructive',
+          (!named || !settled) && 'text-destructive',
         )}
         onClick={onOpen}
       >
-        {stage.label.trim() !== ''
-          ? stage.label.trim()
-          : settled
-            ? whoReviews(stage, options, format)
-            : format(m.itemsStageUnset)}
+        {named ? stage.label.trim() : format(m.itemsStageUnnamed)}
       </button>
-      {/* named steps keep saying who actually reviews, in small print */}
-      {stage.label.trim() !== '' && settled && (
+      {/* who actually reviews stays said, in small print, once it is known */}
+      {settled && (
         <p className="text-xs break-words text-muted-foreground">
           {whoReviews(stage, options, format)}
         </p>
@@ -1551,21 +1576,71 @@ function StageLabel({
       ) : (
         <p className="text-xs text-muted-foreground">{format(m.itemsStageUnsetHint)}</p>
       )}
-      {removable && (
-        <span className="flex items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      {/* The step's handling, always on show: order and removal are how the
+          chain is composed, and controls that only exist under a hover are
+          controls a newcomer never finds. The one unremovable step keeps
+          its key, standing but disabled, and the key itself says why. */}
+      <span className="flex items-center gap-0.5 pt-0.5">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="text-muted-foreground"
+          disabled={atStart}
+          onClick={() => onMove(-1)}
+          aria-label={format(m.itemsStageMoveEarlier)}
+        >
+          <ChevronLeftIcon aria-hidden />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="text-muted-foreground"
+          disabled={atEnd}
+          onClick={() => onMove(1)}
+          aria-label={format(m.itemsStageMoveLater)}
+        >
+          <ChevronRightIcon aria-hidden />
+        </Button>
+        {removable ? (
           <Button
             variant="ghost"
             size="icon-xs"
+            className="text-muted-foreground"
             onClick={onRemove}
             aria-label={format(m.itemsStageRemove)}
           >
             <XIcon aria-hidden />
           </Button>
-        </span>
-      )}
+        ) : (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {/* a span, because a disabled key ignores the pointer and
+                    could not answer the hover that asks about it */}
+                <span className="inline-flex">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground"
+                    disabled
+                    aria-label={format(m.itemsStageRemove)}
+                  >
+                    <XIcon aria-hidden />
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{format(m.itemsStageKeepOne)}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </span>
     </div>
   )
 }
+
+/** finished enough to stand in the chain: named, and its reviewers chosen */
+const completeStage = (stage: StageDraft, options: ItemOptions): boolean =>
+  stage.label.trim() !== '' && settledStage(stage, options)
 
 /**
  * A step nobody has finished naming cannot say who reviews at it, and a dash

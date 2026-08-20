@@ -1220,11 +1220,27 @@ const i18n = definePluginMessages({
     },
     itemsStageLabelHint: {
       id: 'assessment/items/stage-label-hint',
-      defaultMessage: 'Shown wherever the route is displayed.',
+      defaultMessage: 'Required. Shown wherever the route is displayed.',
     },
     itemsStageLabelPlaceholder: {
       id: 'assessment/items/stage-label-placeholder',
       defaultMessage: 'e.g. First review',
+    },
+    itemsStageUnnamed: {
+      id: 'assessment/items/stage-unnamed',
+      defaultMessage: 'Unnamed step',
+    },
+    itemsStageKeepOne: {
+      id: 'assessment/items/stage-keep-one',
+      defaultMessage: 'The ordinary route keeps at least one step',
+    },
+    itemsStageMoveEarlier: {
+      id: 'assessment/items/stage-move-earlier',
+      defaultMessage: 'Move earlier',
+    },
+    itemsStageMoveLater: {
+      id: 'assessment/items/stage-move-later',
+      defaultMessage: 'Move later',
     },
     itemsStageParticipation: {
       id: 'assessment/items/stage-participation',
