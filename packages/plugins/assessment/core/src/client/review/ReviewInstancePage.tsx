@@ -32,7 +32,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection } from '@qualy/ui/admin'
+import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -217,6 +217,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // the pill has to keep its words while it animates out
   const lingeringStaged = useLingering(deferred.pending)
   const [trailOpen, setTrailOpen] = useState(false)
+  // the other person may already be answering the request
+  const [withdrawing, setWithdrawing] = useState<string | null>(null)
   const [versionsOpen, setVersionsOpen] = useState(false)
   // Which earlier version the filing is read against; null is not comparing.
   // On by default: a resubmission is read for what changed in it, and having
@@ -597,7 +599,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                             variant="outline"
                             size="sm"
                             disabled={withdrawSupplement.isPending}
-                            onClick={() => withdrawSupplement.mutate(open.id)}
+                            onClick={() => setWithdrawing(open.id)}
                           >
                             {format(m.supplementWithdraw)}
                           </Button>
@@ -695,6 +697,21 @@ function Workbench({ batch }: { batch: BatchDto }) {
             onConfirm={(worded) => stageDecision('escalate', worded)}
           />
         )}
+        <ConfirmDialog
+          open={withdrawing !== null}
+          tone="destructive"
+          title={format(m.supplementWithdrawConfirm)}
+          description={format(m.supplementWithdrawConfirmHint)}
+          confirmLabel={format(m.supplementWithdraw)}
+          cancelLabel={format(commonMessages.cancel)}
+          pending={withdrawSupplement.isPending}
+          onCancel={() => setWithdrawing(null)}
+          onConfirm={() => {
+            const id = withdrawing
+            setWithdrawing(null)
+            if (id !== null) withdrawSupplement.mutate(id)
+          }}
+        />
         {lingeringDialog === 'supplement' && review !== undefined && (
           <SupplementDialog
             open={dialog === 'supplement'}

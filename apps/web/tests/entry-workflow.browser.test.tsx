@@ -228,6 +228,13 @@ describe('filing a claim', () => {
     // opened from the claim's own row on the paper
     await page.getByRole('button', { name: /2024 年入伍/ }).click()
     await page.getByRole('button', { name: '提交' }).first().click()
+
+    // handing it on is asked for out loud: the press opens the question and
+    // sends nothing, so a mis-aimed click costs a second press and not a
+    // round of review
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    expect(submitted).not.toHaveBeenCalled()
+    await page.getByTestId('confirm-accept').click()
     await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
   })
 

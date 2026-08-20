@@ -4,7 +4,7 @@ import { PencilIcon, TriangleAlertIcon } from 'lucide-react'
 import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection } from '@qualy/ui/admin'
+import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@qualy/ui/dropdown-menu'
@@ -142,6 +142,8 @@ function Editor({
   const [drafts, setDrafts] = useState<readonly TreeDraft[]>([])
   const [held, setHeld] = useState<Readonly<Record<string, QuestionDraft>>>({})
   const [voiding, setVoiding] = useState<ItemDto | null>(null)
+  // deleting leaves no record behind, so it is asked for out loud
+  const [deleting, setDeleting] = useState<ItemDto | null>(null)
   // the group whose panel is open over the structure, if any
   const [group, setGroup] = useState<GroupTarget | null>(null)
   const lingeringGroup = useLingering(group)
@@ -429,7 +431,7 @@ function Editor({
               onPublish={() => publish.mutate(selectedItem.id)}
               onVoid={() => setVoiding(selectedItem)}
               onRestore={() => restore.mutate(selectedItem.id)}
-              onDelete={() => remove.mutate(selectedItem.id)}
+              onDelete={() => setDeleting(selectedItem)}
             />
           )
         }
@@ -472,7 +474,10 @@ function Editor({
             if (item !== undefined) setVoiding(item)
           }}
           onRestore={(itemId) => restore.mutate(itemId)}
-          onDelete={(itemId) => remove.mutate(itemId)}
+          onDelete={(itemId) => {
+            const item = allItems.find((one) => one.id === itemId)
+            if (item !== undefined) setDeleting(item)
+          }}
         />
       </div>
     )
@@ -558,6 +563,22 @@ function Editor({
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        tone="destructive"
+        title={format(m.itemsDeleteConfirm, { title: deleting?.title ?? '' })}
+        description={format(m.itemsDeleteConfirmHint)}
+        confirmLabel={format(m.itemsDelete)}
+        cancelLabel={format(commonMessages.cancel)}
+        pending={remove.isPending}
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => {
+          const item = deleting
+          setDeleting(null)
+          if (item !== null) remove.mutate(item.id)
+        }}
+      />
 
       {lingeringVoid !== null && (
         <VoidQuestionDialog

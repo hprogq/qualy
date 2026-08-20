@@ -481,6 +481,15 @@ function Body({
     return String(tops.findIndex((row) => row.id === band.id) + 1).padStart(2, '0')
   }
 
+  // What the rail marks is what the reader is looking at, and only the spy
+  // knows that. Falling back to the first question meant the mark opened on
+  // question one and then slid up to the band the reader was actually on,
+  // which reads as the page correcting itself; on a phone, where the paper
+  // scrolls as the page, the drawer opened marking a question nobody had
+  // scrolled to. Nothing is marked until the paper has been read once - the
+  // spy answers on mount, so that is one frame, not a wait.
+  const marked = passing !== '' ? passing : selected !== '' ? selected : null
+
   const [paperView, setPaperView] = useState<'all' | 'todo'>('all')
   const questionCount = rows.filter((row) => row.kind === 'item').length
   const todoCount = rows.filter((row) => row.todo).length
@@ -530,7 +539,7 @@ function Body({
               rows={rows}
               batchName={batchName}
               standing={(standing.data ?? null) as Standing | null}
-              openId={passing !== '' ? passing : (open?.id ?? null)}
+              openId={marked}
               onOpen={goTo}
             />
 
@@ -734,7 +743,7 @@ function Body({
               rows={rows}
               batchName={batchName}
               standing={(standing.data ?? null) as Standing | null}
-              openId={passing !== '' ? passing : (open?.id ?? null)}
+              openId={marked}
               onOpen={goTo}
             />
           </SheetContent>

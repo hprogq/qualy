@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { Field, SidePanel } from '@qualy/ui/admin'
+import { ConfirmDialog, Field, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { toast } from '@qualy/ui/toast'
@@ -52,6 +52,8 @@ export function GroupEditor({
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const { format, formatError } = useI18n()
+  // a group holds questions; taking it away is not a keystroke
+  const [removing, setRemoving] = useState(false)
   const [name, setName] = useState(editing?.name ?? '')
   // the stored form carries four places; the box shows what was meant
   const [cap, setCap] = useState(editing?.cap === null ? '' : trimAmount(editing?.cap ?? ''))
@@ -176,7 +178,7 @@ export function GroupEditor({
                 variant="ghost"
                 className="text-destructive"
                 disabled={remove.isPending}
-                onClick={() => remove.mutate()}
+                onClick={() => setRemoving(true)}
               >
                 {format(m.itemsGroupRemove)}
               </Button>
@@ -239,6 +241,20 @@ export function GroupEditor({
           ))}
         </ul>
       )}
+      <ConfirmDialog
+        open={removing}
+        tone="destructive"
+        title={format(m.itemsGroupRemoveTitle)}
+        description={format(m.itemsGroupRemoveHint)}
+        confirmLabel={format(m.itemsGroupRemove)}
+        cancelLabel={format(commonMessages.cancel)}
+        pending={remove.isPending}
+        onCancel={() => setRemoving(false)}
+        onConfirm={() => {
+          setRemoving(false)
+          remove.mutate()
+        }}
+      />
     </SidePanel>
   )
 }

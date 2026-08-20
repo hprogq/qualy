@@ -6103,6 +6103,7 @@ history entry 的 location.state 上——打开 push、关闭 navigate(-1) 消�
 workspace 页面)。
 
 **我的填报(7a/7b/7c,一张卷三处断点)**:
+
 - Paper 段头三形态:手机两行(名一行、进度条一行)/平板 42px 单行/笔记本维持展示卡;子段头、题目
   网格(md 17rem、lg 19rem、xl 21rem 左栏;MEASURE px-4→lg:px-6)、条目表按宽度掉列:lg 四列、
   md 三列(版次时间折进内容格第二行,表头「内容与版次」)、手机去表头一条两行(状态点+版次时间在
@@ -6305,3 +6306,26 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 674 passed / 17 skipped;
 `pnpm test:browser` 9 files / 72 passed(新增 localization 3 例);`pnpm build` 通过;prettier 全绿。
+
+### 危险动作一律先问一句(2026-08-20)
+
+三处修复合在一起交付:
+
+- **卷面结构的高亮归滚动侦测所有**。原先 `openId` 在侦测没答话前回落到「第一道题」,于是进入
+  我的填报时标记先落在题一、再滑到读者实际所在的分组带(左栏平移动画的来源);移动端点「结构」
+  同样标到一道没人滚到的题。改为 `marked = passing || selected || null`——只标侦测认下的那条,
+  两处调用点同源。
+- **放弃申报的原生 `window.confirm` 拿掉**,提交审核 / 撤回提交 / 放弃申报三个动作合用
+  EntrySheet 的一个 `ConfirmDialog`(按 `asking` 取词,放弃为 destructive);填报表单里的「提交」
+  同样先问。
+- **危险动作普查**:补上四处只需一次按压的不可逆动作——撤销角色授权(UserGrants)、删除分组
+  (GroupEditor)、删除题目(ItemSettingsPage,标题带题名)、撤回补充材料要求
+  (ReviewInstancePage)。核过不必再加的:VoidQuestionDialog 本就强制写停用原因,批次归档/删除、
+  移出参评人、排期/取消排期、角色与用户类型的删除都已在对话框里;启用/停用这类可逆状态翻转
+  不加模态,免得每次改状态都被拦一道。
+- `ConfirmDialog` 的两个按钮加 `data-testid="confirm-accept"/"confirm-dismiss"`:答复一个问题
+  不该依赖那句问话的措辞。entry-workflow 的提交用例据此加断言——按下「提交」只开对话框、
+  `setEntryStatus` 未被调用,确认后才发出;已反向验证(把按钮改回直接提交,该例当场红)。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 674 passed / 17 skipped;
+`pnpm test:browser` 9 files / 72 passed;`pnpm build` 通过;prettier 全绿。

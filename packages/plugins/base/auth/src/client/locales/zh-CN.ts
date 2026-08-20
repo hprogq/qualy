@@ -1,6 +1,8 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'auth/users/revoke-grant-title': '确认撤销该授权？',
+  'auth/users/revoke-grant-hint': '该用户的其他角色不受影响，如需恢复需重新授予。',
   'auth/person/open-detail': '查看详情',
   'auth/person/business-no': '学工号',
   'auth/person/no-business-no': '未绑定学工号',

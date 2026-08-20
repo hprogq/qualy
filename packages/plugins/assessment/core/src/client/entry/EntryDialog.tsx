@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { commonMessages } from '@qualy/web-i18n/messages'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
@@ -74,6 +75,8 @@ export function EntryDialog({
   )
   const [note, setNote] = useState(entry?.currentRevision?.note ?? '')
   const [problem, setProblem] = useState<string | null>(null)
+  // handing it on waits on an answer; keeping a draft does not
+  const [asking, setAsking] = useState(false)
   const [issues, setIssues] = useState<readonly { field: string; reason: string }[]>([])
 
   const fields = fieldsOf(item.currentRevision?.formConfig)
@@ -160,7 +163,7 @@ export function EntryDialog({
           <Button variant="outline" disabled={save.isPending} onClick={() => save.mutate(false)}>
             {format(m.entrySaveDraft)}
           </Button>
-          <Button disabled={save.isPending} onClick={() => save.mutate(true)}>
+          <Button disabled={save.isPending} onClick={() => setAsking(true)}>
             {format(m.entrySubmit)}
           </Button>
         </div>
@@ -241,6 +244,22 @@ export function EntryDialog({
           )}
         </aside>
       </div>
+
+      {/* handing it on is the act that takes the claim out of the writer's
+          hands, so it is a question here as it is in the drawer */}
+      <ConfirmDialog
+        open={asking}
+        title={format(m.entrySubmitConfirm)}
+        description={format(m.entrySubmitConfirmHint)}
+        confirmLabel={format(m.entrySubmit)}
+        cancelLabel={format(commonMessages.cancel)}
+        pending={save.isPending}
+        onCancel={() => setAsking(false)}
+        onConfirm={() => {
+          setAsking(false)
+          save.mutate(true)
+        }}
+      />
     </FormDialog>
   )
 }

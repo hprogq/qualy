@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, Feedback, Panel } from '@qualy/ui/admin'
+import { AsyncSection, ConfirmDialog, Feedback, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
 import { GrantRoleForm } from './GrantRoleForm.tsx'
@@ -29,6 +29,9 @@ export function UserGrants({
   const orpc = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  // whose authority is waiting on an answer; taking one away is not undone
+  // by pressing again
+  const [revoking, setRevoking] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
 
   const grants = useQuery(orpc.access.getUserRoleGrants.queryOptions({ params: { userId } }))
@@ -76,7 +79,7 @@ export function UserGrants({
                     // per-row pending: revoking one grant must not freeze the
                     // controls of every other row
                     disabled={revoke.isPending && revoke.variables === grant.id}
-                    onClick={() => revoke.mutate(grant.id)}
+                    onClick={() => setRevoking(grant.id)}
                   >
                     {format(m.delete)}
                   </Button>
@@ -87,6 +90,21 @@ export function UserGrants({
         )}
       </AsyncSection>
       <GrantRoleForm userId={userId} nodes={nodes} />
+      <ConfirmDialog
+        open={revoking !== null}
+        tone="destructive"
+        title={format(m.revokeGrantTitle)}
+        description={format(m.revokeGrantHint)}
+        confirmLabel={format(m.delete)}
+        cancelLabel={format(commonMessages.cancel)}
+        pending={revoke.isPending}
+        onCancel={() => setRevoking(null)}
+        onConfirm={() => {
+          const id = revoking
+          setRevoking(null)
+          if (id !== null) revoke.mutate(id)
+        }}
+      />
     </Panel>
   )
 }

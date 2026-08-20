@@ -563,10 +563,11 @@ export function ConfirmDialog({
           )}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel} disabled={pending}>
+          <AlertDialogCancel data-testid="confirm-dismiss" onClick={onCancel} disabled={pending}>
             {cancelLabel}
           </AlertDialogCancel>
           <AlertDialogAction
+            data-testid="confirm-accept"
             variant={tone === 'destructive' ? 'destructive' : 'default'}
             onClick={onConfirm}
             disabled={pending}

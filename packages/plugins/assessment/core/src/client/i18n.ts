@@ -664,6 +664,27 @@ const i18n = definePluginMessages({
       defaultMessage:
         'Abandon the entry? One submission slot will become available, while the historical record is retained.',
     },
+    entrySubmitConfirm: {
+      id: 'assessment/entry/submit-confirm',
+      defaultMessage: 'Hand this claim on for review?',
+    },
+    entrySubmitConfirmHint: {
+      id: 'assessment/entry/submit-confirm-hint',
+      defaultMessage:
+        'It leaves your hands until a reviewer answers; you may withdraw it while it waits.',
+    },
+    entryWithdrawConfirm: {
+      id: 'assessment/entry/withdraw-confirm',
+      defaultMessage: 'Withdraw this claim from review?',
+    },
+    entryWithdrawConfirmHint: {
+      id: 'assessment/entry/withdraw-confirm-hint',
+      defaultMessage: 'It goes back to a draft you can edit, and the round it was in ends.',
+    },
+    entryAbandonConfirmTitle: {
+      id: 'assessment/entry/abandon-confirm-title',
+      defaultMessage: 'Give this claim up?',
+    },
     entryBlockedNow: {
       id: 'assessment/entry/blocked-now',
       defaultMessage: 'The required action is not available in the current stage.',
@@ -1026,6 +1047,14 @@ const i18n = definePluginMessages({
     itemsGroupCap: { id: 'assessment/items/group-cap', defaultMessage: 'Upper limit' },
     itemsGroupFloor: { id: 'assessment/items/group-floor', defaultMessage: 'Lower limit' },
     itemsGroupRemove: { id: 'assessment/items/group-remove', defaultMessage: 'Delete' },
+    itemsGroupRemoveTitle: {
+      id: 'assessment/items/group-remove-title',
+      defaultMessage: 'Remove this group?',
+    },
+    itemsGroupRemoveHint: {
+      id: 'assessment/items/group-remove-hint',
+      defaultMessage: 'Its questions stay; they will need a group before the paper adds up again.',
+    },
     itemsGroupsReasonHint: {
       id: 'assessment/items/groups-reason-hint',
       defaultMessage: 'Changes to an active batch require a reason.',
@@ -1762,6 +1791,15 @@ const i18n = definePluginMessages({
     supplementWithdraw: {
       id: 'assessment/supplement/withdraw',
       defaultMessage: 'Withdraw request',
+    },
+    supplementWithdrawConfirm: {
+      id: 'assessment/supplement/withdraw-confirm',
+      defaultMessage: 'Withdraw the request for more material?',
+    },
+    supplementWithdrawConfirmHint: {
+      id: 'assessment/supplement/withdraw-confirm-hint',
+      defaultMessage:
+        'The submission returns to your queue and the request stops showing on their side.',
     },
     supplementWithdrawn: {
       id: 'assessment/supplement/withdrawn',
@@ -2510,6 +2548,14 @@ const i18n = definePluginMessages({
     itemsVoidReason: { id: 'assessment/items/void-reason', defaultMessage: 'Reason' },
     itemsRestore: { id: 'assessment/items/restore', defaultMessage: 'Re-enable' },
     itemsDelete: { id: 'assessment/items/delete', defaultMessage: 'Delete' },
+    itemsDeleteConfirm: {
+      id: 'assessment/items/delete-confirm',
+      defaultMessage: 'Delete “{title}”?',
+    },
+    itemsDeleteConfirmHint: {
+      id: 'assessment/items/delete-confirm-hint',
+      defaultMessage: 'It leaves no record and cannot be brought back.',
+    },
     itemsStatusVoided: { id: 'assessment/items/status-voided', defaultMessage: 'Disabled' },
 
     /** what the whole paper adds up to, read above its structure */

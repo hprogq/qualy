@@ -69,6 +69,14 @@ const personRoleHere = defineMessage<{ node: string }>()({
 const i18n = definePluginMessages({
   namespace: 'auth',
   messages: {
+    revokeGrantTitle: {
+      id: 'auth/users/revoke-grant-title',
+      defaultMessage: 'Take this role away here?',
+    },
+    revokeGrantHint: {
+      id: 'auth/users/revoke-grant-hint',
+      defaultMessage: 'They keep every other role they hold. Granting it again is a separate act.',
+    },
     title: { id: 'auth/login/title', defaultMessage: 'Sign in to Qualy' },
 
     // the card any screen opens on a name it shows

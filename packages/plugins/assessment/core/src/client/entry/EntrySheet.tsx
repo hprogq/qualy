@@ -5,6 +5,7 @@ import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { ConfirmDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import {
   Breadcrumb,
@@ -66,6 +67,8 @@ export function EntrySheet({
 }) {
   const query = useApiQuery(assessmentApi)
   const { format } = useI18n()
+  // which act is waiting on an answer; every one of them moves the claim
+  const [asking, setAsking] = useState<'in_review' | 'draft' | 'voided' | null>(null)
   const [tab, setTab] = useState<'content' | 'trail'>('content')
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
@@ -373,9 +376,7 @@ export function EntrySheet({
             variant="ghost"
             className="text-muted-foreground"
             label={format(m.entryAbandon)}
-            onPress={() => {
-              if (window.confirm(format(m.entryAbandonConfirm))) onStatus('voided')
-            }}
+            onPress={() => setAsking('voided')}
           />
           <span className="flex-1" />
           <Offered
@@ -388,7 +389,7 @@ export function EntrySheet({
             can={entry.capabilities.withdraw}
             busy={busy}
             label={format(m.entryWithdraw)}
-            onPress={() => onStatus('draft')}
+            onPress={() => setAsking('draft')}
           />
           {!declared && (
             <Offered
@@ -403,9 +404,49 @@ export function EntrySheet({
             busy={busy}
             variant="default"
             label={format(entry.status === 'draft' ? m.entrySubmit : m.entryResubmit)}
-            onPress={() => onStatus('in_review')}
+            onPress={() => setAsking('in_review')}
           />
         </div>
+
+        {/* Every act here changes who holds the claim, so every one of them
+            is a question first: handing it on, taking it back, and giving it
+            up. The words differ because the consequences do, and giving up
+            is the only one that cannot be undone. */}
+        <ConfirmDialog
+          open={asking !== null}
+          tone={asking === 'voided' ? 'destructive' : 'default'}
+          title={format(
+            asking === 'voided'
+              ? m.entryAbandonConfirmTitle
+              : asking === 'draft'
+                ? m.entryWithdrawConfirm
+                : m.entrySubmitConfirm,
+          )}
+          description={format(
+            asking === 'voided'
+              ? m.entryAbandonConfirm
+              : asking === 'draft'
+                ? m.entryWithdrawConfirmHint
+                : m.entrySubmitConfirmHint,
+          )}
+          confirmLabel={format(
+            asking === 'voided'
+              ? m.entryAbandon
+              : asking === 'draft'
+                ? m.entryWithdraw
+                : entry.status === 'draft'
+                  ? m.entrySubmit
+                  : m.entryResubmit,
+          )}
+          cancelLabel={format(commonMessages.cancel)}
+          pending={busy}
+          onCancel={() => setAsking(null)}
+          onConfirm={() => {
+            const act = asking
+            setAsking(null)
+            if (act !== null) onStatus(act)
+          }}
+        />
       </SheetContent>
     </Sheet>
   )
