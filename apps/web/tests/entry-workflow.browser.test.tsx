@@ -624,7 +624,6 @@ describe('judging a submission', () => {
         },
       ],
       escalation: [],
-      decisions: ['approve', 'reject', 'comment'],
     },
     context: {
       worth: {
@@ -656,9 +655,14 @@ describe('judging a submission', () => {
       },
     ],
     supplements: [],
+    actions: {
+      approve: { state: 'available' as const, reason: null },
+      reject: { state: 'available' as const, reason: null },
+      escalate: { state: 'blocked' as const, reason: 'no-route' },
+      supplement: { state: 'available' as const, reason: null },
+    },
     capabilities: {
       canDecide: true,
-      canRequestSupplement: true,
       canCancelSupplement: false,
       canAnswerSupplement: false,
     },

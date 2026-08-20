@@ -610,6 +610,12 @@ const reviewStageView = Schema.Struct({
   skipped: Schema.NullOr(Schema.String),
 })
 
+/** one act of the workbench: offered, or blocked with a stable reason code */
+const reviewActionView = Schema.Struct({
+  state: Schema.Literals(['available', 'blocked']),
+  reason: Schema.NullOr(Schema.String),
+})
+
 const reviewDetailView = Schema.Struct({
   id: Schema.String,
   state: Schema.Literals(['active', 'blocked', 'awaiting_supplement', 'completed']),
@@ -704,8 +710,16 @@ const reviewDetailView = Schema.Struct({
     stageId: Schema.String,
     normal: Schema.Array(reviewStageView),
     escalation: Schema.Array(reviewStageView),
-    /** what this reader may say here, already narrowed by route and position */
-    decisions: Schema.Array(Schema.String),
+  }),
+  /**
+   * The workbench's four acts, each offered or carrying the reason it is
+   * not. Always all four: the bar never hides an act, it explains one.
+   */
+  actions: Schema.Struct({
+    approve: reviewActionView,
+    reject: reviewActionView,
+    escalate: reviewActionView,
+    supplement: reviewActionView,
   }),
   events: Schema.Array(
     Schema.Struct({
@@ -722,7 +736,6 @@ const reviewDetailView = Schema.Struct({
   supplements: Schema.Array(reviewSupplementView),
   capabilities: Schema.Struct({
     canDecide: Schema.Boolean,
-    canRequestSupplement: Schema.Boolean,
     canCancelSupplement: Schema.Boolean,
     canAnswerSupplement: Schema.Boolean,
   }),

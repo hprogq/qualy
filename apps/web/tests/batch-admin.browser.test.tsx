@@ -718,10 +718,12 @@ describe('the stage plan', () => {
     expect(offered).toContain('assessment.review.process')
     // its own switch: an appeal window opens reviewing without opening escalations
     expect(offered).toContain('assessment.review.escalate')
+    // and mid-escalation rejection is the stage's word too, not the round's origin
+    expect(offered).toContain('assessment.review.reject-intermediate')
     // nothing from outside the gate's registry - no login, no organization
     // administration, no batch administration
     expect(offered.some((code) => code !== null && !code.startsWith('assessment.'))).toBe(false)
-    expect(offered).toHaveLength(12)
+    expect(offered).toHaveLength(13)
   })
 
   it('fills one stage from a stage preset, as a starting point only', async () => {

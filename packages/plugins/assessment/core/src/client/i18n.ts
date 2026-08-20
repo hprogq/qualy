@@ -1404,6 +1404,34 @@ const i18n = definePluginMessages({
       defaultMessage: 'About this question',
     },
     reviewQueueKey: { id: 'assessment/review/queue-key', defaultMessage: 'Queue' },
+    reviewTipApproveMid: {
+      id: 'assessment/review/tip-approve-mid',
+      defaultMessage: 'Pass this step; the next step of the route takes over',
+    },
+    reviewBlockedInEscalation: {
+      id: 'assessment/review/blocked-in-escalation',
+      defaultMessage: 'Already in the escalation route',
+    },
+    reviewBlockedNoRoute: {
+      id: 'assessment/review/blocked-no-route',
+      defaultMessage: 'No escalation route is configured for this question',
+    },
+    reviewBlockedRouteClosed: {
+      id: 'assessment/review/blocked-route-closed',
+      defaultMessage: 'The escalation route has no step that can take this',
+    },
+    reviewBlockedPhaseClosed: {
+      id: 'assessment/review/blocked-phase-closed',
+      defaultMessage: 'The current stage does not open escalation',
+    },
+    reviewBlockedTerminalOnly: {
+      id: 'assessment/review/blocked-terminal-only',
+      defaultMessage: 'Only the final step of the escalation route may reject',
+    },
+    reviewBlockedUnavailable: {
+      id: 'assessment/review/blocked-unavailable',
+      defaultMessage: 'Not available here',
+    },
     reviewApproveTitle: {
       id: 'assessment/review/approve-title',
       defaultMessage: 'Approve {name}’s submission',
@@ -3313,6 +3341,11 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/review-escalate',
       defaultMessage: 'Escalate submissions that require further review.',
     },
+    'permission-hint.assessment.review.reject-intermediate': {
+      id: 'assessment/permission-hint/review-reject-intermediate',
+      defaultMessage:
+        'Any step of the escalation route may reject outright; otherwise only its final step can.',
+    },
     'permission-hint.assessment.review.process': {
       id: 'assessment/permission-hint/review-process',
       defaultMessage: 'Review submitted entries and approve or return them.',
@@ -3367,6 +3400,10 @@ const i18n = definePluginMessages({
     'permission.assessment.review.escalate': {
       id: 'assessment/permission/review-escalate',
       defaultMessage: 'Escalate reviews',
+    },
+    'permission.assessment.review.reject-intermediate': {
+      id: 'assessment/permission/review-reject-intermediate',
+      defaultMessage: 'Reject mid-escalation',
     },
     'permission.assessment.review.process': {
       id: 'assessment/permission/review-process',

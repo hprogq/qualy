@@ -1050,16 +1050,6 @@ export const ReviewInstance = defineEntity({
     supersedesInstanceId: p.uuid().nullable(),
     /** the decision being contested, when this round is an appeal against one */
     appealedInstanceId: p.uuid().nullable(),
-    /**
-     * Where this round may be ended against the person who filed it.
-     *
-     * Frozen when the round opens, never read from the phase in force at the
-     * moment somebody presses a button (§32.63). An appeal opened in the
-     * appeal window keeps its terminal-only rule after that window closes,
-     * and an ordinary review that raised an escalation during filing does not
-     * silently acquire one when the appeal window opens.
-     */
-    rejectPolicy: p.string().length(16).defaultRaw(`'any-stage'`),
     // both routes, resolved once against this participant's frozen lineage
     // and frozen with the round. The column keeps its old name: what it
     // holds grew a second route, and renaming it would cost a rewrite of
@@ -1092,10 +1082,6 @@ export const ReviewInstance = defineEntity({
     {
       name: 'chk_review_instances_route',
       expression: `current_route IN ('normal', 'escalation')`,
-    },
-    {
-      name: 'chk_review_instances_reject_policy',
-      expression: `reject_policy IN ('any-stage', 'terminal-only')`,
     },
     {
       name: 'chk_review_instances_state',

@@ -575,8 +575,6 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           origin: 'reroute',
           initiator: 'staff',
           supersedesInstanceId: round.id,
-          // an appeal that gets re-routed is still an appeal
-          rejectPolicy: round.rejectPolicy,
           policyRevisionId: input.newRevisionId,
           effectivePolicy: resolved,
           route: landing.route,

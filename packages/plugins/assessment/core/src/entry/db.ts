@@ -582,7 +582,6 @@ export const insertReviewInstance = (input: {
   /** the decision being contested, when this round is an appeal */
   appealedInstanceId?: string | null
   /** where this round may be ended; frozen when it opens (§32.63) */
-  rejectPolicy: 'any-stage' | 'terminal-only'
   /** which version of the question's review policy this round walks */
   policyRevisionId: string
   /** both routes, resolved and frozen for the whole round */
@@ -599,14 +598,14 @@ export const insertReviewInstance = (input: {
       sql<{ id: string }>`
         insert into review_instances
           (tenant_id, entry_id, revision_id, round_no, origin, initiator,
-           supersedes_instance_id, appealed_instance_id, reject_policy,
+           supersedes_instance_id, appealed_instance_id,
            policy_revision_id, effective_chain,
            current_route, current_stage_id, state, current_role_ids, current_node_id,
            current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
                 ${input.origin ?? 'initial'}, ${input.initiator ?? 'participant'},
                 ${input.supersedesInstanceId ?? null}, ${input.appealedInstanceId ?? null},
-                ${input.rejectPolicy}, ${input.policyRevisionId},
+                ${input.policyRevisionId},
                 ${jsonb(input.effectivePolicy)},
                 ${input.route}, ${input.stageId}, ${input.state},
                 ${sql.val(`{${input.roleIds.join(',')}}`)}::uuid[], ${input.nodeId},

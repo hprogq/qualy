@@ -536,6 +536,84 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     expect(errorOf<{ _tag: string }>(result.tampered)?._tag).toBe('BAD_REQUEST')
   })
 
+  it('lets a middle escalation step reject when the phase opens it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rf-mid-reject')
+          const assessment = yield* Assessment
+          // the one difference from the case above: the phase says middle
+          // steps of the escalation route may reject outright
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.review.reject-intermediate'],
+          })
+          const admin = f.principal(f.admin)
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
+          const at = (id: string) => ({
+            id,
+            selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+            quorum: { type: 'any' },
+          })
+          const item = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '中途可退回的题',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: 1,
+              config: {
+                entrySource: 'student',
+                formConfig: {},
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  normal: { stages: [at('n1')] },
+                  escalation: { stages: [at('d1'), at('d2')] },
+                },
+              },
+            },
+            admin,
+          )
+          yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, admin)
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+          const reviewer = f.principal(f.reviewer)
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'escalate', comment: '拿不准，提请复核' },
+            reviewer,
+          )
+          const midway = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
+          const rejected = yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            { decision: 'reject', comment: '复核确认不予认定' },
+            reviewer,
+          )
+          return { midway, rejected }
+        }),
+      ),
+    )
+    // the same middle step that only advises by default now offers the
+    // rejection, and the act it offers goes through
+    expect(result.midway.chain.route).toBe('escalation')
+    expect(result.midway.chain.stageId).toBe('d1')
+    expect(result.midway.actions.reject).toEqual({ state: 'available', reason: null })
+    expect(result.rejected.state).toBe('completed')
+    expect(result.rejected.outcome).toBe('rejected')
+  })
+
   it('hands an escalation to the other route, and takes only one', async () => {
     const result = ok(
       await run(
@@ -594,8 +672,9 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             { decision: 'escalate', comment: '拿不准，提请复核' },
             reviewer,
           )
-          // the escalation route is a review chain like the other one: approving
-          // a middle step passes it on, and during filing any step may end it
+          // the escalation route is a review chain like the other one:
+          // approving a middle step passes it on, and whether that step may
+          // reject outright is the phase's word, not the round's origin
           const escalated = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
           const noSecondEscalation = yield* Effect.exit(
             assessment.decideReview(
@@ -625,12 +704,21 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     // the ordinary route offers to escalate; the escalation route does not
     expect(result.onNormal.chain.route).toBe('normal')
     expect(result.onNormal.chain.stageId).toBe('n1')
-    expect([...result.onNormal.chain.decisions].sort()).toEqual(['approve', 'escalate', 'reject'])
+    expect(result.onNormal.actions).toMatchObject({
+      approve: { state: 'available' },
+      reject: { state: 'available' },
+      escalate: { state: 'available' },
+    })
     // raising it leaves the ordinary route entirely rather than carrying on
     expect(result.raised.chain.route).toBe('escalation')
     expect(result.raised.chain.stageId).toBe('d1')
-    // a filing-time escalation can be ended anywhere, and happens only once
-    expect([...result.escalated.chain.decisions].sort()).toEqual(['approve', 'reject'])
+    // a middle step of the route advises unless the phase opens early
+    // rejection, and escalating again is never on the table
+    expect(result.escalated.actions).toMatchObject({
+      approve: { state: 'available' },
+      reject: { state: 'blocked', reason: 'terminal-only' },
+      escalate: { state: 'blocked', reason: 'in-escalation' },
+    })
     expect(refusalOf(result.noSecondEscalation)?.reason).toBe('decision-not-available')
     expect(result.passedOn.chain.stageId).toBe('d2')
     expect(result.settled.outcome).toBe('approved')
@@ -977,7 +1065,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             reviewer,
           )
           const rounds = yield* runSql(sql`
-            select round_no, origin, current_route, reject_policy, revision_id,
+            select round_no, origin, current_route, revision_id,
                    appealed_instance_id, outcome
             from review_instances where entry_id = ${entry.id} order by round_no`)
           return {
@@ -997,7 +1085,6 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
                   round_no: number
                   origin: string
                   current_route: string
-                  reject_policy: string
                   revision_id: string
                   appealed_instance_id: string | null
                   outcome: string | null
@@ -1022,15 +1109,20 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       round_no: 2,
       origin: 'appeal',
       current_route: 'escalation',
-      reject_policy: 'terminal-only',
       revision_id: result.rows[0]!.revision_id,
       appealed_instance_id: result.firstId,
     })
 
     // and only its last step can turn it down
-    expect([...result.midway.chain.decisions].sort()).toEqual(['approve'])
+    expect(result.midway.actions).toMatchObject({
+      approve: { state: 'available' },
+      reject: { state: 'blocked', reason: 'terminal-only' },
+    })
     expect(refusalOf(result.rejectTooSoon)?.reason).toBe('decision-not-available')
-    expect([...result.atEnd.chain.decisions].sort()).toEqual(['approve', 'reject'])
+    expect(result.atEnd.actions).toMatchObject({
+      approve: { state: 'available' },
+      reject: { state: 'available' },
+    })
     expect(result.settled.outcome).toBe('rejected')
   })
 })

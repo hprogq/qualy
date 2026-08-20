@@ -1160,11 +1160,18 @@ icon 走**名字而不是组件**:导航条目声明 `icon: '<name>'`(契约里�
 再加一条可授予的权限等于让管理员给每个审核角色维护两份几乎相同的勾选，且「可授予」会暗示它能
 让不是审核人的人变成审核人。它与参评动作同类——只有当事人才有资格做，但阶段可以临时关闭。
 
-二、**`rejectPolicy` 冻结在 ReviewInstance 上，不从当前阶段实时读**（本条最关键）。
-否则：9 月 10 日填报期转入疑点的那一轮，9 月 15 日进入申诉期后突然中途不能驳回；
-或者申诉期开的那一轮，申诉期结束后又变回任意节点可驳回。
-`rejectPolicy: 'any-stage' | 'terminal-only'` 与 `origin`、起始 route 一样，**开轮时定下，之后不变**。
-显式存列而不是运行时判 `origin === 'appeal'`：以后 staff reopen 规则不同时，旧记录不用重新解释。
+二、**中途驳回归阶段动作管，`rejectPolicy` 从领域模型移除**（2026-08-20 重裁，替代本条原文）。
+原规则把「复核中途能否驳回」冻结在 ReviewInstance 上，由创建路径（普通提交 any-stage / 申诉
+terminal-only）暗中决定——管理员在任何界面都看不见这条规则，也改不了它。重裁为：
+
+- 普通路线任意节点均可驳回；复核路线**末端永远可驳回**，中间节点是否可驳回由**当前生效阶段**的
+  动作 `assessment.review.reject-intermediate`（「允许复核中途退回」）决定，判定时实时读取。
+- 该动作与 `assessment.review.escalate` 同类：不是 RBAC 权限，是阶段开合的审核动作。
+- 申诉不再硬编码 terminal-only：学校若要申诉期仅末端可驳回，就在申诉处理阶段不开启这个动作——
+  差异来自管理员显式配置，而不是 `origin === 'appeal'` 的内部事实。
+- 代价（明知并接受）：进行中的复核会随阶段切换改变中间节点能否驳回。这正是「阶段权限」应有的
+  语义；原文担心的"9 月 15 日突然变化"如今是管理员配置阶段时可见、可预期的决定。
+- `review_instances.reject_policy` 列已随迁移删除（20260820095421_drop-reject-policy.sql）。
 
 三、**普通提交与申诉是两个接口、两个 domain command，底层共用一套开轮逻辑**。
 
@@ -1174,8 +1181,7 @@ submitEntry  ──┐
 appealReview ──┘
 ```
 
-普通提交固定 `origin='initial' / route='normal' / rejectPolicy='any-stage'`；
-申诉固定 `origin='appeal' / route='doubt' / rejectPolicy='terminal-only'`。
+普通提交固定 `origin='initial' / route='normal'`；申诉固定 `origin='appeal' / route='doubt'`。
 **这两组不给管理员配**：能配出「叫申诉但第一级就能打回」或「普通提交却只有链尾能驳回」的组合，
 是在制造本业务没有定义的流程。
 

@@ -993,7 +993,6 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 effectivePolicy: policy,
                 // an ordinary submission: it walks the ordinary route, and
                 // whoever it reaches may end it (§32.63)
-                rejectPolicy: 'any-stage',
                 route: 'normal',
                 stageId: first.id,
                 roleIds: first.roleIds,

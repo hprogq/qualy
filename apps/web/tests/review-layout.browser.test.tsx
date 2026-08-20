@@ -94,7 +94,6 @@ const review = {
       },
     ],
     escalation: [],
-    decisions: ['approve', 'reject', 'comment'],
   },
   context: {
     worth: {
@@ -119,9 +118,14 @@ const review = {
     },
   ],
   supplements: [],
+  actions: {
+    approve: { state: 'available' as const, reason: null },
+    reject: { state: 'available' as const, reason: null },
+    escalate: { state: 'blocked' as const, reason: 'no-route' },
+    supplement: { state: 'available' as const, reason: null },
+  },
   capabilities: {
     canDecide: true,
-    canRequestSupplement: false,
     canCancelSupplement: false,
     canAnswerSupplement: false,
   },
@@ -285,6 +289,54 @@ describe('one workbench, three widths', () => {
       .first()
       .element()
     expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1)
+  })
+})
+
+describe('the four acts, always on the bar', () => {
+  it('shows a blocked act standing, and a press answers with the reason', async () => {
+    const restore = asThumb()
+    try {
+      page.viewport(390, 844)
+      open()
+      await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+
+      // all four acts stand whatever this round offers; the blocked one is
+      // dimmed, not gone
+      for (const act of ['escalate', 'supplement', 'reject', 'approve']) {
+        await expect.element(page.getByTestId(`act-${act}`)).toBeVisible()
+      }
+      await expect
+        .element(page.getByTestId('act-escalate'))
+        .toHaveAttribute('data-offer', 'blocked')
+
+      // Under a thumb there is no hover, so the press itself asks why -
+      // and the act must not open anything. A DOM click, because the
+      // runner's actionability check refuses aria-disabled targets; a real
+      // thumb is under no such rule, which is exactly why the key answers.
+      ;(page.getByTestId('act-escalate').element() as HTMLElement).click()
+      expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull()
+      await expect.element(page.getByText('该题未配置复核流程')).toBeVisible()
+    } finally {
+      restore()
+    }
+  })
+
+  it('keeps the routing pair compact and the verdict pair full-width on a phone', async () => {
+    page.viewport(390, 844)
+    open()
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    const of = (id: string) => page.getByTestId(id).element().getBoundingClientRect()
+    const escalate = of('act-escalate')
+    const supplement = of('act-supplement')
+    const reject = of('act-reject')
+    const approve = of('act-approve')
+    // two rows: the routing acts above, the verdicts below
+    expect(escalate.top).toBe(supplement.top)
+    expect(reject.top).toBe(approve.top)
+    expect(reject.top).toBeGreaterThan(escalate.bottom - 1)
+    // the verdicts split the row; the routing pair only takes its words
+    expect(Math.abs(reject.width - approve.width)).toBeLessThan(2)
+    expect(reject.width).toBeGreaterThan(escalate.width)
   })
 })
 

@@ -134,7 +134,28 @@ export interface ReviewChainView {
   readonly stageId: string
   readonly normal: readonly ReviewStageView[]
   readonly escalation: readonly ReviewStageView[]
-  readonly decisions: readonly string[]
+}
+
+/**
+ * One act of the workbench, offered or explained.
+ *
+ * The workbench draws all four acts at every sitting; what varies is
+ * whether each may be taken now, and if not, why - which only this side
+ * knows. `reason` is a stable code the browser translates; there is no
+ * hidden state, because a reviewer standing at a round is owed the whole
+ * map of what a reviewer can ever do.
+ */
+export interface ReviewActionView {
+  readonly state: 'available' | 'blocked'
+  readonly reason:
+    'in-escalation' | 'no-route' | 'route-closed' | 'phase-closed' | 'terminal-only' | null
+}
+
+export interface ReviewActionsView {
+  readonly approve: ReviewActionView
+  readonly reject: ReviewActionView
+  readonly escalate: ReviewActionView
+  readonly supplement: ReviewActionView
 }
 
 /** one ask and its answer, as a reader sees them */
@@ -162,6 +183,8 @@ export interface ReviewDetailView {
   }
   readonly form: { readonly itemType: string; readonly formConfig: unknown }
   readonly chain: ReviewChainView
+  /** the four acts, each offered or carrying the reason it is not */
+  readonly actions: ReviewActionsView
   /** the surroundings a page read resolves; a decision response leaves it null */
   readonly context: ReviewContextView | null
   readonly events: readonly {
@@ -177,7 +200,6 @@ export interface ReviewDetailView {
   readonly supplements: readonly ReviewSupplementView[]
   readonly capabilities: {
     readonly canDecide: boolean
-    readonly canRequestSupplement: boolean
     readonly canCancelSupplement: boolean
     readonly canAnswerSupplement: boolean
   }
@@ -252,25 +274,24 @@ export type ReviewDecision = 'approve' | 'reject' | 'escalate'
  * What may be said from where the round stands.
  *
  * One function, asked by the reader and by the writer, so a button that
- * appears is a button that works.
+ * shows available is a button that works.
  *
- * `rejectPolicy` comes off the round, never off the phase in force at this
- * moment: an appeal keeps its terminal-only rule after the appeal window
- * closes, and an ordinary review does not acquire one when that window opens
- * (§32.63).
+ * The rejection rule (§32.63, re-ruled 2026-08-20): on the ordinary route
+ * every step may reject; on the escalation route its end always may, and a
+ * middle step only while the phase in force opens
+ * `assessment.review.reject-intermediate`. The rule is the phase's, read at
+ * decision time - the round no longer freezes one at birth, so an appeal is
+ * terminal-only exactly when the administrator configured its phase that
+ * way, not because of where the round came from.
  */
 const decisionsAt = (
   policy: ResolvedPolicy,
   here: ResolvedStage,
-  round: { rejectPolicy: 'any-stage' | 'terminal-only' },
-  mayEscalate: boolean,
+  gates: { mayEscalate: boolean; rejectIntermediate: boolean },
 ): readonly ReviewDecision[] => {
-  const endable = round.rejectPolicy === 'any-stage' || isRouteEnd(policy, here)
-  if (here.route === 'escalation') {
-    return endable ? ['approve', 'reject'] : ['approve']
-  }
+  const endable = here.route === 'normal' || isRouteEnd(policy, here) || gates.rejectIntermediate
   const said: ReviewDecision[] = endable ? ['approve', 'reject'] : ['approve']
-  if (mayEscalate && escalationOpen(policy)) said.push('escalate')
+  if (here.route === 'normal' && gates.mayEscalate && escalationOpen(policy)) said.push('escalate')
   return said
 }
 
@@ -376,6 +397,10 @@ export interface ReviewDeps {
   readonly reviewGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
   /** and on assessment.review.raise-escalation, which a phase opens separately */
   readonly escalateGate: (tenantId: string, batchId: string) => Effect.Effect<GateDecision>
+  readonly rejectIntermediateGate: (
+    tenantId: string,
+    batchId: string,
+  ) => Effect.Effect<GateDecision>
   /** administrative reach over the batch, the same door getEntry uses */
   readonly rosterReach: (as: Principal, tenantId: string, batchId: string) => Effect.Effect<boolean>
   readonly parseRange: (text: string) => { start: string; end: string }
@@ -500,8 +525,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     view: {
       canDecide: boolean
       mayEscalate?: boolean
+      /** whether the phase in force opens rejecting at a middle escalation step */
+      rejectIntermediate?: boolean
       resolveReviewers: boolean
-      canRequestSupplement?: boolean
       canCancelSupplement?: boolean
       /**
        * The caller-side half of "may answer the open ask": the subject of a
@@ -546,10 +572,32 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         }
       }
       const here = stageById(policy, row.currentRoute, row.currentStageId)
-      const decisions: readonly string[] =
+      // The four acts, each offered or explained. Availability repeats
+      // decisionsAt's arithmetic in reasons: the same facts, said to a
+      // person instead of a validator.
+      const offered: readonly string[] =
         !view.canDecide || here === null
           ? []
-          : decisionsAt(policy, here, row, view.mayEscalate === true)
+          : decisionsAt(policy, here, {
+              mayEscalate: view.mayEscalate === true,
+              rejectIntermediate: view.rejectIntermediate === true,
+            })
+      const act = (may: boolean, reason: ReviewActionView['reason']): ReviewActionView =>
+        may ? { state: 'available', reason: null } : { state: 'blocked', reason }
+      const escalateReason: ReviewActionView['reason'] =
+        row.currentRoute === 'escalation'
+          ? 'in-escalation'
+          : policy.escalation.length === 0
+            ? 'no-route'
+            : !escalationOpen(policy)
+              ? 'route-closed'
+              : 'phase-closed'
+      const actions: ReviewActionsView = {
+        approve: act(offered.includes('approve'), null),
+        reject: act(offered.includes('reject'), 'terminal-only'),
+        escalate: act(offered.includes('escalate'), escalateReason),
+        supplement: act(view.canDecide, null),
+      }
       // the surroundings only a page read pays for: the decision path runs
       // inside the batch lock, where every extra query is somebody waiting
       let context: ReviewContextView | null = null
@@ -635,8 +683,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           stageId: row.currentStageId,
           normal: policy.normal.map(stageView),
           escalation: policy.escalation.map(stageView),
-          decisions,
         },
+        actions,
         context,
         events: events.map((event) => ({
           kind: event.kind,
@@ -650,7 +698,6 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         supplements,
         capabilities: {
           canDecide: view.canDecide,
-          canRequestSupplement: view.canRequestSupplement === true,
           canCancelSupplement: view.canCancelSupplement === true,
           canAnswerSupplement:
             view.answerable === true &&
@@ -830,13 +877,14 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     // and closes: during an appeal window there is nothing to escalate
     // about, because an appeal is already on the escalation route
     const escalationDecision = yield* deps.escalateGate(tenantId, row.batchId)
+    const intermediateDecision = yield* deps.rejectIntermediateGate(tenantId, row.batchId)
     return yield* dieQuery(
       withDb(
         assembleDetail(tenantId, row, {
           canDecide,
           mayEscalate: escalationDecision.allowed,
+          rejectIntermediate: intermediateDecision.allowed,
           resolveReviewers: true,
-          canRequestSupplement: canDecide,
           canCancelSupplement:
             judge &&
             row.state === 'awaiting_supplement' &&
@@ -891,7 +939,16 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               action === 'escalate'
                 ? yield* deps.escalateGate(tenantId, row.batchId)
                 : { allowed: true as const }
-            const allowed = decisionsAt(policy, here, row, escalationDecision.allowed)
+            // only a middle step of the escalation route needs the phase's
+            // word on early rejection; everywhere else the answer is free
+            const intermediateDecision =
+              action === 'reject' && here.route === 'escalation' && !isRouteEnd(policy, here)
+                ? yield* deps.rejectIntermediateGate(tenantId, row.batchId)
+                : { allowed: true as const }
+            const allowed = decisionsAt(policy, here, {
+              mayEscalate: escalationDecision.allowed,
+              rejectIntermediate: intermediateDecision.allowed,
+            })
             if (!allowed.includes(action)) {
               // an escalation refused by the phase says so in the phase's own
               // words; anything else is simply not on offer here
@@ -1192,7 +1249,6 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               origin: 'appeal',
               initiator: 'participant',
               appealedInstanceId: instanceId,
-              rejectPolicy: 'terminal-only',
               policyRevisionId: live.id,
               effectivePolicy: policy,
               route: 'escalation',
@@ -1401,7 +1457,6 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           return yield* assembleDetail(tenantId, written, {
             canDecide: true,
             resolveReviewers: false,
-            canRequestSupplement: true,
           })
         }),
       ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),

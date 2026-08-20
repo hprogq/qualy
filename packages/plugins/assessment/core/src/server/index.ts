@@ -1812,6 +1812,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
         const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
         return decide(view, 'assessment.review.escalate', undefined)
       }),
+    // whether the phase in force lets a middle step of the escalation route
+    // reject outright, instead of only its end (§32.63, re-ruled)
+    rejectIntermediateGate: (tenantId, batchId) =>
+      Effect.gen(function* () {
+        const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+        if (!batch) return { allowed: false, reason: 'no-active-phase' } as const
+        const now = yield* Clock.currentTimeMillis
+        const view = yield* dieQuery(withDb(gateView(tenantId, batch, now)))
+        return decide(view, 'assessment.review.reject-intermediate', undefined)
+      }),
     rosterReach: (as, tenantId, batchId) =>
       Effect.map(Effect.result(requireRosterReach(as, tenantId, batchId)), Result.isSuccess),
     parseRange,
@@ -3551,6 +3561,7 @@ const reviewDto = (review: ReviewDetailView) => ({
   revision: review.revision,
   form: review.form,
   chain: review.chain,
+  actions: review.actions,
   context:
     review.context === null
       ? null

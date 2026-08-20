@@ -6471,3 +6471,37 @@ approve 交接后上一节点(含从未按键的搭档)三门齐关、下一节�
 
 **门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 675 passed / 17 skipped;
 `pnpm test:browser` 10 files / 77 passed;`pnpm build` 通过;prettier 全绿。
+
+### 复核中途退回归阶段管;四个动作常驻底栏(2026-08-20 深夜二)
+
+领域重裁(经与用户对话定案,§32.63 已更新):**「复核中途能否退回」不再由 ReviewInstance 的创建路径
+暗中决定,改为阶段显式开合的审核动作**。
+
+- **新阶段动作** `assessment.review.reject-intermediate`(「允许复核中途退回」):加入 REVIEW_ACTION_CODES
+  与 PHASE_GATED_CODES,与 escalate 同类——不是 RBAC 权限,是阶段开合的审核员动作;阶段编辑器矩阵自动
+  长出该项(标签+提示文案已补,checkbox 数 12→13)。
+- **`rejectPolicy` 从领域整体移除**:规则变为「普通路线任意节点可退回;复核路线末端永远可退回,中间
+  节点由当前生效阶段实时判定」。申诉不再硬编码 terminal-only——想要申诉仅末端可退回,就在申诉处理
+  阶段不开启该动作,差异来自管理员配置而非 `origin === 'appeal'`。实体删列,迁移
+  `20260820095421_drop-reject-policy.sql`(destructive,drop-guard 放行);entry/item/review 三处
+  db 与 service 的读写全部清除。明知的代价:进行中的复核随阶段切换改变中间节点能否退回——这正是
+  阶段权限应有的语义,已写进 §32.63 重裁记录。
+- **审核详情从 `chain.decisions` + `capabilities.canRequestSupplement` 改为四个 ActionAvailability**
+  (`actions.approve/reject/escalate/supplement`,`state: available|blocked` + 稳定 reason 码)。
+  服务端给出准确的禁用原因:`in-escalation` / `no-route` / `route-closed` / `phase-closed` /
+  `terminal-only`,前端只翻译不推测。decideReview 校验共用同一 decisionsAt,reject 在复核中间节点时
+  才额外查一次阶段(锁内少付一次 gate 查询)。
+- **工作台四键常驻**:不再条件渲染。分组语义排布——提请复核/要求补充材料是改变路径的分流动作,
+  退回/通过是本环节裁决:宽屏一行 `[分流二键] — spacer — [裁决二键]`;手机 spacer 变折行
+  (`max-sm:basis-full`),分流键紧凑靠左、裁决键各占半行——**不是 2×2**(读作数字键盘),也不造第五个
+  按钮,也不给通过更宽(避免决策诱导)。同一容器一套渲染,两个断点两种排布(此前双容器把每个键渲染两遍,
+  strict 定位当场炸)。禁用态:fine 指针 disabled+span 包裹出 tooltip 讲原因;coarse 无 hover,键保持
+  `aria-disabled` 可按,按下 toast 讲原因而不执行。中间节点的「通过」tooltip 改为「通过当前审核环节,
+  交由下一复核节点处理」,与末端「通过本次审核」区分。
+- **测试**:node 新增「阶段开启后中间节点可退回且真正退成」回归例(反向验证过:去掉 gate 或条款该例即红);
+  原「任意节点可退回」的 escalated 断言按新规则改为 terminal-only blocked;申诉用例删 reject_policy
+  raw SQL 断言。浏览器新增两例:四键常驻+blocked 按下弹原因不开面板、手机 2 compact + 2 大排布几何断言;
+  阶段编辑器 13 项断言更新。
+
+**门禁(实际执行)**:`pnpm typecheck` 零错;`pnpm test` 97 files / 676 passed / 17 skipped;
+`pnpm test:browser` 10 files / 79 passed;`pnpm build` 通过;prettier 全绿。

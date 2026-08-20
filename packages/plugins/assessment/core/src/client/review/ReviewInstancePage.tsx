@@ -330,7 +330,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
     onError: (error) => toast.error(formatError(error)),
   })
 
-  const decisions = review?.chain.decisions ?? []
+  const may = (act: 'approve' | 'reject' | 'escalate' | 'supplement') =>
+    review?.actions[act].state === 'available'
 
   const undoStaged = () => {
     const staged = deferred.undo()
@@ -392,26 +393,26 @@ function Workbench({ batch }: { batch: BatchDto }) {
         case 'a':
         case 'A':
           event.preventDefault()
-          if (decisions.includes('approve')) setDialog('approve')
+          if (may('approve')) setDialog('approve')
           return
         case 'r':
         case 'R':
           // swallowed before the dialog opens, or the letter lands in the
           // box it is about to focus
           event.preventDefault()
-          if (decisions.includes('reject')) setDialog('reject')
+          if (may('reject')) setDialog('reject')
           return
         case 'e':
         case 'E':
           event.preventDefault()
-          if (decisions.includes('escalate')) setDialog('escalate')
+          if (may('escalate')) setDialog('escalate')
           return
         case 's':
         case 'S':
           // the ask has to be written before it can be staged, so the letter
           // opens the box rather than arming anything
           event.preventDefault()
-          if (review?.capabilities.canRequestSupplement === true) setDialog('supplement')
+          if (may('supplement')) setDialog('supplement')
           return
         case 'd':
           event.preventDefault()
@@ -458,7 +459,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // over only when this sitting decided something: an already-closed round
   // opened from elsewhere is a page to read, not a run to finish
   const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
-  const bar = !done && review !== undefined && review.capabilities.canDecide && decisions.length > 0
+  const bar = !done && review !== undefined && review.capabilities.canDecide
   useClaimScreenFoot(bar)
 
   return (
@@ -575,7 +576,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     <ContextRail review={review} onOpenSibling={setOpenSibling} />
                   </div>
                 </Drill>
-                {bar && <DecisionBar review={review} decisions={decisions} onDialog={setDialog} />}
+                {bar && <DecisionBar review={review} onDialog={setDialog} />}
                 {review.state === 'awaiting_supplement' && (
                   <footer className="flex flex-wrap items-center gap-3 border-t px-5 py-3">
                     <InfoIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -2223,101 +2224,184 @@ function Explained({ why, children }: { why: string; children: ReactNode }) {
 /** the word box and the four choices; only ⌘↵ ever submits */
 function DecisionBar({
   review,
-  decisions,
   onDialog,
 }: {
   review: ReviewDto
-  decisions: readonly string[]
   onDialog: (next: 'approve' | 'reject' | 'escalate' | 'supplement') => void
 }) {
   const { format } = useI18n()
   const fine = useFinePointer()
-  const advising = review.chain.route === 'escalation' && !decisions.includes('reject')
+  const advising =
+    review.chain.route === 'escalation' && review.actions.reject.state !== 'available'
   // approving at the end of a route is the decision itself, not a hand-on
   const route = review.chain.route === 'escalation' ? review.chain.escalation : review.chain.normal
   const lastStep = route[route.length - 1]?.id === review.chain.stageId
+
   return (
     <footer className="flex shrink-0 flex-col gap-2 border-t px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:px-4 lg:py-3">
-      {/* Only acts. Every key opens its own panel, where the opinion is
-          written and the act confirmed - there is no separate submit and no
-          freestanding note, so nothing on this bar half-happens. Reading
-          order runs mild to final: the asks first, the decisions last, the
-          one that ends the round at the far end where a row's own full stop
-          goes. */}
-      <div className={cn('flex flex-wrap items-center gap-2', !fine && 'max-lg:gap-1.5')}>
-        {fine && <span className="flex-1" />}
-        {review.capabilities.canRequestSupplement && (
-          <Explained why={format(m.reviewTipSupplement)}>
-            <Button
-              variant="outline"
-              className={cn(!fine && TOUCH_KEY)}
-              onClick={() => onDialog('supplement')}
-            >
-              {format(m.reviewSupplementAsk)}
-              {fine && <Kbd>S</Kbd>}
-            </Button>
-          </Explained>
-        )}
-        {decisions.includes('escalate') && (
-          <Explained why={format(m.reviewTipEscalate)}>
-            <Button
-              variant="outline"
-              className={cn(!fine && TOUCH_KEY)}
-              onClick={() => onDialog('escalate')}
-            >
-              {format(m.reviewEscalate)}
-              {fine && <Kbd>E</Kbd>}
-            </Button>
-          </Explained>
-        )}
-        {decisions.includes('reject') && (
-          <Explained why={format(m.reviewTipReject)}>
-            <Button
-              variant="outline"
-              className={cn(
-                !fine && TOUCH_KEY,
-                'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70',
-              )}
-              onClick={() => onDialog('reject')}
-            >
-              {format(m.reviewReject)}
-              {fine && <Kbd className="bg-rose-500/10 text-rose-700 dark:text-rose-300">R</Kbd>}
-            </Button>
-          </Explained>
-        )}
-        {decisions.includes('approve') && (
-          <Explained why={format(m.reviewTipApprove)}>
-            <Button
-              variant="outline"
-              className={cn(
-                !fine && TOUCH_KEY,
-                'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70',
-              )}
-              onClick={() => onDialog('approve')}
-            >
-              {format(m.reviewApprove)}
-              {fine && (
-                <Kbd className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">A</Kbd>
-              )}
-            </Button>
-          </Explained>
-        )}
+      {/* All four acts, always: a workbench whose buttons come and go has no
+          stable map, and "why can I not escalate this one" is a question a
+          missing button cannot answer. What varies is availability, and a
+          blocked act carries its reason.
+
+          Two groups, not four equals: escalating and asking for material
+          change the path, rejecting and approving conclude this sitting. A
+          wide bar seats them left and right of a spacer; on a phone the
+          spacer becomes a line break, so the routing pair sits compact over
+          a full-width verdict row - never a 2x2 grid, which reads as a
+          keypad and ranks nothing. One container either way, because two
+          renderings of the same key is two answers to "the" reject button. */}
+      <div className="flex flex-wrap items-center gap-2 max-sm:gap-1.5">
+        <ActionKey
+          act="escalate"
+          offer={review.actions.escalate}
+          label={format(m.reviewEscalate)}
+          kbd="E"
+          why={format(m.reviewTipEscalate)}
+          className="max-sm:flex-none"
+          onPress={() => onDialog('escalate')}
+        />
+        <ActionKey
+          act="supplement"
+          offer={review.actions.supplement}
+          label={format(m.reviewSupplementAsk)}
+          kbd="S"
+          why={format(m.reviewTipSupplement)}
+          className="max-sm:flex-none"
+          onPress={() => onDialog('supplement')}
+        />
+        <span aria-hidden className="flex-1 max-sm:h-0 max-sm:basis-full" />
+        <ActionKey
+          act="reject"
+          offer={review.actions.reject}
+          label={format(m.reviewReject)}
+          kbd="R"
+          why={format(m.reviewTipReject)}
+          className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 max-sm:min-w-0 max-sm:flex-1 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+          kbdClassName="bg-rose-500/10 text-rose-700 dark:text-rose-300"
+          onPress={() => onDialog('reject')}
+        />
+        <ActionKey
+          act="approve"
+          offer={review.actions.approve}
+          label={format(m.reviewApprove)}
+          kbd="A"
+          // a middle step's approval hands the round on; only the last
+          // step's ends it - the same key must not promise both
+          why={format(lastStep ? m.reviewTipApprove : m.reviewTipApproveMid)}
+          className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 max-sm:min-w-0 max-sm:flex-1 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+          kbdClassName="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+          onPress={() => onDialog('approve')}
+        />
       </div>
       {/* one line for what the next act will mean here, which is the part a
           reader cannot see from the buttons alone */}
-      {fine && (
+      {fine && advising && (
         <p className="text-right text-xs text-pretty text-muted-foreground">
-          {format(
-            advising
-              ? m.reviewSubmitHintAdvise
-              : lastStep
-                ? m.reviewHintLastStep
-                : m.reviewHintPickFirst,
-          )}
+          {format(m.reviewSubmitHintAdvise)}
         </p>
       )}
     </footer>
   )
+}
+
+/**
+ * One act of the bar: offered, or standing with its reason.
+ *
+ * Blocked is not gone and not dead. Beside a keyboard the reason hangs on
+ * hover, on the disabled key itself; under a thumb there is no hover, so
+ * the key stays pressable and a press answers with the reason instead of
+ * the act - a grey key that never says why is a wall, not a control.
+ */
+function ActionKey({
+  act,
+  offer,
+  label,
+  kbd,
+  why,
+  className,
+  kbdClassName,
+  onPress,
+}: {
+  act: 'approve' | 'reject' | 'escalate' | 'supplement'
+  offer: ReviewDto['actions']['approve']
+  label: string
+  kbd: string
+  /** what the act will do, told on hover while it is offered */
+  why: string
+  className?: string
+  kbdClassName?: string
+  onPress: () => void
+}) {
+  const { format } = useI18n()
+  const fine = useFinePointer()
+  const blocked = offer.state !== 'available'
+  const because = blocked ? format(actionBlockedMessage(act, offer.reason)) : why
+  const key = (
+    <Button
+      variant="outline"
+      data-testid={`act-${act}`}
+      data-offer={blocked ? 'blocked' : 'available'}
+      aria-disabled={blocked || undefined}
+      className={cn(
+        !fine && TOUCH_KEY,
+        className,
+        blocked && 'pointer-events-auto opacity-45 hover:bg-transparent active:translate-y-0',
+      )}
+      onClick={() => {
+        if (!blocked) {
+          onPress()
+          return
+        }
+        // no hover under a thumb: the press itself asks "why not"
+        if (!fine) toast.info(because)
+      }}
+    >
+      {label}
+      {fine && <Kbd className={kbdClassName}>{kbd}</Kbd>}
+    </Button>
+  )
+  if (!fine) return key
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* a span, because a key that ignores the pointer cannot answer
+              the hover that asks about it; it inherits the key's growth so
+              wrapping for the tooltip never changes the row */}
+          <span
+            className={cn(
+              'inline-flex',
+              className?.includes('flex-1') && 'max-sm:min-w-0 max-sm:flex-1',
+            )}
+          >
+            {key}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{because}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+/** the words for a blocked act, keyed by the server's stable reason codes */
+const actionBlockedMessage = (
+  act: 'approve' | 'reject' | 'escalate' | 'supplement',
+  reason: string | null,
+): MessageDescriptor => {
+  if (act === 'reject' && reason === 'terminal-only') return m.reviewBlockedTerminalOnly
+  switch (reason) {
+    case 'in-escalation':
+      return m.reviewBlockedInEscalation
+    case 'no-route':
+      return m.reviewBlockedNoRoute
+    case 'route-closed':
+      return m.reviewBlockedRouteClosed
+    case 'phase-closed':
+      return m.reviewBlockedPhaseClosed
+    default:
+      return m.reviewBlockedUnavailable
+  }
 }
 
 /**
@@ -2331,7 +2415,7 @@ function DecisionBar({
  * key keeps at least its own words - an even split gave five keys of a
  * 390px row about 66px each, and 要求补充材料 does not fit in 66px.
  */
-const TOUCH_KEY = 'h-11 min-w-0 flex-auto rounded-xl px-2 text-[13px]'
+const TOUCH_KEY = 'h-11 rounded-xl px-3 text-[13px]'
 
 function SiblingSheet({
   open,
