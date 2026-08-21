@@ -474,8 +474,6 @@ export default {
   'assessment/review/awaiting-want': '补充要求：{what}',
   'assessment/review/awaiting-answered': '已完成补充，等待审核',
   'assessment/review/awaiting-go': '审核',
-  'assessment/review/awaiting-foot':
-    '撤回补充请求后，申报会立即返回待审核列表，已经提交的补充内容仍会保留在审核记录中。',
   'assessment/review/awaiting-hint':
     '已要求补充材料的申报会暂时列入此区域，补充完成后重新进入待审核列表。',
   'assessment/review/tip-supplement': '要求参评人员补充证明材料，原申报内容保持不变',

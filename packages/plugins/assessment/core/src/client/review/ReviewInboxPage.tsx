@@ -225,6 +225,25 @@ function Queue({
               />
             </div>
           </div>
+          {/* the same three numbers the desk keeps at the row's end, as one
+              quiet line: a phone without them made the two registers count
+              different things */}
+          <p className="flex flex-wrap items-baseline gap-x-1.5 text-xs text-muted-foreground md:hidden">
+            <span>{format(m.reviewStatPending)}</span>
+            <span className="font-medium text-foreground tabular-nums">{all.length}</span>
+            {awaiting > 0 && (
+              <>
+                <span aria-hidden>·</span>
+                <span>{format(m.reviewAwaitingTab)}</span>
+                <span className="font-medium text-foreground tabular-nums">{awaiting}</span>
+              </>
+            )}
+            <span aria-hidden>·</span>
+            <span>{format(m.reviewStatToday)}</span>
+            <span className="font-medium text-foreground tabular-nums">
+              {inbox.data?.handledToday ?? 0}
+            </span>
+          </p>
           {seeking && view !== 'asked' && (
             <div className="relative md:hidden">
               <SearchIcon

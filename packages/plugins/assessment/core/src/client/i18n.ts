@@ -1945,11 +1945,6 @@ const i18n = definePluginMessages({
       defaultMessage: 'Material submitted · awaiting review',
     },
     reviewAwaitingGo: { id: 'assessment/review/awaiting-go', defaultMessage: 'Review' },
-    reviewAwaitingFoot: {
-      id: 'assessment/review/awaiting-foot',
-      defaultMessage:
-        'Withdrawing the request returns the submission to the review queue immediately. Any material already submitted remains in the review history.',
-    },
     reviewAwaitingHint: {
       id: 'assessment/review/awaiting-hint',
       defaultMessage:

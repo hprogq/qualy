@@ -83,10 +83,6 @@ export function AwaitingSection({ batchId }: { batchId: string }) {
           />
         ))}
       </ul>
-
-      <p className="border-t bg-muted/40 px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
-        {format(m.reviewAwaitingFoot)}
-      </p>
     </section>
   )
 }
@@ -103,22 +99,46 @@ function AwaitingRow({
   const { format } = useI18n()
   const answered = row.status === 'answered'
   return (
+    // Stacked lines on a phone, the queue's own columns beside a desk: the
+    // same cells serve both, regrouped by wrappers that dissolve at lg and
+    // pinned back into their columns by name - left to auto-placement the
+    // regrouped order would shuffle the table.
     <li
       className={cn(
-        'grid gap-x-3 gap-y-1 border-b border-l-2 px-4 py-3 last:border-b-0 lg:grid-cols-[10rem_minmax(0,1fr)_9rem_9rem_7rem_6rem] lg:items-center lg:py-2.5',
+        'flex flex-col gap-1.5 border-b border-l-2 px-4 py-3 last:border-b-0',
+        'lg:grid lg:grid-cols-[10rem_minmax(0,1fr)_9rem_9rem_7rem_6rem] lg:items-center lg:gap-x-3 lg:gap-y-1 lg:py-2.5',
         answered ? 'border-l-foreground' : 'border-l-transparent',
       )}
     >
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-sm font-medium">{row.participantName}</span>
-        {row.businessNo !== null && (
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            {row.businessNo}
+      <div className="flex items-center gap-2 lg:contents">
+        <span className="flex min-w-0 flex-1 items-baseline gap-2 lg:col-start-1 lg:row-start-1 lg:flex-none">
+          <span className="truncate text-sm font-medium">{row.participantName}</span>
+          {row.businessNo !== null && (
+            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+              {row.businessNo}
+            </span>
+          )}
+        </span>
+        <span className="lg:col-start-4 lg:row-start-1">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap',
+              answered ? 'border-foreground/30' : 'text-muted-foreground',
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'size-1.5 rounded-full',
+                answered ? 'bg-foreground' : 'border border-muted-foreground/50',
+              )}
+            />
+            {format(answered ? m.reviewAwaitingAnswered : m.supplementStatusOpen)}
           </span>
-        )}
-      </span>
+        </span>
+      </div>
 
-      <span className="flex min-w-0 flex-col gap-0.5">
+      <span className="flex min-w-0 flex-col gap-0.5 lg:col-start-2 lg:row-start-1">
         <span className="truncate text-sm">{row.itemTitle}</span>
         {row.asks.length > 0 && (
           <span className="truncate text-xs text-muted-foreground">
@@ -127,42 +147,28 @@ function AwaitingRow({
         )}
       </span>
 
-      {/* how long it has been out, which is the thing worth knowing here; the
-          instant it was asked is in its own column beside it */}
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <ClockIcon aria-hidden className="size-3.5 shrink-0" />
-        {howLongAgo(row.requestedAt)}
-      </span>
-
-      <span>
-        <span
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap',
-            answered ? 'border-foreground/30' : 'text-muted-foreground',
-          )}
-        >
-          <span
-            aria-hidden
-            className={cn(
-              'size-1.5 rounded-full',
-              answered ? 'bg-foreground' : 'border border-muted-foreground/50',
-            )}
-          />
-          {format(answered ? m.reviewAwaitingAnswered : m.supplementStatusOpen)}
+      <div className="flex items-center gap-2 lg:contents">
+        {/* how long it has been out, which is the thing worth knowing here;
+            the instant it was asked stands beside it */}
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground lg:col-start-3 lg:row-start-1">
+          <ClockIcon aria-hidden className="size-3.5 shrink-0" />
+          {howLongAgo(row.requestedAt)}
         </span>
-      </span>
-
-      <span className="text-xs text-muted-foreground tabular-nums">
-        {timeLabel(row.requestedAt)}
-      </span>
-
-      <span className="flex justify-start lg:justify-end">
-        {/* one way in either way: the round is where both the answer and the
-            way to take the ask back are read */}
-        <Button variant={answered ? 'outline' : 'ghost'} size="sm" onClick={onOpen}>
-          {format(answered ? m.reviewAwaitingGo : m.reviewOpen)}
-        </Button>
-      </span>
+        <span aria-hidden className="text-xs text-muted-foreground/50 lg:hidden">
+          ·
+        </span>
+        <span className="text-xs text-muted-foreground tabular-nums lg:col-start-5 lg:row-start-1">
+          {timeLabel(row.requestedAt)}
+        </span>
+        <span className="flex-1 lg:hidden" />
+        <span className="flex lg:col-start-6 lg:row-start-1 lg:justify-end">
+          {/* one way in either way: the round is where both the answer and
+              the way to take the ask back are read */}
+          <Button variant={answered ? 'outline' : 'ghost'} size="sm" onClick={onOpen}>
+            {format(answered ? m.reviewAwaitingGo : m.reviewOpen)}
+          </Button>
+        </span>
+      </div>
     </li>
   )
 }
