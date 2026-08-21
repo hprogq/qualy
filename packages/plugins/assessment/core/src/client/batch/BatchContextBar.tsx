@@ -57,10 +57,19 @@ export default function BatchContextBar() {
   return (
     <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-3">
       <div data-bar-start className="flex min-w-0 items-center">
-        <Button size="sm" variant="ghost" className="-ml-1 shrink-0 text-muted-foreground" asChild>
+        {/* A named destination, not a Back: the arrow beside the words is
+            fine on a desk, but alone on a phone it reads as navigation
+            history and gets pressed by mistake - there the switcher's own
+            menu already carries this door, so the shortcut leaves. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="-ml-1 shrink-0 text-muted-foreground max-sm:hidden"
+          asChild
+        >
           <PageLink page="assessment/batches">
             <ArrowLeftIcon />
-            <span className="max-sm:sr-only">{format(m.backToList)}</span>
+            {format(m.backToList)}
           </PageLink>
         </Button>
       </div>

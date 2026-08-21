@@ -222,6 +222,10 @@ describe('the overview desk', () => {
                 actorName: '示例辅导员',
                 reason: null,
                 comment: '请补充现场照片',
+                summary: [
+                  { label: '事项说明', value: '2024 年入伍，2026 年退役复学' },
+                  { label: '退役时间', value: '2026-06-30' },
+                ],
                 at: '2026-03-03T10:00:00.000Z',
               },
               {
@@ -236,6 +240,7 @@ describe('the overview desk', () => {
                 actorName: null,
                 reason: null,
                 comment: null,
+                summary: [],
                 at: '2026-03-02T09:00:00.000Z',
               },
             ],
@@ -275,6 +280,8 @@ describe('the overview desk', () => {
     expect(feed.querySelector('[data-unread]')?.getAttribute('data-kind')).toBe(
       'supplement-requested',
     )
+    // the row says which claim it is, in the shared identity line
+    await expect.element(page.getByText(/2024 年入伍/).first()).toBeVisible()
 
     // its key walks straight onto the claim: question open, drawer up
     await page.getByRole('button', { name: '去补充' }).click()

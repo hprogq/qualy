@@ -348,7 +348,7 @@ const i18n = definePluginMessages({
     sinceSeconds,
     batchSummary,
     batchSummaryDraft,
-    backToList: { id: 'assessment/batch/back', defaultMessage: 'Back to batches' },
+    backToList: { id: 'assessment/batch/back', defaultMessage: 'All rounds' },
 
     // the batch form
     nameLabel: { id: 'assessment/batch/name', defaultMessage: 'Name' },
@@ -2573,6 +2573,14 @@ const i18n = definePluginMessages({
     itemsTabFields: { id: 'assessment/items/tab-fields', defaultMessage: 'Submission fields' },
     itemsTabScoring: { id: 'assessment/items/tab-scoring', defaultMessage: 'Scoring' },
     itemsTabReview: { id: 'assessment/items/tab-review', defaultMessage: 'Review workflow' },
+    itemsSummaryTitle: { id: 'assessment/items/summary-title', defaultMessage: 'Claim summary' },
+    itemsSummaryHint: {
+      id: 'assessment/items/summary-hint',
+      defaultMessage: 'Pick up to 3 fields that identify one claim; the first leads.',
+    },
+    itemsSummaryAdd: { id: 'assessment/items/summary-add', defaultMessage: 'Add a field' },
+    itemsSummaryUp: { id: 'assessment/items/summary-up', defaultMessage: 'Move up' },
+    itemsSummaryRemove: { id: 'assessment/items/summary-remove', defaultMessage: 'Remove' },
     itemsFieldDescription: {
       id: 'assessment/items/field-description',
       defaultMessage: 'Submission instructions',
@@ -3211,6 +3219,14 @@ const i18n = definePluginMessages({
     'activity.r.supplement-answered': {
       id: 'assessment/activity/reviewer-supplement-answered',
       defaultMessage: '{who} supplied the material you asked for',
+    },
+    'activity.r.review-vote-approved': {
+      id: 'assessment/activity/reviewer-vote-approved',
+      defaultMessage: "You voted to approve {who}'s claim",
+    },
+    'activity.r.review-vote-rejected': {
+      id: 'assessment/activity/reviewer-vote-rejected',
+      defaultMessage: "You voted to send {who}'s claim back",
     },
     // one sentence per activity kind, second person for the reader's own acts
     'activity.entry-created': {

@@ -1197,14 +1197,22 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
               'review-stage-approved',
               'review-opinion-rejected',
               'supplement-answered',
+              'review-vote-approved',
+              'review-vote-rejected',
             ]),
             entryId: Schema.String,
             itemId: Schema.String,
             itemTitle: Schema.String,
             /** whose claim it is, on rows about somebody else's work */
             subjectName: Schema.NullOr(Schema.String),
-            /** the round a reviewer-side row belongs to, as its way in */
+            /**
+             * The way back into the round, only while this reader may
+             * still open it - the server judges by the same rule the
+             * queue reads with, so a link here never lands on a refusal.
+             */
             instanceId: Schema.NullOr(Schema.String),
+            /** the claim's identity line, in the shared projection (§32.74) */
+            summary: Schema.Array(Schema.Struct({ label: Schema.String, value: Schema.String })),
             actorName: Schema.NullOr(Schema.String),
             reason: Schema.NullOr(Schema.String),
             comment: Schema.NullOr(Schema.String),

@@ -202,7 +202,7 @@ const seatedOrSeatable = (r: {
  * writer of a round's queue asks this one composition, so "the queue
  * shows what the decision refuses" cannot be written.
  */
-const mayActOn = (r: RoundActorRefs) => sql<boolean>`(
+export const mayActOn = (r: RoundActorRefs) => sql<boolean>`(
   ${mayReview(r)}
   and ${independentAt(r)}
   and ${seatedOrSeatable(r)}
@@ -524,6 +524,7 @@ export interface InboxRow {
   payload: unknown
   /** the form those answers were filed under, for the labels */
   formConfig: unknown
+  displayConfig: unknown
   attachmentCount: number
   submittedAt: number
   submittedAtIso: string
@@ -608,6 +609,7 @@ export const inboxPage = (input: {
               'un.name as unitName',
               'er.payload',
               'ir.formConfig',
+              'ir.displayConfig',
             ])
             .select([
               epoch('ri.created_at').as('submittedMs'),
@@ -660,6 +662,7 @@ export const inboxPage = (input: {
               route: row.currentRoute as InboxRow['route'],
               payload: row.payload,
               formConfig: row.formConfig,
+              displayConfig: row.displayConfig,
               attachmentCount: Number(row.attachmentCount ?? 0),
               submittedAt: msOf(row.submittedMs),
               submittedAtIso: row.submittedIso,
@@ -1044,6 +1047,7 @@ export interface SiblingEntryRow {
   payload: unknown
   /** the form those answers were filed under, for the labels */
   formConfig: unknown
+  displayConfig: unknown
 }
 
 /**
@@ -1063,7 +1067,7 @@ export const siblingEntries = (tenantId: string, itemId: string, participantId: 
         .leftJoin('AssessmentItemRevision as ir', (join) =>
           join.onRef('ir.tenantId', '=', 'er.tenantId').onRef('ir.id', '=', 'er.itemRevisionId'),
         )
-        .select(['e.id as entryId', 'e.status', 'er.payload', 'ir.formConfig'])
+        .select(['e.id as entryId', 'e.status', 'er.payload', 'ir.formConfig', 'ir.displayConfig'])
         .where('e.tenantId', '=', tenantId)
         .where('e.itemId', '=', itemId)
         .where('e.participantId', '=', participantId)
@@ -1083,6 +1087,7 @@ export const siblingEntries = (tenantId: string, itemId: string, participantId: 
           status: row.status,
           payload: row.payload ?? null,
           formConfig: row.formConfig ?? null,
+          displayConfig: row.displayConfig ?? null,
         })),
       ),
     )

@@ -31,7 +31,7 @@ import { makeItemMethods, type ItemMethods, type ItemView } from '../item/servic
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
-import { insertReviewEvent, userActivityPage } from '../entry/db.ts'
+import { entrySummaryRowsOf, insertReviewEvent, userActivityPage } from '../entry/db.ts'
 import {
   blockedGroups,
   chainNames,
@@ -49,6 +49,7 @@ import {
 import { stageById } from '../review/chain.ts'
 import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { participantRowByUser } from '../scoring/db.ts'
+import { projectEntrySummary } from '../entry/summary.ts'
 import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/service.ts'
 import { Storage } from '@qualy/plugin-storage/server'
 import {
@@ -497,6 +498,8 @@ export type UserActivityKind =
   | 'review-stage-approved'
   | 'review-opinion-rejected'
   | 'supplement-answered'
+  | 'review-vote-approved'
+  | 'review-vote-rejected'
 
 export interface MyOverview {
   readonly participant: {
@@ -532,6 +535,7 @@ export interface MyActivityPage {
     actorName: string | null
     reason: string | null
     comment: string | null
+    summary: readonly { label: string; value: string }[]
     at: string
   }[]
   readonly nextCursor: string | null
@@ -2160,6 +2164,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
       )
       const pageRows = rows.slice(0, limit)
       const last = pageRows[pageRows.length - 1]
+      // each row says which claim it is, in the one projection every
+      // surface shares (§32.74): parts off the claim's current version
+      const summaried = yield* dieQuery(
+        withDb(entrySummaryRowsOf(tenantId, [...new Set(pageRows.map((row) => row.entryId))])),
+      )
+      const identityOf = new Map(
+        summaried.map((row) => [
+          row.entryId,
+          projectEntrySummary(row).map((part) => ({ label: part.label, value: part.value })),
+        ]),
+      )
       return {
         items: pageRows.map((row) => ({
           id: row.id,
@@ -2175,6 +2190,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           actorName: row.actorName,
           reason: row.reason,
           comment: row.comment,
+          summary: identityOf.get(row.entryId) ?? [],
           at: row.at,
         })),
         nextCursor:

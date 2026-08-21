@@ -1,4 +1,5 @@
 import { Effect, Result } from 'effect'
+import { projectEntrySummary } from '../entry/summary.ts'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AttachmentMeta } from '@qualy/plugin-storage/server'
@@ -461,52 +462,21 @@ export interface ReviewDeps {
 const refuse = (action: string, reason: string) => new EntryActionRefused({ action, reason })
 
 /**
- * A filing's answers under its form's own labels, for a list column or a
- * one-line sibling.
- *
- * The question's real fields in their own order, never a written summary -
- * and that includes the ones that ask for files. Those used to be dropped
- * and replaced by one "materials" count at the end of the row, which turned
- * "certificate" and "photo of the award" into the same word: a number. A
- * file field is a field, so it keeps its place and its name, and says how
- * many were filed under it. How that count reads is the browser's business;
- * the server counts.
+ * The claim's identity line for the queue and the sibling strip, in the
+ * shared projection (§32.74): the item's elected summary fields, or the
+ * first identifying ones. `files` stays in the shape for the wire, and is
+ * always null now - an attachment count never identified a claim.
  */
 const summaryValues = (
   formConfig: unknown,
   payload: unknown,
-  most = 3,
-): readonly { label: string; value: string; files: number | null }[] => {
-  const fields = (formConfig as { fields?: unknown } | null)?.fields
-  if (!Array.isArray(fields)) return []
-  const record = (payload ?? {}) as Record<string, unknown>
-  const out: { label: string; value: string; files: number | null }[] = []
-  for (const field of fields as readonly {
-    key?: string
-    label?: string
-    type?: string
-  }[]) {
-    if (out.length >= most) break
-    if (typeof field.key !== 'string') continue
-    const value = record[field.key]
-    const label = typeof field.label === 'string' ? field.label : field.key
-    if (field.type === 'attachment') {
-      out.push({ label, value: '', files: Array.isArray(value) ? value.length : 0 })
-      continue
-    }
-    out.push({
-      label,
-      files: null,
-      value:
-        typeof value === 'string'
-          ? value
-          : typeof value === 'number' || typeof value === 'boolean'
-            ? String(value)
-            : '',
-    })
-  }
-  return out
-}
+  displayConfig: unknown,
+): readonly { label: string; value: string; files: number | null }[] =>
+  projectEntrySummary({ formConfig, displayConfig, payload }).map((part) => ({
+    label: part.label,
+    value: part.value,
+    files: null,
+  }))
 
 /** the batch's configured reason lists, read defensively off the jsonb */
 const reasonsOf = (value: unknown): { reject: readonly string[]; escalate: readonly string[] } => {
@@ -661,7 +631,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           },
           siblings: others.map((one) => ({
             entryId: one.entryId,
-            values: summaryValues(one.formConfig, one.payload),
+            values: summaryValues(one.formConfig, one.payload, one.displayConfig),
             status: one.status,
             current: one.entryId === row.entryId,
           })),
@@ -868,7 +838,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           unitName: row.unitName,
           roundNo: row.roundNo,
           route: row.route,
-          values: summaryValues(row.formConfig, row.payload),
+          values: summaryValues(row.formConfig, row.payload, row.displayConfig),
           attachmentCount: row.attachmentCount,
           submittedAt: row.submittedAt,
         })),

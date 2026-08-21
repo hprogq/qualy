@@ -9,6 +9,7 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
   EllipsisVerticalIcon,
   PlusIcon,
   XIcon,
@@ -27,6 +28,7 @@ import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentApi } from '../api.ts'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
+import { summaryFieldIdsOf } from '../../entry/summary.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
 import { Choice } from './Choice.tsx'
@@ -37,6 +39,87 @@ import { ReasonDialog } from './ReasonDialog.tsx'
 import { BatchBanner } from '../batch/BatchScreen.tsx'
 import type { ItemOptions } from './options.ts'
 import type { Placement } from './paper.ts'
+
+/**
+ * Which fields identify a claim, in order (§32.74): pick up to three,
+ * the first leads. Order is the whole of the model, so the controls are
+ * a move-up and a remove, nothing more.
+ */
+function SummaryPicker({
+  fields,
+  elected,
+  onChange,
+}: {
+  fields: readonly FieldDraft[]
+  elected: readonly string[]
+  onChange: (next: string[]) => void
+}) {
+  const { format } = useI18n()
+  const eligible = fields.filter((field) => field.type !== 'attachment')
+  const remaining = eligible.filter((field) => !elected.includes(field.id))
+  const nameOf = (field: FieldDraft | undefined, id: string) =>
+    field === undefined ? id : field.label.trim() !== '' ? field.label : field.key
+  return (
+    <div className="flex flex-col gap-2">
+      {elected.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {elected.map((id, index) => (
+            <li key={id} className="flex items-center gap-2 rounded-lg border px-3 py-1">
+              <span className="w-4 shrink-0 text-xs text-muted-foreground tabular-nums">
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {nameOf(
+                  fields.find((one) => one.id === id),
+                  id,
+                )}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={index === 0}
+                onClick={() =>
+                  onChange(
+                    elected.map((one, at) =>
+                      at === index - 1 ? id : at === index ? elected[index - 1]! : one,
+                    ),
+                  )
+                }
+              >
+                <ChevronUpIcon aria-hidden />
+                <span className="sr-only">{format(m.itemsSummaryUp)}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => onChange(elected.filter((one) => one !== id))}
+              >
+                <XIcon aria-hidden />
+                <span className="sr-only">{format(m.itemsSummaryRemove)}</span>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {elected.length < 3 && remaining.length > 0 && (
+        <Select value="" onValueChange={(id) => onChange([...elected, id])}>
+          <SelectTrigger className="w-56">
+            <SelectValue placeholder={format(m.itemsSummaryAdd)} />
+          </SelectTrigger>
+          <SelectContent>
+            {remaining.map((field) => (
+              <SelectItem key={field.id} value={field.id}>
+                {nameOf(field, field.id)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </div>
+  )
+}
 
 const blankField = (key: string): FieldDraft => ({
   // minted together and both immutable: the key is where the answer sits,
@@ -105,6 +188,8 @@ export interface Draft {
   /** whether submissions answer to a review route at all */
   reviewMode: 'workflow' | 'none'
   description: string
+  /** the fields elected to identify a claim, in order (§32.74) */
+  summaryFieldIds: string[]
   fields: FieldDraft[]
   fixedValue: string
   /** how approved lines fold into the item's amount */
@@ -175,6 +260,9 @@ const draftOf = (
         ? 'none'
         : 'workflow',
     description: String((config?.displayConfig as { description?: unknown })?.description ?? ''),
+    summaryFieldIds: summaryFieldIdsOf(config?.displayConfig).filter((id) =>
+      fields.some((field) => field.id === id),
+    ),
     fields: fields.length > 0 ? fields : [blankField(nextKey())],
     // 100.0000 is how it is stored, not how anybody types it
     fixedValue: trimAmount(scoring?.calculator?.config?.value ?? '1'),
@@ -274,9 +362,7 @@ const configOf = (draft: Draft) =>
           calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
           aggregator: aggregatorOf(draft),
         },
-        ...(draft.description.trim() !== ''
-          ? { displayConfig: { description: draft.description.trim() } }
-          : {}),
+        ...displayConfigOf(draft, false),
         reviewPolicy: reviewPolicyOf(draft),
       }
     : draft.itemType === 'constant'
@@ -288,9 +374,7 @@ const configOf = (draft: Draft) =>
             calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
             aggregator: { ref: 'sum@1', config: {} },
           },
-          ...(draft.description.trim() !== ''
-            ? { displayConfig: { description: draft.description.trim() } }
-            : {}),
+          ...displayConfigOf(draft, false),
           reviewPolicy: { mode: 'none' },
         }
       : evidenceConfigOf(draft)
@@ -315,6 +399,23 @@ const reviewPolicyOf = (draft: Draft) => {
       stages: escalation.map((one, index) => storedStage(one, index < escalation.length - 1)),
     },
   }
+}
+
+const displayConfigOf = (draft: Draft, withSummary: boolean) => {
+  const description = draft.description.trim()
+  const elected = withSummary
+    ? draft.summaryFieldIds.filter((id) =>
+        draft.fields.some((field) => field.id === id && field.type !== 'attachment'),
+      )
+    : []
+  return description === '' && elected.length === 0
+    ? {}
+    : {
+        displayConfig: {
+          ...(description !== '' ? { description } : {}),
+          ...(elected.length > 0 ? { entrySummary: { fieldIds: elected } } : {}),
+        },
+      }
 }
 
 const evidenceConfigOf = (draft: Draft) => ({
@@ -353,9 +454,7 @@ const evidenceConfigOf = (draft: Draft) => ({
     calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
     aggregator: aggregatorOf(draft),
   },
-  ...(draft.description.trim() !== ''
-    ? { displayConfig: { description: draft.description.trim() } }
-    : {}),
+  ...displayConfigOf(draft, true),
   reviewPolicy: reviewPolicyOf(draft),
 })
 
@@ -851,6 +950,17 @@ export function ItemConfigEditor({
                   />
                 )}
               </Field>
+              {fielded && (
+                <Field label={format(m.itemsSummaryTitle)} hint={format(m.itemsSummaryHint)}>
+                  {() => (
+                    <SummaryPicker
+                      fields={draft.fields}
+                      elected={draft.summaryFieldIds}
+                      onChange={(next) => patch({ summaryFieldIds: next })}
+                    />
+                  )}
+                </Field>
+              )}
             </div>
           </Section>
 

@@ -252,10 +252,13 @@ describe.runIf(postgresAvailable)('the sitting', () => {
             select decision from review_votes v
             join review_panels p on p.id = v.panel_id
             where p.review_instance_id = ${w.instanceId} order by v.created_at`)
+          // the vote is the voter's own act, so it is their feed's to tell
+          const feed = yield* assessment.listMyActivity(f.t, w.batchId, {}, f.principal(w.b2))
           return {
             settled,
             entry,
             votes: (votes as { rows: { decision: string }[] }).rows.map((row) => row.decision),
+            feed: feed.items,
           }
         }),
       ),
@@ -269,6 +272,11 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     const conclusion = result.settled.events[result.settled.events.length - 1]!
     expect(conclusion.kind).toBe('approved')
     expect(conclusion.actorId).toBeNull()
+    // the voter's feed tells the vote as a vote, never as the verdict, and
+    // hands out no door into the finished round (§32.74)
+    expect(result.feed.map((one) => one.kind)).toEqual(['review-vote-approved'])
+    expect(result.feed[0]!.perspective).toBe('reviewer')
+    expect(result.feed[0]!.instanceId).toBeNull()
   })
 
   it('climbs on any dissent, with every opinion attached for the next judge', async () => {

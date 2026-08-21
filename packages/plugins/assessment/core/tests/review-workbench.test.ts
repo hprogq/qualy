@@ -153,9 +153,9 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
         }),
       ),
     )
-    // the row carries the filing under its own labels, three at most, in
-    // the form's own order - never a written summary
-    // a file field would keep its place here too, carrying its own count
+    // the row carries the claim's identity line (§32.74): elected fields,
+    // or the first identifying ones - attachments and blanks never held
+    // a place a name could have
     expect(result.row.values).toEqual([
       { label: '竞赛名称', value: '中国机器人大赛', files: null },
       { label: '等级与名次', value: '市级 一等奖', files: null },

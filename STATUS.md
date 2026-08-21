@@ -7036,3 +7036,16 @@ countBatchesByStatus 复用 batchFilters 与 visibleTo),筛选片(全部/进行�
 显示各自数量,全部为三态之和,服务端未答前不显数字。移动端收纳:新建批次回到标题行右侧
 不再独占一行,区块间距收一档,筛选组单行保持、过宽时横向滑动。typecheck 零错;
 pnpm test 704 passed;batch-admin/entry-workflow 50 例全绿;prettier 通过。
+
+### 申报摘要统一、动态之门服务端裁定、投票入流、全部测评(2026-08-23,§32.74)
+
+统一投影 projectEntrySummary(纯模块,前后端同源):配置 entrySummary.fieldIds(≤3 有序非附件,
+校验四条)或回退前 3 个非附件非空字段;消费于纸面 lead/sub(副识别移动端保留)、审核 values
+(附件不再占位)、概览动态 identity 行(按 entryId 批量投影);条目编辑器新增申报摘要选择器
+(选择+上移+移除,shadcn 原样)。/me/activity 行 instanceId 改为「此刻仍可开才下发」(mayActOn
+同谓词进 SQL),参评行不再带门,前端只给有门的行指针——修历史审核行点入 404。合议投票以
+review-vote-approved/rejected 入流(pn-unanimous 断言:一票记一条、说投票不说终局、完轮无门)。
+顶栏「返回批次列表」改「全部测评」,移动端撤快捷入口(切换器菜单同门仍在)。
+红验痕:attention 既有断言 settled.instanceId 由 not.toBeNull 翻转为 toBeNull。
+门禁:typecheck 零错;pnpm test 708 passed | 17 skipped(新增 entry-summary 4 例);
+pnpm test:browser 96 passed;prettier 全通过。

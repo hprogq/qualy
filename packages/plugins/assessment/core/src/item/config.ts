@@ -1,4 +1,5 @@
 import { Effect, Schema } from 'effect'
+import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../entry/summary.ts'
 import type { ItemTypeDriver, ScoringDriver } from '../plugin.ts'
 import { validateReviewPolicy, type PolicyIssue } from './policy.ts'
 
@@ -51,6 +52,37 @@ export const validateItemConfig = (
 ): Effect.Effect<readonly PolicyIssue[]> =>
   Effect.gen(function* () {
     const issues: PolicyIssue[] = []
+
+    // the elected identity fields (§32.74): each must name a form field
+    // that can identify a claim - present, not an attachment - and three
+    // is the cap the surfaces lay rows out for
+    const elected = summaryFieldIdsOf(input.displayConfig)
+    if (elected.length > SUMMARY_FIELDS_MOST) {
+      issues.push({ path: 'displayConfig.entrySummary', reason: 'summary-too-many-fields' })
+    }
+    if (new Set(elected).size !== elected.length) {
+      issues.push({ path: 'displayConfig.entrySummary', reason: 'summary-duplicate-field' })
+    }
+    if (elected.length > 0) {
+      const fields = (input.formConfig as { fields?: unknown } | null | undefined)?.fields
+      const known = new Map<string, string>()
+      if (Array.isArray(fields)) {
+        for (const field of fields as readonly { id?: string; key?: string; type?: string }[]) {
+          const identity = typeof field.id === 'string' ? field.id : field.key
+          if (typeof identity === 'string' && !known.has(identity)) {
+            known.set(identity, typeof field.type === 'string' ? field.type : '')
+          }
+        }
+      }
+      for (const id of elected) {
+        const type = known.get(id)
+        if (type === undefined) {
+          issues.push({ path: 'displayConfig.entrySummary', reason: 'summary-field-unknown' })
+        } else if (type === 'attachment') {
+          issues.push({ path: 'displayConfig.entrySummary', reason: 'summary-field-attachment' })
+        }
+      }
+    }
 
     const driver = catalogs.itemTypes.get(itemType)
     if (driver === undefined) {

@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import { sql, type RawBuilder } from 'kysely'
+import { mayActOn } from '../review/db.ts'
 import { db } from '../server/db.ts'
 
 // The entry rows and everything the resource policy needs to know about the
@@ -1240,6 +1241,46 @@ export interface UserActivityRow {
  * on the reviewer side, so one act is never told twice. Keyset over
  * (at, source, id): a timestamp alone drops rows sharing an instant.
  */
+/** what a page of activity rows needs to say which claim each one is */
+export const entrySummaryRowsOf = (tenantId: string, entryIds: readonly string[]) =>
+  entryIds.length === 0
+    ? Effect.succeed(
+        [] as readonly {
+          entryId: string
+          formConfig: unknown
+          displayConfig: unknown
+          payload: unknown
+        }[],
+      )
+    : db
+        .query((k) =>
+          sql<{
+            entry_id: string
+            form_config: unknown
+            display_config: unknown
+            payload: unknown
+          }>`
+            select e.id as entry_id, ir.form_config, ir.display_config, er.payload
+            from entries e
+            join entry_revisions er
+              on er.tenant_id = e.tenant_id and er.id = e.current_revision_id
+            join assessment_item_revisions ir
+              on ir.tenant_id = er.tenant_id and ir.id = er.item_revision_id
+            where e.tenant_id = ${tenantId}
+              and e.id = any(${sql.val(`{${entryIds.join(',')}}`)}::uuid[])
+          `.execute(k),
+        )
+        .pipe(
+          Effect.map(({ rows }) =>
+            rows.map((row) => ({
+              entryId: String(row.entry_id),
+              formConfig: row.form_config,
+              displayConfig: row.display_config,
+              payload: row.payload,
+            })),
+          ),
+        )
+
 export const userActivityPage = (input: {
   tenantId: string
   batchId: string
@@ -1271,7 +1312,7 @@ export const userActivityPage = (input: {
                    when 'escalated' then 'review-escalated'
                  end,
                  m.id, m.item_id, m.title,
-                 null, ri.id,
+                 null, null,
                  u.display_name, re.reason, re.comment,
                  re.created_at
           from review_events re
@@ -1305,7 +1346,7 @@ export const userActivityPage = (input: {
           select ri.id, 'verdict', 'participant',
                  case ri.outcome when 'approved' then 'review-approved' else 'review-rejected' end,
                  m.id, m.item_id, m.title,
-                 null, ri.id,
+                 null, null,
                  said.display_name, said.reason, said.comment,
                  ri.completed_at
           from review_instances ri
@@ -1328,7 +1369,7 @@ export const userActivityPage = (input: {
           union all
           select sr.id, 'supp-req', 'participant', 'supplement-requested',
                  m.id, m.item_id, m.title,
-                 null, ri.id,
+                 null, null,
                  u.display_name, null, sr.instructions,
                  sr.created_at
           from review_supplement_requests sr
@@ -1341,7 +1382,7 @@ export const userActivityPage = (input: {
           union all
           select sr.id, 'supp-ans', 'participant', 'supplement-submitted',
                  m.id, m.item_id, m.title,
-                 null, ri.id,
+                 null, null,
                  null, null, null,
                  sr.answered_at
           from review_supplement_requests sr
@@ -1354,7 +1395,7 @@ export const userActivityPage = (input: {
           union all
           select sr.id, 'supp-cxl', 'participant', 'supplement-cancelled',
                  m.id, m.item_id, m.title,
-                 null, ri.id,
+                 null, null,
                  u.display_name, null, null,
                  sr.cancelled_at
           from review_supplement_requests sr
@@ -1367,6 +1408,26 @@ export const userActivityPage = (input: {
             and sr.cancelled_at is not null`)
   }
   if (input.perspectives.includes('reviewer')) {
+    // The way back in, decided here rather than guessed by the browser
+    // (§32.74): a round is this reader's to open only while it is live and
+    // the read rule would admit them - the same predicate the queue uses.
+    // A finished round yields a plain, unlinked line.
+    const openDoor = sql`case
+      when ri.state in ('active', 'blocked', 'awaiting_supplement')
+       and ${mayActOn({
+         tenantId: sql`${input.tenantId}`,
+         batchId: sql`${input.batchId}`,
+         nodeId: sql.ref('ri.current_node_id'),
+         roleIds: sql.ref('ri.current_role_ids'),
+         userId: sql`${input.userId}`,
+         subjectUserId: sql.ref('theirs.subject_user_id'),
+         actorId: sql.ref('er.actor_id'),
+         instanceId: sql.ref('ri.id'),
+         route: sql.ref('ri.current_route'),
+       })}
+      then ri.id else null end`
+    const revisionJoin = sql`join entry_revisions er
+            on er.tenant_id = ri.tenant_id and er.id = ri.revision_id`
     pieces.push(sql`
           select re.id, 'r-event' as source, 'reviewer' as perspective,
                  case re.kind
@@ -1385,12 +1446,13 @@ export const userActivityPage = (input: {
                    when 'opinion-rejected' then 'review-opinion-rejected'
                  end as kind,
                  theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ri.id as instance_id,
+                 theirs.subject_name, ${openDoor} as instance_id,
                  null::text as actor_name, re.reason, re.comment,
                  re.created_at
           from review_events re
           join review_instances ri
             on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
+          ${revisionJoin}
           join theirs on theirs.entry_id = ri.entry_id
           where re.tenant_id = ${input.tenantId}
             and re.actor_id = ${input.userId}
@@ -1399,12 +1461,13 @@ export const userActivityPage = (input: {
           union all
           select sr.id, 'r-supp-req', 'reviewer', 'supplement-requested',
                  theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ri.id,
+                 theirs.subject_name, ${openDoor},
                  null, null, sr.instructions,
                  sr.created_at
           from review_supplement_requests sr
           join review_instances ri
             on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          ${revisionJoin}
           join theirs on theirs.entry_id = ri.entry_id
           where sr.tenant_id = ${input.tenantId}
             and sr.requested_by = ${input.userId}
@@ -1412,12 +1475,13 @@ export const userActivityPage = (input: {
           union all
           select sr.id, 'r-supp-cxl', 'reviewer', 'supplement-cancelled',
                  theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ri.id,
+                 theirs.subject_name, ${openDoor},
                  null, null, null,
                  sr.cancelled_at
           from review_supplement_requests sr
           join review_instances ri
             on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          ${revisionJoin}
           join theirs on theirs.entry_id = ri.entry_id
           where sr.tenant_id = ${input.tenantId}
             and sr.cancelled_by = ${input.userId}
@@ -1427,16 +1491,34 @@ export const userActivityPage = (input: {
           union all
           select sr.id, 'r-supp-ans', 'reviewer', 'supplement-answered',
                  theirs.entry_id, theirs.item_id, theirs.item_title,
-                 theirs.subject_name, ri.id,
+                 theirs.subject_name, ${openDoor},
                  null, null, null,
                  sr.answered_at
           from review_supplement_requests sr
           join review_instances ri
             on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          ${revisionJoin}
           join theirs on theirs.entry_id = ri.entry_id
           where sr.tenant_id = ${input.tenantId}
             and sr.requested_by = ${input.userId}
-            and sr.answered_at is not null`)
+            and sr.answered_at is not null
+
+          union all
+          select v.id, 'r-vote', 'reviewer',
+                 case v.decision when 'approve' then 'review-vote-approved'
+                                 else 'review-vote-rejected' end,
+                 theirs.entry_id, theirs.item_id, theirs.item_title,
+                 theirs.subject_name, ${openDoor},
+                 null, v.reason, v.comment,
+                 v.created_at
+          from review_votes v
+          join review_panels pnl on pnl.tenant_id = v.tenant_id and pnl.id = v.panel_id
+          join review_instances ri
+            on ri.tenant_id = pnl.tenant_id and ri.id = pnl.review_instance_id
+          ${revisionJoin}
+          join theirs on theirs.entry_id = ri.entry_id
+          where v.tenant_id = ${input.tenantId}
+            and v.voter_user_id = ${input.userId}`)
   }
   if (pieces.length === 0) return Effect.succeed([] as readonly UserActivityRow[])
   return db
@@ -1467,7 +1549,7 @@ export const userActivityPage = (input: {
         ),
         theirs as (
           select e.id as entry_id, e.item_id, i.title as item_title,
-                 su.display_name as subject_name
+                 su.display_name as subject_name, bp.user_id as subject_user_id
           from entries e
           join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
           join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id

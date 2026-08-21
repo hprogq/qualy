@@ -13,6 +13,7 @@ import {
   FileTextIcon,
   PlusIcon,
 } from 'lucide-react'
+import { projectEntrySummary } from '../../entry/summary.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from './EntryStanding.tsx'
 import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
@@ -742,18 +743,18 @@ function ClaimRow({
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const revisionNo = entry.currentRevision?.revisionNo
-  const said = (field: (typeof fields)[number] | undefined): string => {
-    if (field === undefined) return ''
-    const value = payload[field.key]
-    if (field.type === 'attachment') {
-      return Array.isArray(value) && value.length > 0
-        ? format(m.reviewFilesCount, { count: value.length })
-        : format(m.myEntriesFilesNone)
-    }
-    return typeof value === 'string' ? value : ''
-  }
-  const lead = said(fields[0])
-  const sub = said(fields[1])
+  // the shared identity line (§32.74): the item's elected fields, or the
+  // first ones that identify anything - never "whatever came first"
+  const parts = projectEntrySummary({
+    formConfig: item.currentRevision?.formConfig,
+    displayConfig: item.currentRevision?.displayConfig,
+    payload,
+  }).filter((part) => part.value !== '')
+  const lead = parts[0]?.value ?? ''
+  const sub = parts
+    .slice(1)
+    .map((part) => part.value)
+    .join(' ')
   const ok = entry.status === 'approved'
   // how many files this claim cites, as a number rather than as the phrase
   // counting them: the drawer is where the files themselves are
@@ -787,10 +788,10 @@ function ClaimRow({
           <span className="max-w-44 shrink-0 truncate text-sm font-medium">
             {lead === '' ? item.title : lead}
           </span>
+          {/* the rest of the identity stays on a phone too: without it a
+              claim named by its second and third fields reads as nothing */}
           {sub !== '' && (
-            <span className="min-w-0 truncate text-xs text-muted-foreground max-md:hidden">
-              {sub}
-            </span>
+            <span className="min-w-0 truncate text-xs text-muted-foreground">{sub}</span>
           )}
         </span>
         {/* the folded cells, under the content where the width folds them */}

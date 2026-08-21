@@ -315,7 +315,11 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     ])
     expect(settled.perspective).toBe('reviewer')
     expect(settled.subjectName).not.toBeNull()
-    expect(settled.instanceId).not.toBeNull()
+    // the door closed with the round: the server hands out no way back
+    // into a finished instance this reader could no longer open (§32.74)
+    expect(settled.instanceId).toBeNull()
+    // mid-chain the round was still this judge's to open
+    expect(result.midway.items[0]!.instanceId).not.toBeNull()
     expect(result.reviewerLane.items.map((one) => one.kind)).toEqual([
       'review-approved',
       'review-stage-approved',

@@ -11,6 +11,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
+import { cn } from '@qualy/ui/cn'
 import { assessmentApi } from './api.ts'
 import { useBatchLive } from './live.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
@@ -120,6 +121,8 @@ const SAID: Record<'participant' | 'reviewer', Partial<Record<ActivityItem['kind
     'supplement-requested': m['activity.r.supplement-requested'],
     'supplement-cancelled': m['activity.r.supplement-cancelled'],
     'supplement-answered': m['activity.r.supplement-answered'],
+    'review-vote-approved': m['activity.r.review-vote-approved'],
+    'review-vote-rejected': m['activity.r.review-vote-rejected'],
   },
 }
 
@@ -420,6 +423,13 @@ function MyDesk({
                   const who =
                     (row.perspective === 'reviewer' ? row.subjectName : row.actorName) ??
                     format(m['activity.somebody'])
+                  // the server already judged which rounds are still this
+                  // reader's to open; everything else is a plain line
+                  const openable = row.perspective === 'participant' || row.instanceId !== null
+                  const identity = row.summary
+                    .filter((part) => part.value !== '')
+                    .map((part) => part.value)
+                    .join(listJoin)
                   return (
                     <button
                       key={row.id + row.kind}
@@ -428,6 +438,7 @@ function MyDesk({
                       data-perspective={row.perspective}
                       data-unread={freshRowIds.has(row.id + row.kind) || undefined}
                       onClick={() => {
+                        if (!openable) return
                         if (row.perspective === 'reviewer') {
                           if (row.instanceId !== null) {
                             navigate('assessment/review-instance', {
@@ -438,7 +449,10 @@ function MyDesk({
                         }
                         openEntry(row.itemId, row.entryId, 'detail')
                       }}
-                      className="-mx-3 grid cursor-pointer grid-cols-[minmax(0,1fr)] gap-x-5 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-muted/60 lg:grid-cols-[3.25rem_minmax(0,1fr)]"
+                      className={cn(
+                        '-mx-3 grid grid-cols-[minmax(0,1fr)] gap-x-5 rounded-lg px-3 py-1.5 text-left lg:grid-cols-[3.25rem_minmax(0,1fr)]',
+                        openable && 'cursor-pointer transition-colors hover:bg-muted/60',
+                      )}
                     >
                       <span className="hidden pt-px text-xs text-muted-foreground tabular-nums lg:block">
                         {clockOf(row.at, locale)}
@@ -466,6 +480,11 @@ function MyDesk({
                             {clockOf(row.at, locale)}
                           </span>
                         </span>
+                        {identity !== '' && (
+                          <span className="line-clamp-1 text-xs text-muted-foreground/85">
+                            {identity}
+                          </span>
+                        )}
                         <span className="text-[13px] leading-relaxed text-muted-foreground">
                           {sentence !== undefined &&
                             format(sentence as (typeof m)['activity.r.review-approved'], { who })}
