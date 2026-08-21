@@ -7276,3 +7276,16 @@ college A(subtree),断言管理员看得到 college B 的人而录入者看不�
 页面严格更短。红验:去掉 reach 传参,录入者立刻读到全部 6 人。
 
 验收:typecheck 零错;`pnpm test` 721 passed | 17 skipped;prettier 通过。
+
+### 退回已通过的申报要说「成绩变了」(2026-08-22,对抗审查 major)
+
+`interveneOnEntry` 的 `return-for-revision` 可以把 `approved` 移到 `needs_revision`,分数随之
+不再计入,但它的 `announce` 少了 `result-changed`——那是唯一能让参评人成绩单那张查询失效的
+唤醒类型。于是页面继续显示一份这条申报已经不再带有的分。补上,与撤回/放弃那处对齐。
+审查另提「批量退回路径 item/service.ts:499 值得一并检查」,对着源码核过**不成立**:
+那条路径的 announce(item/service.ts:1000)本就带 `result-changed`。
+
+新增测试 `says the result changed when an approved claim is sent back`(live.test.ts):真的 LISTEN
+本批次频道,通过之后由管理员退回,断言听到 `result-changed`。红验:去掉该条,断言立刻转红。
+
+验收:typecheck 零错;`pnpm test` 722 passed | 17 skipped;prettier 通过。

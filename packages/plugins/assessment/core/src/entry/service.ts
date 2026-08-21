@@ -1517,10 +1517,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             reason,
           })
           yield* bumpParticipantAttention(tenantId, entryId)
+          // the paper too: a claim sent back from `approved` stops counting
+          // the moment it moves, and the points it was carrying are gone
           yield* announce(tenantId, entry.batchId, [
             { kind: 'entries-changed', subjectUserId: participant.userId },
             { kind: 'review-inbox-changed' },
             { kind: 'review-instance-changed' },
+            { kind: 'result-changed', subjectUserId: participant.userId },
           ])
           const written = (yield* entryOf(tenantId, entryId))!
           return view(
