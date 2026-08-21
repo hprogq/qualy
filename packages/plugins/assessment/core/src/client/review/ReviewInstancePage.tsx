@@ -20,7 +20,7 @@ import {
   usePageRouteParams,
   useRunApi,
 } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
@@ -35,6 +35,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
+import { useBatchLive } from '../live.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
@@ -138,13 +139,38 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
 
+  // The live channel carries wake-ups, never data: on each one the screen
+  // re-reads whichever authorized query the wake-up names. While the channel
+  // is down the same queries poll instead - later, but not blind.
+  const { live } = useBatchLive(batch.id, (kind) => {
+    switch (kind) {
+      case 'sync':
+      case 'review-instance-changed':
+        void queryClient.invalidateQueries({
+          queryKey: query.assessment.getReviewInstance.key({ params: { instanceId } }),
+        })
+        void queryClient.invalidateQueries({
+          queryKey: query.assessment.listReviewInbox.key({ query: { batchId: batch.id } }),
+        })
+        return
+      case 'review-inbox-changed':
+        void queryClient.invalidateQueries({
+          queryKey: query.assessment.listReviewInbox.key({ query: { batchId: batch.id } }),
+        })
+        return
+      default:
+        return
+    }
+  })
+
   const inbox = useQuery({
     ...query.assessment.listReviewInbox.queryOptions({ query: { batchId: batch.id } }),
-    refetchInterval: 30_000,
+    refetchInterval: live ? 60_000 : 30_000,
   })
-  const detail = useQuery(
-    query.assessment.getReviewInstance.queryOptions({ params: { instanceId } }),
-  )
+  const detail = useQuery({
+    ...query.assessment.getReviewInstance.queryOptions({ params: { instanceId } }),
+    refetchInterval: live ? false : 15_000,
+  })
   const review = detail.data?.review
 
   // this sitting's decisions, newest last; the queue rail and the closing
@@ -210,6 +236,27 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // queue's other half would bounce the reader somewhere they did not ask
   // for.
   const settledHere = decidedIds.has(instanceId)
+  // The round was here and now the server refuses it: someone else settled
+  // it, its holder withdrew it, or the route moved under it. That is not the
+  // 404 a wrong address deserves - the reader is mid-thought over this very
+  // filing, possibly mid-sentence in a dialog - so the workbench stands,
+  // wearing the fact, and nothing typed goes anywhere.
+  const gone =
+    review !== undefined &&
+    !settledHere &&
+    detail.error !== null &&
+    (isApiErrorCode(detail.error, 'ASSESSMENT_REVIEW_NOT_FOUND') ||
+      isApiErrorCode(detail.error, 'ASSESSMENT_REVIEW_CONFLICT'))
+
+  // A decision waiting out its undo window aims at a round that no longer
+  // exists; five seconds later it would come back a conflict. Taking it back
+  // now turns a confusing failure into a sentence.
+  useEffect(() => {
+    if (!gone || deferred.pending === null) return
+    deferred.undo()
+    toast.info(format(m.reviewGoneUndone))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gone])
   useEffect(() => {
     if (!settledHere) return
     const next = remaining[0]
@@ -460,7 +507,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // over only when this sitting decided something: an already-closed round
   // opened from elsewhere is a page to read, not a run to finish
   const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
-  const bar = !done && review !== undefined && review.capabilities.canDecide
+  const bar = !done && !gone && review !== undefined && review.capabilities.canDecide
   useClaimScreenFoot(bar)
 
   return (
@@ -470,7 +517,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
       // the moment the decision lands, and the refetch behind the done
       // screen comes back not-found. That is the access rule working, not
       // an error to show over the reader's own closing screen.
-      error={detail.error && !settledHere ? formatError(detail.error) : null}
+      error={detail.error && !settledHere && !gone ? formatError(detail.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => {
@@ -552,6 +599,47 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
                   }
                 />
+                {/* The round moved on without this reader - decided
+                    elsewhere, withdrawn, or re-routed. The workbench stays
+                    up with everything they typed; only the ways to act on a
+                    round that no longer exists are shut. */}
+                {gone && (
+                  <div
+                    data-testid="review-gone"
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-amber-200 bg-amber-50/70 px-5 py-3 dark:border-amber-900/50 dark:bg-amber-950/25"
+                  >
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
+                        {format(m.reviewGoneTitle)}
+                      </p>
+                      <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
+                        {format(m.reviewGoneBody)}
+                      </p>
+                    </div>
+                    <span className="flex-1" />
+                    {remaining.some((row) => row.instanceId !== instanceId) && (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const next = remaining.find((row) => row.instanceId !== instanceId)
+                          if (next !== undefined) goTo(next.instanceId)
+                        }}
+                      >
+                        {format(m.reviewGoneNext)}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-amber-300 bg-transparent text-amber-950 hover:bg-amber-100/60 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                      onClick={() =>
+                        navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
+                      }
+                    >
+                      {format(m.reviewGoneBack)}
+                    </Button>
+                  </div>
+                )}
                 {/* Three columns on a wide screen: what has been said, what
                     was filed, and the terms it is judged under. The filing is
                     the widest and the only one that scrolls far; the other

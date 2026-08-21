@@ -6796,3 +6796,30 @@ identity 迁移答案;抽屉提交与代录页同样携带令牌。
 验收(逐条真实执行):`pnpm typecheck` 零错;`pnpm test` 98 files / 692 passed | 17 skipped;
 `pnpm test:browser` 11 files / 91 passed(连跑三次稳定);`npx prettier --check .` 全绿。
 新增三例均做红验证:去掉 take() 的大小检查、把表单字段改回读 props、把服务端比较短路,对应用例分别转红。
+
+### 实时失效通道(2026-08-21)
+
+领域裁决见 docs/assessment-design.md §32.68。三层四笔:
+
+**传输(plugin-database)**:`pgNotify(channel, payload)` 骑当前事务连接(COMMIT 才投递、
+ROLLBACK 即丢弃);`DatabaseNotifications.listen(channel)` 每进程一条专用 pg 会话连接,
+Stream 化,死亡即失败交由消费者重试。testkit 的 `databaseFor` 同步供出该服务。
+
+**总线与 SSE(plugin-assessment)**:`live/events.ts` 定内部事件(tenant/batch/kind/subject),
+`announce` 布进 entry/review/item 三个 service 的全部写入点(均在既有事务内);
+`AssessmentLive` 一条 LISTEN → sliding PubSub 扇出,监听 fiber 走 Assembled hook + 3s 重连;
+`GET /assessment/batches/{batchId}/events` 用 `HttpApiSchema.StreamSse`(证据:
+repos/effect/packages/effect/src/unstable/httpapi/HttpApiSchema.ts:397-431、HttpApiBuilder.ts:921-1019、
+HttpApiClient.ts:71-82、Stream.ts:512/1166/2833/2900、PubSub.ts:427、ai-docs 07_pubsub 与
+05_resources/20_layer-side-effects),连接期 `assertVisible`+`capabilitiesFor` 过滤,
+公开事件只有裸 kind;frozen-routes 补一行;生产 smoke 增 401 探测。
+
+**浏览器(web-runtime + assessment client)**:`useApiStream`(runtime 内运行、AbortSignal 中断、
+3s 重拨、`live` 降级信号);`useBatchLive` 按 kind 定向 invalidate;收件箱/工作台连上时放宽轮询、
+断线回落;工作台新增「任务已易手」就地态(保留工作台与已写内容、撤销 pending 决定、
+琥珀横幅给两条出路);我的申报接线 entries/item/result 唤醒并加手动刷新键。
+
+验收(逐条真实执行):`pnpm typecheck` 零错;`pnpm test` 99 files / 693 passed | 17 skipped
+(新增 live.test:提交投递 + 回滚静默 + subject 路由,真库实测);`pnpm test:browser`
+11 files / 93 passed(失效态用例经 gate 控制时序,红验证通过——短路 gone 判定即转红);
+`npx prettier --check .` 全绿。

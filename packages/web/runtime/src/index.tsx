@@ -54,6 +54,7 @@ export {
   type RouteBuilderOptions,
   type RouteSlots,
 } from './route-builder.tsx'
+export { useApiStream } from './api-stream.ts'
 export { PageLink } from './links.tsx'
 export { ThemeProvider, useTheme, type ThemeChoice } from './theme.tsx'
 

@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CornerDownLeftIcon, FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -15,6 +15,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { DoneMark, Stagger } from '@qualy/ui/reveal'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { assessmentApi } from '../api.ts'
+import { useBatchLive } from '../live.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
 import { AwaitingSection } from './AwaitingSection.tsx'
@@ -74,15 +75,28 @@ function Queue({
   const [itemFilter, setItemFilter] = usePageQueryState('item')
   const [unitFilter, setUnitFilter] = usePageQueryState('unit')
   const [search, setSearch] = usePageQueryState('q')
+  const queryClient = useQueryClient()
+  // queue changes arrive as wake-ups; the poll below is the fallback pace
+  const { live } = useBatchLive(batchId, (kind) => {
+    if (kind !== 'sync' && kind !== 'review-inbox-changed' && kind !== 'review-instance-changed') {
+      return
+    }
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.listReviewInbox.key({ query: { batchId } }),
+    })
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.listAwaitingSupplements.key({ query: { batchId } }),
+    })
+  })
   const inbox = useQuery({
     ...query.assessment.listReviewInbox.queryOptions({ query: { batchId } }),
-    refetchInterval: 30_000,
+    refetchInterval: live ? 60_000 : 30_000,
   })
   // the same read the section below makes; one request either way, and the
   // header can say how much is out with somebody else without owning the list
   const asked = useQuery({
     ...query.assessment.listAwaitingSupplements.queryOptions({ query: { batchId } }),
-    refetchInterval: 30_000,
+    refetchInterval: live ? 60_000 : 30_000,
   })
   const awaiting = asked.data?.items.length ?? 0
   const all = useMemo(

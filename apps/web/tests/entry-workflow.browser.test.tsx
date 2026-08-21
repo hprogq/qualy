@@ -415,6 +415,21 @@ describe('filing a claim', () => {
     expect(page.getByTestId('rules-changed').elements()).toHaveLength(0)
   })
 
+  it('asks the server again on the refresh key', async () => {
+    const listed = vi.fn(() =>
+      Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+    )
+    screen({ listItems: listed as never }, `/assessment/batches/${BATCH_ID}/my-entries`, [
+      { path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> },
+    ])
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+
+    // however many reads mounting took, the press adds one more of each
+    const before = listed.mock.calls.length
+    await page.getByRole('button', { name: '刷新' }).click()
+    await vi.waitFor(() => expect(listed.mock.calls.length).toBeGreaterThan(before))
+  })
+
   it('shows the whole account, with the reviewer’s advice read-only', async () => {
     screen(
       {

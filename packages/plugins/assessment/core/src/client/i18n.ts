@@ -1716,6 +1716,30 @@ const i18n = definePluginMessages({
       id: 'assessment/review/undo-pending',
       defaultMessage: 'Submitting in {seconds}s · undo before submission',
     },
+    // the round moved on while this reader was mid-thought: say so where
+    // they stand, keep what they typed, and shut only the acts
+    reviewGoneTitle: {
+      id: 'assessment/review/gone-title',
+      defaultMessage: 'This review task has moved on',
+    },
+    reviewGoneBody: {
+      id: 'assessment/review/gone-body',
+      defaultMessage:
+        'It was settled by another reviewer, withdrawn, or re-routed. Nothing you typed has been submitted.',
+    },
+    reviewGoneNext: {
+      id: 'assessment/review/gone-next',
+      defaultMessage: 'Next task',
+    },
+    reviewGoneBack: {
+      id: 'assessment/review/gone-back',
+      defaultMessage: 'Back to queue',
+    },
+    reviewGoneUndone: {
+      id: 'assessment/review/gone-undone',
+      defaultMessage:
+        'The task was just handled elsewhere; your pending decision was not submitted.',
+    },
     reviewEscBannerTitle: {
       id: 'assessment/review/esc-banner-title',
       defaultMessage: 'The submission is in the escalation workflow',
@@ -3009,6 +3033,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'Save and submit',
     },
     entrySaveOnly: { id: 'assessment/entry/save-only', defaultMessage: 'Save only' },
+    myEntriesRefresh: { id: 'assessment/entry/refresh', defaultMessage: 'Refresh' },
     myEntriesFilterAll: { id: 'assessment/entry/filter-all', defaultMessage: 'All' },
     myEntriesFilterTodo: {
       id: 'assessment/entry/filter-todo',

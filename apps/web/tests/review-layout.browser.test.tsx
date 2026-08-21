@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { Effect } from 'effect'
+import { Effect, Stream } from 'effect'
 import { components } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
 // screen. Test files run in their own frame, so this stays here.
@@ -412,6 +412,55 @@ describe('the history under the flow pane', () => {
     // and the card itself holds everything, clock included
     const card = grounds.closest('[class*="rounded-xl"]') as HTMLElement
     expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth + 1)
+  })
+})
+
+describe('the round moving on mid-thought', () => {
+  it('keeps the workbench up, says what happened, and offers the way on', async () => {
+    page.viewport(1440, 900)
+    // reads succeed until the round is settled elsewhere; from then on the
+    // server refuses them the way it refuses a round that stopped being
+    // this reviewer's. Flag-driven, not call-counted: StrictMode makes the
+    // number of initial fetches nobody's business.
+    let settledElsewhere = false
+    const detail = vi.fn(() =>
+      settledElsewhere
+        ? Effect.fail(apiError('ASSESSMENT_REVIEW_NOT_FOUND'))
+        : Effect.succeed({ review }),
+    )
+    // one wake-up naming this round - held until the workbench has drawn,
+    // the way a real decision elsewhere lands mid-read, not mid-load
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const wake = () =>
+      Effect.succeed(
+        Stream.concat(
+          Stream.fromEffect(
+            Effect.promise(() => gate).pipe(
+              Effect.as({ kind: 'review-instance-changed' as const }),
+            ),
+          ),
+          Stream.never,
+        ),
+      )
+    open({ getReviewInstance: detail as never, watchBatch: wake as never })
+
+    await expect.element(page.getByText('周予安').first()).toBeVisible()
+    settledElsewhere = true
+    release()
+
+    // the wake-up arrives, the refetch is refused, and the screen says so
+    // where the reader stands - the workbench is not replaced by an error
+    await expect.element(page.getByTestId('review-gone')).toBeVisible()
+    await expect.element(page.getByText('周予安').first()).toBeVisible()
+
+    // acting on a round that no longer exists is shut; leaving is offered
+    expect(page.getByRole('button', { name: '通过', exact: true }).elements()).toHaveLength(0)
+    const banner = page.getByTestId('review-gone')
+    await expect.element(banner.getByRole('button', { name: '前往下一条' })).toBeVisible()
+    await expect.element(banner.getByRole('button', { name: '返回待审核' })).toBeVisible()
   })
 })
 

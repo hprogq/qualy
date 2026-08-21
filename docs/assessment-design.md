@@ -1350,3 +1350,17 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 二、**填报写入携带 `expectedItemRevisionId`,冲突即拒且不动用户已填内容**。此前 create/revise/setEntryStatus 都不告诉服务端「我填这份 payload 时看到的是哪一版题目」,服务端一律用**此刻最新** revision 解释 payload:管理员在填写期间加了必填字段,填报人会收到「获奖级别为必填项」而屏幕上根本没有这个字段;改了字段语义而结构不变时,更是不报任何错——**旧答案被当成新问题的回答**。锚点用已有的 ItemRevision,不新造 formVersion/schemaVersion 概念。三个写入端点各加可选 `expectedItemRevisionId`,服务端在 **decode payload 之前**比较,不一致即 `ASSESSMENT_ITEM_REVISION_CONFLICT`(409,带 `itemId` 与 `currentRevisionId`);**顺序是重点**——否则报出来的仍是「新字段未填写」而不是「你填写期间要求变了」。提交(setEntryStatus)也带,且带的是**页面当时展示的题目版本**而非草稿写入时的版本:去年 A 版存的草稿今天在 B 版页面上提交,expected 就是 B;若两个请求之间管理员又发了 C,才是真竞态。已有的「旧草稿提交时 projectPayload 到 live 再 decode」保护不变,它回答的是另一个问题(昨天的草稿今天还能不能提交)。**粒度先严格按 ItemRevision ID 比较**,即使只改了 reviewPolicy 也冲突——申报页展示的不只是表单字段,还有每条计多少分与审核流程,整个 ItemRevision 才是「用户作出这次填报决定时看到的规则快照」;真出现「只改后台审核链导致大量填写者冲突」再把令牌收窄成 participant-facing 指纹。
 
 三、**冲突的界面是就地提示,不是刷新、不是自动迁移**。禁止 `location.reload()`,禁止后台把 payload 悄悄搬到新表单再继续保存。对话框**不关闭、不清空 state**,表单字段来自打开时的**题目快照**(页面在底下继续 refetch 也不会让表单在人答题时自己变形);冲突时就地出现一块提示(标题「填报要求已更新」/正文说明已填内容会保留/一个「查看最新要求」按钮),**位置在已填内容之上、不遮挡**,并滚动到视野内;两个保存键在读过之前禁用。按下「查看最新要求」才推进快照,按 field identity(`id ?? key`)迁移答案:同 identity 同 type 的照搬(键改名也跟着走),类型变了的不搬(同样的字符在日期与句子里不是一回事),新字段留空,旧字段不再问。代录页与我的申报抽屉的提交路径同样携带令牌;撤回与放弃不带——它们不是关于今天规则的决定。
+
+**32.68 实时是失效通知,不是数据同步:SSE + PG LISTEN/NOTIFY + 进程内 PubSub,不引入 Redis**(2026-08-21,用户裁决)。
+
+审核员正在认真写意见时条目被他人抢先裁决/被撤回/被改道,学生只能靠刷新得知审核进展——已到「该加实时」的程度。但不上 WebSocket:通信模型是纯单向(操作走既有 HTTP,服务端只需说「某处变了」),SSE 足够且与 TanStack Query 的 invalidate 模型天然契合。
+
+一、**四层分工,权威不动**。①写入方在**同一事务内** `pg_notify`(PostgreSQL 在 COMMIT 后才投递、ROLLBACK 即丢弃——「先推送后提交读到旧数据」这类竞态从机制上不存在);②每进程**一条**专用 LISTEN 会话连接(LISTEN 是 session-scoped,严禁经池连接注册),经进程内 sliding PubSub 扇出给所有 SSE 连接——宁丢一个唤醒,不让慢消费者反压业务事务;③SSE 用 Effect v4 `HttpApiSchema.StreamSse` 的 typed 端点(`GET /assessment/batches/{batchId}/events`,Authenticated,浏览器经同一 typed client 得到 `Effect<Stream>`);④浏览器收到唤醒只做定向 invalidate,经既有授权端点重读权威状态。**事件不携带任何业务数据与资源 id**——纯 kind(sync/heartbeat/review-inbox-changed/review-instance-changed/entries-changed/item-changed/result-changed),不可能成为第二套 read model,也不可能泄露持有者本无权问到的东西;工作台收到 instance-changed 一律重读自己正开着的那条,他人条目的动静最多引起一次无害重读。
+
+二、**依赖方向**:`plugin-database` 只出传输(`pgNotify` 骑事务连接的自由函数 + `DatabaseNotifications.listen` 专用会话流),不知道事件是什么;assessment 自有事件 schema、在自己的写入点 announce、自己过滤自己推;`web-runtime` 出通用 `useApiStream`(Effect 仍只在 runtime 运行,页面只构造)。**Redis 不引入**:它解决的是本方案没有的问题(持久回放、presence、跨 region),而事务耦合恰是 PG NOTIFY 比它强的地方;触发条件(PgBouncer 事务池化挡住 LISTEN、真实高扇出)记录于此,发生再议。
+
+三、**best-effort 即正确**:连接建立先发 `sync`(LISTEN 注册与状态读取存在竞窗,重连期间丢失的一律用「重读」补偿,不做 Last-Event-ID/outbox/回放);25s 心跳防中间层掐线;断线降级为原轮询节奏(收件箱 30s、详情 15s,连上时放宽到 60s/关闭),窗口聚焦重读是全局兜底。反向代理需对 `text/event-stream` 关闭缓冲(typed 端点不发 no-transform 头,部署层职责)。
+
+四、**实时绝不覆盖正在输入的东西**(产品红线)。审核工作台:详情从「成功」转为 `REVIEW_NOT_FOUND/REVIEW_CONFLICT` 且非本人刚裁决时,判定为「任务已易手」——**工作台原样保留**(绝不渲染成 404 空态),顶端琥珀横幅说明三种可能并给「前往下一条/返回待审核」,决定栏关闭,已写内容原地不动;5 秒撤回窗内的 pending 决定当场 `undo()` 并说明,不让它 5 秒后撞一个注定的 conflict。申报侧沿用 §32.67:表单持题目快照,实时刷新只作用于父页面查询,冲突提示仍由用户主动推进。「我的申报」工具栏加常驻手动刷新键——escape hatch,不是机制。
+
+五、**连接期粗粒度授权**:开流时 `assertVisible` + `capabilitiesFor`(粗站位,刻意不随阶段抖动),按 review/personal/subjectUserId 过滤 kind;中途失权者在重连前只会继续听到裸唤醒,而每次唤醒触发的读取各自完整鉴权。巡检(patrol)v1 不发事件,由收件箱轮询兜底。

@@ -10,7 +10,7 @@ import {
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { TableOfContentsIcon } from 'lucide-react'
+import { RefreshCwIcon, TableOfContentsIcon } from 'lucide-react'
 import { AsyncSection } from '@qualy/ui/admin'
 import { cn } from '@qualy/ui/cn'
 import { Appear, Glide, Sift, SiftRow, Swap } from '@qualy/ui/reveal'
@@ -22,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
+import { useBatchLive } from '../live.ts'
 import { entryRefusalMessage } from './refusals.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { useRestOfTheScroller } from '../rest-of-the-scroller.ts'
@@ -181,6 +182,32 @@ function Body({
   const run = useRunApi()
   const { format, formatError } = useI18n()
   const queryClient = useQueryClient()
+  // Wake-ups from the server, mapped to the exact reads they stale. The
+  // paper redraws itself from fresh answers; nothing here touches the form
+  // a person may be filling - the open dialog holds its own snapshot and
+  // its own stale protocol.
+  useBatchLive(batchId, (kind) => {
+    const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
+    switch (kind) {
+      case 'sync':
+        stale(query.assessment.key())
+        return
+      case 'entries-changed':
+        stale(query.assessment.listMyEntries.key({ params: { batchId }, query: {} }))
+        stale(query.assessment.listAwaitingSupplements.key({ query: { batchId } }))
+        return
+      case 'item-changed':
+        stale(query.assessment.listItems.key({ params: { batchId } }))
+        stale(query.assessment.listScoreGroups.key({ params: { batchId } }))
+        return
+      case 'result-changed':
+        stale(query.assessment.getMyResult.key({ params: { batchId } }))
+        return
+      default:
+        return
+    }
+  })
+
   const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
   const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
   // what the round has already granted, so a group can say where it stands.
@@ -219,6 +246,16 @@ function Body({
     }
     return grouped
   }, [mine.data])
+
+  // the refresh key's one press: every read this screen stands on, again
+  const refetchAll = () => {
+    void items.refetch()
+    void groups.refetch()
+    void mine.refetch()
+    void standing.refetch()
+  }
+  const anyFetching =
+    items.isFetching || groups.isFetching || mine.isFetching || standing.isFetching
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: query.assessment.key() })
@@ -645,6 +682,19 @@ function Body({
                         </span>
                       </span>
                       <span className="flex-1" />
+                      {/* the escape hatch, not the mechanism: state flows in
+                          on its own, and this is for the person who wants to
+                          ask the server directly anyway */}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="shrink-0"
+                        disabled={anyFetching}
+                        onClick={refetchAll}
+                      >
+                        <RefreshCwIcon aria-hidden className={cn(anyFetching && 'animate-spin')} />
+                        <span className="sr-only">{format(m.myEntriesRefresh)}</span>
+                      </Button>
                       <span className="hidden shrink-0 items-center gap-3 rounded-lg bg-muted px-2.5 py-1.5 text-xs whitespace-nowrap text-muted-foreground sm:inline-flex">
                         <span className="inline-flex items-baseline gap-1">
                           {format(m.entryStatusInReview)}
