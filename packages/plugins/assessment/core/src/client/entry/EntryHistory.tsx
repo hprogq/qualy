@@ -259,10 +259,16 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
 
   for (const round of data.rounds) {
     const nodes: Node[] = []
-    // a legacy re-routed round carried a copy of the administrator's event;
-    // the section opener below says the same thing once
+    // A legacy re-routed round carried a copy of the administrator's event;
+    // the section opener below says the same thing once. The supplement
+    // exchange is likewise told once, by its structured ask-and-answer
+    // cards - the raw events behind them would say every step twice.
     const events = round.events.filter(
-      (event) => !(round.origin === 'reroute' && event.kind === 'rerouted'),
+      (event) =>
+        event.kind !== 'supplement-requested' &&
+        event.kind !== 'supplement-submitted' &&
+        event.kind !== 'supplement-cancelled' &&
+        !(round.origin === 'reroute' && event.kind === 'rerouted'),
     )
     const opener = roundOfRevision.get(round.revisionId)?.id === round.id ? 'version' : 'event'
     const ended = round.state === 'completed'

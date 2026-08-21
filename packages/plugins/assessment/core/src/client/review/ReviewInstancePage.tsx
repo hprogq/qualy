@@ -169,7 +169,10 @@ function Workbench({ batch }: { batch: BatchDto }) {
   })
   const detail = useQuery({
     ...query.assessment.getReviewInstance.queryOptions({ params: { instanceId } }),
-    refetchInterval: live ? false : 15_000,
+    // never zero: `live` proves the browser-to-server hop, not the
+    // server-to-database one, and a wake-up lost between them must decay
+    // into a late poll rather than a blind screen
+    refetchInterval: live ? 60_000 : 15_000,
   })
   const review = detail.data?.review
 
@@ -236,27 +239,52 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // queue's other half would bounce the reader somewhere they did not ask
   // for.
   const settledHere = decidedIds.has(instanceId)
-  // The round was here and now the server refuses it: someone else settled
-  // it, its holder withdrew it, or the route moved under it. That is not the
-  // 404 a wrong address deserves - the reader is mid-thought over this very
-  // filing, possibly mid-sentence in a dialog - so the workbench stands,
-  // wearing the fact, and nothing typed goes anywhere.
-  const gone =
+  // The turn is lost when a round that was this reader's to decide stops
+  // being so under them - settled elsewhere, withdrawn, re-routed. Two ways
+  // the server says it, depending on who is asking: an ordinary reviewer's
+  // refetch turns not-found, an administrator's succeeds and comes back
+  // terminal with canDecide gone. Neither is the 404 a wrong address
+  // deserves - the reader is mid-thought over this very filing, possibly
+  // mid-sentence in a dialog - so the workbench stands, wearing the fact,
+  // and nothing typed goes anywhere. A settled round opened cold was never
+  // this sitting's turn, so nothing fires there.
+  const wasMine = useRef(new Set<string>())
+  useEffect(() => {
+    if (review?.capabilities.canDecide) wasMine.current.add(instanceId)
+  }, [instanceId, review?.capabilities.canDecide])
+  const lostTurn =
     review !== undefined &&
     !settledHere &&
-    detail.error !== null &&
-    (isApiErrorCode(detail.error, 'ASSESSMENT_REVIEW_NOT_FOUND') ||
-      isApiErrorCode(detail.error, 'ASSESSMENT_REVIEW_CONFLICT'))
+    wasMine.current.has(instanceId) &&
+    ((detail.error !== null &&
+      (isApiErrorCode(detail.error, 'ASSESSMENT_REVIEW_NOT_FOUND') ||
+        isApiErrorCode(detail.error, 'ASSESSMENT_REVIEW_CONFLICT'))) ||
+      (review.state === 'completed' && !review.capabilities.canDecide))
+  /** the closest thing to a cause the refetched round can still say */
+  const lostBecause =
+    detail.data?.review.outcome === 'cancelled'
+      ? m.reviewGoneWithdrawn
+      : detail.data?.review.outcome === 'superseded'
+        ? m.reviewGoneRerouted
+        : detail.data?.review.state === 'completed'
+          ? m.reviewGoneDecided
+          : m.reviewGoneBody
 
-  // A decision waiting out its undo window aims at a round that no longer
-  // exists; five seconds later it would come back a conflict. Taking it back
-  // now turns a confusing failure into a sentence.
+  // Said out loud once, over whatever dialog the reader is writing in - the
+  // banner may be standing behind it. And a decision waiting out its undo
+  // window aims at a round that no longer exists; taking it back now turns
+  // a five-seconds-later conflict into a sentence.
+  const told = useRef(new Set<string>())
   useEffect(() => {
-    if (!gone || deferred.pending === null) return
-    deferred.undo()
-    toast.info(format(m.reviewGoneUndone))
+    if (!lostTurn || told.current.has(instanceId)) return
+    told.current.add(instanceId)
+    toast.info(format(lostBecause))
+    if (deferred.pending !== null) {
+      deferred.undo()
+      toast.info(format(m.reviewGoneUndone))
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gone])
+  }, [lostTurn])
   useEffect(() => {
     if (!settledHere) return
     const next = remaining[0]
@@ -332,7 +360,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
 
   /** asking for more material, through the same window everything else uses */
   const stageSupplement = (worded: WordedSupplement) => {
-    if (review === undefined) return
+    if (review === undefined || lostTurn) return
     stageAndAdvance(
       { kind: 'supplement', instanceId, participantName: review.participantName, payload: worded },
       'supplement',
@@ -343,7 +371,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
 
   /** stage a round-moving decision, log it, and put the next one on screen */
   const stageDecision = (decision: 'approve' | 'reject' | 'escalate', worded?: WordedDecision) => {
-    if (review === undefined) return
+    if (review === undefined || lostTurn) return
     const staged: StagedDecision = {
       kind: 'decision',
       instanceId,
@@ -379,7 +407,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   })
 
   const may = (act: 'approve' | 'reject' | 'escalate' | 'supplement') =>
-    review?.actions[act].state === 'available'
+    !lostTurn && review?.actions[act].state === 'available'
 
   const undoStaged = () => {
     const staged = deferred.undo()
@@ -507,7 +535,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // over only when this sitting decided something: an already-closed round
   // opened from elsewhere is a page to read, not a run to finish
   const done = remaining.length === 0 && log.length > 0 && !inbox.isPending
-  const bar = !done && !gone && review !== undefined && review.capabilities.canDecide
+  const bar = !done && !lostTurn && review !== undefined && review.capabilities.canDecide
   useClaimScreenFoot(bar)
 
   return (
@@ -517,7 +545,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
       // the moment the decision lands, and the refetch behind the done
       // screen comes back not-found. That is the access rule working, not
       // an error to show over the reader's own closing screen.
-      error={detail.error && !settledHere && !gone ? formatError(detail.error) : null}
+      error={detail.error && !settledHere && !lostTurn ? formatError(detail.error) : null}
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => {
@@ -599,13 +627,15 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
                   }
                 />
-                {/* The round moved on without this reader - decided
-                    elsewhere, withdrawn, or re-routed. The workbench stays
-                    up with everything they typed; only the ways to act on a
-                    round that no longer exists are shut. */}
-                {gone && (
+                {/* The turn was lost mid-thought - settled elsewhere,
+                    withdrawn, re-routed. The workbench stays up with
+                    everything typed; only the ways to act are shut, and the
+                    one way on is the reader's press, never an automatic
+                    jump over words they may still want. */}
+                {lostTurn && (
                   <div
                     data-testid="review-gone"
+                    data-lost={detail.data?.review.outcome ?? 'unreadable'}
                     className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-amber-200 bg-amber-50/70 px-5 py-3 dark:border-amber-900/50 dark:bg-amber-950/25"
                   >
                     <div className="flex min-w-0 flex-col gap-0.5">
@@ -613,11 +643,12 @@ function Workbench({ batch }: { batch: BatchDto }) {
                         {format(m.reviewGoneTitle)}
                       </p>
                       <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
-                        {format(m.reviewGoneBody)}
+                        {format(lostBecause)}
+                        {` ${format(m.reviewGoneKept)}`}
                       </p>
                     </div>
                     <span className="flex-1" />
-                    {remaining.some((row) => row.instanceId !== instanceId) && (
+                    {remaining.some((row) => row.instanceId !== instanceId) ? (
                       <Button
                         size="sm"
                         onClick={() => {
@@ -627,17 +658,16 @@ function Workbench({ batch }: { batch: BatchDto }) {
                       >
                         {format(m.reviewGoneNext)}
                       </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
+                        }
+                      >
+                        {format(m.reviewGoneFinish)}
+                      </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-amber-300 bg-transparent text-amber-950 hover:bg-amber-100/60 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-900/40"
-                      onClick={() =>
-                        navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
-                      }
-                    >
-                      {format(m.reviewGoneBack)}
-                    </Button>
                   </div>
                 )}
                 {/* Three columns on a wide screen: what has been said, what

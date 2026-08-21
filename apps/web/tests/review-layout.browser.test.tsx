@@ -459,8 +459,7 @@ describe('the round moving on mid-thought', () => {
     // acting on a round that no longer exists is shut; leaving is offered
     expect(page.getByRole('button', { name: '通过', exact: true }).elements()).toHaveLength(0)
     const banner = page.getByTestId('review-gone')
-    await expect.element(banner.getByRole('button', { name: '前往下一条' })).toBeVisible()
-    await expect.element(banner.getByRole('button', { name: '返回待审核' })).toBeVisible()
+    await expect.element(banner.getByRole('button', { name: '继续审核下一条' })).toBeVisible()
   })
 })
 

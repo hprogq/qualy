@@ -186,7 +186,7 @@ function Body({
   // paper redraws itself from fresh answers; nothing here touches the form
   // a person may be filling - the open dialog holds its own snapshot and
   // its own stale protocol.
-  useBatchLive(batchId, (kind) => {
+  const { live } = useBatchLive(batchId, (kind) => {
     const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
     switch (kind) {
       case 'sync':
@@ -208,15 +208,25 @@ function Body({
     }
   })
 
-  const items = useQuery(query.assessment.listItems.queryOptions({ params: { batchId } }))
-  const groups = useQuery(query.assessment.listScoreGroups.queryOptions({ params: { batchId } }))
+  const items = useQuery({
+    ...query.assessment.listItems.queryOptions({ params: { batchId } }),
+    refetchInterval: live ? 120_000 : 30_000,
+  })
+  const groups = useQuery({
+    ...query.assessment.listScoreGroups.queryOptions({ params: { batchId } }),
+    refetchInterval: live ? 120_000 : 30_000,
+  })
   // what the round has already granted, so a group can say where it stands.
   // It is part of the first paint like the rest: an amount that arrives a
   // moment later moves every card underneath it out from under the cursor
-  const standing = useQuery(query.assessment.getMyResult.queryOptions({ params: { batchId } }))
-  const mine = useQuery(
-    query.assessment.listMyEntries.queryOptions({ params: { batchId }, query: {} }),
-  )
+  const standing = useQuery({
+    ...query.assessment.getMyResult.queryOptions({ params: { batchId } }),
+    refetchInterval: live ? 60_000 : 30_000,
+  })
+  const mine = useQuery({
+    ...query.assessment.listMyEntries.queryOptions({ params: { batchId }, query: {} }),
+    refetchInterval: live ? 60_000 : 30_000,
+  })
   // 'new' is a claim about to exist on whichever question is open; anything
   // else names the claim being rewritten. The question itself is never
   // repeated here - `open` already says which one this is about.
@@ -270,19 +280,27 @@ function Body({
   const declare = useMutation({
     mutationFn: async (input: { itemId: string }) => {
       if (mine.data === undefined) throw new Error('roster not loaded')
+      // a declaration has no fields, but its worth and its route are still
+      // the question's current version - the press names what it saw
+      const seen = (items.data?.items ?? []).find((one) => one.id === input.itemId)?.currentRevision
+        ?.id
       const created = await run(
         api.assessment.createEntry({
           payload: {
             itemId: input.itemId,
             participantId: mine.data.participantId,
             payload: {},
+            ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
           },
         }),
       )
       const sent = await run(
         api.assessment.setEntryStatus({
           params: { entryId: created.entry.id },
-          payload: { status: 'in_review' },
+          payload: {
+            status: 'in_review',
+            ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
+          },
         }),
       )
       return sent.entry

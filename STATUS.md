@@ -6823,3 +6823,21 @@ HttpApiClient.ts:71-82、Stream.ts:512/1166/2833/2900、PubSub.ts:427、ai-docs 
 (新增 live.test:提交投递 + 回滚静默 + subject 路由,真库实测);`pnpm test:browser`
 11 files / 93 passed(失效态用例经 gate 控制时序,红验证通过——短路 gone 判定即转红);
 `npx prettier --check .` 全绿。
+
+### 撤回/放弃重裁与工作台失效语义(2026-08-21)
+
+领域裁决见 docs/assessment-design.md §32.69(并注销 §32.65 三条旧句)。要点:withdraw 止于
+审核真正开始(承接谱系上的判定事件或任一 panel 票,`withdrawStandingsOf` 递归 CTE 单源判定,
+capability 与写入同源);申诉轮一律不可 withdraw(堵住经申诉轮把 approved 洗成 draft 的 P0
+漏洞);abandon 全生命周期开放(in_review 先关轮,approved 绝不回改审核轮),成为第七个
+participant action code 并纳入阶段门控(不进 RBAC 目录);工作台 gone→lostTurn(管理员路径
+此前静默刷成「已结束」),sonner 按可知原因说话 + pending 决定 undo + may()/stage 拦截 +
+「继续审核下一条/结束审核」由人按;`expectedItemRevisionId` 收窄到 submit;一键声明补 token;
+详情 live 时保留 60s 轮询(SSE 在线不证明 LISTEN 在线);申报页按 live 降级;EntryDialog 收到
+新 revision 立即 stale;历史补材料只由问答卡讲一遍;「审核完成」改「审核结束」。
+
+验收(逐条真实执行):`pnpm typecheck` 零错;`pnpm test` 100 files / 697 passed | 17 skipped
+(新增 entry-lifecycle-boundaries 四例:审核开始后 withdraw 拒/abandon 关轮、申诉轮不可撤、
+approved 放弃且 round 结论原样、阶段门关 abandon;withdraw 拒绝路径红验证通过;review-workbench
+旧撤回故事按新裁决重写);`pnpm test:browser` 11 files / 93 passed(lostTurn 横幅、复选框 13、
+文案断言同步);`npx prettier --check .` 全绿。

@@ -1306,7 +1306,7 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 **32.65 被驳回不是死路:原样重交、修改重交、放弃三条路;能力三态下发**(2026-08-16,用户与审计共同裁决)。
 
 - **rejected 可原样重新提交**(同一 revision,新普通轮):驳回说的是「就这份材料,不行」,参评人有权答「请再看一次」。**needs_revision 不可原样重交**——那一轮要的就是不同的材料,只有新版本算回答(界面 blocked + 原因,不静默)。
-- **放弃申报(abandon)**:draft / rejected / needs_revision 可由本人置 voided(EntryEvent `abandoned-by-submitter`),名额立即释放,历史(版本、轮次、意见)全部保留;in_review 须先撤回;approved 是已认定的计分事实,本人不得单方面撤销。放弃**不受阶段门控**——人必须永远能停止主张一件事,否则满额把人锁死。
+- **放弃申报(abandon)**:draft / rejected / needs_revision 可由本人置 voided(EntryEvent `abandoned-by-submitter`),名额立即释放,历史(版本、轮次、意见)全部保留。~~in_review 须先撤回;approved 是已认定的计分事实,本人不得单方面撤销。放弃不受阶段门控~~(**已被 §32.69 取代**:in_review 与 approved 均可直接放弃,放弃改受阶段门控)。
 - **能力三态**:entry 的 edit/submit/withdraw/appeal/abandon 一律下发 `{state: available|blocked|hidden, reason}`;hidden=此人此态无此动作,blocked=有此动作但此刻不开(界面 disabled+tooltip,reason 用刷新拒绝同一词表)。发现与判定同门:能力读取问的就是 act 要过的那道 phase gate,按钮亮=调用通。
 - **驳回后修改 = draft(数据库真相),界面呈现「待重新提交」**(draft 且 currentReviewInstanceId 非空即是,不加新状态)。
 - **maxEntries 语义不变**:它限制"同时持有多少件申报事实"(非 voided 计数),与"计几条分"无关。
@@ -1364,3 +1364,15 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 四、**实时绝不覆盖正在输入的东西**(产品红线)。审核工作台:详情从「成功」转为 `REVIEW_NOT_FOUND/REVIEW_CONFLICT` 且非本人刚裁决时,判定为「任务已易手」——**工作台原样保留**(绝不渲染成 404 空态),顶端琥珀横幅说明三种可能并给「前往下一条/返回待审核」,决定栏关闭,已写内容原地不动;5 秒撤回窗内的 pending 决定当场 `undo()` 并说明,不让它 5 秒后撞一个注定的 conflict。申报侧沿用 §32.67:表单持题目快照,实时刷新只作用于父页面查询,冲突提示仍由用户主动推进。「我的申报」工具栏加常驻手动刷新键——escape hatch,不是机制。
 
 五、**连接期粗粒度授权**:开流时 `assertVisible` + `capabilitiesFor`(粗站位,刻意不随阶段抖动),按 review/personal/subjectUserId 过滤 kind;中途失权者在重连前只会继续听到裸唤醒,而每次唤醒触发的读取各自完整鉴权。巡检(patrol)v1 不发事件,由收件箱轮询兜底。
+
+**32.69 撤回止于审核开始,放弃贯穿申报一生:两个动作、两条关闭时刻线**(2026-08-21,用户裁决)。
+
+一、**「撤回审核」重定义**。withdraw = 把正在审核的申报拿回来继续修改(in_review → draft,取消当前轮)。它的窗口在**审核真正开始**的那一刻关闭——正式审核行为 = 本轮及其 `supersedes_instance_id` 承接谱系上的任一 `approved / rejected / escalated / opinion-rejected / supplement-requested` 事件,或任何 panel 投票(合议未出结论时票还没有事件,必须查票表);reroute 承接轮**不清零**该标志。以下不算开始:submitted、暂无审核人、系统跳过环节、单纯打开审核页。「提交即生成 ReviewInstance」不构成禁止条件——那等于提交后永不可撤。判定单源:`withdrawStandingsOf`(递归 CTE 沿承接谱系),capability 与写入路径同一条 SQL。**申诉轮一律不可 withdraw**:generic withdraw 会把已 approved/rejected 的条目经申诉轮洗成 draft(P0 域漏洞,已堵);「撤回申诉」应恢复被诉结论,是另一个未建的动作,建前申诉轮不提供撤回(capability hidden,写入 `appeal-not-withdrawable`)。
+
+二、**「放弃申报」重裁(废 §32.65 三条旧句)**。approved 是审核结论,不是不可撤销的所有权锁:「学校认定它成立」与「本人本学期仍使用它」是两个事实。abandon 对 draft / rejected / needs_revision / **in_review / approved** 全开放:in_review 先把当前轮关成 cancelled(事件 `cancelled-by-submitter`)再置 voided;**approved 放弃绝不回改审核轮**——round 保持 completed/approved,entry 置 voided,计分层因「生效事实 = approved ∧ entry 未 voided」自然停止计入(封顶 4 分留材料到下学期是正当业务)。历史忠实并存:「审核通过了」与「后来放弃了」不矛盾。
+
+三、**abandon 成为第七个 participant action code 并纳入阶段门控**:`assessment.entry.abandon` 进 `PARTICIPANT_ACTION_CODES` 与 `PHASE_GATED_CODES`(**不进** RBAC permission 目录——能否操作自己的申报来自参评身份,不是角色授予),creation family 同步(item/participant scope 约束它)。旧「放弃不受阶段门控」原则废弃:首次公示通常仍开放放弃(公示正是发现重复/超封顶/放错学期的整理窗口),最终公示关闭——用阶段配置表达,不写死阶段名。capability 三态照旧:资源态允许 ∧ 阶段开放 = available;阶段关闭 = blocked(`phase-closed`),按钮禁用而非消失。
+
+四、**工作台失效语义从 gone(读不到)改为 lostTurn(不再是我的任务)**。旧判定漏掉管理员:轮次结束后管理员仍读得到,refetch 成功、页面静默刷成「已结束」。新判定 = 「本会话里它曾 `canDecide`」∧ 非本人刚裁决 ∧(refetch 转 NOT_FOUND/CONFLICT,或数据转终态且 canDecide 失去)。触发时:sonner 各按可知原因说话(outcome cancelled → 申报人已撤回;superseded → 流程已调整;其余 completed → 已由他人处理;读不到 → 泛化句),页内横幅常驻(对话框可能盖住 toast 也盖不住横幅),pending 决定当场 `undo()`;`may()` 与 stage 函数统一被 lostTurn 拦截(不靠服务器撞墙)。出路唯一且由人按:run 内有下一条 → 「继续审核下一条」,没有 → 「结束审核」;**不自动跳转**(审核员可能还有没提交的字),不跨项目乱跳。
+
+五、**配套收口**:`expectedItemRevisionId` 校验收窄到 submit(管理员改配置不得让人连撤回/放弃都做不了);一键声明补传 revision token;`live` 只证明浏览器到进程这一跳,详情在 live 时仍保留 60s 轮询兜底(LISTEN 掉线期间丢失的唤醒靠轮询收敛);申报页四个查询按 live 降级轮询;EntryDialog 在父页面拿到新 revision 时立即标 stale(仍绝不热替换);历史里补充材料只由结构化问答卡讲一遍(`supplement-requested/submitted/cancelled` 三事件在展示层过滤);「第 X 轮审核完成」改「第 X 轮审核结束」(outcome 含 cancelled,"完成"读作有了结论)。

@@ -99,6 +99,7 @@ export const GATED = [
   'assessment.entry.edit',
   'assessment.entry.submit',
   'assessment.entry.withdraw',
+  'assessment.entry.abandon',
   'assessment.entry.record',
 ]
 
@@ -225,7 +226,11 @@ export type Seeded = Effect.Success<ReturnType<typeof seed>>
 /** a running batch in its entry phase, one student item, roster imported */
 export const runningBatch = (
   f: Seeded,
-  over?: { profile?: readonly string[]; stages?: readonly unknown[] },
+  over?: {
+    profile?: readonly string[]
+    stages?: readonly unknown[]
+    escalation?: readonly unknown[]
+  },
 ) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
@@ -294,7 +299,7 @@ export const runningBatch = (
                 ]),
               ],
             },
-            escalation: { stages: [] },
+            escalation: { stages: [...(over?.escalation ?? [])] },
           },
         },
       },

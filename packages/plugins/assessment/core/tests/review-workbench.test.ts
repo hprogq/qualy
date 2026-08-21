@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { DEFAULT_REVIEW_REASONS } from '../src/review/reasons.ts'
-import { errorOf, GATED, ok, run, runningBatch, seed } from './support/round.ts'
+import { errorOf, GATED, ok, refusalOf, run, runningBatch, seed } from './support/round.ts'
 
 // What the workbench reads and what it is held to: the queue row carrying
 // the filing itself, the day's counter on the batch's own calendar, the
@@ -849,7 +849,7 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.after.items).toHaveLength(0)
   })
 
-  it('lets the ask be taken back, and a withdrawal close over it', async () => {
+  it('lets the ask be taken back, and an abandonment close over it', async () => {
     const result = ok(
       await run(
         db.url,
@@ -876,12 +876,21 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
               reviewer,
             )
           yield* ask(sent.currentReviewInstanceId!)
-          // withdrawing the claim closes the waiting round, and the ask dies
-          // with it - answerability is the round still waiting, by definition
-          const withdrawn = yield* assessment.setEntryStatus(f.t, entry.id, 'draft', s1)
-          const afterWithdraw = yield* assessment.getEntry(f.t, entry.id, s1)
+          // the ask is review work (§32.69): the claim can no longer be
+          // pulled back to draft, but its owner may still stop claiming it
+          // - and the ask dies with the round that carried it
+          const withdrawn = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entry.id, 'draft', s1),
+          )
+          const abandoned = yield* assessment.setEntryStatus(f.t, entry.id, 'voided', s1)
+          const afterAbandon = yield* assessment.getEntry(f.t, entry.id, s1)
 
-          const resent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const second = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const resent = yield* assessment.setEntryStatus(f.t, second.id, 'in_review', s1)
           const round2 = resent.currentReviewInstanceId!
           const asked = yield* ask(round2)
           const openRequestId = asked.supplements.find((one) => one.status === 'open')!.id
@@ -892,12 +901,13 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
             { decision: 'approve' },
             reviewer,
           )
-          return { withdrawn, afterWithdraw, cancelled, decided }
+          return { withdrawn, abandoned, afterAbandon, cancelled, decided }
         }),
       ),
     )
-    expect(result.withdrawn.status).toBe('draft')
-    expect(result.afterWithdraw.supplement).toBeNull()
+    expect(refusalOf(result.withdrawn)?.reason).toBe('review-under-way')
+    expect(result.abandoned.status).toBe('voided')
+    expect(result.afterAbandon.supplement).toBeNull()
     // taking the ask back returns the round to the queue as it stood
     expect(result.cancelled.state).toBe('active')
     expect(result.cancelled.supplements.find((one) => one.status === 'cancelled')).toBeDefined()

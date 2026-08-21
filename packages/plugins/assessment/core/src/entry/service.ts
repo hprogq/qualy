@@ -65,6 +65,7 @@ import {
   type OpenSupplementRow,
   type SupplementRequirement,
   type SupplementRow,
+  withdrawStandingsOf,
 } from '../review/db.ts'
 
 // One person's claim on one question: created, revised, submitted, withdrawn.
@@ -308,6 +309,7 @@ interface EntryGates {
   readonly edit: ActionDecision
   readonly submit: ActionDecision
   readonly withdraw: ActionDecision
+  readonly abandon: ActionDecision
   readonly appeal: ActionDecision
 }
 
@@ -508,6 +510,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         edit: yield* ask('assessment.entry.edit'),
         submit: yield* ask('assessment.entry.submit'),
         withdraw: yield* ask('assessment.entry.withdraw'),
+        abandon: yield* ask('assessment.entry.abandon'),
         appeal: yield* ask('assessment.entry.appeal'),
       } satisfies EntryGates
     })
@@ -520,6 +523,8 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     gates?: EntryGates,
     supplement?: OpenSupplementRow | null,
     refusal?: EntryRefusalView | null,
+    /** the open round's provenance, where the caller looked it up */
+    standing?: { origin: string; begun: boolean },
   ): EntryView => {
     const own = participant !== null && participant.userId === as.userId
     const active = own && participant.status === 'active'
@@ -579,19 +584,37 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           active && entry.status === 'needs_revision'
             ? { state: 'blocked', reason: 'must-revise-first' }
             : when(entry.status === 'draft' || entry.status === 'rejected', gates?.submit),
-        withdraw: when(entry.status === 'in_review', gates?.withdraw),
+        // Taking work back to edit ends where review begins (§32.69): once
+        // anybody has decided, escalated, asked for material or voted -
+        // anywhere along a continuation lineage - the words said stand, and
+        // the way out is abandoning the claim, not unsaying the round. An
+        // appeal round is not withdrawable at all: taking an appeal back is
+        // a different act with a different landing, and it is not built.
+        withdraw:
+          entry.status === 'in_review' && standing?.origin === 'appeal'
+            ? { state: 'hidden', reason: null }
+            : active && entry.status === 'in_review' && standing?.begun === true
+              ? { state: 'blocked', reason: 'review-under-way' }
+              : when(entry.status === 'in_review', gates?.withdraw),
         // there has to be a decision to disagree with, and a round to name
         appeal: when(
           (entry.status === 'approved' || entry.status === 'rejected') &&
             entry.currentReviewInstanceId !== null,
           gates?.appeal,
         ),
-        // giving a claim up needs no phase: a person must always be able to
-        // stop claiming something, or a full quota locks them in place
+        // Giving a claim up is open across the whole life of the claim,
+        // approved included (§32.69): "the school recognized it" and "its
+        // owner still uses it this term" are different facts. The phase
+        // plan closes it - typically at final publication - so a full
+        // quota can be reworked while the term runs, and nothing moves
+        // once results are settled.
         abandon: when(
           entry.status === 'draft' ||
             entry.status === 'rejected' ||
-            entry.status === 'needs_revision',
+            entry.status === 'needs_revision' ||
+            entry.status === 'in_review' ||
+            entry.status === 'approved',
+          gates?.abandon,
         ),
       },
     }
@@ -783,6 +806,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           }
           const asked = yield* openSupplementsOfEntries(tenantId, [entryId])
           const said = yield* latestRefusalOf(tenantId, [entryId])
+          const standings =
+            entry.status === 'in_review' && entry.currentReviewInstanceId !== null
+              ? yield* withdrawStandingsOf(tenantId, [entry.currentReviewInstanceId])
+              : new Map<string, { origin: string; begun: boolean }>()
           return view(
             entry,
             yield* revisionView(tenantId, entry.currentRevisionId),
@@ -791,6 +818,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             undefined,
             asked[0] ?? null,
             said.get(entryId) ?? null,
+            entry.currentReviewInstanceId === null
+              ? undefined
+              : standings.get(entry.currentReviewInstanceId),
           )
         }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
@@ -896,25 +926,30 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             const locked = yield* lockBatch(tenantId, located.batchId)
             if (locked!.status === 'archived') return yield* new BatchReadOnly()
             const { entry, item, participant } = (yield* loadEntry(tenantId, entryId))!
-            yield* sameQuestion(item, expectedItemRevisionId)
             const action = to === 'in_review' ? 'submit' : to === 'voided' ? 'abandon' : 'withdraw'
+            // only handing it on is a decision about today's rules; taking
+            // it back or giving it up must not be refused because the form
+            // moved (§32.69)
+            if (to === 'in_review') yield* sameQuestion(item, expectedItemRevisionId)
             if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
             if (participant.status !== 'active') {
               return yield* refuse(action, 'participant-not-active')
             }
-            // abandoning answers to no phase: a person must always be able
-            // to stop claiming something, or a full quota locks them in place
-            if (to !== 'voided') {
-              const code =
-                to === 'in_review' ? 'assessment.entry.submit' : 'assessment.entry.withdraw'
-              const decision = yield* deps
-                .authorize(as, code, entry.batchId, {
-                  itemId: item.id,
-                  participantId: participant.id,
-                })
-                .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
-              if (!decision.allowed) return yield* refuse(action, decision.reason)
-            }
+            // every act answers to the phase plan, abandoning included
+            // (§32.69): the plan is what keeps settled results still
+            const code =
+              to === 'in_review'
+                ? 'assessment.entry.submit'
+                : to === 'voided'
+                  ? 'assessment.entry.abandon'
+                  : 'assessment.entry.withdraw'
+            const decision = yield* deps
+              .authorize(as, code, entry.batchId, {
+                itemId: item.id,
+                participantId: participant.id,
+              })
+              .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+            if (!decision.allowed) return yield* refuse(action, decision.reason)
 
             if (to === 'in_review') {
               // draft, or rejected as it stands (§32.65): the round said no
@@ -1072,22 +1107,39 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               // leaving a review round attached to nothing
               if (!moved) return yield* refuse(action, 'entry-not-submittable')
             } else if (to === 'voided') {
-              // walking away from a claim (§32.65): the history stays - the
-              // rounds, the words, the versions - and the quota place opens.
-              // Under review it must be withdrawn first, and an approved
-              // claim is a settled scoring fact, not this person's to unmake
-              if (
-                entry.status !== 'draft' &&
-                entry.status !== 'rejected' &&
-                entry.status !== 'needs_revision'
-              ) {
+              // Walking away from a claim (§32.65, widened by §32.69): the
+              // history stays - the rounds, the words, the versions - and
+              // the quota place opens. A live round is closed as cancelled
+              // first; an approved conclusion is left exactly as written -
+              // the review was not undone, the claim just stopped being
+              // used - and the scorer stops counting it because the entry
+              // is no longer an effective fact.
+              if (entry.status === 'voided') {
                 return yield* refuse(action, 'entry-not-abandonable')
+              }
+              if (entry.status === 'in_review') {
+                if (entry.currentReviewInstanceId === null) {
+                  return yield* refuse(action, 'entry-not-abandonable')
+                }
+                const cancelled = yield* cancelReviewInstance({
+                  tenantId,
+                  instanceId: entry.currentReviewInstanceId,
+                  outcome: 'cancelled',
+                })
+                if (!cancelled) return yield* refuse(action, 'entry-not-abandonable')
+                yield* insertReviewEvent({
+                  tenantId,
+                  reviewInstanceId: entry.currentReviewInstanceId,
+                  kind: 'cancelled-by-submitter',
+                  actorId: as.userId,
+                })
               }
               const moved = yield* setEntryState({
                 tenantId,
                 entryId,
-                from: ['draft', 'rejected', 'needs_revision'],
+                from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
                 to: 'voided',
+                ...(entry.status === 'in_review' ? { currentReviewInstanceId: null } : {}),
               })
               if (!moved) return yield* refuse(action, 'entry-not-abandonable')
               yield* insertEntryEvent({
@@ -1099,6 +1151,18 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             } else {
               if (entry.status !== 'in_review' || entry.currentReviewInstanceId === null) {
                 return yield* refuse(action, 'entry-not-withdrawable')
+              }
+              // withdrawing ends where review begins (§32.69), and an
+              // appeal round is never withdrawable back to draft - the
+              // decision under appeal would be quietly unmade with it
+              const standing = (yield* withdrawStandingsOf(tenantId, [
+                entry.currentReviewInstanceId,
+              ])).get(entry.currentReviewInstanceId)
+              if (standing?.origin === 'appeal') {
+                return yield* refuse(action, 'appeal-not-withdrawable')
+              }
+              if (standing?.begun === true) {
+                return yield* refuse(action, 'review-under-way')
               }
               const cancelled = yield* cancelReviewInstance({
                 tenantId,
@@ -1175,6 +1239,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             )).map((asked) => [asked.entryId, asked]),
           )
           // one query for the page, not one per card
+          const standings = yield* withdrawStandingsOf(
+            tenantId,
+            pageRows
+              .filter((one) => one.status === 'in_review' && one.currentReviewInstanceId !== null)
+              .map((one) => one.currentReviewInstanceId!),
+          )
           const saidByEntry = yield* latestRefusalOf(
             tenantId,
             pageRows
@@ -1192,6 +1262,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 gates,
                 askedByEntry.get(entry.id) ?? null,
                 saidByEntry.get(entry.id) ?? null,
+                entry.currentReviewInstanceId === null
+                  ? undefined
+                  : standings.get(entry.currentReviewInstanceId),
               ),
             )
           }

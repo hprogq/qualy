@@ -346,6 +346,62 @@ export interface ReviewInstanceDetailRow {
   batchReviewReasons: unknown
 }
 
+/**
+ * Whether real review work has begun on these rounds, and where each came
+ * from.
+ *
+ * "Begun" is a formal act by a reviewer - a decision, an escalation, an
+ * opinion climbing a ladder, an ask for more material, or any ballot cast
+ * in a sitting - and it survives re-routing: a continuation round carries
+ * its predecessors' work along the `supersedes_instance_id` lineage, or a
+ * policy edit would quietly re-open a door the work had closed. Arrival
+ * noise (submitted, assignee-not-found, stage-skipped) is not work.
+ */
+const WORK_KINDS = `('approved', 'rejected', 'escalated', 'opinion-rejected', 'supplement-requested')`
+
+export const withdrawStandingsOf = (tenantId: string, instanceIds: readonly string[]) =>
+  instanceIds.length === 0
+    ? Effect.succeed(new Map<string, { origin: string; begun: boolean }>())
+    : db
+        .query((k) =>
+          sql<{ id: string; origin: string; begun: boolean }>`
+            with recursive lineage (root_id, id) as (
+              select ri.id, ri.id from review_instances ri
+              where ri.tenant_id = ${tenantId} and ri.id = any(${uuidArray(instanceIds)})
+              union all
+              select l.root_id, prior.id
+              from lineage l
+              join review_instances cur
+                on cur.tenant_id = ${tenantId} and cur.id = l.id
+              join review_instances prior
+                on prior.tenant_id = ${tenantId} and prior.id = cur.supersedes_instance_id
+            )
+            select ri.id, ri.origin,
+              (
+                exists (
+                  select 1 from review_events ev
+                  join lineage l on l.root_id = ri.id and l.id = ev.review_instance_id
+                  where ev.tenant_id = ${tenantId}
+                    and ev.kind in ${sql.raw(WORK_KINDS)}
+                )
+                or exists (
+                  select 1 from review_votes v
+                  join review_panels pn on pn.tenant_id = v.tenant_id and pn.id = v.panel_id
+                  join lineage l2 on l2.root_id = ri.id and l2.id = pn.review_instance_id
+                  where v.tenant_id = ${tenantId}
+                )
+              ) as begun
+            from review_instances ri
+            where ri.tenant_id = ${tenantId} and ri.id = any(${uuidArray(instanceIds)})
+          `.execute(k),
+        )
+        .pipe(
+          Effect.map(
+            ({ rows }) =>
+              new Map(rows.map((row) => [row.id, { origin: row.origin, begun: row.begun }])),
+          ),
+        )
+
 /** an instance with everything around it that reading or judging it needs */
 export const instanceOf = (tenantId: string, instanceId: string) =>
   db

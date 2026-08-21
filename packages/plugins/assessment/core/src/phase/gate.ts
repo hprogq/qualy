@@ -12,6 +12,7 @@ const CREATION_FAMILY: ReadonlySet<string> = new Set([
   'assessment.entry.edit',
   'assessment.entry.submit',
   'assessment.entry.withdraw',
+  'assessment.entry.abandon',
   'assessment.entry.proxy',
   'assessment.entry.record',
 ])

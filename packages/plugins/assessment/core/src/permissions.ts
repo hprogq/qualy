@@ -87,6 +87,11 @@ export const PARTICIPANT_ACTION_CODES = [
   'assessment.entry.edit',
   'assessment.entry.submit',
   'assessment.entry.withdraw',
+  // giving a claim up for good - distinct from withdraw on purpose: the
+  // window for taking work back to edit closes when review begins, while
+  // the window for no longer claiming it closes with the phase plan
+  // (typically at final publication)
+  'assessment.entry.abandon',
   // contesting a decided entry is the participant's move (§32.14, §32.65):
   // a member of staff who wants another look reopens the review, which is a
   // different code and a different act. Named for what it gates - the
@@ -131,6 +136,7 @@ export const PHASE_GATED_CODES = [
   'assessment.entry.edit',
   'assessment.entry.submit',
   'assessment.entry.withdraw',
+  'assessment.entry.abandon',
   'assessment.entry.proxy',
   'assessment.entry.record',
   'assessment.entry.appeal',

@@ -605,6 +605,15 @@ const i18n = definePluginMessages({
       defaultMessage:
         'A review decision has already been recorded, so the entry cannot be withdrawn.',
     },
+    refuseReviewUnderWay: {
+      id: 'assessment/entry/refuse-review-under-way',
+      defaultMessage:
+        'Review of this entry has already begun; it can no longer be withdrawn for editing. You may abandon it instead.',
+    },
+    refuseAppealNotWithdrawable: {
+      id: 'assessment/entry/refuse-appeal-not-withdrawable',
+      defaultMessage: 'An appeal in progress cannot be withdrawn.',
+    },
     refuseMaxEntries: {
       id: 'assessment/entry/refuse-max-entries',
       defaultMessage: 'The submission limit for this item has been reached.',
@@ -1724,16 +1733,31 @@ const i18n = definePluginMessages({
     },
     reviewGoneBody: {
       id: 'assessment/review/gone-body',
-      defaultMessage:
-        'It was settled by another reviewer, withdrawn, or re-routed. Nothing you typed has been submitted.',
+      defaultMessage: 'It was settled by another reviewer, withdrawn, or re-routed.',
+    },
+    reviewGoneWithdrawn: {
+      id: 'assessment/review/gone-withdrawn',
+      defaultMessage: 'The participant has withdrawn this entry; the review round is closed.',
+    },
+    reviewGoneRerouted: {
+      id: 'assessment/review/gone-rerouted',
+      defaultMessage: 'The review route was changed; a new round has taken this one over.',
+    },
+    reviewGoneDecided: {
+      id: 'assessment/review/gone-decided',
+      defaultMessage: 'Another reviewer has already handled this entry.',
+    },
+    reviewGoneKept: {
+      id: 'assessment/review/gone-kept',
+      defaultMessage: 'Nothing you typed has been submitted.',
     },
     reviewGoneNext: {
       id: 'assessment/review/gone-next',
-      defaultMessage: 'Next task',
+      defaultMessage: 'Continue with the next task',
     },
-    reviewGoneBack: {
-      id: 'assessment/review/gone-back',
-      defaultMessage: 'Back to queue',
+    reviewGoneFinish: {
+      id: 'assessment/review/gone-finish',
+      defaultMessage: 'Finish reviewing',
     },
     reviewGoneUndone: {
       id: 'assessment/review/gone-undone',
@@ -3571,6 +3595,10 @@ const i18n = definePluginMessages({
       id: 'assessment/permission-hint/entry-withdraw',
       defaultMessage: 'Withdraw submitted entries before the first reviewer takes action.',
     },
+    'permission-hint.assessment.entry.abandon': {
+      id: 'assessment/permission-hint/entry-abandon',
+      defaultMessage: 'Give up an entry for good, approved entries included; history is kept.',
+    },
     'permission-hint.assessment.entry.proxy': {
       id: 'assessment/permission-hint/entry-proxy',
       defaultMessage:
@@ -3629,6 +3657,10 @@ const i18n = definePluginMessages({
     'permission.assessment.entry.withdraw': {
       id: 'assessment/permission/entry-withdraw',
       defaultMessage: 'Withdraw submissions',
+    },
+    'permission.assessment.entry.abandon': {
+      id: 'assessment/permission/entry-abandon',
+      defaultMessage: 'Abandon entries',
     },
     'permission.assessment.entry.proxy': {
       id: 'assessment/permission/entry-proxy',

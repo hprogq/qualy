@@ -197,6 +197,16 @@ export function EntryDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [awaiting, item])
 
+  // The wake-up path: the page under this dialog re-reads the questions on
+  // its own, so a changed requirement arrives here as a new prop long
+  // before any save is pressed. Mark - never adopt: the form holds still
+  // until its reader asks, exactly as when the server says 409.
+  const askedRevision = asked.currentRevision?.id
+  const liveRevision = item.currentRevision?.id
+  useEffect(() => {
+    if (!stale && !awaiting && liveRevision !== askedRevision) setStale(true)
+  }, [stale, awaiting, liveRevision, askedRevision])
+
   // the notice is worth nothing unmet: the body may be scrolled anywhere
   // when the press comes back refused
   useEffect(() => {
