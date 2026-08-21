@@ -77,7 +77,7 @@ export default function BatchOverviewPage() {
             <MyDesk batchId={batchId} overview={overview} />
           </div>
 
-          <aside className="sticky top-6 hidden self-start lg:block">
+          <aside className="hidden lg:block">
             <h2 className="pb-3 text-sm font-semibold">{format(m.flowTitle)}</h2>
             {plan.isPending ? (
               <div className="flex flex-col gap-3">
