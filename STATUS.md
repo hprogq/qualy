@@ -7113,3 +7113,32 @@ patch 的形状,上游换实现后即便修好也会红。改为断言 `getCreat
 generate**(这条最关键——7.1.13 的 introspection 新增了 include/fillFactor/排序选项/type 等
 字段,任何一个渗进 diff 都会凭空产出漂移迁移,实测全部实体、check 与 gist 索引完整往返);
 生产 smoke 探针、壳、manifest、哈希资源、SIGTERM 退出 0 全过。
+
+### 对抗审查两轮:27 条主张,26 条存活(2026-08-22)
+
+距上一次成体系的多 agent 对抗审查(f5a2ef27,2026-08-08)已 357 个提交,综测域整体、storage
+基座、rbac 重裁、实时通道、/me 桌面几乎全是新代码,2026-08-19 之后那批从未被系统审过。
+两轮工作流各 5 个敌意视角,每条主张交由两名独立反驳者(机制反驳 + 可达性/先例反驳)交叉验证,
+双票不反驳记确证。共 64 个 agent、2397 次工具调用。
+
+第一轮(服务端与领域核心)13 条全部存活:9 确证 4 存疑。第二轮(平台面与门禁)14 条存活 13、
+反驳 1(「访问日志对客户端中断分支不可达」被证伪)。反驳率之低本身可疑,故最重的几条我逐条
+对着源码复核过。
+
+**本轮先修的一条(critical,安全)**:附件内容门 `GET /assessment/attachments/{id}/content`
+回显上传方声明的 MIME + `Content-Disposition: inline`,全仓库无 nosniff 无 CSP,构成主站
+origin 上的存储型 XSS——参评人上传名为 proof.pdf、declaredMime 为 text/html 的 HTML
+(字段 accept 只按扩展名判,`entry/service.ts` acceptable()),审核员打开即以其会话同源执行。
+这是 `a43492e0` 引入的回归,直接违反 assessment-design §19 的冻结裁决(「下载一律 attachment +
+nosniff,不信任上传方 MIME」),而三处客户端注释至今仍在陈述旧契约。
+修法按裁决原文:新增 `src/attachment/served-type.ts`,只回显惰性类型白名单
+(jpeg/png/webp/gif/avif/pdf,**不含 svg**),其余一律 application/octet-stream;disposition
+回到 attachment;补 `x-content-type-options: nosniff`。两道闸互相独立。客户端无需改动——
+图片走 `<img>`(子资源加载忽略 disposition),文档预览本就自己 fetch 字节、自己给 blob 定类型。
+顺带关掉了「declaredMime 含 CR/LF 使该附件永久不可下载」那条(白名单外不进 header)。
+新增 tests/served-type.test.ts 四例(惰性类型原样、主动内容各种拼法一律拒、CRLF 拒、大小写与
+空白按 HTTP 语义),红验:改成原样回显,后两例立刻转红。
+
+验收:typecheck 零错;`pnpm test` 715 passed | 17 skipped;prettier 通过。
+
+其余 24 条的处置见下一轮。

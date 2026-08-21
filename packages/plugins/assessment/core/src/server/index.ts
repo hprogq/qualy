@@ -51,6 +51,7 @@ import { makeScoringMethods, type ScoringMethods } from '../scoring/service.ts'
 import { participantRowByUser } from '../scoring/db.ts'
 import { projectEntrySummary } from '../entry/summary.ts'
 import { makeAttachmentMethods, type AttachmentMethods } from '../attachment/service.ts'
+import { servedTypeOf } from '../attachment/served-type.ts'
 import { Storage } from '@qualy/plugin-storage/server'
 import {
   AttachmentUnavailable,
@@ -4739,8 +4740,12 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         }
         // the response wears the file's own name: the url ends in /content,
         // and without a disposition every save would be called "content"
-        // with no extension. Inline, so clicking a name still previews;
-        // a same-origin anchor with `download` saves under this name.
+        // with no extension. A download, never a document, and never in
+        // the uploader's own words about the type (§19) - a cited file is
+        // written by whoever is being reviewed. Previewing does not need
+        // the door to relax: a picture draws through `<img>`, which ignores
+        // the disposition, and the document viewer fetches the bytes and
+        // types the blob itself.
         const filename = opened.meta.filename
         const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replaceAll('"', "'")
         // RFC 5987: percent-encode everything outside attr-char, including
@@ -4752,10 +4757,11 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         return HttpServerResponse.stream(
           Stream.fromAsyncIterable(opened.target.body, (error) => error),
           {
-            contentType: opened.meta.declaredMime,
+            contentType: servedTypeOf(opened.meta.declaredMime),
             contentLength: Number(opened.meta.size),
             headers: {
-              'content-disposition': `inline; filename="${fallback}"; filename*=UTF-8''${starred}`,
+              'content-disposition': `attachment; filename="${fallback}"; filename*=UTF-8''${starred}`,
+              'x-content-type-options': 'nosniff',
             },
           },
         )
