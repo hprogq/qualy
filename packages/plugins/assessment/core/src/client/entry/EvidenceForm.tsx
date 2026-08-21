@@ -5,14 +5,21 @@ import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Field } from '@qualy/ui/admin'
-import { Dropzone, FileTile, type Accept } from '@qualy/ui/dropzone'
+import { Dropzone, FileTile, type Accept, type FileRejection } from '@qualy/ui/dropzone'
 import { Input } from '@qualy/ui/input'
 import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
 import { Spinner } from '@qualy/ui/spinner'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { uploadFile, type UploadDoors, type UploadedFile } from './upload.ts'
-import { attachmentContentUrl, lastDay, LOOKS_LIKE_A_PHOTOGRAPH, sizeLabel } from './model.ts'
+import {
+  attachmentContentUrl,
+  fileKindLabels,
+  lastDay,
+  LOOKS_LIKE_A_PHOTOGRAPH,
+  sizeLabel,
+  sizeLimitLabel,
+} from './model.ts'
 
 // The form an administrator composed, drawn field by field. The page hands
 // in the item's form configuration and gets back exactly the payload shape
@@ -20,6 +27,8 @@ import { attachmentContentUrl, lastDay, LOOKS_LIKE_A_PHOTOGRAPH, sizeLabel } fro
 // ids of files this person just put in or already cited.
 
 export interface EvidenceFieldSpec {
+  /** what this field is called across versions of the form; older forms have none */
+  readonly id?: string
   readonly key: string
   readonly type: 'text' | 'date' | 'attachment'
   readonly label: string
@@ -28,10 +37,19 @@ export interface EvidenceFieldSpec {
   readonly min?: string
   readonly max?: string
   readonly maxCount?: number
+  /** the largest one file may be; the round's own rule, in bytes */
+  readonly maxFileBytes?: number
   readonly accept?: readonly string[]
 }
 
 export type EvidencePayload = Record<string, string | readonly string[]>
+
+/** why a file was not added, said about that file */
+const REFUSALS = {
+  'too-large': m.entryFileRefusedSize,
+  type: m.entryFileRefusedKind,
+  'too-many': m.entryFileRefusedRoom,
+} as const
 
 /** what the form shows for attachment ids it did not upload itself */
 export interface KnownFiles {
@@ -81,6 +99,12 @@ export function EvidenceForm({
     null,
   )
   const [uploadError, setUploadError] = useState<string | null>(null)
+  // what the last drop would not take, per field: the file by name and the
+  // one reason, kept until the next drop replaces it
+  const [turnedAway, setTurnedAway] = useState<{
+    field: string
+    files: readonly { name: string; reason: FileRejection['reason'] }[]
+  } | null>(null)
 
   const setField = (key: string, next: string | readonly string[]) =>
     onChange({ ...value, [key]: next })
@@ -141,6 +165,7 @@ export function EvidenceForm({
         }
 
         const cited = (value[field.key] as readonly string[] | undefined) ?? []
+        const kinds = fileKindLabels(field.accept)
         const most = field.maxCount ?? 1
         const room = most - cited.length
         const busy = uploading?.field === field.key
@@ -152,7 +177,24 @@ export function EvidenceForm({
          * at once is six ways for the round's storage to say no.
          */
         const take = async (files: readonly File[]) => {
-          const taking = files.slice(0, room)
+          // The rules again, on the way in. The area applies them too, but
+          // the area is a widget: this is where an upload begins, and what
+          // begins here must never be a file the round has already said it
+          // will not keep - the bytes would go up in full and the refusal
+          // would arrive at save time, a form's worth of work later.
+          const tooBig =
+            field.maxFileBytes === undefined
+              ? []
+              : files.filter((file) => file.size > field.maxFileBytes!)
+          const fits = files.filter((file) => !tooBig.includes(file))
+          const taking = fits.slice(0, room)
+          const noRoom = fits.slice(room)
+          const refused = [
+            ...tooBig.map((file) => ({ name: file.name, reason: 'too-large' as const })),
+            ...noRoom.map((file) => ({ name: file.name, reason: 'too-many' as const })),
+          ]
+          if (refused.length > 0) setTurnedAway({ field: field.key, files: refused })
+          else setTurnedAway(null)
           if (taking.length === 0) return
           setUploadError(null)
           setUploading({ field: field.key, names: taking.map((file) => file.name) })
@@ -211,18 +253,63 @@ export function EvidenceForm({
                     <Dropzone
                       accept={acceptOf(field.accept)}
                       maxFiles={room}
+                      maxSize={field.maxFileBytes}
                       multiple={room > 1}
                       disabled={busy}
                       onFiles={(files) => void take(files)}
+                      onRejected={(rejections) =>
+                        setTurnedAway({
+                          field: field.key,
+                          files: rejections.map((one) => ({
+                            name: one.file.name,
+                            reason: one.reason,
+                          })),
+                        })
+                      }
                     >
                       <span className="flex items-center gap-2">
                         <UploadIcon aria-hidden className="size-4" />
                         {format(m.entryFileDrop)}
                       </span>
-                      {most > 1 && (
-                        <span className="text-xs">{format(m.entryFileRoom, { count: room })}</span>
-                      )}
+                      {/* what the round will take, before anybody picks a
+                          file: the rules are the administrator's and they
+                          are cheap to say, while finding them out by being
+                          refused costs the reader a round trip each time */}
+                      <span className="flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-xs">
+                        {kinds !== null && <span>{format(m.entryFileKinds, { kinds })}</span>}
+                        {field.maxFileBytes !== undefined && (
+                          <span>
+                            {format(m.entryFileMaxSize, {
+                              size: sizeLimitLabel(field.maxFileBytes),
+                            })}
+                          </span>
+                        )}
+                        {most > 1 && <span>{format(m.entryFileRoom, { count: room })}</span>}
+                      </span>
                     </Dropzone>
+                  )}
+
+                  {/* named, one line each: "some files were not added" leaves
+                      the reader counting rows to work out which */}
+                  {turnedAway?.field === field.key && turnedAway.files.length > 0 && (
+                    <ul data-testid="files-turned-away" className="flex flex-col gap-0.5">
+                      {turnedAway.files.map((one, index) => (
+                        <li
+                          key={`${one.name}:${index}`}
+                          data-turned-away={one.reason}
+                          className="text-sm text-destructive"
+                        >
+                          {format(REFUSALS[one.reason], {
+                            name: one.name,
+                            size:
+                              field.maxFileBytes === undefined
+                                ? ''
+                                : sizeLimitLabel(field.maxFileBytes),
+                            count: most,
+                          })}
+                        </li>
+                      ))}
+                    </ul>
                   )}
 
                   {uploadError !== null && !busy && (

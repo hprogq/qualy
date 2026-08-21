@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
@@ -297,6 +297,60 @@ describe('filing a claim', () => {
 
     await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
     await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+  })
+
+  it('turns an oversized file away at the picker instead of at the save', async () => {
+    const prepared = vi.fn(() => Effect.succeed({}))
+    // the same question, with a file field the administrator capped
+    const withFiles = item({
+      currentRevision: {
+        ...item().currentRevision!,
+        formConfig: {
+          fields: [
+            { id: 'summary', key: 'summary', type: 'text', label: '事项说明', required: true },
+            {
+              id: 'proof',
+              key: 'proof',
+              type: 'attachment',
+              label: '证明材料',
+              maxCount: 2,
+              maxFileBytes: 1024,
+              accept: ['application/pdf'],
+            },
+          ],
+        },
+      },
+    })
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [withFiles], capabilities: { canManage: false } }),
+        prepareAttachmentUpload: prepared as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await page.getByTestId('file-claim').first().click()
+
+    // two kilobytes into a field that keeps one: the round has already said
+    // no, so nothing is asked of the server and nothing joins the answer
+    const inside = '[data-slot="dialog-content"] '
+    await expect.poll(() => document.querySelectorAll(`${inside}input[type="file"]`).length).toBe(1)
+    const tooBig = new File(['x'.repeat(2048)], 'certificate.pdf', { type: 'application/pdf' })
+    await userEvent.upload(
+      document.querySelector<HTMLInputElement>(`${inside}input[type="file"]`)!,
+      tooBig,
+    )
+
+    await expect
+      .poll(() =>
+        [...document.querySelectorAll(`${inside}[data-turned-away]`)].map((one) =>
+          one.getAttribute('data-turned-away'),
+        ),
+      )
+      .toEqual(['too-large'])
+    expect(prepared).not.toHaveBeenCalled()
   })
 
   it('shows the whole account, with the reviewer’s advice read-only', async () => {

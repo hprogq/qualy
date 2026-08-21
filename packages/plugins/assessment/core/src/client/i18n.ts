@@ -3039,6 +3039,29 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/file-room',
       defaultMessage: '{count, plural, one {# more file allowed} other {# more files allowed}}',
     },
+    // what the field will take, said before anybody picks a file, and what
+    // it would not take, said about the file by name
+    entryFileKinds: {
+      id: 'assessment/entry/file-kinds',
+      defaultMessage: '{kinds} accepted',
+    },
+    entryFileMaxSize: {
+      id: 'assessment/entry/file-max-size',
+      defaultMessage: 'Up to {size} each',
+    },
+    entryFileRefusedSize: {
+      id: 'assessment/entry/file-refused-size',
+      defaultMessage: '{name} was not added: larger than {size}',
+    },
+    entryFileRefusedKind: {
+      id: 'assessment/entry/file-refused-kind',
+      defaultMessage: '{name} was not added: not an accepted file type',
+    },
+    entryFileRefusedRoom: {
+      id: 'assessment/entry/file-refused-room',
+      defaultMessage:
+        '{name} was not added: {count, plural, one {# file allowed} other {# files allowed}}',
+    },
     entryDateWithin: {
       id: 'assessment/entry/date-within',
       defaultMessage: 'Date must be between {start} and {end}',

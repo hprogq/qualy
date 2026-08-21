@@ -1,27 +1,57 @@
 import type { ReactNode } from 'react'
-import { useDropzone, type Accept } from 'react-dropzone'
+import { useDropzone, type Accept, type FileRejection as DropRejection } from 'react-dropzone'
 import { cn } from '../lib/cn.ts'
 
 // Somewhere to drop files, and a row for each one that landed.
 //
 // Text-free like the rest of this package: what the area invites and what a
 // row says about its file both arrive as nodes, so the primitive never needs
-// a locale.
+// a locale. What it would not take leaves the same way - as a file and a
+// reason code, never as a sentence, because the sentence belongs to whoever
+// knows what the field is called.
 
 export type { Accept }
 
+/** one file the area turned away, and the one word for why */
+export interface FileRejection {
+  readonly file: File
+  readonly reason: 'too-large' | 'type' | 'too-many'
+}
+
+/**
+ * Whatever the underlying picker said, in this component's three words.
+ *
+ * Only these three are reachable: a lower bound is not offered, so a file is
+ * turned away for its size, its kind, or for arriving after the area was
+ * full. An unknown code is reported as a kind refusal rather than dropped -
+ * a file that vanishes without a word is the failure this channel exists to
+ * end.
+ */
+const reasonOf = (rejection: DropRejection): FileRejection['reason'] => {
+  const codes = rejection.errors.map((error) => error.code)
+  if (codes.includes('file-too-large')) return 'too-large'
+  if (codes.includes('too-many-files')) return 'too-many'
+  return 'type'
+}
+
 export function Dropzone({
   onFiles,
+  onRejected,
   accept,
   maxFiles,
+  maxSize,
   multiple = true,
   disabled = false,
   className,
   children,
 }: {
   onFiles: (files: readonly File[]) => void
+  /** the ones it would not take, so the caller can say so in its own words */
+  onRejected?: ((rejections: readonly FileRejection[]) => void) | undefined
   accept?: Accept | undefined
   maxFiles?: number | undefined
+  /** the largest single file the area will hand over, in bytes */
+  maxSize?: number | undefined
   multiple?: boolean
   disabled?: boolean
   className?: string
@@ -31,11 +61,15 @@ export function Dropzone({
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept,
     maxFiles,
+    maxSize,
     multiple,
     disabled,
     noKeyboard: false,
-    onDrop: (accepted: File[]) => {
+    onDrop: (accepted: File[], rejected: DropRejection[]) => {
       if (accepted.length > 0) onFiles(accepted)
+      if (rejected.length > 0) {
+        onRejected?.(rejected.map((one) => ({ file: one.file, reason: reasonOf(one) })))
+      }
     },
   })
 

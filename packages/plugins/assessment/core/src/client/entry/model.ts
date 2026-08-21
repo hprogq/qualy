@@ -150,6 +150,59 @@ export const sizeLabel = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * A limit, said the way a rule is said rather than the way a measurement is.
+ *
+ * `sizeLabel` reports what a file weighs, to a decimal; a ceiling of ten
+ * megabytes is "10 MB", not "10.0 MB" - the decimal reads as precision about
+ * a number that was chosen round.
+ */
+export const sizeLimitLabel = (bytes: number): string => {
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1) return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`
+  const kb = bytes / 1024
+  return `${Number.isInteger(kb) ? kb : Math.round(kb)} KB`
+}
+
+/**
+ * What an administrator's accept list is called where people can read it.
+ *
+ * The list is written for a file picker - mime types, or bare extensions -
+ * and printing it as it stands puts
+ * `application/vnd.openxmlformats-officedocument.wordprocessingml.document`
+ * on screen. Known kinds get their everyday name; anything else falls back
+ * to its own subtype, which is at least short.
+ */
+const KIND_NAMES: Record<string, string> = {
+  'image/jpeg': 'JPG',
+  'image/png': 'PNG',
+  'image/webp': 'WEBP',
+  'image/gif': 'GIF',
+  'image/avif': 'AVIF',
+  'image/heic': 'HEIC',
+  'application/pdf': 'PDF',
+  'text/plain': 'TXT',
+  'application/zip': 'ZIP',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'application/vnd.ms-powerpoint': 'PPT',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+}
+
+export const fileKindLabels = (accept: readonly string[] | undefined): string | null => {
+  if (accept === undefined || accept.length === 0) return null
+  const names = accept.map((one) => {
+    if (one.startsWith('.')) return one.slice(1).toUpperCase()
+    const known = KIND_NAMES[one.toLowerCase()]
+    if (known !== undefined) return known
+    const subtype = one.split('/').at(-1) ?? one
+    return (subtype.split('.').at(-1) ?? subtype).toUpperCase()
+  })
+  return [...new Set(names)].join(' / ')
+}
+
 /** the file types this product will draw rather than only offer to download */
 export const LOOKS_LIKE_A_PHOTOGRAPH: ReadonlySet<string> = new Set([
   'image/jpeg',
