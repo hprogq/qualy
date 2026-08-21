@@ -12,12 +12,14 @@ import {
   GripVerticalIcon,
   EllipsisVerticalIcon,
   PlusIcon,
+  TagIcon,
   XIcon,
 } from 'lucide-react'
 import { Feedback, Field, PageHeader } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { cn } from '@qualy/ui/cn'
 import { Button } from '@qualy/ui/button'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Input } from '@qualy/ui/input'
@@ -28,7 +30,7 @@ import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentApi } from '../api.ts'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
-import { summaryFieldIdsOf } from '../../entry/summary.ts'
+import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../../entry/summary.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
 import { Choice } from './Choice.tsx'
@@ -41,10 +43,36 @@ import type { ItemOptions } from './options.ts'
 import type { Placement } from './paper.ts'
 
 /**
- * Which fields identify a claim, in order (§32.74): pick up to three, the
- * first leads. The rows drag to reorder with the same handles the field
- * list uses; order is the whole of the model, so a grip and a remove are
- * all the controls there are.
+ * The row's own picture, carried under the pointer.
+ *
+ * The editor animates in a transformed panel, and a drag image taken from
+ * inside one is snapshotted off that whole layer - the browser hands back
+ * a picture of the screen instead of the row. A copy parked on the body
+ * has no transformed ancestor, so what lifts is the row and nothing else.
+ */
+const liftGhost = (event: React.DragEvent<HTMLElement>) => {
+  const row = event.currentTarget
+  const box = row.getBoundingClientRect()
+  const ghost = row.cloneNode(true) as HTMLElement
+  ghost.style.position = 'fixed'
+  ghost.style.top = '-1000px'
+  ghost.style.left = '-1000px'
+  ghost.style.width = `${String(box.width)}px`
+  ghost.style.pointerEvents = 'none'
+  ghost.classList.add('rounded-lg', 'border', 'bg-background', 'shadow-md')
+  document.body.append(ghost)
+  event.dataTransfer.setDragImage(ghost, event.clientX - box.left, box.height / 2)
+  // the browser has taken its picture by the next frame
+  requestAnimationFrame(() => ghost.remove())
+}
+
+/**
+ * Which fields identify a claim, in order (§32.74): up to three, the
+ * first is the claim's title. The chosen rows read as the line a list
+ * will show and drag to reorder with the field list's own handles; every
+ * other field stands beside them as a key that adds it. Attachments are
+ * absent because a file count names no claim, and the cap is stated
+ * rather than only enforced.
  */
 function SummaryPicker({
   fields,
@@ -57,14 +85,15 @@ function SummaryPicker({
 }) {
   const { format } = useI18n()
   const [drop, setDrop] = useState<{ id: string; edge: 'before' | 'after' } | null>(null)
-  const eligible = fields.filter((field) => field.type !== 'attachment')
+  /** the row whose handle is under the pointer, and so the row that may drag */
+  const [held, setHeld] = useState<string | null>(null)
+  const eligible = fields.filter((field) => field.type !== 'attachment' && field.id !== '')
   // a field deleted from the form quietly leaves the election too
   const chosen = elected.filter((id) => eligible.some((field) => field.id === id))
   const remaining = eligible.filter((field) => !chosen.includes(field.id))
-  const nameOf = (id: string) => {
-    const field = fields.find((one) => one.id === id)
-    return field === undefined ? id : field.label.trim() !== '' ? field.label : field.key
-  }
+  const full = chosen.length >= SUMMARY_FIELDS_MOST
+  const nameOf = (field: FieldDraft) =>
+    field.label.trim() !== '' ? field.label : format(m.itemsFieldUnnamed)
   const edgeOf = (event: React.DragEvent) => {
     const box = event.currentTarget.getBoundingClientRect()
     return event.clientY < box.top + box.height / 2 ? ('before' as const) : ('after' as const)
@@ -77,18 +106,53 @@ function SummaryPicker({
     onChange(order)
   }
   return (
-    <div className="flex max-w-xl flex-col gap-2">
+    <div className="flex max-w-2xl min-w-0 flex-col gap-2.5">
       {chosen.length > 0 && (
-        <ul className="flex flex-col overflow-hidden rounded-lg border">
+        <div className="flex items-baseline gap-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            {format(m.itemsSummaryChosen)}
+          </p>
+          <span className="flex-1" />
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {format(m.itemsSummaryCount, { count: chosen.length, most: SUMMARY_FIELDS_MOST })}
+          </p>
+        </div>
+      )}
+
+      {chosen.length === 0 ? (
+        <Empty className="rounded-[10px] border border-dashed p-6">
+          <EmptyHeader className="gap-1.5">
+            <EmptyMedia variant="icon" className="mb-1 size-8 rounded-lg [&_svg]:size-4">
+              <TagIcon />
+            </EmptyMedia>
+            <EmptyTitle className="text-sm font-medium">
+              {format(m.itemsSummaryEmptyTitle)}
+            </EmptyTitle>
+            <EmptyDescription className="text-xs leading-relaxed">
+              {format(m.itemsSummaryFallback)}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <ul className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border">
           {chosen.map((id, index) => {
+            const field = eligible.find((one) => one.id === id)!
             const marked = drop?.id === id ? drop.edge : null
             return (
               <li
                 key={id}
-                draggable
+                // only the handle starts a drag, and the ghost is pinned to
+                // this row: left to the browser the snapshot took in
+                // whatever box it found around the flex child
+                draggable={held === id}
                 onDragStart={(event) => {
                   event.dataTransfer.setData('qualy/summary-field', id)
                   event.dataTransfer.effectAllowed = 'move'
+                  liftGhost(event)
+                }}
+                onDragEnd={() => {
+                  setHeld(null)
+                  setDrop(null)
                 }}
                 onDragOver={(event) => {
                   if (!event.dataTransfer.types.includes('qualy/summary-field')) return
@@ -103,24 +167,32 @@ function SummaryPicker({
                   if (dragged !== '') move(dragged, id, edgeOf(event))
                 }}
                 className={cn(
-                  'flex items-center gap-2 border-b bg-background px-2.5 py-1.5 last:border-b-0',
+                  'flex min-w-0 items-center gap-2.5 border-b bg-background py-1.5 pr-2 pl-1.5 select-none last:border-b-0',
                   marked === 'before' && 'shadow-[inset_0_2px_0_0_var(--primary)]',
                   marked === 'after' && 'shadow-[inset_0_-2px_0_0_var(--primary)]',
                 )}
               >
-                <GripVerticalIcon
+                <span
                   aria-hidden
-                  className="size-3.5 shrink-0 cursor-grab text-muted-foreground/60"
-                />
-                <span className="w-3 shrink-0 text-xs text-muted-foreground tabular-nums">
+                  onPointerDown={() => setHeld(id)}
+                  onPointerUp={() => setHeld(null)}
+                  className="shrink-0 cursor-grab px-0.5 py-1 text-muted-foreground/60 active:cursor-grabbing"
+                >
+                  <GripVerticalIcon className="size-3.5" />
+                </span>
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background tabular-nums">
                   {index + 1}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm">{nameOf(id)}</span>
+                <span className="min-w-0 truncate text-[13px] font-medium">{nameOf(field)}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {format(SUMMARY_TYPE_LABEL[field.type])}
+                </span>
                 {index === 0 && (
-                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] whitespace-nowrap text-muted-foreground">
                     {format(m.itemsSummaryLead)}
                   </span>
                 )}
+                <span className="flex-1" />
                 <Button
                   type="button"
                   variant="ghost"
@@ -136,23 +208,46 @@ function SummaryPicker({
           })}
         </ul>
       )}
-      {chosen.length < 3 && remaining.length > 0 && (
-        <Select value="" onValueChange={(id) => onChange([...chosen, id])}>
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder={format(m.itemsSummaryAdd)} />
-          </SelectTrigger>
-          <SelectContent>
-            {remaining.map((field) => (
-              <SelectItem key={field.id} value={field.id}>
-                {field.label.trim() !== '' ? field.label : field.key}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
+      {remaining.length > 0 && (
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="pr-0.5 text-xs text-muted-foreground">
+            {format(m.itemsSummaryOthers)}
+          </span>
+          {remaining.map((field) => (
+            <button
+              key={field.id}
+              type="button"
+              disabled={full}
+              onClick={() => onChange([...chosen, field.id])}
+              className={cn(
+                'inline-flex h-7 items-center gap-1 rounded-lg border border-dashed px-2.5 text-xs whitespace-nowrap',
+                full
+                  ? 'cursor-not-allowed text-muted-foreground/50'
+                  : 'cursor-pointer text-foreground transition-colors hover:border-solid hover:bg-accent/50',
+              )}
+            >
+              <PlusIcon aria-hidden className="size-3" />
+              {nameOf(field)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {full && (
+        <p className="text-[11px] text-muted-foreground">
+          {format(m.itemsSummaryCapFull, { most: SUMMARY_FIELDS_MOST })}
+        </p>
       )}
     </div>
   )
 }
+
+const SUMMARY_TYPE_LABEL = {
+  text: m.itemsTypeText,
+  date: m.itemsTypeDate,
+  attachment: m.itemsTypeAttachment,
+} as const
 
 const blankField = (key: string): FieldDraft => ({
   // minted together and both immutable: the key is where the answer sits,
@@ -1041,19 +1136,21 @@ export function ItemConfigEditor({
                   setOpenField(key)
                 }}
               />
-              {/* under the fields it elects from: there is no summary to
-                  speak of before there is a field to name a claim by */}
-              <div className="mt-5 border-t pt-4">
-                <Field label={format(m.itemsSummaryTitle)} hint={format(m.itemsSummaryHint)}>
-                  {() => (
-                    <SummaryPicker
-                      fields={draft.fields}
-                      elected={draft.summaryFieldIds}
-                      onChange={(next) => patch({ summaryFieldIds: next })}
-                    />
-                  )}
-                </Field>
-              </div>
+            </Section>
+          )}
+          {/* a section of its own, right after the fields it elects from
+              and before the scoring: it names claims, which is neither a
+              form question nor an amount */}
+          {fielded && (
+            <Section
+              title={format(m.itemsSummaryTitle)}
+              hint={format(m.itemsSummaryHint, { most: SUMMARY_FIELDS_MOST })}
+            >
+              <SummaryPicker
+                fields={draft.fields}
+                elected={draft.summaryFieldIds}
+                onChange={(next) => patch({ summaryFieldIds: next })}
+              />
             </Section>
           )}
           <Section title={format(m.itemsTabScoring)} hint={format(m.itemsScoringHint)}>

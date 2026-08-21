@@ -2576,9 +2576,31 @@ const i18n = definePluginMessages({
     itemsSummaryTitle: { id: 'assessment/items/summary-title', defaultMessage: 'Claim summary' },
     itemsSummaryHint: {
       id: 'assessment/items/summary-hint',
-      defaultMessage: 'Pick up to 3 fields that identify one claim; the first leads.',
+      defaultMessage:
+        'Pick up to {most} fields that identify one claim; the first one is its title.',
     },
-    itemsSummaryAdd: { id: 'assessment/items/summary-add', defaultMessage: 'Add a field' },
+    itemsSummaryChosen: {
+      id: 'assessment/items/summary-chosen',
+      defaultMessage: 'Chosen fields, drag to reorder',
+    },
+    itemsSummaryEmptyTitle: {
+      id: 'assessment/items/summary-empty-title',
+      defaultMessage: 'No claim summary yet',
+    },
+    itemsSummaryCount: {
+      id: 'assessment/items/summary-count',
+      defaultMessage: '{count} / {most}',
+    },
+    itemsSummaryOthers: { id: 'assessment/items/summary-others', defaultMessage: 'Other fields' },
+    itemsSummaryFallback: {
+      id: 'assessment/items/summary-fallback',
+      defaultMessage:
+        "A claim summary tells claims apart in a list. Without one, the form's first fields are used.",
+    },
+    itemsSummaryCapFull: {
+      id: 'assessment/items/summary-cap-full',
+      defaultMessage: '{most} fields chosen. Remove one to choose another.',
+    },
     itemsSummaryLead: { id: 'assessment/items/summary-lead', defaultMessage: 'Leads' },
     itemsSummaryRemove: { id: 'assessment/items/summary-remove', defaultMessage: 'Remove' },
     itemsFieldDescription: {

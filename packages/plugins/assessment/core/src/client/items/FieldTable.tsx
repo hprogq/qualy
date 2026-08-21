@@ -40,6 +40,30 @@ export interface FieldDraft {
 
 // a module that exports anything but components cannot be hot-replaced, and
 // nothing outside this file needs it
+/**
+ * The row's own picture, carried under the pointer.
+ *
+ * The editor animates in a transformed panel, and a drag image taken from
+ * inside one is snapshotted off that whole layer - the browser hands back
+ * a picture of the screen instead of the row. A copy parked on the body
+ * has no transformed ancestor, so what lifts is the row and nothing else.
+ */
+const liftGhost = (event: React.DragEvent<HTMLElement>) => {
+  const row = event.currentTarget
+  const box = row.getBoundingClientRect()
+  const ghost = row.cloneNode(true) as HTMLElement
+  ghost.style.position = 'fixed'
+  ghost.style.top = '-1000px'
+  ghost.style.left = '-1000px'
+  ghost.style.width = `${String(box.width)}px`
+  ghost.style.pointerEvents = 'none'
+  ghost.classList.add('rounded-lg', 'border', 'bg-background', 'shadow-md')
+  document.body.append(ghost)
+  event.dataTransfer.setDragImage(ghost, event.clientX - box.left, box.height / 2)
+  // the browser has taken its picture by the next frame
+  requestAnimationFrame(() => ghost.remove())
+}
+
 const FIELD_TYPE_LABEL = {
   text: m.itemsTypeText,
   date: m.itemsTypeDate,
@@ -152,6 +176,7 @@ export function FieldList({
               onDragStart={(event) => {
                 event.dataTransfer.setData('qualy/field', field.key)
                 event.dataTransfer.effectAllowed = 'move'
+                liftGhost(event)
               }}
               onDragOver={(event) => {
                 if (!event.dataTransfer.types.includes('qualy/field')) return

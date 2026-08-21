@@ -7056,3 +7056,28 @@ pnpm test:browser 96 passed;prettier 全通过。
 选择器按 FieldTable 同一拖拽习语重写:原生 draggable + qualy/summary-field 载荷 + 上下沿
 高亮落点 + Grip 把手,行内序号、首行「主识别」小签、移除键,上移按钮退场;表单里被删除的
 字段自动退出当选集。typecheck 零错;catalogs 7、batch-admin 29 全绿;prettier 通过。
+
+### 申报摘要独立成节(2026-08-23,设计稿 7a)
+
+经 claude_design MCP 读取题目配置设计稿 §7a:摘要从填报字段区末尾的无名控件抽出为**独立配置
+节**,排在填报字段与计分之间,左标题右内容与其他节同形。内容按 7a 一比一:表头「已选字段,
+拖动换顺序」+ 右侧 N/3 计数;已选行为带边框列表——把手、深底圆形序号、字段名、类型词、首行
+「申报标题」标签、移除键,拖拽换序沿用字段表习语;一个未选时写明自动取法(按表单顺序取前几个
+填了内容的文本或日期字段);其余字段改为一排虚线加号块(取代原下拉),选满时置灰不可点;末行
+写明上限与文件字段不参与的原因。文案按项目风格重写,未动其他配置区逻辑。
+typecheck 零错;catalogs 7、pnpm test:browser 96 全绿;prettier 通过。
+
+### 影响面误报与拖拽鬼影(2026-08-22)
+
+用户实测:只改申报摘要,保存却弹「如何处理现有申报」。实查库中当前 revision 与请求 payload
+三段全等(canonical 比较),再往上追到 impact.ts 自带一份**裸 JSON.stringify** 的 sameJson——
+jsonb 取回的键是重排过的,浏览器发来的是书写序,于是每次保存 form/review 都被判成「变了」,
+只要有在审轮次就必弹对话框。改为与 service.ts 同款的键序无关 canonical 比较(数组顺序仍有
+意义:阶段序与字段序就是配置);新增 tests/item-impact.test.ts 三例(键序等价判同、真改动仍
+判变、字段互换仍判变),红验:换回裸 stringify 第一例转红。
+拖拽鬼影:题目编辑器挂在 Drill 动画容器内(带 transform),Chrome 从被变换的图层取快照,
+表现为「拖着整个视口」。摘要行与填报字段行统一改为自建鬼影——克隆该行挂到 document.body
+(脱离被变换的祖先)作为 drag image,下一帧移除;摘要行另加把手起拖(draggable 由按下把手
+控制),行内文字不再意外起拖。摘要区上限文案改用 {most} 占位,不再写死 3。
+门禁:typecheck 零错;pnpm test 711 passed | 17 skipped;pnpm test:browser 96 passed;
+catalogs 7;prettier 全通过。

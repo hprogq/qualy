@@ -65,7 +65,28 @@ export interface Incompatible {
   readonly status: 'in_review' | 'approved'
 }
 
-const sameJson = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+/**
+ * Whether two configurations say the same thing.
+ *
+ * jsonb hands objects back with their keys re-sorted, and a browser sends
+ * them in the order they were written, so a plain stringify called every
+ * save a change - and every save of a running question opened a dialog
+ * about work it would not have touched. Arrays keep their order, which is
+ * meaning here: stage order and field order are the configuration.
+ */
+const canonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+const sameJson = (a: unknown, b: unknown) => canonical(a ?? null) === canonical(b ?? null)
 
 /**
  * The state the report was counted from, as one word.
