@@ -1278,6 +1278,30 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     to: 'approved',
                   })
                   yield* bumpParticipantAttention(tenantId, row.entryId)
+                } else if (isRouteEnd(policy, here)) {
+                  // The end of the ladder owns the final no, and a sitting
+                  // held there has nowhere to hand a split to: the split is
+                  // the refusal. A panel is forbidden on the route's last
+                  // step, but that is checked by POSITION while the round
+                  // walks by RESOLUTION - a later step whose selector finds
+                  // nobody for this participant is stepped over, which can
+                  // leave this sitting as the last one. Climbing from here
+                  // refuses the whole transaction, which threw the deciding
+                  // vote away and left the round unable to ever conclude.
+                  const won = yield* completeInstance({
+                    tenantId,
+                    instanceId,
+                    outcome: 'rejected',
+                  })
+                  if (!won) return yield* new ReviewConflict()
+                  yield* sayFrom('rejected', null)
+                  yield* setEntryState({
+                    tenantId,
+                    entryId: row.entryId,
+                    from: ['in_review'],
+                    to: 'rejected',
+                  })
+                  yield* bumpParticipantAttention(tenantId, row.entryId)
                 } else {
                   // anything short of every voice saying yes climbs, the
                   // 0-for-all case included: the ladder's end owns the final

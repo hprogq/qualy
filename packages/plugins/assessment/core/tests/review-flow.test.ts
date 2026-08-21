@@ -1346,6 +1346,102 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
   })
 
+  // A sitting held at the end of the ladder. The grammar forbids a panel on
+  // the escalation route's last step because a split there would have
+  // nowhere to go - but it checks that by POSITION, while a round walks by
+  // RESOLUTION: a later step whose selector finds nobody for this
+  // participant is stepped over, and the sitting before it becomes the last
+  // one. The split has to settle there rather than take the vote down with it.
+  it('settles a split sitting that turns out to be the end of the ladder', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-split-end')
+          const assessment = yield* Assessment
+          // a type nobody in this tenant stands under, so a stage asking for
+          // it resolves to no node and the walk steps over it
+          const nowhere = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into org_types (tenant_id, code, name)
+              values (${f.t}, 'faculty', 'Faculty') returning id`),
+          ).id
+          const at = (id: string, type: string, quorum: unknown) => ({
+            id,
+            selector: { kind: 'roleAt', nodeTypeId: type, roleIds: [f.reviewRole] },
+            quorum,
+          })
+          const g = yield* runningBatch(f, {
+            profile: REVIEW_OPEN,
+            stages: [at('class', f.classType, { type: 'any' })],
+            escalation: [
+              at('panel', f.classType, { type: 'all' }),
+              // last by position, so the grammar allows the panel before it
+              at('faculty', nowhere, { type: 'any' }),
+            ],
+          })
+          // somebody at the panel step who has not judged this round: the
+          // reviewer who escalates is excluded from the rungs above
+          const colleague = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Colleague', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          const grant = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+              values (${f.t}, ${colleague}, ${f.reviewRole}, ${f.classA}, 'self') returning id`),
+          ).id
+          yield* accept(f.t, g.batch.id, colleague, grant)
+
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const round = sent.currentReviewInstanceId!
+          yield* assessment.decideReview(
+            f.t,
+            round,
+            { decision: 'escalate', comment: '拿不准，请上一级看' },
+            f.principal(f.reviewer),
+          )
+          const sitting = one<{ current_stage_id: string }>(
+            yield* runSql(sql`
+              select current_stage_id from review_instances where id = ${round}`),
+          ).current_stage_id
+          // the sitting says no, and there is no rung above it to say it to
+          const settled = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              round,
+              { decision: 'reject', comment: '仍不予认定' },
+              f.principal(colleague),
+            ),
+          )
+          const after = one<{ state: string; outcome: string | null; status: string }>(
+            yield* runSql(sql`
+              select ri.state, ri.outcome, e.status from review_instances ri
+              join entries e on e.id = ri.entry_id where ri.id = ${round}`),
+          )
+          return { sitting, settled, after }
+        }),
+      ),
+    )
+    // the escalation put the round on the panel, which the walk made the last
+    // rung because the one after it resolves to nobody
+    expect(result.sitting).toBe('panel')
+    expect(Exit.isSuccess(result.settled)).toBe(true)
+    // and the split is the refusal, rather than a vote thrown away
+    expect(result.after).toMatchObject({
+      state: 'completed',
+      outcome: 'rejected',
+      status: 'rejected',
+    })
+  })
+
   // Two judges at one step, deciding at the same moment. Whoever the batch
   // lock lets through first is answered; the other one is answering a step
   // the round has already left, and a word taken against a step its author

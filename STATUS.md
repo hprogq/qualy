@@ -7201,3 +7201,21 @@ UI 层的领域模型已经是「申诉当前这条 Entry 的当前结论」。�
 离开的环节关掉」。红验:把重读换回陈旧快照,**两个决定同时成功**,断言立刻转红。
 
 验收:typecheck 零错;`pnpm test` 717 passed | 17 skipped;prettier 通过。
+
+### 分歧的合议落在链末端时自己了结(2026-08-22,对抗审查 major)
+
+两处「末端」判定错位:校验器按**位置**禁止末环节用 `quorum: all`(`place.last = index === stages.length - 1`,
+item/policy.ts),引擎按**解析**判末端(`isRouteEnd` → `enterableFrom` 跳过对该参评人解析不到节点的
+环节)。于是一个位置上不是最后、解析后却是最后的环节可以是合议席位;分歧票走
+`climb(here.index + 1)` 找不到落点,`refuse(action, 'chain-ends-here')` **让整个事务回滚**——
+那一票没了,轮次留在原地,下一票再来一次同样回滚,**永远结不了**。
+
+修法在引擎:合议非全票且 `isRouteEnd(policy, here)` 时直接以 rejected 了结(阶梯的末端本就
+拥有最终的否),不再尝试攀爬。校验器不动——它看不见逐参评人的解析结果,这条只能由引擎判。
+
+新增测试 `settles a split sitting that turns out to be the end of the ladder`:升级路线为
+[合议(quorum all), 一个指向本租户内无人站位的组织类型的环节];该环节对参评人解析为空被跳过,
+合议成为实际末端,分歧票落地即 rejected(轮次 completed/rejected,申报 rejected)。
+红验:关掉该分支,那一票立刻变成失败退出、轮次卡在原地。
+
+验收:typecheck 零错;`pnpm test` 718 passed | 17 skipped;prettier 通过。
