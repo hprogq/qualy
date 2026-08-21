@@ -700,17 +700,12 @@ export function EscalateDialog({
                     >
                       {index + 1}
                     </span>
-                    <span className="flex min-w-0 flex-col">
-                      {/* the administrator's name for the step where one
-                          exists; the unit only as the fallback */}
-                      <span className="min-w-0 truncate text-sm">
-                        {stage.label ?? stage.nodeName ?? format(m.reviewStageSkipped)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {last
-                          ? format(m.reviewEscalateStageDecide)
-                          : format(m.reviewEscalateStageAdvise)}
-                      </span>
+                    {/* the administrator's name for the step where one
+                        exists; the unit only as the fallback. What each step
+                        may do is the same at every rung - any of them can
+                        settle it - so the chain says the names and stops */}
+                    <span className="min-w-0 truncate text-sm">
+                      {stage.label ?? stage.nodeName ?? format(m.reviewStageSkipped)}
                     </span>
                   </li>
                 )

@@ -607,8 +607,6 @@ export default {
   'assessment/review/escalate-comment-label': '需要进一步核实的内容',
   'assessment/review/escalate-comment-hint': '该说明仅供审核人员查看',
   'assessment/review/escalate-flow': '转入复核后的流程',
-  'assessment/review/escalate-stage-advise': '可通过认定，或转交下一环节',
-  'assessment/review/escalate-stage-decide': '给出最终结论',
   'assessment/review/escalate-foot': '提交后，该申报将移出你的待审核列表。',
   'assessment/settings/reasons-hint':
     '审核人退回申报时需选择主要事由，并填写具体说明。修改或删除事由仅影响后续审核，已有审核记录不会变化。',

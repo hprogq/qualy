@@ -424,6 +424,7 @@ describe('the escalation environment', () => {
     // the mode is worn, not explained: a band over the workbench, and the
     // route attribute the shell styles by
     await expect.element(page.getByTestId('escalation-light')).toBeVisible()
+    await expect.element(page.getByTestId('escalation-card')).toBeVisible()
     expect(document.querySelector('[data-review-route="escalation"]')).not.toBeNull()
 
     // the appellant's grounds are business evidence, and they are on screen

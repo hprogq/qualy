@@ -2421,14 +2421,6 @@ const i18n = definePluginMessages({
       id: 'assessment/review/escalate-flow',
       defaultMessage: 'Escalation workflow',
     },
-    reviewEscalateStageAdvise: {
-      id: 'assessment/review/escalate-stage-advise',
-      defaultMessage: 'May settle the claim, or hand it to the next step',
-    },
-    reviewEscalateStageDecide: {
-      id: 'assessment/review/escalate-stage-decide',
-      defaultMessage: 'Final decision',
-    },
     reviewEscalateFoot: {
       id: 'assessment/review/escalate-foot',
       defaultMessage: 'After submission, the entry will leave your review queue.',

@@ -995,21 +995,11 @@ function PersonStrip({
       </div>
       <span className="flex-1" />
       {review.chain.route === 'escalation' && (
-        // at every width: the mode must survive the narrowest header. An
-        // indicator light rather than a warning triangle - the ladder is a
-        // closer look, not a hazard - breathing only while the round is live
-        <Badge
-          variant="outline"
-          data-testid="escalation-light"
-          className="shrink-0 border-sky-500/30 bg-sky-500/10 text-xs text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-300"
-        >
-          <span
-            aria-hidden
-            className={cn(
-              'size-1.5 rounded-full bg-sky-500 dark:bg-sky-400',
-              review.state !== 'completed' && 'animate-pulse [animation-duration:2.8s]',
-            )}
-          />
+        // at every width: the mode must survive the narrowest header. In the
+        // theme's own ink rather than a borrowed hue - the workbench is
+        // greyscale but for the two verdict colours, and a third colour on
+        // it reads as something pasted on from another product
+        <Badge data-testid="escalation-light" className="shrink-0 text-xs">
           {format(m.reviewRouteEscalation)}
         </Badge>
       )}
@@ -1371,23 +1361,6 @@ const FlowColumn = memo(function FlowColumn({
         )
   return (
     <Pane as="section" part="flow" inner="gap-4 p-5">
-      {review.chain.route === 'escalation' && review.state !== 'completed' && (
-        <div className="flex items-start gap-3 rounded-xl bg-muted/60 p-4">
-          <InfoIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-sm font-medium">
-              {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
-            </p>
-            {/* the appellant's grounds are business evidence, not chrome:
-                shown in their own words wherever they exist */}
-            {appealed !== undefined && appealed.comment !== null ? (
-              <p className="text-sm leading-relaxed text-pretty">{appealed.comment}</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">{format(m.reviewEscBannerBody)}</p>
-            )}
-          </div>
-        </div>
-      )}
       <section className="flex flex-col gap-3">
         {/* Only beside the other columns. Stacked, the anchor strip already
             says which part this is and which round it is on, and a second
@@ -1413,6 +1386,31 @@ const FlowColumn = memo(function FlowColumn({
             {fine && <Kbd>H</Kbd>}
           </Button>
         </div>
+        {/* The notice the reviewer must not scroll past: under the flow
+            title, above the previous round's word. It is seen first because
+            it is the one panel here written in reversed ink, not because
+            anything about it glows or moves - in a greyscale workbench,
+            contrast is the loudest thing there is, and it is the only thing
+            that never looks borrowed. */}
+        {review.chain.route === 'escalation' && review.state !== 'completed' && (
+          <div
+            data-testid="escalation-card"
+            className="flex min-w-0 flex-col gap-1 rounded-xl bg-foreground px-4 py-3.5 text-background"
+          >
+            <p className="text-sm font-medium tracking-tight">
+              {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
+            </p>
+            {/* the appellant's grounds are business evidence, not chrome:
+                shown in their own words wherever they exist */}
+            {appealed !== undefined && appealed.comment !== null ? (
+              <p className="text-sm leading-relaxed text-pretty">{appealed.comment}</p>
+            ) : (
+              <p className="text-[13px] leading-relaxed text-background/70">
+                {format(m.reviewEscBannerBody)}
+              </p>
+            )}
+          </div>
+        )}
         {previous !== null && (
           <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5">
             {/* Wrap, never squeeze - and by the column's own width, not the
