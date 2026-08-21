@@ -154,7 +154,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     expect(result.racedUnread).toEqual([result.itemId])
     // the ask was cancelled, so nothing needs the owner's hand any more
     expect(result.summary.actions).toEqual([])
-    expect(result.summary.unreadItemCount).toBe(1)
+    expect(result.summary.unreadItemIds).toEqual([result.itemId])
     // newest first: cancel, ask, submit, create - and no raw event kinds
     expect(result.kinds).toEqual([
       'supplement-cancelled',
@@ -297,12 +297,17 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
 
     // the fixture's org-scope import sweeps the reviewer into the roster
     // too, so their participant branch exists and is simply empty
-    expect(result.before.participant).toEqual({ unreadItemCount: 0, actions: [] })
-    expect(result.before.reviewer).toEqual({ pendingCount: 1, answeredAskCount: 0 })
+    expect(result.before.participant).toEqual({ unreadItemIds: [], actions: [] })
+    expect(result.before.reviewer?.pendingCount).toBe(1)
+    expect(result.before.reviewer?.answeredAskCount).toBe(0)
+    // the queue's second line: the same one claim, under its score group
+    expect(result.before.reviewer?.queueGroups.reduce((sum, g) => sum + g.count, 0)).toBe(1)
+    expect(result.before.reviewer?.answeredAsks).toEqual([])
     expect(result.quiet.items).toEqual([])
     // a mid-chain approval is a handover in the reviewer's own story too
     expect(result.midway.items.map((one) => one.kind)).toEqual(['review-stage-approved'])
-    expect(result.after.reviewer).toEqual({ pendingCount: 0, answeredAskCount: 0 })
+    expect(result.after.reviewer?.pendingCount).toBe(0)
+    expect(result.after.reviewer?.queueGroups).toEqual([])
     const settled = result.story.items[0]!
     expect(result.story.items.map((one) => one.kind)).toEqual([
       'review-approved',

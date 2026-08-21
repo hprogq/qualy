@@ -43,7 +43,7 @@ import {
   reviewersAt,
   setInstanceState,
   stageNodesOf,
-  reviewerDeskCountsOf,
+  reviewerDeskOf,
   tenantsWithOpenRounds,
 } from '../review/db.ts'
 import { stageById } from '../review/chain.ts'
@@ -499,7 +499,7 @@ export type UserActivityKind =
 
 export interface MyOverview {
   readonly participant: {
-    readonly unreadItemCount: number
+    readonly unreadItemIds: readonly string[]
     readonly actions: readonly {
       kind: 'supplement' | 'revision'
       entryId: string
@@ -510,7 +510,12 @@ export interface MyOverview {
       summary: string | null
     }[]
   } | null
-  readonly reviewer: { readonly pendingCount: number; readonly answeredAskCount: number } | null
+  readonly reviewer: {
+    readonly pendingCount: number
+    readonly answeredAskCount: number
+    readonly queueGroups: readonly { name: string; count: number }[]
+    readonly answeredAsks: readonly { who: string | null; itemTitle: string }[]
+  } | null
 }
 
 export interface MyActivityPage {
@@ -2105,7 +2110,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               .getMyEntrySummary(tenantId, batchId, as)
               .pipe(Effect.catchTag('ASSESSMENT_PARTICIPANT_NOT_FOUND', (e) => Effect.die(e)))
       const reviewer = standing.review
-        ? yield* dieQuery(withDb(reviewerDeskCountsOf({ tenantId, batchId, userId: as.userId })))
+        ? yield* dieQuery(withDb(reviewerDeskOf({ tenantId, batchId, userId: as.userId })))
         : null
       return { participant, reviewer }
     }),

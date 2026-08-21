@@ -9,28 +9,28 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { Badge } from '@qualy/ui/badge'
-import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
-import { cn } from '@qualy/ui/cn'
 import { assessmentApi } from './api.ts'
 import { useBatchLive } from './live.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { BatchScreen } from './batch/BatchScreen.tsx'
 import { BatchFlow, BatchFlowStrip } from './batch/BatchFlow.tsx'
-import { PhaseContextBar } from './batch/PhaseContextBar.tsx'
 import { assessmentMessages as m } from './i18n.ts'
 
-// The batch's front page, with two time axes that must not blur into one
-// (§32.73): across the top, where the whole round stands; below it, what
-// this user should handle and what has lately happened around them. The
-// page is the user's desk on the batch, not the participant's - a reviewer
-// has a desk here too, and someone who is both reads one merged story.
+// The batch's front page as one desk (§32.73, laid out to design 2a/2b):
+// the page description says what stands on the desk, the body starts
+// straight at the work, and the stage plan keeps to the side - a column
+// beside the desk on a wide screen, a strip above it on a phone. The top
+// bar already names the current stage, so the page does not say it twice.
+
+type OverviewDto = ApiResult<typeof assessmentApi, 'assessment', 'getMyOverview'>
+type ActivityItem = ApiResult<typeof assessmentApi, 'assessment', 'listMyActivity'>['items'][number]
 
 export default function BatchOverviewPage() {
   const { batchId } = usePageRouteParams('batchId')
   const query = useApiQuery(assessmentApi)
+  const queryClient = useQueryClient()
   const { format } = useI18n()
 
   const plan = useQuery({
@@ -38,48 +38,62 @@ export default function BatchOverviewPage() {
     staleTime: 30_000,
   })
   const timeline = plan.data?.timeline ?? []
+  const overview = useQuery(query.assessment.getMyOverview.queryOptions({ params: { batchId } }))
+
+  useBatchLive(batchId, (kind) => {
+    if (
+      kind !== 'sync' &&
+      kind !== 'entries-changed' &&
+      kind !== 'result-changed' &&
+      kind !== 'review-inbox-changed' &&
+      kind !== 'review-instance-changed'
+    ) {
+      return
+    }
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.getMyOverview.key({ params: { batchId } }),
+    })
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.listMyActivity.key({ params: { batchId }, query: {} }),
+    })
+  })
 
   return (
     <BatchScreen title={format(m.tabOverview)} description={format(m.overviewHint)}>
       {() => (
-        <div className="flex flex-col gap-5">
-          {plan.isPending ? (
-            <Skeleton className="h-10 w-full" />
-          ) : (
-            <PhaseContextBar timeline={timeline} />
-          )}
-
-          {!plan.isPending && <BatchFlowStrip timeline={timeline} className="lg:hidden" />}
-
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
-            <div className="flex min-w-0 flex-col gap-6">
-              <MyDesk batchId={batchId} />
-            </div>
-            {/* it follows the page down rather than scrolling away, and keeps
-                its own scrollbar when the round has more stages than the
-                screen has height */}
-            <aside className="sticky top-6 hidden max-h-[calc(100dvh-9rem)] self-start overflow-y-auto lg:block">
-              <p className="pb-3 text-xs font-medium text-muted-foreground">
-                {format(m.flowTitle)}
-              </p>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17.25rem] lg:gap-12">
+          <div className="flex min-w-0 flex-col gap-8">
+            {/* the stage plan on a phone: the same strip, laid over the
+                desk rather than beside it */}
+            <section className="flex flex-col gap-2.5 lg:hidden">
+              <p className="text-xs font-medium text-muted-foreground">{format(m.flowTitle)}</p>
               {plan.isPending ? (
-                <div className="flex flex-col gap-3">
-                  <Skeleton className="h-5 w-full" />
-                  <Skeleton className="h-5 w-full" />
-                  <Skeleton className="h-5 w-full" />
-                </div>
+                <Skeleton className="h-16 w-full" />
               ) : (
-                <BatchFlow timeline={timeline} keepPast={1} />
+                <BatchFlowStrip timeline={timeline} />
               )}
-            </aside>
+            </section>
+
+            <MyDesk batchId={batchId} overview={overview} />
           </div>
+
+          <aside className="sticky top-6 hidden max-h-[calc(100dvh-9rem)] self-start overflow-y-auto lg:block">
+            <p className="pb-3 text-xs font-medium text-muted-foreground">{format(m.flowTitle)}</p>
+            {plan.isPending ? (
+              <div className="flex flex-col gap-3">
+                <Skeleton className="h-5 w-full" />
+                <Skeleton className="h-5 w-full" />
+                <Skeleton className="h-5 w-full" />
+              </div>
+            ) : (
+              <BatchFlow timeline={timeline} keepPast={1} />
+            )}
+          </aside>
         </div>
       )}
     </BatchScreen>
   )
 }
-
-type ActivityItem = ApiResult<typeof assessmentApi, 'assessment', 'listMyActivity'>['items'][number]
 
 const SAID: Record<'participant' | 'reviewer', Partial<Record<ActivityItem['kind'], unknown>>> = {
   participant: {
@@ -109,77 +123,46 @@ const SAID: Record<'participant' | 'reviewer', Partial<Record<ActivityItem['kind
   },
 }
 
-// the reader's own acts wear a hollow marker; what arrived from outside is
-// filled, and a settled verdict keeps a quiet trace of its color
-const OWN: Record<'participant' | 'reviewer', ReadonlySet<string>> = {
-  participant: new Set([
-    'entry-created',
-    'entry-revised',
-    'entry-submitted',
-    'entry-withdrawn',
-    'entry-abandoned',
-    'appeal-filed',
-    'supplement-submitted',
-  ]),
-  reviewer: new Set([
-    'review-approved',
-    'review-stage-approved',
-    'review-rejected',
-    'review-escalated',
-    'review-opinion-rejected',
-    'supplement-requested',
-    'supplement-cancelled',
-  ]),
-}
-
-const markOf = (row: ActivityItem): string => {
-  if (row.perspective === 'participant' && row.kind === 'review-approved') {
-    return 'bg-emerald-500/75'
-  }
-  if (row.perspective === 'participant' && row.kind === 'review-rejected') {
-    return 'bg-rose-500/75'
-  }
-  return OWN[row.perspective].has(row.kind)
-    ? 'border-[1.5px] border-muted-foreground/50 bg-background'
-    : 'bg-muted-foreground/75'
-}
-
 type Lane = 'all' | 'participant' | 'reviewer'
 
+interface TodoRow {
+  key: string
+  lane: 'participant' | 'reviewer'
+  action: string
+  count?: number
+  subject: string
+  detail: string | null
+  at: string | null
+  verb: string
+  go: () => void
+}
+
 /**
- * The user's half of the page: what needs their hand across every standing
- * they hold here, then one merged feed of what lately happened around
- * them. Full histories stay on the claim and the round; this is neither an
- * audit log nor a notification centre.
+ * The desk itself: what needs the reader's hand, grouped by the standing
+ * it speaks to, then one merged feed of what lately happened around them.
+ * Full histories stay on the claim and the round.
  */
-function MyDesk({ batchId }: { batchId: string }) {
+function MyDesk({
+  batchId,
+  overview,
+}: {
+  batchId: string
+  overview: {
+    data: OverviewDto | undefined
+    isPending: boolean
+    isError: boolean
+    error: unknown
+  }
+}) {
   const query = useApiQuery(assessmentApi)
   const api = useApi(assessmentApi)
   const run = useRunApi()
   const navigate = usePageNavigate()
-  const queryClient = useQueryClient()
   const { format, formatError, locale } = useI18n()
   const [lane, setLane] = useState<Lane>('all')
+  // the desk's list fragments join in the reader's own punctuation
+  const listJoin = locale.startsWith('zh') ? '，' : ', '
 
-  useBatchLive(batchId, (kind) => {
-    if (
-      kind !== 'sync' &&
-      kind !== 'entries-changed' &&
-      kind !== 'result-changed' &&
-      kind !== 'review-inbox-changed' &&
-      kind !== 'review-instance-changed'
-    ) {
-      return
-    }
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.getMyOverview.key({ params: { batchId } }),
-    })
-    void queryClient.invalidateQueries({
-      queryKey: query.assessment.listMyActivity.key({ params: { batchId }, query: {} }),
-    })
-  })
-
-  const overview = useQuery(query.assessment.getMyOverview.queryOptions({ params: { batchId } }))
   const perspective = lane === 'all' ? undefined : lane
   const activity = useInfiniteQuery({
     queryKey: [
@@ -206,15 +189,28 @@ function MyDesk({ batchId }: { batchId: string }) {
     [activity.data],
   )
   const groups = useMemo(() => groupByDay(rows, locale, format), [rows, locale, format])
+  // the unread questions, marked once each: the newest row of that question
+  // in the feed carries the dot, read state stays the version pair's
+  const freshRowIds = useMemo(() => {
+    const unread = new Set(overview.data?.participant?.unreadItemIds ?? [])
+    const marked = new Set<string>()
+    const fresh = new Set<string>()
+    for (const row of rows) {
+      if (row.perspective !== 'participant') continue
+      if (!unread.has(row.itemId) || marked.has(row.itemId)) continue
+      marked.add(row.itemId)
+      fresh.add(row.id + row.kind)
+    }
+    return fresh
+  }, [rows, overview.data])
 
   const desk = overview.data
-  // both standings at once is the only desk that needs telling apart
   const mixed = desk !== undefined && desk.participant !== null && desk.reviewer !== null
   if (overview.isError) {
-    return <p className="text-sm text-destructive">{formatError(overview.error)}</p>
+    return <p className="text-sm text-destructive">{formatError(overview.error as never)}</p>
   }
   if (desk !== undefined && desk.participant === null && desk.reviewer === null) {
-    // an administrator without a standing here: the flow above is the page
+    // an administrator without a standing here reads the stage plan alone
     return null
   }
 
@@ -224,168 +220,180 @@ function MyDesk({ batchId }: { batchId: string }) {
       search:
         layer === 'detail' ? { open: itemId, detail: entryId } : { open: itemId, entry: entryId },
     })
-  const openRow = (row: ActivityItem) => {
-    if (row.perspective === 'reviewer') {
-      if (row.instanceId !== null) {
-        navigate('assessment/review-instance', {
-          params: { batchId, instanceId: row.instanceId },
-        })
-      }
-      return
-    }
-    openEntry(row.itemId, row.entryId, 'detail')
+
+  const todo: TodoRow[] = []
+  for (const action of desk?.participant?.actions ?? []) {
+    const sentence =
+      action.kind === 'supplement'
+        ? format(m.overviewActionSupplement, { who: action.who ?? format(m['activity.somebody']) })
+        : format(m.overviewActionRevision)
+    todo.push({
+      key: `${action.kind}:${action.entryId}`,
+      lane: 'participant',
+      action: action.kind,
+      subject: action.itemTitle,
+      detail: action.summary === null ? sentence : `${sentence}：${action.summary}`,
+      at: clockOf(action.at, locale),
+      verb: format(action.kind === 'supplement' ? m.overviewGoSupplement : m.overviewGoRevision),
+      go: () =>
+        openEntry(action.itemId, action.entryId, action.kind === 'supplement' ? 'detail' : 'entry'),
+    })
   }
-
-  const laneTag = (which: 'participant' | 'reviewer') =>
-    mixed && (
-      <span className="shrink-0 text-xs text-muted-foreground/80">
-        {format(which === 'participant' ? m.overviewLaneEntry : m.overviewLaneReview)}
-      </span>
-    )
-
-  const actions = desk?.participant?.actions ?? []
-  const pending = desk?.reviewer?.pendingCount ?? 0
-  const answered = desk?.reviewer?.answeredAskCount ?? 0
-  const deskRows = actions.length + (pending > 0 ? 1 : 0) + (answered > 0 ? 1 : 0)
+  if ((desk?.reviewer?.pendingCount ?? 0) > 0) {
+    todo.push({
+      key: 'review-pending',
+      lane: 'reviewer',
+      action: 'review-pending',
+      count: desk!.reviewer!.pendingCount,
+      subject: format(m.overviewPendingReviews, { count: desk!.reviewer!.pendingCount }),
+      detail:
+        desk!.reviewer!.queueGroups.length === 0
+          ? null
+          : desk!
+              .reviewer!.queueGroups.map((group) =>
+                format(m.overviewQueueGroup, { name: group.name, count: group.count }),
+              )
+              .join(listJoin),
+      at: null,
+      verb: format(m.overviewGoReview),
+      go: () => navigate('assessment/batch-reviews', { params: { batchId } }),
+    })
+  }
+  if ((desk?.reviewer?.answeredAskCount ?? 0) > 0) {
+    todo.push({
+      key: 'review-answered',
+      lane: 'reviewer',
+      action: 'review-answered',
+      count: desk!.reviewer!.answeredAskCount,
+      subject: format(m.overviewAskAnswered, { count: desk!.reviewer!.answeredAskCount }),
+      detail:
+        desk!.reviewer!.answeredAsks.length === 0
+          ? null
+          : desk!
+              .reviewer!.answeredAsks.map((ask) =>
+                format(m.overviewAskEntry, {
+                  who: ask.who ?? format(m['activity.somebody']),
+                  item: ask.itemTitle,
+                }),
+              )
+              .join(listJoin),
+      at: null,
+      verb: format(m.overviewGoAsked),
+      go: () =>
+        navigate('assessment/batch-reviews', { params: { batchId }, search: { view: 'asked' } }),
+    })
+  }
+  // grouped by the standing each row speaks to, labels only when both exist
+  const laneWord = (which: 'participant' | 'reviewer') =>
+    format(which === 'participant' ? m.overviewLaneEntry : m.overviewLaneReview)
+  const todoGroups = (mixed ? (['participant', 'reviewer'] as const) : ([null] as const))
+    .map((which) => ({
+      which,
+      rows: which === null ? todo : todo.filter((row) => row.lane === which),
+    }))
+    .filter((group) => group.rows.length > 0)
 
   return (
     <>
       <section className="flex flex-col gap-3">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2.5">
           <h2 className="text-sm font-semibold">{format(m.overviewActionsTitle)}</h2>
-          {deskRows > 0 && (
-            <Badge variant="secondary" className="tabular-nums">
-              {deskRows}
-            </Badge>
+          {todo.length > 0 && (
+            <span className="rounded-md bg-muted px-1.5 text-xs tabular-nums">{todo.length}</span>
           )}
         </div>
         {overview.isPending ? (
-          <Skeleton className="h-14 w-full" />
-        ) : deskRows === 0 ? (
-          // nothing to do earns one quiet line, not an empty-state monument
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <CheckIcon aria-hidden className="size-3.5" />
-            {format(m.overviewActionsNone)}
-          </p>
+          <Skeleton className="h-16 w-full" />
+        ) : todo.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 rounded-[10px] border px-6 py-9">
+            <span className="flex size-[30px] items-center justify-center rounded-full border bg-background text-muted-foreground">
+              <CheckIcon aria-hidden className="size-[15px]" />
+            </span>
+            <p className="text-sm font-medium">{format(m.overviewActionsNone)}</p>
+          </div>
         ) : (
-          <ul className="flex flex-col gap-2" data-testid="overview-actions">
-            {actions.map((action) => (
-              <li
-                key={`${action.kind}:${action.entryId}`}
-                data-action={action.kind}
-                className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/25"
-              >
-                <div className="flex min-w-0 flex-1 basis-52 flex-col gap-0.5">
-                  <span className="flex items-baseline gap-2">
-                    <p className="truncate text-sm font-medium text-amber-950 dark:text-amber-100">
-                      {action.itemTitle}
-                    </p>
-                    {laneTag('participant')}
-                  </span>
-                  <p className="text-[13px] text-amber-900/85 dark:text-amber-200/80">
-                    {action.kind === 'supplement'
-                      ? format(m.overviewActionSupplement, {
-                          who: action.who ?? format(m['activity.somebody']),
-                        })
-                      : format(m.overviewActionRevision)}
-                  </p>
-                  {action.summary !== null && (
-                    <p className="truncate text-[13px] text-amber-900/70 dark:text-amber-200/60">
-                      {action.summary}
-                    </p>
-                  )}
+          <div className="flex flex-col gap-4" data-testid="overview-actions">
+            {todoGroups.map((group) => (
+              <div key={group.which ?? 'all'} className="flex min-w-0 flex-col gap-2">
+                {group.which !== null && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {laneWord(group.which)}
+                    </span>
+                    <span className="text-xs text-muted-foreground/80 tabular-nums">
+                      {group.rows.length}
+                    </span>
+                    <span aria-hidden className="h-px flex-1 bg-border" />
+                  </div>
+                )}
+                <div className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border">
+                  {group.rows.map((row) => (
+                    // the whole line is the way in; the verb inside is the
+                    // same door with a keyboard-reachable handle
+                    <div
+                      key={row.key}
+                      data-action={row.action}
+                      {...(row.count !== undefined ? { 'data-count': row.count } : {})}
+                      onClick={row.go}
+                      className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-t px-4 py-3.5 first:border-t-0 hover:bg-muted/60 lg:grid-cols-[minmax(0,1fr)_3.5rem_7rem] lg:items-center lg:gap-x-5 lg:px-5 lg:py-4"
+                    >
+                      <span className="col-start-1 row-start-1 min-w-0 truncate text-sm font-medium">
+                        {row.subject}
+                      </span>
+                      <span className="col-start-2 row-start-1 text-right text-xs whitespace-nowrap text-muted-foreground tabular-nums lg:row-span-2 lg:self-center">
+                        {row.at}
+                      </span>
+                      {row.detail !== null && (
+                        <span className="col-start-1 row-start-2 line-clamp-2 min-w-0 text-[13px] leading-relaxed text-pretty text-muted-foreground">
+                          {row.detail}
+                        </span>
+                      )}
+                      <span className="col-start-2 row-start-2 self-end lg:col-start-3 lg:row-span-2 lg:row-start-1 lg:self-center">
+                        <button
+                          type="button"
+                          onClick={row.go}
+                          className="inline-flex cursor-pointer items-center gap-0.5 text-[13px] font-medium whitespace-nowrap lg:h-9 lg:w-full lg:justify-center lg:gap-1 lg:rounded-lg lg:border lg:bg-background lg:text-[13px] lg:transition-colors lg:hover:bg-muted/60"
+                        >
+                          {row.verb}
+                          <ChevronRightIcon aria-hidden className="size-3.5 lg:size-3" />
+                        </button>
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <span className="text-xs text-amber-900/60 tabular-nums dark:text-amber-200/50">
-                  {clockOf(action.at, locale)}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-amber-300 bg-transparent text-amber-950 hover:bg-amber-100/60 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-900/40"
-                  onClick={() =>
-                    openEntry(
-                      action.itemId,
-                      action.entryId,
-                      action.kind === 'supplement' ? 'detail' : 'entry',
-                    )
-                  }
-                >
-                  {format(
-                    action.kind === 'supplement' ? m.overviewGoSupplement : m.overviewGoRevision,
-                  )}
-                </Button>
-              </li>
+              </div>
             ))}
-            {pending > 0 && (
-              <li
-                data-action="review-pending"
-                data-count={pending}
-                className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-4 py-3"
-              >
-                <span className="flex min-w-0 flex-1 basis-52 items-baseline gap-2">
-                  <p className="text-sm">{format(m.overviewPendingReviews, { count: pending })}</p>
-                  {laneTag('reviewer')}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => navigate('assessment/batch-reviews', { params: { batchId } })}
-                >
-                  {format(m.overviewGoReview)}
-                  <ChevronRightIcon aria-hidden />
-                </Button>
-              </li>
-            )}
-            {answered > 0 && (
-              <li
-                data-action="review-answered"
-                data-count={answered}
-                className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-4 py-3"
-              >
-                <span className="flex min-w-0 flex-1 basis-52 items-baseline gap-2">
-                  <p className="text-sm">{format(m.overviewAskAnswered, { count: answered })}</p>
-                  {laneTag('reviewer')}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    navigate('assessment/batch-reviews', {
-                      params: { batchId },
-                      search: { view: 'asked' },
-                    })
-                  }
-                >
-                  {format(m.overviewGoAsked)}
-                  <ChevronRightIcon aria-hidden />
-                </Button>
-              </li>
-            )}
-          </ul>
+          </div>
         )}
       </section>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h2 className="text-sm font-semibold">{format(m.overviewActivityTitle)}</h2>
-          {(desk?.participant?.unreadItemCount ?? 0) > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {format(m.overviewActivityUnread, { count: desk!.participant!.unreadItemCount })}
+      <section className="mt-4 flex min-w-0 flex-col gap-5">
+        {/* the header holds the filter, and on a phone it stays put while
+            the days scroll under it */}
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 bg-background max-lg:sticky max-lg:-top-6 max-lg:z-10 max-lg:py-1.5">
+          <h2 className="shrink-0 text-sm font-semibold">{format(m.overviewActivityTitle)}</h2>
+          {(desk?.participant?.unreadItemIds.length ?? 0) > 0 && (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {format(m.overviewActivityUnread, {
+                count: desk!.participant!.unreadItemIds.length,
+              })}
             </span>
           )}
           <span className="flex-1" />
           {mixed && (
             <Tabs value={lane} onValueChange={(value) => setLane(value as Lane)}>
-              <TabsList className="h-8">
-                <TabsTrigger value="all" className="px-2.5 text-xs">
-                  {format(m.overviewFilterAll)}
-                </TabsTrigger>
-                <TabsTrigger value="participant" className="px-2.5 text-xs">
-                  {format(m.overviewLaneEntry)}
-                </TabsTrigger>
-                <TabsTrigger value="reviewer" className="px-2.5 text-xs">
-                  {format(m.overviewLaneReview)}
-                </TabsTrigger>
+              <TabsList>
+                {(
+                  [
+                    ['all', m.overviewFilterAll],
+                    ['participant', m.overviewLaneEntry],
+                    ['reviewer', m.overviewLaneReview],
+                  ] as const
+                ).map(([value, label]) => (
+                  <TabsTrigger key={value} value={value}>
+                    {format(label)}
+                  </TabsTrigger>
+                ))}
               </TabsList>
             </Tabs>
           )}
@@ -394,84 +402,98 @@ function MyDesk({ batchId }: { batchId: string }) {
         {activity.isPending ? (
           <Skeleton className="h-24 w-full" />
         ) : activity.isError ? (
-          <p className="text-sm text-destructive">{formatError(activity.error)}</p>
+          <p className="text-sm text-destructive">{formatError(activity.error as never)}</p>
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{format(m.overviewActivityNone)}</p>
         ) : (
-          <div className="flex flex-col gap-4" data-testid="overview-activity">
+          <div className="flex flex-col gap-7" data-testid="overview-activity">
             {groups.map((group) => (
-              <section key={group.label} className="flex flex-col gap-2">
-                <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
-                <ol className="flex flex-col">
-                  {group.items.map((row, index) => {
-                    const sentence = SAID[row.perspective][row.kind]
-                    const who =
-                      (row.perspective === 'reviewer' ? row.subjectName : row.actorName) ??
-                      format(m['activity.somebody'])
-                    const last = index === group.items.length - 1
-                    return (
-                      <li
-                        key={row.id + row.kind}
-                        data-kind={row.kind}
-                        data-perspective={row.perspective}
-                        className="flex gap-3"
-                      >
-                        <span className="w-10 shrink-0 pt-0.5 text-right text-xs text-muted-foreground tabular-nums">
-                          {clockOf(row.at, locale)}
-                        </span>
-                        <span aria-hidden className="flex w-3 shrink-0 flex-col items-center">
-                          <span
-                            className={cn('mt-1 size-2.5 shrink-0 rounded-full', markOf(row))}
-                          />
-                          {!last && <span className="mt-1 w-px flex-1 bg-border" />}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => openRow(row)}
-                          className={cn(
-                            'group flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left',
-                            last ? 'pb-1' : 'pb-4',
-                          )}
-                        >
-                          <span className="flex w-full min-w-0 items-baseline gap-2">
-                            <span className="truncate text-sm font-medium group-hover:underline">
+              <section key={group.label} className="flex flex-col gap-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                    {group.label}
+                  </span>
+                  <span aria-hidden className="h-px flex-1 bg-border" />
+                </div>
+                {group.items.map((row) => {
+                  const sentence = SAID[row.perspective][row.kind]
+                  const who =
+                    (row.perspective === 'reviewer' ? row.subjectName : row.actorName) ??
+                    format(m['activity.somebody'])
+                  return (
+                    <button
+                      key={row.id + row.kind}
+                      type="button"
+                      data-kind={row.kind}
+                      data-perspective={row.perspective}
+                      data-unread={freshRowIds.has(row.id + row.kind) || undefined}
+                      onClick={() => {
+                        if (row.perspective === 'reviewer') {
+                          if (row.instanceId !== null) {
+                            navigate('assessment/review-instance', {
+                              params: { batchId, instanceId: row.instanceId },
+                            })
+                          }
+                          return
+                        }
+                        openEntry(row.itemId, row.entryId, 'detail')
+                      }}
+                      className="group grid grid-cols-[minmax(0,1fr)] gap-x-5 text-left lg:grid-cols-[3.25rem_minmax(0,1fr)]"
+                    >
+                      <span className="hidden pt-px text-xs text-muted-foreground tabular-nums lg:block">
+                        {clockOf(row.at, locale)}
+                      </span>
+                      <span className="flex min-w-0 flex-col gap-1.5">
+                        <span className="flex min-w-0 items-baseline gap-2.5">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            {freshRowIds.has(row.id + row.kind) && (
+                              <span
+                                role="status"
+                                aria-label={format(m.rowUnread)}
+                                className="size-[7px] shrink-0 rounded-full bg-destructive"
+                              />
+                            )}
+                            <span className="min-w-0 truncate text-sm font-medium group-hover:underline">
                               {row.itemTitle}
                             </span>
-                            {laneTag(row.perspective)}
                           </span>
-                          {sentence !== undefined && (
-                            <span className="text-sm text-muted-foreground">
-                              {format(sentence as (typeof m)['activity.r.review-approved'], {
-                                who,
-                              })}
+                          {mixed && (
+                            <span className="ml-auto shrink-0 text-xs text-muted-foreground/80 max-lg:hidden">
+                              {laneWord(row.perspective)}
                             </span>
                           )}
-                          {row.reason !== null && (
-                            <span className="text-xs text-muted-foreground/85">{row.reason}</span>
-                          )}
-                          {row.comment !== null && (
-                            <span className="line-clamp-2 text-xs text-muted-foreground/85">
-                              {row.comment}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ol>
+                          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums lg:hidden">
+                            {clockOf(row.at, locale)}
+                          </span>
+                        </span>
+                        <span className="text-[13px] leading-relaxed text-muted-foreground">
+                          {sentence !== undefined &&
+                            format(sentence as (typeof m)['activity.r.review-approved'], { who })}
+                        </span>
+                        {(row.reason !== null || row.comment !== null) && (
+                          <span className="flex flex-col gap-0.5 border-l-2 pl-2.5 text-xs leading-relaxed text-pretty text-foreground/70">
+                            {row.reason !== null && <span>{row.reason}</span>}
+                            {row.comment !== null && (
+                              <span className="line-clamp-2">{row.comment}</span>
+                            )}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  )
+                })}
               </section>
             ))}
             {activity.hasNextPage && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start"
+              <button
+                type="button"
                 disabled={activity.isFetchingNextPage}
                 onClick={() => void activity.fetchNextPage()}
+                className="inline-flex cursor-pointer items-center gap-0.5 self-start text-xs text-muted-foreground transition-colors hover:text-foreground"
               >
                 {format(m.overviewActivityMore)}
-                <ChevronRightIcon aria-hidden />
-              </Button>
+                <ChevronRightIcon aria-hidden className="size-3" />
+              </button>
             )}
           </div>
         )}

@@ -6996,3 +6996,15 @@ suggested_payload(entry_events 支为 null),EntryRefusalView/契约 refusal 结�
 同步;详情 Sheet 退回卡内新增「审核人的修改建议」块——只列与现值不同的非附件字段,值为空显
 「—」,仅供参评人手动照改,不提供一键套用(工程宪法禁令)。node 新用例断言建议逐字到达
 owner 视图;boundaries 13 例、catalogs、entry-workflow 21 例全绿,typecheck 零错,prettier 通过。
+
+### 概览页按设计稿 2a/2b 改造(2026-08-22)
+
+经 claude_design MCP 读取设计稿(批次概览.dc.html §2a/§2b),按用户裁定落地:页内撤下阶段上下文
+条(当前阶段与倒计时归顶栏,PhaseContextBar 组件保留备用),正文直接从「需要你处理」开始;事项
+行整行可点、按申报/审核分组(组标签仅双身份显示),行内动词是同一入口的键盘把手;待审核行带
+计分分组明细、已回复行带人名题名(reviewer 分支扩展 queueGroups/answeredAsks,pendingCount 由
+分组和派生);动态一条三行(题名/句子/引栏),按日分组、桌面左列时刻、无点轨,未读题目的最新
+一行戴红点(participant 分支改为 unreadItemIds,沿用版本对判定);移动端「阶段进度」标签 +
+原 BatchFlowStrip 置顶,动态标题行粘顶携带筛选。设计稿文案按项目风格简化,字号收敛到项目字
+阶,shadcn Tabs 不改内样式,左右两栏 gap-12,两区以边距分隔,空状态小卡去背景防暗色误读。
+门禁:typecheck 零错;pnpm test 704 passed | 17 skipped;pnpm test:browser 96 passed;prettier 全通过。

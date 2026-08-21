@@ -309,7 +309,7 @@ export interface EntryMethods {
     as: Principal,
   ) => Effect.Effect<
     {
-      unreadItemCount: number
+      unreadItemIds: readonly string[]
       actions: readonly {
         kind: 'supplement' | 'revision'
         entryId: string
@@ -1575,7 +1575,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           participantId: membership.id,
         })
         return {
-          unreadItemCount: unread.length,
+          unreadItemIds: unread,
           actions: actions.map((row) => ({
             kind: row.kind,
             entryId: row.entryId,

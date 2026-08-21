@@ -1127,7 +1127,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       success: Schema.Struct({
         participant: Schema.NullOr(
           Schema.Struct({
-            unreadItemCount: Schema.Number,
+            /** the questions with changes their owner has not looked at */
+            unreadItemIds: Schema.Array(Schema.String),
             actions: Schema.Array(
               Schema.Struct({
                 kind: Schema.Literals(['supplement', 'revision']),
@@ -1147,6 +1148,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             pendingCount: Schema.Number,
             /** asks this reviewer sent that have come back answered */
             answeredAskCount: Schema.Number,
+            /** the queue split by score group, for the row's second line */
+            queueGroups: Schema.Array(Schema.Struct({ name: Schema.String, count: Schema.Number })),
+            /** who answered which question, newest first */
+            answeredAsks: Schema.Array(
+              Schema.Struct({ who: Schema.NullOr(Schema.String), itemTitle: Schema.String }),
+            ),
           }),
         ),
       }),

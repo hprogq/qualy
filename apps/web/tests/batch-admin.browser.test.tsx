@@ -409,7 +409,7 @@ describe('the countdown', () => {
 })
 
 describe('the batch overview', () => {
-  it('says where the round is, and opens the whole flow on request', async () => {
+  it('keeps the whole flow on the page, beside the desk', async () => {
     await page.viewport(1280, 800)
     screen(
       {
@@ -420,17 +420,12 @@ describe('the batch overview', () => {
       `/assessment/batches/${BATCH_ID}`,
     )
 
-    // the context bar answers "why can I do this now": the stage in hand and
-    // when it gives way, said without a label in front of it
+    // the stage plan stands on the page itself now: the current stage and
+    // its neighbours are readable without opening anything
     await expect.element(page.getByText('正式填报').first()).toBeVisible()
-
-    // and the flow itself is one click away wherever the reader is: the
-    // panel lists the round's own stages, by their names in the fixture
-    await page.getByRole('button', { name: '查看全部阶段' }).click()
-    const panel = page.getByRole('dialog')
-    await expect.element(panel.getByText('审核')).toBeVisible()
-    // read-only: nothing in it offers to arrange the plan
-    expect(panel.getByTestId('phase-schedule').elements()).toHaveLength(0)
+    await expect.element(page.getByText('审核').first()).toBeVisible()
+    // read-only: nothing here offers to arrange the plan
+    expect(page.getByTestId('phase-schedule').elements()).toHaveLength(0)
   })
 
   it('folds the stages the round has left behind, and opens them on a click', async () => {

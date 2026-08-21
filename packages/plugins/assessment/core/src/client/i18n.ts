@@ -3166,6 +3166,14 @@ const i18n = definePluginMessages({
         '{count, plural, one {# of your supplement requests has} other {# of your supplement requests have}} been answered',
     },
     overviewGoAsked: { id: 'assessment/overview/go-asked', defaultMessage: 'View replies' },
+    overviewQueueGroup: {
+      id: 'assessment/overview/queue-group',
+      defaultMessage: '{name} {count}',
+    },
+    overviewAskEntry: {
+      id: 'assessment/overview/ask-entry',
+      defaultMessage: '{who} ({item})',
+    },
     overviewLaneEntry: { id: 'assessment/overview/lane-entry', defaultMessage: 'Filing' },
     overviewLaneReview: { id: 'assessment/overview/lane-review', defaultMessage: 'Reviewing' },
     overviewFilterAll: { id: 'assessment/overview/filter-all', defaultMessage: 'All' },

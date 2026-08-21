@@ -1655,72 +1655,94 @@ export interface AwaitingRow {
  * this reviewer's business too.
  */
 /**
- * The two numbers the overview's reviewer branch states (§32.73): how many
- * claims stand in this reviewer's queue now, and how many of their own
- * asks have come back answered on rounds they may still act on.
+ * The reviewer branch of the overview (§32.73): the queue by score group,
+ * and the reviewer's own answered asks with who answered - enough for the
+ * desk to say a second line under each row, not a list endpoint.
  */
-export const reviewerDeskCountsOf = (input: {
-  tenantId: string
-  batchId: string
-  userId: string
-}) =>
+export const reviewerDeskOf = (input: { tenantId: string; batchId: string; userId: string }) =>
   db
     .query((k) =>
-      sql<{ pending: number; answered: number }>`
+      sql<{ queue_groups: unknown; answered_asks: unknown }>`
         select
-          (select count(*)::int
-           from review_instances ri
-           join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-           join batch_participants bp
-             on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-           join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-           where ri.tenant_id = ${input.tenantId}
-             and e.batch_id = ${input.batchId}
-             and ri.state = 'active'
-             and ${mayActOn({
-               tenantId: sql`${input.tenantId}`,
-               batchId: sql.ref('e.batch_id'),
-               nodeId: sql.ref('ri.current_node_id'),
-               roleIds: sql.ref('ri.current_role_ids'),
-               userId: sql`${input.userId}`,
-               subjectUserId: sql.ref('bp.user_id'),
-               actorId: sql.ref('er.actor_id'),
-               instanceId: sql.ref('ri.id'),
-               route: sql.ref('ri.current_route'),
-             })}
-          ) as pending,
-          (select count(*)::int
-           from review_supplement_requests sr
-           join review_instances ri
-             on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
-           join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
-           join batch_participants bp
-             on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
-           join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
-           where sr.tenant_id = ${input.tenantId}
-             and e.batch_id = ${input.batchId}
-             and sr.requested_by = ${input.userId}
-             and sr.status = 'answered'
-             and ri.state in ('active', 'blocked')
-             and ${mayActOn({
-               tenantId: sql`${input.tenantId}`,
-               batchId: sql.ref('e.batch_id'),
-               nodeId: sql.ref('ri.current_node_id'),
-               roleIds: sql.ref('ri.current_role_ids'),
-               userId: sql`${input.userId}`,
-               subjectUserId: sql.ref('bp.user_id'),
-               actorId: sql.ref('er.actor_id'),
-               instanceId: sql.ref('ri.id'),
-               route: sql.ref('ri.current_route'),
-             })}
-          ) as answered
+          coalesce((
+            select json_agg(grouped order by grouped.count desc, grouped.name)
+            from (
+              select sg.name, count(*)::int as count
+              from review_instances ri
+              join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+              join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
+              join score_groups sg on sg.tenant_id = i.tenant_id and sg.id = i.score_group_id
+              join batch_participants bp
+                on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
+              join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
+              where ri.tenant_id = ${input.tenantId}
+                and e.batch_id = ${input.batchId}
+                and ri.state = 'active'
+                and ${mayActOn({
+                  tenantId: sql`${input.tenantId}`,
+                  batchId: sql.ref('e.batch_id'),
+                  nodeId: sql.ref('ri.current_node_id'),
+                  roleIds: sql.ref('ri.current_role_ids'),
+                  userId: sql`${input.userId}`,
+                  subjectUserId: sql.ref('bp.user_id'),
+                  actorId: sql.ref('er.actor_id'),
+                  instanceId: sql.ref('ri.id'),
+                  route: sql.ref('ri.current_route'),
+                })}
+              group by sg.name
+            ) grouped
+          ), '[]'::json) as queue_groups,
+          coalesce((
+            select json_agg(asked order by asked.answered_at desc)
+            from (
+              select su.display_name as who, i.title as item_title, sr.answered_at
+              from review_supplement_requests sr
+              join review_instances ri
+                on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+              join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+              join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
+              join batch_participants bp
+                on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
+              join users su on su.tenant_id = bp.tenant_id and su.id = bp.user_id
+              join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
+              where sr.tenant_id = ${input.tenantId}
+                and e.batch_id = ${input.batchId}
+                and sr.requested_by = ${input.userId}
+                and sr.status = 'answered'
+                and ri.state in ('active', 'blocked')
+                and ${mayActOn({
+                  tenantId: sql`${input.tenantId}`,
+                  batchId: sql.ref('e.batch_id'),
+                  nodeId: sql.ref('ri.current_node_id'),
+                  roleIds: sql.ref('ri.current_role_ids'),
+                  userId: sql`${input.userId}`,
+                  subjectUserId: sql.ref('bp.user_id'),
+                  actorId: sql.ref('er.actor_id'),
+                  instanceId: sql.ref('ri.id'),
+                  route: sql.ref('ri.current_route'),
+                })}
+            ) asked
+          ), '[]'::json) as answered_asks
       `.execute(k),
     )
     .pipe(
-      Effect.map(({ rows }) => ({
-        pendingCount: rows[0]?.pending ?? 0,
-        answeredAskCount: rows[0]?.answered ?? 0,
-      })),
+      Effect.map(({ rows }) => {
+        const row = rows[0]
+        const groups = (Array.isArray(row?.queue_groups) ? row.queue_groups : []) as readonly {
+          name: string
+          count: number
+        }[]
+        const asks = (Array.isArray(row?.answered_asks) ? row.answered_asks : []) as readonly {
+          who: string | null
+          item_title: string
+        }[]
+        return {
+          pendingCount: groups.reduce((sum, group) => sum + group.count, 0),
+          answeredAskCount: asks.length,
+          queueGroups: groups.map((group) => ({ name: group.name, count: group.count })),
+          answeredAsks: asks.map((ask) => ({ who: ask.who, itemTitle: ask.item_title })),
+        }
+      }),
     )
 
 export const awaitingPage = (input: {

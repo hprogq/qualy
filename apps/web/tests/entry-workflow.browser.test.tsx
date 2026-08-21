@@ -187,7 +187,7 @@ describe('the overview desk', () => {
         getMyOverview: () =>
           Effect.succeed({
             participant: {
-              unreadItemCount: 1,
+              unreadItemIds: [ITEM_ID],
               actions: [
                 {
                   kind: 'supplement' as const,
@@ -200,7 +200,12 @@ describe('the overview desk', () => {
                 },
               ],
             },
-            reviewer: { pendingCount: 3, answeredAskCount: 1 },
+            reviewer: {
+              pendingCount: 3,
+              answeredAskCount: 1,
+              queueGroups: [{ name: '文体活动', count: 3 }],
+              answeredAsks: [{ who: '王小明', itemTitle: '志愿服务' }],
+            },
           }),
         listMyActivity: () =>
           Effect.succeed({
@@ -265,6 +270,10 @@ describe('the overview desk', () => {
     expect(feed.querySelector('[data-perspective="participant"]')).not.toBeNull()
     expect(feed.querySelector('[data-perspective="reviewer"]')?.getAttribute('data-kind')).toBe(
       'review-approved',
+    )
+    // the unread question's newest row wears the dot
+    expect(feed.querySelector('[data-unread]')?.getAttribute('data-kind')).toBe(
+      'supplement-requested',
     )
 
     // its key walks straight onto the claim: question open, drawer up
