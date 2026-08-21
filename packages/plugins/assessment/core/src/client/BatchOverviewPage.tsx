@@ -66,7 +66,7 @@ export default function BatchOverviewPage() {
             {/* the stage plan on a phone: the same strip, laid over the
                 desk rather than beside it */}
             <section className="flex flex-col gap-2.5 lg:hidden">
-              <p className="text-xs font-medium text-muted-foreground">{format(m.flowTitle)}</p>
+              <h2 className="text-sm font-semibold">{format(m.flowTitle)}</h2>
               {plan.isPending ? (
                 <Skeleton className="h-16 w-full" />
               ) : (
@@ -78,7 +78,7 @@ export default function BatchOverviewPage() {
           </div>
 
           <aside className="sticky top-6 hidden max-h-[calc(100dvh-9rem)] self-start overflow-y-auto lg:block">
-            <p className="pb-3 text-xs font-medium text-muted-foreground">{format(m.flowTitle)}</p>
+            <h2 className="pb-3 text-sm font-semibold">{format(m.flowTitle)}</h2>
             {plan.isPending ? (
               <div className="flex flex-col gap-3">
                 <Skeleton className="h-5 w-full" />
