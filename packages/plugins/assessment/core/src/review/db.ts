@@ -1448,6 +1448,7 @@ export interface SupplementRequestRow {
   status: 'open' | 'answered' | 'cancelled'
   instructions: string
   requirements: readonly SupplementRequirement[]
+  requestedBy: string
 }
 
 export const supplementRequestOf = (tenantId: string, requestId: string) =>
@@ -1455,7 +1456,15 @@ export const supplementRequestOf = (tenantId: string, requestId: string) =>
     .query((k) =>
       k
         .selectFrom('ReviewSupplementRequest')
-        .select(['id', 'reviewInstanceId', 'requestNo', 'status', 'instructions', 'requirements'])
+        .select([
+          'id',
+          'reviewInstanceId',
+          'requestNo',
+          'status',
+          'instructions',
+          'requirements',
+          'requestedBy',
+        ])
         .where('tenantId', '=', tenantId)
         .where('id', '=', requestId)
         .executeTakeFirst(),
@@ -1471,9 +1480,24 @@ export const supplementRequestOf = (tenantId: string, requestId: string) =>
               status: row.status as SupplementRequestRow['status'],
               instructions: row.instructions,
               requirements: requirementsOf(row.requirements),
+              requestedBy: row.requestedBy,
             } satisfies SupplementRequestRow),
       ),
     )
+
+/** who is holding the open ask on this round, if anybody is */
+export const openAskRequesterOf = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewSupplementRequest')
+        .select('requestedBy')
+        .where('tenantId', '=', tenantId)
+        .where('reviewInstanceId', '=', instanceId)
+        .where('status', '=', 'open')
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => row?.requestedBy ?? null))
 
 export const nextSupplementNo = (tenantId: string, instanceId: string) =>
   db
@@ -1679,9 +1703,15 @@ export const awaitingPage = (input: {
         .where('e.batchId', '=', input.batchId)
         .where((eb) =>
           eb.or([
-            // still with the person who filed
-            eb.and([eb('sr.status', '=', 'open'), eb('ri.state', '=', 'awaiting_supplement')]),
-            // answered, and the round it belongs to is back open here
+            // an open ask is one reviewer's unfinished business, not the
+            // stage's: only its sender is waiting on it (§32.70)
+            eb.and([
+              eb('sr.status', '=', 'open'),
+              eb('ri.state', '=', 'awaiting_supplement'),
+              eb('sr.requestedBy', '=', input.userId),
+            ]),
+            // answered, and the round it belongs to is back open here -
+            // back in the shared pool, so every eligible reviewer sees it
             eb.and([eb('sr.status', '=', 'answered'), eb('ri.state', 'in', ['active', 'blocked'])]),
           ]),
         )

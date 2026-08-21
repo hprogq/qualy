@@ -6848,3 +6848,18 @@ approved 放弃且 round 结论原样、阶段门关 abandon;withdraw 拒绝路�
 alert),对只有一行字的通知,h-8 按钮中心比文字线低约 4px。就地覆写为
 `top-1/2 -translate-y-1/2` 垂直居中,原语不动(其他 alert 仍要顶部锚定)。
 identity + batch-admin 42 例全绿;`pnpm typecheck` 零错;prettier 全绿。
+
+### 补件归属与只读查看(2026-08-21 追加)
+
+领域裁决见 docs/assessment-design.md §32.70。同级审核员此前被当成同事补件的共同持有人:
+等待列表看得到、审核页开得进、还能一键撤销别人的补件请求(`cancelSupplement` 只验
+requireJudge,不验 requestedBy)。现拆成三个概念:stage membership / ask ownership /
+admin visibility。open 补件只进发起人的等待列表;`mayRead` 在 awaiting 态只认发起人
+(同事 refetch 转 NOT_FOUND,lostTurn 机制自然接住);`cancelSupplement` 先验
+`requestedBy`(`not-requester`)再验 requireJudge;答复后回到全池(既有行为)。管理员
+URL 直读是预期设计保留,工作台对无操作读者加一行只读说明。SSE 事件流结束的访问日志
+降为 Debug(时长是连接寿命不是延迟),CLAUDE.md 日志节同步。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 100 files / 698 passed(review-workbench 新增
+「open ask 归发起人」全景用例:双审核员共享池、等待期独占、同事读取/撤销双拒、管理员
+只读、答复回池;撤销归属校验红验证通过);`pnpm test:browser` 93 passed;prettier 全绿。

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { DEFAULT_REVIEW_REASONS } from '../src/review/reasons.ts'
-import { errorOf, GATED, ok, refusalOf, run, runningBatch, seed } from './support/round.ts'
+import { errorOf, GATED, ok, one, refusalOf, run, runningBatch, seed } from './support/round.ts'
 
 // What the workbench reads and what it is held to: the queue row carrying
 // the filing itself, the day's counter on the batch's own calendar, the
@@ -847,6 +847,102 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     // asked has to be able to find it as the answer to their own question
     expect(result.answered.items[0]?.status).toBe('answered')
     expect(result.after.items).toHaveLength(0)
+  })
+
+  it('holds an open ask with its sender, and returns the answer to the pool', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-ask-owner')
+          const assessment = yield* Assessment
+          // a second reviewer standing at the same class, same role - seeded
+          // before the batch exists, because the batch copies its accepted
+          // authority at creation
+          const peerId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.t}, 'Reviewer Two', ${f.studentType}, ${f.classA}) returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.t}, ${peerId}, ${f.reviewRole}, ${f.classA}, 'self')`)
+          const peer = f.principal(peerId)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const asker = f.principal(f.reviewer)
+
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+          // both stand in the shared pool before anybody asks
+          const poolBefore = yield* Effect.all({
+            asker: assessment.listReviewInbox(f.t, { batchId: g.batch.id }, asker),
+            peer: assessment.listReviewInbox(f.t, { batchId: g.batch.id }, peer),
+          })
+
+          yield* assessment.requestSupplement(
+            f.t,
+            instanceId,
+            {
+              instructions: '请补充说明。',
+              requirements: [{ label: '情况说明', kind: 'text', required: true }],
+            },
+            asker,
+          )
+
+          // the wait is the sender's alone: their list has it, the peer's
+          // does not, and the peer cannot read the round as its reviewer
+          const waiting = yield* Effect.all({
+            asker: assessment.listAwaitingSupplements(f.t, { batchId: g.batch.id }, asker),
+            peer: assessment.listAwaitingSupplements(f.t, { batchId: g.batch.id }, peer),
+          })
+          const peerRead = yield* Effect.exit(assessment.getReviewInstance(f.t, instanceId, peer))
+          // nor unsay it: the ask is not the stage's to cancel
+          const mine = yield* assessment.getEntry(f.t, entry.id, s1)
+          const peerCancel = yield* Effect.exit(
+            assessment.cancelSupplement(f.t, mine.supplement!.requestId, peer),
+          )
+          // the administrator still reads it - as an administrator, with
+          // no review capabilities riding along
+          const adminSeen = yield* assessment.getReviewInstance(
+            f.t,
+            instanceId,
+            f.principal(f.admin),
+          )
+
+          // the answer brings the round back to everybody eligible
+          yield* assessment.answerSupplement(
+            f.t,
+            mine.supplement!.requestId,
+            { payload: { f1: '已补充。' } },
+            s1,
+          )
+          const poolAfter = yield* Effect.all({
+            asker: assessment.listReviewInbox(f.t, { batchId: g.batch.id }, asker),
+            peer: assessment.listReviewInbox(f.t, { batchId: g.batch.id }, peer),
+          })
+          return { poolBefore, waiting, peerRead, peerCancel, adminSeen, poolAfter, instanceId }
+        }),
+      ),
+    )
+
+    const holds = (rows: { items: readonly { instanceId: string }[] }) =>
+      rows.items.some((row) => row.instanceId === result.instanceId)
+    expect(holds(result.poolBefore.asker)).toBe(true)
+    expect(holds(result.poolBefore.peer)).toBe(true)
+    expect(result.waiting.asker.items).toHaveLength(1)
+    expect(result.waiting.peer.items).toHaveLength(0)
+    expect(errorOf<{ _tag: string }>(result.peerRead)?._tag).toBe('ASSESSMENT_REVIEW_NOT_FOUND')
+    expect(refusalOf(result.peerCancel)?.reason).toBe('not-requester')
+    expect(result.adminSeen.capabilities.canDecide).toBe(false)
+    expect(result.adminSeen.capabilities.canCancelSupplement).toBe(false)
+    expect(holds(result.poolAfter.asker)).toBe(true)
+    expect(holds(result.poolAfter.peer)).toBe(true)
   })
 
   it('lets the ask be taken back, and an abandonment close over it', async () => {

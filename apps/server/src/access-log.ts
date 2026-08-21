@@ -51,6 +51,13 @@ export const accessLog =
           Effect.annotateLogs(effect, { source: 'http' })
         if (exit._tag === 'Success') {
           const status = exit.value.status
+          // a long-lived event stream "succeeds" whenever the browser lets
+          // go of it; that is connection lifecycle, not an access worth the
+          // success level - and its elapsed time is the connection's age,
+          // not a latency anybody should read
+          const streamed = (
+            (exit.value as { headers?: Record<string, string> }).headers?.['content-type'] ?? ''
+          ).startsWith('text/event-stream')
           const log =
             status >= 500
               ? Effect.logError(line(status))
@@ -58,7 +65,9 @@ export const accessLog =
                 ? Effect.logWarning(line(status))
                 : status >= 400
                   ? Effect.logInfo(line(status))
-                  : successLog(settings.level, line(status))
+                  : streamed
+                    ? Effect.logDebug(line(status, ' (event stream closed)'))
+                    : successLog(settings.level, line(status))
           return Effect.andThen(annotated(log), exit)
         }
         // A failed exit usually carries the response that was already sent -

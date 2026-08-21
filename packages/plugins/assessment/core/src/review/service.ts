@@ -80,6 +80,7 @@ import {
   supersedeOpenPanels,
   supplementAttachmentHistory,
   supplementRequestOf,
+  openAskRequesterOf,
   supplementsOf,
   isOpenReviewState,
   userMayReview,
@@ -791,11 +792,24 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
    * round, and the reader at its current stage. A completed round keeps its
    * last stage on the row, and matching that stage used to keep reading
    * alive after the decision had handed the round on; the state gate is
-   * what makes "submitted and moved on" mean "gone". An open ask keeps the
-   * round with its reviewer, because their task has not ended.
+   * what makes "submitted and moved on" mean "gone".
+   *
+   * An open ask narrows this further (§32.70): the stage is a shared pool,
+   * but the ask is one reviewer's unfinished business. While the round
+   * waits, only the reviewer who asked still holds it; a colleague's duty
+   * ended the moment the ask went out, and resumes - for everyone eligible
+   * - when the answer brings the round back to the pool.
    */
   const mayRead = (tenantId: string, row: ReviewInstanceDetailRow, as: Principal) =>
-    isOpenReviewState(row.state) ? mayAct(tenantId, row, as) : Effect.succeed(false)
+    row.state === 'awaiting_supplement'
+      ? Effect.gen(function* () {
+          const requester = yield* openAskRequesterOf(tenantId, row.id)
+          if (requester !== as.userId) return false
+          return yield* mayAct(tenantId, row, as)
+        })
+      : isOpenReviewState(row.state)
+        ? mayAct(tenantId, row, as)
+        : Effect.succeed(false)
 
   const listReviewInbox: ReviewMethods['listReviewInbox'] = Effect.fn('Assessment.listReviewInbox')(
     function* (tenantId, page, as) {
@@ -1742,6 +1756,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           if (request === null) return yield* new ReviewNotFound()
           const row = yield* instanceOf(tenantId, request.reviewInstanceId)
           if (row === null) return yield* new ReviewNotFound()
+          // the ask belongs to whoever sent it (§32.70): a colleague at the
+          // same stage may not unsay it, and an administrator who wants it
+          // gone intervenes as an administrator, not as its reviewer
+          if (request.requestedBy !== as.userId) {
+            return yield* refuse('supplement-cancel', 'not-requester')
+          }
           yield* requireJudge(tenantId, row, as, 'supplement-cancel')
           const locked = yield* lockBatch(tenantId, row.batchId)
           if (locked!.status === 'archived') return yield* new BatchReadOnly()

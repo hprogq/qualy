@@ -1376,3 +1376,9 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 四、**工作台失效语义从 gone(读不到)改为 lostTurn(不再是我的任务)**。旧判定漏掉管理员:轮次结束后管理员仍读得到,refetch 成功、页面静默刷成「已结束」。新判定 = 「本会话里它曾 `canDecide`」∧ 非本人刚裁决 ∧(refetch 转 NOT_FOUND/CONFLICT,或数据转终态且 canDecide 失去)。触发时:sonner 各按可知原因说话(outcome cancelled → 申报人已撤回;superseded → 流程已调整;其余 completed → 已由他人处理;读不到 → 泛化句),页内横幅常驻(对话框可能盖住 toast 也盖不住横幅),pending 决定当场 `undo()`;`may()` 与 stage 函数统一被 lostTurn 拦截(不靠服务器撞墙)。出路唯一且由人按:run 内有下一条 → 「继续审核下一条」,没有 → 「结束审核」;**不自动跳转**(审核员可能还有没提交的字),不跨项目乱跳。
 
 五、**配套收口**:`expectedItemRevisionId` 校验收窄到 submit(管理员改配置不得让人连撤回/放弃都做不了);一键声明补传 revision token;`live` 只证明浏览器到进程这一跳,详情在 live 时仍保留 60s 轮询兜底(LISTEN 掉线期间丢失的唤醒靠轮询收敛);申报页四个查询按 live 降级轮询;EntryDialog 在父页面拿到新 revision 时立即标 stale(仍绝不热替换);历史里补充材料只由结构化问答卡讲一遍(`supplement-requested/submitted/cancelled` 三事件在展示层过滤);「第 X 轮审核完成」改「第 X 轮审核结束」(outcome 含 cancelled,"完成"读作有了结论)。
+
+**32.70 审核环节是共享任务池;补件请求在等待期间只归发起人**(2026-08-21,用户裁决)。
+
+普通审核阶段维持 pull/shared queue,不引入任务分配(`assignedReviewerId` 之类一概不建)。真正存在归属的不是 ReviewInstance,而是**这一次 SupplementRequest**——`requested_by` 列本就存在,零迁移。规则冻结为一句话:**审核环节采用共享任务池,不固定分配给个人;审核员发起补件后,该补件请求在等待期间仅由发起人负责——其他同级审核员不再持有该任务、不得撤销该请求、也不以 reviewer 身份读取该轮;申报人完成补件后,审核任务重新回到当前环节的共享任务池,由所有当时符合条件的审核员继续处理。批次管理员可按管理权限只读查看,但管理查看不产生任何审核操作能力。**
+
+三个概念自此分立,不再共用一个 `mayActOn`:①stage membership(谁有资格从共享池拿);②supplement request ownership(等待期间谁负责这一问,`requestedBy` 单源,capability 与写入路径同查);③batch administrative visibility(`rosterReach` 管理查看,预期设计保留——排障/审计/reroute 需要它,但绝不携带审核能力)。落点:`awaitingPage` 的 open 分支只给发起人(answered 分支照旧给全池);`mayRead` 在 `awaiting_supplement` 态只承认发起人(同级同事的 refetch 转 `REVIEW_NOT_FOUND`,前端既有 lostTurn 机制自然接住并提示);`cancelSupplement` 先验 `requestedBy === userId`(拒绝码 `not-requester`)再验 `requireJudge`(两道都要:历史请求人失去审核资格后也不得再撤);管理员若需强制取消错误补件,那是未来带理由的管理干预,不复用审核员的撤销。工作台对无任何可执行动作的读者(管理查看、阶段关闭)显示一行只读说明,不再是无按钮之谜。SSE 事件流结束在访问日志降为 Debug(时长是连接寿命不是延迟)。

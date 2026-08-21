@@ -605,6 +605,10 @@ const i18n = definePluginMessages({
       defaultMessage:
         'A review decision has already been recorded, so the entry cannot be withdrawn.',
     },
+    refuseNotRequester: {
+      id: 'assessment/entry/refuse-not-requester',
+      defaultMessage: 'The supplement request is managed by the reviewer who sent it.',
+    },
     refuseReviewUnderWay: {
       id: 'assessment/entry/refuse-review-under-way',
       defaultMessage:
@@ -1727,6 +1731,11 @@ const i18n = definePluginMessages({
     },
     // the round moved on while this reader was mid-thought: say so where
     // they stand, keep what they typed, and shut only the acts
+    reviewReadOnly: {
+      id: 'assessment/review/read-only',
+      defaultMessage:
+        'You are viewing this review in read-only mode; no review actions are available to you.',
+    },
     reviewGoneTitle: {
       id: 'assessment/review/gone-title',
       defaultMessage: 'This review task has moved on',

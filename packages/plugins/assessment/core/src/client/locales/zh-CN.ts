@@ -47,6 +47,7 @@ export default {
   'assessment/entry/refuse-not-submittable': '仅草稿状态的申报可以提交。',
   'assessment/entry/refuse-needs-revision': '项目填报要求已更新，请按最新要求补充后重新提交。',
   'assessment/entry/refuse-not-withdrawable': '已有审核结果，无法撤回。',
+  'assessment/entry/refuse-not-requester': '补充请求由发起的审核人员管理，其他人无法撤销。',
   'assessment/entry/refuse-review-under-way':
     '审核已开始，无法撤回修改；如不再主张本条申报，可选择放弃。',
   'assessment/entry/refuse-appeal-not-withdrawable': '申诉进行中，无法撤回。',
@@ -412,6 +413,7 @@ export default {
   'assessment/review/first-one': '已到第一条',
   'assessment/review/last-one': '已到最后一条',
   'assessment/review/undo-pending': '{seconds} 秒后提交，期间可撤回',
+  'assessment/review/read-only': '当前以只读方式查看该审核任务，没有可执行的审核操作。',
   'assessment/review/gone-title': '该审核任务的状态已发生变化',
   'assessment/review/gone-body': '任务已由他人处理、被申报人撤回或流程已调整。',
   'assessment/review/gone-withdrawn': '申报人已撤回该申报，本轮审核已结束。',

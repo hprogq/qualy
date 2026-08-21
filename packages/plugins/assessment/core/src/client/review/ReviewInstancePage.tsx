@@ -627,6 +627,23 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     navigate('assessment/batch-reviews', { params: { batchId: batch.id } })
                   }
                 />
+                {/* A reader with no acts here - an administrator looking
+                    in, a reviewer whose phase is closed - gets told the
+                    mode instead of a button-less mystery. The requester of
+                    an open ask is not read-only: cancelling it is theirs. */}
+                {review !== undefined &&
+                  !lostTurn &&
+                  review.state !== 'completed' &&
+                  !review.capabilities.canDecide &&
+                  !review.capabilities.canCancelSupplement &&
+                  !review.capabilities.canAnswerSupplement && (
+                    <p
+                      data-testid="review-readonly"
+                      className="border-b bg-muted/40 px-5 py-2 text-xs text-muted-foreground"
+                    >
+                      {format(m.reviewReadOnly)}
+                    </p>
+                  )}
                 {/* The turn was lost mid-thought - settled elsewhere,
                     withdrawn, re-routed. The workbench stays up with
                     everything typed; only the ways to act are shut, and the
