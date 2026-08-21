@@ -351,7 +351,13 @@ function CapableWorkspaceShell() {
           nothing else - no badge, no page actions, no slots for either - and
           any tap on it opens the drawer. Gone while the drawer is up: it is
           the drawer's handle, not a peer. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[max(1.125rem,env(safe-area-inset-bottom))] z-40 flex justify-center">
+      <div
+        data-testid="nav-foot"
+        data-narrow={String(narrow)}
+        data-nav-open={String(drawer.open)}
+        data-foot-taken={String(footTaken)}
+        className="pointer-events-none fixed inset-x-0 bottom-[max(1.125rem,env(safe-area-inset-bottom))] z-40 flex justify-center"
+      >
         <Appear show={narrow && !drawer.open && !footTaken}>
           <button
             type="button"

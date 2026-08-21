@@ -6890,3 +6890,16 @@ aria-hidden 的清理偶发彻底丢失,不是延迟。不再与这个退场动�
 wire headers(repos/effect/packages/effect/src/unstable/http/HttpServerResponse.ts:447-465、
 HttpBody.ts:61-69,实读)。access-log 改为先读 body.contentType、再回退 headers;
 事件流的 200 自此按设计落 Debug。`pnpm typecheck` 零错;prettier 全绿。
+
+### SSE 日志失败分支与 shell 胶囊诊断(2026-08-21 追加)
+
+用户仍见 `GET /events 200` 落 Info:实测 `HttpServerResponse.stream` 把 content-type 同时
+写进 headers 与 body,故成功分支的检测其实有效——漏的是**失败分支**:浏览器在写入中途
+挂断时,exit 是携带 200 响应的非中断失败,走 `Effect.logInfo(line(status))`。现两分支共用
+`isEventStream`(body.contentType 优先、headers 回退),事件流的中断/挂断/自然结束一律
+Debug。
+
+shell 抽屉第四轮:`includeHidden` 也找不到「导航」,推翻 aria-hidden 残留论——按钮根本不在
+可匹配状态。胶囊的三个渲染前提(`narrow`/`drawer.open`/`footTaken`)现作为 data 事实挂在
+foot 容器上,测试把四元组整体断言;下次 CI 失败会直接报出哪个变量说谎,不再盲猜。本地
+三连全绿。

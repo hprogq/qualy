@@ -43,6 +43,18 @@ export const accessLog =
         return httpApp
       }
       const started = performance.now()
+      // The content type rides the response BODY, not the headers record -
+      // upstream merges it into the wire headers only at write time - so
+      // that is where to look. An event stream's end is connection
+      // lifecycle, not an access event: it "succeeds" when the browser lets
+      // go politely and "fails" (carrying its 200) when the hangup lands
+      // mid-write, and neither is worth more than Debug.
+      const isEventStream = (value: unknown): boolean =>
+        (
+          (value as { body?: { contentType?: string } }).body?.contentType ??
+          (value as { headers?: Record<string, string> }).headers?.['content-type'] ??
+          ''
+        ).startsWith('text/event-stream')
       return Effect.flatMap(Effect.exit(httpApp), (exit) => {
         const elapsed = Math.round(performance.now() - started)
         const line = (status: number | string, suffix = '') =>
@@ -51,21 +63,7 @@ export const accessLog =
           Effect.annotateLogs(effect, { source: 'http' })
         if (exit._tag === 'Success') {
           const status = exit.value.status
-          // A long-lived event stream "succeeds" whenever the browser lets
-          // go of it; that is connection lifecycle, not an access worth the
-          // success level - and its elapsed time is the connection's age,
-          // not a latency anybody should read. The content type rides the
-          // response BODY, not the headers record - upstream merges it into
-          // the wire headers only at write time - so that is where to look.
-          const value = exit.value as {
-            headers?: Record<string, string>
-            body?: { contentType?: string }
-          }
-          const streamed = (
-            value.body?.contentType ??
-            value.headers?.['content-type'] ??
-            ''
-          ).startsWith('text/event-stream')
+          const streamed = isEventStream(exit.value)
           const log =
             status >= 500
               ? Effect.logError(line(status))
@@ -85,16 +83,17 @@ export const accessLog =
         // 499 IS the client-closed marker, whether or not the interrupt's
         // own reason still sits beside it in the cause
         const interrupted = Cause.hasInterruptsOnly(exit.cause) || response.status === 499
-        const log = interrupted
-          ? Effect.logDebug(line('client closed'))
-          : response.status >= 500
-            ? Effect.logError(
-                line(
-                  response.status,
-                  Option.isSome(remainder) ? `\n${Cause.pretty(remainder.value)}` : '',
-                ),
-              )
-            : Effect.logInfo(line(response.status))
+        const log =
+          interrupted || (isEventStream(response) && response.status < 400)
+            ? Effect.logDebug(line(interrupted ? 'client closed' : response.status))
+            : response.status >= 500
+              ? Effect.logError(
+                  line(
+                    response.status,
+                    Option.isSome(remainder) ? `\n${Cause.pretty(remainder.value)}` : '',
+                  ),
+                )
+              : Effect.logInfo(line(response.status))
         return Effect.andThen(annotated(log), exit)
       })
     })

@@ -316,8 +316,21 @@ describe('the workspace shell', () => {
     // shell's behavior - so the reopen locates through it (includeHidden)
     // and the assertions that matter stay behavioral: the press works, the
     // drawer opens, the person is in it, and the session was asked once.
+    // asserted as one object so a CI-only failure names the lying variable:
+    // the capsule's own conditions ride the foot container as data facts
     const reopen = page.getByRole('button', { name: '导航', includeHidden: true })
-    await expect.poll(() => reopen.elements().length, { timeout: 10_000 }).toBe(1)
+    const foot = () => document.querySelector('[data-testid="nav-foot"]')
+    await expect
+      .poll(
+        () => ({
+          capsule: reopen.elements().length,
+          narrow: foot()?.getAttribute('data-narrow'),
+          navOpen: foot()?.getAttribute('data-nav-open'),
+          footTaken: foot()?.getAttribute('data-foot-taken'),
+        }),
+        { timeout: 10_000 },
+      )
+      .toEqual({ capsule: 1, narrow: 'true', navOpen: 'false', footTaken: 'false' })
     await reopen.click()
     await expect.element(page.getByRole('dialog').getByText('林知远')).toBeVisible()
     expect(sessionCalls).toBe(1)
