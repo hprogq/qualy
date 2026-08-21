@@ -2,6 +2,7 @@ import { Effect, Layer, Option, Redacted } from 'effect'
 import { Readiness } from '@qualy/api-kit/readiness'
 import { sql as rawSql } from 'kysely'
 import { DatabaseConfig } from './config.ts'
+import { DatabaseNotifications } from './notifications.ts'
 import {
   DatabaseStartupFailed,
   Entities,
@@ -29,6 +30,7 @@ import { pendingMigrations, runMigrations } from '../migrator.ts'
 // and the type still said the layer could only fail one way.
 
 export { DatabaseConfig, config } from './config.ts'
+export { DatabaseListenFailed, DatabaseNotifications, pgNotify } from './notifications.ts'
 export { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
 export {
   DatabaseStartupFailed,
@@ -170,9 +172,16 @@ const prepare = Effect.fn('Database.prepare')(function* () {
  * side by side would let queries run against a schema still being brought up
  * to date.
  */
-export const layer: Layer.Layer<Orm, StartupFailure, DatabaseConfig | Entities> = ormLayer.pipe(
+export const layer: Layer.Layer<
+  Orm | DatabaseNotifications,
+  StartupFailure,
+  DatabaseConfig | Entities
+> = ormLayer.pipe(
   Layer.provideMerge(Layer.effectDiscard(prepare())),
   // the probe closes over the orm, so it is registered from a layer built on
   // top of one rather than beside it
   (built) => Layer.merge(built, registerProbe.pipe(Layer.provide(built))),
+  // the notification transport shares nothing with the ORM but the
+  // connection string; it stands beside it, not on it
+  (built) => Layer.merge(built, DatabaseNotifications.layer),
 )

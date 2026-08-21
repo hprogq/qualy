@@ -9,6 +9,7 @@ import { schemaParity as compareSchemas, type SchemaParityOptions } from './pari
 import { CompiledQuery, type RawBuilder } from 'kysely'
 import {
   DatabaseConfig,
+  DatabaseNotifications,
   Entities,
   entityManager,
   kyselyOf,
@@ -403,7 +404,7 @@ const TEST_POOL_SIZE = 2
 export const databaseFor = (
   url: string,
   options: { migrations?: 'apply' | 'off'; entities?: readonly EntitySchema[] } = {},
-): Layer.Layer<Orm, StartupFailure> =>
+): Layer.Layer<Orm | DatabaseNotifications, StartupFailure> =>
   databaseLayer.pipe(
     Layer.provide(
       Layer.mergeAll(

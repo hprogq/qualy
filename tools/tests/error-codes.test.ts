@@ -81,10 +81,15 @@ const SOURCES = [
   },
 ] as const
 
-// The one declaration that is not a wire code. A readiness probe's failure is
-// logged and never serialized - the endpoint is outside /api and answers with a
-// status and nothing else - so it is named like a type rather than like a code.
-const NOT_A_WIRE_CODE = ['apps/server/src/health.ts']
+// Declarations that are not wire codes. A readiness probe's failure is logged
+// and never serialized - the endpoint is outside /api and answers with a
+// status and nothing else; the notification transport's failure lives and
+// dies inside a server-side listener fiber. Both are named like types rather
+// than like codes.
+const NOT_A_WIRE_CODE = [
+  'apps/server/src/health.ts',
+  'packages/plugins/infra/database/src/server/notifications.ts',
+]
 
 interface Declared {
   code: string
