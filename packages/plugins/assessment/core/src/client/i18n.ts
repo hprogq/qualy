@@ -3041,6 +3041,25 @@ const i18n = definePluginMessages({
     },
     // what the field will take, said before anybody picks a file, and what
     // it would not take, said about the file by name
+    // the question moved under a filing in progress: said where the work is,
+    // never over it, and never by taking the work away
+    entryRulesChangedTitle: {
+      id: 'assessment/entry/rules-changed-title',
+      defaultMessage: 'The requirements have been updated',
+    },
+    entryRulesChangedBody: {
+      id: 'assessment/entry/rules-changed-body',
+      defaultMessage:
+        'An administrator has just updated what this item asks for. Take a look and carry on - what you have filled in is kept.',
+    },
+    entryRulesChangedAction: {
+      id: 'assessment/entry/rules-changed-action',
+      defaultMessage: 'Show the latest requirements',
+    },
+    entryRulesRefreshed: {
+      id: 'assessment/entry/rules-refreshed',
+      defaultMessage: 'Now showing the latest requirements. Check the fields before saving.',
+    },
     entryFileKinds: {
       id: 'assessment/entry/file-kinds',
       defaultMessage: '{kinds} accepted',
@@ -3782,6 +3801,11 @@ const i18n = definePluginMessages({
     ASSESSMENT_ENTRY_PAYLOAD_INVALID: {
       id: 'assessment/error/entry-payload-invalid',
       defaultMessage: 'The entry could not be saved. Correct the listed fields and try again.',
+    },
+    ASSESSMENT_ITEM_REVISION_CONFLICT: {
+      id: 'assessment/error/item-revision-conflict',
+      defaultMessage:
+        'The requirements for this item changed while you were working. Review the latest requirements before continuing.',
     },
     ASSESSMENT_ITEM_ACTION_REFUSED: {
       id: 'assessment/error/item-action-refused',

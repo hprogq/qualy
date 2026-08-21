@@ -4573,6 +4573,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             itemId: payload.itemId,
             participantId: payload.participantId,
             payload: payload.payload,
+            ...(payload.expectedItemRevisionId !== undefined
+              ? { expectedItemRevisionId: payload.expectedItemRevisionId }
+              : {}),
             ...(payload.note !== undefined ? { note: payload.note } : {}),
           },
           principal,
@@ -4599,6 +4602,9 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.entryId,
           {
             payload: payload.payload,
+            ...(payload.expectedItemRevisionId !== undefined
+              ? { expectedItemRevisionId: payload.expectedItemRevisionId }
+              : {}),
             ...(payload.note !== undefined ? { note: payload.note } : {}),
           },
           principal,
@@ -4616,6 +4622,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.entryId,
           payload.status,
           principal,
+          payload.expectedItemRevisionId,
         )
         return { entry: entryDto(entry) }
       }),

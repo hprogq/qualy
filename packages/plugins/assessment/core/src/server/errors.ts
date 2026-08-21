@@ -88,6 +88,21 @@ export class EntryPayloadInvalid extends Schema.TaggedErrorClass<EntryPayloadInv
   { httpApiStatus: 422, identifier: 'AssessmentEntryPayloadInvalid' },
 ) {}
 
+/**
+ * The question changed while somebody was answering it.
+ *
+ * The caller says which version of the question it drew its screen from; if
+ * the item has moved on since, nothing is written. The point is not that the
+ * new form would refuse the old answer - often it would not - but that an
+ * answer read under one set of rules must not be filed under another without
+ * its author seeing them. The client keeps what it has and goes to look.
+ */
+export class ItemRevisionConflict extends Schema.TaggedErrorClass<ItemRevisionConflict>()(
+  'ASSESSMENT_ITEM_REVISION_CONFLICT',
+  { itemId: Schema.String, currentRevisionId: Schema.NullOr(Schema.String) },
+  { httpApiStatus: 409, identifier: 'AssessmentItemRevisionConflict' },
+) {}
+
 /** the item lifecycle said no: the action names itself and a stable reason */
 export class ItemActionRefused extends Schema.TaggedErrorClass<ItemActionRefused>()(
   'ASSESSMENT_ITEM_ACTION_REFUSED',

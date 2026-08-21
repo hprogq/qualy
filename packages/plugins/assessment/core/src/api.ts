@@ -23,6 +23,7 @@ import {
   ItemChangeDecisionRequired,
   ItemConfigInvalid,
   ItemNotFound,
+  ItemRevisionConflict,
   MaterialRangeInvalid,
   ScoreGroupInvalid,
   ScoreGroupVersionConflict,
@@ -1132,12 +1133,21 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       payload: Schema.Struct({
         itemId: id,
         participantId: id,
+        /**
+         * Which version of the question the screen was drawn from.
+         *
+         * Optional because not every caller draws a form - but whoever does
+         * must send it, or an answer written against yesterday's rules is
+         * filed against today's without anybody being told.
+         */
+        expectedItemRevisionId: Schema.optional(id),
         payload: configJson,
         note: Schema.optional(boundedText(500)),
       }),
       success: Schema.Struct({ entry: entryView }),
       error: [
         ItemNotFound,
+        ItemRevisionConflict,
         BatchNotFound,
         BatchReadOnly,
         EntryActionRefused,
@@ -1158,12 +1168,15 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('reviseEntry', '/assessment/entries/:entryId/revisions', {
       params: Schema.Struct({ entryId: id }),
       payload: Schema.Struct({
+        /** the version of the question this revision answers; see createEntry */
+        expectedItemRevisionId: Schema.optional(id),
         payload: configJson,
         note: Schema.optional(boundedText(500)),
       }),
       success: Schema.Struct({ entry: entryView }),
       error: [
         EntryNotFound,
+        ItemRevisionConflict,
         BatchReadOnly,
         EntryActionRefused,
         EntryPayloadInvalid,
@@ -1176,9 +1189,25 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.put('setEntryStatus', '/assessment/entries/:entryId/status', {
       params: Schema.Struct({ entryId: id }),
       /** submit is in_review, withdraw is draft, abandoning the claim is voided */
-      payload: Schema.Struct({ status: Schema.Literals(['in_review', 'draft', 'voided']) }),
+      payload: Schema.Struct({
+        status: Schema.Literals(['in_review', 'draft', 'voided']),
+        /**
+         * The version of the question the screen showed when the press
+         * happened - not the one the draft was written under. Handing a
+         * filing on is a decision about today's rules, and this says which
+         * rules the person deciding had in front of them.
+         */
+        expectedItemRevisionId: Schema.optional(id),
+      }),
       success: Schema.Struct({ entry: entryView }),
-      error: [EntryNotFound, BatchReadOnly, EntryActionRefused, AccessDenied, BadRequest],
+      error: [
+        EntryNotFound,
+        ItemRevisionConflict,
+        BatchReadOnly,
+        EntryActionRefused,
+        AccessDenied,
+        BadRequest,
+      ],
     }).middleware(Authenticated),
   )
   .add(

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { RefreshCwIcon } from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
@@ -14,7 +15,7 @@ import { toast } from '@qualy/ui/toast'
 import { assessmentMessages as m } from '../i18n.ts'
 import { Basis } from './Basis.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
-import { chainNamesOf, eachWorth, roomLeft } from './standing.ts'
+import { carryPayload, chainNamesOf, eachWorth, roomLeft } from './standing.ts'
 import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
 
 // Filing or revising one claim, without leaving the question it belongs to.
@@ -51,6 +52,7 @@ export function EntryDialog({
   siblings,
   onClose,
   onSaved,
+  onStale,
 }: {
   /** false while it animates shut; it keeps drawing what it was showing */
   open: boolean
@@ -67,6 +69,8 @@ export function EntryDialog({
   siblings: readonly EntryDto[]
   onClose: () => void
   onSaved: () => void
+  /** ask the page for the item again; the fresh one arrives as a new prop */
+  onStale?: () => void
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
@@ -79,12 +83,25 @@ export function EntryDialog({
   // handing it on waits on an answer; keeping a draft does not
   const [asking, setAsking] = useState(false)
   const [issues, setIssues] = useState<readonly { field: string; reason: string }[]>([])
+  /**
+   * The question as this dialog drew it, held still.
+   *
+   * The page goes on refetching underneath - it must, the claim is saved
+   * through it - and a form that swapped its fields mid-sentence would be
+   * changing the question while somebody answers it. So the fields come
+   * from this snapshot, and the snapshot only advances when the reader asks
+   * for it.
+   */
+  const [asked, setAsked] = useState(item)
+  const [stale, setStale] = useState(false)
+  const [awaiting, setAwaiting] = useState(false)
+  const notice = useRef<HTMLDivElement | null>(null)
 
-  const fields = fieldsOf(item.currentRevision?.formConfig)
+  const fields = fieldsOf(asked.currentRevision?.formConfig)
   const labelOf = (key: string) => fields.find((field) => field.key === key)?.label ?? key
-  const each = eachWorth(item)
-  const chain = chainNamesOf(item)
-  const room = roomLeft(item, siblings)
+  const each = eachWorth(asked)
+  const chain = chainNamesOf(asked)
+  const room = roomLeft(asked, siblings)
 
   const doors = {
     prepare: (input: {
@@ -107,11 +124,19 @@ export function EntryDialog({
    */
   const save = useMutation({
     mutationFn: async (andSubmit: boolean) => {
-      const body = { payload, ...(note.trim() === '' ? {} : { note: note.trim() }) }
+      // every call names the question this screen was drawn from, submission
+      // included: handing it on is a decision about the rules in front of
+      // the person pressing, not about the ones the draft was written under
+      const seen = asked.currentRevision?.id
+      const body = {
+        payload,
+        ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
+        ...(note.trim() === '' ? {} : { note: note.trim() }),
+      }
       const saved =
         entry === null
           ? await run(
-              api.assessment.createEntry({ payload: { itemId: item.id, participantId, ...body } }),
+              api.assessment.createEntry({ payload: { itemId: asked.id, participantId, ...body } }),
             )
           : await run(api.assessment.reviseEntry({ params: { entryId: entry.id }, payload: body }))
       if (!andSubmit) return saved
@@ -120,7 +145,10 @@ export function EntryDialog({
       return run(
         api.assessment.setEntryStatus({
           params: { entryId },
-          payload: { status: 'in_review' },
+          payload: {
+            status: 'in_review',
+            ...(seen === undefined ? {} : { expectedItemRevisionId: seen }),
+          },
         }),
       )
     },
@@ -134,12 +162,46 @@ export function EntryDialog({
       onSaved()
     },
     onError: (error: unknown) => {
+      // The question moved while this was being written. Nothing was saved
+      // and nothing here is thrown away: the dialog says so where the work
+      // is, and the way on is the reader's press, not a reload.
+      if ((error as { _tag?: string })._tag === 'ASSESSMENT_ITEM_REVISION_CONFLICT') {
+        setStale(true)
+        onStale?.()
+        return
+      }
       const raised = error as { issues?: readonly { field: string; reason: string }[] }
       if (Array.isArray(raised.issues)) setIssues(raised.issues)
       const refusal = entryRefusalMessage(error)
       setProblem(refusal === null ? formatError(error) : format(refusal))
     },
   })
+
+  /** show the new question, keeping every answer the new form still asks for */
+  const adopt = (fresh: ItemDto) => {
+    setPayload((held) => carryPayload(asked, fresh, held))
+    setAsked(fresh)
+    setStale(false)
+    setAwaiting(false)
+    toast.info(format(m.entryRulesRefreshed))
+  }
+
+  // the page answered the refetch: if it brought a different question, and
+  // the reader asked to see it, this is the moment it arrives
+  useEffect(() => {
+    if (!awaiting) return
+    if (item.currentRevision?.id === asked.currentRevision?.id) return
+    adopt(item)
+    // adopt closes over this render's snapshot on purpose: it is the form
+    // the held answers were written against
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaiting, item])
+
+  // the notice is worth nothing unmet: the body may be scrolled anywhere
+  // when the press comes back refused
+  useEffect(() => {
+    if (stale) notice.current?.scrollIntoView({ block: 'nearest' })
+  }, [stale])
 
   return (
     <FormDialog
@@ -159,21 +221,61 @@ export function EntryDialog({
           )}
         </span>
       }
-      description={[...trail, item.title].join(' › ')}
+      description={[...trail, asked.title].join(' › ')}
       onClose={onClose}
       footer={
         <div className="flex w-full flex-wrap items-center gap-3">
           <p className="text-xs text-muted-foreground">{format(m.entryDraftKept)}</p>
           <span className="flex-1" />
-          <Button variant="outline" disabled={save.isPending} onClick={() => save.mutate(false)}>
+          {/* while the question is out of date both ways out are shut: either
+              would file an answer under rules its author has not seen */}
+          <Button
+            variant="outline"
+            disabled={save.isPending || stale}
+            onClick={() => save.mutate(false)}
+          >
             {format(m.entrySaveDraft)}
           </Button>
-          <Button disabled={save.isPending} onClick={() => setAsking(true)}>
+          <Button disabled={save.isPending || stale} onClick={() => setAsking(true)}>
             {format(m.entrySaveAndSubmit)}
           </Button>
         </div>
       }
     >
+      {/* Above the work and never over it: what has been typed stays on
+          screen and stays in state, and the only press that changes the
+          form is the reader's own. */}
+      {stale && (
+        <div
+          ref={notice}
+          data-testid="rules-changed"
+          className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-foreground px-4 py-3.5 text-background"
+        >
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="text-sm font-medium">{format(m.entryRulesChangedTitle)}</p>
+            <p className="text-[13px] leading-relaxed text-background/70">
+              {format(m.entryRulesChangedBody)}
+            </p>
+          </div>
+          <span className="flex-1" />
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={awaiting}
+            onClick={() => {
+              if (item.currentRevision?.id !== asked.currentRevision?.id) adopt(item)
+              else {
+                setAwaiting(true)
+                onStale?.()
+              }
+            }}
+          >
+            <RefreshCwIcon aria-hidden className={awaiting ? 'animate-spin' : undefined} />
+            {format(m.entryRulesChangedAction)}
+          </Button>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="flex min-w-0 flex-col gap-5">
           <EvidenceForm
@@ -181,7 +283,7 @@ export function EntryDialog({
             value={payload}
             onChange={setPayload}
             doors={doors}
-            where={{ batchId, itemId: item.id }}
+            where={{ batchId, itemId: asked.id }}
             materialRange={materialRange}
           />
           <Field label={format(m.entryNote)}>

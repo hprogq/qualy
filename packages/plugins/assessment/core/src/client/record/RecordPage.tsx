@@ -65,7 +65,17 @@ function Recorder({
     mutationFn: () =>
       run(
         api.assessment.createEntry({
-          payload: { itemId, participantId, payload, note: basis.trim() },
+          payload: {
+            itemId,
+            participantId,
+            payload,
+            note: basis.trim(),
+            // the form on screen is this item's current version; if it moved
+            // while the record was being written, nothing is filed
+            ...(item?.currentRevision?.id === undefined
+              ? {}
+              : { expectedItemRevisionId: item.currentRevision.id }),
+          },
         }),
       ),
     onSuccess: () => {

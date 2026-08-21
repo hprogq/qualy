@@ -263,11 +263,20 @@ function Body({
   })
 
   const setStatus = useMutation({
-    mutationFn: (input: { entryId: string; status: 'in_review' | 'draft' | 'voided' }) =>
+    mutationFn: (input: {
+      entryId: string
+      status: 'in_review' | 'draft' | 'voided'
+      expectedItemRevisionId?: string
+    }) =>
       run(
         api.assessment.setEntryStatus({
           params: { entryId: input.entryId },
-          payload: { status: input.status },
+          payload: {
+            status: input.status,
+            ...(input.expectedItemRevisionId === undefined
+              ? {}
+              : { expectedItemRevisionId: input.expectedItemRevisionId }),
+          },
         }),
       ),
     // said out loud, per act: three different things just happened to the
@@ -782,6 +791,7 @@ function Body({
             setFiling('')
             refresh()
           }}
+          onStale={() => void items.refetch()}
         />
       )}
       {/* the drawer that holds the whole claim; its account is a tab inside */}
@@ -794,7 +804,13 @@ function Body({
           busy={setStatus.isPending || declare.isPending}
           onClose={() => setDetail('')}
           onEdit={() => openAndFile(lingeringDetail.item.id, lingeringDetail.entry.id)}
-          onStatus={(status) => setStatus.mutate({ entryId: lingeringDetail.entry.id, status })}
+          onStatus={(status, expectedItemRevisionId) =>
+            setStatus.mutate({
+              entryId: lingeringDetail.entry.id,
+              status,
+              ...(expectedItemRevisionId === undefined ? {} : { expectedItemRevisionId }),
+            })
+          }
           onAppeal={() => setAppealing(lingeringDetail.entry)}
           onSupplement={() => setAnswering(lingeringDetail.entry)}
         />

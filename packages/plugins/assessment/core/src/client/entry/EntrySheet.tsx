@@ -61,7 +61,8 @@ export function EntrySheet({
   busy: boolean
   onClose: () => void
   onEdit: () => void
-  onStatus: (status: 'in_review' | 'draft' | 'voided') => void
+  /** the second argument is the question this drawer was showing, for submission */
+  onStatus: (status: 'in_review' | 'draft' | 'voided', expectedItemRevisionId?: string) => void
   onAppeal: () => void
   onSupplement: () => void
 }) {
@@ -444,7 +445,11 @@ export function EntrySheet({
           onConfirm={() => {
             const act = asking
             setAsking(null)
-            if (act !== null) onStatus(act)
+            // Only handing it on is a decision about today's rules; taking
+            // it back or giving it up are about the claim alone, and a
+            // question that moved in the meantime does not change them.
+            if (act === 'in_review') onStatus(act, item.currentRevision?.id)
+            else if (act !== null) onStatus(act)
           }}
         />
       </SheetContent>

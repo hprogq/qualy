@@ -353,6 +353,68 @@ describe('filing a claim', () => {
     expect(prepared).not.toHaveBeenCalled()
   })
 
+  it('says the question moved without taking away what was written', async () => {
+    const moved = '99999999-9999-4999-8999-999999999999'
+    // the administrator's change is discovered by the save being refused;
+    // every read after that brings the question as it now stands
+    let changed = false
+    const conflict = () => {
+      changed = true
+      return Effect.fail(
+        Object.assign(new Error('ASSESSMENT_ITEM_REVISION_CONFLICT'), {
+          _tag: 'ASSESSMENT_ITEM_REVISION_CONFLICT',
+          itemId: ITEM_ID,
+          currentRevisionId: moved,
+        }),
+      )
+    }
+    const asked = item({
+      currentRevision: {
+        ...item().currentRevision!,
+        id: moved,
+        revisionNo: 2,
+        formConfig: {
+          fields: [
+            { id: 'summary', key: 'summary', type: 'text', label: '事项说明', required: true },
+            { id: 'level', key: 'level', type: 'text', label: '获奖级别' },
+          ],
+        },
+      },
+    })
+    screen(
+      {
+        listItems: () =>
+          Effect.succeed({ items: [changed ? asked : item()], capabilities: { canManage: false } }),
+        createEntry: conflict as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await page.getByTestId('file-claim').first().click()
+    const said = '2024 年入伍，2026 年退役复学'
+    await page.getByLabelText('事项说明').fill(said)
+    await page.getByRole('button', { name: '存为草稿' }).click()
+
+    // the refusal lands where the work is: the dialog stays, the answer
+    // stays in the field, both ways out are shut until it has been read -
+    // and the form itself does not move while somebody is answering it
+    await expect.element(page.getByTestId('rules-changed')).toBeVisible()
+    await expect.element(page.getByLabelText('事项说明')).toHaveValue(said)
+    await expect.element(page.getByRole('button', { name: '存为草稿' })).toBeDisabled()
+    await expect.element(page.getByRole('button', { name: '保存并提交审核' })).toBeDisabled()
+    expect(page.getByLabelText('获奖级别').elements()).toHaveLength(0)
+
+    // the new question arrives when it is asked for, carrying the answers it
+    // still asks for in the same way
+    await page.getByRole('button', { name: '查看最新要求' }).click()
+    await expect.element(page.getByLabelText('获奖级别')).toBeVisible()
+    await expect.element(page.getByLabelText('事项说明')).toHaveValue(said)
+    await expect.element(page.getByRole('button', { name: '存为草稿' })).toBeEnabled()
+    expect(page.getByTestId('rules-changed').elements()).toHaveLength(0)
+  })
+
   it('shows the whole account, with the reviewer’s advice read-only', async () => {
     screen(
       {

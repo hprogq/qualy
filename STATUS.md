@@ -6770,3 +6770,23 @@ descriptor 与 zh 条目一并删除。
 
 `pnpm typecheck` 零错;`pnpm test` 98 files / 691 passed | 17 skipped;
 `pnpm test:browser` 11 files / 89 passed;`npx prettier --check .` 全绿。
+
+### 填报的两道早拒(2026-08-21)
+
+领域裁决见 docs/assessment-design.md §32.67。两条工作线,分两笔提交。
+
+**文件大小在选中即拒**:`EvidenceFieldSpec` 补 `maxFileBytes`(数据本就在 formConfig 里,只是类型漏声明);
+`Dropzone` 增 `maxSize` 与结构化 `onRejected`(reason `too-large|type|too-many`,只给 File 与理由码,
+primitive 仍零文案);`take()` 在 prepare 之前复核大小与剩余名额,并把原先 `files.slice(0, room)` 的
+静默截断改为逐个点名「未添加」;上传区提前写明支持格式(mime 归一为扩展名)、单文件上限与剩余数量。
+服务端 bind 校验与 field-agnostic 的 prepare 原样不动。
+
+**题目版本乐观并发**:新错误 `ASSESSMENT_ITEM_REVISION_CONFLICT`(409,携 itemId/currentRevisionId);
+createEntry / reviseEntry / setEntryStatus 各加可选 `expectedItemRevisionId`,服务端在 decode payload
+**之前**比较(顺序决定了报的是「要求变了」而不是「新字段未填」);EntryDialog 对题目做快照,冲突时
+不关闭、不清空、不刷新,就地给出提示并禁用两个保存键,按下「查看最新要求」才推进快照并按 field
+identity 迁移答案;抽屉提交与代录页同样携带令牌。
+
+验收(逐条真实执行):`pnpm typecheck` 零错;`pnpm test` 98 files / 692 passed | 17 skipped;
+`pnpm test:browser` 11 files / 91 passed(连跑三次稳定);`npx prettier --check .` 全绿。
+新增三例均做红验证:去掉 take() 的大小检查、把表单字段改回读 props、把服务端比较短路,对应用例分别转红。

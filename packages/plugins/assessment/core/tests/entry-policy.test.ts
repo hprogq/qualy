@@ -155,6 +155,111 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     expect(refusalOf(result.studentRecords)?.reason).toBe('permission-not-held')
   })
 
+  it('refuses to file an answer against a question that moved while it was written', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('ep-revision')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const s1 = f.principal(f.s1)
+          const admin = f.principal(f.admin)
+          const drawn = g.item.currentRevision!.id
+
+          // a draft written and kept against the question as it stood
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, expectedItemRevisionId: drawn, payload: {} },
+            s1,
+          )
+
+          // the administrator changes what the question asks for
+          yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: {
+                entrySource: 'student',
+                formConfig: { files: {} },
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '4.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  normal: {
+                    stages: [
+                      {
+                        id: 'class',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                  },
+                  escalation: { stages: [] },
+                },
+              },
+              reason: 'worth more now',
+            },
+            admin,
+          )
+          const moved = (yield* assessment.getItem(f.t, g.item.id, admin)).currentRevision!.id
+
+          // three writes, each naming the question the screen had; none of
+          // them may land, and the refusal is about the question rather than
+          // about a field the writer never saw
+          const revising = yield* Effect.exit(
+            assessment.appendEntryRevision(
+              f.t,
+              entry.id,
+              { payload: {}, expectedItemRevisionId: drawn },
+              s1,
+            ),
+          )
+          const submitting = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entry.id, 'in_review', s1, drawn),
+          )
+          const filing = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              {
+                itemId: g.item.id,
+                participantId: g.p2,
+                expectedItemRevisionId: drawn,
+                payload: {},
+              },
+              f.principal(f.s2),
+            ),
+          )
+
+          // and the same acts, now that the writer has seen what it says
+          const revised = yield* assessment.appendEntryRevision(
+            f.t,
+            entry.id,
+            { payload: {}, expectedItemRevisionId: moved },
+            s1,
+          )
+          const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1, moved)
+          return { drawn, moved, revising, submitting, filing, revised, submitted }
+        }),
+      ),
+    )
+
+    expect(result.moved).not.toBe(result.drawn)
+    for (const refused of [result.revising, result.submitting, result.filing]) {
+      expect(errorOf<{ _tag: string; currentRevisionId: string }>(refused)?._tag).toBe(
+        'ASSESSMENT_ITEM_REVISION_CONFLICT',
+      )
+      expect(errorOf<{ currentRevisionId: string }>(refused)?.currentRevisionId).toBe(result.moved)
+    }
+    expect(result.revised.status).toBe('draft')
+    expect(result.submitted.status).toBe('in_review')
+  })
+
   it('lets a claim be worked while it is the owner’s to work, and only then', async () => {
     const result = ok(
       await run(

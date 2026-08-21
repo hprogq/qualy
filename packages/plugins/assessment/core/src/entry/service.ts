@@ -12,6 +12,7 @@ import {
   EntryNotFound,
   EntryPayloadInvalid,
   ItemNotFound,
+  ItemRevisionConflict,
   ParticipantNotFound,
 } from '../server/errors.ts'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
@@ -148,20 +149,24 @@ export interface EntryView {
 export interface CreateEntryInput {
   readonly itemId: string
   readonly participantId: string
+  /** the question as the caller's screen had it; absent means no claim made */
+  readonly expectedItemRevisionId?: string
   readonly payload: unknown
   readonly note?: string
 }
 
 export type CreateEntryError =
   | ItemNotFound
+  | ItemRevisionConflict
   | BatchNotFound
   | BatchReadOnly
   | EntryActionRefused
   | EntryPayloadInvalid
   | AccessDenied
 export type ReviseEntryError =
-  EntryNotFound | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
-export type EntryStatusError = EntryNotFound | BatchReadOnly | EntryActionRefused
+  EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
+export type EntryStatusError =
+  EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused
 
 /**
  * What an administrator may do to a claim without pretending to be its
@@ -265,7 +270,7 @@ export interface EntryMethods {
   readonly appendEntryRevision: (
     tenantId: string,
     entryId: string,
-    input: { payload: unknown; note?: string },
+    input: { payload: unknown; note?: string; expectedItemRevisionId?: string },
     as: Principal,
   ) => Effect.Effect<EntryView, ReviseEntryError>
   readonly setEntryStatus: (
@@ -273,6 +278,8 @@ export interface EntryMethods {
     entryId: string,
     to: 'in_review' | 'draft' | 'voided',
     as: Principal,
+    /** the question the caller's screen showed when the press happened */
+    expectedItemRevisionId?: string,
   ) => Effect.Effect<EntryView, EntryStatusError>
   readonly interveneOnEntry: (
     tenantId: string,
@@ -619,6 +626,24 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
       return { entry, item: item!, participant: participant! }
     })
 
+  /**
+   * The question has not moved since the caller drew its screen.
+   *
+   * Checked before the payload is read, so that a form which gained a
+   * required field yesterday says "the requirements changed" rather than
+   * "this field is missing" - the second sentence sends the reader looking
+   * for a field that is not on their screen. A caller that names no version
+   * is not making the claim, and nothing is checked for it.
+   */
+  const sameQuestion = (item: ItemRow, expected: string | undefined) =>
+    Effect.gen(function* () {
+      if (expected === undefined || item.currentRevisionId === expected) return
+      return yield* new ItemRevisionConflict({
+        itemId: item.id,
+        currentRevisionId: item.currentRevisionId,
+      })
+    })
+
   const createEntry: EntryMethods['createEntry'] = Effect.fn('Assessment.createEntry')(
     function* (tenantId, input, as) {
       return yield* withDb(
@@ -645,6 +670,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             if (driverOf(item)?.interaction === 'derived') {
               return yield* refuse('create', 'item-not-fileable')
             }
+            yield* sameQuestion(item, input.expectedItemRevisionId)
             const revision =
               item.currentRevisionId === null
                 ? null
@@ -793,6 +819,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             return yield* refuse('edit', 'entry-not-editable')
           }
           if (item.status !== 'active') return yield* refuse('edit', 'item-not-active')
+          yield* sameQuestion(item, input.expectedItemRevisionId)
           const revision =
             item.currentRevisionId === null
               ? null
@@ -850,7 +877,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   })
 
   const setEntryStatus: EntryMethods['setEntryStatus'] = Effect.fn('Assessment.setEntryStatus')(
-    function* (tenantId, entryId, to, as) {
+    function* (tenantId, entryId, to, as, expectedItemRevisionId) {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
@@ -859,6 +886,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             const locked = yield* lockBatch(tenantId, located.batchId)
             if (locked!.status === 'archived') return yield* new BatchReadOnly()
             const { entry, item, participant } = (yield* loadEntry(tenantId, entryId))!
+            yield* sameQuestion(item, expectedItemRevisionId)
             const action = to === 'in_review' ? 'submit' : to === 'voided' ? 'abandon' : 'withdraw'
             if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
             if (participant.status !== 'active') {

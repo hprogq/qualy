@@ -1,6 +1,6 @@
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../i18n.ts'
-import { amountOf, trimAmount, unitsOf, type EntryDto, type ItemDto } from './model.ts'
+import { amountOf, fieldsOf, trimAmount, unitsOf, type EntryDto, type ItemDto } from './model.ts'
 
 // The round as a participant reads it: one row per group and per question,
 // each already carrying what its line has to say.
@@ -260,4 +260,34 @@ const itemRow = (
     trail,
     parentId: item.scoreGroupId,
   }
+}
+
+/**
+ * The answers so far, read against the question as it now stands.
+ *
+ * A field is the same field across versions when it keeps its identity - its
+ * own id, or, for forms written before ids, the key it has always been known
+ * by - so a renamed key carries its answer with it. Anything whose type
+ * changed is left behind rather than reinterpreted: the same characters mean
+ * one thing in a date and another in a sentence, and guessing which is not
+ * this screen's to do. Fields the new form does not ask for simply stop being
+ * asked; new ones arrive empty, which is what a new question deserves.
+ */
+export const carryPayload = (
+  from: ItemDto,
+  to: ItemDto,
+  payload: Record<string, string | readonly string[]>,
+): Record<string, string | readonly string[]> => {
+  const was = fieldsOf(from.currentRevision?.formConfig)
+  const now = fieldsOf(to.currentRevision?.formConfig)
+  const identity = (field: { id?: string; key: string }) => field.id ?? field.key
+  const held = new Map(was.map((field) => [identity(field), field] as const))
+  const carried: Record<string, string | readonly string[]> = {}
+  for (const field of now) {
+    const before = held.get(identity(field))
+    if (before === undefined || before.type !== field.type) continue
+    const value = payload[before.key]
+    if (value !== undefined) carried[field.key] = value
+  }
+  return carried
 }
