@@ -999,7 +999,11 @@ function PersonStrip({
         // theme's own ink rather than a borrowed hue - the workbench is
         // greyscale but for the two verdict colours, and a third colour on
         // it reads as something pasted on from another product
-        <Badge data-testid="escalation-light" className="shrink-0 text-xs">
+        <Badge
+          variant="outline"
+          data-testid="escalation-light"
+          className="shrink-0 border-amber-300 bg-amber-50 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-200"
+        >
           {format(m.reviewRouteEscalation)}
         </Badge>
       )}
@@ -1387,25 +1391,28 @@ const FlowColumn = memo(function FlowColumn({
           </Button>
         </div>
         {/* The notice the reviewer must not scroll past: under the flow
-            title, above the previous round's word. It is seen first because
-            it is the one panel here written in reversed ink, not because
-            anything about it glows or moves - in a greyscale workbench,
-            contrast is the loudest thing there is, and it is the only thing
-            that never looks borrowed. */}
+            title, above the previous round's word. A tinted card with a
+            hairline edge rather than a slab of ink - amber because the two
+            colours already spoken here are the verdicts, approval and
+            refusal, and this is neither: it is the round asking to be read
+            more closely. The badge in the header wears the same colour, so
+            the two are recognizably one fact. */}
         {review.chain.route === 'escalation' && review.state !== 'completed' && (
           <div
             data-testid="escalation-card"
-            className="flex min-w-0 flex-col gap-1 rounded-xl bg-foreground px-4 py-3.5 text-background"
+            className="flex min-w-0 flex-col gap-1 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 dark:border-amber-900/50 dark:bg-amber-950/25"
           >
-            <p className="text-sm font-medium tracking-tight">
+            <p className="text-sm font-medium tracking-tight text-amber-950 dark:text-amber-100">
               {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
             </p>
             {/* the appellant's grounds are business evidence, not chrome:
                 shown in their own words wherever they exist */}
             {appealed !== undefined && appealed.comment !== null ? (
-              <p className="text-sm leading-relaxed text-pretty">{appealed.comment}</p>
+              <p className="text-sm leading-relaxed text-pretty text-amber-950 dark:text-amber-100">
+                {appealed.comment}
+              </p>
             ) : (
-              <p className="text-[13px] leading-relaxed text-background/70">
+              <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
                 {format(m.reviewEscBannerBody)}
               </p>
             )}

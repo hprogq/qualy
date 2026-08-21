@@ -249,18 +249,21 @@ export function EntryDialog({
         <div
           ref={notice}
           data-testid="rules-changed"
-          className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-foreground px-4 py-3.5 text-background"
+          className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 dark:border-amber-900/50 dark:bg-amber-950/25"
         >
           <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-sm font-medium">{format(m.entryRulesChangedTitle)}</p>
-            <p className="text-[13px] leading-relaxed text-background/70">
+            <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
+              {format(m.entryRulesChangedTitle)}
+            </p>
+            <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
               {format(m.entryRulesChangedBody)}
             </p>
           </div>
           <span className="flex-1" />
           <Button
-            variant="secondary"
+            variant="outline"
             size="sm"
+            className="border-amber-300 bg-transparent text-amber-950 hover:bg-amber-100/60 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-900/40"
             disabled={awaiting}
             onClick={() => {
               if (item.currentRevision?.id !== asked.currentRevision?.id) adopt(item)
