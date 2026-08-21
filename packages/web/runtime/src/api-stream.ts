@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Effect, Stream } from 'effect'
+import { isAuthenticationError } from '@qualy/web-i18n'
 import { browserRuntime } from './api-query.ts'
 
 // A server-sent stream as a React resource, with the same division of labour
@@ -8,11 +9,19 @@ import { browserRuntime } from './api-query.ts'
 // fiber, which cancels the fetch, which closes the server's scope.
 //
 // The stream is a wake-up channel, not a data channel, so its failure mode is
-// simply "asleep": any error or end waits out a pause and dials again, and
-// `live` tells the caller to lean on polling in the meantime. Nothing is
-// replayed - the server opens every connection with its own catch-up signal.
+// simply "asleep": an end waits out a pause and dials again, and `live` tells
+// the caller to lean on polling in the meantime. Nothing is replayed - the
+// server opens every connection with its own catch-up signal.
+//
+// Two endings are not "asleep". A session that is gone will refuse every dial
+// the same way, so re-dialling it is a request loop for as long as the tab is
+// open; that one stops and waits for the identity to change, which remounts
+// the hook. Anything else that fails backs away instead of knocking at a
+// fixed rate - a server that is down should not be dialled twenty times a
+// minute by every open tab.
 
 const REDIAL_MS = 3_000
+const REDIAL_MOST_MS = 60_000
 
 export function useApiStream<A>(
   /** undefined when the endpoint is not there to call (a stubbed harness) */
@@ -37,6 +46,7 @@ export function useApiStream<A>(
     if (!enabled || absent) return
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
+    let backoff = REDIAL_MS
     const dial = () => {
       const making = opener.current
       if (controller.signal.aborted || making === undefined) return
@@ -45,18 +55,31 @@ export function useApiStream<A>(
           Effect.flatMap(making(), (stream) =>
             Stream.runForEach(stream, (event) =>
               Effect.sync(() => {
-                // the first delivered event is what proves the channel open
+                // the first delivered event is what proves the channel open,
+                // and proves the way back is worth taking at full speed again
                 setLive(true)
+                backoff = REDIAL_MS
                 handler.current(event)
               }),
             ),
           ),
           { signal: controller.signal },
         )
-        .catch(() => undefined)
-        .finally(() => {
+        .then(() => {
+          // a clean end is the server closing a connection it will accept
+          // again: dial straight back
+          backoff = REDIAL_MS
+          return undefined
+        })
+        .catch((error: unknown) => {
+          if (isAuthenticationError(error)) return 'stop' as const
+          backoff = Math.min(backoff * 2, REDIAL_MOST_MS)
+          return undefined
+        })
+        .then((verdict) => {
           setLive(false)
-          if (!controller.signal.aborted) timer = setTimeout(dial, REDIAL_MS)
+          if (verdict === 'stop' || controller.signal.aborted) return
+          timer = setTimeout(dial, backoff)
         })
     }
     dial()

@@ -525,7 +525,12 @@ describe('the four acts, always on the bar', () => {
       // thumb is under no such rule, which is exactly why the key answers.
       ;(page.getByTestId('act-escalate').element() as HTMLElement).click()
       expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull()
-      await expect.element(page.getByText('该题未配置复核流程')).toBeVisible()
+      // the press answered: something was said, and the key names the fact
+      // it was said about. The sentence itself is the localization suite's.
+      await expect
+        .element(page.getByTestId('act-escalate'))
+        .toHaveAttribute('data-blocked-reason', 'no-route')
+      await expect.poll(() => document.querySelectorAll('[data-sonner-toast]').length).toBe(1)
     } finally {
       restore()
     }

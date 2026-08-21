@@ -2774,6 +2774,8 @@ function ActionKey({
       variant="outline"
       data-testid={`act-${act}`}
       data-offer={blocked ? 'blocked' : 'available'}
+      // why it is not on offer, as the fact rather than the sentence
+      data-blocked-reason={blocked ? offer.reason : undefined}
       aria-disabled={blocked || undefined}
       className={cn(
         !fine && TOUCH_KEY,

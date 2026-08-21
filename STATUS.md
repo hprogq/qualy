@@ -7342,3 +7342,25 @@ repos/effect/packages/effect/src/References.ts:185、Effect.ts:13858 的 annotat
 把它裹回 hook 的 run 上。新增 api-kit 测试断言 hook 内读到的 `source` 就是注册方的。
 
 验收:typecheck 零错;`pnpm test` 724 passed | 17 skipped;prettier 通过。
+
+### 实时通道的两种结束,与一处绑住文案的浏览器断言(2026-08-22,对抗审查)
+
+一、**SSE 在被拒绝的连接上无限重拨**。`useApiStream` 把每一次结束都当成传输打嗝,固定 3 秒重拨,
+不看错误也不计次。会话没了的标签页因此变成一个只要开着就每 3 秒敲一次门的请求循环。
+现在分三种结束:干净结束照旧立刻重拨(服务端本就会主动关闭一条它还愿意接受的连接);
+`isAuthenticationError` 判定的拒绝**停止重拨**,等身份变化让 hook 重新挂载;其余失败按几何退避
+(3s 起,封顶 60s),收到任一事件即复位——一台宕机的服务器不该被每个打开的标签页每分钟敲二十次。
+
+二、**一处业务断言绑住了目录文案**。按 blame 逐条核过全部浏览器套件里与 catalog 取值重合的断言:
+绝大多数是**定位**(`getByRole(..., {name})`、`getByLabelText`),那是规矩①明确允许的;
+真正把断言本身押在文案上、且落在规矩生效当天及之后的,只有 `review-layout.browser.test.tsx:528`
+(移动端按下被禁用的「提请复核」键,断言弹出的原文)。ActionKey 增 `data-blocked-reason`
+携带事实(`no-route`),测试改为断言该事实 + 确有一条提示出现(`[data-sonner-toast]` 计数),
+原文归 localization 套件。审查说「两例」,实测只有一例:另一处
+(`entry-workflow.browser.test.tsx:598` 断言未读点的 `aria-label`)是可访问名断言,业务事实
+(有且仅有一个未读点)已由同处的 testid 断言承担,按规矩①保留。
+
+**如实记录的存量**:立规矩(2026-08-20)之前还有六处业务断言押在文案上——batch-admin 的三处空状态
+与三处状态片、identity 的一处拒绝语。它们不在本轮范围内,列为待办。
+
+验收:typecheck 零错;`pnpm test` 724 passed | 17 skipped;`pnpm test:browser` 96 passed;prettier 通过。
