@@ -7236,3 +7236,25 @@ item/policy.ts),引擎按**解析**判末端(`isRouteEnd` → `enterableFrom` �
 逐页走完,断言与一次取完的顺序**逐 id 相等**。红验:游标换回展示值,3 行只走出 2 行。
 
 验收:typecheck 零错;`pnpm test` 719 passed | 17 skipped;prettier 通过。
+
+### 重路由不改变一轮复核的身份(2026-08-22,对抗审查 major)
+
+管理员改题目配置触发 `propagate()` 重路由时,替代轮次的 `origin` 被写死成 `'reroute'`,
+被取代那一轮是不是申诉的事实丢失。撤回规则读的是**申报当前所站那一轮**的 origin
+(`entry/service.ts` 的 `appeal-not-withdrawable`),于是一条申诉轮次被重路由之后就变得可撤回——
+参评人一撤,正在被争议的那个已定裁决被静默抹掉,申报回到 draft。
+修法:`origin: round.origin === 'appeal' ? 'appeal' : 'reroute'`,并把 `appealedInstanceId` 一并
+带过去;`OpenRoundRow` 增 `origin` / `appealedInstanceId`。
+
+新增测试 `keeps an appeal an appeal when the chain moves under it`:驳回 → 申诉 → 管理员改升级
+环节名触发 reroute-all → 断言替代轮次 `origin='appeal'` 且 `appealed_instance_id` 仍指向被争议
+那一轮,且此时撤回被拒为 `appeal-not-withdrawable`。红验:写回 `'reroute'`,断言立刻转红。
+
+**同处第二条(存疑,今天不可达,如实记录)**:该 `stageArrival` 传的是
+`actorId: participant.userId`,与 `subjectUserId` 同值,使自审回避集合塌缩成「本人」一个,
+丢掉「被审那一版材料的作者」。其余每个到站点传的都是版本作者。已改为 `round.actorId`
+(`OpenRoundRow` 增 `actorId`,由 `EntryRevision` join 取)。**没有专门测试**:`record` 来源的
+申报即时通过、不建轮次,`proxy` 来源目前没有任何创建路径,所以今天没有「作者不是本人的开放轮次」
+可被重路由。这一改是把值对齐到其余调用点,不是新增机制。
+
+验收:typecheck 零错;`pnpm test` 720 passed | 17 skipped;prettier 通过。

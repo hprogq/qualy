@@ -577,13 +577,16 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           comment: input.reason,
         })
         // a re-route is a fresh round: the old round's judges carry no
-        // exclusion into it, the same as an appeal's do not
+        // exclusion into it, the same as an appeal's do not. The filing's
+        // own author still does - a claim written by a proxy must not be
+        // judged by that proxy, and passing the subject twice collapsed the
+        // conflict set to one person and seated them.
         const arrived = yield* stageArrival({
           tenantId: input.tenantId,
           batchId: input.item.batchId,
           stage: landing,
           subjectUserId: participant.userId,
-          actorId: participant.userId,
+          actorId: round.actorId,
         })
         const roundNo = yield* nextRoundNo(input.tenantId, round.entryId)
         // a new round, never an edit to the old one: "why did it go there"
@@ -593,7 +596,15 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           entryId: round.entryId,
           revisionId: round.revisionId,
           roundNo,
-          origin: 'reroute',
+          // A round keeps what it is across a re-route. An appeal moved onto
+          // a newer chain is still an appeal: withdrawal reads origin off
+          // the round a claim currently stands on, and a replacement that
+          // called itself an ordinary re-route made a contested verdict
+          // withdrawable, which would wash it back to a draft.
+          origin: round.origin === 'appeal' ? 'appeal' : 'reroute',
+          ...(round.appealedInstanceId !== null
+            ? { appealedInstanceId: round.appealedInstanceId }
+            : {}),
           initiator: 'staff',
           supersedesInstanceId: round.id,
           policyRevisionId: input.newRevisionId,

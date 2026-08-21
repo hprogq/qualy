@@ -1346,6 +1346,99 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
   })
 
+  // A round keeps what it is when an administrator moves it onto a newer
+  // chain. An appeal is the one round a claim may not be withdrawn out of -
+  // withdrawing would quietly unmake the decision being contested - and the
+  // withdrawal rule reads that off the round the claim currently stands on.
+  it('keeps an appeal an appeal when the chain moves under it', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-reroute-appeal')
+          const assessment = yield* Assessment
+          const at = (id: string) => ({
+            id,
+            selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+            quorum: { type: 'any' },
+          })
+          const g = yield* runningBatch(f, {
+            profile: [...NO_DOUBTS, 'assessment.entry.appeal'],
+            stages: [at('n1')],
+            escalation: [at('d1')],
+          })
+          const admin = f.principal(f.admin)
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', comment: '材料不足' },
+            f.principal(f.reviewer),
+          )
+          const appealed = yield* assessment.appealReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { reason: '证书原件已补交，请复核' },
+            s1,
+          )
+          // the administrator renames the ladder's step, which moves every
+          // open round onto the new chain
+          const swapped = {
+            entrySource: 'student' as const,
+            formConfig: { files: {} },
+            scoringConfig: {
+              calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+              aggregator: { ref: 'sum@1', config: {} },
+            },
+            reviewPolicy: { normal: { stages: [at('n1')] }, escalation: { stages: [at('d2')] } },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.t, g.item.id, { config: swapped }, admin),
+          )
+          const report = errorOf<{ impactToken: string }>(asked)!
+          yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: swapped,
+              reason: '改环节名',
+              effects: {
+                impactToken: report.impactToken,
+                review: {
+                  open: 'reroute-all',
+                  missingCurrentStage: 'refuse',
+                  landing: 'route-start',
+                },
+              },
+            },
+            admin,
+          )
+          const moved = one<{ origin: string; appealed_instance_id: string | null }>(
+            yield* runSql(sql`
+              select origin, appealed_instance_id from review_instances
+              where entry_id = ${entry.id} and supersedes_instance_id = ${appealed.id}`),
+          )
+          // and the claim is still not withdrawable out of it
+          const withdrawn = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entry.id, 'draft', s1),
+          )
+          return { moved, contested: sent.currentReviewInstanceId!, withdrawn }
+        }),
+      ),
+    )
+    expect(result.moved).toMatchObject({
+      origin: 'appeal',
+      appealed_instance_id: result.contested,
+    })
+    expect(refusalOf(result.withdrawn)?.reason).toBe('appeal-not-withdrawable')
+  })
+
   // A sitting held at the end of the ladder. The grammar forbids a panel on
   // the escalation route's last step because a split there would have
   // nowhere to go - but it checks that by POSITION, while a round walks by

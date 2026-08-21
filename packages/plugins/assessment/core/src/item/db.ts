@@ -605,6 +605,11 @@ export interface OpenRoundRow {
   state: 'active' | 'blocked' | 'awaiting_supplement'
   route: 'normal' | 'escalation'
   stageId: string
+  /** how this round began, so a replacement can begin the same way */
+  origin: string
+  appealedInstanceId: string | null
+  /** who wrote the filing under review: the other half of self-review */
+  actorId: string
   /** the routes the round froze, for asking what stood before its step */
   effectiveChain: unknown
 }
@@ -617,6 +622,9 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
         .innerJoin('Entry as e', (join) =>
           join.onRef('e.tenantId', '=', 'ri.tenantId').onRef('e.id', '=', 'ri.entryId'),
         )
+        .innerJoin('EntryRevision as er', (join) =>
+          join.onRef('er.tenantId', '=', 'ri.tenantId').onRef('er.id', '=', 'ri.revisionId'),
+        )
         .select([
           'ri.id',
           'ri.entryId',
@@ -624,8 +632,11 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           'ri.state',
           'ri.currentRoute',
           'ri.currentStageId',
+          'ri.origin',
+          'ri.appealedInstanceId',
           'ri.effectiveChain',
           'e.participantId',
+          'er.actorId',
         ])
         .where('ri.tenantId', '=', tenantId)
         .where('e.itemId', '=', itemId)
@@ -643,6 +654,10 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           state: row.state as OpenRoundRow['state'],
           route: row.currentRoute as OpenRoundRow['route'],
           stageId: String(row.currentStageId),
+          origin: String(row.origin),
+          appealedInstanceId:
+            row.appealedInstanceId == null ? null : String(row.appealedInstanceId),
+          actorId: String(row.actorId),
           effectiveChain: row.effectiveChain,
         })),
       ),
