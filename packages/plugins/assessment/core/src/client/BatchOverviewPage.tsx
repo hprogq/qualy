@@ -65,7 +65,7 @@ export default function BatchOverviewPage() {
           <div className="flex min-w-0 flex-col gap-5 lg:gap-8">
             {/* the stage plan on a phone: the same strip, laid over the
                 desk rather than beside it */}
-            <section className="flex flex-col gap-2.5 max-lg:order-2 lg:hidden">
+            <section className="flex flex-col gap-2.5 max-lg:order-2 max-lg:mt-2 lg:hidden">
               <h2 className="text-sm font-semibold">{format(m.flowTitle)}</h2>
               {plan.isPending ? (
                 <Skeleton className="h-16 w-full" />
