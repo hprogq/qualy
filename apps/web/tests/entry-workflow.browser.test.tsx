@@ -243,6 +243,62 @@ describe('filing a claim', () => {
     await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
   })
 
+  it('offers keeping the claim from inside the question that hands it on', async () => {
+    const created = vi.fn(() => Effect.succeed({ entry: entry() }))
+    const submitted = vi.fn(() => Effect.succeed({ entry: entry({ status: 'in_review' }) }))
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        createEntry: created as never,
+        setEntryStatus: submitted as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await page.getByTestId('file-claim').first().click()
+    await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
+
+    // The press writes the claim down and hands it on, so the question it
+    // opens carries three answers, not two: the writing happens either way,
+    // and only the handing on is in doubt. Nothing has been written yet at
+    // the moment the question appears.
+    await page.getByRole('button', { name: '保存并提交审核' }).click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    expect(created).not.toHaveBeenCalled()
+    await expect.element(page.getByTestId('confirm-dismiss')).toBeVisible()
+    await expect.element(page.getByTestId('confirm-other')).toBeVisible()
+
+    // the lesser answer keeps the claim and asks nobody to look at it
+    await page.getByTestId('confirm-other').click()
+    await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
+    expect(submitted).not.toHaveBeenCalled()
+  })
+
+  it('writes the claim down and hands it on in the one press', async () => {
+    const created = vi.fn(() => Effect.succeed({ entry: entry() }))
+    const submitted = vi.fn(() => Effect.succeed({ entry: entry({ status: 'in_review' }) }))
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        createEntry: created as never,
+        setEntryStatus: submitted as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await page.getByTestId('file-claim').first().click()
+    await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
+    await page.getByRole('button', { name: '保存并提交审核' }).click()
+    await page.getByTestId('confirm-accept').click()
+
+    await vi.waitFor(() => expect(created).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(submitted).toHaveBeenCalledOnce())
+  })
+
   it('shows the whole account, with the reviewer’s advice read-only', async () => {
     screen(
       {

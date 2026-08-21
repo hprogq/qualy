@@ -3006,6 +3006,17 @@ const i18n = definePluginMessages({
       defaultMessage: 'Saved drafts can be continued at any time.',
     },
     entrySaveDraft: { id: 'assessment/entry/save-draft', defaultMessage: 'Save as draft' },
+    // filing writes the claim down and may hand it on in the same press, so
+    // the key says both; submitting an already-written claim says only the one
+    entrySaveAndSubmit: {
+      id: 'assessment/entry/save-and-submit',
+      defaultMessage: 'Save and submit for review',
+    },
+    entrySaveThenSubmit: {
+      id: 'assessment/entry/save-then-submit',
+      defaultMessage: 'Save and submit',
+    },
+    entrySaveOnly: { id: 'assessment/entry/save-only', defaultMessage: 'Save only' },
     myEntriesFilterAll: { id: 'assessment/entry/filter-all', defaultMessage: 'All' },
     myEntriesFilterTodo: {
       id: 'assessment/entry/filter-todo',

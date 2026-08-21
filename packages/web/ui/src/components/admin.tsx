@@ -523,9 +523,11 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   cancelLabel,
+  otherLabel,
   pending,
   tone = 'default',
   onConfirm,
+  onOther,
   onCancel,
 }: {
   open: boolean
@@ -533,10 +535,18 @@ export function ConfirmDialog({
   description?: string
   confirmLabel: string
   cancelLabel: string
+  /**
+   * A third way out, offered where calling it off is not the only smaller
+   * answer: the lesser commitment the question implies - keep the work
+   * without handing it on - so that reaching it costs one press and not a
+   * dismissal followed by hunting for the other button.
+   */
+  otherLabel?: string
   pending?: boolean
   /** destructive colours the confirming button, for what cannot be undone */
   tone?: 'default' | 'destructive'
   onConfirm: () => void
+  onOther?: () => void
   onCancel: () => void
 }) {
   // The words outlive the answer.
@@ -547,11 +557,11 @@ export function ConfirmDialog({
   // sentence lost its name mid-fade and asked about nobody. Holding the last
   // words it was given costs nothing and means a caller can go on clearing
   // its own state the moment it is done with it.
-  const [said, setSaid] = useState({ title, description, confirmLabel })
+  const [said, setSaid] = useState({ title, description, confirmLabel, otherLabel })
   useEffect(() => {
-    if (open) setSaid({ title, description, confirmLabel })
-  }, [open, title, description, confirmLabel])
-  const shown = open ? { title, description, confirmLabel } : said
+    if (open) setSaid({ title, description, confirmLabel, otherLabel })
+  }, [open, title, description, confirmLabel, otherLabel])
+  const shown = open ? { title, description, confirmLabel, otherLabel } : said
 
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && onCancel()}>
@@ -566,6 +576,16 @@ export function ConfirmDialog({
           <AlertDialogCancel data-testid="confirm-dismiss" onClick={onCancel} disabled={pending}>
             {cancelLabel}
           </AlertDialogCancel>
+          {shown.otherLabel !== undefined && onOther !== undefined && (
+            <AlertDialogAction
+              data-testid="confirm-other"
+              variant="outline"
+              onClick={onOther}
+              disabled={pending}
+            >
+              {shown.otherLabel}
+            </AlertDialogAction>
+          )}
           <AlertDialogAction
             data-testid="confirm-accept"
             variant={tone === 'destructive' ? 'destructive' : 'default'}

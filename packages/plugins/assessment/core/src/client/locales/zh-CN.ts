@@ -410,7 +410,7 @@ export default {
   'assessment/review/last-one': '已到最后一条',
   'assessment/review/undo-pending': '{seconds} 秒后提交，期间可撤回',
   'assessment/review/esc-banner-title': '该申报已进入复核流程',
-  'assessment/review/esc-banner-body': '你的审核意见将与其他审核人员的意见一并提交给最终审核人。',
+  'assessment/review/esc-banner-body': '请根据申报材料和认定标准独立作出审核判断。',
   'assessment/review/file-added': '新增',
   'assessment/review/file-gone': '本轮移除',
   'assessment/review/files-note':
@@ -795,6 +795,9 @@ export default {
   'assessment/entry/no-duplicates': '同一事项请勿重复申报。',
   'assessment/entry/draft-kept': '保存为草稿后，可随时继续填写。',
   'assessment/entry/save-draft': '保存为草稿',
+  'assessment/entry/save-and-submit': '保存并提交审核',
+  'assessment/entry/save-then-submit': '保存并提交',
+  'assessment/entry/save-only': '仅保存',
   'assessment/entry/filter-all': '全部',
   'assessment/entry/filter-todo': '待我处理',
   'assessment/entry/filter-none': '暂无需要你处理的项目。',

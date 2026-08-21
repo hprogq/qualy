@@ -169,7 +169,7 @@ export function EntryDialog({
             {format(m.entrySaveDraft)}
           </Button>
           <Button disabled={save.isPending} onClick={() => setAsking(true)}>
-            {format(m.entrySubmit)}
+            {format(m.entrySaveAndSubmit)}
           </Button>
         </div>
       }
@@ -261,16 +261,24 @@ export function EntryDialog({
         </aside>
       </div>
 
-      {/* handing it on is the act that takes the claim out of the writer's
-          hands, so it is a question here as it is in the drawer */}
+      {/* Handing it on is the act that takes the claim out of the writer's
+          hands, so it is a question here as it is in the drawer - and the
+          press behind it writes the claim down either way, so the question
+          offers that on its own key rather than sending the reader back to
+          the form to find it. */}
       <ConfirmDialog
         open={asking}
         title={format(m.entrySubmitConfirm)}
         description={format(m.entrySubmitConfirmHint)}
-        confirmLabel={format(m.entrySubmit)}
+        confirmLabel={format(m.entrySaveThenSubmit)}
+        otherLabel={format(m.entrySaveOnly)}
         cancelLabel={format(commonMessages.cancel)}
         pending={save.isPending}
         onCancel={() => setAsking(false)}
+        onOther={() => {
+          setAsking(false)
+          save.mutate(false)
+        }}
         onConfirm={() => {
           setAsking(false)
           save.mutate(true)
