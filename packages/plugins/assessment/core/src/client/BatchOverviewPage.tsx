@@ -62,10 +62,10 @@ export default function BatchOverviewPage() {
     <BatchScreen title={format(m.tabOverview)} description={format(m.overviewHint)}>
       {() => (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17.25rem] lg:gap-12">
-          <div className="flex min-w-0 flex-col gap-8">
+          <div className="flex min-w-0 flex-col gap-5 lg:gap-8">
             {/* the stage plan on a phone: the same strip, laid over the
                 desk rather than beside it */}
-            <section className="flex flex-col gap-2.5 lg:hidden">
+            <section className="flex flex-col gap-2.5 max-lg:order-2 lg:hidden">
               <h2 className="text-sm font-semibold">{format(m.flowTitle)}</h2>
               {plan.isPending ? (
                 <Skeleton className="h-16 w-full" />
@@ -295,7 +295,7 @@ function MyDesk({
 
   return (
     <>
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3 max-lg:order-1">
         <div className="flex items-center gap-2.5">
           <h2 className="text-sm font-semibold">{format(m.overviewActionsTitle)}</h2>
           {todo.length > 0 && (
@@ -367,7 +367,7 @@ function MyDesk({
         )}
       </section>
 
-      <section className="mt-4 flex min-w-0 flex-col gap-5">
+      <section className="flex min-w-0 flex-col gap-5 max-lg:order-3 lg:mt-4">
         {/* the header holds the filter, and on a phone it stays put while
             the days scroll under it */}
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 bg-background max-lg:sticky max-lg:-top-6 max-lg:z-10 max-lg:py-1.5">
