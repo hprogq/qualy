@@ -21,7 +21,6 @@ import {
 } from '@qualy/web-runtime'
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
 import { cn } from '@qualy/ui/cn'
-import { Appear } from '@qualy/ui/reveal'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
@@ -358,21 +357,40 @@ function CapableWorkspaceShell() {
         data-foot-taken={String(footTaken)}
         className="pointer-events-none fixed inset-x-0 bottom-[max(1.125rem,env(safe-area-inset-bottom))] z-40 flex justify-center"
       >
-        <Appear show={narrow && !drawer.open && !footTaken}>
-          <button
-            type="button"
-            data-testid="nav-capsule"
-            aria-haspopup="dialog"
-            onClick={drawer.show}
-            className="pointer-events-auto flex h-11 cursor-pointer items-center gap-2.5 rounded-[14px] border bg-background/90 px-4 shadow-[0_10px_28px_-10px_rgba(0,0,0,0.3)] backdrop-blur-sm"
-          >
-            <span aria-hidden className="flex flex-col items-center gap-[3px]">
-              <span className="h-[1.5px] w-3.5 rounded-full bg-foreground" />
-              <span className="h-[1.5px] w-3.5 rounded-full bg-foreground" />
-            </span>
-            <span className="text-[13px] font-medium">{format(m.navCapsule)}</span>
-          </button>
-        </Appear>
+        {/* Always mounted, shown by CSS: presence-animating this button
+            meant AnimatePresence unmounted it on exit, and under CI load
+            the exit could still be in the books when the same child
+            re-entered - which sometimes dropped the re-entry, leaving the
+            narrow shell with no way back into its own navigation. A
+            transition has no bookkeeping to lose; `inert` keeps the hidden
+            state out of reach. */}
+        {(() => {
+          const shown = narrow && !drawer.open && !footTaken
+          return (
+            <div
+              data-shown={String(shown)}
+              {...(!shown ? { inert: true, 'aria-hidden': true } : {})}
+              className={cn(
+                'transition-[opacity,translate] duration-200 ease-out',
+                shown ? 'opacity-100' : 'translate-y-2 opacity-0',
+              )}
+            >
+              <button
+                type="button"
+                data-testid="nav-capsule"
+                aria-haspopup="dialog"
+                onClick={drawer.show}
+                className="pointer-events-auto flex h-11 cursor-pointer items-center gap-2.5 rounded-[14px] border bg-background/90 px-4 shadow-[0_10px_28px_-10px_rgba(0,0,0,0.3)] backdrop-blur-sm"
+              >
+                <span aria-hidden className="flex flex-col items-center gap-[3px]">
+                  <span className="h-[1.5px] w-3.5 rounded-full bg-foreground" />
+                  <span className="h-[1.5px] w-3.5 rounded-full bg-foreground" />
+                </span>
+                <span className="text-[13px] font-medium">{format(m.navCapsule)}</span>
+              </button>
+            </div>
+          )
+        })()}
       </div>
 
       {/* The drawer's seats are separate chunks, and fetched only when the

@@ -309,31 +309,29 @@ describe('the workspace shell', () => {
     // query can see the bar it is asking for.
     await userEvent.keyboard('{Escape}')
     await expect.poll(() => page.getByRole('dialog').elements().length, { timeout: 10_000 }).toBe(0)
-    // The dialog leaving the DOM is not the end of it: radix lifts the
-    // page's aria-hidden afterwards, and under CI load that lift is
-    // sometimes simply lost. The diagnostics run of this test proved the
-    // residue reaches further than visibility: with the capsule's three
-    // conditions all true on the foot container, includeHidden still found
-    // nothing - a node inside an aria-hidden subtree keeps its role but
-    // loses its name-from-content, so a role+name query cannot ever see
-    // it. The reopen therefore locates by the capsule's stable hook; the
-    // first open above keeps the role+name path covered. The assertions
-    // stay behavioral: the press works, the drawer opens, the person is in
-    // it, and the session was asked once. Asserted as one object so a
-    // CI-only failure names the lying variable.
+    // Two CI-only ghosts hunted here, in order: radix sometimes lost the
+    // aria-hidden lift after the exit animation (so role+name queries went
+    // blind), and then the diagnostics run proved worse - with all three
+    // render conditions true the capsule was not in the DOM at all, because
+    // AnimatePresence had dropped a child that re-entered while its
+    // starved exit was still in the books. The capsule is now always
+    // mounted and shown by CSS, its wrapper stating visibility as
+    // data-shown; the reopen locates by the stable hook, and the first
+    // open above keeps the role+name path covered. Asserted as one object
+    // so a CI-only failure names the lying variable.
     const reopen = page.getByTestId('nav-capsule')
     const foot = () => document.querySelector('[data-testid="nav-foot"]')
     await expect
       .poll(
         () => ({
-          capsule: reopen.elements().length,
+          shown: foot()?.querySelector('[data-shown]')?.getAttribute('data-shown'),
           narrow: foot()?.getAttribute('data-narrow'),
           navOpen: foot()?.getAttribute('data-nav-open'),
           footTaken: foot()?.getAttribute('data-foot-taken'),
         }),
         { timeout: 10_000 },
       )
-      .toEqual({ capsule: 1, narrow: 'true', navOpen: 'false', footTaken: 'false' })
+      .toEqual({ shown: 'true', narrow: 'true', navOpen: 'false', footTaken: 'false' })
     await reopen.click()
     await expect.element(page.getByRole('dialog').getByText('林知远')).toBeVisible()
     expect(sessionCalls).toBe(1)
