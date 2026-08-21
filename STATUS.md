@@ -7289,3 +7289,22 @@ college A(subtree),断言管理员看得到 college B 的人而录入者看不�
 本批次频道,通过之后由管理员退回,断言听到 `result-changed`。红验:去掉该条,断言立刻转红。
 
 验收:typecheck 零错;`pnpm test` 722 passed | 17 skipped;prettier 通过。
+
+### 两条门禁本身是坏的(2026-08-22,对抗审查)
+
+一、**审核读取边界套件把「崩溃」读成「放行」**。`review-access.test.ts` 的 `shape()` 用
+`tagOf(exit) ?? 'ok'` 表示「这位读者进得去」,而 `tagOf` 只看 Fail 的 `_tag`——Die 没有 `_tag`,
+于是 `undefined ?? 'ok'` 把 500 记成放行,九条断言里五条分不清「进得去」和「炸了」。
+更能说明问题的是:`Exit` 在该文件里原本是 **type-only 导入**——旧 helper 运行时压根没看过 exit 本身。
+改为 `answerOf`:只有真正的 Success 才是 `ok`,typed failure 给 `_tag`,其余一律 `DIED`。
+并新增一例直接守住 helper(succeed/fail/die 三态),它在旧实现下必红。
+
+二、**参评人桌面的「退回待办」半边完全没有覆盖**。`attention.test.ts` 那条名为「列出未答的补件请求
+与退回标记这两件事」的用例,在断言之前就已经让参评人**重新提交**了——申报回到 `in_review`,
+退回标记按定义不可能存在,而断言只写了 `toContain('supplement')`。于是
+`myActionRowsOf` 的整个 `revision` 分支在服务端与浏览器两侧都没有任何测试。
+改为在退回之后、重新提交之前先读一次桌面,断言 `['revision']` 且 entryId 与理由都对;
+重新提交之后再断言 `['supplement']`——两个半边各有一次读,而且都用 `toEqual` 而不是 `toContain`。
+红验:把 SQL 里那个 `'revision'` 字面量改一个字,断言立刻转红。
+
+验收:typecheck 零错;`pnpm test` 723 passed | 17 skipped;prettier 通过。

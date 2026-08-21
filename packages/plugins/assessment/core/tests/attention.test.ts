@@ -270,6 +270,10 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             { kind: 'return-for-revision', reason: '证书等级与填写不符' },
             admin,
           )
+          // read while the claim is still in the owner's hands: the return
+          // mark only exists between the sending back and the answer, so a
+          // desk read after the resubmission cannot see it at all
+          const returned = (yield* assessment.getMyOverview(f.t, g.batch.id, s1)).participant!
           // and a fresh round on the same claim carrying an open ask -
           // a returned claim answers with a new version first (§32.65)
           yield* assessment.appendEntryRevision(f.t, first.id, { payload: {} }, s1)
@@ -284,14 +288,24 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             f.principal(f.reviewer),
           )
           return {
+            returned,
+            entryId: first.id,
             summary: (yield* assessment.getMyOverview(f.t, g.batch.id, s1)).participant!,
           }
         }),
       ),
     )
 
+    // sent back: one thing to handle, and it is the return
+    expect(result.returned.actions.map((action) => action.kind)).toEqual(['revision'])
+    expect(result.returned.actions[0]).toMatchObject({
+      kind: 'revision',
+      entryId: result.entryId,
+      summary: '证书等级与填写不符',
+    })
+    // answered: the return is done and the open ask takes its place
     const kinds = result.summary.actions.map((action) => action.kind)
-    expect(kinds).toContain('supplement')
+    expect(kinds).toEqual(['supplement'])
     expect(result.summary.actions.find((one) => one.kind === 'supplement')?.summary).toBe(
       '请补充证书原件',
     )

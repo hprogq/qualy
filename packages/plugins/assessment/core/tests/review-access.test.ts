@@ -1,5 +1,5 @@
 import { sql } from 'kysely'
-import { Effect, type Exit } from 'effect'
+import { Effect, Exit } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
@@ -35,9 +35,17 @@ afterAll(async () => {
   await db?.dispose()
 })
 
-/** the tag of a refusal that pretends nothing is there */
-const tagOf = (exit: Exit.Exit<unknown, unknown>): string | undefined =>
-  errorOf<{ _tag?: string }>(exit)?._tag
+/**
+ * What one door answered: `ok` when it opened, otherwise the tag of the
+ * refusal.
+ *
+ * Only a real success is `ok`. A defect carries no `_tag`, so reading "no
+ * tag" as "opened" made a crash indistinguishable from a door being held -
+ * which is the single thing this suite exists to tell apart, and it would
+ * have read a 500 on every one of these calls as access granted.
+ */
+const answerOf = (exit: Exit.Exit<unknown, unknown>): string =>
+  Exit.isSuccess(exit) ? 'ok' : (errorOf<{ _tag?: string }>(exit)?._tag ?? 'DIED')
 
 /**
  * A second stage over the seeded world: a college-level review role held at
@@ -127,9 +135,9 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             history: Exit.Exit<unknown, unknown>
             file: Exit.Exit<unknown, unknown>
           }) => ({
-            instance: tagOf(three.instance) ?? 'ok',
-            history: tagOf(three.history) ?? 'ok',
-            file: tagOf(three.file) ?? 'ok',
+            instance: answerOf(three.instance),
+            history: answerOf(three.history),
+            file: answerOf(three.file),
           })
 
           // the class stage is open: both of its reviewers hold every door,
@@ -222,8 +230,8 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             instance: Exit.Exit<unknown, unknown>
             history: Exit.Exit<unknown, unknown>
           }) => ({
-            instance: tagOf(two.instance) ?? 'ok',
-            history: tagOf(two.history) ?? 'ok',
+            instance: answerOf(two.instance),
+            history: answerOf(two.history),
           })
 
           yield* assessment.requestSupplement(
@@ -260,7 +268,7 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
             whileAsking,
             afterAnswer,
             afterReject,
-            subjectStill: tagOf(subjectStill) ?? 'ok',
+            subjectStill: answerOf(subjectStill),
           }
         }),
       ),
@@ -272,5 +280,15 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
       history: 'ASSESSMENT_ENTRY_NOT_FOUND',
     })
     expect(result.subjectStill).toBe('ok')
+  })
+  // The suite reads every door through one helper, so the helper has to be
+  // able to say the three things apart. It could not: a fallen door read as
+  // an open one, which would have passed every case here on a 500.
+  it('tells a door that opened from one that fell over', () => {
+    expect(answerOf(Exit.succeed('through'))).toBe('ok')
+    expect(answerOf(Exit.fail({ _tag: 'ASSESSMENT_REVIEW_NOT_FOUND' }))).toBe(
+      'ASSESSMENT_REVIEW_NOT_FOUND',
+    )
+    expect(answerOf(Exit.die(new Error('a query failed')))).toBe('DIED')
   })
 })
