@@ -308,8 +308,16 @@ describe('the workspace shell', () => {
     // interrupted mid-flight leaves the page aria-hidden, where no role
     // query can see the bar it is asking for.
     await userEvent.keyboard('{Escape}')
-    await expect.poll(() => page.getByRole('dialog').elements().length).toBe(0)
-    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
+    await expect.poll(() => page.getByRole('dialog').elements().length, { timeout: 10_000 }).toBe(0)
+    // the dialog leaving the DOM is not the end of it: radix lifts the
+    // page's aria-hidden in a passive effect, and on a loaded machine that
+    // cleanup trails the unmount - so poll until the bar is back in the
+    // accessibility tree instead of giving it one second to reappear
+    await expect
+      .poll(() => page.getByRole('button', { name: '导航' }).elements().length, {
+        timeout: 10_000,
+      })
+      .toBe(1)
     await page.getByRole('button', { name: '导航' }).click()
     await expect.element(page.getByRole('dialog').getByText('林知远')).toBeVisible()
     expect(sessionCalls).toBe(1)
