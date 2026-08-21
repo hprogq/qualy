@@ -51,12 +51,20 @@ export const accessLog =
           Effect.annotateLogs(effect, { source: 'http' })
         if (exit._tag === 'Success') {
           const status = exit.value.status
-          // a long-lived event stream "succeeds" whenever the browser lets
+          // A long-lived event stream "succeeds" whenever the browser lets
           // go of it; that is connection lifecycle, not an access worth the
           // success level - and its elapsed time is the connection's age,
-          // not a latency anybody should read
+          // not a latency anybody should read. The content type rides the
+          // response BODY, not the headers record - upstream merges it into
+          // the wire headers only at write time - so that is where to look.
+          const value = exit.value as {
+            headers?: Record<string, string>
+            body?: { contentType?: string }
+          }
           const streamed = (
-            (exit.value as { headers?: Record<string, string> }).headers?.['content-type'] ?? ''
+            value.body?.contentType ??
+            value.headers?.['content-type'] ??
+            ''
           ).startsWith('text/event-stream')
           const log =
             status >= 500

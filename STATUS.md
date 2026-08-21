@@ -6882,3 +6882,11 @@ CI 再现:dialog 已离场,但「导航」键 10 秒都没回到可访问树—�
 aria-hidden 的清理偶发彻底丢失,不是延迟。不再与这个退场动画竞态缠斗:重开定位改用
 `includeHidden`(点击本就不受 aria-hidden 影响),行为断言原样保留(按下→抽屉打开→
 人名在内→session 只问一次)。本地连跑三次全绿。
+
+### SSE 访问日志降级真正生效(2026-08-21 追加)
+
+上一笔的判定从未命中:`text/event-stream` 不在 `response.headers` 里,而是随
+`Body.stream(body, contentType)` 挂在 **response.body.contentType** 上,上游写线时才并进
+wire headers(repos/effect/packages/effect/src/unstable/http/HttpServerResponse.ts:447-465、
+HttpBody.ts:61-69,实读)。access-log 改为先读 body.contentType、再回退 headers;
+事件流的 200 自此按设计落 Debug。`pnpm typecheck` 零错;prettier 全绿。
