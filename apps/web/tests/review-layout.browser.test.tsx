@@ -231,28 +231,30 @@ const parts = () =>
 afterEach(() => page.viewport(DEFAULT_VIEWPORT.width, DEFAULT_VIEWPORT.height))
 
 describe('one workbench, three widths', () => {
-  it('stacks the parts into one page and marks the one being read', async () => {
+  it('pages the parts on a phone and opens on the filing', async () => {
     page.viewport(390, 844)
     open()
     await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
 
-    // all three parts are on the page - the terms are the last section of
-    // it, not something the reader has to go somewhere else for
+    // all three faces exist side by side - the pager shows one whole face
+    // at a time, and nothing was traded away to get there
     expect(parts()).toEqual(['flow', 'filing', 'about'])
 
+    // the judged material is the visual centre: the pager opens on the
+    // filing, not on the first page in reading order
     const anchors = page.getByTestId('workbench-anchor')
     expect(anchors.elements()).toHaveLength(3)
-    await expect.element(anchors.first()).toHaveAttribute('data-reading', 'yes')
+    await expect.element(anchors.nth(1)).toHaveAttribute('data-reading', 'yes')
 
-    // the strip moves the page rather than replacing it: pressing a part
-    // marks it, and every part is still there afterwards
+    // the strip moves the pager rather than replacing anything: pressing a
+    // face marks it, and every face is still there afterwards
     await page.getByTestId('workbench-anchor').nth(2).click()
     await vi.waitFor(async () => {
       await expect
         .element(page.getByTestId('workbench-anchor').nth(2))
         .toHaveAttribute('data-reading', 'yes')
     })
-    await expect.element(anchors.first()).toHaveAttribute('data-reading', 'no')
+    await expect.element(anchors.nth(1)).toHaveAttribute('data-reading', 'no')
     expect(parts()).toEqual(['flow', 'filing', 'about'])
   })
 
@@ -538,13 +540,63 @@ describe('the four acts, always on the bar', () => {
     const supplement = of('act-supplement')
     const reject = of('act-reject')
     const approve = of('act-approve')
-    // two rows: the routing acts above, the verdicts below
+    // a 2x2 matrix: both rows edge to edge, no stray blank beside anybody
     expect(escalate.top).toBe(supplement.top)
     expect(reject.top).toBe(approve.top)
     expect(reject.top).toBeGreaterThan(escalate.bottom - 1)
-    // the verdicts split the row; the routing pair only takes its words
     expect(Math.abs(reject.width - approve.width)).toBeLessThan(2)
-    expect(reject.width).toBeGreaterThan(escalate.width)
+    expect(Math.abs(escalate.width - reject.width)).toBeLessThan(2)
+    // and a register between the rows: the verdicts stand taller
+    expect(reject.height).toBeGreaterThan(escalate.height)
+  })
+})
+
+describe('the pager knows what must not be missed', () => {
+  it('lifts the escalation over the pager, dots the flow face, and guards the verdict', async () => {
+    page.viewport(390, 844)
+    open({ getReviewInstance: () => Effect.succeed({ review: onLadder() }) })
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+
+    // the notice stands over the faces, readable while the filing is up
+    await expect.element(page.getByTestId('escalation-card')).toBeVisible()
+    // the filing face opens with its two-line situation strip
+    await expect.element(page.getByTestId('filing-summary')).toBeVisible()
+    // and the flow face wears a fact dot: something there shaped this round
+    await expect
+      .element(page.getByTestId('workbench-anchor').nth(0))
+      .toHaveAttribute('data-attention', 'yes')
+
+    // the verdict asks its one quiet question when the face is still unread
+    await page.getByTestId('act-approve').click()
+    await expect.element(page.getByTestId('decision-caution')).toBeVisible()
+
+    // its first link walks to the flow face; the dot has done its work
+    const caution = () => page.getByTestId('decision-caution')
+    await caution().getByRole('button', { name: '查看' }).first().click()
+    await vi.waitFor(async () => {
+      await expect
+        .element(page.getByTestId('workbench-anchor').nth(0))
+        .toHaveAttribute('data-reading', 'yes')
+    })
+    await expect
+      .element(page.getByTestId('workbench-anchor').nth(0))
+      .toHaveAttribute('data-attention', 'no')
+
+    // the terms face still owes a look: the question comes back one line
+    // shorter, and its link settles the last of it
+    await page.getByTestId('act-approve').click()
+    await expect.element(caution()).toBeVisible()
+    await caution().getByRole('button', { name: '查看' }).first().click()
+    await vi.waitFor(async () => {
+      await expect
+        .element(page.getByTestId('workbench-anchor').nth(2))
+        .toHaveAttribute('data-reading', 'yes')
+    })
+
+    // asked and answered everywhere: the next verdict opens clean
+    await page.getByTestId('act-approve').click()
+    await expect.element(page.getByTestId('act-approve')).toBeVisible()
+    expect(page.getByTestId('decision-caution').elements()).toHaveLength(0)
   })
 })
 

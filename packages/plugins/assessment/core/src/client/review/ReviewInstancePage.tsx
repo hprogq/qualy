@@ -99,10 +99,6 @@ const WORKBENCH_PARTS: readonly WorkbenchPart[] = ['flow', 'filing', 'about']
  * it never turns into a field of nothing. Beside the columns there is no
  * seam to draw - the grid drops it entirely.
  */
-function PartBand() {
-  return <span aria-hidden className="h-2.5 shrink-0 border-y bg-muted/70 lg:hidden" />
-}
-
 const PART_LABEL: Record<WorkbenchPart, MessageDescriptor> = {
   flow: m.reviewPrior,
   filing: m.reviewPayloadTitle,
@@ -317,6 +313,70 @@ function Workbench({ batch }: { batch: BatchDto }) {
   // spies on it mounts in the same commit, and a ref would still be null
   // when its effect first looked.
   const [stack, setStack] = useState<HTMLDivElement | null>(null)
+  const beside = useBeside()
+  // Which faces of this round have been under the reader, this sitting.
+  // Session memory, not a record: it exists so the dot on an unread face
+  // and the last word in a decision dialog know what has not been looked
+  // at, and it starts over with every filing.
+  const [visited, setVisited] = useState<ReadonlySet<WorkbenchPart>>(new Set(['filing']))
+  useEffect(() => {
+    setVisited(new Set(['filing']))
+  }, [instanceId])
+  const partGo = useRef<((part: WorkbenchPart) => void) | null>(null)
+  // what the side faces hold that is worth this judgment's while: process
+  // history that shaped the round, and terms that bound the score
+  const flowMatters =
+    review !== undefined &&
+    (review.chain.route === 'escalation' || review.roundNo > 1 || review.supplements.length > 0)
+  const aboutMatters =
+    review !== undefined &&
+    review.context !== null &&
+    (review.context.siblings.filter((one) => !one.current).length > 0 ||
+      review.context.worth.groupCap !== null ||
+      review.context.worth.maxEntries !== null)
+  const attention = useMemo(() => {
+    const marks = new Set<WorkbenchPart>()
+    if (flowMatters && !visited.has('flow')) marks.add('flow')
+    if (aboutMatters && !visited.has('about')) marks.add('about')
+    return marks as ReadonlySet<WorkbenchPart>
+  }, [flowMatters, aboutMatters, visited])
+  /** the decision dialogs' last quiet word: faces that matter, still unread */
+  const unseen = (): readonly { part: WorkbenchPart; say: MessageDescriptor }[] => {
+    if (beside) return []
+    const gaps: { part: WorkbenchPart; say: MessageDescriptor }[] = []
+    if (flowMatters && !visited.has('flow')) {
+      gaps.push({ part: 'flow', say: m.reviewGuardUnseenFlow })
+    }
+    if (aboutMatters && !visited.has('about')) {
+      gaps.push({ part: 'about', say: m.reviewGuardUnseenAbout })
+    }
+    return gaps
+  }
+  const caution = (gaps: readonly { part: WorkbenchPart; say: MessageDescriptor }[]) =>
+    gaps.length === 0 ? undefined : (
+      <div
+        data-testid="decision-caution"
+        className="flex flex-col gap-1.5 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/25"
+      >
+        {gaps.map((gap) => (
+          <span key={gap.part} className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-amber-950 dark:text-amber-100">
+              {format(gap.say)}
+            </span>
+            <button
+              type="button"
+              className="shrink-0 text-[13px] font-medium text-amber-950 underline underline-offset-2 dark:text-amber-100"
+              onClick={() => {
+                setDialog(null)
+                partGo.current?.(gap.part)
+              }}
+            >
+              {format(m.reviewGuardOpen)}
+            </button>
+          </span>
+        ))}
+      </div>
+    )
   // Which earlier version the filing is read against; null is not comparing.
   // On by default: a resubmission is read for what changed in it, and having
   // to ask for that every time made the question "did they fix it" cost a
@@ -692,29 +752,50 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     the widest and the only one that scrolls far; the other
                     two are meant to be taken in at a glance while working
                     down it. Stacked below that, in the same reading order. */}
+                {/* the appeal or escalation the reader must meet before
+                    anything else must not live inside a side page of the
+                    pager: below lg it stands here, over the faces */}
+                {!beside && review.chain.route === 'escalation' && (
+                  <EscalationNotice review={review} />
+                )}
                 <PartStrip
-                  scroller={stack}
+                  pager={stack}
                   round={review.roundNo}
                   revision={review.revision.revisionNo}
                   drillKey={instanceId}
+                  attention={attention}
+                  onReading={(part) =>
+                    setVisited((seen) => {
+                      if (seen.has(part)) return seen
+                      const next = new Set(seen)
+                      next.add(part)
+                      return next
+                    })
+                  }
+                  bind={(go) => {
+                    partGo.current = go
+                  }}
                 />
                 <Drill move="next" drillKey={instanceId} className="flex min-h-0 flex-1 flex-col">
-                  {/* One scroller stacked, one per column beside: the strip
-                      above spies on this node either way, and beside each
-                      other it never moves, so the strip is not there. */}
+                  {/* The same three faces at every width. Beside each other
+                      on a desk; below lg a snap pager - one whole face per
+                      screen, the filing in the middle and first - because
+                      three long blocks in one vertical scroller had no
+                      focal point at all. Each face keeps its own vertical
+                      scroll either way, so leaving and returning finds a
+                      reading where it was left. */}
                   <div
                     ref={setStack}
-                    className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain lg:grid lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_21rem] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden"
+                    className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] lg:grid lg:snap-none lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_21rem] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden"
                   >
-                    <FlowColumn review={review} onTrail={openTrail} />
-                    <PartBand />
+                    <FlowColumn review={review} onTrail={openTrail} lifted={!beside} />
                     <FilingColumn
                       review={review}
                       comparing={comparing}
                       onCompare={setComparing}
                       onVersions={openVersions}
+                      onPart={(part) => partGo.current?.(part)}
                     />
-                    <PartBand />
                     <ContextRail review={review} onOpenSibling={setOpenSibling} />
                   </div>
                 </Drill>
@@ -813,6 +894,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
           <ApproveDialog
             open={dialog === 'approve'}
             review={review}
+            caution={caution(unseen())}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => stageDecision('approve', worded)}
           />
@@ -822,6 +904,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
             open={dialog === 'reject'}
             review={review}
             reasons={batch.reviewReasons.reject}
+            caution={caution(unseen())}
             onClose={() => setDialog(null)}
             onConfirm={(worded) => stageDecision('reject', worded)}
           />
@@ -1198,73 +1281,79 @@ function PersonStrip({
  * work below it jumping up.
  */
 function PartStrip({
-  scroller,
+  pager,
   round,
   revision,
   drillKey,
+  attention,
+  onReading,
+  bind,
 }: {
-  scroller: HTMLElement | null
+  /** the horizontal pager this strip drives and listens to */
+  pager: HTMLElement | null
   /** which round this is, said on the flow chip */
   round: number
   /** which version is being read, said on the filing chip */
   revision: number
-  /** a new filing starts at the top again, whatever the last one was on */
+  /** a new filing opens on the filing page again, whatever the last was on */
   drillKey: string
+  /** faces holding something worth a look that has not had one */
+  attention: ReadonlySet<WorkbenchPart>
+  /** the face under the reader, whenever it changes */
+  onReading: (part: WorkbenchPart) => void
+  /** hands the parent the way to a face, for links that live outside the strip */
+  bind: (go: (part: WorkbenchPart) => void) => void
 }) {
   const { format } = useI18n()
   const beside = useBeside()
-  const [at, setAt] = useState<WorkbenchPart>('flow')
-  // how far down it is, which is the only thing the way back has to know
-  const [away, setAway] = useState(false)
-  // While a press is travelling to its part, the spy would call every part
+  const [at, setAt] = useState<WorkbenchPart>('filing')
+  // While a press is travelling to its face, the spy would call every face
   // it passes the one being read and drag the mark backwards through them.
   // The press says where it is going; the spy is believed again once it
-  // agrees, or once the reader takes over by scrolling somewhere else.
+  // agrees, or once the reader takes over by swiping somewhere else.
   const going = useRef<WorkbenchPart | null>(null)
+  const said = useRef<WorkbenchPart | null>(null)
+  const tell = (part: WorkbenchPart) => {
+    if (said.current === part) return
+    said.current = part
+    onReading(part)
+  }
 
   useEffect(() => {
-    setAt('flow')
-    setAway(false)
+    setAt('filing')
     going.current = null
+    said.current = null
   }, [drillKey])
 
   useEffect(() => {
-    if (scroller === null || beside) return
+    if (pager === null || beside) return
+    // the pager opens on the filing - the judged material is the visual
+    // centre - positioned here, before the first spy reading, or that
+    // reading would call the flow face read when nobody has read anything
+    pager.scrollLeft = pager.clientWidth * WORKBENCH_PARTS.indexOf('filing')
     const spy = () => {
-      setAway(scroller.scrollTop > 8)
-      // the part under the strip: the last one whose top has passed it
-      const edge = scroller.getBoundingClientRect().top + PART_EDGE
-      let reading: WorkbenchPart = 'flow'
-      for (const node of scroller.querySelectorAll('[data-workbench-part]')) {
-        if (!(node instanceof HTMLElement)) continue
-        if (node.getBoundingClientRect().top - 1 > edge) break
-        reading = (node.dataset['workbenchPart'] ?? 'flow') as WorkbenchPart
-      }
-      // The end of the scroll can never bring the last part to the edge, so
-      // arriving at the bottom is the same answer as reaching it - but only
-      // where there is a bottom to arrive at: a page short enough to fit
-      // whole has not been read to its end by merely opening it.
-      const scrollable = scroller.scrollHeight - scroller.clientHeight > 8
-      if (scrollable && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
-        const last = scroller.querySelectorAll('[data-workbench-part]')
-        const tail = last[last.length - 1]
-        if (tail instanceof HTMLElement) {
-          reading = (tail.dataset['workbenchPart'] ?? reading) as WorkbenchPart
-        }
-      }
+      const width = pager.clientWidth
+      if (width === 0) return
+      const index = Math.min(
+        WORKBENCH_PARTS.length - 1,
+        Math.max(0, Math.round(pager.scrollLeft / width)),
+      )
+      const reading = WORKBENCH_PARTS[index]!
       if (going.current !== null && going.current !== reading) return
       going.current = null
       setAt(reading)
+      tell(reading)
     }
     spy()
-    scroller.addEventListener('scroll', spy, { passive: true })
+    pager.addEventListener('scroll', spy, { passive: true })
     const watch = new ResizeObserver(spy)
-    watch.observe(scroller)
+    watch.observe(pager)
     return () => {
-      scroller.removeEventListener('scroll', spy)
+      pager.removeEventListener('scroll', spy)
       watch.disconnect()
     }
-  }, [scroller, beside])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pager, beside, drillKey])
 
   // Where the mark stands, measured off the chip it marks. One persistent
   // element carried between chips: the layoutId handoff drew both chips
@@ -1285,20 +1374,24 @@ function PartStrip({
     return () => watch.disconnect()
   }, [at, beside])
 
-  const goTo = (part: WorkbenchPart) => {
-    const node = scroller?.querySelector(`[data-workbench-part="${part}"]`)
-    if (!(node instanceof HTMLElement) || scroller === null) return
-    going.current = part
-    setAt(part)
-    // arithmetic rather than scrollIntoView, which walks up the tree and
-    // takes the shell's own scroller with it
-    const top =
-      scroller.scrollTop + node.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-    scroller.scrollTo({
-      top: Math.max(0, top - (part === 'flow' ? 0 : PART_EDGE - 4)),
-      behavior: 'smooth',
-    })
-  }
+  const goTo = useCallback(
+    (part: WorkbenchPart) => {
+      if (pager === null) return
+      going.current = part
+      setAt(part)
+      tell(part)
+      pager.scrollTo({
+        left: WORKBENCH_PARTS.indexOf(part) * pager.clientWidth,
+        behavior: 'smooth',
+      })
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pager],
+  )
+  useEffect(() => {
+    bind(goTo)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goTo])
 
   return (
     <div
@@ -1309,7 +1402,7 @@ function PartStrip({
       )}
       {...(beside ? { inert: true, 'aria-hidden': true } : {})}
     >
-      <div ref={row} className="relative flex h-9 items-center gap-0.5 px-2">
+      <div ref={row} className="relative flex h-9 items-center justify-center gap-0.5 px-2">
         {mark !== null && (
           <GlideAcross
             left={mark.left}
@@ -1324,6 +1417,7 @@ function PartStrip({
             data-testid="workbench-anchor"
             data-part={part}
             data-reading={part === at ? 'yes' : 'no'}
+            data-attention={attention.has(part) && part !== at ? 'yes' : 'no'}
             onClick={() => goTo(part)}
             className={cn(
               'relative flex h-[26px] shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs whitespace-nowrap transition-colors',
@@ -1344,27 +1438,21 @@ function PartStrip({
                   {format(m.reviewFiledVersionShort, { no: revision })}
                 </span>
               )}
+              {/* something on that face is worth this reader's look and has
+                  not had one: a fact dot, not a notification */}
+              {attention.has(part) && part !== at && (
+                <span
+                  aria-hidden
+                  className="absolute -top-0.5 -right-2 size-1.5 rounded-full bg-foreground/70"
+                />
+              )}
             </span>
           </button>
         ))}
-        <span className="flex-1" />
-        <Appear show={away}>
-          <button
-            type="button"
-            onClick={() => scroller?.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="flex h-[26px] shrink-0 items-center gap-1 px-2 text-[11px] whitespace-nowrap text-muted-foreground"
-          >
-            <ChevronUpIcon aria-hidden className="size-3" />
-            {format(m.reviewBackToTop)}
-          </button>
-        </Appear>
       </div>
     </div>
   )
 }
-
-/** the line a part has to reach before it counts as the one being read */
-const PART_EDGE = 44
 
 /**
  * A pager that stays where it is at the edge: disabled with the reason on
@@ -1445,25 +1533,19 @@ function Pane({
   inner: string
   children: ReactNode
 }) {
-  const beside = useBeside()
   return (
     <As
       data-workbench-part={part}
       className={cn(
         'relative flex min-w-0 flex-col lg:min-h-0',
-        // stacked, the strip above stands over the top of whatever it
-        // anchored to, so each part starts below the strip's own height
-        'scroll-mt-9 lg:scroll-mt-0',
+        // one whole page of the pager below lg; its own column beside
+        'max-lg:h-full max-lg:w-full max-lg:shrink-0 max-lg:snap-start',
         className,
       )}
     >
-      {beside ? (
-        <ScrollArea className="min-h-0 flex-1">
-          <div className={cn('flex flex-col', inner)}>{children}</div>
-        </ScrollArea>
-      ) : (
+      <ScrollArea className="min-h-0 flex-1">
         <div className={cn('flex flex-col', inner)}>{children}</div>
-      )}
+      </ScrollArea>
     </As>
   )
 }
@@ -1473,12 +1555,54 @@ function useBeside(): boolean {
   return useMedia('(min-width: 64rem)', true)
 }
 
+/**
+ * The escalation environment's one card: an amber tinted notice - the two
+ * colours already spoken on this desk are the verdicts, and this is
+ * neither, it is the round asking to be read more closely - leading with
+ * the appellant's own grounds where the round is an appeal.
+ */
+function EscalationNotice({ review }: { review: ReviewDto }) {
+  const { format } = useI18n()
+  if (review.state === 'completed') return null
+  const appealed = review.events.find((event) => event.kind === 'appealed')
+  return (
+    <div
+      data-testid="escalation-card"
+      className="m-3 flex min-w-0 shrink-0 items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 lg:m-0 dark:border-amber-900/50 dark:bg-amber-950/25"
+    >
+      <CircleArrowUpIcon
+        aria-hidden
+        className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400"
+      />
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="text-sm font-medium tracking-tight text-amber-950 dark:text-amber-100">
+          {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
+        </p>
+        {/* the appellant's grounds are business evidence, not chrome:
+            shown in their own words wherever they exist */}
+        {appealed !== undefined && appealed.comment !== null ? (
+          <p className="text-sm leading-relaxed text-pretty text-amber-950 dark:text-amber-100">
+            {appealed.comment}
+          </p>
+        ) : (
+          <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
+            {format(m.reviewEscBannerBody)}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const FlowColumn = memo(function FlowColumn({
   review,
   onTrail,
+  lifted,
 }: {
   review: ReviewDto
   onTrail: () => void
+  /** whether the escalation notice stands outside the pager instead of here */
+  lifted: boolean
 }) {
   const { format } = useI18n()
   const fine = useFinePointer()
@@ -1529,42 +1653,10 @@ const FlowColumn = memo(function FlowColumn({
             {fine && <Kbd>H</Kbd>}
           </Button>
         </div>
-        {/* The notice the reviewer must not scroll past: under the flow
-            title, above the previous round's word. A tinted card with a
-            hairline edge rather than a slab of ink - amber because the two
-            colours already spoken here are the verdicts, approval and
-            refusal, and this is neither: it is the round asking to be read
-            more closely. The badge in the header wears the same colour, so
-            the two are recognizably one fact. */}
-        {review.chain.route === 'escalation' && review.state !== 'completed' && (
-          <div
-            data-testid="escalation-card"
-            className="flex min-w-0 items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 dark:border-amber-900/50 dark:bg-amber-950/25"
-          >
-            <CircleArrowUpIcon
-              aria-hidden
-              className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400"
-            />
-            <div className="flex min-w-0 flex-col gap-1">
-              <p className="text-sm font-medium tracking-tight text-amber-950 dark:text-amber-100">
-                {format(
-                  appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle,
-                )}
-              </p>
-              {/* the appellant's grounds are business evidence, not chrome:
-                shown in their own words wherever they exist */}
-              {appealed !== undefined && appealed.comment !== null ? (
-                <p className="text-sm leading-relaxed text-pretty text-amber-950 dark:text-amber-100">
-                  {appealed.comment}
-                </p>
-              ) : (
-                <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
-                  {format(m.reviewEscBannerBody)}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
+        {/* the notice the reviewer must not scroll past, in the column
+            where the desk keeps the whole story; below lg it stands over
+            the pager instead, where no page can hide it */}
+        {!lifted && <EscalationNotice review={review} />}
         {previous !== null && (
           <div className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3.5">
             {/* Wrap, never squeeze - and by the column's own width, not the
@@ -1800,12 +1892,15 @@ const FilingColumn = memo(function FilingColumn({
   comparing,
   onCompare,
   onVersions,
+  onPart,
 }: {
   review: ReviewDto
   /** an earlier revision id, 'previous' for the one just before, or null */
   comparing: string | null
   onCompare: (next: string | null) => void
   onVersions: () => void
+  /** the way to another face of the pager, for the summary's links */
+  onPart: (part: WorkbenchPart) => void
 }) {
   const { format } = useI18n()
   const fine = useFinePointer()
@@ -1856,8 +1951,58 @@ const FilingColumn = memo(function FilingColumn({
       .flatMap((field) => idsOf(record[field.key]))
       .map((attachmentId, index) => [attachmentId, index + 1]),
   )
+  // the situation in two or three short lines, for the face that opens
+  // first: which round this is, how the last one ended, what has been
+  // supplemented - each a fact from the flow face, so the strip is also
+  // the door to it
+  const prevSaid =
+    review.context?.previous == null
+      ? null
+      : review.context.previous.kind === 'rejected'
+        ? m.reviewSummaryPrevRejected
+        : review.context.previous.kind === 'revision-required'
+          ? m.reviewSummaryPrevRevision
+          : null
+  const summaryLines: string[] = []
+  if (review.chain.route === 'escalation') {
+    summaryLines.push(
+      `${format(m.reviewRouteEscalation)} · ${format(m.reviewSummaryRound, { round: review.roundNo })}`,
+    )
+  } else if (review.roundNo > 1) {
+    summaryLines.push(format(m.reviewSummaryRound, { round: review.roundNo }))
+  } else {
+    summaryLines.push(format(m.reviewSummaryFirstRound))
+  }
+  if (prevSaid !== null) {
+    summaryLines.push(format(prevSaid, { reason: review.context?.previous?.reason ?? 'none' }))
+  }
+  if (review.supplements.length > 0) {
+    summaryLines.push(format(m.reviewSummarySupplemented, { count: review.supplements.length }))
+  }
   return (
     <Pane as="main" part="filing" className="lg:border-l" inner="gap-4 p-5">
+      {/* only below lg: on a desk the flow column is in the same glance */}
+      <button
+        type="button"
+        data-testid="filing-summary"
+        onClick={() => onPart('flow')}
+        className="-mt-1 flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2 text-left lg:hidden"
+      >
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {summaryLines.map((line, index) => (
+            <span
+              key={index}
+              className={cn(
+                'truncate',
+                index === 0 ? 'text-xs font-medium' : 'text-xs text-muted-foreground',
+              )}
+            >
+              {line}
+            </span>
+          ))}
+        </span>
+        <ChevronRightIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      </button>
       <section className="flex min-h-0 flex-1 flex-col gap-3.5">
         <div className="flex flex-col border-b pb-2 max-lg:border-b-0 max-lg:pb-0">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -2518,14 +2663,18 @@ function DecisionBar({
           a full-width verdict row - never a 2x2 grid, which reads as a
           keypad and ranks nothing. One container either way, because two
           renderings of the same key is two answers to "the" reject button. */}
-      <div className="flex flex-wrap items-center gap-2 max-sm:gap-1.5">
+      {/* A 2x2 matrix on a phone: both rows filled edge to edge, the
+          routing pair above in a lighter register, the verdicts below
+          taller and heavier - four half-width keys, no stray blank. On
+          anything wider, the same one row as always. */}
+      <div className="flex flex-wrap items-center gap-2 max-sm:grid max-sm:grid-cols-2">
         <ActionKey
           act="escalate"
           offer={review.actions.escalate}
           label={format(m.reviewEscalate)}
           kbd="E"
           why={format(onLadder ? m.reviewTipEscalateMid : m.reviewTipEscalate)}
-          className="max-sm:flex-none"
+          className="max-sm:h-9 max-sm:w-full"
           onPress={() => onDialog('escalate')}
         />
         <ActionKey
@@ -2534,17 +2683,17 @@ function DecisionBar({
           label={format(m.reviewSupplementAsk)}
           kbd="S"
           why={format(m.reviewTipSupplement)}
-          className="max-sm:flex-none"
+          className="max-sm:h-9 max-sm:w-full"
           onPress={() => onDialog('supplement')}
         />
-        <span aria-hidden className="flex-1 max-sm:h-0 max-sm:basis-full" />
+        <span aria-hidden className="flex-1 max-sm:hidden" />
         <ActionKey
           act="reject"
           offer={review.actions.reject}
           label={format(m.reviewReject)}
           kbd="R"
           why={format(onLadder && !lastStep ? m.reviewTipRejectMid : m.reviewTipReject)}
-          className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 max-sm:min-w-0 max-sm:flex-1 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+          className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 max-sm:h-11 max-sm:w-full max-sm:text-[15px] dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
           kbdClassName="bg-rose-500/10 text-rose-700 dark:text-rose-300"
           onPress={() => onDialog('reject')}
         />
@@ -2556,7 +2705,7 @@ function DecisionBar({
           // an ordinary middle step's approval hands the round on; the
           // ladder's every step and the ordinary route's last one settle it
           why={format(onLadder || lastStep ? m.reviewTipApprove : m.reviewTipApproveMid)}
-          className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 max-sm:min-w-0 max-sm:flex-1 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+          className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 max-sm:h-11 max-sm:w-full max-sm:text-[15px] dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
           kbdClassName="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
           onPress={() => onDialog('approve')}
         />

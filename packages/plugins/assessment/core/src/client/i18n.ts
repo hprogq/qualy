@@ -1471,7 +1471,39 @@ const i18n = definePluginMessages({
       defaultMessage: '{at}/{count}',
     },
     reviewRunExit: { id: 'assessment/review/run-exit', defaultMessage: 'Exit continuous review' },
-    reviewPrior: { id: 'assessment/review/prior', defaultMessage: 'Review history' },
+    reviewPrior: { id: 'assessment/review/prior', defaultMessage: 'Review process' },
+    // the phone's filing page carries a two-line situation summary, and the
+    // decision dialogs a last quiet word about faces not yet read
+    reviewSummaryFirstRound: {
+      id: 'assessment/review/summary-first-round',
+      defaultMessage: 'First round of review',
+    },
+    reviewSummaryRound: {
+      id: 'assessment/review/summary-round',
+      defaultMessage: 'Round {round}',
+    },
+    reviewSummaryPrevRejected: {
+      id: 'assessment/review/summary-prev-rejected',
+      defaultMessage: 'Previous round returned{reason, select, none {} other {: {reason}}}',
+    },
+    reviewSummaryPrevRevision: {
+      id: 'assessment/review/summary-prev-revision',
+      defaultMessage:
+        'Previous round asked for changes{reason, select, none {} other {: {reason}}}',
+    },
+    reviewSummarySupplemented: {
+      id: 'assessment/review/summary-supplemented',
+      defaultMessage: '{count, plural, one {# supplement filed} other {# supplements filed}}',
+    },
+    reviewGuardUnseenFlow: {
+      id: 'assessment/review/guard-unseen-flow',
+      defaultMessage: 'This entry has review history you have not looked at.',
+    },
+    reviewGuardUnseenAbout: {
+      id: 'assessment/review/guard-unseen-about',
+      defaultMessage: 'This item carries scoring and filing limits you have not looked at.',
+    },
+    reviewGuardOpen: { id: 'assessment/review/guard-open', defaultMessage: 'View' },
     reviewPreviousTitle: {
       id: 'assessment/review/previous-title',
       defaultMessage: 'Previous return reasons',

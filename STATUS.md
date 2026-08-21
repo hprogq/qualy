@@ -6903,3 +6903,17 @@ shell 抽屉第四轮:`includeHidden` 也找不到「导航」,推翻 aria-hidde
 可匹配状态。胶囊的三个渲染前提(`narrow`/`drawer.open`/`footTaken`)现作为 data 事实挂在
 foot 容器上,测试把四元组整体断言;下次 CI 失败会直接报出哪个变量说谎,不再盲猜。本地
 三连全绿。
+
+### 移动端审核工作台改为横向三面 pager(2026-08-21)
+
+领域裁决见 docs/assessment-design.md §32.71。lg 以下三列变 scroll-snap 分页(默认停在
+申报内容),Pane 一律自持 ScrollArea;PartStrip 改 pager 驱动(横向 spy + chip 翻页 +
+attention 事实点),初始定位收进 strip 自己的 effect(首拍竞态实测踩过:spy 先跑会把
+flow 记成已读);复核/申诉卡在手机提升到 pager 之外;申报面顶部两三行情境摘要条直达
+审核过程;决策弹窗两张脸(FormDialog/DecisionSheet)接 caution 软守卫,「查看」直达并
+消点;决策栏手机 2×2(上行 h-9、下行 h-11,四键等宽)。part 定名:审核过程/评审依据。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 698 passed;`pnpm test:browser` 11 files /
+94 passed——重写两例旧布局断言(分页语义、2×2 等宽与行高差),新增「lifts the
+escalation over the pager…」全景用例:提升卡可见、摘要条可见、flow 面事实点、通过弹窗
+两行守卫、两次「查看」逐面消点、第三次弹窗干净;prettier 全绿。

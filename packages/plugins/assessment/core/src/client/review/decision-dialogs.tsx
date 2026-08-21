@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { CheckIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -180,12 +180,15 @@ export function DecisionSheet({
 export function ApproveDialog({
   open,
   review,
+  caution,
   onClose,
   onConfirm,
 }: {
   /** false while it animates shut; it keeps drawing what it was showing */
   open: boolean
   review: ReviewDto
+  /** a last quiet word above the act - faces that matter, still unread */
+  caution?: ReactNode
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
@@ -221,6 +224,7 @@ export function ApproveDialog({
         onClose={onClose}
         onConfirm={confirm}
       >
+        {caution}
         {body}
       </DecisionSheet>
     )
@@ -262,6 +266,7 @@ export function ApproveDialog({
           }
         }}
       >
+        {caution}
         {body}
       </div>
     </FormDialog>
@@ -278,6 +283,7 @@ export function RejectDialog({
   open,
   review,
   reasons,
+  caution,
   onClose,
   onConfirm,
 }: {
@@ -285,6 +291,8 @@ export function RejectDialog({
   open: boolean
   review: ReviewDto
   reasons: readonly string[]
+  /** a last quiet word above the act - faces that matter, still unread */
+  caution?: ReactNode
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
@@ -359,6 +367,7 @@ export function RejectDialog({
         onClose={onClose}
         onConfirm={confirm}
       >
+        {caution}
         <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
         <Field label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
           {(id) => (
@@ -418,6 +427,7 @@ export function RejectDialog({
           }
         }}
       >
+        {caution}
         <ReasonPicker
           reasons={reasons}
           value={reason}
