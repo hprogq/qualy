@@ -7017,3 +7017,14 @@ max-h+overflow 的内滚动条,又因真实六阶段列高过视口而放弃 sti
 加载态:我的申报骨架改为「问题行轨 + 桌面纸面」的页面同形(移动端只铺轨),审核队列骨架
 改为「控制行 + 五条工作行」,不再是两块/一块匿名大圆角。typecheck 零错;entry-workflow、
 review-layout、paper-reading、batch-admin 相关套件全绿。
+
+### 自动计入题目归位、骨架成形、抽屉胶囊常驻(2026-08-23)
+
+「我的申报」左轨:itemType constant 从 recorded 灰名单拆出为 granted——不再灰名、状态词
+「自动计入」点亮、分数在评分器未说话前先用条目自身面值(eachWorth);recorded(工作人员登记)
+的状态词同步解除压制。加载骨架照真实页面同形重做:工具栏行(桌面单行/移动两行)、左轨
+(筛选位 + 分组方点与题目圆点的缩进树)、纸面(展示卡 + 两个题目块),移动端只铺纸面(结构
+在抽屉里)。CI 抽屉胶囊第五轮定案:getByTestId 也数到 0,证明元素真不在 DOM——AnimatePresence
+在「退出动画被 CI 饿死时同 key 再进场」的时序下丢弃了重新进场的孩子;胶囊改为常驻 DOM、
+CSS 过渡显隐、隐藏时 inert,包装层以 data-shown 陈述可见性,测试改断该状态。
+门禁:typecheck 零错;pnpm test:browser 96 passed;catalogs 7 passed;prettier 全通过。

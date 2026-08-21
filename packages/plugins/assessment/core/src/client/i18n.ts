@@ -3081,6 +3081,7 @@ const i18n = definePluginMessages({
       defaultMessage: '{count, plural, one {# item} other {# items}}',
     },
     myEntriesRecorded: { id: 'assessment/entry/recorded', defaultMessage: 'Recorded by staff' },
+    rowGranted: { id: 'assessment/entry/auto-granted', defaultMessage: 'Granted automatically' },
     myEntriesOpen: { id: 'assessment/entry/open', defaultMessage: 'Open for submission' },
     myEntriesResume: { id: 'assessment/entry/resume', defaultMessage: 'Continue editing' },
     entryLastRoom: {

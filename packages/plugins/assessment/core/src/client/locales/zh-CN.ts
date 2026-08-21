@@ -807,6 +807,7 @@ export default {
   'assessment/entry/counted': '已计入',
   'assessment/entry/questions': '共 {count} 个项目',
   'assessment/entry/recorded': '工作人员登记',
+  'assessment/entry/auto-granted': '自动计入',
   'assessment/entry/open': '可申报',
   'assessment/entry/resume': '继续填写',
   'assessment/entry/last-room': '还可申报 1 条。',

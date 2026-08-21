@@ -643,26 +643,74 @@ function Body({
         void standing.refetch()
       }}
       skeleton={
-        // the page's own shape, greyed: a rail of question rows, and on a
-        // desk the paper beside it - not two anonymous slabs
-        <div className="flex min-h-0 flex-1 gap-6">
-          <div className="flex w-94 shrink-0 flex-col gap-2 max-lg:w-full">
-            {['w-3/5', 'w-2/5', 'w-1/2', 'w-3/4', 'w-2/5', 'w-3/5'].map((width, index) => (
-              <div key={index} className="flex items-center gap-3 rounded-xl border px-4 py-3.5">
-                <Skeleton className="size-[7px] shrink-0 rounded-full" />
-                <Skeleton className={`h-4 ${width}`} />
-                <Skeleton className="ml-auto h-4 w-12 shrink-0" />
-              </div>
-            ))}
+        // the page it is about to become, greyed: the toolbar line, the
+        // structure rail with its tree, the paper with its display card
+        // and question blocks - and on a phone only the paper, because
+        // the structure lives in a drawer there
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="hidden h-12 shrink-0 items-center gap-3 border-b px-4 md:flex lg:px-6">
+            <Skeleton className="h-5 w-20" />
+            <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />
+            <Skeleton className="h-5 w-24" />
+            <span className="flex-1" />
+            <Skeleton className="h-7 w-44 rounded-lg" />
           </div>
-          <div className="hidden min-w-0 flex-1 flex-col gap-4 pt-1 lg:flex">
-            <Skeleton className="h-6 w-56" />
-            <Skeleton className="h-4 w-80" />
-            <div className="flex flex-col gap-3 pt-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
-              <Skeleton className="h-4 w-2/3" />
+          <div className="flex flex-col gap-2.5 border-b px-4 pt-3 pb-2.5 md:hidden">
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-3.5 w-36" />
+              </div>
+              <span className="flex-1" />
+              <Skeleton className="h-6 w-16" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-9 flex-1 rounded-lg" />
+              <Skeleton className="h-8 w-24 rounded-lg" />
+            </div>
+          </div>
+          <div className="grid lg:min-h-0 lg:flex-1 lg:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)]">
+            <div className="hidden flex-col gap-4 px-4 py-4 lg:flex">
+              <Skeleton className="h-9 w-36 rounded-lg" />
+              <div className="flex flex-col gap-2.5">
+                {(
+                  [
+                    ['group', 'w-24', 0],
+                    ['item', 'w-3/5', 1],
+                    ['item', 'w-2/5', 1],
+                    ['group', 'w-20', 0],
+                    ['item', 'w-1/2', 1],
+                    ['item', 'w-3/4', 1],
+                    ['item', 'w-2/5', 1],
+                  ] as const
+                ).map(([kind, width, depth], index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2.5"
+                    style={{ paddingLeft: `${String(depth * 14)}px` }}
+                  >
+                    <Skeleton
+                      className={
+                        kind === 'group'
+                          ? 'size-[7px] shrink-0 rounded-[2px]'
+                          : 'size-[7px] shrink-0 rounded-full'
+                      }
+                    />
+                    <Skeleton className={`h-4 ${width}`} />
+                    {kind === 'group' && <Skeleton className="ml-auto h-3.5 w-12 shrink-0" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex min-w-0 flex-col gap-6 px-4 py-5 lg:border-l lg:px-6">
               <Skeleton className="h-24 w-full rounded-xl" />
+              {[0, 1].map((block) => (
+                <div key={block} className="flex flex-col gap-2.5">
+                  <Skeleton className="h-5 w-44" />
+                  <Skeleton className="h-3.5 w-64" />
+                  <Skeleton className="mt-1 h-16 w-full rounded-xl" />
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1211,14 +1259,13 @@ function Structure({
                       'min-w-0 flex-1 truncate text-sm',
                       row.kind === 'group' && 'font-semibold',
                       openId === row.id && 'font-semibold',
-                      row.kind === 'item' && row.tag === 'recorded' && 'text-muted-foreground',
                       gone &&
                         'text-xs font-normal text-muted-foreground line-through decoration-muted-foreground/40',
                     )}
                   >
                     {row.name}
                   </span>
-                  {row.kind === 'item' && row.tag !== null && row.tag !== 'recorded' && (
+                  {row.kind === 'item' && row.tag !== null && (
                     <span
                       className={cn(
                         'max-w-24 shrink-0 truncate text-xs',

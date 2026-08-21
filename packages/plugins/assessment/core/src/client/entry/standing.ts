@@ -50,6 +50,7 @@ export type RowTag =
   | 'partial'
   | 'approved'
   | 'recorded'
+  | 'granted'
   | 'open'
 
 /**
@@ -69,6 +70,7 @@ export const ROW_DOT: Record<RowTag, string> = {
   partial: 'bg-rose-400/70',
   approved: 'bg-emerald-500',
   recorded: 'bg-muted-foreground/40',
+  granted: 'bg-muted-foreground/40',
   open: 'border border-muted-foreground/45',
 }
 
@@ -82,6 +84,7 @@ export const ROW_TAG: Record<RowTag, MessageDescriptor> = {
   partial: m.rowPartialApproved,
   approved: m.entryStatusApproved,
   recorded: m.myEntriesRecorded,
+  granted: m.rowGranted,
   open: m.myEntriesOpen,
 }
 
@@ -275,6 +278,9 @@ const itemRow = (
   unreadItems: ReadonlySet<string>,
 ): StructureRow => {
   const granted = itemScore(standing, item.id)
+  // a constant lands by itself: before the scorer has spoken, its terms
+  // already say what it is worth, and the row should too
+  const constantWorth = item.itemType === 'constant' ? eachWorth(item) : undefined
   const live = entries.filter((entry) => entry.status !== 'voided')
   const asked = live.filter((entry) => entry.supplement !== null).length
   const sentBack = live.filter((entry) => entry.status === 'needs_revision').length
@@ -288,7 +294,7 @@ const itemRow = (
     depth,
     name: item.title,
     item,
-    right: granted ?? '',
+    right: granted ?? constantWorth ?? '',
     // One word about where this row stands (§32.72), in the order it
     // matters: what the round is waiting on the reader for, then the
     // reader's own unfinished work, then what is out with somebody else,
@@ -311,11 +317,13 @@ const itemRow = (
                     : 'rejected'
                   : approved > 0
                     ? 'approved'
-                    : item.currentRevision?.entrySource === 'administrative'
-                      ? 'recorded'
-                      : mayFile(item, entries)
-                        ? 'open'
-                        : null,
+                    : item.itemType === 'constant'
+                      ? 'granted'
+                      : item.currentRevision?.entrySource === 'administrative'
+                        ? 'recorded'
+                        : mayFile(item, entries)
+                          ? 'open'
+                          : null,
     // unfinished BY the reader; "could still file" is not a duty
     todo: item.status !== 'voided' && (asked > 0 || sentBack > 0 || drafts > 0),
     unread: item.status !== 'voided' && unreadItems.has(item.id),
