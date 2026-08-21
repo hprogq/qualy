@@ -4,6 +4,7 @@ import {
   AlertCircleIcon,
   ArrowLeftIcon,
   ChevronDownIcon,
+  CircleArrowUpIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
@@ -1004,6 +1005,9 @@ function PersonStrip({
           data-testid="escalation-light"
           className="shrink-0 border-amber-300 bg-amber-50 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-200"
         >
+          {/* the same mark the notice below carries: the filing climbed a
+              level, and one glyph says it in both places */}
+          <CircleArrowUpIcon aria-hidden />
           {format(m.reviewRouteEscalation)}
         </Badge>
       )}
@@ -1400,22 +1404,30 @@ const FlowColumn = memo(function FlowColumn({
         {review.chain.route === 'escalation' && review.state !== 'completed' && (
           <div
             data-testid="escalation-card"
-            className="flex min-w-0 flex-col gap-1 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 dark:border-amber-900/50 dark:bg-amber-950/25"
+            className="flex min-w-0 items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 dark:border-amber-900/50 dark:bg-amber-950/25"
           >
-            <p className="text-sm font-medium tracking-tight text-amber-950 dark:text-amber-100">
-              {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
-            </p>
-            {/* the appellant's grounds are business evidence, not chrome:
+            <CircleArrowUpIcon
+              aria-hidden
+              className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400"
+            />
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className="text-sm font-medium tracking-tight text-amber-950 dark:text-amber-100">
+                {format(
+                  appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle,
+                )}
+              </p>
+              {/* the appellant's grounds are business evidence, not chrome:
                 shown in their own words wherever they exist */}
-            {appealed !== undefined && appealed.comment !== null ? (
-              <p className="text-sm leading-relaxed text-pretty text-amber-950 dark:text-amber-100">
-                {appealed.comment}
-              </p>
-            ) : (
-              <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
-                {format(m.reviewEscBannerBody)}
-              </p>
-            )}
+              {appealed !== undefined && appealed.comment !== null ? (
+                <p className="text-sm leading-relaxed text-pretty text-amber-950 dark:text-amber-100">
+                  {appealed.comment}
+                </p>
+              ) : (
+                <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
+                  {format(m.reviewEscBannerBody)}
+                </p>
+              )}
+            </div>
           </div>
         )}
         {previous !== null && (
