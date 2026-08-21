@@ -1346,6 +1346,114 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
   })
 
+  // Two judges at one step, deciding at the same moment. Whoever the batch
+  // lock lets through first is answered; the other one is answering a step
+  // the round has already left, and a word taken against a step its author
+  // no longer holds must not be able to close the round from there.
+  it('answers a word against the step the round stands on when it is written', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-stale-word')
+          const assessment = yield* Assessment
+          const senior = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status)
+              values (${f.t}, 'senior-reviewer', 'Senior reviewer', 'org', 'active') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.t}, ${senior}, p.id from permissions p
+            where p.code = 'assessment.review.process'`)
+          const g = yield* runningBatch(f, {
+            profile: NO_DOUBTS,
+            stages: [
+              {
+                id: 'class',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+              {
+                id: 'senior',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [senior] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          // a colleague at the first step, and somebody else entirely at the
+          // second - so the step the round moves to is one the colleague has
+          // no standing at
+          const person = (name: string, role: string) =>
+            Effect.gen(function* () {
+              const id = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                  values (${f.t}, ${name}, ${f.studentType}, ${f.classA}) returning id`),
+              ).id
+              const grant = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+                  values (${f.t}, ${id}, ${role}, ${f.classA}, 'self') returning id`),
+              ).id
+              yield* accept(f.t, g.batch.id, id, grant)
+              return id
+            })
+          const colleague = yield* person('Colleague', f.reviewRole)
+          yield* person('Senior', senior)
+
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const round = sent.currentReviewInstanceId!
+          // both read the round at its first step, then race for the lock
+          const [confirmed, refused] = yield* Effect.all(
+            [
+              Effect.exit(
+                assessment.decideReview(
+                  f.t,
+                  round,
+                  { decision: 'approve', comment: '与证书相符' },
+                  f.principal(f.reviewer),
+                ),
+              ),
+              Effect.exit(
+                assessment.decideReview(
+                  f.t,
+                  round,
+                  { decision: 'reject', comment: '材料不足' },
+                  f.principal(colleague),
+                ),
+              ),
+            ],
+            { concurrency: 'unbounded' },
+          )
+          const after = one<{ state: string; outcome: string | null; current_stage_id: string }>(
+            yield* runSql(sql`
+              select state, outcome, current_stage_id from review_instances where id = ${round}`),
+          )
+          return { confirmed, refused, after }
+        }),
+      ),
+    )
+    // exactly one of the two words lands
+    expect([result.confirmed, result.refused].filter((exit) => Exit.isSuccess(exit))).toHaveLength(
+      1,
+    )
+    // and the round is where that one word put it: either handed to the
+    // second step and still open, or closed by the refusal - never handed on
+    // and then closed from the step it had left
+    if (Exit.isSuccess(result.refused)) {
+      expect(result.after).toMatchObject({ state: 'completed', outcome: 'rejected' })
+    } else {
+      expect(result.after).toMatchObject({ state: 'active', current_stage_id: 'senior' })
+    }
+  })
+
   // An appeal argues with the conclusion the claim stands on now. The trail
   // keeps every earlier round so a reader can see how the claim got here,
   // but only the current pointers say what is still open to argument -

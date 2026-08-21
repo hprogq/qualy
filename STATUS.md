@@ -7175,3 +7175,29 @@ UI 层的领域模型已经是「申诉当前这条 Entry 的当前结论」。�
 红验:去掉该校验,①②立刻转红。
 
 验收:typecheck 零错;`pnpm test` 716 passed | 17 skipped;prettier 通过。
+
+### 审核决定读锁后的真相(2026-08-22,对抗审查 critical)
+
+`decideReview` 在取锁**之前**读 round 行,`mayAct` 用的就是那份快照,`lockBatch` 与
+`lockReviewInstance` 都在其后,而且锁后从不重读——964 行那段注释白纸黑字写着「round 行在批次锁
+之下取、绝不在其之前」,代码没做到。这是 `b553c5fe`(把实例锁挪到批次锁之后修 ABBA 死锁)的
+遗留:锁挪走了,读还搁在顶上。`lockReviewInstance` 只返回布尔(新鲜行被丢弃),
+`completeInstance` 又只 CAS `state='active'`、不比对 route/stage(`advanceReviewInstance` 是比对的)。
+
+事故:同一环节两名评审 A、B 同时决定。A 通过 → 推进到第二环节 → 提交;B 拿着陈旧快照进来,
+`here` 仍算作第一环节,`wordEnds(normal, reject)` 成立,`completeInstance` 只看 `state='active'`
+就把整轮判成 rejected——A 的通过静默丢失,事件还盖着已经离开的那个环节的 route。合议分支更糟:
+`openPanelOf` 只按 instance 取,陈旧投票会落进新环节的席位。
+
+修法是结构性的一刀:锁前只留**定位读**(取 batchId,轮次永不改批次,过期无害),
+`lockBatch` → `lockReviewInstance` 之后**重读实例并在其上重做授权**。`mayAct` 比的是
+`current_node_id`/`current_role_ids`,重读后陈旧评审自然不在新环节的名单里,`here`、`policy`、
+合议席位也全部变成提交后的真相。另加一条:`state === 'completed'` 直接 ReviewConflict——单评审
+分支靠终局写的 CAS 自己会说话,合议分支否则会在已关闭的轮次上重新组一次席位并留下开着的合议。
+
+新增测试 `answers a word against the step the round stands on when it is written`:两环节链
+(第一环节两人 quorum any,第二环节换一个角色、同僚无站位),同僚与评审**并发**决定,断言恰好
+一个落地,且轮次要么被交到第二环节且仍开着、要么被驳回关闭——绝不会「交出去之后又被从已经
+离开的环节关掉」。红验:把重读换回陈旧快照,**两个决定同时成功**,断言立刻转红。
+
+验收:typecheck 零错;`pnpm test` 717 passed | 17 skipped;prettier 通过。

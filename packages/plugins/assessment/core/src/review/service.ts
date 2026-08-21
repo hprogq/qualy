@@ -947,6 +947,25 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
+            // where the round lives, and nothing else: a round never changes
+            // batch, so this is safe to lock by and safe to be stale about
+            const located = yield* instanceOf(tenantId, instanceId)
+            if (located === null) return yield* new ReviewNotFound()
+            const locked = yield* lockBatch(tenantId, located.batchId)
+            if (locked!.status === 'archived') return yield* new BatchReadOnly()
+            // The round row, taken under the batch lock and never before it:
+            // panel votes and seat claims serialize here, and every panel
+            // read below is post-lock. Order matters - a void or re-route
+            // holds the batch and then touches instance rows, so locking
+            // the instance first was a deadlock with everything (found the
+            // hard way, as an ABBA kill under CI load).
+            yield* lockReviewInstance(tenantId, instanceId)
+            // Read it again, and judge from this one. A word is answered by
+            // the step the round stands on at the moment it is written, not
+            // the step it stood on when the page was drawn: between the two
+            // another judge can have confirmed this step and handed the
+            // round upward, and a decision taken against the abandoned step
+            // would close the round from a place its author never held.
             const row = yield* instanceOf(tenantId, instanceId)
             if (row === null) return yield* new ReviewNotFound()
             const judge = yield* mayAct(tenantId, row, as)
@@ -959,15 +978,6 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               }
               return yield* new ReviewNotFound()
             }
-            const locked = yield* lockBatch(tenantId, row.batchId)
-            if (locked!.status === 'archived') return yield* new BatchReadOnly()
-            // The round row, taken under the batch lock and never before it:
-            // panel votes and seat claims serialize here, and every panel
-            // read below is post-lock. Order matters - a void or re-route
-            // holds the batch and then touches instance rows, so locking
-            // the instance first was a deadlock with everything (found the
-            // hard way, as an ABBA kill under CI load).
-            yield* lockReviewInstance(tenantId, instanceId)
             const gate = yield* deps.reviewGate(tenantId, row.batchId)
             if (!gate.allowed) return yield* refuse(action, gate.reason)
             // a round that asked for more has nothing to decide until the
@@ -975,6 +985,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             if (row.state === 'awaiting_supplement') {
               return yield* refuse(action, 'awaiting-supplement')
             }
+            // and a round that has already concluded takes no more words. The
+            // single judge's terminal write says this for itself by failing
+            // its compare-and-set; a panel would otherwise seat itself afresh
+            // on a closed round and leave the sitting open behind it.
+            if (row.state === 'completed') return yield* new ReviewConflict()
 
             const policy = row.effectivePolicy
             const here = stageById(policy, row.currentRoute, row.currentStageId)
