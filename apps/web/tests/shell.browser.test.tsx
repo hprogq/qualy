@@ -311,14 +311,17 @@ describe('the workspace shell', () => {
     await expect.poll(() => page.getByRole('dialog').elements().length, { timeout: 10_000 }).toBe(0)
     // The dialog leaving the DOM is not the end of it: radix lifts the
     // page's aria-hidden afterwards, and under CI load that lift is
-    // sometimes simply lost, leaving the bar out of the accessibility tree
-    // for good. That residue is radix's exit-animation race, not this
-    // shell's behavior - so the reopen locates through it (includeHidden)
-    // and the assertions that matter stay behavioral: the press works, the
-    // drawer opens, the person is in it, and the session was asked once.
-    // asserted as one object so a CI-only failure names the lying variable:
-    // the capsule's own conditions ride the foot container as data facts
-    const reopen = page.getByRole('button', { name: '导航', includeHidden: true })
+    // sometimes simply lost. The diagnostics run of this test proved the
+    // residue reaches further than visibility: with the capsule's three
+    // conditions all true on the foot container, includeHidden still found
+    // nothing - a node inside an aria-hidden subtree keeps its role but
+    // loses its name-from-content, so a role+name query cannot ever see
+    // it. The reopen therefore locates by the capsule's stable hook; the
+    // first open above keeps the role+name path covered. The assertions
+    // stay behavioral: the press works, the drawer opens, the person is in
+    // it, and the session was asked once. Asserted as one object so a
+    // CI-only failure names the lying variable.
+    const reopen = page.getByTestId('nav-capsule')
     const foot = () => document.querySelector('[data-testid="nav-foot"]')
     await expect
       .poll(

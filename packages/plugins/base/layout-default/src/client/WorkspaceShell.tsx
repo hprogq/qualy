@@ -361,6 +361,7 @@ function CapableWorkspaceShell() {
         <Appear show={narrow && !drawer.open && !footTaken}>
           <button
             type="button"
+            data-testid="nav-capsule"
             aria-haspopup="dialog"
             onClick={drawer.show}
             className="pointer-events-auto flex h-11 cursor-pointer items-center gap-2.5 rounded-[14px] border bg-background/90 px-4 shadow-[0_10px_28px_-10px_rgba(0,0,0,0.3)] backdrop-blur-sm"

@@ -436,8 +436,6 @@ export default {
   'assessment/review/esc-banner-body': '请根据申报材料和认定标准独立作出审核判断。',
   'assessment/review/file-added': '新增',
   'assessment/review/file-gone': '本轮移除',
-  'assessment/review/files-note':
-    '材料按字段分组展示，点击文件名可预览。本轮移除的文件会单独标注，便于与上一版本核对。',
   'assessment/review/this-round': '本轮审核记录',
   'assessment/review/awaiting-you': '等待审核',
   'assessment/review/stage-passed': '已通过',

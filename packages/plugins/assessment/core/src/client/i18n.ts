@@ -1828,11 +1828,6 @@ const i18n = definePluginMessages({
       id: 'assessment/review/file-gone',
       defaultMessage: 'Removed in this version',
     },
-    reviewFilesNote: {
-      id: 'assessment/review/files-note',
-      defaultMessage:
-        'Materials are grouped under their corresponding fields. Files removed in this version remain listed for comparison with the previous version.',
-    },
     reviewThisRound: { id: 'assessment/review/this-round', defaultMessage: 'Current review round' },
     reviewAwaitingYou: {
       id: 'assessment/review/awaiting-you',

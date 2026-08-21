@@ -6948,3 +6948,20 @@ entry_events 无 comment 列、补件表列名 cancelled_at。
 与第一行路由键(提请复核/要求补充材料,保持纯文字)在色块之外再多一层区分。评审依据面移除
 max-lg 灰底——那是纵向堆叠时代的页尾洗灰,翻页化后它是独立一页,整页保持白底,桌面端仍以
 左边框分列。typecheck 零错;review-layout 11 例、entry-workflow 21 例全绿;prettier 全通过。
+
+### 审核页评审依据栏三件套 + 抽屉测试定位修正(2026-08-21)
+
+智能辅助审核挪到 Pane 新增的 footer 槽位:钉在申报内容栏的物理底边(滚动区之外),
+内容短不再上浮、内容长不再靠 sticky;样式重排为 muted 洗底 + Sparkles 靛蓝角标 + 标题/
+免责一行。删除「材料按字段分组展示…」提示句(en/zh 键一并移除);全部下载改为逐字段:
+按钮在文件字段名行右端,只下载该字段引用的文件,经隐藏 anchor + download 属性触发保存。
+服务端 getAttachmentContent 改为直接返回 HttpServerResponse.stream(读过 repos/effect/
+packages/effect/src/unstable/httpapi/HttpApiEndpoint.ts:566-573 handler 可返回自定义响应、
+HttpApiBuilder.ts:801-803 原样放行、unstable/http/HttpServerResponse.ts:68-75 Options),
+带 content-type=declaredMime、content-length、content-disposition: inline + RFC5987
+filename*,下载名从「content」变回真实文件名,点击预览不受影响。
+CI 抽屉 flake 定案:诊断四元组证明三条件全真而 includeHidden 仍找不到胶囊——radix 残留
+的 aria-hidden 使 name-from-content 归零,role+name 永不匹配;重开定位改 data-testid=
+"nav-capsule"(首开仍走 role+name)。
+门禁:typecheck 零错;pnpm test 701 passed | 17 skipped;pnpm test:browser 96 passed;
+prettier 全通过。

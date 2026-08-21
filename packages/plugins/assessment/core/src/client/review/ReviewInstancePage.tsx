@@ -11,6 +11,7 @@ import {
   ChevronUpIcon,
   CornerUpLeftIcon,
   DownloadIcon,
+  SparklesIcon,
   InfoIcon,
 } from 'lucide-react'
 import {
@@ -1524,6 +1525,7 @@ function Pane({
   part,
   className,
   inner,
+  footer,
   children,
 }: {
   as: 'main' | 'section' | 'aside'
@@ -1533,6 +1535,8 @@ function Pane({
   className?: string
   /** the content column: padding and gap */
   inner: string
+  /** pinned to the pane's floor, outside the scroll */
+  footer?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -1548,6 +1552,7 @@ function Pane({
       <ScrollArea className="min-h-0 flex-1">
         <div className={cn('flex flex-col', inner)}>{children}</div>
       </ScrollArea>
+      {footer}
     </As>
   )
 }
@@ -1889,6 +1894,20 @@ const FlowColumn = memo(function FlowColumn({
  * filing is worked down item by item, and everything else on the screen is
  * there to be glanced at while doing it.
  */
+// Through an anchor, not window.open: the content door names the file in
+// its disposition, and a same-origin anchor with `download` saves under
+// that name where a window would open one preview tab per file.
+const saveAll = (attachmentIds: readonly string[]) => {
+  for (const attachmentId of attachmentIds) {
+    const anchor = document.createElement('a')
+    anchor.href = attachmentContentUrl(attachmentId)
+    anchor.download = ''
+    document.body.append(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+}
+
 const FilingColumn = memo(function FilingColumn({
   review,
   comparing,
@@ -1982,7 +2001,32 @@ const FilingColumn = memo(function FilingColumn({
     summaryLines.push(format(m.reviewSummarySupplemented, { count: review.supplements.length }))
   }
   return (
-    <Pane as="main" part="filing" className="lg:border-l" inner="gap-4 p-5">
+    <Pane
+      as="main"
+      part="filing"
+      className="lg:border-l"
+      inner="gap-4 p-5"
+      footer={
+        // What the machine noticed, on the pane's own floor: there whatever
+        // the filing's length, so the checks always sit after the evidence,
+        // never over it. The caveat is part of the block: a machine's note
+        // without its error bar reads as a verdict.
+        <aside className="flex shrink-0 flex-col gap-1 border-t bg-muted/30 px-5 py-3">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <SparklesIcon
+              aria-hidden
+              className="size-3.5 shrink-0 text-indigo-500 dark:text-indigo-400"
+            />
+            <p className="text-xs font-semibold">{format(m.reviewInsight)}</p>
+            <span className="flex-1" />
+            <p className="text-[11px] text-muted-foreground">{format(m.reviewInsightCaveat)}</p>
+          </div>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {format(m.reviewInsightSoon)}
+          </p>
+        </aside>
+      }
+    >
       {/* only below lg: on a desk the flow column is in the same glance */}
       <button
         type="button"
@@ -2079,9 +2123,22 @@ const FilingColumn = memo(function FilingColumn({
                 <dt className="flex min-w-0 items-baseline gap-2.5 text-sm text-muted-foreground">
                   <span className="min-w-0 [overflow-wrap:anywhere]">{field.label}</span>
                   {field.type === 'attachment' && cited.length > 0 && (
-                    <span className="shrink-0 text-xs tabular-nums">
-                      {format(m.reviewFilesCount, { count: cited.length })}
-                    </span>
+                    <>
+                      <span className="shrink-0 text-xs tabular-nums">
+                        {format(m.reviewFilesCount, { count: cited.length })}
+                      </span>
+                      <span className="flex-1" />
+                      {/* this field's files in a run of saves: a zip would
+                          be a server-side archive nobody asked for yet */}
+                      <button
+                        type="button"
+                        onClick={() => saveAll(cited)}
+                        className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs transition-colors hover:text-foreground"
+                      >
+                        <DownloadIcon aria-hidden className="size-3.5" />
+                        {format(m.reviewDownloadAll)}
+                      </button>
+                    </>
                   )}
                 </dt>
                 <dd className="flex min-w-0 flex-col text-base">
@@ -2164,24 +2221,6 @@ const FilingColumn = memo(function FilingColumn({
             </div>
           )}
         </dl>
-        {/* What the machine noticed, pinned under the filing it read: the
-            checks are about these fields, and the reader meets them after
-            the evidence rather than as a banner over it. Sticky beside the
-            columns so it stays in reach while a long filing scrolls; in the
-            stacked page it is simply the section's last word. The caveat is
-            part of the block: a machine's note without its error bar reads
-            as a verdict. */}
-        <aside className="order-last mt-auto flex flex-col gap-1 border-t pt-2.5 lg:sticky lg:bottom-0 lg:-mx-5 lg:-mb-5 lg:bg-background lg:px-5 lg:pb-4">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <p className="shrink-0 text-xs text-muted-foreground">{format(m.reviewInsight)}</p>
-            <p className="min-w-0 truncate text-xs text-muted-foreground">
-              {format(m.reviewInsightCaveat)}
-            </p>
-          </div>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {format(m.reviewInsightSoon)}
-          </p>
-        </aside>
       </section>
 
       {/* What a reviewer asked for mid-round and what came back, after the
@@ -2199,31 +2238,6 @@ const FilingColumn = memo(function FilingColumn({
             <SupplementCard key={one.id} supplement={one} />
           ))}
         </section>
-      )}
-
-      {/* the count and the way out, once, at the end of the filing: the
-          materials are up there with the questions that asked for them */}
-      {review.revision.attachments.length > 0 && (
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 border-t pt-3">
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-            {format(m.reviewFilesNote)}
-          </p>
-          <Button variant="outline" size="sm" className="text-xs" asChild>
-            {/* one press per file, opened as downloads: a zip would be a
-                server-side archive nobody asked for yet */}
-            <button
-              type="button"
-              onClick={() => {
-                for (const attachment of review.revision.attachments) {
-                  window.open(attachmentContentUrl(attachment.attachmentId), '_blank')
-                }
-              }}
-            >
-              <DownloadIcon aria-hidden />
-              {format(m.reviewDownloadAll)}
-            </button>
-          </Button>
-        </div>
       )}
     </Pane>
   )

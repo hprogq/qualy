@@ -1,5 +1,6 @@
 import { Clock, Context, Effect, Layer, Result, Stream } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpServerResponse } from 'effect/unstable/http'
 import { Api } from '@qualy/api-kit/plugin'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
@@ -4536,7 +4537,28 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           // process; the descriptor endpoint already said where to go
           return yield* new AttachmentUnavailable()
         }
-        return Stream.fromAsyncIterable(opened.target.body, (error) => error)
+        // the response wears the file's own name: the url ends in /content,
+        // and without a disposition every save would be called "content"
+        // with no extension. Inline, so clicking a name still previews;
+        // a same-origin anchor with `download` saves under this name.
+        const filename = opened.meta.filename
+        const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replaceAll('"', "'")
+        // RFC 5987: percent-encode everything outside attr-char, including
+        // the quote/paren/star set encodeURIComponent leaves alone
+        const starred = encodeURIComponent(filename).replace(
+          /['()*!]/g,
+          (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+        )
+        return HttpServerResponse.stream(
+          Stream.fromAsyncIterable(opened.target.body, (error) => error),
+          {
+            contentType: opened.meta.declaredMime,
+            contentLength: Number(opened.meta.size),
+            headers: {
+              'content-disposition': `inline; filename="${fallback}"; filename*=UTF-8''${starred}`,
+            },
+          },
+        )
       }),
     )
     .handle(
