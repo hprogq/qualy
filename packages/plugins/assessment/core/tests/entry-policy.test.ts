@@ -876,4 +876,45 @@ describe.runIf(postgresAvailable)('the entry resource policy', () => {
     })
     expect(refusalOf(result.ownEdit)?.reason).toBe('participant-not-active')
   })
+  // Recording on a roster reads it, but only as far as the recording
+  // authority reaches. A staff member anchored to one college is given that
+  // college's people: a page they may not act on is a page they should not
+  // have been shown, counted or paged through.
+  it('gives a recorder the people their authority covers, and no more', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rs-recorder-reach')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f)
+          const mine = yield* assessment.listParticipants(
+            f.t,
+            g.batch.id,
+            { limit: 50 },
+            f.principal(f.recorder),
+          )
+          const all = yield* assessment.listParticipants(
+            f.t,
+            g.batch.id,
+            { limit: 50 },
+            f.principal(f.admin),
+          )
+          return {
+            mine: mine.map((row) => row.id).sort(),
+            all: all.map((row) => row.id).sort(),
+            underA: [g.p1, g.p2].sort(),
+            elsewhere: g.p3,
+          }
+        }),
+      ),
+    )
+    // the roster really does hold somebody outside the recorder's college,
+    // so there is something to be kept out of the page
+    expect(result.all).toContain(result.elsewhere)
+    expect(result.mine).not.toContain(result.elsewhere)
+    // and everybody the recorder's college does cover is still there
+    for (const under of result.underA) expect(result.mine).toContain(under)
+    expect(result.mine.length).toBeLessThan(result.all.length)
+  })
 })

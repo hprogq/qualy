@@ -7258,3 +7258,21 @@ item/policy.ts),引擎按**解析**判末端(`isRouteEnd` → `enterableFrom` �
 可被重路由。这一改是把值对齐到其余调用点,不是新增机制。
 
 验收:typecheck 零错;`pnpm test` 720 passed | 17 skipped;prettier 通过。
+
+### 花名册按录入者自己的范围下发(2026-08-22,对抗审查 major)
+
+`listParticipants` 把「在本批次任意位置持有 `assessment.entry.record`」当作 `requireRosterReach`
+的替代品放行,然后把调用方的原始 filter 直接交给 `listParticipantsPage`——**授权范围从未被求交进
+SQL**。于是一个只锚在某个班的录入者可以读到整批次的花名册(姓名、组织位置、状态),
+违反 CLAUDE.md「读过滤下推,禁止先全取再过滤」。
+
+修法按同一条纪律:把写路径那句 `staffReachesParticipant` 的谓词整体抽成
+`staffReachOver(...)`(server/db.ts,typed fragment,锚点节点与路径以 SQL 表达式传入),
+单人判定与整页过滤**共用同一份定义**;`listParticipantsPage` 新增可选 `reach`,以 EXISTS 逐行求交。
+调用点先问是不是花名册管理员(管理员读全量,不被收窄),不是才按录入权收窄。
+
+新增测试 `gives a recorder the people their authority covers, and no more`:种子里的录入者锚在
+college A(subtree),断言管理员看得到 college B 的人而录入者看不到,同时 college A 下的人一个不少,
+页面严格更短。红验:去掉 reach 传参,录入者立刻读到全部 6 人。
+
+验收:typecheck 零错;`pnpm test` 721 passed | 17 skipped;prettier 通过。

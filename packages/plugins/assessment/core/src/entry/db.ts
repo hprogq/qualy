@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { sql, type RawBuilder } from 'kysely'
 import { mayActOn } from '../review/db.ts'
-import { db } from '../server/db.ts'
+import { db, staffReachOver } from '../server/db.ts'
 
 // The entry rows and everything the resource policy needs to know about the
 // people around them. Same conventions as the neighbouring modules: epoch
@@ -420,58 +420,14 @@ export const staffReachesParticipant = (input: {
   db
     .query((k) =>
       sql<{ reaches: boolean }>`
-        select exists (
-          select 1
-          from batch_access_sources bas
-          join role_grants rg
-            on rg.tenant_id = bas.tenant_id and rg.id = bas.role_assignment_id
-          join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
-          join batch_access_source_permissions sp
-            on sp.tenant_id = bas.tenant_id and sp.source_id = bas.id
-          where bas.tenant_id = ${input.tenantId}
-            and bas.batch_id = ${input.batchId}
-            and bas.subject_id = ${input.userId}
-            and rg.user_id = ${input.userId}
-            and rg.revoked_at is null
-            and (rg.valid_from is null or rg.valid_from <= now())
-            and (rg.valid_until is null or rg.valid_until > now())
-            and ro.status = 'active'
-            and sp.permission_code = ${input.permissionCode}
-            and (
-              ro.permission_mode = 'all-active'
-              or exists (
-                select 1 from role_permissions rp
-                join permissions pe on pe.id = rp.permission_id
-                where rp.tenant_id = ro.tenant_id and rp.role_id = ro.id
-                  and pe.code = sp.permission_code
-              )
-            )
-            and not exists (
-              select 1 from batch_access_denies dn
-              where dn.tenant_id = bas.tenant_id and dn.batch_id = bas.batch_id
-                and dn.subject_id = bas.subject_id
-                and dn.permission_code = sp.permission_code
-            )
-            and (
-              rg.resource_namespace is null
-              or (
-                rg.resource_namespace = 'assessment'
-                and rg.resource_type = 'batch'
-                and rg.resource_id = ${input.batchId}
-              )
-            )
-            and (
-              rg.org_node_id is null
-              or (rg.coverage = 'self' and rg.org_node_id = ${input.participant.anchorNodeId})
-              or (
-                rg.coverage = 'subtree'
-                and ${input.participant.anchorPath}::ltree <@ (
-                  select path from org_nodes n
-                  where n.tenant_id = rg.tenant_id and n.id = rg.org_node_id
-                )
-              )
-            )
-        ) as reaches
+        select ${staffReachOver({
+          tenantId: input.tenantId,
+          batchId: input.batchId,
+          userId: input.userId,
+          permissionCode: input.permissionCode,
+          anchorNodeId: sql`${input.participant.anchorNodeId}`,
+          anchorPath: sql`${input.participant.anchorPath}`,
+        })} as reaches
       `.execute(k),
     )
     .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.reaches)))

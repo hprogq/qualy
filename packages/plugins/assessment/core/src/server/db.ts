@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import { Db } from '@qualy/plugin-database/plugin'
-import { sql } from 'kysely'
+import { sql, type RawBuilder } from 'kysely'
 import { scopeCoverage, type AuthorizationScope } from '@qualy/rbac-contract'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
@@ -1846,6 +1846,76 @@ const toParticipantRow = (row: Record<string, unknown>): ParticipantRow =>
     excludedAt: msOf(row.excludedAt),
   }) as ParticipantRow
 
+/**
+ * Whether one staff member's accepted authority in this batch covers a
+ * participant's frozen anchor.
+ *
+ * A fragment rather than a query, because the same sentence has to be
+ * asked two ways: of one participant before a write, and of every row of
+ * a list at once. A reader whose authority stops at one class must be
+ * given that class - filtering afterwards would already have read, paged
+ * and counted everybody else's people.
+ */
+export const staffReachOver = (input: {
+  tenantId: string
+  batchId: string
+  userId: string
+  permissionCode: string
+  anchorNodeId: RawBuilder<unknown>
+  anchorPath: RawBuilder<unknown>
+}) => sql<boolean>`exists (
+  select 1
+  from batch_access_sources bas
+  join role_grants rg
+    on rg.tenant_id = bas.tenant_id and rg.id = bas.role_assignment_id
+  join roles ro on ro.tenant_id = rg.tenant_id and ro.id = rg.role_id
+  join batch_access_source_permissions sp
+    on sp.tenant_id = bas.tenant_id and sp.source_id = bas.id
+  where bas.tenant_id = ${input.tenantId}
+    and bas.batch_id = ${input.batchId}
+    and bas.subject_id = ${input.userId}
+    and rg.user_id = ${input.userId}
+    and rg.revoked_at is null
+    and (rg.valid_from is null or rg.valid_from <= now())
+    and (rg.valid_until is null or rg.valid_until > now())
+    and ro.status = 'active'
+    and sp.permission_code = ${input.permissionCode}
+    and (
+      ro.permission_mode = 'all-active'
+      or exists (
+        select 1 from role_permissions rp
+        join permissions pe on pe.id = rp.permission_id
+        where rp.tenant_id = ro.tenant_id and rp.role_id = ro.id
+          and pe.code = sp.permission_code
+      )
+    )
+    and not exists (
+      select 1 from batch_access_denies dn
+      where dn.tenant_id = bas.tenant_id and dn.batch_id = bas.batch_id
+        and dn.subject_id = bas.subject_id
+        and dn.permission_code = sp.permission_code
+    )
+    and (
+      rg.resource_namespace is null
+      or (
+        rg.resource_namespace = 'assessment'
+        and rg.resource_type = 'batch'
+        and rg.resource_id = ${input.batchId}
+      )
+    )
+    and (
+      rg.org_node_id is null
+      or (rg.coverage = 'self' and rg.org_node_id = ${input.anchorNodeId})
+      or (
+        rg.coverage = 'subtree'
+        and ${input.anchorPath}::ltree <@ (
+          select path from org_nodes n
+          where n.tenant_id = rg.tenant_id and n.id = rg.org_node_id
+        )
+      )
+    )
+)`
+
 export const listParticipantsPage = (
   tenantId: string,
   batchId: string,
@@ -1854,6 +1924,12 @@ export const listParticipantsPage = (
     /** narrowed to the people frozen at, or under, these units */
     orgNodeIds?: readonly string[]
     orgScope?: 'self' | 'subtree'
+    /**
+     * the reader's own reach, when they are here on recording authority
+     * rather than as the roster's administrator: intersected in sql, so
+     * the page is what they may act on and nothing else
+     */
+    reach?: { userId: string; permissionCode: string }
     after?: { path: string; id: string }
     limit: number
   },
@@ -1865,6 +1941,18 @@ export const listParticipantsPage = (
         .where('BatchParticipant.batchId', '=', batchId)
       if (filter.status !== undefined) {
         query = query.where('BatchParticipant.status', '=', filter.status)
+      }
+      if (filter.reach !== undefined) {
+        query = query.where(
+          staffReachOver({
+            tenantId,
+            batchId,
+            userId: filter.reach.userId,
+            permissionCode: filter.reach.permissionCode,
+            anchorNodeId: sql.ref('batch_participants.assessment_anchor_node_id'),
+            anchorPath: sql.ref('batch_participants.anchor_path'),
+          }),
+        )
       }
       if (filter.orgNodeIds !== undefined && filter.orgNodeIds.length > 0) {
         // against the frozen anchor, not against where the person lives now:

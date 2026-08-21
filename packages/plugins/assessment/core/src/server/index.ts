@@ -3252,11 +3252,30 @@ export const make = Effect.fn('Assessment.make')(function* () {
         // administering the roster reads it; so does recording on it - a
         // staff member filing an administrative fact has to be able to name
         // whom it is about. The write itself still checks anchored reach.
-        const recorder = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
-          'assessment.entry.record',
+        // Administering the roster reads all of it. Recording on it reads
+        // the part the recorder may record on: the authority is anchored,
+        // so the reading is anchored too - in sql, because a page filtered
+        // afterwards has already read and counted everybody else's people.
+        const administers = yield* Effect.match(requireRosterReach(as, tenantId, batchId), {
+          onSuccess: () => true,
+          onFailure: () => false,
+        })
+        if (!administers) {
+          const records = (yield* batchAuthority(tenantId, batchId, as.userId)).has(
+            'assessment.entry.record',
+          )
+          if (!records) yield* requireRosterReach(as, tenantId, batchId)
+        }
+        return yield* dieQuery(
+          withDb(
+            listParticipantsPage(tenantId, batchId, {
+              ...filter,
+              ...(administers
+                ? {}
+                : { reach: { userId: as.userId, permissionCode: 'assessment.entry.record' } }),
+            }),
+          ),
         )
-        if (!recorder) yield* requireRosterReach(as, tenantId, batchId)
-        return yield* dieQuery(withDb(listParticipantsPage(tenantId, batchId, filter)))
       },
     ),
 
