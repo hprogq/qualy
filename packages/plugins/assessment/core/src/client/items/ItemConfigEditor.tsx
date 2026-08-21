@@ -9,7 +9,7 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ChevronUpIcon,
+  GripVerticalIcon,
   EllipsisVerticalIcon,
   PlusIcon,
   XIcon,
@@ -41,9 +41,10 @@ import type { ItemOptions } from './options.ts'
 import type { Placement } from './paper.ts'
 
 /**
- * Which fields identify a claim, in order (§32.74): pick up to three,
- * the first leads. Order is the whole of the model, so the controls are
- * a move-up and a remove, nothing more.
+ * Which fields identify a claim, in order (§32.74): pick up to three, the
+ * first leads. The rows drag to reorder with the same handles the field
+ * list uses; order is the whole of the model, so a grip and a remove are
+ * all the controls there are.
  */
 function SummaryPicker({
   fields,
@@ -55,63 +56,95 @@ function SummaryPicker({
   onChange: (next: string[]) => void
 }) {
   const { format } = useI18n()
+  const [drop, setDrop] = useState<{ id: string; edge: 'before' | 'after' } | null>(null)
   const eligible = fields.filter((field) => field.type !== 'attachment')
-  const remaining = eligible.filter((field) => !elected.includes(field.id))
-  const nameOf = (field: FieldDraft | undefined, id: string) =>
-    field === undefined ? id : field.label.trim() !== '' ? field.label : field.key
+  // a field deleted from the form quietly leaves the election too
+  const chosen = elected.filter((id) => eligible.some((field) => field.id === id))
+  const remaining = eligible.filter((field) => !chosen.includes(field.id))
+  const nameOf = (id: string) => {
+    const field = fields.find((one) => one.id === id)
+    return field === undefined ? id : field.label.trim() !== '' ? field.label : field.key
+  }
+  const edgeOf = (event: React.DragEvent) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    return event.clientY < box.top + box.height / 2 ? ('before' as const) : ('after' as const)
+  }
+  const move = (dragged: string, target: string, edge: 'before' | 'after') => {
+    if (dragged === target) return
+    const order = chosen.filter((id) => id !== dragged)
+    const at = order.indexOf(target)
+    order.splice(edge === 'before' ? at : at + 1, 0, dragged)
+    onChange(order)
+  }
   return (
-    <div className="flex flex-col gap-2">
-      {elected.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
-          {elected.map((id, index) => (
-            <li key={id} className="flex items-center gap-2 rounded-lg border px-3 py-1">
-              <span className="w-4 shrink-0 text-xs text-muted-foreground tabular-nums">
-                {index + 1}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-sm">
-                {nameOf(
-                  fields.find((one) => one.id === id),
-                  id,
+    <div className="flex max-w-xl flex-col gap-2">
+      {chosen.length > 0 && (
+        <ul className="flex flex-col overflow-hidden rounded-lg border">
+          {chosen.map((id, index) => {
+            const marked = drop?.id === id ? drop.edge : null
+            return (
+              <li
+                key={id}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('qualy/summary-field', id)
+                  event.dataTransfer.effectAllowed = 'move'
+                }}
+                onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes('qualy/summary-field')) return
+                  event.preventDefault()
+                  setDrop({ id, edge: edgeOf(event) })
+                }}
+                onDragLeave={() => setDrop((mark) => (mark?.id === id ? null : mark))}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  setDrop(null)
+                  const dragged = event.dataTransfer.getData('qualy/summary-field')
+                  if (dragged !== '') move(dragged, id, edgeOf(event))
+                }}
+                className={cn(
+                  'flex items-center gap-2 border-b bg-background px-2.5 py-1.5 last:border-b-0',
+                  marked === 'before' && 'shadow-[inset_0_2px_0_0_var(--primary)]',
+                  marked === 'after' && 'shadow-[inset_0_-2px_0_0_var(--primary)]',
                 )}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                disabled={index === 0}
-                onClick={() =>
-                  onChange(
-                    elected.map((one, at) =>
-                      at === index - 1 ? id : at === index ? elected[index - 1]! : one,
-                    ),
-                  )
-                }
               >
-                <ChevronUpIcon aria-hidden />
-                <span className="sr-only">{format(m.itemsSummaryUp)}</span>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => onChange(elected.filter((one) => one !== id))}
-              >
-                <XIcon aria-hidden />
-                <span className="sr-only">{format(m.itemsSummaryRemove)}</span>
-              </Button>
-            </li>
-          ))}
+                <GripVerticalIcon
+                  aria-hidden
+                  className="size-3.5 shrink-0 cursor-grab text-muted-foreground/60"
+                />
+                <span className="w-3 shrink-0 text-xs text-muted-foreground tabular-nums">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm">{nameOf(id)}</span>
+                {index === 0 && (
+                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                    {format(m.itemsSummaryLead)}
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0"
+                  onClick={() => onChange(chosen.filter((one) => one !== id))}
+                >
+                  <XIcon aria-hidden />
+                  <span className="sr-only">{format(m.itemsSummaryRemove)}</span>
+                </Button>
+              </li>
+            )
+          })}
         </ul>
       )}
-      {elected.length < 3 && remaining.length > 0 && (
-        <Select value="" onValueChange={(id) => onChange([...elected, id])}>
+      {chosen.length < 3 && remaining.length > 0 && (
+        <Select value="" onValueChange={(id) => onChange([...chosen, id])}>
           <SelectTrigger className="w-56">
             <SelectValue placeholder={format(m.itemsSummaryAdd)} />
           </SelectTrigger>
           <SelectContent>
             {remaining.map((field) => (
               <SelectItem key={field.id} value={field.id}>
-                {nameOf(field, field.id)}
+                {field.label.trim() !== '' ? field.label : field.key}
               </SelectItem>
             ))}
           </SelectContent>
@@ -950,17 +983,6 @@ export function ItemConfigEditor({
                   />
                 )}
               </Field>
-              {fielded && (
-                <Field label={format(m.itemsSummaryTitle)} hint={format(m.itemsSummaryHint)}>
-                  {() => (
-                    <SummaryPicker
-                      fields={draft.fields}
-                      elected={draft.summaryFieldIds}
-                      onChange={(next) => patch({ summaryFieldIds: next })}
-                    />
-                  )}
-                </Field>
-              )}
             </div>
           </Section>
 
@@ -1019,6 +1041,19 @@ export function ItemConfigEditor({
                   setOpenField(key)
                 }}
               />
+              {/* under the fields it elects from: there is no summary to
+                  speak of before there is a field to name a claim by */}
+              <div className="mt-5 border-t pt-4">
+                <Field label={format(m.itemsSummaryTitle)} hint={format(m.itemsSummaryHint)}>
+                  {() => (
+                    <SummaryPicker
+                      fields={draft.fields}
+                      elected={draft.summaryFieldIds}
+                      onChange={(next) => patch({ summaryFieldIds: next })}
+                    />
+                  )}
+                </Field>
+              </div>
             </Section>
           )}
           <Section title={format(m.itemsTabScoring)} hint={format(m.itemsScoringHint)}>

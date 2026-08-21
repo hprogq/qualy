@@ -647,7 +647,7 @@ export default {
   'assessment/items/summary-title': '申报摘要',
   'assessment/items/summary-hint': '选出最多 3 个能认出一条申报的字段，排在第一的为主。',
   'assessment/items/summary-add': '添加字段',
-  'assessment/items/summary-up': '上移',
+  'assessment/items/summary-lead': '主识别',
   'assessment/items/summary-remove': '移除',
   'assessment/items/field-description': '填报说明',
   'assessment/items/flow-submit': '提交',

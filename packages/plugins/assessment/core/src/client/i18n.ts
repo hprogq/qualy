@@ -2579,7 +2579,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'Pick up to 3 fields that identify one claim; the first leads.',
     },
     itemsSummaryAdd: { id: 'assessment/items/summary-add', defaultMessage: 'Add a field' },
-    itemsSummaryUp: { id: 'assessment/items/summary-up', defaultMessage: 'Move up' },
+    itemsSummaryLead: { id: 'assessment/items/summary-lead', defaultMessage: 'Leads' },
     itemsSummaryRemove: { id: 'assessment/items/summary-remove', defaultMessage: 'Remove' },
     itemsFieldDescription: {
       id: 'assessment/items/field-description',

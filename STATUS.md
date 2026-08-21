@@ -7049,3 +7049,10 @@ review-vote-approved/rejected 入流(pn-unanimous 断言:一票记一条、说�
 红验痕:attention 既有断言 settled.instanceId 由 not.toBeNull 翻转为 toBeNull。
 门禁:typecheck 零错;pnpm test 708 passed | 17 skipped(新增 entry-summary 4 例);
 pnpm test:browser 96 passed;prettier 全通过。
+
+### 申报摘要选择器搬家并支持拖拽(2026-08-23 追加)
+
+摘要配置块从基础信息区搬进「填报字段」区(列表之后,细线分隔)——先有字段才有摘要可选;
+选择器按 FieldTable 同一拖拽习语重写:原生 draggable + qualy/summary-field 载荷 + 上下沿
+高亮落点 + Grip 把手,行内序号、首行「主识别」小签、移除键,上移按钮退场;表单里被删除的
+字段自动退出当选集。typecheck 零错;catalogs 7、batch-admin 29 全绿;prettier 通过。
