@@ -1570,7 +1570,9 @@ function useBeside(): boolean {
  */
 function EscalationNotice({ review }: { review: ReviewDto }) {
   const { format } = useI18n()
-  if (review.state === 'completed') return null
+  // the guard lives here, once: only a live escalation round carries the
+  // card, wherever the layout chooses to stand it
+  if (review.state === 'completed' || review.chain.route !== 'escalation') return null
   const appealed = review.events.find((event) => event.kind === 'appealed')
   return (
     <div
