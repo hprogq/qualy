@@ -1394,3 +1394,11 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 四、**决策栏在手机上是 2×2 矩阵**:上行(提请复核/要求补充材料)h-9 常规字号,下行(退回/通过)h-11 更大字号,四键等宽铺满、无残留空白;判定色(rose/emerald)不变;sm 以上保持原单行。原「上行按内容宽、下行铺满」的布局作废——大片右侧空白正是两行两套布局容器造成的。
 
 五、**明知的边界**:审核过程/评审依据两面的内容瘦身(判断历史化、依据只留判断相关)未在本轮实施,现有面内容已相对克制,触发再做;pager 相邻页边缘预告与首次进入的暗示动画未做(顶部具名导航已承担可发现性)。
+
+**32.72 状态、待处理、未读三分:Entry 上的注意力对,概览页的两个 read model**(2026-08-21,用户裁决)。
+
+一、**左栏彩色状态点废除**。旧 dot 同时承担「当前状态/是否待办/是否值得注意」三义(草稿红点、待补件黑点、驳回无表示),三义拆开后各有唯一来源:①**状态**是行旁的文字(优先级 待补充 > 待修改 > 草稿 > 审核中 > 已退回/部分未通过 > 已通过 > 可申报;一题多条时既有通过又有退回读作「部分未通过」,绝不用最坏一条冒充整题);待补充/待修改用 amber 强调,不再长期挂红。②**待处理**(todo)重定义为「确实存在属于我的未完成事」= 开着的补件 ∪ 待修改 ∪ 自己的草稿——「这题还能报」不进待办(能报≠该报)。③**未读**是唯一的红点:像手机消息,一次性,看过即灭;驳回卡着不想处理不再永远红。
+
+二、**未读不建通知表,用 Entry 上的一对单调数**:`participant_attention_revision / participant_seen_revision`(CHECK attention≥seen≥0),`attention>seen` 即是点。选 revision 不选时间戳:标已读与并发变更竞争时,`seen=读取时的 attention` 与随后的 `+1` 天然有序,毫秒钟表给不出这个答案(节点测试实证:标读与撤销补件竞争后点必须回来)。bump 是**白名单**且与业务写同事务:要求/撤销补件、终局通过/驳回(合议一致同批)、管理员要求修改(含 propagate 批量);自己的建档/修改/提交/撤回/放弃/答复补件**不响铃**;普通环节的 approve 交接不是新闻——**只有 Entry 状态真正落定的那一步才响**。存量数据一律初始化已读(旧状态是否看过无从得知;「仍待补件/待修改」照进待处理,只是没有假红点)。已读走 `PUT /my-entry-reads/:itemId`(幂等、免阶段门、归档可用、只动本人 participant、不改 updatedAt、不发 SSE——看一眼不是业务变化,cache 本地修正)。红点按**题**聚合(`unreadItemIds` 挂在 listMyEntries 的 attention 块;刻意不进 EntryView——审核员/管理员无权知道申报人读没读),已读也按题一次清。前端「看过」= 打开该题(立即)或滚动驻留 600ms(快速滚过不消点);无样式断点下两套栏同显、内嵌 aria-label 参与按钮命名、PG `+00` 时区裸偏移——三个实现坑都由测试抓出并记档。
+
+三、**概览页承载「需要你处理 + 最近动态」,不建独立消息页**。现在建 Inbox 会与「我的申报」信息架构重复;等公示通知/管理员公告/跨插件通知真出现再议顶层通知中心。`GET /my-entry-summary`(actions 只有 supplement/revision 两种——草稿不进首页待办,防止存几个草稿首页长期挂牌)与 `GET /my-entry-activity`(keyset=`(at,source,id)` 三元组,时间戳单键在同刻多源时丢行)。动态是**用户动态流不是审计 dump**:公共词表 13 种业务语义(entry-created/…/revision-required),raw event kind 永不出 API;终局通过/驳回取自 review_instances 完成态(lateral 取末事件要 actor/reason)而非逐环节 approved 事件;补件三态只取结构化 SupplementRequest,杜绝双讲。行动卡深链 `?open=<itemId>&detail/entry=<entryId>` 落到申报上下文,不从概览直接弹操作框。SSE `entries-changed/result-changed/sync` 失效 summary+activity;标读不广播。管理员打开概览拿 ParticipantNotFound,桌面块整体隐去,流程列照旧。

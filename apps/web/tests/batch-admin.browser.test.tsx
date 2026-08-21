@@ -167,6 +167,10 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   getBatch: () => Effect.succeed({ batch: batch() }),
   getPhases: () => Effect.succeed({ phases: [] }),
   getTimeline: () => Effect.succeed({ timeline: [] }),
+  // the participant's desk on the overview: this harness plays an
+  // administrator, whose desk is empty by design
+  getMyEntrySummary: () => Effect.succeed({ unreadItemCount: 0, actions: [] }),
+  listMyEntryActivity: () => Effect.succeed({ items: [], nextCursor: null }),
   listTemplates: templates,
   listScopeOptions: () =>
     Effect.succeed({

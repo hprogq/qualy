@@ -1088,6 +1088,92 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         participantId: Schema.String,
         entries: Schema.Array(entryView),
         nextCursor: Schema.NullOr(Schema.String),
+        /**
+         * The unread dots (§32.72): questions where something changed FOR
+         * this reader since they last looked. Not on entryView, on purpose -
+         * that view also reaches reviewers and administrators, and whether
+         * the owner has read their news is nobody else's field.
+         */
+        attention: Schema.Struct({ unreadItemIds: Schema.Array(Schema.String) }),
+      }),
+      error: [BatchNotFound, ParticipantNotFound, AccessDenied, BadRequest],
+    }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The owner has looked at one question's claims. Idempotent, gate-free
+     * (a look is not a business act), archived batches included; touching
+     * only the caller's own participant row is the whole authorization.
+     */
+    HttpApiEndpoint.put('markMyEntryRead', '/assessment/batches/:batchId/my-entry-reads/:itemId', {
+      params: Schema.Struct({ batchId: id, itemId: id }),
+      success: Schema.Struct({ ok: Schema.Literal(true) }),
+      error: [BatchNotFound, ParticipantNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * What this participant should handle now, and how much is unread: the
+     * overview's first block. Draft work is deliberately absent - drafts
+     * are the owner's own doing, not something the round asked of them.
+     */
+    HttpApiEndpoint.get('getMyEntrySummary', '/assessment/batches/:batchId/my-entry-summary', {
+      params: Schema.Struct({ batchId: id }),
+      success: Schema.Struct({
+        unreadItemCount: Schema.Number,
+        actions: Schema.Array(
+          Schema.Struct({
+            kind: Schema.Literals(['supplement', 'revision']),
+            entryId: Schema.String,
+            itemId: Schema.String,
+            itemTitle: Schema.String,
+            at: Schema.String,
+            who: Schema.NullOr(Schema.String),
+            summary: Schema.NullOr(Schema.String),
+          }),
+        ),
+      }),
+      error: [BatchNotFound, ParticipantNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The reader's own recent story across every claim in the batch, told
+     * in business words - never raw event kinds, and supplements only from
+     * their structured records so nothing is said twice.
+     */
+    HttpApiEndpoint.get('listMyEntryActivity', '/assessment/batches/:batchId/my-entry-activity', {
+      params: Schema.Struct({ batchId: id }),
+      query: Schema.Struct(pageQuery),
+      success: Schema.Struct({
+        items: Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            kind: Schema.Literals([
+              'entry-created',
+              'entry-revised',
+              'entry-submitted',
+              'entry-withdrawn',
+              'entry-abandoned',
+              'review-approved',
+              'review-rejected',
+              'review-escalated',
+              'appeal-filed',
+              'supplement-requested',
+              'supplement-submitted',
+              'supplement-cancelled',
+              'revision-required',
+            ]),
+            entryId: Schema.String,
+            itemId: Schema.String,
+            itemTitle: Schema.String,
+            actorName: Schema.NullOr(Schema.String),
+            reason: Schema.NullOr(Schema.String),
+            comment: Schema.NullOr(Schema.String),
+            at: Schema.String,
+          }),
+        ),
+        nextCursor: Schema.NullOr(Schema.String),
       }),
       error: [BatchNotFound, ParticipantNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),

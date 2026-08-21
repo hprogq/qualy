@@ -6917,3 +6917,21 @@ flow 记成已读);复核/申诉卡在手机提升到 pager 之外;申报面顶�
 94 passed——重写两例旧布局断言(分页语义、2×2 等宽与行高差),新增「lifts the
 escalation over the pager…」全景用例:提升卡可见、摘要条可见、flow 面事实点、通过弹窗
 两行守卫、两次「查看」逐面消点、第三次弹窗干净;prettier 全绿。
+
+### 参评人注意力模型与概览页(2026-08-21)
+
+领域裁决见 docs/assessment-design.md §32.72。状态/待处理/未读三分:左栏彩色状态点废除,
+红点只表未读(题级聚合、看过即灭、并发变更后必回);Entry 增 attention/seen revision 对
+(迁移 20260821094426_entry-attention.sql,存量初始化已读);bump 白名单与业务写同事务
+(补件请求/撤销、终局通过/驳回、要求修改,含 propagate);`PUT my-entry-reads/:itemId`
+幂等标读(免阶段门、不发 SSE);listMyEntries 携 attention.unreadItemIds(刻意不进
+EntryView);行状态聚合补 supplement/rejected/partial/approved,todo 剔除「可申报」;
+概览页落「需要你处理」(supplement/revision 行动卡,深链 open+detail/entry)与「最近动态」
+(13 词公共词表、终局取自 instance 完成态、补件只走结构化记录、(at,source,id) keyset、
+查看更多就地翻页),SSE 失效接线,管理员自然隐去。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 101 files / 701 passed(attention 三例:终局才响/
+看过即灭/幂等、标读与撤销竞争后点回来、summary+activity 语义与排序);`pnpm test:browser`
+11 files / 96 passed(未读点生命周期红验证——短路 unread 即红;概览行动卡深链落位);
+prettier 全绿。测试顺带抓出三只真虫:PG `+00` 裸时区偏移 Date 拒解(生产同炸,已归一)、
+entry_events 无 comment 列、补件表列名 cancelled_at。

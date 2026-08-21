@@ -20,6 +20,13 @@ import { cursorUnusable, type BadRequest, pageSize } from '@qualy/api-kit/schema
 import { participantRowByUser } from '../scoring/db.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
+import {
+  bumpParticipantAttention,
+  markMyEntryReads,
+  unreadItemIdsOf,
+  myActionRowsOf,
+  myActivityPage,
+} from './db.ts'
 import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/db.ts'
 import {
   attachmentsOfRevisions,
@@ -167,6 +174,22 @@ export type CreateEntryError =
   | AccessDenied
 export type ReviseEntryError =
   EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
+/** the activity stream's public vocabulary; raw event kinds never leave */
+export type MyActivityKind =
+  | 'entry-created'
+  | 'entry-revised'
+  | 'entry-submitted'
+  | 'entry-withdrawn'
+  | 'entry-abandoned'
+  | 'review-approved'
+  | 'review-rejected'
+  | 'review-escalated'
+  | 'appeal-filed'
+  | 'supplement-requested'
+  | 'supplement-submitted'
+  | 'supplement-cancelled'
+  | 'revision-required'
+
 export type EntryStatusError =
   EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused
 
@@ -251,7 +274,12 @@ export interface EntryMethods {
     page: { cursor?: string; limit?: string },
     as: Principal,
   ) => Effect.Effect<
-    { participantId: string; entries: readonly EntryView[]; nextCursor: string | null },
+    {
+      participantId: string
+      entries: readonly EntryView[]
+      nextCursor: string | null
+      attention: { unreadItemIds: readonly string[] }
+    },
     BatchNotFound | ParticipantNotFound | AccessDenied | BadRequest
   >
   readonly getEntryHistory: (
@@ -283,6 +311,53 @@ export interface EntryMethods {
     /** the question the caller's screen showed when the press happened */
     expectedItemRevisionId?: string,
   ) => Effect.Effect<EntryView, EntryStatusError>
+  readonly markMyEntryRead: (
+    tenantId: string,
+    batchId: string,
+    itemId: string,
+    as: Principal,
+  ) => Effect.Effect<{ ok: true }, BatchNotFound | ParticipantNotFound | AccessDenied>
+  readonly getMyEntrySummary: (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
+  ) => Effect.Effect<
+    {
+      unreadItemCount: number
+      actions: readonly {
+        kind: 'supplement' | 'revision'
+        entryId: string
+        itemId: string
+        itemTitle: string
+        at: string
+        who: string | null
+        summary: string | null
+      }[]
+    },
+    BatchNotFound | ParticipantNotFound | AccessDenied
+  >
+  readonly listMyEntryActivity: (
+    tenantId: string,
+    batchId: string,
+    page: { cursor?: string; limit?: string },
+    as: Principal,
+  ) => Effect.Effect<
+    {
+      items: readonly {
+        id: string
+        kind: MyActivityKind
+        entryId: string
+        itemId: string
+        itemTitle: string
+        actorName: string | null
+        reason: string | null
+        comment: string | null
+        at: string
+      }[]
+      nextCursor: string | null
+    },
+    BatchNotFound | ParticipantNotFound | AccessDenied | BadRequest
+  >
   readonly interveneOnEntry: (
     tenantId: string,
     entryId: string,
@@ -1280,6 +1355,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               lastIso !== null && last !== undefined
                 ? encodeQueryCursor(fingerprint, [lastIso, last.id])
                 : null,
+            attention: {
+              unreadItemIds: yield* unreadItemIdsOf({
+                tenantId,
+                batchId,
+                participantId: membership.id,
+              }),
+            },
           }
         }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
@@ -1460,6 +1542,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             actorId: as.userId,
             reason,
           })
+          yield* bumpParticipantAttention(tenantId, entryId)
           yield* announce(tenantId, entry.batchId, [
             { kind: 'entries-changed', subjectUserId: participant.userId },
             { kind: 'review-inbox-changed' },
@@ -1477,6 +1560,104 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     )
   })
 
+  /** the caller's own participant row behind the batch door, or the refusals */
+  const myMembership = Effect.fn('Assessment.myMembership')(function* (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
+  ) {
+    const batch = yield* oneBatch(tenantId, batchId)
+    if (!batch) return yield* new BatchNotFound()
+    yield* deps.requireBatchVisible(tenantId, batchId, as)
+    const membership = yield* participantRowByUser(tenantId, batchId, as.userId)
+    if (membership === null) return yield* new ParticipantNotFound()
+    return membership
+  })
+
+  const markMyEntryRead: EntryMethods['markMyEntryRead'] = Effect.fn('Assessment.markMyEntryRead')(
+    function* (tenantId, batchId, itemId, as) {
+      return yield* withDb(
+        Effect.gen(function* () {
+          const membership = yield* myMembership(tenantId, batchId, as)
+          // a look is not a business act: no phase gate, no updatedAt, no
+          // announcement - and marking a question with no claims is a no-op
+          yield* markMyEntryReads({ tenantId, batchId, itemId, participantId: membership.id })
+          return { ok: true as const }
+        }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+      )
+    },
+  )
+
+  const getMyEntrySummary: EntryMethods['getMyEntrySummary'] = Effect.fn(
+    'Assessment.getMyEntrySummary',
+  )(function* (tenantId, batchId, as) {
+    return yield* withDb(
+      Effect.gen(function* () {
+        const membership = yield* myMembership(tenantId, batchId, as)
+        const unread = yield* unreadItemIdsOf({ tenantId, batchId, participantId: membership.id })
+        const actions = yield* myActionRowsOf({
+          tenantId,
+          batchId,
+          participantId: membership.id,
+        })
+        return {
+          unreadItemCount: unread.length,
+          actions: actions.map((row) => ({
+            kind: row.kind,
+            entryId: row.entryId,
+            itemId: row.itemId,
+            itemTitle: row.itemTitle,
+            at: row.at,
+            who: row.who,
+            summary: row.summary,
+          })),
+        }
+      }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+    )
+  })
+
+  const listMyEntryActivity: EntryMethods['listMyEntryActivity'] = Effect.fn(
+    'Assessment.listMyEntryActivity',
+  )(function* (tenantId, batchId, page, as) {
+    const fingerprint = `my-activity:${as.userId}:${batchId}`
+    const key = readQueryCursor(page.cursor, fingerprint, ['text', 'text', 'uuid'])
+    if (key === null) return yield* cursorUnusable()
+    const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+    return yield* withDb(
+      Effect.gen(function* () {
+        const membership = yield* myMembership(tenantId, batchId, as)
+        const rows = yield* myActivityPage({
+          tenantId,
+          batchId,
+          participantId: membership.id,
+          after: key === undefined ? undefined : [key[0]!, key[1]!, key[2]!],
+          limit: limit + 1,
+        })
+        const pageRows = rows.slice(0, limit)
+        const last = pageRows[pageRows.length - 1]
+        return {
+          items: pageRows.map((row) => ({
+            id: row.id,
+            // the union is enforced by the mapping CASEs above; rows whose
+            // kind fell out of them were filtered before the page
+            kind: row.kind as MyActivityKind,
+            entryId: row.entryId,
+            itemId: row.itemId,
+            itemTitle: row.itemTitle,
+            actorName: row.actorName,
+            reason: row.reason,
+            comment: row.comment,
+            at: row.at,
+          })),
+          nextCursor:
+            rows.length > limit && last !== undefined
+              ? encodeQueryCursor(fingerprint, [last.at, last.source, last.id])
+              : null,
+        }
+      }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+    )
+  })
+
   return {
     listMyEntries,
     getEntryHistory,
@@ -1484,6 +1665,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     getEntry,
     appendEntryRevision,
     setEntryStatus,
+    markMyEntryRead,
+    getMyEntrySummary,
+    listMyEntryActivity,
     interveneOnEntry,
   }
 }

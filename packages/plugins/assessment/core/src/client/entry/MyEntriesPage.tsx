@@ -365,6 +365,10 @@ function Body({
     [items.data],
   )
 
+  const unreadItems = useMemo(
+    () => new Set(mine.data?.attention?.unreadItemIds ?? []),
+    [mine.data?.attention?.unreadItemIds],
+  )
   const rows = useMemo(
     () =>
       standingRows({
@@ -372,9 +376,44 @@ function Body({
         items: visible,
         entriesByItem,
         standing: (standing.data ?? null) as Standing | null,
+        unreadItems,
       }),
-    [groups.data, visible, entriesByItem, standing.data],
+    [groups.data, visible, entriesByItem, standing.data, unreadItems],
   )
+
+  // Looking silences the dot (§32.72). "Looking" is a settled pause on the
+  // question - the scroll spy's row, held for a moment - or opening one of
+  // its claims outright; a fast scroll past ten questions marks nothing.
+  // The cache is corrected locally: a look is not a business change, so no
+  // refetch and no announcement ride on it.
+  const listKey = query.assessment.listMyEntries.key({ params: { batchId }, query: {} })
+  const markRead = useMutation({
+    mutationFn: (itemId: string) =>
+      run(api.assessment.markMyEntryRead({ params: { batchId, itemId } })),
+    onSuccess: (_result, itemId) => {
+      queryClient.setQueryData(
+        listKey,
+        (old: { attention: { unreadItemIds: readonly string[] } } | undefined) =>
+          old === undefined
+            ? old
+            : {
+                ...old,
+                attention: {
+                  unreadItemIds: old.attention.unreadItemIds.filter((id) => id !== itemId),
+                },
+              },
+      )
+    },
+  })
+  const lookAt = (itemId: string | null | undefined) => {
+    if (itemId != null && unreadItems.has(itemId)) markRead.mutate(itemId)
+  }
+  // opening a question outright is a look, no pause required
+  useEffect(() => {
+    const row = rows.find((one) => one.id === selected)
+    if (row?.kind === 'item') lookAt(row.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, rows])
 
   // the address names a row; before it names one, the first question there is
   // to answer is a better place to land than an empty pane
@@ -566,6 +605,13 @@ function Body({
   // scrolled to. Nothing is marked until the paper has been read once - the
   // spy answers on mount, so that is one frame, not a wait.
   const marked = passing !== '' ? passing : selected !== '' ? selected : null
+  useEffect(() => {
+    const row = rows.find((one) => one.id === marked)
+    if (row?.kind !== 'item' || !row.unread) return
+    const timer = setTimeout(() => lookAt(row.id), 600)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marked, rows])
 
   const [paperView, setPaperView] = useState<'all' | 'todo'>('all')
   const questionCount = rows.filter((row) => row.kind === 'item').length
@@ -1066,9 +1112,10 @@ function Structure({
           {listed.map((row, index) => {
             const depth = showing === 'all' ? row.depth : 0
             const joint = joints[index]!
-            const hollow = row.tag === 'open' || row.tag === 'voided'
             const gone = row.tag === 'voided'
-            const alert = row.todo && (row.tag === 'needs_revision' || row.tag === 'draft')
+            // the row's word asks for a raised voice only while the round
+            // is waiting on the reader
+            const urgent = row.tag === 'supplement' || row.tag === 'needs_revision'
             const capNum =
               row.cap === null || row.cap === undefined || row.cap === '' ? 0 : Number(row.cap)
             const gotNum = row.right === '' ? 0 : Number(row.right)
@@ -1119,18 +1166,18 @@ function Structure({
                   )}
                   {row.kind === 'group' ? (
                     <span aria-hidden className="size-[7px] shrink-0 rounded-[2px] bg-border" />
-                  ) : (
+                  ) : row.unread ? (
+                    // the dot says one thing only (§32.72): something here
+                    // changed and its owner has not seen it. Status is the
+                    // word beside the name, never a colour code.
                     <span
-                      aria-hidden
-                      className={cn(
-                        'size-[7px] shrink-0 rounded-full',
-                        alert
-                          ? 'bg-destructive'
-                          : hollow
-                            ? 'border border-muted-foreground/45'
-                            : 'bg-muted-foreground/60',
-                      )}
+                      role="status"
+                      data-testid="unread-dot"
+                      aria-label={format(m.rowUnread)}
+                      className="size-[7px] shrink-0 rounded-full bg-destructive"
                     />
+                  ) : (
+                    <span aria-hidden className="size-[7px] shrink-0" />
                   )}
                   <span
                     className={cn(
@@ -1148,7 +1195,9 @@ function Structure({
                     <span
                       className={cn(
                         'max-w-24 shrink-0 truncate text-xs',
-                        alert ? 'text-destructive' : 'text-muted-foreground',
+                        urgent
+                          ? 'font-medium text-amber-700 dark:text-amber-300'
+                          : 'text-muted-foreground',
                       )}
                     >
                       {format(ROW_TAG[row.tag])}

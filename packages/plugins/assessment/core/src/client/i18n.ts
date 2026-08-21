@@ -711,6 +711,14 @@ const i18n = definePluginMessages({
       defaultMessage: 'Additional material required',
     },
     entryStatusApproved: { id: 'assessment/entry/status-approved', defaultMessage: 'Approved' },
+    rowPartialApproved: {
+      id: 'assessment/entry/row-partial',
+      defaultMessage: 'Partly refused',
+    },
+    rowUnread: {
+      id: 'assessment/entry/row-unread',
+      defaultMessage: 'New change you have not seen',
+    },
     entryStatusRejected: { id: 'assessment/entry/status-rejected', defaultMessage: 'Returned' },
     entryStatusVoided: { id: 'assessment/entry/status-voided', defaultMessage: 'Voided' },
     entryFileUploading: { id: 'assessment/entry/file-uploading', defaultMessage: 'Uploading…' },
@@ -3098,6 +3106,105 @@ const i18n = definePluginMessages({
     },
     entrySaveOnly: { id: 'assessment/entry/save-only', defaultMessage: 'Save only' },
     myEntriesRefresh: { id: 'assessment/entry/refresh', defaultMessage: 'Refresh' },
+    // the overview's two blocks (§32.72): what needs the reader's hand, and
+    // what has happened to their claims lately
+    overviewActionsTitle: {
+      id: 'assessment/overview/actions-title',
+      defaultMessage: 'Needs your attention',
+    },
+    overviewActionsNone: {
+      id: 'assessment/overview/actions-none',
+      defaultMessage: 'Nothing needs your attention right now.',
+    },
+    overviewActionSupplement: {
+      id: 'assessment/overview/action-supplement',
+      defaultMessage: '{who} asked you for more material',
+    },
+    overviewActionRevision: {
+      id: 'assessment/overview/action-revision',
+      defaultMessage: 'Revise and resubmit was requested',
+    },
+    overviewGoSupplement: {
+      id: 'assessment/overview/go-supplement',
+      defaultMessage: 'Supply it',
+    },
+    overviewGoRevision: {
+      id: 'assessment/overview/go-revision',
+      defaultMessage: 'Revise it',
+    },
+    overviewActivityTitle: {
+      id: 'assessment/overview/activity-title',
+      defaultMessage: 'Recent activity',
+    },
+    overviewActivityUnread: {
+      id: 'assessment/overview/activity-unread',
+      defaultMessage: '{count, plural, one {# question has news} other {# questions have news}}',
+    },
+    overviewActivityNone: {
+      id: 'assessment/overview/activity-none',
+      defaultMessage: 'Nothing has happened to your entries yet.',
+    },
+    overviewActivityMore: {
+      id: 'assessment/overview/activity-more',
+      defaultMessage: 'Show more',
+    },
+    // one sentence per activity kind, second person for the reader's own acts
+    'activity.entry-created': {
+      id: 'assessment/activity/entry-created',
+      defaultMessage: 'You wrote the entry',
+    },
+    'activity.entry-revised': {
+      id: 'assessment/activity/entry-revised',
+      defaultMessage: 'You revised the entry',
+    },
+    'activity.entry-submitted': {
+      id: 'assessment/activity/entry-submitted',
+      defaultMessage: 'You submitted the entry for review',
+    },
+    'activity.entry-withdrawn': {
+      id: 'assessment/activity/entry-withdrawn',
+      defaultMessage: 'You withdrew the entry from review',
+    },
+    'activity.entry-abandoned': {
+      id: 'assessment/activity/entry-abandoned',
+      defaultMessage: 'You abandoned the entry',
+    },
+    'activity.review-approved': {
+      id: 'assessment/activity/review-approved',
+      defaultMessage: '{who} approved the entry',
+    },
+    'activity.review-rejected': {
+      id: 'assessment/activity/review-rejected',
+      defaultMessage: '{who} returned the entry',
+    },
+    'activity.review-escalated': {
+      id: 'assessment/activity/review-escalated',
+      defaultMessage: 'The review moved to the escalation route',
+    },
+    'activity.appeal-filed': {
+      id: 'assessment/activity/appeal-filed',
+      defaultMessage: 'You filed an appeal',
+    },
+    'activity.supplement-requested': {
+      id: 'assessment/activity/supplement-requested',
+      defaultMessage: '{who} asked you for more material',
+    },
+    'activity.supplement-submitted': {
+      id: 'assessment/activity/supplement-submitted',
+      defaultMessage: 'You supplied the requested material',
+    },
+    'activity.supplement-cancelled': {
+      id: 'assessment/activity/supplement-cancelled',
+      defaultMessage: '{who} withdrew the request for material',
+    },
+    'activity.revision-required': {
+      id: 'assessment/activity/revision-required',
+      defaultMessage: '{who} asked you to revise the entry',
+    },
+    'activity.somebody': {
+      id: 'assessment/activity/somebody',
+      defaultMessage: 'A reviewer',
+    },
     myEntriesFilterAll: { id: 'assessment/entry/filter-all', defaultMessage: 'All' },
     myEntriesFilterTodo: {
       id: 'assessment/entry/filter-todo',

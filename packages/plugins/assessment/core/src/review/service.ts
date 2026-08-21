@@ -6,6 +6,7 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { cursorUnusable, pageSize, type BadRequest } from '@qualy/api-kit/schema'
 import type { ItemTypeDriver } from '../plugin.ts'
 import { announce } from '../live/events.ts'
+import { bumpParticipantAttention } from '../entry/db.ts'
 import {
   BatchNotFound,
   BatchReadOnly,
@@ -1291,6 +1292,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     from: ['in_review'],
                     to: 'approved',
                   })
+                  yield* bumpParticipantAttention(tenantId, row.entryId)
                 } else {
                   // anything short of every voice saying yes climbs, the
                   // 0-for-all case included: the ladder's end owns the final
@@ -1318,6 +1320,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 from: ['in_review'],
                 to: action === 'approve' ? 'approved' : 'rejected',
               })
+              // the verdict is the owner's news, not the stage handovers
+              // on the way to it (§32.72)
+              yield* bumpParticipantAttention(tenantId, row.entryId)
               return yield* written()
             }
 
@@ -1729,6 +1734,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             stageId: row.currentStageId,
             comment: instructions,
           })
+          yield* bumpParticipantAttention(tenantId, row.entryId)
           yield* announce(tenantId, row.batchId, [
             { kind: 'review-instance-changed' },
             { kind: 'review-inbox-changed' },
@@ -1792,6 +1798,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             route: row.currentRoute,
             stageId: row.currentStageId,
           })
+          yield* bumpParticipantAttention(tenantId, row.entryId)
           yield* announce(tenantId, row.batchId, [
             { kind: 'review-instance-changed' },
             { kind: 'review-inbox-changed' },

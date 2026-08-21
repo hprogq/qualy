@@ -40,13 +40,27 @@ export interface Standing {
 }
 
 /** the one word a row says about itself beside its name */
-export type RowTag = 'voided' | 'needs_revision' | 'draft' | 'in_review' | 'recorded' | 'open'
+export type RowTag =
+  | 'voided'
+  | 'supplement'
+  | 'needs_revision'
+  | 'draft'
+  | 'in_review'
+  | 'rejected'
+  | 'partial'
+  | 'approved'
+  | 'recorded'
+  | 'open'
 
 export const ROW_TAG: Record<RowTag, MessageDescriptor> = {
   voided: m.itemsStatusVoided,
+  supplement: m.entryStatusAwaitingSupplement,
   needs_revision: m.entryStatusNeedsRevision,
   draft: m.entryStatusDraft,
   in_review: m.entryStatusInReview,
+  rejected: m.entryStatusRejected,
+  partial: m.rowPartialApproved,
+  approved: m.entryStatusApproved,
   recorded: m.myEntriesRecorded,
   open: m.myEntriesOpen,
 }
@@ -62,8 +76,14 @@ export interface StructureRow {
   right: string
   /** a word about the row that is not its name: who files it, where it stands */
   tag: RowTag | null
-  /** whether the reader still has something to do here */
+  /**
+   * Whether something here is genuinely unfinished BY the reader: an open
+   * ask, a return mark, or their own draft. "This question could be filed"
+   * is not on anybody's plate and deliberately does not count (§32.72).
+   */
   todo: boolean
+  /** a change the reader has not looked at yet - the dot, and only the dot */
+  unread: boolean
   /** the groups above it, outermost first, for a breadcrumb */
   trail: readonly string[]
   cap?: string | null
@@ -151,11 +171,14 @@ export const standingRows = ({
   items,
   entriesByItem,
   standing,
+  unreadItems = new Set<string>(),
 }: {
   groups: readonly { id: string; parentGroupId: string | null; name: string }[]
   items: readonly ItemDto[]
   entriesByItem: ReadonlyMap<string, readonly EntryDto[]>
   standing: Standing | null
+  /** questions holding changes the reader has not looked at (§32.72) */
+  unreadItems?: ReadonlySet<string>
 }): readonly StructureRow[] => {
   const childrenOf = new Map<string | null, { id: string; name: string }[]>()
   for (const group of groups) {
@@ -193,6 +216,7 @@ export const standingRows = ({
         right: score === null ? '' : trimAmount(score.final),
         tag: null,
         todo: false,
+        unread: false,
         trail,
         cap: score?.cap ?? null,
         floor: score?.floor ?? null,
@@ -200,7 +224,9 @@ export const standingRows = ({
       })
       const inside = [...trail, group.name]
       for (const item of items.filter((one) => one.scoreGroupId === group.id)) {
-        rows.push(itemRow(item, entriesByItem.get(item.id) ?? [], standing, depth + 1, inside))
+        rows.push(
+          itemRow(item, entriesByItem.get(item.id) ?? [], standing, depth + 1, inside, unreadItems),
+        )
       }
       walk(group.id, depth + 1, inside)
     }
@@ -213,7 +239,7 @@ export const standingRows = ({
   const placed = new Set(rows.map((row) => row.id))
   for (const item of items) {
     if (!placed.has(item.id)) {
-      rows.unshift(itemRow(item, entriesByItem.get(item.id) ?? [], standing, 0, []))
+      rows.unshift(itemRow(item, entriesByItem.get(item.id) ?? [], standing, 0, [], unreadItems))
     }
   }
 
@@ -226,11 +252,16 @@ const itemRow = (
   standing: Standing | null,
   depth: number,
   trail: readonly string[],
+  unreadItems: ReadonlySet<string>,
 ): StructureRow => {
   const granted = itemScore(standing, item.id)
-  const drafts = entries.filter((entry) => entry.status === 'draft').length
-  const sentBack = entries.filter((entry) => entry.status === 'needs_revision').length
-  const pending = entries.filter((entry) => entry.status === 'in_review').length
+  const live = entries.filter((entry) => entry.status !== 'voided')
+  const asked = live.filter((entry) => entry.supplement !== null).length
+  const sentBack = live.filter((entry) => entry.status === 'needs_revision').length
+  const drafts = live.filter((entry) => entry.status === 'draft').length
+  const pending = live.filter((entry) => entry.status === 'in_review').length
+  const rejected = live.filter((entry) => entry.status === 'rejected').length
+  const approved = live.filter((entry) => entry.status === 'approved').length
   return {
     id: item.id,
     kind: 'item',
@@ -238,25 +269,36 @@ const itemRow = (
     name: item.title,
     item,
     right: granted ?? '',
-    // one word about where this row stands, in the order it matters: what is
-    // waiting on the reader, then what is waiting on somebody else
+    // One word about where this row stands (§32.72), in the order it
+    // matters: what the round is waiting on the reader for, then the
+    // reader's own unfinished work, then what is out with somebody else,
+    // then how it ended. A question with both a yes and a no is "partly
+    // refused", never just its worst claim.
     tag:
       item.status === 'voided'
         ? 'voided'
-        : // what is waiting on the reader, hardest first: something sent
-          // back is a thing they were told to do
-          sentBack > 0
-          ? 'needs_revision'
-          : drafts > 0
-            ? 'draft'
-            : pending > 0
-              ? 'in_review'
-              : item.currentRevision?.entrySource === 'administrative'
-                ? 'recorded'
-                : mayFile(item, entries)
-                  ? 'open'
-                  : null,
-    todo: item.status !== 'voided' && (sentBack > 0 || drafts > 0 || mayFile(item, entries)),
+        : asked > 0
+          ? 'supplement'
+          : sentBack > 0
+            ? 'needs_revision'
+            : drafts > 0
+              ? 'draft'
+              : pending > 0
+                ? 'in_review'
+                : rejected > 0
+                  ? approved > 0
+                    ? 'partial'
+                    : 'rejected'
+                  : approved > 0
+                    ? 'approved'
+                    : item.currentRevision?.entrySource === 'administrative'
+                      ? 'recorded'
+                      : mayFile(item, entries)
+                        ? 'open'
+                        : null,
+    // unfinished BY the reader; "could still file" is not a duty
+    todo: item.status !== 'voided' && (asked > 0 || sentBack > 0 || drafts > 0),
+    unread: item.status !== 'voided' && unreadItems.has(item.id),
     trail,
     parentId: item.scoreGroupId,
   }

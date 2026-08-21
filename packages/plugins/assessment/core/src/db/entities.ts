@@ -840,10 +840,23 @@ export const Entry = defineEntity({
     // how the claim came to exist - self-filed, proxied, recorded by staff -
     // always derived by the server, never accepted from a client
     source: p.string().length(16),
+    /**
+     * The unread-dot pair (§32.72): a monotonic bumped in the same
+     * transaction as any external change its owner should hear about, and
+     * the mark of how far the owner has seen. `attention > seen` is the dot.
+     * Revisions rather than timestamps: two writers racing on a clock give
+     * wrong answers a counter cannot.
+     */
+    participantAttentionRevision: p.integer().default(0),
+    participantSeenRevision: p.integer().default(0),
     createdAt: p.datetime().defaultRaw('now()'),
     updatedAt: p.datetime().defaultRaw('now()'),
   },
   checks: [
+    {
+      name: 'chk_entries_attention',
+      expression: `participant_seen_revision >= 0 AND participant_attention_revision >= participant_seen_revision`,
+    },
     {
       name: 'chk_entries_status',
       // needs_revision is not a rejection: it is what an administrator's

@@ -16,6 +16,7 @@ import {
 } from '../server/errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
+import { bumpParticipantAttention } from '../entry/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
@@ -495,6 +496,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           reason: input.reason,
           causeRevisionId: input.newRevisionId,
         })
+        yield* bumpParticipantAttention(input.tenantId, row.entryId)
         if (row.status === 'in_review') returnedInReview += 1
         else returnedApproved += 1
       }

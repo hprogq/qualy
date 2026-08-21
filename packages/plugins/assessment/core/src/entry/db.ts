@@ -268,6 +268,63 @@ export const entryAttachmentHistory = (tenantId: string, entryId: string) =>
       ),
     )
 
+/**
+ * One more external fact its owner has not seen (§32.72). Called in the
+ * same transaction as the change it announces, and only for changes made
+ * TO the participant - their own acts never ring their own bell.
+ */
+export const bumpParticipantAttention = (tenantId: string, entryId: string) =>
+  db.query((k) =>
+    k
+      .updateTable('Entry')
+      .set({ participantAttentionRevision: sql`participant_attention_revision + 1` })
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', entryId)
+      .execute(),
+  )
+
+/**
+ * The owner has looked at this question's claims, all of them at once. A
+ * change landing concurrently keeps its own bump - seen is set to the
+ * attention value THIS statement reads, and a later increment stays ahead.
+ */
+export const markMyEntryReads = (input: {
+  tenantId: string
+  batchId: string
+  itemId: string
+  participantId: string
+}) =>
+  db.query((k) =>
+    k
+      .updateTable('Entry')
+      .set({ participantSeenRevision: sql`participant_attention_revision` })
+      .where('tenantId', '=', input.tenantId)
+      .where('batchId', '=', input.batchId)
+      .where('itemId', '=', input.itemId)
+      .where('participantId', '=', input.participantId)
+      .execute(),
+  )
+
+/** the questions holding anything their owner has not seen yet */
+export const unreadItemIdsOf = (input: {
+  tenantId: string
+  batchId: string
+  participantId: string
+}) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry')
+        .select('itemId')
+        .distinct()
+        .where('tenantId', '=', input.tenantId)
+        .where('batchId', '=', input.batchId)
+        .where('participantId', '=', input.participantId)
+        .where(sql<boolean>`participant_attention_revision > participant_seen_revision`)
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.itemId)))
+
 export const setEntryState = (input: {
   tenantId: string
   entryId: string
@@ -1059,3 +1116,285 @@ export const eventsOfRounds = (tenantId: string, instanceIds: readonly string[])
             return grouped
           }),
         )
+
+// ---------------------------------------------------------------------------
+// The participant's own story (§32.72): what needs their hand now, and what
+// has happened to their claims lately. Read models over the append-only
+// facts - revisions, events, rounds, asks - never a second table of them.
+
+export interface MyActionRow {
+  kind: 'supplement' | 'revision'
+  entryId: string
+  itemId: string
+  itemTitle: string
+  at: string
+  atMs: number
+  who: string | null
+  summary: string | null
+}
+
+/** the open asks and the return-for-revision marks standing against this participant */
+export const myActionRowsOf = (input: {
+  tenantId: string
+  batchId: string
+  participantId: string
+}) =>
+  db
+    .query((k) =>
+      sql<{
+        kind: string
+        entry_id: string
+        item_id: string
+        item_title: string
+        at: string
+        at_ms: number
+        who: string | null
+        summary: string | null
+      }>`
+        select 'supplement' as kind,
+               e.id as entry_id, e.item_id, i.title as item_title,
+               sr.created_at::text as at,
+               (extract(epoch from sr.created_at) * 1000)::float8 as at_ms,
+               u.display_name as who,
+               sr.instructions as summary
+        from review_supplement_requests sr
+        join review_instances ri
+          on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+        join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+        join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
+        left join users u on u.tenant_id = sr.tenant_id and u.id = sr.requested_by
+        where sr.tenant_id = ${input.tenantId}
+          and e.batch_id = ${input.batchId}
+          and e.participant_id = ${input.participantId}
+          and sr.status = 'open'
+          and ri.state = 'awaiting_supplement'
+        union all
+        select 'revision',
+               e.id, e.item_id, i.title,
+               ev.created_at::text,
+               (extract(epoch from ev.created_at) * 1000)::float8,
+               u.display_name,
+               ev.reason
+        from entries e
+        join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
+        left join lateral (
+          select ee.created_at, ee.reason, ee.actor_id
+          from entry_events ee
+          where ee.tenant_id = e.tenant_id and ee.entry_id = e.id
+            and ee.kind = 'revision-required'
+          order by ee.created_at desc
+          limit 1
+        ) ev on true
+        left join users u on u.tenant_id = e.tenant_id and u.id = ev.actor_id
+        where e.tenant_id = ${input.tenantId}
+          and e.batch_id = ${input.batchId}
+          and e.participant_id = ${input.participantId}
+          and e.status = 'needs_revision'
+        order by at_ms desc
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) =>
+        rows.map((row): MyActionRow => ({
+          kind: row.kind as MyActionRow['kind'],
+          entryId: row.entry_id,
+          itemId: row.item_id,
+          itemTitle: row.item_title,
+          at: row.at,
+          atMs: row.at_ms,
+          who: row.who,
+          summary: row.summary,
+        })),
+      ),
+    )
+
+export interface MyActivityRow {
+  id: string
+  source: string
+  kind: string
+  entryId: string
+  itemId: string
+  itemTitle: string
+  actorName: string | null
+  reason: string | null
+  comment: string | null
+  at: string
+  atMs: number
+}
+
+/**
+ * Everything that happened to this participant's claims, newest first, in
+ * business words. Terminal verdicts come from the rounds themselves - a
+ * stage-level "approved" is a handover, not news - and the supplement
+ * exchange comes only from its structured records, so nothing is told
+ * twice. Keyset over (at, source, id): a timestamp alone drops rows that
+ * share an instant across sources.
+ */
+export const myActivityPage = (input: {
+  tenantId: string
+  batchId: string
+  participantId: string
+  after?: readonly [string, string, string] | undefined
+  limit: number
+}) =>
+  db
+    .query((k) =>
+      sql<{
+        id: string
+        source: string
+        kind: string
+        entry_id: string
+        item_id: string
+        item_title: string
+        actor_name: string | null
+        reason: string | null
+        comment: string | null
+        at: string
+        at_ms: number
+      }>`
+        with mine as (
+          select e.id, e.item_id, i.title
+          from entries e
+          join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
+          where e.tenant_id = ${input.tenantId}
+            and e.batch_id = ${input.batchId}
+            and e.participant_id = ${input.participantId}
+        ),
+        activity as (
+          select er.id, 'revision' as source,
+                 case when er.revision_no = 1 then 'entry-created' else 'entry-revised' end as kind,
+                 m.id as entry_id, m.item_id, m.title as item_title,
+                 null::text as actor_name, null::text as reason, null::text as comment,
+                 er.created_at
+          from entry_revisions er
+          join mine m on m.id = er.entry_id
+          where er.tenant_id = ${input.tenantId}
+
+          union all
+          select re.id, 'review-event',
+                 case re.kind
+                   when 'submitted' then 'entry-submitted'
+                   when 'cancelled-by-submitter' then 'entry-withdrawn'
+                   when 'appealed' then 'appeal-filed'
+                   when 'escalated' then 'review-escalated'
+                 end,
+                 m.id, m.item_id, m.title,
+                 u.display_name, re.reason, re.comment,
+                 re.created_at
+          from review_events re
+          join review_instances ri
+            on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
+          join mine m on m.id = ri.entry_id
+          left join users u on u.tenant_id = re.tenant_id and u.id = re.actor_id
+          where re.tenant_id = ${input.tenantId}
+            and re.kind in ('submitted', 'cancelled-by-submitter', 'appealed', 'escalated')
+
+          union all
+          select ee.id, 'entry-event',
+                 case ee.kind
+                   when 'abandoned-by-submitter' then 'entry-abandoned'
+                   when 'revision-required' then 'revision-required'
+                   when 'auto-approved' then 'review-approved'
+                 end,
+                 m.id, m.item_id, m.title,
+                 u.display_name, ee.reason, null,
+                 ee.created_at
+          from entry_events ee
+          join mine m on m.id = ee.entry_id
+          left join users u on u.tenant_id = ee.tenant_id and u.id = ee.actor_id
+          where ee.tenant_id = ${input.tenantId}
+            and ee.kind in ('abandoned-by-submitter', 'revision-required', 'auto-approved')
+
+          union all
+          select ri.id, 'verdict',
+                 case ri.outcome when 'approved' then 'review-approved' else 'review-rejected' end,
+                 m.id, m.item_id, m.title,
+                 said.display_name, said.reason, said.comment,
+                 ri.completed_at
+          from review_instances ri
+          join mine m on m.id = ri.entry_id
+          left join lateral (
+            select u.display_name, re2.reason, re2.comment
+            from review_events re2
+            left join users u on u.tenant_id = re2.tenant_id and u.id = re2.actor_id
+            where re2.tenant_id = ri.tenant_id
+              and re2.review_instance_id = ri.id
+              and re2.kind = ri.outcome
+            order by re2.created_at desc
+            limit 1
+          ) said on true
+          where ri.tenant_id = ${input.tenantId}
+            and ri.state = 'completed'
+            and ri.outcome in ('approved', 'rejected')
+            and ri.completed_at is not null
+
+          union all
+          select sr.id, 'supp-req', 'supplement-requested',
+                 m.id, m.item_id, m.title,
+                 u.display_name, null, sr.instructions,
+                 sr.created_at
+          from review_supplement_requests sr
+          join review_instances ri
+            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          join mine m on m.id = ri.entry_id
+          left join users u on u.tenant_id = sr.tenant_id and u.id = sr.requested_by
+          where sr.tenant_id = ${input.tenantId}
+
+          union all
+          select sr.id, 'supp-ans', 'supplement-submitted',
+                 m.id, m.item_id, m.title,
+                 null, null, null,
+                 sr.answered_at
+          from review_supplement_requests sr
+          join review_instances ri
+            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          join mine m on m.id = ri.entry_id
+          where sr.tenant_id = ${input.tenantId}
+            and sr.answered_at is not null
+
+          union all
+          select sr.id, 'supp-cxl', 'supplement-cancelled',
+                 m.id, m.item_id, m.title,
+                 u.display_name, null, null,
+                 sr.cancelled_at
+          from review_supplement_requests sr
+          join review_instances ri
+            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          join mine m on m.id = ri.entry_id
+          left join users u on u.tenant_id = sr.tenant_id and u.id = sr.cancelled_by
+          where sr.tenant_id = ${input.tenantId}
+            and sr.status = 'cancelled'
+            and sr.cancelled_at is not null
+        )
+        select id, source, kind, entry_id, item_id, item_title,
+               actor_name, reason, comment,
+               created_at::text as at,
+               (extract(epoch from created_at) * 1000)::float8 as at_ms
+        from activity
+        where kind is not null
+          ${
+            input.after === undefined
+              ? sql``
+              : sql`and (created_at, source, id) < (${input.after[0]}::timestamptz, ${input.after[1]}, ${input.after[2]}::uuid)`
+          }
+        order by created_at desc, source desc, id desc
+        limit ${input.limit}
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) =>
+        rows.map((row): MyActivityRow => ({
+          id: row.id,
+          source: row.source,
+          kind: row.kind,
+          entryId: row.entry_id,
+          itemId: row.item_id,
+          itemTitle: row.item_title,
+          actorName: row.actor_name,
+          reason: row.reason,
+          comment: row.comment,
+          at: row.at,
+          atMs: row.at_ms,
+        })),
+      ),
+    )

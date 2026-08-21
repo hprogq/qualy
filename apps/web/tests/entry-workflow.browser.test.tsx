@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
@@ -12,6 +12,7 @@ import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/h
 // stubbed wire and asserts by role and label, the way a person would look.
 
 const MyEntriesPage = (await components['assessment/MyEntriesPage']!()).default
+const BatchOverviewPage = (await components['assessment/BatchOverviewPage']!()).default
 const ReviewInboxPage = (await components['assessment/ReviewInboxPage']!()).default
 const ReviewInstancePage = (await components['assessment/ReviewInstancePage']!()).default
 const MyResultPage = (await components['assessment/MyResultPage']!()).default
@@ -31,9 +32,15 @@ const INSTANCE_ID = '55555555-5555-4555-8555-555555555555'
 const REVISION_ID = '66666666-6666-4666-8666-666666666666'
 const GROUP_ID = '77777777-7777-4777-8777-777777777777'
 const REQUEST_ID = '88888888-8888-4888-8888-888888888888'
+const ITEM2_ID = '99999999-8888-4888-8888-888888888888'
+const ITEM3_ID = '99999999-7777-4777-8777-777777777777'
+
+// whatever a case did to the window, the next one starts on the phone
+afterEach(() => page.viewport(414, 896))
 
 const PAGES = [
   { id: 'assessment/batch-my-entries', path: '/assessment/batches/:batchId/my-entries' },
+  { id: 'assessment/batch-overview', path: '/assessment/batches/:batchId' },
   { id: 'assessment/batch-reviews', path: '/assessment/batches/:batchId/reviews' },
   {
     id: 'assessment/review-instance',
@@ -125,7 +132,12 @@ const ambient = {
   // the result page reads the filings for its counts; empty unless a case
   // says otherwise
   listMyEntries: () =>
-    Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+    Effect.succeed({
+      participantId: PARTICIPANT_ID,
+      entries: [],
+      nextCursor: null,
+      attention: { unreadItemIds: [] },
+    }),
   // the queue's other half; empty unless a case says otherwise
   listAwaitingSupplements: () => Effect.succeed({ items: [], nextCursor: null }),
   getEntryHistory: () => Effect.succeed({ entry: entry(), revisions: [], events: [], rounds: [] }),
@@ -164,6 +176,72 @@ const screen = (stubs: Stubs, route: string, elements: { path: string; element: 
     route,
   })
 
+describe('the overview desk', () => {
+  it('lists what needs a hand, and its key lands on the claim', async () => {
+    page.viewport(1280, 800)
+    screen(
+      {
+        getTimeline: () => Effect.succeed({ timeline: [] }),
+        // the key lands on the my-entries page, which reads the paper
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        getMyEntrySummary: () =>
+          Effect.succeed({
+            unreadItemCount: 1,
+            actions: [
+              {
+                kind: 'supplement' as const,
+                entryId: ENTRY_ID,
+                itemId: ITEM_ID,
+                itemTitle: '退役复学',
+                at: '2026-03-03 10:00:00+00',
+                who: '示例辅导员',
+                summary: '请补充现场照片',
+              },
+            ],
+          }),
+        listMyEntryActivity: () =>
+          Effect.succeed({
+            items: [
+              {
+                id: REQUEST_ID,
+                kind: 'supplement-requested' as const,
+                entryId: ENTRY_ID,
+                itemId: ITEM_ID,
+                itemTitle: '退役复学',
+                actorName: '示例辅导员',
+                reason: null,
+                comment: null,
+                at: '2026-03-03 10:00:00+00',
+              },
+            ],
+            nextCursor: null,
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}`,
+      [
+        { path: '/assessment/batches/:batchId', element: <BatchOverviewPage /> },
+        { path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> },
+      ],
+    )
+
+    // the ask stands as a card with the asker's words
+    const actions = page.getByTestId('overview-actions')
+    await expect.element(actions).toBeVisible()
+    expect(actions.element().querySelector('[data-action="supplement"]')).not.toBeNull()
+    await expect.element(page.getByText('请补充现场照片')).toBeVisible()
+    // and the activity tells the same story below
+    await expect.element(page.getByTestId('overview-activity')).toBeVisible()
+
+    // its key walks straight onto the claim: question open, drawer up
+    await page.getByRole('button', { name: '去补充' }).click()
+    await vi.waitFor(() => {
+      expect(addressNow()).toContain(`open=${ITEM_ID}`)
+      expect(addressNow()).toContain(`detail=${ENTRY_ID}`)
+      page.viewport(414, 896)
+    })
+  })
+})
+
 describe('filing a claim', () => {
   it('creates a draft through the composed form, then submits it', async () => {
     const created = vi.fn((request: { payload: Record<string, unknown> }) =>
@@ -192,6 +270,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: filed ? [entry()] : [],
             nextCursor: null,
+            attention: { unreadItemIds: [] },
           }),
         createEntry: ((request: { payload: Record<string, unknown> }) => {
           filed = true
@@ -430,6 +509,55 @@ describe('filing a claim', () => {
     await vi.waitFor(() => expect(listed.mock.calls.length).toBeGreaterThan(before))
   })
 
+  it('wears the dot only until its owner looks', async () => {
+    // wide, so the structure rail stands beside the paper instead of
+    // folding into the phone's drawer
+    page.viewport(1280, 800)
+    const looked = vi.fn(() => Effect.succeed({ ok: true as const }))
+    // two questions, with the news on the SECOND: the reader lands settled
+    // on the first, so the dwell-marking never touches the dot until they
+    // actually go to it
+    // three questions with the news on the MIDDLE one: the spy calls the
+    // last band "being read" on a short page, so the edges are the noisy
+    // seats and the middle is where a dot can sit still
+    const second = item({ id: ITEM2_ID, title: '献血加分', sortOrder: 1 })
+    const third = item({ id: ITEM3_ID, title: '志愿服务', sortOrder: 2 })
+    screen(
+      {
+        listItems: () =>
+          Effect.succeed({ items: [item(), second, third], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [],
+            nextCursor: null,
+            attention: { unreadItemIds: [ITEM2_ID] },
+          }),
+        markMyEntryRead: looked as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    // The dot means one thing: an unseen change - the row's word carries
+    // the status separately. Presence, not visibility: this suite runs
+    // without the stylesheet, where a 7px dot has no box to be visible in.
+    await expect.poll(() => page.getByTestId('unread-dot').elements().length).toBe(1)
+    expect(page.getByTestId('unread-dot').element().getAttribute('aria-label')).toBe('有未读变化')
+
+    // opening the question is a look: the server hears it once, the dot goes
+    // stylesheet-less, both breakpoint variants of the rail are in the
+    // tree; either row opens the same question
+    await page
+      .getByRole('button', { name: /献血加分/ })
+      .first()
+      .click()
+    await vi.waitFor(() => expect(looked).toHaveBeenCalledOnce())
+    await expect.poll(() => page.getByTestId('unread-dot').elements().length).toBe(0)
+    page.viewport(414, 896)
+  })
+
   it('shows the whole account, with the reviewer’s advice read-only', async () => {
     screen(
       {
@@ -450,6 +578,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
+            attention: { unreadItemIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -552,7 +681,12 @@ describe('filing a claim', () => {
             capabilities: { canManage: false },
           }),
         listMyEntries: () =>
-          Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -588,6 +722,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
+            attention: { unreadItemIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -727,6 +862,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
+            attention: { unreadItemIds: [] },
           }),
         getEntryHistory: () =>
           Effect.succeed({
@@ -820,6 +956,7 @@ describe('filing a claim', () => {
             participantId: PARTICIPANT_ID,
             entries: [entry({ status: 'rejected' })],
             nextCursor: null,
+            attention: { unreadItemIds: [] },
           }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries`,
@@ -828,7 +965,7 @@ describe('filing a claim', () => {
 
     // choosing a question is going somewhere: the address says which one,
     // so a reload lands back on it and a link carries it to somebody else
-    await page.getByRole('button', { name: '退役复学', exact: true }).click()
+    await page.getByRole('button', { name: /^退役复学/ }).click()
     await vi.waitFor(() => expect(addressNow()).toContain(`open=${ITEM_ID}`))
 
     // and so are the two layers over it - state in a component survives
@@ -860,7 +997,12 @@ describe('filing a claim', () => {
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
         listMyEntries: () =>
-          Effect.succeed({ participantId: PARTICIPANT_ID, entries: [], nextCursor: null }),
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
       },
       `/assessment/batches/${BATCH_ID}/my-entries?open=${GROUP_ID}`,
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
@@ -918,6 +1060,7 @@ describe('filing a claim', () => {
               }),
             ],
             nextCursor: null,
+            attention: { unreadItemIds: [] },
           }),
         listAttachmentDescriptors: () =>
           Effect.succeed({

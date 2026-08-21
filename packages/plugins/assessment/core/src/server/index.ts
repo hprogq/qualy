@@ -840,6 +840,9 @@ export class Assessment extends Context.Service<
     readonly getEntry: EntryMethods['getEntry']
     readonly appendEntryRevision: EntryMethods['appendEntryRevision']
     readonly setEntryStatus: EntryMethods['setEntryStatus']
+    readonly markMyEntryRead: EntryMethods['markMyEntryRead']
+    readonly getMyEntrySummary: EntryMethods['getMyEntrySummary']
+    readonly listMyEntryActivity: EntryMethods['listMyEntryActivity']
     readonly interveneOnEntry: EntryMethods['interveneOnEntry']
     /** the single review stage: a queue answered, a round closed exactly once */
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
@@ -4554,6 +4557,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           participantId: page.participantId,
           entries: page.entries.map(entryDto),
           nextCursor: page.nextCursor,
+          attention: page.attention,
         }
       }),
     )
@@ -4663,6 +4667,43 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { entry: entryDto(entry) }
+      }),
+    )
+    .handle(
+      'markMyEntryRead',
+      Effect.fn('assessment.markMyEntryRead.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.markMyEntryRead(
+          principal.tenantId,
+          params.batchId,
+          params.itemId,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'getMyEntrySummary',
+      Effect.fn('assessment.getMyEntrySummary.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.getMyEntrySummary(principal.tenantId, params.batchId, principal)
+      }),
+    )
+    .handle(
+      'listMyEntryActivity',
+      Effect.fn('assessment.listMyEntryActivity.handler')(function* ({ params, query }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.listMyEntryActivity(
+          principal.tenantId,
+          params.batchId,
+          {
+            ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+            ...(query.limit !== undefined ? { limit: query.limit } : {}),
+          },
+          principal,
+        )
       }),
     )
     .handle(
