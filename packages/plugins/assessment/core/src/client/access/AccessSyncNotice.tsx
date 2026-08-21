@@ -41,7 +41,10 @@ export function AccessSyncNotice({
       <AlertTitle className="line-clamp-none font-normal">
         {format(decide ? m.accessSyncPrompt : m.accessSyncLapsedPrompt)}
       </AlertTitle>
-      <AlertAction>
+      {/* centred against the one line this notice is, not hung from the
+          top corner: the primitive's anchor suits alerts with a body, and
+          against a single line it reads as a button that slipped */}
+      <AlertAction className="top-1/2 -translate-y-1/2">
         <Button size="sm" variant="outline" onClick={onOpen}>
           {format(m.accessSyncOpen)}
         </Button>

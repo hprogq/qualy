@@ -6841,3 +6841,10 @@ participant action code 并纳入阶段门控(不进 RBAC 目录);工作台 gone
 approved 放弃且 round 结论原样、阶段门关 abandon;withdraw 拒绝路径红验证通过;review-workbench
 旧撤回故事按新裁决重写);`pnpm test:browser` 11 files / 93 passed(lostTurn 横幅、复选框 13、
 文案断言同步);`npx prettier --check .` 全绿。
+
+### 人员权限同步提示的按钮对齐(2026-08-21 追加)
+
+「查看变更」按钮与单行提示未对齐:`AlertAction` 原语锚在 `top-2.5`(适合带正文的
+alert),对只有一行字的通知,h-8 按钮中心比文字线低约 4px。就地覆写为
+`top-1/2 -translate-y-1/2` 垂直居中,原语不动(其他 alert 仍要顶部锚定)。
+identity + batch-admin 42 例全绿;`pnpm typecheck` 零错;prettier 全绿。
