@@ -6941,3 +6941,10 @@ entry_events 无 comment 列、补件表列名 cancelled_at。
 用户裁定圆点保留而非移除:每题常驻一点,颜色只译新状态词——amber 等读者(待补充/待修改)、
 中性灰自己的状态与等他人、emerald/rose 判定色、空心无主张;未读红点仍凌驾一切,看过即
 让位于状态色。§32.72 一款同步修订。entry-workflow + paper-reading 27 例全绿;typecheck 零错。
+
+### 审核页两笔小修(2026-08-21)
+
+判定键带上字形:通过 CheckIcon、退回 CornerUpLeftIcon(ActionKey 新增 icon 槽,随键色同墨),
+与第一行路由键(提请复核/要求补充材料,保持纯文字)在色块之外再多一层区分。评审依据面移除
+max-lg 灰底——那是纵向堆叠时代的页尾洗灰,翻页化后它是独立一页,整页保持白底,桌面端仍以
+左边框分列。typecheck 零错;review-layout 11 例、entry-workflow 21 例全绿;prettier 全通过。

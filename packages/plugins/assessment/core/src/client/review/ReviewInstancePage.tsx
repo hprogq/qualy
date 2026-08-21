@@ -7,7 +7,9 @@ import {
   CircleArrowUpIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CheckIcon,
   ChevronUpIcon,
+  CornerUpLeftIcon,
   DownloadIcon,
   InfoIcon,
 } from 'lucide-react'
@@ -2306,9 +2308,9 @@ const ContextRail = memo(function ContextRail({
     <Pane
       as="aside"
       part="about"
-      // stacked it is the page's closing reference block, washed a shade
-      // down so the reading matter above it keeps the white
-      className="max-lg:bg-muted/30 lg:border-l"
+      // a pager face is a whole page, so it keeps the page's white; only
+      // the desk needs the border to mark where the reference column starts
+      className="lg:border-l"
       inner="gap-4 p-4 lg:p-5"
     >
       <AboutParts review={review} onOpenSibling={onOpenSibling} />
@@ -2691,6 +2693,7 @@ function DecisionBar({
           act="reject"
           offer={review.actions.reject}
           label={format(m.reviewReject)}
+          icon={<CornerUpLeftIcon aria-hidden />}
           kbd="R"
           why={format(onLadder && !lastStep ? m.reviewTipRejectMid : m.reviewTipReject)}
           className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 max-sm:h-11 max-sm:w-full max-sm:text-[15px] dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
@@ -2701,6 +2704,7 @@ function DecisionBar({
           act="approve"
           offer={review.actions.approve}
           label={format(m.reviewApprove)}
+          icon={<CheckIcon aria-hidden />}
           kbd="A"
           // an ordinary middle step's approval hands the round on; the
           // ladder's every step and the ordinary route's last one settle it
@@ -2728,6 +2732,7 @@ function ActionKey({
   label,
   kbd,
   why,
+  icon,
   className,
   kbdClassName,
   onPress,
@@ -2738,6 +2743,8 @@ function ActionKey({
   kbd: string
   /** what the act will do, told on hover while it is offered */
   why: string
+  /** the act's glyph, in the key's own ink */
+  icon?: ReactNode
   className?: string
   kbdClassName?: string
   onPress: () => void
@@ -2766,6 +2773,7 @@ function ActionKey({
         if (!fine) toast.info(because)
       }}
     >
+      {icon}
       {label}
       {fine && <Kbd className={kbdClassName}>{kbd}</Kbd>}
     </Button>
