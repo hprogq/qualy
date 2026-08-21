@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { sql } from 'kysely'
+import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { GATED, ok, run, runningBatch, seed } from './support/round.ts'
 
@@ -20,6 +21,77 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
 
   afterAll(async () => {
     await db?.dispose()
+  })
+
+  // Paging the feed. The rows carry a millisecond rendering for the wire and
+  // the column keeps microseconds, so a cursor built from what is shown asks
+  // the next page for everything older than a rounded-down instant - and
+  // drops whatever was written inside the gap, which is exactly where the
+  // rows written alongside the boundary row live.
+  it('pages the feed without dropping rows that share an instant', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('at-paging')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: PROFILE })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.requestSupplement(
+            f.t,
+            submitted.currentReviewInstanceId!,
+            {
+              instructions: '请补充现场照片',
+              requirements: [{ label: '照片', kind: 'file', required: true }],
+            },
+            f.principal(f.reviewer),
+          )
+          // every row of this story into one millisecond, a microsecond
+          // apart: the shape a burst of writes really has, and the shape a
+          // truncated cursor cannot page through
+          const cluster = (table: string, base: string) =>
+            runSql(sql`
+              with ordered as (
+                select id, row_number() over (order by created_at, id) as n
+                from ${sql.raw(table)} where entry_id = ${entry.id}
+              )
+              update ${sql.raw(table)} t
+              set created_at = ${sql.raw(`timestamptz '${base}'`)} + (o.n * interval '1 microsecond')
+              from ordered o where o.id = t.id and t.tenant_id = ${f.t}`)
+          yield* cluster('entry_revisions', '2026-08-01 10:00:00.500100+00')
+          yield* cluster('entry_events', '2026-08-01 10:00:00.500500+00')
+          yield* runSql(sql`
+            update review_events set created_at = timestamptz '2026-08-01 10:00:00.500800+00'
+            where tenant_id = ${f.t}`)
+
+          const whole = yield* assessment.listMyActivity(f.t, g.batch.id, { limit: '50' }, s1)
+          const paged: string[] = []
+          let cursor: string | undefined
+          for (let turn = 0; turn < 20; turn += 1) {
+            const page = yield* assessment.listMyActivity(
+              f.t,
+              g.batch.id,
+              cursor === undefined ? { limit: '2' } : { limit: '2', cursor },
+              s1,
+            )
+            paged.push(...page.items.map((one) => one.id))
+            if (page.nextCursor === null) break
+            cursor = page.nextCursor
+          }
+          return { whole: whole.items.map((one) => one.id), paged }
+        }),
+      ),
+    )
+    // there is a story to page through in the first place
+    expect(result.whole.length).toBeGreaterThan(2)
+    // and walking it two at a time reads the same story, in the same order
+    expect(result.paged).toEqual(result.whole)
   })
 
   it('rings on the verdict, not on the stage handover, and a look silences it', async () => {

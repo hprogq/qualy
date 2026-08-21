@@ -2194,9 +2194,13 @@ export const make = Effect.fn('Assessment.make')(function* () {
           summary: identityOf.get(row.entryId) ?? [],
           at: row.at,
         })),
+        // the cursor carries the instant as stored, not as shown: `at` is
+        // rounded to milliseconds for the wire, and asking the next page
+        // for rows older than a rounded-down instant skips everything in
+        // between - including whatever was written alongside this row
         nextCursor:
           rows.length > limit && last !== undefined
-            ? encodeQueryCursor(fingerprint, [last.at, last.source, last.id])
+            ? encodeQueryCursor(fingerprint, [last.cursorAt, last.source, last.id])
             : null,
       }
     }),

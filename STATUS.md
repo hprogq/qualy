@@ -7219,3 +7219,20 @@ item/policy.ts),引擎按**解析**判末端(`isRouteEnd` → `enterableFrom` �
 红验:关掉该分支,那一票立刻变成失败退出、轮次卡在原地。
 
 验收:typecheck 零错;`pnpm test` 718 passed | 17 skipped;prettier 通过。
+
+### 活动流游标不再截断到毫秒(2026-08-22,对抗审查 major,两轮独立复现)
+
+`/me` 活动流的 `nextCursor` 编的是行的 `at`——`to_char(... 'HH24:MI:SS.MS"Z"')` 的**三位毫秒**
+渲染值,而下一页拿它 `::timestamptz` 回去与**微秒精度**的 `created_at` 比 `(created_at, source, id) <`。
+`created_at` 几乎总带毫秒以下的位,于是落在 (trunc(T), T] 之间的行——**包括与边界行同一批写入的
+兄弟行**——每翻一页就被静默丢掉一批,而且再也不会出现在任何一页里。这是本插件里唯一不是从
+`created_at::text` 取游标的分页(同文件 `entryCreatedIso` 的注释就写着「exactly as stored」)。
+
+修法:查询多选一列 `created_at::text as cursor_at`,`UserActivityRow` 增 `cursorAt`,handler 用它
+编游标,`at` 仍旧只作展示用的毫秒渲染。
+
+新增测试 `pages the feed without dropping rows that share an instant`:把一条申报的全部动态行
+按来源分别塞进**同一毫秒内、逐微秒递增**的簇(这正是一串连续写入的真实形态),然后以 limit 2
+逐页走完,断言与一次取完的顺序**逐 id 相等**。红验:游标换回展示值,3 行只走出 2 行。
+
+验收:typecheck 零错;`pnpm test` 719 passed | 17 skipped;prettier 通过。

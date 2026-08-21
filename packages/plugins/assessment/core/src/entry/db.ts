@@ -1228,6 +1228,13 @@ export interface UserActivityRow {
   comment: string | null
   at: string
   atMs: number
+  /**
+   * the same instant the keyset needs it: exactly as stored. `at` is the
+   * wire's millisecond rendering, and comparing a truncated value against
+   * a microsecond column drops every row that falls in the gap after the
+   * page's last one - siblings written in one transaction included.
+   */
+  cursorAt: string
 }
 
 /**
@@ -1538,6 +1545,7 @@ export const userActivityPage = (input: {
         comment: string | null
         at: string
         at_ms: number
+        cursor_at: string
       }>`
         with mine as (
           select e.id, e.item_id, i.title
@@ -1567,7 +1575,8 @@ export const userActivityPage = (input: {
         select id, source, perspective, kind, entry_id, item_id, item_title,
                subject_name, instance_id, actor_name, reason, comment,
                to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
-               (extract(epoch from created_at) * 1000)::float8 as at_ms
+               (extract(epoch from created_at) * 1000)::float8 as at_ms,
+               created_at::text as cursor_at
         from activity
         where kind is not null
           ${
@@ -1596,6 +1605,7 @@ export const userActivityPage = (input: {
           comment: row.comment,
           at: row.at,
           atMs: row.at_ms,
+          cursorAt: row.cursor_at,
         })),
       ),
     )
