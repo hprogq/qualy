@@ -5,6 +5,7 @@ import type { AttachmentMeta } from '@qualy/plugin-storage/server'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { cursorUnusable, pageSize, type BadRequest } from '@qualy/api-kit/schema'
 import type { ItemTypeDriver } from '../plugin.ts'
+import { announce } from '../live/events.ts'
 import {
   BatchNotFound,
   BatchReadOnly,
@@ -1162,6 +1163,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             /** what every path returns: the round as it now stands */
             const written = () =>
               Effect.gen(function* () {
+                yield* announce(tenantId, row.batchId, [
+                  { kind: 'review-instance-changed' },
+                  { kind: 'review-inbox-changed' },
+                  { kind: 'entries-changed', subjectUserId: row.subjectUserId },
+                  { kind: 'result-changed', subjectUserId: row.subjectUserId },
+                ])
                 const after = (yield* instanceOf(tenantId, instanceId))!
                 return yield* assembleDetail(tenantId, after, {
                   canDecide: false,
@@ -1588,6 +1595,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               currentReviewInstanceId: opened,
             })
             if (!moved) return yield* refuse('appeal', 'nothing-to-appeal')
+            yield* announce(tenantId, row.batchId, [
+              { kind: 'review-instance-changed' },
+              { kind: 'review-inbox-changed' },
+              { kind: 'entries-changed', subjectUserId: row.subjectUserId },
+              { kind: 'result-changed', subjectUserId: row.subjectUserId },
+            ])
             const written = (yield* instanceOf(tenantId, opened))!
             return yield* assembleDetail(tenantId, written, {
               canDecide: false,
@@ -1702,6 +1715,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             stageId: row.currentStageId,
             comment: instructions,
           })
+          yield* announce(tenantId, row.batchId, [
+            { kind: 'review-instance-changed' },
+            { kind: 'review-inbox-changed' },
+            { kind: 'entries-changed', subjectUserId: row.subjectUserId },
+          ])
           const written = (yield* instanceOf(tenantId, instanceId))!
           return yield* assembleDetail(tenantId, written, {
             canDecide: false,
@@ -1754,6 +1772,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             route: row.currentRoute,
             stageId: row.currentStageId,
           })
+          yield* announce(tenantId, row.batchId, [
+            { kind: 'review-instance-changed' },
+            { kind: 'review-inbox-changed' },
+            { kind: 'entries-changed', subjectUserId: row.subjectUserId },
+          ])
           const written = (yield* instanceOf(tenantId, row.id))!
           return yield* assembleDetail(tenantId, written, {
             canDecide: true,
@@ -2004,6 +2027,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               }
             }
           }
+          yield* announce(tenantId, row.batchId, [
+            { kind: 'review-instance-changed' },
+            { kind: 'review-inbox-changed' },
+            { kind: 'entries-changed', subjectUserId: row.subjectUserId },
+          ])
           const written = (yield* instanceOf(tenantId, row.id))!
           return yield* assembleDetail(tenantId, written, {
             canDecide: false,

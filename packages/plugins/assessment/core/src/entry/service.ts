@@ -19,6 +19,7 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { cursorUnusable, type BadRequest, pageSize } from '@qualy/api-kit/schema'
 import { participantRowByUser } from '../scoring/db.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
+import { announce } from '../live/events.ts'
 import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/db.ts'
 import {
   attachmentsOfRevisions,
@@ -752,6 +753,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               to: administrative ? 'approved' : 'draft',
               currentRevisionId: revisionId,
             })
+            yield* announce(tenantId, item.batchId, [
+              { kind: 'entries-changed', subjectUserId: participant.userId },
+              ...(administrative
+                ? [{ kind: 'result-changed' as const, subjectUserId: participant.userId }]
+                : []),
+            ])
             const entry = (yield* entryOf(tenantId, entryId))!
             return view(entry, yield* revisionView(tenantId, revisionId), as, participant)
           }),
@@ -869,6 +876,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             to: 'draft',
             currentRevisionId: revisionId,
           })
+          yield* announce(tenantId, entry.batchId, [
+            { kind: 'entries-changed', subjectUserId: participant.userId },
+          ])
           const written = (yield* entryOf(tenantId, entryId))!
           return view(written, yield* revisionView(tenantId, revisionId), as, participant)
         }),
@@ -971,6 +981,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   kind: 'auto-approved',
                   actorId: as.userId,
                 })
+                yield* announce(tenantId, entry.batchId, [
+                  { kind: 'entries-changed', subjectUserId: participant.userId },
+                  { kind: 'result-changed', subjectUserId: participant.userId },
+                ])
                 const written = (yield* entryOf(tenantId, entryId))!
                 const { participant: after } = (yield* loadEntry(tenantId, entryId))!
                 return view(
@@ -1107,6 +1121,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               })
               if (!moved) return yield* refuse(action, 'entry-not-withdrawable')
             }
+            // coarse across the three branches: whichever way the claim
+            // moved, its owner's paper, the reviewers' queues and any open
+            // round may all read differently now
+            yield* announce(tenantId, entry.batchId, [
+              { kind: 'entries-changed', subjectUserId: participant.userId },
+              { kind: 'review-inbox-changed' },
+              { kind: 'review-instance-changed' },
+              { kind: 'result-changed', subjectUserId: participant.userId },
+            ])
             const written = (yield* entryOf(tenantId, entryId))!
             return view(
               written,
@@ -1364,6 +1387,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             actorId: as.userId,
             reason,
           })
+          yield* announce(tenantId, entry.batchId, [
+            { kind: 'entries-changed', subjectUserId: participant.userId },
+            { kind: 'review-inbox-changed' },
+            { kind: 'review-instance-changed' },
+          ])
           const written = (yield* entryOf(tenantId, entryId))!
           return view(
             written,

@@ -19,7 +19,7 @@ import { booted } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Rbac } from '@qualy/rbac-contract/effect'
-import type { Orm } from '@qualy/plugin-database/server'
+import type { DatabaseNotifications, Orm } from '@qualy/plugin-database/server'
 import { Storage } from '@qualy/plugin-storage/server/service'
 import { memoryBackend } from '@qualy/plugin-storage/testkit'
 import { entities as storageEntities } from '@qualy/plugin-storage/db'
@@ -65,7 +65,7 @@ const stack = (url: string) => {
 
 export const run = <A, E>(
   url: string,
-  effect: Effect.Effect<A, E, Assessment | Storage | Rbac | Orm>,
+  effect: Effect.Effect<A, E, Assessment | Storage | Rbac | Orm | DatabaseNotifications>,
 ) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 export const ok = <A, E>(exit: Exit.Exit<A, E>): A => {

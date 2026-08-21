@@ -23,6 +23,7 @@ import { declarationDriver } from './item/declaration.ts'
 import { builtinScoringDrivers } from './scoring/builtins.ts'
 import { permissions } from './permissions.ts'
 import { assessmentApiGroup } from './api.ts'
+import { AssessmentLive } from './live/service.ts'
 import { schedulerLayer } from './phase/scheduler.ts'
 import { assessmentApiHandlers, serviceLayer } from './server/index.ts'
 
@@ -396,6 +397,9 @@ const plugin = Plugin.define(
   }),
   Api.group(assessmentApiGroup, assessmentApiHandlers),
   Plugin.layer(serviceLayer),
+  // the live bus: one LISTEN session fanned out to the open connections;
+  // handlers reach it through the service graph like any other service
+  Plugin.layer(AssessmentLive.layer),
   // provided the service rather than merged with it: the fiber consumes the
   // service and exports nothing, so it stays out of everybody else's graph
   Plugin.layer(schedulerLayer.pipe(Layer.provide(serviceLayer))),

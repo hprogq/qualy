@@ -15,6 +15,7 @@ import {
   ScoreGroupVersionConflict,
 } from '../server/errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
+import { announce } from '../live/events.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
@@ -772,6 +773,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               as.userId,
               null,
             )
+            yield* announce(tenantId, item.batchId, [{ kind: 'item-changed' }])
             const written = (yield* itemOf(tenantId, itemId))!
             const revision =
               written.currentRevisionId === null
@@ -980,6 +982,15 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               as.userId,
               input.reason ?? null,
             )
+            // coarse on purpose: an edit may have swept rounds and standing
+            // along with the paper, and a wake-up says only "look again"
+            yield* announce(tenantId, item.batchId, [
+              { kind: 'item-changed' },
+              { kind: 'entries-changed' },
+              { kind: 'review-inbox-changed' },
+              { kind: 'review-instance-changed' },
+              { kind: 'result-changed' },
+            ])
             const written = (yield* itemOf(tenantId, itemId))!
             const revision =
               written.currentRevisionId === null
@@ -1367,6 +1378,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 null,
               )
             }
+            yield* announce(tenantId, item.batchId, [
+              { kind: 'item-changed' },
+              { kind: 'entries-changed' },
+              { kind: 'review-inbox-changed' },
+              { kind: 'review-instance-changed' },
+              { kind: 'result-changed' },
+            ])
             const written = (yield* itemOf(tenantId, itemId))!
             const revision =
               written.currentRevisionId === null

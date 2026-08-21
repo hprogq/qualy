@@ -86,6 +86,17 @@ await check('/', async (response) => {
   if (response.status !== 200) return `status ${response.status}`
   return shell.includes('<!doctype html') ? undefined : 'no html shell'
 })
+// the live channel, answered like any authenticated endpoint: no session,
+// no stream - and the route resolving at all means the listener layer
+// assembled with the rest of the production graph
+await check('/api/assessment/batches/00000000-0000-4000-8000-000000000000/events', (response) =>
+  Promise.resolve(
+    response.status === 401
+      ? undefined
+      : `expected 401 for the live channel, got ${response.status}`,
+  ),
+)
+
 await check('/api/app/manifest', async (response) => {
   if (response.status !== 200) return `status ${response.status}`
   const body = (await response.json()) as { pages?: unknown[] }

@@ -5,6 +5,8 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import { AssessmentLive } from '../live/service.ts'
+import type { AssessmentLiveEvent } from '../live/events.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
@@ -3939,6 +3941,57 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { batch: { ...toBatchDto(detail), capabilities } }
+      }),
+    )
+    .handle(
+      'watchBatch',
+      Effect.fn('assessment.watchBatch.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const live = yield* AssessmentLive
+        const principal = yield* CurrentUser
+        yield* assessment.assertVisible(principal.tenantId, params.batchId, principal)
+        // Standing is read once, at connect. `capabilitiesFor` is coarse on
+        // purpose - "a reviewer here" does not flicker with the phases - so
+        // a connection is not re-judged per event; someone stripped of a
+        // role mid-connection keeps hearing bare wake-ups until reconnect,
+        // and every read those wake-ups trigger is authorized on its own.
+        const standing = yield* assessment.capabilitiesFor(
+          principal.tenantId,
+          params.batchId,
+          false,
+          principal,
+        )
+        const wanted = (event: AssessmentLiveEvent): boolean => {
+          if (event.tenantId !== principal.tenantId || event.batchId !== params.batchId) {
+            return false
+          }
+          switch (event.kind) {
+            case 'review-inbox-changed':
+            case 'review-instance-changed':
+              return standing.review
+            case 'entries-changed':
+            case 'result-changed':
+              return (
+                standing.personal &&
+                (event.subjectUserId === null || event.subjectUserId === principal.userId)
+              )
+            case 'item-changed':
+              return true
+          }
+        }
+        const changes = live.events.pipe(
+          Stream.filter(wanted),
+          Stream.map((event) => ({ kind: event.kind })),
+        )
+        const heartbeat = Stream.tick('25 seconds').pipe(
+          Stream.map(() => ({ kind: 'heartbeat' as const })),
+        )
+        // sync first, always: whatever this connection missed - including
+        // everything, on a fresh page - the instruction is to read again
+        return Stream.concat(
+          Stream.succeed({ kind: 'sync' as const }),
+          Stream.merge(changes, heartbeat),
+        )
       }),
     )
     .handle(

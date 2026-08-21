@@ -12,6 +12,26 @@ import {
   trimmedName,
 } from '@qualy/api-kit/schema'
 import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
+
+/**
+ * One wake-up on a batch's live stream.
+ *
+ * `sync` opens every (re)connection: whatever happened while nobody was
+ * listening, the answer is the same - read again. `heartbeat` keeps
+ * middleboxes from reaping a quiet connection and means nothing.
+ */
+export const batchLiveEvent = Schema.Struct({
+  kind: Schema.Literals([
+    'sync',
+    'heartbeat',
+    'review-inbox-changed',
+    'review-instance-changed',
+    'entries-changed',
+    'item-changed',
+    'result-changed',
+  ]),
+})
+export type BatchLiveEvent = typeof batchLiveEvent.Type
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   AccessInvalid,
@@ -1454,6 +1474,17 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // What a browser holding this batch open is told, as it happens: that
+    // something it may be caching has changed, and nothing else. No ids, no
+    // payloads - an event names a region of the screen to re-read, and the
+    // re-read goes through the same authorized endpoints as everything else.
+    // Nothing rides this stream that its holder was not already entitled to
+    // ask for.
+    HttpApiEndpoint.get('watchBatch', '/assessment/batches/:batchId/events', {
+      params: Schema.Struct({ batchId: id }),
+      success: HttpApiSchema.StreamSse({ data: batchLiveEvent }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
     HttpApiEndpoint.get('getBatch', '/assessment/batches/:batchId', {
       params: Schema.Struct({ batchId: id }),
       success: Schema.Struct({ batch: batchView }),
