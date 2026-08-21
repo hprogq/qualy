@@ -53,6 +53,8 @@ export interface EntryDto {
     kind: string
     reason: string | null
     comment: string | null
+    /** the reviewer's suggested rewrite, applied only by the owner's hand */
+    suggestedPayload: unknown
     actorName: string | null
     at: string
   } | null

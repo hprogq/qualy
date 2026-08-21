@@ -111,6 +111,8 @@ export interface EntryRefusalView {
   readonly kind: string
   readonly reason: string | null
   readonly comment: string | null
+  /** what the reviewer would write instead, for the owner to apply by hand */
+  readonly suggestedPayload: unknown
   readonly actorName: string | null
   readonly at: number
 }

@@ -579,6 +579,8 @@ const entryView = Schema.Struct({
       kind: Schema.String,
       reason: Schema.NullOr(Schema.String),
       comment: Schema.NullOr(Schema.String),
+      /** the reviewer's suggested rewrite, applied only by the owner's hand */
+      suggestedPayload: configJson,
       actorName: Schema.NullOr(Schema.String),
       at: Schema.String,
     }),

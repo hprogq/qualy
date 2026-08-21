@@ -519,6 +519,8 @@ export interface RefusalRow {
   /** the label picked off the batch's list, when the act took one */
   reason: string | null
   comment: string | null
+  /** what the reviewer would write instead, for the owner to apply by hand */
+  suggestedPayload: unknown
   actorName: string | null
   at: number
 }
@@ -546,11 +548,12 @@ export const latestRefusalOf = (tenantId: string, entryIds: readonly string[]) =
             kind: string
             reason: string | null
             comment: string | null
+            suggested_payload: unknown
             actor_name: string | null
             at_ms: number
           }>`
             with said as (
-              select ri.entry_id, re.kind, re.reason, re.comment,
+              select ri.entry_id, re.kind, re.reason, re.comment, re.suggested_payload,
                      u.display_name as actor_name, re.created_at
               from review_events re
               join review_instances ri
@@ -560,7 +563,7 @@ export const latestRefusalOf = (tenantId: string, entryIds: readonly string[]) =
                 and ri.entry_id = any(${sql.val(`{${entryIds.join(',')}}`)}::uuid[])
                 and re.kind = 'rejected'
               union all
-              select ee.entry_id, ee.kind, ee.reason, null::text,
+              select ee.entry_id, ee.kind, ee.reason, null::text, null::jsonb,
                      u.display_name as actor_name, ee.created_at
               from entry_events ee
               left join users u on u.tenant_id = ee.tenant_id and u.id = ee.actor_id
@@ -569,7 +572,7 @@ export const latestRefusalOf = (tenantId: string, entryIds: readonly string[]) =
                 and ee.kind in ('revision-required', 'returned-for-revision')
             )
             select distinct on (entry_id)
-              entry_id, kind, reason, comment, actor_name,
+              entry_id, kind, reason, comment, suggested_payload, actor_name,
               (extract(epoch from created_at) * 1000)::float8 as at_ms
             from said
             order by entry_id, created_at desc
@@ -586,6 +589,7 @@ export const latestRefusalOf = (tenantId: string, entryIds: readonly string[]) =
                     kind: String(row.kind),
                     reason: row.reason,
                     comment: row.comment,
+                    suggestedPayload: row.suggested_payload ?? null,
                     actorName: row.actor_name,
                     at: Number(row.at_ms ?? 0),
                   },

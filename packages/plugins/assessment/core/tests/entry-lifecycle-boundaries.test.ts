@@ -212,6 +212,41 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
     expect(result.round.outcome).toBe('approved')
   })
 
+  it('a rejection hands the owner the reviewer suggestion, word for word', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('lb-suggested')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: [...GATED, 'assessment.review.process'] })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: { summary: '原文' } },
+            s1,
+          )
+          const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            submitted.currentReviewInstanceId!,
+            {
+              decision: 'reject',
+              comment: '按建议改后重交',
+              suggestedPayload: { summary: '建议的写法' },
+            },
+            f.principal(f.reviewer),
+          )
+          const seen = yield* assessment.getEntry(f.t, entry.id, s1)
+          return { refusal: seen.refusal }
+        }),
+      ),
+    )
+
+    expect(result.refusal?.kind).toBe('rejected')
+    expect(result.refusal?.suggestedPayload).toEqual({ summary: '建议的写法' })
+  })
+
   it('the phase plan closes abandoning like any other act', async () => {
     const result = ok(
       await run(

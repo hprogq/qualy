@@ -6988,3 +6988,11 @@ lane 筛选仅双身份显示),useInfiniteQuery 修复手写游标末页复现 b
 route==='escalation' 条件,普通路线活跃轮也挂出「该申报已进入复核流程」。
 门禁:typecheck 零错;pnpm test 703 passed | 17 skipped;pnpm test:browser 96 passed;
 tools/tests 147 passed;prettier 全通过。
+
+### 退回卡补上审核人的修改建议(2026-08-22)
+
+decideReview 的 suggestedPayload 此前只进审核事件,从未到参评人手里。latestRefusalOf 增列
+suggested_payload(entry_events 支为 null),EntryRefusalView/契约 refusal 结构/客户端 EntryDto
+同步;详情 Sheet 退回卡内新增「审核人的修改建议」块——只列与现值不同的非附件字段,值为空显
+「—」,仅供参评人手动照改,不提供一键套用(工程宪法禁令)。node 新用例断言建议逐字到达
+owner 视图;boundaries 13 例、catalogs、entry-workflow 21 例全绿,typecheck 零错,prettier 通过。

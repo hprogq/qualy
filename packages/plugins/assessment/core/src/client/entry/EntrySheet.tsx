@@ -41,6 +41,45 @@ import { fieldsOf, type ActionAvailability, type EntryDto, type ItemDto } from '
 
 type History = ApiResult<typeof assessmentApi, 'assessment', 'getEntryHistory'>
 
+/**
+ * The rewrite the reviewer proposed, next to the sentence that sent the
+ * claim back: only the fields that would change, shown for the owner to
+ * apply by hand - the form never fills itself from a reviewer's words.
+ */
+function SuggestedChanges({
+  suggested,
+  payload,
+  fields,
+}: {
+  suggested: unknown
+  payload: Record<string, unknown>
+  fields: ReturnType<typeof fieldsOf>
+}) {
+  const { format } = useI18n()
+  if (suggested === null || typeof suggested !== 'object') return null
+  const record = suggested as Record<string, unknown>
+  const rows = fields.filter(
+    (field) =>
+      field.type !== 'attachment' &&
+      field.key in record &&
+      String(record[field.key] ?? '') !== String(payload[field.key] ?? ''),
+  )
+  if (rows.length === 0) return null
+  return (
+    <div className="flex flex-col gap-1 border-t pt-2" data-testid="suggested-changes">
+      <p className="text-xs text-muted-foreground">{format(m.entrySuggestedTitle)}</p>
+      {rows.map((field) => (
+        <p key={field.key} className="flex items-baseline gap-2 text-sm">
+          <span className="shrink-0 text-muted-foreground">{field.label}</span>
+          <span className="min-w-0 [overflow-wrap:anywhere]">
+            {String(record[field.key] ?? '') === '' ? '—' : String(record[field.key] ?? '')}
+          </span>
+        </p>
+      ))}
+    </div>
+  )
+}
+
 export function EntrySheet({
   open,
   entry,
@@ -204,6 +243,11 @@ export function EntrySheet({
                     {(entry.refusal.comment ?? '') !== '' && (
                       <p className="text-sm leading-relaxed text-pretty">{entry.refusal.comment}</p>
                     )}
+                    <SuggestedChanges
+                      suggested={entry.refusal.suggestedPayload}
+                      payload={payload}
+                      fields={fields}
+                    />
                   </div>
                 )}
 

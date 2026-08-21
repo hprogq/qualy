@@ -513,6 +513,7 @@ export default {
   'assessment/event/supplement-cancelled': '{who} 撤回了补充请求',
   'assessment/entry/refused-title': '审核人已退回该申报',
   'assessment/entry/returned-title': '申报已退回，请修改后重新提交',
+  'assessment/entry/suggested-title': '审核人的修改建议',
   'assessment/entry/supplement-title': '审核人要求补充材料',
   'assessment/supplement/needs': '需要补充',
   'assessment/entry/score-counted': '已计入',

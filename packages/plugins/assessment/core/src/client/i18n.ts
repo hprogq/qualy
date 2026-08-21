@@ -2095,6 +2095,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/returned-title',
       defaultMessage: 'The submission was returned for revision',
     },
+    entrySuggestedTitle: {
+      id: 'assessment/entry/suggested-title',
+      defaultMessage: 'What the reviewer suggested instead',
+    },
     entrySupplementTitle: {
       id: 'assessment/entry/supplement-title',
       defaultMessage: 'The reviewer requested additional material',
