@@ -142,7 +142,32 @@ function Queue({
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void inbox.refetch()}
-      skeleton={<Skeleton className="h-32 w-full" />}
+      skeleton={
+        // the queue's own shape, greyed: the control row, then rows of
+        // work - not one anonymous slab
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-9 w-72 max-sm:flex-1" />
+            <Skeleton className="h-9 w-28 max-sm:hidden" />
+            <Skeleton className="h-9 w-28 max-sm:hidden" />
+            <span className="flex-1 max-sm:hidden" />
+            <Skeleton className="h-9 w-40 max-sm:hidden" />
+          </div>
+          <div className="flex flex-col overflow-hidden rounded-xl border">
+            {['w-1/3', 'w-1/2', 'w-2/5', 'w-1/4', 'w-2/5'].map((width, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-4 border-t px-4 py-3.5 first:border-t-0"
+              >
+                <Skeleton className="h-4 w-24 shrink-0" />
+                <Skeleton className={`h-4 ${width}`} />
+                <Skeleton className="ml-auto h-4 w-14 shrink-0 max-sm:hidden" />
+                <Skeleton className="h-8 w-16 shrink-0" />
+              </div>
+            ))}
+          </div>
+        </div>
+      }
       className="flex flex-1 flex-col"
     >
       <div className="flex flex-1 flex-col gap-4">

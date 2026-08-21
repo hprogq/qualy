@@ -643,9 +643,28 @@ function Body({
         void standing.refetch()
       }}
       skeleton={
-        <div className="flex gap-6">
-          <Skeleton className="h-96 w-94 shrink-0" />
-          <Skeleton className="h-96 flex-1" />
+        // the page's own shape, greyed: a rail of question rows, and on a
+        // desk the paper beside it - not two anonymous slabs
+        <div className="flex min-h-0 flex-1 gap-6">
+          <div className="flex w-94 shrink-0 flex-col gap-2 max-lg:w-full">
+            {['w-3/5', 'w-2/5', 'w-1/2', 'w-3/4', 'w-2/5', 'w-3/5'].map((width, index) => (
+              <div key={index} className="flex items-center gap-3 rounded-xl border px-4 py-3.5">
+                <Skeleton className="size-[7px] shrink-0 rounded-full" />
+                <Skeleton className={`h-4 ${width}`} />
+                <Skeleton className="ml-auto h-4 w-12 shrink-0" />
+              </div>
+            ))}
+          </div>
+          <div className="hidden min-w-0 flex-1 flex-col gap-4 pt-1 lg:flex">
+            <Skeleton className="h-6 w-56" />
+            <Skeleton className="h-4 w-80" />
+            <div className="flex flex-col gap-3 pt-3">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+            </div>
+          </div>
         </div>
       }
       className="flex min-h-0 flex-1 flex-col"

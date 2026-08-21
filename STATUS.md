@@ -7008,3 +7008,12 @@ owner 视图;boundaries 13 例、catalogs、entry-workflow 21 例全绿,typechec
 原 BatchFlowStrip 置顶,动态标题行粘顶携带筛选。设计稿文案按项目风格简化,字号收敛到项目字
 阶,shadcn Tabs 不改内样式,左右两栏 gap-12,两区以边距分隔,空状态小卡去背景防暗色误读。
 门禁:typecheck 零错;pnpm test 704 passed | 17 skipped;pnpm test:browser 96 passed;prettier 全通过。
+
+### 概览随手修与加载态成形(2026-08-22 追加)
+
+概览:三区标题统一 text-sm semibold;移动端顺序改为 需要你处理 → 阶段进度 → 最近动态,
+组间距收拢再在前两者间补一口气;两栏 gap-12;空状态卡去灰底;阶段进度列先去掉
+max-h+overflow 的内滚动条,又因真实六阶段列高过视口而放弃 sticky,随页自然滚动。
+加载态:我的申报骨架改为「问题行轨 + 桌面纸面」的页面同形(移动端只铺轨),审核队列骨架
+改为「控制行 + 五条工作行」,不再是两块/一块匿名大圆角。typecheck 零错;entry-workflow、
+review-layout、paper-reading、batch-admin 相关套件全绿。
