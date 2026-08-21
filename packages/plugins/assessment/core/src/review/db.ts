@@ -1654,6 +1654,75 @@ export interface AwaitingRow {
  * a step is held by whoever holds the role there, so a colleague's ask is
  * this reviewer's business too.
  */
+/**
+ * The two numbers the overview's reviewer branch states (§32.73): how many
+ * claims stand in this reviewer's queue now, and how many of their own
+ * asks have come back answered on rounds they may still act on.
+ */
+export const reviewerDeskCountsOf = (input: {
+  tenantId: string
+  batchId: string
+  userId: string
+}) =>
+  db
+    .query((k) =>
+      sql<{ pending: number; answered: number }>`
+        select
+          (select count(*)::int
+           from review_instances ri
+           join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+           join batch_participants bp
+             on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
+           join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
+           where ri.tenant_id = ${input.tenantId}
+             and e.batch_id = ${input.batchId}
+             and ri.state = 'active'
+             and ${mayActOn({
+               tenantId: sql`${input.tenantId}`,
+               batchId: sql.ref('e.batch_id'),
+               nodeId: sql.ref('ri.current_node_id'),
+               roleIds: sql.ref('ri.current_role_ids'),
+               userId: sql`${input.userId}`,
+               subjectUserId: sql.ref('bp.user_id'),
+               actorId: sql.ref('er.actor_id'),
+               instanceId: sql.ref('ri.id'),
+               route: sql.ref('ri.current_route'),
+             })}
+          ) as pending,
+          (select count(*)::int
+           from review_supplement_requests sr
+           join review_instances ri
+             on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+           join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+           join batch_participants bp
+             on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
+           join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
+           where sr.tenant_id = ${input.tenantId}
+             and e.batch_id = ${input.batchId}
+             and sr.requested_by = ${input.userId}
+             and sr.status = 'answered'
+             and ri.state in ('active', 'blocked')
+             and ${mayActOn({
+               tenantId: sql`${input.tenantId}`,
+               batchId: sql.ref('e.batch_id'),
+               nodeId: sql.ref('ri.current_node_id'),
+               roleIds: sql.ref('ri.current_role_ids'),
+               userId: sql`${input.userId}`,
+               subjectUserId: sql.ref('bp.user_id'),
+               actorId: sql.ref('er.actor_id'),
+               instanceId: sql.ref('ri.id'),
+               route: sql.ref('ri.current_route'),
+             })}
+          ) as answered
+      `.execute(k),
+    )
+    .pipe(
+      Effect.map(({ rows }) => ({
+        pendingCount: rows[0]?.pending ?? 0,
+        answeredAskCount: rows[0]?.answered ?? 0,
+      })),
+    )
+
 export const awaitingPage = (input: {
   tenantId: string
   batchId: string

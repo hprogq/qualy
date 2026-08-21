@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { sql } from 'kysely'
+import { sql, type RawBuilder } from 'kysely'
 import { db } from '../server/db.ts'
 
 // The entry rows and everything the resource policy needs to know about the
@@ -1153,7 +1153,7 @@ export const myActionRowsOf = (input: {
       }>`
         select 'supplement' as kind,
                e.id as entry_id, e.item_id, i.title as item_title,
-               sr.created_at::text as at,
+               to_char(sr.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
                (extract(epoch from sr.created_at) * 1000)::float8 as at_ms,
                u.display_name as who,
                sr.instructions as summary
@@ -1171,7 +1171,7 @@ export const myActionRowsOf = (input: {
         union all
         select 'revision',
                e.id, e.item_id, i.title,
-               ev.created_at::text,
+               to_char(ev.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
                (extract(epoch from ev.created_at) * 1000)::float8,
                u.display_name,
                ev.reason
@@ -1208,13 +1208,16 @@ export const myActionRowsOf = (input: {
       ),
     )
 
-export interface MyActivityRow {
+export interface UserActivityRow {
   id: string
   source: string
+  perspective: 'participant' | 'reviewer'
   kind: string
   entryId: string
   itemId: string
   itemTitle: string
+  subjectName: string | null
+  instanceId: string | null
   actorName: string | null
   reason: string | null
   comment: string | null
@@ -1223,47 +1226,33 @@ export interface MyActivityRow {
 }
 
 /**
- * Everything that happened to this participant's claims, newest first, in
- * business words. Terminal verdicts come from the rounds themselves - a
- * stage-level "approved" is a handover, not news - and the supplement
- * exchange comes only from its structured records, so nothing is told
- * twice. Keyset over (at, source, id): a timestamp alone drops rows that
- * share an instant across sources.
+ * What happened around one user in one batch, newest first, in business
+ * words (§32.73). Two perspectives, both the user's own: the story of
+ * their claims as a participant, and the acts they personally performed
+ * as a reviewer - never the shared queue's traffic, and never raw event
+ * kinds. Terminal verdicts come from the rounds themselves on the
+ * participant side; on the reviewer side an approval is terminal only if
+ * it completed its round. Rows about the user's own claims never appear
+ * on the reviewer side, so one act is never told twice. Keyset over
+ * (at, source, id): a timestamp alone drops rows sharing an instant.
  */
-export const myActivityPage = (input: {
+export const userActivityPage = (input: {
   tenantId: string
   batchId: string
-  participantId: string
+  userId: string
+  /** the reader's membership row, when they have one */
+  participantId: string | null
+  perspectives: readonly ('participant' | 'reviewer')[]
   after?: readonly [string, string, string] | undefined
   limit: number
-}) =>
-  db
-    .query((k) =>
-      sql<{
-        id: string
-        source: string
-        kind: string
-        entry_id: string
-        item_id: string
-        item_title: string
-        actor_name: string | null
-        reason: string | null
-        comment: string | null
-        at: string
-        at_ms: number
-      }>`
-        with mine as (
-          select e.id, e.item_id, i.title
-          from entries e
-          join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
-          where e.tenant_id = ${input.tenantId}
-            and e.batch_id = ${input.batchId}
-            and e.participant_id = ${input.participantId}
-        ),
-        activity as (
-          select er.id, 'revision' as source,
+}) => {
+  const pieces: RawBuilder<unknown>[] = []
+  if (input.perspectives.includes('participant') && input.participantId !== null) {
+    pieces.push(sql`
+          select er.id, 'revision' as source, 'participant' as perspective,
                  case when er.revision_no = 1 then 'entry-created' else 'entry-revised' end as kind,
                  m.id as entry_id, m.item_id, m.title as item_title,
+                 null::text as subject_name, null::uuid as instance_id,
                  null::text as actor_name, null::text as reason, null::text as comment,
                  er.created_at
           from entry_revisions er
@@ -1271,14 +1260,14 @@ export const myActivityPage = (input: {
           where er.tenant_id = ${input.tenantId}
 
           union all
-          select re.id, 'review-event',
+          select re.id, 'review-event', 'participant',
                  case re.kind
                    when 'submitted' then 'entry-submitted'
-                   when 'cancelled-by-submitter' then 'entry-withdrawn'
                    when 'appealed' then 'appeal-filed'
                    when 'escalated' then 'review-escalated'
                  end,
                  m.id, m.item_id, m.title,
+                 null, ri.id,
                  u.display_name, re.reason, re.comment,
                  re.created_at
           from review_events re
@@ -1287,28 +1276,32 @@ export const myActivityPage = (input: {
           join mine m on m.id = ri.entry_id
           left join users u on u.tenant_id = re.tenant_id and u.id = re.actor_id
           where re.tenant_id = ${input.tenantId}
-            and re.kind in ('submitted', 'cancelled-by-submitter', 'appealed', 'escalated')
+            and re.kind in ('submitted', 'appealed', 'escalated')
 
           union all
-          select ee.id, 'entry-event',
+          select ee.id, 'entry-event', 'participant',
                  case ee.kind
+                   when 'withdrawn-by-submitter' then 'entry-withdrawn'
                    when 'abandoned-by-submitter' then 'entry-abandoned'
                    when 'revision-required' then 'revision-required'
                    when 'auto-approved' then 'review-approved'
                  end,
                  m.id, m.item_id, m.title,
+                 null, null,
                  u.display_name, ee.reason, null,
                  ee.created_at
           from entry_events ee
           join mine m on m.id = ee.entry_id
           left join users u on u.tenant_id = ee.tenant_id and u.id = ee.actor_id
           where ee.tenant_id = ${input.tenantId}
-            and ee.kind in ('abandoned-by-submitter', 'revision-required', 'auto-approved')
+            and ee.kind in ('withdrawn-by-submitter', 'abandoned-by-submitter',
+                            'revision-required', 'auto-approved')
 
           union all
-          select ri.id, 'verdict',
+          select ri.id, 'verdict', 'participant',
                  case ri.outcome when 'approved' then 'review-approved' else 'review-rejected' end,
                  m.id, m.item_id, m.title,
+                 null, ri.id,
                  said.display_name, said.reason, said.comment,
                  ri.completed_at
           from review_instances ri
@@ -1329,8 +1322,9 @@ export const myActivityPage = (input: {
             and ri.completed_at is not null
 
           union all
-          select sr.id, 'supp-req', 'supplement-requested',
+          select sr.id, 'supp-req', 'participant', 'supplement-requested',
                  m.id, m.item_id, m.title,
+                 null, ri.id,
                  u.display_name, null, sr.instructions,
                  sr.created_at
           from review_supplement_requests sr
@@ -1341,8 +1335,9 @@ export const myActivityPage = (input: {
           where sr.tenant_id = ${input.tenantId}
 
           union all
-          select sr.id, 'supp-ans', 'supplement-submitted',
+          select sr.id, 'supp-ans', 'participant', 'supplement-submitted',
                  m.id, m.item_id, m.title,
+                 null, ri.id,
                  null, null, null,
                  sr.answered_at
           from review_supplement_requests sr
@@ -1353,8 +1348,9 @@ export const myActivityPage = (input: {
             and sr.answered_at is not null
 
           union all
-          select sr.id, 'supp-cxl', 'supplement-cancelled',
+          select sr.id, 'supp-cxl', 'participant', 'supplement-cancelled',
                  m.id, m.item_id, m.title,
+                 null, ri.id,
                  u.display_name, null, null,
                  sr.cancelled_at
           from review_supplement_requests sr
@@ -1364,11 +1360,127 @@ export const myActivityPage = (input: {
           left join users u on u.tenant_id = sr.tenant_id and u.id = sr.cancelled_by
           where sr.tenant_id = ${input.tenantId}
             and sr.status = 'cancelled'
+            and sr.cancelled_at is not null`)
+  }
+  if (input.perspectives.includes('reviewer')) {
+    pieces.push(sql`
+          select re.id, 'r-event' as source, 'reviewer' as perspective,
+                 case re.kind
+                   when 'approved' then case
+                     when ri.state = 'completed' and ri.outcome = 'approved'
+                      and not exists (
+                        select 1 from review_events re2
+                        where re2.tenant_id = re.tenant_id
+                          and re2.review_instance_id = re.review_instance_id
+                          and re2.kind = 'approved'
+                          and (re2.created_at, re2.id) > (re.created_at, re.id)
+                      ) then 'review-approved'
+                     else 'review-stage-approved' end
+                   when 'rejected' then 'review-rejected'
+                   when 'escalated' then 'review-escalated'
+                   when 'opinion-rejected' then 'review-opinion-rejected'
+                 end as kind,
+                 theirs.entry_id, theirs.item_id, theirs.item_title,
+                 theirs.subject_name, ri.id as instance_id,
+                 null::text as actor_name, re.reason, re.comment,
+                 re.created_at
+          from review_events re
+          join review_instances ri
+            on ri.tenant_id = re.tenant_id and ri.id = re.review_instance_id
+          join theirs on theirs.entry_id = ri.entry_id
+          where re.tenant_id = ${input.tenantId}
+            and re.actor_id = ${input.userId}
+            and re.kind in ('approved', 'rejected', 'escalated', 'opinion-rejected')
+
+          union all
+          select sr.id, 'r-supp-req', 'reviewer', 'supplement-requested',
+                 theirs.entry_id, theirs.item_id, theirs.item_title,
+                 theirs.subject_name, ri.id,
+                 null, null, sr.instructions,
+                 sr.created_at
+          from review_supplement_requests sr
+          join review_instances ri
+            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          join theirs on theirs.entry_id = ri.entry_id
+          where sr.tenant_id = ${input.tenantId}
+            and sr.requested_by = ${input.userId}
+
+          union all
+          select sr.id, 'r-supp-cxl', 'reviewer', 'supplement-cancelled',
+                 theirs.entry_id, theirs.item_id, theirs.item_title,
+                 theirs.subject_name, ri.id,
+                 null, null, null,
+                 sr.cancelled_at
+          from review_supplement_requests sr
+          join review_instances ri
+            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          join theirs on theirs.entry_id = ri.entry_id
+          where sr.tenant_id = ${input.tenantId}
+            and sr.cancelled_by = ${input.userId}
+            and sr.status = 'cancelled'
             and sr.cancelled_at is not null
+
+          union all
+          select sr.id, 'r-supp-ans', 'reviewer', 'supplement-answered',
+                 theirs.entry_id, theirs.item_id, theirs.item_title,
+                 theirs.subject_name, ri.id,
+                 null, null, null,
+                 sr.answered_at
+          from review_supplement_requests sr
+          join review_instances ri
+            on ri.tenant_id = sr.tenant_id and ri.id = sr.review_instance_id
+          join theirs on theirs.entry_id = ri.entry_id
+          where sr.tenant_id = ${input.tenantId}
+            and sr.requested_by = ${input.userId}
+            and sr.answered_at is not null`)
+  }
+  if (pieces.length === 0) return Effect.succeed([] as readonly UserActivityRow[])
+  return db
+    .query((k) =>
+      sql<{
+        id: string
+        source: string
+        perspective: string
+        kind: string
+        entry_id: string
+        item_id: string
+        item_title: string
+        subject_name: string | null
+        instance_id: string | null
+        actor_name: string | null
+        reason: string | null
+        comment: string | null
+        at: string
+        at_ms: number
+      }>`
+        with mine as (
+          select e.id, e.item_id, i.title
+          from entries e
+          join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
+          where e.tenant_id = ${input.tenantId}
+            and e.batch_id = ${input.batchId}
+            and e.participant_id = ${input.participantId}::uuid
+        ),
+        theirs as (
+          select e.id as entry_id, e.item_id, i.title as item_title,
+                 su.display_name as subject_name
+          from entries e
+          join assessment_items i on i.tenant_id = e.tenant_id and i.id = e.item_id
+          join batch_participants bp on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
+          join users su on su.tenant_id = bp.tenant_id and su.id = bp.user_id
+          where e.tenant_id = ${input.tenantId}
+            and e.batch_id = ${input.batchId}
+            and bp.user_id is distinct from ${input.userId}::uuid
+        ),
+        activity as (${sql.join(
+          pieces,
+          sql`
+          union all`,
+        )}
         )
-        select id, source, kind, entry_id, item_id, item_title,
-               actor_name, reason, comment,
-               created_at::text as at,
+        select id, source, perspective, kind, entry_id, item_id, item_title,
+               subject_name, instance_id, actor_name, reason, comment,
+               to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at,
                (extract(epoch from created_at) * 1000)::float8 as at_ms
         from activity
         where kind is not null
@@ -1383,13 +1495,16 @@ export const myActivityPage = (input: {
     )
     .pipe(
       Effect.map(({ rows }) =>
-        rows.map((row): MyActivityRow => ({
+        rows.map((row): UserActivityRow => ({
           id: row.id,
           source: row.source,
+          perspective: row.perspective as UserActivityRow['perspective'],
           kind: row.kind,
           entryId: row.entry_id,
           itemId: row.item_id,
           itemTitle: row.item_title,
+          subjectName: row.subject_name,
+          instanceId: row.instance_id,
           actorName: row.actor_name,
           reason: row.reason,
           comment: row.comment,
@@ -1398,3 +1513,4 @@ export const myActivityPage = (input: {
         })),
       ),
     )
+}

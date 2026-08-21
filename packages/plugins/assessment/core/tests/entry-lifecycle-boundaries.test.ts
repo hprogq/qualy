@@ -64,7 +64,17 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
               sql`select state, outcome from review_instances where id = ${submitted.currentReviewInstanceId}`,
             ),
           )
-          return { offeredBefore, withdrawn, seen, abandoned, round }
+          // one press, one sentence: the round's own cancellation
+          // bookkeeping must not surface as a second user act (§32.73)
+          const story = yield* assessment.listMyActivity(f.t, g.batch.id, {}, s1)
+          return {
+            offeredBefore,
+            withdrawn,
+            seen,
+            abandoned,
+            round,
+            kinds: story.items.map((one) => one.kind),
+          }
         }),
       ),
     )
@@ -79,6 +89,33 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
     expect(result.abandoned.status).toBe('voided')
     expect(result.round.state).toBe('completed')
     expect(result.round.outcome).toBe('cancelled')
+    expect(result.kinds.filter((kind) => kind === 'entry-abandoned')).toHaveLength(1)
+    expect(result.kinds).not.toContain('entry-withdrawn')
+  })
+
+  it('withdrawing an untouched round is one user act in the feed', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('lb-withdraw')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: [...GATED, 'assessment.review.process'] })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.setEntryStatus(f.t, entry.id, 'draft', s1)
+          const story = yield* assessment.listMyActivity(f.t, g.batch.id, {}, s1)
+          return { kinds: story.items.map((one) => one.kind) }
+        }),
+      ),
+    )
+
+    expect(result.kinds).toEqual(['entry-withdrawn', 'entry-submitted', 'entry-created'])
   })
 
   it('an appeal round is never withdrawable back to draft', async () => {

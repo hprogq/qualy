@@ -6965,3 +6965,26 @@ CI 抽屉 flake 定案:诊断四元组证明三条件全真而 includeHidden 仍
 "nav-capsule"(首开仍走 role+name)。
 门禁:typecheck 零错;pnpm test 701 passed | 17 skipped;pnpm test:browser 96 passed;
 prettier 全通过。
+
+### 概览成为批次用户桌面,API 收进 /me(2026-08-21/22,§32.73)
+
+五条路径改名(me/entries、me/result、me/overview、me/activity、me/items/{itemId}/read,
+frozen-routes 同笔);/me/overview 返回 participant/reviewer 双分支(无身份为 null,审核老师
+不再打出 ParticipantNotFound 404);/me/activity 以 batch user 为主体做双视角 UNION:参评人
+故事 + 审核员亲自行为 + 我发起的补件被回复(supplement-answered),词表增 review-stage-approved
+与 review-opinion-rejected(环节通过与终局通过文案分开),行带 perspective 与 instanceId,
+支持 perspective 过滤(游标含过滤指纹);对象是自己申报时审核行不生成,一事不两说。
+withdraw 补写 entry_events 'withdrawn-by-submitter',活动流不再解读 cancelled-by-submitter
+——「审核中放弃」双条(撤回+放弃)已修,红验:恢复旧映射时 boundaries 两例转红。desk 端点
+时间一律 to_char UTC ISO,前端删 PG 文本修补。审核队列计数 reviewerDeskCountsOf 复用
+mayActOn 谓词。概览页:测评进程保留原三件套(用户否决横向带);需要你处理跨身份并列
+(琥珀卡 + 待审核 N/补件已回复 N 两行,直达审核页对应视图),空时一行轻提示;最近动态改
+纵向时间线(按日分组、时刻列、空心=自己实心=外部、终局轻语义色、reason/comment 副行、
+lane 筛选仅双身份显示),useInfiniteQuery 修复手写游标末页复现 bug,SSE 失效整组重读;
+页面无「·」。§30 增第 9 条:attention 跨事务竞态的严格保证待产品裁决,注释按实措辞。
+修复途中两次事故:reviewer 支为首支时列名未别名(id 撞名,用户日志抓到,加 reviewer 单
+车道断言防回归);zh-CN 目录被贪婪正则误删 302 行,已从 HEAD 精确重建(11 孤儿键 + 2 死键
+之外逐行恢复,catalogs 门禁复绿)。另修:复核卡守卫单点化——列内渲染点丢了
+route==='escalation' 条件,普通路线活跃轮也挂出「该申报已进入复核流程」。
+门禁:typecheck 零错;pnpm test 703 passed | 17 skipped;pnpm test:browser 96 passed;
+tools/tests 147 passed;prettier 全通过。

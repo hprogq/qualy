@@ -31,7 +31,7 @@ import { makeItemMethods, type ItemMethods, type ItemView } from '../item/servic
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
-import { insertReviewEvent } from '../entry/db.ts'
+import { insertReviewEvent, userActivityPage } from '../entry/db.ts'
 import {
   blockedGroups,
   chainNames,
@@ -43,6 +43,7 @@ import {
   reviewersAt,
   setInstanceState,
   stageNodesOf,
+  reviewerDeskCountsOf,
   tenantsWithOpenRounds,
 } from '../review/db.ts'
 import { stageById } from '../review/chain.ts'
@@ -478,6 +479,58 @@ export interface ChainPreviewStep {
   readonly holders: number
 }
 
+export type UserActivityKind =
+  | 'entry-created'
+  | 'entry-revised'
+  | 'entry-submitted'
+  | 'entry-withdrawn'
+  | 'entry-abandoned'
+  | 'review-approved'
+  | 'review-rejected'
+  | 'review-escalated'
+  | 'appeal-filed'
+  | 'supplement-requested'
+  | 'supplement-submitted'
+  | 'supplement-cancelled'
+  | 'revision-required'
+  | 'review-stage-approved'
+  | 'review-opinion-rejected'
+  | 'supplement-answered'
+
+export interface MyOverview {
+  readonly participant: {
+    readonly unreadItemCount: number
+    readonly actions: readonly {
+      kind: 'supplement' | 'revision'
+      entryId: string
+      itemId: string
+      itemTitle: string
+      at: string
+      who: string | null
+      summary: string | null
+    }[]
+  } | null
+  readonly reviewer: { readonly pendingCount: number; readonly answeredAskCount: number } | null
+}
+
+export interface MyActivityPage {
+  readonly items: readonly {
+    id: string
+    perspective: 'participant' | 'reviewer'
+    kind: UserActivityKind
+    entryId: string
+    itemId: string
+    itemTitle: string
+    subjectName: string | null
+    instanceId: string | null
+    actorName: string | null
+    reason: string | null
+    comment: string | null
+    at: string
+  }[]
+  readonly nextCursor: string | null
+}
+
 export class Assessment extends Context.Service<
   Assessment,
   {
@@ -843,7 +896,22 @@ export class Assessment extends Context.Service<
     readonly setEntryStatus: EntryMethods['setEntryStatus']
     readonly markMyEntryRead: EntryMethods['markMyEntryRead']
     readonly getMyEntrySummary: EntryMethods['getMyEntrySummary']
-    readonly listMyEntryActivity: EntryMethods['listMyEntryActivity']
+    /**
+     * The user's desk on this batch (§32.73): one branch per standing they
+     * hold, absent branches null. Being nobody here is not an error.
+     */
+    readonly getMyOverview: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<MyOverview, BatchNotFound | AccessDenied>
+    /** the user's own recent story across their standings, newest first */
+    readonly listMyActivity: (
+      tenantId: string,
+      batchId: string,
+      page: { cursor?: string; limit?: string; perspective?: 'participant' | 'reviewer' },
+      as: Principal,
+    ) => Effect.Effect<MyActivityPage, BatchNotFound | AccessDenied | BadRequest>
     readonly interveneOnEntry: EntryMethods['interveneOnEntry']
     /** the single review stage: a queue answered, a round closed exactly once */
     readonly listReviewInbox: ReviewMethods['listReviewInbox']
@@ -1441,6 +1509,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
    * Reading one batch, for whoever it is: its administrators, and the people
    * in it. Anything beyond reading still asks for the permission.
    */
+  /** who the reader is on this batch, for the desk endpoints (§32.73) */
+  const deskStandingOf = Effect.fn('Assessment.deskStandingOf')(function* (
+    tenantId: string,
+    batchId: string,
+    as: Principal,
+  ) {
+    const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
+    if (!batch) return yield* new BatchNotFound()
+    yield* requireBatchVisible(tenantId, batchId, as)
+    const membership = yield* dieQuery(withDb(participantRowByUser(tenantId, batchId, as.userId)))
+    const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+    return { membership, review: authority.has('assessment.review.process') }
+  })
+
   const requireBatchVisible = Effect.fn('Assessment.requireBatchVisible')(function* (
     tenantId: string,
     batchId: string,
@@ -2006,6 +2088,81 @@ export const make = Effect.fn('Assessment.make')(function* () {
         record: authority.has('assessment.entry.record'),
         manage: manageable,
       } satisfies BatchCapabilities
+    }),
+
+    getMyOverview: Effect.fn('Assessment.getMyOverview')(function* (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) {
+      const standing = yield* deskStandingOf(tenantId, batchId, as)
+      // the participant branch cannot miss its membership here, so its
+      // not-found is a programming error, not an answer
+      const participant =
+        standing.membership === null
+          ? null
+          : yield* entryMethods
+              .getMyEntrySummary(tenantId, batchId, as)
+              .pipe(Effect.catchTag('ASSESSMENT_PARTICIPANT_NOT_FOUND', (e) => Effect.die(e)))
+      const reviewer = standing.review
+        ? yield* dieQuery(withDb(reviewerDeskCountsOf({ tenantId, batchId, userId: as.userId })))
+        : null
+      return { participant, reviewer }
+    }),
+
+    listMyActivity: Effect.fn('Assessment.listMyActivity')(function* (
+      tenantId: string,
+      batchId: string,
+      page: { cursor?: string; limit?: string; perspective?: 'participant' | 'reviewer' },
+      as: Principal,
+    ) {
+      const fingerprint = `me-activity:${as.userId}:${batchId}:${page.perspective ?? 'all'}`
+      const key = readQueryCursor(page.cursor, fingerprint, ['text', 'text', 'uuid'])
+      if (key === null) return yield* cursorUnusable()
+      const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+      const standing = yield* deskStandingOf(tenantId, batchId, as)
+      const perspectives = (['participant', 'reviewer'] as const).filter(
+        (one) =>
+          (page.perspective === undefined || page.perspective === one) &&
+          (one === 'participant' ? standing.membership !== null : standing.review),
+      )
+      const rows = yield* dieQuery(
+        withDb(
+          userActivityPage({
+            tenantId,
+            batchId,
+            userId: as.userId,
+            participantId: standing.membership?.id ?? null,
+            perspectives,
+            after: key === undefined ? undefined : [key[0]!, key[1]!, key[2]!],
+            limit: limit + 1,
+          }),
+        ),
+      )
+      const pageRows = rows.slice(0, limit)
+      const last = pageRows[pageRows.length - 1]
+      return {
+        items: pageRows.map((row) => ({
+          id: row.id,
+          perspective: row.perspective,
+          // the union is enforced by the mapping CASEs in the query; rows
+          // whose kind fell out of them were filtered before the page
+          kind: row.kind as UserActivityKind,
+          entryId: row.entryId,
+          itemId: row.itemId,
+          itemTitle: row.itemTitle,
+          subjectName: row.subjectName,
+          instanceId: row.instanceId,
+          actorName: row.actorName,
+          reason: row.reason,
+          comment: row.comment,
+          at: row.at,
+        })),
+        nextCursor:
+          rows.length > limit && last !== undefined
+            ? encodeQueryCursor(fingerprint, [last.at, last.source, last.id])
+            : null,
+      }
     }),
 
     getBatch: Effect.fn('Assessment.getBatch')(function* (tenantId, batchId, as) {
@@ -4705,24 +4862,25 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       }),
     )
     .handle(
-      'getMyEntrySummary',
-      Effect.fn('assessment.getMyEntrySummary.handler')(function* ({ params }) {
+      'getMyOverview',
+      Effect.fn('assessment.getMyOverview.handler')(function* ({ params }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.getMyEntrySummary(principal.tenantId, params.batchId, principal)
+        return yield* assessment.getMyOverview(principal.tenantId, params.batchId, principal)
       }),
     )
     .handle(
-      'listMyEntryActivity',
-      Effect.fn('assessment.listMyEntryActivity.handler')(function* ({ params, query }) {
+      'listMyActivity',
+      Effect.fn('assessment.listMyActivity.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        return yield* assessment.listMyEntryActivity(
+        return yield* assessment.listMyActivity(
           principal.tenantId,
           params.batchId,
           {
             ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
             ...(query.limit !== undefined ? { limit: query.limit } : {}),
+            ...(query.perspective !== undefined ? { perspective: query.perspective } : {}),
           },
           principal,
         )

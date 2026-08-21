@@ -849,6 +849,7 @@ Entry 内容直接 UPDATE；impersonate（"以张三身份操作"）、**替学�
 6. ~~all / atLeast(n) 节点的 reject 投票语义~~ **已裁决**（§32.15：一票驳回，quorum 只管 APPROVE）。
 7. 学院新版细则是否仍保留跨学期补差 / 消息报道类累计限额。
 8. Dormitory 计分口径：检查日在住 / 全期在住 / 区间加权，取哪种。
+9. 未读点的跨事务竞态是否需要严格保证（§32.73 五）：当前实现下「标记已读」读取行级当前 attention，与 bump 真并发时若 bump 先提交，该变化会被吸收为已读；严格语义需要客户端声明所见版本（题级 seenRevision），是否值得引入待产品裁决。
 
 ## 31. 设计总纲
 
@@ -1402,3 +1403,17 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 二、**未读不建通知表,用 Entry 上的一对单调数**:`participant_attention_revision / participant_seen_revision`(CHECK attention≥seen≥0),`attention>seen` 即是点。选 revision 不选时间戳:标已读与并发变更竞争时,`seen=读取时的 attention` 与随后的 `+1` 天然有序,毫秒钟表给不出这个答案(节点测试实证:标读与撤销补件竞争后点必须回来)。bump 是**白名单**且与业务写同事务:要求/撤销补件、终局通过/驳回(合议一致同批)、管理员要求修改(含 propagate 批量);自己的建档/修改/提交/撤回/放弃/答复补件**不响铃**;普通环节的 approve 交接不是新闻——**只有 Entry 状态真正落定的那一步才响**。存量数据一律初始化已读(旧状态是否看过无从得知;「仍待补件/待修改」照进待处理,只是没有假红点)。已读走 `PUT /my-entry-reads/:itemId`(幂等、免阶段门、归档可用、只动本人 participant、不改 updatedAt、不发 SSE——看一眼不是业务变化,cache 本地修正)。红点按**题**聚合(`unreadItemIds` 挂在 listMyEntries 的 attention 块;刻意不进 EntryView——审核员/管理员无权知道申报人读没读),已读也按题一次清。前端「看过」= 打开该题(立即)或滚动驻留 600ms(快速滚过不消点);无样式断点下两套栏同显、内嵌 aria-label 参与按钮命名、PG `+00` 时区裸偏移——三个实现坑都由测试抓出并记档。
 
 三、**概览页承载「需要你处理 + 最近动态」,不建独立消息页**。现在建 Inbox 会与「我的申报」信息架构重复;等公示通知/管理员公告/跨插件通知真出现再议顶层通知中心。`GET /my-entry-summary`(actions 只有 supplement/revision 两种——草稿不进首页待办,防止存几个草稿首页长期挂牌)与 `GET /my-entry-activity`(keyset=`(at,source,id)` 三元组,时间戳单键在同刻多源时丢行)。动态是**用户动态流不是审计 dump**:公共词表 13 种业务语义(entry-created/…/revision-required),raw event kind 永不出 API;终局通过/驳回取自 review_instances 完成态(lateral 取末事件要 actor/reason)而非逐环节 approved 事件;补件三态只取结构化 SupplementRequest,杜绝双讲。行动卡深链 `?open=<itemId>&detail/entry=<entryId>` 落到申报上下文,不从概览直接弹操作框。SSE `entries-changed/result-changed/sync` 失效 summary+activity;标读不广播。管理员打开概览拿 ParticipantNotFound,桌面块整体隐去,流程列照旧。
+
+**32.73 概览是「批次里的这个用户」的桌面,不是参评人首页**(2026-08-21,用户裁决,依据两轮完整咨询意见)。
+
+一、**API 收进 `/me` 命名空间**。`my-entries`/`my-result`/`my-entry-summary`/`my-entry-activity`/`my-entry-reads` 五条路径改为 `me/entries`、`me/result`、`me/overview`、`me/activity`、`me/items/{itemId}/read`——`me` 的含义是「当前用户在本批次内的一切相关视角」,不再是 participant 的别名。`me/entries`、`me/result`、`me/items/{itemId}/read` 仍严格要求参评人身份(非参评人 404 正确);`me/overview` 与 `me/activity` 是 user API,凡可见本批次者一律 200。前端不再无条件挂载参评人请求——审核老师访问概览反复打出 404 的根因是读模型主体定义过窄,不只是前端条件缺失。
+
+二、**overview 双分支**。`/me/overview` 返回 `participant`(unreadItemCount + 待处理 actions)与 `reviewer`(队列待审数 pendingCount + 本人发起且已回复的补件数 answeredAskCount)两个分支,无该身份的分支为 null——「不是参评人」与「参评人无事可做」是两个不同的领域事实,禁止用 200 空对象混同。分支有无以 capabilities(personal/review)判定,不看当前阶段是否开放填报。
+
+三、**活动流是跨身份的用户动态,不是审计日志**。`/me/activity` 主体为 tenant+batch+user,双视角 UNION:参评人视角 = 自己申报的故事(原 §32.72 词表);审核员视角 = **本人亲自做出的审核行为**(通过/退回/提请复核/复核意见/发起与撤回补件)加「我发起的补件被回答」(supplement-answered)。共享队列里他人处理掉任务**不入流**;系统机播(stage-skipped、assignee-not-found 等)不入流;完整历史仍在申报详情与审核过程页。词表新增三种:`review-stage-approved`(环节通过,与终局 `review-approved` 文案分开——「你在本环节通过了…」不得写成「你通过了…」)、`review-opinion-rejected`(复核中的退回意见)、`supplement-answered`。行上带 `perspective`,支持 perspective 过滤(游标带过滤指纹);去重规则:对象是自己的申报时审核行不生成(参评人行独占),一件事永不说两遍。
+
+四、**放弃/撤回单条化**。withdraw 现在写 entry_events `withdrawn-by-submitter`;活动流不再把审核轮的 `cancelled-by-submitter`(机制性关轮记账)解读为用户动作——此前「审核中放弃」会同时打出「你撤回了申报」+「你放弃了申报」两条(已红验)。
+
+五、**时间与并发的两条明确化**。desk 面端点(actions 与 activity)时间一律服务端 to_char 输出 UTC ISO(`YYYY-MM-DDTHH:MM:SS.mmmZ`),前端删除对 PostgreSQL `timestamptz::text` 形态的修补;attention 的并发保证按实措辞——同事务串行化下 bump 后必亮,跨事务真并发的严格保证(客户端声明所见版本)列入 §30 待裁决,文档与注释不得声称超出实现的强度。
+
+六、**概览页结构**。测评进程保留原三件套(顶部 PhaseContextBar + 移动横条 BatchFlowStrip + 桌面右列 BatchFlow;2026-08-22 用户否决了替代的横向进程带);左列为跨身份桌面:「需要你处理」并列参评人琥珀卡(去补充/去修改)与审核员行(N 份待审核→开始审核、N 条补件已回复→去查看,直达审核页对应视图),空时收成一行轻提示;「最近动态」为按日分组(今天/昨天/日期)的纵向时间线,时刻列+节点轨,自己的动作空心点、外部变化实心点、终局判定留极轻语义色,行首题名+身份词(申报/审核,仅双身份用户显示,亦是流内筛选项),句子后跟 reason/comment 副行(补件说明不再丢失);无限分页(useInfiniteQuery,SSE 失效整组重读,修复手写游标在末页后复现「查看更多」的缺陷);页面不使用「·」分隔符。纯管理员两分支皆 null,桌面整体隐去,只读进程。

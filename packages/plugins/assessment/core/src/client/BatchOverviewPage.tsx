@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRightIcon } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CheckIcon, ChevronRightIcon } from 'lucide-react'
 import {
   useApi,
   useApiQuery,
@@ -12,6 +12,8 @@ import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
+import { cn } from '@qualy/ui/cn'
 import { assessmentApi } from './api.ts'
 import { useBatchLive } from './live.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
@@ -20,15 +22,11 @@ import { BatchFlow, BatchFlowStrip } from './batch/BatchFlow.tsx'
 import { PhaseContextBar } from './batch/PhaseContextBar.tsx'
 import { assessmentMessages as m } from './i18n.ts'
 
-// Where a batch opens, for whoever it belongs to.
-//
-// The flow of the round is one of the two things this page is for, so it is
-// here in full and read-only. Which shape it takes is a question of what the
-// screen has spare: a wide one has width, so the flow runs down a column
-// beside the page; a narrow one has none to give a second column and cannot
-// spend the height either, so the flow becomes one scrollable line above the
-// work. The break is at the width the two columns stop fitting, not at any
-// idea of what device is holding it.
+// The batch's front page, with two time axes that must not blur into one
+// (§32.73): across the top, where the whole round stands; below it, what
+// this user should handle and what has lately happened around them. The
+// page is the user's desk on the batch, not the participant's - a reviewer
+// has a desk here too, and someone who is both reads one merged story.
 
 export default function BatchOverviewPage() {
   const { batchId } = usePageRouteParams('batchId')
@@ -81,44 +79,78 @@ export default function BatchOverviewPage() {
   )
 }
 
-type ActivityItem = ApiResult<
-  typeof assessmentApi,
-  'assessment',
-  'listMyEntryActivity'
->['items'][number]
+type ActivityItem = ApiResult<typeof assessmentApi, 'assessment', 'listMyActivity'>['items'][number]
 
-const ACTIVITY_SAID = {
-  'entry-created': m['activity.entry-created'],
-  'entry-revised': m['activity.entry-revised'],
-  'entry-submitted': m['activity.entry-submitted'],
-  'entry-withdrawn': m['activity.entry-withdrawn'],
-  'entry-abandoned': m['activity.entry-abandoned'],
-  'review-approved': m['activity.review-approved'],
-  'review-rejected': m['activity.review-rejected'],
-  'review-escalated': m['activity.review-escalated'],
-  'appeal-filed': m['activity.appeal-filed'],
-  'supplement-requested': m['activity.supplement-requested'],
-  'supplement-submitted': m['activity.supplement-submitted'],
-  'supplement-cancelled': m['activity.supplement-cancelled'],
-  'revision-required': m['activity.revision-required'],
-} as const
-
-const when = (iso: string, locale: string) => {
-  // postgres text form: space separator and a bare "+00" offset that
-  // Date refuses; normalize both before parsing
-  const at = new Date(iso.replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00'))
-  return new Intl.DateTimeFormat(locale, {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(at)
+const SAID: Record<'participant' | 'reviewer', Partial<Record<ActivityItem['kind'], unknown>>> = {
+  participant: {
+    'entry-created': m['activity.entry-created'],
+    'entry-revised': m['activity.entry-revised'],
+    'entry-submitted': m['activity.entry-submitted'],
+    'entry-withdrawn': m['activity.entry-withdrawn'],
+    'entry-abandoned': m['activity.entry-abandoned'],
+    'review-approved': m['activity.review-approved'],
+    'review-rejected': m['activity.review-rejected'],
+    'review-escalated': m['activity.review-escalated'],
+    'appeal-filed': m['activity.appeal-filed'],
+    'supplement-requested': m['activity.supplement-requested'],
+    'supplement-submitted': m['activity.supplement-submitted'],
+    'supplement-cancelled': m['activity.supplement-cancelled'],
+    'revision-required': m['activity.revision-required'],
+  },
+  reviewer: {
+    'review-approved': m['activity.r.review-approved'],
+    'review-stage-approved': m['activity.r.review-stage-approved'],
+    'review-rejected': m['activity.r.review-rejected'],
+    'review-escalated': m['activity.r.review-escalated'],
+    'review-opinion-rejected': m['activity.r.review-opinion-rejected'],
+    'supplement-requested': m['activity.r.supplement-requested'],
+    'supplement-cancelled': m['activity.r.supplement-cancelled'],
+    'supplement-answered': m['activity.r.supplement-answered'],
+  },
 }
 
+// the reader's own acts wear a hollow marker; what arrived from outside is
+// filled, and a settled verdict keeps a quiet trace of its color
+const OWN: Record<'participant' | 'reviewer', ReadonlySet<string>> = {
+  participant: new Set([
+    'entry-created',
+    'entry-revised',
+    'entry-submitted',
+    'entry-withdrawn',
+    'entry-abandoned',
+    'appeal-filed',
+    'supplement-submitted',
+  ]),
+  reviewer: new Set([
+    'review-approved',
+    'review-stage-approved',
+    'review-rejected',
+    'review-escalated',
+    'review-opinion-rejected',
+    'supplement-requested',
+    'supplement-cancelled',
+  ]),
+}
+
+const markOf = (row: ActivityItem): string => {
+  if (row.perspective === 'participant' && row.kind === 'review-approved') {
+    return 'bg-emerald-500/75'
+  }
+  if (row.perspective === 'participant' && row.kind === 'review-rejected') {
+    return 'bg-rose-500/75'
+  }
+  return OWN[row.perspective].has(row.kind)
+    ? 'border-[1.5px] border-muted-foreground/50 bg-background'
+    : 'bg-muted-foreground/75'
+}
+
+type Lane = 'all' | 'participant' | 'reviewer'
+
 /**
- * The participant's own half of the overview (§32.72): what needs their
- * hand right now, and what has happened to their claims lately. Both are
- * read models over the entry facts; neither is a notification centre.
+ * The user's half of the page: what needs their hand across every standing
+ * they hold here, then one merged feed of what lately happened around
+ * them. Full histories stay on the claim and the round; this is neither an
+ * audit log nor a notification centre.
  */
 function MyDesk({ batchId }: { batchId: string }) {
   const query = useApiQuery(assessmentApi)
@@ -126,34 +158,65 @@ function MyDesk({ batchId }: { batchId: string }) {
   const run = useRunApi()
   const navigate = usePageNavigate()
   const queryClient = useQueryClient()
-  const { format, locale } = useI18n()
+  const { format, formatError, locale } = useI18n()
+  const [lane, setLane] = useState<Lane>('all')
 
   useBatchLive(batchId, (kind) => {
-    if (kind !== 'sync' && kind !== 'entries-changed' && kind !== 'result-changed') return
+    if (
+      kind !== 'sync' &&
+      kind !== 'entries-changed' &&
+      kind !== 'result-changed' &&
+      kind !== 'review-inbox-changed' &&
+      kind !== 'review-instance-changed'
+    ) {
+      return
+    }
     void queryClient.invalidateQueries({
-      queryKey: query.assessment.getMyEntrySummary.key({ params: { batchId } }),
+      queryKey: query.assessment.getMyOverview.key({ params: { batchId } }),
     })
     void queryClient.invalidateQueries({
-      queryKey: query.assessment.listMyEntryActivity.key({ params: { batchId }, query: {} }),
+      queryKey: query.assessment.listMyActivity.key({ params: { batchId }, query: {} }),
     })
   })
 
-  const summary = useQuery(query.assessment.getMyEntrySummary.queryOptions({ params: { batchId } }))
-  const activity = useQuery(
-    query.assessment.listMyEntryActivity.queryOptions({ params: { batchId }, query: {} }),
-  )
-  // pages the reader asked for beyond the first, kept until the batch changes
-  const [more, setMore] = useState<readonly ActivityItem[]>([])
-  const [cursor, setCursor] = useState<string | null>(null)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const first = activity.data?.items ?? []
-  const shown = [...first, ...more]
-  const nextCursor = cursor ?? activity.data?.nextCursor ?? null
-  const hasMore = (cursor === null ? activity.data?.nextCursor : cursor) !== null
+  const overview = useQuery(query.assessment.getMyOverview.queryOptions({ params: { batchId } }))
+  const perspective = lane === 'all' ? undefined : lane
+  const activity = useInfiniteQuery({
+    queryKey: [
+      ...query.assessment.listMyActivity.key({ params: { batchId }, query: {} }),
+      { lane },
+      'infinite',
+    ],
+    queryFn: ({ pageParam }) =>
+      run(
+        api.assessment.listMyActivity({
+          params: { batchId },
+          query: {
+            ...(pageParam !== undefined ? { cursor: pageParam } : {}),
+            ...(perspective !== undefined ? { perspective } : {}),
+          },
+        }),
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  })
 
-  // a participant without a membership row simply has no desk here: the
-  // administrator's overview keeps the flow column and nothing else
-  if (summary.error !== null) return null
+  const rows = useMemo(
+    () => activity.data?.pages.flatMap((page) => page.items) ?? [],
+    [activity.data],
+  )
+  const groups = useMemo(() => groupByDay(rows, locale, format), [rows, locale, format])
+
+  const desk = overview.data
+  // both standings at once is the only desk that needs telling apart
+  const mixed = desk !== undefined && desk.participant !== null && desk.reviewer !== null
+  if (overview.isError) {
+    return <p className="text-sm text-destructive">{formatError(overview.error)}</p>
+  }
+  if (desk !== undefined && desk.participant === null && desk.reviewer === null) {
+    // an administrator without a standing here: the flow above is the page
+    return null
+  }
 
   const openEntry = (itemId: string, entryId: string, layer: 'detail' | 'entry') =>
     navigate('assessment/batch-my-entries', {
@@ -161,36 +224,64 @@ function MyDesk({ batchId }: { batchId: string }) {
       search:
         layer === 'detail' ? { open: itemId, detail: entryId } : { open: itemId, entry: entryId },
     })
+  const openRow = (row: ActivityItem) => {
+    if (row.perspective === 'reviewer') {
+      if (row.instanceId !== null) {
+        navigate('assessment/review-instance', {
+          params: { batchId, instanceId: row.instanceId },
+        })
+      }
+      return
+    }
+    openEntry(row.itemId, row.entryId, 'detail')
+  }
+
+  const laneTag = (which: 'participant' | 'reviewer') =>
+    mixed && (
+      <span className="shrink-0 text-xs text-muted-foreground/80">
+        {format(which === 'participant' ? m.overviewLaneEntry : m.overviewLaneReview)}
+      </span>
+    )
+
+  const actions = desk?.participant?.actions ?? []
+  const pending = desk?.reviewer?.pendingCount ?? 0
+  const answered = desk?.reviewer?.answeredAskCount ?? 0
+  const deskRows = actions.length + (pending > 0 ? 1 : 0) + (answered > 0 ? 1 : 0)
 
   return (
     <>
       <section className="flex flex-col gap-3">
         <div className="flex items-baseline gap-2">
           <h2 className="text-sm font-semibold">{format(m.overviewActionsTitle)}</h2>
-          {(summary.data?.actions.length ?? 0) > 0 && (
+          {deskRows > 0 && (
             <Badge variant="secondary" className="tabular-nums">
-              {summary.data!.actions.length}
+              {deskRows}
             </Badge>
           )}
         </div>
-        {summary.isPending ? (
-          <Skeleton className="h-16 w-full" />
-        ) : summary.data!.actions.length === 0 ? (
-          <p className="rounded-xl border px-4 py-3 text-sm text-muted-foreground">
+        {overview.isPending ? (
+          <Skeleton className="h-14 w-full" />
+        ) : deskRows === 0 ? (
+          // nothing to do earns one quiet line, not an empty-state monument
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <CheckIcon aria-hidden className="size-3.5" />
             {format(m.overviewActionsNone)}
           </p>
         ) : (
           <ul className="flex flex-col gap-2" data-testid="overview-actions">
-            {summary.data!.actions.map((action) => (
+            {actions.map((action) => (
               <li
                 key={`${action.kind}:${action.entryId}`}
                 data-action={action.kind}
                 className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/25"
               >
                 <div className="flex min-w-0 flex-1 basis-52 flex-col gap-0.5">
-                  <p className="truncate text-sm font-medium text-amber-950 dark:text-amber-100">
-                    {action.itemTitle}
-                  </p>
+                  <span className="flex items-baseline gap-2">
+                    <p className="truncate text-sm font-medium text-amber-950 dark:text-amber-100">
+                      {action.itemTitle}
+                    </p>
+                    {laneTag('participant')}
+                  </span>
                   <p className="text-[13px] text-amber-900/85 dark:text-amber-200/80">
                     {action.kind === 'supplement'
                       ? format(m.overviewActionSupplement, {
@@ -205,7 +296,7 @@ function MyDesk({ batchId }: { batchId: string }) {
                   )}
                 </div>
                 <span className="text-xs text-amber-900/60 tabular-nums dark:text-amber-200/50">
-                  {when(action.at, locale)}
+                  {clockOf(action.at, locale)}
                 </span>
                 <Button
                   size="sm"
@@ -225,80 +316,199 @@ function MyDesk({ batchId }: { batchId: string }) {
                 </Button>
               </li>
             ))}
+            {pending > 0 && (
+              <li
+                data-action="review-pending"
+                data-count={pending}
+                className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-4 py-3"
+              >
+                <span className="flex min-w-0 flex-1 basis-52 items-baseline gap-2">
+                  <p className="text-sm">{format(m.overviewPendingReviews, { count: pending })}</p>
+                  {laneTag('reviewer')}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate('assessment/batch-reviews', { params: { batchId } })}
+                >
+                  {format(m.overviewGoReview)}
+                  <ChevronRightIcon aria-hidden />
+                </Button>
+              </li>
+            )}
+            {answered > 0 && (
+              <li
+                data-action="review-answered"
+                data-count={answered}
+                className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-4 py-3"
+              >
+                <span className="flex min-w-0 flex-1 basis-52 items-baseline gap-2">
+                  <p className="text-sm">{format(m.overviewAskAnswered, { count: answered })}</p>
+                  {laneTag('reviewer')}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    navigate('assessment/batch-reviews', {
+                      params: { batchId },
+                      search: { view: 'asked' },
+                    })
+                  }
+                >
+                  {format(m.overviewGoAsked)}
+                  <ChevronRightIcon aria-hidden />
+                </Button>
+              </li>
+            )}
           </ul>
         )}
       </section>
 
       <section className="flex flex-col gap-3">
-        <div className="flex items-baseline gap-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h2 className="text-sm font-semibold">{format(m.overviewActivityTitle)}</h2>
-          <span className="flex-1" />
-          {(summary.data?.unreadItemCount ?? 0) > 0 && (
+          {(desk?.participant?.unreadItemCount ?? 0) > 0 && (
             <span className="text-xs text-muted-foreground">
-              {format(m.overviewActivityUnread, { count: summary.data!.unreadItemCount })}
+              {format(m.overviewActivityUnread, { count: desk!.participant!.unreadItemCount })}
             </span>
           )}
+          <span className="flex-1" />
+          {mixed && (
+            <Tabs value={lane} onValueChange={(value) => setLane(value as Lane)}>
+              <TabsList className="h-8">
+                <TabsTrigger value="all" className="px-2.5 text-xs">
+                  {format(m.overviewFilterAll)}
+                </TabsTrigger>
+                <TabsTrigger value="participant" className="px-2.5 text-xs">
+                  {format(m.overviewLaneEntry)}
+                </TabsTrigger>
+                <TabsTrigger value="reviewer" className="px-2.5 text-xs">
+                  {format(m.overviewLaneReview)}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
+
         {activity.isPending ? (
           <Skeleton className="h-24 w-full" />
-        ) : shown.length === 0 ? (
-          <p className="rounded-xl border px-4 py-3 text-sm text-muted-foreground">
-            {format(m.overviewActivityNone)}
-          </p>
+        ) : activity.isError ? (
+          <p className="text-sm text-destructive">{formatError(activity.error)}</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{format(m.overviewActivityNone)}</p>
         ) : (
-          <ul className="flex flex-col" data-testid="overview-activity">
-            {shown.map((row) => (
-              <li key={row.id + row.kind}>
-                <button
-                  type="button"
-                  onClick={() => openEntry(row.itemId, row.entryId, 'detail')}
-                  className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b px-1 py-2.5 text-left last:border-b-0 hover:bg-accent/40"
-                >
-                  <span className="min-w-0 shrink-0 basis-40 truncate text-sm font-medium">
-                    {row.itemTitle}
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm text-muted-foreground">
-                    {format(ACTIVITY_SAID[row.kind], {
-                      who: row.actorName ?? format(m['activity.somebody']),
-                    })}
-                    {row.reason !== null && ` · ${row.reason}`}
-                  </span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {when(row.at, locale)}
-                  </span>
-                </button>
-              </li>
+          <div className="flex flex-col gap-4" data-testid="overview-activity">
+            {groups.map((group) => (
+              <section key={group.label} className="flex flex-col gap-2">
+                <h3 className="text-xs font-medium text-muted-foreground">{group.label}</h3>
+                <ol className="flex flex-col">
+                  {group.items.map((row, index) => {
+                    const sentence = SAID[row.perspective][row.kind]
+                    const who =
+                      (row.perspective === 'reviewer' ? row.subjectName : row.actorName) ??
+                      format(m['activity.somebody'])
+                    const last = index === group.items.length - 1
+                    return (
+                      <li
+                        key={row.id + row.kind}
+                        data-kind={row.kind}
+                        data-perspective={row.perspective}
+                        className="flex gap-3"
+                      >
+                        <span className="w-10 shrink-0 pt-0.5 text-right text-xs text-muted-foreground tabular-nums">
+                          {clockOf(row.at, locale)}
+                        </span>
+                        <span aria-hidden className="flex w-3 shrink-0 flex-col items-center">
+                          <span
+                            className={cn('mt-1 size-2.5 shrink-0 rounded-full', markOf(row))}
+                          />
+                          {!last && <span className="mt-1 w-px flex-1 bg-border" />}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openRow(row)}
+                          className={cn(
+                            'group flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left',
+                            last ? 'pb-1' : 'pb-4',
+                          )}
+                        >
+                          <span className="flex w-full min-w-0 items-baseline gap-2">
+                            <span className="truncate text-sm font-medium group-hover:underline">
+                              {row.itemTitle}
+                            </span>
+                            {laneTag(row.perspective)}
+                          </span>
+                          {sentence !== undefined && (
+                            <span className="text-sm text-muted-foreground">
+                              {format(sentence as (typeof m)['activity.r.review-approved'], {
+                                who,
+                              })}
+                            </span>
+                          )}
+                          {row.reason !== null && (
+                            <span className="text-xs text-muted-foreground/85">{row.reason}</span>
+                          )}
+                          {row.comment !== null && (
+                            <span className="line-clamp-2 text-xs text-muted-foreground/85">
+                              {row.comment}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </section>
             ))}
-          </ul>
-        )}
-        {hasMore && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start"
-            disabled={loadingMore}
-            onClick={() => {
-              const after = nextCursor
-              if (after === null) return
-              setLoadingMore(true)
-              void run(
-                api.assessment.listMyEntryActivity({
-                  params: { batchId },
-                  query: { cursor: after },
-                }),
-              )
-                .then((page) => {
-                  setMore((held) => [...held, ...page.items])
-                  setCursor(page.nextCursor)
-                })
-                .finally(() => setLoadingMore(false))
-            }}
-          >
-            {format(m.overviewActivityMore)}
-            <ChevronRightIcon aria-hidden />
-          </Button>
+            {activity.hasNextPage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start"
+                disabled={activity.isFetchingNextPage}
+                onClick={() => void activity.fetchNextPage()}
+              >
+                {format(m.overviewActivityMore)}
+                <ChevronRightIcon aria-hidden />
+              </Button>
+            )}
+          </div>
         )}
       </section>
     </>
   )
+}
+
+const clockOf = (iso: string, locale: string) =>
+  new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+
+function groupByDay(
+  rows: readonly ActivityItem[],
+  locale: string,
+  format: ReturnType<typeof useI18n>['format'],
+): readonly { label: string; items: ActivityItem[] }[] {
+  const today = new Date()
+  const floor = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const todayFloor = floor(today)
+  const labelOf = (iso: string) => {
+    const at = new Date(iso)
+    const diff = Math.round((todayFloor - floor(at)) / 86_400_000)
+    if (diff === 0) return format(m.overviewToday)
+    if (diff === 1) return format(m.overviewYesterday)
+    return new Intl.DateTimeFormat(locale, {
+      month: 'numeric',
+      day: 'numeric',
+      ...(at.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
+    }).format(at)
+  }
+  const groups: { label: string; items: ActivityItem[] }[] = []
+  for (const row of rows) {
+    const label = labelOf(row.at)
+    const last = groups[groups.length - 1]
+    if (last !== undefined && last.label === label) last.items.push(row)
+    else groups.push({ label, items: [row] })
+  }
+  return groups
 }

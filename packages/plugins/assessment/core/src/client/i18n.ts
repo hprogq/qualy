@@ -229,6 +229,9 @@ const sinceSeconds = defineMessage<{ count: number }>()({
 
 // the round as the people in it read it: when a stage began, when it gives
 // way to the next, and nothing about who arranges any of it
+
+// the round as the people in it read it: when a stage began, when it gives
+// way to the next, and nothing about who arranges any of it
 const flowFrom = defineMessage<{ when: string }>()({
   id: 'assessment/flow/from',
   defaultMessage: 'Starts {when}',
@@ -434,10 +437,10 @@ const i18n = definePluginMessages({
     // ------------------------------------------------------------------
     // the stage plan
     switchBatch: { id: 'assessment/batch/switch', defaultMessage: 'Switch batch' },
-    notStartedYet: { id: 'assessment/batch/not-started', defaultMessage: 'Not started' },
     plannedStart: { id: 'assessment/batch/planned-start', defaultMessage: 'Scheduled start' },
     noStagesYet: { id: 'assessment/batch/no-stages', defaultMessage: 'No stages configured' },
     currentStage: { id: 'assessment/batch/current-stage', defaultMessage: 'Current stage' },
+    notStartedYet: { id: 'assessment/batch/not-started', defaultMessage: 'Not started' },
     flowTitle: { id: 'assessment/flow/title', defaultMessage: 'Stage progress' },
     flowFrom,
     flowUntil,
@@ -457,6 +460,10 @@ const i18n = definePluginMessages({
     flowStatusEnded: { id: 'assessment/flow/status-ended', defaultMessage: 'Ended' },
     flowStatusCurrent: { id: 'assessment/flow/status-current', defaultMessage: 'In progress' },
     flowStatusFuture: { id: 'assessment/flow/status-future', defaultMessage: 'Not started' },
+    // a stage with no time still says something about its time: an empty
+    // line reads as a screen that failed to load one
+    // said on every stage: a rail of dates leaves the reader counting which
+    // of them is behind and which is still to come
     bareDays,
     bareHours,
     bareMinutes,
@@ -3137,11 +3144,60 @@ const i18n = definePluginMessages({
     },
     overviewActivityNone: {
       id: 'assessment/overview/activity-none',
-      defaultMessage: 'Nothing has happened to your entries yet.',
+      defaultMessage: 'Nothing has happened around you here yet.',
     },
     overviewActivityMore: {
       id: 'assessment/overview/activity-more',
       defaultMessage: 'Show more',
+    },
+    overviewPendingReviews: {
+      id: 'assessment/overview/pending-reviews',
+      defaultMessage:
+        '{count, plural, one {# claim is} other {# claims are}} waiting for your review',
+    },
+    overviewGoReview: { id: 'assessment/overview/go-review', defaultMessage: 'Start reviewing' },
+    overviewAskAnswered: {
+      id: 'assessment/overview/ask-answered',
+      defaultMessage:
+        '{count, plural, one {# of your supplement requests has} other {# of your supplement requests have}} been answered',
+    },
+    overviewGoAsked: { id: 'assessment/overview/go-asked', defaultMessage: 'View replies' },
+    overviewLaneEntry: { id: 'assessment/overview/lane-entry', defaultMessage: 'Filing' },
+    overviewLaneReview: { id: 'assessment/overview/lane-review', defaultMessage: 'Reviewing' },
+    overviewFilterAll: { id: 'assessment/overview/filter-all', defaultMessage: 'All' },
+    overviewToday: { id: 'assessment/overview/today', defaultMessage: 'Today' },
+    overviewYesterday: { id: 'assessment/overview/yesterday', defaultMessage: 'Yesterday' },
+    'activity.r.review-approved': {
+      id: 'assessment/activity/reviewer-approved',
+      defaultMessage: "You approved {who}'s claim",
+    },
+    'activity.r.review-stage-approved': {
+      id: 'assessment/activity/reviewer-stage-approved',
+      defaultMessage: "You approved {who}'s claim at this stage",
+    },
+    'activity.r.review-rejected': {
+      id: 'assessment/activity/reviewer-rejected',
+      defaultMessage: "You sent {who}'s claim back",
+    },
+    'activity.r.review-escalated': {
+      id: 'assessment/activity/reviewer-escalated',
+      defaultMessage: "You escalated {who}'s claim for further review",
+    },
+    'activity.r.review-opinion-rejected': {
+      id: 'assessment/activity/reviewer-opinion-rejected',
+      defaultMessage: "You advised sending {who}'s claim back",
+    },
+    'activity.r.supplement-requested': {
+      id: 'assessment/activity/reviewer-supplement-requested',
+      defaultMessage: 'You asked {who} for supplementary material',
+    },
+    'activity.r.supplement-cancelled': {
+      id: 'assessment/activity/reviewer-supplement-cancelled',
+      defaultMessage: 'You took back the ask you sent {who}',
+    },
+    'activity.r.supplement-answered': {
+      id: 'assessment/activity/reviewer-supplement-answered',
+      defaultMessage: '{who} supplied the material you asked for',
     },
     // one sentence per activity kind, second person for the reader's own acts
     'activity.entry-created': {

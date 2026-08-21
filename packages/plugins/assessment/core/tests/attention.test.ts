@@ -136,15 +136,16 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
           const racedUnread = (yield* assessment.listMyEntries(f.t, g.batch.id, {}, s1)).attention
             .unreadItemIds
 
-          // the summary knows what needs a hand, and the activity tells the
+          // the desk knows what needs a hand, and the activity tells the
           // story newest first in business words
-          const summary = yield* assessment.getMyEntrySummary(f.t, g.batch.id, s1)
-          const activity = yield* assessment.listMyEntryActivity(f.t, g.batch.id, {}, s1)
+          const overview = yield* assessment.getMyOverview(f.t, g.batch.id, s1)
+          const activity = yield* assessment.listMyActivity(f.t, g.batch.id, {}, s1)
           return {
             racedUnread,
             itemId: g.item.id,
-            summary,
+            summary: overview.participant!,
             kinds: activity.items.map((one) => one.kind),
+            ats: activity.items.map((one) => one.at),
           }
         }),
       ),
@@ -161,6 +162,10 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
       'entry-submitted',
       'entry-created',
     ])
+    // the wire speaks ISO, not postgres text: the browser parses it as-is
+    for (const at of result.ats) {
+      expect(at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    }
   })
 
   it('lists the open ask and the return mark as the two things to handle', async () => {
@@ -207,7 +212,7 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
             f.principal(f.reviewer),
           )
           return {
-            summary: yield* assessment.getMyEntrySummary(f.t, g.batch.id, s1),
+            summary: (yield* assessment.getMyOverview(f.t, g.batch.id, s1)).participant!,
           }
         }),
       ),
@@ -218,5 +223,98 @@ describe.runIf(postgresAvailable)('the participant attention model', () => {
     expect(result.summary.actions.find((one) => one.kind === 'supplement')?.summary).toBe(
       '请补充证书原件',
     )
+  })
+
+  it('gives the reviewer a desk of their own: the queue count, and their acts in their voice', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('at-reviewer')
+          const assessment = yield* Assessment
+          // two stages, so one approval hands on and the next one settles
+          const g = yield* runningBatch(f, {
+            profile: PROFILE,
+            stages: [
+              {
+                id: 'class',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+              {
+                id: 'class-again',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const judge = f.principal(f.reviewer)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const submitted = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+
+          // one claim waiting, nothing done yet: the desk counts, the feed is quiet
+          const before = yield* assessment.getMyOverview(f.t, g.batch.id, judge)
+          const quiet = yield* assessment.listMyActivity(f.t, g.batch.id, {}, judge)
+
+          yield* assessment.decideReview(
+            f.t,
+            submitted.currentReviewInstanceId!,
+            { decision: 'approve' },
+            judge,
+          )
+          const midway = yield* assessment.listMyActivity(f.t, g.batch.id, {}, judge)
+          yield* assessment.decideReview(
+            f.t,
+            submitted.currentReviewInstanceId!,
+            { decision: 'approve' },
+            judge,
+          )
+          const after = yield* assessment.getMyOverview(f.t, g.batch.id, judge)
+          const story = yield* assessment.listMyActivity(f.t, g.batch.id, {}, judge)
+          // each lane alone: the reviewer lane also walks the query shape
+          // where the reviewer piece leads the union
+          const reviewerLane = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { perspective: 'reviewer' },
+            judge,
+          )
+          const filtered = yield* assessment.listMyActivity(
+            f.t,
+            g.batch.id,
+            { perspective: 'participant' },
+            judge,
+          )
+          return { before, quiet, midway, after, story, reviewerLane, filtered }
+        }),
+      ),
+    )
+
+    // the fixture's org-scope import sweeps the reviewer into the roster
+    // too, so their participant branch exists and is simply empty
+    expect(result.before.participant).toEqual({ unreadItemCount: 0, actions: [] })
+    expect(result.before.reviewer).toEqual({ pendingCount: 1, answeredAskCount: 0 })
+    expect(result.quiet.items).toEqual([])
+    // a mid-chain approval is a handover in the reviewer's own story too
+    expect(result.midway.items.map((one) => one.kind)).toEqual(['review-stage-approved'])
+    expect(result.after.reviewer).toEqual({ pendingCount: 0, answeredAskCount: 0 })
+    const settled = result.story.items[0]!
+    expect(result.story.items.map((one) => one.kind)).toEqual([
+      'review-approved',
+      'review-stage-approved',
+    ])
+    expect(settled.perspective).toBe('reviewer')
+    expect(settled.subjectName).not.toBeNull()
+    expect(settled.instanceId).not.toBeNull()
+    expect(result.reviewerLane.items.map((one) => one.kind)).toEqual([
+      'review-approved',
+      'review-stage-approved',
+    ])
+    expect(result.filtered.items).toEqual([])
   })
 })

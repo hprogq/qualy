@@ -184,34 +184,54 @@ describe('the overview desk', () => {
         getTimeline: () => Effect.succeed({ timeline: [] }),
         // the key lands on the my-entries page, which reads the paper
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
-        getMyEntrySummary: () =>
+        getMyOverview: () =>
           Effect.succeed({
-            unreadItemCount: 1,
-            actions: [
-              {
-                kind: 'supplement' as const,
-                entryId: ENTRY_ID,
-                itemId: ITEM_ID,
-                itemTitle: '退役复学',
-                at: '2026-03-03 10:00:00+00',
-                who: '示例辅导员',
-                summary: '请补充现场照片',
-              },
-            ],
+            participant: {
+              unreadItemCount: 1,
+              actions: [
+                {
+                  kind: 'supplement' as const,
+                  entryId: ENTRY_ID,
+                  itemId: ITEM_ID,
+                  itemTitle: '退役复学',
+                  at: '2026-03-03T10:00:00.000Z',
+                  who: '示例辅导员',
+                  summary: '请补充现场照片',
+                },
+              ],
+            },
+            reviewer: { pendingCount: 3, answeredAskCount: 1 },
           }),
-        listMyEntryActivity: () =>
+        listMyActivity: () =>
           Effect.succeed({
             items: [
               {
                 id: REQUEST_ID,
+                perspective: 'participant' as const,
                 kind: 'supplement-requested' as const,
                 entryId: ENTRY_ID,
                 itemId: ITEM_ID,
                 itemTitle: '退役复学',
+                subjectName: null,
+                instanceId: null,
                 actorName: '示例辅导员',
                 reason: null,
+                comment: '请补充现场照片',
+                at: '2026-03-03T10:00:00.000Z',
+              },
+              {
+                id: ENTRY_ID,
+                perspective: 'reviewer' as const,
+                kind: 'review-approved' as const,
+                entryId: ENTRY_ID,
+                itemId: ITEM_ID,
+                itemTitle: '志愿服务',
+                subjectName: '王小明',
+                instanceId: INSTANCE_ID,
+                actorName: null,
+                reason: null,
                 comment: null,
-                at: '2026-03-03 10:00:00+00',
+                at: '2026-03-02T09:00:00.000Z',
               },
             ],
             nextCursor: null,
@@ -224,13 +244,28 @@ describe('the overview desk', () => {
       ],
     )
 
-    // the ask stands as a card with the asker's words
+    // the ask stands as a card with the asker's words, and the reviewer
+    // standing adds its own rows to the same desk
     const actions = page.getByTestId('overview-actions')
     await expect.element(actions).toBeVisible()
     expect(actions.element().querySelector('[data-action="supplement"]')).not.toBeNull()
-    await expect.element(page.getByText('请补充现场照片')).toBeVisible()
-    // and the activity tells the same story below
+    expect(
+      actions.element().querySelector('[data-action="review-pending"]')?.getAttribute('data-count'),
+    ).toBe('3')
+    expect(
+      actions
+        .element()
+        .querySelector('[data-action="review-answered"]')
+        ?.getAttribute('data-count'),
+    ).toBe('1')
+    await expect.element(page.getByText('请补充现场照片').first()).toBeVisible()
+    // one merged feed, each row wearing which standing it spoke to
     await expect.element(page.getByTestId('overview-activity')).toBeVisible()
+    const feed = page.getByTestId('overview-activity').element()
+    expect(feed.querySelector('[data-perspective="participant"]')).not.toBeNull()
+    expect(feed.querySelector('[data-perspective="reviewer"]')?.getAttribute('data-kind')).toBe(
+      'review-approved',
+    )
 
     // its key walks straight onto the claim: question open, drawer up
     await page.getByRole('button', { name: '去补充' }).click()

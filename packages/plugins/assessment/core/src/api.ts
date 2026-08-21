@@ -920,7 +920,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // the caller's own standing in the round, computed on request by the
     // one scorer; never anybody else's through this path
-    HttpApiEndpoint.get('getMyResult', '/assessment/batches/:batchId/my-result', {
+    HttpApiEndpoint.get('getMyResult', '/assessment/batches/:batchId/me/result', {
       params: Schema.Struct({ batchId: id }),
       success: myResultView,
       error: [BatchNotFound, ParticipantNotFound, AccessDenied],
@@ -1080,7 +1080,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // the way back in after a refresh: everything the caller has filed in
     // this round, whatever state it is in now
-    HttpApiEndpoint.get('listMyEntries', '/assessment/batches/:batchId/my-entries', {
+    HttpApiEndpoint.get('listMyEntries', '/assessment/batches/:batchId/me/entries', {
       params: Schema.Struct({ batchId: id }),
       query: Schema.Struct(pageQuery),
       success: Schema.Struct({
@@ -1105,7 +1105,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * (a look is not a business act), archived batches included; touching
      * only the caller's own participant row is the whole authorization.
      */
-    HttpApiEndpoint.put('markMyEntryRead', '/assessment/batches/:batchId/my-entry-reads/:itemId', {
+    HttpApiEndpoint.put('markMyEntryRead', '/assessment/batches/:batchId/me/items/:itemId/read', {
       params: Schema.Struct({ batchId: id, itemId: id }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [BatchNotFound, ParticipantNotFound, AccessDenied],
@@ -1113,42 +1113,64 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
-     * What this participant should handle now, and how much is unread: the
-     * overview's first block. Draft work is deliberately absent - drafts
-     * are the owner's own doing, not something the round asked of them.
+     * The reader's desk on this batch, one branch per standing they hold
+     * (§32.73). A branch the reader does not have is null - "not a
+     * participant" and "a participant with nothing to do" are different
+     * facts, and neither is an error. Draft work is deliberately absent
+     * from the participant branch: drafts are the owner's own doing, not
+     * something the round asked of them.
      */
-    HttpApiEndpoint.get('getMyEntrySummary', '/assessment/batches/:batchId/my-entry-summary', {
+    HttpApiEndpoint.get('getMyOverview', '/assessment/batches/:batchId/me/overview', {
       params: Schema.Struct({ batchId: id }),
       success: Schema.Struct({
-        unreadItemCount: Schema.Number,
-        actions: Schema.Array(
+        participant: Schema.NullOr(
           Schema.Struct({
-            kind: Schema.Literals(['supplement', 'revision']),
-            entryId: Schema.String,
-            itemId: Schema.String,
-            itemTitle: Schema.String,
-            at: Schema.String,
-            who: Schema.NullOr(Schema.String),
-            summary: Schema.NullOr(Schema.String),
+            unreadItemCount: Schema.Number,
+            actions: Schema.Array(
+              Schema.Struct({
+                kind: Schema.Literals(['supplement', 'revision']),
+                entryId: Schema.String,
+                itemId: Schema.String,
+                itemTitle: Schema.String,
+                at: Schema.String,
+                who: Schema.NullOr(Schema.String),
+                summary: Schema.NullOr(Schema.String),
+              }),
+            ),
+          }),
+        ),
+        reviewer: Schema.NullOr(
+          Schema.Struct({
+            /** claims standing in this reviewer's queue right now */
+            pendingCount: Schema.Number,
+            /** asks this reviewer sent that have come back answered */
+            answeredAskCount: Schema.Number,
           }),
         ),
       }),
-      error: [BatchNotFound, ParticipantNotFound, AccessDenied],
+      error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     /**
-     * The reader's own recent story across every claim in the batch, told
-     * in business words - never raw event kinds, and supplements only from
-     * their structured records so nothing is said twice.
+     * What happened around this user in the batch lately, newest first and
+     * in business words: their own claims' story as a participant, their
+     * own review acts as a reviewer - never raw event kinds, and never the
+     * shared queue's traffic. One claim's or one round's full history
+     * stays on that object's own page.
      */
-    HttpApiEndpoint.get('listMyEntryActivity', '/assessment/batches/:batchId/my-entry-activity', {
+    HttpApiEndpoint.get('listMyActivity', '/assessment/batches/:batchId/me/activity', {
       params: Schema.Struct({ batchId: id }),
-      query: Schema.Struct(pageQuery),
+      query: Schema.Struct({
+        ...pageQuery,
+        perspective: Schema.optional(Schema.Literals(['participant', 'reviewer'])),
+      }),
       success: Schema.Struct({
         items: Schema.Array(
           Schema.Struct({
             id: Schema.String,
+            /** which of the reader's standings this row spoke to */
+            perspective: Schema.Literals(['participant', 'reviewer']),
             kind: Schema.Literals([
               'entry-created',
               'entry-revised',
@@ -1163,10 +1185,17 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
               'supplement-submitted',
               'supplement-cancelled',
               'revision-required',
+              'review-stage-approved',
+              'review-opinion-rejected',
+              'supplement-answered',
             ]),
             entryId: Schema.String,
             itemId: Schema.String,
             itemTitle: Schema.String,
+            /** whose claim it is, on rows about somebody else's work */
+            subjectName: Schema.NullOr(Schema.String),
+            /** the round a reviewer-side row belongs to, as its way in */
+            instanceId: Schema.NullOr(Schema.String),
             actorName: Schema.NullOr(Schema.String),
             reason: Schema.NullOr(Schema.String),
             comment: Schema.NullOr(Schema.String),
@@ -1175,7 +1204,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         ),
         nextCursor: Schema.NullOr(Schema.String),
       }),
-      error: [BatchNotFound, ParticipantNotFound, AccessDenied, BadRequest],
+      error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
   .add(

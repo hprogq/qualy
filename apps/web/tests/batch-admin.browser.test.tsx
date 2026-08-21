@@ -169,8 +169,8 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   getTimeline: () => Effect.succeed({ timeline: [] }),
   // the participant's desk on the overview: this harness plays an
   // administrator, whose desk is empty by design
-  getMyEntrySummary: () => Effect.succeed({ unreadItemCount: 0, actions: [] }),
-  listMyEntryActivity: () => Effect.succeed({ items: [], nextCursor: null }),
+  getMyOverview: () => Effect.succeed({ participant: null, reviewer: null }),
+  listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
   listTemplates: templates,
   listScopeOptions: () =>
     Effect.succeed({

@@ -25,7 +25,6 @@ import {
   markMyEntryReads,
   unreadItemIdsOf,
   myActionRowsOf,
-  myActivityPage,
 } from './db.ts'
 import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/db.ts'
 import {
@@ -175,21 +174,6 @@ export type CreateEntryError =
 export type ReviseEntryError =
   EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
 /** the activity stream's public vocabulary; raw event kinds never leave */
-export type MyActivityKind =
-  | 'entry-created'
-  | 'entry-revised'
-  | 'entry-submitted'
-  | 'entry-withdrawn'
-  | 'entry-abandoned'
-  | 'review-approved'
-  | 'review-rejected'
-  | 'review-escalated'
-  | 'appeal-filed'
-  | 'supplement-requested'
-  | 'supplement-submitted'
-  | 'supplement-cancelled'
-  | 'revision-required'
-
 export type EntryStatusError =
   EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused
 
@@ -335,28 +319,6 @@ export interface EntryMethods {
       }[]
     },
     BatchNotFound | ParticipantNotFound | AccessDenied
-  >
-  readonly listMyEntryActivity: (
-    tenantId: string,
-    batchId: string,
-    page: { cursor?: string; limit?: string },
-    as: Principal,
-  ) => Effect.Effect<
-    {
-      items: readonly {
-        id: string
-        kind: MyActivityKind
-        entryId: string
-        itemId: string
-        itemTitle: string
-        actorName: string | null
-        reason: string | null
-        comment: string | null
-        at: string
-      }[]
-      nextCursor: string | null
-    },
-    BatchNotFound | ParticipantNotFound | AccessDenied | BadRequest
   >
   readonly interveneOnEntry: (
     tenantId: string,
@@ -1259,6 +1221,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 currentReviewInstanceId: null,
               })
               if (!moved) return yield* refuse(action, 'entry-not-withdrawable')
+              // the user act in the entry's own ledger: the round's
+              // cancelled-by-submitter above is closing bookkeeping, and
+              // the activity feed must not have to guess which business
+              // act - withdraw or abandon - stood behind it (§32.73)
+              yield* insertEntryEvent({
+                tenantId,
+                entryId,
+                kind: 'withdrawn-by-submitter',
+                actorId: as.userId,
+              })
             }
             // coarse across the three branches: whichever way the claim
             // moved, its owner's paper, the reviewers' queues and any open
@@ -1616,48 +1588,6 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     )
   })
 
-  const listMyEntryActivity: EntryMethods['listMyEntryActivity'] = Effect.fn(
-    'Assessment.listMyEntryActivity',
-  )(function* (tenantId, batchId, page, as) {
-    const fingerprint = `my-activity:${as.userId}:${batchId}`
-    const key = readQueryCursor(page.cursor, fingerprint, ['text', 'text', 'uuid'])
-    if (key === null) return yield* cursorUnusable()
-    const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
-    return yield* withDb(
-      Effect.gen(function* () {
-        const membership = yield* myMembership(tenantId, batchId, as)
-        const rows = yield* myActivityPage({
-          tenantId,
-          batchId,
-          participantId: membership.id,
-          after: key === undefined ? undefined : [key[0]!, key[1]!, key[2]!],
-          limit: limit + 1,
-        })
-        const pageRows = rows.slice(0, limit)
-        const last = pageRows[pageRows.length - 1]
-        return {
-          items: pageRows.map((row) => ({
-            id: row.id,
-            // the union is enforced by the mapping CASEs above; rows whose
-            // kind fell out of them were filtered before the page
-            kind: row.kind as MyActivityKind,
-            entryId: row.entryId,
-            itemId: row.itemId,
-            itemTitle: row.itemTitle,
-            actorName: row.actorName,
-            reason: row.reason,
-            comment: row.comment,
-            at: row.at,
-          })),
-          nextCursor:
-            rows.length > limit && last !== undefined
-              ? encodeQueryCursor(fingerprint, [last.at, last.source, last.id])
-              : null,
-        }
-      }).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
-    )
-  })
-
   return {
     listMyEntries,
     getEntryHistory,
@@ -1667,7 +1597,6 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
     setEntryStatus,
     markMyEntryRead,
     getMyEntrySummary,
-    listMyEntryActivity,
     interveneOnEntry,
   }
 }
