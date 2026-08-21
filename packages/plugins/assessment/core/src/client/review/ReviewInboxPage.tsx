@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CornerDownLeftIcon, FileTextIcon, SearchIcon, ShieldIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
@@ -75,6 +75,9 @@ function Queue({
   const [itemFilter, setItemFilter] = usePageQueryState('item')
   const [unitFilter, setUnitFilter] = usePageQueryState('unit')
   const [search, setSearch] = usePageQueryState('q')
+  // the phone's search input stands behind its key; a search already typed
+  // (arriving via the address) keeps the input on show
+  const [seeking, setSeeking] = useState(search !== '')
   const queryClient = useQueryClient()
   // queue changes arrive as wake-ups; the poll below is the fallback pace
   const { live } = useBatchLive(batchId, (kind) => {
@@ -143,63 +146,101 @@ function Queue({
       className="flex flex-1 flex-col"
     >
       <div className="flex flex-1 flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Tabs value={view} onValueChange={onView}>
-            <TabsList>
-              <TabsTrigger value="item">{format(m.reviewTabByItem)}</TabsTrigger>
-              <TabsTrigger value="time">{format(m.reviewTabByTime)}</TabsTrigger>
-              <TabsTrigger value="person">{format(m.reviewTabByPerson)}</TabsTrigger>
-              {/* Its own room, not a section under the queue: what is out
-                  with somebody else is nothing to decide now, and stacked
-                  below the queue it shouted over every empty state. The
-                  count rides the tab so the door says whether it is worth
-                  opening. */}
-              <TabsTrigger value="asked">
-                {format(m.reviewAwaitingTitle)}
-                {awaiting > 0 && (
-                  <span className="rounded bg-muted px-1 text-xs tabular-nums">{awaiting}</span>
-                )}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          {/* every control on this row is the same height as the tabs beside
-              it: a row of filters that do not line up reads as two rows */}
-          {view !== 'person' && view !== 'asked' && (
-            <Filter
-              label={format(m.reviewFilterAllItems)}
-              value={itemFilter}
-              options={itemOptions}
-              onChange={setItemFilter}
-            />
-          )}
-          {view !== 'time' && view !== 'asked' && unitOptions.length > 0 && (
-            <Filter
-              label={format(m.reviewFilterAllUnits)}
-              value={unitFilter}
-              options={unitOptions}
-              onChange={setUnitFilter}
-            />
-          )}
-          {view !== 'asked' && (
-            <div className="relative">
+        {/* One register per breakpoint. On a phone the row is the segmented
+            switch and one search key - the two selects and the counters are
+            desktop instruments, and stacked together here they were a wall
+            of controls above three rows of work. On a desk the row is
+            exactly what it was: everything at tab height, side by side. */}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Tabs value={view} onValueChange={onView} className="max-md:min-w-0 max-md:flex-1">
+              <TabsList className="max-md:grid max-md:w-full max-md:grid-cols-4">
+                <TabsTrigger value="item">{format(m.reviewTabByItem)}</TabsTrigger>
+                <TabsTrigger value="time">{format(m.reviewTabByTime)}</TabsTrigger>
+                <TabsTrigger value="person">{format(m.reviewTabByPerson)}</TabsTrigger>
+                {/* Its own room, not a section under the queue: what is out
+                    with somebody else is nothing to decide now, and stacked
+                    below the queue it shouted over every empty state. The
+                    count rides the tab so the door says whether it is worth
+                    opening. */}
+                <TabsTrigger value="asked">
+                  {format(m.reviewAwaitingTab)}
+                  {awaiting > 0 && (
+                    <span className="rounded bg-muted px-1 text-xs tabular-nums">{awaiting}</span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {view !== 'asked' && (
+              <Button
+                variant="outline"
+                size="icon"
+                className={cn('size-9 md:hidden', seeking && 'bg-accent')}
+                aria-pressed={seeking}
+                onClick={() => setSeeking((open) => !open)}
+              >
+                <SearchIcon aria-hidden />
+                <span className="sr-only">{format(m.reviewSearchPlaceholder)}</span>
+              </Button>
+            )}
+            <div className="hidden md:contents">
+              {/* every control on this row is the same height as the tabs
+                  beside it: a row of filters that do not line up reads as
+                  two rows */}
+              {view !== 'person' && view !== 'asked' && (
+                <Filter
+                  label={format(m.reviewFilterAllItems)}
+                  value={itemFilter}
+                  options={itemOptions}
+                  onChange={setItemFilter}
+                />
+              )}
+              {view !== 'time' && view !== 'asked' && unitOptions.length > 0 && (
+                <Filter
+                  label={format(m.reviewFilterAllUnits)}
+                  value={unitFilter}
+                  options={unitOptions}
+                  onChange={setUnitFilter}
+                />
+              )}
+              {view !== 'asked' && (
+                <div className="relative">
+                  <SearchIcon
+                    aria-hidden
+                    className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <Input
+                    className="h-9 w-60 pl-8.5"
+                    value={search}
+                    placeholder={format(m.reviewSearchPlaceholder)}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
+              )}
+              <span className="flex-1" />
+              <Stats
+                pending={all.length}
+                handledToday={inbox.data?.handledToday ?? 0}
+                awaiting={awaiting}
+              />
+            </div>
+          </div>
+          {seeking && view !== 'asked' && (
+            <div className="relative md:hidden">
               <SearchIcon
                 aria-hidden
                 className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
-                className="h-9 w-60 pl-8.5"
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus
+                className="h-9 w-full pl-8.5"
                 value={search}
                 placeholder={format(m.reviewSearchPlaceholder)}
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
           )}
-          <span className="flex-1" />
-          <Stats
-            pending={all.length}
-            handledToday={inbox.data?.handledToday ?? 0}
-            awaiting={awaiting}
-          />
         </div>
 
         {/* the awaiting view is its own room; the queue's empty states are

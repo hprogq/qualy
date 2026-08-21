@@ -463,6 +463,7 @@ export default {
   'assessment/review/key-siblings': '打开该参评人员的其他申报',
   'assessment/review/key-supplement': '要求补充材料',
   'assessment/review/awaiting-empty': '暂无等待补充材料的申报。',
+  'assessment/review/awaiting-tab': '待补',
   'assessment/review/awaiting-title': '等待补充材料',
   'assessment/review/awaiting-count': '{count} 条',
   'assessment/review/awaiting-back': '{count} 条已完成补充',

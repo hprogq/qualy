@@ -1906,6 +1906,10 @@ const i18n = definePluginMessages({
       id: 'assessment/review/awaiting-empty',
       defaultMessage: 'No submissions are currently awaiting additional material.',
     },
+    reviewAwaitingTab: {
+      id: 'assessment/review/awaiting-tab',
+      defaultMessage: 'Awaiting',
+    },
     reviewAwaitingTitle: {
       id: 'assessment/review/awaiting-title',
       defaultMessage: 'Awaiting additional material',
