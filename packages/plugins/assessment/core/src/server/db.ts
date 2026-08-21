@@ -359,6 +359,35 @@ export const countBatches = (
     )
     .pipe(Effect.map((row) => Number(row.total)))
 
+/** the same universe split by status, for the filter chips' numbers */
+export const countBatchesByStatus = (
+  tenantId: string,
+  viewer: { held: AuthorizationScope; userId: string },
+  filter: { q?: string },
+) =>
+  db
+    .query((k) =>
+      batchFilters(
+        k
+          .selectFrom('AssessmentBatch')
+          .select('status')
+          .select(({ fn }) => fn.countAll<string>().as('total'))
+          .where('tenantId', '=', tenantId)
+          .where(visibleTo(viewer))
+          .groupBy('status'),
+        filter,
+      ).execute(),
+    )
+    .pipe(
+      Effect.map((rows) => {
+        const counts = { draft: 0, active: 0, archived: 0 }
+        for (const row of rows) {
+          if (row.status in counts) counts[row.status as keyof typeof counts] = Number(row.total)
+        }
+        return counts
+      }),
+    )
+
 /**
  * One page of the batches this person may see, newest first. The
  * authorization scope is pushed into the statement: the database intersects,

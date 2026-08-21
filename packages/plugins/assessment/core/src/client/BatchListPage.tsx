@@ -37,6 +37,10 @@ const PAGE_SIZE = 20
 // Opening a batch is a link to the batch, not a selection this screen keeps:
 // the address names the batch and the section, so it survives a reload and
 // can be sent to somebody. Creation happens in a dialog on top of the list.
+/** a chip's number, said only once the server has counted */
+const chipCount = (count: number | undefined) =>
+  count === undefined ? null : <span className="text-muted-foreground tabular-nums">{count}</span>
+
 export default function BatchListPage() {
   const query = useApiQuery(assessmentApi)
   const { format, formatError } = useI18n()
@@ -86,6 +90,7 @@ export default function BatchListPage() {
   // said by the server, not guessed here: a control the api would refuse is
   // not drawn, and this reader's own list is still theirs to read
   const canCreate = batches.data?.capabilities.create ?? false
+  const counts = batches.data?.statusCounts
   const nextCursor = batches.data?.nextCursor ?? null
   useEffect(() => {
     // remember where the next page starts, the moment this one says
@@ -112,11 +117,11 @@ export default function BatchListPage() {
 
   return (
     <Reveal>
-      <PageContainer className="flex flex-col gap-5">
+      <PageContainer className="flex flex-col gap-4 sm:gap-5">
         {/* the application's own landing page, so it introduces itself once
             rather than repeating a banner on every screen below it */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex flex-col gap-1.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1.5">
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl font-semibold tracking-tight">{format(m.batchesTitle)}</h1>
               {total > 0 && (
@@ -128,15 +133,15 @@ export default function BatchListPage() {
             <p className="text-sm text-muted-foreground">{format(m.batchesHint)}</p>
           </div>
           {canCreate && (
-            <Button variant="outline" onClick={() => setCreating(true)}>
+            <Button variant="outline" className="shrink-0" onClick={() => setCreating(true)}>
               <PlusIcon />
               {format(m.newBatch)}
             </Button>
           )}
         </div>
 
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-4 sm:gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
             <InputGroup className="w-full sm:max-w-xs">
               <InputGroupInput
                 value={search}
@@ -151,29 +156,48 @@ export default function BatchListPage() {
             {batches.isFetching && !batches.isPending && (
               <Spinner aria-label={format(commonMessages.loading)} className="ml-auto size-4" />
             )}
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              spacing={0}
-              value={statusFilter}
-              aria-label={format(m.filterStatus)}
-              // a filter group always has an answer: clicking the active item
-              // would otherwise clear the group and mean nothing
-              onValueChange={(next) => next !== '' && setStatusFilter(next as typeof statusFilter)}
-            >
-              <ToggleGroupItem value="all">{format(m.filterAll)}</ToggleGroupItem>
-              <ToggleGroupItem value="active">{format(m.statusActive)}</ToggleGroupItem>
-              {/* a draft is a round being set up, and it is only ever listed
-                  for whoever sets rounds up: offered to a participant the
-                  filter is a promise of an empty page */}
-              {canCreate && (
-                <ToggleGroupItem value="draft">{format(m.statusDraft)}</ToggleGroupItem>
-              )}
-              {/* "archived" is the word the column stores; what a reader
-                  recognises is that the assessment is over */}
-              <ToggleGroupItem value="archived">{format(m.filterEnded)}</ToggleGroupItem>
-            </ToggleGroup>
+            {/* one line whatever the width: on a phone the chips scroll
+                sideways rather than stacking under each other */}
+            <div className="max-sm:w-full max-sm:overflow-x-auto">
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                size="sm"
+                spacing={0}
+                className="w-max"
+                value={statusFilter}
+                aria-label={format(m.filterStatus)}
+                // a filter group always has an answer: clicking the active item
+                // would otherwise clear the group and mean nothing
+                onValueChange={(next) =>
+                  next !== '' && setStatusFilter(next as typeof statusFilter)
+                }
+              >
+                <ToggleGroupItem value="all">
+                  {format(m.filterAll)}
+                  {chipCount(counts && counts.draft + counts.active + counts.archived)}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="active">
+                  {format(m.statusActive)}
+                  {chipCount(counts?.active)}
+                </ToggleGroupItem>
+                {/* a draft is a round being set up, and it is only ever listed
+                    for whoever sets rounds up: offered to a participant the
+                    filter is a promise of an empty page */}
+                {canCreate && (
+                  <ToggleGroupItem value="draft">
+                    {format(m.statusDraft)}
+                    {chipCount(counts?.draft)}
+                  </ToggleGroupItem>
+                )}
+                {/* "archived" is the word the column stores; what a reader
+                    recognises is that the assessment is over */}
+                <ToggleGroupItem value="archived">
+                  {format(m.filterEnded)}
+                  {chipCount(counts?.archived)}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
           </div>
 
           <AsyncSection

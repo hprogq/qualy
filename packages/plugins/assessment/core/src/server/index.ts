@@ -116,6 +116,7 @@ import {
   batchVisibleTo,
   countBatches,
   listBatchesPage,
+  countBatchesByStatus,
   listParticipantsPage,
   listPhaseRows,
   phaseRowsForBatches,
@@ -546,6 +547,11 @@ export class Assessment extends Context.Service<
     ) => Effect.Effect<BatchDetail, CreateBatchError>
     /** whether this person holds the batch permission anywhere at all */
     readonly canCreateBatch: (as: Principal) => Effect.Effect<boolean>
+    readonly countBatchesByStatus: (
+      tenantId: string,
+      filter: { q?: string },
+      as: Principal,
+    ) => Effect.Effect<{ draft: number; active: number; archived: number }>
     readonly listBatches: (
       tenantId: string,
       filter: {
@@ -2074,6 +2080,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
 
     countBatches: Effect.fn('Assessment.countBatches')(function* (tenantId, filter, as) {
       return yield* dieQuery(withDb(countBatches(tenantId, yield* viewerOf(as), filter)))
+    }),
+
+    countBatchesByStatus: Effect.fn('Assessment.countBatchesByStatus')(function* (
+      tenantId: string,
+      filter: { q?: string },
+      as: Principal,
+    ) {
+      return yield* dieQuery(withDb(countBatchesByStatus(tenantId, yield* viewerOf(as), filter)))
     }),
 
     assertVisible: requireBatchVisible,
@@ -4044,10 +4058,18 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           },
           principal,
         )
+        // the filter chips say how many of each kind the search matches,
+        // whichever chip is currently pressed
+        const statusCounts = yield* assessment.countBatchesByStatus(
+          principal.tenantId,
+          { ...(query.q !== undefined ? { q: query.q } : {}) },
+          principal,
+        )
         const page = found.slice(0, limit)
         const last = page[page.length - 1]
         return {
           total,
+          statusCounts,
           capabilities: { create: yield* assessment.canCreateBatch(principal) },
           items: page.map((row) => ({
             id: row.id,

@@ -1574,6 +1574,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       }),
       success: Schema.Struct({
         ...countedPageOf(batchListView).fields,
+        /** how many of each kind the search matches, for the filter chips */
+        statusCounts: Schema.Struct({
+          draft: Schema.Number,
+          active: Schema.Number,
+          archived: Schema.Number,
+        }),
         // whether this reader may start a round at all, rather than only read
         // the ones they are in: the control that opens the form is not drawn
         // for somebody the api would refuse

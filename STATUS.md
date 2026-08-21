@@ -7028,3 +7028,11 @@ review-layout、paper-reading、batch-admin 相关套件全绿。
 在「退出动画被 CI 饿死时同 key 再进场」的时序下丢弃了重新进场的孩子;胶囊改为常驻 DOM、
 CSS 过渡显隐、隐藏时 inert,包装层以 data-shown 陈述可见性,测试改断该状态。
 门禁:typecheck 零错;pnpm test:browser 96 passed;catalogs 7 passed;prettier 全通过。
+
+### 批次列表:筛选片计数与移动端收纳(2026-08-23)
+
+listBatches 响应新增 statusCounts(同可见域、同搜索词、不吃状态筛选的分组计数,
+countBatchesByStatus 复用 batchFilters 与 visibleTo),筛选片(全部/进行中/草稿/已结束)右侧
+显示各自数量,全部为三态之和,服务端未答前不显数字。移动端收纳:新建批次回到标题行右侧
+不再独占一行,区块间距收一档,筛选组单行保持、过宽时横向滑动。typecheck 零错;
+pnpm test 704 passed;batch-admin/entry-workflow 50 例全绿;prettier 通过。
