@@ -18,10 +18,12 @@ catalog:
   # every @mikro-orm package sits on one version: the driver re-exports core's
   # types, and two copies of core would make an entity defined against one
   # unassignable to the other
-  '@mikro-orm/core': 7.1.11
-  '@mikro-orm/postgresql': 7.1.11
-  '@mikro-orm/migrations': 7.1.11
-  kysely: 0.29.4
+  '@mikro-orm/core': 7.1.13
+  '@mikro-orm/postgresql': 7.1.13
+  '@mikro-orm/migrations': 7.1.13
+  # pinned by @mikro-orm/sql, which depends on an exact kysely; two copies would
+  # make a query builder from one unusable against the other
+  kysely: 0.29.5
   # Effect v4 beta. Every effect package must sit on the SAME version: the
   # ecosystem peers on an exact beta. The modules this project needs (httpapi,
   # schema) are exported from effect/unstable/*, where a beta release is
@@ -73,10 +75,10 @@ minimumReleaseAgeExclude:
   - '@effect/vitest@4.0.0-beta.103'
   - '@effect/platform-node-shared@4.0.0-beta.103'
   - '@effect/platform-node@4.0.0-beta.103'
-  - '@mikro-orm/core@7.1.11'
-  - '@mikro-orm/migrations@7.1.11'
-  - '@mikro-orm/postgresql@7.1.11'
-  - '@mikro-orm/sql@7.1.11'
+  - '@mikro-orm/core@7.1.13'
+  - '@mikro-orm/migrations@7.1.13'
+  - '@mikro-orm/postgresql@7.1.13'
+  - '@mikro-orm/sql@7.1.13'
   - '@effect/tsgo-darwin-arm64@0.36.4'
   - '@effect/tsgo-darwin-x64@0.36.4'
   - '@effect/tsgo-linux-arm64@0.36.4'
@@ -85,5 +87,3 @@ minimumReleaseAgeExclude:
   - '@effect/tsgo-win32-arm64@0.36.4'
   - '@effect/tsgo-win32-x64@0.36.4'
   - '@effect/tsgo@0.36.4'
-patchedDependencies:
-  '@mikro-orm/sql@7.1.11': patches/@mikro-orm__sql@7.1.11.patch

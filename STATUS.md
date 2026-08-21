@@ -7081,3 +7081,35 @@ jsonb 取回的键是重排过的,浏览器发来的是书写序,于是每次保
 控制),行内文字不再意外起拖。摘要区上限文案改用 {most} 占位,不再写死 3。
 门禁:typecheck 零错;pnpm test 711 passed | 17 skipped;pnpm test:browser 96 passed;
 catalogs 7;prettier 全通过。
+
+### MikroORM 7.1.13:最后一处 patch 离场(2026-08-22)
+
+上游合入了本仓库报的第 5、6 两条(前四条已在 7.1.11 合入),按 CLAUDE.md 的升级流程走了一遍。
+
+先扒 7.1.13 的发布产物逐处核对,不看 changelog:第 5 条(check 去 cast 时 `\((.*?)\)::\w+`
+跨括号、把表达式改成语法错误)上游采纳了草稿里给的写法,与我们的 patch **逐字符相同**;
+第 6 条(索引丢访问方法,gist 被重建成 btree)上游走了草稿给的**两个选项中较大的那个**,
+比我们的 patch 更正:`pg_am.amname` 进 introspection 查询 → 落在 `IndexDef.type` →
+经 `getIndexAccessMethodClause()` 发 `using gist`。我们的 patch 当初取的是便宜路子——把整条
+`CREATE INDEX` 塞进 `expression`,代价是该索引从此无法结构化 diff(列与 partial where 一并
+失去可比性);上游这版两者兼得。
+
+因此 patch 整个删除,`patchedDependencies` 清空,`patches/` 目录不再存在。
+
+守卫测试改了断言的**对象**:原来断言 `IndexDef.expression` 里含 `using gist`,那是我们那版
+patch 的形状,上游换实现后即便修好也会红。改为断言 `getCreateIndexSQL()` 写回去的 DDL——
+「读回来的索引能不能被重新建成它自己」才是缺陷本身,这个断言跨两种实现都成立。红验:临时把
+断言改成 `toBe('SHOW ME')`,拿到实际值
+`create index "idx_introspection_probe_path_gist" on "introspection_probe" using gist ("path")`。
+
+**kysely 随之从 0.29.4 抬到 0.29.5**:7.1.13 依赖的是精确版本,不跟就并存两份实例,typecheck
+当场报 `Kysely<any>` 互不可赋值(`#private` 指向不同成员)——正是 catalog 制度要防的版本分裂。
+
+`repos/` 经 `vendor-sync update mikro-orm` 同步到 tag v7.1.13(commit c22d31cc),
+未触碰 effect 树;`vendor:check` 报两棵树均与 lock 一致。
+
+验收:typecheck 零错;`pnpm test` 711 passed | 17 skipped(与升级前一致);
+`pnpm test:browser` 96 passed;prettier 通过;`pnpm qualy generate` 报 **database: nothing to
+generate**(这条最关键——7.1.13 的 introspection 新增了 include/fillFactor/排序选项/type 等
+字段,任何一个渗进 diff 都会凭空产出漂移迁移,实测全部实体、check 与 gist 索引完整往返);
+生产 smoke 探针、壳、manifest、哈希资源、SIGTERM 退出 0 全过。

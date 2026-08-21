@@ -1,10 +1,10 @@
 {
   "sources": {
     "@mikro-orm/core": {
-      "packageVersion": "7.1.11",
-      "tag": "v7.1.11",
-      "commit": "60ab51442536c85381d823962ebcf7d474279623",
-      "contentSha256": "f7959b26167aa6963ec6ade7d1c5eb5affb12a113183a9bbcb79eaa884a19675"
+      "packageVersion": "7.1.13",
+      "tag": "v7.1.13",
+      "commit": "c22d31ccf6ad54981773d24f4b5421c1bbd2a714",
+      "contentSha256": "0a3c7e028172b05be6ac30b275beb984668640c47b32e47c59f7c874cf889cd4"
     },
     "effect": {
       "packageVersion": "4.0.0-beta.103",

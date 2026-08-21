@@ -47,7 +47,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 迁移:`pnpm qualy generate`(自动 drop-guard,`ALLOW_DESTRUCTIVE=1` 或 `-- destructive: approved` 放行);已应用迁移不可回改,只 fix-forward;lineage 被压缩/更换用 `pnpm qualy database adopt`(逐对象比对,不一致拒绝,一致只写账本)。迁移执行按 `migrations` 配置在插件建层时进行(apply 默认;off 留给部署 Job),与 `pnpm qualy deploy` 共用 migrator;**应用进程禁止生成迁移**。迁移是 `YYYYMMDDHHmmss[_name].sql` 纯 SQL(整文件一条多语句下发,`psql -f` 可跑),执行器归 MikroORM Migrator,不用它的 TS 迁移格式。生成 = 两个真实库对比(已提交 lineage vs 实体+复合外键+baseline)。
 - **插件自带 baseline 片段**:描述器声明 `Db.entities(entities, { baselineDir })`,目录内 `NNNN_*.sql` 由 generate 编进中央迁移(`-- phase: pre-structure` 排结构前),带 `-- qualy-baseline: <插件> <路径> <sha>` 标记,已编译片段**不可再改**(改了硬失败,要改就新增片段),重跑 no-op,disabled 仍贡献。**片段描述应然状态、必须幂等**(CREATE EXTENSION IF NOT EXISTS / CREATE OR REPLACE / ON CONFLICT DO NOTHING);手工 custom 迁移(`pnpm qualy database custom`)记录一次历史步骤,写严格 CREATE,首行 `-- owner: @qualy/plugin-<name>`。
 - **数据层冻结规则**:数据层新增任何机制,必须由触发表(docs/notes/data-layer-retrospective.md)中实际发生的事故或需求触发,禁止预防性建设。元规则:复杂度必须由已发生的问题证明其存在,外部评审意见按此过滤。
-- ORM 选型已终审(见 ADR 与 notes/),勿重启讨论。迁移 SQL 必须可脱离任何 ORM 执行。MikroORM 上游缺陷经 `patches/@mikro-orm__sql@7.1.11.patch` 修补,`docs/upstream/` 存档、introspection.test 守;升级流程:catalog 同版本 → `pnpm vendor:update` → 先拿掉 patch 跑门禁再只重建仍需要的 hunk。
+- ORM 选型已终审(见 ADR 与 notes/),勿重启讨论。迁移 SQL 必须可脱离任何 ORM 执行。MikroORM 上游缺陷报给上游、`docs/upstream/` 存档、introspection.test 守(截至 7.1.13 六条已全部合入,**当前无 patch**);升级流程:catalog 同版本 → `pnpm vendor:update` → 先拿掉 patch 跑门禁再只重建仍需要的 hunk。
 - 主键统一 UUIDv7 且数据库侧生成:`uuid().primaryKey().default(sql\`uuidv7()\`)`;仅当应用需插入前预拿 ID 时在该表叠加 `$defaultFn`(并存不是替代)。时间戳列 createdAt/updatedAt,一律 `withTimezone: true`。
 
 ## 插件形态(描述器模型)

@@ -59,8 +59,10 @@ DDL 默认值仍在(灾备与裸写入路径不受影响),但应用侧被类型�
 它立刻编译失败——已实测:把已解析的那份 `typings.d.ts` 改回 `true`,typecheck 立刻红。
 这一点很重要,因为 pnpm 的 `prepare` 在部分安装下可能被跳过(effect LSP patch 踩过同样的坑)。
 
-上游 issue 草稿:`docs/upstream/mikro-orm-1-kysely-generated-columns.md`。**上游发布修复后
-删除 patch**。
+上游 issue 草稿:`docs/upstream/mikro-orm-1-kysely-generated-columns.md`。**已于 7.1.11 合入**,
+patch 随之删除;7.1.13 又合入了另两条(check 去 cast 括号失衡、索引访问方法丢失),
+本仓库自此**不再 patch 任何 MikroORM 包**,`patchedDependencies` 为空。类型门禁照旧生效——
+它断言的是行为不是 patch,上游若回退同样立刻编译失败。
 
 ## 查询必须走 `query()`,不能裸 `Effect.promise`
 
