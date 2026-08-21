@@ -382,7 +382,7 @@ function MyDesk({
           <span className="flex-1" />
           {mixed && (
             <Tabs value={lane} onValueChange={(value) => setLane(value as Lane)}>
-              <TabsList>
+              <TabsList variant="line">
                 {(
                   [
                     ['all', m.overviewFilterAll],
