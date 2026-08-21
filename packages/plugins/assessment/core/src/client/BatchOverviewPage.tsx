@@ -408,8 +408,8 @@ function MyDesk({
         ) : (
           <div className="flex flex-col gap-7" data-testid="overview-activity">
             {groups.map((group) => (
-              <section key={group.label} className="flex flex-col gap-4">
-                <div className="flex items-center gap-2.5">
+              <section key={group.label} className="flex flex-col gap-1.5">
+                <div className="mb-1.5 flex items-center gap-2.5">
                   <span className="shrink-0 text-xs font-medium text-muted-foreground">
                     {group.label}
                   </span>
@@ -438,7 +438,7 @@ function MyDesk({
                         }
                         openEntry(row.itemId, row.entryId, 'detail')
                       }}
-                      className="group grid grid-cols-[minmax(0,1fr)] gap-x-5 text-left lg:grid-cols-[3.25rem_minmax(0,1fr)]"
+                      className="-mx-3 grid cursor-pointer grid-cols-[minmax(0,1fr)] gap-x-5 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-muted/60 lg:grid-cols-[3.25rem_minmax(0,1fr)]"
                     >
                       <span className="hidden pt-px text-xs text-muted-foreground tabular-nums lg:block">
                         {clockOf(row.at, locale)}
@@ -453,7 +453,7 @@ function MyDesk({
                                 className="size-[7px] shrink-0 rounded-full bg-destructive"
                               />
                             )}
-                            <span className="min-w-0 truncate text-sm font-medium group-hover:underline">
+                            <span className="min-w-0 truncate text-sm font-medium">
                               {row.itemTitle}
                             </span>
                           </span>
