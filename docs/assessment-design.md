@@ -1429,3 +1429,44 @@ M2 当前的简化随之显式化:**effective facts = approved EntryRevision.pay
 四、**「全部测评」是目的地,不是返回**。顶栏左上 ArrowLeft 实际是去批次列表:桌面改文案「全部测评」(箭头与词同现,不再被读成浏览器 Back);移动端整个快捷入口撤除——批次切换器菜单底部本就有同一扇门,语义在所有设备一致,只是窄屏少一个会造成强烈误触的冗余入口。禁止把它在移动端静默改成 history.back(深链场景会把人甩出应用)。
 
 原则(两案同一条):**不许让 UI 依据「恰好排在第一的东西」推断语义**——表单第一字段不默认是申报身份,左上第一枚箭头不许看着像返回、实际是列表。
+
+**32.75 申诉的对象是当前生效的结论,不是历史上任何一次裁决**(2026-08-22,用户裁决,依据对抗审查发现)。
+
+对抗审查发现 `appealReview(instanceId)` 只校验目标轮次「已完成且结论为通过/驳回」与「该 Entry
+当前没有 open round」,不校验它是不是**当前**结论。裁决:这是状态机边界上的真实缺陷,不接受
+「允许申诉历史任一结论」的解释。
+
+理由是现有聚合模型本身已经这么说了:Entry 对外暴露 appeal capability 的条件是
+`status ∈ {approved, rejected} && currentReviewInstanceId !== null`,即「申诉当前这条 Entry
+的当前结论」,而不是「从历史审核记录里任选一个结论申诉」。**历史负责解释「怎么走到现在」,
+只有 current 指针决定「现在还能对什么做动作」。**
+
+事故形态:Round 1 驳回 → 参评人改材料 → Round 2 通过。此时 `appealReview(Round 1)` 仍被接受,
+新 appeal 轮次复用 `row.revisionId`(把旧版材料重新推上台),并
+`setEntryState(from: ['approved','rejected'], to: 'in_review', currentReviewInstanceId: opened)`
+把已由 Round 2 确立的 Entry 拖回复核——**旧结论越过后来已生效的事实夺回当前 Entry 的控制权**。
+
+不变量:
+
+```
+appealable(instance) iff
+  instance.id === entry.currentReviewInstanceId
+  && instance.state === 'completed'
+  && instance.outcome ∈ ('approved','rejected')
+  && 无更新的/进行中的轮次
+```
+
+核心是 `entry.currentReviewInstanceId === instanceId`;写路径**同时**校验
+`entry.currentRevisionId === row.revisionId`——正常数据不变量下前者蕴含后者,但申诉的语义就是
+「对当前这份材料当前生效的结论提出异议」,写路径做这一层显式校验值得。
+
+错误码独立为 **`decision-superseded`**,不并进 `nothing-to-appeal`:这是一个有用的并发/stale UI
+错误,界面可以明确说「该结论已不是当前结果,刷新后可查看最新进展」。
+
+**校验位置在事务里、批次锁之后的重读上**,不是函数开头的普通前置查询:申诉是 Entry 上的状态
+转移,与其他转移共用批次锁串行化。顺序为 locate → transaction → lock batch → 重读 instance +
+entry → 确认是当前结论 → phase/appeal gate → 建 appeal round → Entry → in_review。
+
+若将来真需要救济历史裁决,那是**另一个概念**(DecisionAppeal / CorrectionCase,targetReviewInstanceId,
+先改变那次历史裁决的业务评价,再由一套 reconciliation 规则决定是否影响当前 Entry),
+不是现有 `appealReview()` 能表达的「重新跑一轮审核」;当前没有这个需求,不建。

@@ -1346,6 +1346,132 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     })
   })
 
+  // An appeal argues with the conclusion the claim stands on now. The trail
+  // keeps every earlier round so a reader can see how the claim got here,
+  // but only the current pointers say what is still open to argument -
+  // otherwise a rejection already answered by a later approval could take
+  // the claim back off that approval, and reopen it against the older
+  // filing, on material the claim itself has moved past.
+  it('refuses an appeal against a conclusion the claim has outgrown', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-superseded')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...NO_DOUBTS, 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'college',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const s1 = f.principal(f.s1)
+          const s2 = f.principal(f.s2)
+          const reviewer = f.principal(f.reviewer)
+
+          // one claim rejected, filed again with more in it, and approved:
+          // two rounds against two different filings
+          const one_ = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const firstSent = yield* assessment.setEntryStatus(f.t, one_.id, 'in_review', s1)
+          const first = firstSent.currentReviewInstanceId!
+          yield* assessment.decideReview(
+            f.t,
+            first,
+            { decision: 'reject', comment: '材料不足' },
+            reviewer,
+          )
+          yield* assessment.appendEntryRevision(f.t, one_.id, { payload: {} }, s1)
+          const secondSent = yield* assessment.setEntryStatus(f.t, one_.id, 'in_review', s1)
+          const second = secondSent.currentReviewInstanceId!
+          yield* assessment.decideReview(
+            f.t,
+            second,
+            { decision: 'approve', comment: '这次齐了' },
+            reviewer,
+          )
+          const outgrown = yield* Effect.exit(
+            assessment.appealReview(f.t, first, { reason: '不服第一轮' }, s1),
+          )
+          const current = yield* assessment.appealReview(f.t, second, { reason: '仍有异议' }, s1)
+
+          // the other claim keeps one filing throughout: rejected, and asked
+          // again unchanged, which is the participant's right (§32.65). Both
+          // rounds judged the same revision, so only the pointer tells the
+          // two conclusions apart
+          const two = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p2, payload: {} },
+            s2,
+          )
+          const earlySent = yield* assessment.setEntryStatus(f.t, two.id, 'in_review', s2)
+          const early = earlySent.currentReviewInstanceId!
+          yield* assessment.decideReview(
+            f.t,
+            early,
+            { decision: 'reject', comment: '不予认定' },
+            reviewer,
+          )
+          const lateSent = yield* assessment.setEntryStatus(f.t, two.id, 'in_review', s2)
+          const late = lateSent.currentReviewInstanceId!
+          yield* assessment.decideReview(
+            f.t,
+            late,
+            { decision: 'reject', comment: '仍不予认定' },
+            reviewer,
+          )
+          const sameFiling = one<{ same: boolean }>(
+            yield* runSql(sql`
+              select (select revision_id from review_instances where id = ${early})
+                   = (select revision_id from review_instances where id = ${late}) as same`),
+          ).same
+          const stale = yield* Effect.exit(
+            assessment.appealReview(f.t, early, { reason: '不服第一次' }, s2),
+          )
+          // and that live conclusion contested twice at once: the batch lock
+          // orders the two, so the claim takes exactly one transition and the
+          // loser is told a round is already under way
+          const together = yield* Effect.all(
+            [
+              Effect.exit(assessment.appealReview(f.t, late, { reason: '请复核一次' }, s2)),
+              Effect.exit(assessment.appealReview(f.t, late, { reason: '请再复核一次' }, s2)),
+            ],
+            { concurrency: 'unbounded' },
+          )
+          const contested = yield* runSql(sql`
+            select appealed_instance_id from review_instances
+            where origin = 'appeal' and entry_id in (${one_.id}, ${two.id})
+            order by created_at, id`)
+
+          return { second, outgrown, sameFiling, late, stale, contested, together }
+        }),
+      ),
+    )
+    // the superseded rejection is refused in its own words, so a stale screen
+    // can say what happened rather than "this cannot be done right now"
+    expect(refusalOf(result.outgrown)?.reason).toBe('decision-superseded')
+    // and the same refusal where the two rounds judged one filing: it is the
+    // pointer that decides, not the material
+    expect(result.sameFiling).toBe(true)
+    expect(refusalOf(result.stale)?.reason).toBe('decision-superseded')
+    // sent together, one opens the appeal and the other is refused
+    expect(result.together.filter((exit) => Exit.isSuccess(exit))).toHaveLength(1)
+    // and every appeal that was allowed contests the round its claim stands
+    // on - one apiece, the second and the late one
+    expect(
+      (result.contested.rows as readonly { appealed_instance_id: string }[]).map(
+        (row) => row.appealed_instance_id,
+      ),
+    ).toEqual([result.second, result.late])
+  })
+
   it('walks an appeal down the ladder, open to the judges of the round it contests', async () => {
     const result = ok(
       await run(

@@ -7142,3 +7142,36 @@ nosniff,不信任上传方 MIME」),而三处客户端注释至今仍在陈述�
 验收:typecheck 零错;`pnpm test` 715 passed | 17 skipped;prettier 通过。
 
 其余 24 条的处置见下一轮。
+
+### 申诉只针对当前生效的结论(2026-08-22,用户裁决)
+
+对抗审查提出「`appealReview` 不校验目标轮次是否当前结论」,用户裁决为**缺陷**,不接受
+「允许申诉历史任一结论」的解释:Entry 对外暴露的 capability 本就只在
+`status ∈ {approved, rejected} && currentReviewInstanceId !== null` 时给出 appeal,
+UI 层的领域模型已经是「申诉当前这条 Entry 的当前结论」。历史负责解释「怎么走到现在」,
+只有 current 指针决定「现在还能对什么做动作」。若真要救济历史裁决,那是另一个概念
+(DecisionAppeal / CorrectionCase,带 reconciliation 规则),不是现有 appealReview 能表达的。
+
+事故:Round 1 驳回 → 改材料 → Round 2 通过之后,`appealReview(Round 1)` 仍被接受
+(Round 1 completed+rejected、当前无 open round),新 appeal 轮次还复用 `row.revisionId`
+把**旧版材料**重新推上台,并 `setEntryState(from: [approved, rejected], to: in_review)`
+把已由 Round 2 确立的 Entry 拖回复核——旧结论越过后来已生效的事实夺回控制权。
+
+不变量按裁决落地:`entry.currentReviewInstanceId === instanceId`,并顺带校验
+`entry.currentRevisionId === row.revisionId`(正常数据下前者蕴含后者,写路径仍显式校验,
+因为申诉的语义就是「对当前这份材料当前生效的结论提出异议」)。独立错误码
+**`decision-superseded`**,不并进 `nothing-to-appeal`——这是有用的并发/stale UI 错误,
+前端可以说「该结论已不是当前结果,刷新后可查看最新进展」。
+
+校验位置按裁决放在**批次锁之后的重读**上:整个 `instanceOf` + `entryOf` 移到 `lockBatch`
+之后,pre-lock 只留定位读(取 batchId 与鉴权),注释写明锁前所读一律不可信。
+排序上把 `hasOpenRound` 放在越权检查之前:已有轮次在飞是更能指导用户的说法,而且它正是
+背后那条结论不再是当前结论的原因;既有断言 `review-already-open` 因此保持不变。
+
+新增测试 `refuses an appeal against a conclusion the claim has outgrown`:
+①驳回 → 改材料 → 通过 → 申诉第一轮 = `decision-superseded`;②驳回 → **原样重交**(§32.65)
+→ 再驳回 → 申诉第一轮 = `decision-superseded`(两轮判的是同一版材料,SQL 断言 revision 相同,
+所以是指针在判定而不是材料);③同一条当前结论**并发两次申诉**,恰好一次成功。
+红验:去掉该校验,①②立刻转红。
+
+验收:typecheck 零错;`pnpm test` 716 passed | 17 skipped;prettier 通过。

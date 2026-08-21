@@ -533,6 +533,11 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/refuse-nothing-to-appeal',
       defaultMessage: 'No review decision is currently available for appeal.',
     },
+    refuseDecisionSuperseded: {
+      id: 'assessment/entry/refuse-decision-superseded',
+      defaultMessage:
+        'This is no longer the claim\u2019s current decision. Refresh to see where it stands.',
+    },
     refuseReviewOpen: {
       id: 'assessment/entry/refuse-review-open',
       defaultMessage:

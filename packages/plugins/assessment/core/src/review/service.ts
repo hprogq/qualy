@@ -1458,25 +1458,43 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
-            const row = yield* instanceOf(tenantId, instanceId)
-            if (row === null) return yield* new ReviewNotFound()
-            const locked = yield* lockBatch(tenantId, row.batchId)
+            const locked = yield* lockBatch(tenantId, located.batchId)
             if (locked!.status === 'archived') return yield* new BatchReadOnly()
             const reason = input.reason.trim()
             if (reason === '') return yield* refuse('appeal', 'reason-required')
+            // Read under the lock, and nothing read before it is trusted:
+            // an appeal is a state transition on the claim, and the claim
+            // can have been decided again between the click and this line.
+            const row = yield* instanceOf(tenantId, instanceId)
+            if (row === null) return yield* new ReviewNotFound()
+            const entry = yield* entryOf(tenantId, row.entryId)
+            if (entry === null) return yield* new ReviewNotFound()
+            // one open round per claim: whoever is already looking at it
+            // finishes before anybody contests anything. Ahead of the
+            // staleness test on purpose - a round in flight is the more
+            // useful thing to be told about, and it is also why the
+            // conclusion behind it is no longer the current one.
+            if (yield* hasOpenRound(tenantId, row.entryId)) {
+              return yield* refuse('appeal', 'review-already-open')
+            }
+            // An appeal contests the conclusion this claim stands on now,
+            // not every conclusion it has ever stood on. The trail explains
+            // how the claim got here; only the current pointers say what is
+            // still open to argument. Without this a rejection already
+            // superseded by a later approval could take the claim back off
+            // that approval, and reopen it against the older filing.
+            if (
+              entry.currentReviewInstanceId !== instanceId ||
+              entry.currentRevisionId !== row.revisionId
+            ) {
+              return yield* refuse('appeal', 'decision-superseded')
+            }
             // there has to be a decision to contest
             if (
               row.state !== 'completed' ||
               (row.outcome !== 'approved' && row.outcome !== 'rejected')
             ) {
               return yield* refuse('appeal', 'nothing-to-appeal')
-            }
-            const entry = yield* entryOf(tenantId, row.entryId)
-            if (entry === null) return yield* new ReviewNotFound()
-            // one open round per claim: whoever is already looking at it
-            // finishes before anybody contests anything
-            if (yield* hasOpenRound(tenantId, row.entryId)) {
-              return yield* refuse('appeal', 'review-already-open')
             }
             const item = yield* itemOf(tenantId, row.itemId)
             if (item === null || item.currentRevisionId === null) {

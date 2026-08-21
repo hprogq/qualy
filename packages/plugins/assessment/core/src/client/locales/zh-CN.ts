@@ -28,6 +28,7 @@ export default {
   'assessment/entry/appeal-reason': '申诉理由',
   'assessment/entry/appealed': '申诉已提交。',
   'assessment/entry/refuse-nothing-to-appeal': '当前没有可申诉的审核结论。',
+  'assessment/entry/refuse-decision-superseded': '该结论已不是当前结果,刷新后可查看最新进展。',
   'assessment/entry/refuse-review-open': '当前仍在审核中，请待审核结束后再提出申诉。',
   'assessment/entry/issue-required': '此项为必填项',
   'assessment/entry/issue-out-of-range': '不在本批次规定的材料时间范围内',
