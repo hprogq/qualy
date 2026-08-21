@@ -32,7 +32,7 @@ import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
 import { Paper } from './Paper.tsx'
-import { ROW_TAG, standingRows, type Standing, type StructureRow } from './standing.ts'
+import { ROW_DOT, ROW_TAG, standingRows, type Standing, type StructureRow } from './standing.ts'
 import { trimAmount, type EntryDto, type ItemDto } from './model.ts'
 
 // One's own filings: the round's structure down the left, and whatever is
@@ -1167,9 +1167,8 @@ function Structure({
                   {row.kind === 'group' ? (
                     <span aria-hidden className="size-[7px] shrink-0 rounded-[2px] bg-border" />
                   ) : row.unread ? (
-                    // the dot says one thing only (§32.72): something here
-                    // changed and its owner has not seen it. Status is the
-                    // word beside the name, never a colour code.
+                    // unread paints over everything: something here changed
+                    // and its owner has not seen it
                     <span
                       role="status"
                       data-testid="unread-dot"
@@ -1177,7 +1176,16 @@ function Structure({
                       className="size-[7px] shrink-0 rounded-full bg-destructive"
                     />
                   ) : (
-                    <span aria-hidden className="size-[7px] shrink-0" />
+                    // the row's own word as a colour, never an alarm: amber
+                    // waits on the reader, verdict inks say how it ended,
+                    // hollow means nothing is claimed here yet
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'size-[7px] shrink-0 rounded-full',
+                        row.tag === null ? 'border border-muted-foreground/30' : ROW_DOT[row.tag],
+                      )}
+                    />
                   )}
                   <span
                     className={cn(

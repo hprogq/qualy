@@ -52,6 +52,26 @@ export type RowTag =
   | 'recorded'
   | 'open'
 
+/**
+ * The dot beside each question, coloured by the row's own word (§32.72,
+ * amended): amber where the round waits on the reader, neutral for the
+ * reader's own states and for waiting on others, verdict colours for how
+ * it ended, hollow where nothing has been claimed. Unread stays a separate
+ * signal and paints over all of these in red.
+ */
+export const ROW_DOT: Record<RowTag, string> = {
+  voided: 'border border-muted-foreground/30',
+  supplement: 'bg-amber-500',
+  needs_revision: 'bg-amber-500',
+  draft: 'bg-muted-foreground/50',
+  in_review: 'bg-muted-foreground/70',
+  rejected: 'bg-rose-500/80',
+  partial: 'bg-rose-400/70',
+  approved: 'bg-emerald-500',
+  recorded: 'bg-muted-foreground/40',
+  open: 'border border-muted-foreground/45',
+}
+
 export const ROW_TAG: Record<RowTag, MessageDescriptor> = {
   voided: m.itemsStatusVoided,
   supplement: m.entryStatusAwaitingSupplement,

@@ -6935,3 +6935,9 @@ EntryView);行状态聚合补 supplement/rejected/partial/approved,todo 剔除�
 11 files / 96 passed(未读点生命周期红验证——短路 unread 即红;概览行动卡深链落位);
 prettier 全绿。测试顺带抓出三只真虫:PG `+00` 裸时区偏移 Date 拒解(生产同炸,已归一)、
 entry_events 无 comment 列、补件表列名 cancelled_at。
+
+### 状态点回归,按新语义配色(2026-08-21 追加)
+
+用户裁定圆点保留而非移除:每题常驻一点,颜色只译新状态词——amber 等读者(待补充/待修改)、
+中性灰自己的状态与等他人、emerald/rose 判定色、空心无主张;未读红点仍凌驾一切,看过即
+让位于状态色。§32.72 一款同步修订。entry-workflow + paper-reading 27 例全绿;typecheck 零错。
