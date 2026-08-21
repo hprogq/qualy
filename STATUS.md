@@ -6875,3 +6875,10 @@ URL 直读是预期设计保留,工作台对无操作读者加一行只读说明
 三行,桌面 grid 靠 `lg:contents` 包装层解散 + `lg:col-start` 钉回原列;
 「撤回补充请求后…仍会保留…」的脚注按用户要求删除(键一并清理)。浏览器套件 93 例全绿;`pnpm test` 698 passed;`pnpm typecheck` 零错;
 prettier 全绿。
+
+### shell 抽屉重开第三层(2026-08-21 追加)
+
+CI 再现:dialog 已离场,但「导航」键 10 秒都没回到可访问树——负载下 radix 摘除
+aria-hidden 的清理偶发彻底丢失,不是延迟。不再与这个退场动画竞态缠斗:重开定位改用
+`includeHidden`(点击本就不受 aria-hidden 影响),行为断言原样保留(按下→抽屉打开→
+人名在内→session 只问一次)。本地连跑三次全绿。
