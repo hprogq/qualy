@@ -286,7 +286,7 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
           { limit: 50 },
           f.principal,
         )
-        const history = yield* assessment.listImports(f.tenant, batch.id, f.principal)
+        const history = yield* assessment.listImports(f.tenant, batch.id, {}, f.principal)
         return { atCreation, untouched, preview, imported, after, history, late }
       }),
     )
@@ -302,8 +302,10 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
     expect(preview).toEqual({ candidates: 1 })
     expect(imported).toEqual({ added: 1 })
     expect(after.map((row) => row.userId)).toContain(late)
-    // both runs are recorded as the acts they were
-    expect(history.map((row) => row.importedCount)).toEqual([1, atCreation.length])
+    // both runs are recorded as the acts they were, and the page says it
+    // has reached the end rather than leaving the reader to guess
+    expect(history.items.map((row) => row.importedCount)).toEqual([1, atCreation.length])
+    expect(history.nextCursor).toBeNull()
   })
 
   it('imports only people the caller actually administers', async () => {

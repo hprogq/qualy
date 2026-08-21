@@ -934,6 +934,13 @@ export const setInstanceState = (input: {
   to: 'active' | 'blocked'
   /** why nobody can act, when blocking; cleared on release */
   blockedReason: string | null
+  /**
+   * the step the caller decided about, when it decided outside the round's
+   * own lock. The patrol reads every open round once and then writes them
+   * one at a time; a round that moved on in between would otherwise be
+   * blocked over a staffing answer belonging to a step it has left.
+   */
+  at?: { route: string; stageId: string }
 }) =>
   db
     .query((k) =>
@@ -946,6 +953,11 @@ export const setInstanceState = (input: {
         .where('tenantId', '=', input.tenantId)
         .where('id', '=', input.instanceId)
         .where('state', '=', input.from)
+        .$if(input.at !== undefined, (query) =>
+          query
+            .where('currentRoute', '=', input.at!.route)
+            .where('currentStageId', '=', input.at!.stageId),
+        )
         .returning(['id'])
         .executeTakeFirst(),
     )
@@ -2004,7 +2016,12 @@ export interface PanelRow {
   resolution: string | null
 }
 
-export const openPanelOf = (tenantId: string, instanceId: string) =>
+export const openPanelOf = (
+  tenantId: string,
+  instanceId: string,
+  /** narrow to the sitting of one step, for a caller holding no lock */
+  at?: { route: string; stageId: string },
+) =>
   db
     .query((k) =>
       k
@@ -2013,6 +2030,9 @@ export const openPanelOf = (tenantId: string, instanceId: string) =>
         .where('tenantId', '=', tenantId)
         .where('reviewInstanceId', '=', instanceId)
         .where('state', '=', 'open')
+        .$if(at !== undefined, (query) =>
+          query.where('route', '=', at!.route).where('stageId', '=', at!.stageId),
+        )
         .executeTakeFirst(),
     )
     .pipe(

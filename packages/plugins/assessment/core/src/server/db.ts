@@ -1530,19 +1530,28 @@ export const insertRosterImport = (input: {
       .execute(),
   )
 
-export const rosterImports = (tenantId: string, batchId: string) =>
+export const rosterImports = (
+  tenantId: string,
+  batchId: string,
+  page: { after?: readonly [string, string]; limit: number },
+) =>
   db
-    .query((k) =>
-      k
+    .query((k) => {
+      let query = k
         .selectFrom('RosterImport')
         .select(['id', 'orgNodeIds', 'userTypeIds', 'importedCount', 'actorId'])
         .select([epoch('occurred_at').as('occurredAt')])
+        // the instant as stored, for a cursor that cannot round a row away
+        .select([sql<string>`occurred_at::text`.as('cursorAt')])
         .where('tenantId', '=', tenantId)
         .where('batchId', '=', batchId)
-        .orderBy('occurredAt', 'desc')
-        .limit(50)
-        .execute(),
-    )
+      if (page.after !== undefined) {
+        query = query.where(
+          sql<boolean>`(occurred_at, id) < (${page.after[0]}::timestamptz, ${page.after[1]}::uuid)`,
+        )
+      }
+      return query.orderBy('occurredAt', 'desc').orderBy('id', 'desc').limit(page.limit).execute()
+    })
     .pipe(
       Effect.map(
         (found) =>
@@ -1553,6 +1562,7 @@ export const rosterImports = (tenantId: string, batchId: string) =>
             importedCount: number
             actorId: string | null
             occurredAt: number
+            cursorAt: string
           }[],
       ),
     )

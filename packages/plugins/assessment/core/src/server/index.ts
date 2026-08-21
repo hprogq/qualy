@@ -815,17 +815,21 @@ export class Assessment extends Context.Service<
     readonly listImports: (
       tenantId: string,
       batchId: string,
+      page: { cursor?: string; limit?: string },
       as: Principal,
     ) => Effect.Effect<
-      readonly {
-        id: string
-        units: readonly string[]
-        userTypes: readonly string[]
-        importedCount: number
-        actorId: string | null
-        occurredAt: number
-      }[],
-      BatchNotFound | AccessDenied
+      {
+        items: readonly {
+          id: string
+          units: readonly string[]
+          userTypes: readonly string[]
+          importedCount: number
+          actorId: string | null
+          occurredAt: number
+        }[]
+        nextCursor: string | null
+      },
+      BatchNotFound | AccessDenied | BadRequest
     >
     readonly setParticipantStatus: (
       tenantId: string,
@@ -3356,11 +3360,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
       },
     ),
 
-    listImports: Effect.fn('Assessment.listImports')(function* (tenantId, batchId, as) {
+    listImports: Effect.fn('Assessment.listImports')(function* (tenantId, batchId, page, as) {
       const batch = yield* dieQuery(withDb(oneBatch(tenantId, batchId)))
       if (!batch) return yield* new BatchNotFound()
       yield* requireRosterReach(as, tenantId, batchId)
-      const rows = yield* dieQuery(withDb(rosterImports(tenantId, batchId)))
+      const fingerprint = `imports:${batchId}`
+      const key = readQueryCursor(page.cursor, fingerprint, ['text', 'uuid'])
+      if (key === null) return yield* cursorUnusable()
+      const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+      const found = yield* dieQuery(
+        withDb(
+          rosterImports(tenantId, batchId, {
+            ...(key === undefined ? {} : { after: [key[0]!, key[1]!] as const }),
+            limit: limit + 1,
+          }),
+        ),
+      )
+      const rows = found.slice(0, limit)
+      const last = rows[rows.length - 1]
       // ids in, names out, and only the names this reader may see: the record
       // says what somebody once asked for, not where else the tree goes
       const held = yield* rbac.listAuthorizedScope(as, MANAGE)
@@ -3373,20 +3390,26 @@ export const make = Effect.fn('Assessment.make')(function* () {
         dieQuery(withDb(userTypeOptionRows(tenantId))),
       ])
       const typeNames = new Map(types.map((type) => [type.id, type.name]))
-      return rows.map((row) => ({
-        id: row.id,
-        units: row.orgNodeIds.flatMap((nodeId) => {
-          const name = nodes.get(nodeId)
-          return name === undefined ? [] : [name]
-        }),
-        userTypes: row.userTypeIds.flatMap((typeId) => {
-          const name = typeNames.get(typeId)
-          return name === undefined ? [] : [name]
-        }),
-        importedCount: row.importedCount,
-        actorId: row.actorId,
-        occurredAt: row.occurredAt,
-      }))
+      return {
+        items: rows.map((row) => ({
+          id: row.id,
+          units: row.orgNodeIds.flatMap((nodeId) => {
+            const name = nodes.get(nodeId)
+            return name === undefined ? [] : [name]
+          }),
+          userTypes: row.userTypeIds.flatMap((typeId) => {
+            const name = typeNames.get(typeId)
+            return name === undefined ? [] : [name]
+          }),
+          importedCount: row.importedCount,
+          actorId: row.actorId,
+          occurredAt: row.occurredAt,
+        })),
+        nextCursor:
+          found.length > limit && last !== undefined
+            ? encodeQueryCursor(fingerprint, [last.cursorAt, last.id])
+            : null,
+      }
     }),
 
     setParticipantStatus: Effect.fn('Assessment.setParticipantStatus')(
@@ -3582,8 +3605,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
             )).length
             staffing.set(key, members)
           }
-          // who could act on this very round: the filing's own people out,
-          // and on an escalation step whoever already judged an earlier one
+          // Who could act on this very round: the filing's own people out,
+          // and on an escalation step whoever already judged an earlier one.
+          // Every answer below belongs to the step this round stood on when
+          // the sweep read it, so every write below names that step and
+          // simply misses a round that has moved on since - the next tick
+          // will look at it where it now is.
           const eligible =
             members === 0
               ? ([] as readonly string[])
@@ -3606,7 +3633,14 @@ export const make = Effect.fn('Assessment.make')(function* () {
           let actionable = eligible.length > 0
           let reason = members === 0 ? 'no-assignee' : 'no-independent-reviewer'
           if (stage !== null && stage.quorum.type === 'all') {
-            const panel = yield* dieQuery(withDb(openPanelOf(tenantId, round.id)))
+            const panel = yield* dieQuery(
+              withDb(
+                openPanelOf(tenantId, round.id, {
+                  route: round.currentRoute,
+                  stageId: round.currentStageId,
+                }),
+              ),
+            )
             if (panel !== null) {
               // A constituted sitting: the question is no longer "is anyone
               // eligible" but "can this sitting still complete". Seats whose
@@ -3659,6 +3693,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   from: 'active',
                   to: 'blocked',
                   blockedReason: reason,
+                  at: { route: round.currentRoute, stageId: round.currentStageId },
                 }),
               ),
             )
@@ -3684,6 +3719,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                   from: 'blocked',
                   to: 'active',
                   blockedReason: null,
+                  at: { route: round.currentRoute, stageId: round.currentStageId },
                 }),
               ),
             )
@@ -4561,15 +4597,21 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
     )
     .handle(
       'listImports',
-      Effect.fn('assessment.listImports.handler')(function* ({ params }) {
+      Effect.fn('assessment.listImports.handler')(function* ({ params, query }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        const imports = yield* assessment.listImports(principal.tenantId, params.batchId, principal)
+        const page = yield* assessment.listImports(
+          principal.tenantId,
+          params.batchId,
+          query,
+          principal,
+        )
         return {
-          imports: imports.map((row) => ({
+          imports: page.items.map((row) => ({
             ...row,
             occurredAt: new Date(row.occurredAt).toISOString(),
           })),
+          nextCursor: page.nextCursor,
         }
       }),
     )

@@ -315,17 +315,22 @@ export const reservationOf = (input: { tenantId: string; ownerUserId: string; id
  * the whole credential, so there is no tenant or owner to scope by yet -
  * the row itself says whose it is.
  */
+/** the ticket id shape, so a stranger's guess is a miss and not a crash */
+const TICKET = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export const reservationById = (id: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('UploadReservation')
-        .select(reservationColumns)
-        .select(reservationInstants)
-        .where('id', '=', id)
-        .executeTakeFirst(),
-    )
-    .pipe(Effect.map((row) => (row ? toReservation(row as Record<string, unknown>) : null)))
+  !TICKET.test(id)
+    ? Effect.succeed(null)
+    : db
+        .query((k) =>
+          k
+            .selectFrom('UploadReservation')
+            .select(reservationColumns)
+            .select(reservationInstants)
+            .where('id', '=', id)
+            .executeTakeFirst(),
+        )
+        .pipe(Effect.map((row) => (row ? toReservation(row as Record<string, unknown>) : null)))
 
 export const completeReservation = (input: { id: string; now: number }) =>
   db

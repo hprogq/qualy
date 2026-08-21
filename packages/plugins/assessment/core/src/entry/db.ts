@@ -796,7 +796,11 @@ export const openEntriesOfItem = (tenantId: string, itemId: string) =>
         .select(['id', 'status', 'currentReviewInstanceId'])
         .where('tenantId', '=', tenantId)
         .where('itemId', '=', itemId)
-        .where('status', 'in', ['draft', 'in_review'])
+        // needs_revision is open work too: it is sitting in the owner's
+        // hands waiting for a new version, and a question that no longer
+        // exists must take it along rather than leave a task nobody can
+        // finish and nothing can dismiss
+        .where('status', 'in', ['draft', 'in_review', 'needs_revision'])
         .orderBy('id')
         .execute(),
     )
@@ -1374,9 +1378,20 @@ export const userActivityPage = (input: {
     // The way back in, decided here rather than guessed by the browser
     // (§32.74): a round is this reader's to open only while it is live and
     // the read rule would admit them - the same predicate the queue uses.
-    // A finished round yields a plain, unlinked line.
+    // A finished round yields a plain, unlinked line. The open-ask rule
+    // (§32.70) narrows this the same way the round's own reader does:
+    // while a round waits for material it belongs to whoever asked, so a
+    // colleague handed a link here would have been refused at the door.
     const openDoor = sql`case
       when ri.state in ('active', 'blocked', 'awaiting_supplement')
+       and (
+         ri.state <> 'awaiting_supplement'
+         or exists (
+           select 1 from review_supplement_requests ask
+           where ask.tenant_id = ri.tenant_id and ask.review_instance_id = ri.id
+             and ask.status = 'open' and ask.requested_by = ${input.userId}
+         )
+       )
        and ${mayActOn({
          tenantId: sql`${input.tenantId}`,
          batchId: sql`${input.batchId}`,

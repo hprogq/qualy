@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Scope } from 'effect'
+import { Context, Effect, Layer, References, Scope } from 'effect'
 
 // The moment every plugin's layer has been built, made into something a
 // plugin can act on.
@@ -62,16 +62,27 @@ export const assembledLayer: Layer.Layer<Assembled> = Layer.sync(Assembled, () =
   const hooks = new Map<string, BootHook>()
   return Assembled.of({
     register: (hook) =>
-      Effect.acquireRelease(
-        Effect.sync(() => {
-          // one name, one owner - same rule as every other registry here
-          if (hooks.has(hook.name)) {
-            throw new Error(`boot hook ${hook.name} is registered twice`)
-          }
-          hooks.set(hook.name, hook)
-        }),
-        () => Effect.sync(() => hooks.delete(hook.name)),
-      ).pipe(Effect.orDie, Effect.asVoid),
+      Effect.gen(function* () {
+        // Whose work this is, carried from the registering fiber to the one
+        // that runs it. A plugin registers while its own layer is built, so
+        // the assembler's `source` annotation is on this fiber - but the
+        // host runs the hook on the barrier's fiber, where it is not, and
+        // the hook and everything it forks logged as the application
+        // itself. The per-source log level keys on that annotation, so it
+        // silently could not reach any of this work.
+        const owner = yield* References.CurrentLogAnnotations
+        const owned: BootHook = { name: hook.name, run: Effect.annotateLogs(hook.run, owner) }
+        yield* Effect.acquireRelease(
+          Effect.sync(() => {
+            // one name, one owner - same rule as every other registry here
+            if (hooks.has(hook.name)) {
+              throw new Error(`boot hook ${hook.name} is registered twice`)
+            }
+            hooks.set(hook.name, owned)
+          }),
+          () => Effect.sync(() => hooks.delete(hook.name)),
+        )
+      }).pipe(Effect.orDie, Effect.asVoid),
     hooks: Effect.sync(() => [...hooks.values()]),
   })
 })

@@ -1967,7 +1967,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     HttpApiEndpoint.get('listImports', '/assessment/batches/:batchId/participant-imports', {
       params: Schema.Struct({ batchId: id }),
+      query: Schema.Struct({ ...pageQuery }),
       success: Schema.Struct({
+        nextCursor: Schema.NullOr(Schema.String),
         imports: Schema.Array(
           Schema.Struct({
             id: Schema.String,
@@ -1981,7 +1983,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           }),
         ),
       }),
-      error: [BatchNotFound, AccessDenied],
+      error: [BatchNotFound, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
   .add(

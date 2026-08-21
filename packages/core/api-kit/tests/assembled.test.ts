@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer } from 'effect'
+import { Effect, Exit, Layer, References } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { Assembled, BootHookFailed, assembledBarrier, assembledLayer } from '../src/assembled.ts'
 
@@ -77,5 +77,33 @@ describe('the assembled barrier', () => {
       Effect.scoped(Layer.build(plugins.pipe(Layer.provideMerge(assembledLayer)))),
     )
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+  // Whose work a hook is. The assembler annotates a plugin's build fiber
+  // with its id, but the host runs the hooks on the barrier's own fiber -
+  // so unless the annotation travels with the hook, everything a plugin
+  // starts at boot logs as the application, and the per-source log level
+  // keyed on that annotation cannot reach it.
+  it('runs a hook as the plugin that registered it', async () => {
+    const seen: (unknown | undefined)[] = []
+    // the assembler wraps a plugin's build in its own identity
+    const plugin = Layer.effectDiscard(
+      Effect.gen(function* () {
+        const assembled = yield* Assembled
+        yield* assembled.register({
+          name: 'sweeper',
+          run: Effect.gen(function* () {
+            seen.push((yield* References.CurrentLogAnnotations)['source'])
+          }),
+        })
+      }).pipe(Effect.annotateLogs({ source: '@qualy/plugin-sweeper' })),
+    )
+    const server = Layer.effectDiscard(Effect.void)
+    const application = server.pipe(
+      Layer.provide(assembledBarrier.pipe(Layer.provide(plugin))),
+      Layer.provide(plugin),
+      Layer.provideMerge(assembledLayer),
+    )
+    await Effect.runPromise(Effect.scoped(Layer.build(application)))
+    expect(seen).toEqual(['@qualy/plugin-sweeper'])
   })
 })

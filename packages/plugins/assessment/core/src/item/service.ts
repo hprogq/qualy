@@ -1329,7 +1329,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 yield* setEntryState({
                   tenantId,
                   entryId: entry.id,
-                  from: ['draft', 'in_review'],
+                  from: ['draft', 'in_review', 'needs_revision'],
                   to: 'voided',
                 })
               }

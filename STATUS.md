@@ -7308,3 +7308,37 @@ college A(subtree),断言管理员看得到 college B 的人而录入者看不�
 红验:把 SQL 里那个 `'revision'` 字面量改一个字,断言立刻转红。
 
 验收:typecheck 零错;`pnpm test` 723 passed | 17 skipped;prettier 通过。
+
+### 服务端 minor 六条(2026-08-22,对抗审查)
+
+一、**作废题目不清扫 `needs_revision`**。`openEntriesOfItem` 只取 draft/in_review,
+一条正等参评人重交的申报因此从作废中幸存在非终态:概览桌面继续把它列为待办,而申报列表与状态
+投影都说它已作废——一个既做不完也消不掉的任务。两处 status 集合都补上 `needs_revision`。
+
+二、**活动流发出的复核链接自己会拒绝**。`openDoor` 收 `('active','blocked','awaiting_supplement')`
+再加 `mayActOn`,而链接落地的 `mayRead` 对 `awaiting_supplement` 还额外要求读者就是那条未答请求的
+发起人(§32.70)。两者恰好在这一态上不一致,同环节的同事会拿到一扇打不开的门。把开放请求那条
+规则折进 `openDoor` 的 EXISTS,两处判定同源。
+
+三、**巡检按快照写**。`patrolReviewRounds` 一次读完全部开放轮次,再逐条计算与写入;
+`openPanelOf` 只按 instance 取,`setInstanceState` 只 CAS state。轮次若在扫描与写入之间升级,
+新环节的席位会被按旧环节的人员结论终止,并可能被扣上 `assignee-not-found`。
+`setInstanceState` 与 `openPanelOf` 各加可选 `at: {route, stageId}`,巡检把快照所在环节一并带上——
+已经移动的轮次这一轮直接落空,下一轮在它的新位置重看。
+
+四、**`listImports` 裸 `LIMIT 50`**。违反 CLAUDE.md「列表一律 keyset 分页,禁止裸 limit 静默截断」。
+改为 `(occurred_at, id)` 行值游标(游标取 `occurred_at::text`,与活动流同一课),success 增
+`nextCursor`,query 增 `pageQuery`。该端点前端尚无消费者,改动止于服务端。
+
+五、**未认证的上传门对非 UUID 票据返 500**。`:reservationId` 直接进 uuid 列比较,PG 抛 22P02,
+经 `receiveUpload` 变成 defect——一个陌生人的猜测换来 500 与一条 error 级日志。
+`reservationById` 先校验票据形状,不像票据就是「没这张票」。红验:去掉形状校验,该用例得到 `DIED`。
+
+六、**后台工作丢失插件身份**。插件在自己的 layer 构建期注册 boot hook(装配器已在该 fiber 上打了
+`source` 注解),但宿主在屏障自己的 fiber 上运行 hook,注解不在——于是插件在启动时开的所有长期
+循环都记成 `app`,`application.logging.sources` 的分源级别对它们静默无效。
+`register` 现在读下当前 fiber 的 `References.CurrentLogAnnotations`(依据:
+repos/effect/packages/effect/src/References.ts:185、Effect.ts:13858 的 annotateLogs 记录重载),
+把它裹回 hook 的 run 上。新增 api-kit 测试断言 hook 内读到的 `source` 就是注册方的。
+
+验收:typecheck 零错;`pnpm test` 724 passed | 17 skipped;prettier 通过。

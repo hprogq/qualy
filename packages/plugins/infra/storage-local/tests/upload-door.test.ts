@@ -88,7 +88,14 @@ describe.runIf(postgresAvailable)('the upload door', () => {
         const missing = yield* Effect.exit(
           storage.receiveUpload({ reservationId: randomUUID(), body: stream(bytes) }),
         )
-        return { meta, ticket, missing }
+        // and a ticket that is not even a ticket: the door is unauthenticated,
+        // so a stranger's guess has to miss rather than fall over - a shape
+        // postgres cannot compare against a uuid column raises 22P02, which
+        // reaches the caller as a defect and the log as an error
+        const nonsense = yield* Effect.exit(
+          storage.receiveUpload({ reservationId: 'not-a-ticket', body: stream(bytes) }),
+        )
+        return { meta, ticket, missing, nonsense }
       }),
     )
     if (!Exit.isSuccess(exit)) throw new Error(String(exit.cause))
@@ -103,6 +110,14 @@ describe.runIf(postgresAvailable)('the upload door', () => {
     ).toBe(true)
     const missing = exit.value.missing
     expect(Exit.isFailure(missing)).toBe(true)
+    // both misses are the same miss, and neither is a crash
+    const reasonOf = (exit_: Exit.Exit<unknown, unknown>) =>
+      Exit.isSuccess(exit_)
+        ? 'ok'
+        : (((exit_.cause as { reasons?: readonly { _tag?: string; error?: { _tag?: string } }[] })
+            .reasons ?? [])[0]?.error?._tag ?? 'DIED')
+    expect(reasonOf(missing)).toBe('STORAGE_RESERVATION_NOT_FOUND')
+    expect(reasonOf(exit.value.nonsense)).toBe('STORAGE_RESERVATION_NOT_FOUND')
   })
 
   it('refuses more bytes than the ticket reserved, and leaves nothing staged', async () => {
