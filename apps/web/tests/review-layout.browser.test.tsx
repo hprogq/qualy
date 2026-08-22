@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
 import { components } from 'virtual:qualy/plugins'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
@@ -668,5 +668,61 @@ describe('sending, under a thumb', () => {
     } finally {
       restore()
     }
+  })
+})
+
+describe('the version picker', () => {
+  const revision = (no: number, id: string) => ({
+    id,
+    revisionNo: no,
+    payload: {},
+    formConfig: {},
+    note: null,
+    createdAt: `2026-08-21T0${no}:00:00.000Z`,
+  })
+
+  // The picker is a list somebody chooses from with the keyboard beside the
+  // rest of the workbench: the digits pick and the same chord that confirms a
+  // decision confirms this. The judged version is not one of them, so the
+  // digits count what can be chosen rather than what is drawn.
+  it('picks a version by digit and confirms with the decision chord', async () => {
+    const history = {
+      revisions: [revision(1, 'rev-1'), revision(2, 'rev-2'), revision(3, 'rev-3')],
+      events: [],
+      rounds: [],
+    }
+    // the round judges the newest version, which is the shape the picker is
+    // drawn for: everything under it is something to read against
+    open({
+      getEntryHistory: () => Effect.succeed(history),
+      getReviewInstance: () =>
+        Effect.succeed({ review: { ...review, revision: { ...review.revision, revisionNo: 3 } } }),
+    })
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+
+    await userEvent.keyboard('{Shift>}D{/Shift}')
+    const rows = () => [...document.querySelectorAll('[data-testid="version-row"]')]
+    await expect.poll(() => rows().length).toBe(3)
+    // newest first, and the one under judgement stands out of the running
+    expect(rows().map((row) => row.getAttribute('data-version'))).toEqual(['3', '2', '1'])
+    expect(rows()[0]?.getAttribute('data-standing')).toBe('judged')
+
+    const comparing = () =>
+      rows()
+        .find((row) => row.getAttribute('data-standing') === 'comparing')
+        ?.getAttribute('data-version')
+    // the sheet opens on whatever the screen behind it was already reading,
+    // which is the version below the judged one - so the first press has to
+    // move it somewhere else, or a dead shortcut would pass this
+    expect(comparing()).toBe('2')
+    // 2 is the second version that can be chosen, not the second drawn
+    await userEvent.keyboard('2')
+    await expect.poll(comparing).toBe('1')
+    await userEvent.keyboard('1')
+    await expect.poll(comparing).toBe('2')
+
+    // and the chord that confirms a decision confirms this one
+    await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
+    await expect.poll(() => rows().length).toBe(0)
   })
 })

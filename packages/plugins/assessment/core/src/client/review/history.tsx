@@ -1,16 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
+import { Kbd } from '@qualy/ui/kbd'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { timeLabel, useEntryHistory, type HistoryRevision } from './model.ts'
+import { useFinePointer } from './pointer.ts'
 
 // Choosing which version of a filing to read the judged one against.
 //
@@ -71,6 +74,9 @@ export function VersionPicker({
   onClose: () => void
 }) {
   const { format, formatError } = useI18n()
+  // a phone gets the sheet where the thumb is; a keyboard gets the digits
+  const narrow = useIsBelow(640)
+  const fine = useFinePointer()
   const history = useEntryHistory(entryId, open)
   const data = history.data as History | undefined
   const revisions = data?.revisions ?? []
@@ -111,9 +117,50 @@ export function VersionPicker({
 
   const picked = revisions.find((one) => one.id === chosenId)
 
+  // newest first, and the digits count only what can actually be chosen: a
+  // key that lands on the greyed row is a key that does nothing
+  const listed = useMemo(() => [...revisions].reverse(), [revisions])
+  const pickable = useMemo(
+    () => listed.filter((one) => one.revisionNo !== judgedRevisionNo),
+    [listed, judgedRevisionNo],
+  )
+  // 1-9 chooses, cmd-enter confirms: the same two chords the decision dialog
+  // beside this one answers to, so a reviewer working by keyboard never has
+  // to learn a second set
+  useEffect(() => {
+    if (!open || !fine) return
+    const down = (event: KeyboardEvent) => {
+      if (event.altKey) return
+      const typing =
+        event.target instanceof HTMLElement && event.target.closest('input, textarea') !== null
+      if (typing) return
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        if (picked !== undefined) {
+          event.preventDefault()
+          onPick(picked.id)
+        }
+        return
+      }
+      if (event.metaKey || event.ctrlKey) return
+      const digit = event.code.startsWith('Digit') ? Number(event.code.slice(5)) : Number(event.key)
+      if (Number.isInteger(digit) && digit >= 1 && digit <= Math.min(9, pickable.length)) {
+        event.preventDefault()
+        setChosen(pickable[digit - 1]!.id)
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [open, fine, pickable, picked, onPick])
+
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-md">
+      {/* From the side on a desk, from the foot on a phone: a panel that
+          slides in from the right of a 390px screen is the whole screen
+          arriving sideways, and the list it carries is a thumb's job. */}
+      <SheetContent
+        side={narrow ? 'bottom' : 'right'}
+        className="flex w-full flex-col gap-0 p-0 data-[side=bottom]:max-h-[85vh] data-[side=right]:sm:max-w-md"
+      >
         <SheetHeader className="border-b">
           <SheetTitle className="text-sm">{format(m.reviewVersionsTitle)}</SheetTitle>
           <p className="text-xs text-muted-foreground">
@@ -138,9 +185,10 @@ export function VersionPicker({
                 <p className="text-sm text-muted-foreground">{format(m.reviewCompareBlank)}</p>
               ) : (
                 <ul className="flex flex-col gap-2">
-                  {[...revisions].reverse().map((revision) => {
+                  {listed.map((revision) => {
                     const judged = revision.revisionNo === judgedRevisionNo
                     const ended = outcomeOf(revision.id)
+                    const digit = pickable.indexOf(revision) + 1
                     return (
                       <li key={revision.id}>
                         {/* Three states a glance apart: the judged version is
@@ -151,6 +199,13 @@ export function VersionPicker({
                         <button
                           type="button"
                           disabled={judged}
+                          // the three standings as a fact, so a test asks
+                          // which row is which rather than reading the chips
+                          data-testid="version-row"
+                          data-version={revision.revisionNo}
+                          data-standing={
+                            judged ? 'judged' : revision.id === chosenId ? 'comparing' : 'available'
+                          }
                           onClick={() => setChosen(revision.id)}
                           className={cn(
                             'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
@@ -162,11 +217,16 @@ export function VersionPicker({
                           )}
                         >
                           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            {/* the version and its clock never break across
+                                lines: at 390px the name wrapped to "第 1 /
+                                版" and the timestamp split down the middle,
+                                which is the row telling the reader it ran
+                                out of room rather than saying anything */}
                             <span className="flex items-baseline gap-2">
-                              <span className="text-sm font-medium">
+                              <span className="text-sm font-medium whitespace-nowrap">
                                 {format(m.reviewVersionName, { no: revision.revisionNo })}
                               </span>
-                              <span className="text-xs text-muted-foreground tabular-nums">
+                              <span className="truncate text-xs whitespace-nowrap text-muted-foreground tabular-nums">
                                 {timeLabel(revision.createdAt)}
                               </span>
                             </span>
@@ -176,18 +236,30 @@ export function VersionPicker({
                               </span>
                             )}
                           </span>
-                          {judged ? (
-                            <Badge variant="outline">{format(m.reviewVersionJudged)}</Badge>
-                          ) : revision.id === chosenId ? (
-                            <Badge>{format(m.reviewVersionComparing)}</Badge>
-                          ) : (
-                            ended !== null && (
-                              <Badge variant="outline" className="font-normal">
-                                {format(reviewOutcomeMessage(ended.outcome))}
-                                {ended.who !== null && `　${ended.who}`}
+                          <span className="flex min-w-0 shrink items-center gap-2">
+                            {judged ? (
+                              <Badge variant="outline" className="whitespace-nowrap">
+                                {format(m.reviewVersionJudged)}
                               </Badge>
-                            )
-                          )}
+                            ) : revision.id === chosenId ? (
+                              <Badge className="whitespace-nowrap">
+                                {format(m.reviewVersionComparing)}
+                              </Badge>
+                            ) : (
+                              ended !== null && (
+                                <Badge variant="outline" className="min-w-0 font-normal">
+                                  <span className="truncate">
+                                    {format(reviewOutcomeMessage(ended.outcome))}
+                                    {/* who decided is the second fact here, and
+                                        the first one is what the reader came
+                                        for: a phone keeps the verdict */}
+                                    {!narrow && ended.who !== null && `\u3000${ended.who}`}
+                                  </span>
+                                </Badge>
+                              )
+                            )}
+                            {fine && !judged && digit <= 9 && <Kbd>{digit}</Kbd>}
+                          </span>
                         </button>
                       </li>
                     )
@@ -197,21 +269,28 @@ export function VersionPicker({
             </AsyncSection>
           </div>
         </ScrollArea>
-        <div className="flex items-center gap-3 border-t p-3">
-          <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        {/* the hint sits above the keys on a phone: three items on one line
+            at 390px left the confirm button too narrow to say which version
+            it would confirm */}
+        <div className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground sm:flex-1">
             {format(m.reviewVersionsFoot)}
           </p>
-          <Button variant="outline" onClick={onClose}>
-            {format(commonMessages.close)}
-          </Button>
-          <Button
-            disabled={picked === undefined}
-            onClick={() => picked !== undefined && onPick(picked.id)}
-          >
-            {picked === undefined
-              ? format(m.reviewVersionsConfirmNone)
-              : format(m.reviewVersionsConfirm, { no: picked.revisionNo })}
-          </Button>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="outline" className="flex-1 sm:flex-none" onClick={onClose}>
+              {format(commonMessages.close)}
+            </Button>
+            <Button
+              className="flex-1 sm:flex-none"
+              disabled={picked === undefined}
+              onClick={() => picked !== undefined && onPick(picked.id)}
+            >
+              {picked === undefined
+                ? format(m.reviewVersionsConfirmNone)
+                : format(m.reviewVersionsConfirm, { no: picked.revisionNo })}
+              {fine && picked !== undefined && <Kbd>⌘↵</Kbd>}
+            </Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
