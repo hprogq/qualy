@@ -789,6 +789,8 @@ export default {
   'assessment/items/kind-locked': '项目类型创建后不可更改。',
   'assessment/items/ceiling-source': '分值来源：{name}。',
   'assessment/items/ceiling-how': '{value} 分 × {count} 条。',
+  'assessment/items/ceiling-how-max': '{value} 分，只按分值最高的一条计。',
+  'assessment/items/ceiling-how-top-n': '{value} 分 × 分值最高的 {count} 条。',
   'assessment/items/ceiling-how-any': '申报条数不限，本项目自身不设置计分上限。',
   'assessment/items/ceiling-how-granted': '名单内每人计 {value} 分。',
   'assessment/items/ceiling-section-capped': '{name} 上限 {value}',

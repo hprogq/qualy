@@ -3014,6 +3014,15 @@ const i18n = definePluginMessages({
       id: 'assessment/items/ceiling-how',
       defaultMessage: '{value} × {count, plural, one {# entry} other {# entries}}.',
     },
+    itemsCeilingHowMax: {
+      id: 'assessment/items/ceiling-how-max',
+      defaultMessage: '{value}, counting the highest entry only.',
+    },
+    itemsCeilingHowTopN: {
+      id: 'assessment/items/ceiling-how-top-n',
+      defaultMessage:
+        '{value} × {count, plural, one {the highest entry} other {the # highest entries}}.',
+    },
     itemsGrantedValue: {
       id: 'assessment/items/granted-value',
       defaultMessage: 'Score per participant',

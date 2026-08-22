@@ -281,6 +281,84 @@ describe.runIf(postgresAvailable)('the review read boundary', () => {
     })
     expect(result.subjectStill).toBe('ok')
   })
+  it('takes the round from the colleague at every door while an ask is open', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('access-ask-peer')
+          const assessment = yield* Assessment
+          const extra = yield* secondStage(f)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const file = yield* staged(f.t, f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: { files: [file] } },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+
+          const doors = (who: string) =>
+            Effect.all({
+              instance: Effect.exit(
+                assessment.getReviewInstance(f.t, instanceId, f.principal(who)),
+              ),
+              history: Effect.exit(assessment.getEntryHistory(f.t, entry.id, f.principal(who))),
+              file: Effect.exit(assessment.openAttachment(f.t, file, f.principal(who))),
+            })
+          const shape = (three: {
+            instance: Exit.Exit<unknown, unknown>
+            history: Exit.Exit<unknown, unknown>
+            file: Exit.Exit<unknown, unknown>
+          }) => ({
+            instance: answerOf(three.instance),
+            history: answerOf(three.history),
+            file: answerOf(three.file),
+          })
+
+          const peerBefore = shape(yield* doors(extra.reviewer2))
+          yield* assessment.requestSupplement(
+            f.t,
+            instanceId,
+            {
+              instructions: 'ask for more',
+              requirements: [{ label: 'why', kind: 'text', required: true }],
+            },
+            f.principal(f.reviewer),
+          )
+          // the ask is one reviewer's unfinished business: it holds every
+          // door for the asker and closes every one of them to the pool
+          const askerDuring = shape(yield* doors(f.reviewer))
+          const peerDuring = shape(yield* doors(extra.reviewer2))
+          // the administrative view is a different concept and survives
+          const adminDuring = shape(yield* doors(f.admin))
+
+          const mine = yield* assessment.getEntry(f.t, entry.id, s1)
+          yield* assessment.answerSupplement(
+            f.t,
+            mine.supplement!.requestId,
+            { payload: { f1: 'answered' } },
+            s1,
+          )
+          // answered: the round is back in the shared pool
+          const peerAfter = shape(yield* doors(extra.reviewer2))
+          return { peerBefore, askerDuring, peerDuring, adminDuring, peerAfter }
+        }),
+      ),
+    )
+    const OPEN = { instance: 'ok', history: 'ok', file: 'ok' }
+    expect(result.peerBefore).toEqual(OPEN)
+    expect(result.askerDuring).toEqual(OPEN)
+    expect(result.peerDuring).toEqual({
+      instance: 'ASSESSMENT_REVIEW_NOT_FOUND',
+      history: 'ASSESSMENT_ENTRY_NOT_FOUND',
+      file: 'ASSESSMENT_ATTACHMENT_NOT_FOUND',
+    })
+    expect(result.adminDuring).toEqual(OPEN)
+    expect(result.peerAfter).toEqual(OPEN)
+  })
   // The suite reads every door through one helper, so the helper has to be
   // able to say the three things apart. It could not: a fallen door read as
   // an open one, which would have passed every case here on a 500.

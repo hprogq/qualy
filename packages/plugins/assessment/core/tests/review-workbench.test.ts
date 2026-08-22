@@ -1057,4 +1057,57 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.sent.status).toBe('approved')
     expect(result.standing.total).toBe('0.50')
   })
+
+  it('answers stage staffing per batch, not once per node and role', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-two-batches')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const s1 = f.principal(f.s1)
+          // two rounds of the same tenant standing at the same class, waiting
+          // on the same role: everything the patrol memoizes is identical
+          // between them except the batch
+          const autumn = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const makeup = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const submit = Effect.fn(function* (g: typeof autumn) {
+            const entry = yield* assessment.createEntry(
+              f.t,
+              { itemId: g.item.id, participantId: g.p1, payload: {} },
+              s1,
+            )
+            const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+            return sent.currentReviewInstanceId!
+          })
+          const good = yield* submit(autumn)
+          const short = yield* submit(makeup)
+          // and then the make-up round takes the reviewer's judging back,
+          // which is a fact about that batch alone
+          yield* assessment.setAccessDeny(
+            f.t,
+            makeup.batch.id,
+            { userId: f.reviewer, permission: 'assessment.review.process', denied: true },
+            admin,
+          )
+
+          const patrol = yield* assessment.patrolReviewRounds
+          const standing = (id: string) =>
+            Effect.map(
+              runSql(sql`
+                select state, blocked_reason from review_instances where id = ${id}`),
+              (rows) => one<{ state: string; blocked_reason: string | null }>(rows),
+            )
+          return { patrol, good: yield* standing(good), short: yield* standing(short) }
+        }),
+      ),
+    )
+    // the staffed round is untouched, whichever order the sweep read them in
+    expect(result.good).toEqual({ state: 'active', blocked_reason: null })
+    // and the one that really has nobody says so in the words the alert panel
+    // splits on: an appointment is missing, not a recusal
+    expect(result.short).toEqual({ state: 'blocked', blocked_reason: 'no-assignee' })
+    expect(result.patrol).toEqual({ blocked: 1, released: 0 })
+  })
 })

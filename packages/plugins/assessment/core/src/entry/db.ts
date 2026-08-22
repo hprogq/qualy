@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import { sql, type RawBuilder } from 'kysely'
-import { mayActOn } from '../review/db.ts'
+import { heldThroughOpenAsk, mayActOn } from '../review/db.ts'
 import { db, staffReachOver } from '../server/db.ts'
 
 // The entry rows and everything the resource policy needs to know about the
@@ -1384,14 +1384,12 @@ export const userActivityPage = (input: {
     // colleague handed a link here would have been refused at the door.
     const openDoor = sql`case
       when ri.state in ('active', 'blocked', 'awaiting_supplement')
-       and (
-         ri.state <> 'awaiting_supplement'
-         or exists (
-           select 1 from review_supplement_requests ask
-           where ask.tenant_id = ri.tenant_id and ask.review_instance_id = ri.id
-             and ask.status = 'open' and ask.requested_by = ${input.userId}
-         )
-       )
+       and ${heldThroughOpenAsk({
+         tenantId: sql.ref('ri.tenant_id'),
+         instanceId: sql.ref('ri.id'),
+         state: sql.ref('ri.state'),
+         userId: sql`${input.userId}`,
+       })}
        and ${mayActOn({
          tenantId: sql`${input.tenantId}`,
          batchId: sql`${input.batchId}`,

@@ -1519,7 +1519,12 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
               select ri.state, ri.outcome, e.status from review_instances ri
               join entries e on e.id = ri.entry_id where ri.id = ${round}`),
           )
-          return { sitting, settled, after }
+          const panel = one<{ state: string; resolution: string | null }>(
+            yield* runSql(sql`
+              select state, resolution from review_panels
+              where review_instance_id = ${round}`),
+          )
+          return { sitting, settled, after, panel }
         }),
       ),
     )
@@ -1533,6 +1538,9 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
       outcome: 'rejected',
       status: 'rejected',
     })
+    // the sitting's own row says what the sitting did, not what a sitting
+    // one rung lower would have done with the same split
+    expect(result.panel).toEqual({ state: 'resolved', resolution: 'rejected' })
   })
 
   // Two judges at one step, deciding at the same moment. Whoever the batch
@@ -1641,6 +1649,183 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
     } else {
       expect(result.after).toMatchObject({ state: 'active', current_stage_id: 'senior' })
     }
+  })
+
+  // The same race with an ask instead of a word. An ask pauses the round,
+  // and while it waits only the reviewer who sent it still holds the round
+  // (§32.70) - so an ask taken against a step the round has already left
+  // takes the claim out of the next judge's queue in the name of somebody
+  // with no standing there, and no member of staff can take it back: the
+  // requester alone may cancel, and their reach ended with the step.
+  it('refuses an ask taken against the step the round left', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-stale-ask')
+          const assessment = yield* Assessment
+          const senior = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status)
+              values (${f.t}, 'senior-reviewer', 'Senior reviewer', 'org', 'active') returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.t}, ${senior}, p.id from permissions p
+            where p.code = 'assessment.review.process'`)
+          const g = yield* runningBatch(f, {
+            profile: NO_DOUBTS,
+            stages: [
+              {
+                id: 'class',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+              {
+                id: 'senior',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [senior] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
+          const person = (name: string, role: string) =>
+            Effect.gen(function* () {
+              const id = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+                  values (${f.t}, ${name}, ${f.studentType}, ${f.classA}) returning id`),
+              ).id
+              const grant = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+                  values (${f.t}, ${id}, ${role}, ${f.classA}, 'self') returning id`),
+              ).id
+              yield* accept(f.t, g.batch.id, id, grant)
+              return id
+            })
+          const colleague = yield* person('Colleague', f.reviewRole)
+          yield* person('Senior', senior)
+
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const round = sent.currentReviewInstanceId!
+          // the confirmation goes first so it holds the batch while the ask
+          // reads the round; the ask then wakes up behind a round that moved
+          const [confirmed, asked] = yield* Effect.all(
+            [
+              Effect.exit(
+                assessment.decideReview(
+                  f.t,
+                  round,
+                  { decision: 'approve', comment: '与证书相符' },
+                  f.principal(f.reviewer),
+                ),
+              ),
+              Effect.exit(
+                Effect.gen(function* () {
+                  yield* Effect.sleep('20 millis')
+                  return yield* assessment.requestSupplement(
+                    f.t,
+                    round,
+                    {
+                      instructions: '请补交证书原件',
+                      requirements: [{ label: '证书原件', kind: 'file', required: true }],
+                    },
+                    f.principal(colleague),
+                  )
+                }),
+              ),
+            ],
+            { concurrency: 'unbounded' },
+          )
+          const after = one<{ state: string; current_stage_id: string }>(
+            yield* runSql(sql`
+              select state, current_stage_id from review_instances where id = ${round}`),
+          )
+          const asks = Number(
+            one<{ n: string }>(
+              yield* runSql(sql`
+                select count(*) as n from review_supplement_requests
+                where review_instance_id = ${round}`),
+            ).n,
+          )
+          const askedAt = one<{ stage_id: string | null }>(
+            yield* runSql(sql`
+              select stage_id from review_events
+              where review_instance_id = ${round} and kind = 'supplement-requested'`),
+          )?.stage_id
+          return { confirmed, asked, after, asks, askedAt }
+        }),
+      ),
+    )
+    // one of the two lands, never both: an ask and a confirmation are two
+    // claims on the same step
+    expect([result.confirmed, result.asked].filter((exit) => Exit.isSuccess(exit))).toHaveLength(1)
+    if (Exit.isSuccess(result.asked)) {
+      // the ask held the step it was taken at, and paused the round there
+      expect(result.after).toEqual({ state: 'awaiting_supplement', current_stage_id: 'class' })
+      expect(result.askedAt).toBe('class')
+    } else {
+      // the confirmation handed the round on, and nothing paused it
+      expect(result.after).toEqual({ state: 'active', current_stage_id: 'senior' })
+      expect(result.asks).toBe(0)
+    }
+  })
+
+  // What may be done to the claim is read where the claim is held (§32.75):
+  // inside the transaction, under the batch lock, after the re-read. Asked
+  // at the door instead, the window would be answered from a reading taken
+  // before anything was locked, and it would also answer ahead of the
+  // staleness test - so somebody contesting a conclusion their claim has
+  // already outgrown would be told the window is shut rather than that they
+  // are arguing with the wrong conclusion.
+  it('answers a stale appeal for what it is before it answers for the window', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rv-appeal-order')
+          const assessment = yield* Assessment
+          // a window with no appealing in it, so the gate would refuse
+          const g = yield* runningBatch(f, { profile: NO_DOUBTS })
+          const s1 = f.principal(f.s1)
+          const reviewer = f.principal(f.reviewer)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const firstSent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const first = firstSent.currentReviewInstanceId!
+          yield* assessment.decideReview(
+            f.t,
+            first,
+            { decision: 'reject', comment: '材料不足' },
+            reviewer,
+          )
+          // filed again with more in it and approved: the first round is no
+          // longer the conclusion the claim stands on
+          yield* assessment.appendEntryRevision(f.t, entry.id, { payload: {} }, s1)
+          const secondSent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.decideReview(
+            f.t,
+            secondSent.currentReviewInstanceId!,
+            { decision: 'approve', comment: '这次齐了' },
+            reviewer,
+          )
+          const outgrown = yield* Effect.exit(
+            assessment.appealReview(f.t, first, { reason: '不服第一轮' }, s1),
+          )
+          return { outgrown }
+        }),
+      ),
+    )
+    expect(refusalOf(result.outgrown)?.reason).toBe('decision-superseded')
   })
 
   // An appeal argues with the conclusion the claim stands on now. The trail

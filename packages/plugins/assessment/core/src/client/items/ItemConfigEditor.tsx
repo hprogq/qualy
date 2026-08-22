@@ -41,6 +41,7 @@ import { ReasonDialog } from './ReasonDialog.tsx'
 import { BatchBanner } from '../batch/BatchScreen.tsx'
 import type { ItemOptions } from './options.ts'
 import type { Placement } from './paper.ts'
+import { countedEntries, type Folding } from './structure.ts'
 
 /**
  * The row's own picture, carried under the pointer.
@@ -507,12 +508,24 @@ const configOf = (draft: Draft) =>
         }
       : evidenceConfigOf(draft)
 
-const aggregatorOf = (draft: Draft) =>
+/** the rule the pen holds, before it is an aggregator reference */
+const foldingOf = (draft: Draft): Folding =>
   draft.folding === 'max'
-    ? { ref: 'max@1', config: {} }
+    ? { rule: 'max' }
     : draft.folding === 'top-n'
-      ? { ref: 'top-n-sum@1', config: { n: Math.max(1, Number(draft.topN) || 1) } }
+      ? { rule: 'top-n', n: Math.max(1, Number(draft.topN) || 1) }
+      : { rule: 'sum' }
+
+// read through foldingOf so the ceiling the panel prints and the rule the
+// scorer is given can only ever be the same rule
+const aggregatorOf = (draft: Draft) => {
+  const folding = foldingOf(draft)
+  return folding.rule === 'max'
+    ? { ref: 'max@1', config: {} }
+    : folding.rule === 'top-n'
+      ? { ref: 'top-n-sum@1', config: { n: folding.n } }
       : { ref: 'sum@1', config: {} }
+}
 
 const reviewPolicyOf = (draft: Draft) => {
   if (draft.reviewMode === 'none') return { mode: 'none' }
@@ -896,13 +909,16 @@ export function ItemConfigEditor({
   const askedOnce = useLingering(askingReason ? true : null) === true
 
   const at = paper.findIndex((one) => one.id === item?.id)
-  // what this question can contribute before any group has its say
+  // What this question can contribute before any group has its say: the
+  // amount times the entries the folding rule beside it counts, which is one
+  // under 只计最高 however many the filing limit allows.
   const entries = draft.maxEntries.trim() === '' ? null : Number(draft.maxEntries)
   const each = Number(draft.fixedValue.trim())
+  const counted = countedEntries(foldingOf(draft), entries)
   const ceiling =
-    entries === null || !Number.isFinite(each)
+    counted === null || !Number.isFinite(each)
       ? null
-      : amountOf(unitsOf(draft.fixedValue.trim()) * entries)
+      : amountOf(unitsOf(draft.fixedValue.trim()) * counted)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1254,7 +1270,8 @@ export function ItemConfigEditor({
               <ScoringSummary
                 granted={granted}
                 ceiling={granted ? amountOf(unitsOf(draft.fixedValue.trim())) : ceiling}
-                entries={entries}
+                counted={counted}
+                folding={foldingOf(draft)}
                 each={draft.fixedValue}
                 placement={placement}
               />
@@ -1540,14 +1557,17 @@ function InlineAdd({ label, onClick }: { label: string; onClick: () => void }) {
 function ScoringSummary({
   granted,
   ceiling,
-  entries,
+  counted,
+  folding,
   each,
   placement,
 }: {
   /** granted to everybody: one amount per person, never a count of claims */
   granted: boolean
   ceiling: string | null
-  entries: number | null
+  /** how many of a person's entries the folding rule counts */
+  counted: number | null
+  folding: Folding
   each: string
   placement: Placement
 }) {
@@ -1566,7 +1586,11 @@ function ScoringSummary({
     <div className="flex items-center gap-3.5 rounded-lg bg-muted px-3.5 py-3">
       <div className="flex shrink-0 flex-col gap-0.5">
         <p className="text-xs whitespace-nowrap text-muted-foreground">{format(m.itemsCeiling)}</p>
-        <p className="text-base font-semibold tabular-nums">
+        <p
+          className="text-base font-semibold tabular-nums"
+          data-testid="item-ceiling"
+          data-ceiling={ceiling ?? 'unlimited'}
+        >
           {ceiling === null ? format(m.structureUnlimited) : ceiling}
         </p>
       </div>
@@ -1576,11 +1600,20 @@ function ScoringSummary({
           could not be changed, sitting under a heading with the same name as
           the section around it. */}
       <p className="text-xs leading-relaxed text-muted-foreground">
+        {/* the sentence names the rule the number was worked out under:
+            "2 × 5 entries" beside a ceiling of 2 reads as a mistake */}
         {granted
           ? format(m.itemsCeilingHowGranted, { value: trimAmount(each.trim()) })
-          : entries === null
-            ? format(m.itemsCeilingHowAny)
-            : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: entries })}
+          : folding.rule === 'max'
+            ? format(m.itemsCeilingHowMax, { value: trimAmount(each.trim()) })
+            : folding.rule === 'top-n'
+              ? format(m.itemsCeilingHowTopN, {
+                  value: trimAmount(each.trim()),
+                  count: counted ?? folding.n,
+                })
+              : counted === null
+                ? format(m.itemsCeilingHowAny)
+                : format(m.itemsCeilingHow, { value: trimAmount(each.trim()), count: counted })}
         {` ${format(m.itemsCeilingSource, { name: format(m.itemsScoringMethodFixed) })}`}
         {chain !== '' && ` ${format(m.itemsCeilingNote, { chain })}`}
       </p>

@@ -37,6 +37,8 @@ import {
   resolvePolicy,
   routeOf,
   stageArrival,
+  stageStaffing,
+  type ResolvedPolicy,
 } from '../review/chain.ts'
 import { createPanel } from '../review/db.ts'
 import {
@@ -511,6 +513,18 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
 
       let rerouted = 0
       let keptOnOldPolicy = 0
+      // What the rounds of one question keep re-asking, answered once and
+      // held for the length of the move: the policy is read once rather than
+      // per round, the chain is resolved once per distinct lineage (a class
+      // of forty shares one), a landing unit's live path is read once, and a
+      // step's membership is asked once. Nothing written below changes any
+      // of those answers - no appointment, no move of the tree - and the
+      // whole move is one transaction holding the batch row, so every
+      // statement saved is time the batch is not stopped.
+      const policy = readPolicy(input.nextPolicy)
+      const chains = new Map<string, ResolvedPolicy>()
+      const paths = new Map<string, string | null>()
+      const staffing = stageStaffing()
       for (const round of moving) {
         const participant = yield* participantOf(
           input.tenantId,
@@ -521,12 +535,19 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           keptOnOldPolicy += 1
           continue
         }
-        const resolved = yield* resolvePolicy({
-          tenantId: input.tenantId,
-          batchId: input.item.batchId,
-          policy: readPolicy(input.nextPolicy),
-          lineage: participant.anchorLineage,
-        })
+        const lineageKey = participant.anchorLineage
+          .map((step) => `${step.nodeId}:${step.nodeTypeId}`)
+          .join('>')
+        let resolved = chains.get(lineageKey)
+        if (resolved === undefined) {
+          resolved = yield* resolvePolicy({
+            tenantId: input.tenantId,
+            batchId: input.item.batchId,
+            policy,
+            lineage: participant.anchorLineage,
+          })
+          chains.set(lineageKey, resolved)
+        }
         // the step it is standing at, by name. If the new policy still has
         // it, the round carries on from there - which is the whole point of
         // "this level has nobody, so I am editing this level". The
@@ -553,7 +574,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           keptOnOldPolicy += 1
           continue
         }
-        const nodePath = yield* nodePathOf(input.tenantId, landing.nodeId)
+        let nodePath = paths.get(landing.nodeId)
+        if (nodePath === undefined) {
+          nodePath = yield* nodePathOf(input.tenantId, landing.nodeId)
+          paths.set(landing.nodeId, nodePath)
+        }
         if (nodePath === null) {
           keptOnOldPolicy += 1
           continue
@@ -587,6 +612,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           stage: landing,
           subjectUserId: participant.userId,
           actorId: round.actorId,
+          staffing,
         })
         const roundNo = yield* nextRoundNo(input.tenantId, round.entryId)
         // a new round, never an edit to the old one: "why did it go there"

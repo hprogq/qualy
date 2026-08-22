@@ -1,4 +1,4 @@
-import { Effect, Layer, Schedule } from 'effect'
+import { Duration, Effect, Layer, Schedule } from 'effect'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { Assessment } from '../server/index.ts'
 
@@ -22,6 +22,29 @@ import { Assessment } from '../server/index.ts'
 
 /** how often the sweep runs; a minute is the resolution phase boundaries need */
 export const SWEEP_INTERVAL = '1 minute'
+
+const WINDOW = Duration.toMillis(Duration.fromInputUnsafe(SWEEP_INTERVAL))
+
+/**
+ * The cadence: the grid `Schedule.fixed` draws, without its catch-up.
+ *
+ * `fixed` answers with a zero delay for as long as the action overruns the
+ * window (repos/effect/packages/effect/src/Schedule.ts:948-950), so one slow
+ * sweep turns the loop into a run with no pause in it, and the next one
+ * inherits the same verdict. The review patrol's cost grows with the number
+ * of open rounds in the tenant, so overrunning a minute is a thing this
+ * sweep can actually do, and a background loop that answers slowness by
+ * never letting go of the pool is worse than a late boundary. Boundaries the
+ * sweep ran past are dropped rather than replayed: there is nothing to
+ * replay, since each sweep writes down everything the clock has crossed.
+ */
+export const sweepSchedule = Schedule.fixed(SWEEP_INTERVAL).pipe(
+  Schedule.modifyDelay(({ duration, elapsed }) =>
+    Effect.succeed(
+      Duration.isZero(duration) ? Duration.millis(WINDOW - (elapsed % WINDOW)) : duration,
+    ),
+  ),
+)
 
 /**
  * One sweep, with its failures kept off the fiber.
@@ -64,7 +87,7 @@ const sweep = Effect.gen(function* () {
  * the fiber goes with it, which is what makes SIGTERM prompt rather than
  * something with a timeout attached to it.
  *
- * `Schedule.fixed` rather than `spaced`: the cadence should be a minute of
+ * `sweepSchedule` rather than `spaced`: the cadence should be a minute of
  * wall clock, not a minute after however long the last sweep took.
  */
 export const schedulerLayer: Layer.Layer<never, never, Assessment | Assembled> =
@@ -75,7 +98,7 @@ export const schedulerLayer: Layer.Layer<never, never, Assessment | Assembled> =
       // the service is bound here, at registration, because a boot hook carries
       // no requirements: the host runs what plugins hand it, and never learns
       // what any of them needed
-      const loop = Effect.repeat(sweep, Schedule.fixed(SWEEP_INTERVAL)).pipe(
+      const loop = Effect.repeat(sweep, sweepSchedule).pipe(
         Effect.provideService(Assessment, yield* Assessment),
       )
       yield* assembled.register({

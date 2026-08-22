@@ -323,6 +323,32 @@ export const batchVisibleTo = (
     )
     .pipe(Effect.map((row) => row !== undefined))
 
+/**
+ * Whether this batch is one this person administers - the same question the
+ * list answers when it projects `manageable`, asked of one row.
+ *
+ * It exists so that the write guard cannot ask it any other way. Deciding
+ * administration a second time from the anchors as bare node ids gave a
+ * different answer the moment org moved a unit: a participant's anchor_path
+ * is frozen where org_nodes.path is live, so one relocation left the round
+ * listed and manageable for one administrator whose every write was refused,
+ * and writable by another who could not see it at all.
+ *
+ * null when there is no such batch: nothing here can say whose it is, and the
+ * caller decides whether that is a refusal or a not-found.
+ */
+export const batchWithinReach = (tenantId: string, batchId: string, held: AuthorizationScope) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentBatch')
+        .select(withinReach(held).as('reachable'))
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', batchId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => (row === undefined ? null : row.reachable === true)))
+
 /** the filters the list and its count share, beyond the keyset window */
 const batchFilters = <Q extends { where: (...args: never[]) => Q }>(
   query: Q,
@@ -2094,35 +2120,43 @@ export const activeElsewhere = (tenantId: string, userId: string, excludingBatch
  * missing - eligibility and scope are the service's questions, asked first.
  */
 /**
- * One thing that happened to somebody's membership, kept for good.
+ * What happened to people's membership, kept for good.
  *
  * The participant row says who is in the round now, and it says it by being
  * overwritten - a readmission clears the withdrawal it replaces. This is
  * where the fact that both happened survives.
+ *
+ * A whole intake at a time, because that is how intakes arrive: the roster
+ * itself is admitted by one statement, and writing its events one round trip
+ * per person put a college's worth of serialized inserts inside the batch
+ * lock, where no claim can be filed and no review decided.
  */
-export const insertParticipantEvent = (input: {
+export const insertParticipantEvents = (input: {
   tenantId: string
   batchId: string
-  participantId: string
-  kind: 'included' | 'excluded' | 'readmitted'
+  events: readonly { participantId: string; kind: 'included' | 'excluded' | 'readmitted' }[]
   actorId: string | null
   reason?: string | null
 }) =>
-  db
-    .query((k) =>
-      k
-        .insertInto('BatchParticipantEvent')
-        .values({
-          tenantId: input.tenantId,
-          batchId: input.batchId,
-          participantId: input.participantId,
-          kind: input.kind,
-          actorId: input.actorId,
-          reason: input.reason ?? null,
-        } as never)
-        .execute(),
-    )
-    .pipe(Effect.asVoid)
+  input.events.length === 0
+    ? Effect.void
+    : db
+        .query((k) =>
+          k
+            .insertInto('BatchParticipantEvent')
+            .values(
+              input.events.map((event) => ({
+                tenantId: input.tenantId,
+                batchId: input.batchId,
+                participantId: event.participantId,
+                kind: event.kind,
+                actorId: input.actorId,
+                reason: input.reason ?? null,
+              })) as never,
+            )
+            .execute(),
+        )
+        .pipe(Effect.asVoid)
 
 /** the membership history of one person in one round, oldest first */
 export const participantEvents = (tenantId: string, participantId: string) =>

@@ -62,6 +62,26 @@ export const formatAmount = (value: bigint): string => {
   return `${sign}${whole}.${fraction.padEnd(2, '0')}`
 }
 
+/**
+ * A scaled amount held to the display quantum of one hundredth, rounded
+ * HALF_AWAY_FROM_ZERO (§16): 83.245 gives 83.25 and -0.125 gives -0.13, the
+ * answers a pocket calculator and the old Excel sheets both give. Banker's
+ * rounding would answer -0.12 there, and a deduction nobody can reproduce by
+ * hand is an appeal waiting to be filed.
+ *
+ * Configuration admits four decimals, so a line's contribution can carry
+ * amounts finer than the account is ever printed in; quantizing each line
+ * before it is added is what keeps the printed lines adding up to the
+ * printed subtotal.
+ */
+export const quantizeAmount = (value: bigint): bigint => {
+  const negative = value < 0n
+  const magnitude = negative ? -value : value
+  const remainder = magnitude % 100n
+  const rounded = magnitude - remainder + (remainder >= 50n ? 100n : 0n)
+  return negative ? -rounded : rounded
+}
+
 /** approved entry = this amount, exactly as configured */
 export const fixed1: CalculatorDriver = {
   kind: 'calculator',

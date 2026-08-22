@@ -278,36 +278,98 @@ export const OPEN_REVIEW_STATES = ['active', 'blocked', 'awaiting_supplement'] a
 export const isOpenReviewState = (state: string): boolean =>
   (OPEN_REVIEW_STATES as readonly string[]).includes(state)
 
+/** what the open-ask rule is asked about; values or column references alike */
+export interface OpenAskRefs {
+  readonly tenantId: RawBuilder<unknown>
+  readonly instanceId: RawBuilder<unknown>
+  /** the round's state, so the fragment can stay out of the way when no ask is out */
+  readonly state: RawBuilder<unknown>
+  readonly userId: RawBuilder<unknown>
+}
+
+/**
+ * The one definition of the open-ask narrowing (§32.70). A stage is a
+ * shared pool, but the ask one reviewer sent is their own unfinished
+ * business: while the round waits for material only the asker still holds
+ * it, and every eligible reviewer gets it back the moment the answer
+ * returns the round to the pool.
+ *
+ * It sits beside mayActOn rather than inside it because acting and reading
+ * part company here, and because the acts already answer for themselves
+ * (decideReview refuses while an ask is open, cancelSupplement checks the
+ * requester first). Every door that reads a round AS ITS REVIEWER asks this
+ * fragment: the narrowing first landed on the round's own reader alone, and
+ * the file and history doors went on serving the colleague it had refused.
+ */
+export const heldThroughOpenAsk = (r: OpenAskRefs) => sql<boolean>`(
+  ${r.state} <> 'awaiting_supplement'
+  or exists (
+    select 1 from review_supplement_requests ask
+    where ask.tenant_id = ${r.tenantId} and ask.review_instance_id = ${r.instanceId}
+      and ask.status = 'open' and ask.requested_by = ${r.userId}
+  )
+)`
+
+/** one round as the callers hold it in memory, for the per-row predicates */
+export interface RoundRef {
+  id: string
+  batchId: string
+  currentRoute: 'normal' | 'escalation'
+  currentNodeId: string
+  currentRoleIds: readonly string[]
+  subjectUserId: string
+  actorId: string
+}
+
+const refsOf = (tenantId: string, userId: string, instance: RoundRef): RoundActorRefs => ({
+  tenantId: sql`${tenantId}`,
+  batchId: sql`${instance.batchId}`,
+  nodeId: sql`${instance.currentNodeId}`,
+  roleIds: uuidArray(instance.currentRoleIds),
+  userId: sql`${userId}`,
+  subjectUserId: sql`${instance.subjectUserId}`,
+  actorId: sql`${instance.actorId}`,
+  instanceId: sql`${instance.id}`,
+  route: sql`${instance.currentRoute}`,
+})
+
 /** one person against one instance's stage, for the decision endpoints */
-export const userMayReview = (input: {
+export const userMayReview = (input: { tenantId: string; userId: string; instance: RoundRef }) =>
+  input.instance.currentRoleIds.length === 0
+    ? Effect.succeed(false)
+    : db
+        .query((k) =>
+          sql<{ ok: boolean }>`
+            select ${mayActOn(refsOf(input.tenantId, input.userId, input.instance))} as ok
+          `.execute(k),
+        )
+        .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.ok)))
+
+/**
+ * The same person against a round they mean only to READ. Matching the
+ * stage is not enough while an ask is out (§32.70): the colleague still
+ * belongs to the pool, but the round is not theirs to read until the
+ * answer brings it back.
+ */
+export const userMayReadReview = (input: {
   tenantId: string
   userId: string
-  instance: {
-    id: string
-    batchId: string
-    currentRoute: 'normal' | 'escalation'
-    currentNodeId: string
-    currentRoleIds: readonly string[]
-    subjectUserId: string
-    actorId: string
-  }
+  instance: RoundRef & { state: string }
 }) =>
   input.instance.currentRoleIds.length === 0
     ? Effect.succeed(false)
     : db
         .query((k) =>
           sql<{ ok: boolean }>`
-            select ${mayActOn({
-              tenantId: sql`${input.tenantId}`,
-              batchId: sql`${input.instance.batchId}`,
-              nodeId: sql`${input.instance.currentNodeId}`,
-              roleIds: uuidArray(input.instance.currentRoleIds),
-              userId: sql`${input.userId}`,
-              subjectUserId: sql`${input.instance.subjectUserId}`,
-              actorId: sql`${input.instance.actorId}`,
-              instanceId: sql`${input.instance.id}`,
-              route: sql`${input.instance.currentRoute}`,
-            })} as ok
+            select (
+              ${mayActOn(refsOf(input.tenantId, input.userId, input.instance))}
+              and ${heldThroughOpenAsk({
+                tenantId: sql`${input.tenantId}`,
+                instanceId: sql`${input.instance.id}`,
+                state: sql`${input.instance.state}`,
+                userId: sql`${input.userId}`,
+              })}
+            ) as ok
           `.execute(k),
         )
         .pipe(Effect.map(({ rows }) => Boolean(rows[0]!.ok)))
@@ -1957,6 +2019,11 @@ export const openSupplementsOfEntries = (tenantId: string, entryIds: readonly st
           ),
         )
 
+/**
+ * Whether any open round of this claim is this person's to READ, for the
+ * entry-side doors. Same boundary as the round's own reader, open ask and
+ * all: reading the claim's history is reading the round by another name.
+ */
 export const mayReviewEntry = (input: { tenantId: string; userId: string; entryId: string }) =>
   db
     .query((k) =>
@@ -1970,6 +2037,12 @@ export const mayReviewEntry = (input: { tenantId: string; userId: string; entryI
           where ri.tenant_id = ${input.tenantId}
             and ri.entry_id = ${input.entryId}
             and ri.state in (${sql.join(OPEN_REVIEW_STATES.map((state) => sql`${state}`))})
+            and ${heldThroughOpenAsk({
+              tenantId: sql.ref('ri.tenant_id'),
+              instanceId: sql.ref('ri.id'),
+              state: sql.ref('ri.state'),
+              userId: sql`${input.userId}`,
+            })}
             and ${mayActOn({
               tenantId: sql`${input.tenantId}`,
               batchId: sql.ref('e.batch_id'),
@@ -2229,7 +2302,11 @@ export const votesOfPanel = (tenantId: string, panelId: string) =>
 export const resolvePanel = (input: {
   tenantId: string
   panelId: string
-  resolution: 'approved' | 'escalated'
+  /**
+   * 'rejected' is the sitting held at the ladder's end, where a split has
+   * nowhere to be handed to and is therefore the refusal itself
+   */
+  resolution: 'approved' | 'escalated' | 'rejected'
 }) =>
   db
     .query((k) =>

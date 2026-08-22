@@ -585,6 +585,10 @@ export const liveBatchPayloads = (tenantId: string, batchId: string) =>
  * field each slot belonged to, and whether that field is still the same
  * question. Without it the only thing to compare is slot names, and a
  * reordered or trimmed form reads as a broken one.
+ *
+ * It comes along by reference, though: an item has a handful of revisions
+ * and a running question has thousands of answers, so joining the form onto
+ * every row shipped the same configuration once per answer.
  */
 export interface LiveEntryRow {
   entryId: string
@@ -664,8 +668,8 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
     )
 
 export const liveEntryPayloads = (tenantId: string, itemId: string) =>
-  db
-    .query((k) =>
+  Effect.gen(function* () {
+    const rows = yield* db.query((k) =>
       k
         .selectFrom('Entry')
         .innerJoin('EntryRevision', (join) =>
@@ -673,42 +677,54 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
             .onRef('EntryRevision.tenantId', '=', 'Entry.tenantId')
             .onRef('EntryRevision.id', '=', 'Entry.currentRevisionId'),
         )
-        .innerJoin('AssessmentItemRevision', (join) =>
-          join
-            .onRef('AssessmentItemRevision.tenantId', '=', 'EntryRevision.tenantId')
-            .onRef('AssessmentItemRevision.id', '=', 'EntryRevision.itemRevisionId'),
-        )
         .select([
           'Entry.id as entryId',
           'Entry.status as status',
           'Entry.currentReviewInstanceId as reviewInstanceId',
           'EntryRevision.id as entryRevisionId',
           'EntryRevision.payload as payload',
-          'AssessmentItemRevision.id as itemRevisionId',
-          'AssessmentItemRevision.formConfig as formConfig',
+          'EntryRevision.itemRevisionId as itemRevisionId',
         ])
         .where('Entry.tenantId', '=', tenantId)
         .where('Entry.itemId', '=', itemId)
         .where('Entry.status', 'in', ['in_review', 'approved'])
         .execute(),
     )
-    .pipe(
-      Effect.map((rows) =>
-        rows.map((row): LiveEntryRow => {
-          const one = row as Record<string, unknown>
-          return {
-            entryId: String(one['entryId']),
-            status: String(one['status']) as LiveEntryRow['status'],
-            reviewInstanceId:
-              one['reviewInstanceId'] === null ? null : String(one['reviewInstanceId']),
-            entryRevisionId: String(one['entryRevisionId']),
-            payload: one['payload'],
-            itemRevisionId: String(one['itemRevisionId']),
-            formConfig: one['formConfig'],
-          }
-        }),
-      ),
-    )
+    const revisionIds = [
+      ...new Set(rows.map((row) => String((row as Record<string, unknown>)['itemRevisionId']))),
+    ]
+    // the forms these answers were written under, one row per form rather
+    // than one per answer: an item has a handful of revisions whatever the
+    // size of its roster
+    const forms = new Map<string, unknown>()
+    if (revisionIds.length > 0) {
+      const configs = yield* db.query((k) =>
+        k
+          .selectFrom('AssessmentItemRevision')
+          .select(['id', 'formConfig'])
+          .where('tenantId', '=', tenantId)
+          .where('id', 'in', revisionIds)
+          .execute(),
+      )
+      for (const config of configs) {
+        const record = config as Record<string, unknown>
+        forms.set(String(record['id']), record['formConfig'])
+      }
+    }
+    return rows.map((row): LiveEntryRow => {
+      const one = row as Record<string, unknown>
+      const itemRevisionId = String(one['itemRevisionId'])
+      return {
+        entryId: String(one['entryId']),
+        status: String(one['status']) as LiveEntryRow['status'],
+        reviewInstanceId: one['reviewInstanceId'] === null ? null : String(one['reviewInstanceId']),
+        entryRevisionId: String(one['entryRevisionId']),
+        payload: one['payload'],
+        itemRevisionId,
+        formConfig: forms.get(itemRevisionId) ?? null,
+      }
+    })
+  })
 
 /**
  * A draft-batch question leaves without ceremony: the projection lets go of

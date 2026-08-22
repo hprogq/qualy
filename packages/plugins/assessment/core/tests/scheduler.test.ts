@@ -1,6 +1,6 @@
 import { inspect } from 'node:util'
 import { sql } from 'kysely'
-import { Clock, Effect, Exit, Layer, Schedule } from 'effect'
+import { Clock, Duration, Effect, Exit, Layer, Schedule } from 'effect'
 import { TestClock } from 'effect/testing'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -24,7 +24,7 @@ import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import { catalogLayers, storageForTest } from './support/catalogs.ts'
-import { schedulerLayer } from '../src/phase/scheduler.ts'
+import { schedulerLayer, sweepSchedule } from '../src/phase/scheduler.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
 
 // The scheduler under a clock the test moves.
@@ -368,5 +368,37 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
     expect(result.b).toBe(result.start + MINUTE)
     // a draft batch has no boundaries to cross
     expect(result.draft).toBeNull()
+  })
+})
+
+// The cadence on its own, driven by hand. `Schedule.toStep` answers with the
+// delay the loop would sleep for given the instant a sweep finished, which is
+// the only way to ask what an overrun does without writing a sweep that
+// really takes minutes.
+describe('the sweep cadence', () => {
+  const delaysAfter = (finished: readonly number[]) =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const step = yield* Schedule.toStep(sweepSchedule)
+        const delays: number[] = []
+        for (const now of finished) {
+          const [, delay] = yield* step(now, undefined)
+          delays.push(Duration.toMillis(delay))
+        }
+        return delays
+      }),
+    )
+
+  it('stays on the minute grid after a quick sweep', async () => {
+    // forked at 0, the first sweep runs at 1m and is done ten seconds later:
+    // the next one belongs to the second minute, not a minute after this one
+    expect(await delaysAfter([0, MINUTE + 10_000])).toEqual([MINUTE, 50_000])
+  })
+
+  it('waits for the next minute after a sweep that overran its own', async () => {
+    // a sweep that took two and a half minutes. Bare `Schedule.fixed` answers
+    // zero here and goes on answering zero, so the loop never lets go of the
+    // pool again; the boundaries it ran past are dropped, not replayed
+    expect(await delaysAfter([0, MINUTE + 150_000])).toEqual([MINUTE, 30_000])
   })
 })

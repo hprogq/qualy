@@ -39,15 +39,48 @@ const stepsOf = (item: ItemDto): number | undefined => {
   return Array.isArray(policy?.stages) ? policy.stages.length : undefined
 }
 
+/** which of a person's entries a question's rule can ever count */
+export type Folding = { rule: 'sum' } | { rule: 'max' } | { rule: 'top-n'; n: number }
+
+/**
+ * How many entries the folding rule counts: everything a person may file for
+ * 'sum', the highest one alone for 'max', the best n for 'top-n'. Null is a
+ * count nothing bounds.
+ *
+ * Filing five and counting one is the ordinary shape of an office question,
+ * so multiplying by the filing limit answers five times the amount the
+ * scorer can ever grant, and a section cap sized against it is five times
+ * too generous.
+ */
+export const countedEntries = (folding: Folding, maxEntries: number | null): number | null => {
+  if (folding.rule === 'max') return 1
+  if (folding.rule === 'top-n')
+    return maxEntries === null ? folding.n : Math.min(folding.n, maxEntries)
+  return maxEntries
+}
+
+const foldingOf = (item: ItemDto): Folding => {
+  const aggregator = (
+    item.currentRevision?.scoringConfig as
+      { aggregator?: { ref?: string; config?: { n?: number } } } | undefined
+  )?.aggregator
+  if (aggregator?.ref === 'max@1') return { rule: 'max' }
+  if (aggregator?.ref === 'top-n-sum@1') return { rule: 'top-n', n: aggregator.config?.n ?? 1 }
+  return { rule: 'sum' }
+}
+
 /**
  * What one question can contribute at most, in whole ten-thousandths: its
- * value times what one person may file. Counted rather than floated, because
- * 0.1 three times is not 0.3 in a float and this number is printed.
+ * value times the number of entries its folding rule counts. Counted rather
+ * than floated, because 0.1 three times is not 0.3 in a float and this
+ * number is printed.
  */
 export const itemCeiling = (item: ItemDto): number | null => {
   const each = eachOf(item)
-  if (each === undefined || item.maxEntries === null) return null
-  return unitsOf(each) * item.maxEntries
+  if (each === undefined) return null
+  const counted = countedEntries(foldingOf(item), item.maxEntries)
+  if (counted === null) return null
+  return unitsOf(each) * counted
 }
 
 /** the paper walked into rows, numbered the way a reader would number it */

@@ -345,6 +345,27 @@ export interface StageArrival {
   readonly eligible: readonly string[]
 }
 
+/**
+ * Membership answers already given, for a caller arriving at the same step
+ * over and over inside one transaction.
+ *
+ * Membership is a question about a step - the batch, the unit, the roles -
+ * and nothing a caller does between two arrivals changes it, so a hundred
+ * rounds landing on one step asked the same authorization query a hundred
+ * times. Eligibility is never memoized: it is about the filing, and differs
+ * per round. The patrol keeps its own copy of this bargain for the same
+ * reason.
+ *
+ * Scoped to one caller's run and thrown away with it: held any longer it
+ * would be a cache of who may review, and appointing somebody has to take
+ * effect at once.
+ */
+export interface StageStaffing {
+  readonly answers: Map<string, readonly string[]>
+}
+
+export const stageStaffing = (): StageStaffing => ({ answers: new Map() })
+
 export const stageArrival = (input: {
   tenantId: string
   batchId: string
@@ -353,6 +374,8 @@ export const stageArrival = (input: {
   actorId: string
   /** apply same-round independence against this round's earlier judges */
   excludeJudgedOfInstanceId?: string
+  /** membership answers to reuse across arrivals at the same step */
+  staffing?: StageStaffing
 }) =>
   Effect.gen(function* () {
     if (input.stage.nodeId === null) {
@@ -364,7 +387,10 @@ export const stageArrival = (input: {
       nodeId: input.stage.nodeId,
       roleIds: input.stage.roleIds,
     }
-    const members = yield* reviewersAt({ ...at, subjectUserId: NOBODY, actorId: NOBODY })
+    const key = `${input.batchId}:${input.stage.nodeId}:${[...input.stage.roleIds].sort().join(',')}`
+    const known = input.staffing?.answers.get(key)
+    const members = known ?? (yield* reviewersAt({ ...at, subjectUserId: NOBODY, actorId: NOBODY }))
+    if (known === undefined) input.staffing?.answers.set(key, members)
     if (members.length === 0) {
       return { state: 'blocked', blockedReason: 'no-assignee', eligible: [] } as const
     }

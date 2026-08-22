@@ -7413,3 +7413,34 @@ API 无法自救,只能直接改库。服务端没有这条断言的测试,是�
 生产 smoke 看不见这一类缺失(它只断言探针、壳、manifest、哈希资源与 SIGTERM),这条也记进档案。
 
 验收:typecheck 零错;`pnpm test` 726 passed | 17 skipped;prettier 通过。
+
+### 第三、四轮审查发现的修复(2026-08-22)
+
+档案 `docs/notes/adversarial-audit-2026-08-22.md` 里 33 条,本轮修掉其中 29 条(含已单独提交的
+生产 tree-shaking 那条)。修复由一个**串行**工作流的 10 个 agent 按 territory 执行(同一棵树里并行
+改会互相踩),每个 agent 必须先按当前代码重验该发现、写一个**先红后绿**的测试并把红输出写进报告;
+我逐块审 diff 后才提交。
+
+**我在审查中拦下的一处**:rbac 自授修复原本把 `appoint:<角色码>` 放进 `GrantEscalationRefused`
+的响应体——那是客户端可见的 403,而 CLAUDE.md 明令「禁放角色码」,2026-08-03 那轮正好修过同类泄露。
+两处 locale 都只用这个数组取长度、从不上屏,所以改成单个不指向身份的哨兵 `appointment-authority`,
+并把 `carriedBy` 的返回收成它真正需要的那一个布尔,免得下次又被顺手塞回去。
+
+**按域**:①阶段计划——`replacePlan` 现在要求已提交阶段是提交序列的**前缀**(反驳者指出有两种损坏
+形态,planned 与 entered 都要守),并新增 `specOver`:对已存在阶段,字段缺省一律读作「保持原样」,
+一次修掉「保存计划清空白名单」与「套用模板抹掉入口说明」两条同源缺陷;②审核服务——`requestSupplement`
+按 a124973b 同一形状改为锁后重读再授权(两个兄弟方法经核实本就受 CAS 保护,未动),申诉的
+phase gate 挪进事务内以符合 §32.75 记录的顺序,合议在链末端了结时不再把 resolution 记成 escalated;
+③补件归属——§32.70 的收窄抽成单一 SQL 片段 `heldThroughOpenAsk`,附件门与申报经过改用
+`userMayReadReview`,活动流的内联副本一并换掉(此前是三处各写各的);④巡检——缓存键补上批次
+(同租户两批次此前互相污染),并用 `sweepSchedule` 去掉 `Schedule.fixed` 的追赶行为
+(依据 repos/effect/packages/effect/src/Schedule.ts:948-950,已核对:overrun 时它确实返回零延迟);
+⑤无界工作——花名册导入的逐行 INSERT 改为一条语句,题目配置保存不再把表单配置按行复制进内存;
+⑥计分——分项按分显式量化后再求和,组上限/下限同样量化,账目现在能被逐行加出来。
+
+验收:typecheck 零错;`pnpm test` 760 passed | 17 skipped(修前 726);`pnpm test:browser` 99 passed
+(修前 96);prettier 通过;`pnpm qualy generate` 报 nothing to generate。
+
+**未修的四条**(理由见档案与会话记录):权限目录带中文过线(跨插件契约重构,且触及冻结的 i18n
+边界,需裁决);批次归档不检查在飞轮次(STATUS 记为已知分期交付,补哪一半是产品决定);
+阶段时间点用设备时区而非批次日历(产品行为变更);发布产物按当前选中集打指纹而非超集(设计取舍)。

@@ -88,7 +88,7 @@ import {
   deletePhases,
   deleteTemplateRow,
   insertBatch,
-  insertParticipantEvent,
+  insertParticipantEvents,
   insertManagementAnchors,
   insertParticipants,
   insertRosterImport,
@@ -116,6 +116,7 @@ import {
   insertPhaseEvent,
   insertTemplate,
   batchVisibleTo,
+  batchWithinReach,
   countBatches,
   listBatchesPage,
   countBatchesByStatus,
@@ -133,7 +134,6 @@ import {
   phaseScopes,
   roleHoldersAt,
   replacePhaseScopes,
-  managementAnchors,
   rosterAnchors,
   scopeOptions as scopeOptionRows,
   scopesForBatch,
@@ -204,7 +204,10 @@ export interface BatchCapabilities {
 /** one phase as a plan write states it; instants already parsed to epoch ms */
 export interface PhaseSpecInput extends NewPhaseSpec {
   readonly id?: string
-  /** supplementary-phase allowances; empty or absent means unrestricted */
+  /**
+   * supplementary-phase allowances. Empty is unrestricted; absent, on a spec
+   * naming an existing phase, is "leave what is stored" (see specOver).
+   */
   readonly itemScope?: readonly string[]
   readonly participantScope?: readonly string[]
 }
@@ -440,6 +443,28 @@ export interface ReopenInput {
 /** an allowance as a set: order and repetition carry no meaning */
 const normalScope = (ids: readonly string[] | undefined): readonly string[] =>
   [...new Set(ids ?? [])].sort()
+
+/**
+ * What a spec actually says about a phase that already exists.
+ *
+ * Every writer of a plan sends back a projection of the rows it read, and no
+ * projection carries all five editable fields: the stage editor drops the two
+ * allowances, applying a timeline template drops those and the entry note. An
+ * omitted field therefore has to mean "leave what is stored" - read as an
+ * empty value it silently blanked entry notes and emptied the allowances of
+ * phases the write was not about, and an emptied allowance is unrestricted to
+ * the gate. Clearing stays possible, by sending the empty value.
+ */
+const specOver = (spec: PhaseSpecInput, existing: PlanPhase) => ({
+  description: spec.description ?? existing.description,
+  entryNote: spec.entryNote ?? existing.entryNote,
+  permissionProfile: spec.permissionProfile ?? existing.permissionProfile,
+  itemScope: spec.itemScope === undefined ? existing.itemScope : normalScope(spec.itemScope),
+  participantScope:
+    spec.participantScope === undefined
+      ? existing.participantScope
+      : normalScope(spec.participantScope),
+})
 
 export type ActionDecision =
   | { readonly allowed: true }
@@ -1091,22 +1116,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
       return { state, ratified }
     })
 
-  const fieldEditsOf = (existing: PhaseRow, spec: PhaseSpecInput): PlanEdit[] => {
+  const fieldEditsOf = (existing: PlanPhase, spec: PhaseSpecInput): PlanEdit[] => {
+    const over = specOver(spec, existing)
     const edits: PlanEdit[] = []
     if (spec.displayName !== existing.displayName) {
       edits.push({ kind: 'rename', phaseId: existing.id, displayName: spec.displayName })
     }
-    const description = spec.description ?? ''
-    if (description !== existing.description) {
-      edits.push({ kind: 'describe', phaseId: existing.id, description })
+    if (over.description !== existing.description) {
+      edits.push({ kind: 'describe', phaseId: existing.id, description: over.description })
     }
-    const entryNote = spec.entryNote ?? ''
-    if (entryNote !== existing.entryNote) {
-      edits.push({ kind: 'note-entry', phaseId: existing.id, entryNote })
+    if (over.entryNote !== existing.entryNote) {
+      edits.push({ kind: 'note-entry', phaseId: existing.id, entryNote: over.entryNote })
     }
-    const profile = spec.permissionProfile ?? []
-    if (JSON.stringify(profile) !== JSON.stringify(existing.permissionProfile)) {
-      edits.push({ kind: 'set-profile', phaseId: existing.id, permissionProfile: profile })
+    if (JSON.stringify(over.permissionProfile) !== JSON.stringify(existing.permissionProfile)) {
+      edits.push({
+        kind: 'set-profile',
+        phaseId: existing.id,
+        permissionProfile: over.permissionProfile,
+      })
     }
     return edits
   }
@@ -1172,25 +1199,24 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const ids: string[] = []
       for (const [index, spec] of specs.entries()) {
         const existing = spec.id !== undefined ? existingById.get(spec.id) : undefined
-        const itemScope = normalScope(spec.itemScope)
-        const participantScope = normalScope(spec.participantScope)
         if (existing) {
+          const over = specOver(spec, existing)
           const edits = options.events ? fieldEditsOf(existing, spec) : []
           yield* updatePhaseFields(tenantId, existing.id, {
             ordinal: index,
             displayName: spec.displayName,
             phaseKey: spec.phaseKey,
-            description: spec.description ?? '',
-            entryNote: spec.entryNote ?? '',
-            permissionProfile: spec.permissionProfile ?? [],
+            description: over.description,
+            entryNote: over.entryNote,
+            permissionProfile: over.permissionProfile,
           })
           const scopesChanged =
-            JSON.stringify(itemScope) !== JSON.stringify(existing.itemScope) ||
-            JSON.stringify(participantScope) !== JSON.stringify(existing.participantScope)
+            JSON.stringify(over.itemScope) !== JSON.stringify(existing.itemScope) ||
+            JSON.stringify(over.participantScope) !== JSON.stringify(existing.participantScope)
           if (scopesChanged) {
             yield* replacePhaseScopes(tenantId, existing.id, {
-              items: itemScope,
-              participants: participantScope,
+              items: over.itemScope,
+              participants: over.participantScope,
             })
           }
           for (const edit of edits) {
@@ -1229,6 +1255,8 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 }
               : {}),
           })
+          const itemScope = normalScope(spec.itemScope)
+          const participantScope = normalScope(spec.participantScope)
           if (itemScope.length > 0 || participantScope.length > 0) {
             yield* replacePhaseScopes(tenantId, phaseId, {
               items: itemScope,
@@ -1291,9 +1319,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }
       if (spec.id !== undefined && endedIds.has(spec.id)) {
         const existing = existingById.get(spec.id)!
+        const over = specOver(spec, existing)
         if (
-          JSON.stringify(normalScope(spec.itemScope)) !== JSON.stringify(existing.itemScope) ||
-          JSON.stringify(participantScope) !== JSON.stringify(existing.participantScope)
+          JSON.stringify(over.itemScope) !== JSON.stringify(existing.itemScope) ||
+          JSON.stringify(over.participantScope) !== JSON.stringify(existing.participantScope)
         ) {
           refusals.push({ reason: 'ended-phase-name-only', phaseId: spec.id, index })
         }
@@ -1454,16 +1483,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
     actorId: string | null,
     reason: string | null = null,
   ) =>
-    Effect.forEach(admitted, (row) =>
-      insertParticipantEvent({
-        tenantId,
-        batchId,
+    insertParticipantEvents({
+      tenantId,
+      batchId,
+      events: admitted.map((row) => ({
         participantId: row.id,
-        kind: row.inserted ? 'included' : 'readmitted',
-        actorId,
-        reason,
-      }),
-    )
+        kind: row.inserted ? ('included' as const) : ('readmitted' as const),
+      })),
+      actorId,
+      reason,
+    })
 
   const rosterWriteGuards = (tenantId: string, batchId: string, as: Principal) =>
     Effect.gen(function* () {
@@ -1560,26 +1589,28 @@ export const make = Effect.fn('Assessment.make')(function* () {
    * the permission somewhere" - which is how an administrator of one college
    * could take over another college's empty draft. The frozen anchors say
    * whose round it is; the roster says who is in it today.
+   *
+   * Asked as the one predicate the list already projects as `manageable`,
+   * rather than re-decided here from the anchors as bare node ids. Both
+   * halves used to be handed to rbac as ids, which resolves them against the
+   * live tree, while the list matches a participant's frozen anchor_path; org
+   * rewrites the live paths when a unit is relocated and nothing resyncs a
+   * frozen one, so a single move made the two disagree about the same running
+   * round. A control the list offers has to be one this guard accepts.
    */
   const requireRosterReach = (as: Principal, tenantId: string, batchId: string) =>
     Effect.gen(function* () {
-      const anchors = yield* dieQuery(withDb(managementAnchors(tenantId, batchId)))
-      const roster = yield* dieQuery(withDb(rosterAnchors(tenantId, batchId)))
-      if (anchors.length === 0 && roster.length === 0) {
-        // Nothing here says whose round this is: no boundary, nobody on the
-        // list. It can happen to a round upgraded from before the boundary
-        // existed whose units have since been deleted, so it needs a way
-        // back - but "holds the permission somewhere" is exactly the answer
-        // that let one college pick up another's empty draft. Only authority
-        // over the whole tenant is wide enough to be nobody's in particular.
-        const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-        if (!held.tenantWide) {
-          return yield* new AccessDenied({ reason: 'cannot manage assessment batches' })
-        }
-        return
-      }
-      for (const nodeId of [...new Set([...anchors, ...roster])]) {
-        yield* rbac.requireAt(as, MANAGE, nodeId)
+      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
+      const reach = yield* dieQuery(withDb(batchWithinReach(tenantId, batchId, held)))
+      // No boundary, nobody on the list, or no such batch at all: nothing here
+      // says whose round this is. It can happen to a round upgraded from
+      // before the boundary existed whose units have since been deleted, so it
+      // needs a way back - but "holds the permission somewhere" is exactly the
+      // answer that let one college pick up another's empty draft. Only
+      // authority over the whole tenant is wide enough to be nobody's in
+      // particular, and the callers that care answer BatchNotFound themselves.
+      if (!(reach ?? held.tenantWide)) {
+        return yield* new AccessDenied({ reason: 'cannot manage assessment batches' })
       }
     })
 
@@ -2856,6 +2887,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
               if (review.refusals.length > 0) {
                 return yield* new PlanInvalid({ refusals: review.refusals })
               }
+              // the existing rows are re-stated only to hold their places
+              // ahead of the appended ones; what this projection leaves out
+              // keeps the value already stored (specOver), because appending
+              // a template is not an edit of the phases already there
               const kept = rows.map((row): PhaseSpecInput => ({
                 id: row.id,
                 phaseKey: row.phaseKey,
@@ -2925,8 +2960,15 @@ export const make = Effect.fn('Assessment.make')(function* () {
               }
             }
             const committedIds = committed.map((row) => row.id)
+            // the scheduled phases keep their order and their place at the
+            // front. Comparing them only against each other let an unscheduled
+            // row be interleaved among them, and writePlanOrder then wrote the
+            // ordinals as submitted: the result is a plan normalizePlan calls
+            // corrupt, which kills every read of the batch and of every list
+            // it appears in, and which this endpoint can no longer be used to
+            // repair. So the refusal has to come before the write.
             if (
-              JSON.stringify(submittedIds.filter((id) => committedIds.includes(id))) !==
+              JSON.stringify(submittedIds.slice(0, committedIds.length)) !==
               JSON.stringify(committedIds)
             ) {
               refusals.push({ reason: 'reorder-not-allowed', phaseId: null })
@@ -2996,12 +3038,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
             const editedIds = specs.flatMap((spec) => {
               if (spec.id === undefined) return []
               const existing = existingById.get(spec.id)!
+              const over = specOver(spec, existing)
               const fieldsChanged = fieldEditsOf(existing, spec).length > 0
               const scopesChanged =
-                JSON.stringify(normalScope(spec.itemScope)) !==
-                  JSON.stringify(existing.itemScope) ||
-                JSON.stringify(normalScope(spec.participantScope)) !==
-                  JSON.stringify(existing.participantScope)
+                JSON.stringify(over.itemScope) !== JSON.stringify(existing.itemScope) ||
+                JSON.stringify(over.participantScope) !== JSON.stringify(existing.participantScope)
               return fieldsChanged || scopesChanged ? [spec.id] : []
             })
             const insertedKeys = specs.flatMap((spec) =>
@@ -3451,11 +3492,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 )
                 // the row keeps the current state and loses the last one;
                 // this is where both survive
-                yield* insertParticipantEvent({
+                yield* insertParticipantEvents({
                   tenantId,
                   batchId,
-                  participantId,
-                  kind: 'excluded',
+                  events: [{ participantId, kind: 'excluded' }],
                   actorId: as.userId,
                   reason: reason ?? null,
                 })
@@ -3583,12 +3623,16 @@ export const make = Effect.fn('Assessment.make')(function* () {
       let released = 0
       for (const tenantId of tenants) {
         const rounds = yield* dieQuery(withDb(openInstances(tenantId)))
-        // one membership resolution per (roles, node) rather than per round:
-        // a class with forty waiting entries asks the same question forty
-        // times. Membership only - the per-filing exclusions are per round.
+        // one membership resolution per (batch, roles, node) rather than per
+        // round: a class with forty waiting entries asks the same question
+        // forty times. Membership only - the per-filing exclusions are per
+        // round. The batch belongs in the key because membership is a batch
+        // question: acceptance and denies are recorded per batch, so two
+        // batches standing at the same class with the same role can hold
+        // different answers, and this loop sees every batch of the tenant.
         const staffing = new Map<string, number>()
         for (const round of rounds) {
-          const key = `${round.currentNodeId}:${[...round.currentRoleIds].sort().join(',')}`
+          const key = `${round.batchId}:${round.currentNodeId}:${[...round.currentRoleIds].sort().join(',')}`
           let members = staffing.get(key)
           if (members === undefined) {
             members = (yield* dieQuery(

@@ -193,8 +193,10 @@ const phaseView = Schema.Struct({
  * editable fields, without one it is an insertion at its position. Times are
  * deliberately absent - a plan write states structure, and when each phase
  * begins is committed one phase at a time through schedulePhase. The two
- * scopes are the supplementary-phase allowances; empty or absent means
- * unrestricted.
+ * scopes are the supplementary-phase allowances: empty means unrestricted,
+ * and on a spec that names an existing phase an absent field leaves the
+ * stored value alone, so a caller that echoes back a partial view of a plan
+ * cannot blank what it never rendered.
  */
 const phaseSpec = Schema.Struct({
   id: Schema.optional(id),

@@ -87,3 +87,84 @@ describe('the folding rules', () => {
     expect(top.total).toBe(40000n)
   })
 })
+
+/** the account as a reader adds it up: every printed line, in hundredths */
+const addedUp = (values: readonly string[]) =>
+  values.reduce((cents, value) => {
+    const match = /^(-?)(\d+)\.(\d{2})$/.exec(value)
+    if (!match) throw new Error(`not a two place amount: ${value}`)
+    const magnitude = Number(match[2]) * 100 + Number(match[3])
+    return cents + (match[1] === '-' ? -magnitude : magnitude)
+  }, 0)
+
+const finer = (spec: {
+  value: string
+  count: number
+  cap?: string | null
+  floor?: string | null
+}) => ({
+  groups: [
+    {
+      id: 'g',
+      parentGroupId: null,
+      name: '品德',
+      cap: spec.cap ?? null,
+      floor: spec.floor ?? null,
+      sortOrder: 0,
+    },
+  ],
+  items: [
+    {
+      id: 'i',
+      title: '志愿服务',
+      scoreGroupId: 'g',
+      sortOrder: 0,
+      status: 'active',
+      createdAt: 1,
+      calculator: { ref: 'fixed@1', config: { value: spec.value } },
+      aggregator: { ref: 'sum@1', config: {} },
+    },
+  ],
+  entries: Array.from({ length: spec.count }, (_, index) => ({
+    id: `e${index + 1}`,
+    itemId: 'i',
+    status: 'approved',
+    revisionId: `r${index + 1}`,
+    payload: {},
+    createdAt: index + 1,
+  })),
+})
+
+// §16: the quantum is the hundredth and the quantization point is the line.
+// Configuration admits four decimals, so an account that adds unquantized
+// contributions prints lines that do not reach the subtotal above them.
+describe('the two place ledger', () => {
+  it('quantizes every line, then adds the lines themselves up', () => {
+    const account = calcParticipant(catalogs, finer({ value: '0.335', count: 3 }))
+    expect(account.lines.map((line) => line.value)).toEqual(['0.34', '0.34', '0.34'])
+    expect(account.groups[0]!.itemsTotal).toBe('1.02')
+    expect(account.total).toBe('1.02')
+    expect(addedUp(account.lines.map((line) => line.value))).toBe(
+      addedUp([account.groups[0]!.final]),
+    )
+  })
+
+  it('rounds a deduction away from zero, as the appeal desk has to explain', () => {
+    const account = calcParticipant(catalogs, finer({ value: '-0.125', count: 1 }))
+    expect(account.lines[0]!.value).toBe('-0.13')
+    expect(account.total).toBe('-0.13')
+    // 83.245 the same way: the answer a pocket calculator gives
+    const award = calcParticipant(catalogs, finer({ value: '83.245', count: 1 }))
+    expect(award.total).toBe('83.25')
+  })
+
+  it('applies a limit at the hundredth it is printed in', () => {
+    const account = calcParticipant(catalogs, finer({ value: '1.00', count: 3, cap: '2.005' }))
+    const group = account.groups[0]!
+    expect(group.cap).toBe('2.01')
+    expect(group.final).toBe('2.01')
+    const adjustment = account.lines.find((line) => line.kind === 'group-adjustment')!
+    expect(adjustment.value).toBe('-0.99')
+    expect(addedUp(account.lines.map((line) => line.value))).toBe(addedUp([account.total]))
+  })
+})

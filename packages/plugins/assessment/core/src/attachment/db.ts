@@ -45,6 +45,8 @@ export const citingEntries = (tenantId: string, attachmentId: string) =>
 export interface CitingInstanceRow {
   id: string
   batchId: string
+  /** the authorizer needs it: a reviewer's read narrows while an ask is open (§32.70) */
+  state: string
   currentRoute: 'normal' | 'escalation'
   currentNodeId: string
   currentRoleIds: readonly string[]
@@ -112,6 +114,7 @@ export const citingInstances = (tenantId: string, attachmentId: string) =>
         .select([
           'ri.id',
           'e.batchId',
+          'ri.state',
           'ri.currentRoute',
           'ri.currentNodeId',
           'ri.currentRoleIds',
@@ -131,6 +134,7 @@ export const citingInstances = (tenantId: string, attachmentId: string) =>
         rows.map((row): CitingInstanceRow => ({
           id: row.id,
           batchId: row.batchId,
+          state: row.state,
           currentRoute: row.currentRoute as CitingInstanceRow['currentRoute'],
           currentNodeId: row.currentNodeId,
           currentRoleIds: row.currentRoleIds,
@@ -167,6 +171,7 @@ export const supplementCitingInstances = (tenantId: string, attachmentId: string
         .select([
           'ri.id',
           'e.batchId',
+          'ri.state',
           'ri.currentRoute',
           'ri.currentNodeId',
           'ri.currentRoleIds',
@@ -185,6 +190,7 @@ export const supplementCitingInstances = (tenantId: string, attachmentId: string
         rows.map((row): CitingInstanceRow => ({
           id: row.id,
           batchId: row.batchId,
+          state: row.state,
           currentRoute: row.currentRoute as CitingInstanceRow['currentRoute'],
           currentNodeId: row.currentNodeId,
           currentRoleIds: row.currentRoleIds,

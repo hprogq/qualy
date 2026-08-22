@@ -1257,10 +1257,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               const votes = yield* votesOfPanel(tenantId, panel.id)
               if (votes.length >= panel.seatCount) {
                 const unanimous = votes.every((vote) => vote.decision === 'approve')
+                // What the sitting amounted to, settled before it is written
+                // down: a split at the ladder's end is the refusal, and
+                // resolving as 'escalated' first left the row saying it had
+                // handed the matter up while the round closed rejected.
+                const ends = !unanimous && isRouteEnd(policy, here)
                 const closed = yield* resolvePanel({
                   tenantId,
                   panelId: panel.id,
-                  resolution: unanimous ? 'approved' : 'escalated',
+                  resolution: unanimous ? 'approved' : ends ? 'rejected' : 'escalated',
                 })
                 if (!closed) return yield* new ReviewConflict()
                 if (unanimous) {
@@ -1278,7 +1283,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     to: 'approved',
                   })
                   yield* bumpParticipantAttention(tenantId, row.entryId)
-                } else if (isRouteEnd(policy, here)) {
+                } else if (ends) {
                   // The end of the ladder owns the final no, and a sitting
                   // held there has nowhere to hand a split to: the split is
                   // the refusal. A panel is forbidden on the route's last
@@ -1487,13 +1492,6 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         if (!admin) return yield* new ReviewNotFound()
         return yield* refuse('appeal', 'not-your-entry')
       }
-      const decision = yield* deps
-        .authorize(as, 'assessment.entry.appeal', located.batchId, {
-          participantId: located.participantId,
-        })
-        .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
-      if (!decision.allowed) return yield* refuse('appeal', decision.reason)
-
       return yield* withDb(
         transaction(
           Effect.gen(function* () {
@@ -1528,6 +1526,18 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             ) {
               return yield* refuse('appeal', 'decision-superseded')
             }
+            // The window, asked here and not at the door (§32.75): an appeal
+            // is a transition on the claim, so what may be done to the claim
+            // is read under the same lock that orders the transition. Asked
+            // before it, an administrator narrowing the phase's profile or
+            // taking the participant off the roster in that gap would be
+            // answered with a permission that had already been withdrawn.
+            const decision = yield* deps
+              .authorize(as, 'assessment.entry.appeal', row.batchId, {
+                participantId: row.participantId,
+              })
+              .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+            if (!decision.allowed) return yield* refuse('appeal', decision.reason)
             // there has to be a decision to contest
             if (
               row.state !== 'completed' ||
@@ -1700,11 +1710,22 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
+          // where the round lives, and nothing else: a round never changes
+          // batch, so this is safe to lock by and safe to be stale about
+          const located = yield* instanceOf(tenantId, instanceId)
+          if (located === null) return yield* new ReviewNotFound()
+          const locked = yield* lockBatch(tenantId, located.batchId)
+          if (locked!.status === 'archived') return yield* new BatchReadOnly()
+          // Read it again, and ask from this one. Standing to ask is standing
+          // at the step the round stands on now: between the two reads a
+          // colleague can have confirmed this step and handed the round
+          // upward, and an ask taken against the abandoned step would pause
+          // the round out of the next judge's queue in the name of somebody
+          // who holds nothing there. Nobody with standing could take it back
+          // either, because cancelling belongs to the requester alone.
           const row = yield* instanceOf(tenantId, instanceId)
           if (row === null) return yield* new ReviewNotFound()
           yield* requireJudge(tenantId, row, as, 'supplement-request')
-          const locked = yield* lockBatch(tenantId, row.batchId)
-          if (locked!.status === 'archived') return yield* new BatchReadOnly()
           const gate = yield* deps.reviewGate(tenantId, row.batchId)
           if (!gate.allowed) return yield* refuse('supplement-request', gate.reason)
           if (row.state !== 'active') {

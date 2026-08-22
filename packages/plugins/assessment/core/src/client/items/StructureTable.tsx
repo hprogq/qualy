@@ -297,7 +297,11 @@ function GroupRow({
             : format(m.itemsCapChip, { value: trimAmount(row.cap) })}
         </span>
         {row.subtotal !== undefined && (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          <span
+            className="shrink-0 text-xs tabular-nums text-muted-foreground"
+            data-testid="group-subtotal"
+            data-subtotal={row.subtotal}
+          >
             {format(m.structureSubtotal, { sum: row.subtotal })}
           </span>
         )}

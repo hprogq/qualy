@@ -1,5 +1,5 @@
 import type { AggregatorDriver, CalculatorDriver } from '../plugin.ts'
-import { formatAmount, scaledAmount } from './builtins.ts'
+import { formatAmount, quantizeAmount, scaledAmount } from './builtins.ts'
 
 // The one scorer (§8.1). Everything that shows a number - the provisional
 // result now, previews and frozen runs later - calls this same pure
@@ -199,7 +199,9 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
       // a derived question grants its amount to everybody on the roster:
       // there is nothing to file, nothing to review, and the line says so
       if (item.derived === true) {
-        const amount = calculator.amountOf(item.calculator.config, { payload: null })
+        const amount = quantizeAmount(
+          calculator.amountOf(item.calculator.config, { payload: null }),
+        )
         lines.push({
           lineId: `derived:${item.id}`,
           kind: 'derived',
@@ -248,13 +250,20 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
         item.aggregator.config,
         approved.map(({ entry, amount }) => ({ entryId: entry.id, amount })),
       )
+      // The account is added up from the lines it prints, never beside them
+      // (§16): each line's contribution is quantized to the hundredth it is
+      // shown in and the group's own subtotal is the sum of those, so three
+      // lines of 0.335 read as three times 0.34 above a subtotal of 1.02.
+      // Adding the fold's own total instead would print a subtotal nobody
+      // can reach by adding the lines above it.
       for (const [index, said] of folded.entries.entries()) {
         const { entry } = approved[index]!
+        const amount = quantizeAmount(said.effectiveAmount)
         lines.push({
           lineId: `entry:${entry.id}`,
           kind: said.included ? 'entry' : 'entry-not-counted',
           label: item.title,
-          value: formatAmount(said.effectiveAmount),
+          value: formatAmount(amount),
           itemId: item.id,
           provenance: {
             entryId: entry.id,
@@ -262,8 +271,8 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
             calculatorRef: item.calculator.ref,
           },
         })
+        itemsTotal += amount
       }
-      itemsTotal += folded.total
     }
 
     // children after this group's own items, each already held to its own
@@ -275,30 +284,30 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
     walking.delete(group.id)
     const raw = itemsTotal + childrenTotal
 
+    // A limit belongs to the same two-place arithmetic as the lines it holds
+    // down: configuration admits four decimals, and a limit applied at four
+    // would leave the adjustment line carrying a fraction of a cent the
+    // account cannot print. The group says the limit it actually applied.
+    const cap = group.cap === null ? null : quantizeAmount(scaledAmount(group.cap))
+    const floor = group.floor === null ? null : quantizeAmount(scaledAmount(group.floor))
     let final = raw
-    if (group.cap !== null) {
-      const cap = scaledAmount(group.cap)
-      if (final > cap) {
-        lines.push({
-          lineId: `grp:${group.id}:cap`,
-          kind: 'group-adjustment',
-          label: group.name,
-          value: formatAmount(cap - final),
-        })
-        final = cap
-      }
+    if (cap !== null && final > cap) {
+      lines.push({
+        lineId: `grp:${group.id}:cap`,
+        kind: 'group-adjustment',
+        label: group.name,
+        value: formatAmount(cap - final),
+      })
+      final = cap
     }
-    if (group.floor !== null) {
-      const floor = scaledAmount(group.floor)
-      if (final < floor) {
-        lines.push({
-          lineId: `grp:${group.id}:floor`,
-          kind: 'group-adjustment',
-          label: group.name,
-          value: formatAmount(floor - final),
-        })
-        final = floor
-      }
+    if (floor !== null && final < floor) {
+      lines.push({
+        lineId: `grp:${group.id}:floor`,
+        kind: 'group-adjustment',
+        label: group.name,
+        value: formatAmount(floor - final),
+      })
+      final = floor
     }
     groupViews.push({
       groupId: group.id,
@@ -309,8 +318,8 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
       childrenTotal: formatAmount(childrenTotal),
       raw: formatAmount(raw),
       final: formatAmount(final),
-      cap: group.cap,
-      floor: group.floor,
+      cap: cap === null ? null : formatAmount(cap),
+      floor: floor === null ? null : formatAmount(floor),
     })
     return final
   }

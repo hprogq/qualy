@@ -5,7 +5,7 @@ import type { AttachmentMeta, AttachmentOpen, Storage } from '@qualy/plugin-stor
 import type { UploadTicket } from '@qualy/plugin-storage/upload'
 import { AttachmentUnavailable, EntryActionRefused, ItemNotFound } from '../server/errors.ts'
 import { itemOf } from '../item/db.ts'
-import { userMayReview } from '../review/db.ts'
+import { userMayReadReview } from '../review/db.ts'
 import {
   citingEntries,
   citingInstances,
@@ -21,7 +21,9 @@ import {
 // uploader while it is still staged, the subject whose filings cite it -
 // membership is history, an excluded member keeps reading what they filed -
 // the staff whose administrative reach covers a citing round, and whoever
-// the review predicate admits to a round that judged it. A retired
+// the reviewer's READ predicate admits to a round that judged it - the
+// read one, not the act one, so a round waiting on an ask stops answering
+// for the colleague it has been taken from (§32.70). A retired
 // attachment answers the same question the same way: retirement stops new
 // citations, never the reading of history.
 
@@ -116,12 +118,13 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
       ]
       for (const instance of instances) {
         const judge = yield* withDb(
-          userMayReview({
+          userMayReadReview({
             tenantId,
             userId: as.userId,
             instance: {
               id: instance.id,
               batchId: instance.batchId,
+              state: instance.state,
               currentRoute: instance.currentRoute,
               currentNodeId: instance.currentNodeId,
               currentRoleIds: instance.currentRoleIds,
