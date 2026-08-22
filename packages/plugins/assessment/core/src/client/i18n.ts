@@ -337,6 +337,10 @@ const i18n = definePluginMessages({
     filterStatus: { id: 'assessment/batch/filter-status', defaultMessage: 'Status' },
     filterAll: { id: 'assessment/batch/filter-all', defaultMessage: 'All' },
     noMatchTitle: { id: 'assessment/batch/no-match', defaultMessage: 'No matching batches' },
+    switcherOnlyThis: {
+      id: 'assessment/batch/switcher-only-this',
+      defaultMessage: 'This is the only batch you are in.',
+    },
     noMatchHint: {
       id: 'assessment/batch/no-match-hint',
       defaultMessage: 'Try another keyword or clear the status filter.',

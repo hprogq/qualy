@@ -1,6 +1,6 @@
 import { lazy, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
@@ -322,6 +322,7 @@ describe('the batch list', () => {
     // heading the section would have to repeat
     await expect.element(page.getByText('2026 春季综测')).toBeVisible()
 
+    console.log('LINKS', [...document.querySelectorAll('a')].map((a) => a.textContent).join(' | '))
     await page.getByRole('link', { name: '全部测评' }).click()
     await expect.element(page.getByRole('heading', { name: '测评批次' })).toBeVisible()
   })
@@ -1057,5 +1058,86 @@ describe('who may work on a batch', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: '移出本批次' }).click()
     await vi.waitFor(() => expect(removeStaff).toHaveBeenCalledTimes(1))
     expect(removeStaff.mock.calls[0]![0]).toMatchObject({ params: { sourceId: PARTICIPANT_ID } })
+  })
+})
+
+describe('the batch switcher', () => {
+  // The switch loads nothing until it is opened, so the first open is a round
+  // trip somebody is waiting through: it has to say it is working. What it
+  // then offers is a handful, with a search above it for everything else -
+  // a menu that grew with the tenant would be the list page in the wrong
+  // place.
+  it('says it is loading, offers a bounded few, and narrows them by name', async () => {
+    const asked: (Record<string, string> | undefined)[] = []
+    let release: (() => void) | undefined
+    const listBatches = vi.fn((request: Request) => {
+      asked.push(request.query)
+      const q = request.query?.['q']
+      const rows =
+        q === undefined
+          ? [
+              listRow({ id: BATCH_ID, name: '2026 春季综测' }),
+              listRow({ id: 'other', name: '2025 秋季综测' }),
+            ]
+          : [listRow({ id: 'other', name: '2025 秋季综测' })]
+      const answer = Effect.succeed({
+        items: rows,
+        nextCursor: null,
+        total: rows.length,
+        capabilities: { create: true },
+      })
+      // the first call is held open, so the waiting state is a state the test
+      // can actually stand in rather than a frame it has to catch
+      // only the switcher's own call is held: the page around it asks for
+      // batches too, and holding whichever came first spent the pause on
+      // somebody else's request
+      return request.query?.['limit'] === '10' && release === undefined
+        ? Effect.flatMap(
+            Effect.promise(
+              () =>
+                new Promise<void>((resolve) => {
+                  release = resolve
+                }),
+            ),
+            () => answer,
+          )
+        : answer
+    })
+    screen({ listBatches }, `/assessment/batches/${BATCH_ID}`)
+    await expect.element(page.getByRole('button', { name: '切换批次' })).toBeVisible()
+    await page.getByRole('button', { name: '切换批次' }).click()
+
+    // the menu lives in a portal, which the page locators do not walk
+    const menu = () => document.querySelector('[data-slot="popover-content"]')
+    const rows = () => [...(menu()?.querySelectorAll('li button') ?? [])]
+
+    // held open: it says it is working rather than showing "none"
+    await expect
+      .poll(() => menu()?.querySelector('[data-testid="switcher-loading"]') !== null)
+      .toBe(true)
+    release!()
+    await expect.poll(() => rows().length).toBe(2)
+
+    // the open round is first and ticked, in the same shape as every other
+    expect(rows()[0]?.getAttribute('data-testid')).toBe('switcher-current')
+    expect(rows()[0]?.textContent).toContain('2026 春季综测')
+    expect(rows()[1]?.textContent).toContain('2025 秋季综测')
+
+    // and the menu never asks for more than it means to show
+    expect(asked.find((one) => one?.['limit'] === '10')).toBeDefined()
+
+    // React owns this input's value, so the setter it patched is the one that
+    // has to be called; assigning the property behind its back is ignored
+    const box = menu()!.querySelector('input')!
+    box.focus()
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(box, '2025')
+    box.dispatchEvent(new Event('input', { bubbles: true }))
+    await expect.poll(() => asked.some((one) => one?.['q'] === '2025')).toBe(true)
+    await expect.poll(() => rows().length).toBe(1)
+
+    // closed before leaving: an open radix layer marks the rest of the
+    // document aria-hidden, and the next case would find no roles at all
+    await userEvent.keyboard('{Escape}')
+    await expect.poll(() => menu()).toBe(null)
   })
 })

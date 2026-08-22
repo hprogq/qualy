@@ -54,19 +54,19 @@ export default function BatchContextBar() {
     staleTime: 30_000,
   })
 
+  // A row on a phone, three measured columns from a tablet up. The named
+  // door to the list is a desk affordance, and with it gone there is nothing
+  // on the left for the name to be centred against: a title floating in the
+  // middle of a bar with empty space beside it reads as decoration, so on a
+  // narrow screen the switch starts where every other line of the page does.
   return (
-    <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-3">
-      <div data-bar-start className="flex min-w-0 items-center">
+    <div className="flex min-w-0 items-center gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr]">
+      <div data-bar-start className="flex min-w-0 items-center max-sm:hidden">
         {/* A named destination, not a Back: the arrow beside the words is
             fine on a desk, but alone on a phone it reads as navigation
             history and gets pressed by mistake - there the switcher's own
             menu already carries this door, so the shortcut leaves. */}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="-ml-1 shrink-0 text-muted-foreground max-sm:hidden"
-          asChild
-        >
+        <Button size="sm" variant="ghost" className="-ml-1 shrink-0 text-muted-foreground" asChild>
           <PageLink page="assessment/batches">
             <ArrowLeftIcon />
             {format(m.backToList)}
@@ -74,13 +74,14 @@ export default function BatchContextBar() {
         </Button>
       </div>
 
-      {/* The middle column, so the batch sits in the centre of the bar
-          whatever is beside it, and the switch is where the eye already is.
-          Its ceiling is generous enough for a name somebody actually chose
-          and short of the width where the bar becomes a title bar; the sides
-          keep their own content whatever happens, so a longer name is cut
-          here rather than pushing the countdown off the end. */}
-      <div className="flex min-w-0 max-w-[min(60vw,24rem)] justify-center">
+      {/* The switch: centred between the two doors on a desk, and hard left
+          on a phone where the left door is gone. Its ceiling is generous -
+          these are names somebody chose, and cutting one early to protect
+          space nothing else is using was the wrong trade - and short of the
+          width where the bar becomes a title bar. The sides keep their own
+          content whatever happens, so a longer name is cut here rather than
+          pushing the countdown off the end. */}
+      <div className="flex min-w-0 max-w-[min(70vw,40rem)] flex-1 justify-start sm:flex-none sm:justify-center">
         {batch === undefined ? (
           <Skeleton className="h-6 w-56" />
         ) : (
@@ -95,7 +96,7 @@ export default function BatchContextBar() {
 
       {/* never shrunk and never clipped: the clock is short by design, and a
           column that gave way would hand its own text to the name beside it */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex shrink-0 items-center justify-end gap-2">
         {batch !== undefined && (
           <BatchProgress
             showStage

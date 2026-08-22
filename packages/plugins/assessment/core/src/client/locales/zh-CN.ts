@@ -927,6 +927,7 @@ export default {
   'assessment/batch/filter-status': '状态',
   'assessment/batch/filter-all': '全部',
   'assessment/batch/no-match': '未找到匹配的批次',
+  'assessment/batch/switcher-only-this': '你目前只在这一个批次里。',
   'assessment/batch/no-match-hint': '请更换关键词，或清除状态筛选条件。',
   'assessment/batch/clear-filters': '清除筛选',
   'assessment/action/previous-page': '上一页',
