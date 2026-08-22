@@ -8,6 +8,7 @@ import {
   appointmentCycleExists,
   grantRuleSources,
   grantRuleTargets,
+  inForce,
   lockTenant,
   oneRoleProjected,
   replaceGrantRuleTargets,
@@ -150,10 +151,19 @@ const countGrantsOfRole = (tenantId: string, roleId: string) =>
   db
     .query((k) =>
       k
-        .selectFrom('RoleGrant')
+        .selectFrom('RoleGrant as g')
         .select(sql<number>`count(*)::int`.as('count'))
-        .where('tenantId', '=', tenantId)
-        .where('roleId', '=', roleId)
+        .where('g.tenantId', '=', tenantId)
+        .where('g.roleId', '=', roleId)
+        // nobody holds a withdrawn grant, so it is not a holder standing in
+        // the way of deleting the role
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
+        )
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row?.count ?? 0))
@@ -413,6 +423,14 @@ const grantsStrandedByEligibility = (tenantId: string, roleId: string) =>
         )
         .where('g.tenantId', '=', tenantId)
         .where('g.roleId', '=', roleId)
+        // a withdrawn grant has nobody to strand
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
+        )
         .innerJoin('Role as r', (join) =>
           join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
         )
@@ -433,6 +451,27 @@ const grantsStrandedByEligibility = (tenantId: string, roleId: string) =>
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row?.count ?? 0))
+
+/**
+ * An office may only claim to appoint people while it can administer grants.
+ *
+ * Asked when an edge is drawn and again whenever the granter's permissions are
+ * replaced, because both moments can produce the thing errors.ts calls a
+ * latent edge: an appointment that only works when its holder happens to hold
+ * some other role, unreadable off the configuration. Stripping the capability
+ * used to leave the edges standing and, worse, hid them from the editor that
+ * could have cleared them, so the removal an administrator asked for silently
+ * did not take.
+ */
+const assertGranterCapability = (
+  role: { kind: 'tenant' | 'org' },
+  edgeCount: number,
+  codes: ReadonlySet<string>,
+) =>
+  edgeCount === 0 ||
+  codes.has(role.kind === 'tenant' ? 'iam.tenant-grant.manage' : 'iam.grant.manage')
+    ? Effect.void
+    : Effect.fail(new RoleAppointmentInvalid({ reason: 'granter-capability' }))
 
 const roleEligibility = (tenantId: string, roleId: string) =>
   db.query((k) =>
@@ -734,6 +773,14 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
             return yield* new RoleTargetMismatch({ permissions: mismatched.sort() })
           }
           yield* assertMayDefineRole(authority, wanted)
+          // the edges this office already owns are part of what it is: taking
+          // away the capability that makes them sound is a decision about the
+          // appointment graph, and it has to be made there first
+          yield* assertGranterCapability(
+            role,
+            (yield* grantRuleTargets(tenantId, role.id)).length,
+            new Set(wanted),
+          )
 
           yield* prunePermissions(tenantId, role.id, [...active.keys()], wanted)
           yield* addPermissions(tenantId, role.id, wanted)
@@ -857,11 +904,11 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
     ) {
       const role = yield* oneRole(tenantId, roleId).pipe(Effect.orDie)
       if (!role) return yield* new RoleNotFound()
-      const roleIds = yield* grantRuleTargets(tenantId, roleId).pipe(Effect.orDie)
+      const edges = yield* grantRuleTargets(tenantId, roleId).pipe(Effect.orDie)
       // the other direction too: editing this role's duties changes what
       // those offices will hand out from now on, and the editor says so
       const appointedBy = yield* grantRuleSources(tenantId, roleId).pipe(Effect.orDie)
-      return { roleIds: [...roleIds].sort(), appointedBy, version: role.version }
+      return { roleIds: edges.map((edge) => edge.id).sort(), appointedBy, version: role.version }
     }),
 
     /**
@@ -902,19 +949,21 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           }
           const targets = yield* rolesForAppointment(tenantId, wanted)
           if (targets.length !== wanted.length) return yield* new RoleNotFound()
-          const granterCodes = new Set(yield* rolePermissionCodes(tenantId, role.id))
           for (const target of targets) {
             if (target.kind !== role.kind) {
               return yield* new RoleAppointmentInvalid({ reason: 'kind' })
             }
-            const needed = role.kind === 'tenant' ? 'iam.tenant-grant.manage' : 'iam.grant.manage'
-            if (!granterCodes.has(needed)) {
-              return yield* new RoleAppointmentInvalid({ reason: 'granter-capability' })
-            }
           }
+          yield* assertGranterCapability(
+            role,
+            wanted.length,
+            new Set(yield* rolePermissionCodes(tenantId, role.id)),
+          )
           // only what this save ADDS is measured against its author: edges
           // already standing are policy in force, not this edit's doing
-          const standing = new Set(yield* grantRuleTargets(tenantId, role.id))
+          const standing = new Set(
+            (yield* grantRuleTargets(tenantId, role.id)).map((edge) => edge.id),
+          )
           const added = targets.filter((target) => !standing.has(target.id))
           if (added.length > 0) {
             yield* assertMayDefineRole(authority, [

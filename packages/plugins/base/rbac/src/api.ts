@@ -296,6 +296,10 @@ export const accessApiGroup = HttpApiGroup.make('access')
         RoleTargetMismatch,
         RoleEscalationRefused,
         RoleIncomplete,
+        // taking away the capability that holds this role's appointment edges
+        // up is refused here, where the edges are visible, rather than leaving
+        // them standing on nothing
+        RoleAppointmentInvalid,
         LastAdministrator,
         RoleConflict,
         AccessDenied,

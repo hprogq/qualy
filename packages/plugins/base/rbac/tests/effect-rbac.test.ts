@@ -1732,4 +1732,364 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       await db.dispose()
     }
   })
+
+  // A withdrawn grant stops authorizing the moment it is withdrawn, and used
+  // to go on obstructing everything administration asks about grants: the
+  // person could not be retyped, the office could not be deleted, and the
+  // grants screen still offered the dead row as manageable.
+  it('stops counting a withdrawn grant wherever grants are administered', async () => {
+    const db = await createTestContext('effect-grant-withdrawn')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          const guest = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
+              values (${f.tenant}, 'guest', 'Guest', true, 'unrestricted') returning id`),
+          ).id
+          const tree = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('org.tree.read', 'org', 'read', 'org-node')
+              on conflict (code) do update set code = excluded.code returning id`),
+          ).id
+          // an office only staff may hold, given for one batch and then
+          // unstaffed: the one path in the product that soft-revokes
+          const office = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                 eligibility_mode, anchor_mode)
+              values (${f.tenant}, 'batch-reviewer', 'Batch reviewer', 'org', 'active',
+                      'explicit', 'allow-list', 'unrestricted')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${office}, ${tree})`)
+          yield* runSql(sql`
+            insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
+            values (${f.tenant}, ${office}, ${staff})`)
+          const assignment = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage,
+                                       resource_namespace, resource_type, resource_id)
+              values (${f.tenant}, ${f.anchored.userId}, ${office}, ${f.root}, 'self',
+                      'assessment', 'batch', ${f.child})
+              returning id`),
+          ).id
+          const blockingBefore = yield* rbac.grantsBlockingUserType(
+            f.tenant,
+            f.anchored.userId,
+            guest,
+          )
+          yield* rbac.revokeAssignment({
+            tenantId: f.tenant,
+            assignmentId: assignment,
+            actorId: f.user,
+          })
+          const listed = yield* access.grants.list(
+            f.tenant,
+            { userId: f.anchored.userId },
+            yield* access.grantScopeFor(f.principal),
+          )
+          const projected = yield* access.roles.get(f.tenant, office, f.principal)
+          const holdings = yield* rbac.listUserRoles(f.tenant, f.anchored.userId)
+          return {
+            blockingBefore,
+            blockingAfter: yield* rbac.grantsBlockingUserType(f.tenant, f.anchored.userId, guest),
+            listedIds: listed.map((row) => row.id),
+            holdingIds: holdings.map((row) => row.grantId),
+            assignment,
+            grantCount: projected.role.grantCount,
+            // the office has no holders left, so deleting it is not "in use"
+            removal: (yield* Effect.result(
+              access.roles.remove(f.tenant, office, projected.role.version),
+            ))._tag,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      // one fewer grant obstructs the retype: the withdrawn one
+      expect(answer.blockingAfter).toBe(answer.blockingBefore - 1)
+      expect(answer.listedIds).not.toContain(answer.assignment)
+      // the screen and the user's own roles panel now say the same thing
+      expect(answer.listedIds).toEqual(answer.holdingIds)
+      expect(answer.grantCount).toBe(0)
+      expect(answer.removal).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses to strip the capability an office’s appointment edges stand on', async () => {
+    const db = await createTestContext('effect-appointment-capability')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const permission = (code: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into permissions (code, plugin, name, target_kind)
+                values (${code}, 'org', ${code}, 'org-node')
+                on conflict (code) do update set code = excluded.code returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const manage = yield* permission('iam.grant.manage')
+          const tree = yield* permission('org.tree.read')
+          const role = (code: string, permissions: readonly string[]) =>
+            Effect.gen(function* () {
+              const created = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                     eligibility_mode, anchor_mode)
+                  values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit',
+                          'unrestricted', 'unrestricted')
+                  returning id`),
+              ).id
+              for (const id of permissions) {
+                yield* runSql(sql`
+                  insert into role_permissions (tenant_id, role_id, permission_id)
+                  values (${f.tenant}, ${created}, ${id})`)
+              }
+              return created
+            })
+          const clerk = yield* role('batch-clerk', [manage])
+          const reviewer = yield* role('reviewer', [tree])
+          const edged = yield* access.roles.setGrantableRoles(
+            f.tenant,
+            clerk,
+            [reviewer],
+            1,
+            f.principal,
+          )
+          // the edit an administrator believed removed the appointment power
+          const stripped = yield* Effect.result(
+            access.roles.setPermissions(f.tenant, clerk, ['org.tree.read'], edged, f.principal),
+          )
+          const kept = yield* access.roles.getPermissions(f.tenant, clerk, f.principal)
+          // clearing the edges first is what makes the same edit legal
+          const cleared = yield* access.roles.setGrantableRoles(
+            f.tenant,
+            clerk,
+            [],
+            (yield* access.roles.getGrantableRoles(f.tenant, clerk)).version,
+            f.principal,
+          )
+          const after = yield* Effect.result(
+            access.roles.setPermissions(f.tenant, clerk, ['org.tree.read'], cleared, f.principal),
+          )
+          return {
+            stripped: tagOf(stripped),
+            reason: (stripped as { failure?: { reason?: string } }).failure?.reason,
+            kept: kept.active,
+            after: after._tag,
+            standing: (yield* access.roles.getGrantableRoles(f.tenant, clerk)).roleIds,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.stripped).toBe('ROLE_APPOINTMENT_INVALID')
+      expect(answer.reason).toBe('granter-capability')
+      // the refusal rolled back with the transaction: the office still carries
+      // what holds its edges up
+      expect(answer.kept).toContain('iam.grant.manage')
+      expect(answer.after).toBe('Success')
+      expect(answer.standing).toEqual([])
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('refuses a self-grant that would take an office’s appointment edges', async () => {
+    const db = await createTestContext('effect-grant-self-appointment')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const staff = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from user_types where tenant_id = ${f.tenant} and code = 'staff'`,
+            ),
+          ).id
+          const permission = (code: string) =>
+            Effect.map(
+              runSql(sql`
+                insert into permissions (code, plugin, name, target_kind)
+                values (${code}, 'org', ${code}, 'org-node')
+                on conflict (code) do update set code = excluded.code returning id`),
+              (result) => one<{ id: string }>(result).id,
+            )
+          const manage = yield* permission('iam.grant.manage')
+          const tree = yield* permission('org.tree.read')
+          const role = (code: string, permissions: readonly string[]) =>
+            Effect.gen(function* () {
+              const created = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                     eligibility_mode, anchor_mode)
+                  values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit',
+                          'unrestricted', 'unrestricted')
+                  returning id`),
+              ).id
+              for (const id of permissions) {
+                yield* runSql(sql`
+                  insert into role_permissions (tenant_id, role_id, permission_id)
+                  values (${f.tenant}, ${created}, ${id})`)
+              }
+              return created
+            })
+          const edge = (granter: string, target: string) =>
+            runSql(sql`
+              insert into role_grant_rules (tenant_id, granter_role_id, target_role_id)
+              values (${f.tenant}, ${granter}, ${target})`)
+          // Three personnel offices differing only in their edges, which is
+          // the shape the design recommends: every granter carries the same
+          // grant administration, so a permission comparison between two of
+          // them is a guaranteed no-op.
+          const outer = yield* role('office-outer', [manage])
+          const middle = yield* role('office-middle', [manage])
+          const inner = yield* role('office-inner', [tree])
+          yield* edge(outer, middle)
+          yield* edge(middle, inner)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.tenant}, ${f.anchored.userId}, ${outer}, ${f.root}, 'subtree')`)
+          const li = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              values (${f.tenant}, 'Li', ${staff}, ${f.child}) returning id`),
+          ).id
+          const take = (userId: string) =>
+            Effect.result(
+              access.grants.grant(
+                f.tenant,
+                {
+                  userId,
+                  roleId: middle,
+                  target: { kind: 'org-node', orgNodeId: f.root, coverage: 'subtree' },
+                },
+                f.anchored,
+              ),
+            )
+          const themselves = yield* take(f.anchored.userId)
+          const offered = yield* access.grants.options(
+            f.tenant,
+            {
+              userId: f.anchored.userId,
+              target: { kind: 'org-node', orgNodeId: f.root, coverage: 'subtree' },
+            },
+            f.anchored,
+          )
+          // appointing somebody else into the office is untouched: a
+          // third-party grant is the appointment graph's call alone
+          const another = yield* take(li)
+          // and once she may appoint the inner office directly, taking the
+          // middle one adds nothing left to add
+          yield* edge(outer, inner)
+          const afterEdge = yield* take(f.anchored.userId)
+          return {
+            themselves: tagOf(themselves),
+            withheld: (themselves as { failure?: { permissions?: readonly string[] } }).failure
+              ?.permissions,
+            offer: offered.find((candidate) => candidate.code === 'office-middle')?.refusal,
+            another: another._tag,
+            afterEdge: afterEdge._tag,
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.themselves).toBe('GRANT_ESCALATION_REFUSED')
+      // the refusal says appointment authority was what would have been
+      // gained, and says it without naming an office: the payload crosses to
+      // a client, and which offices exist is an identity, not a capability
+      expect(answer.withheld).toEqual(['appointment-authority'])
+      // the picker refuses it for the same reason the write does
+      expect(answer.offer).toBe('self-escalation')
+      expect(answer.another).toBe('Success')
+      expect(answer.afterEdge).toBe('Success')
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  it('explains a tenant capability the same way require does, node or no node', async () => {
+    const db = await createTestContext('effect-explain-tenant')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const access = yield* Access
+          const rbac = yield* Rbac
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const users = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into permissions (code, plugin, name, target_kind)
+              values ('iam.user.read', 'iam', 'users', 'tenant')
+              on conflict (code) do update set code = excluded.code returning id`),
+          ).id
+          // an ordinary tenant role, not the recovery account: its grant is
+          // tenant-wide, so anchor and coverage are null together
+          const officer = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, permission_mode,
+                                 eligibility_mode, anchor_mode)
+              values (${f.tenant}, 'registry', 'Registry', 'tenant', 'active', 'explicit',
+                      'unrestricted', 'unrestricted')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            values (${f.tenant}, ${officer}, ${users})`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id)
+            values (${f.tenant}, ${f.anchored.userId}, ${officer})`)
+          const evaluated = yield* access.diagnostics.evaluate(f.tenant, {
+            userId: f.anchored.userId,
+            permissionCode: 'iam.user.read',
+            orgNodeId: f.root,
+          })
+          return {
+            decided: yield* rbac.hasPermission(f.anchored, 'iam.user.read'),
+            evaluated,
+            atRoot: (yield* access.diagnostics.explain(f.tenant, f.anchored.userId, f.root)).map(
+              (row) => row.code,
+            ),
+            // the org side is unchanged: self coverage still stops at its
+            // own node, so naming a node cannot start admitting everything
+            atChild: (yield* access.diagnostics.explain(f.tenant, f.anchored.userId, f.child)).map(
+              (row) => row.code,
+            ),
+          }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.decided).toBe(true)
+      expect(answer.evaluated.allowed).toBe(true)
+      expect(answer.evaluated.sources).toHaveLength(1)
+      expect(answer.evaluated.sources[0]!.target).toMatchObject({ kind: 'tenant' })
+      expect(answer.atRoot).toContain('iam.user.read')
+      expect(answer.atRoot).toContain('org.tree.manage')
+      expect(answer.atChild).toEqual(['iam.user.read'])
+    } finally {
+      await db.dispose()
+    }
+  })
 })

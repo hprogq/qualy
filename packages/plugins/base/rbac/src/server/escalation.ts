@@ -73,15 +73,32 @@ export const assertMayDefineRole = Effect.fn('Rbac.assertMayDefineRole')(functio
  * that let its own holder wave this through would be self-service
  * escalation with extra steps.
  *
+ * An office's authority is its permissions AND its outgoing appointment
+ * edges. Measuring only the permissions collapsed the deliberately
+ * non-transitive graph: every granter role carries the same
+ * `iam.grant.manage` by construction, so promoting yourself from one
+ * personnel office into the one it appoints compared as a no-op and handed
+ * you every appointment that office makes. The edges are compared too, and
+ * an edge that would be new refuses the grant under one unnamed marker: the
+ * refusal travels to a client, and which offices exist is not a permission
+ * code but an identity, which this payload does not carry.
+ *
  * Third-party grants no longer come here at all. Whether an office is yours
  * to fill is the appointment graph's question (`role_grant_rules`), settled
  * when the edge is written.
  */
 export const assertNoSelfEscalation = Effect.fn('Rbac.assertNoSelfEscalation')(function* (
   authority: Authority,
-  role: { codes: readonly string[]; allActive: boolean },
+  role: {
+    codes: readonly string[]
+    allActive: boolean
+    /** whether it appoints an office the actor cannot already appoint */
+    gainsAppointments: boolean
+  },
   target: GrantTarget,
 ) {
+  const gained = role.gainsAppointments ? ['appointment-authority'] : []
+
   if (target.kind === 'tenant') {
     const held = yield* authority.tenantWide()
     // an all-active role carries every active capability, so only someone who
@@ -89,8 +106,10 @@ export const assertNoSelfEscalation = Effect.fn('Rbac.assertNoSelfEscalation')(f
     const required = (role.allActive ? authority.activeCodes() : role.codes).filter(
       (code) => !held.has(code),
     )
-    if (required.length === 0) return
-    return yield* new GrantEscalationRefused({ permissions: required.sort().slice(0, 20) })
+    if (required.length === 0 && gained.length === 0) return
+    return yield* new GrantEscalationRefused({
+      permissions: [...required, ...gained].sort().slice(0, 20),
+    })
   }
 
   const reach = yield* authority.reachAt(target.orgNodeId)
@@ -99,8 +118,8 @@ export const assertNoSelfEscalation = Effect.fn('Rbac.assertNoSelfEscalation')(f
     const mine = reach.get(code)
     return mine === undefined || REACH_RANK[mine] < wanted
   })
-  if (short.length === 0 && !role.allActive) return
+  if (short.length === 0 && gained.length === 0 && !role.allActive) return
   return yield* new GrantEscalationRefused({
-    permissions: (role.allActive ? ['*'] : short.sort()).slice(0, 20),
+    permissions: [...(role.allActive ? ['*'] : short), ...gained].sort().slice(0, 20),
   })
 })

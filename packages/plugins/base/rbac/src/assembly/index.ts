@@ -71,7 +71,12 @@ export default defineCapabilityProvider<PermissionsContribution, PermissionsStat
   resolve: (context) => {
     const active = [...context.contributions.entries()]
       .filter(([pluginId]) => context.plugins.get(pluginId)?.state === 'active')
-      .sort(([a], [b]) => a.localeCompare(b))
+      // codepoints, not collation: this order is written into the lock and
+      // hashed into resolutionHash, and localeCompare answers by the process
+      // locale - da-DK puts 'aa' after 'z' - so two machines resolving the
+      // same tree would commit different bytes and each fail the other's
+      // frozen-lockfile check
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     compileCatalog(
       active.map(([, contribution]) => ({
         owner: contribution.owner,

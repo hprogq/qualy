@@ -104,6 +104,30 @@ export const admitsOrgType = (role: RoleEligibilityRef, orgTypeId: Expression<st
     where t.tenant_id = ${role.tenantId} and t.role_id = ${role.id}
       and t.org_type_id = ${orgTypeId}))`
 
+/** the grant columns that say whether it still stands, wherever a query aliased them */
+export interface GrantValidityRef {
+  readonly revokedAt: Expression<Date | null>
+  readonly validFrom: Expression<Date | null>
+  readonly validUntil: Expression<Date | null>
+}
+
+/**
+ * A grant that is in force right now.
+ *
+ * One definition, because "withdrawn" has to mean the same thing to the
+ * decision and to everything that administers or displays it. It did not: the
+ * deciding statements honoured `revoked_at`, the administration queries did
+ * not, and a grant withdrawn when a batch unstaffed somebody went on refusing
+ * that person's user-type change, blocking their role's deletion and showing
+ * on the grants screen as authority they no longer had. The partial unique
+ * indexes on role_grants say the same thing about a revoked row: it is inert.
+ */
+export const inForce = (grant: GrantValidityRef) => sql<boolean>`(
+  ${grant.revokedAt} is null
+  and (${grant.validFrom} is null or ${grant.validFrom} <= now())
+  and (${grant.validUntil} is null or ${grant.validUntil} > now())
+)`
+
 const roleProjection = (k: Db, tenantId: string) =>
   k
     .selectFrom('Role as r')
@@ -118,10 +142,20 @@ const roleProjection = (k: Db, tenantId: string) =>
       eb.ref('r.kind').$castTo<'tenant' | 'org'>().as('kind'),
       eb.ref('r.status').$castTo<'draft' | 'active' | 'disabled'>().as('status'),
       eb.ref('r.permissionMode').$castTo<'explicit' | 'all-active'>().as('permissionMode'),
-      sql<number>`(select count(*)::int from role_grants g
-        where g.tenant_id = ${eb.ref('r.tenantId')} and g.role_id = ${eb.ref('r.id')})`.as(
-        'grantCount',
-      ),
+      // coalesced because a scalar subquery is nullable to the type system,
+      // where count(*) is not: the projection promises a number
+      sql<number>`coalesce(${eb
+        .selectFrom('RoleGrant as g')
+        .select(sql<number>`count(*)::int`.as('count'))
+        .whereRef('g.tenantId', '=', 'r.tenantId')
+        .whereRef('g.roleId', '=', 'r.id')
+        .where((grant) =>
+          inForce({
+            revokedAt: grant.ref('g.revokedAt'),
+            validFrom: grant.ref('g.validFrom'),
+            validUntil: grant.ref('g.validUntil'),
+          }),
+        )}, 0)`.as('grantCount'),
       sql<string[]>`coalesce((select array_agg(p.code order by p.code)
         from role_permissions rp join permissions p on p.id = rp.permission_id
         where rp.tenant_id = ${eb.ref('r.tenantId')} and rp.role_id = ${eb.ref('r.id')}), '{}')`.as(
@@ -215,12 +249,12 @@ export const ruleAllowsAppointment = (input: {
         .where('rule.targetRoleId', '=', input.targetRoleId)
         .where('g.userId', '=', input.actorUserId)
         .where('g.resourceId', 'is', null)
-        .where(
-          sql<boolean>`(
-            g.revoked_at is null
-            and (g.valid_from is null or g.valid_from <= now())
-            and (g.valid_until is null or g.valid_until > now())
-          )`,
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
         )
         .where(
           input.orgNodeId === null
@@ -240,18 +274,29 @@ export const ruleAllowsAppointment = (input: {
     )
     .pipe(Effect.map((row) => row !== undefined))
 
-/** the roles a role may appoint, for the editor to read back */
+/**
+ * The offices a role appoints, named.
+ *
+ * The code travels with the id because these edges are read for three
+ * different answers - what the editor shows, what a save already had, and
+ * which appointment authority a self-grant would add - and the last one has to
+ * say which office in words.
+ */
 export const grantRuleTargets = (tenantId: string, granterRoleId: string) =>
   db
     .query((k) =>
       k
-        .selectFrom('RoleGrantRule')
-        .select('targetRoleId')
-        .where('tenantId', '=', tenantId)
-        .where('granterRoleId', '=', granterRoleId)
+        .selectFrom('RoleGrantRule as rule')
+        .innerJoin('Role as r', (join) =>
+          join.onRef('r.tenantId', '=', 'rule.tenantId').onRef('r.id', '=', 'rule.targetRoleId'),
+        )
+        .select(['r.id', 'r.code'])
+        .where('rule.tenantId', '=', tenantId)
+        .where('rule.granterRoleId', '=', granterRoleId)
+        .orderBy('r.code')
         .execute(),
     )
-    .pipe(Effect.map((rows) => rows.map((row) => row.targetRoleId as string)))
+    .pipe(Effect.map((rows) => rows.map((row) => ({ id: row.id as string, code: row.code }))))
 
 /** the offices that appoint this one, for the editor and the impact dialog */
 export const grantRuleSources = (tenantId: string, targetRoleId: string) =>

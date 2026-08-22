@@ -22,6 +22,8 @@ import {
   db,
   admitsOrgType,
   admitsUserType,
+  grantRuleTargets,
+  inForce,
   lockTenant,
   orgNodeExists,
   rolePermissionCodes,
@@ -139,6 +141,15 @@ const grantRows = (
         join.onRef('n.tenantId', '=', 'g.tenantId').onRef('n.id', '=', 'g.orgNodeId'),
       )
       .where('g.tenantId', '=', tenantId)
+      // a withdrawn or expired grant is not authority, so it is not on the
+      // screen that administers authority either
+      .where((eb) =>
+        inForce({
+          revokedAt: eb.ref('g.revokedAt'),
+          validFrom: eb.ref('g.validFrom'),
+          validUntil: eb.ref('g.validUntil'),
+        }),
+      )
       .where((eb) =>
         scope === undefined
           ? sql<boolean>`true`
@@ -306,15 +317,24 @@ const holdsCanonicalAdmin = (tenantId: string, userId: string, canonicalKey: str
 const oneGrant = (tenantId: string, grantId: string) =>
   db.query((k) =>
     k
-      .selectFrom('RoleGrant')
+      .selectFrom('RoleGrant as g')
       .select((eb) => [
-        'userId',
-        'roleId',
-        'orgNodeId',
-        eb.ref('coverage').$castTo<'self' | 'subtree' | null>().as('coverage'),
+        'g.userId',
+        'g.roleId',
+        'g.orgNodeId',
+        eb.ref('g.coverage').$castTo<'self' | 'subtree' | null>().as('coverage'),
       ])
-      .where('tenantId', '=', tenantId)
-      .where('id', '=', grantId)
+      .where('g.tenantId', '=', tenantId)
+      .where('g.id', '=', grantId)
+      // a grant already withdrawn has nothing left to revoke, and deleting the
+      // row would erase the record of an authority that existed
+      .where((eb) =>
+        inForce({
+          revokedAt: eb.ref('g.revokedAt'),
+          validFrom: eb.ref('g.validFrom'),
+          validUntil: eb.ref('g.validUntil'),
+        }),
+      )
       .executeTakeFirst(),
   )
 
@@ -501,16 +521,34 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     return role
   })
 
-  /** the permissions a role carries, as the escalation guard measures them */
+  /** the authority a role carries, as the self-grant guard measures it */
   const carriedBy = Effect.fn('Rbac.grants.carriedBy')(function* (
+    actor: Principal,
     tenantId: string,
     roleId: string,
+    target: GrantTarget,
   ) {
     const role = yield* rolePermissionMode(tenantId, roleId)
     if (!role) return yield* new RoleNotFound()
-    if (role.mode === 'all-active') return { codes: [], allActive: true }
+    // The offices this one appoints travel with it. Whether each is already
+    // the actor's to appoint is asked through the same function the write
+    // asks it with, so "already mine" cannot mean one thing while the guard
+    // runs and another the moment the new role is used. Only the answer
+    // leaves here: which offices exist is not this decision's to hand out.
+    let gainsAppointments = false
+    for (const office of yield* grantRuleTargets(tenantId, roleId)) {
+      const mine = yield* mayAppointRole(actor, tenantId, office.id, target).pipe(
+        Effect.as(true),
+        Effect.catchTag('GRANT_RULE_REFUSED', () => Effect.succeed(false)),
+      )
+      if (!mine) {
+        gainsAppointments = true
+        break
+      }
+    }
+    if (role.mode === 'all-active') return { codes: [], allActive: true, gainsAppointments }
     const codes = yield* rolePermissionCodes(tenantId, roleId)
-    return { codes, allActive: false }
+    return { codes, allActive: false, gainsAppointments }
   })
 
   const refusalOf = (tag: string): RoleRefusal =>
@@ -594,7 +632,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           if (actor.userId === request.userId) {
             yield* assertNoSelfEscalation(
               authorityFor(actor),
-              yield* carriedBy(tenantId, role.id),
+              yield* carriedBy(actor, tenantId, role.id, request.target),
               request.target,
             )
           }
@@ -684,7 +722,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
         if (actor.userId === input.userId) {
           yield* assertNoSelfEscalation(
             authorityFor(actor),
-            yield* carriedBy(tenantId, input.roleId),
+            yield* carriedBy(actor, tenantId, input.roleId, input.target),
             input.target,
           )
         }

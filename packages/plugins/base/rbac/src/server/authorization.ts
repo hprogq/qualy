@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { db, type Db, admitsUserType } from './db.ts'
+import { db, type Db, admitsUserType, inForce } from './db.ts'
 import { kyselyOf, query } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
 import { canonicalTenantAdmin, type ActivePermission, type Principal } from '@qualy/rbac-contract'
@@ -85,6 +85,28 @@ const reaches = (
 )`
 
 /**
+ * Whether a (permission, grant) row counts once the question names a node.
+ *
+ * Reach decides an org capability. A tenant capability is anchored nowhere -
+ * `hasTenantPermission` asks only whether an active tenant role carries it,
+ * and never looks at a node - so measuring it against reach dropped every
+ * ordinary tenant role the moment a node was mentioned, and the explanation
+ * then contradicted the decision it exists to justify. One definition, because
+ * the second copy of this ternary was already there and diverging from it
+ * would be the same defect again.
+ */
+const countsAt = (
+  role: RoleRef & { kind: Expression<string> },
+  grant: HeldRef,
+  path: { target: Expression<string | null>; anchor: Expression<string | null> },
+  permissionTarget: Expression<string>,
+  orgNodeId: string,
+) => sql<boolean>`(
+  ${reaches(role, grant, path, orgNodeId)}
+  or (${role.kind} = 'tenant' and ${permissionTarget} = 'tenant')
+)`
+
+/**
  * The grants a principal holds, with where each one reaches.
  *
  * The user type gates this, because a disabled type means a person who cannot
@@ -96,20 +118,6 @@ const reaches = (
  * Two copies of "which grants does this person hold" is the drift this file
  * exists to prevent.
  */
-/**
- * A grant that is in force right now, and not confined to some object.
- *
- * Both halves are here because both are easy to forget somewhere else: a
- * withdrawn or expired grant must stop authorizing everywhere at once, and a
- * grant given for one batch must not answer a general question about the
- * tenant. Consumers that own the object ask for it by name instead.
- */
-const inForce = sql<boolean>`(
-  g.revoked_at is null
-  and (g.valid_from is null or g.valid_from <= now())
-  and (g.valid_until is null or g.valid_until > now())
-)`
-
 /**
  * The grants a judgment may draw on.
  *
@@ -137,7 +145,13 @@ const held = (k: Db, tenantId: string, userId: string, scope: 'general' | 'any-c
       )
       .where('g.tenantId', '=', tenantId)
       .where('g.userId', '=', userId)
-      .where(inForce)
+      .where((eb) =>
+        inForce({
+          revokedAt: eb.ref('g.revokedAt'),
+          validFrom: eb.ref('g.validFrom'),
+          validUntil: eb.ref('g.validUntil'),
+        }),
+      )
       .select([
         'g.roleId',
         'g.orgNodeId',
@@ -324,7 +338,13 @@ export const userRoleHoldings = (tenantId: string, userId: string) =>
       .where('g.tenantId', '=', tenantId)
       .where('g.userId', '=', userId)
       .where('r.status', '=', 'active')
-      .where(inForce)
+      .where((eb) =>
+        inForce({
+          revokedAt: eb.ref('g.revokedAt'),
+          validFrom: eb.ref('g.validFrom'),
+          validUntil: eb.ref('g.validUntil'),
+        }),
+      )
       .orderBy('r.name')
       .execute(),
   )
@@ -375,7 +395,13 @@ export const applicableAssignments = (input: {
         ])
         .where('g.tenantId', '=', input.tenantId)
         .where('p.code', 'in', input.codes as string[])
-        .where(inForce)
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
+        )
         // either general authority, or authority over exactly this object
         .where((eb) =>
           input.resource === undefined
@@ -462,14 +488,16 @@ export const effectiveRows = (
       )
       .where((eb) =>
         at
-          ? reaches(
+          ? countsAt(
               {
                 id: eb.ref('r.id'),
                 tenantId: eb.ref('r.tenantId'),
                 permissionMode: eb.ref('r.permissionMode'),
+                kind: eb.ref('r.kind'),
               },
               { coverage: eb.ref('held.coverage'), orgNodeId: eb.ref('held.orgNodeId') },
               { target: eb.ref('node.path'), anchor: eb.ref('anchor.path') },
+              eb.ref('p.targetKind'),
               at.orgNodeId,
             )
           : target === 'anywhere'
@@ -581,14 +609,16 @@ export const explainRows = (tenantId: string, userId: string, orgNodeId: string 
       )
       .where((eb) =>
         orgNodeId
-          ? reaches(
+          ? countsAt(
               {
                 id: eb.ref('r.id'),
                 tenantId: eb.ref('r.tenantId'),
                 permissionMode: eb.ref('r.permissionMode'),
+                kind: eb.ref('r.kind'),
               },
               { coverage: eb.ref('held.coverage'), orgNodeId: eb.ref('held.orgNodeId') },
               { target: eb.ref('node.path'), anchor: eb.ref('anchor.path') },
+              eb.ref('p.targetKind'),
               orgNodeId,
             )
           : eb('r.kind', '=', 'tenant'),
@@ -682,6 +712,13 @@ export const grantsBlockingOrgType = (tenantId: string, orgNodeId: string, orgTy
         )
         .where('g.tenantId', '=', tenantId)
         .where('g.orgNodeId', '=', orgNodeId)
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
+        )
         .where((eb) =>
           eb.not(
             eb.exists(
@@ -802,6 +839,13 @@ export const grantsBlockingUserType = (tenantId: string, userId: string, userTyp
         .where('g.userId', '=', userId)
         .innerJoin('Role as r', (join) =>
           join.onRef('r.tenantId', '=', 'g.tenantId').onRef('r.id', '=', 'g.roleId'),
+        )
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
         )
         // a role that admits every user type cannot be invalidated by a retype
         .where((eb) =>
