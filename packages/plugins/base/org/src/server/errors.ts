@@ -148,12 +148,22 @@ export const nodeConstraints: Record<string, () => NodeConstraintError> = {
   fk_role_grants_node: () => new NodeInUse(),
 }
 
-/** and what a type or rule write can be refused by */
+/**
+ * And what a type or rule write can be refused by.
+ *
+ * Every restrict foreign key that points at org_types belongs here, whether or
+ * not deleteType pre-checks it: a placement allow-list has no pre-check at all
+ * (auth owns it, and org must not learn to read auth's tables), and the node
+ * key is the race the doc comment above describes. An unnamed one is a 500.
+ */
 export const typeConstraints: Record<string, () => TypeConstraintError> = {
   uq_org_types_tenant_code: () => new TypeConflict(),
   uq_org_types_tenant_name: () => new TypeConflict(),
   fk_role_allowed_org_types_type: () =>
     new TypeInUse({ reason: 'roles still allow this org type' }),
+  fk_user_type_allowed_org_types_org_type: () =>
+    new TypeInUse({ reason: 'user types still allow this org type' }),
+  fk_org_nodes_org_type: () => new TypeInUse({ reason: 'nodes still use this org type' }),
 }
 
 export class InvalidMove extends Schema.TaggedErrorClass<InvalidMove>()(

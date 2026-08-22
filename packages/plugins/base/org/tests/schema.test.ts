@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, pgCode, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { typeConstraints } from '../src/server/errors.ts'
 
 // The tenant boundary lives in the database itself (composite foreign keys,
 // partial unique indexes, ltree), so these assertions build illegal rows on
@@ -154,6 +155,25 @@ describe.runIf(postgresAvailable)('org schema tenant boundary', () => {
       [tenant],
     )
     expect(left.count).toBe(0)
+  })
+
+  it('names every key that can block a type deletion', async () => {
+    // The other direction from tools/tests/constraint-names.test.ts, which
+    // only asks that a translated name exists in the lineage. Nothing asked
+    // the reverse, so auth's placement allow-list held a type back through a
+    // key org had never heard of and the refusal arrived as a 500. deleteType
+    // cannot pre-check its way out of this: the allow-list is auth's table,
+    // and a node of the type can be inserted between the check and the
+    // delete, so the constraint is what actually decides.
+    const blocking = await db.query<{ conname: string }>(
+      `select conname from pg_constraint
+        where contype = 'f' and confrelid = 'org_types'::regclass
+          and confdeltype in ('r', 'a')`,
+    )
+    expect(blocking.rows.length).toBeGreaterThan(0)
+    expect(
+      blocking.rows.map((row) => row.conname).filter((name) => !(name in typeConstraints)),
+    ).toEqual([])
   })
 
   it('serves subtree queries through the gist-indexed ltree path', async () => {

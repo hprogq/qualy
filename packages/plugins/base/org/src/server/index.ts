@@ -148,13 +148,13 @@ export class Org extends Context.Service<
       nodeId: string,
       newTypeId: string,
       as: Principal,
-    ) => Effect.Effect<void, ChangeNodeTypeError>
+    ) => Effect.Effect<NodeView, ChangeNodeTypeError>
     readonly updateNode: (
       tenantId: string,
       nodeId: string,
       fields: { name?: string; sortOrder?: number },
       as: Principal,
-    ) => Effect.Effect<void, UpdateNodeError>
+    ) => Effect.Effect<NodeView, UpdateNodeError>
     readonly deleteNode: (
       tenantId: string,
       nodeId: string,
@@ -178,7 +178,7 @@ export class Org extends Context.Service<
       newParentId: string,
       as: Principal,
       newSortOrder?: number,
-    ) => Effect.Effect<void, MoveNodeError>
+    ) => Effect.Effect<NodeView, MoveNodeError>
 
     readonly readNode: (
       tenantId: string,
@@ -208,7 +208,7 @@ export class Org extends Context.Service<
       typeId: string,
       fields: { name?: string; sortOrder?: number },
       as: Principal,
-    ) => Effect.Effect<void, UpdateTypeError>
+    ) => Effect.Effect<TypeRow, UpdateTypeError>
     readonly deleteType: (
       tenantId: string,
       typeId: string,
@@ -264,7 +264,7 @@ export const make = Effect.fn('Org.make')(function* () {
           // concurrent move can have re-anchored the target since that check
           yield* rbac.requireAt(as, 'org.tree.manage', nodeId)
 
-          if (node.orgTypeId === newTypeId) return
+          if (node.orgTypeId === newTypeId) return yield* writtenNode(tenantId, nodeId, as)
           const type = yield* oneType(tenantId, newTypeId)
           if (!type) return yield* new TypeNotFound()
 
@@ -298,6 +298,7 @@ export const make = Effect.fn('Org.make')(function* () {
           if (stranded > 0) return yield* new PlacementBlocked({ userCount: stranded })
 
           yield* setNodeType(tenantId, nodeId, newTypeId)
+          return yield* writtenNode(tenantId, nodeId, as)
         }),
       ),
     ).pipe(
@@ -356,7 +357,12 @@ export const make = Effect.fn('Org.make')(function* () {
     fields: { name?: string; sortOrder?: number },
     as: Principal,
   ) {
-    yield* write(tenantId, nodeId, as, () => updateNodeFields(tenantId, nodeId, fields))
+    return yield* write(tenantId, nodeId, as, () =>
+      Effect.gen(function* () {
+        yield* updateNodeFields(tenantId, nodeId, fields)
+        return yield* writtenNode(tenantId, nodeId, as)
+      }),
+    )
   })
 
   const deleteNode = Effect.fn('Org.deleteNode')(function* (
@@ -491,6 +497,26 @@ export const make = Effect.fn('Org.make')(function* () {
     subtreeManageable: subtreeCoveredBy(manageScope, node),
   })
 
+  /**
+   * The row a write leaves behind, read on the writing connection.
+   *
+   * Not through readNode: that resolves org.tree.read, which is a separate
+   * catalog entry from the org.tree.manage the write proved. A caller holding
+   * manage alone used to receive ORG_NODE_NOT_FOUND for a rename that had
+   * already committed - a response contradicting durable state. Reading it
+   * here also keeps the answer inside the tenant lock, so it describes what
+   * this transaction wrote rather than what the next one did.
+   */
+  const writtenNode = Effect.fn('Org.writtenNode')(function* (
+    tenantId: string,
+    nodeId: string,
+    as: Principal,
+  ) {
+    // the row exists: this runs under the lock the write took, after the write
+    const node = (yield* oneNode(tenantId, nodeId).pipe(Effect.orDie))!
+    return withFlags(node, yield* resolveScope(tenantId, as, 'org.tree.manage'))
+  })
+
   const createNode = Effect.fn('Org.createNode')(function* (
     tenantId: string,
     input: {
@@ -568,7 +594,7 @@ export const make = Effect.fn('Org.make')(function* () {
             if (newSortOrder !== undefined) {
               yield* updateNodeFields(tenantId, nodeId, { sortOrder: newSortOrder })
             }
-            return
+            return yield* writtenNode(tenantId, nodeId, as)
           }
           if (newParent.path === node.path || newParent.path.startsWith(`${node.path}.`)) {
             return yield* new InvalidMove({ reason: 'a node cannot move into its own subtree' })
@@ -590,6 +616,7 @@ export const make = Effect.fn('Org.make')(function* () {
           if (newSortOrder !== undefined) {
             yield* updateNodeFields(tenantId, nodeId, { sortOrder: newSortOrder })
           }
+          return yield* writtenNode(tenantId, nodeId, as)
         }),
       ),
     ).pipe(
@@ -707,10 +734,13 @@ export const make = Effect.fn('Org.make')(function* () {
       fields: { name?: string; sortOrder?: number },
       as: Principal,
     ) {
-      yield* writeAtRoot(tenantId, as, () =>
+      return yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
           if (!(yield* typeOf(tenantId, typeId))) return yield* new TypeNotFound()
           yield* updateType(tenantId, typeId, fields)
+          // the row as it now stands, read here rather than by the handler:
+          // listTypes asks for org.tree.read, and this write proved manage
+          return (yield* typeOf(tenantId, typeId))!
         }),
       )
     }),
@@ -832,12 +862,15 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
         // the tenant comes from the session, never from the request: a caller
         // must not be able to name the tenant they are acting on
         const principal = yield* CurrentUser
-        yield* org.changeNodeType(principal.tenantId, params.nodeId, payload.orgTypeId, principal)
         // the row it produced, as the contract declares: answering ok makes a
         // client re-read to learn what it just wrote
-        return {
-          node: toNodeDto(yield* org.readNode(principal.tenantId, params.nodeId, principal)),
-        }
+        const node = yield* org.changeNodeType(
+          principal.tenantId,
+          params.nodeId,
+          payload.orgTypeId,
+          principal,
+        )
+        return { node: toNodeDto(node) }
       }),
     )
     .handle(
@@ -845,10 +878,8 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       Effect.fn('org.updateNode.handler')(function* ({ params, payload }) {
         const org = yield* Org
         const principal = yield* CurrentUser
-        yield* org.updateNode(principal.tenantId, params.nodeId, payload, principal)
-        return {
-          node: toNodeDto(yield* org.readNode(principal.tenantId, params.nodeId, principal)),
-        }
+        const node = yield* org.updateNode(principal.tenantId, params.nodeId, payload, principal)
+        return { node: toNodeDto(node) }
       }),
     )
     .handle(
@@ -875,16 +906,14 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       Effect.fn('org.setNodePlacement.handler')(function* ({ params, payload }) {
         const org = yield* Org
         const principal = yield* CurrentUser
-        yield* org.moveNode(
+        const node = yield* org.moveNode(
           principal.tenantId,
           params.nodeId,
           payload.parentId,
           principal,
           payload.sortOrder,
         )
-        return {
-          node: toNodeDto(yield* org.readNode(principal.tenantId, params.nodeId, principal)),
-        }
+        return { node: toNodeDto(node) }
       }),
     )
     .handle(
@@ -928,9 +957,8 @@ export const orgApiHandlers = HttpApiBuilder.group(local, 'org', (handlers) =>
       Effect.fn('org.updateType.handler')(function* ({ params, payload }) {
         const org = yield* Org
         const principal = yield* CurrentUser
-        yield* org.updateType(principal.tenantId, params.typeId, payload, principal)
-        const types = yield* org.listTypes(principal.tenantId, principal)
-        return { type: toTypeDto(types.find((row) => row.id === params.typeId)!) }
+        const type = yield* org.updateType(principal.tenantId, params.typeId, payload, principal)
+        return { type: toTypeDto(type) }
       }),
     )
     .handle(
