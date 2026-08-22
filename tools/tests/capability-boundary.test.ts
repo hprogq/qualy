@@ -10,7 +10,12 @@ import {
   readLock,
   runtimeLayers,
 } from '@qualy/assembly'
-import { commitLock, createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
+import {
+  capabilityWorkContext,
+  commitLock,
+  createWorkspace,
+  resolveWorkspace,
+} from '@qualy/assembly/testkit'
 
 // Is the assembly core actually free of the database?
 //
@@ -71,6 +76,30 @@ const cachePlugin = {
       "export default { _tag: 'Plugin', id: '@fake/plugin-cache', dependsOn: [], features: [{ _tag: 'Capability', key: 'cache', load: () => import('./assembly.js') }] }\n",
     'assembly.js': provider('cache'),
   },
+}
+
+/**
+ * A provider with nothing but resolve, and optionally the one other door a
+ * manifest block can arrive through: a descriptor command that asked for the
+ * capability tier, which the cli host builds a work context for.
+ */
+const ledgerPlugin = ({ command = false }: { command?: boolean } = {}) => {
+  const cli =
+    ", { _tag: 'Contribute', point: { id: '@qualy/plugin-kit/cli', phase: 'external' }," +
+    " value: { namespace: 'ledger', name: 'show', summary: 'show the ledger'," +
+    " context: 'capability', load: () => import('./show.js') } }"
+  return {
+    id: '@fake/plugin-ledger',
+    files: {
+      'index.js':
+        "export default { _tag: 'Plugin', id: '@fake/plugin-ledger', dependsOn: [], features: [" +
+        "{ _tag: 'Capability', key: 'ledger', load: () => import('./assembly.js') }" +
+        `${command ? cli : ''}] }\n`,
+      'assembly.js':
+        "export default { key: 'ledger', parseContribution: () => ({}), resolve: () => ({}) }\n",
+      'show.js': 'export const run = async () => {}\n',
+    },
+  }
 }
 
 const cacheUser = (id: string, channel: string) => ({
@@ -278,6 +307,47 @@ describe('a plugin that takes configuration', () => {
       )
     } finally {
       workspace.dispose()
+    }
+  })
+
+  // Owning a capability used to be the exemption on its own, on the assumption
+  // that every provider is handed its block as providerConfig sooner or later.
+  // A provider that only resolves never is - no work context is built for it -
+  // so its block was accepted, hashed and read by nobody, which is the exact
+  // failure the refusal above exists to prevent.
+  it('refuses a block for a capability provider no phase hands it to', async () => {
+    const workspace = createWorkspace(['@fake/plugin-ledger'], {
+      synthetic: [ledgerPlugin()],
+      configs: { '@fake/plugin-ledger': { retention: 'forever' } },
+    })
+    try {
+      await expect(resolveWorkspace(workspace)).rejects.toThrow(
+        /@fake\/plugin-ledger is given config in .*the capability it provides only resolves/s,
+      )
+    } finally {
+      workspace.dispose()
+    }
+  })
+
+  it('keeps the block for a provider that has somewhere to receive it', async () => {
+    // two doors, and both are real: the phases the core runs, and a declared
+    // command that asked for the capability tier
+    const byPhase = createWorkspace([...INFRA, '@fake/plugin-cache'], {
+      synthetic: [cachePlugin],
+      configs: { '@fake/plugin-cache': { size: 3 } },
+    })
+    const byCommand = createWorkspace(['@fake/plugin-ledger'], {
+      synthetic: [ledgerPlugin({ command: true })],
+      configs: { '@fake/plugin-ledger': { retention: 'forever' } },
+    })
+    try {
+      expect((await capabilityWorkContext(byPhase, 'cache')).providerConfig).toEqual({ size: 3 })
+      expect((await capabilityWorkContext(byCommand, 'ledger')).providerConfig).toEqual({
+        retention: 'forever',
+      })
+    } finally {
+      byPhase.dispose()
+      byCommand.dispose()
     }
   })
 })

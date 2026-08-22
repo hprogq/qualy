@@ -1,5 +1,6 @@
 import type { AssemblyPlugin, PluginState } from '@qualy/assembly-contract'
-import { isPluginDescriptor, type PluginDescriptor } from '@qualy/plugin-kit'
+import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
+import { CliCommands } from '@qualy/plugin-kit/cli'
 import { hostDirFor, manifestHash, readManifest, type AssemblyManifest } from './manifest.ts'
 import { createPackageResolver, type PackageResolver, type PluginMetadata } from './metadata.ts'
 import { loadProviders, type LoadedProvider } from './registry.ts'
@@ -270,11 +271,25 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
     throw new Error(`incomplete assembly:\n  ${orphaned.join('\n  ')}`)
   }
 
+  const providerOwners = new Set([...providers.values()].map((loaded) => loaded.pluginId))
+  // Which of those owners a work context is ever built for. `providerConfig`
+  // exists only on the phases that act, so a provider with none of them never
+  // receives the block, and exempting it from the config guard below would
+  // wave through exactly the setting that guard exists to catch.
+  const providerWorkPhases = new Set(
+    [...providers.values()]
+      .filter(
+        ({ provider }) =>
+          provider.generate !== undefined ||
+          provider.deploy !== undefined ||
+          Object.keys(provider.commands ?? {}).length > 0,
+      )
+      .map((loaded) => loaded.pluginId),
+  )
   // Every accounted plugin's descriptor, not just the running set: a disabled
   // or detached plugin's declarations still shape the assembly - that is what
   // retained means - and its package is installed by the uninstalled-check
   // above, so its descriptor is in the candidate map.
-  const providerOwners = new Set([...providers.values()].map((loaded) => loaded.pluginId))
   const descriptors = new Map<string, PluginDescriptor>()
   const misconfigured: string[] = []
   const orphanedFeatures: string[] = []
@@ -309,18 +324,26 @@ export async function resolveAssembly(options: ResolveOptions): Promise<Resoluti
       perKey.set(id, parsed)
       contributions.set(key, perKey)
     }
-    // A config block reaches exactly two kinds of plugin: a capability
-    // provider, as providerConfig during work phases; and one whose
-    // descriptor carries a config channel. On any other plugin nothing reads
-    // it, and the manifest hash still changes, so resolve reports success
-    // and a frozen start passes: the setting looks applied and is not.
-    if (
-      manifest.plugins.get(id)?.config !== undefined &&
-      !providerOwners.has(id) &&
-      descriptor.config === undefined
-    ) {
+    // A config block reaches exactly two kinds of plugin: one whose
+    // descriptor carries a config channel, and a capability provider that has
+    // somewhere to receive `providerConfig` - a work phase, or a declared
+    // command that asked for the capability tier. On any other plugin nothing
+    // reads it, and the manifest hash still changes, so resolve reports
+    // success and a frozen start passes: the setting looks applied and is not.
+    // Owning a capability is not enough on its own; a provider that only
+    // resolves is handed no work context, ever.
+    const readsBlock = () =>
+      descriptor.config !== undefined ||
+      (providerOwners.has(id) &&
+        (providerWorkPhases.has(id) ||
+          Plugin.contributionsOf(descriptor, CliCommands).some(
+            (command) => command.context === 'capability',
+          )))
+    if (manifest.plugins.get(id)?.config !== undefined && !readsBlock()) {
       misconfigured.push(
-        `${id} is given config in ${manifest.source}, but it neither provides a capability nor takes configuration in its descriptor, so nothing would read this. Configure this plugin through the environment instead.`,
+        providerOwners.has(id)
+          ? `${id} is given config in ${manifest.source}, but the capability it provides only resolves, and a provider is handed its block during generate, deploy or a command. Its descriptor takes no configuration either, so nothing would read this. Configure this plugin through the environment instead.`
+          : `${id} is given config in ${manifest.source}, but it neither provides a capability nor takes configuration in its descriptor, so nothing would read this. Configure this plugin through the environment instead.`,
       )
     }
   }

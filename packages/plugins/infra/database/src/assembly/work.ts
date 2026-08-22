@@ -18,6 +18,40 @@ export interface DatabaseWork {
 }
 
 /**
+ * Which database this run addresses.
+ *
+ * The same rule the process applies at startup (src/server/config.ts): a
+ * production run will not assume one, and a development run says which one it
+ * assumed. The CLI used to take the fallback in silence, so `qualy deploy` in
+ * a shell whose DATABASE_URL was never exported applied the lineage to
+ * whatever postgres answers on localhost and printed the success line it
+ * prints when it reached the right one.
+ */
+function targetUrl(): string {
+  const configured = process.env.DATABASE_URL
+  if (configured !== undefined) return configured
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('DATABASE_URL is not set; a production run will not assume a database')
+  }
+  console.warn(`database: DATABASE_URL is not set, addressing ${LOCAL_FALLBACK}`)
+  return LOCAL_FALLBACK
+}
+
+/**
+ * The target a success line may name: host, port and database, never the
+ * password. A run that reached the wrong server is otherwise indistinguishable
+ * from one that reached the right one.
+ */
+export function databaseTarget(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.host}${parsed.pathname}`
+  } catch {
+    return 'the configured database'
+  }
+}
+
+/**
  * The folder is the provider plugin's own manifest config, the same
  * declaration the runtime reads, so generation and application can never
  * disagree about which lineage they mean.
@@ -47,7 +81,7 @@ export function databaseWork(
   return {
     migrations,
     modules: declaredEntityModules(context, asState(context.state)),
-    url: process.env.DATABASE_URL ?? LOCAL_FALLBACK,
+    url: targetUrl(),
   }
 }
 

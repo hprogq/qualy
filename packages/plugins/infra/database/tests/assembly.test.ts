@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   capabilityWorkContext,
   commitLock,
@@ -21,6 +21,7 @@ import {
 } from '../src/assembly/drop-guard.ts'
 import { guardDestructive } from '../src/assembly/generate.ts'
 import { asState } from '../src/assembly/state.ts'
+import { databaseTarget, databaseWork, LOCAL_FALLBACK } from '../src/assembly/work.ts'
 import { diffAgainstDeclared } from '../src/assembly/diff.ts'
 import { defineEntity } from '@mikro-orm/core'
 import type { EntityModule } from '../src/assembly/entities.ts'
@@ -174,6 +175,75 @@ describe('database contributions', () => {
       disabled.dispose()
       removed.dispose()
     }
+  })
+})
+
+// Which database the cli reaches, and whether anything says so.
+//
+// The process refuses to assume one in production and names the one it
+// assumed otherwise (src/server/config.ts). The cli took the same fallback in
+// silence, so a deploy meant for staging applied the lineage to whatever
+// postgres answers on localhost and printed the line it prints when it was
+// right.
+describe('the target of a work phase', () => {
+  const withEnv = <A>(values: Record<string, string | undefined>, body: () => A): A => {
+    const before = Object.keys(values).map((key) => [key, process.env[key]] as const)
+    const set = (key: string, value: string | undefined) => {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    for (const [key, value] of Object.entries(values)) set(key, value)
+    try {
+      return body()
+    } finally {
+      for (const [key, value] of before) set(key, value)
+    }
+  }
+
+  it('names the database it assumed, and assumes none in production', async () => {
+    const workspace = workspaceFor(INFRA)
+    const warnings: string[] = []
+    const warn = vi.spyOn(console, 'warn').mockImplementation((...parts: unknown[]) => {
+      warnings.push(parts.join(' '))
+    })
+    try {
+      const work = await context(workspace)
+      const assumed = withEnv({ DATABASE_URL: undefined, NODE_ENV: 'development' }, () =>
+        databaseWork(work),
+      )
+      expect(assumed.url).toBe(LOCAL_FALLBACK)
+      expect(warnings.join('\n')).toContain(LOCAL_FALLBACK)
+
+      // the phases this feeds apply migrations; being softer than the process
+      // that only reads is how a deployment writes to a database nobody meant
+      // to give it
+      withEnv({ DATABASE_URL: undefined, NODE_ENV: 'production' }, () => {
+        expect(() => databaseWork(work)).toThrow(/will not assume a database/)
+      })
+
+      // and a stated target is not something to warn about
+      warnings.length = 0
+      const named = withEnv(
+        { DATABASE_URL: 'postgres://qualy:qualy@db.internal:5432/staging', NODE_ENV: 'production' },
+        () => databaseWork(work),
+      )
+      expect(named.url).toBe('postgres://qualy:qualy@db.internal:5432/staging')
+      expect(warnings).toEqual([])
+    } finally {
+      warn.mockRestore()
+      workspace.dispose()
+    }
+  })
+
+  it('renders a target a success line can carry, without the password', () => {
+    expect(databaseTarget('postgres://qualy:hunter2@db.internal:5432/staging')).toBe(
+      'db.internal:5432/staging',
+    )
+    expect(databaseTarget('postgres://qualy:hunter2@db.internal:5432/staging')).not.toMatch(
+      /hunter2/,
+    )
+    // an unparseable url still has to produce a line rather than an exception
+    expect(databaseTarget('not a url')).toBe('the configured database')
   })
 })
 

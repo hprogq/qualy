@@ -2,7 +2,7 @@ import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import type { CliContext } from '@qualy/plugin-kit/cli'
 import type { DatabaseContribution } from './contribution.ts'
 import type { DatabaseState } from './state.ts'
-import { databaseWork } from './work.ts'
+import { databaseTarget, databaseWork } from './work.ts'
 import { runMigrations } from '../migrator.ts'
 
 // `qualy db migrate` - the migration half of deploy, on its own.
@@ -18,9 +18,10 @@ export async function run(context: CliContext): Promise<void> {
     folder: work.migrations,
     entities: work.modules.flatMap((module) => [...module.entities]),
   })
+  const target = databaseTarget(work.url)
   console.log(
     applied > 0
-      ? `database: applied ${applied} migration(s) (${elapsed}ms)`
-      : `database: migrations up to date (${elapsed}ms)`,
+      ? `database: applied ${applied} migration(s) to ${target} (${elapsed}ms)`
+      : `database: ${target} is up to date (${elapsed}ms)`,
   )
 }

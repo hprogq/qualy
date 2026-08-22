@@ -7,7 +7,7 @@ import {
   parseDeclaration,
   type DatabaseContribution,
 } from './contribution.ts'
-import { assertDistinctPrefixes, databaseWork, LOCAL_FALLBACK } from './work.ts'
+import { assertDistinctPrefixes, databaseTarget, databaseWork, LOCAL_FALLBACK } from './work.ts'
 import { asState, resolveDatabase, type DatabaseState } from './state.ts'
 
 // Everything the assembly knows about databases lives behind this one module.
@@ -83,10 +83,11 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
       folder: work.migrations,
       entities: work.modules.flatMap((module) => [...module.entities]),
     })
+    const target = databaseTarget(work.url)
     console.log(
       applied > 0
-        ? `database: applied ${applied} migration(s) (${elapsed}ms)`
-        : `database: migrations up to date (${elapsed}ms)`,
+        ? `database: applied ${applied} migration(s) to ${target} (${elapsed}ms)`
+        : `database: ${target} is up to date (${elapsed}ms)`,
     )
   },
 
@@ -153,10 +154,11 @@ export default defineCapabilityProvider<DatabaseContribution, DatabaseState>({
         folder: work.migrations,
         entities: work.modules.flatMap((module) => [...module.entities]),
       })
+      const target = databaseTarget(work.url)
       console.log(
         adopted.length > 0
-          ? `database: adopted ${adopted.length} migration(s): ${adopted.join(', ')}`
-          : 'database: the lineage was already recorded as applied',
+          ? `database: ${target} adopted ${adopted.length} migration(s): ${adopted.join(', ')}`
+          : `database: ${target} already recorded the lineage as applied`,
       )
     },
 
