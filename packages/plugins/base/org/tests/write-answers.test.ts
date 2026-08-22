@@ -113,8 +113,8 @@ const seed = Effect.fn('seed')(function* () {
 
   const adminType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-      values (${tenant}, 'admin', 'Admin', true, 'unrestricted') returning id`),
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${tenant}, 'admin', 'Admin', 'unrestricted') returning id`),
   ).id
   const person = (name: string) =>
     Effect.map(
@@ -229,8 +229,8 @@ describe.runIf(postgresAvailable).concurrent('the sentence a write answers with'
           const spare = yield* org.createType(f.tenant, { name: 'Club' }, f.principal)
           const staffType = one<{ id: string }>(
             yield* runSql(sql`
-              insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-              values (${f.tenant}, 'staff', 'Staff', true, 'allow-list') returning id`),
+              insert into user_types (tenant_id, code, name, placement_mode)
+              values (${f.tenant}, 'staff', 'Staff', 'allow-list') returning id`),
           ).id
           // auth's policy is the only thing left pointing at it
           yield* runSql(sql`

@@ -35,8 +35,6 @@ export const UserType = defineEntity({
     code: p.string().length(63),
     name: p.string().length(100),
     description: p.string().length(500).nullable(),
-    allowLocalLogin: p.boolean().default(false),
-    allowSsoLogin: p.boolean().default(false),
     enabled: p.boolean().default(true),
     isSystem: p.boolean().default(false),
     // Whether this kind of person may stand anywhere, or only under the org
@@ -160,6 +158,15 @@ export const AuthProvider = defineEntity({
     config: p.json<Record<string, unknown>>().defaultRaw(`'{}'`),
     isSystem: p.boolean().default(false),
     enabled: p.boolean().default(true),
+    // Who may sign in through this door: everyone, or exactly the user types
+    // listed in auth_provider_user_types. On the provider rather than on the
+    // type, because "may use the school CAS" and "may use a password" are
+    // facts about the doors, and two booleans on the type could not say
+    // which of three doors a kind of person is welcome at.
+    audienceMode: p.string().length(16).defaultRaw(`'unrestricted'`),
+    // the whole row is versioned: the audience is a set replacement, and a
+    // replacement based on a stale read must be refused, not merged
+    version: p.integer().default(1),
     // display order for the tenant's login method list
     sortOrder: p.smallint().default(0),
     createdAt: p.datetime().defaultRaw('now()'),
@@ -170,6 +177,10 @@ export const AuthProvider = defineEntity({
     { name: 'chk_auth_providers_code_format', expression: `code ~ ${CODE}` },
     { name: 'chk_auth_providers_type_format', expression: `type ~ ${CODE}` },
     { name: 'chk_auth_providers_sort_order_non_negative', expression: 'sort_order >= 0' },
+    {
+      name: 'chk_auth_providers_audience_mode',
+      expression: `audience_mode = 'unrestricted' or audience_mode = 'allow-list'`,
+    },
   ],
   indexes: [
     {
@@ -181,6 +192,30 @@ export const AuthProvider = defineEntity({
       name: 'uq_auth_providers_tenant_code',
       expression:
         'create unique index uq_auth_providers_tenant_code on auth_providers (tenant_id, code)',
+    },
+  ],
+})
+
+export const AuthProviderUserType = defineEntity({
+  name: 'AuthProviderUserType',
+  tableName: 'auth_provider_user_types',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('auth_provider_user_types_tenant_id_tenants_id_fkey'),
+    authProviderId: p.uuid(),
+    userTypeId: p.uuid(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'uq_auth_provider_user_types_row',
+      expression:
+        'create unique index uq_auth_provider_user_types_row on auth_provider_user_types (tenant_id, auth_provider_id, user_type_id)',
+    },
+    {
+      name: 'idx_auth_provider_user_types_tenant_type',
+      expression:
+        'create index idx_auth_provider_user_types_tenant_type on auth_provider_user_types (tenant_id, user_type_id)',
     },
   ],
 })
@@ -260,6 +295,10 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete cascade`,
   `alter table user_type_allowed_org_types add constraint fk_user_type_allowed_org_types_org_type
      foreign key (tenant_id, org_type_id) references org_types (tenant_id, id) on delete restrict`,
+  `alter table auth_provider_user_types add constraint fk_auth_provider_user_types_provider
+     foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete cascade`,
+  `alter table auth_provider_user_types add constraint fk_auth_provider_user_types_type
+     foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete cascade`,
   `alter table user_identities add constraint fk_user_identities_user
      foreign key (tenant_id, user_id) references users (tenant_id, id) on delete cascade`,
   `alter table user_identities add constraint fk_user_identities_provider
@@ -273,6 +312,7 @@ export const entities = [
   UserTypeAllowedOrgType,
   User,
   AuthProvider,
+  AuthProviderUserType,
   UserIdentity,
   Session,
 ] as const

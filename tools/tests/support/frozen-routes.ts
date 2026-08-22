@@ -7,7 +7,9 @@
 
 export const FROZEN_ROUTES = [
   'DELETE /auth/session',
+  'PUT /auth/providers/{providerId}/audience',
   'GET /auth/login-methods',
+  'GET /auth/providers',
   'GET /auth/session',
   'POST /auth/local/{providerCode}/login',
 

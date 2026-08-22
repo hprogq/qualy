@@ -48,18 +48,7 @@ export const userTypeGuard = (tenantId: string, userTypeId: string) =>
       .selectFrom('UserType')
       // the editable columns travel with the guard so an update that changes
       // nothing can be recognised before it bumps the version
-      .select([
-        'id',
-        'code',
-        'enabled',
-        'isSystem',
-        'version',
-        'name',
-        'description',
-        'allowLocalLogin',
-        'allowSsoLogin',
-        'sortOrder',
-      ])
+      .select(['id', 'code', 'enabled', 'isSystem', 'version', 'name', 'description', 'sortOrder'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', userTypeId)
       .executeTakeFirst(),

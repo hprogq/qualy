@@ -55,8 +55,6 @@ const userTypeProjection = (k: Db) =>
       't.code',
       't.name',
       't.description',
-      't.allowLocalLogin',
-      't.allowSsoLogin',
       't.enabled',
       't.isSystem',
       't.sortOrder',
@@ -120,8 +118,6 @@ const insertUserType = (input: {
   code: string
   name: string
   description: string | null
-  allowLocalLogin: boolean
-  allowSsoLogin: boolean
   sortOrder: number
   placementMode: 'unrestricted' | 'allow-list'
 }) =>
@@ -133,8 +129,6 @@ const updateUserType = (
   fields: {
     name?: string
     description?: string | null
-    allowLocalLogin?: boolean
-    allowSsoLogin?: boolean
     sortOrder?: number
   },
 ) =>
@@ -147,10 +141,6 @@ const updateUserType = (
       .set((eb) => ({
         ...(fields.name === undefined ? {} : { name: fields.name }),
         ...(fields.description === undefined ? {} : { description: fields.description }),
-        ...(fields.allowLocalLogin === undefined
-          ? {}
-          : { allowLocalLogin: fields.allowLocalLogin }),
-        ...(fields.allowSsoLogin === undefined ? {} : { allowSsoLogin: fields.allowSsoLogin }),
         ...(fields.sortOrder === undefined ? {} : { sortOrder: fields.sortOrder }),
         version: eb('version', '+', 1),
         updatedAt: sql<Date>`now()`,
@@ -306,8 +296,6 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
         code: string
         name: string
         description?: string
-        allowLocalLogin?: boolean
-        allowSsoLogin?: boolean
         sortOrder?: number
         placementPolicy:
           { mode: 'unrestricted' } | { mode: 'allow-list'; orgTypeIds: readonly string[] }
@@ -321,8 +309,6 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
             code: input.code,
             name: input.name,
             description: input.description ?? null,
-            allowLocalLogin: input.allowLocalLogin ?? false,
-            allowSsoLogin: input.allowSsoLogin ?? false,
             sortOrder: input.sortOrder ?? 0,
             placementMode: policy.mode,
           })
@@ -372,8 +358,6 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       fields: {
         name?: string
         description?: string | null
-        allowLocalLogin?: boolean
-        allowSsoLogin?: boolean
         sortOrder?: number
       },
       expectedVersion: number,
@@ -381,31 +365,15 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
           const type = yield* guard(tenantId, userTypeId, expectedVersion)
-          // the system account keeps password sign-in. The generic survivor
-          // invariant cannot protect it: that check is satisfied by any open
-          // channel, so closing local login while sso is nominally allowed
-          // would pass even with no sso provider configured anywhere.
-          if (fields.allowLocalLogin === false && type.code === SYSTEM_ACCOUNT_USER_TYPE) {
-            return yield* new RecoveryChannelRequired()
-          }
           // a request that changes nothing must not invalidate every open
           // editor: the version is optimistic concurrency, and bumping it for
           // a re-saved unchanged form refuses a concurrent genuine edit
           const same =
             (fields.name === undefined || fields.name === type.name) &&
             (fields.description === undefined || fields.description === type.description) &&
-            (fields.allowLocalLogin === undefined ||
-              fields.allowLocalLogin === type.allowLocalLogin) &&
-            (fields.allowSsoLogin === undefined || fields.allowSsoLogin === type.allowSsoLogin) &&
             (fields.sortOrder === undefined || fields.sortOrder === type.sortOrder)
           if (same) return type.version
           yield* updateUserType(tenantId, type.id, fields)
-          // closing a sign-in channel can lock a tenant out just as surely as
-          // disabling the people who use it, and this runs after the write so
-          // it reads the state being committed rather than predicting it
-          if (fields.allowLocalLogin === false || fields.allowSsoLogin === false) {
-            yield* rbac.assertTenantKeepsAdministrator(tenantId)
-          }
           return type.version + 1
         }),
       )

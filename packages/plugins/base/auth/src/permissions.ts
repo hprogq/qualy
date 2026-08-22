@@ -22,6 +22,16 @@ export const permissions = [
     target: 'tenant',
   },
   {
+    code: 'auth.provider.read',
+    name: message('auth/permission/provider-read', 'View login methods'),
+    target: 'tenant',
+  },
+  {
+    code: 'auth.provider.manage',
+    name: message('auth/permission/provider-manage', 'Manage login methods'),
+    target: 'tenant',
+  },
+  {
     code: 'auth.user.read',
     name: message('auth/permission/user-read', 'View users'),
     target: 'org-node',

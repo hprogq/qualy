@@ -22,7 +22,6 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [channels, setChannels] = useState<string[]>(['local'])
   const [unrestricted, setUnrestricted] = useState(false)
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>([])
   const catalog = useQuery(orpc.identity.getUserTypeOptions.queryOptions())
@@ -34,8 +33,6 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
           payload: {
             code,
             name,
-            allowLocalLogin: channels.includes('local'),
-            allowSsoLogin: channels.includes('sso'),
             placementPolicy: unrestricted
               ? { mode: 'unrestricted' }
               : { mode: 'allow-list', orgTypeIds },
@@ -76,16 +73,6 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
             )}
           </Field>
         </div>
-        <CheckboxGroup
-          legend={format(m.loginChannels)}
-          emptyLabel={format(m.noOptions)}
-          options={[
-            { value: 'local', label: format(m.allowLocalLogin) },
-            { value: 'sso', label: format(m.allowSsoLogin) },
-          ]}
-          selected={channels}
-          onChange={setChannels}
-        />
         <AsyncSection
           pending={catalog.isPending}
           error={catalog.isError ? formatError(catalog.error) : null}

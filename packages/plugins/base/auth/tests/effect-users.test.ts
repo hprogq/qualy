@@ -78,6 +78,12 @@ const seed = Effect.fn('seed')(function* () {
   const tenant = one<{ id: string }>(
     yield* runSql(sql`insert into tenants (slug, name) values ('t','T') returning id`),
   ).id
+
+  // the door the sign-in predicate looks for: without one enabled
+  // provider admitting a type, nobody of that type can ever sign in
+  yield* runSql(sql`
+    insert into auth_providers (tenant_id, code, type, name)
+    values (${tenant}, 'local', 'local', 'Local')`)
   const orgType = one<{ id: string }>(
     yield* runSql(
       sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
@@ -95,8 +101,8 @@ const seed = Effect.fn('seed')(function* () {
 
   const staff = one<{ id: string }>(
     yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, placement_mode, allow_local_login)
-      values (${tenant}, 'staff', 'Staff', 'unrestricted', true) returning id`),
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${tenant}, 'staff', 'Staff', 'unrestricted') returning id`),
   ).id
 
   // a manager whose authority is the left branch and nothing else

@@ -80,6 +80,14 @@ const i18n = definePluginMessages({
       id: 'auth/permission/user-type-manage',
       defaultMessage: 'Manage user types',
     },
+    'permission.auth.provider.read': {
+      id: 'auth/permission/provider-read',
+      defaultMessage: 'View login methods',
+    },
+    'permission.auth.provider.manage': {
+      id: 'auth/permission/provider-manage',
+      defaultMessage: 'Manage login methods',
+    },
     'permission.auth.user.read': {
       id: 'auth/permission/user-read',
       defaultMessage: 'View users',
@@ -237,9 +245,6 @@ const i18n = definePluginMessages({
     anchorLabel: { id: 'auth/users/anchor', defaultMessage: 'Organization node' },
     scopeLabel: { id: 'auth/users/scope', defaultMessage: 'Include the whole subtree' },
     searchPlaceholder: { id: 'auth/users/search', defaultMessage: 'Search' },
-    loginChannels: { id: 'auth/field/login-channels', defaultMessage: 'Sign-in channels' },
-    allowLocalLogin: { id: 'auth/field/allow-local-login', defaultMessage: 'Password sign-in' },
-    allowSsoLogin: { id: 'auth/field/allow-sso-login', defaultMessage: 'Single sign-on' },
     allowedOrgTypesLegend: {
       id: 'auth/field/allowed-org-types',
       defaultMessage: 'May be placed on these kinds of organization node',
@@ -275,7 +280,6 @@ const i18n = definePluginMessages({
     saved: { id: 'auth/feedback/saved', defaultMessage: 'Saved.' },
     systemBadge: { id: 'auth/badge/system', defaultMessage: 'system' },
     disabledBadge: { id: 'auth/badge/disabled', defaultMessage: 'disabled' },
-    noLoginBadge: { id: 'auth/badge/no-login', defaultMessage: 'cannot sign in' },
     confirmDeleteTitle: { id: 'auth/confirm/delete-title', defaultMessage: 'Delete permanently?' },
     confirmDeleteBody: { id: 'auth/confirm/delete-body', defaultMessage: 'This cannot be undone.' },
     confirmDisableTitle: { id: 'auth/confirm/disable-title', defaultMessage: 'Disable this user?' },
@@ -325,6 +329,14 @@ const i18n = definePluginMessages({
     USER_TYPE_VERSION_CONFLICT: {
       id: 'auth/error/user-type-version-conflict',
       defaultMessage: 'The user type changed since you opened it. Reload and try again.',
+    },
+    AUTH_PROVIDER_NOT_FOUND: {
+      id: 'auth/error/provider-not-found',
+      defaultMessage: 'This login method no longer exists.',
+    },
+    AUTH_PROVIDER_VERSION_CONFLICT: {
+      id: 'auth/error/provider-version-conflict',
+      defaultMessage: 'The login method changed since you opened it. Reload and try again.',
     },
     USER_TYPE_ORG_TYPE_NOT_FOUND: {
       id: 'auth/error/user-type-org-type-not-found',

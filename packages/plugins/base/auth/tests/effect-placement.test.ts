@@ -93,8 +93,8 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const userType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-      values (${tenant}, 'staff', 'Staff', true, 'allow-list') returning id`),
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${tenant}, 'staff', 'Staff', 'allow-list') returning id`),
   ).id
   // staff may stand at a college and nowhere else
   yield* runSql(sql`

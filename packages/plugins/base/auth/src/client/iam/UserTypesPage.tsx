@@ -56,15 +56,6 @@ export default function UserTypesPage() {
                           {format(m.disabledBadge)}
                         </span>
                       )}
-                      {/* a type that opens no channel is one nobody can sign
-                          in with, which is worth saying on the row itself */}
-                      {!type.allowLocalLogin && !type.allowSsoLogin && (
-                        // no channel to sign in through: a fact about the
-                        // type, marked as one beside the words for it
-                        <span data-testid="type-no-login" className="ml-2 text-xs text-destructive">
-                          {format(m.noLoginBadge)}
-                        </span>
-                      )}
                     </span>
                     <span
                       data-testid="type-summary"

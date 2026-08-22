@@ -660,15 +660,35 @@ export const administratorSurvivors = (tenantId: string, roleId: string) =>
         )
         .where('g.tenantId', '=', tenantId)
         .where('g.roleId', '=', roleId)
-        // An administrator who could actually sign in today. The sign-in channel
-        // flags are part of it because a type that opens neither is what every
-        // driver refuses. Bound identities deliberately are not: whether a user
-        // needs one before their first sign-in is driver knowledge, so requiring
-        // one here would state something the core cannot know.
+        // An administrator who could actually sign in today. A door open to
+        // their type is part of it because a type no enabled provider admits
+        // is what every driver refuses. Bound identities deliberately are
+        // not: whether a user needs one before their first sign-in is driver
+        // knowledge, so requiring one here would state something the core
+        // cannot know.
         .where('u.enabled', '=', true)
         .where('t.enabled', '=', true)
         .where((eb) =>
-          eb.or([eb('t.allowLocalLogin', '=', true), eb('t.allowSsoLogin', '=', true)]),
+          eb.exists(
+            eb
+              .selectFrom('AuthProvider as ap')
+              .select('ap.id')
+              .whereRef('ap.tenantId', '=', 't.tenantId')
+              .where('ap.enabled', '=', true)
+              .where((inner) =>
+                inner.or([
+                  inner('ap.audienceMode', '=', 'unrestricted'),
+                  inner.exists(
+                    inner
+                      .selectFrom('AuthProviderUserType as apt')
+                      .select('apt.id')
+                      .whereRef('apt.tenantId', '=', 'ap.tenantId')
+                      .whereRef('apt.authProviderId', '=', 'ap.id')
+                      .whereRef('apt.userTypeId', '=', 't.id'),
+                  ),
+                ]),
+              ),
+          ),
         )
         .select(sql<number>`count(distinct g.user_id)::int`.as('count'))
         .executeTakeFirst(),

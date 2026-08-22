@@ -140,7 +140,6 @@ export interface FoundIdentity {
   readonly id: string
   readonly userId: string
   readonly credentialHash: string | null
-  readonly allowsLocalLogin: boolean
 }
 
 /**

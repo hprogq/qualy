@@ -64,15 +64,15 @@ const seed = Effect.fn('seed')(function* (hash: string) {
   ).id
   const userType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-      values (${tenant},'staff','Staff', true, 'unrestricted') returning id`),
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${tenant},'staff','Staff', 'unrestricted') returning id`),
   ).id
-  // a type that admits no password, to prove the check is about the type
-  // rather than about whether a credential was stored
+  // a type outside the password door's audience, to prove the refusal is
+  // about who the door admits rather than about whether a credential exists
   const ssoOnly = one<{ id: string }>(
     yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-      values (${tenant},'sso','Sso', false, 'unrestricted') returning id`),
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${tenant},'sso','Sso', 'unrestricted') returning id`),
   ).id
   const user = one<{ id: string }>(
     yield* runSql(sql`
@@ -86,9 +86,12 @@ const seed = Effect.fn('seed')(function* (hash: string) {
   ).id
   const provider = one<{ id: string }>(
     yield* runSql(sql`
-      insert into auth_providers (tenant_id, code, type, name, enabled, sort_order)
-      values (${tenant}, 'password', 'local', 'Password', true, 0) returning id`),
+      insert into auth_providers (tenant_id, code, type, name, enabled, sort_order, audience_mode)
+      values (${tenant}, 'password', 'local', 'Password', true, 0, 'allow-list') returning id`),
   ).id
+  yield* runSql(sql`
+    insert into auth_provider_user_types (tenant_id, auth_provider_id, user_type_id)
+    values (${tenant}, ${provider}, ${userType})`)
   // enabled, but its driver is not in this assembly's catalog
   yield* runSql(sql`
     insert into auth_providers (tenant_id, code, type, name, enabled, sort_order)
@@ -247,8 +250,8 @@ describe.runIf(postgresAvailable)('signing in', () => {
     }
   })
 
-  it('refuses a password for a type that does not admit one', async () => {
-    // the credential is stored and correct; the type is what says no
+  it('refuses a password for a type outside the door\u2019s audience', async () => {
+    // the credential is stored and correct; the audience is what says no
     const response = await login({ identifier: 'grace', password })
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ _tag: 'INVALID_CREDENTIALS' })

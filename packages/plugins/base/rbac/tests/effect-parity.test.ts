@@ -82,6 +82,13 @@ const seed = Effect.fn('seed')(function* () {
     runSql(sql`insert into tenants (slug, name) values (${slug}, ${slug}) returning id`)
   const a = one<{ id: string }>(yield* tenant('a')).id
   const b = one<{ id: string }>(yield* tenant('b')).id
+  // the door the sign-in predicate looks for: without one enabled provider
+  // admitting a type, nobody of that type can ever sign in
+  for (const t of [a, b]) {
+    yield* runSql(sql`
+      insert into auth_providers (tenant_id, code, type, name)
+      values (${t}, 'local', 'local', 'Local')`)
+  }
 
   const setup = Effect.fn('setup')(function* (tenantId: string) {
     const orgType = one<{ id: string }>(
@@ -100,14 +107,14 @@ const seed = Effect.fn('seed')(function* () {
     ).id
     const staff = one<{ id: string }>(
       yield* runSql(sql`
-        insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-        values (${tenantId},'staff','Staff', true, 'unrestricted') returning id`),
+        insert into user_types (tenant_id, code, name, placement_mode)
+        values (${tenantId},'staff','Staff', 'unrestricted') returning id`),
     ).id
     // a type nobody can sign in with, for the "could still sign in" case
     const locked = one<{ id: string }>(
       yield* runSql(sql`
-        insert into user_types (tenant_id, code, name, allow_local_login, allow_sso_login, placement_mode)
-        values (${tenantId},'locked','Locked', false, false, 'unrestricted') returning id`),
+        insert into user_types (tenant_id, code, name, placement_mode)
+        values (${tenantId},'locked','Locked', 'unrestricted') returning id`),
     ).id
     const user = (name: string, type = staff) =>
       runSql(sql`
@@ -448,10 +455,13 @@ describe.runIf(postgresAvailable).concurrent('what the cordis suite covered', ()
               sql`update user_types set enabled = true where id = ${f.a.staff}`,
             ],
             [
+              // every enabled door shuts its audience on this type: the same
+              // fact the two flags used to state, said by the providers now
               'no login channel',
-              sql`update user_types set allow_local_login = false, allow_sso_login = false
-                  where id = ${f.a.staff}`,
-              sql`update user_types set allow_local_login = true where id = ${f.a.staff}`,
+              sql`update auth_providers set audience_mode = 'allow-list'
+                  where tenant_id = ${f.a.tenantId}`,
+              sql`update auth_providers set audience_mode = 'unrestricted'
+                  where tenant_id = ${f.a.tenantId}`,
             ],
           ] as const) {
             yield* runSql(disable)

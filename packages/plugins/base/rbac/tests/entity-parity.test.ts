@@ -31,6 +31,7 @@ const UPSTREAM_TABLES = [
   'users',
   'user_type_allowed_org_types',
   'user_types',
+  'auth_provider_user_types',
   'auth_providers',
 ]
 

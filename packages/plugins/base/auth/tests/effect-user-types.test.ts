@@ -74,6 +74,12 @@ const seed = Effect.fn('seed')(function* () {
   const tenant = one<{ id: string }>(
     yield* runSql(sql`insert into tenants (slug, name) values ('t','T') returning id`),
   ).id
+
+  // the door the sign-in predicate looks for: without one enabled
+  // provider admitting a type, nobody of that type can ever sign in
+  yield* runSql(sql`
+    insert into auth_providers (tenant_id, code, type, name)
+    values (${tenant}, 'local', 'local', 'Local')`)
   const orgType = one<{ id: string }>(
     yield* runSql(
       sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
@@ -84,10 +90,10 @@ const seed = Effect.fn('seed')(function* () {
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
   ).id
-  const makeType = (code: string, extra = sql`, true, false`) =>
+  const makeType = (code: string) =>
     runSql(sql`
-      insert into user_types (tenant_id, code, name, placement_mode, allow_local_login, allow_sso_login)
-      values (${tenant}, ${code}, ${code}, 'unrestricted'${extra}) returning id`)
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${tenant}, ${code}, ${code}, 'unrestricted') returning id`)
   const staff = one<{ id: string }>(yield* makeType('staff')).id
   const system = one<{ id: string }>(yield* makeType(SYSTEM_ACCOUNT_USER_TYPE)).id
 
@@ -158,12 +164,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
           const f = yield* seed()
           const iam = yield* Iam
           const named = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, 1)
-          const resaved = yield* iam.userTypes.update(
-            f.tenant,
-            f.staff,
-            { name: 'Staff!', allowLocalLogin: true },
-            named,
-          )
+          const resaved = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, named)
           // and a caller still holding that version can still make a real edit
           const real = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff?' }, resaved)
           return { named, resaved, real }
@@ -178,7 +179,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
     }
   })
 
-  it('keeps password sign-in on the type a tenant recovers itself with', async () => {
+  it('keeps a door open to the type a tenant recovers itself with', async () => {
     const db = await createTestContext('effect-ut-recovery')
     try {
       const exit = await run(
@@ -186,21 +187,38 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          // the generic survivor invariant would pass here: sso is nominally
-          // allowed. This one exists because no provider need be behind it.
+          const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
+          const provider = one<{ id: string; version: number }>(
+            yield* runSql(
+              sql`select id, version from auth_providers where tenant_id = ${f.tenant}`,
+            ),
+          )
+          // narrowing the only door past the recovery account is refused: a
+          // tenant that cannot sign its system account in cannot recover
           const closed = yield* Effect.result(
-            iam.userTypes.update(f.tenant, f.system, { allowLocalLogin: false }, 1),
+            iam.providers.setAudience(
+              f.tenant,
+              provider.id,
+              { mode: 'allow-list', userTypeIds: [f.staff] },
+              provider.version,
+            ),
           )
-          // and an ordinary type may close the same channel
-          const ordinary = yield* Effect.result(
-            iam.userTypes.update(f.tenant, f.staff, { allowLocalLogin: false }, 1),
+          // an audience that keeps the recovery account is an ordinary edit
+          const kept = yield* iam.providers.setAudience(
+            f.tenant,
+            provider.id,
+            { mode: 'allow-list', userTypeIds: [f.staff, f.system] },
+            provider.version,
           )
-          return { system: tagOf(closed), staff: ordinary._tag }
+          const read = (yield* iam.providers.list(f.tenant)).find((row) => row.id === provider.id)!
+          return { closed: tagOf(closed), kept, read }
         }),
       )
       const answer = ok(exit)
-      expect(answer.system).toBe('RECOVERY_CHANNEL_REQUIRED')
-      expect(answer.staff).toBe('Success')
+      expect(answer.closed).toBe('RECOVERY_CHANNEL_REQUIRED')
+      expect(answer.kept).toBe(2)
+      expect(answer.read.version).toBe(2)
+      expect(answer.read.audience.mode).toBe('allow-list')
     } finally {
       await db.dispose()
     }

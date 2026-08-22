@@ -54,8 +54,6 @@ const userType = (over: Partial<UserTypeDto> = {}): UserTypeDto => ({
   code: 'student',
   name: '学生',
   description: null,
-  allowLocalLogin: true,
-  allowSsoLogin: false,
   status: 'active',
   isSystem: false,
   sortOrder: 0,
@@ -205,24 +203,6 @@ describe('user types screen', () => {
     // so instead of producing an error after a round trip
     await expect.element(page.getByRole('button', { name: '停用' })).toBeDisabled()
     await expect.element(page.getByRole('button', { name: '删除' })).toBeDisabled()
-  })
-
-  it('marks a type that opens no sign-in channel', async () => {
-    renderScreen({
-      client: fakeClient(
-        stubs({
-          identity: {
-            listUserTypes: () =>
-              Effect.succeed({
-                userTypes: [userType({ allowLocalLogin: false, allowSsoLogin: false })],
-                capabilities: { canManage: true },
-              }),
-          },
-        }),
-      ),
-      children: <UserTypesPage />,
-    })
-    await expect.element(page.getByTestId('type-no-login')).toBeInTheDocument()
   })
 
   it('refuses an allow-list that names nothing', async () => {

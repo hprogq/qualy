@@ -17,6 +17,8 @@ import { Authenticated, AuthRequired } from './server/session-contract.ts'
 import {
   GrantIncompatible,
   PlacementNotAllowed,
+  ProviderNotFound,
+  ProviderVersionConflict,
   RecoveryChannelRequired,
   SystemAccountProtected,
   UserNotFound,
@@ -64,8 +66,6 @@ const userType = Schema.Struct({
   code: Schema.String,
   name: Schema.String,
   description: Schema.NullOr(Schema.String),
-  allowLocalLogin: Schema.Boolean,
-  allowSsoLogin: Schema.Boolean,
   status: resourceStatus,
   // a system type is provisioned by the platform and never handed out
   isSystem: Schema.Boolean,
@@ -136,7 +136,59 @@ const userDetail = Schema.Struct({
   ),
 })
 
+/** who may sign in through one door: everyone, or exactly these user types */
+const audiencePolicyView = Schema.Union([
+  Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+  Schema.Struct({
+    mode: Schema.Literal('allow-list'),
+    userTypeIds: Schema.Array(Schema.String),
+  }),
+])
+
+const audiencePolicyWrite = Schema.Union([
+  Schema.Struct({ mode: Schema.Literal('unrestricted') }),
+  Schema.Struct({
+    mode: Schema.Literal('allow-list'),
+    userTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+  }),
+])
+
+const authProvider = Schema.Struct({
+  id: Schema.String,
+  code: Schema.String,
+  type: Schema.String,
+  name: Schema.String,
+  status: resourceStatus,
+  isSystem: Schema.Boolean,
+  sortOrder: Schema.Number,
+  version: Schema.Number,
+  audience: audiencePolicyView,
+})
+
 export const identityApiGroup = HttpApiGroup.make('identity')
+  .add(
+    // the tenant's ways in, with who may use each: the door's own audience,
+    // not a pair of flags on the user type
+    HttpApiEndpoint.get('listAuthProviders', '/auth/providers', {
+      success: Schema.Struct({ providers: Schema.Array(authProvider) }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put('setAuthProviderAudience', '/auth/providers/:providerId/audience', {
+      params: Schema.Struct({ providerId: id }),
+      payload: Schema.Struct({ version: expectedVersion, audience: audiencePolicyWrite }),
+      success: Schema.Struct({ version: Schema.Number }),
+      error: [
+        ProviderNotFound,
+        ProviderVersionConflict,
+        UserTypeNotFound,
+        RecoveryChannelRequired,
+        LastAdministrator,
+        AccessDenied,
+      ],
+    }).middleware(Authenticated),
+  )
   .add(
     HttpApiEndpoint.get('listUserTypes', '/iam/user-types', {
       success: Schema.Struct({
@@ -154,8 +206,6 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         code: kebabCode,
         name: trimmedName(100),
         description: Schema.optional(boundedText(500)),
-        allowLocalLogin: Schema.optional(Schema.Boolean),
-        allowSsoLogin: Schema.optional(Schema.Boolean),
         sortOrder: Schema.optional(sortOrder),
         // required: a type created without one constrains nothing, and "not
         // configured yet" is indistinguishable from "deliberately open"
@@ -188,21 +238,12 @@ export const identityApiGroup = HttpApiGroup.make('identity')
           ...versioned,
           name: Schema.optional(trimmedName(100)),
           description: Schema.optional(Schema.NullOr(boundedText(500))),
-          allowLocalLogin: Schema.optional(Schema.Boolean),
-          allowSsoLogin: Schema.optional(Schema.Boolean),
           sortOrder: Schema.optional(sortOrder),
         },
-        ['name', 'description', 'allowLocalLogin', 'allowSsoLogin', 'sortOrder'],
+        ['name', 'description', 'sortOrder'],
       ),
       success: Schema.Struct({ version: Schema.Number }),
-      error: [
-        UserTypeNotFound,
-        UserTypeVersionConflict,
-        RecoveryChannelRequired,
-        LastAdministrator,
-        UserTypeConflict,
-        AccessDenied,
-      ],
+      error: [UserTypeNotFound, UserTypeVersionConflict, UserTypeConflict, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

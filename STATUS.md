@@ -7589,3 +7589,35 @@ auth/rbac/assessment 三处 org-type options 端点、五个前端消费点(OrgP
 
 验收:typecheck 零错;`pnpm test` 762 passed | 17 skipped;`pnpm test:browser` 101 passed;
 seed 6/6;`pnpm qualy generate` 报 nothing to generate;prettier 通过。
+
+### 登录能力归登录方式:受众取代用户类型上的两个布尔(2026-08-22,用户裁决)
+
+`user_types.allow_local_login`/`allow_sso_login` 整体删除。它们在「一种登录方式一个实例」的世界里
+就已经勉强,在多实例(两个 CAS、密码 + OIDC)下根本表达不了「学生可用学校 CAS、不可用 Entra」。
+新模型:**每个 AuthProvider 自带受众**——`audience_mode`(`unrestricted | allow-list`,与 placement
+同款,拒绝「空集合=全部」的歧义)+ `auth_provider_user_types` 关联表 + `version` 乐观并发。
+
+**核心判定收进身份查询**:`identityByIdentifier` join provider 并带受众谓词,受众外的身份对调用方
+如同不存在——所有 driver 得到同一种拒绝;auth-local 里那句 `allowsLocalLogin` 检查删除,
+`FoundIdentity` 契约同步收窄。**最后管理员保护改写**:「可登录」= enabled user + enabled type +
+至少一个 enabled provider 的受众接纳该类型(rbac 的 countRemainingAdmins 换成 EXISTS);
+「系统账户必须留有一扇门」从用户类型编辑挪到**受众写入**上:`setAudience` 写后校验
+RecoveryChannelRequired + keepsAdministrator,读的是正要提交的终态。CLAUDE.md 的不变量句已更新。
+
+**管理 API 落地**(为登录方式页面备):`GET /auth/providers`(带受众)与
+`PUT /auth/providers/{providerId}/audience`,新权限 `auth.provider.read/manage`(目录 24→26,
+带 message 标签与中文,lock 已 resolve);frozen routes 补两条。用户类型的 create/update/list
+schema 与两个编辑器的「登录渠道」勾选组整体退场,死键清空。
+
+**迁移**分两文件:`20260822150000_provider-audience.sql`(建表、加列、**本地 provider 忠实继承旧
+布尔**——audience 收成 allow-list,行来自 allow_local_login=true 的类型,没有人的登录能力因换形而
+改变)→ `20260822150100_login-flags-drop.sql`(destructive approved 丢两列;generate 的自愈把我
+手写 FK 的 on-update 语义差一并纠正在此文件)。升级测试建旧形态(一开一关两类型)断言继承准确、
+列已消失。红验:拆掉身份查询里的受众谓词,「受众外的密码被拒」用例转红。
+
+夹具波及:十余个套件的 user_types 裸 SQL 去掉布尔列;所有依赖「管理员可登录」的 fixture 补上一行
+enabled 的 local provider(受众谓词现在真的要看到一扇门);entity-parity 两处表清单补新表;
+「无登录通道」徽章与其用例随字段一起退役(那个事实以后属于登录方式页)。
+
+验收:typecheck 零错;`pnpm test` 764 passed | 17 skipped;`pnpm test:browser` 100 passed;
+`pnpm qualy generate` 报 nothing to generate;catalogs 8/8;seed 6/6;prettier 通过。

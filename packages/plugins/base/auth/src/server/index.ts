@@ -9,6 +9,7 @@ import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 
 import { placementViolations, usersBlockingOrgType } from './placement.ts'
+import { makeProviders } from './providers.ts'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
 import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
@@ -36,6 +37,7 @@ export class Iam extends Context.Service<
     readonly placementViolations: (tenantId: string) => Effect.Effect<number>
     readonly userTypes: Effect.Success<ReturnType<typeof makeUserTypes>>
     readonly users: Effect.Success<ReturnType<typeof makeUsers>>
+    readonly providers: Effect.Success<ReturnType<typeof makeProviders>>
   }
 >()('@qualy/plugin-auth/Iam') {}
 
@@ -43,6 +45,7 @@ export const make = Effect.fn('Auth.make')(function* () {
   const withDb = yield* withDatabase
   const userTypes = yield* makeUserTypes()
   const users = yield* makeUsers()
+  const providers = yield* makeProviders()
 
   return {
     placement: {
@@ -58,6 +61,7 @@ export const make = Effect.fn('Auth.make')(function* () {
       // every row at once
       placementViolations: (tenantId: string) => withDb(placementViolations(tenantId)),
       userTypes,
+      providers,
       users,
     },
   }
@@ -113,8 +117,6 @@ const toUserTypeDto = (row: UserTypeRow) => ({
   code: row.code,
   name: row.name,
   description: row.description,
-  allowLocalLogin: row.allowLocalLogin,
-  allowSsoLogin: row.allowSsoLogin,
   status: row.enabled ? ('active' as const) : ('disabled' as const),
   isSystem: row.isSystem,
   sortOrder: row.sortOrder,
@@ -299,6 +301,33 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         yield* rbac.require(principal, 'auth.user-type.read')
         return {
           userType: toUserTypeDto(yield* iam.userTypes.get(principal.tenantId, params.userTypeId)),
+        }
+      }),
+    )
+    .handle(
+      'listAuthProviders',
+      Effect.fn('iam.listAuthProviders.handler')(function* () {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.read')
+        return { providers: yield* iam.providers.list(principal.tenantId) }
+      }),
+    )
+    .handle(
+      'setAuthProviderAudience',
+      Effect.fn('iam.setAuthProviderAudience.handler')(function* ({ params, payload }) {
+        const iam = yield* Iam
+        const rbac = yield* Rbac
+        const principal = yield* CurrentUser
+        yield* rbac.require(principal, 'auth.provider.manage')
+        return {
+          version: yield* iam.providers.setAudience(
+            principal.tenantId,
+            params.providerId,
+            payload.audience,
+            payload.version,
+          ),
         }
       }),
     )

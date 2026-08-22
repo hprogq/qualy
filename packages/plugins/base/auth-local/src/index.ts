@@ -66,9 +66,6 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
         verifyPassword(identity.credentialHash!, payload.password),
       )
       if (!verified) return yield* new InvalidCredentials()
-      // a type that does not admit passwords cannot be signed in with one,
-      // however good the password is
-      if (!identity.allowsLocalLogin) return yield* new InvalidCredentials()
       const user = yield* sessions.completeLogin({
         tenantId: resolved.tenantId,
         userId: identity.userId,

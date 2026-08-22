@@ -120,8 +120,8 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const adminType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-      values (${tenant}, 'admin', 'Admin', true, 'unrestricted') returning id`),
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${tenant}, 'admin', 'Admin', 'unrestricted') returning id`),
   ).id
   const admin = one<{ id: string }>(
     yield* runSql(sql`

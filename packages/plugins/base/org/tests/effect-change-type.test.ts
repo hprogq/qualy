@@ -119,8 +119,8 @@ const seed = Effect.fn('seed')(function* () {
     values (${tenant}, ${collegeType}, ${clubType})`)
   const adminType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-      values (${tenant}, 'admin', 'Admin', true, 'unrestricted') returning id`),
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${tenant}, 'admin', 'Admin', 'unrestricted') returning id`),
   ).id
   const admin = one<{ id: string }>(
     yield* runSql(sql`
@@ -148,8 +148,8 @@ const addStrandableStaff = Effect.fn('addStaff')(function* (f: {
   const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
   const staffType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
-      values (${f.tenant}, 'staff', 'Staff', true, 'allow-list') returning id`),
+      insert into user_types (tenant_id, code, name, placement_mode)
+      values (${f.tenant}, 'staff', 'Staff', 'allow-list') returning id`),
   ).id
   yield* runSql(sql`
     insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)

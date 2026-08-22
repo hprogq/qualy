@@ -304,29 +304,21 @@ async function provisionTenant(client: PoolClient, report: SeedReport): Promise<
 async function ensureUserType(
   ctx: Ctx,
   type: { code: string; name: string; sortOrder?: number; orgTypes?: readonly string[] },
-  flags: { allowLocalLogin: boolean; isSystem: boolean },
+  flags: { isSystem: boolean },
   report: SeedReport,
 ): Promise<{ id: string; created: boolean }> {
   const placementMode = type.orgTypes && type.orgTypes.length > 0 ? 'allow-list' : 'unrestricted'
   const inserted = await ctx.client.query(
-    `insert into user_types (tenant_id, code, name, sort_order, allow_local_login, is_system,
+    `insert into user_types (tenant_id, code, name, sort_order, is_system,
        enabled, placement_mode)
-     values ($1, $2, $3, $4, $5, $6, true, $7)
+     values ($1, $2, $3, $4, $5, true, $6)
      on conflict (tenant_id, code) do nothing`,
-    [
-      ctx.tenantId,
-      type.code,
-      type.name,
-      type.sortOrder ?? 0,
-      flags.allowLocalLogin,
-      flags.isSystem,
-      placementMode,
-    ],
+    [ctx.tenantId, type.code, type.name, type.sortOrder ?? 0, flags.isSystem, placementMode],
   )
   report.created.userTypes += inserted.rowCount ?? 0
   const row = (
     await ctx.client.query(
-      `select id, allow_local_login, is_system from user_types where tenant_id = $1 and code = $2`,
+      `select id, is_system from user_types where tenant_id = $1 and code = $2`,
       [ctx.tenantId, type.code],
     )
   ).rows[0]
@@ -334,14 +326,6 @@ async function ensureUserType(
     // stable platform semantics; display fields stay business-owned
     if (row.is_system !== flags.isSystem) {
       drift(`user type ${type.code}`, 'is_system', flags.isSystem, row.is_system)
-    }
-    if (flags.isSystem && row.allow_local_login !== flags.allowLocalLogin) {
-      drift(
-        `user type ${type.code}`,
-        'allow_local_login',
-        flags.allowLocalLogin,
-        row.allow_local_login,
-      )
     }
   }
   return { id: row.id, created: (inserted.rowCount ?? 0) > 0 }
@@ -536,12 +520,7 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
 
   const demoTypeIds = new Map<string, string>()
   for (const type of DEMO_USER_TYPES) {
-    const { id, created } = await ensureUserType(
-      ctx,
-      type,
-      { allowLocalLogin: true, isSystem: false },
-      report,
-    )
+    const { id, created } = await ensureUserType(ctx, type, { isSystem: false }, report)
     demoTypeIds.set(type.code, id)
     // only on creation: where a kind of person may stand is the tenant's to
     // narrow, and a seed that re-adds its own list would undo that silently
@@ -663,12 +642,7 @@ export async function seed(client: PoolClient, options: SeedOptions = {}): Promi
     demo: 'skipped',
   }
   const ctx = await provisionTenant(client, report)
-  const { id: adminTypeId } = await ensureUserType(
-    ctx,
-    ADMIN_USER_TYPE,
-    { allowLocalLogin: true, isSystem: true },
-    report,
-  )
+  const { id: adminTypeId } = await ensureUserType(ctx, ADMIN_USER_TYPE, { isSystem: true }, report)
   const providerId = await ensureLocalProvider(ctx, report)
   const adminUserId = await provisionAdmin(ctx, providerId, adminTypeId, options, report)
   await provisionRbac(ctx, adminUserId, adminTypeId, report)

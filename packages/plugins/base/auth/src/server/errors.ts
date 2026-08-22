@@ -52,6 +52,18 @@ export class RecoveryChannelRequired extends Schema.TaggedErrorClass<RecoveryCha
   { httpApiStatus: 409, identifier: 'RecoveryChannelRequired' },
 ) {}
 
+export class ProviderNotFound extends Schema.TaggedErrorClass<ProviderNotFound>()(
+  'AUTH_PROVIDER_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AuthProviderNotFound' },
+) {}
+
+export class ProviderVersionConflict extends Schema.TaggedErrorClass<ProviderVersionConflict>()(
+  'AUTH_PROVIDER_VERSION_CONFLICT',
+  { currentVersion: Schema.Number },
+  { httpApiStatus: 409, identifier: 'AuthProviderVersionConflict' },
+) {}
+
 export class UserTypeConflict extends Schema.TaggedErrorClass<UserTypeConflict>()(
   'USER_TYPE_CONFLICT',
   {},

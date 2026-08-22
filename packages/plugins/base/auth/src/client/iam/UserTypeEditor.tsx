@@ -38,7 +38,6 @@ export function UserTypeEditor({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [name, setName] = useState(userType.name)
   const [description, setDescription] = useState(userType.description ?? '')
-  const [channels, setChannels] = useState<string[]>([])
   const [unrestricted, setUnrestricted] = useState(userType.placementPolicy.mode === 'unrestricted')
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>(
     userType.placementPolicy.mode === 'allow-list' ? [...userType.placementPolicy.orgTypeIds] : [],
@@ -47,11 +46,6 @@ export function UserTypeEditor({
   useEffect(() => {
     setName(userType.name)
     setDescription(userType.description ?? '')
-    setChannels([
-      ...(userType.allowLocalLogin ? ['local'] : []),
-      ...(userType.allowSsoLogin ? ['sso'] : []),
-    ])
-
     setFeedback(null)
     setSaved(false)
   }, [userType])
@@ -93,8 +87,6 @@ export function UserTypeEditor({
           version: userType.version,
           name,
           description: description.trim() === '' ? null : description,
-          allowLocalLogin: channels.includes('local'),
-          allowSsoLogin: channels.includes('sso'),
         },
       }),
     ),
@@ -196,17 +188,6 @@ export function UserTypeEditor({
             )}
           </Field>
         </div>
-        <CheckboxGroup
-          legend={format(m.loginChannels)}
-          emptyLabel={format(m.noOptions)}
-          disabled={!canManage}
-          options={[
-            { value: 'local', label: format(m.allowLocalLogin) },
-            { value: 'sso', label: format(m.allowSsoLogin) },
-          ]}
-          selected={channels}
-          onChange={setChannels}
-        />
         <Button
           size="sm"
           type="submit"

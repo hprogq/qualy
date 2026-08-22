@@ -83,10 +83,29 @@ const identityByIdentifier = (tenantId: string, providerId: string, identifier: 
       .innerJoin('UserType as t', (join) =>
         join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
       )
+      .innerJoin('AuthProvider as p', (join) =>
+        join.onRef('p.tenantId', '=', 'i.tenantId').onRef('p.id', '=', 'i.authProviderId'),
+      )
       .where('i.tenantId', '=', tenantId)
       .where('i.authProviderId', '=', providerId)
       .where('i.identifier', '=', identifier)
-      .select(['i.id', 'i.userId', 'i.credentialHash', 't.allowLocalLogin'])
+      // whether this kind of person may use this door is the door's own
+      // audience, decided here so every driver gets the same refusal: an
+      // identity outside it does not exist as far as the caller can tell
+      .where((eb) =>
+        eb.or([
+          eb('p.audienceMode', '=', 'unrestricted'),
+          eb.exists(
+            eb
+              .selectFrom('AuthProviderUserType as a')
+              .select('a.id')
+              .whereRef('a.tenantId', '=', 'p.tenantId')
+              .whereRef('a.authProviderId', '=', 'p.id')
+              .whereRef('a.userTypeId', '=', 't.id'),
+          ),
+        ]),
+      )
+      .select(['i.id', 'i.userId', 'i.credentialHash'])
       .executeTakeFirst(),
   )
 
@@ -317,7 +336,6 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
               id: row.id,
               userId: row.userId,
               credentialHash: row.credentialHash,
-              allowsLocalLogin: row.allowLocalLogin,
             }
           : undefined
       }),
