@@ -7656,3 +7656,11 @@ oneWay 后 destructive 用例转红。
 验收:typecheck 零错;`pnpm test` 767 passed | 17 skipped;`pnpm test:browser` 104 passed;
 prettier 通过。另:mikro-orm 上游 PR 已开(#8197 的修复,一行 regex + 回归测试,本仓照旧保持
 等值 OR 写法直至上游发版)。
+
+**追补(同日)**:用户实测停机仍要十多秒——真凶不是 vite,是**客户端连接钉住 drain**:浏览器
+标签页的空闲 keep-alive 与 SSE 长连接都让 `server.close` 等到上游 20s 封顶(runtime.ts 的旧注释
+早已记过同类事故)。修法在 NodeServer 层装催逐器:首个停机信号即刻并每 250ms 清空闲连接,2s 宽限
+后掐掉剩余连接(在途响应有宽限,被掐的流是客户端 runtime 的重连场景不是错误);main.ts 收到首个
+信号立即打一行 `shutting down; press Ctrl+C again to give up waiting`(此前静默 drain 与没按到
+无法区分)。实测:挂着空闲 + 半截两条连接单发 SIGINT,2.1s 优雅退出 0;pnpm 组信号回归照常 0.1s。
+`pnpm test` 767 passed 复跑通过。

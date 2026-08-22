@@ -123,6 +123,13 @@ for (const [signal, code] of [
       process.exit(code)
     }
     stoppingSince = Date.now()
+    // say so at once: the drain that follows can take a few seconds, and a
+    // silent one is indistinguishable from a press that did not land
+    console.error(
+      signal === 'SIGINT'
+        ? 'shutting down; press Ctrl+C again to give up waiting'
+        : `${signal}: shutting down`,
+    )
     if (forceExitAfter > 0) {
       // unref: this timer must never be the reason the process stays alive
       setTimeout(() => {

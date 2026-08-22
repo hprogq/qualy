@@ -84,6 +84,24 @@ const nodeServerLayer = Layer.sync(NodeServer, () => {
     response.end('qualy is starting\n')
   }
   server.on('request', starting)
+  // A stopping process must not let its clients decide when the drain ends.
+  // A browser tab alone holds idle keep-alive sockets, and a live event
+  // stream is never idle at all - either pins `server.close` for the whole
+  // upstream drain cap, which read as a hung Ctrl+C. From the first stop
+  // signal idle sockets are swept as they free up, and after a short grace
+  // whatever is still open is cut: in-flight responses get the grace, and
+  // cut streams are the client runtime's reconnect case, not an error.
+  const hurry = () => {
+    server.closeIdleConnections()
+    const sweep = setInterval(() => server.closeIdleConnections(), 250)
+    sweep.unref()
+    setTimeout(() => {
+      clearInterval(sweep)
+      server.closeAllConnections()
+    }, 2_000).unref()
+  }
+  process.once('SIGINT', hurry)
+  process.once('SIGTERM', hurry)
   return server
 })
 
