@@ -247,7 +247,19 @@ const development = Effect.fn('Web.development')(function* (sourceRoot: string) 
         customLogger,
       }),
     ),
-    (server) => Effect.promise(() => server.close()),
+    // Capped: with the dependency optimizer mid-flight, vite's close has
+    // been observed to sit for the whole 20s http drain window, which turns
+    // every Ctrl+C during a cold boot into a hung shutdown. This is a dev
+    // process on its way out - whatever close has not finished in 3s dies
+    // with the process anyway, and the warning says it was vite that waited.
+    (server) =>
+      Effect.timeoutOrElse(
+        Effect.promise(() => server.close()),
+        {
+          duration: '3 seconds',
+          orElse: () => Effect.logWarning('vite close exceeded 3s; leaving it to process exit'),
+        },
+      ),
   )
   yield* Effect.logInfo(`vite middleware mounted from ${sourceRoot}`)
   return devServer.middlewares as ConnectMiddleware

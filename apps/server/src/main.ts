@@ -107,17 +107,22 @@ const launched = Layer.launch(application).pipe(
  * complete - unlike the graceful exit 0 the teardown below reports.
  */
 const forceExitAfter = Number(process.env.QUALY_SHUTDOWN_TIMEOUT ?? 30) * 1000
-let stopping = false
+let stoppingSince: number | null = null
 for (const [signal, code] of [
   ['SIGINT', 130],
   ['SIGTERM', 143],
 ] as const) {
   process.on(signal, () => {
-    if (stopping) {
+    if (stoppingSince !== null) {
+      // One keystroke fans out through the process tree: the tty delivers
+      // to the whole foreground group and pnpm forwards its own copy to the
+      // child within milliseconds, so a single Ctrl+C arrives here twice.
+      // Only a distinct later press is an operator insisting.
+      if (Date.now() - stoppingSince < 1000) return
       console.error(`${signal} again: giving up on the graceful shutdown`)
       process.exit(code)
     }
-    stopping = true
+    stoppingSince = Date.now()
     if (forceExitAfter > 0) {
       // unref: this timer must never be the reason the process stays alive
       setTimeout(() => {

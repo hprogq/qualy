@@ -7621,3 +7621,38 @@ enabled 的 local provider(受众谓词现在真的要看到一扇门);entity-pa
 
 验收:typecheck 零错;`pnpm test` 764 passed | 17 skipped;`pnpm test:browser` 100 passed;
 `pnpm qualy generate` 报 nothing to generate;catalogs 8/8;seed 6/6;prettier 通过。
+
+## 启动报错收口、申报阶段闸门前置、Ctrl+C 优雅停机修复(2026-08-23)
+
+**数据库连不上时的启动输出**从两遍完整堆栈收成一行人话。根因两层:main.ts 的 onExit 失败分支
+原本 `Effect.void`,渲染全靠上游 runMain 的默认 logger(在 `Effect.provide(logs)` 之外,把
+Cause 当 message 直接 inspect);现在 host 自己报——带 `_tag` 的 Error 视为「有意的启动失败」
+只打 message,未打标的缺陷才附完整 Cause,`disableErrorReporting: true` 关掉上游重复输出。
+database 插件在 `attempt` 咽喉点识别连接类故障(`adviseOn`:ECONNREFUSED 族/28P01/28000/57P03,
+`failedWith` 的走树键补 `errors` 以覆盖 AggregateError),`MigrationFailed` 消息带上目标
+host:port 与指路语——「测试 postgres 占着 5432 时报 role qualy 不存在」这类误导从此自我解释。
+实测:连 59999 端口启动,输出恰一行
+`startup failed: could not apply the lineage: connect ECONNREFUSED ... (postgres is not reachable at 127.0.0.1:59999; ...)`,退出码 1。
+红验:startup.test 新断言(不可达带 host、错角色带 rejected the credentials)先红后绿。
+
+**申报页在渲染前就穿上阶段闸门**(裁决 §32.76)。`listMyEntries` 增 `filing` 块:按题下发
+create/submit 的三态可用性,服务端 `participantGates` 一次 roster + 一次 gateView、逐题纯
+`decide` 细化——顺带修复 item-scoped 补充期把全部条目动作一刀切 blocked 的既有缺陷(现在补充期
+恰好放行它指定的题;filing-gates.test 两用例,红验=去掉 decide 的 itemId 后 scoped 用例转红)。
+前端:「去申报/一键声明」在 create 关闭时禁用 + tooltip 给原因(Paper 三个按钮位共用 Shut 包装,
+`data-gate` 承载事实);EntryDialog「保存并提交」按 submit 闸门禁用(草稿半边照常);撤回确认在
+「本阶段提交已关闭」时转 destructive 并明说单向门后果(新文案 withdraw-final-hint,ConfirmDialog
+增 `data-tone` 测试钩子)。SSE 增 `phase-changed` 事件:手动 advancePhase 事务内广播、
+sweepDueBoundaries 物化任何边界后广播(≤1 分钟),四个订阅页按 sync 级整组失效;手动刷新键补上
+getBatch 失效。浏览器测试四用例(禁用创建/禁用提审/destructive 撤回/普通撤回),红验=拆掉
+oneWay 后 destructive 用例转红。
+
+**一次 Ctrl+C 不再打断优雅停机**。实证:tty 按进程组投递 + pnpm 向子进程转发,一次按键到达进程
+两个 SIGINT,08-08 加的升级路径把第二个当「操作员坚持」立即 130。修法:升级判定加 1 秒同击去抖
+(毫秒级重复=同一次按键的扇出,>1s 的再按才升级);另实测 vite 依赖优化器忙时 close 会吃满上游
+20s drain 封顶,dev 收尾给 vite close 加 3s 封顶 + 超时告警。三向验证:pnpm 下组信号一次→
+优雅退出 0;150ms 双发→仍优雅;拖住 drain 后隔 1.5s 二按→照旧立即 130。
+
+验收:typecheck 零错;`pnpm test` 767 passed | 17 skipped;`pnpm test:browser` 104 passed;
+prettier 通过。另:mikro-orm 上游 PR 已开(#8197 的修复,一行 regex + 回归测试,本仓照旧保持
+等值 OR 写法直至上游发版)。
