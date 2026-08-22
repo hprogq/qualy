@@ -1470,3 +1470,30 @@ entry → 确认是当前结论 → phase/appeal gate → 建 appeal round → E
 若将来真需要救济历史裁决,那是**另一个概念**(DecisionAppeal / CorrectionCase,targetReviewInstanceId,
 先改变那次历史裁决的业务评价,再由一套 reconciliation 规则决定是否影响当前 Entry),
 不是现有 `appealReview()` 能表达的「重新跑一轮审核」;当前没有这个需求,不建。
+
+**32.76 申报入口在渲染前就穿上阶段闸门;撤回在提交关闭时是单向门;阶段切换进实时事件**(2026-08-23,用户裁决)。
+
+用户验收发现三处「按钮先请求后被拒」的体验缺陷,裁决全部按「能力与选项走服务端」补齐:
+
+一、**`listMyEntries` 增 `filing` 块:按题下发 create/submit 的阶段可用性**(`{itemId, create, submit}`,
+三态 actionAvailability,available/blocked+reason)。这是**申报动作在任何条目存在之前**的门禁答案,
+供「去申报/一键声明」按钮与 EntryDialog 的「保存并提交」在渲染时就穿上拒绝(禁用 + tooltip 说明),
+而不是等模态框填完才吃 toast。结构性原因(配额满、行政题、题目作废)仍归前端本地判断——filing 只
+回答阶段与授权维度。服务端实现为 `participantGates`:roster 与 gate view 各查一次,逐 (动作, 题目)
+纯函数 `decide` 细化——**顺带修复既有缺陷**:此前 gates 整请求只问一次且不带 itemId,item-scoped
+补充期会把全部条目动作一刀切 blocked(`item-out-of-scope`),连范围内的题也关上;现在按题作答,
+补充期恰好放行它所指定的题(filing-gates.test 钉住两个方向)。
+
+二、**撤回确认在「本阶段提交已关闭」时换 destructive 语气**:EntrySheet 的撤回 ConfirmDialog 依
+filing.submit 判定——submit 非 available 时,撤回是单向门(草稿在本阶段无法再提交),确认框转
+destructive 并明说后果(`assessment/entry/withdraw-final-hint`);submit 开放时保持普通确认。
+服务器没给出 filing 行(旧 harness、题目已不在活跃集)不当作关闭,不误吓。
+
+三、**EntryDialog 的「保存并提交」按 filing.submit 禁用**(保存草稿不受影响)——「阶段收草稿但不收
+提交」是合法 profile,界面照实呈现两个半边。
+
+四、**`phase-changed` 进 batch live 事件**(部分取代 §32.68「巡检 v1 不发事件」中对阶段边界的沉默):
+手动 `advancePhase` 在事务内广播;调度器 `sweepDueBoundaries` 物化了任何边界也广播(≤1 分钟)。
+连接过滤上 phase 变化对任何可看批次的人都可见。四个订阅页把它当 `sync` 级处理(整组失效重读)。
+服务端闸门本就按时钟即时翻转,此事件只负责把「已翻转」告诉还画着旧界面的浏览器;轮询兜底不变。
+「我的申报」工具栏的手动刷新键顺带补上 getBatch 失效(此前漏掉阶段标头)。

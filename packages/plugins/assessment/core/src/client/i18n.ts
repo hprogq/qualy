@@ -729,6 +729,11 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/withdraw-confirm-hint',
       defaultMessage: 'It goes back to a draft you can edit, and the round it was in ends.',
     },
+    entryWithdrawFinalHint: {
+      id: 'assessment/entry/withdraw-final-hint',
+      defaultMessage:
+        'Submitting is closed in the current stage. Once withdrawn, the claim goes back to a draft and cannot be handed in again until submitting reopens.',
+    },
     entryAbandonConfirmTitle: {
       id: 'assessment/entry/abandon-confirm-title',
       defaultMessage: 'Give this claim up?',

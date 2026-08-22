@@ -77,6 +77,8 @@ export default {
   'assessment/entry/submit-confirm-hint': '提交后进入审核流程，审核期间可撤回。',
   'assessment/entry/withdraw-confirm': '确认撤回提交？',
   'assessment/entry/withdraw-confirm-hint': '撤回后恢复为草稿，可继续修改，本轮审核随之结束。',
+  'assessment/entry/withdraw-final-hint':
+    '当前阶段已关闭提交。撤回后该申报恢复为草稿，在提交重新开放前无法再次提审，请确认是否撤回。',
   'assessment/entry/blocked-now': '当前阶段暂未开放相关操作。',
   'assessment/entry/refuse-not-abandonable': '请先撤回申报，再选择放弃。',
   'assessment/entry/status-needs-revision': '待修改',

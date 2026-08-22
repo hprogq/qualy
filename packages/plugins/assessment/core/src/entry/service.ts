@@ -28,6 +28,7 @@ import {
 } from './db.ts'
 import { itemOf, revisionOf, type ItemRevisionRow, type ItemRow } from '../item/db.ts'
 import {
+  activeItemIdsOf,
   attachmentsOfRevisions,
   latestRefusalOf,
   cancelReviewInstance,
@@ -263,6 +264,12 @@ export interface EntryMethods {
     {
       participantId: string
       entries: readonly EntryView[]
+      /** the phase gate's word on filing into each active question */
+      filing: readonly {
+        itemId: string
+        create: ActionAvailability
+        submit: ActionAvailability
+      }[]
       nextCursor: string | null
       attention: { unreadItemIds: readonly string[] }
     },
@@ -343,8 +350,9 @@ export interface ActionAvailability {
   readonly reason: string | null
 }
 
-/** the four gated participant acts, decided once per request */
-interface EntryGates {
+/** the gated participant acts, decided once per request and refined per item */
+export interface EntryGates {
+  readonly create: ActionDecision
   readonly edit: ActionDecision
   readonly submit: ActionDecision
   readonly withdraw: ActionDecision
@@ -361,6 +369,18 @@ export interface EntryDeps {
     batchId: string,
     ctx?: GateContext,
   ) => Effect.Effect<ActionDecision, BatchNotFound>
+  /**
+   * Every participant act decided for every named item in one pass - the
+   * roster once, the gate view once, then pure refinement. Per item because
+   * a scoped supplementary phase admits some questions and not others, and
+   * a blanket answer would shut them all.
+   */
+  readonly participantGates: (
+    principal: Principal,
+    batchId: string,
+    participantId: string,
+    itemIds: readonly string[],
+  ) => Effect.Effect<ReadonlyMap<string, EntryGates>, BatchNotFound>
   /** whoever may judge an open round of a claim may read how it got here */
   readonly mayReviewEntry: (
     as: Principal,
@@ -538,21 +558,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           : mime.toLowerCase() === entry.toLowerCase(),
     )
 
-  /** the phase gate's word on each participant act, asked once per request */
-  const gatesFor = (as: Principal, batchId: string, participantId: string) =>
-    Effect.gen(function* () {
-      const ask = (code: string) =>
-        deps
-          .authorize(as, code, batchId, { participantId })
-          .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
-      return {
-        edit: yield* ask('assessment.entry.edit'),
-        submit: yield* ask('assessment.entry.submit'),
-        withdraw: yield* ask('assessment.entry.withdraw'),
-        abandon: yield* ask('assessment.entry.abandon'),
-        appeal: yield* ask('assessment.entry.appeal'),
-      } satisfies EntryGates
-    })
+  /** the phase gate's word on each participant act, per item, asked once per request */
+  const gatesFor = (
+    as: Principal,
+    batchId: string,
+    participantId: string,
+    itemIds: readonly string[],
+  ) =>
+    deps
+      .participantGates(as, batchId, participantId, itemIds)
+      .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
 
   const view = (
     entry: EntryRow,
@@ -1272,7 +1287,6 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const membership = yield* participantRowByUser(tenantId, batchId, as.userId)
           if (membership === null) return yield* new ParticipantNotFound()
           const participant = (yield* participantOf(tenantId, batchId, membership.id))!
-          const gates = yield* gatesFor(as, batchId, membership.id)
           const rows = yield* entriesOfParticipantPage({
             tenantId,
             batchId,
@@ -1281,6 +1295,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             limit: limit + 1,
           })
           const pageRows = rows.slice(0, limit)
+          // gates per item: the questions being asked now, plus whatever
+          // items the page's claims still name (a claim outlives its item)
+          const activeItems = yield* activeItemIdsOf(tenantId, batchId)
+          const gatesByItem = yield* gatesFor(as, batchId, membership.id, [
+            ...new Set([...activeItems, ...pageRows.map((entry) => entry.itemId)]),
+          ])
           const askedByEntry = new Map(
             (yield* openSupplementsOfEntries(
               tenantId,
@@ -1308,7 +1328,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 yield* revisionView(tenantId, entry.currentRevisionId),
                 as,
                 participant,
-                gates,
+                gatesByItem.get(entry.itemId),
                 askedByEntry.get(entry.id) ?? null,
                 saidByEntry.get(entry.id) ?? null,
                 entry.currentReviewInstanceId === null
@@ -1317,6 +1337,22 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               ),
             )
           }
+          // What filing into each question would meet at the gate, before
+          // any claim exists. Discovery only, like the per-claim block: the
+          // act itself is authorized again on the way in. Structural reasons
+          // (quota, source, a voided item) stay with the screen - these rows
+          // answer for the phase.
+          const own = participant.userId === as.userId && participant.status === 'active'
+          const opening = (decision?: ActionDecision): ActionAvailability =>
+            !own
+              ? { state: 'hidden', reason: null }
+              : decision !== undefined && !decision.allowed
+                ? { state: 'blocked', reason: decision.reason }
+                : { state: 'available', reason: null }
+          const filing = activeItems.map((itemId) => {
+            const gate = gatesByItem.get(itemId)
+            return { itemId, create: opening(gate?.create), submit: opening(gate?.submit) }
+          })
           const last = pageRows[pageRows.length - 1]
           const lastIso =
             rows.length > limit && last !== undefined
@@ -1325,6 +1361,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           return {
             participantId: membership.id,
             entries,
+            filing,
             nextCursor:
               lastIso !== null && last !== undefined
                 ? encodeQueryCursor(fingerprint, [lastIso, last.id])

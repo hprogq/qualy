@@ -81,7 +81,12 @@ function Queue({
   const queryClient = useQueryClient()
   // queue changes arrive as wake-ups; the poll below is the fallback pace
   const { live } = useBatchLive(batchId, (kind) => {
-    if (kind !== 'sync' && kind !== 'review-inbox-changed' && kind !== 'review-instance-changed') {
+    if (
+      kind !== 'sync' &&
+      kind !== 'phase-changed' &&
+      kind !== 'review-inbox-changed' &&
+      kind !== 'review-instance-changed'
+    ) {
       return
     }
     void queryClient.invalidateQueries({

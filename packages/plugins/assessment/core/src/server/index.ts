@@ -7,7 +7,7 @@ import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { AssessmentLive } from '../live/service.ts'
-import type { AssessmentLiveEvent } from '../live/events.ts'
+import { announce, type AssessmentLiveEvent } from '../live/events.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
@@ -1912,6 +1912,49 @@ export const make = Effect.fn('Assessment.make')(function* () {
     return { allowed: true } as const
   })
 
+  /**
+   * `authorizeAction` for every participant act on every named item, priced
+   * as one request: the roster once, the gate view once, then the same pure
+   * `decide` per (act, item). Per item because a scoped supplementary phase
+   * admits some questions and not others - a blanket answer either shuts the
+   * admitted ones or opens the rest.
+   */
+  const participantGates = Effect.fn('Assessment.participantGates')(function* (
+    principal: Principal,
+    batchId: string,
+    participantId: string,
+    itemIds: readonly string[],
+  ) {
+    const member =
+      (yield* dieQuery(
+        withDb(activeParticipantByUser(principal.tenantId, batchId, principal.userId)),
+      )) !== null
+    const batch = yield* dieQuery(withDb(oneBatch(principal.tenantId, batchId)))
+    if (!batch) return yield* new BatchNotFound()
+    const now = yield* Clock.currentTimeMillis
+    const view = yield* dieQuery(withDb(gateView(principal.tenantId, batch, now)))
+    const one = (code: string, itemId: string) => {
+      if (!member) return { allowed: false, layer: 'authority', reason: 'not-participant' } as const
+      const decision = decide(view, code, { itemId, participantId })
+      return decision.allowed
+        ? ({ allowed: true } as const)
+        : ({ allowed: false, layer: 'gate', reason: decision.reason } as const)
+    }
+    return new Map(
+      itemIds.map((itemId) => [
+        itemId,
+        {
+          create: one('assessment.entry.create', itemId),
+          edit: one('assessment.entry.edit', itemId),
+          submit: one('assessment.entry.submit', itemId),
+          withdraw: one('assessment.entry.withdraw', itemId),
+          abandon: one('assessment.entry.abandon', itemId),
+          appeal: one('assessment.entry.appeal', itemId),
+        },
+      ]),
+    )
+  })
+
   const itemMethods = makeItemMethods({
     withDb,
     requireBatchVisible,
@@ -1928,6 +1971,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
   const entryMethods = makeEntryMethods({
     withDb,
     authorize: authorizeAction,
+    participantGates,
     mayReviewEntry: (as, tenantId, entryId) =>
       dieQuery(withDb(mayReviewEntry({ tenantId, userId: as.userId, entryId }))),
     requireRosterReach,
@@ -3205,6 +3249,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
               reason: input.reason ?? null,
             })
             yield* setCurrentPhase(tenantId, batchId, target.id)
+            yield* announce(tenantId, batchId, [{ kind: 'phase-changed' }])
 
             return yield* readPlan(tenantId, batchId)
           }),
@@ -3833,6 +3878,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
               if (!locked || locked.status !== 'active') return 0
               const plan = toSnapshots(yield* listPhaseRows(candidate.tenantId, candidate.id))
               const swept = yield* ratifyPending(candidate.tenantId, candidate.id, plan, now)
+              // the gate flipped at the planned second regardless; this tells
+              // the browsers that were drawn before it did
+              if (swept.ratified > 0) {
+                yield* announce(candidate.tenantId, candidate.id, [{ kind: 'phase-changed' }])
+              }
               return swept.ratified
             }),
           ),
@@ -4284,6 +4334,10 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
                 (event.subjectUserId === null || event.subjectUserId === principal.userId)
               )
             case 'item-changed':
+              return true
+            // which phase the batch is in is not a secret from anybody who
+            // may watch the batch at all
+            case 'phase-changed':
               return true
           }
         }
@@ -4893,6 +4947,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
         return {
           participantId: page.participantId,
           entries: page.entries.map(entryDto),
+          filing: page.filing,
           nextCursor: page.nextCursor,
           attention: page.attention,
         }

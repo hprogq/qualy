@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Appear } from '@qualy/ui/reveal'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { cn } from '@qualy/ui/cn'
 import {
   CheckIcon,
@@ -16,7 +17,8 @@ import {
 import { projectEntrySummary } from '../../entry/summary.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { EntryStanding } from './EntryStanding.tsx'
-import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
+import { entryRefusalReason } from './refusals.ts'
+import { fieldsOf, trimAmount, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
 import {
   chainNamesOf,
   eachWorth,
@@ -48,6 +50,7 @@ const MEASURE = 'mx-auto w-full max-w-6xl px-4 lg:px-6'
 export function Paper({
   rows,
   entriesByItem,
+  filing,
   standing,
   showTodoOnly,
   busy,
@@ -57,6 +60,8 @@ export function Paper({
 }: {
   rows: readonly StructureRow[]
   entriesByItem: ReadonlyMap<string, readonly EntryDto[]>
+  /** the phase gate's word on filing into each question, from the entries read */
+  filing: ReadonlyMap<string, FilingGateDto>
   standing: Standing | null
   /** the toolbar's own filter: only questions still waiting on the reader */
   showTodoOnly: boolean
@@ -132,6 +137,7 @@ export function Paper({
             row={row}
             no={numbers.get(row.id) ?? ''}
             entries={entriesByItem.get(row.id) ?? []}
+            gate={filing.get(row.id)}
             standing={standing}
             busy={busy}
             onFile={onFile}
@@ -320,6 +326,41 @@ const CLAIM_COLS =
   'grid grid-cols-[minmax(0,1fr)_6rem_5.5rem] items-center gap-3 px-4 lg:grid-cols-[minmax(0,1fr)_8.5rem_6rem_5.5rem]'
 
 /**
+ * A control the phase has shut, wearing its reason on hover.
+ *
+ * A disabled button fires no pointer events, so the focusable wrapper is
+ * what anchors the tooltip - the same trick as the drawer's action bar.
+ * When the gate is open the children pass through untouched.
+ */
+function Shut({
+  when,
+  why,
+  className,
+  children,
+}: {
+  when: boolean
+  why: string | null
+  className?: string
+  children: ReactNode
+}) {
+  const { format } = useI18n()
+  if (!when) return <>{children}</>
+  const reason = why === null ? null : entryRefusalReason(why)
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span tabIndex={0} className={className}>
+            {children}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{format(reason ?? m.entryBlockedNow)}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+/**
  * One question: its terms on the left at a fixed measure, its claims on the
  * right in a table of their own deciding how tall the row is. Empty
  * questions carry their own tray saying why - not yet filed, or never this
@@ -329,6 +370,7 @@ function Question({
   row,
   no,
   entries,
+  gate,
   standing,
   busy,
   onFile,
@@ -338,6 +380,7 @@ function Question({
   row: StructureRow
   no: string
   entries: readonly EntryDto[]
+  gate: FilingGateDto | undefined
   standing: Standing | null
   busy: boolean
   onFile: (item: ItemDto, entry: EntryDto | null) => void
@@ -365,7 +408,13 @@ function Question({
   const room = roomLeft(item, entries)
   const full = !granted && !recorded && room !== null && room <= 0
   const declaredAlready = declared && live.some((entry) => entry.status === 'draft')
-  const mayAdd = !full && mayFile(item, entries) && !declaredAlready
+  // Structure first, then the phase: `mayAdd` says filing belongs on this
+  // question at all, the gate says whether this minute allows it. A shut
+  // gate renders the same control disabled with the reason on hover - a
+  // button that only turns into a refusal toast after the dialog is a trap.
+  const mayAdd =
+    !full && mayFile(item, entries) && !declaredAlready && gate?.create.state !== 'hidden'
+  const shut = gate !== undefined && gate.create.state === 'blocked'
   const add = () => (declared ? onDeclare(item) : onFile(item, null))
 
   // A question granted to everybody is administrative in the data, because
@@ -505,16 +554,19 @@ function Question({
             </Badge>
           ) : (
             mayAdd && (
-              <Button
-                data-testid="file-claim"
-                size="sm"
-                className="shrink-0"
-                disabled={busy}
-                onClick={add}
-              >
-                <PlusIcon aria-hidden />
-                {format(declared ? m.entryDeclare : m.entryNew)}
-              </Button>
+              <Shut when={shut} why={gate?.create.reason ?? null} className="shrink-0">
+                <Button
+                  data-testid="file-claim"
+                  data-gate={gate?.create.state ?? 'available'}
+                  size="sm"
+                  className={cn('shrink-0', shut && 'pointer-events-none')}
+                  disabled={busy || shut}
+                  onClick={add}
+                >
+                  <PlusIcon aria-hidden />
+                  {format(declared ? m.entryDeclare : m.entryNew)}
+                </Button>
+              </Shut>
             )
           )}
         </div>
@@ -582,16 +634,24 @@ function Question({
                     filed ones leave, so a question with one claim still
                     stands as tall as the terms beside it */}
               {mayAdd && (
-                <button
-                  type="button"
-                  data-testid="file-claim"
-                  disabled={busy}
-                  onClick={add}
-                  className="flex min-h-11 w-full flex-1 cursor-pointer items-center justify-center gap-1.5 text-[13px] font-medium text-foreground transition-colors max-md:border-b md:bg-muted/20 md:text-xs md:font-normal md:text-muted-foreground md:hover:bg-accent/40 md:hover:text-foreground"
-                >
-                  <PlusIcon aria-hidden className="size-3.5" />
-                  {format(declared ? m.entryDeclare : m.paperEmptyFile)}
-                </button>
+                <Shut when={shut} why={gate?.create.reason ?? null} className="flex w-full flex-1">
+                  <button
+                    type="button"
+                    data-testid="file-claim"
+                    data-gate={gate?.create.state ?? 'available'}
+                    disabled={busy || shut}
+                    onClick={add}
+                    className={cn(
+                      'flex min-h-11 w-full flex-1 items-center justify-center gap-1.5 text-[13px] font-medium transition-colors max-md:border-b md:bg-muted/20 md:text-xs md:font-normal',
+                      shut
+                        ? 'pointer-events-none text-muted-foreground/60'
+                        : 'cursor-pointer text-foreground md:text-muted-foreground md:hover:bg-accent/40 md:hover:text-foreground',
+                    )}
+                  >
+                    <PlusIcon aria-hidden className="size-3.5" />
+                    {format(declared ? m.entryDeclare : m.paperEmptyFile)}
+                  </button>
+                </Shut>
               )}
               {/* the quota, spoken where the next claim would have gone */}
               {full && (
@@ -637,16 +697,20 @@ function Question({
                 )}
               </span>
               {mayAdd ? (
-                <Button
-                  data-testid="file-claim"
-                  size="xs"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={add}
-                >
-                  <PlusIcon aria-hidden />
-                  {format(declared ? m.entryDeclare : m.paperEmptyFile)}
-                </Button>
+                <Shut when={shut} why={gate?.create.reason ?? null}>
+                  <Button
+                    data-testid="file-claim"
+                    data-gate={gate?.create.state ?? 'available'}
+                    size="xs"
+                    variant="outline"
+                    className={cn(shut && 'pointer-events-none')}
+                    disabled={busy || shut}
+                    onClick={add}
+                  >
+                    <PlusIcon aria-hidden />
+                    {format(declared ? m.entryDeclare : m.paperEmptyFile)}
+                  </Button>
+                </Shut>
               ) : (
                 <span className="text-xs leading-relaxed text-muted-foreground">
                   {format(

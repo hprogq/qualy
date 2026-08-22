@@ -29,6 +29,7 @@ export const batchLiveEvent = Schema.Struct({
     'entries-changed',
     'item-changed',
     'result-changed',
+    'phase-changed',
   ]),
 })
 export type BatchLiveEvent = typeof batchLiveEvent.Type
@@ -1089,6 +1090,21 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         /** the caller's own membership row: what a first filing names */
         participantId: Schema.String,
         entries: Schema.Array(entryView),
+        /**
+         * The phase gate's word on filing into each active question, before
+         * any claim exists - so the "file a claim" press and the submit half
+         * of the dialog render the refusal instead of discovering it. Per
+         * item, because a scoped supplementary phase admits some questions
+         * and not others. Structural reasons (quota, entry source, a voided
+         * item) stay with the screen; these rows answer for the phase.
+         */
+        filing: Schema.Array(
+          Schema.Struct({
+            itemId: Schema.String,
+            create: actionAvailability,
+            submit: actionAvailability,
+          }),
+        ),
         nextCursor: Schema.NullOr(Schema.String),
         /**
          * The unread dots (§32.72): questions where something changed FOR

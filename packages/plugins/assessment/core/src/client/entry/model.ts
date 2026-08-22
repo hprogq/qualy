@@ -73,6 +73,13 @@ export interface ActionAvailability {
   reason: string | null
 }
 
+/** the phase gate's word on filing into one question, before any claim exists */
+export interface FilingGateDto {
+  itemId: string
+  create: ActionAvailability
+  submit: ActionAvailability
+}
+
 export interface ItemDto {
   id: string
   batchId: string

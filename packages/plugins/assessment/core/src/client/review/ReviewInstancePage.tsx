@@ -144,6 +144,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
   const { live } = useBatchLive(batch.id, (kind) => {
     switch (kind) {
       case 'sync':
+      case 'phase-changed':
       case 'review-instance-changed':
         void queryClient.invalidateQueries({
           queryKey: query.assessment.getReviewInstance.key({ params: { instanceId } }),

@@ -601,6 +601,7 @@ export function ConfirmDialog({
           )}
           <AlertDialogAction
             data-testid="confirm-accept"
+            data-tone={tone}
             variant={tone === 'destructive' ? 'destructive' : 'default'}
             onClick={onConfirm}
             disabled={pending}

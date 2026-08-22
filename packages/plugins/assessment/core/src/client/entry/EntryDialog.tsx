@@ -9,14 +9,21 @@ import { RefreshCwIcon } from 'lucide-react'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentApi } from '../api.ts'
-import { entryRefusalMessage } from './refusals.ts'
+import { entryRefusalMessage, entryRefusalReason } from './refusals.ts'
 import { toast } from '@qualy/ui/toast'
 import { assessmentMessages as m } from '../i18n.ts'
 import { Basis } from './Basis.tsx'
 import { EvidenceForm, type EvidencePayload } from './EvidenceForm.tsx'
 import { carryPayload, chainNamesOf, eachWorth, roomLeft } from './standing.ts'
-import { fieldsOf, trimAmount, type EntryDto, type ItemDto } from './model.ts'
+import {
+  fieldsOf,
+  trimAmount,
+  type ActionAvailability,
+  type EntryDto,
+  type ItemDto,
+} from './model.ts'
 
 // Filing or revising one claim, without leaving the question it belongs to.
 //
@@ -48,6 +55,7 @@ export function EntryDialog({
   participantId,
   item,
   entry,
+  submitGate,
   trail,
   siblings,
   onClose,
@@ -63,6 +71,12 @@ export function EntryDialog({
   participantId: string
   item: ItemDto
   entry: EntryDto | null
+  /**
+   * The phase gate's word on submitting into this question: a phase may
+   * take drafts without taking submissions, and then the handing-on half
+   * of this footer is shut with its reason, not a refusal after the work.
+   */
+  submitGate: ActionAvailability | undefined
   /** the sections above the question, so the modal says where it is */
   trail: readonly string[]
   /** what this person has already put into this question, to not repeat it */
@@ -102,6 +116,9 @@ export function EntryDialog({
   const each = eachWorth(asked)
   const chain = chainNamesOf(asked)
   const room = roomLeft(asked, siblings)
+  // an absent word from the server is not a shut gate; only a spoken refusal is
+  const submitShut = submitGate !== undefined && submitGate.state !== 'available'
+  const submitWhy = submitGate?.reason == null ? null : entryRefusalReason(submitGate.reason)
 
   const doors = {
     prepare: (input: {
@@ -246,9 +263,35 @@ export function EntryDialog({
           >
             {format(m.entrySaveDraft)}
           </Button>
-          <Button disabled={save.isPending || stale} onClick={() => setAsking(true)}>
-            {format(m.entrySaveAndSubmit)}
-          </Button>
+          {/* a phase may take drafts without taking submissions; then this
+              half is shut with its reason on hover, and the draft half works */}
+          {submitShut ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0}>
+                    <Button
+                      data-testid="save-and-submit"
+                      data-gate={submitGate?.state}
+                      disabled
+                      className="pointer-events-none"
+                    >
+                      {format(m.entrySaveAndSubmit)}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{format(submitWhy ?? m.entryBlockedNow)}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Button
+              data-testid="save-and-submit"
+              disabled={save.isPending || stale}
+              onClick={() => setAsking(true)}
+            >
+              {format(m.entrySaveAndSubmit)}
+            </Button>
+          )}
         </div>
       }
     >

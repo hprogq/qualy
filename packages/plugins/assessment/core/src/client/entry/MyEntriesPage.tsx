@@ -33,7 +33,7 @@ import { EntryDialog } from './EntryDialog.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
 import { Paper } from './Paper.tsx'
 import { ROW_DOT, ROW_TAG, standingRows, type Standing, type StructureRow } from './standing.ts'
-import { trimAmount, type EntryDto, type ItemDto } from './model.ts'
+import { trimAmount, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
 
 // One's own filings: the round's structure down the left, and whatever is
 // selected in it opened on the right.
@@ -189,7 +189,11 @@ function Body({
   const { live } = useBatchLive(batchId, (kind) => {
     const stale = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
     switch (kind) {
+      // a phase switch may have flipped every capability on this screen -
+      // the paper's gates, the claims' buttons, the batch's own standing -
+      // so it re-reads the lot, exactly like a fresh connection
       case 'sync':
+      case 'phase-changed':
         stale(query.assessment.key())
         return
       case 'entries-changed':
@@ -257,12 +261,25 @@ function Body({
     return grouped
   }, [mine.data])
 
-  // the refresh key's one press: every read this screen stands on, again
+  // the phase gate's word on filing into each question, by item
+  const filingByItem = useMemo(
+    () =>
+      new Map(
+        ((mine.data?.filing ?? []) as readonly FilingGateDto[]).map((gate) => [gate.itemId, gate]),
+      ),
+    [mine.data],
+  )
+
+  // the refresh key's one press: every read this screen stands on, again -
+  // the batch's own standing included, which carries the current phase
   const refetchAll = () => {
     void items.refetch()
     void groups.refetch()
     void mine.refetch()
     void standing.refetch()
+    void queryClient.invalidateQueries({
+      queryKey: query.assessment.getBatch.key({ params: { batchId } }),
+    })
   }
   const anyFetching =
     items.isFetching || groups.isFetching || mine.isFetching || standing.isFetching
@@ -906,6 +923,7 @@ function Body({
                   <Paper
                     rows={rows}
                     entriesByItem={entriesByItem}
+                    filing={filingByItem}
                     standing={(standing.data ?? null) as Standing | null}
                     showTodoOnly={paperView === 'todo'}
                     busy={setStatus.isPending || declare.isPending}
@@ -963,6 +981,7 @@ function Body({
           participantId={mine.data.participantId}
           item={lingeringFiling.item}
           entry={lingeringFiling.entry}
+          submitGate={filingByItem.get(lingeringFiling.item.id)?.submit}
           trail={lingeringFiling.trail}
           siblings={(entriesByItem.get(lingeringFiling.item.id) ?? []).filter(
             (one) => one.id !== lingeringFiling.entry?.id,
@@ -981,6 +1000,7 @@ function Body({
           open={detailed !== null}
           entry={detailed?.entry ?? lingeringDetail.entry}
           item={lingeringDetail.item}
+          resubmit={filingByItem.get(lingeringDetail.item.id)?.submit}
           trail={lingeringDetail.trail}
           busy={setStatus.isPending || declare.isPending}
           onClose={() => setDetail('')}

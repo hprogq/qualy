@@ -22,6 +22,12 @@ const liveKind = Schema.Literals([
   'item-changed',
   /** a provisional result moved */
   'result-changed',
+  /**
+   * the batch entered another phase - by hand, or by the sweep ratifying a
+   * boundary the clock crossed. Every capability a screen renders may have
+   * flipped, so the reader re-asks everything it stands on
+   */
+  'phase-changed',
 ])
 
 export const liveEventSchema = Schema.Struct({

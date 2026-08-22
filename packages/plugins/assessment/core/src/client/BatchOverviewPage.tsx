@@ -44,6 +44,7 @@ export default function BatchOverviewPage() {
   useBatchLive(batchId, (kind) => {
     if (
       kind !== 'sync' &&
+      kind !== 'phase-changed' &&
       kind !== 'entries-changed' &&
       kind !== 'result-changed' &&
       kind !== 'review-inbox-changed' &&

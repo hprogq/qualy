@@ -86,6 +86,22 @@ export const entryCountOf = (tenantId: string, itemId: string, participantId: st
     )
     .pipe(Effect.map(({ rows }) => Number(rows[0]!.count)))
 
+/** every question currently being asked, for the filing gates to answer per item */
+export const activeItemIdsOf = (tenantId: string, batchId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentItem')
+        .select(['id'])
+        .where('tenantId', '=', tenantId)
+        .where('batchId', '=', batchId)
+        .where('status', '=', 'active')
+        .orderBy('sortOrder')
+        .orderBy('id')
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.id)))
+
 export const insertEntry = (input: {
   tenantId: string
   batchId: string

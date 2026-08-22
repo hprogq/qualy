@@ -84,6 +84,7 @@ export function EntrySheet({
   open,
   entry,
   item,
+  resubmit,
   trail,
   busy,
   onClose,
@@ -95,6 +96,13 @@ export function EntrySheet({
   open: boolean
   entry: EntryDto
   item: ItemDto
+  /**
+   * The phase gate's word on submitting into this question at all,
+   * independent of the claim's state. Withdrawing while it is shut is a
+   * one-way door - the draft cannot be handed back in this phase - and the
+   * confirm changes register accordingly.
+   */
+  resubmit: ActionAvailability | undefined
   /** the groups above the question, outermost first */
   trail: readonly string[]
   busy: boolean
@@ -110,6 +118,9 @@ export function EntrySheet({
   // which act is waiting on an answer; every one of them moves the claim
   const [asking, setAsking] = useState<'in_review' | 'draft' | 'voided' | null>(null)
   const [tab, setTab] = useState<'content' | 'trail'>('content')
+  // withdrawing with submission shut is a one-way door; an absent word from
+  // the server is not a shut one, so only an explicit refusal changes tone
+  const oneWay = resubmit !== undefined && resubmit.state !== 'available'
   const fields = fieldsOf(item.currentRevision?.formConfig)
   const payload = (entry.currentRevision?.payload ?? {}) as Record<string, unknown>
   const revisionNo = entry.currentRevision?.revisionNo
@@ -456,10 +467,13 @@ export function EntrySheet({
         {/* Every act here changes who holds the claim, so every one of them
             is a question first: handing it on, taking it back, and giving it
             up. The words differ because the consequences do, and giving up
-            is the only one that cannot be undone. */}
+            is the only one that cannot be undone. Taking it back while the
+            phase has shut submission joins the irreversible ones: the draft
+            it leaves behind cannot be handed in again until submitting
+            reopens, and the confirm must say so before, not after. */}
         <ConfirmDialog
           open={asking !== null}
-          tone={asking === 'voided' ? 'destructive' : 'default'}
+          tone={asking === 'voided' || (asking === 'draft' && oneWay) ? 'destructive' : 'default'}
           title={format(
             asking === 'voided'
               ? m.entryAbandonConfirmTitle
@@ -471,7 +485,9 @@ export function EntrySheet({
             asking === 'voided'
               ? m.entryAbandonConfirm
               : asking === 'draft'
-                ? m.entryWithdrawConfirmHint
+                ? oneWay
+                  ? m.entryWithdrawFinalHint
+                  : m.entryWithdrawConfirmHint
                 : m.entrySubmitConfirmHint,
           )}
           confirmLabel={format(

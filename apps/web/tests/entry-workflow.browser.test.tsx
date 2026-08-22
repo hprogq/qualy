@@ -1533,3 +1533,119 @@ describe('reading one’s standing', () => {
     await expect.element(page.getByText('-1.00', { exact: true })).toBeVisible()
   })
 })
+
+describe('the phase gate on the paper', () => {
+  const shut = { state: 'blocked' as const, reason: 'phase-closed' }
+  const openGate = { state: 'available' as const, reason: null }
+  const withdrawable = () =>
+    entry({
+      status: 'in_review',
+      capabilities: {
+        edit: { state: 'hidden' as const, reason: null },
+        submit: { state: 'hidden' as const, reason: null },
+        withdraw: { state: 'available' as const, reason: null },
+        appeal: { state: 'hidden' as const, reason: null },
+        abandon: { state: 'hidden' as const, reason: null },
+      },
+    })
+
+  it('renders a shut create as a disabled control, not a trap', async () => {
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [],
+            filing: [{ itemId: ITEM_ID, create: shut, submit: shut }],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    const button = page.getByTestId('file-claim').first()
+    await expect.element(button).toBeDisabled()
+    await expect.element(button).toHaveAttribute('data-gate', 'blocked')
+  })
+
+  it('shuts the handing-on half of the dialog while drafts stay open', async () => {
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [],
+            filing: [{ itemId: ITEM_ID, create: openGate, submit: shut }],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await page.getByTestId('file-claim').first().click()
+    const handOn = page.getByTestId('save-and-submit')
+    await expect.element(handOn).toBeDisabled()
+    await expect.element(handOn).toHaveAttribute('data-gate', 'blocked')
+    await expect.element(page.getByRole('button', { name: '保存为草稿' })).toBeEnabled()
+  })
+
+  it('asks the one-way withdraw in the destructive register', async () => {
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [withdrawable()],
+            filing: [{ itemId: ITEM_ID, create: shut, submit: shut }],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer).toBeVisible()
+    await drawer.getByRole('button', { name: '撤回提交' }).click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await expect
+      .element(page.getByTestId('confirm-accept'))
+      .toHaveAttribute('data-tone', 'destructive')
+  })
+
+  it('keeps the ordinary withdraw in the ordinary register', async () => {
+    screen(
+      {
+        listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
+        listMyEntries: () =>
+          Effect.succeed({
+            participantId: PARTICIPANT_ID,
+            entries: [withdrawable()],
+            filing: [{ itemId: ITEM_ID, create: openGate, submit: openGate }],
+            nextCursor: null,
+            attention: { unreadItemIds: [] },
+          }),
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await page.getByRole('button', { name: /2024 年入伍/ }).click()
+    const drawer = page.getByRole('dialog')
+    await expect.element(drawer).toBeVisible()
+    await drawer.getByRole('button', { name: '撤回提交' }).click()
+    await expect.element(page.getByRole('alertdialog')).toBeVisible()
+    await expect.element(page.getByTestId('confirm-accept')).toHaveAttribute('data-tone', 'default')
+  })
+})
