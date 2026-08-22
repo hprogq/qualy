@@ -114,8 +114,8 @@ describe.runIf(postgresAvailable)('the participant-action cleanup migration', ()
       ).id
       const role = (
         await db.row<{ id: string }>(
-          `insert into roles (tenant_id, code, name, kind, status, permission_mode)
-           values ($1, 'reviewer', 'Reviewer', 'org', 'active', 'explicit') returning id`,
+          `insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values ($1, 'reviewer', 'Reviewer', 'org', 'active', 'explicit', 'allow-list') returning id`,
           [tenant],
         )
       ).id
@@ -216,8 +216,8 @@ describe.runIf(postgresAvailable)('the resubmit cleanup migration', () => {
       ).id
       const role = (
         await db.row<{ id: string }>(
-          `insert into roles (tenant_id, code, name, kind, status, permission_mode)
-           values ($1, 'reviewer', 'Reviewer', 'org', 'active', 'explicit') returning id`,
+          `insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values ($1, 'reviewer', 'Reviewer', 'org', 'active', 'explicit', 'allow-list') returning id`,
           [tenant],
         )
       ).id
@@ -798,8 +798,8 @@ describe.runIf(postgresAvailable)('the drop-bind-permissions migration', () => {
          on conflict (code) do update set code = excluded.code returning id`,
       )
       const role = await one(
-        `insert into roles (tenant_id, code, name, kind, status, permission_mode)
-         values ($1, 'steward', 'Steward', 'org', 'active', 'explicit') returning id`,
+        `insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values ($1, 'steward', 'Steward', 'org', 'active', 'explicit', 'allow-list') returning id`,
         [tenant],
       )
       await db.query(

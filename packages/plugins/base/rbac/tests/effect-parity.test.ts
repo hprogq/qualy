@@ -126,8 +126,8 @@ const seed = Effect.fn('seed')(function* () {
     // an ordinary org role carrying one capability, anchored at the child
     const managerRole = one<{ id: string }>(
       yield* runSql(sql`
-        insert into roles (tenant_id, code, name, kind, status, permission_mode)
-        values (${tenantId}, 'mgr', 'Mgr', 'org', 'active', 'explicit') returning id`),
+        insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${tenantId}, 'mgr', 'Mgr', 'org', 'active', 'explicit', 'allow-list') returning id`),
     ).id
     const permission = one<{ id: string }>(
       yield* runSql(sql`

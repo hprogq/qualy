@@ -624,8 +624,8 @@ describe.runIf(postgresAvailable).concurrent('the assessment service', () => {
         // a tutor with two of the capabilities a batch may carry
         const role = one<{ id: string }>(
           yield* runSql(sql`
-            insert into roles (tenant_id, code, name, kind, status, permission_mode)
-            values (${f.tenant}, 'tutor', 'Tutor', 'org', 'active', 'explicit') returning id`),
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, 'tutor', 'Tutor', 'org', 'active', 'explicit', 'allow-list') returning id`),
         ).id
         const permissionId = (code: string) =>
           Effect.map(

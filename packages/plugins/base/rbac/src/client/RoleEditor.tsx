@@ -32,13 +32,13 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const [name, setName] = useState(role.name)
   const [description, setDescription] = useState(role.description ?? '')
   const [permissions, setPermissions] = useState<string[]>([...role.permissions])
-  const [anyUserType, setAnyUserType] = useState(role.eligibility.mode === 'unrestricted')
-  const [anyOrgType, setAnyOrgType] = useState(role.anchor.mode === 'unrestricted')
+  const [anyUserType, setAnyUserType] = useState(role.holderPolicy.mode === 'unrestricted')
+  const [anyOrgType, setAnyOrgType] = useState(role.anchorPolicy?.mode === 'unrestricted')
   const [userTypeIds, setUserTypeIds] = useState<string[]>(
-    role.eligibility.mode === 'allow-list' ? [...role.eligibility.userTypeIds] : [],
+    role.holderPolicy.mode === 'allow-list' ? [...role.holderPolicy.userTypeIds] : [],
   )
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>(
-    role.anchor.mode === 'allow-list' ? [...role.anchor.orgTypeIds] : [],
+    role.anchorPolicy?.mode === 'allow-list' ? [...role.anchorPolicy.orgTypeIds] : [],
   )
 
   // a different record is a different form, so the draft re-seeds when the
@@ -47,10 +47,12 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     setName(role.name)
     setDescription(role.description ?? '')
     setPermissions([...role.permissions])
-    setAnyUserType(role.eligibility.mode === 'unrestricted')
-    setAnyOrgType(role.anchor.mode === 'unrestricted')
-    setUserTypeIds(role.eligibility.mode === 'allow-list' ? [...role.eligibility.userTypeIds] : [])
-    setOrgTypeIds(role.anchor.mode === 'allow-list' ? [...role.anchor.orgTypeIds] : [])
+    setAnyUserType(role.holderPolicy.mode === 'unrestricted')
+    setAnyOrgType(role.anchorPolicy?.mode === 'unrestricted')
+    setUserTypeIds(
+      role.holderPolicy.mode === 'allow-list' ? [...role.holderPolicy.userTypeIds] : [],
+    )
+    setOrgTypeIds(role.anchorPolicy?.mode === 'allow-list' ? [...role.anchorPolicy.orgTypeIds] : [])
     setFeedback(null)
     setSaved(false)
   }, [role])
@@ -126,12 +128,16 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         params: { roleId: role.id },
         payload: {
           version: role.version,
-          eligibility: anyUserType
+          holderPolicy: anyUserType
             ? { mode: 'unrestricted' as const }
             : { mode: 'allow-list' as const, userTypeIds },
-          anchor: anyOrgType
-            ? { mode: 'unrestricted' as const }
-            : { mode: 'allow-list' as const, orgTypeIds },
+          // a tenant role anchors to nothing, and the payload says so
+          anchorPolicy:
+            role.kind === 'org'
+              ? anyOrgType
+                ? { mode: 'unrestricted' as const }
+                : { mode: 'allow-list' as const, orgTypeIds }
+              : null,
         },
       }),
     ),

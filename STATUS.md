@@ -7535,3 +7535,31 @@ literal 不会被收集,否则等于给这条门禁留了后门(红验:把一条
 第一版测试写弱了——首个断言恰好与默认对比版本重合,快捷键失效也会通过;调整了按键顺序,两步都真正证明。
 
 验收:typecheck 零错;`pnpm test:browser` 101 passed;prettier 通过。
+
+### IAM 三处小修:租户角色的 anchor 归 null、policy 改名、grant-options 显式 target(2026-08-22)
+
+按用户最终裁决:**核心授权模型冻结**——`Role.kind` 双轨、tenant/org 两种 grant、两套 grant-manage
+权限、任命图同 kind 限制全部保留,之前咨询稿里的「root+subtree 大合并」不做。只修三处:
+
+一、**租户角色不再存假的 anchor 政策**。此前 `setEligibility` 对 tenant 角色强制写
+`{mode:'allow-list', orgTypeIds:[]}` 表示「不适用」——为了统一 schema 制造的无领域意义状态,
+每个完整性检查都要绕着它走。现在 `roles.anchor_mode` 可空,新增检查
+`(kind='org') = (anchor_mode IS NOT NULL)`;API 的 `anchorPolicy` 对 tenant 角色是 **null**;
+写入时 kind 与政策不一致直接拒绝(新错误码 `ROLE_ANCHOR_MISMATCH`,不做静默修复——
+「替你改成对的」正是 replace 悄悄变成谎言的方式)。迁移合并为单文件(先放开 NOT NULL 再置 null
+再上约束);**升级测试第一次运行就抓到真实顺序缺陷**——最初把置 null 排在放开 NOT NULL 之前,
+在有存量租户角色的库上必炸,本地 dev 库恰好无此类行才蒙混过关。红验:去掉 kind 一致性检查,
+mismatch 用例转红。
+
+二、**`eligibility`/`anchor` 在领域与 API 层改名 `holderPolicy`/`anchorPolicy`**(谁可担任 / 可在
+哪类组织上任命),路由路径 `/iam/roles/{id}/eligibility` 不动(路径比内部命名活得久),数据库表名
+不动。三、**`getRoleGrantOptions` 的 target 显式化**:query 必带 `target=tenant|org-node`,
+tenant 禁带节点参数,org-node 两参数必齐——原来 orgNodeId 缺省推断 tenant、coverage 缺省静默
+`self`,正好掩盖调用方 bug。
+
+顺带撞上并绕开一个新的上游缺陷:PG 把检查里的 `IN` 规范化为 `= ANY ((ARRAY[…])::text[])`,
+MikroORM 7.1.13 的 cast 剥离不认**数组类型** cast,重发 DDL 时产出 `ARRAY[…][]` 语法错误
+(我们报的第 5 条的残余洞)。实体检查改写为等值 OR 形式避开,已记录在案。
+
+验收:typecheck 零错;`pnpm test` 762 passed | 17 skipped;`pnpm test:browser` 101 passed
+(identity 13/13);`pnpm qualy generate` 报 nothing to generate;prettier 通过。

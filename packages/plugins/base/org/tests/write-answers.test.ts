@@ -138,8 +138,8 @@ const seed = Effect.fn('seed')(function* () {
     const user = yield* person('Mo')
     const role = one<{ id: string }>(
       yield* runSql(sql`
-        insert into roles (tenant_id, code, name, kind, status, permission_mode)
-        values (${tenant}, 'keeper', 'Keeper', 'org', 'active', 'explicit') returning id`),
+        insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${tenant}, 'keeper', 'Keeper', 'org', 'active', 'explicit', 'allow-list') returning id`),
     ).id
     const permission = one<{ id: string }>(
       yield* runSql(sql`select id from permissions where code = 'org.tree.manage'`),

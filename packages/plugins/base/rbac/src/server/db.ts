@@ -74,7 +74,10 @@ export interface RoleEligibilityRef {
   readonly tenantId: Expression<string>
   readonly id: Expression<string>
   readonly eligibilityMode: Expression<string>
-  readonly anchorMode: Expression<string>
+  // null on a tenant role, which has no anchor dimension; the comparison
+  // against 'unrestricted' is null-safe, and no tenant grant carries a node
+  // for the org-type test to ever run against
+  readonly anchorMode: Expression<string | null>
 }
 
 /**

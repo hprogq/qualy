@@ -95,8 +95,11 @@ export const Role = defineEntity({
     // and would skip the stranding check on the way - the same mistake user
     // type placement already made once and now states as a mode.
     eligibilityMode: p.string().length(16).defaultRaw(`'allow-list'`),
-    // only meaningful for an org role: a tenant role anchors to nothing
-    anchorMode: p.string().length(16).defaultRaw(`'allow-list'`),
+    // Where an org role's duty may be anchored. Null for a tenant role, and
+    // not a mode pretending to be one: a tenant role anchors to nothing, and
+    // storing that as an empty allow-list manufactured a state with no
+    // domain meaning for every completeness check to step around.
+    anchorMode: p.string().length(16).nullable(),
     // set for roles the platform provisions and protects; null for the
     // tenant's own roles
     systemKey: p.string().length(63).nullable(),
@@ -120,7 +123,16 @@ export const Role = defineEntity({
       name: 'chk_roles_eligibility_mode',
       expression: `eligibility_mode IN ('unrestricted', 'allow-list')`,
     },
-    { name: 'chk_roles_anchor_mode', expression: `anchor_mode IN ('unrestricted', 'allow-list')` },
+    {
+      // spelled as equalities rather than IN: postgres normalizes an IN list
+      // to `= ANY ((ARRAY[...])::text[])`, and upstream check recovery strips
+      // the array cast into invalid SQL when the check is next re-emitted
+      // (docs/upstream/mikro-orm-7-check-array-cast-strip.md)
+      name: 'chk_roles_anchor_mode',
+      expression: `anchor_mode IS NULL OR anchor_mode = 'unrestricted' OR anchor_mode = 'allow-list'`,
+    },
+    // the anchor policy exists exactly when there is something to anchor
+    { name: 'chk_roles_anchor_kind', expression: `(kind = 'org') = (anchor_mode IS NOT NULL)` },
     // Holding every capability is reserved for the administrator role the
     // platform provisions; a tenant cannot mint a second one.
     //

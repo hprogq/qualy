@@ -550,7 +550,8 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
   // sample org role: applicability-constrained, permission-mapped, and the
   // demo manager holds it over the college subtree
   const roleInsert = await ctx.client.query(
-    `insert into roles (tenant_id, code, name, kind, status) values ($1, $2, $3, 'org', 'active')
+    `insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values ($1, $2, $3, 'org', 'active', 'allow-list')
      on conflict (tenant_id, code) do nothing`,
     [ctx.tenantId, DEMO_ORG_MANAGER.code, DEMO_ORG_MANAGER.name],
   )

@@ -79,8 +79,8 @@ const role = (over: Partial<RoleDto> = {}): RoleDto => ({
   grantCount: 0,
   permissions: [],
   unavailablePermissions: [],
-  eligibility: { mode: 'allow-list', userTypeIds: [] },
-  anchor: { mode: 'allow-list', orgTypeIds: [] },
+  holderPolicy: { mode: 'allow-list', userTypeIds: [] },
+  anchorPolicy: { mode: 'allow-list', orgTypeIds: [] },
   ...over,
 })
 
@@ -578,8 +578,15 @@ describe('granting a role on the user screen', () => {
     await page.getByRole('combobox', { name: '覆盖' }).selectOptions('仅该节点')
 
     await vi.waitFor(() =>
+      // the target is said outright now, never inferred from which
+      // parameters happen to be present
       expect(options).toHaveBeenCalledWith({
-        query: { userId: USER_ID, orgNodeId: BRANCH_NODE_ID, coverage: 'self' },
+        query: {
+          userId: USER_ID,
+          target: 'org-node',
+          orgNodeId: BRANCH_NODE_ID,
+          coverage: 'self',
+        },
       }),
     )
 

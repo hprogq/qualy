@@ -225,6 +225,10 @@ const i18n = definePluginMessages({
         defaultMessage:
           'An active role needs at least one eligible user type, and an organization role a node type.',
       },
+      ROLE_ANCHOR_MISMATCH: {
+        id: 'rbac/error/role-anchor-mismatch',
+        defaultMessage: 'Refresh and try again: the role was edited as the other kind of role.',
+      },
       GRANT_STRANDED: {
         message: strandedMessage,
         values: (data) => ({ assignmentCount: data.grantCount }),

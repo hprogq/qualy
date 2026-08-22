@@ -39,13 +39,13 @@ const panelWorld = (f: Seeded) =>
     const admin = f.principal(f.admin)
     const panelRole = one<{ id: string }>(
       yield* runSql(sql`
-        insert into roles (tenant_id, code, name, kind, status)
-        values (${f.t}, 'grade-panel', 'Grade panel', 'org', 'active') returning id`),
+        insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'grade-panel', 'Grade panel', 'org', 'active', 'allow-list') returning id`),
     ).id
     const closerRole = one<{ id: string }>(
       yield* runSql(sql`
-        insert into roles (tenant_id, code, name, kind, status)
-        values (${f.t}, 'closer', 'Closer', 'org', 'active') returning id`),
+        insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'closer', 'Closer', 'org', 'active', 'allow-list') returning id`),
     ).id
     for (const role of [panelRole, closerRole]) {
       yield* runSql(sql`

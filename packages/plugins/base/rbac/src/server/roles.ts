@@ -29,6 +29,7 @@ import {
   PermissionNotFound,
   RoleConflict,
   RoleInUse,
+  RoleAnchorMismatch,
   RoleIncomplete,
   RoleIsSystem,
   RoleNeedsEligibility,
@@ -93,8 +94,14 @@ const insertRole = (input: {
     k
       .insertInto('Role')
       // a new role grants nothing until it is activated, and activation is
-      // where completeness is checked
-      .values({ ...input, status: 'draft', permissionMode: 'explicit' })
+      // where completeness is checked; the anchor policy exists exactly when
+      // the kind gives it something to say
+      .values({
+        ...input,
+        status: 'draft',
+        permissionMode: 'explicit',
+        anchorMode: input.kind === 'org' ? 'allow-list' : null,
+      })
       .returning('id')
       .executeTakeFirstOrThrow(),
   )
@@ -168,9 +175,8 @@ const countGrantsOfRole = (tenantId: string, roleId: string) =>
     )
     .pipe(Effect.map((row) => row?.count ?? 0))
 
-/** what a completeness check counts: who may hold it, and what it may anchor to */
 /** who may hold a role: everyone, or exactly these user types */
-export type EligibilityPolicy =
+export type HolderPolicy =
   | { readonly mode: 'unrestricted' }
   | { readonly mode: 'allow-list'; readonly userTypeIds: readonly string[] }
 
@@ -186,7 +192,7 @@ const roleModes = (tenantId: string, roleId: string) =>
       .selectFrom('Role')
       .select((eb) => [
         eb.ref('eligibilityMode').$castTo<'unrestricted' | 'allow-list'>().as('eligibilityMode'),
-        eb.ref('anchorMode').$castTo<'unrestricted' | 'allow-list'>().as('anchorMode'),
+        eb.ref('anchorMode').$castTo<'unrestricted' | 'allow-list' | null>().as('anchorMode'),
       ])
       .where('tenantId', '=', tenantId)
       .where('id', '=', roleId)
@@ -196,7 +202,7 @@ const roleModes = (tenantId: string, roleId: string) =>
 const setRoleModes = (
   tenantId: string,
   roleId: string,
-  modes: { eligibilityMode: string; anchorMode: string },
+  modes: { eligibilityMode: string; anchorMode: string | null },
 ) =>
   db.query((k) =>
     k
@@ -481,7 +487,7 @@ const roleEligibility = (tenantId: string, roleId: string) =>
       .where('r.id', '=', roleId)
       .select((eb) => [
         eb.ref('r.eligibilityMode').$castTo<'unrestricted' | 'allow-list'>().as('eligibilityMode'),
-        eb.ref('r.anchorMode').$castTo<'unrestricted' | 'allow-list'>().as('anchorMode'),
+        eb.ref('r.anchorMode').$castTo<'unrestricted' | 'allow-list' | null>().as('anchorMode'),
         sql<string[]>`coalesce((select array_agg(user_type_id::text)
           from role_allowed_user_types
           where tenant_id = ${tenantId} and role_id = ${roleId}), '{}')`.as('userTypeIds'),
@@ -796,7 +802,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       )
     }),
 
-    /** which user types may hold the role, and which node types it may anchor to */
+    /** who may hold the role and, for an org role, where it may be anchored */
     getEligibility: Effect.fn('Rbac.roles.getEligibility')(function* (
       tenantId: string,
       roleId: string,
@@ -805,14 +811,17 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       if (!role) return yield* new RoleNotFound()
       const sets = yield* roleEligibility(tenantId, roleId).pipe(Effect.orDie)
       return {
-        eligibility:
+        holderPolicy:
           sets.eligibilityMode === 'unrestricted'
             ? ({ mode: 'unrestricted' } as const)
             : ({ mode: 'allow-list', userTypeIds: [...sets.userTypeIds].sort() } as const),
-        anchor:
-          sets.anchorMode === 'unrestricted'
-            ? ({ mode: 'unrestricted' } as const)
-            : ({ mode: 'allow-list', orgTypeIds: [...sets.orgTypeIds].sort() } as const),
+        // null, not an empty list: a tenant role has no anchor policy at all
+        anchorPolicy:
+          sets.anchorMode === null
+            ? null
+            : sets.anchorMode === 'unrestricted'
+              ? ({ mode: 'unrestricted' } as const)
+              : ({ mode: 'allow-list', orgTypeIds: [...sets.orgTypeIds].sort() } as const),
         version: role.version,
       }
     }),
@@ -826,7 +835,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
     setEligibility: Effect.fn('Rbac.roles.setEligibility')(function* (
       tenantId: string,
       roleId: string,
-      policy: { eligibility: EligibilityPolicy; anchor: AnchorPolicy },
+      policy: { holderPolicy: HolderPolicy; anchorPolicy: AnchorPolicy | null },
       expectedVersion: number,
     ) {
       return yield* write(tenantId, () =>
@@ -835,23 +844,28 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           // the canonical administrator is grantable to whoever the tenant
           // designates; everything else declares who may hold it
           if (role.systemKey !== null) return yield* new RoleIsSystem()
-          const eligibility = policy.eligibility
-          // A tenant role reaches the whole tenant, so it anchors to nothing:
-          // an empty allow-list is what says that, and it says it whatever the
-          // caller sent.
-          const anchor: AnchorPolicy =
-            role.kind === 'org' ? policy.anchor : { mode: 'allow-list', orgTypeIds: [] }
-          const userTypeIds =
-            eligibility.mode === 'allow-list' ? [...new Set(eligibility.userTypeIds)] : []
-          const orgTypeIds = anchor.mode === 'allow-list' ? [...new Set(anchor.orgTypeIds)] : []
+          const holders = policy.holderPolicy
+          // The anchor policy exists exactly when the kind gives it something
+          // to say. A tenant role sent one, or an org role sent none, is a
+          // caller talking about a different role than the one it named -
+          // silently repairing that is how a replace becomes a lie.
+          if ((role.kind === 'org') === (policy.anchorPolicy === null)) {
+            return yield* new RoleAnchorMismatch({ roleKind: role.kind })
+          }
+          const anchors = policy.anchorPolicy
+          const userTypeIds = holders.mode === 'allow-list' ? [...new Set(holders.userTypeIds)] : []
+          const orgTypeIds =
+            anchors !== null && anchors.mode === 'allow-list'
+              ? [...new Set(anchors.orgTypeIds)]
+              : []
           // An active role has to be holdable and, if anchored, anchorable. A
           // mode that admits everything satisfies that without a list; an empty
           // allow-list does not, which is the whole reason the mode is stated
           // rather than read off the list's size.
           if (
             role.status === 'active' &&
-            ((eligibility.mode === 'allow-list' && userTypeIds.length === 0) ||
-              (role.kind === 'org' && anchor.mode === 'allow-list' && orgTypeIds.length === 0))
+            ((holders.mode === 'allow-list' && userTypeIds.length === 0) ||
+              (anchors !== null && anchors.mode === 'allow-list' && orgTypeIds.length === 0))
           ) {
             return yield* new RoleNeedsEligibility()
           }
@@ -880,8 +894,8 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           yield* replace('user-types', userTypeIds)
           yield* replace('org-types', orgTypeIds)
           yield* setRoleModes(tenantId, role.id, {
-            eligibilityMode: eligibility.mode,
-            anchorMode: anchor.mode,
+            eligibilityMode: holders.mode,
+            anchorMode: anchors === null ? null : anchors.mode,
           })
 
           // The sets and the grants are checked together under one lock, so a

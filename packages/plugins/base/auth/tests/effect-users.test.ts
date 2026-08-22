@@ -107,8 +107,8 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const role = one<{ id: string }>(
     yield* runSql(sql`
-      insert into roles (tenant_id, code, name, kind, status, permission_mode)
-      values (${tenant}, 'mgr', 'Mgr', 'org', 'active', 'explicit') returning id`),
+      insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${tenant}, 'mgr', 'Mgr', 'org', 'active', 'explicit', 'allow-list') returning id`),
   ).id
   const permission = one<{ id: string }>(
     yield* runSql(sql`
@@ -129,8 +129,8 @@ const seed = Effect.fn('seed')(function* () {
   // visible rather than incidental.
   const readRole = one<{ id: string }>(
     yield* runSql(sql`
-      insert into roles (tenant_id, code, name, kind, status, permission_mode)
-      values (${tenant}, 'reader', 'Reader', 'org', 'active', 'explicit') returning id`),
+      insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${tenant}, 'reader', 'Reader', 'org', 'active', 'explicit', 'allow-list') returning id`),
   ).id
   const readPermission = one<{ id: string }>(
     yield* runSql(sql`

@@ -176,8 +176,8 @@ export const seed = (slug: string) =>
     )
     const reviewRole = one<{ id: string }>(
       yield* runSql(sql`
-        insert into roles (tenant_id, code, name, kind, status)
-        values (${t}, 'class-reviewer', 'Class reviewer', 'org', 'active') returning id`),
+        insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${t}, 'class-reviewer', 'Class reviewer', 'org', 'active', 'allow-list') returning id`),
     ).id
     // the role really carries the authority to judge: standing at the stage
     // node is only half of the reviewer definition, the batch must also have
@@ -191,8 +191,8 @@ export const seed = (slug: string) =>
     // the recorder's role really carries entry.record, anchored on college A
     const recordRole = one<{ id: string }>(
       yield* runSql(sql`
-        insert into roles (tenant_id, code, name, kind, status)
-        values (${t}, 'recorder', 'Recorder', 'org', 'active') returning id`),
+        insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${t}, 'recorder', 'Recorder', 'org', 'active', 'allow-list') returning id`),
     ).id
     yield* runSql(sql`
       insert into role_permissions (tenant_id, role_id, permission_id)

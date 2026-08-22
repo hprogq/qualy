@@ -126,6 +126,18 @@ export class RoleNeedsEligibility extends Schema.TaggedErrorClass<RoleNeedsEligi
   { httpApiStatus: 422, identifier: 'RoleNeedsEligibility' },
 ) {}
 
+/**
+ * The anchor policy and the role's kind disagree: a tenant role was sent
+ * one, or an org role was sent none. The policy exists exactly when the
+ * kind gives it something to say, and repairing the payload silently would
+ * turn a full replacement into a partial one.
+ */
+export class RoleAnchorMismatch extends Schema.TaggedErrorClass<RoleAnchorMismatch>()(
+  'ROLE_ANCHOR_MISMATCH',
+  { roleKind: Schema.Literals(['tenant', 'org']) },
+  { httpApiStatus: 422, identifier: 'RoleAnchorMismatch' },
+) {}
+
 export class RoleUserTypeNotFound extends Schema.TaggedErrorClass<RoleUserTypeNotFound>()(
   'ROLE_USER_TYPE_NOT_FOUND',
   {},

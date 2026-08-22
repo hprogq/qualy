@@ -15,6 +15,7 @@ import {
   RoleInUse,
   RoleIncomplete,
   RoleIsSystem,
+  RoleAnchorMismatch,
   RoleNeedsEligibility,
   RoleNotDraft,
   RoleNotFound,
@@ -58,9 +59,11 @@ const coverage = Schema.Literals(['self', 'subtree'])
  * The mode is stated rather than inferred from an empty list, exactly as user
  * type placement states it: reading "no rows" as "anyone, anywhere" makes
  * unchecking the last box widen the rule instead of narrowing it, and skips
- * the check that would have refused to strand the grants already made.
+ * the check that would have refused to strand the grants already made. The
+ * anchor policy is null on a tenant role - it anchors to nothing, and a mode
+ * with an empty list would be a rule about a dimension the role does not have.
  */
-const eligibilityView = Schema.Union([
+const holderPolicyView = Schema.Union([
   Schema.Struct({ mode: Schema.Literal('unrestricted') }),
   Schema.Struct({
     mode: Schema.Literal('allow-list'),
@@ -68,13 +71,13 @@ const eligibilityView = Schema.Union([
   }),
 ])
 
-const anchorView = Schema.Union([
+const anchorPolicyView = Schema.Union([
   Schema.Struct({ mode: Schema.Literal('unrestricted') }),
   Schema.Struct({ mode: Schema.Literal('allow-list'), orgTypeIds: Schema.Array(Schema.String) }),
 ])
 
 /** the same two, as a writer must state them: an allow-list has to list something */
-const eligibilityPolicy = Schema.Union([
+const holderPolicyWrite = Schema.Union([
   Schema.Struct({ mode: Schema.Literal('unrestricted') }),
   Schema.Struct({
     mode: Schema.Literal('allow-list'),
@@ -82,7 +85,7 @@ const eligibilityPolicy = Schema.Union([
   }),
 ])
 
-const anchorPolicy = Schema.Union([
+const anchorPolicyWrite = Schema.Union([
   Schema.Struct({ mode: Schema.Literal('unrestricted') }),
   Schema.Struct({
     mode: Schema.Literal('allow-list'),
@@ -106,8 +109,8 @@ const roleShape = Schema.Struct({
   grantCount: Schema.Number,
   permissions: Schema.Array(Schema.String),
   unavailablePermissions: Schema.Array(Schema.String),
-  eligibility: eligibilityView,
-  anchor: anchorView,
+  holderPolicy: holderPolicyView,
+  anchorPolicy: Schema.NullOr(anchorPolicyView),
 })
 
 /** where authority applies, resolved for display */
@@ -311,8 +314,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.get('getRoleEligibility', '/iam/roles/:roleId/eligibility', {
       params: Schema.Struct({ roleId: id }),
       success: Schema.Struct({
-        eligibility: eligibilityView,
-        anchor: anchorView,
+        holderPolicy: holderPolicyView,
+        anchorPolicy: Schema.NullOr(anchorPolicyView),
         version: Schema.Number,
       }),
       error: [RoleNotFound, AccessDenied],
@@ -326,9 +329,10 @@ export const accessApiGroup = HttpApiGroup.make('access')
       payload: Schema.Struct({
         version: expectedVersion,
         // a full replacement names both policies: omitting one and having it
-        // silently survive is how a replace quietly becomes a merge
-        eligibility: eligibilityPolicy,
-        anchor: anchorPolicy,
+        // silently survive is how a replace quietly becomes a merge. The
+        // anchor policy is null for a tenant role and required for an org one
+        holderPolicy: holderPolicyWrite,
+        anchorPolicy: Schema.NullOr(anchorPolicyWrite),
       }),
       success: Schema.Struct({ version: Schema.Number }),
       error: [
@@ -336,6 +340,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
         RoleVersionConflict,
         RoleIsSystem,
         RoleNeedsEligibility,
+        RoleAnchorMismatch,
         RoleUserTypeNotFound,
         RoleOrgTypeNotFound,
         GrantStranded,
@@ -397,8 +402,12 @@ export const accessApiGroup = HttpApiGroup.make('access')
     // Every rule is re-checked on write; this exists so a screen does not have
     // to reimplement eligibility and then disagree with the server about it.
     HttpApiEndpoint.get('getRoleGrantOptions', '/iam/role-grant-options', {
+      // the target is said, never inferred: an absent node used to mean
+      // "tenant" and an absent coverage quietly became "self", so a caller
+      // that forgot a parameter got an answer to a different question
       query: Schema.Struct({
         userId: id,
+        target: Schema.Literals(['tenant', 'org-node']),
         orgNodeId: Schema.optional(id),
         coverage: Schema.optional(coverage),
       }),
@@ -412,7 +421,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
           }),
         ),
       }),
-      error: [GrantUserNotFound, GrantNodeNotFound, AccessDenied],
+      error: [GrantUserNotFound, GrantNodeNotFound, BadRequest, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

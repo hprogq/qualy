@@ -17,7 +17,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
-import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
 import { make as makeGrants, type GrantRow } from './grants.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -566,14 +566,17 @@ const toRoleShape = (
   grantCount: role.grantCount,
   permissions: permissions.active,
   unavailablePermissions: permissions.unavailable,
-  eligibility:
+  holderPolicy:
     role.eligibilityMode === 'unrestricted'
       ? { mode: 'unrestricted' as const }
       : { mode: 'allow-list' as const, userTypeIds: role.allowedUserTypes },
-  anchor:
-    role.anchorMode === 'unrestricted'
-      ? { mode: 'unrestricted' as const }
-      : { mode: 'allow-list' as const, orgTypeIds: role.allowedOrgTypes },
+  // null, not an empty list: a tenant role has no anchor policy at all
+  anchorPolicy:
+    role.anchorMode === null
+      ? null
+      : role.anchorMode === 'unrestricted'
+        ? { mode: 'unrestricted' as const }
+        : { mode: 'allow-list' as const, orgTypeIds: role.allowedOrgTypes },
 })
 
 const toGrantShape = (row: GrantRow) => ({
@@ -680,13 +683,22 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
       Effect.fn('access.getRoleGrantOptions.handler')(function* ({ query }) {
         const access = yield* Access
         const principal = yield* CurrentUser
+        // the two shapes of the question, checked rather than repaired: a
+        // node without a stated coverage is a caller bug, and answering it
+        // with a silent "self" hid exactly that bug
+        if (query.target === 'tenant' && (query.orgNodeId ?? query.coverage) !== undefined) {
+          return yield* new BadRequest({ message: 'a tenant target names no node' })
+        }
+        if (query.target === 'org-node' && (!query.orgNodeId || !query.coverage)) {
+          return yield* new BadRequest({ message: 'an org target names its node and coverage' })
+        }
         const target =
-          query.orgNodeId === undefined
+          query.target === 'tenant'
             ? ({ kind: 'tenant' } as const)
             : ({
                 kind: 'org-node',
-                orgNodeId: query.orgNodeId,
-                coverage: query.coverage ?? 'self',
+                orgNodeId: query.orgNodeId!,
+                coverage: query.coverage!,
               } as const)
         return {
           // this screen offers what can be granted; the refusals it now gets

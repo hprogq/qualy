@@ -374,8 +374,8 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
           ).id
           const role = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status, permission_mode)
-              values (${f.tenant}, 'mgr', 'Mgr', 'org', 'active', 'explicit') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, 'mgr', 'Mgr', 'org', 'active', 'explicit', 'allow-list') returning id`),
           ).id
           const permission = one<{ id: string }>(
             yield* runSql(sql`

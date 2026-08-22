@@ -56,10 +56,10 @@ const run = <A, E>(url: string, effect: Effect.Effect<A, E, Rbac | Access | Orm 
   Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 /** the lists a policy names, or null when it names everything */
-type EligibilityView = { eligibility: { mode: string; userTypeIds?: readonly string[] } }
-type AnchorView = { anchor: { mode: string; orgTypeIds?: readonly string[] } }
-const eligibleOf = (read: EligibilityView) => read.eligibility.userTypeIds ?? null
-const anchoredOf = (read: AnchorView) => read.anchor.orgTypeIds ?? null
+type EligibilityView = { holderPolicy: { mode: string; userTypeIds?: readonly string[] } }
+type AnchorView = { anchorPolicy: { mode: string; orgTypeIds?: readonly string[] } | null }
+const eligibleOf = (read: EligibilityView) => read.holderPolicy.userTypeIds ?? null
+const anchoredOf = (read: AnchorView) => read.anchorPolicy?.orgTypeIds ?? null
 
 const tagOf = (result: { _tag: string; failure?: unknown }) =>
   result._tag === 'Failure' ? (result.failure as { _tag?: string })._tag : undefined
@@ -120,8 +120,8 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const plainRole = one<{ id: string }>(
     yield* runSql(sql`
-      insert into roles (tenant_id, code, name, kind, status, permission_mode)
-      values (${tenant}, 'local', 'Local', 'org', 'active', 'explicit') returning id`),
+      insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${tenant}, 'local', 'Local', 'org', 'active', 'explicit', 'allow-list') returning id`),
   ).id
   const permission = one<{ id: string }>(
     yield* runSql(sql`
@@ -587,8 +587,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           ).id
           const granterRole = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status, permission_mode)
-              values (${f.tenant},'granter','Granter','org','active','explicit') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant},'granter','Granter','org','active','explicit', 'allow-list') returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
@@ -867,7 +867,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       // both of this test's grants, the seed's anchored one, and the
       // tenant-wide one an anchor could never have expressed
       expect(answer.all).toBe(4)
-      // exactly the grant under the anchor: not the tenant-wide one, whose
+      // exactly the grant under the anchorPolicy: not the tenant-wide one, whose
       // node is null and which no node anchor can reach, and not the one at
       // the sibling node
       expect(answer.scoped.map((row) => row.orgNodeId)).toEqual([answer.child])
@@ -1050,13 +1050,13 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             name: 'Wide',
             kind: 'tenant',
           })
-          // a tenant role admits no org types, whatever the caller sends
+          // a tenant role has no anchor policy, and the payload says so
           const version = yield* access.roles.setEligibility(
             f.tenant,
             roleId,
             {
-              eligibility: { mode: 'allow-list', userTypeIds: [staff] },
-              anchor: { mode: 'allow-list', orgTypeIds: [orgType] },
+              holderPolicy: { mode: 'allow-list', userTypeIds: [staff] },
+              anchorPolicy: null,
             },
             1,
           )
@@ -1072,8 +1072,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               f.tenant,
               roleId,
               {
-                eligibility: { mode: 'allow-list', userTypeIds: [other] },
-                anchor: { mode: 'allow-list', orgTypeIds: [] },
+                holderPolicy: { mode: 'allow-list', userTypeIds: [other] },
+                anchorPolicy: null,
               },
               version,
             ),
@@ -1083,11 +1083,11 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               f.tenant,
               roleId,
               {
-                eligibility: {
+                holderPolicy: {
                   mode: 'allow-list',
                   userTypeIds: ['00000000-0000-7000-8000-000000000000'],
                 },
-                anchor: { mode: 'allow-list', orgTypeIds: [] },
+                anchorPolicy: null,
               },
               version,
             ),
@@ -1099,7 +1099,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       )
       const answer = ok(exit)
       expect(eligibleOf(answer.stored)).toEqual([answer.staff])
-      expect(anchoredOf(answer.stored)).toEqual([])
+      expect(answer.stored.anchorPolicy).toBeNull()
       expect(tagOf(answer.stranding)).toBe('GRANT_STRANDED')
       expect((answer.stranding as { failure: { grantCount: number } }).failure.grantCount).toBe(1)
       expect(tagOf(answer.unknown)).toBe('ROLE_USER_TYPE_NOT_FOUND')
@@ -1130,10 +1130,20 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             kind: 'tenant',
           })
           yield* access.roles.setPermissions(f.tenant, roleId, ['iam.user.read'], 1, f.principal)
+          // a tenant role has no anchor dimension: sending a policy for it is
+          // refused rather than repaired, so a replace can never become a lie
+          const mismatched = yield* Effect.result(
+            access.roles.setEligibility(
+              f.tenant,
+              roleId,
+              { holderPolicy: { mode: 'unrestricted' }, anchorPolicy: { mode: 'unrestricted' } },
+              2,
+            ),
+          )
           const version = yield* access.roles.setEligibility(
             f.tenant,
             roleId,
-            { eligibility: { mode: 'unrestricted' }, anchor: { mode: 'unrestricted' } },
+            { holderPolicy: { mode: 'unrestricted' }, anchorPolicy: null },
             2,
           )
           // an empty allow-list is refused here; the mode is what makes the
@@ -1178,7 +1188,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const anchoredVersion = yield* access.roles.setEligibility(
             f.tenant,
             anchored,
-            { eligibility: { mode: 'unrestricted' }, anchor: { mode: 'unrestricted' } },
+            { holderPolicy: { mode: 'unrestricted' }, anchorPolicy: { mode: 'unrestricted' } },
             2,
           )
           yield* access.roles.setStatus(f.tenant, anchored, 'active', anchoredVersion, f.principal)
@@ -1192,16 +1202,17 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             f.principal,
           )
           const anchorRead = yield* access.roles.getEligibility(f.tenant, anchored)
-          return { read, stranded, anchorRead }
+          return { read, stranded, anchorRead, mismatched }
         }),
       )
       const answer = ok(exit)
-      expect(answer.read.eligibility.mode).toBe('unrestricted')
-      // a tenant role anchors to nothing, so its anchor policy stays the empty
-      // list that says exactly that, whatever the caller sent
-      expect(answer.read.anchor).toEqual({ mode: 'allow-list', orgTypeIds: [] })
+      expect(tagOf(answer.mismatched)).toBe('ROLE_ANCHOR_MISMATCH')
+      expect(answer.read.holderPolicy.mode).toBe('unrestricted')
+      // a tenant role anchors to nothing, and now says nothing: null, not a
+      // mode over an empty list pretending to be a rule
+      expect(answer.read.anchorPolicy).toBeNull()
       expect(answer.stranded).toBe(0)
-      expect(answer.anchorRead.anchor.mode).toBe('unrestricted')
+      expect(answer.anchorRead.anchorPolicy?.mode).toBe('unrestricted')
     } finally {
       await db.dispose()
     }
@@ -1220,8 +1231,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               f.tenant,
               f.plainRole,
               {
-                eligibility: { mode: 'allow-list', userTypeIds: [] },
-                anchor: { mode: 'allow-list', orgTypeIds: [] },
+                holderPolicy: { mode: 'allow-list', userTypeIds: [] },
+                anchorPolicy: { mode: 'allow-list', orgTypeIds: [] },
               },
               1,
             ),
@@ -1233,8 +1244,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               f.tenant,
               f.role,
               {
-                eligibility: { mode: 'allow-list', userTypeIds: [] },
-                anchor: { mode: 'allow-list', orgTypeIds: [] },
+                holderPolicy: { mode: 'allow-list', userTypeIds: [] },
+                anchorPolicy: { mode: 'allow-list', orgTypeIds: [] },
               },
               1,
             ),
@@ -1249,8 +1260,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             f.tenant,
             draft,
             {
-              eligibility: { mode: 'allow-list', userTypeIds: [] },
-              anchor: { mode: 'allow-list', orgTypeIds: [] },
+              holderPolicy: { mode: 'allow-list', userTypeIds: [] },
+              anchorPolicy: { mode: 'allow-list', orgTypeIds: [] },
             },
             1,
           )
@@ -1262,8 +1273,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
       expect(tagOf(answer.emptied)).toBe('ROLE_NEEDS_ELIGIBILITY')
       expect(tagOf(answer.admin)).toBe('ROLE_IS_SYSTEM')
       expect(answer.emptyDraft).toMatchObject({
-        eligibility: { mode: 'allow-list', userTypeIds: [] },
-        anchor: { mode: 'allow-list', orgTypeIds: [] },
+        holderPolicy: { mode: 'allow-list', userTypeIds: [] },
+        anchorPolicy: { mode: 'allow-list', orgTypeIds: [] },
         version: 2,
       })
     } finally {
@@ -1342,8 +1353,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             Effect.gen(function* () {
               const created = one<{ id: string }>(
                 yield* runSql(sql`
-                  insert into roles (tenant_id, code, name, kind, status, permission_mode)
-                  values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit')
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', 'allow-list')
                   returning id`),
               ).id
               for (const id of permissions) {
@@ -1505,8 +1516,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           ).id
           const steward = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status, permission_mode)
-              values (${f.tenant}, 'steward', 'Steward', 'org', 'active', 'explicit')
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, 'steward', 'Steward', 'org', 'active', 'explicit', 'allow-list')
               returning id`),
           ).id
           yield* runSql(sql`
@@ -1579,8 +1590,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
             Effect.gen(function* () {
               const created = one<{ id: string }>(
                 yield* runSql(sql`
-                  insert into roles (tenant_id, code, name, kind, status, permission_mode)
-                  values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit')
+                  insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, ${code}, ${code}, 'org', 'active', 'explicit', 'allow-list')
                   returning id`),
               ).id
               for (const id of permissions) {
@@ -1684,7 +1695,8 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
               const created = one<{ id: string }>(
                 yield* runSql(sql`
                   insert into roles (tenant_id, code, name, kind, status, permission_mode, eligibility_mode, anchor_mode)
-                  values (${f.tenant}, ${code}, ${code}, ${kind}, 'active', 'explicit', 'unrestricted', 'unrestricted')
+                  values (${f.tenant}, ${code}, ${code}, ${kind}, 'active', 'explicit', 'unrestricted',
+                          ${kind === 'org' ? 'unrestricted' : null})
                   returning id`),
               ).id
               for (const id of permissions) {
@@ -2051,9 +2063,9 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           const officer = one<{ id: string }>(
             yield* runSql(sql`
               insert into roles (tenant_id, code, name, kind, status, permission_mode,
-                                 eligibility_mode, anchor_mode)
+                                 eligibility_mode)
               values (${f.tenant}, 'registry', 'Registry', 'tenant', 'active', 'explicit',
-                      'unrestricted', 'unrestricted')
+                      'unrestricted')
               returning id`),
           ).id
           yield* runSql(sql`

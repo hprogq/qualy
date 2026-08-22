@@ -169,8 +169,8 @@ const seed = (slug: string) =>
       Effect.gen(function* () {
         const role = one<{ id: string }>(
           yield* runSql(sql`
-            insert into roles (tenant_id, code, name, kind, status, permission_mode)
-            values (${tenant}, ${code}, ${code}, 'org', 'active', 'explicit') returning id`),
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${tenant}, ${code}, ${code}, 'org', 'active', 'explicit', 'allow-list') returning id`),
         ).id
         yield* runSql(sql`
           insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
@@ -335,8 +335,8 @@ describe.runIf(postgresAvailable).concurrent('the roster management face', () =>
         ).id
         const role = one<{ id: string }>(
           yield* runSql(sql`
-            insert into roles (tenant_id, code, name, kind, status, permission_mode)
-            values (${f.tenant}, 'coord', 'Coordinator', 'org', 'active', 'explicit')
+            insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, 'coord', 'Coordinator', 'org', 'active', 'explicit', 'allow-list')
             returning id`),
         ).id
         const permission = one<{ id: string }>(

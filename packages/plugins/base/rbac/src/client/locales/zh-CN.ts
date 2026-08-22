@@ -73,6 +73,7 @@ export default {
   'rbac/error/role-in-use': '仍有 {assignmentCount} 个授权在使用该角色。',
   'rbac/error/role-needs-eligibility':
     '已启用的角色至少要指定一个可授予的用户类型；组织角色还需要一个节点类型。',
+  'rbac/error/role-anchor-mismatch': '该角色的类别与提交的配置不一致，请刷新后重试。',
   'rbac/error/role-user-type-not-found': '未找到该用户类型。',
   'rbac/error/role-org-type-not-found': '未找到该组织类型。',
   'rbac/error/last-administrator': '这会让租户失去最后一个还能登录的管理员。',

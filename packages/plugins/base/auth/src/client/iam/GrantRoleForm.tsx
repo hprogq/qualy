@@ -44,7 +44,13 @@ export function GrantRoleForm({
   // leaving a role list that was answered for somewhere else
   const options = useQuery(
     orpc.access.getRoleGrantOptions.queryOptions({
-      query: { userId, ...(anchor ? { orgNodeId: anchor, coverage } : {}) },
+      // the target is said outright: the server refuses to infer it from
+      // which parameters happen to be present
+      query: {
+        userId,
+        target: scope,
+        ...(scope === 'org-node' && anchor ? { orgNodeId: anchor, coverage } : {}),
+      },
     }),
   )
   const roles = options.data?.roles ?? []

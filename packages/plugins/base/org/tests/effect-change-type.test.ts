@@ -215,8 +215,8 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
           // an org role anchored here that is allowed on colleges only
           const role = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status, permission_mode)
-              values (${f.tenant}, 'dean', 'Dean', 'org', 'active', 'explicit') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, 'dean', 'Dean', 'org', 'active', 'explicit', 'allow-list') returning id`),
           ).id
           yield* runSql(sql`
             insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
@@ -473,8 +473,8 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
           // the plain user holds read at `mid` with self coverage only
           const role = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status, permission_mode)
-              values (${f.tenant}, 'reader', 'Reader', 'org', 'active', 'explicit') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, 'reader', 'Reader', 'org', 'active', 'explicit', 'allow-list') returning id`),
           ).id
           const permission = one<{ id: string }>(
             yield* runSql(sql`
@@ -586,8 +586,8 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
 
           const role = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status, permission_mode)
-              values (${f.tenant}, 'mover', 'Mover', 'org', 'active', 'explicit') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${f.tenant}, 'mover', 'Mover', 'org', 'active', 'explicit', 'allow-list') returning id`),
           ).id
           const permission = one<{ id: string }>(
             yield* runSql(sql`

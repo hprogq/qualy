@@ -139,8 +139,8 @@ const seed = (slug: string) =>
       const user = yield* person(name, staffType, nodeId)
       const role = one<{ id: string }>(
         yield* runSql(sql`
-          insert into roles (tenant_id, code, name, kind, status, permission_mode)
-          values (${tenant}, ${name}, ${name}, 'org', 'active', 'explicit') returning id`),
+          insert into roles (tenant_id, code, name, kind, status, permission_mode, anchor_mode)
+        values (${tenant}, ${name}, ${name}, 'org', 'active', 'explicit', 'allow-list') returning id`),
       ).id
       const permission = one<{ id: string }>(
         yield* runSql(sql`

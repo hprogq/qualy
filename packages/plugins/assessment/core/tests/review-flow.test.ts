@@ -171,8 +171,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           // role that is NOT the stage's
           const inspectorRole = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status)
-              values (${f.t}, 'inspector', 'Inspector', 'org', 'active') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'inspector', 'Inspector', 'org', 'active', 'allow-list') returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
@@ -807,8 +807,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           // a role of its own for the last rung, held by somebody fresh
           const finalRole = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status)
-              values (${f.t}, 'final-judge', 'Final judge', 'org', 'active') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'final-judge', 'Final judge', 'org', 'active', 'allow-list') returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
@@ -828,8 +828,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           // and a role nobody holds at all, for the vacancy case
           const emptyRole = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status)
-              values (${f.t}, 'nobody-yet', 'Nobody yet', 'org', 'active') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'nobody-yet', 'Nobody yet', 'org', 'active', 'allow-list') returning id`),
           ).id
           const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, admin)
           const at = (id: string, roleId: string) => ({
@@ -1068,8 +1068,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           // somebody who does hold a level here, under a different role
           const standIn = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status)
-              values (${f.t}, 'stand-in', 'Stand-in reviewer', 'org', 'active') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'stand-in', 'Stand-in reviewer', 'org', 'active', 'allow-list') returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
@@ -1556,8 +1556,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const assessment = yield* Assessment
           const senior = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status)
-              values (${f.t}, 'senior-reviewer', 'Senior reviewer', 'org', 'active') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'senior-reviewer', 'Senior reviewer', 'org', 'active', 'allow-list') returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)
@@ -1666,8 +1666,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           const assessment = yield* Assessment
           const senior = one<{ id: string }>(
             yield* runSql(sql`
-              insert into roles (tenant_id, code, name, kind, status)
-              values (${f.t}, 'senior-reviewer', 'Senior reviewer', 'org', 'active') returning id`),
+              insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'senior-reviewer', 'Senior reviewer', 'org', 'active', 'allow-list') returning id`),
           ).id
           yield* runSql(sql`
             insert into role_permissions (tenant_id, role_id, permission_id)

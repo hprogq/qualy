@@ -70,8 +70,8 @@ const secondStage = (f: Seeded) =>
       values (${f.t}, ${reviewer2}, ${f.reviewRole}, ${f.classA}, 'self')`)
     const collegeRole = one<{ id: string }>(
       yield* runSql(sql`
-        insert into roles (tenant_id, code, name, kind, status)
-        values (${f.t}, 'college-reviewer', 'College reviewer', 'org', 'active') returning id`),
+        insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+        values (${f.t}, 'college-reviewer', 'College reviewer', 'org', 'active', 'allow-list') returning id`),
     ).id
     yield* runSql(sql`
       insert into role_permissions (tenant_id, role_id, permission_id)
