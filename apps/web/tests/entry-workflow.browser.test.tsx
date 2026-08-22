@@ -1327,6 +1327,9 @@ describe('judging a submission', () => {
     // same chord, and both answering it staged a decision and then told the
     // reviewer to choose one
     await page.getByRole('button', { name: /退回/ }).click()
+    // the word this dialog refuses to go without says so before it is asked
+    // for, and says it to a reader and not only to the eye
+    await expect.element(page.getByLabelText('审核意见')).toHaveAttribute('aria-required')
     await page.getByLabelText('审核意见').fill('证书缺少落款。')
     await page
       .getByRole('dialog')

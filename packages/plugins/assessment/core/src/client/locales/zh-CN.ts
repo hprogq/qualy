@@ -377,7 +377,7 @@ export default {
   'assessment/review/slide-reject': '滑动退回',
   'assessment/review/slide-escalate': '滑动提请复核',
   'assessment/review/slide-supplement': '滑动发出请求',
-  'assessment/review/sheet-fill-first': '先填写必填内容',
+  'assessment/review/sheet-fill-first': '请先填写其他必填内容',
   'assessment/review/back-to-top': '回到顶部',
   'assessment/review/about-title': '计分规则',
   'assessment/review/about-each': '通过后计分',

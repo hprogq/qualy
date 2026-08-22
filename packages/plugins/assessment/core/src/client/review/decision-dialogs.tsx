@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { CheckIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { Field, FormDialog } from '@qualy/ui/admin'
+import { Field, FormDialog, RequiredMark } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { cn } from '@qualy/ui/cn'
@@ -74,9 +74,7 @@ function ReasonPicker({
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-medium">
           {format(m.reviewReasonLabel)}
-          <span aria-hidden className="pl-0.5 text-destructive">
-            *
-          </span>
+          <RequiredMark />
         </span>
         <span className="text-xs text-muted-foreground">{format(m.reviewReasonHint)}</span>
       </div>
@@ -369,9 +367,10 @@ export function RejectDialog({
       >
         {caution}
         <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
-        <Field label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
+        <Field required label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
           {(id) => (
             <Textarea
+              aria-required
               id={id}
               value={comment}
               rows={3}
@@ -438,9 +437,10 @@ export function RejectDialog({
             commentBox.current?.focus()
           }}
         />
-        <Field label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
+        <Field required label={format(m.reviewComment)} hint={format(m.reviewCommentHint)}>
           {(id) => (
             <Textarea
+              aria-required
               id={id}
               ref={commentBox}
               value={comment}
@@ -608,11 +608,13 @@ export function EscalateDialog({
       >
         <ReasonPicker reasons={reasons} value={reason} onChange={setReason} />
         <Field
+          required
           label={format(m.reviewEscalateCommentLabel)}
           hint={format(m.reviewEscalateCommentHint)}
         >
           {(id) => (
             <Textarea
+              aria-required
               id={id}
               value={comment}
               rows={3}
@@ -670,11 +672,13 @@ export function EscalateDialog({
           }}
         />
         <Field
+          required
           label={format(m.reviewEscalateCommentLabel)}
           hint={format(m.reviewEscalateCommentHint)}
         >
           {(id) => (
             <Textarea
+              aria-required
               id={id}
               ref={commentBox}
               value={comment}

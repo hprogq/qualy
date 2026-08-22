@@ -7497,3 +7497,20 @@ literal 不会被收集,否则等于给这条门禁留了后门(红验:把一条
 「全部测评」(箭头与词同现,不再被读成浏览器返回)。已恢复。
 
 验收:typecheck 零错;`pnpm test` 761 passed | 17 skipped;`pnpm test:browser` 100 passed;prettier 通过。
+
+### 必填项统一带星号,并说给读屏听(2026-08-22)
+
+审核弹层里事由有星号、审核意见没有,而两者的必填性是一样的:`ready` 同时卡着
+`comment.trim() !== ''` 与「有配置事由时必须选一个」。核对下来,**通过**的意见确实是选填(它没有
+`ready` 闸),**退回**与**提请复核**的意见都是必填。
+
+`@qualy/ui/admin` 的 `Field` 早就有 `required`,连「星号不进无障碍名」的注释都写好了,只是这三处
+没用。给退回与提请复核的意见字段补上 `required`。事由那处手写的星号收敛为共享的 `RequiredMark`
+(从 admin 导出):不是每个必填控件都是 `Field`——一组开关自带标签行——两处手写的星号迟早会走样。
+
+星号是 `aria-hidden` 的,只加它等于只对眼睛说话,所以四个必填 textarea(退回与提请复核各有桌面与
+触摸两种形态)同时带上 `aria-required`,这也是本仓库既有的事实断言方式(item-chain 就是这么断
+环节名称的)。在 entry-workflow 已经操作退回弹层的那条用例里加一句断言。
+红验:去掉全部四处 `aria-required`,该用例立刻转红。
+
+验收:typecheck 零错;`pnpm test:browser` 100 passed;prettier 通过。

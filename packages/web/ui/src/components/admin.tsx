@@ -219,6 +219,23 @@ export function Feedback({
 // a labelled control; the generated id ties label to input, which is what
 // makes these screens reachable by name in a browser test and by a screen
 // reader in real use
+/**
+ * The asterisk a required label wears.
+ *
+ * Exported because not every required control is a `Field`: a group of
+ * toggles carries its own label row, and two hand-rolled asterisks drift
+ * apart. Always aria-hidden - the accessible name is the label itself, and
+ * "Title *" is what a screen reader would otherwise read out and a test
+ * would have to ask for.
+ */
+export function RequiredMark() {
+  return (
+    <span aria-hidden className="pl-0.5 text-destructive">
+      *
+    </span>
+  )
+}
+
 export function Field({
   label,
   hint,
@@ -241,11 +258,7 @@ export function Field({
     <FormField>
       <FormFieldLabel htmlFor={id}>
         {label}
-        {required && (
-          <span aria-hidden className="text-destructive">
-            *
-          </span>
-        )}
+        {required && <RequiredMark />}
       </FormFieldLabel>
       {children(id)}
       {hint && <FormFieldDescription>{hint}</FormFieldDescription>}
