@@ -5,17 +5,18 @@
 // The codes live under iam for the same reason the urls do: rbac is how
 // authorization is implemented, and an administrator picking permissions in
 // a list should read the product domain, not the mechanism.
+import { message } from '@qualy/i18n-contract'
 import type { PermissionDefinition } from '@qualy/rbac-contract'
 
 export const permissions = [
   {
     code: 'iam.role.read',
-    name: '查看角色',
+    name: message('rbac/permission/role-read', 'View roles'),
     target: 'tenant',
   },
   {
     code: 'iam.role.manage',
-    name: '管理角色',
+    name: message('rbac/permission/role-manage', 'Manage roles'),
     target: 'tenant',
   },
   // Holding role.manage must not be a way to mint authority you lack: put a
@@ -24,18 +25,21 @@ export const permissions = [
   // they hold this, which is the deliberate, auditable exception.
   {
     code: 'iam.role.escalate',
-    name: '定义超出自身权限的角色',
-    description: '允许在角色中加入自己尚未持有的权限',
+    name: message('rbac/permission/role-escalate', 'Define roles beyond your own authority'),
+    description: message(
+      'rbac/permission-hint/role-escalate',
+      'Put a permission into a role without holding it yourself.',
+    ),
     target: 'tenant',
   },
   {
     code: 'iam.grant.read',
-    name: '查看组织范围的角色授予',
+    name: message('rbac/permission/grant-read', 'View role assignments in the organization'),
     target: 'org-node',
   },
   {
     code: 'iam.grant.manage',
-    name: '管理组织范围的角色授予',
+    name: message('rbac/permission/grant-manage', 'Manage role assignments in the organization'),
     target: 'org-node',
   },
   // No bind escape hatches beside these any more (re-ruled 2026-08-20):
@@ -44,12 +48,12 @@ export const permissions = [
   // must never escalate, with no permission able to say otherwise.
   {
     code: 'iam.tenant-grant.read',
-    name: '查看租户级角色授予',
+    name: message('rbac/permission/tenant-grant-read', 'View tenant-wide role assignments'),
     target: 'tenant',
   },
   {
     code: 'iam.tenant-grant.manage',
-    name: '管理租户级角色授予',
+    name: message('rbac/permission/tenant-grant-manage', 'Manage tenant-wide role assignments'),
     target: 'tenant',
   },
   // The appointment graph is security policy, not role cosmetics: whoever
@@ -57,15 +61,18 @@ export const permissions = [
   // capability, apart from editing role definitions.
   {
     code: 'iam.role.appointment.manage',
-    name: '管理角色任命关系',
-    description: '允许配置各角色可任命哪些角色',
+    name: message('rbac/permission/role-appointment-manage', 'Manage which roles appoint which'),
+    description: message(
+      'rbac/permission-hint/role-appointment-manage',
+      'Configure the roles that each role is allowed to appoint.',
+    ),
     target: 'tenant',
   },
   // reading why someone holds what they hold names roles and grants, which
   // is more than an ordinary administrator needs
   {
     code: 'iam.authorization.inspect',
-    name: '查看授权来源',
+    name: message('rbac/permission/authorization-inspect', 'Inspect where authority comes from'),
     target: 'tenant',
   },
 ] as const satisfies readonly PermissionDefinition[]

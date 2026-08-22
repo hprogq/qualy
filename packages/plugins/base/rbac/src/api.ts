@@ -35,6 +35,7 @@ import {
   pageOf,
   pageQuery,
   trimmedName,
+  uiText,
 } from '@qualy/api-kit/schema'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
@@ -172,8 +173,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
           Schema.Struct({
             code: Schema.String,
             plugin: Schema.String,
-            name: Schema.String,
-            description: Schema.NullOr(Schema.String),
+            name: uiText,
+            description: Schema.NullOr(uiText),
             groupKey: Schema.NullOr(Schema.String),
             target: permissionTarget,
           }),
@@ -462,7 +463,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
         permissions: Schema.Array(
           Schema.Struct({
             code: Schema.String,
-            name: Schema.String,
+            name: uiText,
             target: permissionTarget,
             sources: Schema.Array(permissionSourceShape),
           }),

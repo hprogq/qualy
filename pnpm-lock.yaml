@@ -186,6 +186,9 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:packages/plugins/infra/ui-registry
+      '@qualy/rbac-contract':
+        specifier: workspace:*
+        version: link:packages/contracts/rbac
       '@qualy/web-build':
         specifier: workspace:*
         version: link:packages/build/web
@@ -448,6 +451,9 @@ importers:
 
   packages/contracts/rbac:
     dependencies:
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../i18n
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../core/plugin-kit

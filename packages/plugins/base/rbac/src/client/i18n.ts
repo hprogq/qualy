@@ -65,6 +65,53 @@ const notEligibleMessage = defineMessage<{ reason: string }>()({
 const i18n = definePluginMessages({
   namespace: 'rbac',
   messages: {
+    // one label per permission this plugin declares. The definition
+    // carries a message reference, so the role editor renders whatever
+    // language its reader asked for rather than the one it was authored in.
+    'permission.iam.role.read': {
+      id: 'rbac/permission/role-read',
+      defaultMessage: 'View roles',
+    },
+    'permission.iam.role.manage': {
+      id: 'rbac/permission/role-manage',
+      defaultMessage: 'Manage roles',
+    },
+    'permission.iam.role.escalate': {
+      id: 'rbac/permission/role-escalate',
+      defaultMessage: 'Define roles beyond your own authority',
+    },
+    'permission-hint.iam.role.escalate': {
+      id: 'rbac/permission-hint/role-escalate',
+      defaultMessage: 'Put a permission into a role without holding it yourself.',
+    },
+    'permission.iam.grant.read': {
+      id: 'rbac/permission/grant-read',
+      defaultMessage: 'View role assignments in the organization',
+    },
+    'permission.iam.grant.manage': {
+      id: 'rbac/permission/grant-manage',
+      defaultMessage: 'Manage role assignments in the organization',
+    },
+    'permission.iam.tenant-grant.read': {
+      id: 'rbac/permission/tenant-grant-read',
+      defaultMessage: 'View tenant-wide role assignments',
+    },
+    'permission.iam.tenant-grant.manage': {
+      id: 'rbac/permission/tenant-grant-manage',
+      defaultMessage: 'Manage tenant-wide role assignments',
+    },
+    'permission.iam.role.appointment.manage': {
+      id: 'rbac/permission/role-appointment-manage',
+      defaultMessage: 'Manage which roles appoint which',
+    },
+    'permission-hint.iam.role.appointment.manage': {
+      id: 'rbac/permission-hint/role-appointment-manage',
+      defaultMessage: 'Configure the roles that each role is allowed to appoint.',
+    },
+    'permission.iam.authorization.inspect': {
+      id: 'rbac/permission/authorization-inspect',
+      defaultMessage: 'Inspect where authority comes from',
+    },
     rolesTitle: { id: 'rbac/roles/title', defaultMessage: 'Roles' },
     rolesHint: {
       id: 'rbac/roles/hint',

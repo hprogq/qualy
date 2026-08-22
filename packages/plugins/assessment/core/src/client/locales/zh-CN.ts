@@ -1276,4 +1276,8 @@ export default {
   'assessment/error/score-group-version-conflict': '分组已被其他人员修改，请刷新后重新操作。',
   'assessment/error/access-invalid': '权限变更失败，请检查相关设置后重试。',
   'assessment/error/advance-invalid': '当前无法进入下一阶段，请检查相关设置。',
+  'assessment/permission/batch-manage': '管理测评批次',
+  'assessment/permission-hint/batch-manage': '批次、阶段、题目与花名册的全生命周期管理',
+  'assessment/permission/batch-force-advance': '强制切换阶段',
+  'assessment/permission-hint/batch-force-advance': '跳过守卫条件切换批次阶段，必须填写理由',
 } satisfies MessageCatalog

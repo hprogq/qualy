@@ -6,58 +6,80 @@
 // (rbac stays untouched). Every member is a code this plugin declares, so a
 // global code can never appear in a phase editor - asserted below at import
 // time, which is boot and resolve alike.
+import { message } from '@qualy/i18n-contract'
 import type { PermissionDefinition } from '@qualy/rbac-contract'
 
 export const permissions = [
   {
     code: 'assessment.batch.manage',
-    name: '管理测评批次',
-    description: '批次、阶段、题目与花名册的全生命周期管理',
+    name: message('assessment/permission/batch-manage', 'Manage assessment batches'),
+    description: message(
+      'assessment/permission-hint/batch-manage',
+      'The whole life of a batch: stages, questions and the roster.',
+    ),
     target: 'org-node',
   },
   {
     code: 'assessment.batch.force-advance',
-    name: '强制切换阶段',
-    description: '跳过守卫条件切换批次阶段，必须填写理由',
+    name: message('assessment/permission/batch-force-advance', 'Force a stage change'),
+    description: message(
+      'assessment/permission-hint/batch-force-advance',
+      'Move a batch past its guard conditions; a reason is required.',
+    ),
     target: 'org-node',
   },
   {
     code: 'assessment.publication.manage',
-    name: '管理成绩公示',
-    description: '公示全生命周期，含预告、发布与撤回',
+    name: message('assessment/permission/publication-manage', 'Manage result publication'),
+    description: message(
+      'assessment/permission-hint/publication-manage',
+      'Announce, publish, or withdraw the batch results.',
+    ),
     target: 'org-node',
   },
   {
     code: 'assessment.entry.proxy',
-    name: '代录申报材料',
-    description: '替学生提交其本可自行提交的漏报材料，走完整审核链',
+    name: message('assessment/permission/entry-proxy', 'Submit on behalf of participants'),
+    description: message(
+      'assessment/permission-hint/entry-proxy',
+      'File material a participant could have filed themselves; it takes the full review chain.',
+    ),
     target: 'org-node',
   },
   {
     code: 'assessment.entry.record',
-    name: '录入行政认定',
-    description: '录入组织权威认定的扣分与特殊加分，直接生效不走审核',
+    name: message('assessment/permission/entry-record', 'Record recognized items'),
+    description: message(
+      'assessment/permission-hint/entry-record',
+      'Record deductions and awards the organization has already decided; they take effect without review.',
+    ),
     target: 'org-node',
   },
   {
     code: 'assessment.review.process',
-    name: '处理审核任务',
+    name: message('assessment/permission/review-process', 'Review submissions'),
     target: 'org-node',
   },
   {
     code: 'assessment.review.reopen',
-    name: '发起工作组复查',
-    description: '对已定结果直达链条终点的主动复查',
+    name: message('assessment/permission/review-reopen', 'Reopen completed reviews'),
+    description: message(
+      'assessment/permission-hint/review-reopen',
+      'Reopen a review that has already ended.',
+    ),
     target: 'org-node',
   },
   {
     code: 'assessment.result.view-peers',
-    name: '查看他人公示成绩',
+    name: message(
+      'assessment/permission/result-view-peers',
+      'View other participants\u2019 results',
+    ),
     target: 'tenant',
   },
   {
     code: 'assessment.ranking.view',
-    name: '查看排名',
+    name: message('assessment/permission/ranking-view', 'View ranking'),
     target: 'tenant',
   },
 ] as const satisfies readonly PermissionDefinition[]

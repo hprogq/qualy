@@ -1,3 +1,4 @@
+import { literal } from '@qualy/i18n-contract'
 import { defineCapabilityProvider, type ContributionInput } from '@qualy/assembly-contract'
 import { Plugin, isPluginDescriptor } from '@qualy/plugin-kit'
 import { compileCatalog, PermissionDeclarations } from '@qualy/rbac-contract/plugin'
@@ -82,7 +83,10 @@ export default defineCapabilityProvider<PermissionsContribution, PermissionsStat
         owner: contribution.owner,
         permissions: contribution.codes.map((code) => ({
           code,
-          name: code,
+          // resolve knows the codes and not the labels: only the runtime
+          // catalog carries those, and this compile exists to check the
+          // shape of the set, not to name anything to a person
+          name: literal(code),
           target: 'tenant' as const,
         })),
       })),

@@ -22,7 +22,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const runApi = useRunApi()
   const orpc = useApiQuery(accessApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { format, formatError, formatText } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -258,7 +258,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             disabled={!editable}
             options={(catalog.data?.permissions ?? []).map((permission) => ({
               value: permission.code,
-              label: permission.name,
+              // the server named the permission; this is where the reader's
+              // own language is chosen for it
+              label: formatText(permission.name),
               hint: permission.code,
             }))}
             selected={permissions}

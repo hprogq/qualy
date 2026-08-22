@@ -1,3 +1,4 @@
+import { literal } from '@qualy/i18n-contract'
 import { Effect, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { Placement } from '@qualy/auth-contract'
@@ -76,7 +77,10 @@ describe('the port packages', () => {
 
   it('compiles declarations into a catalog with owners stamped, refusing duplicates', () => {
     const catalog = compileCatalog([
-      { owner: 'org', permissions: [{ code: 'org.tree.read', name: 'read', target: 'org-node' }] },
+      {
+        owner: 'org',
+        permissions: [{ code: 'org.tree.read', name: literal('read'), target: 'org-node' }],
+      },
     ])
     expect(catalog.map(({ code, plugin }) => ({ code, plugin }))).toEqual([
       { code: 'org.tree.read', plugin: 'org' },
@@ -84,8 +88,8 @@ describe('the port packages', () => {
     // a code claimed twice has no owner; compilation names both sides
     expect(() =>
       compileCatalog([
-        { owner: 'org', permissions: [{ code: 'x.y', name: 'a', target: 'tenant' }] },
-        { owner: 'auth', permissions: [{ code: 'x.y', name: 'b', target: 'tenant' }] },
+        { owner: 'org', permissions: [{ code: 'x.y', name: literal('a'), target: 'tenant' }] },
+        { owner: 'auth', permissions: [{ code: 'x.y', name: literal('b'), target: 'tenant' }] },
       ]),
     ).toThrow(/x\.y is declared by both org and auth/)
   })

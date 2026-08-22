@@ -147,4 +147,8 @@ export default {
   'auth/error/system-account-protected':
     '系统账户是租户的恢复入口，其类型、状态与所在位置不可更改。',
   'auth/error/grant-incompatible': '有 {grantCount} 个角色授权不允许该变更。',
+  'auth/permission/user-type-read': '查看用户类型',
+  'auth/permission/user-type-manage': '管理用户类型',
+  'auth/permission/user-read': '查看用户',
+  'auth/permission/user-manage': '管理用户',
 } satisfies MessageCatalog

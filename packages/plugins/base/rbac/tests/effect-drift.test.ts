@@ -1,3 +1,4 @@
+import { literal } from '@qualy/i18n-contract'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
 import { Effect, Exit, Layer } from 'effect'
@@ -20,7 +21,7 @@ import { serviceLayer as rbacLayer } from '../src/server/index.ts'
 // authorizing against a table that means something else.
 
 const catalog = (target: 'tenant' | 'org-node'): readonly ActivePermission[] => [
-  { code: 'demo.thing', name: 'Thing', target, plugin: 'demo' },
+  { code: 'demo.thing', name: literal('Thing'), target, plugin: 'demo' },
 ]
 
 // what the orm must know for a query to name a table

@@ -3,6 +3,7 @@
 // which keeps the package graph acyclic (the implementation itself depends
 // on auth/org schemas)
 
+import type { UiText } from '@qualy/i18n-contract'
 export { isSystemActor, type SystemActor } from './system-actor.ts'
 export { scopeCoverage, type OrgNodeRef } from './scope.ts'
 
@@ -40,8 +41,16 @@ export type PermissionTarget = 'tenant' | 'org-node'
 // administrator role, not of every permission in the system).
 export interface PermissionDefinition {
   code: string
-  name: string
-  description?: string
+  /**
+   * What a person administering roles sees on the tick box.
+   *
+   * UiText, not a string: this is authored product copy that crosses to a
+   * browser, and the boundary says the server carries the semantics while
+   * the reader's own language is chosen there. The declaring plugin owns
+   * the message id, so a permission is named by whoever defined it.
+   */
+  name: UiText
+  description?: UiText
   groupKey?: string
   target: PermissionTarget
 }

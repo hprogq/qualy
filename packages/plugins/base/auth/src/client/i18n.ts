@@ -69,6 +69,25 @@ const personRoleHere = defineMessage<{ node: string }>()({
 const i18n = definePluginMessages({
   namespace: 'auth',
   messages: {
+    // one label per permission this plugin declares. The definition
+    // carries a message reference, so the role editor renders whatever
+    // language its reader asked for rather than the one it was authored in.
+    'permission.auth.user-type.read': {
+      id: 'auth/permission/user-type-read',
+      defaultMessage: 'View user types',
+    },
+    'permission.auth.user-type.manage': {
+      id: 'auth/permission/user-type-manage',
+      defaultMessage: 'Manage user types',
+    },
+    'permission.auth.user.read': {
+      id: 'auth/permission/user-read',
+      defaultMessage: 'View users',
+    },
+    'permission.auth.user.manage': {
+      id: 'auth/permission/user-manage',
+      defaultMessage: 'Manage users',
+    },
     revokeGrantTitle: {
       id: 'auth/users/revoke-grant-title',
       defaultMessage: 'Take this role away here?',

@@ -1,3 +1,4 @@
+import { plainText } from '@qualy/i18n-contract'
 import { Effect } from 'effect'
 import { db, type Db, admitsUserType, inForce } from './db.ts'
 import { kyselyOf, query } from '@qualy/plugin-database/server'
@@ -750,8 +751,9 @@ export const upsertPermission = (permission: ActivePermission) =>
       .values({
         code: permission.code,
         plugin: permission.plugin,
-        name: permission.name,
-        description: permission.description ?? null,
+        name: plainText(permission.name),
+        description:
+          permission.description === undefined ? null : plainText(permission.description),
         groupKey: permission.groupKey ?? null,
         targetKind: permission.target,
       })
@@ -774,8 +776,9 @@ export const refreshPermissionText = (permission: ActivePermission) =>
     k
       .updateTable('Permission')
       .set({
-        name: permission.name,
-        description: permission.description ?? null,
+        name: plainText(permission.name),
+        description:
+          permission.description === undefined ? null : plainText(permission.description),
         groupKey: permission.groupKey ?? null,
         updatedAt: sql<Date>`now()`,
       })

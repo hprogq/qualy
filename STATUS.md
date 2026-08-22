@@ -7444,3 +7444,27 @@ phase gate 挪进事务内以符合 §32.75 记录的顺序,合议在链末端�
 **未修的四条**(理由见档案与会话记录):权限目录带中文过线(跨插件契约重构,且触及冻结的 i18n
 边界,需裁决);批次归档不检查在飞轮次(STATUS 记为已知分期交付,补哪一半是产品决定);
 阶段时间点用设备时区而非批次日历(产品行为变更);发布产物按当前选中集打指纹而非超集(设计取舍)。
+
+### 权限目录不再带着中文过线(2026-08-22,第四轮 major)
+
+`/iam/permissions` 把每条权限的名称与描述作为**已选定语言的字符串**下发,角色编辑器直接当复选框
+标签渲染。反驳者补了三点范围校正:①只有 `name` 会被渲染,`description` 过了线却被唯一的消费者丢弃;
+②该端点按 role kind 过滤 target,一屏看不到混合列表;③`name` 同时是**服务端搜索键**——不过实查
+发现唯一的消费者从不传 `search`,这条约束因此解开。
+
+按冻结的 i18n 边界改:`PermissionDefinition.name/description` 变成 `UiText`,四个插件共 24 条权限
+改写为 `message('<插件>/permission/<段>', '<英文>')`,原来的中文成为各插件**自己命名空间下**的
+zh-CN 词条(assessment 有 7 条 id 早就存在,直接复用,只补 4 条)。UiText 的 Effect wire schema
+上提到 api-kit(`uiText`),避免与 ui-registry 里那份各写各的。角色编辑器经 `formatText` 渲染。
+
+三处**不是屏幕**的消费者改用新助手 `plainText(UiText)`(i18n 契约):权限表的镜像行、seed 的同一条
+insert、以及服务端搜索——它们没有读者可以替其选择语言。resolve 期的 `compileCatalog` 只知道 code
+不知道标签,那里用 `literal(code)`。顺带修掉一处我自己的正则误伤:角色名是租户业务数据,不是产品
+文案,不该变成 UiText。
+
+**门禁**:`tools/tests/catalogs.test.ts` 此前只遍历 UI surface 贡献,权限标签对它完全不可见——
+这正是这条缺陷能活这么久的原因。现在它也遍历 `PermissionDeclarations`,于是权限标签的翻译完整性
+自动被覆盖(红验:删掉一条 zh-CN,该插件立刻失败)。另加一例禁止用 `literal` 写权限标签——
+literal 不会被收集,否则等于给这条门禁留了后门(红验:把一条改成 literal,立刻点名)。
+
+验收:typecheck 零错;`pnpm test` 761 passed | 17 skipped;`pnpm test:browser` 99 passed;prettier 通过。

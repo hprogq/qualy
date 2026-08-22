@@ -295,6 +295,25 @@ const groupFloored = defineMessage<{ raw: string; floor: string }>()({
 const i18n = definePluginMessages({
   namespace: 'assessment',
   messages: {
+    // one label per permission this plugin declares. The definition
+    // carries a message reference, so the role editor renders whatever
+    // language its reader asked for rather than the one it was authored in.
+    'permission.assessment.batch.manage': {
+      id: 'assessment/permission/batch-manage',
+      defaultMessage: 'Manage assessment batches',
+    },
+    'permission-hint.assessment.batch.manage': {
+      id: 'assessment/permission-hint/batch-manage',
+      defaultMessage: 'The whole life of a batch: stages, questions and the roster.',
+    },
+    'permission.assessment.batch.force-advance': {
+      id: 'assessment/permission/batch-force-advance',
+      defaultMessage: 'Force a stage change',
+    },
+    'permission-hint.assessment.batch.force-advance': {
+      id: 'assessment/permission-hint/batch-force-advance',
+      defaultMessage: 'Move a batch past its guard conditions; a reason is required.',
+    },
     // ------------------------------------------------------------------
     // the batch list
     batchesTitle: { id: 'assessment/batch/title', defaultMessage: 'Assessment batches' },

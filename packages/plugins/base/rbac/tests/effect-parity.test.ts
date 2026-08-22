@@ -1,3 +1,4 @@
+import { literal } from '@qualy/i18n-contract'
 import { booted } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
 import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
@@ -36,9 +37,9 @@ const catalog: readonly ActivePermission[] = [
   // rbac's real declarations plus the codes these fixtures grant: the catalog
   // is a prepare-phase value now, so the harness states the whole of it
   ...compileCatalog([{ owner: 'rbac', permissions: rbacPermissions }]),
-  { code: 'org.tree.read', name: 'read', target: 'org-node', plugin: 'org' },
-  { code: 'org.tree.manage', name: 'manage', target: 'org-node', plugin: 'org' },
-  { code: 'iam.user.read', name: 'users', target: 'tenant', plugin: 'iam' },
+  { code: 'org.tree.read', name: literal('read'), target: 'org-node', plugin: 'org' },
+  { code: 'org.tree.manage', name: literal('manage'), target: 'org-node', plugin: 'org' },
+  { code: 'iam.user.read', name: literal('users'), target: 'tenant', plugin: 'iam' },
 ]
 
 // what the orm must know for a query to name a table

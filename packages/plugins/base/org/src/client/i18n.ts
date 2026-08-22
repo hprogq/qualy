@@ -30,6 +30,17 @@ const assignmentIncompatible = defineMessage<{ assignmentCount: number }>()({
 const i18n = definePluginMessages({
   namespace: 'org',
   messages: {
+    // one label per permission this plugin declares. The definition
+    // carries a message reference, so the role editor renders whatever
+    // language its reader asked for rather than the one it was authored in.
+    'permission.org.tree.read': {
+      id: 'org/permission/tree-read',
+      defaultMessage: 'View the organization',
+    },
+    'permission.org.tree.manage': {
+      id: 'org/permission/tree-manage',
+      defaultMessage: 'Manage the organization',
+    },
     loadFailedTitle: {
       id: 'org/state/load-failed',
       defaultMessage: 'Could not load organization data',

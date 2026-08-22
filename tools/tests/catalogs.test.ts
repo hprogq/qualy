@@ -7,6 +7,7 @@ import { fallbackLocale, supportedLocales } from '@qualy/i18n-contract'
 import { pathToFileURL } from 'node:url'
 import { isPluginDescriptor, Plugin } from '@qualy/plugin-kit'
 import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
+import { PermissionDeclarations } from '@qualy/rbac-contract/plugin'
 import { readEntries } from '@qualy/assembly/host'
 import { resolvePackageDir, resolvePluginModuleUrl } from '@qualy/assembly/host'
 
@@ -91,6 +92,14 @@ describe('plugin message catalogs', () => {
         for (const surfaces of Plugin.contributionsOf(descriptor, UiSurfaceDeclarations)) {
           collectMessageIds(surfaces, declared)
         }
+        // and every permission this plugin declares: the role editor renders
+        // those labels off the wire, so they are the plugin's copy as much as
+        // a navigation entry is. Authored as plain strings they were invisible
+        // here, and a whole catalog of them reached an English reader in
+        // Chinese with no gate able to see it.
+        for (const declaration of Plugin.contributionsOf(descriptor, PermissionDeclarations)) {
+          collectMessageIds(declaration, declared)
+        }
       }
       const namespace = module.catalogs.namespace
       // ids stay inside the plugin's own namespace, so merged catalogs cannot
@@ -118,4 +127,32 @@ describe('plugin message catalogs', () => {
       }
     },
   )
+  // A literal would pass the completeness check above by never being
+  // collected at all, which is how the whole permission catalog crossed the
+  // wire in one language for as long as it did. A permission label is
+  // authored product copy, so it is always a message; `literal` is for
+  // business data, which a permission name is not.
+  it('names every permission with a message, never a literal', async () => {
+    const authored: string[] = []
+    for (const entry of await readEntries({ manifestPath: manifestPath(), all: true })) {
+      const descriptor = (
+        (await import(resolvePluginModuleUrl(entry.name, manifestPath()))) as { default?: unknown }
+      ).default
+      if (!isPluginDescriptor(descriptor)) continue
+      for (const declaration of Plugin.contributionsOf(descriptor, PermissionDeclarations)) {
+        for (const permission of declaration.permissions) {
+          for (const [field, text] of [
+            ['name', permission.name],
+            ['description', permission.description],
+          ] as const) {
+            if (text === undefined) continue
+            if (text.kind !== 'message') {
+              authored.push(`${entry.name} ${permission.code} ${field}`)
+            }
+          }
+        }
+      }
+    }
+    expect(authored).toEqual([])
+  })
 })

@@ -1,3 +1,4 @@
+import { plainText } from '@qualy/i18n-contract'
 import { Context, Effect, Layer } from 'effect'
 import {
   AccessDenied,
@@ -611,7 +612,10 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
           (definition) =>
             !search ||
             definition.code.toLowerCase().includes(search) ||
-            definition.name.toLowerCase().includes(search),
+            // the label as authored, because a server has no reader to
+            // choose a language for; a screen searching what it displays
+            // does it where the catalog is
+            plainText(definition.name).toLowerCase().includes(search),
         )
         return {
           // sorted by code, as the registry's own reads are: the checkbox list

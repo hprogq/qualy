@@ -1,3 +1,4 @@
+import { plainText } from '@qualy/i18n-contract'
 import type { PoolClient } from 'pg'
 import { resolvePluginModuleUrl } from '@qualy/assembly/host'
 import { manifestPath } from '../lib/manifest.ts'
@@ -131,7 +132,16 @@ async function provisionRbac(
         `insert into permissions (code, plugin, name, description, group_key, target_kind)
          values ($1, $2, $3, $4, $5, $6)
          on conflict (code) do nothing`,
-        [row.code, plugin, row.name, row.description ?? null, row.groupKey ?? null, row.target],
+        [
+          row.code,
+          plugin,
+          // the mirror keeps the label's own default: the reader's language
+          // is chosen in the browser, from the catalog the message names
+          plainText(row.name),
+          row.description === undefined ? null : plainText(row.description),
+          row.groupKey ?? null,
+          row.target,
+        ],
       )
       report.created.permissions += inserted.rowCount ?? 0
       if ((inserted.rowCount ?? 0) === 0) {

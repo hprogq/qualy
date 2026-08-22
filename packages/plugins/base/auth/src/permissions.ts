@@ -7,27 +7,28 @@
 // AUTHENTICATED visibility. Modelling it as a permission meant every user
 // type needed a role just to carry it, which is most of why user types
 // started carrying roles at all.
+import { message } from '@qualy/i18n-contract'
 import type { PermissionDefinition } from '@qualy/rbac-contract'
 
 export const permissions = [
   {
     code: 'auth.user-type.read',
-    name: '查看用户类型',
+    name: message('auth/permission/user-type-read', 'View user types'),
     target: 'tenant',
   },
   {
     code: 'auth.user-type.manage',
-    name: '管理用户类型',
+    name: message('auth/permission/user-type-manage', 'Manage user types'),
     target: 'tenant',
   },
   {
     code: 'auth.user.read',
-    name: '查看用户',
+    name: message('auth/permission/user-read', 'View users'),
     target: 'org-node',
   },
   {
     code: 'auth.user.manage',
-    name: '管理用户',
+    name: message('auth/permission/user-manage', 'Manage users'),
     target: 'org-node',
   },
 ] as const satisfies readonly PermissionDefinition[]

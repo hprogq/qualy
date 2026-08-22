@@ -11,8 +11,8 @@
     "tsx": "catalog:"
   },
   "devDependencies": {
-    "@effect/tsgo": "catalog:",
     "@effect/platform-node": "catalog:",
+    "@effect/tsgo": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
@@ -24,6 +24,7 @@
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*",
     "@qualy/web-build": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",

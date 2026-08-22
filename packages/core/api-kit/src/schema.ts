@@ -12,6 +12,21 @@ import { MAX_PAGE_SIZE } from './index.ts'
  * handler is what decides the default size, not the schema, so an absent limit
  * stays absent rather than becoming a number the client did not send.
  */
+/**
+ * Text on its way to a browser, in the only two shapes the boundary allows:
+ * a message the reader's own catalog translates, or business data that must
+ * not be translated at all. Shared, because a second copy of these two
+ * shapes is a second thing to keep in step with the i18n contract.
+ */
+export const uiText = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal('message'),
+    id: Schema.String,
+    defaultMessage: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal('literal'), value: Schema.String }),
+])
+
 export const pageQuery = {
   cursor: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
   limit: Schema.optional(Schema.String),

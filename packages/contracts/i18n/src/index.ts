@@ -69,6 +69,17 @@ export const literal = (value: string): LiteralText => ({
   value,
 })
 
+/**
+ * The text with no reader to choose for: a message's own default, or a
+ * literal as it stands.
+ *
+ * For the places that are not a screen - a mirror row, a log line, a
+ * server-side search over authored copy. A browser must never use this: it
+ * has a reader, and the catalog is how their language is chosen.
+ */
+export const plainText = (text: UiText): string =>
+  text.kind === 'literal' ? text.value : text.defaultMessage
+
 // message ids are namespaced like every other cross-plugin identifier:
 // <plugin>/<segment>(/<segment>)*, lowercase kebab-case segments
 const messageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/
