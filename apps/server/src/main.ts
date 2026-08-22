@@ -41,6 +41,35 @@ const resolution = await Effect.runPromise(Effect.provide(prepare, logs))
 const { makeApplication } = await import('./runtime.ts')
 const application = await makeApplication(resolution, logging)
 
+/**
+ * One report per failed boot, through the application logger.
+ *
+ * Upstream's error reporting is disabled below: it renders the cause with the
+ * default logger - outside `logs` - so a refused database connection used to
+ * come out as two inspected stack dumps in a foreign format. Deliberate
+ * startup failures across the assembly are tagged Errors carrying an
+ * actionable message (a database that refused, web assets missing); those get
+ * their message and nothing else. Anything untagged is a genuine defect, and
+ * only that keeps the full cause.
+ */
+const reportStartupFailure = (cause: Cause.Cause<unknown>) =>
+  Effect.gen(function* () {
+    const seen = new Set<unknown>()
+    let dumped = false
+    for (const reason of cause.reasons) {
+      if (reason._tag === 'Interrupt') continue
+      const error = reason._tag === 'Fail' ? reason.error : reason.defect
+      if (seen.has(error)) continue
+      seen.add(error)
+      if (error instanceof Error && '_tag' in error) {
+        yield* Effect.logError(`startup failed: ${error.message}`)
+      } else if (!dumped) {
+        dumped = true
+        yield* Effect.logError(`startup failed\n${Cause.pretty(cause)}`)
+      }
+    }
+  })
+
 // The entry point.
 //
 // `runMain` installs the signal handlers, interrupts the root fiber and runs
@@ -55,7 +84,7 @@ const launched = Layer.launch(application).pipe(
   Effect.onExit((exit) =>
     Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)
       ? Effect.logInfo('shutdown complete')
-      : Effect.void,
+      : reportStartupFailure(exit.cause),
   ),
   Effect.provide(logs),
 )
@@ -108,6 +137,8 @@ for (const [signal, code] of [
  * path and keeps its non-zero code.
  */
 NodeRuntime.runMain(launched, {
+  // the report above is the one and only rendering of a failed boot
+  disableErrorReporting: true,
   teardown: (exit, onExit) => {
     if (Exit.isSuccess(exit)) return onExit(0)
     if (Cause.hasInterruptsOnly(exit.cause)) return onExit(0)

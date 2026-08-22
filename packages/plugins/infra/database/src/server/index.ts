@@ -15,6 +15,7 @@ import {
   withDatabase,
 } from './orm.ts'
 import { pendingMigrations, runMigrations } from '../migrator.ts'
+import { failedWith } from './constraints.ts'
 
 // The database as an Effect resource.
 //
@@ -120,8 +121,9 @@ export class MigrationsBehind extends Error {
 export class MigrationFailed extends Error {
   readonly _tag = 'MigrationFailed'
   readonly attempted: string
-  constructor(attempted: string, cause: unknown) {
-    super(`could not ${attempted}: ${cause instanceof Error ? cause.message : String(cause)}`, {
+  constructor(attempted: string, cause: unknown, advice?: string | null) {
+    const said = cause instanceof Error ? cause.message : String(cause)
+    super(`could not ${attempted}: ${said}${advice ? ` (${advice})` : ''}`, {
       cause,
     })
     this.attempted = attempted
@@ -130,6 +132,40 @@ export class MigrationFailed extends Error {
 
 /** everything a database can say to stop this assembly from being built */
 export type StartupFailure = DatabaseStartupFailed | MigrationFailed | MigrationsBehind
+
+/**
+ * What a boot-time driver failure means in operator terms, or null when the
+ * cause is not a connection-class one.
+ *
+ * The migrator is the first thing here to open a connection, so a server that
+ * is off or misconfigured surfaces through it. Naming the target host is the
+ * point: "connection refused" without an address reads like an application
+ * bug, and a foreign postgres squatting on the configured port answers
+ * `role "qualy" does not exist` - which reads like a broken installation
+ * until the message says which server was asked.
+ */
+const adviseOn = (url: string, cause: unknown): string | null => {
+  let host = 'the configured host'
+  try {
+    const target = new URL(url)
+    host = `${target.hostname}:${target.port === '' ? '5432' : target.port}`
+  } catch {
+    // an unparseable url will have failed on its own terms already
+  }
+  const carries = (codes: readonly string[]) => codes.some((code) => failedWith(cause, code))
+  if (carries(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET'])) {
+    return `postgres is not reachable at ${host}; start the database, or fix DATABASE_URL`
+  }
+  // 28P01 invalid_password, 28000 invalid_authorization_specification
+  if (carries(['28P01', '28000'])) {
+    return `postgres at ${host} rejected the credentials; check DATABASE_URL, and check that the server on this port is the one this assembly means`
+  }
+  // 57P03 cannot_connect_now: reachable, but still starting or shutting down
+  if (carries(['57P03'])) {
+    return `postgres at ${host} is not ready to accept connections yet; retry shortly`
+  }
+  return null
+}
 
 /**
  * Bring the database to the state this assembly expects, before anything that
@@ -146,7 +182,10 @@ const prepare = Effect.fn('Database.prepare')(function* () {
   const options = { folder: config.migrationsFolder, entities }
   const url = Redacted.value(config.url)
   const attempt = <A>(attempted: string, run: () => Promise<A>) =>
-    Effect.tryPromise({ try: run, catch: (cause) => new MigrationFailed(attempted, cause) })
+    Effect.tryPromise({
+      try: run,
+      catch: (cause) => new MigrationFailed(attempted, cause, adviseOn(url, cause)),
+    })
   if (config.migrations === 'apply') {
     const { applied, elapsed } = yield* attempt('apply the lineage', () =>
       runMigrations(url, options),

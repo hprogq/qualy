@@ -12,7 +12,7 @@ import {
   layer as databaseLayer,
 } from '../src/server/index.ts'
 import { layer as ormLayer } from '../src/server/orm.ts'
-import { postgresAvailable, createTestContext } from '../src/testkit.ts'
+import { postgresAvailable, createTestContext, testDatabaseUrl } from '../src/testkit.ts'
 
 // What a database that will not cooperate does to an assembly.
 //
@@ -75,11 +75,31 @@ describe('a database that stops an assembly from being built', () => {
     const applying = failure(await build(unreachable, databaseLayer))
     expect(applying).toBeInstanceOf(MigrationFailed)
     expect((applying as MigrationFailed).message).toMatch(/could not apply the lineage/)
+    // the message names the target, because "connection refused" without a
+    // host reads like an application bug rather than a database that is off
+    expect((applying as MigrationFailed).message).toMatch(/not reachable at 127\.0\.0\.1:1/)
 
     const reading = failure(await build({ ...unreachable, migrations: 'off' }, databaseLayer))
     expect(reading).toBeInstanceOf(MigrationFailed)
     expect((reading as MigrationFailed).message).toMatch(/could not read the migration ledger/)
+    expect((reading as MigrationFailed).message).toMatch(/not reachable at 127\.0\.0\.1:1/)
   })
+
+  it.runIf(postgresAvailable)(
+    'names the host when the server rejects the credentials',
+    async () => {
+      // a role that does not exist: what a foreign postgres squatting on the
+      // configured port answers, and indistinguishable from a typo without
+      // the host in the message
+      const wrongRole = new URL(testDatabaseUrl)
+      wrongRole.username = 'qualy-no-such-role'
+      wrongRole.password = 'irrelevant'
+      const exit = failure(await build({ url: wrongRole.href }, databaseLayer))
+      expect(exit).toBeInstanceOf(MigrationFailed)
+      expect((exit as MigrationFailed).message).toMatch(/rejected the credentials/)
+      expect((exit as MigrationFailed).message).toContain(wrongRole.hostname)
+    },
+  )
 
   it('fails rather than dies when the entity set will not load', async () => {
     const entities = [

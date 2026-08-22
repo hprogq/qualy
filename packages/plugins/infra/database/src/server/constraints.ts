@@ -60,7 +60,8 @@ export const failedWith = (error: unknown, sqlstate: string): boolean => {
     for (const key of ['cause', 'error', 'reason', 'defect']) {
       if (walk(value[key], depth + 1)) return true
     }
-    for (const key of ['reasons', 'failures']) {
+    // 'errors' is an AggregateError: node's connect() throws one per address
+    for (const key of ['reasons', 'failures', 'errors']) {
       const list = value[key]
       if (!Array.isArray(list)) continue
       for (const entry of list) {
