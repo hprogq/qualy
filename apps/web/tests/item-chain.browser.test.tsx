@@ -18,6 +18,9 @@ const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const PAPER_ID = '22222222-2222-4222-8222-222222222222'
 const ORG_TYPE_ID = '33333333-3333-4333-8333-333333333333'
 const ROLE_ID = '44444444-4444-4444-8444-444444444444'
+const SECTION_ID = '55555555-5555-4555-8555-555555555555'
+const ITEM_ID = '66666666-6666-4666-8666-666666666666'
+const REVISION_ID = '77777777-7777-4777-8777-777777777777'
 
 const PAGES = [{ id: 'assessment/batch-items', path: '/assessment/batches/:batchId/items' }].map(
   (entry) => ({ ...entry, component: entry.id, layout: 'admin' }),
@@ -40,7 +43,45 @@ const batch = () => ({
   createdAt: '2026-02-01T00:00:00.000Z',
 })
 
-const open = () =>
+const paper = {
+  id: PAPER_ID,
+  parentGroupId: null,
+  name: '综合素质测评',
+  cap: null,
+  floor: null,
+  sortOrder: 0,
+  itemCount: 0,
+}
+
+/** a saved office question: two points a post, five filable, highest counted */
+const officerItem = () => ({
+  id: ITEM_ID,
+  batchId: BATCH_ID,
+  itemType: 'evidence',
+  title: '学生干部任职',
+  scoreGroupId: SECTION_ID,
+  maxEntries: 5,
+  sortOrder: 0,
+  status: 'active',
+  voidReason: null,
+  currentRevision: {
+    id: REVISION_ID,
+    revisionNo: 1,
+    entrySource: 'student',
+    formConfig: { files: {} },
+    scoringConfig: {
+      calculator: { ref: 'fixed@1', config: { value: '2.00' } },
+      aggregator: { ref: 'max@1', config: {} },
+    },
+    reviewPolicy: { normal: { stages: [] }, escalation: { stages: [] } },
+    displayConfig: {},
+    reason: null,
+    createdAt: '2026-02-01T00:00:00.000Z',
+  },
+  createdAt: '2026-02-01T00:00:00.000Z',
+})
+
+const open = (had: { groups?: readonly unknown[]; items?: readonly unknown[] } = {}) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
@@ -48,21 +89,12 @@ const open = () =>
         getBatch: () => Effect.succeed({ batch: batch() }),
         listScoreGroups: () =>
           Effect.succeed({
-            groups: [
-              {
-                id: PAPER_ID,
-                parentGroupId: null,
-                name: '综合素质测评',
-                cap: null,
-                floor: null,
-                sortOrder: 0,
-                itemCount: 0,
-              },
-            ],
+            groups: had.groups ?? [paper],
             version: 1,
             capabilities: { canManage: true },
           }),
-        listItems: () => Effect.succeed({ items: [], capabilities: { canManage: true } }),
+        listItems: () =>
+          Effect.succeed({ items: had.items ?? [], capabilities: { canManage: true } }),
         itemOptions: () =>
           Effect.succeed({
             orgTypes: [{ id: ORG_TYPE_ID, code: 'class', name: '班级' }],
@@ -169,5 +201,42 @@ describe('composing the review chain', () => {
     await expect
       .element(page.getByTestId('chain-step').getByRole('button', { name: '删除步骤' }))
       .toBeDisabled()
+  })
+})
+
+describe('what a question can contribute', () => {
+  it('counts the entries the folding rule keeps, not every entry that may be filed', async () => {
+    await composeQuestion()
+    await page.getByRole('textbox', { name: '每条通过计分' }).fill('2')
+    await page.getByRole('spinbutton', { name: '每人可申报条数' }).fill('5')
+
+    // everything counts: five filings of two
+    const ceiling = page.getByTestId('item-ceiling')
+    await expect.element(ceiling).toHaveAttribute('data-ceiling', '10')
+
+    // only the highest office counts, so the question is worth one filing
+    // however many an officer may file
+    const folding = () => page.getByRole('combobox', { name: '多条申报计分方式' })
+    await folding().click()
+    await page.getByRole('option', { name: '仅计最高一条' }).click()
+    await expect.element(ceiling).toHaveAttribute('data-ceiling', '2')
+
+    // the best two of the five
+    await folding().click()
+    await page.getByRole('option', { name: '计最高 N 条之和' }).click()
+    await expect.element(ceiling).toHaveAttribute('data-ceiling', '4')
+  })
+
+  it('sizes a section against what the rule counts, not against every filing', async () => {
+    open({
+      groups: [
+        paper,
+        { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体', itemCount: 1 },
+      ],
+      items: [officerItem()],
+    })
+
+    // 2 a post, five posts filed, only the highest counted
+    await expect.element(page.getByTestId('group-subtotal')).toHaveAttribute('data-subtotal', '2')
   })
 })

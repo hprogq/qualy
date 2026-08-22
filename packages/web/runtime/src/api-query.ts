@@ -1,5 +1,6 @@
 import { queryOptions, type QueryKey } from '@tanstack/react-query'
 import { Effect } from 'effect'
+import { isTransportError } from '@qualy/web-i18n'
 
 // `Effect<A, E>` has an error type; `Promise<A>` does not, so the moment a
 // page calls `Effect.runPromise` the failure type is gone and TanStack Query
@@ -19,6 +20,26 @@ export interface ApiRuntime {
 export const browserRuntime: ApiRuntime = {
   runPromise: (effect, options) => Effect.runPromise(effect, { signal: options?.signal }),
 }
+
+// How long a failed read waits before it says so.
+//
+// The library retries three times with a growing delay, which is right for a
+// screen that has no other answer to a failure. Every screen here does: a
+// failed section renders what went wrong and a retry button, so the ladder
+// only buys seven seconds of a spinner in front of a message the reader could
+// have had at once, and a refusal the server means (a 4xx, a typed domain
+// error) is not going to answer differently the third time.
+//
+// One retry is kept for the case the reader cannot see: a connection that
+// dropped between here and the server, where the second attempt genuinely may
+// succeed and nothing has been decided yet. Naming that case has to be
+// positive: what runPromise rejects with is the failure itself, and every
+// failure the api runtime can produce is tagged, the dropped connection
+// included - it arrives as HttpClientError{reason: TransportError}. A
+// predicate written as "no _tag" therefore retried the residue (defects and
+// interrupts) and never the one case it was for.
+export const retryQuery = (attempt: number, error: unknown) =>
+  attempt < 1 && isTransportError(error)
 
 /**
  * Query options whose `TError` is the effect's error type.

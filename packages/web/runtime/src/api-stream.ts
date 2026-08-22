@@ -22,6 +22,20 @@ import { browserRuntime } from './api-query.ts'
 
 const REDIAL_MS = 3_000
 const REDIAL_MOST_MS = 60_000
+// What returns the wait to its floor is a connection that lasted, not one
+// that started. A server opens every stream with a catch-up signal, so an
+// arriving event proves only that the request was accepted; a backend that
+// accepts and immediately drops, or a proxy that closes the body at once,
+// answers that way on every dial and would pin the cycle at three seconds
+// forever. Fifteen seconds is far past accept-and-drop and far short of the
+// minute at which a middlebox recycles a stream that is working.
+const STEADY_MS = 15_000
+
+/** how long to wait before the next dial, given how long the last one lived */
+export function nextRedialMs(previous: number, aliveMs: number): number {
+  if (aliveMs >= STEADY_MS) return REDIAL_MS
+  return Math.min(previous * 2, REDIAL_MOST_MS)
+}
 
 export function useApiStream<A>(
   /** undefined when the endpoint is not there to call (a stubbed harness) */
@@ -50,35 +64,31 @@ export function useApiStream<A>(
     const dial = () => {
       const making = opener.current
       if (controller.signal.aborted || making === undefined) return
+      const openedAt = Date.now()
       browserRuntime
         .runPromise(
           Effect.flatMap(making(), (stream) =>
             Stream.runForEach(stream, (event) =>
               Effect.sync(() => {
-                // the first delivered event is what proves the channel open,
-                // and proves the way back is worth taking at full speed again
+                // an arriving event is what proves the channel open to the
+                // caller; whether it is worth dialling back at full speed is
+                // settled at the end, by how long the connection lived
                 setLive(true)
-                backoff = REDIAL_MS
                 handler.current(event)
               }),
             ),
           ),
           { signal: controller.signal },
         )
-        .then(() => {
-          // a clean end is the server closing a connection it will accept
-          // again: dial straight back
-          backoff = REDIAL_MS
-          return undefined
-        })
-        .catch((error: unknown) => {
-          if (isAuthenticationError(error)) return 'stop' as const
-          backoff = Math.min(backoff * 2, REDIAL_MOST_MS)
-          return undefined
-        })
+        .then(() => undefined)
+        .catch((error: unknown) => (isAuthenticationError(error) ? ('stop' as const) : undefined))
         .then((verdict) => {
           setLive(false)
           if (verdict === 'stop' || controller.signal.aborted) return
+          // a clean end and a failed one are the same question here: a
+          // connection the server closes at once is not one it will serve
+          // any better on the next try
+          backoff = nextRedialMs(backoff, Date.now() - openedAt)
           timer = setTimeout(dial, backoff)
         })
     }
