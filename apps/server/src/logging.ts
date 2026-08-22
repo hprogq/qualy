@@ -176,6 +176,52 @@ const shortSource = (source: string): string => source.replace(/^@qualy\/(plugin
  * machine correlates. Per-source minimums come from the same settings, so a
  * noisy subsystem can be turned down without losing everything else.
  */
+interface Line {
+  readonly date: Date
+  readonly level: LogLevel.LogLevel
+  readonly source: string
+  readonly message: string
+  /** pretty format's annotation tail, already `key=value` joined */
+  readonly extra?: string
+  /** json format's structured annotations */
+  readonly annotations?: Record<string, unknown>
+  readonly fiberId?: number
+  readonly failure?: string
+}
+
+/** the one rendering, whichever way a line reaches the stream */
+const render = (settings: LoggingSettings, line: Line): string => {
+  if (settings.format === 'json') {
+    return JSON.stringify({
+      timestamp: line.date.toISOString(),
+      level: line.level,
+      source: line.source,
+      ...(line.fiberId === undefined ? {} : { fiberId: line.fiberId }),
+      message: line.message,
+      ...(line.failure === undefined ? {} : { cause: line.failure }),
+      annotations: line.annotations ?? {},
+    })
+  }
+  const level = LEVEL_PAINT[line.level]
+  const dim = chalk.gray
+  const time = `${String(line.date.getHours()).padStart(2, '0')}:${String(
+    line.date.getMinutes(),
+  ).padStart(2, '0')}:${String(line.date.getSeconds()).padStart(2, '0')}.${String(
+    line.date.getMilliseconds(),
+  ).padStart(3, '0')}`
+  // fixed columns: the eye scans a level column and a source column, not a
+  // ragged line; long sources keep their full name and simply overflow.
+  // The colour keys on the DISPLAYED name: two sources that read the same
+  // must colour the same, or the palette claims a difference no one can see
+  const short = shortSource(line.source)
+  return (
+    `${dim(time)} ${level(line.level.toUpperCase().padEnd(5))} ` +
+    `${sourcePaint(short)(short.padEnd(10))} ${line.message}` +
+    `${line.extra ? ` ${dim(line.extra)}` : ''}` +
+    (line.failure ? `\n${line.failure}` : '')
+  )
+}
+
 export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, void> =>
   Logger.make((options) => {
     const annotations = options.fiber.getRef(References.CurrentLogAnnotations) as Record<
@@ -193,46 +239,47 @@ export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, v
     const parts = Array.isArray(options.message) ? options.message : [options.message]
     const message = parts.map(text).join(' ')
     const failure = options.cause.reasons.length === 0 ? undefined : Cause.pretty(options.cause)
+    const rest = Object.entries(annotations).filter(([key]) => key !== 'source')
 
-    if (settings.format === 'json') {
-      console.log(
-        JSON.stringify({
-          timestamp: options.date.toISOString(),
-          level: options.logLevel,
-          source,
-          fiberId: options.fiber.id,
-          message,
-          ...(failure === undefined ? {} : { cause: failure }),
-          annotations: Object.fromEntries(
-            Object.entries(annotations).filter(([key]) => key !== 'source'),
-          ),
-        }),
-      )
-      return
-    }
-
-    const level = LEVEL_PAINT[options.logLevel]
-    const dim = chalk.gray
-    const time = `${String(options.date.getHours()).padStart(2, '0')}:${String(
-      options.date.getMinutes(),
-    ).padStart(2, '0')}:${String(options.date.getSeconds()).padStart(2, '0')}.${String(
-      options.date.getMilliseconds(),
-    ).padStart(3, '0')}`
-    const extra = Object.entries(annotations)
-      .filter(([key]) => key !== 'source')
-      .map(([key, value]) => `${key}=${text(value)}`)
-      .join(' ')
-    // fixed columns: the eye scans a level column and a source column, not a
-    // ragged line; long sources keep their full name and simply overflow.
-    // The colour keys on the DISPLAYED name: two sources that read the same
-    // must colour the same, or the palette claims a difference no one can see
-    const short = shortSource(source)
     console.log(
-      `${dim(time)} ${level(options.logLevel.toUpperCase().padEnd(5))} ` +
-        `${sourcePaint(short)(short.padEnd(10))} ${message}${extra ? ` ${dim(extra)}` : ''}` +
-        (failure ? `\n${failure}` : ''),
+      render(settings, {
+        date: options.date,
+        level: options.logLevel,
+        source,
+        message,
+        extra: rest.map(([key, value]) => `${key}=${text(value)}`).join(' '),
+        annotations: Object.fromEntries(rest),
+        fiberId: options.fiber.id,
+        ...(failure === undefined ? {} : { failure }),
+      }),
     )
   })
+
+/**
+ * A line from outside any fiber - a signal handler, the window before the
+ * runtime exists - rendered by the same renderer and gated by the same
+ * minimums as everything else. Two formats on one stream would make every
+ * consumer parse both, which is how "just console.error it" reads a week
+ * later.
+ */
+export const logLine = (
+  settings: LoggingSettings,
+  level: LogLevel.LogLevel,
+  message: string,
+  failure?: string,
+): void => {
+  const minimum = settings.sources['app'] ?? settings.level
+  if (LogLevel.isGreaterThan(minimum, level)) return
+  console.log(
+    render(settings, {
+      date: new Date(),
+      level,
+      source: 'app',
+      message,
+      ...(failure === undefined ? {} : { failure }),
+    }),
+  )
+}
 
 /** the logger and the global minimum, as one layer the root provides */
 export const loggingLayer = (settings: LoggingSettings): Layer.Layer<never> =>

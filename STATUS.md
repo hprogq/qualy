@@ -7664,3 +7664,13 @@ prettier 通过。另:mikro-orm 上游 PR 已开(#8197 的修复,一行 regex + 
 信号立即打一行 `shutting down; press Ctrl+C again to give up waiting`(此前静默 drain 与没按到
 无法区分)。实测:挂着空闲 + 半截两条连接单发 SIGINT,2.1s 优雅退出 0;pnpm 组信号回归照常 0.1s。
 `pnpm test` 767 passed 复跑通过。
+
+**再追补(同日)**:用户指出信号提示行与装配期报错都绕过 logger(裸 console,无时间/级别/颜色,
+json 模式下采集器也看不见)。修法:logging.ts 把行渲染抽成单一 `render`(logger 本体与带外调用
+共用,pretty/json 同源),新增 `logLine(settings, level, message, failure?)` 供无 fiber 场景使用
+(沿用同一套 per-source/全局最低级别门槛);main.ts 三条信号行(shutting down=Info、再按放弃=Warn、
+超时强退=Error)全部走它,pre-launch 带(manifest 读取、resolveLogging、verifyAssembly、
+loadAssembly/makeApplication)失败统一 `refuse()`:精心措辞的裸 Error 只打 message,真缺陷附
+inspect 证据,退出码 1——装配期不再出现无格式的 unhandled rejection 堆栈。实测:坏 manifest 路径
+一行格式化 ERROR + exit 1;SIGINT 提示行 `INFO app shutting down; ...`;json 模式下信号行是完整
+json 记录;坏数据库路径不回归。`pnpm test` 767 passed 复跑通过。

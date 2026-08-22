@@ -1,7 +1,8 @@
+import { inspect } from 'node:util'
 import { NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer } from 'effect'
 import { readManifest } from '@qualy/assembly'
-import { loggingLayer, resolveLogging } from './logging.ts'
+import { logLine, loggingLayer, resolveLogging } from './logging.ts'
 import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
 
@@ -15,12 +16,41 @@ import { manifestPath } from './manifest.ts'
 // environment, and wraps verification as well as the application: a lock
 // drift warning printed by a different logger than everything else was two
 // formats for one process.
-const logging = resolveLogging(
-  readManifest(manifestPath()).logging,
-  process.env,
-  process.env.NODE_ENV === 'production' ? 'production' : 'development',
-)
+const mode = process.env.NODE_ENV === 'production' ? 'production' : 'development'
+const logging = (() => {
+  try {
+    return resolveLogging(readManifest(manifestPath()).logging, process.env, mode)
+  } catch (error) {
+    // the manifest would not even read; the default rendering still beats
+    // an unhandled-rejection dump
+    logLine(
+      resolveLogging(undefined, {}, mode),
+      'Error',
+      `startup failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    process.exit(1)
+  }
+})()
 const logs = loggingLayer(logging)
+
+/**
+ * A boot refusal, said once in the log's own voice, then exit.
+ *
+ * Everything the pre-launch band throws - an unreadable manifest, a lock
+ * drift, an assembly that will not load - is a crafted sentence in a plain
+ * Error; those get their message. Anything else is a genuine defect and
+ * keeps its evidence.
+ */
+const refuse = (error: unknown): never => {
+  const crafted = error instanceof Error && ('_tag' in error || error.name === 'Error')
+  logLine(
+    logging,
+    'Error',
+    `startup failed: ${error instanceof Error ? error.message : String(error)}`,
+    crafted ? undefined : inspect(error),
+  )
+  process.exit(1)
+}
 
 const prepare = Effect.gen(function* () {
   // Start validates and starts; it never repairs. The descriptors this
@@ -36,10 +66,10 @@ const prepare = Effect.gen(function* () {
   return resolution
 })
 
-const resolution = await Effect.runPromise(Effect.provide(prepare, logs))
+const resolution = await Effect.runPromise(Effect.provide(prepare, logs)).catch(refuse)
 
-const { makeApplication } = await import('./runtime.ts')
-const application = await makeApplication(resolution, logging)
+const { makeApplication } = await import('./runtime.ts').catch(refuse)
+const application = await makeApplication(resolution, logging).catch(refuse)
 
 /**
  * One report per failed boot, through the application logger.
@@ -119,13 +149,15 @@ for (const [signal, code] of [
       // child within milliseconds, so a single Ctrl+C arrives here twice.
       // Only a distinct later press is an operator insisting.
       if (Date.now() - stoppingSince < 1000) return
-      console.error(`${signal} again: giving up on the graceful shutdown`)
+      logLine(logging, 'Warn', `${signal} again: giving up on the graceful shutdown`)
       process.exit(code)
     }
     stoppingSince = Date.now()
     // say so at once: the drain that follows can take a few seconds, and a
     // silent one is indistinguishable from a press that did not land
-    console.error(
+    logLine(
+      logging,
+      'Info',
       signal === 'SIGINT'
         ? 'shutting down; press Ctrl+C again to give up waiting'
         : `${signal}: shutting down`,
@@ -133,7 +165,7 @@ for (const [signal, code] of [
     if (forceExitAfter > 0) {
       // unref: this timer must never be the reason the process stays alive
       setTimeout(() => {
-        console.error(`shutdown did not finish within ${forceExitAfter}ms, exiting`)
+        logLine(logging, 'Error', `shutdown did not finish within ${forceExitAfter}ms, exiting`)
         process.exit(code)
       }, forceExitAfter).unref()
     }
