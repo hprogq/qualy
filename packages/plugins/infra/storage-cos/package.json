@@ -4,7 +4,9 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/client/upload.ts"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server/backend.ts",

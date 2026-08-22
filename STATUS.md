@@ -7392,3 +7392,24 @@ rbac 插件内部、装配层与 CLI、组织树);第四轮把当天落地的 12
 API 无法自救,只能直接改库。服务端没有这条断言的测试,是前端恰好挡住了才没被发现。
 
 本轮不修任何代码,按用户要求先攒。
+
+### 生产环境所有附件上传都失败(2026-08-22,第四轮 critical)
+
+第四轮审查发现、我实证确认:`Ui.browser` 声明的模块在**生产构建里被整个 tree-shake 掉**。
+生成的聚合模块对它写的是求副作用的裸 `import "…/upload.ts"`(packages/build/web/src/collect.ts:206),
+而 `@qualy/plugin-storage-local` 与 `@qualy/plugin-storage-cos` 的 package.json 都写着
+`"sideEffects": false`——那句话就是在告诉打包器「这个 import 可以丢」。dev 下 Vite 照常求值,
+所以本地一切正常;生产产物里 `registerUploadDriver` 从未执行,drivers 表为空,**任何附件上传
+都抛 UploadUnsupported**。实证:在已 staged 的产物里搜驱动自己的三个字符串
+(`upload refused with status`、`upload cancelled`、`lengthComputable`)一个都搜不到;
+声明修正后重建,两个字符串回到 `assets/index-*.js`。
+
+修法是把谎话改成实话:两个包声明 `"sideEffects": ["./src/client/upload.ts"]`。声明在包一级、
+贡献在插件一级,两个文件谁也看不见谁,所以另加门禁 `tools/tests/side-effects.test.ts`:
+遍历全部插件包,凡 `Ui.browser` 声明的模块必须被其 package.json 的 `sideEffects` 放行,
+失败时点名「哪个 package.json 丢了哪个文件」;另一例单独守 sideEffects 的通配语法解析。
+红验:把 `false` 写回去,门禁立刻点名两个包。
+
+生产 smoke 看不见这一类缺失(它只断言探针、壳、manifest、哈希资源与 SIGTERM),这条也记进档案。
+
+验收:typecheck 零错;`pnpm test` 726 passed | 17 skipped;prettier 通过。
