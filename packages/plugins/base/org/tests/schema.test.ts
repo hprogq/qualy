@@ -27,7 +27,7 @@ describe.runIf(postgresAvailable)('org schema tenant boundary', () => {
   const createType = async (tenantId: string, code: string) =>
     (
       await db.row<{ id: string }>(
-        `insert into org_types (tenant_id, code, name) values ($1, $2, $2) returning id`,
+        `insert into org_types (tenant_id, name) values ($1, $2) returning id`,
         [tenantId, code],
       )
     ).id

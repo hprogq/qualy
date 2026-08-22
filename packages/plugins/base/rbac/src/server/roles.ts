@@ -506,7 +506,7 @@ const userTypeOptions = (tenantId: string) =>
       .select(['id', 'code', 'name'])
       .where('tenantId', '=', tenantId)
       .orderBy('sortOrder')
-      .orderBy('code')
+      .orderBy('name')
       .execute(),
   )
 
@@ -514,10 +514,10 @@ const orgTypeOptions = (tenantId: string) =>
   db.query((k) =>
     k
       .selectFrom('OrgType')
-      .select(['id', 'code', 'name'])
+      .select(['id', 'name'])
       .where('tenantId', '=', tenantId)
       .orderBy('sortOrder')
-      .orderBy('code')
+      .orderBy('name')
       .execute(),
   )
 

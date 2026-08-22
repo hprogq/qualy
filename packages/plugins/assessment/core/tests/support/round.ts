@@ -117,12 +117,12 @@ export const seed = (slug: string) =>
     ).id
     const college = one<{ id: string }>(
       yield* runSql(
-        sql`insert into org_types (tenant_id, code, name) values (${t}, 'college', 'College') returning id`,
+        sql`insert into org_types (tenant_id, name) values (${t}, 'College') returning id`,
       ),
     ).id
     const classType = one<{ id: string }>(
       yield* runSql(
-        sql`insert into org_types (tenant_id, code, name) values (${t}, 'class', 'Class') returning id`,
+        sql`insert into org_types (tenant_id, name) values (${t}, 'Class') returning id`,
       ),
     ).id
     const root = one<{ id: string }>(

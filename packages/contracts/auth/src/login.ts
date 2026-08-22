@@ -120,9 +120,8 @@ export interface SignedInUser {
   readonly userType: { readonly id: string; readonly code: string; readonly name: string }
   readonly primaryOrgNode: {
     readonly id: string
-    readonly code: string | null
     readonly name: string
-    readonly orgType: { readonly id: string; readonly code: string; readonly name: string }
+    readonly orgType: { readonly id: string; readonly name: string }
     /**
      * Root first, the node itself last: where this person stands, spelled out
      * level by level. Each step carries what that level is called - "College",

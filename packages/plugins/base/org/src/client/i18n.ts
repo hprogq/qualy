@@ -74,10 +74,6 @@ const i18n = definePluginMessages({
     deleteNode: { id: 'org/action/delete-node', defaultMessage: 'Delete node' },
     typesTitle: { id: 'org/type/title', defaultMessage: 'Organization types' },
     rulesTitle: { id: 'org/rule/title', defaultMessage: 'Hierarchy rules' },
-    codePlaceholder: {
-      id: 'org/type/code-placeholder',
-      defaultMessage: 'code (lowercase kebab-case)',
-    },
     parentType: { id: 'org/rule/parent-type', defaultMessage: 'Parent type' },
     childType: { id: 'org/rule/child-type', defaultMessage: 'Child type' },
     delete: { id: 'org/action/delete', defaultMessage: 'Delete' },

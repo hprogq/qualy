@@ -86,7 +86,7 @@ const seed = Effect.fn('seed')(function* () {
   const type = (code: string) =>
     Effect.map(
       runSql(sql`
-        insert into org_types (tenant_id, code, name) values (${tenant}, ${code}, ${code})
+        insert into org_types (tenant_id, name) values (${tenant}, ${code})
         returning id`),
       (result) => one<{ id: string }>(result).id,
     )
@@ -226,7 +226,7 @@ describe.runIf(postgresAvailable).concurrent('the sentence a write answers with'
           const org = yield* Org
           // a type nothing stands on and no rule mentions, so both of
           // deleteType's own checks pass
-          const spare = yield* org.createType(f.tenant, { code: 'club', name: 'Club' }, f.principal)
+          const spare = yield* org.createType(f.tenant, { name: 'Club' }, f.principal)
           const staffType = one<{ id: string }>(
             yield* runSql(sql`
               insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)

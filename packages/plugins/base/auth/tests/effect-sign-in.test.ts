@@ -54,13 +54,13 @@ const seed = Effect.fn('seed')(function* (hash: string) {
   ).id
   const orgType = one<{ id: string }>(
     yield* runSql(
-      sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
+      sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
     ),
   ).id
   const node = one<{ id: string }>(
     yield* runSql(sql`
-      insert into org_nodes (tenant_id, org_type_id, name, code, path, depth)
-      values (${tenant}, ${orgType}, 'Root', 'root', 'r', 0) returning id`),
+      insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+      values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
   ).id
   const userType = one<{ id: string }>(
     yield* runSql(sql`

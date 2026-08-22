@@ -45,6 +45,7 @@ export class PlacementBlocked extends Schema.TaggedErrorClass<PlacementBlocked>(
 
 export type ChangeNodeTypeError =
   | NodeNotFound
+  | NodeIsRoot
   | TypeNotFound
   | RuleViolation
   | AssignmentIncompatible

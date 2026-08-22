@@ -101,7 +101,7 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const type = (code: string) =>
     runSql(sql`
-      insert into org_types (tenant_id, code, name) values (${tenant}, ${code}, ${code})
+      insert into org_types (tenant_id, name) values (${tenant}, ${code})
       returning id`)
   const university = one<{ id: string }>(yield* type('university')).id
   const college = one<{ id: string }>(yield* type('college')).id
@@ -308,8 +308,8 @@ describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered
           ).id
           const otherType = one<{ id: string }>(
             yield* runSql(sql`
-              insert into org_types (tenant_id, code, name)
-              values (${other}, 'college', 'C') returning id`),
+              insert into org_types (tenant_id, name)
+              values (${other}, 'C') returning id`),
           ).id
           const otherRoot = one<{ id: string }>(
             yield* runSql(sql`

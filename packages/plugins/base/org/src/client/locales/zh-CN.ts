@@ -24,7 +24,6 @@ export default {
   'org/action/delete-node': '删除节点',
   'org/type/title': '组织类型',
   'org/rule/title': '层级规则',
-  'org/type/code-placeholder': 'code（小写连字符）',
   'org/rule/parent-type': '父类型',
   'org/rule/child-type': '子类型',
   'org/action/delete': '删除',

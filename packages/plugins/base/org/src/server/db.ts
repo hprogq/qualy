@@ -34,7 +34,7 @@ export const lockTenant = (tenantId: string) =>
 
 // --- org types ---
 
-const typeColumns = ['id', 'code', 'name', 'sortOrder'] as const
+const typeColumns = ['id', 'name', 'sortOrder'] as const
 
 export const listTypes = (tenantId: string) =>
   db.query((k) =>
@@ -69,12 +69,7 @@ export const countTypes = (tenantId: string, typeIds: readonly string[]) =>
     )
     .pipe(Effect.map((row) => row?.count ?? 0))
 
-export const insertType = (input: {
-  tenantId: string
-  code: string
-  name: string
-  sortOrder: number
-}) =>
+export const insertType = (input: { tenantId: string; name: string; sortOrder: number }) =>
   db.query((k) =>
     k.insertInto('OrgType').values(input).returning(typeColumns).executeTakeFirstOrThrow(),
   )
@@ -245,7 +240,6 @@ const nodeColumns = (k: Db) =>
       'id',
       'parentId',
       'orgTypeId',
-      'code',
       'name',
       'depth',
       'sortOrder',
@@ -378,18 +372,17 @@ export const insertNode = (input: {
   parentPath: string
   parentDepth: number
   orgTypeId: string
-  code: string | null
   name: string
   sortOrder: number
 }) =>
   db.query(async (k) => {
     const { rows } = await sql<NodeRow>`
-      insert into org_nodes (id, tenant_id, parent_id, org_type_id, code, name, path, depth, sort_order)
-      select v.id, ${input.tenantId}, ${input.parentId}, ${input.orgTypeId}, ${input.code},
+      insert into org_nodes (id, tenant_id, parent_id, org_type_id, name, path, depth, sort_order)
+      select v.id, ${input.tenantId}, ${input.parentId}, ${input.orgTypeId},
         ${input.name}, (${input.parentPath} || '.' || replace(v.id::text, '-', ''))::ltree,
         ${input.parentDepth + 1}, ${input.sortOrder}
       from (select uuidv7() as id) v
-      returning id, parent_id as "parentId", org_type_id as "orgTypeId", code, name,
+      returning id, parent_id as "parentId", org_type_id as "orgTypeId", name,
         path::text as path, depth, sort_order as "sortOrder"`.execute(k)
     return rows[0]!
   })

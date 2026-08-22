@@ -80,7 +80,7 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const orgType = one<{ id: string }>(
     yield* runSql(
-      sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
+      sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
     ),
   ).id
   const node = (name: string, path: string, parent?: string) =>
@@ -233,7 +233,7 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const other = one<{ id: string }>(
             yield* runSql(sql`
-              insert into org_types (tenant_id, code, name) values (${f.tenant},'club','Club')
+              insert into org_types (tenant_id, name) values (${f.tenant}, 'Club')
               returning id`),
           ).id
           // staff may only stand at a club, and the left node is not one
@@ -383,7 +383,7 @@ describe.runIf(postgresAvailable).concurrent('what a caller may read about peopl
           const iam = yield* Iam
           const orgType = one_(
             yield* runSql(
-              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
             ),
           ).id
           // a node below the subtree anchor: it is a place a user may stand,

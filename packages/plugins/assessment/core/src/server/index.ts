@@ -899,7 +899,7 @@ export class Assessment extends Context.Service<
       as: Principal,
     ) => Effect.Effect<
       {
-        orgTypes: readonly { id: string; code: string; name: string }[]
+        orgTypes: readonly { id: string; name: string }[]
         roles: readonly { id: string; name: string }[]
       },
       BatchNotFound | AccessDenied
@@ -3530,7 +3530,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
           db.query((k) =>
             k
               .selectFrom('OrgType')
-              .select(['id', 'code', 'name'])
+              .select(['id', 'name'])
               .where('tenantId', '=', tenantId)
               .orderBy('name')
               .execute(),
@@ -3552,7 +3552,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         ),
       )
       return {
-        orgTypes: orgTypes.map((row) => ({ id: row.id, code: row.code, name: row.name })),
+        orgTypes: orgTypes.map((row) => ({ id: row.id, name: row.name })),
         roles: roles.map((row) => ({ id: row.id, name: row.name })),
       }
     }),

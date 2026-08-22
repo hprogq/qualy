@@ -36,7 +36,7 @@ describe.runIf(postgresAvailable)('the batch-scope-node-set migration', () => {
       ).id
       const orgType = (
         await db.row<{ id: string }>(
-          `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
+          `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
           [tenant],
         )
       ).id
@@ -175,7 +175,7 @@ describe.runIf(postgresAvailable)('the resubmit cleanup migration', () => {
       ).id
       const orgType = (
         await db.row<{ id: string }>(
-          `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
+          `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
           [tenant],
         )
       ).id
@@ -318,7 +318,7 @@ describe.runIf(postgresAvailable)('the management-anchor rebuild', () => {
       ).id
       const orgType = (
         await db.row<{ id: string }>(
-          `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
+          `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
           [tenant],
         )
       ).id

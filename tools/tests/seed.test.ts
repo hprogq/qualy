@@ -80,8 +80,11 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     const first = await inTransaction((client) => seed(client, ADMIN))
     expect(first.created).toEqual({
       tenant: 1,
-      orgTypes: 8,
-      rules: 9,
+      // the whole preset structure: the root's own type, no rules, one node.
+      // The university vocabulary moved into the demo, where an example
+      // belongs; a real tenant names its own kinds of organization.
+      orgTypes: 1,
+      rules: 0,
       root: 1,
       userTypes: 1,
       provider: 1,
@@ -112,12 +115,14 @@ describe.runIf(available)('tenant bootstrap seed', () => {
 
   it('leaves business-edited display fields alone', async () => {
     await pool.query(`update tenants set name = '改名大学'`)
-    await pool.query(`update org_types set name = '书院' where code = 'college'`)
+    // the root type's name is a default, not an identity: the root is found
+    // by structure, so renaming the type must not make the seed recreate it
+    await pool.query(`update org_types set name = '集团'`)
     await pool.query(`update org_nodes set name = '改名大学' where parent_id is null`)
     const report = await inTransaction((client) => seed(client, ADMIN))
     expect(Object.values(report.created).every((count) => count === 0)).toBe(true)
-    const college = await pool.query(`select name from org_types where code = 'college'`)
-    expect(college.rows[0].name).toBe('书院')
+    const renamed = await pool.query(`select name from org_types`)
+    expect(renamed.rows.map((row) => row.name)).toEqual(['集团'])
   })
 
   it('never resets the admin password without the explicit flag', async () => {
@@ -152,6 +157,10 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     expect(demo.created.demoNodes).toBe(4)
     expect(demo.created.demoUsers).toBe(2)
     expect(demo.created.userTypes).toBe(2)
+    // the example brings its own vocabulary: four types, their chain, and
+    // the rule hanging the college under whatever the root stands on
+    expect(demo.created.orgTypes).toBe(4)
+    expect(demo.created.rules).toBe(4)
     // org-manager with its six permissions and the manager's college/subtree
     // grant. No user type receives anything: what a kind of person may do is
     // decided entirely by the roles they hold.
@@ -197,14 +206,14 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     expect(again.created.demoUsers).toBe(0)
 
     const depths = await pool.query(
-      `select code, depth, nlevel(path) as levels from org_nodes order by path`,
+      `select name, depth, nlevel(path) as levels from org_nodes order by path`,
     )
-    expect(depths.rows.map((row) => [row.code, row.depth, Number(row.levels)])).toEqual([
-      ['root', 0, 1],
-      ['software-college', 1, 2],
-      ['grade-2023', 2, 3],
-      ['computer-science', 3, 4],
-      ['class-2023-1', 4, 5],
+    expect(depths.rows.map((row) => [row.name, row.depth, Number(row.levels)])).toEqual([
+      ['改名大学', 0, 1],
+      ['软件学院', 1, 2],
+      ['2023级', 2, 3],
+      ['计算机科学与技术', 3, 4],
+      ['软件2023级1班', 4, 5],
     ])
   })
 

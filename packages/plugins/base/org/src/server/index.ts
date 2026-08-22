@@ -96,7 +96,6 @@ interface NodeRow {
   id: string
   parentId: string | null
   orgTypeId: string
-  code: string | null
   name: string
   path: string
   depth: number
@@ -108,7 +107,6 @@ export type NodeRowPublic = {
   id: string
   parentId: string | null
   orgTypeId: string
-  code: string | null
   name: string
   path: string
   depth: number
@@ -119,7 +117,6 @@ export interface NodeView {
   id: string
   parentId: string | null
   orgTypeId: string
-  code: string | null
   name: string
   path: string
   depth: number
@@ -130,7 +127,6 @@ export interface NodeView {
 
 export interface TypeRow {
   id: string
-  code: string
   name: string
   sortOrder: number
 }
@@ -167,7 +163,6 @@ export class Org extends Context.Service<
         parentId: string
         orgTypeId: string
         name: string
-        code?: string
         sortOrder?: number
       },
       as: Principal,
@@ -200,7 +195,7 @@ export class Org extends Context.Service<
     ) => Effect.Effect<readonly TypeRow[], AccessDenied>
     readonly createType: (
       tenantId: string,
-      input: { code: string; name: string; sortOrder?: number },
+      input: { name: string; sortOrder?: number },
       as: Principal,
     ) => Effect.Effect<TypeRow, CreateTypeError>
     readonly updateType: (
@@ -259,6 +254,11 @@ export const make = Effect.fn('Org.make')(function* () {
 
           const node = yield* oneNode(tenantId, nodeId)
           if (!node) return yield* new NodeNotFound()
+          // The root keeps its type for life. Its specialness lives in the
+          // structure - parent is null - not in a name or a marker, and the
+          // type it stands on is how "the tenant's root type" is found at
+          // all: re-typing it would cut the one thread that identifies it.
+          if (node.parentId === null) return yield* new NodeIsRoot()
 
           // re-decided under the lock rather than trusted from the router: a
           // concurrent move can have re-anchored the target since that check
@@ -547,7 +547,6 @@ export const make = Effect.fn('Org.make')(function* () {
           parentPath: parent.path,
           parentDepth: parent.depth,
           orgTypeId: input.orgTypeId,
-          code: input.code ?? null,
           name: input.name,
           sortOrder: input.sortOrder ?? 0,
         })
@@ -716,13 +715,12 @@ export const make = Effect.fn('Org.make')(function* () {
       ),
     createType: Effect.fn('Org.createType')(function* (
       tenantId: string,
-      input: { code: string; name: string; sortOrder?: number },
+      input: { name: string; sortOrder?: number },
       as: Principal,
     ) {
       return yield* writeAtRoot(tenantId, as, () =>
         insertType({
           tenantId,
-          code: input.code,
           name: input.name,
           sortOrder: input.sortOrder ?? 0,
         }),
@@ -829,7 +827,6 @@ export const serviceLayer: Layer.Layer<Org, never, Orm | Rbac | Placement> = Lay
 // Rows leave the database in snake_case; the contract describes camelCase.
 const toTypeDto = (row: TypeRow) => ({
   id: row.id,
-  code: row.code,
   name: row.name,
   sortOrder: row.sortOrder,
 })
@@ -838,7 +835,6 @@ const toNodeDto = (node: NodeView) => ({
   id: node.id,
   parentId: node.parentId,
   orgTypeId: node.orgTypeId,
-  code: node.code,
   name: node.name,
   depth: node.depth,
   sortOrder: node.sortOrder,

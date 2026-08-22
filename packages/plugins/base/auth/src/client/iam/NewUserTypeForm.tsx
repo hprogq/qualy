@@ -110,7 +110,6 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
                 options={(catalog.data?.orgTypes ?? []).map((type) => ({
                   value: type.id,
                   label: type.name,
-                  hint: type.code,
                 }))}
                 selected={orgTypeIds}
                 onChange={setOrgTypeIds}

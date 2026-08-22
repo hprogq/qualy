@@ -76,7 +76,7 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const orgType = one<{ id: string }>(
     yield* runSql(
-      sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
+      sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
     ),
   ).id
   const node = one<{ id: string }>(
@@ -336,7 +336,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
           const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
           const other = one<{ id: string }>(
             yield* runSql(sql`
-              insert into org_types (tenant_id, code, name) values (${f.tenant},'club','Club')
+              insert into org_types (tenant_id, name) values (${f.tenant}, 'Club')
               returning id`),
           ).id
           const orgType = one<{ id: string }>(

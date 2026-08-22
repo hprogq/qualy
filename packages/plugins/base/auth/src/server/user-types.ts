@@ -207,7 +207,7 @@ const orgTypeOptions = (tenantId: string) =>
   db.query((k) =>
     k
       .selectFrom('OrgType')
-      .select(['id', 'code', 'name'])
+      .select(['id', 'name'])
       .where('tenantId', '=', tenantId)
       .orderBy('name')
       .execute(),

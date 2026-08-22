@@ -94,19 +94,29 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const collegeType = one<{ id: string }>(
     yield* runSql(
-      sql`insert into org_types (tenant_id, code, name) values (${tenant}, 'college', 'C') returning id`,
+      sql`insert into org_types (tenant_id, name) values (${tenant}, 'C') returning id`,
     ),
   ).id
   const clubType = one<{ id: string }>(
     yield* runSql(
-      sql`insert into org_types (tenant_id, code, name) values (${tenant}, 'club', 'K') returning id`,
+      sql`insert into org_types (tenant_id, name) values (${tenant}, 'K') returning id`,
     ),
   ).id
-  const node = one<{ id: string }>(
+  const root = one<{ id: string }>(
     yield* runSql(sql`
       insert into org_nodes (tenant_id, org_type_id, name, path, depth)
       values (${tenant}, ${collegeType}, 'Root', 'r', 0) returning id`),
   ).id
+  // the node the cases retype is a child: the root's type is fixed for life,
+  // which has its own case below
+  const node = one<{ id: string }>(
+    yield* runSql(sql`
+      insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+      values (${tenant}, ${root}, ${collegeType}, 'Branch', 'r.b', 1) returning id`),
+  ).id
+  yield* runSql(sql`
+    insert into org_type_rules (tenant_id, parent_type_id, child_type_id)
+    values (${tenant}, ${collegeType}, ${clubType})`)
   const adminType = one<{ id: string }>(
     yield* runSql(sql`
       insert into user_types (tenant_id, code, name, allow_local_login, placement_mode)
@@ -126,7 +136,7 @@ const seed = Effect.fn('seed')(function* () {
   yield* runSql(sql`
     insert into role_grants (tenant_id, user_id, role_id) values (${tenant}, ${admin}, ${adminRole})`)
   const principal: Principal = { tenantId: tenant, userId: admin, sessionId: 's' }
-  return { tenant, node, collegeType, clubType, adminType, principal }
+  return { tenant, root, node, collegeType, clubType, adminType, principal }
 })
 
 /** a staff type that may only stand at a college, with one person standing there */
@@ -282,11 +292,7 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         Effect.gen(function* () {
           const f = yield* seed()
           const org = yield* Org
-          const created = yield* org.createType(
-            f.tenant,
-            { code: 'dept', name: 'Department' },
-            f.principal,
-          )
+          const created = yield* org.createType(f.tenant, { name: 'Department' }, f.principal)
           const listed = yield* org.listTypes(f.tenant, f.principal)
           yield* org.updateType(f.tenant, created.id, { name: 'Dept' }, f.principal)
           const renamed = (yield* org.listTypes(f.tenant, f.principal)).find(
@@ -296,7 +302,7 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
           const inUse = yield* Effect.result(org.deleteType(f.tenant, f.collegeType, f.principal))
           const removable = yield* Effect.result(org.deleteType(f.tenant, created.id, f.principal))
           return {
-            createdCode: created.code,
+            createdId: created.id,
             listedCount: listed.length,
             renamed: renamed?.name,
             inUse: tagOf(inUse),
@@ -305,7 +311,7 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         }),
       )
       const answer = ok(exit)
-      expect(answer.createdCode).toBe('dept')
+      expect(answer.createdId).toBeTruthy()
       // college, club and the new one
       expect(answer.listedCount).toBe(3)
       expect(answer.renamed).toBe('Dept')
@@ -436,10 +442,9 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
         Effect.gen(function* () {
           const f = yield* seed()
           const org = yield* Org
-          // 'college' already exists from the fixture
-          const clash = yield* Effect.result(
-            org.createType(f.tenant, { code: 'college', name: 'Another' }, f.principal),
-          )
+          // the fixture's college is already called that; the name is the
+          // identity now, so a second one is a conflict
+          const clash = yield* Effect.result(org.createType(f.tenant, { name: 'C' }, f.principal))
           return { tag: tagOf(clash) }
         }),
       )
@@ -464,11 +469,11 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
           const mid = one<{ id: string }>(
             yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
-              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Mid', 'r.mid', 1) returning id`),
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Mid', 'r.b.mid', 2) returning id`),
           ).id
           yield* runSql(sql`
             insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
-            values (${f.tenant}, ${mid}, ${f.collegeType}, 'Deep', 'r.mid.deep', 2)`)
+            values (${f.tenant}, ${mid}, ${f.collegeType}, 'Deep', 'r.b.mid.deep', 3)`)
 
           // the plain user holds read at `mid` with self coverage only
           const role = one<{ id: string }>(
@@ -567,16 +572,16 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
           const src = one<{ id: string }>(
             yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
-              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Src', 'r.src', 1) returning id`),
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Src', 'r.b.src', 2) returning id`),
           ).id
           yield* runSql(sql`
             insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
-            values (${f.tenant}, ${src}, ${f.collegeType}, 'Deep', 'r.src.deep', 2)`)
+            values (${f.tenant}, ${src}, ${f.collegeType}, 'Deep', 'r.b.src.deep', 3)`)
           // the destination is a club, because a type cannot parent itself
           const dest = one<{ id: string }>(
             yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
-              values (${f.tenant}, ${f.node}, ${f.clubType}, 'Dest', 'r.dest', 1) returning id`),
+              values (${f.tenant}, ${f.node}, ${f.clubType}, 'Dest', 'r.b.dest', 2) returning id`),
           ).id
           // a college may sit under a club, so the rules do not block the move
           // and the only thing deciding it is coverage
@@ -634,7 +639,38 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
       expect(answer.refused).toBe('ACCESS_DENIED')
       // the only thing that changed is how far the anchor reaches
       expect(answer.allowed).toBe('Success')
-      expect(answer.moved.startsWith('r.dest.')).toBe(true)
+      expect(answer.moved.startsWith('r.b.dest.')).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+
+  // The root's type is fixed for life: its specialness lives in the
+  // structure, and the type it stands on is how the tenant's root type is
+  // found at all. Everything else about it stays editable - the name is the
+  // tenant's - and the type row itself is shielded by the node standing on it.
+  it('keeps the root on its type, while the root type stays deletable-proof', async () => {
+    const db = await createTestContext('effect-root-type')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          const retyped = yield* Effect.result(
+            org.changeNodeType(f.tenant, f.root, f.clubType, f.principal),
+          )
+          // the type the root stands on refuses deletion through the same
+          // in-use door as any other type with a node on it
+          const occupied = yield* Effect.result(
+            org.deleteType(f.tenant, f.collegeType, f.principal),
+          )
+          return { retyped: tagOf(retyped), occupied: tagOf(occupied) }
+        }),
+      )
+      const answer = ok(exit)
+      expect(answer.retyped).toBe('ORG_NODE_IS_ROOT')
+      expect(answer.occupied).toBe('ORG_TYPE_IN_USE')
     } finally {
       await db.dispose()
     }
@@ -651,12 +687,12 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
           const mid = one<{ id: string }>(
             yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
-              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Mid', 'r.mid', 1) returning id`),
+              values (${f.tenant}, ${f.node}, ${f.collegeType}, 'Mid', 'r.b.mid', 2) returning id`),
           ).id
           const deep = one<{ id: string }>(
             yield* runSql(sql`
               insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
-              values (${f.tenant}, ${mid}, ${f.collegeType}, 'Deep', 'r.mid.deep', 2) returning id`),
+              values (${f.tenant}, ${mid}, ${f.collegeType}, 'Deep', 'r.b.mid.deep', 3) returning id`),
           ).id
           const org = yield* Org
           return {
@@ -664,7 +700,7 @@ describe.runIf(postgresAvailable).concurrent('changing a node type across three 
               yield* Effect.result(org.moveNode(f.tenant, mid, deep, f.principal)),
             ),
             intoItself: tagOf(yield* Effect.result(org.moveNode(f.tenant, mid, mid, f.principal))),
-            root: tagOf(yield* Effect.result(org.moveNode(f.tenant, f.node, mid, f.principal))),
+            root: tagOf(yield* Effect.result(org.moveNode(f.tenant, f.root, mid, f.principal))),
           }
         }),
       )

@@ -7563,3 +7563,29 @@ MikroORM 7.1.13 的 cast 剥离不认**数组类型** cast,重发 DDL 时产出 
 
 验收:typecheck 零错;`pnpm test` 762 passed | 17 skipped;`pnpm test:browser` 101 passed
 (identity 13/13);`pnpm qualy generate` 报 nothing to generate;prettier 通过。
+
+### 组织只说名字:code 全删,seed 只建租户根(2026-08-22,用户裁决)
+
+**code 删除**:`org_types.code` 与 `org_nodes.code` 连同格式检查与唯一索引整体移除
+(迁移 `20260822140624_org-codes-drop.sql`,destructive approved)。产品里没有任何读它的地方,
+它唯一的作用是逼管理员建组织时再起一个机器名。波及面全部收口:org API 的四个 schema、
+服务端投影与插入、会话契约 `SignedInUser.primaryOrgNode`(node 与 orgType 都不再带 code)、
+auth/rbac/assessment 三处 org-type options 端点、五个前端消费点(OrgPage 的 code 输入与展示、
+三个 CheckboxGroup 的 code hint、items options 类型)、二十余个测试夹具的裸 SQL。
+**用户类型与角色的 code 保留**(未裁决删除)。
+
+**seed 重写**:不再预置高校八类型与九条层级规则——本产品不是只给学校用的。新租户初始化 =
+一个组织类型「租户根」(名字是默认值,租户可改)+ 一个以租户命名的根节点。根由结构识别
+(`parent_id IS NULL`),不靠 code/systemKey/名字;高校模板整体挪进 **demo 数据**:demo 自带
+学院/年级/专业/班级四类型与链式规则,并把「学院」挂在根节点所站的类型之下——按名字幂等查找,
+不与租户已有的同名类型冲突。seed 的 org 漂移检查随 code 一起退场(名字本就是业务可改字段)。
+
+**根节点类型终身不变**(新不变量):`changeNodeType` 对根节点直接拒绝(复用 `ORG_NODE_IS_ROOT`,
+与移动/删除根同门)。理由写在代码里:根的特殊性在结构不在标记,而「租户的根类型」正是经由根节点
+所站的类型找到的——允许改它就剪断了唯一的识别线。根类型的删除保护无需新机制:根节点站在上面,
+`ORG_TYPE_IN_USE` 自然拒绝。新增测试覆盖两半;红验:关掉根守卫,用例转红。
+顺带,`effect-change-type` 的全部用例原先直接改**根**的类型——按新不变量重定向到根下的子节点,
+夹具路径整体对齐。
+
+验收:typecheck 零错;`pnpm test` 762 passed | 17 skipped;`pnpm test:browser` 101 passed;
+seed 6/6;`pnpm qualy generate` 报 nothing to generate;prettier 通过。

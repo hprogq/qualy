@@ -168,9 +168,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     HttpApiEndpoint.get('getUserTypeOptions', '/iam/user-type-options', {
       success: Schema.Struct({
-        orgTypes: Schema.Array(
-          Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
-        ),
+        orgTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
       }),
       error: [AccessDenied],
     }).middleware(Authenticated),
@@ -449,9 +447,8 @@ const signedInUser = Schema.Struct({
   userType: Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
   primaryOrgNode: Schema.Struct({
     id: Schema.String,
-    code: Schema.NullOr(Schema.String),
     name: Schema.String,
-    orgType: Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
+    orgType: Schema.Struct({ id: Schema.String, name: Schema.String }),
     lineage: Schema.Array(
       Schema.Struct({ id: Schema.String, name: Schema.String, typeName: Schema.String }),
     ),

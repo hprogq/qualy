@@ -78,12 +78,12 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const collegeType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into org_types (tenant_id, code, name) values (${tenant}, 'college', 'College')
+      insert into org_types (tenant_id, name) values (${tenant}, 'College')
       returning id`),
   ).id
   const clubType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into org_types (tenant_id, code, name) values (${tenant}, 'club', 'Club')
+      insert into org_types (tenant_id, name) values (${tenant}, 'Club')
       returning id`),
   ).id
   const node = one<{ id: string }>(

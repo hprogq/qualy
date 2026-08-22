@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { boundedInt, changed, kebabCode, trimmedName } from '@qualy/api-kit/schema'
+import { boundedInt, changed, trimmedName } from '@qualy/api-kit/schema'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
@@ -52,7 +52,6 @@ const sortOrder = boundedInt(0, 32767)
 // the two runtimes describe the same record differently.
 const orgType = Schema.Struct({
   id: Schema.String,
-  code: Schema.String,
   name: Schema.String,
   sortOrder: Schema.Number,
 })
@@ -61,7 +60,6 @@ const orgNode = Schema.Struct({
   id: Schema.String,
   parentId: Schema.NullOr(Schema.String),
   orgTypeId: Schema.String,
-  code: Schema.NullOr(Schema.String),
   name: Schema.String,
   depth: Schema.Number,
   sortOrder: Schema.Number,
@@ -87,6 +85,7 @@ export const orgApiGroup = HttpApiGroup.make('org')
       // has to deal with them, which is the point of declaring them here.
       error: [
         NodeNotFound,
+        NodeIsRoot,
         TypeNotFound,
         RuleViolation,
         AssignmentIncompatible,
@@ -126,7 +125,6 @@ export const orgApiGroup = HttpApiGroup.make('org')
   .add(
     HttpApiEndpoint.post('createType', '/org/types', {
       payload: Schema.Struct({
-        code: kebabCode,
         name: typeName,
         sortOrder: Schema.optional(sortOrder),
       }),
@@ -202,7 +200,6 @@ export const orgApiGroup = HttpApiGroup.make('org')
         parentId: id,
         orgTypeId: id,
         name: nodeName,
-        code: Schema.optional(kebabCode),
         sortOrder: Schema.optional(sortOrder),
       }),
       success: Schema.Struct({ node: orgNode }),

@@ -363,7 +363,6 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
                   options={(options.data?.orgTypes ?? []).map((type) => ({
                     value: type.id,
                     label: type.name,
-                    hint: type.code,
                   }))}
                   selected={orgTypeIds}
                   onChange={setOrgTypeIds}

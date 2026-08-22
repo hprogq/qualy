@@ -77,7 +77,7 @@ const seed = Effect.fn('seed')(function* () {
   ).id
   const orgType = one<{ id: string }>(
     yield* runSql(sql`
-      insert into org_types (tenant_id, code, name) values (${tenant}, 'u', 'U') returning id`),
+      insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`),
   ).id
   const root = one<{ id: string }>(
     yield* runSql(sql`
@@ -512,7 +512,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           ).id
           const orgType = one<{ id: string }>(
             yield* runSql(
-              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
             ),
           ).id
           yield* runSql(sql`
@@ -818,7 +818,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           // a second org node beside the root's child, outside a self anchor
           const orgType = one<{ id: string }>(
             yield* runSql(
-              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
             ),
           ).id
           const far = one<{ id: string }>(
@@ -896,7 +896,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           ).id
           const orgType = one<{ id: string }>(
             yield* runSql(
-              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
             ),
           ).id
           // an active, assignable role nobody is eligible for: it must not be
@@ -1041,7 +1041,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           ).id
           const orgType = one<{ id: string }>(
             yield* runSql(
-              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
             ),
           ).id
 
@@ -1330,7 +1330,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           ).id
           const orgType = one<{ id: string }>(
             yield* runSql(
-              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
             ),
           ).id
           // a sibling subtree the actor does not stand over
@@ -1573,7 +1573,7 @@ describe.runIf(postgresAvailable).concurrent('rbac as an Effect layer', () => {
           ).id
           const orgType = one<{ id: string }>(
             yield* runSql(
-              sql`select id from org_types where tenant_id = ${f.tenant} and code = 'u'`,
+              sql`select id from org_types where tenant_id = ${f.tenant} and name = 'U'`,
             ),
           ).id
           const permission = (code: string) =>

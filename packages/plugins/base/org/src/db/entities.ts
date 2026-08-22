@@ -48,23 +48,16 @@ export const OrgType = defineEntity({
         .referencedColumnNames('id')
         .foreignKeyName('org_types_tenant_id_tenants_id_fkey')
         .deleteRule('cascade'),
-    // stable identifier for seeds, rules and cross-references; never renamed
-    code: p.string().length(63),
     name: p.string().length(100),
     sortOrder: p.smallint().default(0),
     createdAt: p.datetime().defaultRaw('now()'),
     updatedAt: p.datetime().defaultRaw('now()'),
   },
   checks: [
-    { name: 'chk_org_types_code_format', expression: `code ~ ${codePattern}` },
     { name: 'chk_org_types_name_not_blank', expression: `btrim(name) <> ''` },
     { name: 'chk_org_types_sort_order_non_negative', expression: 'sort_order >= 0' },
   ],
   indexes: [
-    {
-      name: 'uq_org_types_tenant_code',
-      expression: 'create unique index uq_org_types_tenant_code on org_types (tenant_id, code)',
-    },
     {
       name: 'uq_org_types_tenant_name',
       expression: 'create unique index uq_org_types_tenant_name on org_types (tenant_id, name)',
@@ -120,8 +113,6 @@ export const OrgNode = defineEntity({
         .deleteRule('cascade'),
     parentId: p.uuid().nullable(),
     orgTypeId: p.uuid(),
-    // optional stable identifier; seeds and fixtures look nodes up by code
-    code: p.string().length(63).nullable(),
     name: p.string().length(255),
     // postgres ltree paths as plain strings; labels are node uuids with
     // hyphens stripped, joined by dots
@@ -132,7 +123,6 @@ export const OrgNode = defineEntity({
     updatedAt: p.datetime().defaultRaw('now()'),
   },
   checks: [
-    { name: 'chk_org_nodes_code_format', expression: `code IS NULL OR code ~ ${codePattern}` },
     { name: 'chk_org_nodes_name_not_blank', expression: `btrim(name) <> ''` },
     { name: 'chk_org_nodes_depth_non_negative', expression: 'depth >= 0' },
     { name: 'chk_org_nodes_sort_order_non_negative', expression: 'sort_order >= 0' },
@@ -149,11 +139,6 @@ export const OrgNode = defineEntity({
     {
       name: 'uq_org_nodes_tenant_path',
       expression: 'create unique index uq_org_nodes_tenant_path on org_nodes (tenant_id, path)',
-    },
-    {
-      name: 'uq_org_nodes_tenant_code',
-      expression:
-        'create unique index uq_org_nodes_tenant_code on org_nodes (tenant_id, code) where code is not null',
     },
     // sibling names are unique per parent; roots (parent IS NULL) get their
     // own partial index because postgres unique treats NULLs as distinct

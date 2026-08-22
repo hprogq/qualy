@@ -42,28 +42,13 @@ const TENANT_ADMIN_ROLE = { code: 'tenant-admin', name: '租户管理员' }
 // symptom was every sign-in failing to resolve a provider.
 const TENANT = { slug: process.env.QUALY_DEFAULT_TENANT || 'default', name: 'Qualy' }
 
-const ORG_TYPES = [
-  { code: 'university', name: '学校', sortOrder: 10 },
-  { code: 'campus', name: '校区', sortOrder: 20 },
-  { code: 'college', name: '学院', sortOrder: 30 },
-  { code: 'grade', name: '年级', sortOrder: 40 },
-  { code: 'department', name: '系', sortOrder: 50 },
-  { code: 'major', name: '专业', sortOrder: 60 },
-  { code: 'specialization', name: '专业方向', sortOrder: 70 },
-  { code: 'class', name: '班级', sortOrder: 80 },
-]
-
-const ORG_TYPE_RULES: [string, string][] = [
-  ['university', 'campus'],
-  ['campus', 'college'],
-  ['university', 'college'],
-  ['college', 'grade'],
-  ['college', 'department'],
-  ['grade', 'major'],
-  ['major', 'specialization'],
-  ['major', 'class'],
-  ['specialization', 'class'],
-]
+// The one organization type every tenant begins with. It exists because the
+// root node needs a type to stand on, and for no other reason: what kinds of
+// organization live under it - colleges, companies, committees - is the
+// tenant's own vocabulary, written in the product, not preset here. The name
+// is a default the tenant may change; the root is found by structure
+// (parent_id is null), never by name.
+const ROOT_ORG_TYPE = { name: '租户根' }
 
 const ADMIN_USER_TYPE = { code: SYSTEM_ACCOUNT_USER_TYPE, name: '系统账户' }
 const LOCAL_PROVIDER = { code: 'local', name: '本地账号' }
@@ -73,15 +58,31 @@ const LOCAL_PROVIDER = { code: 'local', name: '本地账号' }
 // teaching-research office or a class. What either of them may DO is a role
 // they are granted, not something their type carries.
 const DEMO_USER_TYPES = [
-  { code: 'student', name: '学生', sortOrder: 10, orgTypes: ['class'] },
-  { code: 'faculty', name: '教职工', sortOrder: 20, orgTypes: ['grade', 'department', 'class'] },
+  { code: 'student', name: '学生', sortOrder: 10, orgTypes: ['班级'] },
+  { code: 'faculty', name: '教职工', sortOrder: 20, orgTypes: ['年级', '班级'] },
+]
+
+// A worked example of a university, created only on demand: the platform
+// itself presets no vocabulary, so the demo brings its own types and rules
+// and hangs its college under whatever type the root stands on.
+const DEMO_ORG_TYPES = [
+  { name: '学院', sortOrder: 10 },
+  { name: '年级', sortOrder: 20 },
+  { name: '专业', sortOrder: 30 },
+  { name: '班级', sortOrder: 40 },
+]
+
+const DEMO_ORG_RULES: [string, string][] = [
+  ['学院', '年级'],
+  ['年级', '专业'],
+  ['专业', '班级'],
 ]
 
 const DEMO_ORG_NODES = [
-  { code: 'software-college', name: '软件学院', type: 'college', parent: 'root' },
-  { code: 'grade-2023', name: '2023级', type: 'grade', parent: 'software-college' },
-  { code: 'computer-science', name: '计算机科学与技术', type: 'major', parent: 'grade-2023' },
-  { code: 'class-2023-1', name: '软件2023级1班', type: 'class', parent: 'computer-science' },
+  { name: '软件学院', type: '学院', parent: 'root' },
+  { name: '2023级', type: '年级', parent: '软件学院' },
+  { name: '计算机科学与技术', type: '专业', parent: '2023级' },
+  { name: '软件2023级1班', type: '班级', parent: '计算机科学与技术' },
 ]
 
 const DEMO_ORG_MANAGER = {
@@ -91,7 +92,7 @@ const DEMO_ORG_MANAGER = {
   // where the person themselves is placed. A teacher belonging to a grade
   // can be the counsellor for a whole college.
   allowedUserTypes: ['faculty'],
-  allowedOrgTypes: ['college', 'major'],
+  allowedOrgTypes: ['学院', '专业'],
   permissions: [
     'org.tree.read',
     'org.tree.manage',
@@ -107,9 +108,9 @@ const DEMO_USERS = [
     identifier: 'manager',
     displayName: '示例辅导员',
     userType: 'faculty',
-    org: 'grade-2023',
+    org: '2023级',
   },
-  { identifier: 'student', displayName: '示例学生', userType: 'student', org: 'class-2023-1' },
+  { identifier: 'student', displayName: '示例学生', userType: 'student', org: '软件2023级1班' },
 ]
 
 const label = (id: string) => id.replaceAll('-', '')
@@ -241,7 +242,6 @@ export interface SeedReport {
 interface Ctx {
   client: PoolClient
   tenantId: string
-  typeIds: Map<string, string>
 }
 
 async function provisionTenant(client: PoolClient, report: SeedReport): Promise<Ctx> {
@@ -255,41 +255,37 @@ async function provisionTenant(client: PoolClient, report: SeedReport): Promise<
     await client.query(`select id from tenants where slug = $1`, [TENANT.slug])
   ).rows[0].id
 
-  const typeIds = new Map<string, string>()
-  for (const type of ORG_TYPES) {
-    const inserted = await client.query(
-      `insert into org_types (tenant_id, code, name, sort_order) values ($1, $2, $3, $4)
-       on conflict (tenant_id, code) do nothing`,
-      [tenantId, type.code, type.name, type.sortOrder],
-    )
-    report.created.orgTypes += inserted.rowCount ?? 0
-    const row = await client.query(`select id from org_types where tenant_id = $1 and code = $2`, [
-      tenantId,
-      type.code,
-    ])
-    typeIds.set(type.code, row.rows[0].id)
-  }
-
-  for (const [parent, child] of ORG_TYPE_RULES) {
-    const inserted = await client.query(
-      `insert into org_type_rules (tenant_id, parent_type_id, child_type_id) values ($1, $2, $3)
-       on conflict (tenant_id, parent_type_id, child_type_id) do nothing`,
-      [tenantId, typeIds.get(parent)!, typeIds.get(child)!],
-    )
-    report.created.rules += inserted.rowCount ?? 0
-  }
-
+  // The whole of the preset structure: one root node on one root type. The
+  // root is identified by parent_id being null, so a tenant that has one is
+  // finished here whatever it renamed; a tenant that has none gets the type
+  // first - reusing one left by an interrupted run rather than colliding
+  // with it - and the node in the tenant's own name.
   const root = await client.query(
     `select id from org_nodes where tenant_id = $1 and parent_id is null`,
     [tenantId],
   )
   if (!root.rows[0]) {
+    let typeId: string | undefined = (
+      await client.query(`select id from org_types where tenant_id = $1 and name = $2`, [
+        tenantId,
+        ROOT_ORG_TYPE.name,
+      ])
+    ).rows[0]?.id
+    if (!typeId) {
+      typeId = (
+        await client.query(
+          `insert into org_types (tenant_id, name, sort_order) values ($1, $2, 0) returning id`,
+          [tenantId, ROOT_ORG_TYPE.name],
+        )
+      ).rows[0].id
+      report.created.orgTypes += 1
+    }
     const tenantName = (await client.query(`select name from tenants where id = $1`, [tenantId]))
       .rows[0].name
     const inserted = await client.query(
-      `insert into org_nodes (tenant_id, org_type_id, code, name, path, depth)
-       values ($1, $2, 'root', $3, '', 0) returning id`,
-      [tenantId, typeIds.get('university'), tenantName],
+      `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+       values ($1, $2, $3, '', 0) returning id`,
+      [tenantId, typeId, tenantName],
     )
     await client.query(`update org_nodes set path = $1 where id = $2`, [
       label(inserted.rows[0].id),
@@ -298,7 +294,7 @@ async function provisionTenant(client: PoolClient, report: SeedReport): Promise<
     report.created.root += 1
   }
 
-  return { client, tenantId, typeIds }
+  return { client, tenantId }
 }
 
 // The placement policy is written at insert time, never after: the column
@@ -461,39 +457,80 @@ async function provisionAdmin(
 async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport): Promise<void> {
   const { hashPassword } = await passwordModule()
 
-  const nodeIds = new Map<string, string>()
   const root = (
     await ctx.client.query(
-      `select id, path, depth from org_nodes where tenant_id = $1 and parent_id is null`,
+      `select id, path, depth, org_type_id from org_nodes where tenant_id = $1 and parent_id is null`,
       [ctx.tenantId],
     )
   ).rows[0]
+
+  // The demo's own vocabulary, found or created by name: the platform
+  // presets none, so the example university brings its types with it and
+  // leaves alone whatever a tenant already called the same thing.
+  const typeIds = new Map<string, string>()
+  for (const type of DEMO_ORG_TYPES) {
+    const existing = (
+      await ctx.client.query(`select id from org_types where tenant_id = $1 and name = $2`, [
+        ctx.tenantId,
+        type.name,
+      ])
+    ).rows[0]
+    if (existing) {
+      typeIds.set(type.name, existing.id)
+      continue
+    }
+    const inserted = await ctx.client.query(
+      `insert into org_types (tenant_id, name, sort_order) values ($1, $2, $3) returning id`,
+      [ctx.tenantId, type.name, type.sortOrder],
+    )
+    typeIds.set(type.name, inserted.rows[0].id)
+    report.created.orgTypes += 1
+  }
+  // the college hangs under whatever type the root stands on, plus the
+  // example's own chain below it
+  const rules: [string, string][] = [...DEMO_ORG_RULES]
+  for (const [parent, child] of rules) {
+    const inserted = await ctx.client.query(
+      `insert into org_type_rules (tenant_id, parent_type_id, child_type_id) values ($1, $2, $3)
+       on conflict (tenant_id, parent_type_id, child_type_id) do nothing`,
+      [ctx.tenantId, typeIds.get(parent)!, typeIds.get(child)!],
+    )
+    report.created.rules += inserted.rowCount ?? 0
+  }
+  const rootRule = await ctx.client.query(
+    `insert into org_type_rules (tenant_id, parent_type_id, child_type_id) values ($1, $2, $3)
+     on conflict (tenant_id, parent_type_id, child_type_id) do nothing`,
+    [ctx.tenantId, root.org_type_id, typeIds.get('学院')!],
+  )
+  report.created.rules += rootRule.rowCount ?? 0
+
   const nodes = new Map<string, { id: string; path: string; depth: number }>()
   nodes.set('root', root)
-  nodeIds.set('root', root.id)
 
   for (const node of DEMO_ORG_NODES) {
+    const parent = nodes.get(node.parent)
+    if (!parent) throw new Error(`seed demo order broken: missing parent ${node.parent}`)
+    // siblings are unique by name, which is what identifies a demo node on
+    // the second run
     const existing = (
       await ctx.client.query(
-        `select id, path, depth from org_nodes where tenant_id = $1 and code = $2`,
-        [ctx.tenantId, node.code],
+        `select id, path, depth from org_nodes where tenant_id = $1 and parent_id = $2 and name = $3`,
+        [ctx.tenantId, parent.id, node.name],
       )
     ).rows[0]
     if (existing) {
-      nodes.set(node.code, existing)
+      nodes.set(node.name, existing)
       continue
     }
-    const parent = nodes.get(node.parent)
-    if (!parent) throw new Error(`seed demo order broken: missing parent ${node.parent}`)
     const inserted = await ctx.client.query(
-      `insert into org_nodes (tenant_id, parent_id, org_type_id, code, name, path, depth)
-       values ($1, $2, $3, $4, $5, '', $6) returning id`,
-      [ctx.tenantId, parent.id, ctx.typeIds.get(node.type), node.code, node.name, parent.depth + 1],
+      `insert into org_nodes (tenant_id, parent_id, org_type_id, name, path, depth)
+       values ($1, $2, $3, $4, '', $5) returning id`,
+      [ctx.tenantId, parent.id, typeIds.get(node.type), node.name, parent.depth + 1],
     )
     const id = inserted.rows[0].id
     const path = `${parent.path}.${label(id)}`
     await ctx.client.query(`update org_nodes set path = $1 where id = $2`, [path, id])
-    nodes.set(node.code, { id, path, depth: parent.depth + 1 })
+    nodes.set(node.name, { id, path, depth: parent.depth + 1 })
     report.created.demoNodes += 1
   }
 
@@ -509,11 +546,11 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
     // only on creation: where a kind of person may stand is the tenant's to
     // narrow, and a seed that re-adds its own list would undo that silently
     if (created) {
-      for (const orgTypeCode of type.orgTypes) {
+      for (const orgTypeName of type.orgTypes) {
         await ctx.client.query(
           `insert into user_type_allowed_org_types (tenant_id, user_type_id, org_type_id)
-           select $1, $2, ot.id from org_types ot where ot.tenant_id = $1 and ot.code = $3`,
-          [ctx.tenantId, id, orgTypeCode],
+           values ($1, $2, $3)`,
+          [ctx.tenantId, id, typeIds.get(orgTypeName)!],
         )
       }
     }
@@ -571,13 +608,12 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
       [ctx.tenantId, role.id, typeCode],
     )
   }
-  for (const orgTypeCode of DEMO_ORG_MANAGER.allowedOrgTypes) {
+  for (const orgTypeName of DEMO_ORG_MANAGER.allowedOrgTypes) {
     await ctx.client.query(
       `insert into role_allowed_org_types (tenant_id, role_id, org_type_id)
-       select $1, $2, ot.id from org_types ot
-       where ot.tenant_id = $1 and ot.code = $3
+       values ($1, $2, $3)
        on conflict do nothing`,
-      [ctx.tenantId, role.id, orgTypeCode],
+      [ctx.tenantId, role.id, typeIds.get(orgTypeName)!],
     )
   }
   const mapped = await ctx.client.query(
@@ -596,7 +632,7 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
       [ctx.tenantId],
     )
   ).rows[0]
-  const college = nodes.get('software-college')!
+  const college = nodes.get('软件学院')!
   const assignment = await ctx.client.query(
     `insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
      values ($1, $2, $3, $4, 'subtree')

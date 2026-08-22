@@ -1456,8 +1456,8 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           // it resolves to no node and the walk steps over it
           const nowhere = one<{ id: string }>(
             yield* runSql(sql`
-              insert into org_types (tenant_id, code, name)
-              values (${f.t}, 'faculty', 'Faculty') returning id`),
+              insert into org_types (tenant_id, name)
+              values (${f.t}, 'Faculty') returning id`),
           ).id
           const at = (id: string, type: string, quorum: unknown) => ({
             id,

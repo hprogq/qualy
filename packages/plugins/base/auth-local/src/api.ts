@@ -24,7 +24,6 @@ const signedInUser = Schema.Struct({
   userType: Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
   primaryOrgNode: Schema.Struct({
     id: Schema.String,
-    code: Schema.NullOr(Schema.String),
     name: Schema.String,
   }),
   tenant: Schema.Struct({ id: Schema.String, slug: Schema.String, name: Schema.String }),

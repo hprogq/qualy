@@ -190,7 +190,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
     HttpApiEndpoint.get('getRoleOptions', '/iam/role-options', {
       success: Schema.Struct({
         userTypes: Schema.Array(typeOptionShape),
-        orgTypes: Schema.Array(typeOptionShape),
+        // an org type has no code: it is named, and the name is the identity
+        orgTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
       }),
       error: [AccessDenied],
     }).middleware(Authenticated),

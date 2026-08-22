@@ -206,10 +206,7 @@ function NodePanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">
-          {node.name}
-          {node.code && <span className="ml-2 text-xs text-muted-foreground">{node.code}</span>}
-        </CardTitle>
+        <CardTitle className="text-base">{node.name}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {!node.manageable && <p className="text-sm text-muted-foreground">{format(m.readOnly)}</p>}
@@ -367,7 +364,6 @@ function TypeRuleAdmin({
   onAction: (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
 }) {
   const { format } = useI18n()
-  const [typeCode, setTypeCode] = useState('')
   const [typeName, setTypeName] = useState('')
   const [ruleParent, setRuleParent] = useState('')
   const [ruleChild, setRuleChild] = useState('')
@@ -383,10 +379,7 @@ function TypeRuleAdmin({
           <ul className="space-y-1 text-sm">
             {types.map((type) => (
               <li key={type.id} className="flex items-center justify-between">
-                <span>
-                  {type.name}
-                  <span className="ml-2 text-xs text-muted-foreground">{type.code}</span>
-                </span>
+                <span>{type.name}</span>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -399,23 +392,15 @@ function TypeRuleAdmin({
           </ul>
           <div className="flex gap-2">
             <Input
-              placeholder={format(m.codePlaceholder)}
-              value={typeCode}
-              onChange={(event) => setTypeCode(event.target.value)}
-            />
-            <Input
               placeholder={format(m.namePlaceholder)}
               value={typeName}
               onChange={(event) => setTypeName(event.target.value)}
             />
             <Button
               size="sm"
-              disabled={typeCode.trim() === '' || typeName.trim() === ''}
+              disabled={typeName.trim() === ''}
               onClick={() =>
-                void onAction(
-                  api.org.createType({ payload: { code: typeCode, name: typeName } }),
-                ).then(() => {
-                  setTypeCode('')
+                void onAction(api.org.createType({ payload: { name: typeName } })).then(() => {
                   setTypeName('')
                 })
               }

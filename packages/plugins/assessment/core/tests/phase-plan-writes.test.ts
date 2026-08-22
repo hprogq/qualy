@@ -92,8 +92,8 @@ const seed = (slug: string) =>
     ).id
     const classType = one<{ id: string }>(
       yield* runSql(sql`
-        insert into org_types (tenant_id, code, name)
-        values (${tenant}, 'class', 'class') returning id`),
+        insert into org_types (tenant_id, name)
+        values (${tenant}, 'class') returning id`),
     ).id
     const root = one<{ id: string }>(
       yield* runSql(sql`

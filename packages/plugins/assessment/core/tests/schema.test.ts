@@ -23,7 +23,7 @@ describe.runIf(postgresAvailable)('assessment schema', () => {
     const tenantId = await createTenant(slug)
     const orgTypeId = (
       await db.row<{ id: string }>(
-        `insert into org_types (tenant_id, code, name) values ($1, 'college', 'College') returning id`,
+        `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
         [tenantId],
       )
     ).id

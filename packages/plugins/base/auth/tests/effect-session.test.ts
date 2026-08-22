@@ -83,7 +83,7 @@ const seed = Effect.fn('seed')(function* (tokens: {
   ).id
   const orgType = one<{ id: string }>(
     yield* runSql(
-      sql`insert into org_types (tenant_id, code, name) values (${tenant},'u','U') returning id`,
+      sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
     ),
   ).id
   const node = one<{ id: string }>(

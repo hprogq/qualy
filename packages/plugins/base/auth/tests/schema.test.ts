@@ -23,7 +23,7 @@ describe.runIf(postgresAvailable)('auth schema tenant boundary', () => {
     ids.tenant = await row(`insert into tenants (slug, name) values ('a', 'A') returning id`)
     ids.otherTenant = await row(`insert into tenants (slug, name) values ('b', 'B') returning id`)
     const orgType = await row(
-      `insert into org_types (tenant_id, code, name) values ($1, 'unit', 'U') returning id`,
+      `insert into org_types (tenant_id, name) values ($1, 'U') returning id`,
       [ids.tenant],
     )
     ids.root = await row(

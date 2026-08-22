@@ -883,9 +883,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.get('itemOptions', '/assessment/batches/:batchId/item-options', {
       params: Schema.Struct({ batchId: id }),
       success: Schema.Struct({
-        orgTypes: Schema.Array(
-          Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
-        ),
+        orgTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         roles: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
       }),
       error: [BatchNotFound, AccessDenied],

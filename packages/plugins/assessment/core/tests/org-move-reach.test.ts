@@ -78,8 +78,8 @@ const seed = (slug: string) =>
     const type = (code: string) =>
       Effect.map(
         runSql(sql`
-          insert into org_types (tenant_id, code, name)
-          values (${tenant}, ${code}, ${code}) returning id`),
+          insert into org_types (tenant_id, name)
+          values (${tenant}, ${code}) returning id`),
         (result) => one<{ id: string }>(result).id,
       )
     const schoolType = yield* type('school')

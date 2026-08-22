@@ -55,7 +55,7 @@ const answerOf = (exit: Exit.Exit<unknown, unknown>): string =>
 const secondStage = (f: Seeded) =>
   Effect.gen(function* () {
     const collegeType = one<{ id: string }>(
-      yield* runSql(sql`select id from org_types where tenant_id = ${f.t} and code = 'college'`),
+      yield* runSql(sql`select id from org_types where tenant_id = ${f.t} and name = 'College'`),
     ).id
     const collegeA = one<{ id: string }>(
       yield* runSql(sql`select id from org_nodes where tenant_id = ${f.t} and name = 'College A'`),
