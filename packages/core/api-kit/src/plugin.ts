@@ -3,6 +3,7 @@ import { HttpApi, HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import type { HttpApi as HttpApiType, HttpApiGroup } from 'effect/unstable/httpapi'
 import { ExtensionPoint, Plugin, type AnyLayer, type PluginFeature } from '@qualy/plugin-kit'
 import { QUALY_API_ID, QUALY_API_PREFIX } from './index.ts'
+import { Api as BrowserSafeApi } from './local.ts'
 
 // The http api's face in the descriptor model.
 //
@@ -52,20 +53,11 @@ export const Api = {
   /**
    * The local api a plugin implements its group against.
    *
-   * It exists so a plugin builds handlers without importing the aggregate
-   * that will contain them, and it carries the aggregate's identity - the
-   * api id, which brands the handler layer, and the prefix, which places the
-   * routes. Both are the aggregate's business: a plugin that spelled them
-   * would be repeating somebody else's decision, and a typo would surface as
-   * a handler layer the aggregate cannot accept or a route the document does
-   * not describe.
+   * Defined in `./local.ts` and re-exported here so a plugin's server half
+   * keeps one import: the browser reaches for the leaf directly, because
+   * this module leads to the reference ui and the whole server surface.
    */
-  local: <const A extends readonly [HttpApiGroup.Constraint, ...HttpApiGroup.Constraint[]]>(
-    ...groups: A
-  ) =>
-    HttpApi.make(QUALY_API_ID)
-      .add(...groups)
-      .prefix(QUALY_API_PREFIX),
+  local: BrowserSafeApi.local,
 
   /** declares one group and the handlers behind it */
   group: (group: HttpApiGroup.Constraint, handlers: AnyLayer): PluginFeature =>

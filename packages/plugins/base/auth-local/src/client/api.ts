@@ -1,4 +1,4 @@
-import { Api } from '@qualy/api-kit/plugin'
+import { Api } from '@qualy/api-kit/local'
 import { authLocalApiGroup } from '../api.ts'
 
 // this plugin's typed client surface: exactly the groups its screens call

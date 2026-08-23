@@ -31,6 +31,33 @@ const NODE_ONLY = [
   'sirv',
 ]
 
+/**
+ * Modules that mount an api rather than call one.
+ *
+ * These resolve in a browser - they come from the same package as the typed
+ * client - so nothing breaks loudly when one arrives. What arrives with them
+ * is weight: `httpApiScalar` embeds the entire reference ui, and importing
+ * the module that mounts it put 3.1 MB of api documentation into every page
+ * load. The graph is the only witness, because the offending import named
+ * nothing about documentation.
+ *
+ * Deliberately short. Upstream's own client surface reaches a few
+ * server-shaped modules (`HttpApiSchema` types multipart bodies, so
+ * `Multipart` and `multipasta` come along; ~100 KB of source between them),
+ * and naming those here would assert about upstream's internals rather than
+ * about anything this repository decides.
+ */
+const MOUNTS_THE_API = ['httpApiScalar', 'HttpApiBuilder']
+
+/**
+ * What one plugin's client surface may weigh, bundled alone.
+ *
+ * A ceiling rather than a budget: the entries sit near 150 KB, and this only
+ * catches the next module that arrives by the megabyte - which is how the
+ * reference ui went unnoticed for as long as it did.
+ */
+const WEIGHT_CEILING = 600 * 1024
+
 // Every plugin that ships one, discovered rather than listed: the incident
 // was in a chain each plugin has its own copy of, and a probe naming one
 // plugin proves nothing about the next one somebody writes.
@@ -59,7 +86,7 @@ describe('what the browser bundle is allowed to reach', () => {
 function probe(entry: string) {
   it(`builds ${entry} without pulling in anything node-only`, async () => {
     const externals: string[] = []
-    await build({
+    const result = await build({
       logLevel: 'silent',
       build: {
         write: false,
@@ -88,5 +115,32 @@ function probe(entry: string) {
       [...new Set(externals)].sort(),
       'the api definition reached a node-only module; an error class or a middleware is declared in the same file as the service that uses it',
     ).toEqual([])
+
+    // The graph itself, not the externals: these modules bundle happily and
+    // pay for it in bytes, so the assertion is on what was pulled in.
+    const chunks = (Array.isArray(result) ? result : [result]).flatMap((one) =>
+      'output' in one ? one.output : [],
+    )
+    const reached = chunks.flatMap((chunk) =>
+      chunk.type === 'chunk' ? Object.keys(chunk.modules) : [],
+    )
+    const mounting = [
+      ...new Set(
+        reached.flatMap((id) => MOUNTS_THE_API.filter((name) => id.includes(name))).sort(),
+      ),
+    ]
+    expect(
+      mounting,
+      'the browser reached a module that mounts the api instead of calling it; import the browser-safe leaf (@qualy/api-kit/local), not the module that serves handlers',
+    ).toEqual([])
+
+    const bytes = chunks.reduce(
+      (sum, chunk) => sum + (chunk.type === 'chunk' ? chunk.code.length : 0),
+      0,
+    )
+    expect(
+      bytes,
+      `${entry} bundles to ${Math.round(bytes / 1024)} KB on its own; something large joined the graph`,
+    ).toBeLessThan(WEIGHT_CEILING)
   }, 120_000)
 }

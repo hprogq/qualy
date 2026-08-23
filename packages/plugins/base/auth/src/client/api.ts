@@ -1,4 +1,4 @@
-import { Api } from '@qualy/api-kit/plugin'
+import { Api } from '@qualy/api-kit/local'
 import { accessApiGroup } from '@qualy/plugin-rbac/api'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
 
