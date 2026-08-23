@@ -108,6 +108,14 @@ export function PageHeader({
   )
 }
 
+/**
+ * One part of a screen: a heading, what it says, and what it holds.
+ *
+ * A rule above it and nothing else. It used to be a card, and a screen of
+ * five settings then read as five unrelated objects stacked on a page -
+ * boxes inside a box, each with its own edge competing with the edges of the
+ * rows inside it. What separates two parts of one thing is a line.
+ */
 export function Panel({
   title,
   description,
@@ -120,16 +128,16 @@ export function Panel({
   children: ReactNode
 }) {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div className="space-y-1">
-          <CardTitle className="text-base">{title}</CardTitle>
+    <section className="flex min-w-0 flex-col gap-3 border-t pt-4 first:border-t-0 first:pt-0">
+      <div className="flex min-w-0 items-start justify-between gap-4">
+        <div className="min-w-0 space-y-0.5">
+          <h2 className="text-sm font-semibold">{title}</h2>
           {description && <p className="text-xs text-muted-foreground">{description}</p>}
         </div>
         {actions}
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
+      </div>
+      <div className="flex min-w-0 flex-col gap-4">{children}</div>
+    </section>
   )
 }
 

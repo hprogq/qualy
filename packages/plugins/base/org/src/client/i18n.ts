@@ -150,6 +150,25 @@ const i18n = definePluginMessages({
     },
     newTypeTitle: { id: 'org/type/new', defaultMessage: 'New type' },
     saved: { id: 'org/state/saved', defaultMessage: 'Saved.' },
+    save: { id: 'org/action/save', defaultMessage: 'Save' },
+    expandAll: { id: 'org/tree/expand-all', defaultMessage: 'Expand all' },
+    manageableCount: {
+      id: 'org/tree/manageable-count',
+      defaultMessage: '{count} you may manage',
+    },
+    chosenCount: { id: 'org/type/chosen-count', defaultMessage: '{count} chosen' },
+    handleOneByOne: { id: 'org/node/handle-one-by-one', defaultMessage: 'Open the first' },
+    deleteChecksServer: {
+      id: 'org/node/delete-checks-server',
+      defaultMessage: 'People and role grants are checked when you delete.',
+    },
+    typeFreeHint: { id: 'org/type/free-hint', defaultMessage: 'No unit uses this type.' },
+    ladderTitle: { id: 'org/type/ladder', defaultMessage: 'Hierarchy' },
+    ladderEmpty: { id: 'org/type/ladder-empty', defaultMessage: 'No rules yet.' },
+    ruleCount: {
+      id: 'org/type/rule-count',
+      defaultMessage: '{count, plural, one {# rule} other {# rules}}',
+    },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof orgErrors>>()({
     ORG_TYPE_NOT_FOUND: {

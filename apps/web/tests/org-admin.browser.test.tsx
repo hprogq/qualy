@@ -100,7 +100,7 @@ describe('the organization screen', () => {
       (await typePick.element().querySelectorAll('option')).length,
       'one placeholder and one legal type',
     ).toBe(2)
-    await page.getByRole('textbox', { name: '名称' }).nth(1).fill('软件2302班')
+    await page.getByRole('textbox', { name: '名称' }).fill('软件2302班')
     await typePick.selectOptions('班级')
     await page.getByRole('button', { name: '创建' }).click()
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))

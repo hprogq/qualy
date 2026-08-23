@@ -324,7 +324,8 @@ describe('user types screen', () => {
       children: <UserTypesPage />,
     })
 
-    await expect.element(page.getByText('新建用户类型')).toBeInTheDocument()
+    // creating is an action on the page, not a form parked under the list
+    await page.getByRole('button', { name: '新建用户类型' }).click()
     await page.getByRole('textbox', { name: 'code' }).fill('faculty')
     await page.getByRole('textbox', { name: '名称' }).fill('教职工')
     // a type is created complete: until it says where its people may stand
@@ -421,7 +422,11 @@ describe('roles screen', () => {
     expect(await page.getByRole('group', { name: '可以授予这些用户类型' }).elements()).toHaveLength(
       1,
     )
-    expect(await page.getByRole('group', { name: '这个角色在哪里生效' }).elements()).toHaveLength(1)
+    // and creation, which draws from nothing, still asks its two questions
+    await page.getByRole('button', { name: '新建组织角色' }).click()
+    await expect
+      .element(page.getByRole('group', { name: '这个角色在哪里生效' }))
+      .toBeInTheDocument()
   })
 
   // The form used to collect permissions and eligibility and then send only
@@ -446,6 +451,7 @@ describe('roles screen', () => {
       children: <RolesPage />,
     })
 
+    await page.getByRole('button', { name: '新建组织角色' }).click()
     await expect
       .element(page.getByRole('group', { name: '这个角色在哪里生效' }))
       .toBeInTheDocument()

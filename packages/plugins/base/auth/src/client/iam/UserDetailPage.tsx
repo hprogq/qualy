@@ -9,7 +9,6 @@ import { PageContainer } from '@qualy/ui/page-container'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { Card, CardContent } from '@qualy/ui/card'
 import { Input } from '@qualy/ui/input'
 import { initialsOf } from '@qualy/ui/person'
 import { iamMessages as m } from '../i18n.ts'
@@ -115,46 +114,44 @@ export default function UserDetailPage() {
           <div className="space-y-4">
             {/* who this is, before what can be done to them: the header says
                 the person, the panels below carry the controls */}
-            <Card>
-              <CardContent className="flex flex-wrap items-center gap-4 pt-5">
-                <Avatar className="size-12 rounded-xl">
-                  <AvatarFallback className="rounded-xl bg-primary text-sm font-medium text-primary-foreground">
-                    {initialsOf(record.displayName)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1 space-y-0.5">
-                  <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
-                    {record.displayName}
-                    {record.status === 'disabled' ? (
-                      <Badge variant="destructive">{format(m.disabledBadge)}</Badge>
-                    ) : (
-                      <Badge variant="secondary">{format(m.statusActive)}</Badge>
-                    )}
-                  </p>
-                  <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-                    {record.businessNo && <span className="tabular-nums">{record.businessNo}</span>}
-                    <span>{record.userType.name}</span>
-                    <span className="min-w-0 truncate">
-                      {(user.data?.orgPath ?? []).map((node) => node.name).join(' / ')}
-                    </span>
-                  </p>
-                </div>
-                {manageable && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={setStatus.isPending}
-                    onClick={() =>
-                      record.status === 'active'
-                        ? setConfirmingDisable(true)
-                        : setStatus.mutate('active')
-                    }
-                  >
-                    {format(record.status === 'active' ? m.disable : m.enable)}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+            <div className="flex flex-wrap items-center gap-4 border-b pb-4">
+              <Avatar className="size-12 rounded-xl">
+                <AvatarFallback className="rounded-xl bg-primary text-sm font-medium text-primary-foreground">
+                  {initialsOf(record.displayName)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+                  {record.displayName}
+                  {record.status === 'disabled' ? (
+                    <Badge variant="destructive">{format(m.disabledBadge)}</Badge>
+                  ) : (
+                    <Badge variant="secondary">{format(m.statusActive)}</Badge>
+                  )}
+                </p>
+                <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+                  {record.businessNo && <span className="tabular-nums">{record.businessNo}</span>}
+                  <span>{record.userType.name}</span>
+                  <span className="min-w-0 truncate">
+                    {(user.data?.orgPath ?? []).map((node) => node.name).join(' / ')}
+                  </span>
+                </p>
+              </div>
+              {manageable && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={setStatus.isPending}
+                  onClick={() =>
+                    record.status === 'active'
+                      ? setConfirmingDisable(true)
+                      : setStatus.mutate('active')
+                  }
+                >
+                  {format(record.status === 'active' ? m.disable : m.enable)}
+                </Button>
+              )}
+            </div>
             <Panel title={format(m.userDetailTitle)}>
               <Feedback message={feedback} />
               {saved && !feedback && <Feedback message={format(m.saved)} tone="success" />}

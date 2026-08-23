@@ -1,10 +1,12 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, PageHeader } from '@qualy/ui/admin'
-import { PageContainer } from '@qualy/ui/page-container'
-import { Card, CardContent } from '@qualy/ui/card'
+import { AsyncSection } from '@qualy/ui/admin'
+import { Screen } from '@qualy/ui/screen'
+import { Button } from '@qualy/ui/button'
+import { PlusIcon } from 'lucide-react'
 import { cn } from '@qualy/ui/cn'
 import { iamMessages as m } from '../i18n.ts'
 import { UserTypeEditor } from './UserTypeEditor.tsx'
@@ -18,14 +20,25 @@ export default function UserTypesPage() {
   const orpc = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('type')
+  const [creating, setCreating] = useState(false)
 
   const types = useQuery(orpc.identity.listUserTypes.queryOptions({}))
   const canManage = types.data?.capabilities.canManage ?? false
   const current = types.data?.userTypes.find((type) => type.id === selected)
 
   return (
-    <PageContainer size="wide" className="space-y-5">
-      <PageHeader title={format(m.userTypesTitle)} description={format(m.userTypesHint)} />
+    <Screen
+      title={format(m.userTypesTitle)}
+      description={format(m.userTypesHint)}
+      actions={
+        canManage && (
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <PlusIcon aria-hidden />
+            {format(m.newUserType)}
+          </Button>
+        )
+      }
+    >
       <AsyncSection
         pending={types.isPending}
         error={types.isError ? formatError(types.error) : null}
@@ -33,81 +46,85 @@ export default function UserTypesPage() {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void types.refetch()}
       >
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-          <Card className="lg:sticky lg:top-20">
-            <CardContent className="pt-5">
-              {(types.data?.userTypes ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">{format(m.userTypesEmpty)}</p>
-              ) : (
-                <ul className="flex flex-col gap-0.5">
-                  {(types.data?.userTypes ?? []).map((type) => (
-                    <li key={type.id}>
-                      <button
-                        type="button"
-                        aria-current={type.id === selected}
-                        className={cn(
-                          'flex w-full flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left hover:bg-accent',
-                          type.id === selected && 'bg-accent',
+        <div className="grid items-start gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
+          {(types.data?.userTypes ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">{format(m.userTypesEmpty)}</p>
+          ) : (
+            <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
+              {(types.data?.userTypes ?? []).map((type) => (
+                <button
+                  key={type.id}
+                  type="button"
+                  aria-current={type.id === selected}
+                  className={cn(
+                    'flex min-w-0 flex-col gap-0.5 border-t px-3 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
+                    type.id === selected && 'bg-accent',
+                  )}
+                  onClick={() => setSelected(type.id === selected ? '' : type.id)}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={cn(
+                        'min-w-0 truncate text-sm',
+                        type.id === selected ? 'font-semibold' : 'font-medium',
+                      )}
+                    >
+                      {type.name}
+                    </span>
+                    {type.isSystem && (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {format(m.systemBadge)}
+                      </span>
+                    )}
+                    {type.status === 'disabled' && (
+                      <span className="shrink-0 text-xs text-destructive">
+                        {format(m.disabledBadge)}
+                      </span>
+                    )}
+                    <span className="flex-1" />
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {format(m.userCount, { count: type.userCount })}
+                    </span>
+                  </span>
+                  <span
+                    data-testid="type-summary"
+                    data-users={String(type.userCount)}
+                    data-placement={type.placementPolicy.mode}
+                    className="min-w-0 truncate text-xs text-muted-foreground"
+                  >
+                    {type.placementPolicy.mode === 'allow-list'
+                      ? format(m.placementCount, {
+                          count: type.placementPolicy.orgTypeIds.length,
+                        })
+                      : format(
+                          type.placementPolicy.mode === 'tenant-root'
+                            ? m.placementTenantRoot
+                            : m.placementUnrestricted,
                         )}
-                        onClick={() => setSelected(type.id === selected ? '' : type.id)}
-                      >
-                        <span className="text-sm font-medium">
-                          {type.name}
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            {type.code}
-                          </span>
-                          {type.isSystem && (
-                            <span className="ml-2 text-xs font-normal text-muted-foreground">
-                              {format(m.systemBadge)}
-                            </span>
-                          )}
-                          {type.status === 'disabled' && (
-                            <span className="ml-2 text-xs font-normal text-destructive">
-                              {format(m.disabledBadge)}
-                            </span>
-                          )}
-                        </span>
-                        <span
-                          data-testid="type-summary"
-                          data-users={String(type.userCount)}
-                          data-placement={type.placementPolicy.mode}
-                          className="text-xs text-muted-foreground"
-                        >
-                          {format(m.userCount, { count: type.userCount })}
-                          {` · ${
-                            type.placementPolicy.mode === 'allow-list'
-                              ? format(m.placementCount, {
-                                  count: type.placementPolicy.orgTypeIds.length,
-                                })
-                              : format(
-                                  type.placementPolicy.mode === 'tenant-root'
-                                    ? m.placementTenantRoot
-                                    : m.placementUnrestricted,
-                                )
-                          }`}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
-          <div className="space-y-4">
-            {current ? (
-              <UserTypeEditor userType={current} canManage={canManage} />
-            ) : (
-              <Card>
-                <CardContent className="pt-6 text-sm text-muted-foreground">
-                  {format(m.userTypeSelectHint)}
-                </CardContent>
-              </Card>
-            )}
-            {canManage && <NewUserTypeForm onCreated={setSelected} />}
-          </div>
+          {current ? (
+            <UserTypeEditor userType={current} canManage={canManage} />
+          ) : (
+            <p className="text-sm text-muted-foreground">{format(m.userTypeSelectHint)}</p>
+          )}
         </div>
       </AsyncSection>
-    </PageContainer>
+
+      {canManage && (
+        <NewUserTypeForm
+          open={creating}
+          onClose={() => setCreating(false)}
+          onCreated={(id) => {
+            setCreating(false)
+            setSelected(id)
+          }}
+        />
+      )}
+    </Screen>
   )
 }

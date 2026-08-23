@@ -1,26 +1,32 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
+import { PlusIcon, SearchIcon } from 'lucide-react'
 import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, Feedback, PageHeader } from '@qualy/ui/admin'
-import { PageContainer } from '@qualy/ui/page-container'
+import { AsyncSection, Feedback } from '@qualy/ui/admin'
+import { Screen, SectionHead, Segmented } from '@qualy/ui/screen'
+import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Button } from '@qualy/ui/button'
-import { Card, CardContent } from '@qualy/ui/card'
 import { Input } from '@qualy/ui/input'
 import { NativeSelect } from '@qualy/ui/native-select'
+import { initialsOf } from '@qualy/ui/person'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
-import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
+import { cn } from '@qualy/ui/cn'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
 import { OrgTree } from './OrgTree.tsx'
 import { authApi } from '../api.ts'
 
-// People are administered where they stand, so the screen is the
-// organization first: the tree on the left says where you are looking, the
-// roster on the right says who stands there. The anchor, the scope and the
-// search term live in the query string - exactly the state someone wants
-// back after a reload or in a link sent to a colleague.
+// People are administered where they stand, so the screen reads left to
+// right: the unit you are looking at, the people standing there, and the one
+// you have open. Three columns rather than a list and a route, because
+// checking who somebody is should not cost the roster you were reading.
+//
+// The unit, the scope, the filters and the open person all live in the query
+// string: exactly the state somebody wants back after a reload, or in a link
+// sent to a colleague.
 export default function UsersPage() {
   const api = useApi(authApi)
   const runApi = useRunApi()
@@ -30,8 +36,10 @@ export default function UsersPage() {
   const [scope, setScope] = usePageQueryState('scope', 'subtree')
   const [typeFilter, setTypeFilter] = usePageQueryState('type')
   const [search, setSearch] = usePageQueryState('q')
+  const [openUserId, setOpenUserId] = usePageQueryState('user')
   const [draft, setDraft] = useState(search)
   const [treeSearch, setTreeSearch] = useState('')
+  const [creating, setCreating] = useState(false)
 
   // one call gives the units this caller may see, the types they may hand
   // out, and the tree the left pane draws - no permission beyond its own
@@ -46,18 +54,18 @@ export default function UsersPage() {
     return () => clearTimeout(timer)
   }, [draft, setSearch])
 
-  const filterQuery = {
+  const filter = {
     orgNodeId: active?.orgNodeId ?? '',
     scope: scope === 'self' ? ('self' as const) : ('subtree' as const),
     ...(search ? { search } : {}),
     ...(typeFilter ? { userTypeId: typeFilter } : {}),
   }
   const users = useInfiniteQuery({
-    queryKey: [...orpc.identity.listUsers.key({ query: filterQuery }), 'infinite'],
+    queryKey: [...orpc.identity.listUsers.key({ query: filter }), 'infinite'],
     queryFn: ({ pageParam }) =>
       runApi(
         api.identity.listUsers({
-          query: { ...filterQuery, ...(pageParam !== undefined ? { cursor: pageParam } : {}) },
+          query: { ...filter, ...(pageParam !== undefined ? { cursor: pageParam } : {}) },
         }),
       ),
     initialPageParam: undefined as string | undefined,
@@ -94,172 +102,272 @@ export default function UsersPage() {
   }
 
   return (
-    <PageContainer size="wide" className="space-y-5">
-      <PageHeader title={format(m.usersTitle)} description={format(m.usersHint)} />
+    <Screen
+      title={format(m.usersTitle)}
+      description={format(m.usersHint)}
+      size="wide"
+      actions={
+        active?.manageable && (
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <PlusIcon aria-hidden />
+            {format(m.newUser)}
+          </Button>
+        )
+      }
+    >
       {options.isError && <Feedback message={formatError(options.error)} />}
       {!options.isPending && nodes.length === 0 ? (
         <p className="text-sm text-muted-foreground">{format(m.noAnchors)}</p>
       ) : (
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-          <Card className="lg:sticky lg:top-20">
-            <CardContent className="space-y-3 pt-5">
+        <div className="grid items-start gap-6 lg:grid-cols-[15rem_minmax(0,1fr)_19rem]">
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="relative">
+              <SearchIcon
+                aria-hidden
+                className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
+              />
               <Input
                 value={treeSearch}
                 placeholder={format(m.treeSearch)}
                 aria-label={format(m.treeSearch)}
                 onChange={(event) => setTreeSearch(event.target.value)}
+                className="pl-9"
               />
-              <div className="max-h-[60vh] overflow-auto">
-                <OrgTree
-                  nodes={treeMatches}
-                  flat={treeTerm !== ''}
-                  emptyLabel={format(treeTerm === '' ? m.noAnchors : m.treeSearchEmpty)}
-                  expandLabel={format(commonMessages.loading)}
-                  selected={active?.orgNodeId ?? null}
-                  onSelect={(node) => setAnchor(node.id)}
-                />
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="max-h-[60vh] overflow-auto rounded-lg border p-1">
+              <OrgTree
+                nodes={treeMatches}
+                flat={treeTerm !== ''}
+                emptyLabel={format(treeTerm === '' ? m.noAnchors : m.treeSearchEmpty)}
+                expandLabel={format(commonMessages.loading)}
+                selected={active?.orgNodeId ?? null}
+                onSelect={(node) => setAnchor(node.id)}
+              />
+            </div>
+          </div>
 
-          <div className="space-y-4">
-            <Card>
-              <CardContent className="space-y-4 pt-5">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <Input
-                    className="w-full sm:max-w-56"
-                    value={draft}
-                    placeholder={format(m.searchPlaceholder)}
-                    aria-label={format(m.searchPlaceholder)}
-                    onChange={(event) => setDraft(event.target.value)}
-                  />
-                  <ToggleGroup
-                    type="single"
-                    variant="outline"
-                    size="sm"
-                    spacing={0}
-                    value={scope === 'self' ? 'self' : 'subtree'}
-                    aria-label={format(m.scopeLabel)}
-                    onValueChange={(next) => next !== '' && setScope(next)}
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                className="w-full sm:max-w-52"
+                value={draft}
+                placeholder={format(m.searchPlaceholder)}
+                aria-label={format(m.searchPlaceholder)}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+              <Segmented
+                label={format(m.scopeLabel)}
+                value={scope === 'self' ? 'self' : 'subtree'}
+                onChange={setScope}
+                options={[
+                  { value: 'self', label: format(m.scopeSelf) },
+                  { value: 'subtree', label: format(m.scopeSubtree) },
+                ]}
+              />
+              <NativeSelect
+                aria-label={format(m.typeFilterLabel)}
+                value={typeFilter}
+                onChange={(event) => setTypeFilter(event.target.value)}
+                className="w-auto"
+              >
+                <option value="">{format(m.typeFilterAll)}</option>
+                {userTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </NativeSelect>
+              {users.isFetching && !users.isPending && (
+                <Spinner aria-label={format(commonMessages.loading)} className="ml-auto size-4" />
+              )}
+            </div>
+
+            <AsyncSection
+              pending={options.isPending || (users.isPending && active !== undefined)}
+              error={users.isError ? formatError(users.error) : null}
+              loadingLabel={format(commonMessages.loading)}
+              retryLabel={format(commonMessages.retry)}
+              onRetry={() => void users.refetch()}
+            >
+              <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
+                <div className="grid grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3.5rem] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+                  <span>{format(m.columnName)}</span>
+                  <span>{format(m.columnBusinessNo)}</span>
+                  <span>{format(m.columnType)}</span>
+                  <span>{format(m.columnUnit)}</span>
+                  <span className="text-right">{format(m.columnStatus)}</span>
+                </div>
+                {rows.length === 0 ? (
+                  <p className="px-4 py-4 text-sm text-muted-foreground">{format(m.usersEmpty)}</p>
+                ) : (
+                  rows.map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      aria-current={user.id === openUserId}
+                      data-user-status={user.status}
+                      onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
+                      className={cn(
+                        'grid min-w-0 grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3.5rem] items-center gap-3 border-t px-4 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
+                        user.id === openUserId && 'bg-accent',
+                      )}
+                    >
+                      <span className="min-w-0 truncate text-sm font-medium">
+                        {user.displayName}
+                      </span>
+                      <span className="truncate text-xs tabular-nums text-muted-foreground">
+                        {user.businessNo ?? '—'}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {user.userType.name}
+                      </span>
+                      <span className="min-w-0 truncate text-xs text-muted-foreground">
+                        {user.primaryOrgNode.name}
+                      </span>
+                      <span
+                        className={cn(
+                          'text-right text-xs',
+                          user.status === 'disabled' ? 'text-destructive' : 'text-muted-foreground',
+                        )}
+                      >
+                        {format(user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
+                      </span>
+                    </button>
+                  ))
+                )}
+                <div className="flex items-center gap-3 border-t px-4 py-2">
+                  <span
+                    className="min-w-0 truncate text-xs text-muted-foreground"
+                    data-testid="roster-count"
+                    data-count={rows.length}
                   >
-                    <ToggleGroupItem value="self">{format(m.scopeSelf)}</ToggleGroupItem>
-                    <ToggleGroupItem value="subtree">{format(m.scopeSubtree)}</ToggleGroupItem>
-                  </ToggleGroup>
-                  <NativeSelect
-                    aria-label={format(m.typeFilterLabel)}
-                    value={typeFilter}
-                    onChange={(event) => setTypeFilter(event.target.value)}
-                  >
-                    <option value="">{format(m.typeFilterAll)}</option>
-                    {userTypes.map((type) => (
-                      <option key={type.id} value={type.id}>
-                        {type.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                  {users.isFetching && !users.isPending && (
-                    <Spinner
-                      aria-label={format(commonMessages.loading)}
-                      className="ml-auto size-4"
-                    />
+                    {active !== undefined &&
+                      `${pathOf(active.orgNodeId)} · ${format(m.loadedCount, { count: rows.length })}`}
+                  </span>
+                  <span className="flex-1" />
+                  {users.hasNextPage && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      disabled={users.isFetchingNextPage}
+                      onClick={() => void users.fetchNextPage()}
+                    >
+                      {format(m.loadMore)}
+                    </Button>
                   )}
                 </div>
-
-                <AsyncSection
-                  pending={options.isPending || (users.isPending && active !== undefined)}
-                  error={users.isError ? formatError(users.error) : null}
-                  loadingLabel={format(commonMessages.loading)}
-                  retryLabel={format(commonMessages.retry)}
-                  onRetry={() => void users.refetch()}
-                >
-                  {rows.length === 0 ? (
-                    <p className="py-4 text-sm text-muted-foreground">{format(m.usersEmpty)}</p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-left text-xs text-muted-foreground">
-                            <th className="py-2 pr-3 font-normal">{format(m.columnName)}</th>
-                            <th className="py-2 pr-3 font-normal">{format(m.columnBusinessNo)}</th>
-                            <th className="py-2 pr-3 font-normal">{format(m.columnType)}</th>
-                            <th className="py-2 pr-3 font-normal">{format(m.columnUnit)}</th>
-                            <th className="py-2 font-normal">{format(m.columnStatus)}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {rows.map((user) => (
-                            <tr key={user.id} data-user-status={user.status}>
-                              <td className="py-2 pr-3 font-medium">
-                                <PageLink page="auth/user-detail" params={{ userId: user.id }}>
-                                  {user.displayName}
-                                </PageLink>
-                              </td>
-                              <td className="py-2 pr-3 text-muted-foreground tabular-nums">
-                                {user.businessNo ?? '—'}
-                              </td>
-                              <td className="py-2 pr-3 text-muted-foreground">
-                                {user.userType.name}
-                              </td>
-                              <td className="py-2 pr-3 text-muted-foreground">
-                                {user.primaryOrgNode.name}
-                              </td>
-                              <td className="py-2">
-                                {user.status === 'disabled' ? (
-                                  <span className="text-destructive">
-                                    {format(m.disabledBadge)}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground">
-                                    {format(m.statusActive)}
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between gap-3 pt-1">
-                    <p
-                      className="text-xs text-muted-foreground"
-                      data-testid="roster-count"
-                      data-count={rows.length}
-                    >
-                      {active !== undefined &&
-                        `${pathOf(active.orgNodeId)} · ${format(m.loadedCount, { count: rows.length })}`}
-                    </p>
-                    {users.hasNextPage && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={users.isFetchingNextPage}
-                        onClick={() => void users.fetchNextPage()}
-                      >
-                        {format(m.loadMore)}
-                      </Button>
-                    )}
-                  </div>
-                </AsyncSection>
-              </CardContent>
-            </Card>
-
-            {active?.manageable && (
-              // only the kinds of person this unit may hold: the api refuses
-              // the rest, and a picker offering them turns a rule into an
-              // error message
-              <NewUserForm
-                orgNodeId={active.orgNodeId}
-                userTypes={userTypes.filter(
-                  (type) =>
-                    type.placementPolicy.mode === 'unrestricted' ||
-                    type.placementPolicy.orgTypeIds.includes(active.orgTypeId),
-                )}
-              />
-            )}
+              </div>
+            </AsyncSection>
           </div>
+
+          <PersonPane userId={openUserId} />
         </div>
       )}
-    </PageContainer>
+
+      {active?.manageable && (
+        // only the kinds of person this unit may hold: the api refuses the
+        // rest, and a picker offering them turns a rule into an error message
+        <NewUserForm
+          open={creating}
+          onClose={() => setCreating(false)}
+          orgNodeId={active.orgNodeId}
+          userTypes={userTypes.filter(
+            (type) =>
+              type.placementPolicy.mode === 'unrestricted' ||
+              type.placementPolicy.orgTypeIds.includes(active.orgTypeId),
+          )}
+        />
+      )}
+    </Screen>
+  )
+}
+
+/**
+ * Who the open row is, beside the roster rather than instead of it.
+ *
+ * Enough to recognise somebody and act on them; everything else is a click
+ * away on their own page, which is where editing lives.
+ */
+function PersonPane({ userId }: { userId: string }) {
+  const orpc = useApiQuery(authApi)
+  const { format, formatError } = useI18n()
+  const detail = useQuery({
+    ...orpc.identity.getUser.queryOptions({ params: { userId } }),
+    enabled: userId !== '',
+  })
+
+  if (userId === '') {
+    return <p className="text-sm text-muted-foreground max-lg:hidden">{format(m.pickSomeone)}</p>
+  }
+  if (detail.isError) {
+    return <Feedback message={formatError(detail.error)} />
+  }
+  const person = detail.data
+  if (person === undefined) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-10 w-40" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex min-w-0 items-center gap-3">
+        <Avatar className="rounded-lg">
+          <AvatarFallback className="rounded-lg bg-primary text-xs font-medium text-primary-foreground">
+            {initialsOf(person.user.displayName)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{person.user.displayName}</p>
+          <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+            <span className="truncate tabular-nums">{person.user.businessNo ?? '—'}</span>
+            <span className={cn(person.user.status === 'disabled' && 'text-destructive')}>
+              {format(person.user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
+            </span>
+          </p>
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
+        <SectionHead title={format(m.userTypeLabel)} />
+        <p className="text-sm">{person.user.userType.name}</p>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
+        <SectionHead title={format(m.placementSection)} />
+        <p className="text-sm text-pretty">{person.orgPath.map((node) => node.name).join(' / ')}</p>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
+        <SectionHead title={format(m.rolesLabel)} count={person.roles.length} />
+        {person.roles.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{format(m.rolesNone)}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {person.roles.map((role) => (
+              <li key={role.grantId} className="flex min-w-0 items-baseline gap-2 text-sm">
+                <span className="min-w-0 truncate">{role.roleName}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {role.orgNodeName ?? format(m.personRoleTenantWide)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="border-t pt-3">
+        <Button size="sm" asChild>
+          <PageLink page="auth/user-detail" params={{ userId }}>
+            {format(m.fullProfile)}
+          </PageLink>
+        </Button>
+      </div>
+    </div>
   )
 }

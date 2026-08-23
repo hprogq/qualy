@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, CheckboxGroup, Feedback, Field, Panel } from '@qualy/ui/admin'
+import { AsyncSection, CheckboxGroup, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
@@ -13,7 +13,15 @@ import { authApi } from '../api.ts'
 // without one constrains nothing while looking configured, and the window
 // before somebody remembers to set it is exactly when a person gets placed
 // where that kind of person should never be.
-export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string) => void }) {
+export function NewUserTypeForm({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreated: (userTypeId: string) => void
+}) {
   const api = useApi(authApi)
   const run = useRunApi()
   const orpc = useApiQuery(authApi)
@@ -52,16 +60,41 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
   })
 
   return (
-    <Panel title={format(m.newUserType)} description={format(m.newUserTypeHint)}>
+    <FormDialog
+      open={open}
+      title={format(m.newUserType)}
+      description={format(m.newUserTypeHint)}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {format(m.cancel)}
+          </Button>
+          <Button
+            type="submit"
+            form="new-user-type"
+            disabled={
+              create.isPending ||
+              code.trim() === '' ||
+              name.trim() === '' ||
+              (!unrestricted && orgTypeIds.length === 0)
+            }
+          >
+            {format(m.create)}
+          </Button>
+        </>
+      }
+    >
       <Feedback message={feedback} />
       <form
+        id="new-user-type"
         className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault()
           create.mutate()
         }}
       >
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field label={format(m.codeLabel)}>
             {(id) => (
               <Input id={id} value={code} onChange={(event) => setCode(event.target.value)} />
@@ -104,19 +137,7 @@ export function NewUserTypeForm({ onCreated }: { onCreated: (userTypeId: string)
             )}
           </div>
         </AsyncSection>
-        <Button
-          size="sm"
-          type="submit"
-          disabled={
-            create.isPending ||
-            code.trim() === '' ||
-            name.trim() === '' ||
-            (!unrestricted && orgTypeIds.length === 0)
-          }
-        >
-          {format(m.create)}
-        </Button>
       </form>
-    </Panel>
+    </FormDialog>
   )
 }

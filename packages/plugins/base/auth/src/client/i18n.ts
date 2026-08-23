@@ -281,6 +281,15 @@ const i18n = definePluginMessages({
     disable: { id: 'auth/action/disable', defaultMessage: 'Disable' },
     loadMore: { id: 'auth/action/load-more', defaultMessage: 'Load more' },
     treeSearch: { id: 'auth/users/tree-search', defaultMessage: 'Search units' },
+    pickSomeone: {
+      id: 'auth/users/pick-someone',
+      defaultMessage: 'Pick a row to see who they are.',
+    },
+    fullProfile: { id: 'auth/users/full-profile', defaultMessage: 'Full profile' },
+    accountsLabel: { id: 'auth/users/accounts', defaultMessage: 'Sign-in accounts' },
+    accountNone: { id: 'auth/users/account-none', defaultMessage: 'None bound' },
+    rolesLabel: { id: 'auth/users/roles', defaultMessage: 'Roles' },
+    rolesNone: { id: 'auth/users/roles-none', defaultMessage: 'None' },
     treeSearchEmpty: {
       id: 'auth/users/tree-search-empty',
       defaultMessage: 'No unit matches the search.',

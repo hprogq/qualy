@@ -2,16 +2,21 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { Feedback, Field, Panel } from '@qualy/ui/admin'
+import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
+import { NativeSelect } from '@qualy/ui/native-select'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 
 export function NewUserForm({
+  open,
+  onClose,
   orgNodeId,
   userTypes,
 }: {
+  open: boolean
+  onClose: () => void
   orgNodeId: string
   userTypes: readonly { id: string; code: string; name: string }[]
 }) {
@@ -41,16 +46,37 @@ export function NewUserForm({
     onSuccess: async () => {
       setDisplayName('')
       setBusinessNo('')
+      onClose()
       await queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
 
   return (
-    <Panel title={format(m.newUser)} description={format(m.newUserHint)}>
+    <FormDialog
+      open={open}
+      title={format(m.newUser)}
+      description={format(m.newUserHint)}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {format(m.cancel)}
+          </Button>
+          <Button
+            type="submit"
+            form="new-user"
+            disabled={create.isPending || displayName.trim() === '' || userTypeId === ''}
+          >
+            {format(m.create)}
+          </Button>
+        </>
+      }
+    >
       <Feedback message={feedback} />
       <form
-        className="flex flex-wrap items-end gap-2"
+        id="new-user"
+        className="flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault()
           create.mutate()
@@ -76,9 +102,8 @@ export function NewUserForm({
         </Field>
         <Field label={format(m.userTypeLabel)}>
           {(id) => (
-            <select
+            <NativeSelect
               id={id}
-              className="h-9 rounded-md border bg-transparent px-2 text-sm"
               value={userTypeId}
               onChange={(event) => setUserTypeId(event.target.value)}
             >
@@ -88,17 +113,10 @@ export function NewUserForm({
                   {type.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
         </Field>
-        <Button
-          size="sm"
-          type="submit"
-          disabled={create.isPending || displayName.trim() === '' || userTypeId === ''}
-        >
-          {format(m.create)}
-        </Button>
       </form>
-    </Panel>
+    </FormDialog>
   )
 }

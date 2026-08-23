@@ -1,43 +1,38 @@
 import type { Effect } from 'effect'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState, type ReactNode } from 'react'
-import { ChevronRightIcon, LockIcon } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ChevronDownIcon, ChevronRightIcon, LockIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import { useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, ConfirmDialog, Feedback, Field, PageHeader } from '@qualy/ui/admin'
-import { PageContainer } from '@qualy/ui/page-container'
-import { Badge } from '@qualy/ui/badge'
+import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
+import { Blocker, DefRow, Facts, Screen, SectionHead, Segmented } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { Card, CardContent } from '@qualy/ui/card'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
-import { Label } from '@qualy/ui/label'
 import { NativeSelect } from '@qualy/ui/native-select'
-import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { cn } from '@qualy/ui/cn'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { orgMessages as m } from './i18n.ts'
 import { orgApi } from './api.ts'
 
-// The organization, on one screen with two faces.
+// The organization, with two faces over one skeleton.
 //
-// The structure face is a master-detail: the tree on the left is for finding
-// a unit, everything about the chosen unit - its place, its children, what
-// may be created under it - lives on the right. The types face administers
-// the grammar the structure follows: which kind of unit may hold which,
-// edited per type rather than as a bare list of parent-child pairs, because
-// "what may a college contain" is the question somebody actually has.
+// Structure is a tree and the unit it has open: where that unit sits, what
+// stands under it, and what may be created there. Types is the grammar the
+// structure obeys - asked as "what may a college contain", because that is
+// the question somebody has, rather than as a list of parent-child pairs
+// nobody thinks in.
 //
-// Mutation controls only render on what the server marked manageable; the
-// server enforces regardless.
+// Sections are separated by a rule and nothing else. Mutation controls only
+// render on what the server marked manageable; the server enforces anyway.
 
 type OrgTreeNodeDto = ApiResult<typeof orgApi, 'org', 'getTree'>['nodes'][number]
 type OrgTypeDto = ApiResult<typeof orgApi, 'org', 'listTypes'>['types'][number]
 type OrgRuleDto = ApiResult<typeof orgApi, 'org', 'listRules'>['rules'][number]
 type Api = ReturnType<typeof useApi>
+type Run = (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
 
-/** everything both faces read, computed once from the three queries */
 interface OrgShape {
   nodes: readonly OrgTreeNodeDto[]
   byId: ReadonlyMap<string, OrgTreeNodeDto>
@@ -45,9 +40,10 @@ interface OrgShape {
   roots: readonly OrgTreeNodeDto[]
   types: readonly OrgTypeDto[]
   rules: readonly OrgRuleDto[]
-  /** how many units stand on each type, for the counts beside the checkboxes */
   nodesOfType: ReadonlyMap<string, number>
 }
+
+const listJoin = (names: readonly string[]) => names.join('，')
 
 export default function OrgPage() {
   const api = useApi(orgApi)
@@ -71,7 +67,7 @@ export default function OrgPage() {
   }
   // the one crossing from an effect to a promise on this screen; typed api
   // errors localize from their code, the english message is the last resort
-  const run = (work: Effect.Effect<unknown, unknown>) =>
+  const run: Run = (work) =>
     runApi(work)
       .then(refresh)
       .catch((error: unknown) => {
@@ -99,7 +95,6 @@ export default function OrgPage() {
     const roots = (treeQuery.data?.roots ?? [])
       .map((id) => byId.get(id))
       .filter((node): node is OrgTreeNodeDto => node !== undefined)
-    const types = typesQuery.data?.types ?? []
     const nodesOfType = new Map<string, number>()
     for (const node of nodes) {
       nodesOfType.set(node.orgTypeId, (nodesOfType.get(node.orgTypeId) ?? 0) + 1)
@@ -109,7 +104,7 @@ export default function OrgPage() {
       byId,
       childrenOf,
       roots,
-      types,
+      types: typesQuery.data?.types ?? [],
       rules: rulesQuery.data?.rules ?? [],
       nodesOfType,
     }
@@ -117,28 +112,34 @@ export default function OrgPage() {
 
   const selected = selectedId ? shape.byId.get(selectedId) : undefined
   const rootManageable = shape.nodes.some((node) => !node.parentId && node.manageable)
-  const showingTypes = view === 'types'
+  const types = view === 'types'
+  const openTypeId = selectedTypeId || shape.types[0]?.id || ''
+  const openType = shape.types.find((type) => type.id === openTypeId)
 
   return (
-    <PageContainer size="wide" className="space-y-5">
-      <PageHeader
-        title={format(m.treeTitle)}
-        description={format(showingTypes ? m.typesHint : m.structureHint)}
-        actions={
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            spacing={0}
-            value={showingTypes ? 'types' : 'structure'}
-            aria-label={format(m.viewStructure)}
-            onValueChange={(next) => next !== '' && setView(next === 'types' ? 'types' : '')}
-          >
-            <ToggleGroupItem value="structure">{format(m.viewStructure)}</ToggleGroupItem>
-            <ToggleGroupItem value="types">{format(m.viewTypes)}</ToggleGroupItem>
-          </ToggleGroup>
-        }
-      />
+    <Screen
+      title={format(m.treeTitle)}
+      description={format(types ? m.typesHint : m.structureHint)}
+      actions={
+        <>
+          {/* before the view switch, never after it: an action only one
+              face offers would otherwise shove the switch sideways every
+              time the reader changes face */}
+          {rootManageable && types && (
+            <NewTypeButton api={api} run={run} onCreated={setSelectedTypeId} />
+          )}
+          <Segmented
+            label={format(m.viewStructure)}
+            value={types ? 'types' : 'structure'}
+            onChange={(next) => setView(next === 'types' ? 'types' : '')}
+            options={[
+              { value: 'structure', label: format(m.viewStructure) },
+              { value: 'types', label: format(m.viewTypes) },
+            ]}
+          />
+        </>
+      }
+    >
       <Feedback message={feedback} />
       <AsyncSection
         pending={treeQuery.isPending || typesQuery.isPending || rulesQuery.isPending}
@@ -151,221 +152,208 @@ export default function OrgPage() {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void refresh()}
       >
-        {showingTypes ? (
-          <TypesFace
-            shape={shape}
-            api={api}
-            run={run}
-            canManage={rootManageable}
-            selectedTypeId={selectedTypeId}
-            onSelectType={setSelectedTypeId}
-          />
+        {types ? (
+          <div className="grid items-start gap-6 lg:grid-cols-[17rem_minmax(0,1fr)_16rem]">
+            <TypeRail shape={shape} openId={openTypeId} onOpen={setSelectedTypeId} />
+            {openType ? (
+              <TypePanel
+                key={openType.id}
+                type={openType}
+                shape={shape}
+                api={api}
+                run={run}
+                canManage={rootManageable}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">{format(m.typeListEmpty)}</p>
+            )}
+            <TypeLadder shape={shape} />
+          </div>
         ) : (
-          <StructureFace
-            shape={shape}
-            api={api}
-            run={run}
-            selected={selected}
-            onSelect={(id) => {
-              setSelectedId(id)
-              setFeedback(null)
-            }}
-          />
+          <div className="grid items-start gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
+            <NodeRail shape={shape} openId={selected?.id ?? null} onOpen={setSelectedId} />
+            {selected ? (
+              <NodePanel
+                key={selected.id}
+                node={selected}
+                shape={shape}
+                api={api}
+                run={run}
+                onOpen={setSelectedId}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">{format(m.selectHint)}</p>
+            )}
+          </div>
         )}
       </AsyncSection>
-    </PageContainer>
+    </Screen>
   )
 }
 
-// --- the structure face ---
+// --- structure ---
 
-function StructureFace({
+function NodeRail({
   shape,
-  api,
-  run,
-  selected,
-  onSelect,
+  openId,
+  onOpen,
 }: {
   shape: OrgShape
-  api: Api
-  run: (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
-  selected: OrgTreeNodeDto | undefined
-  onSelect: (id: string) => void
+  openId: string | null
+  onOpen: (id: string) => void
 }) {
   const { format } = useI18n()
   const [search, setSearch] = useState('')
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const term = search.trim().toLowerCase()
   const matches =
     term === '' ? null : shape.nodes.filter((node) => node.name.toLowerCase().includes(term))
+  const manageable = shape.nodes.filter((node) => node.manageable).length
+
+  const rows: { node: OrgTreeNodeDto; depth: number }[] = []
+  const walk = (node: OrgTreeNodeDto, depth: number) => {
+    rows.push({ node, depth })
+    if (collapsed.has(node.id)) return
+    for (const child of shape.childrenOf.get(node.id) ?? []) walk(child, depth + 1)
+  }
+  for (const root of shape.roots) walk(root, 0)
 
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-      <Card className="lg:sticky lg:top-20">
-        <CardContent className="space-y-3 pt-5">
+    <div className="flex min-w-0 flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <SearchIcon
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
+          />
           <Input
             value={search}
             placeholder={format(m.searchPlaceholder)}
             aria-label={format(m.searchPlaceholder)}
             onChange={(event) => setSearch(event.target.value)}
+            className="pl-9"
           />
-          <div className="max-h-[60vh] overflow-auto">
-            {matches !== null ? (
-              // what a search leaves is a set of matches, not a tree: the
-              // branches that would lead to them are not part of the answer
-              matches.length === 0 ? (
-                <p className="p-1 text-sm text-muted-foreground">{format(m.searchEmpty)}</p>
-              ) : (
-                <ul className="flex flex-col gap-0.5">
-                  {matches.map((node) => (
-                    <li key={node.id}>
-                      <TreeName
-                        node={node}
-                        depth={0}
-                        selected={selected?.id === node.id}
-                        childCount={(shape.childrenOf.get(node.id) ?? []).length}
-                        onSelect={() => onSelect(node.id)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : shape.roots.length === 0 ? (
-              <p className="p-1 text-sm text-muted-foreground">{format(m.treeEmpty)}</p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="shrink-0"
+          onClick={() => setCollapsed(new Set())}
+        >
+          {format(m.expandAll)}
+        </Button>
+      </div>
+      <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
+        <div className="max-h-[60vh] min-h-0 overflow-auto p-1">
+          {matches !== null ? (
+            // what a search leaves is a set of matches, not a tree: the
+            // branches that would lead to them are not part of the answer
+            matches.length === 0 ? (
+              <p className="px-2 py-1.5 text-sm text-muted-foreground">{format(m.searchEmpty)}</p>
             ) : (
-              <ul className="flex flex-col gap-0.5">
-                {shape.roots.map((root) => (
-                  <TreeBranch
-                    key={root.id}
-                    node={root}
-                    depth={0}
-                    shape={shape}
-                    selectedId={selected?.id ?? null}
-                    onSelect={onSelect}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
-          <p className="border-t pt-2 text-xs text-muted-foreground">
+              matches.map((node) => (
+                <NodeRow
+                  key={node.id}
+                  node={node}
+                  depth={0}
+                  open={openId === node.id}
+                  childCount={(shape.childrenOf.get(node.id) ?? []).length}
+                  onOpen={() => onOpen(node.id)}
+                />
+              ))
+            )
+          ) : rows.length === 0 ? (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">{format(m.treeEmpty)}</p>
+          ) : (
+            rows.map(({ node, depth }) => (
+              <NodeRow
+                key={node.id}
+                node={node}
+                depth={depth}
+                open={openId === node.id}
+                childCount={(shape.childrenOf.get(node.id) ?? []).length}
+                collapsed={collapsed.has(node.id)}
+                onToggle={() => {
+                  const next = new Set(collapsed)
+                  if (!next.delete(node.id)) next.add(node.id)
+                  setCollapsed(next)
+                }}
+                onOpen={() => onOpen(node.id)}
+              />
+            ))
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2 border-t px-2.5 py-2">
+          <span className="shrink-0 text-xs text-muted-foreground">
             {format(m.unitCount, { count: shape.nodes.length })}
-          </p>
-        </CardContent>
-      </Card>
-
-      {selected ? (
-        <NodePanel
-          key={selected.id}
-          node={selected}
-          shape={shape}
-          api={api}
-          run={run}
-          onOpen={onSelect}
-        />
-      ) : (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            {format(m.selectHint)}
-          </CardContent>
-        </Card>
-      )}
+          </span>
+          <span className="flex-1" />
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {format(m.manageableCount, { count: manageable })}
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
 
-function TreeBranch({
+function NodeRow({
   node,
   depth,
-  shape,
-  selectedId,
-  onSelect,
-}: {
-  node: OrgTreeNodeDto
-  depth: number
-  shape: OrgShape
-  selectedId: string | null
-  onSelect: (id: string) => void
-}) {
-  const children = shape.childrenOf.get(node.id) ?? []
-  // the first two levels open by themselves: a reader lands on the school
-  // and its colleges, and digs from there
-  const [open, setOpen] = useState(depth < 2)
-  return (
-    <li>
-      <div className="flex items-center">
-        {children.length > 0 ? (
-          <button
-            type="button"
-            aria-expanded={open}
-            onClick={() => setOpen((current) => !current)}
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-            style={{ marginLeft: depth * 16 }}
-          >
-            <ChevronRightIcon
-              className={cn('size-3.5 transition-transform', open && 'rotate-90')}
-            />
-          </button>
-        ) : (
-          <span className="size-6 shrink-0" style={{ marginLeft: depth * 16 }} />
-        )}
-        <TreeName
-          node={node}
-          depth={0}
-          selected={selectedId === node.id}
-          childCount={children.length}
-          onSelect={() => onSelect(node.id)}
-        />
-      </div>
-      {open && children.length > 0 && (
-        <ul className="flex flex-col gap-0.5">
-          {children.map((child) => (
-            <TreeBranch
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              shape={shape}
-              selectedId={selectedId}
-              onSelect={onSelect}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
-  )
-}
-
-function TreeName({
-  node,
-  depth,
-  selected,
+  open,
   childCount,
-  onSelect,
+  collapsed,
+  onToggle,
+  onOpen,
 }: {
   node: OrgTreeNodeDto
   depth: number
-  selected: boolean
+  open: boolean
   childCount: number
-  onSelect: () => void
+  collapsed?: boolean
+  onToggle?: () => void
+  onOpen: () => void
 }) {
   return (
-    <button
-      type="button"
-      aria-current={selected}
-      data-node-name={node.name}
-      onClick={onSelect}
-      className={cn(
-        'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent',
-        selected && 'bg-accent font-medium',
+    <div className="flex items-center" style={{ paddingLeft: depth * 14 }}>
+      {childCount > 0 && onToggle ? (
+        <button
+          type="button"
+          aria-expanded={collapsed !== true}
+          aria-label={node.name}
+          onClick={onToggle}
+          className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+        >
+          {collapsed === true ? (
+            <ChevronRightIcon aria-hidden className="size-3" />
+          ) : (
+            <ChevronDownIcon aria-hidden className="size-3" />
+          )}
+        </button>
+      ) : (
+        <span className="size-5 shrink-0" />
       )}
-      style={depth > 0 ? { marginLeft: depth * 16 } : undefined}
-    >
-      <span className="min-w-0 flex-1 truncate">{node.name}</span>
-      {!node.manageable && (
-        <LockIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-      )}
-      {childCount > 0 && (
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{childCount}</span>
-      )}
-    </button>
+      <button
+        type="button"
+        aria-current={open}
+        data-node-name={node.name}
+        onClick={onOpen}
+        className={cn(
+          'flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md pr-2 pl-1 text-left hover:bg-accent/70',
+          open && 'bg-accent',
+        )}
+      >
+        <span className={cn('min-w-0 flex-1 truncate text-sm', open && 'font-medium')}>
+          {node.name}
+        </span>
+        {!node.manageable && (
+          <LockIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+        )}
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {childCount > 0 ? childCount : ''}
+        </span>
+      </button>
+    </div>
   )
 }
 
@@ -379,30 +367,30 @@ function NodePanel({
   node: OrgTreeNodeDto
   shape: OrgShape
   api: Api
-  run: (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
+  run: Run
   onOpen: (id: string) => void
 }) {
   const { format } = useI18n()
+  const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(node.name)
+  const [moving, setMoving] = useState(false)
+  const [moveTargetId, setMoveTargetId] = useState('')
   const [childName, setChildName] = useState('')
   const [childTypeId, setChildTypeId] = useState('')
-  const [moveTargetId, setMoveTargetId] = useState('')
-  const [newTypeId, setNewTypeId] = useState(node.orgTypeId)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const isRoot = !node.parentId
   const children = shape.childrenOf.get(node.id) ?? []
   const typeName = (id: string) =>
     shape.types.find((type) => type.id === id)?.name ?? format(m.unknownType)
 
-  // the kinds of unit this unit may hold, by the rules as they stand: the
+  // the kinds of unit this one may hold, by the rules as they stand: the
   // create control offers only what the api would accept
   const allowedChildTypes = shape.rules
     .filter((rule) => rule.parentTypeId === node.orgTypeId)
     .map((rule) => shape.types.find((type) => type.id === rule.childTypeId))
     .filter((type): type is OrgTypeDto => type !== undefined)
 
-  // the position, spelled from the top: a class name alone says which class
-  // but never whose
+  // spelled from the top: a class name alone says which class but never whose
   const path: OrgTreeNodeDto[] = []
   for (let at: OrgTreeNodeDto | undefined = node; at;) {
     path.unshift(at)
@@ -411,8 +399,6 @@ function NodePanel({
   const siblings = node.parentId ? (shape.childrenOf.get(node.parentId) ?? []) : shape.roots
   const rank = siblings.findIndex((sibling) => sibling.id === node.id) + 1
 
-  // legal new parents only: manageable, outside this subtree, and of a type
-  // the rules allow to hold this unit
   const descendants = new Set<string>()
   const collect = (id: string) => {
     descendants.add(id)
@@ -420,9 +406,7 @@ function NodePanel({
   }
   collect(node.id)
   const parentTypesAllowed = new Set(
-    shape.rules
-      .filter((rule) => rule.childTypeId === node.orgTypeId)
-      .map((rule) => rule.parentTypeId),
+    shape.rules.filter((rule) => rule.childTypeId === node.orgTypeId).map((r) => r.parentTypeId),
   )
   const moveTargets = shape.nodes.filter(
     (candidate) =>
@@ -433,133 +417,144 @@ function NodePanel({
   )
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="space-y-5 pt-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2.5 text-base font-semibold">
-              {node.name}
-              <Badge variant="secondary">{typeName(node.orgTypeId)}</Badge>
-            </h2>
-          </div>
-          <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            <MetaRow label={format(m.parentLabel)}>
-              {node.parentId ? (shape.byId.get(node.parentId)?.name ?? '—') : '—'}
-            </MetaRow>
-            <MetaRow label={format(m.rankLabel)}>
-              {rank > 0 ? format(m.siblingRank, { rank, total: siblings.length }) : '—'}
-            </MetaRow>
-            <MetaRow label={format(m.pathLabel)}>
-              <span className="min-w-0 truncate">{path.map((step) => step.name).join(' / ')}</span>
-            </MetaRow>
-          </dl>
-          {!node.manageable && (
-            <p className="text-sm text-muted-foreground">{format(m.readOnly)}</p>
-          )}
+    <div className="flex min-w-0 flex-col gap-5">
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <h2 className="shrink-0 text-base font-semibold">{node.name}</h2>
+          <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
+            {typeName(node.orgTypeId)}
+          </span>
+          <span className="flex-1" />
           {node.manageable && (
-            <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
-              <Field label={format(m.nameLabel)}>
-                {(id) => (
-                  <div className="flex gap-2">
-                    <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-9 shrink-0"
-                      disabled={name.trim() === '' || name === node.name}
-                      onClick={() =>
-                        void run(
-                          api.org.updateNode({ params: { nodeId: node.id }, payload: { name } }),
-                        )
-                      }
-                    >
-                      {format(m.rename)}
-                    </Button>
-                  </div>
-                )}
-              </Field>
-              <Field label={format(m.nodeType)}>
-                {(id) => (
-                  <div className="flex gap-2">
-                    <NativeSelect
-                      id={id}
-                      className="flex-1"
-                      value={newTypeId}
-                      onChange={(event) => setNewTypeId(event.target.value)}
-                    >
-                      {shape.types.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-9 shrink-0"
-                      disabled={newTypeId === node.orgTypeId}
-                      onClick={() =>
-                        void run(
-                          api.org.changeNodeType({
-                            params: { nodeId: node.id },
-                            payload: { orgTypeId: newTypeId },
-                          }),
-                        )
-                      }
-                    >
-                      {format(m.changeType)}
-                    </Button>
-                  </div>
-                )}
-              </Field>
-            </div>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setRenaming((current) => !current)}
+              >
+                {format(m.rename)}
+              </Button>
+              {!isRoot && node.subtreeManageable && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setMoving((current) => !current)}
+                >
+                  {format(m.move)}
+                </Button>
+              )}
+            </>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      <Card>
-        <CardContent className="space-y-3 pt-5">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-sm font-semibold">
-              {format(m.childrenTitle)}
-              <span className="ml-2 font-normal text-muted-foreground">{children.length}</span>
-            </h3>
-            {node.manageable && allowedChildTypes.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {format(m.allowedHere, {
-                  types: allowedChildTypes.map((type) => type.name).join('，'),
-                })}
-              </p>
-            )}
-          </div>
-          {children.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {format(allowedChildTypes.length === 0 ? m.noChildrenAllowed : m.childrenEmpty)}
-            </p>
-          ) : (
-            <ul className="divide-y rounded-lg border">
-              {children.map((child) => (
-                <li key={child.id} className="flex items-center gap-3 px-3 py-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{child.name}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {typeName(child.orgTypeId)}
-                  </span>
-                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {format(m.childCount, {
-                      count: (shape.childrenOf.get(child.id) ?? []).length,
-                    })}
-                  </span>
-                  <Button size="sm" variant="ghost" onClick={() => onOpen(child.id)}>
-                    {format(m.open)}
-                    <ChevronRightIcon />
-                  </Button>
-                </li>
+        {renaming && (
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void run(api.org.updateNode({ params: { nodeId: node.id }, payload: { name } })).then(
+                () => setRenaming(false),
+              )
+            }}
+          >
+            <Input
+              autoFocus
+              value={name}
+              aria-label={format(m.nameLabel)}
+              onChange={(event) => setName(event.target.value)}
+              className="max-w-72"
+            />
+            <Button size="sm" type="submit" disabled={name.trim() === '' || name === node.name}>
+              {format(m.save)}
+            </Button>
+          </form>
+        )}
+        {moving && (
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void run(
+                api.org.setNodePlacement({
+                  params: { nodeId: node.id },
+                  payload: { parentId: moveTargetId },
+                }),
+              ).then(() => setMoving(false))
+            }}
+          >
+            <NativeSelect
+              aria-label={format(m.moveTo)}
+              value={moveTargetId}
+              onChange={(event) => setMoveTargetId(event.target.value)}
+              className="max-w-96"
+            >
+              <option value="">{format(m.selectParent)}</option>
+              {moveTargets.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                </option>
               ))}
-            </ul>
+            </NativeSelect>
+            <Button size="sm" type="submit" disabled={moveTargetId === ''}>
+              {format(m.move)}
+            </Button>
+          </form>
+        )}
+
+        {!node.manageable && <p className="text-sm text-muted-foreground">{format(m.readOnly)}</p>}
+
+        <Facts
+          items={[
+            {
+              label: format(m.parentLabel),
+              value: node.parentId ? (shape.byId.get(node.parentId)?.name ?? '—') : '—',
+            },
+            { label: format(m.pathLabel), value: path.map((step) => step.name).join(' / ') },
+            {
+              label: format(m.rankLabel),
+              value: rank > 0 ? format(m.siblingRank, { rank, total: siblings.length }) : '—',
+            },
+            { label: format(m.nodeType), value: typeName(node.orgTypeId) },
+          ]}
+        />
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-2.5 border-t pt-4">
+        <SectionHead
+          title={format(m.childrenTitle)}
+          count={children.length}
+          aside={
+            allowedChildTypes.length === 0
+              ? format(m.noChildrenAllowed)
+              : format(m.allowedHere, { types: listJoin(allowedChildTypes.map((t) => t.name)) })
+          }
+        />
+        <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
+          {children.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-muted-foreground">{format(m.childrenEmpty)}</p>
+          ) : (
+            children.map((child) => (
+              <button
+                key={child.id}
+                type="button"
+                onClick={() => onOpen(child.id)}
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_5rem_5rem_3.5rem] items-center gap-3 border-t px-4 py-2.5 text-left first:border-t-0 hover:bg-accent/70"
+              >
+                <span className="min-w-0 truncate text-sm font-medium">{child.name}</span>
+                <span className="text-xs text-muted-foreground">{typeName(child.orgTypeId)}</span>
+                <span className="text-right text-xs tabular-nums text-muted-foreground">
+                  {format(m.childCount, { count: (shape.childrenOf.get(child.id) ?? []).length })}
+                </span>
+                <span className="inline-flex items-center justify-end gap-0.5 text-xs text-muted-foreground">
+                  {format(m.open)}
+                  <ChevronRightIcon aria-hidden className="size-3" />
+                </span>
+              </button>
+            ))
           )}
           {node.manageable && allowedChildTypes.length > 0 && (
             <form
-              className="flex flex-wrap items-center gap-2"
+              className="flex min-w-0 items-center gap-2 border-t px-4 py-2"
               onSubmit={(event) => {
                 event.preventDefault()
                 void run(
@@ -570,16 +565,17 @@ function NodePanel({
               }}
             >
               <Input
-                className="w-56 flex-1"
+                value={childName}
                 placeholder={format(m.namePlaceholder)}
                 aria-label={format(m.namePlaceholder)}
-                value={childName}
                 onChange={(event) => setChildName(event.target.value)}
+                className="flex-1 border-dashed"
               />
               <NativeSelect
                 aria-label={format(m.selectType)}
                 value={childTypeId}
                 onChange={(event) => setChildTypeId(event.target.value)}
+                className="w-32"
               >
                 <option value="">{format(m.selectType)}</option>
                 {allowedChildTypes.map((type) => (
@@ -591,73 +587,56 @@ function NodePanel({
               <Button
                 size="sm"
                 type="submit"
+                className="shrink-0"
                 disabled={childName.trim() === '' || childTypeId === ''}
               >
                 {format(m.create)}
               </Button>
             </form>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {node.manageable && !isRoot && (
-        <Card>
-          <CardContent className="space-y-4 pt-5">
-            {node.subtreeManageable && (
-              <Field label={format(m.moveTo)}>
-                {(id) => (
-                  <div className="flex gap-2">
-                    <NativeSelect
-                      id={id}
-                      className="flex-1 sm:max-w-96"
-                      value={moveTargetId}
-                      onChange={(event) => setMoveTargetId(event.target.value)}
-                    >
-                      <option value="">{format(m.selectParent)}</option>
-                      {moveTargets.map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>
-                          {candidate.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-9 shrink-0"
-                      disabled={moveTargetId === ''}
-                      onClick={() =>
-                        void run(
-                          api.org.setNodePlacement({
-                            params: { nodeId: node.id },
-                            payload: { parentId: moveTargetId },
-                          }),
-                        )
-                      }
-                    >
-                      {format(m.move)}
-                    </Button>
-                  </div>
-                )}
-              </Field>
+        <div className="flex min-w-0 flex-col gap-2.5 border-t pt-4">
+          <SectionHead title={format(m.deleteTitle)} />
+          <div className="flex min-w-0 flex-col gap-2">
+            <Blocker
+              standing={children.length > 0 ? 'open' : 'clear'}
+              action={
+                children.length > 0 ? (
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => onOpen(children[0]!.id)}
+                  >
+                    {format(m.handleOneByOne)}
+                  </button>
+                ) : undefined
+              }
+            >
+              {format(m.childCount, { count: children.length })}
+            </Blocker>
+            {/* what people and grants still hold is the server's answer, and
+                it gives it as a refusal rather than a count anybody may read */}
+            <Blocker standing="clear">{format(m.deleteChecksServer)}</Blocker>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={children.length > 0}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              {format(m.deleteNode)}
+            </Button>
+            {children.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {format(m.deleteBlockedChildren, { count: children.length })}
+              </span>
             )}
-            <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive"
-                disabled={children.length > 0}
-                onClick={() => setConfirmingDelete(true)}
-              >
-                {format(m.deleteNode)}
-              </Button>
-              {children.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {format(m.deleteBlockedChildren, { count: children.length })}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       <ConfirmDialog
@@ -677,119 +656,64 @@ function NodePanel({
   )
 }
 
-function MetaRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex min-w-0 gap-2">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="flex min-w-0 items-center">{children}</dd>
-    </div>
-  )
-}
+// --- types ---
 
-// --- the types face ---
-
-function TypesFace({
+function TypeRail({
   shape,
-  api,
-  run,
-  canManage,
-  selectedTypeId,
-  onSelectType,
+  openId,
+  onOpen,
 }: {
   shape: OrgShape
-  api: Api
-  run: (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
-  canManage: boolean
-  selectedTypeId: string
-  onSelectType: (id: string) => void
+  openId: string
+  onOpen: (id: string) => void
 }) {
   const { format } = useI18n()
-  const [newTypeName, setNewTypeName] = useState('')
-  const selected = shape.types.find((type) => type.id === selectedTypeId) ?? shape.types[0]
   const childNames = (typeId: string) =>
     shape.rules
       .filter((rule) => rule.parentTypeId === typeId)
       .map((rule) => shape.types.find((type) => type.id === rule.childTypeId)?.name)
       .filter((name): name is string => name !== undefined)
 
+  if (shape.types.length === 0) {
+    return <p className="text-sm text-muted-foreground">{format(m.typeListEmpty)}</p>
+  }
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-      <Card className="lg:sticky lg:top-20">
-        <CardContent className="space-y-3 pt-5">
-          {shape.types.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{format(m.typeListEmpty)}</p>
-          ) : (
-            <ul className="flex flex-col gap-0.5">
-              {shape.types.map((type) => {
-                const held = childNames(type.id)
-                return (
-                  <li key={type.id}>
-                    <button
-                      type="button"
-                      aria-current={selected?.id === type.id}
-                      onClick={() => onSelectType(type.id)}
-                      className={cn(
-                        'flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left hover:bg-accent',
-                        selected?.id === type.id && 'bg-accent',
-                      )}
-                    >
-                      <span className="flex items-baseline justify-between gap-2 text-sm font-medium">
-                        {type.name}
-                        <span className="font-normal text-muted-foreground tabular-nums">
-                          {format(m.typeNodeCount, { count: shape.nodesOfType.get(type.id) ?? 0 })}
-                        </span>
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {held.length === 0
-                          ? format(m.noChildrenAllowed)
-                          : format(m.allowedHere, { types: held.join('，') })}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-          {canManage && (
-            <form
-              className="flex items-center gap-2 border-t pt-3"
-              onSubmit={(event) => {
-                event.preventDefault()
-                void run(api.org.createType({ payload: { name: newTypeName } })).then(() =>
-                  setNewTypeName(''),
-                )
-              }}
-            >
-              <Input
-                placeholder={format(m.newTypeTitle)}
-                aria-label={format(m.newTypeTitle)}
-                value={newTypeName}
-                onChange={(event) => setNewTypeName(event.target.value)}
-              />
-              <Button size="sm" type="submit" disabled={newTypeName.trim() === ''}>
-                {format(m.create)}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
-
-      {selected ? (
-        <TypePanel
-          key={selected.id}
-          type={selected}
-          shape={shape}
-          api={api}
-          run={run}
-          canManage={canManage}
-        />
-      ) : (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            {format(m.typeListEmpty)}
-          </CardContent>
-        </Card>
-      )}
+    <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
+      {shape.types.map((type) => {
+        const held = childNames(type.id)
+        return (
+          <button
+            key={type.id}
+            type="button"
+            aria-current={type.id === openId}
+            onClick={() => onOpen(type.id)}
+            className={cn(
+              'flex min-w-0 flex-col gap-0.5 border-t px-3 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
+              type.id === openId && 'bg-accent',
+            )}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span
+                className={cn(
+                  'shrink-0 text-sm',
+                  type.id === openId ? 'font-semibold' : 'font-medium',
+                )}
+              >
+                {type.name}
+              </span>
+              <span className="flex-1" />
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {format(m.typeNodeCount, { count: shape.nodesOfType.get(type.id) ?? 0 })}
+              </span>
+            </span>
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
+              {held.length === 0
+                ? format(m.noChildrenAllowed)
+                : format(m.allowedHere, { types: listJoin(held) })}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -804,27 +728,26 @@ function TypePanel({
   type: OrgTypeDto
   shape: OrgShape
   api: Api
-  run: (work: Effect.Effect<unknown, unknown>) => Promise<unknown>
+  run: Run
   canManage: boolean
 }) {
   const { format } = useI18n()
+  const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(type.name)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const inUse = shape.nodesOfType.get(type.id) ?? 0
 
-  // the rules as stored, and the rules as edited: saving writes the diff,
+  // the rules as stored against the rules as edited: saving writes the diff,
   // one put or delete per changed pair
-  const storedChildren = useMemo(
+  const stored = useMemo(
     () =>
       new Set(
         shape.rules.filter((rule) => rule.parentTypeId === type.id).map((rule) => rule.childTypeId),
       ),
     [shape.rules, type.id],
   )
-  const [draftChildren, setDraftChildren] = useState<ReadonlySet<string>>(storedChildren)
-  const dirty =
-    draftChildren.size !== storedChildren.size ||
-    [...draftChildren].some((id) => !storedChildren.has(id))
+  const [draft, setDraft] = useState<ReadonlySet<string>>(stored)
+  const dirty = draft.size !== stored.size || [...draft].some((id) => !stored.has(id))
 
   const allowedUnder = shape.rules
     .filter((rule) => rule.childTypeId === type.id)
@@ -832,9 +755,9 @@ function TypePanel({
     .filter((held): held is string => held !== undefined)
 
   const saveRules = () => {
-    const adds = [...draftChildren].filter((id) => !storedChildren.has(id))
-    const removals = [...storedChildren].filter((id) => !draftChildren.has(id))
-    // sequential on purpose: each pair is its own resource, and a failure
+    const adds = [...draft].filter((id) => !stored.has(id))
+    const removals = [...stored].filter((id) => !draft.has(id))
+    // sequential on purpose: each pair is its own resource, so a failure
     // stops at the pair that refused with the rest untouched and refetched
     let work: Promise<unknown> = Promise.resolve()
     for (const childTypeId of adds) {
@@ -851,111 +774,102 @@ function TypePanel({
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="space-y-5 pt-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2.5 text-base font-semibold">
-              {type.name}
-              <span className="text-sm font-normal text-muted-foreground tabular-nums">
-                {format(m.typeNodeCount, { count: inUse })}
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <h2 className="shrink-0 text-base font-semibold">{type.name}</h2>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {format(m.typeNodeCount, { count: inUse })}
+        </span>
+        <span className="flex-1" />
+        {canManage && (
+          <Button size="sm" variant="outline" onClick={() => setRenaming((current) => !current)}>
+            {format(m.rename)}
+          </Button>
+        )}
+      </div>
+      {renaming && (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void run(api.org.updateType({ params: { typeId: type.id }, payload: { name } })).then(
+              () => setRenaming(false),
+            )
+          }}
+        >
+          <Input
+            autoFocus
+            value={name}
+            aria-label={format(m.nameLabel)}
+            onChange={(event) => setName(event.target.value)}
+            className="max-w-72"
+          />
+          <Button size="sm" type="submit" disabled={name.trim() === '' || name === type.name}>
+            {format(m.save)}
+          </Button>
+        </form>
+      )}
+
+      <div className="flex min-w-0 flex-col gap-2.5">
+        <SectionHead
+          title={format(m.allowedChildrenTitle)}
+          aside={format(m.chosenCount, { count: draft.size })}
+        />
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+          {shape.types.map((candidate) => (
+            <label
+              key={candidate.id}
+              className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 hover:bg-accent/70"
+            >
+              <Checkbox
+                className="size-4"
+                checked={draft.has(candidate.id)}
+                disabled={!canManage}
+                onCheckedChange={(checked) => {
+                  const next = new Set(draft)
+                  if (checked === true) next.add(candidate.id)
+                  else next.delete(candidate.id)
+                  setDraft(next)
+                }}
+              />
+              <span className="min-w-0 flex-1 truncate text-sm">{candidate.name}</span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {shape.nodesOfType.get(candidate.id) ?? 0}
               </span>
-            </h2>
-          </div>
-          {canManage && (
-            <Field label={format(m.nameLabel)}>
-              {(id) => (
-                <div className="flex gap-2">
-                  <Input
-                    id={id}
-                    className="sm:max-w-72"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-9 shrink-0"
-                    disabled={name.trim() === '' || name === type.name}
-                    onClick={() =>
-                      void run(
-                        api.org.updateType({ params: { typeId: type.id }, payload: { name } }),
-                      )
-                    }
-                  >
-                    {format(m.rename)}
-                  </Button>
-                </div>
-              )}
-            </Field>
-          )}
-        </CardContent>
-      </Card>
+            </label>
+          ))}
+        </div>
+        {canManage && (
+          <Button size="sm" className="w-fit" disabled={!dirty} onClick={saveRules}>
+            {format(m.save)}
+          </Button>
+        )}
+      </div>
 
-      <Card>
-        <CardContent className="space-y-3 pt-5">
-          <div>
-            <h3 className="text-sm font-semibold">{format(m.allowedChildrenTitle)}</h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">{format(m.allowedChildrenHint)}</p>
-          </div>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {shape.types.map((candidate) => (
-              <li key={candidate.id}>
-                <Label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm has-[[data-state=checked]]:border-foreground/40">
-                  <Checkbox
-                    checked={draftChildren.has(candidate.id)}
-                    disabled={!canManage}
-                    onCheckedChange={(checked) => {
-                      const next = new Set(draftChildren)
-                      if (checked === true) next.add(candidate.id)
-                      else next.delete(candidate.id)
-                      setDraftChildren(next)
-                    }}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {shape.nodesOfType.get(candidate.id) ?? 0}
-                  </span>
-                </Label>
-              </li>
-            ))}
-          </ul>
-          {canManage && (
-            <Button size="sm" disabled={!dirty} onClick={saveRules}>
-              {format(m.saveRules)}
+      <DefRow label={format(m.allowedUnder)}>
+        {allowedUnder.length === 0 ? format(m.allowedUnderNone) : listJoin(allowedUnder)}
+      </DefRow>
+
+      {canManage && (
+        <DefRow
+          label={format(m.delete)}
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              disabled={inUse > 0}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              {format(m.delete)}
             </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="space-y-4 pt-5">
-          <div className="flex flex-wrap gap-2 text-sm">
-            <span className="text-muted-foreground">{format(m.allowedUnder)}</span>
-            <span>
-              {allowedUnder.length === 0 ? format(m.allowedUnderNone) : allowedUnder.join('，')}
-            </span>
-          </div>
-          {canManage && (
-            <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive"
-                disabled={inUse > 0}
-                onClick={() => setConfirmingDelete(true)}
-              >
-                {format(m.delete)}
-              </Button>
-              {inUse > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {format(m.typeInUseHint, { count: inUse })}
-                </p>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          }
+        >
+          <Blocker standing={inUse > 0 ? 'open' : 'clear'}>
+            {inUse > 0 ? format(m.typeInUseHint, { count: inUse }) : format(m.typeFreeHint)}
+          </Blocker>
+        </DefRow>
+      )}
 
       <ConfirmDialog
         open={confirmingDelete}
@@ -971,5 +885,98 @@ function TypePanel({
         onCancel={() => setConfirmingDelete(false)}
       />
     </div>
+  )
+}
+
+/** the grammar as a shape rather than a list: which type sits under which */
+function TypeLadder({ shape }: { shape: OrgShape }) {
+  const { format } = useI18n()
+  const childrenOfType = (id: string) =>
+    shape.rules.filter((rule) => rule.parentTypeId === id).map((rule) => rule.childTypeId)
+  const held = new Set(shape.rules.map((rule) => rule.childTypeId))
+  const tops = shape.types.filter((type) => !held.has(type.id))
+  const rows: { name: string; depth: number }[] = []
+  const walk = (id: string, depth: number, seen: ReadonlySet<string>) => {
+    const type = shape.types.find((candidate) => candidate.id === id)
+    if (!type || seen.has(id) || depth > 5) return
+    rows.push({ name: type.name, depth })
+    const next = new Set(seen).add(id)
+    for (const child of childrenOfType(id)) walk(child, depth + 1, next)
+  }
+  for (const top of tops) walk(top.id, 0, new Set())
+
+  return (
+    <div className="flex min-w-0 flex-col gap-2.5">
+      <SectionHead title={format(m.ladderTitle)} />
+      <div className="flex min-w-0 flex-col gap-1 overflow-hidden rounded-lg border bg-muted/40 px-3 py-3">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{format(m.ladderEmpty)}</p>
+        ) : (
+          rows.map((row, at) => (
+            <div
+              key={`${row.name}-${at}`}
+              className="flex min-w-0 items-center gap-1.5 text-sm"
+              style={{ paddingLeft: row.depth * 14 }}
+            >
+              {row.depth > 0 && <span className="text-muted-foreground">└</span>}
+              <span className={cn('min-w-0 truncate', row.depth === 0 && 'font-medium')}>
+                {row.name}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {format(m.ruleCount, { count: shape.rules.length })}
+      </p>
+    </div>
+  )
+}
+
+function NewTypeButton({
+  api,
+  run,
+  onCreated,
+}: {
+  api: Api
+  run: Run
+  onCreated: (id: string) => void
+}) {
+  const { format } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  if (!open) {
+    return (
+      <Button size="sm" onClick={() => setOpen(true)}>
+        <PlusIcon aria-hidden className="size-3" />
+        {format(m.newTypeTitle)}
+      </Button>
+    )
+  }
+  return (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void run(api.org.createType({ payload: { name } })).then((created) => {
+          setName('')
+          setOpen(false)
+          const id = (created as { id?: string } | undefined)?.id
+          if (id) onCreated(id)
+        })
+      }}
+    >
+      <Input
+        autoFocus
+        value={name}
+        placeholder={format(m.newTypeTitle)}
+        aria-label={format(m.newTypeTitle)}
+        onChange={(event) => setName(event.target.value)}
+        className="w-40"
+      />
+      <Button size="sm" type="submit" disabled={name.trim() === ''}>
+        {format(m.create)}
+      </Button>
+    </form>
   )
 }
