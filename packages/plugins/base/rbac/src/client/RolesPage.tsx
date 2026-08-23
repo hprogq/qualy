@@ -3,9 +3,9 @@ import { useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { useState } from 'react'
-import { PlusIcon } from 'lucide-react'
+import { PlusIcon, ShieldIcon } from 'lucide-react'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Screen } from '@qualy/ui/screen'
+import { Blank, EditorSkeleton, RailSkeleton, Screen } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
 import { rbacMessages as m } from './i18n.ts'
@@ -136,7 +136,11 @@ export default function RolesPage() {
           {current ? (
             <RoleEditor role={current} canManage={canManage} />
           ) : (
-            <p className="text-sm text-muted-foreground">{format(m.roleSelectHint)}</p>
+            <Blank
+              icon={<ShieldIcon />}
+              title={format(m.pickRoleTitle)}
+              description={format(m.pickRoleBody)}
+            />
           )}
         </div>
       </AsyncSection>

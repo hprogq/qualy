@@ -5,7 +5,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
 
@@ -76,7 +76,7 @@ export function NewUserForm({
       <Feedback message={feedback} />
       <form
         id="new-user"
-        className="flex flex-col gap-4"
+        className="flex flex-col gap-5"
         onSubmit={(event) => {
           event.preventDefault()
           create.mutate()
@@ -86,6 +86,7 @@ export function NewUserForm({
           {(id) => (
             <Input
               id={id}
+              autoFocus
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
             />
@@ -102,18 +103,18 @@ export function NewUserForm({
         </Field>
         <Field label={format(m.userTypeLabel)}>
           {(id) => (
-            <NativeSelect
-              id={id}
-              value={userTypeId}
-              onChange={(event) => setUserTypeId(event.target.value)}
-            >
-              <option value="">{format(m.selectUserType)}</option>
-              {userTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </NativeSelect>
+            <Select value={userTypeId} onValueChange={setUserTypeId}>
+              <SelectTrigger id={id} className="w-full">
+                <SelectValue placeholder={format(m.selectUserType)} />
+              </SelectTrigger>
+              <SelectContent>
+                {userTypes.map((type) => (
+                  <SelectItem key={type.id} value={type.id}>
+                    {type.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </Field>
       </form>

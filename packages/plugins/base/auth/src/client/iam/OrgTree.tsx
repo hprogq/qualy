@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
-import { Button } from '@qualy/ui/button'
 import { cn } from '@qualy/ui/cn'
 
 // The organization as somebody browsing it sees it: a tree of names.
@@ -107,7 +106,15 @@ export function OrgTree({
   )
 }
 
-/** the pressable part of a row: the whole width of it, indent included */
+/**
+ * A row, which is one button from edge to edge.
+ *
+ * The chevron is drawn inside it rather than laid over it: a separate
+ * control on top of the left end meant that the further down the tree a node
+ * sat, the wider the strip in front of its name that looked pressable and
+ * did something else. Pressing a row with children opens it and selects it,
+ * so no part of the row is dead and none of it surprises anybody.
+ */
 function Name({
   node,
   depth,
@@ -115,6 +122,9 @@ function Name({
   onSelect,
   marked,
   meta,
+  open,
+  hasChildren,
+  expandLabel,
 }: {
   node: OrgTreeNode
   depth: number
@@ -122,21 +132,42 @@ function Name({
   onSelect: (node: OrgTreeNode) => void
   marked?: ReadonlySet<string>
   meta?: (node: OrgTreeNode) => ReactNode
+  open?: boolean
+  hasChildren?: boolean
+  expandLabel?: string
 }) {
   return (
     <button
       type="button"
+      aria-current={selected === node.id}
+      {...(hasChildren === true
+        ? {
+            'aria-expanded': open === true,
+            'aria-label': `${node.name} ${expandLabel ?? ''}`.trim(),
+          }
+        : {})}
       className={cn(
         // no truncation: five levels in, a truncated name is an ellipsis and
         // nothing else. The box scrolls sideways instead, which at least
         // leaves the name readable by moving to it.
-        'flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm whitespace-nowrap outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring',
+        'flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-sm whitespace-nowrap transition-colors outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring',
         selected === node.id && 'bg-accent',
         marked?.has(node.id) === true && 'font-medium',
       )}
-      style={{ paddingLeft: `${String(depth * 0.75 + 1.75)}rem` }}
+      style={{ paddingLeft: `${String(depth * 0.75 + 0.5)}rem` }}
       onClick={() => onSelect(node)}
     >
+      {hasChildren === true ? (
+        <ChevronRightIcon
+          aria-hidden
+          className={cn(
+            'size-3.5 shrink-0 text-muted-foreground transition-transform',
+            open === true && 'rotate-90',
+          )}
+        />
+      ) : (
+        <span aria-hidden className="size-3.5 shrink-0" />
+      )}
       <span>{node.name}</span>
       {meta?.(node)}
     </button>
@@ -167,40 +198,22 @@ function Row({
   // reader click before it has told them anything
   const [open, setOpen] = useState(depth < 2)
 
-  // The row is one button, with the indentation inside it, and the chevron
-  // sits on top of its left edge. Laying them out side by side left the
-  // indentation belonging to the container, so the further down the tree a
-  // node was, the wider the strip in front of its name that looked pressable
-  // and was not.
-  const indent = depth * 0.75
-
   return (
     <li>
-      <div className="relative">
-        <Name
-          node={node}
-          depth={depth}
-          selected={selected}
-          onSelect={onSelect}
-          marked={marked}
-          {...(meta !== undefined ? { meta } : {})}
-        />
-        {children.length > 0 && (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="absolute top-1/2 size-6 -translate-y-1/2 text-muted-foreground"
-            style={{ left: `${String(indent)}rem` }}
-            aria-label={expandLabel}
-            aria-expanded={open}
-            onClick={() => setOpen((was) => !was)}
-          >
-            <ChevronRightIcon
-              className={cn('size-3.5 transition-transform', open && 'rotate-90')}
-            />
-          </Button>
-        )}
-      </div>
+      <Name
+        node={node}
+        depth={depth}
+        selected={selected}
+        expandLabel={expandLabel}
+        hasChildren={children.length > 0}
+        open={open}
+        onSelect={(picked) => {
+          if (children.length > 0) setOpen((was) => !was)
+          onSelect(picked)
+        }}
+        marked={marked}
+        {...(meta !== undefined ? { meta } : {})}
+      />
       {open && children.length > 0 && (
         <ul className="flex flex-col gap-0.5">
           {children.map((child) => (

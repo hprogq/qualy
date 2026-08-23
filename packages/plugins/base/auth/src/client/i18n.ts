@@ -21,6 +21,14 @@ const userTypeLastForRoleMessage = defineMessage<{ roleCount: number }>()({
   defaultMessage:
     '{roleCount, plural, one {# role allows} other {# roles allow}} this user type and no other.',
 })
+const boundCountMessage = defineMessage<{ count: number }>()({
+  id: 'auth/person/bound-count',
+  defaultMessage: '{count, plural, one {# entrance} other {# entrances}}',
+})
+const lastUsedMessage = defineMessage<{ when: string }>()({
+  id: 'auth/person/last-used',
+  defaultMessage: 'Last used {when}',
+})
 const accountCountMessage = defineMessage<{ count: number }>()({
   id: 'auth/users/account-count',
   defaultMessage: '{count, plural, one {# account} other {# accounts}}',
@@ -189,7 +197,7 @@ const i18n = definePluginMessages({
     usersTitle: { id: 'auth/users/title', defaultMessage: 'Users' },
     usersHint: {
       id: 'auth/users/hint',
-      defaultMessage: 'Pick a unit on the left; the people standing there are listed on the right.',
+      defaultMessage: 'Maintain the roster, the types and the placements of one unit at a time.',
     },
     usersEmpty: { id: 'auth/users/empty', defaultMessage: 'No users here yet.' },
     userTypesTitle: { id: 'auth/user-types/title', defaultMessage: 'User types' },
@@ -201,7 +209,7 @@ const i18n = definePluginMessages({
     userTypesEmpty: { id: 'auth/user-types/empty', defaultMessage: 'No user types yet.' },
     userTypeSelectHint: {
       id: 'auth/user-types/select-hint',
-      defaultMessage: 'Pick a type on the left to manage where its people may stand.',
+      defaultMessage: 'Open a user type to set where people of that kind may belong.',
     },
     userDetailTitle: { id: 'auth/users/detail-title', defaultMessage: 'User' },
     backToUsers: { id: 'auth/users/back', defaultMessage: '← All users' },
@@ -215,7 +223,7 @@ const i18n = definePluginMessages({
     },
     grantsHint: {
       id: 'auth/users/grants-hint',
-      defaultMessage: 'Only grants anchored where you administer are shown and editable.',
+      defaultMessage: 'Only grants inside what you administer are shown and editable.',
     },
     grantAdd: { id: 'auth/users/grant-add', defaultMessage: 'Grant a role' },
     grantScope: { id: 'auth/users/grant-scope', defaultMessage: 'Where it applies' },
@@ -259,7 +267,7 @@ const i18n = definePluginMessages({
     userTypeLabel: { id: 'auth/field/user-type', defaultMessage: 'User type' },
     selectUserType: { id: 'auth/field/select-user-type', defaultMessage: 'Select a user type' },
     identifierLabel: { id: 'auth/field/identifier', defaultMessage: 'Sign-in name' },
-    anchorLabel: { id: 'auth/users/anchor', defaultMessage: 'Organization node' },
+    anchorLabel: { id: 'auth/users/anchor', defaultMessage: 'Unit' },
     scopeLabel: { id: 'auth/users/scope', defaultMessage: 'Include the whole subtree' },
     searchPlaceholder: { id: 'auth/users/search', defaultMessage: 'Search' },
     allowedOrgTypesLegend: {
@@ -306,6 +314,39 @@ const i18n = definePluginMessages({
     moveLabel: { id: 'auth/users/move', defaultMessage: 'Move' },
     movePick: { id: 'auth/users/move-pick', defaultMessage: 'Pick a unit' },
     moveAction: { id: 'auth/users/move-action', defaultMessage: 'Move here' },
+    editProfile: { id: 'auth/person/edit-profile', defaultMessage: 'Edit profile' },
+    profileTabIdentities: { id: 'auth/person/tab-identities', defaultMessage: 'Ways in' },
+    profileTabRoles: { id: 'auth/person/tab-roles', defaultMessage: 'Roles' },
+    boundHeading: { id: 'auth/person/bound', defaultMessage: 'Bound' },
+    boundEmptyTitle: { id: 'auth/person/bound-empty', defaultMessage: 'No way in yet' },
+    boundEmptyBody: {
+      id: 'auth/person/bound-empty-body',
+      defaultMessage: 'Until an entrance is bound, nobody can sign in as them.',
+    },
+    boundCount: boundCountMessage,
+    lastUsed: lastUsedMessage,
+    neverUsed: { id: 'auth/person/never-used', defaultMessage: 'Never used' },
+    localAccount: { id: 'auth/person/local-account', defaultMessage: 'Password' },
+    federatedAccount: { id: 'auth/person/federated-account', defaultMessage: 'Federated' },
+    entranceDisabled: { id: 'auth/person/entrance-disabled', defaultMessage: 'Entrance disabled' },
+    manageWaysIn: { id: 'auth/person/manage-ways-in', defaultMessage: 'Manage entrances' },
+    manageRoles: { id: 'auth/person/manage-roles', defaultMessage: 'Manage roles' },
+    pickSomeoneTitle: { id: 'auth/users/pick-title', defaultMessage: 'Open somebody' },
+    pickUnitTitle: { id: 'auth/users/pick-unit-title', defaultMessage: 'Choose a unit' },
+    pickUnitBody: {
+      id: 'auth/users/pick-unit-body',
+      defaultMessage: 'The roster of whichever unit is open appears here.',
+    },
+    pickTypeTitle: { id: 'auth/user-types/pick-title', defaultMessage: 'Open a user type' },
+    pickTypeBody: {
+      id: 'auth/user-types/pick-body',
+      defaultMessage: 'Where a kind of person may belong is set here.',
+    },
+    pickProviderTitle: { id: 'auth/login-methods/pick-title', defaultMessage: 'Open an entrance' },
+    pickProviderBody: {
+      id: 'auth/login-methods/pick-body',
+      defaultMessage: 'Who may sign in through an entrance is set here.',
+    },
     rolesLabel: { id: 'auth/users/roles', defaultMessage: 'Roles' },
     rolesNone: { id: 'auth/users/roles-none', defaultMessage: 'None' },
     treeSearchEmpty: {
@@ -383,7 +424,7 @@ const i18n = definePluginMessages({
     },
     loginMethodSelectHint: {
       id: 'auth/login-methods/select-hint',
-      defaultMessage: 'Pick an entrance on the left to say who may use it.',
+      defaultMessage: 'Open an entrance to say who may sign in through it.',
     },
     audienceLegend: { id: 'auth/login-methods/audience', defaultMessage: 'May sign in' },
     audienceAnyone: { id: 'auth/login-methods/audience-anyone', defaultMessage: 'Anyone' },

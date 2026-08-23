@@ -27,6 +27,11 @@ const assignmentIncompatible = defineMessage<{ assignmentCount: number }>()({
     '{assignmentCount, plural, one {# role assignment does} other {# role assignments do}} not allow the new organization type.',
 })
 
+const peopleCountMessage = defineMessage<{ count: number }>()({
+  id: 'org/nodes/people-count',
+  defaultMessage: '{count, plural, =0 {nobody} one {# person} other {# people}}',
+})
+
 const i18n = definePluginMessages({
   namespace: 'org',
   messages: {
@@ -56,7 +61,7 @@ const i18n = definePluginMessages({
     },
     selectHint: {
       id: 'org/tree/select-hint',
-      defaultMessage: 'Select a node on the left to see its details.',
+      defaultMessage: 'Open a unit to see its details.',
     },
     readOnly: { id: 'org/node/read-only', defaultMessage: 'You may only view this node.' },
     unknownType: { id: 'org/type/unknown', defaultMessage: 'Unknown type' },
@@ -79,7 +84,7 @@ const i18n = definePluginMessages({
     delete: { id: 'org/action/delete', defaultMessage: 'Delete' },
     structureHint: {
       id: 'org/page/structure-hint',
-      defaultMessage: 'Pick a unit on the left to manage its details and children.',
+      defaultMessage: 'Maintain the name, the parent and the children of a unit.',
     },
     typesHint: {
       id: 'org/page/types-hint',
@@ -112,9 +117,20 @@ const i18n = definePluginMessages({
     peopleTitle: { id: 'org/nodes/people', defaultMessage: 'People' },
     peopleHint: {
       id: 'org/nodes/people-hint',
-      defaultMessage: 'Who stands here is administered on the users screen.',
+      defaultMessage: 'The roster is maintained on the users screen.',
     },
     peopleOpen: { id: 'org/nodes/people-open', defaultMessage: 'Open the roster' },
+    pickNodeTitle: { id: 'org/nodes/pick-title', defaultMessage: 'Open a unit' },
+    pickNodeBody: {
+      id: 'org/nodes/pick-body',
+      defaultMessage: 'Its name, its place and the units under it are maintained here.',
+    },
+    pickTypeTitle: { id: 'org/types/pick-title', defaultMessage: 'Open a kind of unit' },
+    pickTypeBody: {
+      id: 'org/types/pick-body',
+      defaultMessage: 'Which kinds may sit under which is set here.',
+    },
+    peopleCount: peopleCountMessage,
     deleteTitle: { id: 'org/node/delete-title', defaultMessage: 'Delete this unit' },
     deleteBlockedChildren: {
       id: 'org/node/delete-blocked-children',

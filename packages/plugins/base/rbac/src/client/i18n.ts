@@ -130,13 +130,18 @@ const i18n = definePluginMessages({
     rolesTitle: { id: 'rbac/roles/title', defaultMessage: 'Roles' },
     rolesHint: {
       id: 'rbac/roles/hint',
-      defaultMessage: 'Select a role to edit what it may hold and who may hold it.',
+      defaultMessage: 'Maintain permissions, who may hold a role, and which roles it appoints.',
     },
     rolesEmpty: { id: 'rbac/roles/empty', defaultMessage: 'No roles yet.' },
+    pickRoleTitle: { id: 'rbac/roles/pick-title', defaultMessage: 'Open a role' },
+    pickRoleBody: {
+      id: 'rbac/roles/pick-body',
+      defaultMessage: 'What a role may do and who may hold it are set here.',
+    },
     permissionCount: permissionCountMessage,
     roleSelectHint: {
       id: 'rbac/roles/select-hint',
-      defaultMessage: 'Pick a role on the left to manage what it may do and who may hold it.',
+      defaultMessage: 'Open a role to set its permissions and its grant rules.',
     },
     tenantGroup: { id: 'rbac/roles/tenant-group', defaultMessage: 'Tenant-wide' },
     tenantGroupHint: {
@@ -146,7 +151,7 @@ const i18n = definePluginMessages({
     orgGroup: { id: 'rbac/roles/org-group', defaultMessage: 'Per unit' },
     orgGroupHint: {
       id: 'rbac/roles/org-group-hint',
-      defaultMessage: 'anchored to a unit when granted',
+      defaultMessage: 'granted at a unit',
     },
     newRole: { id: 'rbac/roles/new', defaultMessage: 'New organization role' },
     newRoleHint: {
@@ -220,23 +225,23 @@ const i18n = definePluginMessages({
     kindOrg: { id: 'rbac/field/kind-org', defaultMessage: 'At an organization node' },
     kindOrgHint: {
       id: 'rbac/field/kind-org-hint',
-      defaultMessage: 'Granted at a node, and applies there or across its subtree.',
+      defaultMessage: 'Granted at a unit, and applies there or across its subtree.',
     },
     kindTenant: { id: 'rbac/field/kind-tenant', defaultMessage: 'Across the whole tenant' },
     kindTenantHint: {
       id: 'rbac/field/kind-tenant-hint',
-      defaultMessage: 'Granted once, with no node to anchor it to.',
+      defaultMessage: 'Granted once, in force across the whole tenant.',
     },
     // named for the question each answers: a role is granted TO people and
     // applies AT places, and neither is the same as where those people
     // personally belong
     userTypesLegend: {
       id: 'rbac/field/allowed-user-types',
-      defaultMessage: 'May be granted to these user types',
+      defaultMessage: 'User types that may hold it',
     },
     orgTypesLegend: {
       id: 'rbac/field/allowed-org-types',
-      defaultMessage: 'This duty applies at these kinds of node',
+      defaultMessage: 'Kinds of unit where the duty applies',
     },
     anyUserType: {
       id: 'rbac/field/any-user-type',

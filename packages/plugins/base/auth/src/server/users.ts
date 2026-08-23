@@ -211,6 +211,41 @@ const ancestryOf = (tenantId: string, orgNodeId: string, read: AuthorizationScop
   )
 
 /**
+ * The ways one person can sign in, as somebody administering them reads it.
+ *
+ * The identifier is shown because an administrator looking at a stale
+ * binding needs to know which account it points at; the credential itself is
+ * never selected. `lastUsedAt` is the only evidence available that a binding
+ * still works, and a null one is a binding nobody has ever come through.
+ */
+const identitiesOf = (tenantId: string, userId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('UserIdentity as i')
+      .innerJoin('AuthProvider as p', (join) =>
+        join.onRef('p.tenantId', '=', 'i.tenantId').onRef('p.id', '=', 'i.authProviderId'),
+      )
+      .select((eb) => [
+        'i.id',
+        'i.identifier',
+        'i.boundAt',
+        'i.lastUsedAt',
+        'p.id as providerId',
+        'p.name as providerName',
+        'p.type as providerType',
+        'p.enabled as providerEnabled',
+        // whether the binding carries a secret of its own, which is what
+        // separates a local account from a federated one
+        eb('i.credentialHash', 'is not', null).as('hasCredential'),
+      ])
+      .where('i.tenantId', '=', tenantId)
+      .where('i.userId', '=', userId)
+      .orderBy('p.sortOrder')
+      .orderBy('p.name')
+      .execute(),
+  )
+
+/**
  * The nodes a caller may place people at.
  *
  * These are the nodes actually inside the caller's coverage, not the anchors
@@ -236,6 +271,14 @@ const placeableNodes = (
         // the materialized path is the database's own addressing - handing it
         // over publishes the shape of an organization to whoever holds a leaf
         'n.parentId',
+        // how many people stand here, at this node itself. A tree of names
+        // with no numbers on it cannot answer "is this unit empty", which is
+        // the question every reader arrives at it with - and the one that
+        // decides whether a unit may be deleted.
+        sql<number>`(select count(*)::int from users u
+          where u.tenant_id = ${eb.ref('n.tenantId')} and u.primary_org_node_id = ${eb.ref('n.id')})`.as(
+          'userCount',
+        ),
         scopeCoverage(scopes.manage, {
           id: eb.ref('n.id'),
           tenantId: eb.ref('n.tenantId'),
@@ -487,11 +530,12 @@ export const make = Effect.fn('Iam.users.make')(function* () {
         const row = yield* oneUser(principal.tenantId, userId, held).pipe(Effect.orDie)
         if (!row) return yield* new UserNotFound()
         const rbac = yield* Rbac
-        const [orgPath, roles] = yield* Effect.all([
+        const [orgPath, roles, identities] = yield* Effect.all([
           ancestryOf(principal.tenantId, row.primaryOrgNodeId, held.read).pipe(Effect.orDie),
           rbac.listUserRoles(principal.tenantId, userId),
+          identitiesOf(principal.tenantId, userId).pipe(Effect.orDie),
         ])
-        return { user: row, orgPath, roles }
+        return { user: row, orgPath, roles, identities }
       }),
     ),
 
@@ -526,6 +570,7 @@ export const make = Effect.fn('Iam.users.make')(function* () {
             parentId: nodes.some((other) => other.id === row.parentId) ? row.parentId : null,
             depth: row.depth,
             orgTypeId: row.orgTypeId,
+            userCount: row.userCount,
             manageable: row.manageable,
           })),
           // a picker that quietly showed the first five hundred of a large tree

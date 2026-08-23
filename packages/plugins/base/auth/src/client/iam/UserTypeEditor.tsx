@@ -6,7 +6,7 @@ import { useApi, useRunApi, useApiQuery, PageLink } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
-import { Blocker, DefRow, EditorHead, ModeChoice, PickGrid } from '@qualy/ui/screen'
+import { Barred, DefRow, EditorHead, ModeChoice, PickGrid } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
@@ -284,16 +284,18 @@ export function UserTypeEditor({
       )}
 
       <DefRow label={format(m.lifecycleLabel)}>
-        <div className="flex min-w-0 flex-col gap-2">
-          {populated && (
-            <Blocker standing="open">
-              {format(m.blockerInUse, { count: userType.userCount })}
-            </Blocker>
-          )}
-          {userType.isSystem && <Blocker standing="open">{format(m.blockerSystem)}</Blocker>}
-          {!populated && !userType.isSystem && (
-            <Blocker standing="clear">{format(m.blockerClear)}</Blocker>
-          )}
+        <div className="flex min-w-0 flex-col gap-3">
+          <Barred
+            actions={[
+              { label: format(m.disable), barred: populated },
+              { label: format(m.delete), barred: populated || userType.isSystem },
+            ]}
+            {...(populated
+              ? { reason: format(m.blockerInUse, { count: userType.userCount }) }
+              : userType.isSystem
+                ? { reason: format(m.blockerSystem) }
+                : {})}
+          />
           {canManage && (
             <div className="flex items-center gap-2">
               <Button

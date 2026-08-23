@@ -134,6 +134,24 @@ const userDetail = Schema.Struct({
       scoped: Schema.Boolean,
     }),
   ),
+  // The ways in that are bound to them. An administrator reading a person
+  // needs to know whether they can actually sign in, and through which door;
+  // the identifier says which account a stale binding points at, and no
+  // credential is ever carried.
+  identities: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      identifier: Schema.String,
+      boundAt: Schema.String,
+      lastUsedAt: Schema.NullOr(Schema.String),
+      providerId: Schema.String,
+      providerName: Schema.String,
+      providerType: Schema.String,
+      providerStatus: resourceStatus,
+      /** carries a secret of its own, which is what a local account is */
+      hasCredential: Schema.Boolean,
+    }),
+  ),
 })
 
 /** who may sign in through one door: everyone, or exactly these user types */
@@ -203,7 +221,11 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     HttpApiEndpoint.post('createUserType', '/iam/user-types', {
       payload: Schema.Struct({
-        code: kebabCode,
+        // optional: the code is a stable machine key, and asking a person to
+        // invent one produced screens where the required field nobody
+        // understood sat above the two that mattered. Absent means "derive
+        // one", and it stays accepted so an import can carry its own.
+        code: Schema.optional(kebabCode),
         name: trimmedName(100),
         description: Schema.optional(boundedText(500)),
         sortOrder: Schema.optional(sortOrder),
@@ -333,6 +355,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
             parentId: Schema.NullOr(Schema.String),
             depth: Schema.Number,
             orgTypeId: Schema.String,
+            /** people standing at this node itself, not at its subtree */
+            userCount: Schema.Number,
             manageable: Schema.Boolean,
           }),
         ),

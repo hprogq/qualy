@@ -293,9 +293,7 @@ describe('user types screen', () => {
     await page.getByRole('button', { name: '保存' }).click()
     // the refusal reaches the reader translated - the subject here is that
     // the raw code never does, asserted just below
-    await expect
-      .element(page.getByText('这会让租户失去最后一个还能登录的管理员。'))
-      .toBeInTheDocument()
+    await expect.element(page.getByText('租户将失去最后一个还能登录的管理员。')).toBeInTheDocument()
     // the english protocol text never reaches the page
     expect(await page.getByText('LAST_ADMINISTRATOR').elements()).toHaveLength(0)
     // the row is versioned as a whole, and a save that cannot say which
@@ -327,13 +325,12 @@ describe('user types screen', () => {
 
     // creating is an action on the page, not a form parked under the list
     await page.getByRole('button', { name: '新建用户类型' }).click()
-    await page.getByRole('textbox', { name: 'code' }).fill('faculty')
     await page.getByRole('textbox', { name: '名称' }).fill('教职工')
-    // a type is created complete: until it says where its people may stand
-    // there is nothing to submit
+    // a type is created complete: until it says where people of that kind
+    // may belong there is nothing to submit
     const submit = page.getByRole('button', { name: '创建' })
     await expect.element(submit).toBeDisabled()
-    await page.getByRole('checkbox', { name: '可以挂在任何组织节点下' }).click()
+    await page.getByRole('radio', { name: '不限' }).click()
     await submit.click()
     // a second click while the first is in flight must not send a second
     // request, and the control has to say why it is refusing
@@ -342,8 +339,9 @@ describe('user types screen', () => {
     expect(create).toHaveBeenCalledTimes(1)
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
+        // the machine key is the server's to invent; the form asks for a
+        // name and where its people belong, and nothing else
         payload: expect.objectContaining({
-          code: 'faculty',
           name: '教职工',
           placementPolicy: { mode: 'unrestricted' },
         }),
@@ -384,9 +382,9 @@ describe('roles screen', () => {
     // it is not renamed, not appointed through, and not saved
     expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '保存权限' }).elements()).toHaveLength(0)
-    expect(await page.getByRole('radio', { name: '可任命' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('tab', { name: '可任命' }).elements()).toHaveLength(0)
     // and its status tab offers nothing destructive either
-    await page.getByRole('radio', { name: '状态' }).click()
+    await page.getByRole('tab', { name: '状态' }).click()
     expect(await page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
   })
@@ -420,15 +418,13 @@ describe('roles screen', () => {
     // the tab whose data did load is unaffected. Only the permissions tab
     // draws from the catalog: creation takes identity and kind, and
     // everything a role needs before it can be activated comes afterwards.
-    await page.getByRole('radio', { name: '可担任的人' }).click()
+    await page.getByRole('tab', { name: '可担任的人' }).click()
     await expect
-      .element(page.getByRole('radio', { name: '仅这些类型' }).first())
+      .element(page.getByRole('radio', { name: '仅指定类型' }).first())
       .toBeInTheDocument()
     // and creation, which draws from nothing, still asks its two questions
     await page.getByRole('button', { name: '新建组织角色' }).click()
-    await expect
-      .element(page.getByRole('group', { name: '这个角色在哪里生效' }))
-      .toBeInTheDocument()
+    await expect.element(page.getByRole('group', { name: '生效范围' })).toBeInTheDocument()
   })
 
   // The form used to collect permissions and eligibility and then send only
@@ -454,24 +450,19 @@ describe('roles screen', () => {
     })
 
     await page.getByRole('button', { name: '新建组织角色' }).click()
-    await expect
-      .element(page.getByRole('group', { name: '这个角色在哪里生效' }))
-      .toBeInTheDocument()
+    await expect.element(page.getByRole('group', { name: '生效范围' })).toBeInTheDocument()
     // nothing is asked for that creation cannot carry
     expect(await page.getByRole('group', { name: '权限' }).elements()).toHaveLength(0)
     expect(await page.getByRole('group', { name: '可以授予这些用户类型' }).elements()).toHaveLength(
       0,
     )
 
-    await page.getByRole('textbox', { name: 'code' }).fill('reviewer')
     await page.getByRole('textbox', { name: '名称' }).fill('审核员')
     await page.getByRole('radio', { name: /在整个租户范围/ }).click()
     await page.getByRole('button', { name: '创建' }).click()
 
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
-    expect(create).toHaveBeenCalledWith({
-      payload: { code: 'reviewer', name: '审核员', kind: 'tenant' },
-    })
+    expect(create).toHaveBeenCalledWith({ payload: { name: '审核员', kind: 'tenant' } })
   })
 
   it('asks before deleting, in a dialog that can be read and cancelled', async () => {
@@ -496,7 +487,7 @@ describe('roles screen', () => {
     await expect.element(page.getByText('院系管理员').first()).toBeInTheDocument()
     // deleting a role is a decision about its standing, so it lives with the
     // rest of them rather than beside what the role may do
-    await page.getByRole('radio', { name: '状态' }).click()
+    await page.getByRole('tab', { name: '状态' }).click()
     await page.getByRole('button', { name: '删除' }).click()
     // it asks before it acts, in a dialog of its own
     await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
@@ -542,6 +533,7 @@ describe('granting a role on the user screen', () => {
       children: <UserDetailPage />,
     })
 
+    await page.getByRole('tab', { name: '角色' }).click()
     await expect.element(page.getByRole('combobox', { name: '角色' })).toBeInTheDocument()
     await page.getByRole('button', { name: '授予' }).click()
 
@@ -563,10 +555,16 @@ describe('granting a role on the user screen', () => {
       children: <UserDetailPage />,
     })
 
+    await page.getByRole('tab', { name: '角色' }).click()
     await expect.element(page.getByRole('combobox', { name: '生效范围' })).toBeInTheDocument()
-    await page.getByRole('combobox', { name: '生效范围' }).selectOptions('某个组织节点')
-    await page.getByRole('combobox', { name: '某个组织节点' }).selectOptions('分部')
-    await page.getByRole('combobox', { name: '覆盖' }).selectOptions('仅该节点')
+    // the controls are the product's own now, so choosing is open-then-pick
+    // rather than a native select's one-shot
+    await page.getByRole('combobox', { name: '生效范围' }).click()
+    await page.getByRole('option', { name: '某个组织节点' }).click()
+    await page.getByRole('button', { name: '某个组织节点' }).click()
+    await page.getByRole('button', { name: '分部', exact: true }).click()
+    await page.getByRole('combobox', { name: '覆盖' }).click()
+    await page.getByRole('option', { name: '仅该节点' }).click()
 
     await vi.waitFor(() =>
       // the target is said outright now, never inferred from which
@@ -604,6 +602,7 @@ describe('granting a role on the user screen', () => {
       children: <UserDetailPage />,
     })
 
+    await page.getByRole('tab', { name: '角色' }).click()
     await expect.element(page.getByTestId('grant-nothing-offered')).toBeInTheDocument()
     await expect.element(page.getByRole('button', { name: '授予' })).toBeDisabled()
   })

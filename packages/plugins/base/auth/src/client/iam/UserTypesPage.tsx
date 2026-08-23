@@ -4,9 +4,9 @@ import { useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
-import { Screen } from '@qualy/ui/screen'
+import { Blank, EditorSkeleton, RailSkeleton, Screen } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
-import { PlusIcon } from 'lucide-react'
+import { PlusIcon, UsersRoundIcon } from 'lucide-react'
 import { cn } from '@qualy/ui/cn'
 import { iamMessages as m } from '../i18n.ts'
 import { UserTypeEditor } from './UserTypeEditor.tsx'
@@ -110,7 +110,11 @@ export default function UserTypesPage() {
           {current ? (
             <UserTypeEditor userType={current} canManage={canManage} />
           ) : (
-            <p className="text-sm text-muted-foreground">{format(m.userTypeSelectHint)}</p>
+            <Blank
+              icon={<UsersRoundIcon />}
+              title={format(m.pickTypeTitle)}
+              description={format(m.pickTypeBody)}
+            />
           )}
         </div>
       </AsyncSection>

@@ -6,6 +6,8 @@ import { Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
+import { NodePicker } from './NodePicker.tsx'
 
 // Giving somebody a role, which is two questions in one form: what the role is
 // and where it applies.
@@ -87,15 +89,15 @@ export function GrantRoleForm({
       <Feedback message={feedback} />
       <Field label={format(m.grantScope)}>
         {(id) => (
-          <select
-            id={id}
-            className="h-9 rounded-md border px-2 text-sm"
-            value={scope}
-            onChange={(event) => setScope(event.target.value as 'tenant' | 'org-node')}
-          >
-            <option value="tenant">{format(m.grantScopeTenant)}</option>
-            <option value="org-node">{format(m.grantScopeNode)}</option>
-          </select>
+          <Select value={scope} onValueChange={(next) => setScope(next as 'tenant' | 'org-node')}>
+            <SelectTrigger id={id} className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tenant">{format(m.grantScopeTenant)}</SelectItem>
+              <SelectItem value="org-node">{format(m.grantScopeNode)}</SelectItem>
+            </SelectContent>
+          </Select>
         )}
       </Field>
 
@@ -103,31 +105,28 @@ export function GrantRoleForm({
         <>
           <Field label={format(m.grantScopeNode)}>
             {(id) => (
-              <select
+              <NodePicker
                 id={id}
-                className="h-9 rounded-md border px-2 text-sm"
+                label={format(m.grantScopeNode)}
+                nodes={anchors}
                 value={anchor ?? ''}
-                onChange={(event) => setOrgNodeId(event.target.value)}
-              >
-                {anchors.map((node) => (
-                  <option key={node.orgNodeId} value={node.orgNodeId}>
-                    {`${' '.repeat(node.depth * 2)}${node.name}`}
-                  </option>
-                ))}
-              </select>
+                onChange={setOrgNodeId}
+                placeholder={format(m.grantScopeNode)}
+                className="w-56"
+              />
             )}
           </Field>
           <Field label={format(m.grantCoverage)}>
             {(id) => (
-              <select
-                id={id}
-                className="h-9 rounded-md border px-2 text-sm"
-                value={coverage}
-                onChange={(event) => setCoverage(event.target.value as Coverage)}
-              >
-                <option value="self">{format(m.grantCoverageSelf)}</option>
-                <option value="subtree">{format(m.grantCoverageSubtree)}</option>
-              </select>
+              <Select value={coverage} onValueChange={(next) => setCoverage(next as Coverage)}>
+                <SelectTrigger id={id} className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="self">{format(m.grantCoverageSelf)}</SelectItem>
+                  <SelectItem value="subtree">{format(m.grantCoverageSubtree)}</SelectItem>
+                </SelectContent>
+              </Select>
             )}
           </Field>
         </>
@@ -135,19 +134,22 @@ export function GrantRoleForm({
 
       <Field label={format(m.grantRole)}>
         {(id) => (
-          <select
-            id={id}
-            className="h-9 rounded-md border px-2 text-sm"
+          <Select
             value={selected}
             disabled={roles.length === 0}
-            onChange={(event) => setRoleId(event.target.value)}
+            onValueChange={(next) => setRoleId(next)}
           >
-            {roles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id={id} className="w-56">
+              <SelectValue placeholder={format(m.grantRole)} />
+            </SelectTrigger>
+            <SelectContent>
+              {roles.map((role) => (
+                <SelectItem key={role.id} value={role.id}>
+                  {role.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </Field>
 

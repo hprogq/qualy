@@ -1,4 +1,12 @@
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
+import { CheckIcon, XIcon } from 'lucide-react'
+import { Badge } from './badge.tsx'
+import { Checkbox } from './checkbox.tsx'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './empty.tsx'
+import { Label } from './label.tsx'
+import { RadioGroup, RadioGroupItem } from './radio-group.tsx'
+import { Skeleton } from './skeleton.tsx'
+import { Tabs, TabsList, TabsTrigger } from './tabs.tsx'
 import { cn } from '../lib/cn.ts'
 import { PageHeader } from './admin.tsx'
 import { PageContainer } from './page-container.tsx'
@@ -54,9 +62,9 @@ export function Screen({
 /**
  * A choice between a few views of the same page.
  *
- * Filled rather than outlined, because it marks where the reader is standing
- * rather than something they may do - the same reason a rail entry is filled
- * and a button is not.
+ * The product's tab list, not a hand-rolled one: it stands 36px tall like
+ * every button and field beside it, which is the whole reason a filter row
+ * reads as one row.
  */
 export function Segmented<T extends string>({
   value,
@@ -73,29 +81,19 @@ export function Segmented<T extends string>({
   className?: string
 }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className={cn('inline-flex shrink-0 gap-0.5 rounded-lg bg-muted p-0.5', className)}
+    <Tabs
+      value={value}
+      onValueChange={(next) => onChange(next as T)}
+      className={cn('shrink-0', className)}
     >
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={option.value === value}
-          onClick={() => onChange(option.value)}
-          className={cn(
-            'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-            option.value === value
-              ? 'bg-background text-foreground shadow-xs'
-              : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+      <TabsList aria-label={label}>
+        {options.map((option) => (
+          <TabsTrigger key={option.value} value={option.value}>
+            {option.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }
 
@@ -178,29 +176,44 @@ export function DefRow({
   )
 }
 
-/** one reason something cannot be done yet, and the way to deal with it */
-export function Blocker({
-  standing,
-  children,
-  action,
+/**
+ * Which actions are barred, said as the actions themselves.
+ *
+ * A sentence explaining that something can be neither disabled nor deleted
+ * makes a reader parse prose to find out what two buttons do; a pair of
+ * struck-through action names says the same thing at a glance, and the
+ * reason sits under them for whoever wants it.
+ */
+export function Barred({
+  actions,
+  reason,
 }: {
-  /** open blocks the action; clear is a fact that no longer stands in the way */
-  standing: 'open' | 'clear'
-  children: ReactNode
-  action?: ReactNode
+  actions: readonly { label: string; barred: boolean }[]
+  /** why, in one short phrase; omitted when nothing is barred */
+  reason?: ReactNode
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2" data-blocker={standing}>
-      <span
-        aria-hidden
-        className={cn(
-          'size-1.5 shrink-0 rounded-full',
-          standing === 'open' ? 'bg-destructive' : 'bg-muted-foreground/40',
-        )}
-      />
-      <span className="min-w-0 truncate text-sm">{children}</span>
-      <span className="flex-1" />
-      {action}
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        {actions.map((action) => (
+          <Badge
+            key={action.label}
+            variant={action.barred ? 'secondary' : 'outline'}
+            data-barred={action.barred}
+            className={action.barred ? 'text-muted-foreground' : ''}
+          >
+            {action.barred ? (
+              <XIcon aria-hidden className="size-3" />
+            ) : (
+              <CheckIcon aria-hidden className="size-3" />
+            )}
+            {action.label}
+          </Badge>
+        ))}
+      </div>
+      {reason !== undefined && (
+        <p className="text-xs text-muted-foreground text-pretty">{reason}</p>
+      )}
     </div>
   )
 }
@@ -258,12 +271,12 @@ export function EditorHead({
 }
 
 /**
- * A rule stated as a mode, with the choices on the same line as its name.
+ * A rule stated as a mode, with the choices on the same line as the name.
  *
- * Two radios rather than one checkbox, because the modes are not each other's
- * negation in any way a reader should have to work out: "anywhere" and "only
- * these" are two rules, and an empty list under the second one means nowhere,
- * not anywhere. Radios say that; an unticked box does not.
+ * Two radios rather than one checkbox, because the modes are not each
+ * other's negation in any way a reader should have to work out: "anywhere"
+ * and "only these" are two rules, and an empty list under the second one
+ * means nowhere. Radios say so; an unticked box does not.
  */
 export function ModeChoice<T extends string>({
   legend,
@@ -283,33 +296,23 @@ export function ModeChoice<T extends string>({
 }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-      <h3 className="shrink-0 text-sm font-semibold" id={`${legend}-legend`}>
-        {legend}
-      </h3>
-      <div
-        role="radiogroup"
-        aria-labelledby={`${legend}-legend`}
-        className="flex shrink-0 items-center gap-4"
+      <h3 className="shrink-0 text-sm font-semibold">{legend}</h3>
+      <RadioGroup
+        aria-label={legend}
+        value={value}
+        disabled={disabled}
+        onValueChange={(next) => onChange(next as T)}
+        className="flex w-auto shrink-0 items-center gap-4"
       >
         {options.map((option) => (
-          <label
-            key={option.value}
-            className={cn(
-              'flex shrink-0 items-center gap-1.5 text-sm',
-              disabled ? 'text-muted-foreground' : 'cursor-pointer',
-            )}
-          >
-            <input
-              type="radio"
-              className="size-3.5 accent-primary"
-              checked={option.value === value}
-              disabled={disabled}
-              onChange={() => onChange(option.value)}
-            />
-            {option.label}
-          </label>
+          <div key={option.value} className="flex shrink-0 items-center gap-2">
+            <RadioGroupItem value={option.value} id={`${legend}-${option.value}`} />
+            <Label htmlFor={`${legend}-${option.value}`} className="text-sm font-normal">
+              {option.label}
+            </Label>
+          </div>
         ))}
-      </div>
+      </RadioGroup>
       <span className="flex-1" />
       {hint !== undefined && (
         <span className="min-w-0 truncate text-xs text-muted-foreground">{hint}</span>
@@ -359,21 +362,19 @@ export function PickGrid({
         {options.map((option) => {
           const on = selected.includes(option.value)
           return (
-            <label
+            <Label
               key={option.value}
               data-picked={on}
               className={cn(
-                'flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-sm',
+                'flex min-w-0 items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-normal transition-colors',
                 disabled ? 'text-muted-foreground' : 'cursor-pointer hover:bg-accent/70',
-                on && 'border-foreground/25',
+                on && 'border-primary/40 bg-primary/5',
               )}
             >
-              <input
-                type="checkbox"
-                className="size-3.5 shrink-0 accent-primary"
+              <Checkbox
                 checked={on}
                 disabled={disabled}
-                onChange={() =>
+                onCheckedChange={() =>
                   onChange(
                     on
                       ? selected.filter((value) => value !== option.value)
@@ -388,7 +389,7 @@ export function PickGrid({
                   {option.tally}
                 </span>
               )}
-            </label>
+            </Label>
           )
         })}
       </div>
@@ -452,20 +453,18 @@ export function PickList({
       {options.map((option) => {
         const on = selected.includes(option.value)
         return (
-          <label
+          <Label
             key={option.value}
             data-picked={on}
             className={cn(
-              'flex min-w-0 items-center gap-2 border-t px-3 py-1.5 text-sm first:border-t-0',
+              'flex min-w-0 items-center gap-2.5 border-t px-3 py-2 text-sm font-normal transition-colors first:border-t-0',
               disabled ? 'text-muted-foreground' : 'cursor-pointer hover:bg-accent/70',
             )}
           >
-            <input
-              type="checkbox"
-              className="size-3.5 shrink-0 accent-primary"
+            <Checkbox
               checked={on}
               disabled={disabled}
-              onChange={() =>
+              onCheckedChange={() =>
                 onChange(
                   on
                     ? selected.filter((value) => value !== option.value)
@@ -480,7 +479,7 @@ export function PickList({
                 {option.note}
               </span>
             )}
-          </label>
+          </Label>
         )
       })}
     </section>
@@ -508,9 +507,19 @@ export function SaveBar({ summary, children }: { summary?: ReactNode; children: 
 }
 
 /** the bordered column a screen selects from: one box, one hairline per row */
-export function Rail({ children, className }: { children: ReactNode; className?: string }) {
+export function Rail({
+  children,
+  className,
+  ...props
+}: { children: ReactNode; className?: string } & Omit<
+  ComponentProps<'div'>,
+  'children' | 'className'
+>) {
   return (
-    <div className={cn('flex min-w-0 flex-col overflow-hidden rounded-lg border', className)}>
+    <div
+      className={cn('flex min-w-0 flex-col overflow-hidden rounded-lg border', className)}
+      {...props}
+    >
       {children}
     </div>
   )
@@ -583,5 +592,72 @@ export function RailRow({
         </span>
       ))}
     </button>
+  )
+}
+
+/**
+ * What a screen shows before anything is open.
+ *
+ * Tall enough to be the answer to "what is this half of the page for" rather
+ * than a stray sentence floating at the top of a column. The copy names the
+ * action that fills the space, because a reader arriving here has not done
+ * anything wrong - there is simply nothing chosen yet.
+ */
+export function Blank({
+  icon,
+  title,
+  description,
+  action,
+  className,
+}: {
+  icon?: ReactNode
+  title: string
+  description?: ReactNode
+  action?: ReactNode
+  className?: string
+}) {
+  return (
+    <Empty className={cn('min-h-[22rem] rounded-lg border border-dashed', className)}>
+      <EmptyHeader>
+        {icon !== undefined && <EmptyMedia variant="icon">{icon}</EmptyMedia>}
+        <EmptyTitle>{title}</EmptyTitle>
+        {description !== undefined && <EmptyDescription>{description}</EmptyDescription>}
+      </EmptyHeader>
+      {action}
+    </Empty>
+  )
+}
+
+/**
+ * The shape of a rail while its rows are still being fetched.
+ *
+ * A box the size of the answer, so the column does not collapse and then
+ * shove the rest of the screen sideways when the rows land.
+ */
+export function RailSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <Rail aria-hidden>
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex flex-col gap-2 border-t px-3 py-3 first:border-t-0">
+          <Skeleton className="h-4 w-2/5" />
+          <Skeleton className="h-3 w-3/5" />
+        </div>
+      ))}
+    </Rail>
+  )
+}
+
+/** the shape of an editor while the thing it edits is still being fetched */
+export function EditorSkeleton() {
+  return (
+    <div className="flex min-w-0 flex-col gap-4" aria-hidden>
+      <Skeleton className="h-6 w-48" />
+      <Skeleton className="h-20 w-full rounded-lg" />
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }, (_, index) => (
+          <Skeleton key={index} className="h-11 w-full rounded-lg" />
+        ))}
+      </div>
+    </div>
   )
 }

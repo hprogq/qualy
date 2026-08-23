@@ -1,16 +1,34 @@
 import type { Effect } from 'effect'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { ChevronDownIcon, ChevronRightIcon, LockIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import {
+  Building2Icon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  LockIcon,
+  PlusIcon,
+  SearchIcon,
+  ShapesIcon,
+} from 'lucide-react'
 import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
-import { Blocker, DefRow, Facts, Screen, SectionHead, Segmented } from '@qualy/ui/screen'
+import {
+  Barred,
+  Blank,
+  DefRow,
+  EditorSkeleton,
+  Facts,
+  RailSkeleton,
+  Screen,
+  SectionHead,
+  Segmented,
+} from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { cn } from '@qualy/ui/cn'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { orgMessages as m } from './i18n.ts'
@@ -59,6 +77,15 @@ export default function OrgPage() {
   const treeQuery = useQuery(orpc.org.getTree.queryOptions({ query: {} }))
   const typesQuery = useQuery(orpc.org.listTypes.queryOptions())
   const rulesQuery = useQuery(orpc.org.listRules.queryOptions())
+  // how many people stand at each unit. Allowed to fail: reading people is a
+  // grant of its own, and an organization administrator without it should
+  // still get the tree
+  const headcounts = useQuery({
+    ...orpc.identity.getUserOptions.queryOptions({ query: {} }),
+    retry: false,
+  })
+  const headcountOf = (orgNodeId: string) =>
+    headcounts.data?.nodes.find((node) => node.orgNodeId === orgNodeId)?.userCount ?? 0
 
   // targeted invalidation: only this plugin's queries, never the whole cache
   const refresh = () => {
@@ -151,6 +178,12 @@ export default function OrgPage() {
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void refresh()}
+        skeleton={
+          <div className="grid items-start gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
+            <RailSkeleton rows={7} />
+            <EditorSkeleton />
+          </div>
+        }
       >
         {types ? (
           <div className="grid items-start gap-6 lg:grid-cols-[17rem_minmax(0,1fr)_16rem]">
@@ -165,13 +198,22 @@ export default function OrgPage() {
                 canManage={rootManageable}
               />
             ) : (
-              <p className="text-sm text-muted-foreground">{format(m.typeListEmpty)}</p>
+              <Blank
+                icon={<ShapesIcon />}
+                title={format(m.pickTypeTitle)}
+                description={format(m.pickTypeBody)}
+              />
             )}
             <TypeLadder shape={shape} />
           </div>
         ) : (
           <div className="grid items-start gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
-            <NodeRail shape={shape} openId={selected?.id ?? null} onOpen={setSelectedId} />
+            <NodeRail
+              shape={shape}
+              openId={selected?.id ?? null}
+              onOpen={setSelectedId}
+              headcountOf={headcountOf}
+            />
             {selected ? (
               <NodePanel
                 key={selected.id}
@@ -180,9 +222,14 @@ export default function OrgPage() {
                 api={api}
                 run={run}
                 onOpen={setSelectedId}
+                headcount={headcountOf(selected.id)}
               />
             ) : (
-              <p className="text-sm text-muted-foreground">{format(m.selectHint)}</p>
+              <Blank
+                icon={<Building2Icon />}
+                title={format(m.pickNodeTitle)}
+                description={format(m.pickNodeBody)}
+              />
             )}
           </div>
         )}
@@ -197,10 +244,12 @@ function NodeRail({
   shape,
   openId,
   onOpen,
+  headcountOf,
 }: {
   shape: OrgShape
   openId: string | null
   onOpen: (id: string) => void
+  headcountOf: (orgNodeId: string) => number
 }) {
   const { format } = useI18n()
   const [search, setSearch] = useState('')
@@ -258,6 +307,7 @@ function NodeRail({
                   depth={0}
                   open={openId === node.id}
                   childCount={(shape.childrenOf.get(node.id) ?? []).length}
+                  headcount={headcountOf(node.id)}
                   onOpen={() => onOpen(node.id)}
                 />
               ))
@@ -272,6 +322,7 @@ function NodeRail({
                 depth={depth}
                 open={openId === node.id}
                 childCount={(shape.childrenOf.get(node.id) ?? []).length}
+                headcount={headcountOf(node.id)}
                 collapsed={collapsed.has(node.id)}
                 onToggle={() => {
                   const next = new Set(collapsed)
@@ -297,11 +348,20 @@ function NodeRail({
   )
 }
 
+/**
+ * One unit in the rail: a single button from edge to edge.
+ *
+ * The chevron used to be a control of its own laid before the name, which
+ * meant the indent and the arrow together formed a strip that looked
+ * pressable and did something other than open the unit. Pressing a row now
+ * opens it and expands it, so every pixel of the row does what it looks like.
+ */
 function NodeRow({
   node,
   depth,
   open,
   childCount,
+  headcount,
   collapsed,
   onToggle,
   onOpen,
@@ -310,50 +370,50 @@ function NodeRow({
   depth: number
   open: boolean
   childCount: number
+  headcount: number
   collapsed?: boolean
   onToggle?: () => void
   onOpen: () => void
 }) {
+  const expandable = childCount > 0 && onToggle !== undefined
   return (
-    <div className="flex items-center" style={{ paddingLeft: depth * 14 }}>
-      {childCount > 0 && onToggle ? (
-        <button
-          type="button"
-          aria-expanded={collapsed !== true}
-          aria-label={node.name}
-          onClick={onToggle}
-          className="flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
-        >
-          {collapsed === true ? (
-            <ChevronRightIcon aria-hidden className="size-3" />
-          ) : (
-            <ChevronDownIcon aria-hidden className="size-3" />
-          )}
-        </button>
-      ) : (
-        <span className="size-5 shrink-0" />
+    <button
+      type="button"
+      aria-current={open}
+      data-node-name={node.name}
+      {...(expandable ? { 'aria-expanded': collapsed !== true } : {})}
+      onClick={() => {
+        if (expandable) onToggle()
+        onOpen()
+      }}
+      className={cn(
+        'flex h-8 w-full min-w-0 items-center gap-1.5 rounded-md pr-2 text-left transition-colors hover:bg-accent/70',
+        open && 'bg-accent',
       )}
-      <button
-        type="button"
-        aria-current={open}
-        data-node-name={node.name}
-        onClick={onOpen}
-        className={cn(
-          'flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md pr-2 pl-1 text-left hover:bg-accent/70',
-          open && 'bg-accent',
-        )}
+      style={{ paddingLeft: 4 + depth * 14 }}
+    >
+      {expandable ? (
+        collapsed === true ? (
+          <ChevronRightIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronDownIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+        )
+      ) : (
+        <span aria-hidden className="size-3 shrink-0" />
+      )}
+      <span className={cn('min-w-0 flex-1 truncate text-sm', open && 'font-medium')}>
+        {node.name}
+      </span>
+      {!node.manageable && (
+        <LockIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+      )}
+      <span
+        className="shrink-0 text-xs tabular-nums text-muted-foreground"
+        data-headcount={headcount}
       >
-        <span className={cn('min-w-0 flex-1 truncate text-sm', open && 'font-medium')}>
-          {node.name}
-        </span>
-        {!node.manageable && (
-          <LockIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-        )}
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {childCount > 0 ? childCount : ''}
-        </span>
-      </button>
-    </div>
+        {headcount > 0 ? headcount : ''}
+      </span>
+    </button>
   )
 }
 
@@ -363,12 +423,15 @@ function NodePanel({
   api,
   run,
   onOpen,
+  headcount,
 }: {
   node: OrgTreeNodeDto
   shape: OrgShape
   api: Api
   run: Run
   onOpen: (id: string) => void
+  /** people standing at this node, from whoever owns people */
+  headcount: number
 }) {
   const { format } = useI18n()
   const [renaming, setRenaming] = useState(false)
@@ -380,6 +443,9 @@ function NodePanel({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const isRoot = !node.parentId
   const children = shape.childrenOf.get(node.id) ?? []
+  // both counts are read before the button is offered, so a refusal is not
+  // the first a reader hears of a rule
+  const removable = children.length === 0 && headcount === 0
   const typeName = (id: string) =>
     shape.types.find((type) => type.id === id)?.name ?? format(m.unknownType)
 
@@ -482,19 +548,18 @@ function NodePanel({
               ).then(() => setMoving(false))
             }}
           >
-            <NativeSelect
-              aria-label={format(m.moveTo)}
-              value={moveTargetId}
-              onChange={(event) => setMoveTargetId(event.target.value)}
-              className="max-w-96"
-            >
-              <option value="">{format(m.selectParent)}</option>
-              {moveTargets.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-            </NativeSelect>
+            <Select value={moveTargetId} onValueChange={setMoveTargetId}>
+              <SelectTrigger aria-label={format(m.moveTo)} className="max-w-96 flex-1">
+                <SelectValue placeholder={format(m.selectParent)} />
+              </SelectTrigger>
+              <SelectContent>
+                {moveTargets.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button size="sm" type="submit" disabled={moveTargetId === ''}>
               {format(m.move)}
             </Button>
@@ -571,19 +636,18 @@ function NodePanel({
                 onChange={(event) => setChildName(event.target.value)}
                 className="flex-1 border-dashed"
               />
-              <NativeSelect
-                aria-label={format(m.selectType)}
-                value={childTypeId}
-                onChange={(event) => setChildTypeId(event.target.value)}
-                className="w-32"
-              >
-                <option value="">{format(m.selectType)}</option>
-                {allowedChildTypes.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </NativeSelect>
+              <Select value={childTypeId} onValueChange={setChildTypeId}>
+                <SelectTrigger aria-label={format(m.selectType)} className="w-36 shrink-0">
+                  <SelectValue placeholder={format(m.selectType)} />
+                </SelectTrigger>
+                <SelectContent>
+                  {allowedChildTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 size="sm"
                 type="submit"
@@ -597,12 +661,14 @@ function NodePanel({
         </div>
       </div>
 
-      {/* who stands here. The roster itself belongs to the users screen, and
-          the counts belong to whoever owns people - this says where to go and
-          arrives with the unit already selected */}
+      {/* how many stand here, and the way through to them. The roster
+          belongs to the users screen; the number is what decides whether a
+          unit may be removed, so the count comes with the tree */}
       <div className="flex min-w-0 flex-col gap-2.5 border-t pt-4">
-        <SectionHead title={format(m.peopleTitle)} />
-        <p className="text-sm text-muted-foreground">{format(m.peopleHint)}</p>
+        <SectionHead
+          title={format(m.peopleTitle)}
+          count={format(m.peopleCount, { count: headcount })}
+        />
         <PageLink
           page="auth/users"
           search={{ anchor: node.id, scope: 'self' }}
@@ -614,44 +680,30 @@ function NodePanel({
       </div>
 
       {node.manageable && !isRoot && (
-        <div className="flex min-w-0 flex-col gap-2.5 border-t pt-4">
+        <div className="flex min-w-0 flex-col gap-3 border-t pt-4">
           <SectionHead title={format(m.deleteTitle)} />
-          <div className="flex min-w-0 flex-col gap-2">
-            <Blocker
-              standing={children.length > 0 ? 'open' : 'clear'}
-              action={
-                children.length > 0 ? (
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => onOpen(children[0]!.id)}
-                  >
-                    {format(m.handleOneByOne)}
-                  </button>
-                ) : undefined
-              }
-            >
-              {format(m.childCount, { count: children.length })}
-            </Blocker>
-            {/* what people and grants still hold is the server's answer, and
-                it gives it as a refusal rather than a count anybody may read */}
-            <Blocker standing="clear">{format(m.deleteChecksServer)}</Blocker>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={children.length > 0}
-              onClick={() => setConfirmingDelete(true)}
-            >
-              {format(m.deleteNode)}
-            </Button>
-            {children.length > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {format(m.deleteBlockedChildren, { count: children.length })}
-              </span>
-            )}
-          </div>
+          <Barred
+            actions={[{ label: format(m.deleteNode), barred: !removable }]}
+            {...(removable
+              ? {}
+              : {
+                  reason: [
+                    children.length > 0 ? format(m.childCount, { count: children.length }) : null,
+                    headcount > 0 ? format(m.peopleCount, { count: headcount }) : null,
+                  ]
+                    .filter((line) => line !== null)
+                    .join('，'),
+                })}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-fit"
+            disabled={!removable}
+            onClick={() => setConfirmingDelete(true)}
+          >
+            {format(m.deleteNode)}
+          </Button>
         </div>
       )}
 
@@ -881,9 +933,10 @@ function TypePanel({
             </Button>
           }
         >
-          <Blocker standing={inUse > 0 ? 'open' : 'clear'}>
-            {inUse > 0 ? format(m.typeInUseHint, { count: inUse }) : format(m.typeFreeHint)}
-          </Blocker>
+          <Barred
+            actions={[{ label: format(m.delete), barred: inUse > 0 }]}
+            {...(inUse > 0 ? { reason: format(m.typeInUseHint, { count: inUse }) } : {})}
+          />
         </DefRow>
       )}
 

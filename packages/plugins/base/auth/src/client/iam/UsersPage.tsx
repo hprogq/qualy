@@ -1,21 +1,22 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { PlusIcon, SearchIcon } from 'lucide-react'
+import { Building2Icon, PlusIcon, SearchIcon, UserRoundIcon } from 'lucide-react'
 import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
-import { Screen, SectionHead, Segmented } from '@qualy/ui/screen'
+import { Blank, RailSkeleton, Screen, SectionHead, Segmented } from '@qualy/ui/screen'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
-import { NativeSelect } from '@qualy/ui/native-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { initialsOf } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
 import { cn } from '@qualy/ui/cn'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
+import { NodePicker, type PickableNode } from './NodePicker.tsx'
 import { OrgTree } from './OrgTree.tsx'
 import { authApi } from '../api.ts'
 
@@ -27,6 +28,10 @@ import { authApi } from '../api.ts'
 // The unit, the scope, the filters and the open person all live in the query
 // string: exactly the state somebody wants back after a reload, or in a link
 // sent to a colleague.
+// radix refuses an empty select value, and "every type" is a real choice
+// rather than the absence of one
+const ALL_TYPES = 'all'
+
 export default function UsersPage() {
   const api = useApi(authApi)
   const runApi = useRunApi()
@@ -164,19 +169,22 @@ export default function UsersPage() {
                   { value: 'subtree', label: format(m.scopeSubtree) },
                 ]}
               />
-              <NativeSelect
-                aria-label={format(m.typeFilterLabel)}
-                value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value)}
-                className="w-auto"
+              <Select
+                value={typeFilter === '' ? ALL_TYPES : typeFilter}
+                onValueChange={(next) => setTypeFilter(next === ALL_TYPES ? '' : next)}
               >
-                <option value="">{format(m.typeFilterAll)}</option>
-                {userTypes.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.name}
-                  </option>
-                ))}
-              </NativeSelect>
+                <SelectTrigger aria-label={format(m.typeFilterLabel)} className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_TYPES}>{format(m.typeFilterAll)}</SelectItem>
+                  {userTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {users.isFetching && !users.isPending && (
                 <Spinner aria-label={format(commonMessages.loading)} className="ml-auto size-4" />
               )}
@@ -190,12 +198,11 @@ export default function UsersPage() {
               onRetry={() => void users.refetch()}
             >
               <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
-                <div className="grid grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3rem_3.5rem] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+                <div className="grid grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3.5rem] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
                   <span>{format(m.columnName)}</span>
                   <span>{format(m.columnBusinessNo)}</span>
                   <span>{format(m.columnType)}</span>
                   <span>{format(m.columnUnit)}</span>
-                  <span className="text-right">{format(m.columnAccounts)}</span>
                   <span className="text-right">{format(m.columnStatus)}</span>
                 </div>
                 {rows.length === 0 ? (
@@ -209,7 +216,7 @@ export default function UsersPage() {
                       data-user-status={user.status}
                       onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
                       className={cn(
-                        'grid min-w-0 grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3rem_3.5rem] items-center gap-3 border-t px-4 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
+                        'grid min-w-0 grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3.5rem] items-center gap-3 border-t px-4 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
                         user.id === openUserId && 'bg-accent',
                       )}
                     >
@@ -224,15 +231,6 @@ export default function UsersPage() {
                       </span>
                       <span className="min-w-0 truncate text-xs text-muted-foreground">
                         {user.primaryOrgNode.name}
-                      </span>
-                      <span
-                        data-accounts={user.identityCount}
-                        className={cn(
-                          'text-right text-xs tabular-nums',
-                          user.identityCount === 0 ? 'text-destructive' : 'text-muted-foreground',
-                        )}
-                      >
-                        {user.identityCount}
                       </span>
                       <span
                         className={cn(
@@ -299,13 +297,7 @@ export default function UsersPage() {
  * Enough to recognise somebody and act on them; everything else is a click
  * away on their own page, which is where editing lives.
  */
-function PersonPane({
-  userId,
-  nodes,
-}: {
-  userId: string
-  nodes: readonly { orgNodeId: string; name: string; orgTypeId: string; manageable: boolean }[]
-}) {
+function PersonPane({ userId, nodes }: { userId: string; nodes: readonly PickableNode[] }) {
   const api = useApi(authApi)
   const runApi = useRunApi()
   const orpc = useApiQuery(authApi)
@@ -335,7 +327,14 @@ function PersonPane({
   }, [userId])
 
   if (userId === '') {
-    return <p className="text-sm text-muted-foreground max-lg:hidden">{format(m.pickSomeone)}</p>
+    return (
+      <Blank
+        icon={<UserRoundIcon />}
+        title={format(m.pickSomeoneTitle)}
+        description={format(m.pickSomeone)}
+        className="max-lg:hidden"
+      />
+    )
   }
   if (detail.isError) {
     return <Feedback message={formatError(detail.error)} />
@@ -421,18 +420,13 @@ function PersonPane({
       {person.user.manageable && movable.length > 0 && (
         <div className="flex min-w-0 flex-col gap-2 border-t pt-3">
           <SectionHead title={format(m.moveLabel)} />
-          <NativeSelect
-            aria-label={format(m.moveLabel)}
+          <NodePicker
+            label={format(m.moveLabel)}
+            nodes={movable}
             value={destination}
-            onChange={(event) => setDestination(event.target.value)}
-          >
-            <option value="">{format(m.movePick)}</option>
-            {movable.map((node) => (
-              <option key={node.orgNodeId} value={node.orgNodeId}>
-                {node.name}
-              </option>
-            ))}
-          </NativeSelect>
+            onChange={setDestination}
+            placeholder={format(m.movePick)}
+          />
           <Feedback message={moveError} />
           <Button
             size="sm"

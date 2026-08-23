@@ -5,7 +5,7 @@ import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
-import { cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { codeFrom, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 
 import { placementViolations, usersBlockingOrgType } from './placement.ts'
@@ -207,7 +207,12 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.user-type.manage')
-        return { id: yield* iam.userTypes.create(principal.tenantId, payload) }
+        return {
+          id: yield* iam.userTypes.create(principal.tenantId, {
+            ...payload,
+            code: payload.code ?? codeFrom(payload.name, 'user-type'),
+          }),
+        }
       }),
     )
     .handle(
@@ -273,7 +278,23 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const principal = yield* CurrentUser
         yield* requireUserRead(principal)
         const detail = yield* iam.users.detail(principal, params.userId)
-        return { ...detail, user: toUserDto(detail.user) }
+        return {
+          ...detail,
+          user: toUserDto(detail.user),
+          identities: detail.identities.map((identity) => ({
+            id: identity.id,
+            identifier: identity.identifier,
+            boundAt: String(identity.boundAt),
+            lastUsedAt: identity.lastUsedAt === null ? null : String(identity.lastUsedAt),
+            providerId: identity.providerId,
+            providerName: identity.providerName,
+            providerType: identity.providerType,
+            providerStatus: identity.providerEnabled ? ('active' as const) : ('disabled' as const),
+            // Kysely types a boolean expression as SqlBool, which is a
+            // number on some drivers; the wire says boolean
+            hasCredential: identity.hasCredential === true,
+          })),
+        }
       }),
     )
     .handle(

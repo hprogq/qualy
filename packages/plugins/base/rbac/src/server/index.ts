@@ -17,7 +17,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
-import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { BadRequest, codeFrom, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { accessApiGroup } from '../api.ts'
 import { make as makeGrants, type GrantRow } from './grants.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -786,7 +786,10 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         // the created row's status and version travel back, so a client can
         // continue without a read: the management api creates drafts only
         return {
-          id: yield* access.roles.create(principal.tenantId, payload),
+          id: yield* access.roles.create(principal.tenantId, {
+            ...payload,
+            code: payload.code ?? codeFrom(payload.name, 'role'),
+          }),
           status: 'draft' as const,
           version: 1,
         }

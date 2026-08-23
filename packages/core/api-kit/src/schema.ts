@@ -103,6 +103,27 @@ export const kebabCode = Schema.String.check(
 )
 
 /**
+ * A machine key derived from whatever somebody typed.
+ *
+ * Codes are stable identifiers that outlive renames, which is why they exist
+ * at all - and exactly why nobody should have to invent one while naming
+ * something. A latin name becomes its own slug; a name with no latin letters
+ * in it (which is most of them here) falls back to the prefix and a random
+ * tail, because a key nobody reads may as well be one nobody can collide on.
+ */
+export const codeFrom = (name: string, prefix: string): string => {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/, '')
+  // globalThis.crypto, not node:crypto - this module travels to the browser
+  // through every plugin's api.ts, and a node import there breaks the build
+  return slug === '' ? `${prefix}-${crypto.randomUUID().slice(0, 8)}` : slug
+}
+
+/**
  * A human-readable name, trimmed on the way in.
  *
  * `Schema.Trim` is a decode-time transform, matching zod's `.trim()`.

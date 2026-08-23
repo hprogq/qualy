@@ -76,6 +76,17 @@ const world = () => ({
         ],
       }),
   },
+  // headcounts come from whoever owns people; the screen reads them and
+  // tolerates being refused, so the stub answers with a roster of nobody
+  identity: {
+    getUserOptions: () =>
+      Effect.succeed({
+        truncated: false,
+        nodes: [],
+        orgTypes: [],
+        userTypes: [],
+      }),
+  },
 })
 
 describe('the organization screen', () => {
@@ -95,13 +106,13 @@ describe('the organization screen', () => {
 
     // a college may hold classes and nothing else, so the create control
     // offers exactly that - the rule never gets a chance to become an error
-    const typePick = page.getByRole('combobox', { name: '选择类型' })
+    await page.getByRole('combobox', { name: '选择类型' }).click()
     expect(
-      (await typePick.element().querySelectorAll('option')).length,
-      'one placeholder and one legal type',
-    ).toBe(2)
+      await page.getByRole('option').elements(),
+      'exactly the one legal child type',
+    ).toHaveLength(1)
+    await page.getByRole('option', { name: '班级' }).click()
     await page.getByRole('textbox', { name: '名称' }).fill('软件2302班')
-    await typePick.selectOptions('班级')
     await page.getByRole('button', { name: '创建' }).click()
     await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalledWith({

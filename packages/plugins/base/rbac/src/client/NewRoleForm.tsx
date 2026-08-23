@@ -31,15 +31,13 @@ export function NewRoleForm({
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
-  const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [kind, setKind] = useState<'tenant' | 'org'>('org')
 
   const create = useMutation({
-    mutationFn: () => run(api.access.createRole({ payload: { code, name, kind } })),
+    mutationFn: () => run(api.access.createRole({ payload: { name, kind } })),
     onMutate: () => setFeedback(null),
     onSuccess: async (result: { id: string }) => {
-      setCode('')
       setName('')
       await queryClient.invalidateQueries({ queryKey: orpc.access.key() })
       onCreated(result.id)
@@ -58,11 +56,7 @@ export function NewRoleForm({
           <Button variant="outline" onClick={onClose}>
             {format(m.cancel)}
           </Button>
-          <Button
-            type="submit"
-            form="new-role"
-            disabled={create.isPending || code.trim() === '' || name.trim() === ''}
-          >
+          <Button type="submit" form="new-role" disabled={create.isPending || name.trim() === ''}>
             {format(m.create)}
           </Button>
         </>
@@ -71,25 +65,26 @@ export function NewRoleForm({
       <Feedback message={feedback} />
       <form
         id="new-role"
-        className="space-y-4"
+        className="flex flex-col gap-5"
         onSubmit={(event) => {
           event.preventDefault()
           create.mutate()
         }}
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={format(m.codeLabel)}>
-            {(id) => (
-              <Input id={id} value={code} onChange={(event) => setCode(event.target.value)} />
-            )}
-          </Field>
-          <Field label={format(m.nameLabel)}>
-            {(id) => (
-              <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />
-            )}
-          </Field>
-        </div>
+        <Field label={format(m.nameLabel)}>
+          {(id) => (
+            <Input
+              id={id}
+              autoFocus
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          )}
+        </Field>
+        {/* cards, because the kind cannot be changed afterwards and each
+            choice needs the sentence explaining what it commits to */}
         <RadioGroup
+          variant="cards"
           legend={format(m.kindLegend)}
           name="role-kind"
           options={[

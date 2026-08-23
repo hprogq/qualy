@@ -5,7 +5,6 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import {
-  Blocker,
   DefRow,
   EditorHead,
   ModeChoice,
@@ -14,7 +13,11 @@ import {
   RailRow,
   SaveBar,
   Screen,
+  RailSkeleton,
+  EditorSkeleton,
+  Blank,
 } from '@qualy/ui/screen'
+import { DoorOpenIcon } from 'lucide-react'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
@@ -126,7 +129,11 @@ export default function LoginMethodsPage() {
             </Rail>
 
             {current === undefined ? (
-              <p className="text-sm text-muted-foreground">{format(m.loginMethodSelectHint)}</p>
+              <Blank
+                icon={<DoorOpenIcon />}
+                title={format(m.pickProviderTitle)}
+                description={format(m.pickProviderBody)}
+              />
             ) : (
               <div className="flex min-w-0 flex-col gap-4">
                 <EditorHead
@@ -171,7 +178,9 @@ export default function LoginMethodsPage() {
                       nobody; that is a legal rule, and it is said out loud
                       rather than refused */}
                   {mode === 'allow-list' && userTypeIds.length === 0 && (
-                    <Blocker standing="open">{format(m.audienceNobody)}</Blocker>
+                    <p className="text-sm text-destructive" data-audience="empty">
+                      {format(m.audienceNobody)}
+                    </p>
                   )}
                 </div>
 

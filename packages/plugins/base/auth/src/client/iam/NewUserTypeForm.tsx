@@ -3,7 +3,9 @@ import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { AsyncSection, CheckboxGroup, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { AsyncSection, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { ModeChoice, PickGrid } from '@qualy/ui/screen'
+import { Skeleton } from '@qualy/ui/skeleton'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { iamMessages as m } from '../i18n.ts'
@@ -28,9 +30,8 @@ export function NewUserTypeForm({
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
-  const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [unrestricted, setUnrestricted] = useState(false)
+  const [mode, setMode] = useState<'unrestricted' | 'allow-list'>('allow-list')
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>([])
   const catalog = useQuery(orpc.identity.getUserTypeOptions.queryOptions())
 
@@ -39,17 +40,16 @@ export function NewUserTypeForm({
       run(
         api.identity.createUserType({
           payload: {
-            code,
             name,
-            placementPolicy: unrestricted
-              ? { mode: 'unrestricted' }
-              : { mode: 'allow-list', orgTypeIds },
+            placementPolicy:
+              mode === 'unrestricted'
+                ? { mode: 'unrestricted' }
+                : { mode: 'allow-list', orgTypeIds },
           },
         }),
       ),
     onMutate: () => setFeedback(null),
     onSuccess: async (result) => {
-      setCode('')
       setName('')
       setOrgTypeIds([])
 
@@ -75,9 +75,8 @@ export function NewUserTypeForm({
             form="new-user-type"
             disabled={
               create.isPending ||
-              code.trim() === '' ||
               name.trim() === '' ||
-              (!unrestricted && orgTypeIds.length === 0)
+              (mode === 'allow-list' && orgTypeIds.length === 0)
             }
           >
             {format(m.create)}
@@ -88,43 +87,49 @@ export function NewUserTypeForm({
       <Feedback message={feedback} />
       <form
         id="new-user-type"
-        className="space-y-3"
+        className="flex flex-col gap-5"
         onSubmit={(event) => {
           event.preventDefault()
           create.mutate()
         }}
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={format(m.codeLabel)}>
-            {(id) => (
-              <Input id={id} value={code} onChange={(event) => setCode(event.target.value)} />
-            )}
-          </Field>
-          <Field label={format(m.nameLabel)}>
-            {(id) => (
-              <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />
-            )}
-          </Field>
-        </div>
+        <Field label={format(m.nameLabel)}>
+          {(id) => (
+            <Input
+              id={id}
+              autoFocus
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          )}
+        </Field>
         <AsyncSection
           pending={catalog.isPending}
           error={catalog.isError ? formatError(catalog.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void catalog.refetch()}
+          skeleton={
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-11 w-full rounded-lg" />
+              <Skeleton className="h-11 w-full rounded-lg" />
+            </div>
+          }
         >
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">{format(m.placementHint)}</p>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={unrestricted}
-                onChange={(event) => setUnrestricted(event.target.checked)}
-              />
-              {format(m.placementUnrestricted)}
-            </label>
-            {!unrestricted && (
-              <CheckboxGroup
+          <div className="flex flex-col gap-3">
+            <ModeChoice
+              legend={format(m.placementLegend)}
+              value={mode}
+              onChange={setMode}
+              options={[
+                { value: 'unrestricted', label: format(m.placementAnywhere) },
+                { value: 'allow-list', label: format(m.placementListed) },
+              ]}
+            />
+            {mode === 'allow-list' && (
+              <PickGrid
+                columns={2}
                 legend={format(m.allowedOrgTypesLegend)}
                 emptyLabel={format(m.noOptions)}
                 options={(catalog.data?.orgTypes ?? []).map((type) => ({

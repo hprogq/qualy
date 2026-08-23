@@ -75,7 +75,7 @@ describe('login methods screen', () => {
 
     // narrowing the door from "anyone" to a named list is one decision, and
     // the list it lands on is the whole rule rather than a delta
-    await page.getByRole('radio', { name: '仅这些类型' }).click()
+    await page.getByRole('radio', { name: '仅指定类型' }).click()
     await page.getByRole('checkbox', { name: '学生' }).click()
     await expect.element(save2).toBeEnabled()
     await save2.click()
@@ -116,7 +116,7 @@ describe('login methods screen', () => {
     // reported rather than refused. The standing is the assertion, not the
     // sentence carrying it - the wording is copy and may change.
     await expect.element(page.getByRole('heading', { name: '统一身份认证' })).toBeInTheDocument()
-    const open = document.querySelectorAll('[data-blocker="open"]')
+    const open = document.querySelectorAll('[data-audience="empty"]')
     expect(open).toHaveLength(1)
     // and the list itself is offered, empty of ticks rather than absent
     const boxes = await page.getByRole('checkbox').elements()

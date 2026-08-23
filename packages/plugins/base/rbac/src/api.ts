@@ -227,7 +227,9 @@ export const accessApiGroup = HttpApiGroup.make('access')
     // activation, which is where completeness is checked
     HttpApiEndpoint.post('createRole', '/iam/roles', {
       payload: Schema.Struct({
-        code: kebabCode,
+        // optional for the same reason a user type's is: a machine key is
+        // not a question to put to whoever is naming a role
+        code: Schema.optional(kebabCode),
         name: trimmedName(100),
         description: Schema.optional(boundedText(500)),
         kind: roleKind,
