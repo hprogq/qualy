@@ -37,9 +37,17 @@ const PAGE_SIZE = 20
 // Opening a batch is a link to the batch, not a selection this screen keeps:
 // the address names the batch and the section, so it survives a reload and
 // can be sent to somebody. Creation happens in a dialog on top of the list.
-/** a chip's number, said only once the server has counted */
-const chipCount = (count: number | undefined) =>
-  count === undefined ? null : <span className="text-muted-foreground tabular-nums">{count}</span>
+/**
+ * A chip's number, said only once the server has counted.
+ *
+ * The room it will need is taken from the first paint, empty. Appearing into
+ * no room widened every chip the moment the count landed, and the filter bar
+ * shuffled under the reader's eye - `1ch` of tabular figures is exactly one
+ * digit, which is what nearly every one of these is.
+ */
+const chipCount = (count: number | undefined) => (
+  <span className="min-w-[1ch] text-muted-foreground tabular-nums">{count}</span>
+)
 
 export default function BatchListPage() {
   const query = useApiQuery(assessmentApi)

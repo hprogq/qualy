@@ -16,10 +16,18 @@ import { cn } from '../lib/utils.ts'
 // Nothing here animates layout. Layout animation means measuring every piece
 // on every frame, and this redraws once a second on every card of a list -
 // which was enough on its own to make every other animation on the page
-// stutter. What moves is opacity, blur and a transform, all of which the
-// compositor owns; the only measurement left is the line's own width, taken
-// once per changed value so the box can still close a gap smoothly when a
-// piece leaves.
+// stutter. The only measurement left is the line's own width, taken once per
+// changed value so the box can still close a gap smoothly when a piece
+// leaves.
+//
+// Opacity and the transform are the compositor's. The blur is NOT, and no
+// amount of `will-change` makes it so: a blur reads pixels from outside the
+// element it is applied to, so chrome cannot hand the animation to the
+// compositor and runs it on the main thread instead. It is here anyway, and
+// deliberately - a digit that swaps hard is the flicker this component
+// exists to remove - but it is the reason a lighthouse run reports these
+// spans as non-composited, and it is what to drop first if this ever costs a
+// frame on a long list.
 //
 // Text-free like the rest of this package: the caller has already decided
 // what the value says.

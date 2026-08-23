@@ -1,4 +1,3 @@
-import COS from 'cos-js-sdk-v5'
 import {
   registerUploadDriver,
   type UploadGrant,
@@ -18,8 +17,18 @@ import type { CosUploadPayload } from '../payload.ts'
 // progress bar and the console. The attachment's real size and fingerprint
 // come from the server asking the bucket afterwards, so nothing this file
 // returns can become a stored fact.
+//
+// The sdk is fetched when somebody uploads, not when the app boots. This
+// module is declared `Ui.browser`, which means it runs on EVERY page load to
+// announce the driver - and a static `import COS from 'cos-js-sdk-v5'` put
+// 392 KB of sdk source into the entry chunk of a person who was reading a
+// list of batches. Announcing costs a name and a function; the sdk is the
+// cost of the first upload, and that is where it now falls.
 
-const put = (payload: CosUploadPayload, file: Blob, options: UploadOptions) => {
+const sdk = () => import('cos-js-sdk-v5').then((module) => module.default)
+
+const put = async (payload: CosUploadPayload, file: Blob, options: UploadOptions) => {
+  const COS = await sdk()
   const cos = new COS({
     SecretId: payload.tmpSecretId,
     SecretKey: payload.tmpSecretKey,

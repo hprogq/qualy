@@ -7709,3 +7709,60 @@ sirv 开 `brotli/gzip` 按 Accept-Encoding 选发。压缩成本落在构建期�
 
 验收:typecheck 零错;`pnpm test` 767 passed | 17 skipped;`pnpm test:browser` 104 passed;
 `pnpm build` 成功并报压缩量;生产 smoke 八条全过(含新的 brotli 断言);prettier 通过。
+
+## 前端交付第二轮:上传 sdk 离开启动路径、分块按往返成本重排(2026-08-23)
+
+用户第二次 Lighthouse(模拟 4G / 移动):性能 **75**,TBT 0、CLS 0.001 满分,失分**全部**在
+FCP 0.52 与 LCP 0.21——仍然是下载,不是执行。报告点名 83 个请求、**77 个脚本**,其中一大批不足
+1KB。
+
+**第一件:一个没人打开的 sdk 压在每次页面加载上**。用 sourcemap 按包归并入口分块(947KB 源码):
+`cos-js-sdk-v5` **392KB**,与 react-dom 并列。进来的路径是 `Ui.browser('./client/upload.ts')`——
+这条声明的语义就是「每次启动都为副作用执行」,而该模块顶层 `import COS from 'cos-js-sdk-v5'`。
+报告里 "Legacy JavaScript" 的两条信号也在它身上:按报告给的字节偏移在产物里回查,line10@1299 是
+babel 的 `_classCallCheck`,line9@47913 是 js-md5 的 `Array.isArray` polyfill。
+修法:`sdk()` 改动态 import,注册照旧同步(注册只值一个名字和一个函数)。入口分块
+**359KB → 195KB**(gzip 108 → 62),sdk 成为 165KB 的独立分块,由第一次上传去取。
+
+**门禁补上这个洞**:browser-graph.test 此前只探 `src/client/api.ts`,而这个驱动**没有** api.ts。
+现按 `collectWebPlugins` 发现**每个 `Ui.browser` 模块**逐个打包,断言其**静态可达**闭包
+(entry + `chunk.imports` 递归,动态 import 正确地不计)< 24KB。红验:把静态 import 放回去,
+门禁报 `costs 229 KB on every page load`。两个探针共用抽出的 `bundle()`。
+
+**第二件:分块按往返成本重排**(Vite 8 = rolldown 1.2,`output.codeSplitting`,依据读
+`rolldown/dist/shared/define-config-*.d.mts` 的 `CodeSplittingGroup`)。
+①**每个 locale 一个文件**:七个插件各自 `import('./locales/zh-CN.ts')` 再加宿主一个,八个请求排成
+一列且都在首屏前 await;按路径里的 locale 归组(不点名插件、不点名语种),`includeDependenciesRecursively: false`
+(叶子表,带上 helper 反而重复 16KB)。8 → 1 个文件,还小了 1KB。
+②**扫掉自动分块留下的灰尘**:被两个页面分块引用的模块各自成块,而本仓库的这类模块大多是图标再导出、
+`cn`、一行包装——批次列表页 61 个文件里 22 个不足 2KB、合计仅 13KB。规则:**≤1KB 且被 ≥2 个入口引用**
+的模块入池,`entriesAware`(按「谁引用」分组,页面仍不下载别的页面的代码)+ 48KB 合并阈值。
+1KB 这个天花板是刻意的:实测抬到 4KB,较大的共享模块开始与启动图同池,首屏波多付 600ms 换请求数。
+
+**实测(批次列表页,brotli 字节 + Lighthouse 自己的 Lantern 参数 150ms RTT / 1638.4Kbps / HTTP1.1 六连接)**:
+
+|     | 文件   | 字节(br)   | 模型网络成本 |
+| --- | ------ | ---------- | ------------ |
+| 前  | 68     | 368 KB     | ~3749 ms     |
+| 后  | **33** | **331 KB** | **~2664 ms** |
+
+启动波 16f/229KB → 8f/214KB(文件少一半、字节反而略降)。分块名另作处理:`entriesAware` 会把每个
+引用它的入口名拼进块名,超过一百字符且在壳的 preload 列表与每个引用方里重复,故 `chunkFileNames`
+统一收成 `shared-[hash].js`——哈希本来就够区分。
+
+**生产产物真跑一遍**(playwright 起真生产装配,`locale: 'zh-CN'`):js 请求 21 个,locale 分块**恰 1 个**,
+cos sdk **未被请求**,中文文案正常渲染。
+
+**两条小的**:批次列表的筛选片计数此前 `undefined` 时不渲染,数字落地时每个片一起变宽——报告里唯一那
+条 layout shift(0.0005)。改成从首帧就用 `min-w-[1ch]` 占位(tabular 数字下 1ch 恰是一位)。
+ticker 的注释断言 blur「归合成器所有」,这是错的:blur 会读取元素外的像素,Chrome 因此无法把该动画
+交给合成器——注释已改正并写明这是 Lighthouse 报 7 个非合成动画的原因;**动画本身保留**(该审计是
+informative,metricSavings 为 0,而这是一处有意的设计)。
+
+**两条查过但决定不做**:①**不 preload 字体**——`font-display: swap` 意味着没有任何东西在等它,
+提前拉取只会跟真正挡住 LCP 的 JS 抢六条连接里的一条和带宽;②**渲染阻塞的 CSS 无处可削**——167KB
+里 143.8KB 是 `@layer utilities`(properties 2.5 / theme 3.2 / base 4.1),即按 `@source packages/plugins`
+超集扫出来的真业务样式,上线 21.6KB(br),Lighthouse 说的 150ms 就是「有一张样式表」的固有代价。
+
+验收:`pnpm typecheck` 零错;`pnpm test` **770 passed | 17 skipped**(新增 3 条);
+`pnpm test:browser` 104 passed;`pnpm build` 成功;生产 smoke 八条全过;prettier 通过。
