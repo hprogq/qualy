@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { PlusIcon, SearchIcon } from 'lucide-react'
 import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
@@ -190,11 +190,12 @@ export default function UsersPage() {
               onRetry={() => void users.refetch()}
             >
               <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
-                <div className="grid grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3.5rem] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+                <div className="grid grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3rem_3.5rem] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
                   <span>{format(m.columnName)}</span>
                   <span>{format(m.columnBusinessNo)}</span>
                   <span>{format(m.columnType)}</span>
                   <span>{format(m.columnUnit)}</span>
+                  <span className="text-right">{format(m.columnAccounts)}</span>
                   <span className="text-right">{format(m.columnStatus)}</span>
                 </div>
                 {rows.length === 0 ? (
@@ -208,7 +209,7 @@ export default function UsersPage() {
                       data-user-status={user.status}
                       onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
                       className={cn(
-                        'grid min-w-0 grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3.5rem] items-center gap-3 border-t px-4 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
+                        'grid min-w-0 grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3rem_3.5rem] items-center gap-3 border-t px-4 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
                         user.id === openUserId && 'bg-accent',
                       )}
                     >
@@ -223,6 +224,15 @@ export default function UsersPage() {
                       </span>
                       <span className="min-w-0 truncate text-xs text-muted-foreground">
                         {user.primaryOrgNode.name}
+                      </span>
+                      <span
+                        data-accounts={user.identityCount}
+                        className={cn(
+                          'text-right text-xs tabular-nums',
+                          user.identityCount === 0 ? 'text-destructive' : 'text-muted-foreground',
+                        )}
+                      >
+                        {user.identityCount}
                       </span>
                       <span
                         className={cn(
@@ -261,7 +271,7 @@ export default function UsersPage() {
             </AsyncSection>
           </div>
 
-          <PersonPane userId={openUserId} />
+          <PersonPane userId={openUserId} nodes={nodes} />
         </div>
       )}
 
@@ -289,13 +299,40 @@ export default function UsersPage() {
  * Enough to recognise somebody and act on them; everything else is a click
  * away on their own page, which is where editing lives.
  */
-function PersonPane({ userId }: { userId: string }) {
+function PersonPane({
+  userId,
+  nodes,
+}: {
+  userId: string
+  nodes: readonly { orgNodeId: string; name: string; orgTypeId: string; manageable: boolean }[]
+}) {
+  const api = useApi(authApi)
+  const runApi = useRunApi()
   const orpc = useApiQuery(authApi)
+  const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
+  const [destination, setDestination] = useState('')
+  const [moveError, setMoveError] = useState<string | null>(null)
   const detail = useQuery({
     ...orpc.identity.getUser.queryOptions({ params: { userId } }),
     enabled: userId !== '',
   })
+  const move = useMutation({
+    mutationFn: (primaryOrgNodeId: string) =>
+      runApi(api.identity.setUserPlacement({ params: { userId }, payload: { primaryOrgNodeId } })),
+    onMutate: () => setMoveError(null),
+    onSuccess: async () => {
+      setDestination('')
+      await queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
+    },
+    onError: (error: unknown) => setMoveError(formatError(error)),
+  })
+  // the destination is reset by the person, not by the render: opening
+  // somebody else must not carry the previous pick over to them
+  useEffect(() => {
+    setDestination('')
+    setMoveError(null)
+  }, [userId])
 
   if (userId === '') {
     return <p className="text-sm text-muted-foreground max-lg:hidden">{format(m.pickSomeone)}</p>
@@ -313,6 +350,11 @@ function PersonPane({ userId }: { userId: string }) {
       </div>
     )
   }
+
+  // only somewhere else, and only somewhere this caller administers
+  const movable = nodes.filter(
+    (node) => node.manageable && node.orgNodeId !== person.orgPath.at(-1)?.id,
+  )
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -360,6 +402,49 @@ function PersonPane({ userId }: { userId: string }) {
           </ul>
         )}
       </div>
+
+      <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
+        <SectionHead title={format(m.accountsLabel)} />
+        <p
+          className={cn('text-sm', person.user.identityCount === 0 && 'text-destructive')}
+          data-accounts={person.user.identityCount}
+        >
+          {person.user.identityCount === 0
+            ? format(m.accountNone)
+            : format(m.accountCount, { count: person.user.identityCount })}
+        </p>
+      </div>
+
+      {/* moving somebody is the one edit worth having here: it is the answer
+          to what a reader just looked up, and the rules that refuse it belong
+          to the destination rather than to this form */}
+      {person.user.manageable && movable.length > 0 && (
+        <div className="flex min-w-0 flex-col gap-2 border-t pt-3">
+          <SectionHead title={format(m.moveLabel)} />
+          <NativeSelect
+            aria-label={format(m.moveLabel)}
+            value={destination}
+            onChange={(event) => setDestination(event.target.value)}
+          >
+            <option value="">{format(m.movePick)}</option>
+            {movable.map((node) => (
+              <option key={node.orgNodeId} value={node.orgNodeId}>
+                {node.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <Feedback message={moveError} />
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-fit"
+            disabled={destination === '' || move.isPending}
+            onClick={() => move.mutate(destination)}
+          >
+            {format(m.moveAction)}
+          </Button>
+        </div>
+      )}
 
       <div className="border-t pt-3">
         <Button size="sm" asChild>

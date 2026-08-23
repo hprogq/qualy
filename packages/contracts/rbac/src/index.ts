@@ -51,7 +51,16 @@ export interface PermissionDefinition {
    */
   name: UiText
   description?: UiText
+  /**
+   * Which part of the product this permission belongs to.
+   *
+   * The key is stable and machine-facing; the name is what a reader sees on
+   * the group heading, and it is UiText for the same reason `name` is - the
+   * plugin that declares the permission is the one that gets to name the
+   * section it appears under, and the language is chosen in the browser.
+   */
   groupKey?: string
+  group?: UiText
   target: PermissionTarget
 }
 

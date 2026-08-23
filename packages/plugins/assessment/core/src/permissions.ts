@@ -17,6 +17,8 @@ export const permissions = [
       'assessment/permission-hint/batch-manage',
       'The whole life of a batch: stages, questions and the roster.',
     ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'org-node',
   },
   {
@@ -26,6 +28,8 @@ export const permissions = [
       'assessment/permission-hint/batch-force-advance',
       'Move a batch past its guard conditions; a reason is required.',
     ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'org-node',
   },
   {
@@ -35,6 +39,8 @@ export const permissions = [
       'assessment/permission-hint/publication-manage',
       'Announce, publish, or withdraw the batch results.',
     ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'org-node',
   },
   {
@@ -44,6 +50,8 @@ export const permissions = [
       'assessment/permission-hint/entry-proxy',
       'File material a participant could have filed themselves; it takes the full review chain.',
     ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'org-node',
   },
   {
@@ -53,11 +61,15 @@ export const permissions = [
       'assessment/permission-hint/entry-record',
       'Record deductions and awards the organization has already decided; they take effect without review.',
     ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'org-node',
   },
   {
     code: 'assessment.review.process',
     name: message('assessment/permission/review-process', 'Review submissions'),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'org-node',
   },
   {
@@ -67,6 +79,8 @@ export const permissions = [
       'assessment/permission-hint/review-reopen',
       'Reopen a review that has already ended.',
     ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'org-node',
   },
   {
@@ -75,11 +89,15 @@ export const permissions = [
       'assessment/permission/result-view-peers',
       'View other participants\u2019 results',
     ),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'tenant',
   },
   {
     code: 'assessment.ranking.view',
     name: message('assessment/permission/ranking-view', 'View ranking'),
+    groupKey: 'assessment',
+    group: message('assessment/permission-group/assessment', 'Assessment'),
     target: 'tenant',
   },
 ] as const satisfies readonly PermissionDefinition[]

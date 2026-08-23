@@ -2,7 +2,7 @@ import type { Effect } from 'effect'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { ChevronDownIcon, ChevronRightIcon, LockIcon, PlusIcon, SearchIcon } from 'lucide-react'
-import { useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
+import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
@@ -595,6 +595,22 @@ function NodePanel({
             </form>
           )}
         </div>
+      </div>
+
+      {/* who stands here. The roster itself belongs to the users screen, and
+          the counts belong to whoever owns people - this says where to go and
+          arrives with the unit already selected */}
+      <div className="flex min-w-0 flex-col gap-2.5 border-t pt-4">
+        <SectionHead title={format(m.peopleTitle)} />
+        <p className="text-sm text-muted-foreground">{format(m.peopleHint)}</p>
+        <PageLink
+          page="auth/users"
+          search={{ anchor: node.id, scope: 'self' }}
+          className="w-fit text-sm font-medium hover:underline"
+          unavailable={null}
+        >
+          {format(m.peopleOpen)}
+        </PageLink>
       </div>
 
       {node.manageable && !isRoot && (

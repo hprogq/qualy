@@ -482,11 +482,13 @@ describe.runIf(postgresAvailable)('the alarm the phase loop aims by', () => {
         yield* runBootHooks
 
         // the administrator moves the boundary up to two minutes out. The
-        // announcement rides the live channel in wall time; the loop hears
-        // it, drops the old alarm and re-aims. Two virtual minutes then
-        // cross the new boundary - never the five the net would have needed,
-        // so a loop that missed the wake-up leaves the row null and this
-        // times out red.
+        // announcement rides the live channel in wall time, so the loop may
+        // still be sleeping on the old alarm when the next line runs - which
+        // is why the virtual clock is nudged between reads rather than jumped
+        // once up front. Whenever the loop hears the edit and re-aims, the
+        // following nudge carries it across the new boundary; a loop that
+        // never re-aims is still stuck five virtual minutes away, which no
+        // number of nudges inside this budget reaches, and the test goes red.
         yield* assessment.schedulePhase(
           f.tenant,
           batch.id,
@@ -494,11 +496,19 @@ describe.runIf(postgresAvailable)('the alarm the phase loop aims by', () => {
           start + 2 * MINUTE,
           f.principal,
         )
-        yield* TestClock.adjust('125 seconds')
-        const recorded = yield* untilWritten(
-          assessment.getPlan(f.tenant, batch.id, f.principal),
-          (rows) => rows[0]!.actualEntryAt !== null,
-        )
+        const recorded = yield* Effect.retry(
+          Effect.gen(function* () {
+            // the nudge runs on the test clock and the patience runs on the
+            // live one; they cannot be nested, because `adjust` reaches the
+            // TestClock through the Clock service that `withLive` replaces
+            yield* TestClock.adjust('20 seconds')
+            yield* TestClock.withLive(Effect.sleep('20 millis'))
+            const rows = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+            if (rows[0]!.actualEntryAt === null) return yield* Effect.fail('not written yet')
+            return rows
+          }),
+          { times: 100 },
+        ).pipe(Effect.orDie)
         return { recorded: recorded[0]!.actualEntryAt, start }
       }),
     )

@@ -631,6 +631,7 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
               name: definition.name,
               description: definition.description ?? null,
               groupKey: definition.groupKey ?? null,
+              group: definition.group ?? null,
               target: definition.target,
             })),
         }

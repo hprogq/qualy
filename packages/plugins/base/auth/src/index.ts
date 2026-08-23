@@ -81,6 +81,18 @@ const plugin = Plugin.define(
       group: 'org/organization',
     },
   }),
+  Ui.page({
+    id: 'auth/login-methods',
+    path: '/organization/login-methods',
+    component: Ui.react('./client/iam/LoginMethodsPage.tsx'),
+    layout: APP_SHELL,
+    visibility: permissionOf('auth.provider.read'),
+    navigation: {
+      label: message('auth/navigation/login-methods', 'Ways in'),
+      order: 50,
+      group: 'org/organization',
+    },
+  }),
   // the account at the end of the top bar; it shows a sign-in link to
   // anonymous visitors, so it is public
   Ui.slot({

@@ -12,11 +12,15 @@ export const permissions = [
   {
     code: 'iam.role.read',
     name: message('rbac/permission/role-read', 'View roles'),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'tenant',
   },
   {
     code: 'iam.role.manage',
     name: message('rbac/permission/role-manage', 'Manage roles'),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'tenant',
   },
   // Holding role.manage must not be a way to mint authority you lack: put a
@@ -30,16 +34,22 @@ export const permissions = [
       'rbac/permission-hint/role-escalate',
       'Put a permission into a role without holding it yourself.',
     ),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'tenant',
   },
   {
     code: 'iam.grant.read',
     name: message('rbac/permission/grant-read', 'View role assignments in the organization'),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'org-node',
   },
   {
     code: 'iam.grant.manage',
     name: message('rbac/permission/grant-manage', 'Manage role assignments in the organization'),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'org-node',
   },
   // No bind escape hatches beside these any more (re-ruled 2026-08-20):
@@ -49,11 +59,15 @@ export const permissions = [
   {
     code: 'iam.tenant-grant.read',
     name: message('rbac/permission/tenant-grant-read', 'View tenant-wide role assignments'),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'tenant',
   },
   {
     code: 'iam.tenant-grant.manage',
     name: message('rbac/permission/tenant-grant-manage', 'Manage tenant-wide role assignments'),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'tenant',
   },
   // The appointment graph is security policy, not role cosmetics: whoever
@@ -66,6 +80,8 @@ export const permissions = [
       'rbac/permission-hint/role-appointment-manage',
       'Configure the roles that each role is allowed to appoint.',
     ),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'tenant',
   },
   // reading why someone holds what they hold names roles and grants, which
@@ -73,6 +89,8 @@ export const permissions = [
   {
     code: 'iam.authorization.inspect',
     name: message('rbac/permission/authorization-inspect', 'Inspect where authority comes from'),
+    groupKey: 'access',
+    group: message('rbac/permission-group/access', 'Roles and access'),
     target: 'tenant',
   },
 ] as const satisfies readonly PermissionDefinition[]

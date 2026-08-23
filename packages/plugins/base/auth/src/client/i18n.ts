@@ -21,6 +21,19 @@ const userTypeLastForRoleMessage = defineMessage<{ roleCount: number }>()({
   defaultMessage:
     '{roleCount, plural, one {# role allows} other {# roles allow}} this user type and no other.',
 })
+const accountCountMessage = defineMessage<{ count: number }>()({
+  id: 'auth/users/account-count',
+  defaultMessage: '{count, plural, one {# account} other {# accounts}}',
+})
+const audienceSummaryMessage = defineMessage<{ count: number }>()({
+  id: 'auth/login-methods/audience-summary',
+  defaultMessage: '{count, plural, =0 {no user type} one {1 user type} other {# user types}}',
+})
+const inUseBlockerMessage = defineMessage<{ count: number }>()({
+  id: 'auth/user-types/blocker-in-use',
+  defaultMessage:
+    '{count, plural, one {# person holds} other {# people hold}} this type, so it can be neither disabled nor deleted.',
+})
 const placementCountMessage = defineMessage<{ count: number }>()({
   id: 'auth/user-types/placement-count',
   defaultMessage: '{count, plural, one {# node type} other {# node types}}',
@@ -288,6 +301,11 @@ const i18n = definePluginMessages({
     fullProfile: { id: 'auth/users/full-profile', defaultMessage: 'Full profile' },
     accountsLabel: { id: 'auth/users/accounts', defaultMessage: 'Sign-in accounts' },
     accountNone: { id: 'auth/users/account-none', defaultMessage: 'None bound' },
+    accountCount: accountCountMessage,
+    columnAccounts: { id: 'auth/users/column-accounts', defaultMessage: 'Accounts' },
+    moveLabel: { id: 'auth/users/move', defaultMessage: 'Move' },
+    movePick: { id: 'auth/users/move-pick', defaultMessage: 'Pick a unit' },
+    moveAction: { id: 'auth/users/move-action', defaultMessage: 'Move here' },
     rolesLabel: { id: 'auth/users/roles', defaultMessage: 'Roles' },
     rolesNone: { id: 'auth/users/roles-none', defaultMessage: 'None' },
     treeSearchEmpty: {
@@ -322,6 +340,72 @@ const i18n = definePluginMessages({
     systemTypeHint: {
       id: 'auth/user-types/system-hint',
       defaultMessage: 'A system user type cannot be deleted; its policy stays editable.',
+    },
+    rename: { id: 'auth/action/rename', defaultMessage: 'Rename' },
+    statusDisabled: { id: 'auth/state/disabled', defaultMessage: 'Disabled' },
+    discard: { id: 'auth/action/discard', defaultMessage: 'Discard' },
+    unsaved: { id: 'auth/state/unsaved', defaultMessage: 'Unsaved changes' },
+    placementLegend: { id: 'auth/user-types/placement-legend', defaultMessage: 'May belong to' },
+    placementAnywhere: { id: 'auth/user-types/placement-anywhere', defaultMessage: 'Anywhere' },
+    placementListed: {
+      id: 'auth/user-types/placement-listed',
+      defaultMessage: 'Only these kinds',
+    },
+    signInLabel: { id: 'auth/user-types/sign-in', defaultMessage: 'Ways in' },
+    signInNone: {
+      id: 'auth/user-types/sign-in-none',
+      defaultMessage: 'No entrance admits this type yet, so nobody holding it can sign in.',
+    },
+    signInSettings: { id: 'auth/user-types/sign-in-settings', defaultMessage: 'Set up' },
+    openRolesLabel: { id: 'auth/user-types/open-roles', defaultMessage: 'Roles open to it' },
+    openRolesNone: {
+      id: 'auth/user-types/open-roles-none',
+      defaultMessage: 'No role admits this type yet.',
+    },
+    lifecycleLabel: { id: 'auth/user-types/lifecycle', defaultMessage: 'Disable and delete' },
+    blockerInUse: inUseBlockerMessage,
+    blockerSystem: {
+      id: 'auth/user-types/blocker-system',
+      defaultMessage: 'A preset type stays for as long as the platform provisions it.',
+    },
+    blockerClear: {
+      id: 'auth/user-types/blocker-clear',
+      defaultMessage: 'Nothing holds this type back.',
+    },
+    loginMethodsTitle: { id: 'auth/login-methods/title', defaultMessage: 'Ways in' },
+    loginMethodsHint: {
+      id: 'auth/login-methods/hint',
+      defaultMessage: 'Each entrance says which user types may sign in through it.',
+    },
+    loginMethodsEmpty: {
+      id: 'auth/login-methods/empty',
+      defaultMessage: 'No entrance is configured yet.',
+    },
+    loginMethodSelectHint: {
+      id: 'auth/login-methods/select-hint',
+      defaultMessage: 'Pick an entrance on the left to say who may use it.',
+    },
+    audienceLegend: { id: 'auth/login-methods/audience', defaultMessage: 'May sign in' },
+    audienceAnyone: { id: 'auth/login-methods/audience-anyone', defaultMessage: 'Anyone' },
+    audienceListed: {
+      id: 'auth/login-methods/audience-listed',
+      defaultMessage: 'Only these types',
+    },
+    audienceNobody: {
+      id: 'auth/login-methods/audience-nobody',
+      defaultMessage: 'Nobody can sign in through it while the list is empty.',
+    },
+    providerKindLabel: { id: 'auth/login-methods/kind', defaultMessage: 'Kind' },
+    providerCodeLabel: { id: 'auth/login-methods/code', defaultMessage: 'Address' },
+    providerCodeHint: {
+      id: 'auth/login-methods/code-hint',
+      defaultMessage: 'Fixed once created.',
+    },
+    providerOrderLabel: { id: 'auth/login-methods/order', defaultMessage: 'Sign-in page order' },
+    audienceSummary: audienceSummaryMessage,
+    audienceEveryone: {
+      id: 'auth/login-methods/audience-everyone',
+      defaultMessage: 'Open to every user type',
     },
     userCount: userCountMessage,
   },

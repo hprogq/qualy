@@ -14,31 +14,43 @@ export const permissions = [
   {
     code: 'auth.user-type.read',
     name: message('auth/permission/user-type-read', 'View user types'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
     target: 'tenant',
   },
   {
     code: 'auth.user-type.manage',
     name: message('auth/permission/user-type-manage', 'Manage user types'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
     target: 'tenant',
   },
   {
     code: 'auth.provider.read',
     name: message('auth/permission/provider-read', 'View login methods'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
     target: 'tenant',
   },
   {
     code: 'auth.provider.manage',
     name: message('auth/permission/provider-manage', 'Manage login methods'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
     target: 'tenant',
   },
   {
     code: 'auth.user.read',
     name: message('auth/permission/user-read', 'View users'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
     target: 'org-node',
   },
   {
     code: 'auth.user.manage',
     name: message('auth/permission/user-manage', 'Manage users'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
     target: 'org-node',
   },
 ] as const satisfies readonly PermissionDefinition[]

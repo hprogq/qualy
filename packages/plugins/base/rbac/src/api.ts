@@ -179,6 +179,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
             name: uiText,
             description: Schema.NullOr(uiText),
             groupKey: Schema.NullOr(Schema.String),
+            group: Schema.NullOr(uiText),
             target: permissionTarget,
           }),
         ),

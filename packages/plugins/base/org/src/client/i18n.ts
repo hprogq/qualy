@@ -109,6 +109,12 @@ const i18n = definePluginMessages({
       defaultMessage: 'This kind of unit holds no children.',
     },
     childrenEmpty: { id: 'org/node/children-empty', defaultMessage: 'No children yet.' },
+    peopleTitle: { id: 'org/nodes/people', defaultMessage: 'People' },
+    peopleHint: {
+      id: 'org/nodes/people-hint',
+      defaultMessage: 'Who stands here is administered on the users screen.',
+    },
+    peopleOpen: { id: 'org/nodes/people-open', defaultMessage: 'Open the roster' },
     deleteTitle: { id: 'org/node/delete-title', defaultMessage: 'Delete this unit' },
     deleteBlockedChildren: {
       id: 'org/node/delete-blocked-children',

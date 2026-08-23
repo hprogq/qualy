@@ -7,11 +7,15 @@ export const permissions = [
   {
     code: 'org.tree.read',
     name: message('org/permission/tree-read', 'View the organization'),
+    groupKey: 'org',
+    group: message('org/permission-group/structure', 'Organization'),
     target: 'org-node',
   },
   {
     code: 'org.tree.manage',
     name: message('org/permission/tree-manage', 'Manage the organization'),
+    groupKey: 'org',
+    group: message('org/permission-group/structure', 'Organization'),
     target: 'org-node',
   },
 ] as const satisfies readonly PermissionDefinition[]

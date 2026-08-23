@@ -123,6 +123,7 @@ const identityStubs = (over: Stubs<'identity'> = {}): Stubs<'identity'> => ({
       ],
       userTypes: [],
     }),
+  listAuthProviders: () => Effect.succeed({ providers: [] }),
   ...over,
 })
 
@@ -165,19 +166,21 @@ describe('user types screen', () => {
     })
 
     await expect.element(page.getByText('学生').first()).toBeInTheDocument()
-    // the placement panel arrives on a second query, and its save button with
-    // it. Counting before it lands is a coin flip that comes up two on a fast
-    // machine and one on a busy ci runner, so wait for the panel itself.
+    // the placement panel arrives on a second query, so wait for the panel
+    // itself rather than for whatever renders first
     await expect.element(page.getByTestId('placement-panel')).toBeInTheDocument()
-    // the record is visible and the editor opens, but nothing in it acts.
-    // The count is asserted too: a screen that rendered no controls at all
-    // would satisfy "every control is disabled" without meaning it.
-    const saves = await page.getByRole('button', { name: '保存' }).elements()
-    expect(saves).toHaveLength(2)
-    for (const save of saves) expect(save).toBeDisabled()
+    // the policy is legible - the rule is stated, and the radio marking the
+    // current mode is there to read. Asserting this first matters: a screen
+    // that rendered nothing at all would satisfy "no controls" vacuously.
+    const modes = await page.getByRole('radio').elements()
+    expect(modes.length).toBeGreaterThan(0)
+    for (const mode of modes) expect(mode).toBeDisabled()
+    // and nothing on it acts
+    expect(await page.getByRole('button', { name: '保存' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
-    // and no form for making more of them
+    // and no way to make more of them
     expect(await page.getByText('新建用户类型').elements()).toHaveLength(0)
   })
 
@@ -228,9 +231,7 @@ describe('user types screen', () => {
       children: <UserTypesPage />,
     })
 
-    // the policy the type was read with, offered for editing. The create
-    // form below draws from the same options, so the editor's copy of a
-    // control is the first one.
+    // the policy the type was read with, offered for editing
     const college = page.getByRole('checkbox', { name: '学院' }).first()
     await expect.element(college).toBeChecked()
 
@@ -238,18 +239,16 @@ describe('user types screen', () => {
     // all: the api refuses it, and clearing the last entry must not read as
     // "may stand anywhere"
     await college.click()
-    const saves = page.getByRole('button', { name: '保存' })
-    // the profile section saves separately and is unaffected
-    await expect.element(saves.first()).toBeEnabled()
-    await expect.element(saves.nth(1)).toBeDisabled()
-    await saves.nth(1).click({ force: true })
+    const save2 = page.getByRole('button', { name: '保存' }).first()
+    await expect.element(save2).toBeDisabled()
+    await save2.click({ force: true })
     expect(save).not.toHaveBeenCalled()
 
     // saying "anywhere" is a decision the reader makes, not one that falls
     // out of an empty list
-    await page.getByRole('checkbox', { name: '可以挂在任何组织节点下' }).first().click()
-    await expect.element(saves.nth(1)).toBeEnabled()
-    await saves.nth(1).click()
+    await page.getByRole('radio', { name: '不限' }).first().click()
+    await expect.element(save2).toBeEnabled()
+    await save2.click()
     await expect.element(page.getByTestId('feedback')).toHaveAttribute('data-tone', 'success')
     expect(save).toHaveBeenCalledWith({
       params: { userTypeId: USER_TYPE_ID },
@@ -287,9 +286,11 @@ describe('user types screen', () => {
 
     await expect.element(page.getByText('学生').first()).toBeInTheDocument()
     // a system identity stands at the tenant root whatever its row says, so
-    // its placement is reported and the only save here is the profile one
-    expect(await page.getByRole('button', { name: '保存' }).elements()).toHaveLength(1)
-    await page.getByRole('button', { name: '保存' }).first().click()
+    // there is no placement to edit and the only save is the one behind the
+    // rename dialog
+    expect(await page.getByRole('button', { name: '保存' }).elements()).toHaveLength(0)
+    await page.getByRole('button', { name: '重命名' }).click()
+    await page.getByRole('button', { name: '保存' }).click()
     // the refusal reaches the reader translated - the subject here is that
     // the raw code never does, asserted just below
     await expect
@@ -380,14 +381,14 @@ describe('roles screen', () => {
     })
 
     await expect.element(page.getByText('租户管理员').first()).toBeInTheDocument()
-    // no destructive control is offered at all for it
+    // it is not renamed, not appointed through, and not saved
+    expect(await page.getByRole('button', { name: '重命名' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('button', { name: '保存权限' }).elements()).toHaveLength(0)
+    expect(await page.getByRole('radio', { name: '可任命' }).elements()).toHaveLength(0)
+    // and its status tab offers nothing destructive either
+    await page.getByRole('radio', { name: '状态' }).click()
     expect(await page.getByRole('button', { name: '删除' }).elements()).toHaveLength(0)
     expect(await page.getByRole('button', { name: '停用' }).elements()).toHaveLength(0)
-    // what it holds is fixed by its permission mode, so the picker cannot be
-    // saved; its display fields are ordinary and stay editable
-    const saves = page.getByRole('button', { name: '保存' })
-    await expect.element(saves.first()).toBeEnabled()
-    await expect.element(saves.nth(1)).toBeDisabled()
   })
 
   it('does not present a failed supporting query as an empty picker', async () => {
@@ -415,13 +416,14 @@ describe('roles screen', () => {
     // rendering an empty, apparently-complete checkbox list
     await expect.element(page.getByRole('button', { name: '重试' }).first()).toBeInTheDocument()
     expect(await page.getByRole('button', { name: '重试' }).elements()).toHaveLength(1)
-    expect(await page.getByRole('group', { name: '权限' }).elements()).toHaveLength(0)
-    // the section whose data did load is unaffected. Only the editor draws
-    // from the catalog: creation takes identity and kind, and everything a
-    // role needs before it can be activated is configured afterwards.
-    expect(await page.getByRole('group', { name: '可以授予这些用户类型' }).elements()).toHaveLength(
-      1,
-    )
+    expect(await page.getByRole('checkbox').elements()).toHaveLength(0)
+    // the tab whose data did load is unaffected. Only the permissions tab
+    // draws from the catalog: creation takes identity and kind, and
+    // everything a role needs before it can be activated comes afterwards.
+    await page.getByRole('radio', { name: '可担任的人' }).click()
+    await expect
+      .element(page.getByRole('radio', { name: '仅这些类型' }).first())
+      .toBeInTheDocument()
     // and creation, which draws from nothing, still asks its two questions
     await page.getByRole('button', { name: '新建组织角色' }).click()
     await expect
@@ -492,6 +494,9 @@ describe('roles screen', () => {
     })
 
     await expect.element(page.getByText('院系管理员').first()).toBeInTheDocument()
+    // deleting a role is a decision about its standing, so it lives with the
+    // rest of them rather than beside what the role may do
+    await page.getByRole('radio', { name: '状态' }).click()
     await page.getByRole('button', { name: '删除' }).click()
     // it asks before it acts, in a dialog of its own
     await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()

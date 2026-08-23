@@ -67,6 +67,16 @@ const notEligibleMessage = defineMessage<{ reason: string }>()({
     '{reason, select, role-unassignable {That role cannot be granted right now.} user-disabled {A disabled user cannot be granted a role.} user-type {That role is not available to this user type.} org-type {That role cannot be anchored at this kind of node.} tenant-role-anchored {A tenant-wide role can only be granted across the whole organization.} org-role-unanchored {An organization role must be granted at a node.} other {That grant is not allowed.}}',
 })
 
+const pickedMessage = defineMessage<{ picked: number; total: number }>()({
+  id: 'rbac/roles/picked-of',
+  defaultMessage: '{picked}/{total}',
+})
+const memberLineMessage = defineMessage<{ holders: number; appointers: number }>()({
+  id: 'rbac/roles/member-line',
+  defaultMessage:
+    '{holders, plural, =0 {nobody holds it} one {1 holder} other {# holders}} · appointed by {appointers, plural, =0 {no role} one {1 role} other {# roles}}',
+})
+
 const i18n = definePluginMessages({
   namespace: 'rbac',
   messages: {
@@ -145,6 +155,42 @@ const i18n = definePluginMessages({
         'A role starts as a draft. Give it permissions and say who may hold it, then activate it.',
     },
     editRole: { id: 'rbac/roles/edit', defaultMessage: 'Role configuration' },
+    rename: { id: 'rbac/action/rename', defaultMessage: 'Rename' },
+    discard: { id: 'rbac/action/discard', defaultMessage: 'Discard' },
+    selectAll: { id: 'rbac/action/select-all', defaultMessage: 'All' },
+    unsaved: { id: 'rbac/state/unsaved', defaultMessage: 'Unsaved changes' },
+    tabPermissions: { id: 'rbac/roles/tab-permissions', defaultMessage: 'Permissions' },
+    tabEligibility: { id: 'rbac/roles/tab-eligibility', defaultMessage: 'Who may hold it' },
+    tabAppointment: { id: 'rbac/roles/tab-appointment', defaultMessage: 'Appoints' },
+    tabLifecycle: { id: 'rbac/roles/tab-lifecycle', defaultMessage: 'Status' },
+    searchPermissions: {
+      id: 'rbac/roles/search-permissions',
+      defaultMessage: 'Search permissions',
+    },
+    searchEmpty: { id: 'rbac/roles/search-empty', defaultMessage: 'No permission matches.' },
+    pickedOf: pickedMessage,
+    memberLine: memberLineMessage,
+    savePermissions: { id: 'rbac/roles/save-permissions', defaultMessage: 'Save permissions' },
+    factKind: { id: 'rbac/roles/fact-kind', defaultMessage: 'Applies' },
+    factStatus: { id: 'rbac/roles/fact-status', defaultMessage: 'Status' },
+    factHolders: { id: 'rbac/roles/fact-holders', defaultMessage: 'Held by' },
+    factEligibility: { id: 'rbac/roles/fact-eligibility', defaultMessage: 'Open to' },
+    anyoneWord: { id: 'rbac/roles/anyone', defaultMessage: 'any user type' },
+    anywhereWord: { id: 'rbac/roles/anywhere', defaultMessage: 'any kind of unit' },
+    nobodyWord: { id: 'rbac/roles/nobody', defaultMessage: 'nobody yet' },
+    everyPermission: {
+      id: 'rbac/roles/every-permission',
+      defaultMessage: 'Carries whatever this deployment serves, so there is nothing to tick.',
+    },
+    assignableLegend: { id: 'rbac/roles/assignable-legend', defaultMessage: 'Available to grant' },
+    assignableOn: { id: 'rbac/roles/assignable-on', defaultMessage: 'Yes' },
+    assignableOff: { id: 'rbac/roles/assignable-off', defaultMessage: 'No' },
+    statusLegend: { id: 'rbac/roles/status-legend', defaultMessage: 'Status' },
+    eligibilityAnyone: { id: 'rbac/roles/eligibility-anyone', defaultMessage: 'Anyone' },
+    eligibilityListed: { id: 'rbac/roles/eligibility-listed', defaultMessage: 'Only these types' },
+    anchorAnywhere: { id: 'rbac/roles/anchor-anywhere', defaultMessage: 'Any kind of unit' },
+    anchorListed: { id: 'rbac/roles/anchor-listed', defaultMessage: 'Only these kinds' },
+    groupOther: { id: 'rbac/roles/group-other', defaultMessage: 'Other' },
     nameLabel: { id: 'rbac/field/name', defaultMessage: 'Name' },
     codeLabel: { id: 'rbac/field/code', defaultMessage: 'Code' },
     descriptionLabel: { id: 'rbac/field/description', defaultMessage: 'Description' },

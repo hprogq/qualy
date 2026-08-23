@@ -87,6 +87,10 @@ export default {
   'org/error/rule-cycle': '该规则会让类型层级成环。',
   'org/error/rule-violation': '层级规则不允许这样的父子类型组合。',
   'org/error/invalid-move': '节点不能移动到自身或其子树内。',
+  'org/nodes/people': '人员',
+  'org/nodes/people-hint': '本级人员在用户页维护。',
+  'org/nodes/people-open': '在用户页查看',
+  'org/permission-group/structure': '组织',
   'org/permission/tree-read': '查看组织架构',
   'org/permission/tree-manage': '管理组织架构',
   // exact key coverage per locale is enforced by scripts/tests/catalogs.test
