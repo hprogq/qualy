@@ -109,6 +109,17 @@ if (!asset) fail('the shell references no /assets/*.js entry')
 await check(asset!, async (response) =>
   response.status === 200 ? undefined : `status ${response.status}`,
 )
+// and it arrives compressed: the twins are written by the staging step and
+// served by the static server, two halves that fail silently on their own -
+// a missing twin just means the raw file goes out, five times the bytes
+{
+  const response = await fetch(`${base}${asset}`, { headers: { 'accept-encoding': 'br' } })
+  const encoding = response.headers.get('content-encoding')
+  if (encoding !== 'br') {
+    fail(`${asset}: served with content-encoding ${encoding ?? 'none'}, expected br`)
+  }
+  console.log(`smoke: ${asset} served brotli-compressed`)
+}
 
 server.kill('SIGTERM')
 const code = await Promise.race([exited, delay(15_000).then(() => 'timeout' as const)])

@@ -105,6 +105,12 @@ const insideApi = (url: string) =>
 const assets = (assetRoot: string): ConnectMiddleware =>
   sirv(assetRoot, {
     etag: true,
+    // The twins the build wrote, served when the request accepts them. Off
+    // by default, and the default is what shipped: every visitor downloaded
+    // the bundle raw, which is roughly five times the bytes for nothing.
+    // A request that accepts neither still gets the original.
+    brotli: true,
+    gzip: true,
     // spa fallback: extension-less GET/HEAD navigations get index.html,
     // missing assets with extensions stay 404
     single: true,
