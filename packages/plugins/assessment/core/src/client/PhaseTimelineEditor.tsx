@@ -12,6 +12,7 @@ import { toast } from '@qualy/ui/toast'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { cn } from '@qualy/ui/cn'
 import { assessmentMessages as m } from './i18n.ts'
+import { useBatchLive } from './live.ts'
 import { assessmentApi } from './api.ts'
 import { refusalMessage, refusalsOf, type PlanRefusalLike } from './refusals.ts'
 import {
@@ -136,6 +137,12 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
     setPlanRefusals([])
   }
   const settle = () => queryClient.invalidateQueries({ queryKey: query.assessment.key() })
+  // another administrator's edit, or a boundary turning: the plan on screen
+  // is stale. Unsaved edits are not clobbered - the editor's own draft
+  // shields the rows it is holding until saved or discarded.
+  useBatchLive(batch.id, (kind) => {
+    if (kind === 'plan-changed' || kind === 'phase-changed' || kind === 'sync') void settle()
+  })
   const failed = (error: unknown) => {
     const refusals = refusalsOf(error)
     setPlanRefusals(refusals)

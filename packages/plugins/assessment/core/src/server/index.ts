@@ -84,6 +84,7 @@ import {
   activeElsewhere,
   batchParticipantIds,
   batchesWithDueBoundaries,
+  nextDueBoundaryAt,
   bumpConfigRevision,
   deletePhases,
   deleteTemplateRow,
@@ -914,6 +915,14 @@ export class Assessment extends Context.Service<
      * writes down what is already true.
      */
     readonly sweepDueBoundaries: Effect.Effect<SweepReport>
+    /**
+     * The next instant any active batch's diary commits to, or null.
+     *
+     * For the scheduler's alarm, and nothing else: the answer is already
+     * stale the moment it returns, which is fine for deciding how long to
+     * sleep and for nothing that decides state.
+     */
+    readonly nextDueBoundary: Effect.Effect<number | null>
     /** re-resolves every open round's stage and heals both ways (§14) */
     readonly patrolReviewRounds: Effect.Effect<{ blocked: number; released: number }>
     readonly reviewAlerts: (
@@ -2947,6 +2956,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 actorId,
                 provenance: template,
               })
+              yield* announce(tenantId, batchId, [{ kind: 'plan-changed' }])
               const phases = yield* readPlan(tenantId, batchId)
               return { phases, warnings: review.warnings }
             }
@@ -2981,6 +2991,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 events: false,
                 actorId,
               })
+              // the timetable was restructured; same wake-up as a schedule
+              // edit, because the same readers hold the same stale answer
+              yield* announce(tenantId, batchId, [{ kind: 'plan-changed' }])
               const phases = yield* readPlan(tenantId, batchId)
               return { phases, warnings: review.warnings }
             }
@@ -3102,6 +3115,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 null,
               )
             }
+            yield* announce(tenantId, batchId, [{ kind: 'plan-changed' }])
             const phases = yield* readPlan(tenantId, batchId)
             return { phases, warnings }
           }),
@@ -3159,6 +3173,9 @@ export const make = Effect.fn('Assessment.make')(function* () {
                 plannedAt: plannedEntryAt,
                 actorId: as.userId,
               })
+              // the timetable moved: screens showing it re-read, and the
+              // scheduler re-aims its alarm at whatever is now next
+              yield* announce(tenantId, batchId, [{ kind: 'plan-changed' }])
               // And withdrawing the last of them releases it again. Only a
               // batch that never actually entered a phase can go back: once
               // something has happened, it happened. The roster stays - a
@@ -3861,6 +3878,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
       }
     }),
 
+    nextDueBoundary: withDb(nextDueBoundaryAt).pipe(
+      Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+      Effect.withSpan('Assessment.nextDueBoundary'),
+    ),
+
     sweepDueBoundaries: Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis
       // One candidate query, then one transaction per batch. Sweeping every
@@ -4335,9 +4357,10 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               )
             case 'item-changed':
               return true
-            // which phase the batch is in is not a secret from anybody who
-            // may watch the batch at all
+            // which phase the batch is in - and what the timetable says -
+            // is not a secret from anybody who may watch the batch at all
             case 'phase-changed':
+            case 'plan-changed':
               return true
           }
         }

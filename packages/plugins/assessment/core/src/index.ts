@@ -400,8 +400,10 @@ const plugin = Plugin.define(
   // the live bus: one LISTEN session fanned out to the open connections;
   // handlers reach it through the service graph like any other service
   Plugin.layer(AssessmentLive.layer),
-  // provided the service rather than merged with it: the fiber consumes the
-  // service and exports nothing, so it stays out of everybody else's graph
+  // provided the service rather than merged with it: the fibers consume the
+  // service and export nothing, so they stay out of everybody else's graph.
+  // The live bus arrives from the layer above by declaration order, so the
+  // phase loop hears the same plan-changed announcements the browsers do
   Plugin.layer(schedulerLayer.pipe(Layer.provide(serviceLayer))),
 )
 

@@ -1830,6 +1830,37 @@ export const batchesWithDueBoundaries = (now: number, limit: number) =>
     )
     .pipe(Effect.map((found) => found as { tenantId: string; id: string }[]))
 
+/**
+ * The next instant the diary commits any active batch to, or null.
+ *
+ * The deadline the phase scheduler sleeps towards. Same posture as the
+ * candidate query above: system-wide, and allowed to over-approximate -
+ * an instant the engine will refuse to ratify only costs a wasted wake-up,
+ * and the fallback cadence bounds what an under-approximation could ever
+ * cost. No lower bound on the instant on purpose: one already in the past
+ * right after a sweep means the engine left it (an armed manual boundary
+ * ahead of it, or more due batches than one sweep takes), and the caller
+ * decides how soon to look again.
+ */
+export const nextDueBoundaryAt = db
+  .query((k) =>
+    k
+      .selectFrom('BatchPhase')
+      .innerJoin('AssessmentBatch', (join) =>
+        join
+          .onRef('AssessmentBatch.tenantId', '=', 'BatchPhase.tenantId')
+          .onRef('AssessmentBatch.id', '=', 'BatchPhase.batchId'),
+      )
+      .select(
+        sql<number | null>`(extract(epoch from min(planned_entry_at)) * 1000)::float8`.as('at'),
+      )
+      .where('AssessmentBatch.status', '=', 'active')
+      .where('BatchPhase.actualEntryAt', 'is', null)
+      .where('BatchPhase.plannedEntryAt', 'is not', null)
+      .executeTakeFirst(),
+  )
+  .pipe(Effect.map((row) => msOf(row?.at ?? null)))
+
 // --- roster management ---
 //
 // The roster is the batch's population and its only truth (§32.45): drawn

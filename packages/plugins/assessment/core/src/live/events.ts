@@ -28,6 +28,14 @@ const liveKind = Schema.Literals([
    * flipped, so the reader re-asks everything it stands on
    */
   'phase-changed',
+  /**
+   * the diary itself was edited: a planned time set, moved or withdrawn, or
+   * the plan restructured. Nothing is in effect that was not before - the
+   * clock has crossed nothing - but a screen showing the timetable is now
+   * showing an old one, and the phase scheduler's alarm is set for an
+   * instant that may no longer be the next one
+   */
+  'plan-changed',
 ])
 
 export const liveEventSchema = Schema.Struct({

@@ -9,6 +9,9 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
+import { DatabaseNotifications } from '@qualy/plugin-database/server'
+import { Stream } from 'effect'
+import { ASSESSMENT_LIVE_CHANNEL } from '../src/live/events.ts'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
@@ -24,7 +27,8 @@ import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import { catalogLayers, storageForTest } from './support/catalogs.ts'
-import { schedulerLayer, sweepSchedule } from '../src/phase/scheduler.ts'
+import { patrolSchedule, phasePause, schedulerLayer } from '../src/phase/scheduler.ts'
+import { AssessmentLive } from '../src/live/service.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
 
 // The scheduler under a clock the test moves.
@@ -58,13 +62,23 @@ const stack = (url: string) => {
     Layer.provide(catalogLayers),
     Layer.provide(storageForTest().pipe(Layer.provide(services))),
     Layer.provideMerge(services),
-    // exactly the composition the descriptor declares
-    (assessment) => Layer.merge(assessment, schedulerLayer.pipe(Layer.provide(assessment))),
+    // exactly the composition the descriptor declares: the live bus under
+    // the scheduler, listening on this scratch database
+    (assessment) =>
+      Layer.merge(
+        assessment,
+        schedulerLayer.pipe(
+          Layer.provide(assessment),
+          Layer.provide(AssessmentLive.layer.pipe(Layer.provide(assessment))),
+        ),
+      ),
   )
 }
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Assessment | Rbac | Orm | Assembled>) =>
-  Effect.runPromiseExit(Effect.scoped(Effect.provide(effect, stack(url))))
+const run = <A, E>(
+  url: string,
+  effect: Effect.Effect<A, E, Assessment | Rbac | Orm | Assembled | DatabaseNotifications>,
+) => Effect.runPromiseExit(Effect.scoped(Effect.provide(effect, stack(url))))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -79,7 +93,7 @@ const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
  * `TestClock.withLive` is what lets this poll without the test clock
  * swallowing the sleep. It gives up loudly rather than passing on a timeout.
  */
-const untilWritten = <A, E>(read: Effect.Effect<A, E>, done: (value: A) => boolean) =>
+const untilWritten = <A, E, R>(read: Effect.Effect<A, E, R>, done: (value: A) => boolean) =>
   TestClock.withLive(
     Effect.flatMap(read, (value) =>
       done(value) ? Effect.succeed(value) : Effect.fail('not written yet' as const),
@@ -371,15 +385,236 @@ describe.runIf(postgresAvailable)('the phase scheduler', () => {
   })
 })
 
+describe.runIf(postgresAvailable)('the alarm the phase loop aims by', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('assessment-alarm')
+  })
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  it('names the earliest planned instant across tenants, and nothing once ratified', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse('2026-09-01T00:00:00Z'))
+        const assessment = yield* Assessment
+        const start = yield* Clock.currentTimeMillis
+
+        const activate = Effect.fn(function* (slug: string, dueAt: number) {
+          const f = yield* seed(slug)
+          const batch = yield* assessment.createBatch(
+            f.tenant,
+            {
+              name: slug,
+              materialRange: { start: '2026-03-01', end: '2026-09-01' },
+              import: { orgNodeIds: [f.node], userTypeIds: [f.studentType] },
+            },
+            f.principal,
+          )
+          yield* assessment.replacePlan(
+            f.tenant,
+            batch.id,
+            { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'archive' })] },
+            f.principal,
+          )
+          const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+          yield* assessment.schedulePhase(f.tenant, batch.id, plan[0]!.id, dueAt, f.principal)
+        })
+
+        const before = yield* assessment.nextDueBoundary
+        // two tenants with different diaries: the alarm is the earlier one
+        yield* activate('alarm-late', start + 30 * MINUTE)
+        yield* activate('alarm-soon', start + 2 * MINUTE)
+        const armed = yield* assessment.nextDueBoundary
+
+        // the clock crosses both; the sweep writes them down, and with the
+        // rest of both plans unscheduled there is nothing left to aim at
+        yield* TestClock.adjust('31 minutes')
+        yield* assessment.sweepDueBoundaries
+        const after = yield* assessment.nextDueBoundary
+        return { before, armed, after, start }
+      }),
+    )
+    const result = ok(exit)
+    expect(result.before).toBeNull()
+    expect(result.armed).toBe(result.start + 2 * MINUTE)
+    expect(result.after).toBeNull()
+  })
+
+  it('re-aims a sleeping loop when the diary moves, without a tick of the grid', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse('2026-09-01T00:00:00Z'))
+        const f = yield* seed('alarm-reaim')
+        const assessment = yield* Assessment
+        const start = yield* Clock.currentTimeMillis
+
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'moved up',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.node], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'archive' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        // the loop boots aimed at a boundary half an hour out, so its sleep
+        // is the five-minute net - far past everything this test adjusts
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          start + 30 * MINUTE,
+          f.principal,
+        )
+        yield* runBootHooks
+
+        // the administrator moves the boundary up to two minutes out. The
+        // announcement rides the live channel in wall time; the loop hears
+        // it, drops the old alarm and re-aims. Two virtual minutes then
+        // cross the new boundary - never the five the net would have needed,
+        // so a loop that missed the wake-up leaves the row null and this
+        // times out red.
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          start + 2 * MINUTE,
+          f.principal,
+        )
+        yield* TestClock.adjust('125 seconds')
+        const recorded = yield* untilWritten(
+          assessment.getPlan(f.tenant, batch.id, f.principal),
+          (rows) => rows[0]!.actualEntryAt !== null,
+        )
+        return { recorded: recorded[0]!.actualEntryAt, start }
+      }),
+    )
+    const result = ok(exit)
+    // the planned instant, not the instant the machine got to it
+    expect(result.recorded).toBe(result.start + 2 * MINUTE)
+  })
+
+  it('announces a diary edit on the live channel, inside the write', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        yield* TestClock.setTime(Date.parse('2026-09-01T00:00:00Z'))
+        const assessment = yield* Assessment
+        const notifications = yield* DatabaseNotifications
+        const start = yield* Clock.currentTimeMillis
+
+        // a listener of this test's own, so the assertion is about what any
+        // subscriber hears - the scheduler and the SSE bridge alike
+        const heard: string[] = []
+        yield* Effect.forkChild(
+          Stream.runForEach(notifications.listen(ASSESSMENT_LIVE_CHANNEL), (payload) =>
+            Effect.sync(() => {
+              heard.push(payload)
+            }),
+          ),
+        )
+        // LISTEN is asynchronous; a probe round trip proves it is standing
+        // before anything worth hearing happens
+        yield* untilWritten(
+          Effect.gen(function* () {
+            yield* runSql(sql`select pg_notify(${ASSESSMENT_LIVE_CHANNEL}, 'probe')`)
+            return heard.includes('probe')
+          }),
+          (ready) => ready,
+        )
+
+        const f = yield* seed('alarm-announce')
+        const batch = yield* assessment.createBatch(
+          f.tenant,
+          {
+            name: 'announced',
+            materialRange: { start: '2026-03-01', end: '2026-09-01' },
+            import: { orgNodeIds: [f.node], userTypeIds: [f.studentType] },
+          },
+          f.principal,
+        )
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'archive' })] },
+          f.principal,
+        )
+        const plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.schedulePhase(
+          f.tenant,
+          batch.id,
+          plan[0]!.id,
+          start + 5 * MINUTE,
+          f.principal,
+        )
+        const events = yield* untilWritten(
+          Effect.sync(() =>
+            heard
+              .filter((payload) => payload !== 'probe')
+              .map((payload) => JSON.parse(payload) as { kind: string; batchId: string })
+              .filter((event) => event.batchId === batch.id),
+          ),
+          // both writes committed before this poll began; waiting for both
+          // announcements only waits out delivery, never a write
+          (parsed) => parsed.filter((event) => event.kind === 'plan-changed').length >= 2,
+        )
+        return { kinds: events.map((event) => event.kind) }
+      }),
+    )
+    // the replace and the schedule each told the channel the diary moved
+    expect(ok(exit).kinds.filter((kind) => kind === 'plan-changed').length).toBeGreaterThanOrEqual(
+      2,
+    )
+  })
+})
+
+// The pause on its own: the one decision the phase loop makes.
+describe('the phase pause', () => {
+  const at = (value: Duration.Duration) => Duration.toMillis(value)
+
+  it('waits out the fallback when the diary names nothing', () => {
+    expect(at(phasePause(null, 1_000_000))).toBe(5 * MINUTE)
+  })
+
+  it('aims a margin past the next boundary', () => {
+    expect(at(phasePause(1_090_000, 1_000_000))).toBe(90_000 + 1_000)
+  })
+
+  it('cuts a distant boundary off at the fallback', () => {
+    expect(at(phasePause(1_000_000 + 60 * MINUTE, 1_000_000))).toBe(5 * MINUTE)
+  })
+
+  it('retries an instant the sweep left behind on its own short cadence', () => {
+    // an overdue boundary right after a sweep is one the engine refused -
+    // an armed manual boundary ahead of it - or one past the batch limit;
+    // neither is worth a spin, neither may be forgotten
+    expect(at(phasePause(999_000, 1_000_000))).toBe(15_000)
+    expect(at(phasePause(1_000_000, 1_000_000))).toBe(15_000)
+  })
+})
+
 // The cadence on its own, driven by hand. `Schedule.toStep` answers with the
-// delay the loop would sleep for given the instant a sweep finished, which is
-// the only way to ask what an overrun does without writing a sweep that
+// delay the loop would sleep for given the instant a patrol finished, which
+// is the only way to ask what an overrun does without writing a patrol that
 // really takes minutes.
-describe('the sweep cadence', () => {
+describe('the review patrol cadence', () => {
   const delaysAfter = (finished: readonly number[]) =>
     Effect.runPromise(
       Effect.gen(function* () {
-        const step = yield* Schedule.toStep(sweepSchedule)
+        const step = yield* Schedule.toStep(patrolSchedule)
         const delays: number[] = []
         for (const now of finished) {
           const [, delay] = yield* step(now, undefined)
@@ -389,16 +624,18 @@ describe('the sweep cadence', () => {
       }),
     )
 
-  it('stays on the minute grid after a quick sweep', async () => {
-    // forked at 0, the first sweep runs at 1m and is done ten seconds later:
-    // the next one belongs to the second minute, not a minute after this one
+  it('stays on the minute grid after a quick patrol', async () => {
+    // forked at 0, the first patrol runs at 1m and is done ten seconds
+    // later: the next one belongs to the second minute, not a minute after
+    // this one
     expect(await delaysAfter([0, MINUTE + 10_000])).toEqual([MINUTE, 50_000])
   })
 
-  it('waits for the next minute after a sweep that overran its own', async () => {
-    // a sweep that took two and a half minutes. Bare `Schedule.fixed` answers
-    // zero here and goes on answering zero, so the loop never lets go of the
-    // pool again; the boundaries it ran past are dropped, not replayed
+  it('waits for the next minute after a patrol that overran its own', async () => {
+    // a patrol that took two and a half minutes. Bare `Schedule.fixed`
+    // answers zero here and goes on answering zero, so the loop never lets
+    // go of the pool again; the reconciliations it ran past are dropped,
+    // not replayed
     expect(await delaysAfter([0, MINUTE + 150_000])).toEqual([MINUTE, 30_000])
   })
 })

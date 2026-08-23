@@ -30,6 +30,7 @@ export const batchLiveEvent = Schema.Struct({
     'item-changed',
     'result-changed',
     'phase-changed',
+    'plan-changed',
   ]),
 })
 export type BatchLiveEvent = typeof batchLiveEvent.Type
