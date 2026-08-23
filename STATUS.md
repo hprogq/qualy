@@ -7674,3 +7674,38 @@ loadAssembly/makeApplication)失败统一 `refuse()`:精心措辞的裸 Error �
 inspect 证据,退出码 1——装配期不再出现无格式的 unhandled rejection 堆栈。实测:坏 manifest 路径
 一行格式化 ERROR + exit 1;SIGINT 提示行 `INFO app shutting down; ...`;json 模式下信号行是完整
 json 记录;坏数据库路径不回归。`pnpm test` 767 passed 复跑通过。
+
+## 前端产物瘦身:Scalar 参考 UI 出局、静态资源预压缩(2026-08-23)
+
+用户对生产构建跑 Lighthouse:性能 55(模拟 4G),本机实测 FCP 249ms / LCP 707ms / TBT 0 / CLS 0——**执行没问题,是下载量**。产物 5.8MB,单个分块 3.4MB 且在首屏 preload 里。
+
+**归因用 sourcemap 做实**(临时 `vite build --sourcemap` 后按 `sources` 归并):那个分块里
+`effect/unstable/httpapi/internal/httpApiScalar.js` **一个模块占 3.1MB**——Effect 内嵌的整份 Scalar
+接口文档界面。进来的路径是一条边界破洞:六个插件的 `src/client/api.ts` 与 web-runtime 只用
+`Api.local(...)`,却从 `@qualy/api-kit/plugin` 取,而该模块顶层 import 了 `HttpApiScalar`,且
+`HttpApiScalar.layer` 挂在被真实使用的 `Api` 对象字面量上——tree shaking 摇不掉。顺带把
+`HttpApiBuilder`/`HttpRouter`/`HttpServerRequest|Response`/`Multipart`/`multipasta` 一并拖进浏览器。
+
+**修法**:新增浏览器安全叶子 `@qualy/api-kit/local`(只导出 `Api.local`,无任何通向服务端的 import),
+七个浏览器入口改指它;`plugin.ts` 从叶子再导出,服务端调用点不变。门禁扩到既有的
+`tools/tests/browser-graph.test.ts`(它本来就真打包每个 client 入口):①图里不得出现挂载面
+(`httpApiScalar`/`HttpApiBuilder`);②单入口打包体重上限 600KB(当前 130–155KB)。名单刻意只列这两个——
+上游 client 自身会牵出 `Multipart`/`multipasta` 等约 100KB,那是上游内部耦合,不该由本仓库断言。
+红验:把 rbac 的 client api 改回 `/plugin`,门禁立刻报出 `['HttpApiBuilder','httpApiScalar']`。
+
+**第二件:静态资源此前零压缩**(Lighthouse 每条资源 transferSize≈resourceSize)。staging 期为
+js/css/html/json/svg/map 写 `.br`(brotli 最高档)与 `.gz` 双胞胎(小于 1KB 或压不小的不写),
+sirv 开 `brotli/gzip` 按 Accept-Encoding 选发。压缩成本落在构建期而非每次请求。生产 smoke 增一条
+断言:带 `accept-encoding: br` 取首个哈希资源必须回 `content-encoding: br`——两半各自失败都是静默的
+(缺双胞胎只是发原文)。红验:关掉 sirv 压缩,smoke 报 `served with content-encoding none, expected br`。
+
+**实测**:产物文本资源 5.18MB → **2.13MB**,实际上线字节 **0.55MB**(≈9.4×);最大分块 3.27MB → 351KB
+(brotli 90KB);staging 报告 `precompressed 95 file(s), 1.57 MB saved on the wire`。
+
+**顺手两条**:`--muted-foreground` 由 oklch(0.556) 调到 **0.54**——shadcn 默认值在本产品的浅色面板上
+是 4.34:1 / 4.40:1,达不到 WCAG AA 的 4.5:1(Lighthouse 无障碍 96 的唯一扣分项);index.html 补
+`meta description`(SEO 90 的扣分项)。最佳实践 81 是误伤:扣分的 unload handler 弃用与 bf-cache
+失败都来自浏览器扩展,报告自身也警告了,无痕窗口重跑即可。
+
+验收:typecheck 零错;`pnpm test` 767 passed | 17 skipped;`pnpm test:browser` 104 passed;
+`pnpm build` 成功并报压缩量;生产 smoke 八条全过(含新的 brotli 断言);prettier 通过。

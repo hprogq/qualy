@@ -39,7 +39,11 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* 0.556 was shadcn's default and misses WCAG AA on the tinted panels this
+     product puts secondary text on: 4.34:1 on a muted avatar, 4.40:1 on the
+     phase strip, against the 4.5:1 the standard asks for. 0.54 clears it on
+     every surface here with room to spare. */
+  --muted-foreground: oklch(0.54 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
