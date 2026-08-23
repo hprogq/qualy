@@ -1,16 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { CalendarIcon, ClockIcon, XIcon } from 'lucide-react'
 import { enUS, zhCN, type Locale } from 'date-fns/locale'
-import { cn } from '../lib/utils.ts'
 import { Button } from './button.tsx'
 import { Calendar } from './calendar.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from './popover.tsx'
-import { ScrollArea } from './scroll-area.tsx'
+import { TimeField } from './time-field.tsx'
 
-// A day and a time of day, as two popovers over one value. The library has no
-// time picker of its own and a bare text field is a poor one - typing 09:00 is
-// slower than choosing it, and it accepts nonsense - so the hours and minutes
-// are lists, scrolled to the current choice when they open.
+// One instant, asked for once: a calendar with a time under it.
+//
+// This was two triggers and two popovers, and the time one was a pair of
+// scrolling columns - sixty buttons for the minutes. It was slow for the
+// thing it was mostly used for (typing a round hour), it needed a click
+// before the wheel would move it, and it had quietly become a single column
+// of two stacked lists when the popover gained a `flex-col` default the call
+// site did not override. Two controls for one value also let the two
+// disagree on screen about what the value was.
+//
+// The time is three typed boxes (see TimeField): 093000 fills all of them
+// and moves between them, and the arrows step whichever the caret is in.
+// Typing a round hour is two keystrokes, which is what this is mostly used
+// for.
 //
 // The value is an iso instant or nothing at all; the fields it serves are
 // optional, so clearing has to be reachable. Every word arrives as a prop.
@@ -20,20 +29,17 @@ const CALENDAR_LOCALES: Record<string, Locale> = {
   'en-US': enUS,
 }
 
-const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
-const MINUTES = Array.from({ length: 60 }, (_, minute) => minute)
-
 const pad = (part: number) => String(part).padStart(2, '0')
 
 export function DateTimePicker({
   id,
   value,
   onChange,
-  datePlaceholder,
-  timePlaceholder,
-  clearLabel,
+  placeholder,
   hourLabel,
   minuteLabel,
+  secondLabel,
+  clearLabel,
   localeTag,
   monthLabel,
   yearLabel,
@@ -43,12 +49,13 @@ export function DateTimePicker({
   /** an iso instant, or null when nothing is set */
   value: string | null
   onChange: (next: string | null) => void
-  datePlaceholder: string
-  timePlaceholder: string
-  clearLabel: string
-  /** the two columns are both two-digit numbers; only a name tells them apart */
+  /** what the trigger says while nothing is chosen */
+  placeholder: string
+  /** every time box is two digits; only a name tells them apart */
   hourLabel: string
   minuteLabel: string
+  secondLabel: string
+  clearLabel: string
   /** a bcp-47 tag such as zh-CN; calendar and display text follow it */
   localeTag?: string
   /** names for the caption pickers, read out but never shown */
@@ -56,24 +63,25 @@ export function DateTimePicker({
   yearLabel?: string
   disabled?: boolean
 }) {
-  const [dateOpen, setDateOpen] = useState(false)
-  const [timeOpen, setTimeOpen] = useState(false)
+  const [open, setOpen] = useState(false)
   const at = value === null ? null : new Date(value)
 
   const withDate = (day: Date) => {
     const next = new Date(day)
-    next.setHours(at?.getHours() ?? 0, at?.getMinutes() ?? 0, 0, 0)
+    next.setHours(at?.getHours() ?? 0, at?.getMinutes() ?? 0, at?.getSeconds() ?? 0, 0)
     return next.toISOString()
   }
-  const withTime = (hours: number, minutes: number) => {
+  // naming a time before a day means today, the way it did when these were
+  // two controls
+  const withTime = (hours: number, minutes: number, seconds: number) => {
     const next = at === null ? new Date() : new Date(at)
-    next.setHours(hours, minutes, 0, 0)
+    next.setHours(hours, minutes, seconds, 0)
     return next.toISOString()
   }
 
   return (
     <div className="flex items-center gap-2">
-      <Popover open={dateOpen} onOpenChange={setDateOpen}>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             id={id}
@@ -81,15 +89,17 @@ export function DateTimePicker({
             variant="outline"
             disabled={disabled}
             data-empty={at === null}
-            className="w-44 justify-start font-normal data-[empty=true]:text-muted-foreground"
+            className="min-w-0 flex-1 justify-start font-normal data-[empty=true]:text-muted-foreground"
           >
             <CalendarIcon />
             {at === null
-              ? datePlaceholder
-              : at.toLocaleDateString(localeTag, { dateStyle: 'medium' })}
+              ? placeholder
+              : at.toLocaleString(localeTag, { dateStyle: 'medium', timeStyle: 'medium' })}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        {/* the popover stacks by default, which is the direction wanted here -
+            only its width and padding give way to the calendar */}
+        <PopoverContent className="w-auto gap-0 p-0" align="start">
           <Calendar
             mode="single"
             captionLayout="dropdown"
@@ -103,43 +113,23 @@ export function DateTimePicker({
             defaultMonth={at ?? undefined}
             selected={at ?? undefined}
             onSelect={(day) => {
-              if (day) {
-                onChange(withDate(day))
-                setDateOpen(false)
-              }
+              if (day) onChange(withDate(day))
             }}
           />
-        </PopoverContent>
-      </Popover>
-
-      <Popover open={timeOpen} onOpenChange={setTimeOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={disabled}
-            data-empty={at === null}
-            className="w-28 justify-start font-normal data-[empty=true]:text-muted-foreground"
-          >
-            <ClockIcon />
-            {at === null ? timePlaceholder : `${pad(at.getHours())}:${pad(at.getMinutes())}`}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="flex w-auto divide-x p-0" align="start">
-          <TimeColumn
-            open={timeOpen}
-            label={hourLabel}
-            parts={HOURS}
-            selected={at?.getHours() ?? null}
-            onPick={(hour) => onChange(withTime(hour, at?.getMinutes() ?? 0))}
-          />
-          <TimeColumn
-            open={timeOpen}
-            label={minuteLabel}
-            parts={MINUTES}
-            selected={at?.getMinutes() ?? null}
-            onPick={(minute) => onChange(withTime(at?.getHours() ?? 0, minute))}
-          />
+          {/* choosing a day leaves the popover open, because the time is the
+              other half of the same answer and it is on this panel */}
+          <div className="flex items-center justify-center gap-2 border-t border-border p-3">
+            <ClockIcon className="size-4 shrink-0 text-muted-foreground" />
+            <TimeField
+              hours={at?.getHours() ?? 0}
+              minutes={at?.getMinutes() ?? 0}
+              seconds={at?.getSeconds() ?? 0}
+              hourLabel={hourLabel}
+              minuteLabel={minuteLabel}
+              secondLabel={secondLabel}
+              onChange={(hours, minutes, seconds) => onChange(withTime(hours, minutes, seconds))}
+            />
+          </div>
         </PopoverContent>
       </Popover>
 
@@ -155,46 +145,5 @@ export function DateTimePicker({
         </Button>
       )}
     </div>
-  )
-}
-
-function TimeColumn({
-  open,
-  label,
-  parts,
-  selected,
-  onPick,
-}: {
-  open: boolean
-  label: string
-  parts: readonly number[]
-  selected: number | null
-  onPick: (part: number) => void
-}) {
-  const current = useRef<HTMLButtonElement>(null)
-  // a list of sixty is only usable if it opens where the choice already is
-  useEffect(() => {
-    if (open) current.current?.scrollIntoView({ block: 'center' })
-  }, [open])
-
-  return (
-    <ScrollArea className="h-56">
-      <div role="group" aria-label={label} className="flex flex-col gap-0.5 p-1">
-        {parts.map((part) => (
-          <Button
-            key={part}
-            ref={part === selected ? current : undefined}
-            type="button"
-            variant={part === selected ? 'default' : 'ghost'}
-            size="sm"
-            aria-label={`${pad(part)} ${label}`}
-            className={cn('w-14 shrink-0 tabular-nums')}
-            onClick={() => onPick(part)}
-          >
-            {pad(part)}
-          </Button>
-        ))}
-      </div>
-    </ScrollArea>
   )
 }

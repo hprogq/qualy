@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { manifestPath } from '../lib/manifest.ts'
 import { describe, expect, it } from 'vitest'
+import { compileMessage } from '@lingui/message-utils/compileMessage'
 import type { MessageCatalog, MessageDescriptor } from '@qualy/i18n-contract'
 import { fallbackLocale, supportedLocales } from '@qualy/i18n-contract'
 import { pathToFileURL } from 'node:url'
@@ -72,6 +73,38 @@ const collectMessageIds = (value: unknown, into: Set<string>): void => {
   for (const entry of Object.values(value)) collectMessageIds(entry, into)
 }
 
+/**
+ * The arguments an ICU string actually reads, by compiling it.
+ *
+ * Not a regular expression over `{...}`: in
+ * `{count, plural, =0 {Add} other {Add #}}` the braces around `Add` are a
+ * plural branch, not an argument, and a pattern that cannot tell the two
+ * apart reports the correctly translated messages and misses the broken one.
+ * The compiler is the same one the browser runs on these strings, so what it
+ * calls an argument is what the reader will see filled in.
+ *
+ * A compiled message is a stream of tokens: a string is text, an array is an
+ * argument whose first element names it and whose third, when present, holds
+ * one nested stream per branch.
+ */
+const argumentsOf = (icu: string): Set<string> => {
+  const names = new Set<string>()
+  const stream = (tokens: readonly unknown[]): void => {
+    for (const token of tokens) {
+      if (!Array.isArray(token)) continue
+      const [name, , branches] = token as [unknown, unknown, unknown]
+      if (typeof name === 'string') names.add(name)
+      if (branches !== null && typeof branches === 'object') {
+        for (const branch of Object.values(branches)) {
+          if (Array.isArray(branch)) stream(branch)
+        }
+      }
+    }
+  }
+  stream(compileMessage(icu))
+  return names
+}
+
 describe('plugin message catalogs', () => {
   it.each(clientPlugins)(
     '$name ships a complete catalog for every locale',
@@ -124,6 +157,37 @@ describe('plugin message catalogs', () => {
         const orphans = [...translated].filter((id) => !declared.has(id))
         expect({ locale, missing }).toEqual({ locale, missing: [] })
         expect({ locale, orphans }).toEqual({ locale, orphans: [] })
+
+        // A translation is written fresh rather than rendered literally, so
+        // it decides its own sentence - but not its own arguments. One that
+        // reaches for a value the message does not carry renders the hole
+        // empty and says nothing about it: 「」where a stage name belongs,
+        // shipped and read by people for as long as nobody opened that
+        // dialog in Chinese. One that drops an argument silently loses the
+        // number the sentence was about.
+        const declaredArguments = new Map(
+          module.catalogs.messages.map((descriptor) => [
+            descriptor.id,
+            argumentsOf(descriptor.defaultMessage),
+          ]),
+        )
+        const mismatched = Object.entries(catalog).flatMap(([id, text]) => {
+          const want = declaredArguments.get(id)
+          if (want === undefined || typeof text !== 'string') return []
+          const got = argumentsOf(text)
+          const invented = [...got].filter((name) => !want.has(name))
+          const dropped = [...want].filter((name) => !got.has(name))
+          return invented.length === 0 && dropped.length === 0
+            ? []
+            : [
+                {
+                  id,
+                  ...(invented.length > 0 && { invented }),
+                  ...(dropped.length > 0 && { dropped }),
+                },
+              ]
+        })
+        expect({ locale, mismatched }).toEqual({ locale, mismatched: [] })
       }
     },
   )

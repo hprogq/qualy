@@ -63,7 +63,8 @@
     "./dropzone": "./src/components/dropzone.tsx",
     "./photo-view": "./src/components/photo-view.tsx",
     "./use-lingering": "./src/hooks/use-lingering.ts",
-    "./kbd": "./src/components/kbd.tsx"
+    "./kbd": "./src/components/kbd.tsx",
+    "./time-field": "./src/components/time-field.tsx"
   },
   "peerDependencies": {
     "react": "catalog:",

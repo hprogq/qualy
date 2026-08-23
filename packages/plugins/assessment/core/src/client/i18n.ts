@@ -3557,8 +3557,10 @@ const i18n = definePluginMessages({
     newBadge: { id: 'assessment/plan/new-badge', defaultMessage: 'Not saved' },
     discardTitle,
     discardEdits: { id: 'assessment/plan/discard', defaultMessage: 'Discard changes' },
-    pickDate: { id: 'assessment/phase/pick-date', defaultMessage: 'Select date' },
-    pickTime: { id: 'assessment/phase/pick-time', defaultMessage: 'Select time' },
+    pickDateTime: {
+      id: 'assessment/phase/pick-datetime',
+      defaultMessage: 'Select a start time',
+    },
     clearTime: { id: 'assessment/phase/clear-time', defaultMessage: 'Clear' },
     currentBadge: { id: 'assessment/phase/current', defaultMessage: 'In progress' },
     endedBadge: { id: 'assessment/phase/ended', defaultMessage: 'Ended' },

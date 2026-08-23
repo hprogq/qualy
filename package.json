@@ -13,6 +13,7 @@
   "devDependencies": {
     "@effect/platform-node": "catalog:",
     "@effect/tsgo": "catalog:",
+    "@lingui/message-utils": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",

@@ -84,11 +84,11 @@ export function ScheduleDialog({
               id={id}
               value={value}
               onChange={onChange}
-              datePlaceholder={format(m.pickDate)}
-              timePlaceholder={format(m.pickTime)}
+              placeholder={format(m.pickDateTime)}
               clearLabel={format(m.clearTime)}
               hourLabel={format(commonMessages.clockHour)}
               minuteLabel={format(commonMessages.clockMinute)}
+              secondLabel={format(commonMessages.clockSecond)}
               localeTag={locale}
               monthLabel={format(commonMessages.calendarMonth)}
               yearLabel={format(commonMessages.calendarYear)}
