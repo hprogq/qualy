@@ -8,6 +8,11 @@ import {
 import type * as rbacErrors from '../server/errors.ts'
 import type * as invariantErrors from '@qualy/rbac-contract/effect'
 
+const permissionCountMessage = defineMessage<{ count: number }>()({
+  id: 'rbac/roles/permission-count',
+  defaultMessage: '{count, plural, one {# permission} other {# permissions}}',
+})
+
 const assignmentCountMessage = defineMessage<{ count: number }>()({
   id: 'rbac/roles/assignment-count',
   defaultMessage: '{count, plural, one {# grant} other {# grants}}',
@@ -118,6 +123,21 @@ const i18n = definePluginMessages({
       defaultMessage: 'Select a role to edit what it may hold and who may hold it.',
     },
     rolesEmpty: { id: 'rbac/roles/empty', defaultMessage: 'No roles yet.' },
+    permissionCount: permissionCountMessage,
+    roleSelectHint: {
+      id: 'rbac/roles/select-hint',
+      defaultMessage: 'Pick a role on the left to manage what it may do and who may hold it.',
+    },
+    tenantGroup: { id: 'rbac/roles/tenant-group', defaultMessage: 'Tenant-wide' },
+    tenantGroupHint: {
+      id: 'rbac/roles/tenant-group-hint',
+      defaultMessage: 'in effect across the whole tenant',
+    },
+    orgGroup: { id: 'rbac/roles/org-group', defaultMessage: 'Per unit' },
+    orgGroupHint: {
+      id: 'rbac/roles/org-group-hint',
+      defaultMessage: 'anchored to a unit when granted',
+    },
     newRole: { id: 'rbac/roles/new', defaultMessage: 'New organization role' },
     newRoleHint: {
       id: 'rbac/roles/new-hint',

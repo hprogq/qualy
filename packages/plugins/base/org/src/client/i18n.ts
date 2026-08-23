@@ -49,7 +49,7 @@ const i18n = definePluginMessages({
       id: 'org/state/load-failed-hint',
       defaultMessage: 'Check your connection or permissions and try again.',
     },
-    treeTitle: { id: 'org/tree/title', defaultMessage: 'Organization tree' },
+    treeTitle: { id: 'org/tree/title', defaultMessage: 'Organization' },
     treeEmpty: {
       id: 'org/tree/empty',
       defaultMessage: 'No organization nodes are visible to you.',
@@ -77,6 +77,79 @@ const i18n = definePluginMessages({
     parentType: { id: 'org/rule/parent-type', defaultMessage: 'Parent type' },
     childType: { id: 'org/rule/child-type', defaultMessage: 'Child type' },
     delete: { id: 'org/action/delete', defaultMessage: 'Delete' },
+    structureHint: {
+      id: 'org/page/structure-hint',
+      defaultMessage: 'Pick a unit on the left to manage its details and children.',
+    },
+    typesHint: {
+      id: 'org/page/types-hint',
+      defaultMessage: 'Types decide which units may hold which; creating and moving follow them.',
+    },
+    viewStructure: { id: 'org/view/structure', defaultMessage: 'Structure' },
+    viewTypes: { id: 'org/view/types', defaultMessage: 'Types' },
+    searchPlaceholder: { id: 'org/tree/search', defaultMessage: 'Search units' },
+    searchEmpty: { id: 'org/tree/search-empty', defaultMessage: 'No unit matches the search.' },
+    unitCount: {
+      id: 'org/tree/unit-count',
+      defaultMessage: '{count, plural, one {# unit} other {# units}}',
+    },
+    parentLabel: { id: 'org/node/parent', defaultMessage: 'Parent' },
+    pathLabel: { id: 'org/node/path', defaultMessage: 'Position' },
+    siblingRank: { id: 'org/node/sibling-rank', defaultMessage: '{rank} of {total}' },
+    rankLabel: { id: 'org/node/rank', defaultMessage: 'Rank among siblings' },
+    childrenTitle: { id: 'org/node/children', defaultMessage: 'Children' },
+    childCount: {
+      id: 'org/node/child-count',
+      defaultMessage: '{count, plural, one {# child} other {# children}}',
+    },
+    open: { id: 'org/action/open', defaultMessage: 'Open' },
+    allowedHere: { id: 'org/node/allowed-here', defaultMessage: 'May hold: {types}' },
+    noChildrenAllowed: {
+      id: 'org/node/no-children-allowed',
+      defaultMessage: 'This kind of unit holds no children.',
+    },
+    childrenEmpty: { id: 'org/node/children-empty', defaultMessage: 'No children yet.' },
+    deleteTitle: { id: 'org/node/delete-title', defaultMessage: 'Delete this unit' },
+    deleteBlockedChildren: {
+      id: 'org/node/delete-blocked-children',
+      defaultMessage:
+        'Move or delete {count, plural, one {its # child} other {its # children}} first.',
+    },
+    confirmDeleteNode: {
+      id: 'org/node/confirm-delete',
+      defaultMessage: 'Delete "{name}"?',
+    },
+    confirmDeleteNodeBody: {
+      id: 'org/node/confirm-delete-body',
+      defaultMessage: 'People and role grants attached to it will block the deletion.',
+    },
+    typeListEmpty: { id: 'org/type/list-empty', defaultMessage: 'No organization types yet.' },
+    typeNodeCount: {
+      id: 'org/type/node-count',
+      defaultMessage: '{count, plural, one {# unit} other {# units}}',
+    },
+    allowedChildrenTitle: { id: 'org/type/allowed-children', defaultMessage: 'Allowed children' },
+    allowedChildrenHint: {
+      id: 'org/type/allowed-children-hint',
+      defaultMessage: 'Ticked types can be created and moved under units of this type.',
+    },
+    saveRules: { id: 'org/type/save-rules', defaultMessage: 'Save' },
+    allowedUnder: { id: 'org/type/allowed-under', defaultMessage: 'Allowed under' },
+    allowedUnderNone: {
+      id: 'org/type/allowed-under-none',
+      defaultMessage: 'No type accepts it as a child yet.',
+    },
+    typeInUseHint: {
+      id: 'org/type/in-use-hint',
+      defaultMessage: '{count, plural, one {# unit uses} other {# units use}} this type.',
+    },
+    confirmDeleteType: { id: 'org/type/confirm-delete', defaultMessage: 'Delete "{name}"?' },
+    confirmDeleteTypeBody: {
+      id: 'org/type/confirm-delete-body',
+      defaultMessage: 'Its hierarchy rules go with it.',
+    },
+    newTypeTitle: { id: 'org/type/new', defaultMessage: 'New type' },
+    saved: { id: 'org/state/saved', defaultMessage: 'Saved.' },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof orgErrors>>()({
     ORG_TYPE_NOT_FOUND: {

@@ -50,8 +50,13 @@ export function useBatchLive(
           staleTime: 30_000,
         }
       : // hooks are unconditional, so the stubbed harness gets a query that
-        // never runs rather than no query
-        { queryKey: ['assessment', 'timeline-alarm-idle', batchId], enabled: false },
+        // never runs rather than no query; the queryFn exists only so the
+        // client does not warn about a query it will never call
+        {
+          queryKey: ['assessment', 'timeline-alarm-idle', batchId],
+          queryFn: () => Promise.resolve({ timeline: [] }),
+          enabled: false,
+        },
   )
 
   // the next instant the diary commits this batch to, if the browser can see
