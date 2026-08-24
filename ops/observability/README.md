@@ -137,10 +137,21 @@ ordinary 10–20%); the config marks the spot.
 
 ## Logs (Tencent CLS)
 
-Logs do not pass through the Collector and there is no OTel Logs SDK: the
-production JSON log goes to stdout (or a file the deployment redirects to,
-e.g. `/var/log/qualy/server.jsonl`) and LogListener ships it to a CLS topic
-as JSON.
+CLS ingests OTLP/HTTP natively, so logs ride the same collector as traces
+and metrics — no LogListener, no machine group. Export from the application
+is **opt-in**: set `OTEL_LOGS_EXPORTER=otlp` beside the endpoint and every
+log record reaches the collector (→ Loki locally, → CLS on the staging
+config, dual-written), carrying the trace/span ids of the emitting fiber.
+The staging config authenticates with HTTP Basic Auth (SecretId/SecretKey
+via the basicauth extension) and addresses the topic with a `topic_id`
+header; all four values live in `collector.env`.
+
+The stdout JSON logger stays the primary log surface either way (the OTLP
+logger merges beside it, never replaces it), and its top-level
+`request_id`/`trace_id`/`span_id` contract is unchanged. One honest gap:
+the OTLP record carries `TraceId`/`SpanId` natively but not `request_id` —
+that key lives in log annotations only on the stdout side. Correlate CLS ↔
+audit through `trace_id` for now.
 
 Every line carries its correlation as top-level keys, injected by the logger
 itself from the emitting fiber — a line logged inside a business child span

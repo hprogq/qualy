@@ -826,21 +826,23 @@ Collector 使用 Remote Write，不需要在生产再自建 Prometheus server。
 
 ---
 
-## 19. 腾讯云 Logs 路由
+## 19. 腾讯云 Logs 路由（2026-08-25 修订：CLS 原生 OTLP，LogListener 不再需要）
 
-不通过 OTel Logs。
+CLS 已原生支持标准 OTLP/HTTP 上报，日志走与 traces/metrics 同一个 collector：
 
 ```text
-Qualy production JSON logger
-    ↓
-/var/log/qualy/server.jsonl 或部署平台标准输出采集
-    ↓
-Tencent LogListener
-    ↓
-CLS topic
+Qualy（OTEL_LOGS_EXPORTER=otlp 显式开启；stdout JSON logger 照常是主日志面）
+    ↓ OTLP
+Collector logs pipeline
+    ├─ 本地 Loki（LGTM 原生吃 OTLP logs）
+    └─ otlp_http → CLS 公网 endpoint（Basic Auth = SecretId/SecretKey，
+       basicauth extension；topic 经 `topic_id` header）
 ```
 
-对于当前非 K8s 单机部署，推荐 LogListener 采集 JSON 文件。
+不装 LogListener、不建机器组、不经 APM 上报日志。OTLP LogRecord 原生携带发射
+fiber 的 TraceId/SpanId（effect OtlpLogger 实测），APM↔CLS 关联按这两个字段。
+`request_id` 只在 stdout JSON 的顶层键里（OTLP record 的 attributes 来自 log
+annotations，request_id 不在其中）——CLS↔审计暂经 trace_id 关联。
 
 CLS 键值索引仅开启必要字段（6.8 落地后的顶层键名）：
 

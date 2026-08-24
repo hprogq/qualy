@@ -20,11 +20,12 @@ describe('the collector configurations', () => {
         .readFileSync(config, 'utf8')
         .split('\n')
         .filter((line) => !line.trimStart().startsWith('#'))
-        // the lines that CARRY a value: attribute values and auth headers.
-        // `- key: token` merely names the attribute; the value line below it
-        // is the one that must resolve from the environment
-        .filter((line) => /(?:\bvalue|authorization)\s*:/i.test(line))
-        .filter((line) => !/\$\{env:[A-Z0-9_]+\}/.test(line))
+        // the lines that CARRY a value: attribute values, auth headers, and
+        // basic-auth credentials. `- key: token` merely names the attribute;
+        // the value line below it is the one that must resolve from the
+        // environment
+        .filter((line) => /(?:\bvalue|authorization|username|password)\s*:/i.test(line))
+        .filter((line) => !/\$\{env:[A-Z0-9_]+/.test(line))
       expect(offenders, config).toEqual([])
     }
   })

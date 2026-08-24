@@ -2,6 +2,7 @@ import { NodeHttpClient } from '@effect/platform-node'
 import { Config, ConfigProvider, Effect, Layer, Option } from 'effect'
 import {
   OtlpExporter,
+  OtlpLogger,
   OtlpMetrics,
   OtlpSerialization,
   OtlpTracer,
@@ -77,6 +78,12 @@ export const telemetryLayer: Layer.Layer<OtlpExporter.Flusher> = Layer.unwrap(
     return Layer.mergeAll(
       OtlpTracer.layerFromConfig({ resource }),
       OtlpMetrics.layerFromConfig({ resource }),
+      // Logs stay OPT-IN: no exporter default is overlaid, so nothing is
+      // exported until OTEL_LOGS_EXPORTER=otlp is set explicitly - the
+      // stdout JSON logger remains the primary log surface either way
+      // (mergeWithExisting), and every exported record carries the
+      // trace/span ids of the emitting fiber, same as the stdout keys.
+      OtlpLogger.layerFromConfig({ resource, mergeWithExisting: true }),
       // the process's own numbers, polled from stable Node APIs; the fiber
       // dies with the telemetry scope
       Layer.effectDiscard(Effect.forkScoped(runtimeMetricsLoop)),

@@ -23,6 +23,17 @@ interface Capture {
       scopeSpans: { spans: { name: string; traceId: string }[] }[]
     }[]
     resourceMetrics?: { scopeMetrics: { metrics: { name: string }[] }[] }[]
+    resourceLogs?: {
+      resource: { attributes: { key: string; value: { stringValue?: string } }[] }
+      scopeLogs: {
+        logRecords: {
+          body?: { stringValue?: string }
+          traceId?: string
+          spanId?: string
+          severityText?: string
+        }[]
+      }[]
+    }[]
   }
 }
 
@@ -117,6 +128,54 @@ describe('what the telemetry layer promises', () => {
       ),
     )
     expect(captured.map((capture) => capture.path)).toEqual(['/v1/traces'])
+  })
+
+  it('exports logs only when asked, carrying the ids of the emitting span', async () => {
+    // opt-in pinned first: an endpoint alone must not start a log exporter
+    await Effect.runPromise(
+      Effect.log('never exported').pipe(
+        Effect.provide(
+          stack({
+            OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}`,
+            OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+          }),
+        ),
+      ),
+    )
+    expect(captured.filter((capture) => capture.path === '/v1/logs')).toEqual([])
+
+    captured.length = 0
+    const spoke = await Effect.runPromise(
+      Effect.gen(function* () {
+        const span = yield* Effect.currentSpan
+        yield* Effect.log('a line inside the operation')
+        return span
+      }).pipe(
+        Effect.withSpan('logged-operation'),
+        Effect.provide(
+          stack({
+            OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${port}`,
+            OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+            OTEL_LOGS_EXPORTER: 'otlp',
+          }),
+        ),
+      ),
+    )
+    const logs = captured.filter((capture) => capture.path === '/v1/logs')
+    expect(logs.length).toBeGreaterThan(0)
+    const records = logs
+      .flatMap((capture) => capture.body.resourceLogs!)
+      .flatMap((resourceLog) => resourceLog.scopeLogs)
+      .flatMap((scope) => scope.logRecords)
+    const line = records.find(
+      (record) => record.body?.stringValue === 'a line inside the operation',
+    )!
+    // the record names the exact span it spoke under - what APM<->CLS
+    // correlation keys on
+    expect(line.traceId).toBe(spoke.traceId)
+    expect(line.spanId).toBe(spoke.spanId)
+    const resource = attributesOf(logs[0]!.body.resourceLogs![0]!.resource.attributes)
+    expect(resource['service.name']).toBe('qualy-server')
   })
 
   it('is genuinely off when disabled, endpoint or not', async () => {

@@ -22,6 +22,16 @@
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
+  # CLS OTLP/HTTP authenticates with HTTP Basic Auth over SecretId/SecretKey;
+  # the extension builds the header from the collector's own environment, so
+  # no encoded credential ever appears in a file. The defaults keep the
+  # collector BOOTING when the CLS variables are not filled in yet - the
+  # exporter then fails politely at runtime (401) without touching the
+  # already-verified traces/metrics pipelines.
+  basicauth/tencent_cls:
+    client_auth:
+      username: ${env:TENCENT_CLS_SECRET_ID:-unset}
+      password: ${env:TENCENT_CLS_SECRET_KEY:-unset}
 
 receivers:
   otlp:
@@ -53,9 +63,19 @@ exporters:
       insecure: false
     headers:
       authorization: ${env:TENCENT_APM_TOKEN}
+  # Logs go to CLS directly over its public OTLP/HTTP endpoint - not through
+  # APM, no LogListener, no machine group. The endpoint is a BASE url; the
+  # exporter appends /v1/logs itself (if the console hands out an explicit
+  # path one day, switch to logs_endpoint with the exact URL).
+  otlp_http/tencent_cls:
+    endpoint: ${env:TENCENT_CLS_ENDPOINT:-https://ap-beijing.cls.tencentcs.com}
+    auth:
+      authenticator: basicauth/tencent_cls
+    headers:
+      topic_id: ${env:TENCENT_CLS_TOPIC_ID:-unset}
 
 service:
-  extensions: [health_check]
+  extensions: [health_check, basicauth/tencent_cls]
   pipelines:
     traces:
       receivers: [otlp]
@@ -70,3 +90,9 @@ service:
       # ride the same public APM uplink, and the console's sync rules decide
       # what continues into TMP - nothing here ever speaks to the VPC
       exporters: [otlp_grpc/local_lgtm, otlp_grpc/tencent_apm]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      # step three: both worlds again - Loki for the local loop, CLS over
+      # its own public OTLP endpoint (never via APM, never a LogListener)
+      exporters: [otlp_grpc/local_lgtm, otlp_http/tencent_cls]

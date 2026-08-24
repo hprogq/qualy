@@ -8720,3 +8720,38 @@ metrics pipeline 加上既有的 APM exporter——本地链路原样,双写:
 
 验收:`pnpm test` 837 passed | 17 skipped;prettier 通过;三配置 validate;
 collector 无错运行、本地链路完好实测。
+
+## 腾讯云 staging 第三步(OTel 计划 Phase 6.9):logs 经 CLS 原生 OTLP(2026-08-25)
+
+修正此前判断:CLS 已原生支持标准 OTLP/HTTP 上报,LogListener/机器组整条路线作废,
+日志走与 traces/metrics 同一个 collector。设计文档 §19 已改写。
+
+**应用侧**(sdk.ts 一处):telemetry 层加 `OtlpLogger.layerFromConfig`。**opt-in
+钉死**——不为 OTEL_LOGS_EXPORTER 铺缺省,不设即零导出;`mergeWithExisting: true`,
+stdout JSON logger 照常是主日志面。上游 LogRecord 原生带发射 fiber 的
+TraceId/SpanId(实查 OtlpLogger.ts:230-233,与 6.8 stdout 顶层键同语义),关联
+能力零重复实现;annotations(source)、fiberId、cause(log.error)进 attributes,
+resource 与 tracer/metrics 共用。
+
+**collector**:local 加 logs pipeline(LGTM 原生吃 OTLP logs 落 Loki);staging
+logs 双写 Loki + `otlp_http/tencent_cls`(CLS 公网 base endpoint,exporter 自动拼
+/v1/logs)。**Basic Auth 经 contrib 0.159 自带的 basicauth extension**,SecretId/
+SecretKey 从 collector.env 注入,不手工 Base64;topic 经 `topic_id` header。
+所有 env 引用带缺省值(`:-unset`)——**CLS 变量未填时 collector 照常启动**,
+CLS 出口运行期 401、按 exporter 独立丢弃,已验通的 traces/metrics 分毫不动
+(三场景 validate:全变量/缺变量/local 均过)。
+
+**验证**:collector 原地重建 healthy;真跑服务器(OTEL_LOGS_EXPORTER=otlp)后
+**Loki 实收**,流标签带 trace_id/span_id/severity_text/service_name;CLS 线路
+打到 `https://ap-beijing.cls.tencentcs.com/v1/logs` 收 **401**(空凭据的预期
+应答;无 404,路径拼接正确,DNS/TLS/Basic-Auth header 全链路已通,只差真实
+SecretId/SecretKey/topic_id)。新测试 +1(telemetry 套件):logs 不设开关零导出;
+设开关后导出的 record 的 traceId/spanId **精确等于**发射时的 span。门禁扩展:
+username/password 行纳入「只能 env 引用」规则。
+
+**已知缺口(记录,不在本步修)**:OTLP record 的 attributes 来自 log annotations,
+`request_id` 只在 stdout JSON 顶层键——CLS↔审计暂经 trace_id 关联;若要 request_id
+进 CLS,在 requestContext 中间件 annotateLogs 一行即可,等真实需要再加。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 838 passed | 17 skipped(新增 1 条);
+prettier 通过;三配置 validate、collector 重建、Loki 实收、CLS 401 全部实测。

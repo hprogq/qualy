@@ -55,3 +55,9 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [otlp_grpc/local_lgtm]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      # the LGTM box ingests OTLP logs natively and lands them in Loki; the
+      # application exports logs only when OTEL_LOGS_EXPORTER=otlp is set
+      exporters: [otlp_grpc/local_lgtm]
