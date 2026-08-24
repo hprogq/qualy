@@ -63,6 +63,37 @@ Specify the service names to avoid stopping the default PostgreSQL services.
 
 Local telemetry data is ephemeral and is removed with the LGTM container.
 
+## Staging bridge (local → Tencent APM)
+
+`collector.staging.yaml` is the local stack plus one addition: traces are
+exported to Tencent APM's public OTLP gRPC/TLS endpoint as well as to the
+local Tempo. Grafana on :3001 keeps working exactly as before — the file is
+for verifying the cloud path from a development machine, before any server
+exists in the VPC. Metrics stay local in step one; the APM→Prometheus metric
+sync is configured in the Tencent console, and nothing here ever speaks to a
+VPC-internal address.
+
+```bash
+cp ops/observability/collector.env.example ops/observability/collector.env
+# fill in TENCENT_APM_TOKEN (the file is gitignored; compose feeds it to the
+# collector container only - the Qualy process never sees it)
+
+QUALY_COLLECTOR_CONFIG=collector.staging.yaml docker compose --profile observability up -d
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 pnpm dev
+```
+
+`QUALY_COLLECTOR_CONFIG` can also live in `.env` (it is not a secret). To
+tell whether the uplink works, watch the collector:
+
+```bash
+docker logs -f qualy-otel-collector
+```
+
+An accepted export is silent; a rejected one says which exporter and why
+(an invalid token answers `No Data Report` — the TLS/gRPC path itself is
+fine when you see that). Unset `QUALY_COLLECTOR_CONFIG` to fall back to the
+purely local stack.
+
 ## Production (Tencent Cloud)
 
 `collector.production.yaml` is the one place Tencent Cloud exists. The

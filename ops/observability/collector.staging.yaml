@@ -1,0 +1,71 @@
+# The staging bridge: everything the local stack does, PLUS a trace uplink
+# to Tencent APM over its public OTLP gRPC/TLS endpoint.
+#
+# This is the config for verifying the cloud path from a development machine,
+# before any server exists in the VPC. The local pipelines are identical to
+# collector.local.yaml - selecting this file must not change what Grafana on
+# :3001 sees - and the only addition is the second traces exporter. Metrics
+# stay local in step one; the APM→TMP metric sync is configured in the
+# Tencent console, and the in-VPC remote-write path (collector.production.yaml)
+# waits until a collector actually lives in that VPC.
+#
+# Credentials come from the collector container's own environment
+# (ops/observability/collector.env, gitignored; see collector.env.example) -
+# never the application process, never this file:
+#
+#   TENCENT_APM_ENDPOINT   e.g. ap-beijing.apm.tencentcs.com:4320 (gRPC/TLS)
+#   TENCENT_APM_TOKEN      the APM business system token
+#
+# Select it via the compose interpolation variable:
+#   QUALY_COLLECTOR_CONFIG=collector.staging.yaml docker compose --profile observability up -d
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 48
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+
+exporters:
+  otlp/local_lgtm:
+    endpoint: otel-lgtm:4317
+    tls:
+      insecure: true
+  otlp/tencent_apm:
+    endpoint: ${env:TENCENT_APM_ENDPOINT}
+    # the public 4320 endpoint speaks gRPC over TLS; the token rides the
+    # authorization header on every export
+    tls:
+      insecure: false
+    headers:
+      authorization: ${env:TENCENT_APM_TOKEN}
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      # both worlds see the same spans: Tempo for the local loop, APM for
+      # the staging verification
+      exporters: [otlp/local_lgtm, otlp/tencent_apm]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      # step two adds otlp/tencent_apm here once traces are confirmed in
+      # the APM console; nothing in this file ever speaks to the VPC
+      exporters: [otlp/local_lgtm]

@@ -89,7 +89,14 @@ services:
     profiles: [observability]
     command: ['--config=/etc/otelcol/config.yaml']
     volumes:
-      - ./ops/observability/collector.local.yaml:/etc/otelcol/config.yaml:ro
+      # collector.local.yaml by default; set QUALY_COLLECTOR_CONFIG in .env
+      # (or the shell) to collector.staging.yaml for the Tencent APM uplink
+      - ./ops/observability/${QUALY_COLLECTOR_CONFIG:-collector.local.yaml}:/etc/otelcol/config.yaml:ro
+    # vendor credentials reach the COLLECTOR container only, from a file git
+    # never sees; the application's .env stays free of them
+    env_file:
+      - path: ./ops/observability/collector.env
+        required: false
     ports:
       - '127.0.0.1:4317:4317'
       - '127.0.0.1:4318:4318'

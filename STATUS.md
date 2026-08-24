@@ -8672,3 +8672,33 @@ span 之下**既无 traceparent 也无 b3**;**control 反证**——默认 clien
 `pnpm test:browser` 116 passed(一次既知 flake,重跑 exit 0);`pnpm build` 成功
 (web bundle 已含修复);生产 smoke 退出 0;prettier 通过。浏览器侧最终确认
 (Brave 发请求无两头、Tempo root 完整)留给真实浏览器一次点击。
+
+## 腾讯云 staging 第一步(OTel 计划 Phase 6.9):本地 → APM trace 上行(2026-08-25)
+
+渐进接入的第一步,最小改动、不动任何已工作的东西:`collector.local.yaml` 与本地
+LGTM 栈原样;新增 `collector.staging.yaml` = 本地全链路 + traces 双写(本地 Tempo
+
+- 腾讯云 APM 公网 OTLP gRPC/TLS `ap-beijing.apm.tencentcs.com:4320`,token 走
+  `authorization` header)。metrics 第一步仍纯本地;APM→TMP 指标同步归控制台配置;
+  `10.20.0.11` 的 VPC 内网 remote write(collector.production.yaml)等真有 collector
+  站进 VPC 再启用,本地永不直连。
+
+**凭据边界**:token 只进 collector 容器——独立的 `ops/observability/collector.env`
+(gitignored,新增显式条目;tracked 的 `.example` 只有变量名与空值),compose 经
+`env_file: required: false` 喂给 collector 服务;应用进程的 `.env` 不放它,Qualy
+进程环境里永不出现 vendor credential。配置切换经 compose 插值变量
+`QUALY_COLLECTOR_CONFIG`(非机密,缺省 `collector.local.yaml`),实测双向插值正确。
+
+**验证已做**(占位 token):staging 配置在 pinned 0.159.0 镜像内 validate 通过;
+真启动后 collector healthy、生产 smoke 全过、**本地 Tempo 照常收到 trace**(双写
+互不拖累);APM 上行实测打到腾讯服务端并收到 `No Data Report` 应答——即
+DNS/TLS/gRPC/authorization header 全链路已通,只差真实 token(错误是 Permanent、
+被丢弃,不阻塞本地信号)。门禁扩展:staging 配置纳入「凭据只能 env 引用」规则,
+新增「collector.env 必须被 gitignore、example 的 secret 值必须为空」断言。
+
+真实 token 验证、APM→Prometheus 关联与指标同步规则、腾讯云 Grafana 关联由用户在
+控制台侧完成;第二步(metrics 经 APM 公网上报)待 trace 确认后再动。
+
+验收:`pnpm typecheck` 未涉及(零 TS 源改动,门禁测试除外);`pnpm test`
+837 passed | 17 skipped(observability 门禁 4 条);prettier 通过;compose 插值、
+staging validate、真启动、本地栈完好性全部实测。

@@ -27,6 +27,10 @@ repos/*
 .env.*
 !.env.example
 
+# the collector container's own environment: the one file that holds vendor
+# telemetry credentials, which never enter the application process or git
+ops/observability/collector.env
+
 # logs
 logs/
 *.log

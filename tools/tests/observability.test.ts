@@ -10,20 +10,36 @@ import { describe, expect, it } from 'vitest'
 // config that validates today and means something else tomorrow.
 
 const PRODUCTION = 'ops/observability/collector.production.yaml'
+const STAGING = 'ops/observability/collector.staging.yaml'
 const LOCAL = 'ops/observability/collector.local.yaml'
 
 describe('the collector configurations', () => {
   it('reference credentials through the environment, never by value', () => {
-    const source = fs.readFileSync(PRODUCTION, 'utf8')
-    const offenders = source
+    for (const config of [PRODUCTION, STAGING]) {
+      const offenders = fs
+        .readFileSync(config, 'utf8')
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('#'))
+        // the lines that CARRY a value: attribute values and auth headers.
+        // `- key: token` merely names the attribute; the value line below it
+        // is the one that must resolve from the environment
+        .filter((line) => /(?:\bvalue|authorization)\s*:/i.test(line))
+        .filter((line) => !/\$\{env:[A-Z0-9_]+\}/.test(line))
+      expect(offenders, config).toEqual([])
+    }
+  })
+
+  it('keeps the collector credential file out of git, and its example empty', () => {
+    expect(fs.readFileSync('.gitignore', 'utf8')).toContain('ops/observability/collector.env')
+    // the tracked example names the variables; every secret value is blank
+    const example = fs.readFileSync('ops/observability/collector.env.example', 'utf8')
+    const secrets = example
       .split('\n')
-      .filter((line) => !line.trimStart().startsWith('#'))
-      // the lines that CARRY a value: attribute values and auth headers.
-      // `- key: token` merely names the attribute; the value line below it
-      // is the one that must resolve from the environment
-      .filter((line) => /(?:\bvalue|authorization)\s*:/i.test(line))
-      .filter((line) => !/\$\{env:[A-Z0-9_]+\}/.test(line))
-    expect(offenders).toEqual([])
+      .filter((line) => /^[A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD)[A-Z0-9_]*=/.test(line))
+    expect(secrets.length).toBeGreaterThan(0)
+    for (const line of secrets) {
+      expect(line).toMatch(/=$/)
+    }
   })
 
   it('keeps every tencent endpoint and credential out of the local config', () => {
