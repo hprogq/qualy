@@ -1,4 +1,5 @@
 import { Effect, Result } from 'effect'
+import { boundedCounter } from '@qualy/telemetry/metrics'
 import { projectEntrySummary } from '../entry/summary.ts'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
@@ -323,6 +324,11 @@ const decisionsAt = (
   }
   return said
 }
+
+/** review words that landed, by which word; the label space is the decision enum */
+const reviewDecisionCount = boundedCounter('qualy.assessment.review.decision', {
+  decision: ['approve', 'reject', 'escalate'],
+})
 
 /** whether this word, said here, ends the round rather than moving it */
 const wordEnds = (policy: ResolvedPolicy, here: ResolvedStage, action: ReviewDecision): boolean =>
@@ -944,7 +950,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const decideReview: ReviewMethods['decideReview'] = Effect.fn('Assessment.decideReview')(
     function* (tenantId, instanceId, input, as) {
       const action = input.decision
-      return yield* withDb(
+      const decided = withDb(
         transaction(
           Effect.gen(function* () {
             // where the round lives, and nothing else: a round never changes
@@ -1397,6 +1403,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
+      // one count per decision that actually landed; refusals are not decisions
+      return yield* decided.pipe(Effect.tap(() => reviewDecisionCount({ decision: action })))
     },
   )
 

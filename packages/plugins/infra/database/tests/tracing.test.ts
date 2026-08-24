@@ -1,5 +1,5 @@
 import { defineEntity } from '@mikro-orm/core'
-import { Effect, Layer, Option, Tracer } from 'effect'
+import { Effect, Layer, Metric, Option, Tracer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { entityManager, kyselyOf, query, transaction } from '../src/server/index.ts'
 import { createTestContext, databaseFor, postgresAvailable } from '../src/testkit.ts'
@@ -70,6 +70,12 @@ describe.runIf(postgresAvailable)('the database boundary in a trace', () => {
       expect(boundary[0]!.attributes.get('db.system.name')).toBe('postgresql')
       expect(boundary[0]!.kind).toBe('client')
       expect(parentNameOf(boundary[0]!)).toBe('caller-operation')
+      // the stable-semconv duration is recorded at the same funnel
+      const durations = (await Effect.runPromise(Metric.snapshot)).filter(
+        (state) => state.id === 'db.client.operation.duration',
+      )
+      expect(durations.length).toBeGreaterThan(0)
+      expect(durations[0]!.attributes?.['db.system.name']).toBe('postgresql')
     } finally {
       await db.dispose()
     }

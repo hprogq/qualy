@@ -2,6 +2,7 @@ import { componentKey } from '@qualy/ui-contract'
 import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { bindSessionId, currentRequestContext } from '@qualy/api-kit/request'
+import { boundedCounter } from '@qualy/telemetry/metrics'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { kyselyOf, query, transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
@@ -194,6 +195,12 @@ const insertSession = (input: {
       .returning('id')
       .executeTakeFirstOrThrow(),
   )
+
+/** sign-in attempts by outcome and door type; unknown types clamp to 'other' */
+const signInCount = boundedCounter('qualy.auth.sign_in', {
+  outcome: ['success', 'failure'],
+  provider_type: ['local', 'oauth', 'cas'],
+})
 
 /** how the door was addressed when the attempt happened, for the record's snapshot */
 const providerSnapshot = (tenantId: string, providerId: string) =>
@@ -416,6 +423,12 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       Effect.orDie,
     )
     const context = Option.getOrUndefined(yield* currentRequestContext)
+    // the metric beside the record: same single point, both outcomes, and
+    // the bounded constructor keeps codes and identifiers out of the labels
+    yield* signInCount({
+      outcome: input.outcome,
+      provider_type: snapshot?.type ?? 'other',
+    })
     yield* insertSignInEvent({
       tenantId: provider.tenantId,
       providerId: provider.providerId,

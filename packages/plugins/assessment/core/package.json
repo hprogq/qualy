@@ -27,6 +27,7 @@
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-storage": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/telemetry": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",

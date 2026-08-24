@@ -6,7 +6,8 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/sdk.ts"
+    ".": "./src/sdk.ts",
+    "./metrics": "./src/metrics.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

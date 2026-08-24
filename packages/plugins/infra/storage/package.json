@@ -25,6 +25,7 @@
     "@qualy/api-kit": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/telemetry": "workspace:*",
     "effect": "catalog:",
     "kysely": "catalog:"
   }

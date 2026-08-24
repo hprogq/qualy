@@ -3,6 +3,7 @@ import { Assembled } from '@qualy/api-kit/assembled'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { StorageConfig } from './config.ts'
 import { StorageBackends } from './registry.ts'
+import { measured } from './metrics.ts'
 import {
   claimAbandonedReservations,
   claimStagedAttachments,
@@ -97,6 +98,7 @@ const make = () =>
         ),
       ),
       Effect.withSpan('Storage.sweepAbandonedUploads'),
+      measured('sweep_abandoned_uploads'),
     )
 
     const sweepStagedAttachments = Effect.gen(function* () {
@@ -125,6 +127,7 @@ const make = () =>
         ),
       ),
       Effect.withSpan('Storage.sweepStagedAttachments'),
+      measured('sweep_staged_attachments'),
     )
 
     return StorageCleanup.of({

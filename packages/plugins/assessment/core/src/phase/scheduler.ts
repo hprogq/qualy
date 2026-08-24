@@ -1,4 +1,9 @@
 import { Clock, Duration, Effect, Layer, Queue, Schedule, Stream } from 'effect'
+import {
+  DURATION_BOUNDARIES,
+  boundedCounter,
+  boundedDurationHistogram,
+} from '@qualy/telemetry/metrics'
 import { Assembled } from '@qualy/api-kit/assembled'
 import { AssessmentLive } from '../live/service.ts'
 import { Assessment } from '../server/index.ts'
@@ -111,6 +116,26 @@ export const patrolSchedule = Schedule.fixed(PATROL_INTERVAL).pipe(
  * worse than one that logs and continues. Defects included - this is a
  * background loop, so there is no caller to hand anything to.
  */
+/** every run measured, every death counted, one bounded label: which loop */
+const runDuration = boundedDurationHistogram(
+  'qualy.scheduler.run.duration',
+  { job: ['phase-sweep', 'review-patrol'] },
+  DURATION_BOUNDARIES,
+)
+const runFailure = boundedCounter('qualy.scheduler.run.failure', {
+  job: ['phase-sweep', 'review-patrol'],
+})
+
+const timedRun =
+  (job: 'phase-sweep' | 'review-patrol') =>
+  <A, E, R>(run: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.suspend(() => {
+      const started = performance.now()
+      return run.pipe(
+        Effect.onExit(() => runDuration({ job }, (performance.now() - started) / 1000)),
+      )
+    })
+
 const sweepPhases = Effect.gen(function* () {
   const assessment = yield* Assessment
   const report = yield* assessment.sweepDueBoundaries
@@ -120,8 +145,11 @@ const sweepPhases = Effect.gen(function* () {
     )
   }
 }).pipe(
+  timedRun('phase-sweep'),
   Effect.catchCause((cause) =>
-    Effect.logError('phase sweep failed; retrying after the next pause', cause),
+    runFailure({ job: 'phase-sweep' }).pipe(
+      Effect.andThen(Effect.logError('phase sweep failed; retrying after the next pause', cause)),
+    ),
   ),
 )
 
@@ -134,8 +162,11 @@ const patrol = Effect.gen(function* () {
     )
   }
 }).pipe(
+  timedRun('review-patrol'),
   Effect.catchCause((cause) =>
-    Effect.logError('review patrol failed; retrying on the next tick', cause),
+    runFailure({ job: 'review-patrol' }).pipe(
+      Effect.andThen(Effect.logError('review patrol failed; retrying on the next tick', cause)),
+    ),
   ),
 )
 

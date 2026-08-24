@@ -8459,3 +8459,69 @@ search 参数查不到 span 名,TraceQL 才是对的查法(踩过)。
 验收:`pnpm typecheck` 零错;`pnpm test` 826 passed | 17 skipped(新增 2 条);
 prettier 通过;生产 smoke(带 OTEL)退出 0。下一步按计划 6.6:Metrics(HTTP RED、
 runtime、DB pool、第一批业务指标与 cardinality guard)。
+
+## Metrics 落地(OTel 计划 Phase 6.6):RED、runtime、DB 与第一批业务指标(2026-08-25)
+
+按修订后的 docs/PHASE6-OPENTELEMETRY-DESIGN.md §13 与 §26 的 6.6,零新依赖
+(全部经 Effect Metric registry,由 6.1 的 OtlpMetrics 导出)。四个交付面:
+
+**① HTTP RED**:一个 histogram 就是全部——`http.server.request.duration`(stable
+semconv 名,semconv 桶,单位 s;count 即请求率,status 标签分出错误率,桶即延迟
+分布)。api-kit 新 serve 中间件 `httpMetrics` 记录,标签只有三个来源都低基数:
+`http.request.method`(解析器有界集)、`http.response.status_code`、`http.route`
+(**只来自 router 写在 span 上的模板**;未命中路由不发明标签而是省略;event stream
+排除——那是连接寿命不是延迟,一个挂着的 tab 会独占 p99)。实测标签集:
+`GET /api/assessment/batches/:batchId/events`、`POST /api/auth/local/:providerCode/login`、
+`GET /*`(静态兜底,UUID 路径落在这里而非原始 URL)。
+
+**② runtime**:数据源全部是稳定 Node API,零 instrumentation 包——
+`process.cpuUsage`(→ process.cpu.time counter,user/system 差分)、
+`process.memoryUsage`(→ process.memory.usage、v8js.memory.heap.used,单位 By)、
+`perf_hooks.monitorEventLoopDelay` + `eventLoopUtilization`
+(→ nodejs.eventloop.delay.mean/.max、nodejs.eventloop.utilization)。15s 轮询
+fiber 由 telemetry layer fork,随其 scope 消亡;GC 指标显式不做(要额外
+PerformanceObserver 订阅,等真有人分析 GC 再说)。
+
+**③ DB**:`db.client.operation.duration`(stable semconv)直接记在 `query()` 漏斗
+(Effect.trackDuration,成败都计——失败的查询同样占用了连接)。pool 指标经
+**MikroORM 7.1.13 的公开钩子 `driverOptions.onPoolCreated`** 拿到 pg.Pool,读的
+全是 pg 文档化公开属性:`idleCount`/`totalCount`/`waitingCount` →
+`db.client.connection.count{state=idle|used}`、`db.client.connection.pending_requests`
+(这两个语义约定仍是 Development 状态,已注明)。**明确不做的**:acquisition
+wait time——需要包 acquire 路径本身,按 §12.1 那是重评触发条件而不是 hack 的理由。
+两个实战教训:(a) v7 的 `MikroORM.init` 不连接,pool 懒建,轮询每拍重读槽位而非
+构建期判定;(b) **pool 采样改用 node timer(unref)+ `updateUnsafe` 携带构建期
+context,故意脱离 ambient Clock**——最初的 Effect.sleep 轮询 fiber 在 scheduler
+测试套件里把 TestClock 的静默等待锁死(5 条测试超时),二分定位后改为墙钟采样,
+这也更诚实:采样节拍本就属于墙钟域。
+
+**④ 业务指标 + cardinality guard**:@qualy/telemetry 新 `./metrics` 叶子,
+`boundedCounter`/`boundedDurationHistogram`——每个 label key 与允许值先声明,
+编译期是字面量联合(带 `string & {}` 通道容纳驱动类型这类动态但受 clamp 的来源),
+**运行期不在允许列表的值一律 clamp 成 'other',未声明的 key 直接丢弃**。第一批:
+`qualy.auth.sign_in{outcome,provider_type}`(sign-in record 单点,双结局)、
+`qualy.assessment.entry.submit{outcome=success|refused}`(setEntryStatus 外围,
+defect 不计入业务数)、`qualy.assessment.review.decision{decision}`、
+`qualy.scheduler.run.duration/.failure{job=phase-sweep|review-patrol}`、
+`qualy.storage.operation.duration/.failure{operation}`(9 个操作枚举,service 与
+cleanup 的 withSpan 旁同点包裹)。counter 带 `incremental: true`(单调 → OTLP
+monotonic sum → Prometheus `_total`)。
+
+**guard 的证明**(不是承诺):telemetry 3 条单测把 UUID、`DROP TABLE`、原始
+URL、未声明的 userId/tenantId 喂进构造器,读回 registry 断言只剩 'other' 与声明
+键;api-kit 1 条测试打真请求(含 UUID 路径与 404)后快照断言:`http.route` 只含
+模板、任何标签不含 UUID、标签键集封闭、404 无 route 标签。
+
+**真机闭环**(Prometheus 查回):`http_server_request_duration_seconds_*` 三路由
+标签集零 UUID;`db_client_operation_duration_seconds_*`;
+`db_client_connection_count{db_client_connection_state=idle|used}` 与 pending
+(修了两次命名:unit 属性是 effect 导出器声明 OTLP unit 的通道,不声明时 unitless
+gauge 会被 Prometheus 加 `_ratio` 后缀——内存 gauge 补 `By`、连接 gauge 补
+`{connection}`/`{request}` 花括号单位后缀消失);`qualy_auth_sign_in_total
+{outcome=failure,provider_type=local}=1`(真实失败登录);runtime 全家
+(`process_cpu_time_seconds_total`、`process_memory_usage_bytes`、
+`nodejs_eventloop_*`);scheduler 与 storage duration 直方图。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 830 passed | 17 skipped(新增 6 条);
+生产 smoke(带/不带 OTEL)退出 0;prettier 通过(未动 web 源)。下一步 6.7
+(生产 Collector:腾讯云 APM/TMP 路由)或 6.8(CLS 日志关联)。

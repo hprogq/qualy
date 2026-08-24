@@ -1,5 +1,5 @@
 import { NodeHttpClient, NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Option, Scope } from 'effect'
+import { Effect, Exit, Layer, Metric, Option, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
 import { createServer, type Server } from 'node:http'
@@ -8,6 +8,7 @@ import {
   RequestContext,
   bindSessionId,
   clientAddressOf,
+  httpMetrics,
   requestContext,
   routeSpanNames,
   trustedProxies,
@@ -140,7 +141,7 @@ beforeAll(async () => {
   const application = HttpRouter.serve(routes, {
     // the loopback peer stands in for the deployment's proxy tier
     middleware: (httpApp) =>
-      requestContext({ trustedProxies: ['127.0.0.1'] })(routeSpanNames(httpApp)),
+      requestContext({ trustedProxies: ['127.0.0.1'] })(httpMetrics(routeSpanNames(httpApp))),
   }).pipe(
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
     // the exporting tracer, so the names this suite pins are the names a
@@ -244,5 +245,38 @@ describe('the span a request exports', () => {
     const span = await exportedSpan((candidate) => candidate.traceId === inbound)
     // a 404 has no template; the raw URL must not become the name
     expect(span.name).toBe('http.server GET')
+  })
+})
+
+describe('the labels a request becomes', () => {
+  it('measures by template and never by the URL it actually served', async () => {
+    // the id below must not exist anywhere in the metric registry afterwards
+    const uuid = '019loudb-cafe-4bad-8000-0f0f0f0f0f0f'
+    await fetch(`${base}/things/${uuid}`)
+    await fetch(`${base}/no-such-route/${uuid}`)
+    const snapshot = await Effect.runPromise(Metric.snapshot)
+    const requests = snapshot.filter((state) => state.id === 'http.server.request.duration')
+    expect(requests.length).toBeGreaterThan(0)
+    const routes = requests.map((state) => state.attributes?.['http.route'])
+    expect(routes).toContain('/things/:thingId')
+    for (const state of requests) {
+      for (const [key, value] of Object.entries(state.attributes ?? {})) {
+        expect(`${key}=${value}`).not.toContain(uuid)
+      }
+      // the label set is closed: method, status, route template, unit
+      expect(
+        Object.keys(state.attributes ?? {}).every((key) =>
+          ['http.request.method', 'http.response.status_code', 'http.route', 'unit'].includes(key),
+        ),
+      ).toBe(true)
+    }
+    // the unmatched request was counted, without inventing a route label
+    expect(
+      requests.some(
+        (state) =>
+          state.attributes?.['http.response.status_code'] === '404' &&
+          state.attributes?.['http.route'] === undefined,
+      ),
+    ).toBe(true)
   })
 })

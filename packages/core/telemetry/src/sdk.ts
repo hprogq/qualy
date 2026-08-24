@@ -7,6 +7,7 @@ import {
   OtlpTracer,
 } from 'effect/unstable/observability'
 import { resourceFromEnv } from './resource.ts'
+import { runtimeMetricsLoop } from './runtime-metrics.ts'
 
 // Telemetry for this process is Effect's own OTLP stack, not a second SDK.
 //
@@ -76,6 +77,9 @@ export const telemetryLayer: Layer.Layer<OtlpExporter.Flusher> = Layer.unwrap(
     return Layer.mergeAll(
       OtlpTracer.layerFromConfig({ resource }),
       OtlpMetrics.layerFromConfig({ resource }),
+      // the process's own numbers, polled from stable Node APIs; the fiber
+      // dies with the telemetry scope
+      Layer.effectDiscard(Effect.forkScoped(runtimeMetricsLoop)),
     ).pipe(
       Layer.provide(
         protocol === 'http/json' ? OtlpSerialization.layerJson : OtlpSerialization.layerProtobuf,

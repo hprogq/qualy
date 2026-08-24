@@ -1,4 +1,5 @@
 import { Effect, Result } from 'effect'
+import { boundedCounter } from '@qualy/telemetry/metrics'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
@@ -415,6 +416,11 @@ export interface EntryDeps {
 }
 
 const refuse = (action: string, reason: string) => new EntryActionRefused({ action, reason })
+
+/** filings handed on for review, and the refusals, with nothing else in the labels */
+const entrySubmitCount = boundedCounter('qualy.assessment.entry.submit', {
+  outcome: ['success', 'refused'],
+})
 
 export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   const { withDb, storage } = deps
@@ -972,7 +978,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
 
   const setEntryStatus: EntryMethods['setEntryStatus'] = Effect.fn('Assessment.setEntryStatus')(
     function* (tenantId, entryId, to, as, expectedItemRevisionId) {
-      return yield* withDb(
+      const acted = withDb(
         transaction(
           Effect.gen(function* () {
             const located = yield* entryOf(tenantId, entryId)
@@ -1268,6 +1274,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           }),
         ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
       )
+      // only the handing-on is a counted business signal; a typed failure is
+      // a refusal, a defect is an outage and stays out of the business count
+      return yield* to === 'in_review'
+        ? acted.pipe(
+            Effect.tap(() => entrySubmitCount({ outcome: 'success' })),
+            Effect.tapError(() => entrySubmitCount({ outcome: 'refused' })),
+          )
+        : acted
     },
   )
 

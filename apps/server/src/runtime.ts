@@ -4,7 +4,7 @@ import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { requestContext, routeSpanNames } from '@qualy/api-kit/request'
+import { httpMetrics, requestContext, routeSpanNames } from '@qualy/api-kit/request'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
 import { NodeServer } from '@qualy/api-kit/node'
 import { AssemblyInfo, assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
@@ -154,10 +154,11 @@ export async function makeApplication(
         // the upstream logger prints every response at Info and every failed
         // exit's cause - interrupted requests included; ours speaks in levels
         disableLogger: true,
-        // route templates land on the span innermost, so both the access
-        // log and the exported span speak from inside the request context
+        // route templates land on the span innermost, so the access log,
+        // the RED histogram and the exported span all speak from inside
+        // the request context
         middleware: (httpApp) =>
-          withRequestContext(accessLog(logging.access)(routeSpanNames(httpApp))),
+          withRequestContext(accessLog(logging.access)(httpMetrics(routeSpanNames(httpApp)))),
       }).pipe(Layer.provide(NodeHttpServer.layer(() => instance, { port: config.port })))
     }),
   ).pipe(Layer.provideMerge(nodeServerLayer), Layer.provide(ServerConfig.layer))

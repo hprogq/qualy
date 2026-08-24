@@ -1,5 +1,5 @@
-import { Context, Effect, Option, Tracer } from 'effect'
-import { HttpServerRequest } from 'effect/unstable/http'
+import { Context, Effect, Metric, Option, Tracer } from 'effect'
+import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
 import { randomUUID } from 'node:crypto'
 import { BlockList, isIP } from 'node:net'
 
@@ -187,6 +187,64 @@ export const routeSpanNames = <A, E, R>(
         if (typeof route === 'string') {
           ;(named as { name: string }).name = `${request.method} ${route}`
         }
+      }),
+    )
+  })
+
+/**
+ * The RED metric for HTTP: one histogram whose count is the request rate,
+ * whose status label separates the errors, and whose buckets are the
+ * latency distribution - the OTel semconv metric, name, unit and buckets.
+ *
+ * Every label is low-cardinality by where it comes from: the method is the
+ * parser's bounded set, the status is a three-digit code, and the route is
+ * the matched template the router wrote onto the span (`/things/:thingId`,
+ * never the raw URL). A request no route matched carries no route label at
+ * all rather than a URL. Event streams are excluded: their duration is
+ * connection lifetime, and one long-lived tab would own the p99.
+ */
+const requestDuration = Metric.histogram('http.server.request.duration', {
+  description: 'Duration of HTTP server requests.',
+  boundaries: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10],
+})
+
+const isEventStream = (value: unknown): boolean =>
+  (
+    (value as { body?: { contentType?: string } }).body?.contentType ??
+    (value as { headers?: Record<string, string> }).headers?.['content-type'] ??
+    ''
+  ).startsWith('text/event-stream')
+
+export const httpMetrics = <A extends { readonly status: number }, E, R>(
+  httpApp: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R | HttpServerRequest.HttpServerRequest> =>
+  Effect.withFiber((fiber) => {
+    const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
+    const span = Option.getOrUndefined(Context.getOption(fiber.context, Tracer.ParentSpan))
+    const started = performance.now()
+    return Effect.onExit(httpApp, (exit) =>
+      Effect.suspend(() => {
+        const seconds = (performance.now() - started) / 1000
+        let status: number
+        if (exit._tag === 'Success') {
+          if (isEventStream(exit.value)) return Effect.void
+          status = exit.value.status
+        } else {
+          const [response] = HttpServerError.causeResponseStripped(exit.cause)
+          if (isEventStream(response)) return Effect.void
+          status = response.status
+        }
+        const route =
+          span !== undefined && span._tag === 'Span' ? span.attributes.get('http.route') : undefined
+        return Metric.update(
+          Metric.withAttributes(requestDuration, {
+            unit: 's',
+            'http.request.method': request.method,
+            'http.response.status_code': String(status),
+            ...(typeof route === 'string' ? { 'http.route': route } : {}),
+          }),
+          seconds,
+        )
       }),
     )
   })

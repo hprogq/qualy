@@ -10,6 +10,7 @@ import {
 } from '../errors.ts'
 import type { UploadTicket } from '../upload.ts'
 import { objectKeyOf, type BackendOpen } from './backend.ts'
+import { measured } from './metrics.ts'
 import { StorageConfig } from './config.ts'
 import {
   attachmentOf,
@@ -265,6 +266,7 @@ const make = () =>
       }).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.prepareUpload'),
+        measured('prepare_upload'),
       )
 
     const completeUpload = (input: {
@@ -361,6 +363,7 @@ const make = () =>
       }).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.completeUpload'),
+        measured('complete_upload'),
       )
 
     const metadata = (input: { tenantId: string; attachmentId: string }) =>
@@ -370,6 +373,7 @@ const make = () =>
         ),
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.metadata'),
+        measured('metadata'),
       )
 
     const bind = (input: { tenantId: string; attachmentId: string; ownerUserId: string }) =>
@@ -401,6 +405,7 @@ const make = () =>
       }).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.bind'),
+        measured('bind'),
       )
 
     const open = <E, R>(
@@ -422,6 +427,7 @@ const make = () =>
       }).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.open'),
+        measured('open'),
       )
 
     const retire = (input: { tenantId: string; attachmentId: string }) =>
@@ -441,6 +447,7 @@ const make = () =>
       }).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.retire'),
+        measured('retire'),
       )
 
     const receiveUpload = (input: { reservationId: string; body: AsyncIterable<Uint8Array> }) =>
@@ -469,6 +476,7 @@ const make = () =>
       }).pipe(
         Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
         Effect.withSpan('Storage.receiveUpload'),
+        measured('receive_upload'),
       )
 
     return Storage.of({

@@ -1,6 +1,7 @@
 import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-orm/postgresql'
 import { type EntitySchema } from '@mikro-orm/core'
-import { Context, Effect, Exit, Layer, Option, Redacted } from 'effect'
+import type { Pool } from 'pg'
+import { Context, Duration, Effect, Exit, Layer, Metric, Option, Redacted } from 'effect'
 import { QualyNamingStrategy } from '../naming.ts'
 import { DatabaseConfig } from './config.ts'
 
@@ -115,6 +116,17 @@ export const entityManager = <const T extends readonly unknown[]>(): Effect.Effe
  */
 const DB_SPAN = { kind: 'client', attributes: { 'db.system.name': 'postgresql' } } as const
 
+/**
+ * The stable-semconv duration of every database operation, recorded at the
+ * same funnel the span wraps. Success and failure both count: a query that
+ * fails still held a connection for that long.
+ */
+const operationDuration = Metric.histogram('db.client.operation.duration', {
+  description: 'Duration of database client operations.',
+  boundaries: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
+  attributes: { 'db.system.name': 'postgresql', unit: 's' },
+})
+
 export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | Orm> =>
   Effect.gen(function* () {
     const open = yield* Effect.serviceOption(TransactionManager)
@@ -182,6 +194,7 @@ export class QueryFailed extends Error {
  */
 export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =>
   Effect.tryPromise({ try: run, catch: (cause) => new QueryFailed(cause) }).pipe(
+    Effect.trackDuration(operationDuration, (duration) => Duration.toMillis(duration) / 1000),
     Effect.withSpan('db.query', DB_SPAN),
   )
 
@@ -231,13 +244,43 @@ export class DatabaseStartupFailed extends Error {
  * connection, before anything is built on top of it, and a second thing
  * deciding whether the schema is current is a second answer.
  */
+/**
+ * What the pool is doing, from its documented public counters.
+ *
+ * `driverOptions.onPoolCreated` is the driver's own hook handing out the
+ * `pg.Pool` it builds, and `totalCount`/`idleCount`/`waitingCount` are
+ * documented pg API - no private field is read. The connection-count
+ * conventions these feed are still Development-status in OTel semconv, so
+ * the names may follow upstream renames; acquisition WAIT TIME is the one
+ * pool number deliberately not collected, because measuring it means
+ * wrapping the acquire path itself - if it becomes diagnostically
+ * necessary, that is the §12.1 re-evaluation trigger, not a hack here.
+ */
+const connectionCount = Metric.gauge('db.client.connection.count', {
+  description: 'Open database connections, by state.',
+  // the braces unit reaches the wire and, unlike the unitless default,
+  // keeps Prometheus from suffixing a count gauge with _ratio
+  attributes: { unit: '{connection}' },
+})
+const pendingRequests = Metric.gauge('db.client.connection.pending_requests', {
+  description: 'Requests waiting for a database connection.',
+  attributes: { unit: '{request}' },
+})
+const idleConnections = Metric.withAttributes(connectionCount, {
+  'db.client.connection.state': 'idle',
+})
+const usedConnections = Metric.withAttributes(connectionCount, {
+  'db.client.connection.state': 'used',
+})
+
 export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Entities> =
   Layer.effect(
     Orm,
     Effect.gen(function* () {
       const config = yield* DatabaseConfig
       const entities = yield* Entities
-      return yield* Effect.acquireRelease(
+      let pool: Pool | undefined
+      const orm = yield* Effect.acquireRelease(
         Effect.tryPromise({
           try: () =>
             MikroORM.init({
@@ -245,6 +288,11 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
               clientUrl: Redacted.value(config.url),
               namingStrategy: QualyNamingStrategy,
               ...(config.poolSize === undefined ? {} : { pool: { min: 0, max: config.poolSize } }),
+              driverOptions: {
+                onPoolCreated: (created: Pool) => {
+                  pool = created
+                },
+              },
               // an assembly part way through the migration has entities for
               // some of its tables and none for the rest, which is not a
               // mistake
@@ -256,5 +304,26 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
         // already closing and there is no caller left to hand it to
         (orm) => Effect.promise(() => orm.close()),
       )
+      // Wall-clock sampling on purpose. A node timer instead of an Effect
+      // sleep keeps the loop off the ambient Clock - test suites replace
+      // that with a TestClock whose quiescence-wait a forever-sleeping
+      // fiber would deadlock (found the hard way). init does not connect
+      // either: the driver builds its pool lazily on the first query, so
+      // every tick re-reads the slot instead of deciding at build time.
+      const services = yield* Effect.context<never>()
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const timer = setInterval(() => {
+            if (pool === undefined) return
+            idleConnections.updateUnsafe(pool.idleCount, services)
+            usedConnections.updateUnsafe(pool.totalCount - pool.idleCount, services)
+            pendingRequests.updateUnsafe(pool.waitingCount, services)
+          }, 15_000)
+          timer.unref()
+          return timer
+        }),
+        (timer) => Effect.sync(() => clearInterval(timer)),
+      )
+      return orm
     }),
   )

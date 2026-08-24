@@ -579,6 +579,9 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac
+      '@qualy/telemetry':
+        specifier: workspace:*
+        version: link:../../../core/telemetry
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../web/ui
@@ -722,6 +725,9 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac
+      '@qualy/telemetry':
+        specifier: workspace:*
+        version: link:../../../core/telemetry
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../web/ui
@@ -1110,6 +1116,9 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
+      '@qualy/telemetry':
+        specifier: workspace:*
+        version: link:../../../core/telemetry
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
