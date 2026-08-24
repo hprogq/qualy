@@ -197,6 +197,21 @@ export interface RbacShape {
   }) => Effect.Effect<boolean>
 
   /**
+   * Withdraws every live grant one person holds, attributed to the actor.
+   *
+   * The user-deletion case: auth owns the person but must not write these
+   * rows, and a deleted user's authority has to fall with them rather than
+   * lie dormant until a restore. Answers how many grants fell. No
+   * last-administrator check on purpose - the person is already disabled
+   * when this runs, so they were no survivor to begin with.
+   */
+  readonly revokeAllGrantsOfUser: (
+    tenantId: string,
+    userId: string,
+    actorId: string | null,
+  ) => Effect.Effect<number>
+
+  /**
    * After the caller's own writes, the tenant must still have an administrator
    * who can sign in.
    *

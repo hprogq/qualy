@@ -79,7 +79,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                 </p>
               </div>
               <dl className="space-y-1.5 text-xs">
-                <Row label={format(m.personUserType)} value={person.user.userType.name} />
+                <Row label={format(m.personUserType)} value={person.user.userType?.name ?? '—'} />
                 <Row
                   label={format(m.personPlacement)}
                   value={person.orgPath.map((node) => node.name).join(' / ')}
@@ -113,7 +113,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                     label={format(m.personBusinessNo)}
                     value={person.user.businessNo ?? format(m.personNoBusinessNo)}
                   />
-                  <Row label={format(m.personUserType)} value={person.user.userType.name} />
+                  <Row label={format(m.personUserType)} value={person.user.userType?.name ?? '—'} />
                   <Row
                     label={format(m.personStatus)}
                     value={format(

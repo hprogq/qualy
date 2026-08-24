@@ -1,5 +1,6 @@
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
+import { entities as auditEntities } from '@qualy/plugin-audit/db'
 import { entities as authEntities } from '../../src/db/entities.ts'
 
 // What the orm must know for a query to name a table.
@@ -13,4 +14,11 @@ import { entities as authEntities } from '../../src/db/entities.ts'
 // One definition rather than one per file: every suite here builds the same
 // stack, and when rbac's queries started naming tables through the orm, seven
 // copies of this line all had to learn about it at once.
-export const authClosure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+// audit rides along since the user lifecycle records events in the same
+// transaction: without its table in the orm, every create dies mid-commit
+export const authClosure = [
+  ...orgEntities,
+  ...authEntities,
+  ...rbacEntities,
+  ...auditEntities,
+] as const

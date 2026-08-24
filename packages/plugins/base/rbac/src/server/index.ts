@@ -44,6 +44,7 @@ import { ESCALATE, type Authority } from './escalation.ts'
 import { type GrantScope } from './grants.ts'
 import {
   oneRoleProjected,
+  revokeAllGrantsOfUser,
   revokeGrant,
   rolePermissionCodes,
   rolePermissionMode,
@@ -398,6 +399,14 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
         revokeGrant(input.tenantId, input.assignmentId, input.actorId),
       )().pipe(Effect.orDie)
     }),
+
+    revokeAllGrantsOfUser: Effect.fn('Rbac.revokeAllGrantsOfUser')(
+      function* (tenantId, userId, actorId) {
+        return yield* bound(() => revokeAllGrantsOfUser(tenantId, userId, actorId))().pipe(
+          Effect.orDie,
+        )
+      },
+    ),
 
     require: Effect.fn('Rbac.require')(function* (principal, code) {
       const definition = definitionOf(code)

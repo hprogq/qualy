@@ -893,6 +893,9 @@ export const accessSubjectPage = (
         .distinct()
         .where('s.tenantId', '=', tenantId)
         .where('s.batchId', '=', batchId)
+        // a deleted person's authority fell with them; the access page lists
+        // people who can still act
+        .where('u.deletedAt', 'is', null)
         .orderBy('u.displayName')
         .orderBy('s.subjectId')
         .limit(page.limit)
@@ -1424,6 +1427,7 @@ export const importCandidates = (
           join org_nodes n on n.tenant_id = u.tenant_id and n.id = u.primary_org_node_id
          where u.tenant_id = ${tenantId}::uuid
            and u.enabled
+           and u.deleted_at is null
            and u.user_type_id = any(${userTypeIds as string[]}::uuid[])
            and exists (
              select 1 from org_nodes scope
@@ -1499,6 +1503,7 @@ export const insertParticipants = (
           on wanted.user_id = u.id and wanted.node_id = u.primary_org_node_id
         where u.tenant_id = ${tenantId}::uuid
           and u.enabled
+          and u.deleted_at is null
         -- Somebody taken off the list keeps their row: the round is answerable
         -- for having admitted them, and everything they did hangs off it. So
         -- adding them again restores that row rather than inserting a second
@@ -2108,6 +2113,9 @@ export const userLivePosition = (tenantId: string, userId: string) =>
         .select([sql<string>`n.id`.as('nodeId'), sql<string>`n.path::text`.as('nodePath')])
         .where('User.tenantId', '=', tenantId)
         .where('User.id', '=', userId)
+        // a deleted person has no live position; callers treat the absence
+        // exactly like a person who is not there
+        .where('User.deletedAt', 'is', null)
         .executeTakeFirst(),
     )
     .pipe(

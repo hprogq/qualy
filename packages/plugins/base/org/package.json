@@ -17,6 +17,8 @@
     "react": "catalog:"
   },
   "devDependencies": {
+    "@qualy/audit-contract": "workspace:*",
+    "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",

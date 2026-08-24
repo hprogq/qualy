@@ -372,8 +372,12 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, granter_role_id) references roles (tenant_id, id) on delete cascade`,
   `alter table role_grant_rules add constraint fk_role_grant_rules_target
      foreign key (tenant_id, target_role_id) references roles (tenant_id, id) on delete cascade`,
+  // restrict, not cascade: a grant is history ("withdrawn rather than
+  // deleted"), and a cascade here contradicted that - users are soft-deleted
+  // now, so the only thing this rule ever refuses is a future hard purge
+  // arriving without its own plan for the trail
   `alter table role_grants add constraint fk_role_grants_user
-     foreign key (tenant_id, user_id) references users (tenant_id, id) on delete cascade`,
+     foreign key (tenant_id, user_id) references users (tenant_id, id) on delete restrict`,
   `alter table role_grants add constraint fk_role_grants_role
      foreign key (tenant_id, role_id) references roles (tenant_id, id) on delete cascade`,
   `alter table role_grants add constraint fk_role_grants_node

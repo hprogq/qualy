@@ -448,7 +448,13 @@ const grantsStrandedByEligibility = (tenantId: string, roleId: string) =>
             anchorMode: eb.ref('r.anchorMode'),
           }
           return sql<boolean>`(
-          not ${admitsUserType(role, eb.ref('u.userTypeId'))}
+          not ${admitsUserType(
+            role,
+            // nullable since soft deletion, but never null here: only live
+            // grants reach this predicate, and a live grant holds a live
+            // user, whom the schema requires to have a type
+            sql<string>`${eb.ref('u.userTypeId')}`,
+          )}
           or (${eb.ref('n.id')} is not null
               and not ${admitsOrgType(role, eb.ref('n.orgTypeId'))})
         )`

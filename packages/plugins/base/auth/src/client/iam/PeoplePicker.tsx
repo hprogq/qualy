@@ -193,7 +193,9 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
                   {blocked.has(row.id) ? (
                     <Badge variant="secondary">{format(m.pickerAlreadyIn)}</Badge>
                   ) : (
-                    <span className="text-xs text-muted-foreground">{row.userType.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {row.userType?.name ?? '—'}
+                    </span>
                   )}
                 </li>
               ))}

@@ -18,6 +18,10 @@ import { kyselyOf, type Orm } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
+import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { compileActionCatalog } from '@qualy/audit-contract/plugin'
+import { userActions } from '@qualy/plugin-auth/actions'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Iam } from '../src/server/index.ts'
 import { serviceLayer as authLayer } from '../src/server/index.ts'
@@ -40,6 +44,17 @@ const stack = (url: string) =>
   booted(
     authLayer.pipe(
       Layer.provideMerge(rbacLayer),
+      // the writer the auth services record through, on the same database
+      Layer.provideMerge(
+        auditLayer.pipe(
+          Layer.provide(
+            Layer.succeed(
+              AuditActionCatalog,
+              compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+            ),
+          ),
+        ),
+      ),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
@@ -342,7 +357,14 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
             insert into role_grants (tenant_id, user_id, role_id)
             values (${f.tenant}, ${second}, ${adminRole})`)
           const disable = (userId: string) =>
-            Effect.result(iam.users.setEnabled(f.tenant, userId, false, f.principal))
+            Effect.result(
+              iam.users.setStatus(
+                f.tenant,
+                userId,
+                { status: 'disabled', expectedVersion: 1 },
+                f.principal,
+              ),
+            )
           const [a, b] = yield* Effect.all([disable(f.admin), disable(second)], {
             concurrency: 2,
           })

@@ -147,6 +147,10 @@ export const nodeConstraints: Record<string, () => NodeConstraintError> = {
   // checks these still exist in the deployed lineage
   fk_users_primary_org_node: () => new NodeInUse(),
   fk_role_grants_node: () => new NodeInUse(),
+  // the fk detaches DELETED users (set null); a LIVE user standing here now
+  // surfaces as this check refusing the null instead of the fk refusing the
+  // delete - the same refusal, one constraint later
+  chk_users_live_user_is_placed: () => new NodeInUse(),
 }
 
 /**

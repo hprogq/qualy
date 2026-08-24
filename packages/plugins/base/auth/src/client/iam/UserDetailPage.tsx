@@ -40,6 +40,7 @@ export default function UserDetailPage() {
   const [editing, setEditing] = useState(false)
   const [moving, setMoving] = useState(false)
   const [confirmingDisable, setConfirmingDisable] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [businessNo, setBusinessNo] = useState('')
   const [userTypeId, setUserTypeId] = useState('')
@@ -55,8 +56,8 @@ export default function UserDetailPage() {
     if (!record) return
     setDisplayName(record.displayName)
     setBusinessNo(record.businessNo ?? '')
-    setUserTypeId(record.userType.id)
-    setPlacement(record.primaryOrgNode.id)
+    setUserTypeId(record.userType?.id ?? '')
+    setPlacement(record.primaryOrgNode?.id ?? '')
     setFeedback(null)
     setSaved(false)
   }, [record])
@@ -82,6 +83,7 @@ export default function UserDetailPage() {
       api.identity.updateUser({
         params: { userId },
         payload: {
+          version: record?.version ?? 1,
           displayName,
           userTypeId,
           businessNo: businessNo.trim() === '' ? undefined : businessNo.trim(),
@@ -98,7 +100,7 @@ export default function UserDetailPage() {
     ...run(() =>
       api.identity.setUserPlacement({
         params: { userId },
-        payload: { primaryOrgNodeId: placement },
+        payload: { primaryOrgNodeId: placement, version: record?.version ?? 1 },
       }),
     ),
     onSuccess: async () => {
@@ -108,11 +110,15 @@ export default function UserDetailPage() {
     },
   })
   const setStatus = useMutation({
-    ...run((status: 'active' | 'disabled') =>
-      api.identity.setUserStatus({ params: { userId }, payload: { status } }),
+    ...run((status: 'active' | 'disabled' | 'deleted') =>
+      api.identity.setUserStatus({
+        params: { userId },
+        payload: { status, version: record?.version ?? 1 },
+      }),
     ),
     onSuccess: async () => {
       setConfirmingDisable(false)
+      setConfirmingDelete(false)
       setSaved(true)
       await refresh()
     },
@@ -155,7 +161,9 @@ export default function UserDetailPage() {
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="flex flex-wrap items-center gap-2 text-lg font-semibold">
                   {record.displayName}
-                  {record.status === 'disabled' ? (
+                  {record.status === 'deleted' ? (
+                    <Badge variant="outline">{format(m.deletedBadge)}</Badge>
+                  ) : record.status === 'disabled' ? (
                     <Badge variant="destructive">{format(m.disabledBadge)}</Badge>
                   ) : (
                     <Badge variant="secondary">{format(m.statusActive)}</Badge>
@@ -163,33 +171,57 @@ export default function UserDetailPage() {
                 </p>
                 <p className="flex min-w-0 flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
                   {record.businessNo && <span className="tabular-nums">{record.businessNo}</span>}
-                  <span>{record.userType.name}</span>
+                  <span>{record.userType?.name ?? '—'}</span>
                   <span className="min-w-0 truncate">
                     {(user.data?.orgPath ?? []).map((node) => node.name).join(' / ')}
                   </span>
                 </p>
               </div>
-              {manageable && (
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                    {format(m.editProfile)}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setMoving(true)}>
-                    {format(m.moveLabel)}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={setStatus.isPending}
-                    onClick={() =>
-                      record.status === 'active'
-                        ? setConfirmingDisable(true)
-                        : setStatus.mutate('active')
-                    }
-                  >
-                    {format(record.status === 'active' ? m.disable : m.enable)}
-                  </Button>
-                </div>
+              {record.status === 'deleted' ? (
+                // what comes back is the person, disabled: access is a
+                // second, explicit act
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={setStatus.isPending}
+                  onClick={() => setStatus.mutate('disabled')}
+                >
+                  {format(m.restoreAction)}
+                </Button>
+              ) : (
+                manageable && (
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                      {format(m.editProfile)}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setMoving(true)}>
+                      {format(m.moveLabel)}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={setStatus.isPending}
+                      onClick={() =>
+                        record.status === 'active'
+                          ? setConfirmingDisable(true)
+                          : setStatus.mutate('active')
+                      }
+                    >
+                      {format(record.status === 'active' ? m.disable : m.enable)}
+                    </Button>
+                    {record.status === 'disabled' && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={setStatus.isPending}
+                        onClick={() => setConfirmingDelete(true)}
+                      >
+                        {format(m.deleteAction)}
+                      </Button>
+                    )}
+                  </div>
+                )
               )}
             </div>
 
@@ -347,7 +379,7 @@ export default function UserDetailPage() {
                     {format(m.cancel)}
                   </Button>
                   <Button
-                    disabled={transfer.isPending || placement === record.primaryOrgNode.id}
+                    disabled={transfer.isPending || placement === record.primaryOrgNode?.id}
                     onClick={() => transfer.mutate(undefined as never)}
                   >
                     {format(m.moveAction)}
@@ -378,6 +410,17 @@ export default function UserDetailPage() {
               pending={setStatus.isPending}
               onConfirm={() => setStatus.mutate('disabled')}
               onCancel={() => setConfirmingDisable(false)}
+            />
+
+            <ConfirmDialog
+              open={confirmingDelete}
+              title={format(m.confirmUserDeleteTitle)}
+              description={format(m.confirmUserDeleteBody)}
+              confirmLabel={format(m.deleteAction)}
+              cancelLabel={format(m.cancel)}
+              pending={setStatus.isPending}
+              onConfirm={() => setStatus.mutate('deleted')}
+              onCancel={() => setConfirmingDelete(false)}
             />
           </div>
         )}

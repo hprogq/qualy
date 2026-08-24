@@ -21,8 +21,11 @@ import {
   ProviderVersionConflict,
   RecoveryChannelRequired,
   SystemAccountProtected,
+  UserDeleted,
+  UserNotDisabled,
   UserNotFound,
   UserPlacementNotFound,
+  UserVersionConflict,
   UserTypeDisabled,
   UserTypeConflict,
   UserTypeInUse,
@@ -100,9 +103,14 @@ const user = Schema.Struct({
   id: Schema.String,
   businessNo: Schema.NullOr(Schema.String),
   displayName: Schema.String,
-  status: Schema.Literals(['active', 'disabled']),
-  userType: Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
-  primaryOrgNode: Schema.Struct({ id: Schema.String, name: Schema.String }),
+  status: Schema.Literals(['active', 'disabled', 'deleted']),
+  /** what every lifecycle write must be written against */
+  version: Schema.Number,
+  // null only on a deleted row whose type or unit was later removed
+  userType: Schema.NullOr(
+    Schema.Struct({ id: Schema.String, code: Schema.String, name: Schema.String }),
+  ),
+  primaryOrgNode: Schema.NullOr(Schema.Struct({ id: Schema.String, name: Schema.String })),
   // how many sign-in identities exist, not which: one identity out of possibly
   // several, with no provider context, told a reader nothing and exposed a
   // login name to anyone holding org-scope read
@@ -389,6 +397,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
         orgNodeId: id,
         // an enum says what it means; `subtree=false` never did
         scope: Schema.optional(Schema.Literals(['self', 'subtree'])),
+        /** absent = the living; 'deleted' = the removed, for the restore view */
+        status: Schema.optional(Schema.Literals(['active', 'disabled', 'deleted'])),
         search: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
         userTypeId: Schema.optional(id),
         ...pageQuery,
@@ -430,6 +440,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       params: Schema.Struct({ userId: id }),
       payload: changed(
         {
+          version: expectedVersion,
           displayName: Schema.optional(trimmedName(100)),
           userTypeId: Schema.optional(id),
           businessNo: Schema.optional(trimmedName(64)),
@@ -440,6 +451,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
       error: [
         UserConflict,
         UserNotFound,
+        UserDeleted,
+        UserVersionConflict,
         UserTypeNotFound,
         UserTypeDisabled,
         SystemAccountProtected,
@@ -455,10 +468,12 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     // where someone stands, replaced rather than acted on
     HttpApiEndpoint.put('setUserPlacement', '/iam/users/:userId/placement', {
       params: Schema.Struct({ userId: id }),
-      payload: Schema.Struct({ primaryOrgNodeId: id }),
+      payload: Schema.Struct({ primaryOrgNodeId: id, version: expectedVersion }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
         UserNotFound,
+        UserDeleted,
+        UserVersionConflict,
         UserTypeNotFound,
         SystemAccountProtected,
         UserPlacementNotFound,
@@ -468,14 +483,29 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     }).middleware(Authenticated),
   )
   .add(
+    // The whole lifecycle as one idempotent resource: active <-> disabled,
+    // disabled -> deleted, deleted -> disabled (a restore). Deletion and
+    // restore each answer to their own permission; the two optional fields
+    // are for restoring somebody whose old standing no longer exists.
     HttpApiEndpoint.put('setUserStatus', '/iam/users/:userId/status', {
       params: Schema.Struct({ userId: id }),
-      payload: Schema.Struct({ status: Schema.Literals(['active', 'disabled']) }),
+      payload: Schema.Struct({
+        status: Schema.Literals(['active', 'disabled', 'deleted']),
+        version: expectedVersion,
+        userTypeId: Schema.optional(id),
+        primaryOrgNodeId: Schema.optional(id),
+      }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
         UserNotFound,
+        UserDeleted,
+        UserNotDisabled,
+        UserVersionConflict,
         SystemAccountProtected,
+        UserTypeNotFound,
+        UserTypeDisabled,
         UserPlacementNotFound,
+        PlacementNotAllowed,
         LastAdministrator,
         AccessDenied,
       ],

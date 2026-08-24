@@ -17,6 +17,10 @@ import {
 import { type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
+import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { compileActionCatalog } from '@qualy/audit-contract/plugin'
+import { userActions } from '@qualy/plugin-auth/actions'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
 import { Iam } from '../src/server/index.ts'
@@ -40,6 +44,17 @@ const stack = (url: string) =>
   booted(
     authLayer.pipe(
       Layer.provideMerge(rbacLayer),
+      // the writer the auth services record through, on the same database
+      Layer.provideMerge(
+        auditLayer.pipe(
+          Layer.provide(
+            Layer.succeed(
+              AuditActionCatalog,
+              compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+            ),
+          ),
+        ),
+      ),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),
@@ -213,10 +228,12 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
             f.as,
           )
           // out of the managed branch: refused even though the source is managed
-          const out = yield* Effect.result(iam.users.setPlacement(f.tenant, userId, f.right, f.as))
+          const out = yield* Effect.result(
+            iam.users.setPlacement(f.tenant, userId, f.right, 1, f.as),
+          )
           // within it: allowed
           const within = yield* Effect.result(
-            iam.users.setPlacement(f.tenant, userId, f.left, f.as),
+            iam.users.setPlacement(f.tenant, userId, f.left, 1, f.as),
           )
           return { out: tagOf(out), within: within._tag }
         }),
@@ -293,7 +310,12 @@ describe.runIf(postgresAvailable).concurrent('users', () => {
           yield* runSql(sql`
             insert into sessions (tenant_id, user_id, token_hash, expires_at)
             values (${f.tenant}, ${userId}, 'hash', now() + interval '1 day')`)
-          yield* iam.users.setEnabled(f.tenant, userId, false, f.as)
+          yield* iam.users.setStatus(
+            f.tenant,
+            userId,
+            { status: 'disabled', expectedVersion: 1 },
+            f.as,
+          )
           const left = (yield* runSql(
             sql`select count(*)::int as count from sessions where user_id = ${userId}`,
           )) as unknown as { rows: { count: number }[] }

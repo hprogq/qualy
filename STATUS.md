@@ -8068,3 +8068,63 @@ mutation 接入是 Phase 5;Phase 3(用户生命周期)按计划下一步。
 验收:`pnpm typecheck` 零错;`pnpm test` 803 passed | 17 skipped(新增 12 条);
 `pnpm test:browser` 116 passed;`pnpm build` 成功;`pnpm qualy deploy` 应用迁移后生产 smoke
 八条全过;prettier 通过。
+
+## 用户生命周期落地(audit 计划 Phase 3):软删除、version 与身份可撤销(2026-08-24)
+
+按 docs/audit-design.md Phase 3 一次做完:users 加 `deleted_at` + `version`,UserIdentity 加
+`revokedAt/revokedBy`,授权与登录史随删除收回,全部写路径过 version 栅栏,并且这些操作从第一天
+就产生审计事件(auth 经 `Audit.actions('auth', userActions)` 声明七个动作,auth 因此
+dependsOn plugin-audit——首个真实的审计接入方)。
+
+**三态生命周期一扇门**:`PUT /iam/users/{id}/status` 载荷升级为
+`{status: active|disabled|deleted, version, userTypeId?, primaryOrgNodeId?}`,路径集**零变更**。
+active↔disabled(manage)、disabled→deleted(新权限 `auth.user.delete`)、deleted→disabled
+(新权限 `auth.user.restore`,即恢复;可带新归属)。删除必须从 disabled 出发
+(USER_NOT_DISABLED),恢复只回到 disabled——**交还的是这个人的连续性,不是权限**:身份与授权
+不随恢复复活,businessNo 永久占用(同一个人回来是 Restore 不是新建,§28)。deleted 上的
+update/move/enable 一律 USER_DELETED。删除事务内:rbac 端口 `revokeAllGrantsOfUser`(新增,
+授权是历史,撤销不删除)→ 身份全撤(revoked_at/by)→ 会话清空 → deleted_at,四步一个事务,
+审计事件带三个计数落在同一提交里。
+
+**Schema 的三个不变量**:`deleted ⟹ disabled`(CHECK)——这条买到一个大简化:所有已过滤
+`u.enabled = true` 的谓词(rbac held CTE、survivors、会话校验、登录投影、assessment 名册写入)
+**自动**排除已删除用户,全仓真正要补 `deleted_at is null` 的只有不滤 enabled 的名单/计数/守卫类
+查询(auth 三处计数、placement 三连、rbac userExists/userForGrant、assessment 五处、seed 三处,
+按清点逐一落)。`live ⟹ 有类型有归属`(CHECK)+ FK 改
+`on delete set null (列子集)`(PG15+ 语法,比较器实测通过):删类型/删节点对 deleted 用户是
+detach,对 live 用户由 CHECK 拒绝——**23514 因此进 TRANSLATABLE**(soft delete 把「活人挡删除」
+从 restrict fk 换成了 check 拒绝 set null,域错误必须照旧到达,org 补
+`chk_users_live_user_is_placed → NodeInUse` 映射)。role_grants 与 user_identities 的 user FK
+cascade→restrict:授权与绑定是历史,「withdrawn rather than deleted」不再被外键背刺。
+身份唯一索引改 live-only(`where revoked_at is null`),登录/seed 查找全部滤 revoked。
+迁移 20260824135549(重跑 no-op 已验)。
+
+**顺手修掉一个潜伏的保护洞**:`administratorSurvivors` 漏了 `inForce`——已撤销的管理员授权仍计
+入幸存者,last-admin 保护恰好在最需要拒绝的时刻放行。补上,并有测试钉住(撤销唯一活授权后,
+停用最后一位真实管理员必须 LAST_ADMINISTRATOR)。
+
+**version 并发**:update/move/status 全带 `expectedVersion`(USER_VERSION_CONFLICT),每次
+生命周期写 `version+1`;wire 的 user 投影带 version 与三态 status,userType/primaryOrgNode
+变 NullOr(仅 deleted 行可空)。**已删除视图**:`GET /iam/users?status=deleted`(cursor
+指纹含 status);单位已消失的 deleted 用户无锚可依,只对租户级读者可见(子树读者的权威由节点
+定义,没有节点就没有定义域)。UI:用户页加「在册/已删除」切换,资料页 disabled 时出删除
+(确认语如实说明可恢复什么、不恢复什么),deleted 时出恢复;version 全线程化。
+
+**审计动作**:auth.user.create/update/move/enable/disable/delete/restore(七条,detail schema
+各自极小——改了哪些字段、从哪到哪、收回了几条),actor 带 displayName 快照,动作名进 auth 的
+catalog(en+zh-CN)。新错误码 USER_VERSION_CONFLICT/USER_NOT_DISABLED/USER_DELETED 全量翻译。
+
+**迁移无数据步骤**(纯 DDL:加列、改约束、重建部分索引),空库重放即覆盖,未另写升级测试;
+seed 测试的硬删 fixture 先清 grants(restrict FK 正是为拦住生产代码里的硬删而立)。
+
+新增 packages/plugins/base/auth/tests/effect-lifecycle.test.ts 五条:删除级联(计数、原子性、
+审计行序列)、恢复语义(USER_DELETED 拒绝面、回到 disabled、不复活访问)、version 栅栏三写路径、
+在册/已删除互斥可见、survivors 修复。七个既有 harness 补 audit 层与实体闭包。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 808 passed | 17 skipped(新增 5 条);
+`pnpm test:browser` 116 passed;`pnpm build` 成功;`pnpm qualy deploy` 后生产 smoke 八条全过;
+prettier 通过。
+
+**Phase 3 未做**(裁决):绑定/解绑登录方式与重置密码仍无 API(3i 待做);已删除视图的批量
+恢复;恢复时重选归属的专用 UI(API 已支持 userTypeId/primaryOrgNodeId,原归属健在时无需选择)。
+下一步按计划 Phase 4:SignInAttempt 与 sign_in_events。

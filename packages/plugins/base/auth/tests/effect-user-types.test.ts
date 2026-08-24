@@ -16,6 +16,10 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { type Orm } from '@qualy/plugin-database/server'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
+import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { compileActionCatalog } from '@qualy/audit-contract/plugin'
+import { userActions } from '@qualy/plugin-auth/actions'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../src/constants.ts'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
@@ -39,6 +43,17 @@ const stack = (url: string) =>
   booted(
     authLayer.pipe(
       Layer.provideMerge(rbacLayer),
+      // the writer the auth services record through, on the same database
+      Layer.provideMerge(
+        auditLayer.pipe(
+          Layer.provide(
+            Layer.succeed(
+              AuditActionCatalog,
+              compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+            ),
+          ),
+        ),
+      ),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),

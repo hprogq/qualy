@@ -42,6 +42,7 @@ export default function UsersPage() {
   const [typeFilter, setTypeFilter] = usePageQueryState('type')
   const [search, setSearch] = usePageQueryState('q')
   const [openUserId, setOpenUserId] = usePageQueryState('user')
+  const [view, setView] = usePageQueryState('view')
   const [draft, setDraft] = useState(search)
   const [treeSearch, setTreeSearch] = useState('')
   const [creating, setCreating] = useState(false)
@@ -62,6 +63,7 @@ export default function UsersPage() {
   const filter = {
     orgNodeId: active?.orgNodeId ?? '',
     scope: scope === 'self' ? ('self' as const) : ('subtree' as const),
+    ...(view === 'deleted' ? { status: 'deleted' as const } : {}),
     ...(search ? { search } : {}),
     ...(typeFilter ? { userTypeId: typeFilter } : {}),
   }
@@ -169,6 +171,15 @@ export default function UsersPage() {
                   { value: 'subtree', label: format(m.scopeSubtree) },
                 ]}
               />
+              <Segmented
+                label={format(m.viewLabel)}
+                value={view === 'deleted' ? 'deleted' : 'living'}
+                onChange={(next) => setView(next === 'deleted' ? 'deleted' : '')}
+                options={[
+                  { value: 'living', label: format(m.viewLiving) },
+                  { value: 'deleted', label: format(m.viewDeleted) },
+                ]}
+              />
               <Select
                 value={typeFilter === '' ? ALL_TYPES : typeFilter}
                 onValueChange={(next) => setTypeFilter(next === ALL_TYPES ? '' : next)}
@@ -227,10 +238,10 @@ export default function UsersPage() {
                         {user.businessNo ?? '—'}
                       </span>
                       <span className="truncate text-xs text-muted-foreground">
-                        {user.userType.name}
+                        {user.userType?.name ?? '—'}
                       </span>
                       <span className="min-w-0 truncate text-xs text-muted-foreground">
-                        {user.primaryOrgNode.name}
+                        {user.primaryOrgNode?.name ?? '—'}
                       </span>
                       <span
                         className={cn(
@@ -238,7 +249,13 @@ export default function UsersPage() {
                           user.status === 'disabled' ? 'text-destructive' : 'text-muted-foreground',
                         )}
                       >
-                        {format(user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
+                        {format(
+                          user.status === 'deleted'
+                            ? m.deletedBadge
+                            : user.status === 'disabled'
+                              ? m.disabledBadge
+                              : m.statusActive,
+                        )}
                       </span>
                     </button>
                   ))
@@ -311,7 +328,12 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
   })
   const move = useMutation({
     mutationFn: (primaryOrgNodeId: string) =>
-      runApi(api.identity.setUserPlacement({ params: { userId }, payload: { primaryOrgNodeId } })),
+      runApi(
+        api.identity.setUserPlacement({
+          params: { userId },
+          payload: { primaryOrgNodeId, version: detail.data?.user.version ?? 1 },
+        }),
+      ),
     onMutate: () => setMoveError(null),
     onSuccess: async () => {
       setDestination('')
@@ -367,8 +389,14 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
           <p className="truncate text-sm font-semibold">{person.user.displayName}</p>
           <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
             <span className="truncate tabular-nums">{person.user.businessNo ?? '—'}</span>
-            <span className={cn(person.user.status === 'disabled' && 'text-destructive')}>
-              {format(person.user.status === 'disabled' ? m.disabledBadge : m.statusActive)}
+            <span className={cn(person.user.status !== 'active' && 'text-destructive')}>
+              {format(
+                person.user.status === 'deleted'
+                  ? m.deletedBadge
+                  : person.user.status === 'disabled'
+                    ? m.disabledBadge
+                    : m.statusActive,
+              )}
             </span>
           </p>
         </div>
@@ -376,7 +404,7 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
 
       <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
         <SectionHead title={format(m.userTypeLabel)} />
-        <p className="text-sm">{person.user.userType.name}</p>
+        <p className="text-sm">{person.user.userType?.name ?? '—'}</p>
       </div>
 
       <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">

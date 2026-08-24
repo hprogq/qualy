@@ -39,9 +39,33 @@ export const userExists = (tenantId: string, userId: string) =>
         .select('id')
         .where('tenantId', '=', tenantId)
         .where('id', '=', userId)
+        // a deleted person cannot be granted anything: for authorization
+        // they have left, whatever history still names them
+        .where('deletedAt', 'is', null)
         .executeTakeFirst(),
     )
     .pipe(Effect.map((row) => row !== undefined))
+
+/**
+ * Withdraws every live grant one person holds, in one statement.
+ *
+ * The rows stay - who could do what, and until when, is history - and the
+ * revocation is attributed to whoever deleted the user. Returns how many
+ * fell, which the audit event records.
+ */
+export const revokeAllGrantsOfUser = (tenantId: string, userId: string, actorId: string | null) =>
+  db
+    .query((k) =>
+      k
+        .updateTable('RoleGrant')
+        .set({ revokedAt: sql`now()`, revokedBy: actorId } as never)
+        .where('tenantId', '=', tenantId)
+        .where('userId', '=', userId)
+        .where('revokedAt', 'is', null)
+        .returning('id')
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.length))
 
 export const orgNodeExists = (tenantId: string, orgNodeId: string) =>
   db

@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
+    "./actions": "./src/actions.ts",
     "./constants": "./src/constants.ts",
     "./server": "./src/server/index.ts",
     "./server/session": "./src/server/session.ts",
@@ -23,6 +24,7 @@
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
+    "@qualy/audit-contract": "workspace:*",
     "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
@@ -45,6 +47,7 @@
   "devDependencies": {
     "@effect/platform-node": "catalog:",
     "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",

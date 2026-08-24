@@ -117,6 +117,23 @@ const i18n = definePluginMessages({
       id: 'auth/permission/user-manage',
       defaultMessage: 'Manage users',
     },
+    'permission.auth.user.delete': {
+      id: 'auth/permission/user-delete',
+      defaultMessage: 'Delete users',
+    },
+    'permission.auth.user.restore': {
+      id: 'auth/permission/user-restore',
+      defaultMessage: 'Restore deleted users',
+    },
+    // one label per audit action this plugin declares; the audit screen
+    // renders whatever language its reader asked for
+    'audit.auth.user.create': { id: 'auth/audit/user-create', defaultMessage: 'Create user' },
+    'audit.auth.user.update': { id: 'auth/audit/user-update', defaultMessage: 'Edit user' },
+    'audit.auth.user.move': { id: 'auth/audit/user-move', defaultMessage: 'Move user' },
+    'audit.auth.user.enable': { id: 'auth/audit/user-enable', defaultMessage: 'Enable user' },
+    'audit.auth.user.disable': { id: 'auth/audit/user-disable', defaultMessage: 'Disable user' },
+    'audit.auth.user.delete': { id: 'auth/audit/user-delete', defaultMessage: 'Delete user' },
+    'audit.auth.user.restore': { id: 'auth/audit/user-restore', defaultMessage: 'Restore user' },
     revokeGrantTitle: {
       id: 'auth/users/revoke-grant-title',
       defaultMessage: 'Take this role away here?',
@@ -371,6 +388,21 @@ const i18n = definePluginMessages({
     saved: { id: 'auth/feedback/saved', defaultMessage: 'Saved.' },
     systemBadge: { id: 'auth/badge/system', defaultMessage: 'system' },
     disabledBadge: { id: 'auth/badge/disabled', defaultMessage: 'disabled' },
+    deletedBadge: { id: 'auth/badge/deleted', defaultMessage: 'deleted' },
+    deleteAction: { id: 'auth/action/delete-user', defaultMessage: 'Delete' },
+    restoreAction: { id: 'auth/action/restore-user', defaultMessage: 'Restore' },
+    confirmUserDeleteTitle: {
+      id: 'auth/confirm/user-delete-title',
+      defaultMessage: 'Delete this user?',
+    },
+    confirmUserDeleteBody: {
+      id: 'auth/confirm/user-delete-body',
+      defaultMessage:
+        'Their roles and sign-in accounts are withdrawn. The person can be restored later, their access cannot.',
+    },
+    viewLabel: { id: 'auth/users/view', defaultMessage: 'Which people' },
+    viewLiving: { id: 'auth/users/view-living', defaultMessage: 'Current' },
+    viewDeleted: { id: 'auth/users/view-deleted', defaultMessage: 'Deleted' },
     confirmDeleteTitle: { id: 'auth/confirm/delete-title', defaultMessage: 'Delete permanently?' },
     confirmDeleteBody: { id: 'auth/confirm/delete-body', defaultMessage: 'This cannot be undone.' },
     confirmDisableTitle: { id: 'auth/confirm/disable-title', defaultMessage: 'Disable this user?' },
@@ -520,6 +552,18 @@ const i18n = definePluginMessages({
       id: 'auth/error/system-account-protected',
       defaultMessage:
         'The system account is how this tenant recovers itself, so its type, status and placement are fixed.',
+    },
+    USER_VERSION_CONFLICT: {
+      id: 'auth/error/user-version-conflict',
+      defaultMessage: 'This person changed while the page was open. Reload and try again.',
+    },
+    USER_NOT_DISABLED: {
+      id: 'auth/error/user-not-disabled',
+      defaultMessage: 'Disable the account first, then delete it.',
+    },
+    USER_DELETED: {
+      id: 'auth/error/user-deleted',
+      defaultMessage: 'This person is deleted. Restore them first.',
     },
   }),
   locales: {

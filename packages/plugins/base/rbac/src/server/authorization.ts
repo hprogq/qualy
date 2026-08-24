@@ -660,12 +660,24 @@ export const administratorSurvivors = (tenantId: string, roleId: string) =>
         )
         .where('g.tenantId', '=', tenantId)
         .where('g.roleId', '=', roleId)
+        // a grant that is withdrawn or outside its validity window holds
+        // nothing; without this line a just-revoked administrator still
+        // counted as a survivor, and the protection this feeds passed
+        // exactly when it had to refuse
+        .where((eb) =>
+          inForce({
+            revokedAt: eb.ref('g.revokedAt'),
+            validFrom: eb.ref('g.validFrom'),
+            validUntil: eb.ref('g.validUntil'),
+          }),
+        )
         // An administrator who could actually sign in today. A door open to
         // their type is part of it because a type no enabled provider admits
-        // is what every driver refuses. Bound identities deliberately are
-        // not: whether a user needs one before their first sign-in is driver
-        // knowledge, so requiring one here would state something the core
-        // cannot know.
+        // is what every driver refuses (enabled=false also covers deleted:
+        // the schema forbids a deleted-but-enabled row). Bound identities
+        // deliberately are not: whether a user needs one before their first
+        // sign-in is driver knowledge, so requiring one here would state
+        // something the core cannot know.
         .where('u.enabled', '=', true)
         .where('t.enabled', '=', true)
         .where((eb) =>

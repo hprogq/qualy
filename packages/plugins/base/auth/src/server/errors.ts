@@ -133,6 +133,27 @@ export class SystemAccountProtected extends Schema.TaggedErrorClass<SystemAccoun
   { httpApiStatus: 409, identifier: 'SystemAccountProtected' },
 ) {}
 
+/** the row moved since it was read; the caller re-reads and decides again */
+export class UserVersionConflict extends Schema.TaggedErrorClass<UserVersionConflict>()(
+  'USER_VERSION_CONFLICT',
+  {},
+  { httpApiStatus: 409, identifier: 'UserVersionConflict' },
+) {}
+
+/** deletion starts from disabled: an account that can still sign in is not deletable */
+export class UserNotDisabled extends Schema.TaggedErrorClass<UserNotDisabled>()(
+  'USER_NOT_DISABLED',
+  {},
+  { httpApiStatus: 409, identifier: 'UserNotDisabled' },
+) {}
+
+/** the person is deleted; every path but restore refuses them */
+export class UserDeleted extends Schema.TaggedErrorClass<UserDeleted>()(
+  'USER_DELETED',
+  {},
+  { httpApiStatus: 409, identifier: 'UserDeleted' },
+) {}
+
 /** grants the person holds that their new type would not be eligible for */
 export class GrantIncompatible extends Schema.TaggedErrorClass<GrantIncompatible>()(
   'GRANT_INCOMPATIBLE',

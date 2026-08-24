@@ -17,6 +17,10 @@ import {
 import { kyselyOf, transaction, type Orm } from '@qualy/plugin-database/server'
 import { db as authDb } from '../src/server/db.ts'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
+import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { compileActionCatalog } from '@qualy/audit-contract/plugin'
+import { userActions } from '@qualy/plugin-auth/actions'
 import { Placement } from '@qualy/auth-contract'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { AuthConfig } from '../src/server/sign-in.ts'
@@ -43,6 +47,17 @@ const stack = (url: string) =>
       // auth needs rbac now: closing a sign-in channel has to ask whether the
       // tenant keeps an administrator who can still use one
       Layer.provideMerge(rbacLayer),
+      // the writer the auth services record through, on the same database
+      Layer.provideMerge(
+        auditLayer.pipe(
+          Layer.provide(
+            Layer.succeed(
+              AuditActionCatalog,
+              compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+            ),
+          ),
+        ),
+      ),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: authClosure }),

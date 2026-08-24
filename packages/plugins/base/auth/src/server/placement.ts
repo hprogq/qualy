@@ -50,7 +50,7 @@ export const placementLegal = (
         and a.org_type_id = ${orgTypeId})
   end`
 
-/** every person, joined to the type that rules them and the node they stand at */
+/** every living person, joined to the type that rules them and the node they stand at */
 const standing = (k: Db) =>
   k
     .selectFrom('User as u')
@@ -60,6 +60,9 @@ const standing = (k: Db) =>
     .innerJoin('OrgNode as n', (join) =>
       join.onRef('n.tenantId', '=', 'u.tenantId').onRef('n.id', '=', 'u.primaryOrgNodeId'),
     )
+    // a deleted person stands nowhere: they must not block a retype or a
+    // policy change, and the full scan must not count them either
+    .where('u.deletedAt', 'is', null)
 
 type Standing = ReturnType<typeof standing>
 

@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:730c2646979147e485b845476fcd305c6b6f716dac2d3c2715996779b9da1373",
-  "resolutionHash": "sha256:2cdfa86053d2682849d29df99118a03573902d8a9e1fcc187107644531d6f72f",
+  "resolutionHash": "sha256:27da70e2b11ca9c1f6f2f9e7166bf005cdc3b9f725c7bb5f1e3f781df206fc18",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -112,8 +112,10 @@
             "auth.provider.read",
             "auth.user-type.manage",
             "auth.user-type.read",
+            "auth.user.delete",
             "auth.user.manage",
-            "auth.user.read"
+            "auth.user.read",
+            "auth.user.restore"
           ]
         }
       }

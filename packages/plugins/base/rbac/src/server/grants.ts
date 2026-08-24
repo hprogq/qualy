@@ -239,6 +239,8 @@ const userForGrant = (tenantId: string, userId: string) =>
       .select(['userTypeId', 'enabled'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', userId)
+      // a deleted person is nobody to appoint, whatever their row still says
+      .where('deletedAt', 'is', null)
       .executeTakeFirst(),
   )
 
@@ -497,6 +499,9 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
     // by having a system key, which would exempt every system role added
     // later.
     if (!isCanonicalTenantAdmin(role)) {
+      // a live user always has a type (schema check); the column is only
+      // nullable for deleted rows, which userForGrant already refuses
+      if (user.userTypeId === null) return yield* new GrantUserNotFound()
       if (!(yield* roleAdmits(tenantId, role.id, { userTypeId: user.userTypeId }))) {
         return yield* new GrantNotEligible({ reason: 'user-type' })
       }

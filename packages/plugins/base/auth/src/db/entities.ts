@@ -109,19 +109,37 @@ export const User = defineEntity({
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
     tenantId: tenantOf('users_tenant_id_tenants_id_fkey'),
-    // tenant business number (student/staff id); once bound, ordinary
-    // updates must not clear it
+    // Tenant business number (student/staff id); once bound, ordinary
+    // updates must not clear it. Its unique index deliberately keeps
+    // covering deleted rows: the same person coming back is a Restore, and
+    // two user ids sharing one number would split their history.
     businessNo: p.string().length(64).nullable(),
     displayName: p.string().length(100),
-    userTypeId: p.uuid(),
-    // every user belongs somewhere; the bootstrap admin gets the root node
-    // (tenant provisioning creates the root before the admin)
-    primaryOrgNodeId: p.uuid(),
+    // Nullable for DELETED rows only (the check below): a soft-deleted user
+    // must not pin a user type or an org unit forever, so those deletions
+    // detach the reference instead of failing on it. A live user always has
+    // both.
+    userTypeId: p.uuid().nullable(),
+    primaryOrgNodeId: p.uuid().nullable(),
     enabled: p.boolean().default(true),
+    // Deleted is a state, not an absence: the row stays, because grants,
+    // sessions and audit events name it. deleted implies disabled, which is
+    // what lets every "can they act" predicate keep asking only `enabled`.
+    deletedAt: p.datetime().nullable(),
+    // the whole row is versioned: every lifecycle write bumps it, so an
+    // edit based on a stale read is refused rather than silently applied
+    version: p.integer().default(1),
     createdAt: p.datetime().defaultRaw('now()'),
     updatedAt: p.datetime().defaultRaw('now()'),
   },
-  checks: [{ name: 'chk_users_display_name_not_blank', expression: `btrim(display_name) <> ''` }],
+  checks: [
+    { name: 'chk_users_display_name_not_blank', expression: `btrim(display_name) <> ''` },
+    { name: 'chk_users_deleted_is_disabled', expression: `deleted_at is null or enabled = false` },
+    {
+      name: 'chk_users_live_user_is_placed',
+      expression: `deleted_at is not null or (user_type_id is not null and primary_org_node_id is not null)`,
+    },
+  ],
   indexes: [
     {
       name: 'uq_users_tenant_id_id',
@@ -233,6 +251,12 @@ export const UserIdentity = defineEntity({
     credentialHash: p.text().nullable(),
     boundAt: p.datetime().defaultRaw('now()'),
     lastUsedAt: p.datetime().nullable(),
+    // A binding is withdrawn, never erased: who could sign in as whom, and
+    // until when, is history. Sign-in reads live rows only, and restoring a
+    // deleted user does NOT resurrect these - a door that stopped being
+    // theirs years ago must not open again on its own.
+    revokedAt: p.datetime().nullable(),
+    revokedBy: p.uuid().nullable(),
   },
   indexes: [
     {
@@ -240,15 +264,17 @@ export const UserIdentity = defineEntity({
       expression:
         'create unique index uq_user_identities_tenant_id_id on user_identities (tenant_id, id)',
     },
+    // live rows only: a revoked binding keeps its history without holding
+    // the identifier hostage, so the account can be deliberately re-bound
     {
       name: 'uq_user_identities_login',
       expression:
-        'create unique index uq_user_identities_login on user_identities (tenant_id, auth_provider_id, identifier)',
+        'create unique index uq_user_identities_login on user_identities (tenant_id, auth_provider_id, identifier) where revoked_at is null',
     },
     {
       name: 'uq_user_identities_user_provider',
       expression:
-        'create unique index uq_user_identities_user_provider on user_identities (tenant_id, user_id, auth_provider_id)',
+        'create unique index uq_user_identities_user_provider on user_identities (tenant_id, user_id, auth_provider_id) where revoked_at is null',
     },
   ],
 })
@@ -287,10 +313,14 @@ export const Session = defineEntity({
  * is why this plugin declares a database dependency on it.
  */
 export const compositeForeignKeys = [
+  // Set-null on exactly the referencing column (postgres names the subset so
+  // tenant_id survives): deleting a type or unit detaches DELETED users from
+  // it, while a live user still blocks the deletion - not through the fk,
+  // but through chk_users_live_user_is_placed refusing the null.
   `alter table users add constraint fk_users_user_type
-     foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete restrict`,
+     foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete set null (user_type_id)`,
   `alter table users add constraint fk_users_primary_org_node
-     foreign key (tenant_id, primary_org_node_id) references org_nodes (tenant_id, id) on delete restrict`,
+     foreign key (tenant_id, primary_org_node_id) references org_nodes (tenant_id, id) on delete set null (primary_org_node_id)`,
   `alter table user_type_allowed_org_types add constraint fk_user_type_allowed_org_types_type
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete cascade`,
   `alter table user_type_allowed_org_types add constraint fk_user_type_allowed_org_types_org_type
@@ -299,8 +329,10 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete cascade`,
   `alter table auth_provider_user_types add constraint fk_auth_provider_user_types_type
      foreign key (tenant_id, user_type_id) references user_types (tenant_id, id) on delete cascade`,
+  // restrict like role_grants: a binding is history now (revoked, never
+  // erased), and users are only soft-deleted anyway
   `alter table user_identities add constraint fk_user_identities_user
-     foreign key (tenant_id, user_id) references users (tenant_id, id) on delete cascade`,
+     foreign key (tenant_id, user_id) references users (tenant_id, id) on delete restrict`,
   `alter table user_identities add constraint fk_user_identities_provider
      foreign key (tenant_id, auth_provider_id) references auth_providers (tenant_id, id) on delete restrict`,
   `alter table sessions add constraint fk_sessions_user

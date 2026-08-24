@@ -61,9 +61,8 @@ const userTypeProjection = (k: Db) =>
       't.version',
       't.placementMode',
       sql<number>`(select count(*)::int from users u
-        where u.tenant_id = ${eb.ref('t.tenantId')} and u.user_type_id = ${eb.ref('t.id')})`.as(
-        'userCount',
-      ),
+        where u.tenant_id = ${eb.ref('t.tenantId')} and u.user_type_id = ${eb.ref('t.id')}
+          and u.deleted_at is null)`.as('userCount'),
       sql<string[]>`coalesce(
         (select array_agg(a.org_type_id::text) from user_type_allowed_org_types a
          where a.tenant_id = ${eb.ref('t.tenantId')} and a.user_type_id = ${eb.ref('t.id')}),
@@ -106,6 +105,9 @@ const countUsersOfType = (tenantId: string, userTypeId: string) =>
         .select(sql<number>`count(*)::int`.as('count'))
         .where('tenantId', '=', tenantId)
         .where('userTypeId', '=', userTypeId)
+        // deleted holders no longer block disabling or deleting a type: the
+        // type deletion detaches them (fk set null) instead of failing
+        .where('deletedAt', 'is', null)
         .executeTakeFirst(),
     )
     .pipe(

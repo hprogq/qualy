@@ -19,6 +19,11 @@ import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { type Orm } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
+import { entities as auditEntities } from '@qualy/plugin-audit/db'
+import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { compileActionCatalog } from '@qualy/audit-contract/plugin'
+import { userActions } from '@qualy/plugin-auth/actions'
 import { serviceLayer as authLayer } from '@qualy/plugin-auth/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
@@ -33,7 +38,7 @@ import { serviceLayer as orgLayer } from '../src/server/index.ts'
 
 // what the orm must know for a query to name a table: this suite runs auth and
 // rbac alongside org, so their tables are part of what the assembly serves
-const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities] as const
 
 // the same declarations production compiles, stamped the same way
 const catalog = compileCatalog([
@@ -47,6 +52,17 @@ const stack = (url: string) =>
     orgLayer.pipe(
       Layer.provideMerge(authLayer),
       Layer.provideMerge(rbacLayer),
+      // the writer the auth services record through, on the same database
+      Layer.provideMerge(
+        auditLayer.pipe(
+          Layer.provide(
+            Layer.succeed(
+              AuditActionCatalog,
+              compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+            ),
+          ),
+        ),
+      ),
       Layer.provideMerge(
         Layer.mergeAll(
           databaseFor(url, { entities: closure }),

@@ -90,6 +90,9 @@ const identityByIdentifier = (tenantId: string, providerId: string, identifier: 
       .where('i.tenantId', '=', tenantId)
       .where('i.authProviderId', '=', providerId)
       .where('i.identifier', '=', identifier)
+      // a withdrawn binding is history, not a way in: as far as a caller can
+      // tell it does not exist, exactly like an identity outside the audience
+      .where('i.revokedAt', 'is', null)
       // whether this kind of person may use this door is the door's own
       // audience, decided here so every driver gets the same refusal: an
       // identity outside it does not exist as far as the caller can tell

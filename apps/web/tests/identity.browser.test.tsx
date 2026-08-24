@@ -37,6 +37,7 @@ const user = (over: Partial<UserDto> = {}): UserDto => ({
   businessNo: null,
   displayName: '张三',
   status: 'active',
+  version: 1,
   userType: { id: USER_TYPE_ID, code: 'student', name: '学生' },
   primaryOrgNode: { id: ROOT_NODE_ID, name: '本部' },
   identityCount: 1,

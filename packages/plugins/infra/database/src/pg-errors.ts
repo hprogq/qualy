@@ -9,10 +9,13 @@ export function unwrapPgError(error: unknown): { code?: string; constraint?: str
 }
 
 // sqlstates that carry a constraint name worth translating: unique
-// violations (23505), no-action fk violations (23503) and row-level
+// violations (23505), no-action fk violations (23503), row-level
 // restrict violations (23001 — what restrict fks actually raise on pg18,
-// probed; 23503 only comes from no-action keys)
-export const TRANSLATABLE = new Set(['23505', '23503', '23001'])
+// probed; 23503 only comes from no-action keys) and check violations
+// (23514 — user soft deletion turned "a live user blocks this delete" from
+// a restrict fk into a set-null refused by a check, and the refusal has to
+// keep arriving as the same domain error)
+export const TRANSLATABLE = new Set(['23505', '23503', '23001', '23514'])
 
 // turns constraint violations into domain errors by constraint name and
 // rethrows everything else untouched, keeping the database an honest

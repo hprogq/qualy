@@ -93,7 +93,7 @@ describe.runIf(available)('tenant bootstrap seed', () => {
       // of its own: it reaches every active capability by mode rather than
       // by a mapping that a new plugin would have to backfill. Nothing is
       // granted to a user type, because a type confers no authority at all.
-      permissions: 27,
+      permissions: 29,
       roles: 1,
       rolePermissions: 0,
       userTypeGrants: 0,
@@ -229,8 +229,14 @@ describe.runIf(available)('tenant bootstrap seed', () => {
     // admin exists: no password needed at all
     const report = await inTransaction((client) => seed(client, {}))
     expect(report.admin).toBe('unchanged')
-    // a fresh database without a password fails with a clear message
+    // a fresh database without a password fails with a clear message; the
+    // grant rows go first because the user fk is restrict now - a hard
+    // delete is a fixture reset, which is exactly what that fk exists to
+    // stop production code from doing
     await pool.query(`delete from user_identities where identifier = 'admin'`)
+    await pool.query(
+      `delete from role_grants where user_id in (select id from users where display_name = '系统管理员')`,
+    )
     await pool.query(`delete from users where display_name = '系统管理员'`)
     await expect(inTransaction((client) => seed(client, {}))).rejects.toThrow(
       /QUALY_ADMIN_PASSWORD/,

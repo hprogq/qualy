@@ -6,6 +6,8 @@ import { Db } from '@qualy/plugin-database/plugin'
 import { Login } from '@qualy/auth-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
+import { Audit } from '@qualy/audit-contract/plugin'
+import { userActions } from './actions.ts'
 import {
   APP_SHELL,
   BLANK_SHELL,
@@ -32,10 +34,16 @@ import { identityApiHandlers, serviceLayer, sessionApiHandlers } from './server/
 const plugin = Plugin.define(
   '@qualy/plugin-auth',
   {
-    dependsOn: ['@qualy/plugin-database', '@qualy/plugin-rbac', '@qualy/plugin-ui-registry'],
+    dependsOn: [
+      '@qualy/plugin-audit',
+      '@qualy/plugin-database',
+      '@qualy/plugin-rbac',
+      '@qualy/plugin-ui-registry',
+    ],
     config,
   },
   Db.entities(entities, { compositeForeignKeys, dependsOn: ['@qualy/plugin-org'] }),
+  Audit.actions('auth', userActions),
   Ui.i18n('./client/i18n.ts'),
   Ui.page({
     id: 'auth/login',

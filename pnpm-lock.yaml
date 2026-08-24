@@ -680,6 +680,9 @@ importers:
       '@mikro-orm/core':
         specifier: 'catalog:'
         version: 7.1.13
+      '@qualy/audit-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/audit
       '@qualy/auth-contract':
         specifier: workspace:*
         version: link:../../../contracts/auth
@@ -744,6 +747,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/plugin-audit':
+        specifier: workspace:*
+        version: link:../audit
       '@qualy/plugin-auth-local':
         specifier: workspace:*
         version: link:../auth-local
@@ -900,6 +906,12 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@qualy/audit-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/audit
+      '@qualy/plugin-audit':
+        specifier: workspace:*
+        version: link:../audit
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../../infra/database

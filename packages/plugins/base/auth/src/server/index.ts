@@ -7,6 +7,7 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { Api } from '@qualy/api-kit/plugin'
 import { codeFrom, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
+import { Audit } from '@qualy/audit-contract/effect'
 
 import { placementViolations, usersBlockingOrgType } from './placement.ts'
 import { makeProviders } from './providers.ts'
@@ -73,7 +74,7 @@ export const make = Effect.fn('Auth.make')(function* () {
  * One construction provides both tags, so the port org holds and the surface
  * auth's own handlers use come from the same state rather than two.
  */
-const tags: Layer.Layer<Placement | Iam, never, Orm | Rbac> = Layer.effectContext(
+const tags: Layer.Layer<Placement | Iam, never, Orm | Rbac | Audit> = Layer.effectContext(
   Effect.gen(function* () {
     const { placement, iam } = yield* make()
     return Context.empty().pipe(Context.add(Placement, placement), Context.add(Iam, iam))
@@ -95,7 +96,7 @@ export { config } from './auth-config.ts'
 export const serviceLayer: Layer.Layer<
   Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
   never,
-  Orm | Rbac | AuthConfig | LoginDrivers
+  Orm | Rbac | Audit | AuthConfig | LoginDrivers
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)
 
 // --- api ---
@@ -191,9 +192,22 @@ const toUserDto = (row: UserProjection) => ({
   id: row.id,
   businessNo: row.businessNo,
   displayName: row.displayName,
-  status: row.enabled ? ('active' as const) : ('disabled' as const),
-  userType: { id: row.userTypeId, code: row.userTypeCode, name: row.userTypeName },
-  primaryOrgNode: { id: row.primaryOrgNodeId, name: row.primaryOrgNodeName },
+  status:
+    row.deletedAt !== null
+      ? ('deleted' as const)
+      : row.enabled
+        ? ('active' as const)
+        : ('disabled' as const),
+  version: row.version,
+  // null only on a deleted row whose type or unit was itself removed later
+  userType:
+    row.userTypeId === null
+      ? null
+      : { id: row.userTypeId, code: row.userTypeCode ?? '', name: row.userTypeName ?? '' },
+  primaryOrgNode:
+    row.primaryOrgNodeId === null
+      ? null
+      : { id: row.primaryOrgNodeId, name: row.primaryOrgNodeName ?? '' },
   identityCount: row.identityCount,
   manageable: row.manageable,
 })
@@ -249,12 +263,13 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         // the cursor belongs to this anchor, scope and search and no other
         // every filter is in the fingerprint: a cursor from one question
         // applied to another silently skips or repeats people
-        const fingerprint = `users:${query.orgNodeId}:${scope}:${query.search ?? ''}:${query.userTypeId ?? ''}`
+        const fingerprint = `users:${query.orgNodeId}:${scope}:${query.search ?? ''}:${query.userTypeId ?? ''}:${query.status ?? ''}`
         const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
         if (key === null) return yield* cursorUnusable()
         const found = yield* iam.users.list(principal, {
           orgNodeId: query.orgNodeId,
           scope,
+          status: query.status,
           search: query.search,
           userTypeId: query.userTypeId,
           after: key,
@@ -402,7 +417,8 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       Effect.fn('iam.updateUser.handler')(function* ({ params, payload }) {
         const iam = yield* Iam
         const principal = yield* CurrentUser
-        yield* iam.users.update(principal.tenantId, params.userId, payload, principal)
+        const { version, ...fields } = payload
+        yield* iam.users.update(principal.tenantId, params.userId, fields, version, principal)
         return { ok: true as const }
       }),
     )
@@ -415,6 +431,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
           principal.tenantId,
           params.userId,
           payload.primaryOrgNodeId,
+          payload.version,
           principal,
         )
         return { ok: true as const }
@@ -425,10 +442,17 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
       Effect.fn('iam.setUserStatus.handler')(function* ({ params, payload }) {
         const iam = yield* Iam
         const principal = yield* CurrentUser
-        yield* iam.users.setEnabled(
+        yield* iam.users.setStatus(
           principal.tenantId,
           params.userId,
-          payload.status === 'active',
+          {
+            status: payload.status,
+            expectedVersion: payload.version,
+            ...(payload.userTypeId === undefined ? {} : { userTypeId: payload.userTypeId }),
+            ...(payload.primaryOrgNodeId === undefined
+              ? {}
+              : { primaryOrgNodeId: payload.primaryOrgNodeId }),
+          },
           principal,
         )
         return { ok: true as const }

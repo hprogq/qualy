@@ -388,7 +388,7 @@ async function provisionAdmin(
 
   const identity = (
     await ctx.client.query(
-      `select id, user_id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3`,
+      `select id, user_id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3 and revoked_at is null`,
       [ctx.tenantId, providerId, username],
     )
   ).rows[0]
@@ -544,7 +544,7 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
   for (const user of DEMO_USERS) {
     const existing = (
       await ctx.client.query(
-        `select id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3`,
+        `select id from user_identities where tenant_id = $1 and auth_provider_id = $2 and identifier = $3 and revoked_at is null`,
         [ctx.tenantId, provider.id, user.identifier],
       )
     ).rows[0]
@@ -607,7 +607,7 @@ async function seedDemoData(ctx: Ctx, options: SeedOptions, report: SeedReport):
     await ctx.client.query(
       `select u.id from users u
        join user_identities i on i.tenant_id = u.tenant_id and i.user_id = u.id
-       where u.tenant_id = $1 and i.identifier = 'manager'`,
+       where u.tenant_id = $1 and i.identifier = 'manager' and i.revoked_at is null and u.deleted_at is null`,
       [ctx.tenantId],
     )
   ).rows[0]

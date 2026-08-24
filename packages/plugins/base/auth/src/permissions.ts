@@ -53,4 +53,21 @@ export const permissions = [
     group: message('auth/permission-group/identity', 'People and sign-in'),
     target: 'org-node',
   },
+  // Deliberately apart from manage: erasing a person from the living set is
+  // a higher-stakes act than editing them, and handing both to everyone who
+  // administers a unit would make deletion routine.
+  {
+    code: 'auth.user.delete',
+    name: message('auth/permission/user-delete', 'Delete users'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
+    target: 'org-node',
+  },
+  {
+    code: 'auth.user.restore',
+    name: message('auth/permission/user-restore', 'Restore deleted users'),
+    groupKey: 'identity',
+    group: message('auth/permission-group/identity', 'People and sign-in'),
+    target: 'org-node',
+  },
 ] as const satisfies readonly PermissionDefinition[]
