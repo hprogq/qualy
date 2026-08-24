@@ -7976,3 +7976,39 @@ shadcn `Tabs` 上(h-9,与按钮、输入框同高——之前自己写的那版�
 `pnpm build` 成功;生产 smoke 全过;prettier 通过。
 
 **仍未做**:绑定/解绑登录方式与重置密码(3i 里有,API 没有,故不画);导入向导;名单批量操作。
+
+## 请求上下文落地(audit 计划 Phase 1)(2026-08-24)
+
+按 docs/audit-design.md Phase 1 落地请求关联基础层:`RequestContext`(requestId / clientIp /
+userAgent / traceId / sessionId)进 `@qualy/api-kit/request` 新叶子,serve 中间件
+`requestContext({trustedProxies})` 每请求提供。三个关键裁决:
+
+- **traceId 不自造**:上游 `HttpEffect.toHandled` 对每个请求无条件包 `HttpMiddleware.tracer`
+  的 server span(repos/effect/packages/effect/src/unstable/http/HttpEffect.ts:89-91),默认
+  NativeSpan 无父时生成 W3C 128 位 traceId 并继承来访 `traceparent`(Tracer.ts:693)。
+  RequestContext 只从 `Tracer.ParentSpan` 读,排除禁用态的 `'noop'` 哨兵
+  (internal/effect.ts:5645-5648)。也就是说接 OTel 之前 traceId 就已真实可关联。
+- **消费侧一律 `Effect.serviceOption`**:`HttpRouter.Provided` 是封闭集合(HttpRouter.ts:805-809),
+  handler 经 R 要求 RequestContext 会把 requirement 泄漏到 group layer 构建期;而 audit/登录记录
+  的调用方本来也会从 job/CLI 进来——「没有请求」是答案,不是错误。
+- **client IP 走受信代理策略**:socket 对端是唯一自己观察到的事实。对端不受信即视为客户端、
+  其 X-Forwarded-For 直接无视;受信才从右向左走链,跳过受信跳,第一个不受信地址胜出;
+  伪造/畸形条目返回 undefined(unknown 好过 attacker-chosen)。CIDR 用 node:net 的 BlockList;
+  配置 `QUALY_TRUSTED_PROXIES`(逗号分隔地址/CIDR,缺省空=只信 socket 对端),非法条目在
+  配置期抛错。上游 `HttpMiddleware.xForwardedHeaders` 是无条件信任,不采用。
+
+**sessionId 是槽不是字段**:上下文在 cookie 解析之前创建,auth 的两条 session 解析路径
+(viewer 与 Authenticated)解析成功后 `bindSessionId`,同请求的后续读者可见。
+
+**接线**:runtime 中间件链 `requestContext(accessLog(app))`(tracer 在最外,平台保证);
+access log 每行注解 requestId(pretty 走尾缀、json 结构化);`completeLogin` 的
+loginIp/userAgent 改读 RequestContext——顺带修正:代理部署下原来记进 sessions 的是代理地址。
+auth 的 effect-sign-in 测试装配补上同一中间件(它守的正是「会话没记地址」回归)。
+
+新增 packages/core/api-kit/tests/request.test.ts 14 条:地址策略矩阵(信任门控、右起第一个
+不受信、CIDR、端口/括号/v4-mapped 规整、伪造条目→unknown、非法配置抛错)+ 真服务器四条
+(requestId 每请求新铸、XFF 经受信 loopback 解析、traceparent 继承、bindSession 请求内可见
+且请求间隔离)。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 791 passed | 17 skipped(新增 14 条);
+`pnpm test:browser` 116 passed;`pnpm build` 成功;生产 smoke 八条全过;prettier 通过。

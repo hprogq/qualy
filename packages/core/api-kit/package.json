@@ -11,6 +11,7 @@
     "./readiness": "./src/readiness.ts",
     "./schema": "./src/schema.ts",
     "./node": "./src/node.ts",
+    "./request": "./src/request.ts",
     "./assembled": "./src/assembled.ts",
     "./plugin": "./src/plugin.ts"
   },

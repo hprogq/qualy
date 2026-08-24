@@ -1,6 +1,7 @@
 import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
 import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { RequestContext } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
 
 // The access log, replacing the upstream one.
@@ -43,6 +44,11 @@ export const accessLog =
         return httpApp
       }
       const started = performance.now()
+      // the id the request context middleware minted, when it sits outside
+      // this one; the same id an audit event or error report would carry
+      const requestId = Option.getOrUndefined(
+        Option.map(Context.getOption(fiber.context, RequestContext), (c) => c.requestId),
+      )
       // The content type rides the response BODY, not the headers record -
       // upstream merges it into the wire headers only at write time - so
       // that is where to look. An event stream's end is connection
@@ -60,7 +66,10 @@ export const accessLog =
         const line = (status: number | string, suffix = '') =>
           `${request.method} ${path} ${status} ${elapsed}ms${suffix}`
         const annotated = <X>(effect: Effect.Effect<X>) =>
-          Effect.annotateLogs(effect, { source: 'http' })
+          Effect.annotateLogs(effect, {
+            source: 'http',
+            ...(requestId === undefined ? {} : { requestId }),
+          })
         if (exit._tag === 'Success') {
           const status = exit.value.status
           const streamed = isEventStream(exit.value)

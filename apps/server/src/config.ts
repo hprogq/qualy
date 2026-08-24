@@ -9,14 +9,22 @@ import { manifestPath } from './manifest.ts'
 
 export { manifestPath }
 
-export class ServerConfig extends Context.Service<ServerConfig, { readonly port: number }>()(
-  '@qualy/app/ServerConfig',
-) {
+export class ServerConfig extends Context.Service<
+  ServerConfig,
+  { readonly port: number; readonly trustedProxies: readonly string[] }
+>()('@qualy/app/ServerConfig') {
   static readonly layer = Layer.effect(
     ServerConfig,
     Effect.gen(function* () {
       return ServerConfig.of({
         port: yield* Config.port('PORT').pipe(Config.withDefault(3000)),
+        // The proxy tier this deployment stands behind, as addresses or CIDR
+        // blocks. Empty means the socket peer is the client and forwarded
+        // headers are ignored - the only safe reading of an absent setting.
+        trustedProxies: (yield* Config.string('QUALY_TRUSTED_PROXIES').pipe(Config.withDefault('')))
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry !== ''),
       })
     }),
   )

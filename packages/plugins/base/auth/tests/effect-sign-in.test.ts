@@ -13,6 +13,7 @@ import {
   runSql,
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { requestContext } from '@qualy/api-kit/request'
 import { reactComponent } from '@qualy/ui-contract'
 import { Api } from '@qualy/api-kit/plugin'
 import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
@@ -145,9 +146,11 @@ beforeAll(async () => {
   // the service layers go in at the application level, the way the host wires
   // them: a handler's requirement is per-request, so it travels past the
   // handler layer and is satisfied where the whole api is assembled
-  const application = HttpRouter.serve(
-    HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)),
-  ).pipe(
+  const application = HttpRouter.serve(HttpApiBuilder.layer(api).pipe(Layer.provide(handlers)), {
+    // the host always serves behind this middleware; without it a session
+    // records no address at all, which is the regression asserted below
+    middleware: requestContext(),
+  }).pipe(
     Layer.provide(signIn),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
     Layer.provide(infra),

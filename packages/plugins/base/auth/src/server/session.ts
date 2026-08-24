@@ -1,6 +1,7 @@
 import { Duration, Effect, Layer, Redacted } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import type { HttpServerRequest } from 'effect/unstable/http'
+import { bindSessionId } from '@qualy/api-kit/request'
 import { kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
 import { sql } from 'kysely'
@@ -142,6 +143,9 @@ const resolve = Effect.fn('Auth.resolveSession')(function* (
   if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
     yield* touchSession(session.id).pipe(Effect.orDie)
   }
+  // the request now has a session; whoever records the request - the audit
+  // trail, an error report - reads it from the request context
+  yield* bindSessionId(session.id)
   return {
     state: 'valid' as const,
     principal: {
@@ -214,6 +218,7 @@ export const layer = Layer.effect(
               yield* touchSession(session.id).pipe(Effect.orDie)
             }
 
+            yield* bindSessionId(session.id)
             return yield* Effect.provideService(httpEffect, CurrentUser, {
               tenantId: session.tenantId,
               userId: session.userId,

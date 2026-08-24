@@ -4,6 +4,7 @@ import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { requestContext } from '@qualy/api-kit/request'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
 import { NodeServer } from '@qualy/api-kit/node'
 import { AssemblyInfo, assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
@@ -145,11 +146,15 @@ export async function makeApplication(
       // the services are provided inside the serve composition: the router
       // discharges request-time requirements only for layers inside its
       // argument, and requests find their services in the built context
+      // the platform wraps this whole chain in its tracer span, so the
+      // request context reads the span the request actually runs under; it
+      // sits outside the access log so the log can name the request id
+      const withRequestContext = requestContext({ trustedProxies: config.trustedProxies })
       return HttpRouter.serve(routes.pipe(Layer.provide(services), Layer.provide(prepared)), {
         // the upstream logger prints every response at Info and every failed
         // exit's cause - interrupted requests included; ours speaks in levels
         disableLogger: true,
-        middleware: accessLog(logging.access),
+        middleware: (httpApp) => withRequestContext(accessLog(logging.access)(httpApp)),
       }).pipe(Layer.provide(NodeHttpServer.layer(() => instance, { port: config.port })))
     }),
   ).pipe(Layer.provideMerge(nodeServerLayer), Layer.provide(ServerConfig.layer))

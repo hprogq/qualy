@@ -1,6 +1,7 @@
 import { componentKey } from '@qualy/ui-contract'
 import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
+import { currentRequestContext } from '@qualy/api-kit/request'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { kyselyOf, query, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
@@ -351,15 +352,18 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // a driver knows who somebody is, not whether they may still come in
         const user = yield* loadUser(input.tenantId, input.userId)
         if (!user) return undefined
-        const request = yield* HttpServerRequest.HttpServerRequest
+        // the request context already resolved the client address through
+        // the trusted-proxy policy; the raw socket peer would record the
+        // proxy itself on any proxied deployment
+        const context = Option.getOrUndefined(yield* currentRequestContext)
         const { token, tokenHash } = createSessionToken()
         yield* insertSession({
           tenantId: input.tenantId,
           userId: input.userId,
           tokenHash,
           ttlSeconds: config.sessionTtlSeconds,
-          loginIp: Option.getOrUndefined(request.remoteAddress),
-          userAgent: request.headers['user-agent'],
+          loginIp: context?.clientIp,
+          userAgent: context?.userAgent,
         }).pipe(Effect.orDie)
         if (input.identityId) {
           yield* touchIdentity(input.identityId).pipe(Effect.orDie)

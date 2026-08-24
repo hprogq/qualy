@@ -1,0 +1,199 @@
+import { Context, Effect, Option, Tracer } from 'effect'
+import { HttpServerRequest } from 'effect/unstable/http'
+import { randomUUID } from 'node:crypto'
+import { BlockList, isIP } from 'node:net'
+
+// The identity of one request, decided once at the edge.
+//
+// Everything that later wants to say "which request was this" - the access
+// log today, audit events and sign-in records tomorrow - reads the same
+// value instead of re-deriving it from headers, because the two derivations
+// that matter are easy to get wrong twice: the client address must not trust
+// a forwarded header the deployment's own proxy did not write, and the trace
+// id must be the one the server span actually runs under.
+//
+// Its own subpath for the same reason ./node has one: the kit's root reaches
+// the browser, and nothing here belongs in a bundle.
+
+export interface RequestContextShape {
+  /** minted per request; nothing upstream is trusted to supply it */
+  readonly requestId: string
+  /** resolved through the trusted-proxy policy; undefined when unknowable */
+  readonly clientIp: string | undefined
+  readonly userAgent: string | undefined
+  /**
+   * The id of the server span this request runs under.
+   *
+   * The platform opens that span unconditionally (HttpEffect.toHandled wraps
+   * every request in HttpMiddleware.tracer) and inherits an incoming
+   * `traceparent`, so this is real before any telemetry backend exists.
+   * Undefined only when tracing is turned off.
+   */
+  readonly traceId: string | undefined
+  /**
+   * The session this request turned out to belong to.
+   *
+   * A slot rather than a field, because the context is created before any
+   * cookie is resolved: whoever resolves the session binds it, and readers
+   * later in the same request see it. Undefined until then, and forever on
+   * anonymous requests.
+   */
+  readonly sessionId: string | undefined
+  readonly bindSession: (sessionId: string) => Effect.Effect<void>
+}
+
+export class RequestContext extends Context.Service<RequestContext, RequestContextShape>()(
+  '@qualy/api-kit/RequestContext',
+) {}
+
+/**
+ * The context of the current request, if there is one.
+ *
+ * Deliberately optional at the read site: a handler cannot carry the service
+ * in its requirements (`HttpRouter.Provided` is a closed set, so the group
+ * layer would demand it at build time), and the callers that matter - an
+ * audit writer, a session store - also run from jobs and the CLI, where
+ * "there is no request" is an answer, not an error.
+ */
+export const currentRequestContext: Effect.Effect<Option.Option<RequestContextShape>> =
+  Effect.serviceOption(RequestContext)
+
+/** binds the resolved session onto the current request, if there is one */
+export const bindSessionId = Effect.fn('RequestContext.bindSessionId')(function* (
+  sessionId: string,
+) {
+  const context = yield* Effect.serviceOption(RequestContext)
+  if (Option.isSome(context)) yield* context.value.bindSession(sessionId)
+})
+
+// --- client address ---
+
+/**
+ * One address out of the junk the wire delivers: ports stripped, brackets
+ * unwrapped, the v4-mapped-in-v6 form Node reports for plain IPv4 sockets
+ * unmapped. Undefined for anything that is not an address, because a value
+ * that only looks like one poisons every equality check downstream.
+ */
+const normalizeIp = (raw: string | undefined): string | undefined => {
+  if (raw === undefined) return undefined
+  let value = raw.trim()
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(value)
+  if (bracketed) value = bracketed[1]!
+  else if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(value)) value = value.slice(0, value.indexOf(':'))
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(value)
+  if (mapped) value = mapped[1]!
+  return isIP(value) === 0 ? undefined : value
+}
+
+/** whether an address belongs to the deployment's own proxy tier */
+export type TrustedProxies = (ip: string) => boolean
+
+/**
+ * A matcher over the configured proxy addresses.
+ *
+ * Entries are single addresses or CIDR blocks. An entry that parses as
+ * neither throws HERE, at configuration time: a proxy list that silently
+ * matches nothing downgrades every client address to the proxy's own, which
+ * looks like working until someone reads the log.
+ */
+export const trustedProxies = (entries: readonly string[]): TrustedProxies => {
+  if (entries.length === 0) return () => false
+  const list = new BlockList()
+  for (const entry of entries) {
+    const slash = entry.indexOf('/')
+    if (slash === -1) {
+      const address = normalizeIp(entry)
+      if (address === undefined) throw new Error(`invalid trusted proxy entry: "${entry}"`)
+      list.addAddress(address, isIP(address) === 4 ? 'ipv4' : 'ipv6')
+      continue
+    }
+    const address = normalizeIp(entry.slice(0, slash))
+    const prefix = Number(entry.slice(slash + 1))
+    const family = address === undefined ? 0 : isIP(address)
+    const width = family === 4 ? 32 : 128
+    if (address === undefined || !Number.isInteger(prefix) || prefix < 0 || prefix > width) {
+      throw new Error(`invalid trusted proxy entry: "${entry}"`)
+    }
+    list.addSubnet(address, prefix, family === 4 ? 'ipv4' : 'ipv6')
+  }
+  return (ip) => list.check(ip, isIP(ip) === 4 ? 'ipv4' : 'ipv6')
+}
+
+/**
+ * The address of the client, through however many trusted proxies stand
+ * before it.
+ *
+ * The socket address is the only fact this process observed itself, so it is
+ * the anchor: an untrusted socket peer IS the client and its forwarded
+ * header is ignored, because that header costs an attacker one line to
+ * fabricate. Only when the peer is a trusted proxy is `x-forwarded-for`
+ * read, right to left, skipping further trusted hops; the first address a
+ * trusted proxy vouches for wins. A chain that never leaves the trusted set
+ * is internal traffic and answers with its leftmost address.
+ */
+export const clientAddressOf = (
+  remoteAddress: string | undefined,
+  forwardedFor: string | undefined,
+  trusted: TrustedProxies,
+): string | undefined => {
+  const remote = normalizeIp(remoteAddress)
+  if (remote === undefined || !trusted(remote)) return remote
+  const chain = (forwardedFor ?? '').split(',').map((part) => part.trim())
+  for (let at = chain.length - 1; at >= 0; at--) {
+    if (chain[at] === '') continue
+    const hop = normalizeIp(chain[at])
+    // a forged or mangled entry ends the walk: what stands beyond it is
+    // whatever the forger chose, and unknown beats attacker-chosen
+    if (hop === undefined) return undefined
+    if (!trusted(hop)) return hop
+  }
+  return normalizeIp(chain[0]) ?? remote
+}
+
+// --- the middleware ---
+
+/**
+ * Serve middleware that provides the `RequestContext` for everything
+ * downstream.
+ *
+ * It has to sit inside the platform's tracer (which `HttpEffect.toHandled`
+ * guarantees for any serve middleware) so the span it reads is the request's
+ * own, and outside whatever wants to read the context - the host composes it
+ * as the outermost of its own middleware.
+ */
+export const requestContext = (options?: {
+  readonly trustedProxies?: readonly string[] | undefined
+}) => {
+  const trusted = trustedProxies(options?.trustedProxies ?? [])
+  return <A, E, R>(
+    httpApp: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, Exclude<R, RequestContext> | HttpServerRequest.HttpServerRequest> =>
+    Effect.withFiber((fiber) => {
+      const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
+      const span = Context.getOption(fiber.context, Tracer.ParentSpan)
+      let sessionId: string | undefined
+      return Effect.provideService(httpApp, RequestContext, {
+        requestId: randomUUID(),
+        clientIp: clientAddressOf(
+          Option.getOrUndefined(request.remoteAddress ?? Option.none()),
+          request.headers['x-forwarded-for'],
+          trusted,
+        ),
+        userAgent: request.headers['user-agent'],
+        // 'noop' is the disabled tracer's sentinel span
+        // (repos/effect/packages/effect/src/internal/effect.ts:5645-5648),
+        // not an id worth recording
+        traceId: Option.match(span, {
+          onNone: () => undefined,
+          onSome: (parent) => (parent.traceId === 'noop' ? undefined : parent.traceId),
+        }),
+        get sessionId() {
+          return sessionId
+        },
+        bindSession: (id) =>
+          Effect.sync(() => {
+            sessionId = id
+          }),
+      })
+    })
+}
