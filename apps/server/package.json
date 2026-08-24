@@ -26,6 +26,7 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/plugin-web": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/telemetry": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "chalk": "^6.0.0",

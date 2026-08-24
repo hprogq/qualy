@@ -2,6 +2,7 @@ import { inspect } from 'node:util'
 import { NodeRuntime } from '@effect/platform-node'
 import { Cause, Effect, Exit, Layer } from 'effect'
 import { readManifest } from '@qualy/assembly'
+import { telemetryLayer } from '@qualy/telemetry'
 import { logLine, loggingLayer, resolveLogging } from './logging.ts'
 import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
@@ -116,7 +117,13 @@ const launched = Layer.launch(application).pipe(
       ? Effect.logInfo('shutdown complete')
       : reportStartupFailure(exit.cause),
   ),
-  Effect.provide(logs),
+  // Telemetry wraps the application and sits inside the logger: every span
+  // the platform or a plugin creates inherits the exporting tracer from
+  // here, the application's scope closes before telemetry's - the drain is
+  // traced, then flushed - and whatever telemetry has to say comes out in
+  // the process's one log format. Without an OTLP endpoint in the
+  // environment this layer is a no-op.
+  Effect.provide(telemetryLayer.pipe(Layer.provideMerge(logs))),
 )
 
 /**

@@ -8217,3 +8217,55 @@ record 调用)才定位;教训是脚本化批量编辑必须断言锚点命中(�
 
 验收:`pnpm typecheck` 零错;`pnpm test` 814 passed | 17 skipped(新增 2 条);
 `pnpm test:browser` 116 passed;`pnpm build` 成功;生产 smoke 八条全过;prettier 通过。
+
+## 遥测核心包落地(OTel 计划 Phase 6.1):@qualy/telemetry(2026-08-24)
+
+按 docs/PHASE6-OPENTELEMETRY-DESIGN.md §26 的 6.1 建核心遥测包并接入组合根。
+
+**关键裁决:不引 `@effect/opentelemetry` 与 `@opentelemetry/*` SDK 家族**(对设计 §5.1 的
+偏离,依据是 §9.2「先检查 Effect 自带」与仓库「Effect 内置优先」纪律)。effect core 的
+`effect/unstable/observability` 已内置完整 OTLP/HTTP 导出栈:`OtlpTracer`/`OtlpMetrics`
+(`layerFromConfig` 解析标准 OTEL_* 环境变量)、`OtlpSerialization`(protobuf 与 json 双
+序列化,零外部依赖)、`OtlpExporter`(批量、瞬时错误重试 3 次、连续失败自禁 60s 并丢弃
+缓冲、shutdown flush 以 `shutdownTimeout` 有界——§22 的 best-effort 语义上游已实现)、
+`OtlpResource`(OTEL_SERVICE_NAME/OTEL_RESOURCE_ATTRIBUTES 合并)。实际读过:
+repos/effect/packages/effect/src/unstable/observability/{Otlp,OtlpTracer,OtlpMetrics,
+OtlpExporter,OtlpSerialization,OtlpResource,internal/otlpEnv}.ts、ConfigProvider.ts、
+Config.ts、platform-node/src/NodeHttpClient.ts,以及对照弃用的
+packages/opentelemetry/src/{NodeSdk,Resource,OtelTracer}.ts。触发再引 SDK 家族的条件:
+6.5 若裁定采用 pg auto-instrumentation(需要 OTel context bridge 与全局 provider)。
+
+**包形态**(packages/core/telemetry,`@qualy/telemetry`,export "." → src/sdk.ts):
+
+- `resource.ts`:进程身份一次解析。env 赢过缺省(OTEL_SERVICE_NAME > 属性形式 >
+  `qualy-server`;OTEL_SERVICE_VERSION > QUALY_VERSION);只补环境没说的:
+  `service.namespace=qualy`、`deployment.environment.name`(按 NODE_ENV 二分)、
+  `service.instance.id`(QUALY_INSTANCE_ID 或 boot 时铸一枚 UUID,进程内稳定)。
+- `sdk.ts`:`telemetryLayer: Layer<OtlpExporter.Flusher>`。无 endpoint 或
+  OTEL_SDK_DISABLED → 纯 flusher(不建 HttpClient、不换 tracer,`pnpm dev` 零负担);
+  有 endpoint → OtlpTracer+OtlpMetrics(共享 Flusher registry)+ 按
+  OTEL_EXPORTER_OTLP_PROTOCOL 选序列化(缺省 http/protobuf;**grpc 是启动拒绝**,不是
+  静默降级)+ 自带 `NodeHttpClient.layerUndici`。`ConfigProvider.layerAdd` 兜底三个
+  缺省:OTEL_TRACES_EXPORTER/OTEL_METRICS_EXPORTER=otlp(上游把未设读成关,OTel 规范
+  读成 otlp,按规范)、OTEL_METRIC_EXPORT_INTERVAL=60000(设计 §6)。
+
+**接入**:main.ts 单点 `Effect.provide(telemetryLayer.pipe(Layer.provideMerge(logs)))`
+(Effect LSP 的 multipleEffectProvide 拒绝链式 provide,合成一次)。层序即语义:应用 scope
+先关(drain 被 trace 到),telemetry 后 flush,logger 最后退场。平台 `HttpMiddleware.tracer`
+与既有 `Effect.fn` 命名 span 无需改动即被导出;Phase 1 的 RequestContext.traceId 自动从
+noop 变为真实 128-bit id,audit/sign-in 关联(§10)不需要新代码。
+
+**测试**(packages/core/telemetry/tests,端口 3201,8 条):真 http receiver 断言 OTLP/HTTP
+JSON 线格式——span 与 metric 到达且带 service 身份、env 覆盖缺省(namespace)、signal 级
+endpoint 单独启用、disabled 与无 endpoint 双静默、collector 死掉业务 effect 照常成功
+(flush 有界 ~3s)、grpc 启动拒绝;resource 优先级两条单测。
+
+**端到端实证**:带 OTEL_EXPORTER_OTLP_ENDPOINT 重跑生产 smoke(真启动、真请求、SIGTERM),
+receiver 收到 33 个 span(Database.prepare、Rbac.make、Auth.signIn.make 等——6.4 的清理
+素材已可见),八条 smoke 断言照常全过,退出码 0(导出不阻塞 shutdown)。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 822 passed | 17 skipped(新增 8 条);
+`pnpm test:browser` 116 passed(首跑遇既知 playwright 收尾崩溃,重跑干净);`pnpm build`
+成功;生产 smoke 全过(有/无 OTEL endpoint 各一遍);prettier 通过。
+下一步按计划 6.2(本地 observability compose profile)或 6.3(HTTP span 路由模板与
+RequestContext 关联)。
