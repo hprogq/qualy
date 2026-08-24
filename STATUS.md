@@ -8422,3 +8422,37 @@ authLocal.login.fail、health.ready、iam.requireUserRead)逐一读过,均为真
 验收:`pnpm typecheck` 零错;`pnpm test` 824 passed | 17 skipped;prettier 通过
 (未动 web 源)。下一步按计划 6.5:数据库边界 span(pg auto-instrumentation 评估
 与 orm.ts 手动兜底)。
+
+## 数据库边界 span 落地(OTel 计划 Phase 6.5)(2026-08-25)
+
+按 docs/PHASE6-OPENTELEMETRY-DESIGN.md §12 与 §26 的 6.5。
+
+**裁决:pg auto-instrumentation 暂不采用**(§12.1 评估后走 §12.3 兜底)。三条理由:
+①它要求 `@opentelemetry/*` SDK 家族(TracerProvider + context manager),正是 6.1
+裁决不引入的第二套 SDK;②被 patch 的驱动只能 parent 进 OTel context,而本进程的
+span 归 Effect tracer 所有,桥接需要 `@effect/opentelemetry` 的 OtelTracer——为一层
+驱动 span 引入整个桥是本末倒置;③设计自己就把 Node 24 + ESM + tsx 下的 loader hook
+标为不可靠并预设了 fallback。重新评估的触发条件:确有排障场景需要驱动级 SQL text
+/池指标,且届时 OTel JS 对 Node 24 ESM 的 hook 已稳定。
+
+**实现**(packages/plugins/infra/database/src/server/orm.ts,全部查询的唯一漏斗):
+
+- `query()` 穿 `db.query` span(kind=client,`db.system.name=postgresql`);
+- `transaction()` 只在**真 BEGIN 分支**穿 `db.transaction`(覆盖 begin..commit/
+  rollback 全程);join 分支零新 span——加入不是开启,JOIN-EXISTING 语义分毫未动;
+- 有意不带 SQL text/参数/行数据:此边界只见 opaque thunk,§21 的禁令在结构上成立。
+
+**测试**(tracing.test.ts,2 条,真 postgres):recording tracer(上游文档的
+`Tracer.make` + `NativeSpan` 收集模式,零端口占用)断言:db.query 带属性、kind 与
+正确父 span;真事务单 span、其内两次查询(含一次嵌套 join 调用)都是 db.transaction
+的子且**只有一个** db.transaction——tracing 与事务传播互不破坏由同一条测试钉住。
+
+**真机闭环**:本地栈 + 生产 smoke,TraceQL `{name="db.query"}` 查到:请求 trace
+`GET /api/assessment/batches/:batchId/events` 的 root 之下挂 db.query(§27.3 的
+HTTP root + 业务 span + DB 边界三层,结合 6.3 的 handler 证据齐备);另有 boot 期
+迁移检查与后台巡逻的独立 db.query/db.transaction root。注:Tempo 的 tag 式
+search 参数查不到 span 名,TraceQL 才是对的查法(踩过)。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 826 passed | 17 skipped(新增 2 条);
+prettier 通过;生产 smoke(带 OTEL)退出 0。下一步按计划 6.6:Metrics(HTTP RED、
+runtime、DB pool、第一批业务指标与 cardinality guard)。

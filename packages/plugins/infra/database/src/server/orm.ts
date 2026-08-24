@@ -101,9 +101,25 @@ export const entityManager = <const T extends readonly unknown[]>(): Effect.Effe
  * one means would silently give every existing nested call a connection that
  * cannot see its caller's writes.
  */
+/**
+ * The database boundary in a trace, and nothing more.
+ *
+ * pg auto-instrumentation was considered and refused for now: it needs the
+ * `@opentelemetry/*` SDK family this process deliberately does not run (the
+ * Effect tracer owns the spans; there is no OTel context for a patched driver
+ * to parent into without the bridge package), plus an ESM loader hook whose
+ * reliability under Node 24 + tsx the observability design itself flags. What
+ * a slow request needs first is the boundary: these spans say the time went
+ * to the database and inside which transaction, and deliberately carry no
+ * SQL text, parameters or rows - this layer only ever sees an opaque thunk.
+ */
+const DB_SPAN = { kind: 'client', attributes: { 'db.system.name': 'postgresql' } } as const
+
 export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | Orm> =>
   Effect.gen(function* () {
     const open = yield* Effect.serviceOption(TransactionManager)
+    // joining is not opening: the span belongs to the transaction that
+    // actually begins and commits, so the join branch adds none
     if (Option.isSome(open)) return yield* body
 
     const orm = yield* Orm
@@ -115,7 +131,7 @@ export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effec
         Exit.isSuccess(exit)
           ? Effect.promise(() => em.commit())
           : Effect.promise(() => em.rollback()),
-    )
+    ).pipe(Effect.withSpan('db.transaction', DB_SPAN))
   })
 
 /**
@@ -165,7 +181,9 @@ export class QueryFailed extends Error {
  * walker already looks.
  */
 export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =>
-  Effect.tryPromise({ try: run, catch: (cause) => new QueryFailed(cause) })
+  Effect.tryPromise({ try: run, catch: (cause) => new QueryFailed(cause) }).pipe(
+    Effect.withSpan('db.query', DB_SPAN),
+  )
 
 /**
  * Kysely, told to speak entity and property names.
