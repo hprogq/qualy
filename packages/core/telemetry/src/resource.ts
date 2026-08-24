@@ -47,6 +47,13 @@ export const resourceFromEnv: Effect.Effect<ResourceDescription> = Effect.gen(fu
   if (env['service.instance.id'] === undefined) {
     attributes['service.instance.id'] = Option.getOrUndefined(instanceId) ?? randomUUID()
   }
+  // the runtime identity OTel recommends for JavaScript processes
+  if (env['process.runtime.name'] === undefined) {
+    attributes['process.runtime.name'] = 'nodejs'
+  }
+  if (env['process.runtime.version'] === undefined) {
+    attributes['process.runtime.version'] = process.versions.node
+  }
   return {
     serviceName: Option.getOrUndefined(name) ?? env['service.name'] ?? 'qualy-server',
     serviceVersion:

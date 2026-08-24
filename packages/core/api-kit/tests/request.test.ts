@@ -263,12 +263,21 @@ describe('the labels a request becomes', () => {
       for (const [key, value] of Object.entries(state.attributes ?? {})) {
         expect(`${key}=${value}`).not.toContain(uuid)
       }
-      // the label set is closed: method, status, route template, unit
+      // the label set is closed: method, scheme, status, route template,
+      // error type on server errors, and the exporter's unit channel
       expect(
         Object.keys(state.attributes ?? {}).every((key) =>
-          ['http.request.method', 'http.response.status_code', 'http.route', 'unit'].includes(key),
+          [
+            'http.request.method',
+            'url.scheme',
+            'http.response.status_code',
+            'http.route',
+            'error.type',
+            'unit',
+          ].includes(key),
         ),
       ).toBe(true)
+      expect(state.attributes?.['url.scheme']).toBe('http')
     }
     // the unmatched request was counted, without inventing a route label
     expect(

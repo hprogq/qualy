@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Cause, Effect, Exit } from 'effect'
 import {
   DURATION_BOUNDARIES,
   boundedCounter,
@@ -31,14 +31,27 @@ const duration = boundedDurationHistogram(
 
 const failure = boundedCounter('qualy.storage.operation.failure', { operation: OPERATIONS })
 
-/** wraps one storage operation: duration on every exit, failure on typed errors */
+/**
+ * Wraps one storage operation: duration on every exit, failure on every
+ * exit that is not a success and not a pure interruption. An operations
+ * metric counts defects on purpose - a crashed upload is more of a failure
+ * than a typed refusal, not less.
+ */
 export const measured =
   (operation: Operation) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
     Effect.suspend(() => {
       const started = performance.now()
       return effect.pipe(
-        Effect.tapError(() => failure({ operation })),
-        Effect.onExit(() => duration({ operation }, (performance.now() - started) / 1000)),
+        Effect.onExit((exit) => {
+          const failed = Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)
+          return Effect.all(
+            [
+              duration({ operation }, (performance.now() - started) / 1000),
+              ...(failed ? [failure({ operation })] : []),
+            ],
+            { discard: true },
+          )
+        }),
       )
     })

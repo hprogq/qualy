@@ -196,24 +196,37 @@ export const routeSpanNames = <A, E, R>(
  * whose status label separates the errors, and whose buckets are the
  * latency distribution - the OTel semconv metric, name, unit and buckets.
  *
- * Every label is low-cardinality by where it comes from: the method is the
- * parser's bounded set, the status is a three-digit code, and the route is
- * the matched template the router wrote onto the span (`/things/:thingId`,
- * never the raw URL). A request no route matched carries no route label at
- * all rather than a URL. Event streams are excluded: their duration is
- * connection lifetime, and one long-lived tab would own the p99.
+ * Every label is low-cardinality by where it comes from: the method is
+ * normalized against the semconv known set (anything else says `_OTHER`),
+ * the scheme and the route are what the platform tracer and the router
+ * already wrote onto the span (`/things/:thingId`, never the raw URL) - one
+ * source, so trace and metric cannot disagree. A request no route matched
+ * carries no route label at all. Event streams are counted like every other
+ * request, because the standard metric measures request duration and makes
+ * no SSE exception; a latency dashboard excludes those routes by
+ * `http.route`, not this recorder by content type.
+ *
+ * One deviation, by upstream constraint: semconv types
+ * `http.response.status_code` as an int, but `Metric.AttributeSet` in
+ * effect rc.111 is `Record<string, string>` - the digits are the same, and
+ * the Prometheus path renders every label as a string regardless.
  */
 const requestDuration = Metric.histogram('http.server.request.duration', {
   description: 'Duration of HTTP server requests.',
   boundaries: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10],
 })
 
-const isEventStream = (value: unknown): boolean =>
-  (
-    (value as { body?: { contentType?: string } }).body?.contentType ??
-    (value as { headers?: Record<string, string> }).headers?.['content-type'] ??
-    ''
-  ).startsWith('text/event-stream')
+const KNOWN_METHODS = new Set([
+  'GET',
+  'HEAD',
+  'POST',
+  'PUT',
+  'DELETE',
+  'CONNECT',
+  'OPTIONS',
+  'TRACE',
+  'PATCH',
+])
 
 export const httpMetrics = <A extends { readonly status: number }, E, R>(
   httpApp: Effect.Effect<A, E, R>,
@@ -225,23 +238,26 @@ export const httpMetrics = <A extends { readonly status: number }, E, R>(
     return Effect.onExit(httpApp, (exit) =>
       Effect.suspend(() => {
         const seconds = (performance.now() - started) / 1000
-        let status: number
-        if (exit._tag === 'Success') {
-          if (isEventStream(exit.value)) return Effect.void
-          status = exit.value.status
-        } else {
-          const [response] = HttpServerError.causeResponseStripped(exit.cause)
-          if (isEventStream(response)) return Effect.void
-          status = response.status
+        const status =
+          exit._tag === 'Success'
+            ? exit.value.status
+            : HttpServerError.causeResponseStripped(exit.cause)[0].status
+        const spanAttribute = (key: string): string | undefined => {
+          const value =
+            span !== undefined && span._tag === 'Span' ? span.attributes.get(key) : undefined
+          return typeof value === 'string' ? value : undefined
         }
-        const route =
-          span !== undefined && span._tag === 'Span' ? span.attributes.get('http.route') : undefined
+        const route = spanAttribute('http.route')
         return Metric.update(
           Metric.withAttributes(requestDuration, {
             unit: 's',
-            'http.request.method': request.method,
+            'http.request.method': KNOWN_METHODS.has(request.method) ? request.method : '_OTHER',
+            'url.scheme': spanAttribute('url.scheme') ?? 'http',
             'http.response.status_code': String(status),
-            ...(typeof route === 'string' ? { 'http.route': route } : {}),
+            ...(route === undefined ? {} : { 'http.route': route }),
+            // a server error is the condition semconv requires error.type
+            // under; the status code is its stable low-cardinality form
+            ...(status >= 500 ? { 'error.type': String(status) } : {}),
           }),
           seconds,
         )

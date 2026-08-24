@@ -1,9 +1,10 @@
 import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-orm/postgresql'
 import { type EntitySchema } from '@mikro-orm/core'
 import type { Pool } from 'pg'
-import { Context, Duration, Effect, Exit, Layer, Metric, Option, Redacted } from 'effect'
+import { Context, Effect, Exit, Layer, Metric, Option, Redacted } from 'effect'
 import { QualyNamingStrategy } from '../naming.ts'
 import { DatabaseConfig } from './config.ts'
+import { unwrapPgError } from '../pg-errors.ts'
 
 // The ORM as an Effect resource, built from an entity set the host hands in.
 //
@@ -119,13 +120,34 @@ const DB_SPAN = { kind: 'client', attributes: { 'db.system.name': 'postgresql' }
 /**
  * The stable-semconv duration of every database operation, recorded at the
  * same funnel the span wraps. Success and failure both count: a query that
- * fails still held a connection for that long.
+ * fails still held a connection for that long. A failure carries the
+ * SQLSTATE as `error.type` and `db.response.status_code` when the driver
+ * gave a valid one - five characters, a bounded vocabulary - and the class
+ * name otherwise; never the message.
  */
 const operationDuration = Metric.histogram('db.client.operation.duration', {
   description: 'Duration of database client operations.',
   boundaries: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10],
-  attributes: { 'db.system.name': 'postgresql', unit: 's' },
 })
+
+const DB_METRIC = { 'db.system.name': 'postgresql', unit: 's' } as const
+
+const SQLSTATE = /^[0-9A-Z]{5}$/
+
+const operationAttributes = (exit: Exit.Exit<unknown, QueryFailed>): Record<string, string> => {
+  if (Exit.isSuccess(exit)) return DB_METRIC
+  let code: string | undefined
+  for (const reason of exit.cause.reasons) {
+    if (reason._tag !== 'Fail') continue
+    const pg = unwrapPgError(reason.error)
+    if (pg?.code !== undefined && SQLSTATE.test(pg.code)) code = pg.code
+  }
+  return {
+    ...DB_METRIC,
+    'error.type': code ?? 'QueryFailed',
+    ...(code === undefined ? {} : { 'db.response.status_code': code }),
+  }
+}
 
 export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | Orm> =>
   Effect.gen(function* () {
@@ -193,10 +215,18 @@ export class QueryFailed extends Error {
  * walker already looks.
  */
 export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =>
-  Effect.tryPromise({ try: run, catch: (cause) => new QueryFailed(cause) }).pipe(
-    Effect.trackDuration(operationDuration, (duration) => Duration.toMillis(duration) / 1000),
-    Effect.withSpan('db.query', DB_SPAN),
-  )
+  Effect.suspend(() => {
+    const started = performance.now()
+    return Effect.tryPromise({ try: run, catch: (cause) => new QueryFailed(cause) }).pipe(
+      Effect.onExit((exit) =>
+        Metric.update(
+          Metric.withAttributes(operationDuration, operationAttributes(exit)),
+          (performance.now() - started) / 1000,
+        ),
+      ),
+      Effect.withSpan('db.query', DB_SPAN),
+    )
+  })
 
 /**
  * Kysely, told to speak entity and property names.
@@ -256,21 +286,32 @@ export class DatabaseStartupFailed extends Error {
  * wrapping the acquire path itself - if it becomes diagnostically
  * necessary, that is the §12.1 re-evaluation trigger, not a hack here.
  */
-const connectionCount = Metric.gauge('db.client.connection.count', {
+// UpDownCounters per semconv, not gauges: a non-incremental effect counter
+// exports as a non-monotonic sum, and the sampler below feeds it deltas so
+// the cumulative value IS the pool's current number. The pool name is
+// required by the convention; this process has one pool, named plainly.
+// The braces units reach the wire and, unlike the unitless default, keep
+// Prometheus from suffixing a count with _ratio.
+const POOL_NAME = { 'db.client.connection.pool.name': 'primary' } as const
+const connectionCount = Metric.counter('db.client.connection.count', {
   description: 'Open database connections, by state.',
-  // the braces unit reaches the wire and, unlike the unitless default,
-  // keeps Prometheus from suffixing a count gauge with _ratio
-  attributes: { unit: '{connection}' },
 })
-const pendingRequests = Metric.gauge('db.client.connection.pending_requests', {
+const pendingRequestsCount = Metric.counter('db.client.connection.pending_requests', {
   description: 'Requests waiting for a database connection.',
-  attributes: { unit: '{request}' },
 })
 const idleConnections = Metric.withAttributes(connectionCount, {
+  ...POOL_NAME,
   'db.client.connection.state': 'idle',
+  unit: '{connection}',
 })
 const usedConnections = Metric.withAttributes(connectionCount, {
+  ...POOL_NAME,
   'db.client.connection.state': 'used',
+  unit: '{connection}',
+})
+const pendingRequests = Metric.withAttributes(pendingRequestsCount, {
+  ...POOL_NAME,
+  unit: '{request}',
 })
 
 export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Entities> =
@@ -313,11 +354,20 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
       const services = yield* Effect.context<never>()
       yield* Effect.acquireRelease(
         Effect.sync(() => {
+          // deltas against the last sample, so the non-monotonic sums the
+          // exporter reports always equal the pool's current numbers
+          const last = { idle: 0, used: 0, pending: 0 }
           const timer = setInterval(() => {
             if (pool === undefined) return
-            idleConnections.updateUnsafe(pool.idleCount, services)
-            usedConnections.updateUnsafe(pool.totalCount - pool.idleCount, services)
-            pendingRequests.updateUnsafe(pool.waitingCount, services)
+            const idle = pool.idleCount
+            const used = pool.totalCount - pool.idleCount
+            const pending = pool.waitingCount
+            idleConnections.updateUnsafe(idle - last.idle, services)
+            usedConnections.updateUnsafe(used - last.used, services)
+            pendingRequests.updateUnsafe(pending - last.pending, services)
+            last.idle = idle
+            last.used = used
+            last.pending = pending
           }, 15_000)
           timer.unref()
           return timer

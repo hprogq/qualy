@@ -8525,3 +8525,47 @@ gauge 会被 Prometheus 加 `_ratio` 后缀——内存 gauge 补 `By`、连接 
 验收:`pnpm typecheck` 零错;`pnpm test` 830 passed | 17 skipped(新增 6 条);
 生产 smoke(带/不带 OTEL)退出 0;prettier 通过(未动 web 源)。下一步 6.7
 (生产 Collector:腾讯云 APM/TMP 路由)或 6.8(CLS 日志关联)。
+
+## 6.6 语义约定修正(2026-08-25)
+
+审阅指出 6.6 有六处对当前 OTel Semantic Conventions 的偏差,补一笔修正
+(架构不动,不引入任何 @opentelemetry 包):
+
+- **HTTP RED 对齐 stable semconv**:补 Required 的 `url.scheme`(与 trace 同源,
+  从 server span 已写的属性读取,一个来源两处答案不可能分叉);未知 method 归一
+  `_OTHER`;5xx 补 conditionally-required 的 `error.type`(状态码字符串);
+  **SSE 回归计数**——标准指标定义没有流式豁免,「count 即请求率」重新成立,
+  普通 API 延迟看板按 `http.route` 排除流式路由,而不是记录器按 content type
+  篡改标准指标的含义。一处按事实记录的偏离:semconv 要求
+  `http.response.status_code` 为 int,而 rc.111 的 `Metric.AttributeSet` 是
+  `Record<string, string>`——数字相同,Prometheus 路径的标签本就是字符串,
+  OTLP int 类型等上游。
+- **DB pool 改 UpDownCounter + 必填 `db.client.connection.pool.name=primary`**:
+  非增量 effect counter 导出为非单调 sum,采样器喂差分,累计值即池的当前数——
+  标准名与标准 instrument 语义不再错配。真机验证:
+  `db_client_connection_count{db_client_connection_state=idle|used,
+db_client_connection_pool_name=primary}`。
+- **DB operation duration 失败路径补 `error.type`/`db.response.status_code`**:
+  复用 pg-errors 的 cause 树解包取 SQLSTATE(五位、有界词表,`^[0-9A-Z]{5}$`
+  校验),非法或缺失时 `error.type=QueryFailed`;永不带 message。
+- **runtime 两处标准名纠正**:`process.memory.usage` 改 UpDownCounter(差分喂
+  非单调 sum,真机报 rss 绝对值正确);heap 总量**不再冒充** `v8js.memory.heap.used`
+  (那个约定按 heap space 计量、要求 `v8js.heap.space.name`),改名
+  `qualy.runtime.heap.used`;Resource 补 `process.runtime.name=nodejs` 与
+  `process.runtime.version`。
+- **`monitorEventLoopDelay` 补 finalizer**:acquireRelease 配对 enable/disable,
+  telemetry scope 关闭时停止采样而不是弃置。
+- **storage failure 计 defect**:`qualy.storage.operation.failure` 从 tapError
+  改为按 Exit 判定(非成功且非纯 interruption 都计)——运维指标里崩溃比 typed
+  拒绝更是 failure;`entry.submit` 的业务 outcome 指标保持不计 defect,那是
+  另一回事。
+
+顺手核实了审阅提出的 unit 疑点:effect 导出器确实把 metric 的 `unit` 属性
+**同时**用作 OTLP instrument unit 与 datapoint attribute——每个系列多一个常量
+`unit="s"` 标签(真机标签键集:method/status/route/url_scheme/unit + resource
+标签),低基数、无害、已知。guard 的编译期文字联合本质上因 `string & {}` 而弱,
+真正的防线是 runtime clamp 与测试(审阅认可);拆「字面量来源/动态来源」双 API
+留作后续。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 830 passed | 17 skipped;受影响五套件
+166 passed;生产 smoke 退出 0;prettier 通过;真机 Prometheus 复验上述全部修正。
