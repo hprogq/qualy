@@ -1,6 +1,7 @@
-# Local Observability
+# Observability
 
-Optional local OpenTelemetry stack for development.
+Optional local OpenTelemetry stack for development, and the production
+Collector configuration for Tencent Cloud.
 
 ```text
 Qualy Server
@@ -62,6 +63,50 @@ Specify the service names to avoid stopping the default PostgreSQL services.
 
 Local telemetry data is ephemeral and is removed with the LGTM container.
 
+## Production (Tencent Cloud)
+
+`collector.production.yaml` is the one place Tencent Cloud exists. The
+application keeps exporting to `http://127.0.0.1:4318` exactly as in
+development; the Collector fans out:
+
+```text
+traces  → Tencent APM  (OTLP gRPC; token + host.name injected by the
+                        resource processor, never set by the application)
+metrics → Tencent TMP  (Prometheus remote write, bearer token)
+```
+
+Credentials and endpoints come from the Collector's environment only —
+deployment secrets, never the Qualy process, never this repository:
+
+```text
+TENCENT_APM_OTLP_ENDPOINT     regional APM OTLP endpoint (prefer private network)
+TENCENT_APM_TOKEN             APM business system token
+TENCENT_TMP_REMOTE_WRITE_URL  TMP remote-write URL
+TENCENT_TMP_TOKEN             TMP bearer token
+QUALY_INSTANCE_ID             same stable instance id the application carries
+```
+
+Run it beside the server (the config binds receivers to `127.0.0.1` only):
+
+```bash
+docker run -d --name qualy-otel-collector --network host \
+  -v /path/to/collector.production.yaml:/etc/otelcol/config.yaml:ro \
+  --env-file /path/to/collector.env \
+  otel/opentelemetry-collector-contrib:0.159.0 --config=/etc/otelcol/config.yaml
+```
+
+Health probe: `curl -sf http://127.0.0.1:13133`. An unreachable APM/TMP
+endpoint is a background retry, not a startup failure (verified against the
+pinned image), and the application is unaffected either way.
+
+No sampling initially — collect real span/day volume and cost first. When a
+trigger arrives, a `tail_sampling` processor slots into the traces pipeline
+between `memory_limiter` and `resource/tencent_apm` (errors 100%, slow 100%,
+ordinary 10–20%); the config marks the spot.
+
+Logs do not pass through the Collector: the production JSON log is collected
+by LogListener into CLS (Phase 6.8).
+
 ## Versions
 
 The container versions are pinned in `docker-compose.yml`:
@@ -69,9 +114,16 @@ The container versions are pinned in `docker-compose.yml`:
 - `otel/opentelemetry-collector-contrib:0.159.0`
 - `grafana/otel-lgtm:0.31.0`
 
-After upgrading the Collector, validate the configuration with:
+After upgrading the Collector, validate both configurations against the
+pinned image:
 
 ```bash
 docker compose --profile observability run --rm --no-deps \
   otel-collector validate --config=/etc/otelcol/config.yaml
+
+docker run --rm -v ./ops/observability/collector.production.yaml:/etc/otelcol/config.yaml:ro \
+  -e TENCENT_APM_OTLP_ENDPOINT=host:4317 -e TENCENT_APM_TOKEN=placeholder \
+  -e TENCENT_TMP_REMOTE_WRITE_URL=https://host/write -e TENCENT_TMP_TOKEN=placeholder \
+  -e QUALY_INSTANCE_ID=placeholder \
+  otel/opentelemetry-collector-contrib:0.159.0 validate --config=/etc/otelcol/config.yaml
 ```

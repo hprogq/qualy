@@ -1,0 +1,91 @@
+# The production collector: the one place Tencent Cloud exists.
+#
+# The application keeps speaking to 127.0.0.1:4318 exactly as in development;
+# everything vendor-specific - the APM token, the TMP remote-write credential,
+# the regional endpoints - lives in this file's environment, provided by
+# deployment secrets. None of it ever enters the Qualy process.
+#
+#   TENCENT_APM_OTLP_ENDPOINT    the region's APM OTLP endpoint (prefer the
+#                                private-network form)
+#   TENCENT_APM_TOKEN            the APM business system token
+#   TENCENT_TMP_REMOTE_WRITE_URL the TMP remote-write URL
+#   TENCENT_TMP_TOKEN            the TMP bearer token
+#   QUALY_INSTANCE_ID            the same stable instance id the application
+#                                carries in its resource
+#
+# Validated against the pinned image (with placeholder values for the
+# variables above):
+#   docker run --rm -v ./collector.production.yaml:/etc/otelcol/config.yaml:ro \
+#     -e TENCENT_APM_OTLP_ENDPOINT=... -e TENCENT_APM_TOKEN=... \
+#     -e TENCENT_TMP_REMOTE_WRITE_URL=... -e TENCENT_TMP_TOKEN=... \
+#     -e QUALY_INSTANCE_ID=... \
+#     otel/opentelemetry-collector-contrib:0.159.0 validate --config=/etc/otelcol/config.yaml
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+      http:
+        endpoint: 127.0.0.1:4318
+
+processors:
+  # memory_limiter first, batch second: refuse before buffering, bounded
+  # growth even when the uplink stalls
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 48
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+  # APM identifies the business system by a `token` resource attribute and
+  # separates instances by `host.name`; both are injected here, on the trace
+  # pipeline only, so the application never carries either
+  resource/tencent_apm:
+    attributes:
+      - key: token
+        action: upsert
+        value: ${env:TENCENT_APM_TOKEN}
+      - key: host.name
+        action: upsert
+        value: ${env:QUALY_INSTANCE_ID}
+
+exporters:
+  otlp/tencent_apm:
+    endpoint: ${env:TENCENT_APM_OTLP_ENDPOINT}
+    # the private-network APM endpoint speaks plaintext gRPC; switch this
+    # off (and remove insecure) if the console hands out a TLS endpoint
+    tls:
+      insecure: true
+  prometheusremotewrite/tencent_tmp:
+    # HTTP client settings live in the http block - the shape 0.159
+    # recommends; the flat legacy form still validates but is on its way out
+    http:
+      endpoint: ${env:TENCENT_TMP_REMOTE_WRITE_URL}
+      headers:
+        Authorization: Bearer ${env:TENCENT_TMP_TOKEN}
+    external_labels:
+      service: qualy-server
+      environment: production
+    resource_to_telemetry_conversion:
+      enabled: false
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      # a future tail_sampling processor slots in between memory_limiter and
+      # resource/tencent_apm - errors 100%, slow 100%, ordinary 10-20% - once
+      # real span volume or cost says so (design §20); none today on purpose
+      processors: [memory_limiter, resource/tencent_apm, batch]
+      receivers: [otlp]
+      exporters: [otlp/tencent_apm]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheusremotewrite/tencent_tmp]

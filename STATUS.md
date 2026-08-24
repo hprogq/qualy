@@ -8569,3 +8569,43 @@ db_client_connection_pool_name=primary}`。
 
 验收:`pnpm typecheck` 零错;`pnpm test` 830 passed | 17 skipped;受影响五套件
 166 passed;生产 smoke 退出 0;prettier 通过;真机 Prometheus 复验上述全部修正。
+
+## 生产 Collector 落地(OTel 计划 Phase 6.7):腾讯云路由(2026-08-25)
+
+按修订后的 docs/PHASE6-OPENTELEMETRY-DESIGN.md §16-§18 与 §26 的 6.7。应用侧零改动
+——vendor boundary 不破:Qualy 进程始终只认 `127.0.0.1:4318`,腾讯云只存在于
+`ops/observability/collector.production.yaml` 与部署 secrets。
+
+**配置**(全部在 pin 定的 0.159.0 镜像内 validate 通过,不抄旧文档字段):
+
+- receivers 只绑 `127.0.0.1`(与本地配置的 `0.0.0.0` 不同——生产 collector 与
+  server 同机,回环即边界);health_check 13133。
+- **traces → 腾讯云 APM**:otlp gRPC 出口;`resource/tencent_apm` processor 在
+  trace pipeline 上注入 APM 要求的 `token` 与 `host.name`(与应用 resource 同一
+  `QUALY_INSTANCE_ID`)——应用永不携带;私网 endpoint 走明文 gRPC
+  (`tls.insecure: true`,console 若发 TLS endpoint 则去掉,注释写明)。
+- **metrics → 腾讯云 TMP**:`prometheusremotewrite`(组件真名;设计文档旧写法
+  `prometheus_remote_write` 不是 0.159 的组件名),HTTP client 配置按 0.159 推荐
+  放进 `http:` 块(旧平铺形态仍 validate、无弃用告警,实测两种都过,采用前瞻
+  形态);Bearer token、external_labels service/environment、
+  `resource_to_telemetry_conversion: false`。
+- 五个环境变量(APM endpoint/token、TMP url/token、QUALY_INSTANCE_ID)只经
+  `${env:...}` 引用;**初期无 sampling**,traces pipeline 注释标出未来
+  `tail_sampling` 的插入位(memory_limiter 与 resource 注入之间)与目标比例。
+
+**验证**:validate 通过之外,还带假 endpoint 真启动了一次——`Everything is
+ready`,APM 不可达是后台 gRPC 重试告警而非启动失败(§22 语义在 collector 侧
+同样成立)。
+
+**新门禁**(tools/tests/observability.test.ts,§25 的 grep/lint 落地):生产配置
+携带值的行(attribute value、Authorization)必须是 `${env:...}` 引用,字面 token
+进不了仓库;本地配置的非注释部分不得出现 tencent 与 env 引用;compose 里的
+observability 镜像必须 pin 精确版本(latest 直接红)。README 补生产节:env 契约、
+`--network host` 运行方式、health 探针、升级时双配置的复验命令。
+
+真实云端联调(拿真 token 发真 trace/metrics 进 APM/TMP、CLS 按 traceId 检索)
+属 §27 条 9-11,归 6.9 的 staging 验证——那一步需要真实凭据,不在本仓库完成。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 833 passed | 17 skipped(新增 3 条门禁);
+prettier 通过;collector validate + 真启动实测。下一步 6.8:CLS 日志关联(logger
+边界统一注入 request_id/trace_id/span_id 顶层键)。
