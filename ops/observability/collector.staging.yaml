@@ -69,6 +69,10 @@ exporters:
   # path one day, switch to logs_endpoint with the exact URL).
   otlp_http/tencent_cls:
     endpoint: ${env:TENCENT_CLS_ENDPOINT:-https://ap-beijing.cls.tencentcs.com}
+    # CLS ignores Content-Encoding and proto-parses the raw bytes, so the
+    # exporter's default gzip arrives as "invalid wire-format" (probed with
+    # curl: identity 200, gzip 400) - compression stays off on this uplink
+    compression: none
     auth:
       authenticator: basicauth/tencent_cls
     headers:

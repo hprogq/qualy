@@ -8755,3 +8755,15 @@ username/password 行纳入「只能 env 引用」规则。
 
 验收:`pnpm typecheck` 零错;`pnpm test` 838 passed | 17 skipped(新增 1 条);
 prettier 通过;三配置 validate、collector 重建、Loki 实收、CLS 401 全部实测。
+
+## CLS 真凭据联调通过,一处真实兼容性修复(2026-08-25)
+
+真实凭据下的错误阶梯:401(空凭据)→ 404(topic 建错地域,用户重建)→ 400
+InvalidArgument。逐层排查定位:curl 直发实证 CLS 的 OTLP 端点**只收 protobuf**
+(json content-type 直接拒);用 effect 自己的 OtlpSerialization.layerProtobuf
+造合法 payload 直发 → 200;回放应用真实导出的整批 payload → 全 200;最后用
+gzip 变体复现 400——**CLS 无视 `Content-Encoding: gzip`,对压缩字节直接做 proto
+解析**,而 collector 的 otlp_http exporter 默认开 gzip。修复一行:CLS 出口
+`compression: none`(注释记下探针证据)。重建后完整导出周期零错误,Loki 双写
+不受影响。APM/TMP/CLS 三信号至此全部真凭据验通;探针 trace
+`09492bb4a826527141d29bc1e460c01b` 可在 CLS 按 TraceId 检索对账。
