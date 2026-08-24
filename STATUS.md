@@ -8609,3 +8609,36 @@ observability 镜像必须 pin 精确版本(latest 直接红)。README 补生产
 验收:`pnpm typecheck` 零错;`pnpm test` 833 passed | 17 skipped(新增 3 条门禁);
 prettier 通过;collector validate + 真启动实测。下一步 6.8:CLS 日志关联(logger
 边界统一注入 request_id/trace_id/span_id 顶层键)。
+
+## CLS 日志关联落地(OTel 计划 Phase 6.8):每行日志的 trace 归属(2026-08-25)
+
+按修订后的 docs/PHASE6-OPENTELEMETRY-DESIGN.md §14/§19 与 §26 的 6.8。不换
+Pino/Winston,不启用 OTel Logs SDK,改动全部在既有 logger 的渲染边界。
+
+**核心**:关联从「access log 一条手工注解」升级为「每行 JSON 的顶层键」——
+`request_id` / `trace_id` / `span_id` 由 qualyLogger 在**发射点**从说话的 fiber
+读取(`fiber.context` 取 RequestContext、`fiber.currentSpan` 取当时最内层 span,
+Fiber 接口公开属性,实查 Fiber.ts:80)。于是业务 child span 里的日志带的是**那颗
+span 的 id**,不再永远是 HTTP root 的;调用方零改动,不需要手动 annotateLogs。
+无请求/无 trace(noop 哨兵)时键缺席,不伪造。顶层键(snake_case)是为 CLS
+键值索引直达设计的,与腾讯云 APM ↔ CLS 按 TraceID/SpanID 关联的查询方式对齐。
+
+**access-log 随之减负**:6.3 加的 requestId/traceId/spanId 手工注解拆除(logger
+已知道的事中间件不再复述),annotations 回到只有 source;dev pretty 行也因此
+不再拖 trace id 尾巴。pretty 格式不注入关联——那是给终端读者的。
+
+**测试**(logging.test.ts +1):双层嵌套 span 内发日志,断言 JSON 行的
+trace_id/span_id **精确等于内层 span**(`Effect.currentSpan` 取证,名字
+business-operation),request_id 等于所提供的 RequestContext;请求外的行三键
+全部缺席。**真机**:生产 JSON 实测
+`{"request_id":"a265…","trace_id":"dbc2…","span_id":"2741…","message":"GET
+/api/app/manifest 200 2ms"}`,且该 trace_id 在 Tempo 查回同一条 trace(root +
+handler + Ui.manifest 三业务 span)——日志↔trace 闭环。
+
+**文档**:ops README 新 CLS 节(stdout/文件采集契约、LogListener JSON、键值索引
+恰好七个字段、15 天保留、无全文索引起步);设计文档 §9.3 样例与 §19 索引字段表
+同步为顶层 snake_case 键。腾讯云真实 APM→CLS 跳转验证需真实凭据,归 6.9。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 834 passed | 17 skipped(新增 1 条);
+生产 smoke 退出 0;prettier 通过(未动 web 源)。Phase 6 余下 6.9:本地
+walkthrough 已零散完成,staging/腾讯云端到端与 dashboard 待真实凭据。

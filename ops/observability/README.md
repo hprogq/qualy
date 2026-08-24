@@ -104,8 +104,41 @@ trigger arrives, a `tail_sampling` processor slots into the traces pipeline
 between `memory_limiter` and `resource/tencent_apm` (errors 100%, slow 100%,
 ordinary 10–20%); the config marks the spot.
 
-Logs do not pass through the Collector: the production JSON log is collected
-by LogListener into CLS (Phase 6.8).
+## Logs (Tencent CLS)
+
+Logs do not pass through the Collector and there is no OTel Logs SDK: the
+production JSON log goes to stdout (or a file the deployment redirects to,
+e.g. `/var/log/qualy/server.jsonl`) and LogListener ships it to a CLS topic
+as JSON.
+
+Every line carries its correlation as top-level keys, injected by the logger
+itself from the emitting fiber — a line logged inside a business child span
+carries that span's id, not the HTTP root's:
+
+```json
+{
+  "timestamp": "2026-08-25T…",
+  "level": "Info",
+  "source": "http",
+  "request_id": "7bd8a7b8-…",
+  "trace_id": "e579d4b66e53742c1d4d7da3d8c8c7de",
+  "span_id": "0288aa3a5b5a6711",
+  "message": "GET /api/app/manifest 200 2ms",
+  "annotations": {}
+}
+```
+
+Configure CLS key-value index on exactly these fields (no full-text index
+initially, retention 15 days to start):
+
+```text
+timestamp  level  source  message  request_id  trace_id  span_id
+```
+
+`trace_id`/`span_id` match what APM receives, which is what lets the APM
+trace view jump to the CLS lines of the same request; `request_id` matches
+the audit trail and the sign-in records. Keys are absent — never faked — on
+lines outside a request or a trace.
 
 ## Versions
 

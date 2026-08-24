@@ -1,6 +1,7 @@
 import { inspect } from 'node:util'
 import chalk from 'chalk'
-import { Cause, Layer, Logger, LogLevel, References } from 'effect'
+import { Cause, Context, Layer, Logger, LogLevel, Option, References } from 'effect'
+import { RequestContext } from '@qualy/api-kit/request'
 
 // How this process speaks, resolved before it says anything.
 //
@@ -185,6 +186,19 @@ interface Line {
   readonly extra?: string
   /** json format's structured annotations */
   readonly annotations?: Record<string, unknown>
+  /**
+   * The request and span this line spoke under, top-level in json so a log
+   * index (CLS keys on `request_id`/`trace_id`/`span_id`) reaches them
+   * without parsing nested objects. Read at emission from the speaking
+   * fiber, so a line said inside a business child span carries THAT span's
+   * id, not forever the HTTP root's. Absent outside a request or a trace -
+   * never fabricated.
+   */
+  readonly correlation?: {
+    readonly requestId?: string
+    readonly traceId?: string
+    readonly spanId?: string
+  }
   readonly fiberId?: number
   readonly failure?: string
 }
@@ -197,6 +211,11 @@ const render = (settings: LoggingSettings, line: Line): string => {
       level: line.level,
       source: line.source,
       ...(line.fiberId === undefined ? {} : { fiberId: line.fiberId }),
+      ...(line.correlation?.requestId === undefined
+        ? {}
+        : { request_id: line.correlation.requestId }),
+      ...(line.correlation?.traceId === undefined ? {} : { trace_id: line.correlation.traceId }),
+      ...(line.correlation?.spanId === undefined ? {} : { span_id: line.correlation.spanId }),
       message: line.message,
       ...(line.failure === undefined ? {} : { cause: line.failure }),
       annotations: line.annotations ?? {},
@@ -241,6 +260,15 @@ export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, v
     const failure = options.cause.reasons.length === 0 ? undefined : Cause.pretty(options.cause)
     const rest = Object.entries(annotations).filter(([key]) => key !== 'source')
 
+    // what the speaking fiber was doing: the request it served, and the span
+    // it was inside at this very line ('noop' is the disabled tracer's
+    // sentinel, not an id)
+    const requestId = Option.getOrUndefined(
+      Option.map(Context.getOption(options.fiber.context, RequestContext), (c) => c.requestId),
+    )
+    const span = options.fiber.currentSpan
+    const traced = span !== undefined && span.traceId !== 'noop'
+
     console.log(
       render(settings, {
         date: options.date,
@@ -249,6 +277,10 @@ export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, v
         message,
         extra: rest.map(([key, value]) => `${key}=${text(value)}`).join(' '),
         annotations: Object.fromEntries(rest),
+        correlation: {
+          ...(requestId === undefined ? {} : { requestId }),
+          ...(traced ? { traceId: span.traceId, spanId: span.spanId } : {}),
+        },
         fiberId: options.fiber.id,
         ...(failure === undefined ? {} : { failure }),
       }),

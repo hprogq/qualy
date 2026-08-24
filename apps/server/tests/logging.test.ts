@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Effect } from 'effect'
+import { RequestContext } from '@qualy/api-kit/request'
 import { loggingLayer, resolveLogging } from '../src/logging.ts'
 
 // The merge order is the contract: manifest defaults, environment overrides,
@@ -85,6 +86,55 @@ describe('logging settings', () => {
     expect(said).toContain('loud-debug')
     expect(said).toContain('loud-error')
     expect(said).toContain('unlisted-debug')
+  })
+
+  // The correlation contract for CLS: every json line names the request it
+  // served and the span it was INSIDE when it spoke - a line said in a
+  // business child span carries that span's id, not forever the HTTP
+  // root's - as top-level keys a log index reaches without parsing nested
+  // objects. Outside a request or a trace the keys are absent, never faked.
+  it('stamps every json line with the request and the span that spoke', async () => {
+    const written: string[] = []
+    const capture = { log: console.log }
+    console.log = (line: string) => written.push(line)
+    let spoke: { traceId: string; spanId: string; name: string }
+    try {
+      spoke = await Effect.runPromise(
+        Effect.provide(
+          Effect.gen(function* () {
+            yield* Effect.log('outside any request')
+            return yield* Effect.gen(function* () {
+              const child = yield* Effect.currentSpan
+              yield* Effect.log('inside the request')
+              return child
+            }).pipe(
+              Effect.withSpan('business-operation'),
+              Effect.withSpan('http-root'),
+              Effect.provideService(RequestContext, {
+                requestId: 'req-under-test',
+                clientIp: undefined,
+                userAgent: undefined,
+                traceId: undefined,
+                sessionId: undefined,
+                bindSession: () => Effect.void,
+              }),
+            )
+          }),
+          loggingLayer(resolveLogging({ format: 'json' }, {}, 'production')),
+        ),
+      )
+    } finally {
+      console.log = capture.log
+    }
+    const lines = written.map((line) => JSON.parse(line) as Record<string, unknown>)
+    const outside = lines.find((line) => line.message === 'outside any request')!
+    expect(outside.request_id).toBeUndefined()
+    const inside = lines.find((line) => line.message === 'inside the request')!
+    expect(inside.request_id).toBe('req-under-test')
+    // the exact ids of the INNER span the line spoke under, at emission
+    expect(inside.trace_id).toBe(spoke.traceId)
+    expect(inside.span_id).toBe(spoke.spanId)
+    expect(spoke.name).toBe('business-operation')
   })
 
   it('refuses what it cannot mean', () => {

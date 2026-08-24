@@ -308,18 +308,20 @@ requestId
 traceId
 ```
 
-生产 JSON 示例目标：
+生产 JSON 示例（2026-08-25 按 6.8 落地修订：关联字段是**顶层键**，由 logger 在
+发射点从当前 fiber 注入，任何一行都带、不只 access log；无请求/无 trace 时缺席，
+不伪造）：
 
 ```json
 {
   "timestamp": "...",
   "level": "Info",
   "source": "http",
+  "request_id": "...",
+  "trace_id": "...",
+  "span_id": "...",
   "message": "POST /api/... 200 81ms",
-  "annotations": {
-    "requestId": "...",
-    "traceId": "..."
-  }
+  "annotations": {}
 }
 ```
 
@@ -840,16 +842,16 @@ CLS topic
 
 对于当前非 K8s 单机部署，推荐 LogListener 采集 JSON 文件。
 
-CLS 键值索引仅开启必要字段：
+CLS 键值索引仅开启必要字段（6.8 落地后的顶层键名）：
 
 ```text
 timestamp
 level
 source
 message
-requestId
-traceId
-spanId (if available)
+request_id
+trace_id
+span_id
 ```
 
 默认不要开全量全文索引，控制成本。

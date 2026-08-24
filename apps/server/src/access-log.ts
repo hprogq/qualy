@@ -1,7 +1,6 @@
-import { Cause, Context, Effect, Option, Tracer, type LogLevel } from 'effect'
+import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
 import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { RequestContext } from '@qualy/api-kit/request'
 import type { LoggingSettings } from './logging.ts'
 
 // The access log, replacing the upstream one.
@@ -44,17 +43,9 @@ export const accessLog =
         return httpApp
       }
       const started = performance.now()
-      // the id the request context middleware minted, when it sits outside
-      // this one; the same id an audit event or error report would carry
-      const requestId = Option.getOrUndefined(
-        Option.map(Context.getOption(fiber.context, RequestContext), (c) => c.requestId),
-      )
-      // the server span this request runs under: its ids let a log line be
-      // looked up in the trace backend and beside the audit trail ('noop' is
-      // the disabled tracer's sentinel, not an id)
-      const span = Option.getOrUndefined(Context.getOption(fiber.context, Tracer.ParentSpan))
-      const traceId = span === undefined || span.traceId === 'noop' ? undefined : span.traceId
-      const spanId = span === undefined || span.spanId === 'noop' ? undefined : span.spanId
+      // request id, trace id and span id ride every json line as top-level
+      // keys now, injected by the logger itself from the speaking fiber -
+      // this middleware no longer annotates what the renderer already knows
       // The content type rides the response BODY, not the headers record -
       // upstream merges it into the wire headers only at write time - so
       // that is where to look. An event stream's end is connection
@@ -72,12 +63,7 @@ export const accessLog =
         const line = (status: number | string, suffix = '') =>
           `${request.method} ${path} ${status} ${elapsed}ms${suffix}`
         const annotated = <X>(effect: Effect.Effect<X>) =>
-          Effect.annotateLogs(effect, {
-            source: 'http',
-            ...(requestId === undefined ? {} : { requestId }),
-            ...(traceId === undefined ? {} : { traceId }),
-            ...(spanId === undefined ? {} : { spanId }),
-          })
+          Effect.annotateLogs(effect, 'source', 'http')
         if (exit._tag === 'Success') {
           const status = exit.value.status
           const streamed = isEventStream(exit.value)
