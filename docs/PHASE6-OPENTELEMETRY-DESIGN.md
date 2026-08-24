@@ -18,10 +18,22 @@ Phase 6 **不是**重做 Audit、登录日志或业务历史。它们是长期�
 
 ## 2. 已确定的总体架构
 
+> 2026-08-25 按 6.1–6.5 的落地实现修订:应用侧不引入 `@effect/opentelemetry` 与
+> `@opentelemetry/*` SDK 家族,遥测出口是 **Effect 官方内置的 OTLP 实现**
+> (`effect/unstable/observability` 的 OtlpTracer/OtlpMetrics/OtlpExporter),
+> 输出标准 OTLP/HTTP。这不是自研 exporter:上游 LLMS 明确建议新项目使用这套
+> lightweight Otlp modules,`@effect/opentelemetry` NodeSdk 只在需要整合已有
+> OpenTelemetry setup 时使用。
+
 ```text
 Development
 
-Qualy Server
+Effect tracing / Metric registry
+    │
+    ▼
+effect/unstable/observability
+  OtlpTracer / OtlpMetrics / OtlpExporter
+  (@qualy/telemetry 从标准 OTEL_* 环境变量装配)
     │ OTLP/HTTP
     ▼
 Qualy OTel Collector
@@ -122,58 +134,62 @@ observability
 
 ---
 
-## 5. 依赖策略
+## 5. 依赖策略（2026-08-25 按 6.1 裁决修订）
 
 ### 5.1 Effect
 
-引入 `@effect/opentelemetry`，但必须遵循本项目 Effect vendor/version policy。
+**默认不引入 `@effect/opentelemetry`，也不引入任何 `@opentelemetry/*` 包。**
+遥测栈整体来自 `effect/unstable/observability`（与 effect 同包、同版本、同 vendor
+校验），零新增依赖面，版本对齐问题在结构上不存在。
 
-要求：
-
-1. 不直接安装任意 `latest`；
-2. 先检查当前 `effect` 的精确版本；
-3. 选择与该版本兼容的 `@effect/opentelemetry`；
-4. 将必要的 `@opentelemetry/*` peer dependencies 放入 pnpm catalog；
-5. 更新 `tools/repo/vendor-sync.ts` / vendor gate（如当前规则要求）；
-6. `pnpm vendor:check`、`pnpm typecheck` 必须通过。
+`@effect/opentelemetry` 从「Phase 6 必选依赖」改为「出现明确 interoperability
+requirement 时才重新评估的方案」——例如必须与一个已存在的 OpenTelemetry setup
+（外部 TracerProvider、第三方 instrumentation 生态）共存时。届时仍按 vendor/version
+policy 处理：与 effect 同版本、同步 vendored 源码、全门禁。
 
 ### 5.2 OTel JS
 
-第一阶段需要：
+第一阶段实际引入的 OTel JS 包：**零个。** OTLP trace/metric export、resource、
+标准环境变量解析全部由 effect 内置模块承担。
 
-- OTLP trace exporter；
-- OTLP metric exporter；
-- OpenTelemetry API/resources；
-- 如采用自动 PostgreSQL instrumentation，再加 `@opentelemetry/instrumentation-pg` 与其基础 instrumentation 包。
-
-禁止为了“方便”直接引入整套 auto-instrumentations-node 并开启所有 instrumentation。Qualy 应明确启用需要的组件，避免意外采集 HTTP body、外部库噪声以及 ESM hook 风险。
+`@opentelemetry/instrumentation-pg` 的裁决见 §12.1（已拒绝，含重评条件）。
+禁止为了“方便”引入 auto-instrumentations-node 一类整套 instrumentation 的包。
 
 ---
 
-## 6. TelemetryConfig
+## 6. TelemetryConfig（2026-08-25 按 6.1 实现修订）
 
 优先使用 OpenTelemetry 标准环境变量，不重复创造 Qualy 专属变量。
 
-应用侧至少支持：
+**应用侧实际支持的标准变量集合**（即 rc.111 的 `Otlp*.layerFromConfig` 真实读取的
+集合，加 @qualy/telemetry 的少量兜底；这不等价于完整 OTel JS SDK 的配置面，列表
+之外的 OTEL_\* 变量设了也不起作用）：
 
 ```text
 OTEL_SDK_DISABLED
-OTEL_SERVICE_NAME
-OTEL_EXPORTER_OTLP_ENDPOINT
-OTEL_EXPORTER_OTLP_PROTOCOL
-OTEL_TRACES_SAMPLER
+OTEL_SERVICE_NAME / OTEL_SERVICE_VERSION
 OTEL_RESOURCE_ATTRIBUTES
-OTEL_METRIC_EXPORT_INTERVAL
+OTEL_EXPORTER_OTLP_ENDPOINT（及 _TRACES_ / _METRICS_ 信号级变体，信号级是完整 URL）
+OTEL_EXPORTER_OTLP_PROTOCOL（http/protobuf 缺省 | http/json；grpc 是启动拒绝）
+OTEL_EXPORTER_OTLP_HEADERS（及信号级变体）
+OTEL_TRACES_EXPORTER / OTEL_METRICS_EXPORTER（未设按 OTel 规范缺省 otlp）
+OTEL_EXPORTER_OTLP_TIMEOUT（及信号级变体）
+OTEL_BSP_SCHEDULE_DELAY / OTEL_BSP_MAX_EXPORT_BATCH_SIZE / OTEL_BSP_EXPORT_TIMEOUT
+OTEL_METRIC_EXPORT_INTERVAL（Qualy 缺省 60000）/ OTEL_METRIC_EXPORT_TIMEOUT
+OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
 ```
 
-Qualy 自有信息只允许少量补充，例如：
+**明确不支持**：`OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG`（effect 内置
+OTLP tracer 不读取，见 §20）；`OTEL_LOGS_EXPORTER`（Logs 不走 OTel，见 §14）。
+
+Qualy 自有信息只允许少量补充：
 
 ```text
 QUALY_VERSION
 QUALY_INSTANCE_ID
 ```
 
-推荐默认：
+推荐默认（@qualy/telemetry 已内置的兜底）：
 
 ```text
 OTEL_SERVICE_NAME=qualy-server
@@ -181,8 +197,6 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_TRACES_EXPORTER=otlp
 OTEL_METRICS_EXPORTER=otlp
-OTEL_LOGS_EXPORTER=none
-OTEL_TRACES_SAMPLER=parentbased_always_on
 OTEL_METRIC_EXPORT_INTERVAL=60000
 ```
 
@@ -271,17 +285,19 @@ url.scheme
 
 不要自行发明 `httpMethod`、`statusCode` 等重复字段。
 
-### 9.2 先检查 Effect HTTP 自带 tracing
+### 9.2 Effect HTTP 自带 tracing（2026-08-25 按 6.3 实现修订）
 
-Claude Code 必须先检查当前安装的 Effect v4 HTTP server/HttpApi 是否已经创建或传播 request span。
+已核实并复用：`HttpEffect.toHandled` 无条件套 `HttpMiddleware.tracer`，server span
+继承 W3C `traceparent`、回填全套 semconv 属性与 status；router 在命中时把模板路径
+写进 `http.route` 属性。**没有第二个 HTTP root span。**
 
-规则：
-
-- 如果 Effect 已正确生成 server span并支持 W3C `traceparent`，复用它；
-- 不允许再包一个重复 HTTP root span；
-- 如果 Effect 当前版本未做，则在 `HttpRouter.serve` middleware 层实现一个统一 span；
-- 必须支持 incoming W3C Trace Context；
-- response status 和异常状态必须正确回填。
+span 名的路由模板化由 api-kit 的 `routeSpanNames` serve 中间件完成：响应结束后按
+`http.route` 把 span 的 `name` 赋成 `{method} {route}`。这是对 `Tracer.Span` 声明
+接口（无 rename 操作）的一处已知越界，被三个条件圈住：隔离在 api-kit 一处；依据
+rc.111 vendored 源码逐条核实（两种 span 实现的 `name` 都是运行时可写属性且 end 后
+才读）；**api-kit request 套件里的真 OTLP export pinning test 是 load-bearing
+upgrade gate**——每次 Effect 升级它红了就意味着这个 seam 需要重新裁决。上游若出现
+正式 rename API，换掉此越界。不要为追求接口纯洁改回第二个 root span。
 
 ### 9.3 Access log
 
@@ -319,11 +335,11 @@ Phase 1 已规划/实现的 `RequestContext` 应与 OTel 对接，而不是被�
 
 ```ts
 interface RequestContext {
-  requestId: string;
-  clientIp?: string;
-  userAgent?: string;
-  sessionId?: string;
-  traceId?: string;
+  requestId: string
+  clientIp?: string
+  userAgent?: string
+  sessionId?: string
+  traceId?: string
 }
 ```
 
@@ -340,7 +356,9 @@ interface RequestContext {
 
 ## 11. Effect 业务 Span 策略
 
-当前大量代码使用 `Effect.fn('...')`。接入 `@effect/opentelemetry` 后，应尽量利用现有 Effect tracing，而不是手写每个 span。
+当前大量代码使用 `Effect.fn('...')`。这些 span 由 effect 内置的 OTLP tracer 直接
+导出（6.1 起即生效，无需任何桥接包），应尽量利用现有 Effect tracing，而不是手写
+每个 span。
 
 ### 11.1 应保留/创建 span 的操作
 
@@ -405,51 +423,51 @@ Audit 已经可以通过 traceId 关联具体业务对象，不需要把所有 P
 
 ## 12. PostgreSQL tracing
 
-### 12.1 首选方案
+### 12.1 裁决：不采用 pg auto-instrumentation（2026-08-25，6.5 落地）
 
-优先尝试 `@opentelemetry/instrumentation-pg`，要求：
+`@opentelemetry/instrumentation-pg` 已评估并拒绝：它要求 §5 裁决不引入的
+`@opentelemetry/*` SDK 家族（TracerProvider + context manager）；被 patch 的驱动
+span 只能 parent 进 OTel context，与 Effect tracer 桥接又需要
+`@effect/opentelemetry`；且其 ESM loader hook 在 Node 24 + tsx 下的可靠性正是
+§12.2 自己标记的风险。§12.3 的手动边界 span 是**当前正解**，不是权宜。
 
-- 仅开启 pg / pg-pool instrumentation；
-- `enhancedDatabaseReporting = false`；
-- 不记录 query parameters；
-- 不记录 result rows；
-- SQL statement 若记录，只允许参数化 SQL 文本，不允许拼入值；
-- 产生 `db.system.name=postgresql` 等标准属性；
-- 连接池等待/连接指标如可用则开启。
+**重新评估 pg auto-instrumentation 仅当**：
 
-### 12.2 ESM / Node 24 风险
+- 驱动级连接获取 span 成为排障必需；
+- 需要安全的按操作/查询摘要，而现有 DB 抽象边界拿不到；
+- Qualy 因其他独立理由已引入 OTel JS SDK；
+- Effect/OTel 提供了干净的官方 context bridge；
+- ESM instrumentation 已可靠，并被生产启动路径的 out-of-process
+  integration test（真 server + 真 PostgreSQL + collector 收到 db client span）
+  证明。
 
-Qualy 是 TypeScript + ESM + Node >=24 + `tsx`。OpenTelemetry 对第三方模块 ESM patching 依赖 loader/import hook，历史上 Node 24 存在兼容性问题。
+注意：**DB pool 可观测性不因此延期，它属于 Phase 6.6**（从现有数据库基础设施层
+以稳定 API 导出，见 §13.3）。
 
-因此：
+### 12.2 ESM / Node 24 风险（历史背景，支撑 12.1 的裁决）
 
-1. 不得仅凭“package 已安装”判定 pg instrumentation 成功；
-2. 必须建立 out-of-process integration test；
-3. 测试必须启动真实 server + PostgreSQL，发一次 API 请求并断言 collector 收到了 db client span；
-4. 如果当前 OTel 版本在 Node 24 + tsx 下需要不稳定 loader 且测试不可靠，则不要让 Phase 6 被它绑死。
+Qualy 是 TypeScript + ESM + Node >=24 + `tsx`。OpenTelemetry 对第三方模块 ESM
+patching 依赖 loader/import hook，历史上 Node 24 存在兼容性问题。若未来按 12.1
+的条件重启评估，必须以生产入口的 out-of-process integration test 证明，不得仅凭
+“package 已安装”判定成功。
 
-### 12.3 必须提供 fallback
+### 12.3 手动边界 span（已落地，是正解而非 fallback）
 
-如果 pg auto-instrumentation 无法稳定工作，则在现有数据库基础设施层提供最小手动 span：
-
-```text
-packages/plugins/infra/database/src/server/orm.ts
-packages/plugins/infra/database/src/plugin.ts
-```
-
-最低目标：
+已在 `packages/plugins/infra/database/src/server/orm.ts` 落地（全部查询的唯一漏斗）：
 
 ```text
-db.query
-  db.system.name = postgresql
-
-db.transaction
-  db.system.name = postgresql
+db.query        kind=client, db.system.name=postgresql
+db.transaction  仅真 BEGIN 分支；join 分支零新 span（加入不是开启）
 ```
 
-即使暂时没有 SQL text，也比没有数据库边界更好。
+SQL text/parameters/rows 一律不采集——此边界只见 opaque thunk，这是当前更适合
+Qualy 的默认安全边界，不是暂缺。`TransactionManager` 的 JOIN-EXISTING 事务传播
+语义与 span 层次由同一条真 PostgreSQL 测试（tracing.test.ts）钉住。
 
-不要为实现 tracing 破坏 `TransactionManager` 的 JOIN-EXISTING 事务传播语义。
+非阻塞增强（评估后再做）：当 `QueryFailed.cause` 能稳定安全取得 SQLSTATE 时，给
+失败 span 加 `db.response.status_code` 与 `error.type`——只放 SQLSTATE/稳定错误
+类别，不放 error message、constraint payload 或 SQL 数据；若需要碰 brittle
+driver internals 就不做。
 
 ---
 
@@ -479,12 +497,14 @@ db.transaction
 
 ### 13.3 PostgreSQL
 
-建议：
-
-- query duration；
-- pool connections；
-- pending/waiting connections；
-- DB errors。
+- `db.client.operation.duration`（**stable** 语义约定）：在 `query()` 漏斗直接记录；
+- pool 指标（`db.client.connection.count` / `db.client.connection.pending_requests`
+  等）：**当前仍是 Development 状态的语义约定**，使用时明确这一点，不当作永不变化
+  的 stable contract；
+- pool 数据源必须是 MikroORM 7.1.13 + pg 8.22.0 的稳定/足够可靠 API（pg.Pool 的
+  `totalCount`/`idleCount`/`waitingCount` 是文档化公开属性）。只能靠很深的
+  private field / undocumented object graph 取到的指标**不做**，明确记录哪些无法
+  安全获取，由 PostgreSQL/云侧监控补充。
 
 ### 13.4 第一批 Qualy 业务指标
 
@@ -542,16 +562,26 @@ http.request.method=POST
 
 第一阶段不启用 OTel Logs exporter。
 
-保留 `apps/server/src/logging.ts`。
+保留 `apps/server/src/logging.ts`。不换 Pino/Winston，不启用 OTel Logs SDK。
 
-增强现有 structured logging，使请求范围日志至少拥有：
+目标不止 access log：**请求范围内的重要 structured logs 都要能与当前 trace/span
+关联**。实现位置是 Qualy 自定义 Logger 的 renderer/emission 边界——从当前 fiber
+context 读 `RequestContext.requestId`、`Tracer.ParentSpan` 的 traceId/spanId,
+调用方不必手动 `annotateLogs`,业务 child span 内产生的日志拿到的是当时真正的
+child `spanId`,而不是永远写 HTTP root 的。
 
-```text
-requestId
-traceId
+生产 JSON 的关联字段标准化为顶层键(便于 CLS 直接建 JSON key index,对齐腾讯云
+APM ↔ CLS 按 TraceID/SpanID 关联的查询方式):
+
+```json
+{
+  "request_id": "...",
+  "trace_id": "...",
+  "span_id": "..."
+}
 ```
 
-如能可靠取得当前 child span，再附带 `spanId`；否则不要伪造或长期固定 root spanId。
+其他普通 annotations 保留原结构。没有可靠 span 时不要伪造或长期固定 root spanId。
 
 禁止日志写入：
 
@@ -628,12 +658,12 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:<PINNED>
     profiles: [observability]
-    command: ["--config=/etc/otelcol/config.yaml"]
+    command: ['--config=/etc/otelcol/config.yaml']
     volumes:
       - ./ops/observability/collector.local.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "127.0.0.1:4317:4317"
-      - "127.0.0.1:4318:4318"
+      - '127.0.0.1:4317:4317'
+      - '127.0.0.1:4318:4318'
     depends_on:
       - otel-lgtm
 
@@ -641,7 +671,7 @@ services:
     image: grafana/otel-lgtm:<PINNED>
     profiles: [observability]
     ports:
-      - "127.0.0.1:3001:3000"
+      - '127.0.0.1:3001:3000'
 ```
 
 只把 Grafana/Collector 暴露给 localhost。
@@ -712,7 +742,7 @@ exporters:
   prometheus_remote_write/tencent_tmp:
     endpoint: ${env:TENCENT_TMP_REMOTE_WRITE_URL}
     headers:
-      Authorization: "Bearer ${env:TENCENT_TMP_TOKEN}"
+      Authorization: 'Bearer ${env:TENCENT_TMP_TOKEN}'
     external_labels:
       service: qualy-server
       environment: production
@@ -732,13 +762,17 @@ service:
       exporters: [prometheus_remote_write/tencent_tmp]
 ```
 
-注意：最终配置必须以所 pin Collector 版本的实际 schema 为准。必须执行：
+注意：最终配置必须以所 pin Collector 版本（当前 0.159.0）的实际 schema 为准，
+**不要照旧文档复制字段**——0.159 已推荐把 `prometheus_remote_write` 的
+endpoint/headers 等 HTTP client 配置放进 `http:` block。必须在 pinned 镜像内执行：
 
 ```bash
-otelcol-contrib validate --config ...
+docker compose --profile observability run --rm --no-deps \
+  otel-collector validate --config=...
 ```
 
-或使用对应镜像的 config validation 命令。
+初期不上 tail sampling（见 §20），但生产 pipeline 结构上保留未来插入
+`tail_sampling` processor 的位置。
 
 不要在文档/仓库中提交真实 Token。
 
@@ -824,23 +858,30 @@ spanId (if available)
 
 ---
 
-## 20. Sampling
+## 20. Sampling（2026-08-25 修订：应用侧无 sampler 配置面）
 
-### Development
-
-```text
-100%
-```
-
-### Production 初期
-
-仍使用：
+**事实**：rc.111 的 `OtlpTracer.layerFromConfig` 不读取 `OTEL_TRACES_SAMPLER` /
+`OTEL_TRACES_SAMPLER_ARG`。不要留下一个看起来可配置、实际完全不起作用的环境变量。
+当前策略：
 
 ```text
-parentbased_always_on
+application:
+  Effect native tracing
+  initial sampling = 全部正常 sampled 的 Effect span（实际 100%）
+
+production Collector:
+  初期不做 sampling
+
+future:
+  Collector tail_sampling
+    errors   = 100%
+    slow     = 100%
+    ordinary = 10~20%
 ```
 
-理由：腾讯云 APM 中国大陆普通地域当前每天前 100 万 Span 上报和存储有免费额度，Qualy 初期没有必要过早采样。
+理由：腾讯云 APM 中国大陆普通地域当前每天前 100 万 Span 上报和存储有免费额度，Qualy 初期没有必要过早采样。采样归 Collector（tail sampling），不为支持一个
+sampler 环境变量把 runtime 换成 OTel JS SDK。若未来确需在 span 产生前做 head
+sampling，那是重新评估 full OTel SDK / Effect sampling capability 的触发条件之一。
 
 ### 后续触发条件
 

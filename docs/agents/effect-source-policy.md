@@ -104,3 +104,8 @@ suggestion 级诊断不进 tsc 输出(`tsconfig.base.json` 里 `includeSuggestio
 升级不是改一个版本号。`effect` 与全部 `@effect/*` 必须同版本,`repos/` 必须同步到对应 tag,
 patterns 必须重新校验,全部门禁必须重跑,并单独一个 commit。走 `pnpm vendor:update`(只有它写 lock),
 由 `scripts/tests/vendor.test.ts` 与 `pnpm vendor:check` 守住对齐。
+
+升级时有几条测试是 **load-bearing gate**,红了不是「修测试」而是「重新裁决一处对上游
+内部行为的依赖」:api-kit request 套件的 OTLP export pinning test 守着 `routeSpanNames`
+对 span `name` 运行时可写的越界(上游一旦提供正式 rename API 就换掉这个 seam);
+database 的 tracing.test.ts 守着 db 边界 span 与 JOIN-EXISTING 事务传播互不破坏。

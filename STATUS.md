@@ -8432,8 +8432,11 @@ authLocal.login.fail、health.ready、iam.requireUserRead)逐一读过,均为真
 裁决不引入的第二套 SDK;②被 patch 的驱动只能 parent 进 OTel context,而本进程的
 span 归 Effect tracer 所有,桥接需要 `@effect/opentelemetry` 的 OtelTracer——为一层
 驱动 span 引入整个桥是本末倒置;③设计自己就把 Node 24 + ESM + tsx 下的 loader hook
-标为不可靠并预设了 fallback。重新评估的触发条件:确有排障场景需要驱动级 SQL text
-/池指标,且届时 OTel JS 对 Node 24 ESM 的 hook 已稳定。
+标为不可靠并预设了 fallback。重新评估仅当:驱动级连接获取 span 成为排障必需;
+需要安全的按操作/查询摘要而现有 DB 抽象边界拿不到;Qualy 因其他独立理由已引入
+OTel JS SDK;Effect/OTel 提供了官方 context bridge;或 ESM instrumentation 已可靠
+且被生产入口的 out-of-process 集成测试证明。**DB pool 可观测性不因此延期,归
+Phase 6.6**(以 pg.Pool 的文档化公开属性从数据库基础设施层导出)。
 
 **实现**(packages/plugins/infra/database/src/server/orm.ts,全部查询的唯一漏斗):
 
