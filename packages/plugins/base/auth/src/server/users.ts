@@ -7,7 +7,7 @@ import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type AuthorizationScope, type Principal } from '@qualy/rbac-contract'
 import { placementAllowed } from './placement.ts'
 import { Audit } from '@qualy/audit-contract/effect'
-import type { AuditActor } from '@qualy/audit-contract'
+import { actorOf } from './audit-actor.ts'
 import {
   UserCreated,
   UserDeleted as UserDeletedAction,
@@ -530,19 +530,6 @@ const deleteUserSessions = (tenantId: string, userId: string) =>
     )
     .pipe(Effect.map((found) => found.length))
 
-/** the display snapshot an audit event keeps of whoever acted */
-const actorLabelOf = (tenantId: string, userId: string) =>
-  db
-    .query((k) =>
-      k
-        .selectFrom('User')
-        .select('displayName')
-        .where('tenantId', '=', tenantId)
-        .where('id', '=', userId)
-        .executeTakeFirst(),
-    )
-    .pipe(Effect.map((row) => row?.displayName))
-
 type TypeRow = NonNullable<Effect.Success<ReturnType<typeof userTypeGuard>>>
 
 export const make = Effect.fn('Iam.users.make')(function* () {
@@ -596,12 +583,6 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     expected: number,
   ) {
     if (row.version !== expected) return yield* new UserVersionConflict()
-  })
-
-  /** who acted, with the display snapshot the trail keeps */
-  const actorOf = Effect.fn('Iam.users.actorOf')(function* (tenantId: string, as: Principal) {
-    const label = yield* actorLabelOf(tenantId, as.userId).pipe(Effect.orDie)
-    return { kind: 'user', userId: as.userId, ...(label ? { label } : {}) } satisfies AuditActor
   })
 
   const requireType = Effect.fn('Iam.users.requireType')(function* (

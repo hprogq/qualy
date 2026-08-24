@@ -3,6 +3,8 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
+import { Audit } from '@qualy/audit-contract/plugin'
+import { orgActions } from './actions.ts'
 import { message } from '@qualy/i18n-contract'
 import { APP_SHELL, PUBLIC, navigationGroups, permissionOf } from '@qualy/ui-contract'
 import { orgApiGroup } from './api.ts'
@@ -17,6 +19,7 @@ const plugin = Plugin.define(
   '@qualy/plugin-org',
   {
     dependsOn: [
+      '@qualy/plugin-audit',
       '@qualy/plugin-auth',
       '@qualy/plugin-database',
       '@qualy/plugin-rbac',
@@ -57,6 +60,7 @@ const plugin = Plugin.define(
     ],
   }),
   Access.permissions('org', permissions),
+  Audit.actions('org', orgActions),
   Api.group(orgApiGroup, orgApiHandlers),
   Plugin.layer(serviceLayer),
 )

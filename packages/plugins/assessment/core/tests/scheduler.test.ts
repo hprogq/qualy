@@ -17,6 +17,12 @@ import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { serviceLayer as rbacLayer } from '@qualy/plugin-rbac/server'
+import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
+import { entities as auditEntities } from '@qualy/plugin-audit/db'
+import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { compileActionCatalog } from '@qualy/audit-contract/plugin'
+import { accessActions } from '@qualy/plugin-rbac/actions'
+import { assessmentActions } from '../src/actions.ts'
 import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { booted } from '@qualy/rbac-contract/testkit'
 import { compileCatalog } from '@qualy/rbac-contract/plugin'
@@ -44,7 +50,13 @@ const catalog: readonly ActivePermission[] = compileCatalog([
   { owner: 'assessment', permissions: assessmentPermissions },
 ])
 
-const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...entities] as const
+const closure = [
+  ...orgEntities,
+  ...authEntities,
+  ...rbacEntities,
+  ...entities,
+  ...auditEntities,
+] as const
 
 /**
  * The plugin as the host builds it - service, barrier and the forked fiber -
@@ -54,6 +66,20 @@ const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...entities] 
 const stack = (url: string) => {
   const services = booted(
     rbacLayer.pipe(
+      // the writer the audited services record through, on the same database
+      Layer.provideMerge(
+        auditLayer.pipe(
+          Layer.provide(
+            Layer.succeed(
+              AuditActionCatalog,
+              compileActionCatalog([
+                { owner: 'rbac', actions: accessActions },
+                { owner: 'assessment', actions: assessmentActions },
+              ]),
+            ),
+          ),
+        ),
+      ),
       Layer.provideMerge(Layer.mergeAll(uiLayer, databaseFor(url, { entities: closure }))),
     ),
     { catalog },

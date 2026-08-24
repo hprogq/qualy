@@ -5,6 +5,7 @@ import { permissions as authPermissions } from '@qualy/plugin-auth/permissions'
 import { permissions as rbacPermissions } from '@qualy/plugin-rbac/permissions'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { sql } from 'kysely'
+import type { Principal } from '@qualy/rbac-contract'
 import { Effect, Exit, Layer } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { authClosure } from './support/closure.ts'
@@ -129,7 +130,8 @@ const seed = Effect.fn('seed')(function* () {
   yield* runSql(sql`
     insert into role_grants (tenant_id, user_id, role_id) values (${tenant}, ${admin}, ${adminRole})`)
 
-  return { tenant, node, staff, system }
+  const as: Principal = { tenantId: tenant, userId: admin, sessionId: 'seed' }
+  return { tenant, node, staff, system, as }
 })
 
 describe.runIf(postgresAvailable).concurrent('user types', () => {
@@ -141,10 +143,10 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          const next = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, 1)
+          const next = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, 1, f.as)
           // the caller still holding version 1 is refused, and told where it is
           const stale = yield* Effect.result(
-            iam.userTypes.update(f.tenant, f.staff, { name: 'Again' }, 1),
+            iam.userTypes.update(f.tenant, f.staff, { name: 'Again' }, 1, f.as),
           )
           return {
             next,
@@ -178,10 +180,22 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          const named = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, 1)
-          const resaved = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, named)
+          const named = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff!' }, 1, f.as)
+          const resaved = yield* iam.userTypes.update(
+            f.tenant,
+            f.staff,
+            { name: 'Staff!' },
+            named,
+            f.as,
+          )
           // and a caller still holding that version can still make a real edit
-          const real = yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Staff?' }, resaved)
+          const real = yield* iam.userTypes.update(
+            f.tenant,
+            f.staff,
+            { name: 'Staff?' },
+            resaved,
+            f.as,
+          )
           return { named, resaved, real }
         }),
       )
@@ -216,6 +230,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
               provider.id,
               { mode: 'allow-list', userTypeIds: [f.staff] },
               provider.version,
+              f.as,
             ),
           )
           // an audience that keeps the recovery account is an ordinary edit
@@ -224,6 +239,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
             provider.id,
             { mode: 'allow-list', userTypeIds: [f.staff, f.system] },
             provider.version,
+            f.as,
           )
           const read = (yield* iam.providers.list(f.tenant)).find((row) => row.id === provider.id)!
           return { closed: tagOf(closed), kept, read }
@@ -251,9 +267,9 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
             values (${f.tenant}, 'Ada', ${f.staff}, ${f.node})`)
           const iam = yield* Iam
           const disable = yield* Effect.result(
-            iam.userTypes.setEnabled(f.tenant, f.staff, false, 1),
+            iam.userTypes.setEnabled(f.tenant, f.staff, false, 1, f.as),
           )
-          const remove = yield* Effect.result(iam.userTypes.remove(f.tenant, f.staff, 1))
+          const remove = yield* Effect.result(iam.userTypes.remove(f.tenant, f.staff, 1, f.as))
           return {
             disable: tagOf(disable),
             count:
@@ -282,13 +298,19 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
         Effect.gen(function* () {
           const f = yield* seed()
           const iam = yield* Iam
-          yield* iam.userTypes.update(f.tenant, f.staff, { description: 'the one to keep' }, 1)
+          yield* iam.userTypes.update(
+            f.tenant,
+            f.staff,
+            { description: 'the one to keep' },
+            1,
+            f.as,
+          )
           // a patch naming only the name must not clear the description, and
           // naming description: null must clear it. Both are the same absent
           // value in json, so only the presence of the key can tell them apart
-          yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Renamed' }, 2)
+          yield* iam.userTypes.update(f.tenant, f.staff, { name: 'Renamed' }, 2, f.as)
           const kept = yield* iam.userTypes.get(f.tenant, f.staff)
-          yield* iam.userTypes.update(f.tenant, f.staff, { description: null }, 3)
+          yield* iam.userTypes.update(f.tenant, f.staff, { description: null }, 3, f.as)
           const cleared = yield* iam.userTypes.get(f.tenant, f.staff)
           return { kept: kept.description, name: kept.name, cleared: cleared.description }
         }),
@@ -312,7 +334,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
           const iam = yield* Iam
           // already enabled: this must not spend a version, or it would
           // invalidate another edit in flight for no reason
-          return yield* iam.userTypes.setEnabled(f.tenant, f.staff, true, 1)
+          return yield* iam.userTypes.setEnabled(f.tenant, f.staff, true, 1, f.as)
         }),
       )
       expect(ok(exit)).toBe(1)
@@ -339,7 +361,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
             insert into role_allowed_user_types (tenant_id, role_id, user_type_id)
             values (${f.tenant}, ${role}, ${f.staff})`)
           const iam = yield* Iam
-          const blocked = yield* Effect.result(iam.userTypes.remove(f.tenant, f.staff, 1))
+          const blocked = yield* Effect.result(iam.userTypes.remove(f.tenant, f.staff, 1, f.as))
           return {
             tag: tagOf(blocked),
             roles:
@@ -386,6 +408,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
             f.staff,
             { mode: 'allow-list', orgTypeIds: [orgType] },
             1,
+            f.as,
           )
           // narrowing to a type they do NOT stand on strands them
           const strands = yield* Effect.result(
@@ -394,6 +417,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
               f.staff,
               { mode: 'allow-list', orgTypeIds: [other] },
               ok1,
+              f.as,
             ),
           )
           // and so does clearing the list entirely, which is the case the old
@@ -404,6 +428,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
               f.staff,
               { mode: 'allow-list', orgTypeIds: [] },
               ok1,
+              f.as,
             ),
           )
           return {
@@ -442,6 +467,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
             f.staff,
             { mode: 'unrestricted', orgTypeIds: [] },
             1,
+            f.as,
           )
         }),
       )
@@ -467,6 +493,7 @@ describe.runIf(postgresAvailable).concurrent('user types', () => {
               f.system,
               { mode: 'allow-list', orgTypeIds: [] },
               1,
+              f.as,
             ),
           )
           return tagOf(blocked)

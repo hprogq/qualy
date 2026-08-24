@@ -4,8 +4,19 @@ import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { db, lockTenant, userTypeGuard, type Db } from './db.ts'
 import { sql } from 'kysely'
 import { Rbac } from '@qualy/rbac-contract/effect'
+import type { Principal } from '@qualy/rbac-contract'
+import { Audit } from '@qualy/audit-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
 import { strandedByPolicy } from './placement.ts'
+import { actorOf } from './audit-actor.ts'
+import {
+  UserTypeCreated,
+  UserTypeDeleted,
+  UserTypeDisabled,
+  UserTypeEnabled,
+  UserTypePlacementUpdated,
+  UserTypeUpdated,
+} from '../actions.ts'
 import {
   RecoveryChannelRequired,
   UserTypeInUse,
@@ -90,7 +101,7 @@ const lockUserType = (tenantId: string, userTypeId: string) =>
   db.query((k) =>
     k
       .selectFrom('UserType')
-      .select(['id', 'version', 'isSystem', 'placementMode'])
+      .select(['id', 'name', 'version', 'isSystem', 'placementMode'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', userTypeId)
       .forUpdate()
@@ -249,6 +260,7 @@ const pruneAllowedOrgTypes = (tenantId: string, userTypeId: string, keep: readon
 
 export const make = Effect.fn('Iam.userTypes.make')(function* () {
   const rbac = yield* Rbac
+  const audit = yield* Audit
   // the writes get their database from the transaction they open; a plain read
   // opens nothing, so it is supplied here rather than left in the caller's
   // requirements - what this builds is a service, and a service that demands
@@ -302,6 +314,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
         placementPolicy:
           { mode: 'unrestricted' } | { mode: 'allow-list'; orgTypeIds: readonly string[] }
       },
+      as: Principal,
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
@@ -323,6 +336,12 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
               yield* addAllowedOrgTypes(tenantId, id, wanted)
             }
           }
+          yield* audit.record(UserTypeCreated, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id, label: input.name },
+            details: { placementMode: policy.mode },
+          })
           return id
         }),
       )
@@ -363,6 +382,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
         sortOrder?: number
       },
       expectedVersion: number,
+      as: Principal,
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
@@ -376,6 +396,16 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
             (fields.sortOrder === undefined || fields.sortOrder === type.sortOrder)
           if (same) return type.version
           yield* updateUserType(tenantId, type.id, fields)
+          yield* audit.record(UserTypeUpdated, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: type.id, label: fields.name ?? type.name },
+            details: {
+              fields: (['name', 'description', 'sortOrder'] as const).filter(
+                (field) => fields[field] !== undefined,
+              ),
+            },
+          })
           return type.version + 1
         }),
       )
@@ -386,6 +416,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       userTypeId: string,
       enabled: boolean,
       expectedVersion: number,
+      as: Principal,
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
@@ -402,6 +433,12 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
             if (inUse > 0) return yield* new UserTypeInUse({ userCount: inUse })
           }
           yield* setUserTypeEnabled(tenantId, type.id, enabled)
+          yield* audit.record(enabled ? UserTypeEnabled : UserTypeDisabled, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: type.id, label: type.name },
+            details: {},
+          })
           return type.version + 1
         }),
       )
@@ -420,6 +457,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       userTypeId: string,
       policy: { mode: 'unrestricted' | 'allow-list'; orgTypeIds: readonly string[] },
       expectedVersion: number,
+      as: Principal,
     ) {
       const wanted = uniqueUuids(policy.mode === 'allow-list' ? policy.orgTypeIds : [])
       if (!wanted) return yield* new UserTypeOrgTypeNotFound()
@@ -461,6 +499,12 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           // non-empty, so clearing it entirely skipped the check outright.
           const left = yield* strandedByPolicy(tenantId, type.id)
           if (left > 0) return yield* new UserTypePlacementInUse({ userCount: left })
+          yield* audit.record(UserTypePlacementUpdated, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: type.id, label: type.name },
+            details: { mode: policy.mode, orgTypeCount: wanted.length },
+          })
           return type.version + 1
         }),
       )
@@ -470,6 +514,7 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
       tenantId: string,
       userTypeId: string,
       expectedVersion: number,
+      as: Principal,
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
@@ -486,6 +531,12 @@ export const make = Effect.fn('Iam.userTypes.make')(function* () {
           const stranded = yield* rbac.rolesStrandedByUserType(tenantId, type.id)
           if (stranded > 0) return yield* new UserTypeLastForRole({ roleCount: stranded })
           yield* deleteUserType(tenantId, type.id)
+          yield* audit.record(UserTypeDeleted, {
+            tenantId,
+            actor: yield* actorOf(tenantId, as),
+            target: { id: type.id, label: type.name },
+            details: {},
+          })
         }),
       )
     }),

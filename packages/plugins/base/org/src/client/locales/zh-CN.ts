@@ -97,6 +97,16 @@ export default {
   'org/nodes/people-open': '在用户页查看',
   'org/permission-group/structure': '组织',
   'org/permission/tree-read': '查看组织架构',
+  'org/audit/node-create': '新建组织',
+  'org/audit/node-update': '编辑组织',
+  'org/audit/node-move': '移动组织',
+  'org/audit/node-retype': '调整组织类型',
+  'org/audit/node-delete': '删除组织',
+  'org/audit/type-create': '新建组织类型',
+  'org/audit/type-update': '编辑组织类型',
+  'org/audit/type-delete': '删除组织类型',
+  'org/audit/rule-put': '允许上下级类型搭配',
+  'org/audit/rule-delete': '取消上下级类型搭配',
   'org/permission/tree-manage': '管理组织架构',
   // exact key coverage per locale is enforced by scripts/tests/catalogs.test
 } satisfies MessageCatalog

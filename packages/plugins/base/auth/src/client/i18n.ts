@@ -134,6 +134,34 @@ const i18n = definePluginMessages({
     'audit.auth.user.disable': { id: 'auth/audit/user-disable', defaultMessage: 'Disable user' },
     'audit.auth.user.delete': { id: 'auth/audit/user-delete', defaultMessage: 'Delete user' },
     'audit.auth.user.restore': { id: 'auth/audit/user-restore', defaultMessage: 'Restore user' },
+    'audit.auth.user-type.create': {
+      id: 'auth/audit/user-type-create',
+      defaultMessage: 'Create user type',
+    },
+    'audit.auth.user-type.update': {
+      id: 'auth/audit/user-type-update',
+      defaultMessage: 'Edit user type',
+    },
+    'audit.auth.user-type.enable': {
+      id: 'auth/audit/user-type-enable',
+      defaultMessage: 'Enable user type',
+    },
+    'audit.auth.user-type.disable': {
+      id: 'auth/audit/user-type-disable',
+      defaultMessage: 'Disable user type',
+    },
+    'audit.auth.user-type.placement': {
+      id: 'auth/audit/user-type-placement',
+      defaultMessage: 'Change where a user type may stand',
+    },
+    'audit.auth.user-type.delete': {
+      id: 'auth/audit/user-type-delete',
+      defaultMessage: 'Delete user type',
+    },
+    'audit.auth.provider.audience': {
+      id: 'auth/audit/provider-audience',
+      defaultMessage: 'Change who may sign in through an entrance',
+    },
     revokeGrantTitle: {
       id: 'auth/users/revoke-grant-title',
       defaultMessage: 'Take this role away here?',

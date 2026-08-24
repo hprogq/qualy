@@ -222,10 +222,14 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.user-type.manage')
         return {
-          id: yield* iam.userTypes.create(principal.tenantId, {
-            ...payload,
-            code: payload.code ?? codeFrom(payload.name, 'user-type'),
-          }),
+          id: yield* iam.userTypes.create(
+            principal.tenantId,
+            {
+              ...payload,
+              code: payload.code ?? codeFrom(payload.name, 'user-type'),
+            },
+            principal,
+          ),
         }
       }),
     )
@@ -363,6 +367,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             params.providerId,
             payload.audience,
             payload.version,
+            principal,
           ),
         }
       }),
@@ -381,6 +386,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             params.userTypeId,
             fields,
             version,
+            principal,
           ),
         }
       }),
@@ -398,6 +404,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
             params.userTypeId,
             payload.status === 'active',
             payload.version,
+            principal,
           ),
         }
       }),
@@ -488,6 +495,7 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
               ? { mode: 'allow-list', orgTypeIds: payload.policy.orgTypeIds }
               : { mode: 'unrestricted', orgTypeIds: [] },
             payload.version,
+            principal,
           ),
         }
       }),
@@ -499,7 +507,12 @@ export const identityApiHandlers = HttpApiBuilder.group(local, 'identity', (hand
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'auth.user-type.manage')
-        yield* iam.userTypes.remove(principal.tenantId, params.userTypeId, Number(query.version))
+        yield* iam.userTypes.remove(
+          principal.tenantId,
+          params.userTypeId,
+          Number(query.version),
+          principal,
+        )
         return { ok: true as const }
       }),
     ),

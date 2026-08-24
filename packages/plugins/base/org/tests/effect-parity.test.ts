@@ -24,6 +24,7 @@ import { entities as auditEntities } from '@qualy/plugin-audit/db'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { userActions } from '@qualy/plugin-auth/actions'
+import { orgActions } from '../src/actions.ts'
 import { serviceLayer as authLayer } from '@qualy/plugin-auth/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
@@ -58,7 +59,10 @@ const stack = (url: string) =>
           Layer.provide(
             Layer.succeed(
               AuditActionCatalog,
-              compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+              compileActionCatalog([
+                { owner: 'auth', actions: userActions },
+                { owner: 'org', actions: orgActions },
+              ]),
             ),
           ),
         ),

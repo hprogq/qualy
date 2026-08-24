@@ -7,6 +7,9 @@ import {
   type QueryFailed,
 } from '@qualy/plugin-database/server'
 import { sql, type Expression } from 'kysely'
+import { Audit } from '@qualy/audit-contract/effect'
+import type { AuditActor } from '@qualy/audit-contract'
+import { GrantCreated, GrantRevoked } from '../actions.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import {
@@ -379,6 +382,8 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
   authorityFor: (actor: Principal) => Authority,
 ) {
   const withDb = yield* withDatabase
+  const audit = yield* Audit
+  const actorOf = (as: Principal): AuditActor => ({ kind: 'user', userId: as.userId })
 
   /**
    * What a statement can fail with before the write wrapper handles it.
@@ -743,8 +748,22 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           coverage: anchor.coverage,
           resource: input.resource ?? null,
           validUntil: input.validUntil ?? null,
-          // the audit trail every grant gets, not only the confined ones
+          // the row-level stamp every grant gets, not only the confined ones
           createdBy: actor.userId,
+        })
+        yield* audit.record(GrantCreated, {
+          tenantId,
+          actor: actorOf(actor),
+          target: { id: created.id },
+          ...(input.target.kind === 'org-node' ? { organizationId: input.target.orgNodeId } : {}),
+          details: {
+            userId: input.userId,
+            roleId: input.roleId,
+            scope: input.target.kind,
+            orgNodeId: anchor.nodeId,
+            coverage: anchor.coverage,
+            resource: input.resource ?? null,
+          },
         })
         return created.id
       }).pipe(translateConstraints(grantConstraints)),
@@ -821,6 +840,13 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
           yield* deleteGrant(tenantId, grantId)
           // checked against the state the removal actually leaves behind
           yield* keepsAdministrator(tenantId)
+          yield* audit.record(GrantRevoked, {
+            tenantId,
+            actor: actorOf(actor),
+            target: { id: grantId },
+            ...(grant.orgNodeId === null ? {} : { organizationId: grant.orgNodeId }),
+            details: { userId: grant.userId, roleId: grant.roleId },
+          })
         }),
       )
     }),

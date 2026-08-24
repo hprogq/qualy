@@ -18,6 +18,8 @@ import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { UiAuthorizer } from '@qualy/plugin-ui-registry/server/authorizer'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { BadRequest, codeFrom, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { Audit } from '@qualy/audit-contract/effect'
+import { GrantRevoked } from '../actions.ts'
 import { accessApiGroup } from '../api.ts'
 import { make as makeGrants, type GrantRow } from './grants.ts'
 import { REACH_RANK, type Reach } from './authorization.ts'
@@ -73,6 +75,7 @@ const rows = <Row extends Record<string, unknown>>(result: unknown) =>
   (result as { rows: readonly Row[] }).rows
 
 export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActivePermission[]) {
+  const audit = yield* Audit
   // this layer's database, closed over: what it builds is a service, and a
   // service that demands the orm has handed the orm to every caller
   const withDb = yield* withDatabase
@@ -395,9 +398,24 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     }),
 
     revokeAssignment: Effect.fn('Rbac.revokeAssignment')(function* (input) {
-      return yield* bound(() =>
+      const revoked: Effect.Success<ReturnType<typeof revokeGrant>> = yield* bound(() =>
         revokeGrant(input.tenantId, input.assignmentId, input.actorId),
       )().pipe(Effect.orDie)
+      if (revoked) {
+        // the port is a peer acting for a person (or for the system when it
+        // names nobody); the withdrawal is an authority change either way
+        yield* bound(() =>
+          audit.record(GrantRevoked, {
+            tenantId: input.tenantId,
+            actor:
+              input.actorId === null ? { kind: 'system' } : { kind: 'user', userId: input.actorId },
+            target: { id: revoked.id },
+            ...(revoked.orgNodeId === null ? {} : { organizationId: revoked.orgNodeId }),
+            details: { userId: revoked.userId, roleId: revoked.roleId },
+          }),
+        )()
+      }
+      return revoked !== undefined
     }),
 
     revokeAllGrantsOfUser: Effect.fn('Rbac.revokeAllGrantsOfUser')(
@@ -522,7 +540,7 @@ export class Access extends Context.Service<
 export const serviceLayer: Layer.Layer<
   Rbac | Access | UiAuthorizer,
   never,
-  Orm | PermissionCatalog | Assembled
+  Orm | PermissionCatalog | Assembled | Audit
 > = Layer.effectContext(
   Effect.gen(function* () {
     const declared = yield* PermissionCatalog
@@ -795,10 +813,14 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         // the created row's status and version travel back, so a client can
         // continue without a read: the management api creates drafts only
         return {
-          id: yield* access.roles.create(principal.tenantId, {
-            ...payload,
-            code: payload.code ?? codeFrom(payload.name, 'role'),
-          }),
+          id: yield* access.roles.create(
+            principal.tenantId,
+            {
+              ...payload,
+              code: payload.code ?? codeFrom(payload.name, 'role'),
+            },
+            principal,
+          ),
           status: 'draft' as const,
           version: 1,
         }
@@ -813,7 +835,13 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         yield* rbac.require(principal, 'iam.role.manage')
         const { version, ...fields } = payload
         return {
-          version: yield* access.roles.update(principal.tenantId, params.roleId, fields, version),
+          version: yield* access.roles.update(
+            principal.tenantId,
+            params.roleId,
+            fields,
+            version,
+            principal,
+          ),
         }
       }),
     )
@@ -921,6 +949,7 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
             params.roleId,
             payload,
             payload.version,
+            principal,
           ),
         }
       }),
@@ -932,7 +961,12 @@ export const accessApiHandlers = HttpApiBuilder.group(local, 'access', (handlers
         const rbac = yield* Rbac
         const principal = yield* CurrentUser
         yield* rbac.require(principal, 'iam.role.manage')
-        yield* access.roles.remove(principal.tenantId, params.roleId, Number(query.version))
+        yield* access.roles.remove(
+          principal.tenantId,
+          params.roleId,
+          Number(query.version),
+          principal,
+        )
         return { ok: true as const }
       }),
     )

@@ -74,6 +74,66 @@ export const UserRestored = AuditAction.define({
   details: Schema.Struct({ userTypeId: id, orgNodeId: id }),
 })
 
+const placementMode = Schema.Literals(['unrestricted', 'allow-list'])
+
+export const UserTypeCreated = AuditAction.define({
+  code: 'auth.user-type.create',
+  target: 'auth.user-type',
+  version: 1,
+  name: message('auth/audit/user-type-create', 'Create user type'),
+  details: Schema.Struct({ placementMode }),
+})
+
+export const UserTypeUpdated = AuditAction.define({
+  code: 'auth.user-type.update',
+  target: 'auth.user-type',
+  version: 1,
+  name: message('auth/audit/user-type-update', 'Edit user type'),
+  details: Schema.Struct({
+    fields: Schema.Array(Schema.Literals(['name', 'description', 'sortOrder'])),
+  }),
+})
+
+export const UserTypeEnabled = AuditAction.define({
+  code: 'auth.user-type.enable',
+  target: 'auth.user-type',
+  version: 1,
+  name: message('auth/audit/user-type-enable', 'Enable user type'),
+  details: Schema.Struct({}),
+})
+
+export const UserTypeDisabled = AuditAction.define({
+  code: 'auth.user-type.disable',
+  target: 'auth.user-type',
+  version: 1,
+  name: message('auth/audit/user-type-disable', 'Disable user type'),
+  details: Schema.Struct({}),
+})
+
+export const UserTypePlacementUpdated = AuditAction.define({
+  code: 'auth.user-type.placement.update',
+  target: 'auth.user-type',
+  version: 1,
+  name: message('auth/audit/user-type-placement', 'Change where a user type may stand'),
+  details: Schema.Struct({ mode: placementMode, orgTypeCount: Schema.Number }),
+})
+
+export const UserTypeDeleted = AuditAction.define({
+  code: 'auth.user-type.delete',
+  target: 'auth.user-type',
+  version: 1,
+  name: message('auth/audit/user-type-delete', 'Delete user type'),
+  details: Schema.Struct({}),
+})
+
+export const ProviderAudienceUpdated = AuditAction.define({
+  code: 'auth.provider.audience.update',
+  target: 'auth.provider',
+  version: 1,
+  name: message('auth/audit/provider-audience', 'Change who may sign in through an entrance'),
+  details: Schema.Struct({ mode: placementMode, userTypeCount: Schema.Number }),
+})
+
 export const userActions = [
   UserCreated,
   UserUpdated,
@@ -82,4 +142,11 @@ export const userActions = [
   UserDisabled,
   UserDeleted,
   UserRestored,
+  UserTypeCreated,
+  UserTypeUpdated,
+  UserTypeEnabled,
+  UserTypeDisabled,
+  UserTypePlacementUpdated,
+  UserTypeDeleted,
+  ProviderAudienceUpdated,
 ] as const

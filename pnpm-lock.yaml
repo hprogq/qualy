@@ -540,6 +540,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/audit-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/audit
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../contracts/i18n
@@ -595,6 +598,9 @@ importers:
       '@qualy/plugin-assessment-evidence':
         specifier: workspace:*
         version: link:../evidence
+      '@qualy/plugin-audit':
+        specifier: workspace:*
+        version: link:../../base/audit
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
@@ -857,6 +863,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/audit-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/audit
       '@qualy/auth-contract':
         specifier: workspace:*
         version: link:../../../contracts/auth
@@ -906,9 +915,6 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@qualy/audit-contract':
-        specifier: workspace:*
-        version: link:../../../contracts/audit
       '@qualy/plugin-audit':
         specifier: workspace:*
         version: link:../audit
@@ -933,6 +939,9 @@ importers:
       '@qualy/assembly-contract':
         specifier: workspace:*
         version: link:../../../contracts/assembly
+      '@qualy/audit-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/audit
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../contracts/i18n
@@ -985,6 +994,9 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@qualy/plugin-audit':
+        specifier: workspace:*
+        version: link:../audit
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18

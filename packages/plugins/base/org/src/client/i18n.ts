@@ -42,6 +42,44 @@ const i18n = definePluginMessages({
       id: 'org/permission/tree-read',
       defaultMessage: 'View the organization',
     },
+    // one label per audit action this plugin declares
+    'audit.org.node.create': {
+      id: 'org/audit/node-create',
+      defaultMessage: 'Create organization unit',
+    },
+    'audit.org.node.update': {
+      id: 'org/audit/node-update',
+      defaultMessage: 'Edit organization unit',
+    },
+    'audit.org.node.move': { id: 'org/audit/node-move', defaultMessage: 'Move organization unit' },
+    'audit.org.node.retype': {
+      id: 'org/audit/node-retype',
+      defaultMessage: 'Change an organization unit type',
+    },
+    'audit.org.node.delete': {
+      id: 'org/audit/node-delete',
+      defaultMessage: 'Delete organization unit',
+    },
+    'audit.org.type.create': {
+      id: 'org/audit/type-create',
+      defaultMessage: 'Create organization type',
+    },
+    'audit.org.type.update': {
+      id: 'org/audit/type-update',
+      defaultMessage: 'Edit organization type',
+    },
+    'audit.org.type.delete': {
+      id: 'org/audit/type-delete',
+      defaultMessage: 'Delete organization type',
+    },
+    'audit.org.type-rule.update': {
+      id: 'org/audit/rule-put',
+      defaultMessage: 'Allow a parent-child type pairing',
+    },
+    'audit.org.type-rule.delete': {
+      id: 'org/audit/rule-delete',
+      defaultMessage: 'Forbid a parent-child type pairing',
+    },
     'permission.org.tree.manage': {
       id: 'org/permission/tree-manage',
       defaultMessage: 'Manage the organization',

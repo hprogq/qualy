@@ -3,6 +3,8 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
+import { Audit } from '@qualy/audit-contract/plugin'
+import { accessActions } from './actions.ts'
 import { message } from '@qualy/i18n-contract'
 import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
 import { accessApiGroup } from './api.ts'
@@ -16,7 +18,7 @@ import { accessApiHandlers, serviceLayer } from './server/index.ts'
 
 const plugin = Plugin.define(
   '@qualy/plugin-rbac',
-  { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
+  { dependsOn: ['@qualy/plugin-audit', '@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
   Db.entities(entities, {
     compositeForeignKeys,
     dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'],
@@ -35,6 +37,7 @@ const plugin = Plugin.define(
     },
   }),
   Access.permissions('rbac', permissions),
+  Audit.actions('rbac', accessActions),
   // rbac owns the catalog: contributors declare, this compiles the value
   Access.provider,
   // and owns the assembly capability that validates the same declarations at

@@ -87,6 +87,29 @@ const i18n = definePluginMessages({
       id: 'rbac/permission/role-read',
       defaultMessage: 'View roles',
     },
+    // one label per audit action this plugin declares
+    'audit.iam.role.create': { id: 'rbac/audit/role-create', defaultMessage: 'Create role' },
+    'audit.iam.role.update': { id: 'rbac/audit/role-update', defaultMessage: 'Edit role' },
+    'audit.iam.role.enable': { id: 'rbac/audit/role-enable', defaultMessage: 'Activate role' },
+    'audit.iam.role.disable': { id: 'rbac/audit/role-disable', defaultMessage: 'Disable role' },
+    'audit.iam.role.permissions': {
+      id: 'rbac/audit/role-permissions',
+      defaultMessage: 'Change role permissions',
+    },
+    'audit.iam.role.eligibility': {
+      id: 'rbac/audit/role-eligibility',
+      defaultMessage: 'Change who may hold a role',
+    },
+    'audit.iam.role.appointment': {
+      id: 'rbac/audit/role-appointment',
+      defaultMessage: 'Change which roles this one may appoint',
+    },
+    'audit.iam.role.delete': { id: 'rbac/audit/role-delete', defaultMessage: 'Delete role' },
+    'audit.iam.role-grant.create': { id: 'rbac/audit/grant-create', defaultMessage: 'Grant role' },
+    'audit.iam.role-grant.revoke': {
+      id: 'rbac/audit/grant-revoke',
+      defaultMessage: 'Revoke role grant',
+    },
     'permission.iam.role.manage': {
       id: 'rbac/permission/role-manage',
       defaultMessage: 'Manage roles',

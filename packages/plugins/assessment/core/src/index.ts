@@ -4,6 +4,8 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
+import { Audit } from '@qualy/audit-contract/plugin'
+import { assessmentActions } from './actions.ts'
 import { message } from '@qualy/i18n-contract'
 import {
   APP_SHELL,
@@ -38,6 +40,7 @@ const plugin = Plugin.define(
   '@qualy/plugin-assessment',
   {
     dependsOn: [
+      '@qualy/plugin-audit',
       '@qualy/plugin-auth',
       '@qualy/plugin-database',
       '@qualy/plugin-org',
@@ -64,6 +67,7 @@ const plugin = Plugin.define(
   Scoring.provider,
   ...builtinScoringDrivers.map((driver) => Scoring.driver(driver)),
   Access.permissions('assessment', permissions),
+  Audit.actions('assessment', assessmentActions),
   Ui.i18n('./client/i18n.ts'),
   // the sidebar section this domain owns; its pages file under it by id
   Ui.surfaces({

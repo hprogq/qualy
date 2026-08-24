@@ -27,6 +27,7 @@ type EventRow = {
     | { kind: 'literal'; value: string }
     | null
   actorKind: 'user' | 'system' | 'service' | 'anonymous'
+  actorUserId: string | null
   actorLabel: string | null
   targetLabel: string | null
   targetId: string | null
@@ -74,7 +75,11 @@ export default function AuditEventsPage() {
     new Date(iso).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'medium' })
   const actorOf = (row: EventRow) =>
     row.actorLabel ??
-    (row.actorKind === 'anonymous' ? format(m.actorAnonymous) : format(m.actorSystem))
+    (row.actorKind === 'anonymous'
+      ? format(m.actorAnonymous)
+      : row.actorKind === 'user'
+        ? (row.actorUserId?.slice(0, 8) ?? '—')
+        : format(m.actorSystem))
   const actionOf = (row: EventRow) => (row.actionName ? formatText(row.actionName) : row.actionCode)
   const outcomeLabel = {
     success: m.outcomeSuccess,

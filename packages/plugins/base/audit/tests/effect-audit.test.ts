@@ -10,6 +10,7 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
+import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { RequestContext } from '@qualy/api-kit/request'
 import { AuditAction } from '@qualy/audit-contract/action'
 import { Audit, AuditActionCatalog } from '@qualy/audit-contract/effect'
@@ -24,7 +25,7 @@ import { writerLayer } from '../src/server/writer.ts'
 // it records. Both matter more than the reads - a read can be fixed
 // tomorrow, an event that silently missed its transaction cannot.
 
-const closure = [...orgEntities, ...auditEntities] as const
+const closure = [...orgEntities, ...authEntities, ...auditEntities] as const
 
 const UserDisabled = AuditAction.define({
   code: 'auth.user.disable',

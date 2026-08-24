@@ -42,51 +42,72 @@ export const listEvents = (
   db.query((k) => {
     let query = k
       .selectFrom('AuditEvent')
+      // the snapshot wins when it exists; the live name fills in for writers
+      // that could not know one (a plugin whose closure cannot see users)
+      .leftJoin('User as actor', (join) =>
+        join
+          .onRef('actor.tenantId', '=', 'AuditEvent.tenantId')
+          .onRef('actor.id', '=', 'AuditEvent.actorUserId'),
+      )
       // the cursor carries the column's own text form: a Date round-trips at
       // millisecond precision while now() writes microseconds, and the lost
       // digits made the boundary row - and everything sharing its instant -
       // vanish from the next page
-      .select((eb) => [sql<string>`${eb.ref('occurredAt')}::text`.as('occurredAtCursor')])
-      .select([
-        'id',
-        'occurredAt',
-        'actionCode',
-        'actionVersion',
-        'actorKind',
-        'actorUserId',
-        'actorLabel',
-        'targetKind',
-        'targetId',
-        'targetLabel',
-        'organizationId',
-        'outcome',
-        'reasonCode',
-        'details',
-        'source',
-        'requestId',
-        'traceId',
-        'clientIp',
-        'userAgent',
+      .select((eb) => [
+        sql<string>`${eb.ref('AuditEvent.occurredAt')}::text`.as('occurredAtCursor'),
+        sql<
+          string | null
+        >`coalesce(${eb.ref('AuditEvent.actorLabel')}, ${eb.ref('actor.displayName')})`.as(
+          'actorLabel',
+        ),
       ])
-      .where('tenantId', '=', tenantId)
-      .orderBy('occurredAt', 'desc')
-      .orderBy('id', 'desc')
+      .select([
+        'AuditEvent.id',
+        'AuditEvent.occurredAt',
+        'AuditEvent.actionCode',
+        'AuditEvent.actionVersion',
+        'AuditEvent.actorKind',
+        'AuditEvent.actorUserId',
+        'AuditEvent.targetKind',
+        'AuditEvent.targetId',
+        'AuditEvent.targetLabel',
+        'AuditEvent.organizationId',
+        'AuditEvent.outcome',
+        'AuditEvent.reasonCode',
+        'AuditEvent.details',
+        'AuditEvent.source',
+        'AuditEvent.requestId',
+        'AuditEvent.traceId',
+        'AuditEvent.clientIp',
+        'AuditEvent.userAgent',
+      ])
+      .where('AuditEvent.tenantId', '=', tenantId)
+      .orderBy('AuditEvent.occurredAt', 'desc')
+      .orderBy('AuditEvent.id', 'desc')
       .limit(page.limit)
-    if (filters.actionCode !== undefined) query = query.where('actionCode', '=', filters.actionCode)
-    if (filters.actorUserId !== undefined) {
-      query = query.where('actorUserId', '=', filters.actorUserId)
+    if (filters.actionCode !== undefined) {
+      query = query.where('AuditEvent.actionCode', '=', filters.actionCode)
     }
-    if (filters.outcome !== undefined) query = query.where('outcome', '=', filters.outcome)
-    if (filters.targetKind !== undefined) query = query.where('targetKind', '=', filters.targetKind)
-    if (filters.targetId !== undefined) query = query.where('targetId', '=', filters.targetId)
+    if (filters.actorUserId !== undefined) {
+      query = query.where('AuditEvent.actorUserId', '=', filters.actorUserId)
+    }
+    if (filters.outcome !== undefined) {
+      query = query.where('AuditEvent.outcome', '=', filters.outcome)
+    }
+    if (filters.targetKind !== undefined) {
+      query = query.where('AuditEvent.targetKind', '=', filters.targetKind)
+    }
+    if (filters.targetId !== undefined) {
+      query = query.where('AuditEvent.targetId', '=', filters.targetId)
+    }
     if (filters.from !== undefined) {
       query = query.where(
-        (eb) => sql<boolean>`${eb.ref('occurredAt')} >= ${filters.from}::timestamptz`,
+        (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} >= ${filters.from}::timestamptz`,
       )
     }
     if (filters.to !== undefined) {
       query = query.where(
-        (eb) => sql<boolean>`${eb.ref('occurredAt')} < ${filters.to}::timestamptz`,
+        (eb) => sql<boolean>`${eb.ref('AuditEvent.occurredAt')} < ${filters.to}::timestamptz`,
       )
     }
     if (page.after !== undefined) {
@@ -95,7 +116,7 @@ export const listEvents = (
       // order the screen reads in
       query = query.where(
         (eb) =>
-          sql<boolean>`(${eb.ref('occurredAt')}, ${eb.ref('id')}) < (${occurredAt}::timestamptz, ${id}::uuid)`,
+          sql<boolean>`(${eb.ref('AuditEvent.occurredAt')}, ${eb.ref('AuditEvent.id')}) < (${occurredAt}::timestamptz, ${id}::uuid)`,
       )
     }
     return query.execute()

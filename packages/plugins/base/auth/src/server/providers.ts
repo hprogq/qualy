@@ -2,7 +2,11 @@ import { Effect, Schema } from 'effect'
 import { sql } from 'kysely'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
+import type { Principal } from '@qualy/rbac-contract'
+import { Audit } from '@qualy/audit-contract/effect'
 import { SYSTEM_ACCOUNT_USER_TYPE } from '../constants.ts'
+import { ProviderAudienceUpdated } from '../actions.ts'
+import { actorOf } from './audit-actor.ts'
 import { db, lockTenant } from './db.ts'
 import {
   ProviderNotFound,
@@ -51,7 +55,7 @@ const oneProvider = (tenantId: string, providerId: string) =>
   db.query((k) =>
     k
       .selectFrom('AuthProvider')
-      .select(['id', 'version'])
+      .select(['id', 'name', 'version'])
       .where('tenantId', '=', tenantId)
       .where('id', '=', providerId)
       .executeTakeFirst(),
@@ -145,6 +149,7 @@ const recoveryTypeAdmitted = (tenantId: string) =>
 export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
   const withDb = yield* withDatabase
   const rbac = yield* Rbac
+  const audit = yield* Audit
 
   return {
     list: Effect.fn('Iam.providers.list')(function* (tenantId: string) {
@@ -180,6 +185,7 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
       providerId: string,
       policy: AudiencePolicy,
       expectedVersion: number,
+      as: Principal,
     ) {
       return yield* withDb(
         transaction(
@@ -200,6 +206,12 @@ export const makeProviders = Effect.fn('Auth.makeProviders')(function* () {
               return yield* new RecoveryChannelRequired()
             }
             yield* rbac.assertTenantKeepsAdministrator(tenantId)
+            yield* audit.record(ProviderAudienceUpdated, {
+              tenantId,
+              actor: yield* actorOf(tenantId, as),
+              target: { id: provider.id, label: provider.name },
+              details: { mode: policy.mode, userTypeCount: userTypeIds.length },
+            })
             return provider.version + 1
           }),
         ),

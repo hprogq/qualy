@@ -2,6 +2,16 @@ import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
   'rbac/navigation/roles': '角色',
+  'rbac/audit/role-create': '新建角色',
+  'rbac/audit/role-update': '编辑角色',
+  'rbac/audit/role-enable': '启用角色',
+  'rbac/audit/role-disable': '停用角色',
+  'rbac/audit/role-permissions': '调整角色权限',
+  'rbac/audit/role-eligibility': '调整角色的可担任范围',
+  'rbac/audit/role-appointment': '调整角色的可任命范围',
+  'rbac/audit/role-delete': '删除角色',
+  'rbac/audit/grant-create': '授予角色',
+  'rbac/audit/grant-revoke': '撤销角色授权',
   'rbac/action/rename': '重命名',
   'rbac/action/discard': '放弃',
   'rbac/action/select-all': '全选',

@@ -302,6 +302,14 @@ const i18n = definePluginMessages({
       id: 'assessment/permission/batch-manage',
       defaultMessage: 'Manage assessment batches',
     },
+    'audit.assessment.batch.create': {
+      id: 'assessment/audit/batch-create',
+      defaultMessage: 'Create assessment batch',
+    },
+    'audit.assessment.batch.delete': {
+      id: 'assessment/audit/batch-delete',
+      defaultMessage: 'Delete assessment batch',
+    },
     'permission-hint.assessment.batch.manage': {
       id: 'assessment/permission-hint/batch-manage',
       defaultMessage: 'The whole life of a batch: stages, questions and the roster.',

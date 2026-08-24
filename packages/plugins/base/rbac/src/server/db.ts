@@ -436,18 +436,17 @@ export const replaceGrantRuleTargets = (
   })
 
 export const revokeGrant = (tenantId: string, grantId: string, actorId: string | null) =>
-  db
-    .query((k) =>
-      k
-        .updateTable('RoleGrant')
-        .set({ revokedAt: sql`now()`, revokedBy: actorId } as never)
-        .where('tenantId', '=', tenantId)
-        .where('id', '=', grantId)
-        .where('revokedAt', 'is', null)
-        .returning('id')
-        .executeTakeFirst(),
-    )
-    .pipe(Effect.map((row) => row !== undefined))
+  db.query((k) =>
+    k
+      .updateTable('RoleGrant')
+      .set({ revokedAt: sql`now()`, revokedBy: actorId } as never)
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', grantId)
+      .where('revokedAt', 'is', null)
+      // who lost what, so the port can record the withdrawal it performed
+      .returning(['id', 'userId', 'roleId', 'orgNodeId'])
+      .executeTakeFirst(),
+  )
 
 export const rolePermissionMode = (tenantId: string, roleId: string) =>
   db.query((k) =>

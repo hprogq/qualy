@@ -23,7 +23,9 @@ import { auditApiHandlers, serviceLayer } from './server/index.ts'
 const plugin = Plugin.define(
   '@qualy/plugin-audit',
   { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
-  Db.entities(entities, { dependsOn: ['@qualy/plugin-org'] }),
+  // org for the tenant edge; auth read-only, so the trail can show an
+  // actor's current name when the event kept no snapshot
+  Db.entities(entities, { dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'] }),
   Ui.i18n('./client/i18n.ts'),
   Ui.page({
     id: 'audit/events',

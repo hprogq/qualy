@@ -24,6 +24,7 @@ import { entities as auditEntities } from '@qualy/plugin-audit/db'
 import { AuditActionCatalog } from '@qualy/audit-contract/effect'
 import { compileActionCatalog } from '@qualy/audit-contract/plugin'
 import { userActions } from '@qualy/plugin-auth/actions'
+import { orgActions } from '../src/actions.ts'
 import { serviceLayer as authLayer } from '@qualy/plugin-auth/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { loginDriversLayer } from '@qualy/auth-contract/login'
@@ -58,7 +59,10 @@ const stack = (url: string) =>
           Layer.provide(
             Layer.succeed(
               AuditActionCatalog,
-              compileActionCatalog([{ owner: 'auth', actions: userActions }]),
+              compileActionCatalog([
+                { owner: 'auth', actions: userActions },
+                { owner: 'org', actions: orgActions },
+              ]),
             ),
           ),
         ),
@@ -264,6 +268,35 @@ describe.runIf(postgresAvailable).concurrent('the sentence a write answers with'
       const answer = ok(exit)
       expect(answer.tag).toBe('ORG_TYPE_IN_USE')
       expect(answer.kept).toBe(true)
+    } finally {
+      await db.dispose()
+    }
+  })
+  it('leaves an audit event beside every structural write, in the same commit', async () => {
+    const db = await createTestContext('effect-org-write-audit')
+    try {
+      const exit = await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed()
+          const org = yield* Org
+          const as = yield* f.manageOnly()
+          yield* org.updateNode(f.tenant, f.dept, { name: 'Renamed Dept' }, as)
+          yield* org.changeNodeType(f.tenant, f.dept, f.lab, as)
+          const events = (yield* runSql<{ action_code: string; actor_user_id: string }>(
+            sql`select action_code, actor_user_id from audit_events
+                where tenant_id = ${f.tenant} and target_id = ${f.dept}
+                order by occurred_at, id`,
+          )).rows
+          return { events, actor: as.userId }
+        }),
+      )
+      const { events, actor } = ok(exit)
+      expect(events.map((event) => event.action_code)).toEqual([
+        'org.node.update',
+        'org.node.retype',
+      ])
+      expect(events.every((event) => event.actor_user_id === actor)).toBe(true)
     } finally {
       await db.dispose()
     }

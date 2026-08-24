@@ -10,6 +10,8 @@ import { AssessmentLive } from '../live/service.ts'
 import { announce, type AssessmentLiveEvent } from '../live/events.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
+import { Audit } from '@qualy/audit-contract/effect'
+import { BatchCreated, BatchDeleted } from '../actions.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import type { ApplicableAssignment } from '@qualy/rbac-contract/effect'
 import { assessmentApiGroup } from '../api.ts'
@@ -1000,6 +1002,7 @@ export class Assessment extends Context.Service<
 export const make = Effect.fn('Assessment.make')(function* () {
   const withDb = yield* withDatabase
   const rbac = yield* Rbac
+  const audit = yield* Audit
   const itemTypes = yield* ItemTypeCatalog
   const scoring = yield* ScoringCatalog
   const storage = yield* Storage
@@ -2065,6 +2068,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
               ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
             })
             const batchId = created.id as string
+            yield* audit.record(BatchCreated, {
+              tenantId,
+              actor: { kind: 'user', userId: as.userId },
+              target: { id: batchId, label: input.name },
+              details: { scopeNodeCount: nodes.length },
+            })
             // The one place these units are used, and the last: they are the
             // query that fills the batch's two populations, not a definition
             // it will have to be kept in step with afterwards. Who takes part
@@ -2887,6 +2896,12 @@ export const make = Effect.fn('Assessment.make')(function* () {
               })
             }
             yield* deleteBatchRow(tenantId, batchId)
+            yield* audit.record(BatchDeleted, {
+              tenantId,
+              actor: { kind: 'user', userId: as.userId },
+              target: { id: batchId },
+              details: {},
+            })
           }),
         ),
       ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error)))
@@ -3918,7 +3933,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
 export const serviceLayer: Layer.Layer<
   Assessment,
   never,
-  Orm | Rbac | ItemTypeCatalog | ScoringCatalog | Storage
+  Orm | Rbac | Audit | ItemTypeCatalog | ScoringCatalog | Storage
 > = Layer.effect(Assessment, make())
 
 // --- api ---

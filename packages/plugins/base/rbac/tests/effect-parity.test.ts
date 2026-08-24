@@ -21,6 +21,11 @@ import { Rbac } from '@qualy/rbac-contract/effect'
 import type { ActivePermission, Principal } from '@qualy/rbac-contract'
 import { Access } from '../src/server/index.ts'
 import { serviceLayer as rbacLayer } from '../src/server/index.ts'
+import { serviceLayer as auditLayer } from '@qualy/plugin-audit/server'
+import { entities as auditEntities } from '@qualy/plugin-audit/db'
+import { AuditActionCatalog } from '@qualy/audit-contract/effect'
+import { compileActionCatalog } from '@qualy/audit-contract/plugin'
+import { accessActions } from '../src/actions.ts'
 
 // The behaviours the cordis suite asserted and the Effect suite did not.
 //
@@ -43,11 +48,22 @@ const catalog: readonly ActivePermission[] = [
 ]
 
 // what the orm must know for a query to name a table
-const closure = [...orgEntities, ...authEntities, ...rbacEntities] as const
+const closure = [...orgEntities, ...authEntities, ...rbacEntities, ...auditEntities] as const
 
 const stack = (url: string) =>
   booted(
     rbacLayer.pipe(
+      // the writer the audited services record through, on the same database
+      Layer.provideMerge(
+        auditLayer.pipe(
+          Layer.provide(
+            Layer.succeed(
+              AuditActionCatalog,
+              compileActionCatalog([{ owner: 'rbac', actions: accessActions }]),
+            ),
+          ),
+        ),
+      ),
       Layer.provideMerge(Layer.mergeAll(uiLayer, databaseFor(url, { entities: closure }))),
     ),
     { catalog },

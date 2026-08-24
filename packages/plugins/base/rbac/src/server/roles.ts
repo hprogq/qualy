@@ -17,6 +17,18 @@ import {
   rolesOfTenant,
   type RoleRow as RoleProjection,
 } from './db.ts'
+import { Audit } from '@qualy/audit-contract/effect'
+import type { AuditActor } from '@qualy/audit-contract'
+import {
+  RoleAppointmentUpdated,
+  RoleCreated,
+  RoleDeleted,
+  RoleDisabled,
+  RoleEligibilityUpdated,
+  RoleEnabled,
+  RolePermissionsUpdated,
+  RoleUpdated,
+} from '../actions.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
 import type { LastAdministrator } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
@@ -535,6 +547,8 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
   // body, and this supplies it to the transaction, so the service keeps
   // declaring no requirements of its own
   const withDb = yield* withDatabase
+  const audit = yield* Audit
+  const actorOf = (as: Principal): AuditActor => ({ kind: 'user', userId: as.userId })
 
   const write = <A, E, R>(tenantId: string, body: () => Effect.Effect<A, E, R>) =>
     withDb(
@@ -653,6 +667,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
     create: Effect.fn('Rbac.roles.create')(function* (
       tenantId: string,
       input: { code: string; name: string; description?: string; kind: 'tenant' | 'org' },
+      actor: Principal,
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
@@ -662,6 +677,12 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
             name: input.name,
             description: input.description ?? null,
             kind: input.kind,
+          })
+          yield* audit.record(RoleCreated, {
+            tenantId,
+            actor: actorOf(actor),
+            target: { id: created.id, label: input.name },
+            details: { kind: input.kind },
           })
           return created.id
         }),
@@ -673,6 +694,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       roleId: string,
       fields: { name?: string; description?: string | null; assignable?: boolean },
       expectedVersion: number,
+      actor: Principal,
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
@@ -691,6 +713,16 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
             (fields.assignable === undefined || fields.assignable === role.assignable)
           if (same) return role.version
           yield* updateRole(tenantId, role.id, fields)
+          yield* audit.record(RoleUpdated, {
+            tenantId,
+            actor: actorOf(actor),
+            target: { id: role.id, label: fields.name ?? role.name },
+            details: {
+              fields: (['name', 'description', 'assignable'] as const).filter(
+                (field) => fields[field] !== undefined,
+              ),
+            },
+          })
           return role.version + 1
         }),
       )
@@ -724,6 +756,12 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           yield* setRoleStatus(tenantId, role.id, status)
           // a role losing its permissions can remove the last administrator
           if (status === 'disabled') yield* keepsAdministrator(tenantId)
+          yield* audit.record(status === 'active' ? RoleEnabled : RoleDisabled, {
+            tenantId,
+            actor: actorOf(actor),
+            target: { id: role.id, label: role.name },
+            details: {},
+          })
           return role.version + 1
         }),
       )
@@ -794,9 +832,19 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
             new Set(wanted),
           )
 
+          const before = yield* rolePermissionCodes(tenantId, role.id)
           yield* prunePermissions(tenantId, role.id, [...active.keys()], wanted)
           yield* addPermissions(tenantId, role.id, wanted)
           yield* bumpRole(tenantId, role.id)
+          yield* audit.record(RolePermissionsUpdated, {
+            tenantId,
+            actor: actorOf(actor),
+            target: { id: role.id, label: role.name },
+            details: {
+              added: wanted.filter((code) => !before.includes(code)).sort(),
+              removed: before.filter((code) => !wanted.includes(code)).sort(),
+            },
+          })
           // an active role that just lost everything would be live and grant
           // nothing, so activation's completeness rule applies here too
           if (role.status === 'active') {
@@ -843,6 +891,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       roleId: string,
       policy: { holderPolicy: HolderPolicy; anchorPolicy: AnchorPolicy | null },
       expectedVersion: number,
+      actor: Principal,
     ) {
       return yield* write(tenantId, () =>
         Effect.gen(function* () {
@@ -995,6 +1044,12 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
             return yield* new RoleAppointmentInvalid({ reason: 'cycle' })
           }
           yield* bumpRole(tenantId, role.id)
+          yield* audit.record(RoleAppointmentUpdated, {
+            tenantId,
+            actor: actorOf(actor),
+            target: { id: role.id, label: role.name },
+            details: { targetRoleIds: wanted },
+          })
           return role.version + 1
         }),
       )
@@ -1004,6 +1059,7 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
       tenantId: string,
       roleId: string,
       expectedVersion: number,
+      actor: Principal,
     ) {
       yield* write(tenantId, () =>
         Effect.gen(function* () {
@@ -1012,6 +1068,12 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           const grants = yield* countGrantsOfRole(tenantId, role.id)
           if (grants > 0) return yield* new RoleInUse({ grantCount: grants })
           yield* deleteRole(tenantId, role.id)
+          yield* audit.record(RoleDeleted, {
+            tenantId,
+            actor: actorOf(actor),
+            target: { id: role.id, label: role.name },
+            details: {},
+          })
         }),
       )
     }),

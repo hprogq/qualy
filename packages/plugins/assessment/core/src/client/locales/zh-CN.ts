@@ -1,6 +1,8 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
+  'assessment/audit/batch-create': '新建测评批次',
+  'assessment/audit/batch-delete': '删除测评批次',
   'assessment/nav-group/main': '测评',
   'assessment/nav-group/batch-admin': '管理',
   'assessment/navigation/batches': '全部测评',

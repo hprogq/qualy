@@ -64,6 +64,20 @@ import {
   type UpdateNodeError,
 } from './errors.ts'
 import type { Principal } from '@qualy/rbac-contract'
+import { Audit } from '@qualy/audit-contract/effect'
+import type { AuditActor } from '@qualy/audit-contract'
+import {
+  NodeCreated,
+  NodeDeleted,
+  NodeMoved,
+  NodeRetyped,
+  NodeUpdated,
+  RuleDeleted,
+  RulePut,
+  TypeCreated,
+  TypeDeleted,
+  TypeUpdated,
+} from '../actions.ts'
 import { failedWith, translateConstraints } from '@qualy/plugin-database/server/constraints'
 import {
   byPath,
@@ -229,12 +243,16 @@ export class Org extends Context.Service<
   }
 >()('@qualy/plugin-org/Org') {}
 
+/** who acted; org's closure cannot see users, so the trail's read side names them */
+const actorOf = (as: Principal): AuditActor => ({ kind: 'user', userId: as.userId })
+
 export const make = Effect.fn('Org.make')(function* () {
   // a read opens no transaction, so it has nothing to take a database from;
   // supplying it here keeps the requirement off everybody who calls
   const withDb = yield* withDatabase
   const rbac = yield* Rbac
   const placement = yield* Placement
+  const audit = yield* Audit
 
   const changeNodeType = Effect.fn('Org.changeNodeType')(function* (
     tenantId: string,
@@ -298,6 +316,13 @@ export const make = Effect.fn('Org.make')(function* () {
           if (stranded > 0) return yield* new PlacementBlocked({ userCount: stranded })
 
           yield* setNodeType(tenantId, nodeId, newTypeId)
+          yield* audit.record(NodeRetyped, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: node.id, label: node.name },
+            organizationId: node.id,
+            details: { fromOrgTypeId: node.orgTypeId, toOrgTypeId: newTypeId },
+          })
           return yield* writtenNode(tenantId, nodeId, as)
         }),
       ),
@@ -357,9 +382,18 @@ export const make = Effect.fn('Org.make')(function* () {
     fields: { name?: string; sortOrder?: number },
     as: Principal,
   ) {
-    return yield* write(tenantId, nodeId, as, () =>
+    return yield* write(tenantId, nodeId, as, (node) =>
       Effect.gen(function* () {
         yield* updateNodeFields(tenantId, nodeId, fields)
+        yield* audit.record(NodeUpdated, {
+          tenantId,
+          actor: actorOf(as),
+          target: { id: node.id, label: fields.name ?? node.name },
+          organizationId: node.id,
+          details: {
+            fields: (['name', 'sortOrder'] as const).filter((field) => fields[field] !== undefined),
+          },
+        })
         return yield* writtenNode(tenantId, nodeId, as)
       }),
     )
@@ -378,6 +412,12 @@ export const make = Effect.fn('Org.make')(function* () {
         // Users and assignments still block through their restrict foreign
         // keys, and so does anything else that points here.
         yield* deleteNodeRow(tenantId, nodeId)
+        yield* audit.record(NodeDeleted, {
+          tenantId,
+          actor: actorOf(as),
+          target: { id: node.id, label: node.name },
+          details: {},
+        })
       }),
     ).pipe(
       // Any foreign key, not only the ones this plugin can name.
@@ -541,7 +581,7 @@ export const make = Effect.fn('Org.make')(function* () {
             reason: 'parent-child type combination is not allowed by the rules',
           })
         }
-        return yield* insertNode({
+        const created = yield* insertNode({
           tenantId,
           parentId: parent.id,
           parentPath: parent.path,
@@ -550,6 +590,14 @@ export const make = Effect.fn('Org.make')(function* () {
           name: input.name,
           sortOrder: input.sortOrder ?? 0,
         })
+        yield* audit.record(NodeCreated, {
+          tenantId,
+          actor: actorOf(as),
+          target: { id: created.id, label: input.name },
+          organizationId: created.id,
+          details: { parentId: parent.id, orgTypeId: input.orgTypeId },
+        })
+        return created
       }),
     )
   })
@@ -592,6 +640,13 @@ export const make = Effect.fn('Org.make')(function* () {
             // same parent: a reorder, with no structural change to validate
             if (newSortOrder !== undefined) {
               yield* updateNodeFields(tenantId, nodeId, { sortOrder: newSortOrder })
+              yield* audit.record(NodeUpdated, {
+                tenantId,
+                actor: actorOf(as),
+                target: { id: node.id, label: node.name },
+                organizationId: node.id,
+                details: { fields: ['sortOrder'] },
+              })
             }
             return yield* writtenNode(tenantId, nodeId, as)
           }
@@ -615,6 +670,13 @@ export const make = Effect.fn('Org.make')(function* () {
           if (newSortOrder !== undefined) {
             yield* updateNodeFields(tenantId, nodeId, { sortOrder: newSortOrder })
           }
+          yield* audit.record(NodeMoved, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: node.id, label: node.name },
+            organizationId: node.id,
+            details: { fromParentId: node.parentId, toParentId: newParent.id },
+          })
           return yield* writtenNode(tenantId, nodeId, as)
         }),
       ),
@@ -719,10 +781,19 @@ export const make = Effect.fn('Org.make')(function* () {
       as: Principal,
     ) {
       return yield* writeAtRoot(tenantId, as, () =>
-        insertType({
-          tenantId,
-          name: input.name,
-          sortOrder: input.sortOrder ?? 0,
+        Effect.gen(function* () {
+          const created = yield* insertType({
+            tenantId,
+            name: input.name,
+            sortOrder: input.sortOrder ?? 0,
+          })
+          yield* audit.record(TypeCreated, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: created.id, label: input.name },
+            details: {},
+          })
+          return created
         }),
       )
     }),
@@ -738,7 +809,18 @@ export const make = Effect.fn('Org.make')(function* () {
           yield* updateType(tenantId, typeId, fields)
           // the row as it now stands, read here rather than by the handler:
           // listTypes asks for org.tree.read, and this write proved manage
-          return (yield* typeOf(tenantId, typeId))!
+          const written = (yield* typeOf(tenantId, typeId))!
+          yield* audit.record(TypeUpdated, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: written.id, label: written.name },
+            details: {
+              fields: (['name', 'sortOrder'] as const).filter(
+                (field) => fields[field] !== undefined,
+              ),
+            },
+          })
+          return written
         }),
       )
     }),
@@ -749,7 +831,8 @@ export const make = Effect.fn('Org.make')(function* () {
     ) {
       yield* writeAtRoot(tenantId, as, () =>
         Effect.gen(function* () {
-          if (!(yield* typeOf(tenantId, typeId))) return yield* new TypeNotFound()
+          const type = yield* typeOf(tenantId, typeId)
+          if (!type) return yield* new TypeNotFound()
           if (yield* typeHasNodes(tenantId, typeId)) {
             return yield* new TypeInUse({ reason: 'nodes still use this org type' })
           }
@@ -757,6 +840,12 @@ export const make = Effect.fn('Org.make')(function* () {
             return yield* new TypeInUse({ reason: 'rules still reference this org type' })
           }
           yield* deleteType(tenantId, typeId)
+          yield* audit.record(TypeDeleted, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: type.id, label: type.name },
+            details: {},
+          })
         }),
       )
     }),
@@ -788,6 +877,12 @@ export const make = Effect.fn('Org.make')(function* () {
             return yield* new RuleCycle()
           }
           yield* insertRule({ tenantId, parentTypeId, childTypeId })
+          yield* audit.record(RulePut, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: `${parentTypeId}/${childTypeId}` },
+            details: { parentTypeId, childTypeId },
+          })
         }),
       )
     }),
@@ -804,6 +899,12 @@ export const make = Effect.fn('Org.make')(function* () {
           }
           if (yield* ruleInUse(tenantId, parentTypeId, childTypeId)) return yield* new RuleInUse()
           yield* deleteRule(tenantId, parentTypeId, childTypeId)
+          yield* audit.record(RuleDeleted, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: `${parentTypeId}/${childTypeId}` },
+            details: { parentTypeId, childTypeId },
+          })
         }),
       )
     }),
@@ -817,7 +918,7 @@ export const make = Effect.fn('Org.make')(function* () {
  * that keeps the graph acyclic.
  */
 /** the service alone; the entry composes it with what the plugin registers */
-export const serviceLayer: Layer.Layer<Org, never, Orm | Rbac | Placement> = Layer.effect(
+export const serviceLayer: Layer.Layer<Org, never, Orm | Rbac | Placement | Audit> = Layer.effect(
   Org,
   make(),
 )

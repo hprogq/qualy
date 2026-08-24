@@ -8170,3 +8170,50 @@ reason 值随对应驱动落地时扩展联合类型。
 验收:`pnpm typecheck` 零错;`pnpm test` 812 passed | 17 skipped(新增 4 条);
 `pnpm test:browser` 116 passed;`pnpm build` 成功;`pnpm qualy deploy` 后生产 smoke 八条全过;
 prettier 通过。下一步:Phase 5(逐插件补齐 mutation 审计)或 Phase 6(OpenTelemetry)。
+
+## 审计扫尾(audit 计划 Phase 5):四插件 mutation 全面接入(2026-08-24)
+
+按 docs/audit-design.md Phase 5 逐插件扫 mutation。四个插件共新增 **29 个审计动作**:
+
+- **auth 补齐**(7):user-type create/update/enable/disable/placement.update/delete +
+  provider.audience.update。五个 user-type 服务操作与 setAudience 原先不带 Principal,
+  统一在签名末尾线程 `as: Principal`(handlers 与全部测试调用点同笔更新);actor 快照
+  经共享的 `server/audit-actor.ts`(users.ts 原地重构复用同一实现)。
+- **org**(10):node create/update/move/retype/delete、type create/update/delete、
+  type-rule update/delete。moveNode 的同父 reorder 分支记为 update(fields=[sortOrder]),
+  putRule 的幂等重复请求不产事件;delete 事件在 FK/CHECK 拒绝之后才可能到达,天然只记成功。
+- **rbac**(10):role create/update/enable/disable/permissions.update(**带 added/removed
+  码表 diff**,§7 的动机)/eligibility.update/appointment.update/delete + role-grant
+  create/revoke。码走 **iam.\*** 而非 rbac.\*(与 URL、权限码同一产品域纪律)。
+  `grants.grant`/`createScopedAssignment`/`revoke` 三个入口经同一 grantRole/revoke 落点
+  一次覆盖;**revokeAssignment 端口也记**(assessment removeStaff 走它;actorId 为空记
+  system),`revokeGrant` 改 returning 整行以供记录。roles create/update/setEligibility/
+  remove 补 actor 参数。
+- **assessment**(2):batch.create/delete——**只有这两个**,是裁决不是遗漏:该域的管理写
+  几乎全部已有带 actor 的 domain history(config revisions、lifecycle/phase/participant
+  events、roster imports、item revisions),按「已有 Domain Event 不复制」跳过。清点出的
+  真空白(模板 CRUD、item delete/status/score-groups、access 面离散事件、draft 期
+  updateBatch)记入下方 backlog。
+
+**audit 读侧 actor 名称补全**:org/rbac/assessment 的闭包看不见 users(依赖方向),写侧只记
+`{kind:'user', userId}`;listEvents 左连 users 取
+`coalesce(actor_label, displayName)`——快照优先(auth 写侧仍记快照,活得过删人),
+现名兜底。audit 的 Db.entities 因此增 dependsOn '@qualy/plugin-auth'(只读),UI 的 user 无名
+兜底改为 id 前八位。
+
+**波及面**:org/rbac/assessment 的 serviceLayer 均新增 Audit requirement;十个测试 harness
+(rbac 3、assessment round.ts+6、org 3 的 catalog 扩容)统一补 audit 层 + 各自域的动作目录;
+audit 自己的测试闭包补 auth 实体。i18n:29 个动作名 en+zh-CN 全量(catalogs 门禁绿)。
+新增两条落库断言:org 的结构写在同一提交里留下事件序列(update+retype,actor 正确);
+rbac 的授予事件指认授予者与受与者。
+
+**过程教训**:rbac roles.ts 的 import 注入曾静默未生效(锚点字符串跨行不匹配),`Audit`
+未定义让整个 make 的推断塌成 unknown、错误却在 500 行外的 handlers 报——二分(逐个中和
+record 调用)才定位;教训是脚本化批量编辑必须断言锚点命中(后续脚本已全部 assert)。
+
+**backlog(触发即做)**:assessment 模板 CRUD 与 item delete/status/score-groups 无任何
+痕迹,补 domain event 或 audit 二选一;audit UI 的 actionCode 过滤下拉现已有 29 项,需按
+插件分组;`audit.event.export` 仍未做(导出机制不存在)。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 814 passed | 17 skipped(新增 2 条);
+`pnpm test:browser` 116 passed;`pnpm build` 成功;生产 smoke 八条全过;prettier 通过。

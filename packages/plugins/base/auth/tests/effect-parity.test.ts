@@ -173,11 +173,15 @@ describe.runIf(postgresAvailable).concurrent('what the cordis identity suite cov
           const f = yield* seed()
           const iam = yield* Iam
           const rbac = yield* Rbac
-          const auditorType = yield* iam.userTypes.create(f.tenant, {
-            code: 'auditor',
-            name: 'Auditor',
-            placementPolicy: { mode: 'unrestricted' },
-          })
+          const auditorType = yield* iam.userTypes.create(
+            f.tenant,
+            {
+              code: 'auditor',
+              name: 'Auditor',
+              placementPolicy: { mode: 'unrestricted' },
+            },
+            f.principal,
+          )
           const auditor = yield* iam.users.create(
             f.tenant,
             { displayName: 'Auditor', userTypeId: auditorType, primaryOrgNodeId: f.root },
