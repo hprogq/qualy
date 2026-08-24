@@ -71,6 +71,62 @@ services:
       retries: 5
       start_period: 20s
 
+  # The local observability stack, off by default:
+  #
+  #   docker compose --profile observability up -d
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 pnpm dev
+  #
+  # The application only ever talks to the collector; the collector forwards
+  # to the LGTM box (Tempo for traces, a Prometheus-compatible store for
+  # metrics, Grafana on http://localhost:3001 to look at both). Production
+  # keeps the exact same first hop and swaps what stands behind it, so
+  # nothing about the application changes between the two. See
+  # ops/observability/README.md.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.159.0
+    container_name: qualy-otel-collector
+    restart: unless-stopped
+    profiles: [observability]
+    command: ['--config=/etc/otelcol/config.yaml']
+    volumes:
+      - ./ops/observability/collector.local.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - '127.0.0.1:4317:4317'
+      - '127.0.0.1:4318:4318'
+      # the collector's own health_check extension; the image is FROM scratch,
+      # so there is no shell for a docker healthcheck to exec - this port is
+      # the probe: curl -sf http://127.0.0.1:13133
+      - '127.0.0.1:13133:13133'
+    depends_on:
+      otel-lgtm:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  otel-lgtm:
+    image: grafana/otel-lgtm:0.31.0
+    container_name: qualy-otel-lgtm
+    restart: unless-stopped
+    profiles: [observability]
+    ports:
+      - '127.0.0.1:3001:3000'
+    # diagnostics for a laptop, not a deployment: nothing kept here is worth
+    # a volume, and a fresh start is a feature when the retention is hours
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:3000/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
 volumes:
   pg_data: {}
   pg_backups: {}

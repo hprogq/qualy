@@ -8269,3 +8269,40 @@ receiver 收到 33 个 span(Database.prepare、Rbac.make、Auth.signIn.make 等�
 成功;生产 smoke 全过(有/无 OTEL endpoint 各一遍);prettier 通过。
 下一步按计划 6.2(本地 observability compose profile)或 6.3(HTTP span 路由模板与
 RequestContext 关联)。
+
+## 本地可观测性栈落地(OTel 计划 Phase 6.2):collector + LGTM profile(2026-08-25)
+
+按 docs/PHASE6-OPENTELEMETRY-DESIGN.md §15/§26 的 6.2,给开发机一条默认关闭的
+traces+metrics 通路;应用侧零改动——它只认识 `127.0.0.1:4318`,这正是 6.1 的全部意义。
+
+**交付**:
+
+- `ops/observability/collector.local.yaml`:otlp 双协议 receiver →
+  memory_limiter(先拒绝后缓冲)+ batch → otlp 转发 LGTM;health_check extension
+  开 13133。**已在 pin 定镜像内 validate 通过**(README 记了升级时的复验命令)。
+- docker-compose.yml 新增 `observability` profile 两个服务,照既有风格
+  (container_name、restart、logging 限额、localhost-only 端口):
+  `otel/opentelemetry-collector-contrib:0.159.0`(4317/4318/13133;镜像 scratch 基底
+  无 shell,docker healthcheck 不可能,13133 就是探针——注释与 README 都写明)与
+  `grafana/otel-lgtm:0.31.0`(Grafana 映射 localhost:3001,healthcheck 走
+  `/api/health`,镜像内 curl 实查存在;**不带 volume**——本地遥测的保留期就是容器
+  生命期)。collector `depends_on` LGTM healthy。版本 pin 自 Docker Hub 当日最新
+  stable(nightly 与 latest 拒绝)。
+- `ops/observability/README.md`(中文):启动、健康、停止、升级。一个实测出的坑
+  写进了文档:启用 profile 后不带服务名的 `docker compose down` 会把默认组的
+  postgres 一并停掉,停栈必须点名 `down otel-collector otel-lgtm`(已实测:postgres
+  不受影响)。
+- `.env.example` 补注释掉的 `OTEL_EXPORTER_OTLP_ENDPOINT`(无值即 no-op 的语义一并说明)。
+
+**端到端实证**(§27 条 1 提前达成):`up -d --wait` 双容器 healthy;13133 探针
+`Server available`;带 endpoint 重跑生产 smoke 全过、退出 0;经 Grafana API 查
+Tempo:`service.name=qualy-server` 的 trace 15 种 root(`http.server GET` 请求 span、
+`Database.prepare` 114ms、`Auth.signIn.make` 等——span 命名与路由模板归 6.3);
+metrics 通路以合成 OTLP counter 实证:POST 4318/v1/metrics →
+Prometheus 查回 `qualy_pipeline_probe_total=1`(应用侧业务指标归 6.6,Effect 注册表
+现在为空是预期)。
+
+验收:collector config validate 通过;`pnpm typecheck` 零错;`pnpm test`
+822 passed | 17 skipped;prettier 通过(本阶段未动任何 TS/web 源,browser 与 build
+不受影响)。下一步按计划 6.3:HTTP span 路由模板、W3C 传播与 access log 的
+requestId/traceId 关联。

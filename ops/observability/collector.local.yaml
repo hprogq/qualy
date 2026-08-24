@@ -1,0 +1,57 @@
+# The local collector, between the application and the LGTM box.
+#
+# The application only ever speaks to 127.0.0.1:4318 (see the observability
+# profile in docker-compose.yml); everything behind that line is this file's
+# business. Keeping the collector in the path locally means the development
+# pipeline has the same shape as production, where the same receiver fans out
+# to Tencent APM and TMP instead - the application never learns the
+# difference.
+#
+# Validated against the pinned image:
+#   docker compose --profile observability run --rm --no-deps \
+#     otel-collector validate --config=/etc/otelcol/config.yaml
+
+extensions:
+  # answers on 13133 (mapped to localhost) so an operator can ask the
+  # collector itself, not just the containers around it
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # memory_limiter first, batch second: refuse before buffering, so a burst
+  # degrades telemetry instead of growing the container until Docker kills it
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 192
+    spike_limit_mib: 48
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+
+exporters:
+  otlp/local_lgtm:
+    endpoint: otel-lgtm:4317
+    tls:
+      # loopback network inside the compose project; TLS here would secure
+      # a wire that never leaves the machine
+      insecure: true
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/local_lgtm]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/local_lgtm]
