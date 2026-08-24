@@ -12,6 +12,7 @@ import { compositeForeignKeys, entities } from '../src/db/entities.ts'
 
 const TABLES = [
   'sessions',
+  'sign_in_events',
   'user_identities',
   'users',
   'user_type_allowed_org_types',

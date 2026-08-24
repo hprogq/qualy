@@ -305,6 +305,73 @@ export const Session = defineEntity({
 })
 
 /**
+ * One sign-in attempt, success or failure, as the auth domain's own record.
+ *
+ * Not an audit event: signing in is this domain's high-frequency security
+ * fact, and the trail of administrative operations must not drown in it.
+ * Actor references are ids without foreign keys - the row is history and
+ * outlives whatever it names - and there is deliberately NO identifier
+ * column: what an attacker typed is not worth storing, a resolved attempt
+ * records the ids instead, and analysis leans on address, provider and time.
+ * The credential itself never comes near this table.
+ *
+ * `reason_code` is the internal, precise cause; the wire answer stays the
+ * uniform refusal the driver gives, so this precision never leaks to an
+ * anonymous caller.
+ */
+export const SignInEvent = defineEntity({
+  name: 'SignInEvent',
+  tableName: 'sign_in_events',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('sign_in_events_tenant_id_tenants_id_fkey'),
+    occurredAt: p.datetime().defaultRaw('now()'),
+
+    // the door: id plus a snapshot of how it was addressed at the time
+    providerId: p.uuid(),
+    providerType: p.string().length(32),
+    providerCode: p.string().length(63),
+
+    userId: p.uuid().nullable(),
+    identityId: p.uuid().nullable(),
+
+    outcome: p.string().length(16),
+    reasonCode: p.string().length(63).nullable(),
+
+    sessionId: p.uuid().nullable(),
+
+    requestId: p.uuid().nullable(),
+    traceId: p.string().length(32).nullable(),
+    clientIp: p.string().type('inet').nullable(),
+    userAgent: p.text().nullable(),
+  },
+  checks: [
+    {
+      name: 'chk_sign_in_events_outcome',
+      expression: `outcome IN ('success', 'failure')`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'idx_sign_in_events_tenant_time',
+      expression:
+        'create index idx_sign_in_events_tenant_time on sign_in_events (tenant_id, occurred_at)',
+    },
+    {
+      name: 'idx_sign_in_events_tenant_user_time',
+      expression:
+        'create index idx_sign_in_events_tenant_user_time on sign_in_events (tenant_id, user_id, occurred_at)',
+    },
+    // credential spraying reads as one address knocking on many doors
+    {
+      name: 'idx_sign_in_events_tenant_ip_time',
+      expression:
+        'create index idx_sign_in_events_tenant_ip_time on sign_in_events (tenant_id, client_ip, occurred_at)',
+    },
+  ],
+})
+
+/**
  * The tenant-scoped composite foreign keys.
  *
  * Each points at a composite unique key rather than a primary one, which is
@@ -347,4 +414,5 @@ export const entities = [
   AuthProviderUserType,
   UserIdentity,
   Session,
+  SignInEvent,
 ] as const

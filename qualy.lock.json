@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:730c2646979147e485b845476fcd305c6b6f716dac2d3c2715996779b9da1373",
-  "resolutionHash": "sha256:27da70e2b11ca9c1f6f2f9e7166bf005cdc3b9f725c7bb5f1e3f781df206fc18",
+  "resolutionHash": "sha256:4d4574075a3a110344781c7ed1bc2e3475747e19ca08bf8a10dc1db24a50069a",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -96,6 +96,7 @@
             "AuthProvider",
             "AuthProviderUserType",
             "Session",
+            "SignInEvent",
             "User",
             "UserIdentity",
             "UserType",

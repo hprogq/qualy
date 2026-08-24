@@ -1,9 +1,9 @@
 import { componentKey } from '@qualy/ui-contract'
 import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
-import { currentRequestContext } from '@qualy/api-kit/request'
+import { bindSessionId, currentRequestContext } from '@qualy/api-kit/request'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { kyselyOf, query, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import { kyselyOf, query, transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
 import { sql } from 'kysely'
 import {
@@ -11,6 +11,8 @@ import {
   LoginSessions,
   type LoginPresentation,
   type LoginSessionsShape,
+  type ResolvedProvider,
+  type SignInFailureReason,
   type SignedInUser,
 } from '@qualy/auth-contract/login'
 import { createSessionToken, hashSessionToken } from '../session.ts'
@@ -189,6 +191,96 @@ const insertSession = (input: {
         loginIp: input.loginIp ?? null,
         userAgent: input.userAgent ?? null,
       })
+      .returning('id')
+      .executeTakeFirstOrThrow(),
+  )
+
+/** how the door was addressed when the attempt happened, for the record's snapshot */
+const providerSnapshot = (tenantId: string, providerId: string) =>
+  db.query((k) =>
+    k
+      .selectFrom('AuthProvider')
+      .select(['type', 'code'])
+      .where('tenantId', '=', tenantId)
+      .where('id', '=', providerId)
+      .executeTakeFirst(),
+  )
+
+/**
+ * Why a proven user still may not come in, spelled out for the record.
+ *
+ * The sign-in predicate deliberately answers one merged "no"; this reads the
+ * pieces back apart, on the rare refused path only, because the event's whole
+ * value is precision the wire answer must not have.
+ */
+const classifyUnusable = (tenantId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('User as u')
+        .leftJoin('UserType as t', (join) =>
+          join.onRef('t.tenantId', '=', 'u.tenantId').onRef('t.id', '=', 'u.userTypeId'),
+        )
+        .innerJoin('Tenant as e', 'e.id', 'u.tenantId')
+        .select((eb) => [
+          'u.enabled as userEnabled',
+          'u.deletedAt',
+          't.enabled as typeEnabled',
+          sql<boolean>`
+            ${eb.ref('e.enabled')}
+            and (${eb.ref('e.expiresAt')} is null or ${eb.ref('e.expiresAt')} > now())
+          `.as('tenantUsable'),
+        ])
+        .where('u.tenantId', '=', tenantId)
+        .where('u.id', '=', userId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row): SignInFailureReason => {
+        if (!row) return 'user-not-found'
+        if (row.deletedAt !== null) return 'user-deleted'
+        if (!row.userEnabled) return 'user-disabled'
+        if (row.typeEnabled === false) return 'user-type-disabled'
+        if (!row.tenantUsable) return 'tenant-disabled'
+        // every piece looks fine in isolation; the merged predicate saw
+        // something this one did not, and an inexact record beats a defect
+        return 'user-not-found'
+      }),
+    )
+
+const insertSignInEvent = (input: {
+  tenantId: string
+  providerId: string
+  providerType: string
+  providerCode: string
+  userId?: string
+  identityId?: string
+  outcome: 'success' | 'failure'
+  reasonCode?: string
+  sessionId?: string
+  requestId?: string
+  traceId?: string
+  clientIp?: string
+  userAgent?: string
+}) =>
+  db.query((k) =>
+    k
+      .insertInto('SignInEvent')
+      .values({
+        tenantId: input.tenantId,
+        providerId: input.providerId,
+        providerType: input.providerType,
+        providerCode: input.providerCode,
+        userId: input.userId ?? null,
+        identityId: input.identityId ?? null,
+        outcome: input.outcome,
+        reasonCode: input.reasonCode ?? null,
+        sessionId: input.sessionId ?? null,
+        requestId: input.requestId ?? null,
+        traceId: input.traceId ?? null,
+        clientIp: input.clientIp ?? null,
+        userAgent: input.userAgent ?? null,
+      })
       .execute(),
   )
 
@@ -305,6 +397,42 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       maxAge: Duration.seconds(maxAgeSeconds),
     })
 
+  /**
+   * One writer for both outcomes, so every event carries the same shape: the
+   * door's snapshot, how far the attempt got, and the request it rode in on.
+   * The correlation comes from the request context, never from the caller.
+   */
+  const record = Effect.fn('Auth.signIn.record')(function* (
+    provider: ResolvedProvider,
+    input: {
+      outcome: 'success' | 'failure'
+      reason?: SignInFailureReason
+      userId?: string
+      identityId?: string
+      sessionId?: string
+    },
+  ) {
+    const snapshot = yield* providerSnapshot(provider.tenantId, provider.providerId).pipe(
+      Effect.orDie,
+    )
+    const context = Option.getOrUndefined(yield* currentRequestContext)
+    yield* insertSignInEvent({
+      tenantId: provider.tenantId,
+      providerId: provider.providerId,
+      providerType: snapshot?.type ?? 'unknown',
+      providerCode: snapshot?.code ?? 'unknown',
+      ...(input.userId === undefined ? {} : { userId: input.userId }),
+      ...(input.identityId === undefined ? {} : { identityId: input.identityId }),
+      outcome: input.outcome,
+      ...(input.reason === undefined ? {} : { reasonCode: input.reason }),
+      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+      ...(context?.requestId === undefined ? {} : { requestId: context.requestId }),
+      ...(context?.traceId === undefined ? {} : { traceId: context.traceId }),
+      ...(context?.clientIp === undefined ? {} : { clientIp: context.clientIp }),
+      ...(context?.userAgent === undefined ? {} : { userAgent: context.userAgent }),
+    }).pipe(Effect.orDie)
+  })
+
   const sessions: LoginSessionsShape = {
     resolveProvider: bound(
       Effect.fn('Auth.signIn.resolveProvider')(function* (input: {
@@ -345,32 +473,70 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       }),
     ),
 
+    failAttempt: bound(
+      Effect.fn('Auth.signIn.failAttempt')(function* (
+        provider: ResolvedProvider,
+        input: { reason: SignInFailureReason; userId?: string; identityId?: string },
+      ) {
+        yield* record(provider, { outcome: 'failure', ...input })
+      }),
+    ),
+
     completeLogin: bound(
       Effect.fn('Auth.signIn.completeLogin')(function* (input: {
         tenantId: string
+        providerId: string
         userId: string
         identityId?: string
       }) {
+        const provider = { tenantId: input.tenantId, providerId: input.providerId }
         // the account state is re-read here rather than trusted from the proof:
         // a driver knows who somebody is, not whether they may still come in
         const user = yield* loadUser(input.tenantId, input.userId)
-        if (!user) return undefined
+        if (!user) {
+          // the driver's proof was good; what refused them is the account,
+          // and the record says which part - precision the wire answer
+          // deliberately does not have
+          const reason = yield* classifyUnusable(input.tenantId, input.userId).pipe(Effect.orDie)
+          yield* record(provider, {
+            outcome: 'failure',
+            reason,
+            userId: input.userId,
+            ...(input.identityId === undefined ? {} : { identityId: input.identityId }),
+          })
+          return undefined
+        }
         // the request context already resolved the client address through
         // the trusted-proxy policy; the raw socket peer would record the
         // proxy itself on any proxied deployment
         const context = Option.getOrUndefined(yield* currentRequestContext)
         const { token, tokenHash } = createSessionToken()
-        yield* insertSession({
-          tenantId: input.tenantId,
-          userId: input.userId,
-          tokenHash,
-          ttlSeconds: config.sessionTtlSeconds,
-          loginIp: context?.clientIp,
-          userAgent: context?.userAgent,
-        }).pipe(Effect.orDie)
-        if (input.identityId) {
-          yield* touchIdentity(input.identityId).pipe(Effect.orDie)
-        }
+        // one transaction: the session, the identity's last-used stamp and
+        // the sign-in event exist together or not at all
+        const sessionId = yield* transaction(
+          Effect.gen(function* () {
+            const session = yield* insertSession({
+              tenantId: input.tenantId,
+              userId: input.userId,
+              tokenHash,
+              ttlSeconds: config.sessionTtlSeconds,
+              loginIp: context?.clientIp,
+              userAgent: context?.userAgent,
+            }).pipe(Effect.orDie)
+            if (input.identityId) {
+              yield* touchIdentity(input.identityId).pipe(Effect.orDie)
+            }
+            yield* record(provider, {
+              outcome: 'success',
+              userId: input.userId,
+              ...(input.identityId === undefined ? {} : { identityId: input.identityId }),
+              sessionId: session.id,
+            })
+            return session.id
+          }),
+        )
+        // this request now has a session, before anything else records it
+        yield* bindSessionId(sessionId)
         yield* setCookie(token, config.sessionTtlSeconds)
         return user
       }),

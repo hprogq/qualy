@@ -53,24 +53,43 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
         providerCode: params.providerCode,
         expectedType: 'local',
       })
+      // no resolved door, no record: a URL that names no provider is not an
+      // attempt on anybody's account
       if (!resolved) return yield* fail()
       const identifier = normalizeLocalIdentifier(payload.identifier)
-      if (!identifier) return yield* fail()
+      if (!identifier) {
+        yield* sessions.failAttempt(resolved, { reason: 'identity-not-found' })
+        return yield* fail()
+      }
       const identity = yield* sessions.findIdentity({
         tenantId: resolved.tenantId,
         providerId: resolved.providerId,
         identifier,
       })
-      if (!identity?.credentialHash) return yield* fail()
+      if (!identity?.credentialHash) {
+        yield* sessions.failAttempt(resolved, { reason: 'identity-not-found' })
+        return yield* fail()
+      }
       const verified = yield* Effect.promise(() =>
         verifyPassword(identity.credentialHash!, payload.password),
       )
-      if (!verified) return yield* new InvalidCredentials()
+      if (!verified) {
+        // resolved this far, so the record can say who it was about; the
+        // caller still hears the same refusal as every other path
+        yield* sessions.failAttempt(resolved, {
+          reason: 'invalid-credentials',
+          userId: identity.userId,
+          identityId: identity.id,
+        })
+        return yield* new InvalidCredentials()
+      }
       const user = yield* sessions.completeLogin({
         tenantId: resolved.tenantId,
+        providerId: resolved.providerId,
         userId: identity.userId,
         identityId: identity.id,
       })
+      // an unusable account was recorded by the core, with the precise reason
       if (!user) return yield* new InvalidCredentials()
       return { user }
     }),

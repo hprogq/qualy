@@ -8128,3 +8128,45 @@ prettier 通过。
 **Phase 3 未做**(裁决):绑定/解绑登录方式与重置密码仍无 API(3i 待做);已删除视图的批量
 恢复;恢复时重选归属的专用 UI(API 已支持 userTypeId/primaryOrgNodeId,原归属健在时无需选择)。
 下一步按计划 Phase 4:SignInAttempt 与 sign_in_events。
+
+## 登录记录落地(audit 计划 Phase 4):sign_in_events 与统一 attempt 契约(2026-08-24)
+
+按 docs/audit-design.md Phase 4:登录成败进 auth 自己的 `sign_in_events`(§15——认证是本域的
+高频安全事实,不进 audit_events 稀释管理操作的轨迹),记录统一由 core 执行,驱动经契约上报。
+
+**表**(auth 拥有,迁移 20260824143226):tenant FK 之外零外键(历史活得比所指对象久);
+door 快照(provider_id + type/code 当时的样子);**没有 identifier 列**——攻击者输入的字符串
+不值得存,已解析的尝试记 ids,分析靠 IP/provider/时间窗(§19;将来真要做撞库聚合再引
+HMAC pseudonym)。请求关联四列(requestId/traceId/clientIp/userAgent)由 core 从 Phase 1 的
+RequestContext 读,调用方递不进也伪造不了。索引三条:tenant+时间、tenant+用户+时间、
+tenant+IP+时间(撞库的样子就是一个地址敲很多扇门)。**tenant 非空**是对 §16 的一处已裁决偏离:
+事件从 resolveProvider 成功起才记——URL 都解析不到门的请求不是对任何租户账号的尝试,
+是访问日志的噪音。
+
+**契约**(@qualy/auth-contract/login):新增 `SignInFailureReason` 七值与
+`failAttempt(provider, {reason, userId?, identityId?})`;`completeLogin` 增 providerId。
+驱动只说它看得见的(凭据不对、身份不存在);**账号级拒绝由 core 自己记**:completeLogin 的
+合并谓词说不之后,core 用一次慢路径专用的分类查询把「不」拆回精确原因
+(user-deleted/user-disabled/user-type-disabled/tenant-disabled/user-not-found)——记录的
+全部价值就是线上答案刻意没有的精度,wire 仍然只有 INVALID_CREDENTIALS,时序拉平不动。
+
+**completeLogin 事务化**(§17):session 插入(改 returning id)+ identity.lastUsedAt +
+成功事件,三写一个事务,存在与否一起决定;随后 `bindSessionId` 把新会话绑回请求上下文,
+同请求内后续的审计事件立即携带 sessionId。auth-local 四个失败口全部上报
+(空标识/查无身份/受众拒绝合并为 identity-not-found,密码不符为 invalid-credentials 且带
+userId/identityId);解析不到 provider 的路径**不记**。
+
+**门禁适配**:entity-parity 的表清单补 sign_in_events(auth 的 TABLES 与 rbac 的
+UPSTREAM_TABLES——lineage 里已有的表,generator 不重建)。
+
+**范围裁决**:sign_in_events 暂无读 API 与界面(先收数据;呈现留给安全面板或用户详情的
+「最近登录」一节,届时按 keyset 惯例开 /audit 或 /iam 路径);oauth-state/cas-ticket 类
+reason 值随对应驱动落地时扩展联合类型。
+
+新增 effect-sign-in 测试四条:成功事件带 session/请求关联且 session 同事务存在、密错事件
+指认账号但 session 为空、未知名字只记 identity-not-found 且**不存输入**、停用账号被拒时
+记录精确原因而 wire 仍是统一拒绝。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 812 passed | 17 skipped(新增 4 条);
+`pnpm test:browser` 116 passed;`pnpm build` 成功;`pnpm qualy deploy` 后生产 smoke 八条全过;
+prettier 通过。下一步:Phase 5(逐插件补齐 mutation 审计)或 Phase 6(OpenTelemetry)。

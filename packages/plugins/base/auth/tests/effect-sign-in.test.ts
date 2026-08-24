@@ -354,3 +354,104 @@ describe.runIf(postgresAvailable)('signing in', () => {
     expect(await response.json()).toEqual({ ok: true })
   })
 })
+
+describe.runIf(postgresAvailable)('the sign-in record', () => {
+  type EventRow = {
+    outcome: string
+    reason_code: string | null
+    user_id: string | null
+    identity_id: string | null
+    session_id: string | null
+    provider_type: string
+    provider_code: string
+    request_id: string | null
+    client_ip: string | null
+    user_agent: string | null
+  }
+
+  /** the newest event, which under this file's sequential cases is the one just caused */
+  const latestEvent = () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const result = (yield* runSql(
+          sql`select outcome, reason_code, user_id, identity_id, session_id,
+                     provider_type, provider_code, request_id, client_ip::text as client_ip,
+                     user_agent
+              from sign_in_events order by occurred_at desc, id desc limit 1`,
+        )) as unknown as { rows: EventRow[] }
+        return result.rows[0]!
+      }).pipe(Effect.provide(probeInfra())),
+    )
+
+  it('records a success with its session and its request', async () => {
+    const response = await login({ identifier: 'ada', password })
+    expect(response.status).toBe(200)
+    const event = await latestEvent()
+    expect(event.outcome).toBe('success')
+    expect(event.reason_code).toBeNull()
+    expect(event.user_id).toBe(userId)
+    expect(event.identity_id).not.toBeNull()
+    expect(event.provider_type).toBe('local')
+    expect(event.provider_code).toBe('password')
+    // the same transaction wrote the session this event names
+    const session = await Effect.runPromise(
+      Effect.gen(function* () {
+        const result = (yield* runSql(
+          sql`select id from sessions where id = ${event.session_id}`,
+        )) as unknown as { rows: { id: string }[] }
+        return result.rows[0]
+      }).pipe(Effect.provide(probeInfra())),
+    )
+    expect(session?.id).toBe(event.session_id)
+    // request correlation comes from the request context, not from any caller
+    expect(event.request_id).not.toBeNull()
+    expect(event.client_ip).toMatch(/127\.0\.0\.1/)
+    expect(event.user_agent).not.toBeNull()
+  })
+
+  it('records a wrong password against the account it was about', async () => {
+    const refused = await login({ identifier: 'ada', password: 'wrong-password-1' })
+    expect(refused.status).toBe(401)
+    const event = await latestEvent()
+    expect(event.outcome).toBe('failure')
+    expect(event.reason_code).toBe('invalid-credentials')
+    expect(event.user_id).toBe(userId)
+    expect(event.identity_id).not.toBeNull()
+    expect(event.session_id).toBeNull()
+  })
+
+  it('records an unknown name without storing it', async () => {
+    const refused = await login({ identifier: 'nobody-here', password })
+    expect(refused.status).toBe(401)
+    const event = await latestEvent()
+    expect(event.outcome).toBe('failure')
+    expect(event.reason_code).toBe('identity-not-found')
+    // nothing resolved, so nothing is named - and what was typed is nowhere
+    expect(event.user_id).toBeNull()
+    expect(event.identity_id).toBeNull()
+  })
+
+  it('records the precise reason a proven but disabled account was refused', async () => {
+    await Effect.runPromise(
+      runSql(sql`update users set enabled = false where id = ${userId}`).pipe(
+        Effect.provide(probeInfra()),
+      ),
+    )
+    try {
+      const refused = await login({ identifier: 'ada', password })
+      // the wire still says only INVALID_CREDENTIALS; the precision is the record's
+      expect(refused.status).toBe(401)
+      expect(await refused.json()).toMatchObject({ _tag: 'INVALID_CREDENTIALS' })
+      const event = await latestEvent()
+      expect(event.outcome).toBe('failure')
+      expect(event.reason_code).toBe('user-disabled')
+      expect(event.user_id).toBe(userId)
+    } finally {
+      await Effect.runPromise(
+        runSql(sql`update users set enabled = true where id = ${userId}`).pipe(
+          Effect.provide(probeInfra()),
+        ),
+      )
+    }
+  })
+})

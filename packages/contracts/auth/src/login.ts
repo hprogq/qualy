@@ -113,6 +113,23 @@ export interface ResolvedProvider {
   readonly providerId: string
 }
 
+/**
+ * Why an attempt failed, precisely, for the record alone.
+ *
+ * A driver states what IT could see - a proof that did not verify, an
+ * identity that does not exist - and the core adds what only it knows when a
+ * proven user still may not come in. The wire answer stays the driver's one
+ * uniform refusal; none of this reaches an anonymous caller.
+ */
+export type SignInFailureReason =
+  | 'invalid-credentials'
+  | 'identity-not-found'
+  | 'user-not-found'
+  | 'user-disabled'
+  | 'user-deleted'
+  | 'user-type-disabled'
+  | 'tenant-disabled'
+
 export interface SignedInUser {
   readonly id: string
   readonly displayName: string
@@ -166,14 +183,34 @@ export interface LoginSessionsShape {
     identifier: string
   }) => Effect.Effect<FoundIdentity | undefined>
   /**
+   * Records a refused attempt, then the driver answers its uniform refusal.
+   *
+   * The core writes the event so every driver produces the same record: the
+   * resolved provider is the attempt's context, the ids say how far it got,
+   * and what the caller typed is deliberately not part of the shape. Nothing
+   * before a resolved provider is recorded at all - a URL that names no
+   * door is noise for the access log, not an attempt on an account.
+   */
+  readonly failAttempt: (
+    provider: ResolvedProvider,
+    input: {
+      reason: SignInFailureReason
+      userId?: string
+      identityId?: string
+    },
+  ) => Effect.Effect<void>
+  /**
    * The driver proved the user; create the session and set the cookie.
    *
-   * Answers undefined when the account state forbids signing in after all,
-   * so a driver reports one uniform refusal rather than describing the
-   * account to whoever asked.
+   * Answers undefined when the account state forbids signing in after all -
+   * recording the refusal with the precise reason itself - so a driver
+   * reports one uniform refusal rather than describing the account to
+   * whoever asked. On success the session, the identity touch and the
+   * sign-in event commit as one transaction.
    */
   readonly completeLogin: (input: {
     tenantId: string
+    providerId: string
     userId: string
     identityId?: string
   }) => Effect.Effect<SignedInUser | undefined, never, HttpServerRequest>
