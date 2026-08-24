@@ -15,6 +15,9 @@ export const FROZEN_ROUTES = [
 
   'GET /app/manifest',
 
+  'GET /audit/events',
+  'GET /audit/event-options',
+
   'GET /iam/permissions',
   'POST /iam/access-evaluations',
   'GET /iam/role-options',

@@ -8012,3 +8012,59 @@ auth 的 effect-sign-in 测试装配补上同一中间件(它守的正是「会�
 
 验收:`pnpm typecheck` 零错;`pnpm test` 791 passed | 17 skipped(新增 14 条);
 `pnpm test:browser` 116 passed;`pnpm build` 成功;生产 smoke 八条全过;prettier 通过。
+
+## 审计落地(audit 计划 Phase 2):契约、写入器与只读日志页(2026-08-24)
+
+按 docs/audit-design.md Phase 2 落地 `@qualy/audit-contract`(packages/contracts/audit)与
+`@qualy/plugin-audit`(packages/plugins/base/audit),照 rbac 的 contract+provider 分工。
+
+**契约包**(根只放纯类型,`./action` `./effect` `./plugin` 三叶子):`AuditAction.define`
+(code/target/version/name/details Schema)——details 的 Schema 约束为
+`Schema.Codec<any, any, never, never>`(服务通道钉死 never,writer 编码任意注册动作不携带
+open requirement);`Audit` 服务标签与 `AuditActionCatalog`(prepare 相值,与权限目录同构);
+`Audit.actions(owner, actions)` 贡献 + `Audit.provider` 编译(重复 code、非法格式、version<1
+均在装配期拒绝)。扩展点**不带 capability 键**:动作不留 per-assembly 状态给 resolve 管,
+「声明了动作但装配里没有 audit 插件」由 boot 装配器的完整性规则硬失败——这就是
+mandatory base capability 的落点。
+
+**写入器**(writer.ts):`record(action, input)` 无错误通道,一切拒绝都是 defect——
+声明了要审计的操作,事件写不进就不许提交。注册校验(未声明/版本不符)→ schema encode
+(allowlist 第一道)→ writer guard 第二道(凭据形键名 password/token/secret/… 全树拒绝、
+单串 ≤4096、整体 ≤32KiB)→ INSERT。**同事务语义零成本**:`db.query` 经 ambient
+TransactionManager 落在调用方连接上(orm.ts 的 join-existing 传播),测试证明事件在事务内
+可见、随 abort 消失、随 commit 留存。请求关联(requestId/traceId/sessionId/clientIp/
+userAgent)由 writer 自己读 Phase 1 的 RequestContext——调用方**传不进也伪造不了**;
+source 缺省:有请求上下文为 http,否则 system。actor 由调用方显式传入,writer 不依赖
+auth/rbac(读侧 API 才可以)。
+
+**表** audit_events:租户 FK cascade 是唯一的边,actor/target 只存 id+快照 label(无跨插件
+FK,历史不因所指对象消亡而失效);checks 钉 actor_kind/outcome/source/action_code 格式;
+四条索引,其中 keyset 索引 `(tenant_id, occurred_at, id)` 特意全升序——`order by … desc, … desc`
+是这条索引的倒序扫描,而 schema 比较器会把混合方向声明归一成 `(desc, asc)`,那个谁也服务不了。
+迁移 20260824132054_audit-base.sql。
+
+**查询 API**(`GET /audit/events` + `GET /audit/event-options`,frozen-routes 同笔更新):
+keyset 分页 + 过滤(actionCode/actorUserId/outcome/targetKind+Id/from/to),权限
+`audit.event.read`(tenant target,经 rbac.require)。**cursor 踩了一个真实精度坑**:
+`Date.toISOString()` 只有毫秒而 `now()` 写微秒,边界行连同同瞬间的行整页消失——改为查询
+同时取 `occurred_at::text`(pg 自己的全精度文本)作 cursor 键,回程 `::timestamptz` 逐字节
+往返。同一事务三事件共享 now(),分页测试靠 id tiebreak 钉住不重不漏。**零新错误码**
+(BadRequest/AccessDenied 复用),append-only:应用层只有 INSERT/SELECT,API 不提供任何
+update/delete。
+
+**UI**:audit/events 页(/organization/audit,`permissionOf('audit.event.read')`)——
+时间/操作人/操作/对象/结果/IP 六列,动作与结果两个过滤,行展开显示来源/原因/requestId/
+traceId/UA/details JSON,加载更多;actionName 由目录携带 UiText,语言在浏览器选。
+i18n en+zh-CN 全量;权限目录经描述器自动进 seed(seed.test 权限计数 26→27)。
+
+**范围裁决**:`audit.event.export` 权限与导出端点未做(导出机制本身不存在,声明无人消费的
+权限码更糟);sessionId 不出 API(写入保留,关联归 Phase 2 之后的诊断需要)。现有插件的
+mutation 接入是 Phase 5;Phase 3(用户生命周期)按计划下一步。
+
+测试 packages/plugins/base/audit/tests/effect-audit.test.ts 九条:记录与缺省、**事务内可见/
+随滚回消失/随提交留存**、未声明动作拒绝、版本不符拒绝、schema 外 details/凭据键/超限三连拒
+(且零残留)、请求关联落列、同瞬间分页不重不漏 + 租户隔离、目录编译三种拒绝。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 803 passed | 17 skipped(新增 12 条);
+`pnpm test:browser` 116 passed;`pnpm build` 成功;`pnpm qualy deploy` 应用迁移后生产 smoke
+八条全过;prettier 通过。

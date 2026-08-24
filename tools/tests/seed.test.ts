@@ -93,7 +93,7 @@ describe.runIf(available)('tenant bootstrap seed', () => {
       // of its own: it reaches every active capability by mode rather than
       // by a mapping that a new plugin would have to backfill. Nothing is
       // granted to a user type, because a type confers no authority at all.
-      permissions: 26,
+      permissions: 27,
       roles: 1,
       rolePermissions: 0,
       userTypeGrants: 0,

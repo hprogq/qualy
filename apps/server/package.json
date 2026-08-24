@@ -12,6 +12,7 @@
     "@qualy/auth-contract": "workspace:*",
     "@qualy/plugin-assessment": "workspace:*",
     "@qualy/plugin-assessment-evidence": "workspace:*",
+    "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-database": "workspace:*",

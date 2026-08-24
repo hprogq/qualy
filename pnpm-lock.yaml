@@ -273,6 +273,9 @@ importers:
       '@qualy/plugin-assessment-evidence':
         specifier: workspace:*
         version: link:../../packages/plugins/assessment/evidence
+      '@qualy/plugin-audit':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/audit
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../../packages/plugins/base/auth
@@ -330,6 +333,9 @@ importers:
       '@qualy/plugin-assessment':
         specifier: workspace:*
         version: link:../../packages/plugins/assessment/core
+      '@qualy/plugin-audit':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/audit
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../../packages/plugins/base/auth
@@ -433,6 +439,18 @@ importers:
         version: 8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
 
   packages/contracts/assembly: {}
+
+  packages/contracts/audit:
+    dependencies:
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../i18n
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../core/plugin-kit
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
 
   packages/contracts/auth:
     dependencies:
@@ -595,6 +613,67 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-beta.103
+
+  packages/plugins/base/audit:
+    dependencies:
+      '@mikro-orm/core':
+        specifier: 'catalog:'
+        version: 7.1.13
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
+      '@qualy/audit-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/audit
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/i18n
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../../infra/database
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      '@qualy/plugin-org':
+        specifier: workspace:*
+        version: link:../org
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../../infra/ui-registry
+      '@qualy/rbac-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/rbac
+      '@qualy/ui':
+        specifier: workspace:*
+        version: link:../../../web/ui
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/ui
+      '@qualy/web-i18n':
+        specifier: workspace:*
+        version: link:../../../web/i18n
+      '@qualy/web-runtime':
+        specifier: workspace:*
+        version: link:../../../web/runtime
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.101.4(react@19.2.8)
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-beta.103
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.5
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+    devDependencies:
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
 
   packages/plugins/base/auth:
     dependencies:

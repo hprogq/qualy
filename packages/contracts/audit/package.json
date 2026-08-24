@@ -1,0 +1,21 @@
+{
+  "name": "@qualy/audit-contract",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./action": "./src/action.ts",
+    "./effect": "./src/effect.ts",
+    "./plugin": "./src/plugin.ts"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
+  },
+  "dependencies": {
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*"
+  }
+}

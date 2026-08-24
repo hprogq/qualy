@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:b3748fb2d8f00350a166319f713bfeda016f0ade424a858b0ed2fd6c83bc42a3",
-  "resolutionHash": "sha256:1ee6306d3fb8ec7ac0f44f9bc1ec284d80bb675bd8b3886e24d599d3eaec03c2",
+  "manifestHash": "sha256:730c2646979147e485b845476fcd305c6b6f716dac2d3c2715996779b9da1373",
+  "resolutionHash": "sha256:2cdfa86053d2682849d29df99118a03573902d8a9e1fcc187107644531d6f72f",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -66,6 +66,26 @@
     "@qualy/plugin-assessment-evidence": {
       "version": "0.0.0",
       "state": "active"
+    },
+    "@qualy/plugin-audit": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "entities": [
+            "AuditEvent"
+          ],
+          "dependsOn": [
+            "@qualy/plugin-org"
+          ]
+        },
+        "permissions": {
+          "owner": "audit",
+          "codes": [
+            "audit.event.read"
+          ]
+        }
+      }
     },
     "@qualy/plugin-auth": {
       "version": "0.0.0",
@@ -220,6 +240,7 @@
           "@qualy/plugin-rbac",
           "@qualy/plugin-storage",
           "@qualy/plugin-assessment",
+          "@qualy/plugin-audit",
           "@qualy/plugin-ping"
         ]
       }
@@ -229,6 +250,7 @@
       "state": {
         "order": [
           "@qualy/plugin-assessment",
+          "@qualy/plugin-audit",
           "@qualy/plugin-auth",
           "@qualy/plugin-org",
           "@qualy/plugin-rbac"
@@ -240,6 +262,7 @@
     "plugins": [
       "@qualy/plugin-assessment",
       "@qualy/plugin-assessment-evidence",
+      "@qualy/plugin-audit",
       "@qualy/plugin-auth",
       "@qualy/plugin-auth-local",
       "@qualy/plugin-database",
