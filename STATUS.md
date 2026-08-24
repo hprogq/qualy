@@ -8767,3 +8767,43 @@ gzip 变体复现 400——**CLS 无视 `Content-Encoding: gzip`,对压缩字节
 `compression: none`(注释记下探针证据)。重建后完整导出周期零错误,Loki 双写
 不受影响。APM/TMP/CLS 三信号至此全部真凭据验通;探针 trace
 `09492bb4a826527141d29bc1e460c01b` 可在 CLS 按 TraceId 检索对账。
+
+## Phase 6.9 收口:腾讯云联调验收完成(2026-08-25)
+
+本条是 Phase 6(OpenTelemetry)的验收记录,以下事实由用户在腾讯云控制台人工确认
+
+- 本地自动化复核,不再是计划:
+
+**已完成**:
+
+- 本地 observability 栈(collector 0.159.0 + LGTM:Tempo/Prometheus/Loki/Grafana);
+- traces → Tencent APM(公网 OTLP gRPC/TLS):完整 HTTP/业务/DB span,失败登录的
+  INVALID_CREDENTIALS 与 401 状态正确;
+- metrics → APM → TMP:`qualy_auth_sign_in_total` 在云端 Grafana 可查,
+  outcome=success|failure、provider_type=local 标签正确,APM 附加的
+  apm_instance/apm_service_name/region 标签正常;
+- logs → CLS(公网 OTLP/HTTP protobuf,Basic Auth + topic_id header);
+- 三信号全部本地+云**双写**,本地 Tempo/Prometheus/Loki 全程不受影响;
+- APM ↔ CLS 关联验通:APM trace 详情直接展示对应 span 的 CLS 日志,
+  TraceId/SpanId 两侧一致;
+- 真实凭据 smoke、三份 collector 配置 pinned 镜像 validate、全量回归。
+
+**实现细节(真实联调发现)**:CLS 的 OTLP/HTTP 当前对 gzip payload 返回 400
+(无视 Content-Encoding、对压缩字节直接 proto 解析;curl 探针:identity 200、
+gzip 400),CLS exporter 因此 `compression: none`,未压缩 protobuf 已真实验证
+成功。此为当次联调实测行为,不构成对腾讯云产品的长期保证。
+
+**最终回归**(全部真实执行):typecheck 零错;`pnpm test` 838 passed | 17
+skipped;`pnpm test:browser` 116 passed;`pnpm build` 成功;生产 smoke 退出 0;
+`pnpm vendor:check` 两树一致;`prettier --check .` 通过;三配置 validate 通过;
+collector 运行日志零 deprecation。仓库无独立 lint/e2e 脚本(prettier 与生产
+smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真凭据下完整导出
+周期,云出口(APM×2 + CLS)**零 error/retry/drop**,本地三信号同期实收。
+
+**剩余(标记,不在本轮执行)**:
+`remaining: real cloud staging deployment / in-VPC production path verification`
+——collector.production.yaml 的启用、TMP private remote write(10.20.0.0/16 内网)
+与生产 boot 路径验证,须等真实 staging 服务器存在。定制 dashboard 与告警属后续
+沉淀项(§23 的查询能力已由 LGTM Drilldown 与 TMP/云端 Grafana 覆盖),不阻塞
+6.9 验收。secret 状态:真实凭据仅存于 gitignored 的 collector.env,tracked
+文件/文档/测试均无。
