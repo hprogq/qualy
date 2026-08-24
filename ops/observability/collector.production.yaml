@@ -56,7 +56,7 @@ processors:
         value: ${env:QUALY_INSTANCE_ID}
 
 exporters:
-  otlp/tencent_apm:
+  otlp_grpc/tencent_apm:
     endpoint: ${env:TENCENT_APM_OTLP_ENDPOINT}
     # the private-network APM endpoint speaks plaintext gRPC; switch this
     # off (and remove insecure) if the console hands out a TLS endpoint
@@ -84,7 +84,7 @@ service:
       # real span volume or cost says so (design §20); none today on purpose
       processors: [memory_limiter, resource/tencent_apm, batch]
       receivers: [otlp]
-      exporters: [otlp/tencent_apm]
+      exporters: [otlp_grpc/tencent_apm]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]

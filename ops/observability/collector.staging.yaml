@@ -41,11 +41,11 @@ processors:
     send_batch_size: 512
 
 exporters:
-  otlp/local_lgtm:
+  otlp_grpc/local_lgtm:
     endpoint: otel-lgtm:4317
     tls:
       insecure: true
-  otlp/tencent_apm:
+  otlp_grpc/tencent_apm:
     endpoint: ${env:TENCENT_APM_ENDPOINT}
     # the public 4320 endpoint speaks gRPC over TLS; the token rides the
     # authorization header on every export
@@ -62,10 +62,11 @@ service:
       processors: [memory_limiter, batch]
       # both worlds see the same spans: Tempo for the local loop, APM for
       # the staging verification
-      exporters: [otlp/local_lgtm, otlp/tencent_apm]
+      exporters: [otlp_grpc/local_lgtm, otlp_grpc/tencent_apm]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      # step two adds otlp/tencent_apm here once traces are confirmed in
-      # the APM console; nothing in this file ever speaks to the VPC
-      exporters: [otlp/local_lgtm]
+      # step two, after traces were confirmed in the APM console: metrics
+      # ride the same public APM uplink, and the console's sync rules decide
+      # what continues into TMP - nothing here ever speaks to the VPC
+      exporters: [otlp_grpc/local_lgtm, otlp_grpc/tencent_apm]

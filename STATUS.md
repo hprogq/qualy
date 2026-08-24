@@ -8702,3 +8702,21 @@ DNS/TLS/gRPC/authorization header 全链路已通,只差真实 token(错误是 P
 验收:`pnpm typecheck` 未涉及(零 TS 源改动,门禁测试除外);`pnpm test`
 837 passed | 17 skipped(observability 门禁 4 条);prettier 通过;compose 插值、
 staging validate、真启动、本地栈完好性全部实测。
+
+## 腾讯云 staging 第二步(OTel 计划 Phase 6.9):metrics 经 APM 公网上行(2026-08-25)
+
+APM trace 已在控制台确认、APM↔TMP(qualy-staging)已绑定后,staging 配置的
+metrics pipeline 加上既有的 APM exporter——本地链路原样,双写:
+本地 LGTM 照旧,APM 公网 OTLP 同批送达,控制台的指标同步规则决定什么继续进 TMP;
+本地永不直连 `10.20.0.11`。真机验证:collector 重建后 healthy,完整导出周期
+(60s+)**零错误**(真 token 下 APM 接受 metrics),本地 Prometheus 照常收数。
+
+顺手修正:0.159 弃用了 exporter 类型别名 `otlp`,三份 collector 配置统一改为
+`otlp_grpc/*`(行为不变;各自在 pinned 镜像内 validate 通过,重启后告警消失)。
+
+首轮同步建议(低基数):`process.cpu.time`、`process.memory.usage`、
+`qualy.auth.sign_in`;直方图(http.server.request.duration 等)桶展开系列多,
+留第二轮。
+
+验收:`pnpm test` 837 passed | 17 skipped;prettier 通过;三配置 validate;
+collector 无错运行、本地链路完好实测。

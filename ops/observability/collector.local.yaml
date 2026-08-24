@@ -37,7 +37,7 @@ processors:
     send_batch_size: 512
 
 exporters:
-  otlp/local_lgtm:
+  otlp_grpc/local_lgtm:
     endpoint: otel-lgtm:4317
     tls:
       # loopback network inside the compose project; TLS here would secure
@@ -50,8 +50,8 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/local_lgtm]
+      exporters: [otlp_grpc/local_lgtm]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/local_lgtm]
+      exporters: [otlp_grpc/local_lgtm]
