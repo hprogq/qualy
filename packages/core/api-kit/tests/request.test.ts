@@ -1,13 +1,15 @@
-import { NodeHttpServer } from '@effect/platform-node'
+import { NodeHttpClient, NodeHttpServer } from '@effect/platform-node'
 import { Effect, Exit, Layer, Option, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
-import { createServer } from 'node:http'
+import { OtlpSerialization, OtlpTracer } from 'effect/unstable/observability'
+import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   RequestContext,
   bindSessionId,
   clientAddressOf,
   requestContext,
+  routeSpanNames,
   trustedProxies,
 } from '../src/request.ts'
 
@@ -82,10 +84,37 @@ describe('the trusted-proxy client address', () => {
 
 const port = 3196
 const base = `http://127.0.0.1:${port}`
+// one suite, one extra listener: the OTLP receiver the exported spans land
+// on; 3203 is claimed here the way `port` claims 3196 - keep both unique
+// across suites
+const receiverPort = 3203
 
+interface ExportedSpan {
+  name: string
+  traceId: string
+  attributes: { key: string; value: { stringValue?: string } }[]
+}
+
+const exported: ExportedSpan[] = []
+let receiver: Server
 let scope: Scope.Scope
 
 beforeAll(async () => {
+  receiver = createServer((request, response) => {
+    const chunks: Buffer[] = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+        resourceSpans?: { scopeSpans: { spans: ExportedSpan[] }[] }[]
+      }
+      for (const resourceSpan of body.resourceSpans ?? [])
+        for (const scopeSpan of resourceSpan.scopeSpans) exported.push(...scopeSpan.spans)
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{}')
+    })
+  })
+  await new Promise<void>((resolve) => receiver.listen(receiverPort, '127.0.0.1', resolve))
+
   const echo = Effect.gen(function* () {
     const context = Option.getOrUndefined(yield* Effect.serviceOption(RequestContext))
     return HttpServerResponse.jsonUnsafe({
@@ -98,6 +127,7 @@ beforeAll(async () => {
   })
   const routes = Layer.mergeAll(
     HttpRouter.add('GET', '/context', echo),
+    HttpRouter.add('GET', '/things/:thingId', echo),
     HttpRouter.add(
       'GET',
       '/bound',
@@ -109,15 +139,44 @@ beforeAll(async () => {
   )
   const application = HttpRouter.serve(routes, {
     // the loopback peer stands in for the deployment's proxy tier
-    middleware: requestContext({ trustedProxies: ['127.0.0.1'] }),
-  }).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })))
+    middleware: (httpApp) =>
+      requestContext({ trustedProxies: ['127.0.0.1'] })(routeSpanNames(httpApp)),
+  }).pipe(
+    Layer.provide(NodeHttpServer.layer(createServer, { port })),
+    // the exporting tracer, so the names this suite pins are the names a
+    // telemetry backend would receive, not an in-process observation
+    Layer.provide(
+      OtlpTracer.layer({
+        url: `http://127.0.0.1:${receiverPort}/v1/traces`,
+        resource: { serviceName: 'api-kit-under-test' },
+        exportInterval: 50,
+      }).pipe(
+        Layer.provide(OtlpSerialization.layerJson),
+        Layer.provide(NodeHttpClient.layerUndici),
+      ),
+    ),
+  )
   scope = await Effect.runPromise(Scope.make())
   await Effect.runPromise(Layer.buildWithScope(application, scope))
 })
 
 afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
+  receiver.closeAllConnections()
+  await new Promise<void>((resolve, reject) =>
+    receiver.close((error) => (error ? reject(error) : resolve())),
+  )
 })
+
+/** the exported span for one request, once the 50ms batch has flushed */
+const exportedSpan = async (predicate: (span: ExportedSpan) => boolean): Promise<ExportedSpan> => {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const found = exported.find(predicate)
+    if (found !== undefined) return found
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error(`no exported span matched; saw: ${exported.map((span) => span.name).join(', ')}`)
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -159,5 +218,31 @@ describe('the request context on a live server', () => {
     // and the binding died with its request
     const next = (await (await fetch(`${base}/context`)).json()) as { sessionId: null }
     expect(next.sessionId).toBeNull()
+  })
+})
+
+describe('the span a request exports', () => {
+  it('is named by its route template, carrying the inbound trace', async () => {
+    // a trace id no other request in this suite can collide with
+    const inbound = 'aaaabbbbccccddddeeeeffff00001111'
+    await fetch(`${base}/things/9f1c0a52-cafe-4bot-8000-000000000000`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+    })
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    // the pin: if either span implementation stops reading `name` after the
+    // rename in routeSpanNames, this reverts to 'http.server GET'
+    expect(span.name).toBe('GET /things/:thingId')
+    const route = span.attributes.find((attribute) => attribute.key === 'http.route')
+    expect(route?.value.stringValue).toBe('/things/:thingId')
+  })
+
+  it('keeps the method-only name when no route matched', async () => {
+    const inbound = '2222333344445555666677778888aaaa'
+    await fetch(`${base}/no-such-route`, {
+      headers: { traceparent: `00-${inbound}-00f067aa0ba902b7-01` },
+    })
+    const span = await exportedSpan((candidate) => candidate.traceId === inbound)
+    // a 404 has no template; the raw URL must not become the name
+    expect(span.name).toBe('http.server GET')
   })
 })

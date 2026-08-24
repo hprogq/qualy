@@ -153,6 +153,45 @@ export const clientAddressOf = (
 // --- the middleware ---
 
 /**
+ * Serve middleware that renames the request's server span to its route
+ * template - `GET /iam/users/:userId` - once the router has matched.
+ *
+ * The platform names the span before routing (`http.server GET`), because at
+ * creation time the only fact it has is the method: the raw URL would put an
+ * id in every span name. The router records the matched template as the
+ * `http.route` attribute (HttpRouter.ts:220-223 in the vendored source) but
+ * cannot rename - `Tracer.Span` declares no rename operation. Both span
+ * implementations this process can run under carry `name` as a writable
+ * runtime property that is only read after the span ends (the OTLP tracer's
+ * span object assigns it via Object.assign and serializes at export,
+ * OtlpTracer.ts; the native span assigns a class field, Tracer.ts
+ * NativeSpan), and this exit hook runs before the platform tracer's own end
+ * hook, which wraps all serve middleware. The assignment below is the one
+ * deviation from the declared interface; the suite pins the exported name so
+ * an upgrade that changes either implementation fails a test instead of
+ * silently reverting every span name to `http.server GET`.
+ */
+export const routeSpanNames = <A, E, R>(
+  httpApp: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R | HttpServerRequest.HttpServerRequest> =>
+  Effect.withFiber((fiber) => {
+    const span = Context.getOption(fiber.context, Tracer.ParentSpan)
+    // the noop span cannot reach the rename: its attribute() discards, so
+    // the http.route guard below never passes
+    if (Option.isNone(span) || span.value._tag !== 'Span') return httpApp
+    const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
+    const named = span.value
+    return Effect.onExit(httpApp, () =>
+      Effect.sync(() => {
+        const route = named.attributes.get('http.route')
+        if (typeof route === 'string') {
+          ;(named as { name: string }).name = `${request.method} ${route}`
+        }
+      }),
+    )
+  })
+
+/**
  * Serve middleware that provides the `RequestContext` for everything
  * downstream.
  *

@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Option, type LogLevel } from 'effect'
+import { Cause, Context, Effect, Option, Tracer, type LogLevel } from 'effect'
 import { HttpServerError, HttpServerRequest } from 'effect/unstable/http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { RequestContext } from '@qualy/api-kit/request'
@@ -49,6 +49,12 @@ export const accessLog =
       const requestId = Option.getOrUndefined(
         Option.map(Context.getOption(fiber.context, RequestContext), (c) => c.requestId),
       )
+      // the server span this request runs under: its ids let a log line be
+      // looked up in the trace backend and beside the audit trail ('noop' is
+      // the disabled tracer's sentinel, not an id)
+      const span = Option.getOrUndefined(Context.getOption(fiber.context, Tracer.ParentSpan))
+      const traceId = span === undefined || span.traceId === 'noop' ? undefined : span.traceId
+      const spanId = span === undefined || span.spanId === 'noop' ? undefined : span.spanId
       // The content type rides the response BODY, not the headers record -
       // upstream merges it into the wire headers only at write time - so
       // that is where to look. An event stream's end is connection
@@ -69,6 +75,8 @@ export const accessLog =
           Effect.annotateLogs(effect, {
             source: 'http',
             ...(requestId === undefined ? {} : { requestId }),
+            ...(traceId === undefined ? {} : { traceId }),
+            ...(spanId === undefined ? {} : { spanId }),
           })
         if (exit._tag === 'Success') {
           const status = exit.value.status

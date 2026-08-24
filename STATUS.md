@@ -8306,3 +8306,44 @@ Prometheus 查回 `qualy_pipeline_probe_total=1`(应用侧业务指标归 6.6,Ef
 822 passed | 17 skipped;prettier 通过(本阶段未动任何 TS/web 源,browser 与 build
 不受影响)。下一步按计划 6.3:HTTP span 路由模板、W3C 传播与 access log 的
 requestId/traceId 关联。
+
+## HTTP 关联落地(OTel 计划 Phase 6.3):路由模板 span 名与日志双 id(2026-08-25)
+
+按 docs/PHASE6-OPENTELEMETRY-DESIGN.md §9/§10/§14 与 §26 的 6.3。上游已给的不重做:
+`HttpMiddleware.tracer` 建 server span 时继承 W3C traceparent(Phase 1 已测)、设全套
+semconv 属性(http.request.method、url.*、client.address、http.response.status_code、
+redacted headers);`HttpRouter.asHttpEffect` 在路由命中时把模板路径写进 `http.route`
+属性(vendored HttpRouter.ts:220-223)。**缺口只有 span 名**:命名发生在路由之前,
+默认 `http.server GET`,而 `Tracer.Span` 接口没有改名操作(实查 Tracer.ts:371-387,
+httpapi 层也不管命名)。
+
+**裁决:api-kit 新增 `routeSpanNames` serve 中间件**,响应结束后读 span 的 `http.route`
+属性,命中则把 `name` 赋成 `{method} {route}`。这是对声明接口的一处越界,依据三条实查
+事实:OTLP tracer 的 span 对象经 Object.assign 建 `name` 自有可写属性、导出序列化在
+`end()` 时才读名(OtlpTracer.ts);NativeSpan 的 `name` 是赋值类字段(Tracer.ts:655+);
+noop span 的 `attribute()` 是空操作、共享 attributes Map 永远没有 `http.route`,改名对
+禁用态天然短路。**pinning 测试钉住导出名**——升级若让任一实现不再迟读 `name`,测试直接
+红而不是所有 span 名静默回退。404 无模板保持 `http.server GET`,原始 URL 永不成为名字。
+
+**access log 补全 §14**:annotations 在 requestId 之外新增 traceId 与 spanId(server
+span 自身的 id,请求作用域内可靠;noop 哨兵不记)。生产 JSON 实测逐字达标:
+`{"message":"GET /api/app/manifest 200 2ms","annotations":{"requestId":"7bd8…",
+"traceId":"e579…","spanId":"0288…"}}`。runtime.ts 组合为
+`withRequestContext(accessLog(routeSpanNames(httpApp)))`。Audit/SignIn 的 traceId
+传播不需要新代码:RequestContext.traceId(Phase 1)读的就是这颗 span,写入器
+(Phase 2/4)已在读 RequestContext——链上每环都各自有测试。
+
+**测试**:api-kit request.test.ts 的 harness 换上真 OTLP tracer(receiver 3203 端口,
+JSON 序列化),新增两条:带 traceparent 的请求导出名为 `GET /things/:thingId` 且
+traceId 等于入站值、`http.route` 属性在;未命中路由保持方法名。既有 traceparent
+继承测试不动。
+
+**真机闭环**(§27 条 3/4/7):本地栈里 Tempo 的 root span 名全部成为模板——
+`GET /api/assessment/batches/:batchId/events`、`GET /health/ready`、`GET /*`(静态
+兜底,同样低基数);从生产 JSON 日志抄下 traceId 到 Tempo 查回同一 trace:root
+`GET /api/app/manifest` 下挂 `app.getManifest.handler`、`Ui.manifest.build/collect/
+viewer` 四个业务 span——HTTP root + Effect 业务 span 一条链(DB 边界归 6.5)。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 824 passed | 17 skipped(新增 2 条);生产
+smoke 全过(带/不带 OTEL endpoint 各一遍,退出 0);prettier 通过(未动 web 源,
+browser 套件不涉及)。下一步按计划 6.4(业务 span 名清点)或 6.5(数据库边界 span)。
