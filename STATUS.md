@@ -8642,3 +8642,33 @@ handler + Ui.manifest 三业务 span)——日志↔trace 闭环。
 验收:`pnpm typecheck` 零错;`pnpm test` 834 passed | 17 skipped(新增 1 条);
 生产 smoke 退出 0;prettier 通过(未动 web 源)。Phase 6 余下 6.9:本地
 walkthrough 已零散完成,staging/腾讯云端到端与 dashboard 待真实凭据。
+
+## 浏览器不再宣告它永远不会讲述的 trace(2026-08-25)
+
+真机排查定位:前端 typed client 走 Effect `FetchHttpClient`,其 client tracing 为
+每个出站请求建 `http.client` span,且 `HttpClient.TracerPropagationEnabled` 缺省
+为 true(实查 HttpClient.ts:1615-1617,缺省 constTrue;:698-700 把 span 写进
+`TraceContext.toHeaders`,rc.111 同时产 `traceparent` 与 `b3`)。而 Browser
+RUM/export 是 Phase 6 明确非目标——于是「建 span ✅ 传播 ✅ 导出 ❌」三件套缺一角:
+服务端如实继承了一个永远不会被上报的 parent,Tempo 显示
+`<root span not yet received>`,上生产就是 APM 里成片的 orphan trace。
+
+**修复**(packages/web/runtime/src/api.ts,只动浏览器 client,服务端入站不动):
+`clientFor` 经 `HttpApiClient.make` 的 `transformClient` 给 client 包
+`HttpClient.transformResponse(Effect.provideService(TracerPropagationEnabled,
+false))`——与上游 OtlpExporter 给自己关传播的形态同款(传播判定在请求时 fiber 上
+getRef,构造期 Effect.provide 够不着,必须烘进 client 管线)。服务端继续接受
+traceparent/b3:反向代理、worker、未来的 Browser RUM 都是合法的远端 parent 来源;
+届时把这里重新打开,client span 就成为真正的 root。理由整段写在代码注释。
+
+**测试**(packages/web/runtime/tests/propagation.test.ts,2 条,经 `FetchHttpClient.
+Fetch` reference 注入捕获 fetch,零网络、纯 DOM 类型):`clientFor` 的请求在活跃
+span 之下**既无 traceparent 也无 b3**;**control 反证**——默认 client 同一环境下
+两个头都在(traceparent 格式断言),证明缺席是 clientFor 的作为而非 tracing 整体
+关闭。服务端入站继承的既有测试(api-kit:显式 traceparent 被尊重、导出 trace id
+等于入站值)原样保留,继续守护另一半契约。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 836 passed | 17 skipped(新增 2 条);
+`pnpm test:browser` 116 passed(一次既知 flake,重跑 exit 0);`pnpm build` 成功
+(web bundle 已含修复);生产 smoke 退出 0;prettier 通过。浏览器侧最终确认
+(Brave 发请求无两头、Tempo root 完整)留给真实浏览器一次点击。

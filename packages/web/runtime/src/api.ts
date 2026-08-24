@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
+import { FetchHttpClient, HttpClient } from 'effect/unstable/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
 
 // A client is derived from an api DEFINITION, and every plugin holds its own:
@@ -9,6 +9,26 @@ import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/unstable/
 // the groups it calls - its own, plus any neighbour contract it imports -
 // and the group identifier keys stay globally unique, so query caches from
 // different plugin clients can never collide.
+
+/**
+ * The browser does not announce a trace it will never tell.
+ *
+ * Effect's client tracing creates an `http.client` span per request and, with
+ * `TracerPropagationEnabled` at its default, writes it into `traceparent` and
+ * `b3` headers. Browser telemetry is deliberately not installed (no RUM, no
+ * exporter), so that span is never reported anywhere - and a server that
+ * honors the header then records every browser request as the child of a
+ * parent no backend will ever receive: Tempo renders `<root span not yet
+ * received>`, and an APM sees orphan traces. Creating a span, propagating it
+ * and exporting it come as a set; with export absent, propagation is switched
+ * off HERE, on the browser client only. The server keeps honoring inbound
+ * `traceparent` from callers that do export (a proxy, a worker, a future
+ * browser RUM - re-enable this then, and the client span becomes a legitimate
+ * remote parent).
+ */
+const withoutTracePropagation = HttpClient.transformResponse(
+  Effect.provideService(HttpClient.TracerPropagationEnabled, false),
+)
 
 /**
  * A client for one api definition.
@@ -22,9 +42,10 @@ export const clientFor = <ApiId extends string, Groups extends HttpApiGroup.Cons
   api: HttpApi.HttpApi<ApiId, Groups>,
   baseUrl?: string,
 ) =>
-  HttpApiClient.make(api, baseUrl === undefined ? {} : { baseUrl }).pipe(
-    Effect.provide(FetchHttpClient.layer),
-  )
+  HttpApiClient.make(api, {
+    ...(baseUrl === undefined ? {} : { baseUrl }),
+    transformClient: withoutTracePropagation,
+  }).pipe(Effect.provide(FetchHttpClient.layer))
 
 /** the typed client an api definition derives to */
 export type ClientOf<Api extends HttpApi.Constraint> = HttpApiClient.ForApi<Api>
