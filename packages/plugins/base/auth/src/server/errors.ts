@@ -8,20 +8,20 @@ import { Schema } from 'effect'
 // second table saying the same things in zod, for the contract layer this
 // replaced, and it had drifted by the time it was deleted.
 
-export class UserTypeNotFound extends Schema.TaggedErrorClass<UserTypeNotFound>()(
+export class UserTypeNotFound extends Schema.TaggedError<UserTypeNotFound>()(
   'USER_TYPE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'UserTypeNotFound' },
 ) {}
 
-export class UserTypeIsSystem extends Schema.TaggedErrorClass<UserTypeIsSystem>()(
+export class UserTypeIsSystem extends Schema.TaggedError<UserTypeIsSystem>()(
   'USER_TYPE_IS_SYSTEM',
   {},
   { httpApiStatus: 409, identifier: 'UserTypeIsSystem' },
 ) {}
 
 /** the count says how many people must be moved before the type can go */
-export class UserTypeInUse extends Schema.TaggedErrorClass<UserTypeInUse>()(
+export class UserTypeInUse extends Schema.TaggedError<UserTypeInUse>()(
   'USER_TYPE_IN_USE',
   { userCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'UserTypeInUse' },
@@ -33,7 +33,7 @@ export class UserTypeInUse extends Schema.TaggedErrorClass<UserTypeInUse>()(
  * Carrying the current version lets a client re-read and retry rather than
  * guess, which is why every set replacement takes an expected version.
  */
-export class UserTypeVersionConflict extends Schema.TaggedErrorClass<UserTypeVersionConflict>()(
+export class UserTypeVersionConflict extends Schema.TaggedError<UserTypeVersionConflict>()(
   'USER_TYPE_VERSION_CONFLICT',
   { currentVersion: Schema.Number },
   { httpApiStatus: 409, identifier: 'UserTypeVersionConflict' },
@@ -46,25 +46,25 @@ export class UserTypeVersionConflict extends Schema.TaggedErrorClass<UserTypeVer
  * cannot stand in for this one: that check passes on any open channel,
  * including an sso channel with no provider behind it.
  */
-export class RecoveryChannelRequired extends Schema.TaggedErrorClass<RecoveryChannelRequired>()(
+export class RecoveryChannelRequired extends Schema.TaggedError<RecoveryChannelRequired>()(
   'RECOVERY_CHANNEL_REQUIRED',
   {},
   { httpApiStatus: 409, identifier: 'RecoveryChannelRequired' },
 ) {}
 
-export class ProviderNotFound extends Schema.TaggedErrorClass<ProviderNotFound>()(
+export class ProviderNotFound extends Schema.TaggedError<ProviderNotFound>()(
   'AUTH_PROVIDER_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AuthProviderNotFound' },
 ) {}
 
-export class ProviderVersionConflict extends Schema.TaggedErrorClass<ProviderVersionConflict>()(
+export class ProviderVersionConflict extends Schema.TaggedError<ProviderVersionConflict>()(
   'AUTH_PROVIDER_VERSION_CONFLICT',
   { currentVersion: Schema.Number },
   { httpApiStatus: 409, identifier: 'AuthProviderVersionConflict' },
 ) {}
 
-export class UserTypeConflict extends Schema.TaggedErrorClass<UserTypeConflict>()(
+export class UserTypeConflict extends Schema.TaggedError<UserTypeConflict>()(
   'USER_TYPE_CONFLICT',
   {},
   { httpApiStatus: 409, identifier: 'UserTypeConflict' },
@@ -77,44 +77,44 @@ export const userTypeConstraints: Record<string, () => UserTypeConflict> = {
 }
 
 /** deleting this type would leave these roles admitting nobody */
-export class UserTypeLastForRole extends Schema.TaggedErrorClass<UserTypeLastForRole>()(
+export class UserTypeLastForRole extends Schema.TaggedError<UserTypeLastForRole>()(
   'USER_TYPE_LAST_FOR_ROLE',
   { roleCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'UserTypeLastForRole' },
 ) {}
 
-export class UserTypeOrgTypeNotFound extends Schema.TaggedErrorClass<UserTypeOrgTypeNotFound>()(
+export class UserTypeOrgTypeNotFound extends Schema.TaggedError<UserTypeOrgTypeNotFound>()(
   'USER_TYPE_ORG_TYPE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'UserTypeOrgTypeNotFound' },
 ) {}
 
 /** the policy as written would leave these people standing illegally */
-export class UserTypePlacementInUse extends Schema.TaggedErrorClass<UserTypePlacementInUse>()(
+export class UserTypePlacementInUse extends Schema.TaggedError<UserTypePlacementInUse>()(
   'USER_TYPE_PLACEMENT_IN_USE',
   { userCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'UserTypePlacementInUse' },
 ) {}
 
-export class UserNotFound extends Schema.TaggedErrorClass<UserNotFound>()(
+export class UserNotFound extends Schema.TaggedError<UserNotFound>()(
   'USER_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'UserNotFound' },
 ) {}
 
-export class UserTypeDisabled extends Schema.TaggedErrorClass<UserTypeDisabled>()(
+export class UserTypeDisabled extends Schema.TaggedError<UserTypeDisabled>()(
   'USER_TYPE_DISABLED',
   {},
   { httpApiStatus: 409, identifier: 'UserTypeDisabled' },
 ) {}
 
-export class UserPlacementNotFound extends Schema.TaggedErrorClass<UserPlacementNotFound>()(
+export class UserPlacementNotFound extends Schema.TaggedError<UserPlacementNotFound>()(
   'USER_PLACEMENT_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'UserPlacementNotFound' },
 ) {}
 
-export class PlacementNotAllowed extends Schema.TaggedErrorClass<PlacementNotAllowed>()(
+export class PlacementNotAllowed extends Schema.TaggedError<PlacementNotAllowed>()(
   'USER_TYPE_PLACEMENT_NOT_ALLOWED',
   {},
   { httpApiStatus: 409, identifier: 'UserTypePlacementNotAllowed' },
@@ -127,35 +127,35 @@ export class PlacementNotAllowed extends Schema.TaggedErrorClass<PlacementNotAll
  * into it, but not the reverse: retyping the recovery account out of its own
  * type would have been allowed.
  */
-export class SystemAccountProtected extends Schema.TaggedErrorClass<SystemAccountProtected>()(
+export class SystemAccountProtected extends Schema.TaggedError<SystemAccountProtected>()(
   'SYSTEM_ACCOUNT_PROTECTED',
   {},
   { httpApiStatus: 409, identifier: 'SystemAccountProtected' },
 ) {}
 
 /** the row moved since it was read; the caller re-reads and decides again */
-export class UserVersionConflict extends Schema.TaggedErrorClass<UserVersionConflict>()(
+export class UserVersionConflict extends Schema.TaggedError<UserVersionConflict>()(
   'USER_VERSION_CONFLICT',
   {},
   { httpApiStatus: 409, identifier: 'UserVersionConflict' },
 ) {}
 
 /** deletion starts from disabled: an account that can still sign in is not deletable */
-export class UserNotDisabled extends Schema.TaggedErrorClass<UserNotDisabled>()(
+export class UserNotDisabled extends Schema.TaggedError<UserNotDisabled>()(
   'USER_NOT_DISABLED',
   {},
   { httpApiStatus: 409, identifier: 'UserNotDisabled' },
 ) {}
 
 /** the person is deleted; every path but restore refuses them */
-export class UserDeleted extends Schema.TaggedErrorClass<UserDeleted>()(
+export class UserDeleted extends Schema.TaggedError<UserDeleted>()(
   'USER_DELETED',
   {},
   { httpApiStatus: 409, identifier: 'UserDeleted' },
 ) {}
 
 /** grants the person holds that their new type would not be eligible for */
-export class GrantIncompatible extends Schema.TaggedErrorClass<GrantIncompatible>()(
+export class GrantIncompatible extends Schema.TaggedError<GrantIncompatible>()(
   'GRANT_INCOMPATIBLE',
   { grantCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'GrantIncompatible' },
@@ -169,7 +169,7 @@ export class GrantIncompatible extends Schema.TaggedErrorClass<GrantIncompatible
  * `fk_users_user_type` is deliberately absent - requireType pre-checks inside
  * the transaction, so it cannot be reached.
  */
-export class UserConflict extends Schema.TaggedErrorClass<UserConflict>()(
+export class UserConflict extends Schema.TaggedError<UserConflict>()(
   'USER_CONFLICT',
   {},
   { httpApiStatus: 409, identifier: 'UserConflict' },

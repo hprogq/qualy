@@ -6,19 +6,19 @@ import type { AccessDenied } from '@qualy/rbac-contract/effect'
 // stable wire contract; payloads carry only what a client may see - refusal
 // reason enums and phase ids, never constraint names or sql details.
 
-export class BatchNotFound extends Schema.TaggedErrorClass<BatchNotFound>()(
+export class BatchNotFound extends Schema.TaggedError<BatchNotFound>()(
   'ASSESSMENT_BATCH_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AssessmentBatchNotFound' },
 ) {}
 
-export class PhaseNotFound extends Schema.TaggedErrorClass<PhaseNotFound>()(
+export class PhaseNotFound extends Schema.TaggedError<PhaseNotFound>()(
   'ASSESSMENT_PHASE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AssessmentPhaseNotFound' },
 ) {}
 
-export class ParticipantNotFound extends Schema.TaggedErrorClass<ParticipantNotFound>()(
+export class ParticipantNotFound extends Schema.TaggedError<ParticipantNotFound>()(
   'ASSESSMENT_PARTICIPANT_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AssessmentParticipantNotFound' },
@@ -29,7 +29,7 @@ export class ParticipantNotFound extends Schema.TaggedErrorClass<ParticipantNotF
  * outright rather than warned about: manual inclusion beyond the scope is a
  * deferred capability (§27), not a loophole.
  */
-export class ParticipantInvalid extends Schema.TaggedErrorClass<ParticipantInvalid>()(
+export class ParticipantInvalid extends Schema.TaggedError<ParticipantInvalid>()(
   'ASSESSMENT_PARTICIPANT_INVALID',
   {
     reason: Schema.Literals([
@@ -50,7 +50,7 @@ export class ParticipantInvalid extends Schema.TaggedErrorClass<ParticipantInval
  * entries are named: shrinking the window means dealing with what is in it,
  * not silently making history illegal.
  */
-export class MaterialRangeInvalid extends Schema.TaggedErrorClass<MaterialRangeInvalid>()(
+export class MaterialRangeInvalid extends Schema.TaggedError<MaterialRangeInvalid>()(
   'ASSESSMENT_MATERIAL_RANGE_INVALID',
   {
     /** live entries whose payloads would fall outside the candidate window */
@@ -61,7 +61,7 @@ export class MaterialRangeInvalid extends Schema.TaggedErrorClass<MaterialRangeI
   { httpApiStatus: 422, identifier: 'AssessmentMaterialRangeInvalid' },
 ) {}
 
-export class EntryNotFound extends Schema.TaggedErrorClass<EntryNotFound>()(
+export class EntryNotFound extends Schema.TaggedError<EntryNotFound>()(
   'ASSESSMENT_ENTRY_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AssessmentEntryNotFound' },
@@ -73,14 +73,14 @@ export class EntryNotFound extends Schema.TaggedErrorClass<EntryNotFound>()(
  * Deliberately one code for the whole matrix rather than one per row - what
  * varies is the reason, and a screen renders reasons, not codes.
  */
-export class EntryActionRefused extends Schema.TaggedErrorClass<EntryActionRefused>()(
+export class EntryActionRefused extends Schema.TaggedError<EntryActionRefused>()(
   'ASSESSMENT_ENTRY_ACTION_REFUSED',
   { action: Schema.String, reason: Schema.String },
   { httpApiStatus: 403, identifier: 'AssessmentEntryActionRefused' },
 ) {}
 
 /** the filing itself cannot be read: field problems, named one by one */
-export class EntryPayloadInvalid extends Schema.TaggedErrorClass<EntryPayloadInvalid>()(
+export class EntryPayloadInvalid extends Schema.TaggedError<EntryPayloadInvalid>()(
   'ASSESSMENT_ENTRY_PAYLOAD_INVALID',
   {
     issues: Schema.Array(Schema.Struct({ field: Schema.String, reason: Schema.String })),
@@ -97,14 +97,14 @@ export class EntryPayloadInvalid extends Schema.TaggedErrorClass<EntryPayloadInv
  * answer read under one set of rules must not be filed under another without
  * its author seeing them. The client keeps what it has and goes to look.
  */
-export class ItemRevisionConflict extends Schema.TaggedErrorClass<ItemRevisionConflict>()(
+export class ItemRevisionConflict extends Schema.TaggedError<ItemRevisionConflict>()(
   'ASSESSMENT_ITEM_REVISION_CONFLICT',
   { itemId: Schema.String, currentRevisionId: Schema.NullOr(Schema.String) },
   { httpApiStatus: 409, identifier: 'AssessmentItemRevisionConflict' },
 ) {}
 
 /** the item lifecycle said no: the action names itself and a stable reason */
-export class ItemActionRefused extends Schema.TaggedErrorClass<ItemActionRefused>()(
+export class ItemActionRefused extends Schema.TaggedError<ItemActionRefused>()(
   'ASSESSMENT_ITEM_ACTION_REFUSED',
   { action: Schema.String, reason: Schema.String },
   { httpApiStatus: 403, identifier: 'AssessmentItemActionRefused' },
@@ -114,13 +114,13 @@ export class ItemActionRefused extends Schema.TaggedErrorClass<ItemActionRefused
  * Nothing here for this reader: absent, in another tenant, or simply not
  * theirs to see - the refusal never says which.
  */
-export class AttachmentUnavailable extends Schema.TaggedErrorClass<AttachmentUnavailable>()(
+export class AttachmentUnavailable extends Schema.TaggedError<AttachmentUnavailable>()(
   'ASSESSMENT_ATTACHMENT_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AssessmentAttachmentUnavailable' },
 ) {}
 
-export class ReviewNotFound extends Schema.TaggedErrorClass<ReviewNotFound>()(
+export class ReviewNotFound extends Schema.TaggedError<ReviewNotFound>()(
   'ASSESSMENT_REVIEW_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AssessmentReviewNotFound' },
@@ -132,13 +132,13 @@ export class ReviewNotFound extends Schema.TaggedErrorClass<ReviewNotFound>()(
  * allowed to act - and not a validation problem: there is simply no open
  * round left to close.
  */
-export class ReviewConflict extends Schema.TaggedErrorClass<ReviewConflict>()(
+export class ReviewConflict extends Schema.TaggedError<ReviewConflict>()(
   'ASSESSMENT_REVIEW_CONFLICT',
   {},
   { httpApiStatus: 409, identifier: 'AssessmentReviewConflict' },
 ) {}
 
-export class ItemNotFound extends Schema.TaggedErrorClass<ItemNotFound>()(
+export class ItemNotFound extends Schema.TaggedError<ItemNotFound>()(
   'ASSESSMENT_ITEM_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AssessmentItemNotFound' },
@@ -153,7 +153,7 @@ export class ItemNotFound extends Schema.TaggedErrorClass<ItemNotFound>()(
  * approved, and the way forward is void-and-replace, never a save that
  * strands what it governs.
  */
-export class ItemConfigInvalid extends Schema.TaggedErrorClass<ItemConfigInvalid>()(
+export class ItemConfigInvalid extends Schema.TaggedError<ItemConfigInvalid>()(
   'ASSESSMENT_ITEM_CONFIG_INVALID',
   {
     issues: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
@@ -170,7 +170,7 @@ export class ItemConfigInvalid extends Schema.TaggedErrorClass<ItemConfigInvalid
  * the answer is only executed if that state has not moved since - a dialog
  * is open for as long as somebody thinks, and reviewers keep working.
  */
-export class ItemChangeDecisionRequired extends Schema.TaggedErrorClass<ItemChangeDecisionRequired>()(
+export class ItemChangeDecisionRequired extends Schema.TaggedError<ItemChangeDecisionRequired>()(
   'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED',
   {
     currentRevisionId: Schema.NullOr(Schema.String),
@@ -194,7 +194,7 @@ export class ItemChangeDecisionRequired extends Schema.TaggedErrorClass<ItemChan
 ) {}
 
 /** a score-tree write that cannot be accepted, row by row */
-export class ScoreGroupInvalid extends Schema.TaggedErrorClass<ScoreGroupInvalid>()(
+export class ScoreGroupInvalid extends Schema.TaggedError<ScoreGroupInvalid>()(
   'ASSESSMENT_SCORE_GROUP_INVALID',
   {
     refusals: Schema.Array(
@@ -216,26 +216,26 @@ export class ScoreGroupInvalid extends Schema.TaggedErrorClass<ScoreGroupInvalid
  * version travels with the refusal so a client can re-read and retry rather
  * than guess.
  */
-export class ScoreGroupVersionConflict extends Schema.TaggedErrorClass<ScoreGroupVersionConflict>()(
+export class ScoreGroupVersionConflict extends Schema.TaggedError<ScoreGroupVersionConflict>()(
   'ASSESSMENT_SCORE_GROUP_VERSION_CONFLICT',
   { currentVersion: Schema.Number },
   { httpApiStatus: 409, identifier: 'AssessmentScoreGroupVersionConflict' },
 ) {}
 
-export class TemplateNotFound extends Schema.TaggedErrorClass<TemplateNotFound>()(
+export class TemplateNotFound extends Schema.TaggedError<TemplateNotFound>()(
   'ASSESSMENT_TEMPLATE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'AssessmentTemplateNotFound' },
 ) {}
 
-export class TemplateConflict extends Schema.TaggedErrorClass<TemplateConflict>()(
+export class TemplateConflict extends Schema.TaggedError<TemplateConflict>()(
   'ASSESSMENT_TEMPLATE_CONFLICT',
   {},
   { httpApiStatus: 409, identifier: 'AssessmentTemplateConflict' },
 ) {}
 
 /** an archived batch answers reads and refuses every write */
-export class BatchReadOnly extends Schema.TaggedErrorClass<BatchReadOnly>()(
+export class BatchReadOnly extends Schema.TaggedError<BatchReadOnly>()(
   'ASSESSMENT_BATCH_READ_ONLY',
   {},
   { httpApiStatus: 409, identifier: 'AssessmentBatchReadOnly' },
@@ -249,7 +249,7 @@ export class BatchReadOnly extends Schema.TaggedErrorClass<BatchReadOnly>()(
  * reached its last phase, cannot be reopened without saying why, and cannot
  * be deleted once it has run.
  */
-export class BatchStatusInvalid extends Schema.TaggedErrorClass<BatchStatusInvalid>()(
+export class BatchStatusInvalid extends Schema.TaggedError<BatchStatusInvalid>()(
   'ASSESSMENT_BATCH_STATUS_INVALID',
   {
     from: Schema.String,
@@ -268,7 +268,7 @@ export class BatchStatusInvalid extends Schema.TaggedErrorClass<BatchStatusInval
 ) {}
 
 /** a round with nobody in it has nothing to start */
-export class BatchNoParticipants extends Schema.TaggedErrorClass<BatchNoParticipants>()(
+export class BatchNoParticipants extends Schema.TaggedError<BatchNoParticipants>()(
   'ASSESSMENT_BATCH_NO_PARTICIPANTS',
   {},
   { httpApiStatus: 422, identifier: 'AssessmentBatchNoParticipants' },
@@ -278,7 +278,7 @@ export class BatchNoParticipants extends Schema.TaggedErrorClass<BatchNoParticip
  * does not exist here, an empty scope, or a nested selection (an ancestor
  * and its descendant both named - union semantics make it harmless, and
  * precisely therefore confusing, so it is refused outright) */
-export class BatchReferenceInvalid extends Schema.TaggedErrorClass<BatchReferenceInvalid>()(
+export class BatchReferenceInvalid extends Schema.TaggedError<BatchReferenceInvalid>()(
   'ASSESSMENT_BATCH_REFERENCE_INVALID',
   { reference: Schema.Literals(['scope-node', 'user-type', 'scope-empty', 'scope-nested']) },
   { httpApiStatus: 422, identifier: 'AssessmentBatchReferenceInvalid' },
@@ -289,7 +289,7 @@ export class BatchReferenceInvalid extends Schema.TaggedErrorClass<BatchReferenc
  * engine's own enum; the ui explains each one, which is why this carries the
  * structured list rather than a sentence.
  */
-export class PlanInvalid extends Schema.TaggedErrorClass<PlanInvalid>()(
+export class PlanInvalid extends Schema.TaggedError<PlanInvalid>()(
   'ASSESSMENT_PLAN_INVALID',
   {
     refusals: Schema.Array(
@@ -305,7 +305,7 @@ export class PlanInvalid extends Schema.TaggedErrorClass<PlanInvalid>()(
   { httpApiStatus: 422, identifier: 'AssessmentPlanInvalid' },
 ) {}
 
-export class AdvanceInvalid extends Schema.TaggedErrorClass<AdvanceInvalid>()(
+export class AdvanceInvalid extends Schema.TaggedError<AdvanceInvalid>()(
   'ASSESSMENT_ADVANCE_INVALID',
   {
     reason: Schema.Literals([
@@ -328,7 +328,7 @@ export class AdvanceInvalid extends Schema.TaggedErrorClass<AdvanceInvalid>()(
  * authority they hold themselves, over people they already administer, and
  * only capabilities a batch is allowed to carry at all.
  */
-export class AccessInvalid extends Schema.TaggedErrorClass<AccessInvalid>()(
+export class AccessInvalid extends Schema.TaggedError<AccessInvalid>()(
   'ASSESSMENT_ACCESS_INVALID',
   {
     reason: Schema.Literals([

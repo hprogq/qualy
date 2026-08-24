@@ -7,25 +7,25 @@ import { Schema } from 'effect'
 // the database driver into the bundle. A failure is a declaration; raising one
 // needs a connection, and only one of those belongs in a browser.
 
-export class RoleNotFound extends Schema.TaggedErrorClass<RoleNotFound>()(
+export class RoleNotFound extends Schema.TaggedError<RoleNotFound>()(
   'ROLE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'RoleNotFound' },
 ) {}
 
-export class GrantNotFound extends Schema.TaggedErrorClass<GrantNotFound>()(
+export class GrantNotFound extends Schema.TaggedError<GrantNotFound>()(
   'GRANT_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'GrantNotFound' },
 ) {}
 
-export class GrantUserNotFound extends Schema.TaggedErrorClass<GrantUserNotFound>()(
+export class GrantUserNotFound extends Schema.TaggedError<GrantUserNotFound>()(
   'GRANT_USER_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'GrantUserNotFound' },
 ) {}
 
-export class GrantNodeNotFound extends Schema.TaggedErrorClass<GrantNodeNotFound>()(
+export class GrantNodeNotFound extends Schema.TaggedError<GrantNodeNotFound>()(
   'GRANT_NODE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'GrantNodeNotFound' },
@@ -37,7 +37,7 @@ export class GrantNodeNotFound extends Schema.TaggedErrorClass<GrantNodeNotFound
  * Reached through the unique indexes rather than a pre-read: nothing in the
  * write checks for it, and a pre-read would race the insert anyway.
  */
-export class GrantExists extends Schema.TaggedErrorClass<GrantExists>()(
+export class GrantExists extends Schema.TaggedError<GrantExists>()(
   'GRANT_EXISTS',
   {},
   { httpApiStatus: 409, identifier: 'GrantExists' },
@@ -49,14 +49,14 @@ export class GrantExists extends Schema.TaggedErrorClass<GrantExists>()(
  * Its own code rather than a plain denial: the client has a sentence for this
  * case, and collapsing it into ACCESS_DENIED made that sentence unreachable.
  */
-export class TenantAdminRequired extends Schema.TaggedErrorClass<TenantAdminRequired>()(
+export class TenantAdminRequired extends Schema.TaggedError<TenantAdminRequired>()(
   'TENANT_ADMIN_REQUIRED',
   {},
   { httpApiStatus: 403, identifier: 'TenantAdminRequired' },
 ) {}
 
 /** the reason is a closed set, so a client can explain the refusal precisely */
-export class GrantNotEligible extends Schema.TaggedErrorClass<GrantNotEligible>()(
+export class GrantNotEligible extends Schema.TaggedError<GrantNotEligible>()(
   'GRANT_NOT_ELIGIBLE',
   {
     reason: Schema.Literals([
@@ -71,37 +71,37 @@ export class GrantNotEligible extends Schema.TaggedErrorClass<GrantNotEligible>(
   { httpApiStatus: 409, identifier: 'GrantNotEligible' },
 ) {}
 
-export class RoleIsSystem extends Schema.TaggedErrorClass<RoleIsSystem>()(
+export class RoleIsSystem extends Schema.TaggedError<RoleIsSystem>()(
   'ROLE_IS_SYSTEM',
   {},
   { httpApiStatus: 409, identifier: 'RoleIsSystem' },
 ) {}
 
-export class RoleInUse extends Schema.TaggedErrorClass<RoleInUse>()(
+export class RoleInUse extends Schema.TaggedError<RoleInUse>()(
   'ROLE_IN_USE',
   { grantCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'RoleInUse' },
 ) {}
 
-export class RoleVersionConflict extends Schema.TaggedErrorClass<RoleVersionConflict>()(
+export class RoleVersionConflict extends Schema.TaggedError<RoleVersionConflict>()(
   'ROLE_VERSION_CONFLICT',
   { currentVersion: Schema.Number },
   { httpApiStatus: 409, identifier: 'RoleVersionConflict' },
 ) {}
 
-export class RoleNotDraft extends Schema.TaggedErrorClass<RoleNotDraft>()(
+export class RoleNotDraft extends Schema.TaggedError<RoleNotDraft>()(
   'ROLE_NOT_DRAFT',
   {},
   { httpApiStatus: 409, identifier: 'RoleNotDraft' },
 ) {}
 
-export class RoleConflict extends Schema.TaggedErrorClass<RoleConflict>()(
+export class RoleConflict extends Schema.TaggedError<RoleConflict>()(
   'ROLE_CONFLICT',
   {},
   { httpApiStatus: 409, identifier: 'RoleConflict' },
 ) {}
 
-export class PermissionNotFound extends Schema.TaggedErrorClass<PermissionNotFound>()(
+export class PermissionNotFound extends Schema.TaggedError<PermissionNotFound>()(
   'PERMISSION_NOT_FOUND',
   { permissions: Schema.Array(Schema.String) },
   { httpApiStatus: 404, identifier: 'PermissionNotFound' },
@@ -114,13 +114,13 @@ export class PermissionNotFound extends Schema.TaggedErrorClass<PermissionNotFou
  * grant having said so, and reaching every node belongs to the canonical
  * administrator alone.
  */
-export class RoleTargetMismatch extends Schema.TaggedErrorClass<RoleTargetMismatch>()(
+export class RoleTargetMismatch extends Schema.TaggedError<RoleTargetMismatch>()(
   'ROLE_TARGET_MISMATCH',
   { permissions: Schema.Array(Schema.String) },
   { httpApiStatus: 422, identifier: 'RoleTargetMismatch' },
 ) {}
 
-export class RoleNeedsEligibility extends Schema.TaggedErrorClass<RoleNeedsEligibility>()(
+export class RoleNeedsEligibility extends Schema.TaggedError<RoleNeedsEligibility>()(
   'ROLE_NEEDS_ELIGIBILITY',
   {},
   { httpApiStatus: 422, identifier: 'RoleNeedsEligibility' },
@@ -132,26 +132,26 @@ export class RoleNeedsEligibility extends Schema.TaggedErrorClass<RoleNeedsEligi
  * kind gives it something to say, and repairing the payload silently would
  * turn a full replacement into a partial one.
  */
-export class RoleAnchorMismatch extends Schema.TaggedErrorClass<RoleAnchorMismatch>()(
+export class RoleAnchorMismatch extends Schema.TaggedError<RoleAnchorMismatch>()(
   'ROLE_ANCHOR_MISMATCH',
   { roleKind: Schema.Literals(['tenant', 'org']) },
   { httpApiStatus: 422, identifier: 'RoleAnchorMismatch' },
 ) {}
 
-export class RoleUserTypeNotFound extends Schema.TaggedErrorClass<RoleUserTypeNotFound>()(
+export class RoleUserTypeNotFound extends Schema.TaggedError<RoleUserTypeNotFound>()(
   'ROLE_USER_TYPE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'RoleUserTypeNotFound' },
 ) {}
 
-export class RoleOrgTypeNotFound extends Schema.TaggedErrorClass<RoleOrgTypeNotFound>()(
+export class RoleOrgTypeNotFound extends Schema.TaggedError<RoleOrgTypeNotFound>()(
   'ROLE_ORG_TYPE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'RoleOrgTypeNotFound' },
 ) {}
 
 /** grants the eligibility sets, as requested, would leave nobody qualified for */
-export class GrantStranded extends Schema.TaggedErrorClass<GrantStranded>()(
+export class GrantStranded extends Schema.TaggedError<GrantStranded>()(
   'GRANT_STRANDED',
   { grantCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'GrantStranded' },
@@ -166,13 +166,13 @@ export class GrantStranded extends Schema.TaggedErrorClass<GrantStranded>()(
  * college administrator has does not make somebody the person who appoints
  * college administrators.
  */
-export class GrantRuleRefused extends Schema.TaggedErrorClass<GrantRuleRefused>()(
+export class GrantRuleRefused extends Schema.TaggedError<GrantRuleRefused>()(
   'GRANT_RULE_REFUSED',
   {},
   { httpApiStatus: 403, identifier: 'GrantRuleRefused' },
 ) {}
 
-export class RoleEscalationRefused extends Schema.TaggedErrorClass<RoleEscalationRefused>()(
+export class RoleEscalationRefused extends Schema.TaggedError<RoleEscalationRefused>()(
   'ROLE_ESCALATION_REFUSED',
   { permissions: Schema.Array(Schema.String) },
   { httpApiStatus: 403, identifier: 'RoleEscalationRefused' },
@@ -184,7 +184,7 @@ export class RoleEscalationRefused extends Schema.TaggedErrorClass<RoleEscalatio
  * authority you do not already hold. Third-party grants never raise this -
  * the appointment graph is their whole answer.
  */
-export class GrantEscalationRefused extends Schema.TaggedErrorClass<GrantEscalationRefused>()(
+export class GrantEscalationRefused extends Schema.TaggedError<GrantEscalationRefused>()(
   'GRANT_ESCALATION_REFUSED',
   { permissions: Schema.Array(Schema.String) },
   { httpApiStatus: 403, identifier: 'GrantEscalationRefused' },
@@ -198,21 +198,21 @@ export class GrantEscalationRefused extends Schema.TaggedErrorClass<GrantEscalat
  * administer grants anywhere must not claim to appoint anybody, waiting for
  * some other role of the holder's to make it true.
  */
-export class RoleAppointmentInvalid extends Schema.TaggedErrorClass<RoleAppointmentInvalid>()(
+export class RoleAppointmentInvalid extends Schema.TaggedError<RoleAppointmentInvalid>()(
   'ROLE_APPOINTMENT_INVALID',
   { reason: Schema.Literals(['self', 'cycle', 'kind', 'granter-capability']) },
   { httpApiStatus: 422, identifier: 'RoleAppointmentInvalid' },
 ) {}
 
 /** an org capability asked about without saying where */
-export class AccessTargetRequired extends Schema.TaggedErrorClass<AccessTargetRequired>()(
+export class AccessTargetRequired extends Schema.TaggedError<AccessTargetRequired>()(
   'ACCESS_TARGET_REQUIRED',
   {},
   { httpApiStatus: 400, identifier: 'AccessTargetRequired' },
 ) {}
 
 /** what a role still needs before it can be activated */
-export class RoleIncomplete extends Schema.TaggedErrorClass<RoleIncomplete>()(
+export class RoleIncomplete extends Schema.TaggedError<RoleIncomplete>()(
   'ROLE_INCOMPLETE',
   { missing: Schema.Array(Schema.Literals(['permissions', 'user-types', 'org-types'])) },
   { httpApiStatus: 422, identifier: 'RoleIncomplete' },

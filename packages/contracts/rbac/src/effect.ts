@@ -34,7 +34,7 @@ export class PermissionCatalog extends Context.Service<
 >()('@qualy/rbac-contract/PermissionCatalog') {}
 
 /** the principal is not allowed to do this, wherever the check was made */
-export class AccessDenied extends Schema.TaggedErrorClass<AccessDenied>()(
+export class AccessDenied extends Schema.TaggedError<AccessDenied>()(
   // the wire code is upper snake like every other domain error; the readable
   // name is the schema identifier, which is what the document shows
   'ACCESS_DENIED',
@@ -50,7 +50,7 @@ export class AccessDenied extends Schema.TaggedErrorClass<AccessDenied>()(
  * can leave a tenant unable to administer itself. A tenant must never learn
  * about that difference, so there is one code and one translation.
  */
-export class LastAdministrator extends Schema.TaggedErrorClass<LastAdministrator>()(
+export class LastAdministrator extends Schema.TaggedError<LastAdministrator>()(
   'LAST_ADMINISTRATOR',
   {},
   { httpApiStatus: 409, identifier: 'LastAdministrator' },

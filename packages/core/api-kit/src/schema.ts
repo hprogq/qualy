@@ -65,7 +65,7 @@ export const countedPageOf = <T, E>(item: Schema.Codec<T, E, never, never>) =>
  * while both runtimes serve, a client must see the same failure whichever one
  * answered, and precision here would buy nothing a client could act on.
  */
-export class BadRequest extends Schema.TaggedErrorClass<BadRequest>()(
+export class BadRequest extends Schema.TaggedError<BadRequest>()(
   'BAD_REQUEST',
   { message: Schema.String },
   { httpApiStatus: 400, identifier: 'BadRequest' },

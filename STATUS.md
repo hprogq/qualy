@@ -8347,3 +8347,42 @@ viewer` 四个业务 span——HTTP root + Effect 业务 span 一条链(DB 边�
 验收:`pnpm typecheck` 零错;`pnpm test` 824 passed | 17 skipped(新增 2 条);生产
 smoke 全过(带/不带 OTEL endpoint 各一遍,退出 0);prettier 通过(未动 web 源,
 browser 套件不涉及)。下一步按计划 6.4(业务 span 名清点)或 6.5(数据库边界 span)。
+
+## Effect 基线迁移:4.0.0-beta.103 → 4.0.0-rc.111(2026-08-25)
+
+Effect v4 已进入 RC(官网安装指令即 `effect@rc`,rc tag 停在 rc.111,beta 线停在
+beta.107)。在 Phase 6 余下阶段继续之前把 runtime 基线推到 RC,理由:项目已承担
+prerelease 风险,留在旧 beta 只是用更旧的 prerelease;RC 阶段以修复为主
+(rc.111 含 Effect.fn `{self}` overload 绑定、Deferred waiter 中断恢复、fiber observer
+cancellation、finalizer failure 合并等 runtime correctness 修复,对这个大量使用
+Effect.fn/结构化并发/Layer 的服务端就是升级理由本身);观测代码从第一天就写在 RC API 上。
+
+**版本策略(写进 catalog 注释)**:基线冻结在 rc.111,此后只按需升级——Qualy 实际
+碰到的修复、runtime correctness、stable 发布;不追逐每个 RC。`@effect/tsgo` 是另一条
+工具版本线(0.36.4),不随 train 动。
+
+**执行**:catalog 三包(effect、@effect/vitest、@effect/platform-node)与
+minimumReleaseAgeExclude 四条(含传递的 platform-node-shared)同切 rc.111;
+`pnpm vendor:update` 同步 repos/effect 至 tag effect@4.0.0-rc.111
+(commit 648f566d,内容 hash 校验过);逐版通读 beta.104→rc.111 changelog
+(不只看 rc.111——真正的断裂常在 beta.104 这种跨段)。
+
+**破坏面:一处改名,4532 个错误全是它的级联**。`Schema.TaggedErrorClass` →
+`Schema.TaggedError`(v4 prerelease 线内改名,MIGRATION.md 不载;新签名 identifier
+挪到第一段调用,fields/annotations 第三参形态未变,`httpApiStatus` 注解仍在)。
+11 个文件 97 处机械改名后 typecheck 从 4532 → 0:其余"错误"(error 类塌成 never 后
+i18n 键、typed client、Effect R 通道全部连锁误报)无一真实。**unstable/** 使用面
+盘点**:仅 httpapi(33)/http(23)/observability(2)三模块;6.1-6.3 依赖的三处载重
+事实在 rc.111 逐一复核仍成立——`HttpRouter` 仍写 `http.route`(rc.110 #7248 动过
+tracer/中间件性能,行为未变)、`HttpMiddleware.tracer` 仍从 traceparent 继承、
+OTLP span 的 `name` 仍在导出时才读(api-kit 的 pinning 测试在新版本下通过即为证)。
+
+顺带的直接收益:beta.104 修了「OTLP metric export 失败时保留 delta checkpoint」,
+正是 6.1 导出器失败语义的一块补强。
+
+验收(全部真实执行):`pnpm typecheck` 零错(effect-diagnostics 门禁确认 tsgo patch
+在 rc.111 下仍抓 fixture);`pnpm test` 824 passed | 17 skipped(error-codes、
+frozen-routes、OpenAPI 深比较、catalogs 全过);`pnpm test:browser` 116 passed
+(exit 0;既知 playwright 收尾 flake 出现一次,重跑两次干净);`pnpm build` 成功;
+生产 smoke 全过退出 0;`pnpm vendor:check` 两树一致;prettier 通过。
+独立 commit(chore(effect): upgrade v4 baseline to rc.111),与 Phase 6 代码不混。

@@ -16,7 +16,7 @@ export class CurrentUser extends Context.Service<CurrentUser, Principal>()(
   '@qualy/plugin-auth/CurrentUser',
 ) {}
 
-export class AuthRequired extends Schema.TaggedErrorClass<AuthRequired>()(
+export class AuthRequired extends Schema.TaggedError<AuthRequired>()(
   'AUTH_REQUIRED',
   {},
   { httpApiStatus: 401, identifier: 'AuthRequired' },
@@ -30,7 +30,7 @@ export class AuthRequired extends Schema.TaggedErrorClass<AuthRequired>()(
  * clears the cookie. An unknown token gets the same answer as no token, so a
  * caller cannot learn that a token once existed.
  */
-export class SessionExpired extends Schema.TaggedErrorClass<SessionExpired>()(
+export class SessionExpired extends Schema.TaggedError<SessionExpired>()(
   'SESSION_EXPIRED',
   {},
   { httpApiStatus: 401, identifier: 'SessionExpired' },

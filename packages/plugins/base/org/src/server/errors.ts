@@ -9,32 +9,32 @@ import type { AccessDenied } from '@qualy/rbac-contract/effect'
 // back. That is a real ESM cycle rather than a stylistic one, and it shows up
 // as a temporal dead zone at load time rather than as a type error.
 
-export class NodeNotFound extends Schema.TaggedErrorClass<NodeNotFound>()(
+export class NodeNotFound extends Schema.TaggedError<NodeNotFound>()(
   'ORG_NODE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'OrgNodeNotFound' },
 ) {}
 
-export class TypeNotFound extends Schema.TaggedErrorClass<TypeNotFound>()(
+export class TypeNotFound extends Schema.TaggedError<TypeNotFound>()(
   'ORG_TYPE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'OrgTypeNotFound' },
 ) {}
 
-export class RuleViolation extends Schema.TaggedErrorClass<RuleViolation>()(
+export class RuleViolation extends Schema.TaggedError<RuleViolation>()(
   'ORG_NODE_RULE_VIOLATION',
   { reason: Schema.String },
   { httpApiStatus: 422, identifier: 'OrgNodeRuleViolation' },
 ) {}
 
 /** role codes stay private: the count is all the caller needs, and it localizes */
-export class AssignmentIncompatible extends Schema.TaggedErrorClass<AssignmentIncompatible>()(
+export class AssignmentIncompatible extends Schema.TaggedError<AssignmentIncompatible>()(
   'ORG_NODE_ASSIGNMENT_INCOMPATIBLE',
   { assignmentCount: Schema.Number },
   { httpApiStatus: 409, identifier: 'OrgNodeAssignmentIncompatible' },
 ) {}
 
-export class PlacementBlocked extends Schema.TaggedErrorClass<PlacementBlocked>()(
+export class PlacementBlocked extends Schema.TaggedError<PlacementBlocked>()(
   // the code the oRPC side already raises, and the only one the client can
   // translate. Inventing a clearer name here would have meant the same failure
   // is localized on one path and shown in English on the other.
@@ -53,14 +53,14 @@ export type ChangeNodeTypeError =
   | AccessDenied
   | NodeConstraintError
 
-export class NodeIsRoot extends Schema.TaggedErrorClass<NodeIsRoot>()(
+export class NodeIsRoot extends Schema.TaggedError<NodeIsRoot>()(
   'ORG_NODE_IS_ROOT',
   {},
   { httpApiStatus: 409, identifier: 'OrgNodeIsRoot' },
 ) {}
 
 /** users and assignments hold a node through restrict foreign keys */
-export class NodeHasChildren extends Schema.TaggedErrorClass<NodeHasChildren>()(
+export class NodeHasChildren extends Schema.TaggedError<NodeHasChildren>()(
   'ORG_NODE_HAS_CHILDREN',
   {},
   { httpApiStatus: 409, identifier: 'OrgNodeHasChildren' },
@@ -70,31 +70,31 @@ export type UpdateNodeError = NodeNotFound | AccessDenied | NodeConstraintError
 export type DeleteNodeError =
   NodeNotFound | NodeIsRoot | NodeHasChildren | AccessDenied | NodeConstraintError
 
-export class TypeInUse extends Schema.TaggedErrorClass<TypeInUse>()(
+export class TypeInUse extends Schema.TaggedError<TypeInUse>()(
   'ORG_TYPE_IN_USE',
   { reason: Schema.String },
   { httpApiStatus: 409, identifier: 'OrgTypeInUse' },
 ) {}
 
-export class RuleInvalid extends Schema.TaggedErrorClass<RuleInvalid>()(
+export class RuleInvalid extends Schema.TaggedError<RuleInvalid>()(
   'ORG_RULE_INVALID',
   {},
   { httpApiStatus: 422, identifier: 'OrgRuleInvalid' },
 ) {}
 
-export class RuleCycle extends Schema.TaggedErrorClass<RuleCycle>()(
+export class RuleCycle extends Schema.TaggedError<RuleCycle>()(
   'ORG_RULE_CYCLE',
   {},
   { httpApiStatus: 422, identifier: 'OrgRuleCycle' },
 ) {}
 
-export class RuleNotFound extends Schema.TaggedErrorClass<RuleNotFound>()(
+export class RuleNotFound extends Schema.TaggedError<RuleNotFound>()(
   'ORG_RULE_NOT_FOUND',
   {},
   { httpApiStatus: 404, identifier: 'OrgRuleNotFound' },
 ) {}
 
-export class RuleInUse extends Schema.TaggedErrorClass<RuleInUse>()(
+export class RuleInUse extends Schema.TaggedError<RuleInUse>()(
   'ORG_RULE_IN_USE',
   {},
   { httpApiStatus: 409, identifier: 'OrgRuleInUse' },
@@ -107,19 +107,19 @@ export type PutRuleError =
   RuleInvalid | TypeNotFound | RuleCycle | AccessDenied | TypeConstraintError
 export type DeleteRuleError = RuleNotFound | RuleInUse | AccessDenied | TypeConstraintError
 
-export class NodeConflict extends Schema.TaggedErrorClass<NodeConflict>()(
+export class NodeConflict extends Schema.TaggedError<NodeConflict>()(
   'ORG_NODE_CONFLICT',
   {},
   { httpApiStatus: 409, identifier: 'OrgNodeConflict' },
 ) {}
 
-export class NodeInUse extends Schema.TaggedErrorClass<NodeInUse>()(
+export class NodeInUse extends Schema.TaggedError<NodeInUse>()(
   'ORG_NODE_IN_USE',
   {},
   { httpApiStatus: 409, identifier: 'OrgNodeInUse' },
 ) {}
 
-export class TypeConflict extends Schema.TaggedErrorClass<TypeConflict>()(
+export class TypeConflict extends Schema.TaggedError<TypeConflict>()(
   'ORG_TYPE_CONFLICT',
   {},
   { httpApiStatus: 409, identifier: 'OrgTypeConflict' },
@@ -171,7 +171,7 @@ export const typeConstraints: Record<string, () => TypeConstraintError> = {
   fk_org_nodes_org_type: () => new TypeInUse({ reason: 'nodes still use this org type' }),
 }
 
-export class InvalidMove extends Schema.TaggedErrorClass<InvalidMove>()(
+export class InvalidMove extends Schema.TaggedError<InvalidMove>()(
   'ORG_NODE_INVALID_MOVE',
   { reason: Schema.String },
   { httpApiStatus: 422, identifier: 'OrgNodeInvalidMove' },

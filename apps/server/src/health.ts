@@ -17,7 +17,7 @@ import { Readiness } from '@qualy/api-kit/readiness'
 // nothing to probe is ready, which is the only honest answer: ready has never
 // claimed the assembly is complete, only that what is loaded is healthy.
 
-export class NotReady extends Schema.TaggedErrorClass<NotReady>()(
+export class NotReady extends Schema.TaggedError<NotReady>()(
   'NotReady',
   { check: Schema.String },
   { httpApiStatus: 503, identifier: 'NotReady' },

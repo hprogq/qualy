@@ -11,7 +11,7 @@ import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
  * handler equalizes timing as well, so neither the answer nor how long it took
  * reveals whether an account exists.
  */
-export class InvalidCredentials extends Schema.TaggedErrorClass<InvalidCredentials>()(
+export class InvalidCredentials extends Schema.TaggedError<InvalidCredentials>()(
   'INVALID_CREDENTIALS',
   {},
   { httpApiStatus: 401, identifier: 'InvalidCredentials' },

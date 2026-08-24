@@ -7,10 +7,10 @@
       "contentSha256": "0a3c7e028172b05be6ac30b275beb984668640c47b32e47c59f7c874cf889cd4"
     },
     "effect": {
-      "packageVersion": "4.0.0-beta.103",
-      "tag": "effect@4.0.0-beta.103",
-      "commit": "dff25449dfc927f2cce912c329f343cfb5365f88",
-      "contentSha256": "823b64796e481cd9fc31c141cd4f0f9ce6c4617e80100d694c96d472c315d6e8"
+      "packageVersion": "4.0.0-rc.111",
+      "tag": "effect@4.0.0-rc.111",
+      "commit": "648f566dd259898e7697c7fcb796183ccbc474ab",
+      "contentSha256": "4c7d853d08eec3793544a0f517f466d980973ab9482c7de7631b532280877722"
     }
   }
 }

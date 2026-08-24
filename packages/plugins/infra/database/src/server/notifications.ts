@@ -27,7 +27,7 @@ import { DatabaseConfig } from './config.ts'
 //   moment the pool hands the connection to somebody else.
 
 /** the transport failed underneath a listener: connect, LISTEN, or mid-stream */
-export class DatabaseListenFailed extends Schema.TaggedErrorClass<DatabaseListenFailed>()(
+export class DatabaseListenFailed extends Schema.TaggedError<DatabaseListenFailed>()(
   'DatabaseListenFailed',
   { channel: Schema.String, cause: Schema.Defect() },
 ) {}

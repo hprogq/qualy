@@ -135,7 +135,7 @@ describe('error codes across the assembly', () => {
     const known = new Set<string>([...SOURCES.map((source) => source.file), ...NOT_A_WIRE_CODE])
     const walk = (dir: string) => walkFiles(dir, ['tests']).filter((file) => file.endsWith('.ts'))
     const declaring = [...walk(path.join(root, 'packages')), ...walk(path.join(root, 'apps'))]
-      .filter((file) => fs.readFileSync(file, 'utf8').includes('TaggedErrorClass<'))
+      .filter((file) => fs.readFileSync(file, 'utf8').includes('TaggedError<'))
       .map((file) => path.relative(root, file))
     expect(declaring.filter((file) => !known.has(file))).toEqual([])
   })
