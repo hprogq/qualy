@@ -3861,7 +3861,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
         }
       }
       return { blocked, released }
-    }),
+    }).pipe(Effect.withSpan('Assessment.patrolReviewRounds')),
 
     /** the rounds nobody can act on, as the batch's own alert panel reads them */
     reviewAlerts: Effect.fn('Assessment.reviewAlerts')(function* (

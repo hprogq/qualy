@@ -577,11 +577,11 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     return row
   })
 
-  /** the row moved since the caller read it; they re-read and decide again */
-  const requireVersion = Effect.fn('Iam.users.requireVersion')(function* (
-    row: GuardRow,
-    expected: number,
-  ) {
+  /**
+   * The row moved since the caller read it; they re-read and decide again.
+   * A pure compare wears no span: the refusal lands on the operation's own.
+   */
+  const requireVersion = Effect.fnUntraced(function* (row: GuardRow, expected: number) {
     if (row.version !== expected) return yield* new UserVersionConflict()
   })
 
@@ -594,8 +594,8 @@ export const make = Effect.fn('Iam.users.make')(function* () {
     return row
   })
 
-  /** a system user type is provisioned, not assigned */
-  const mayAssignType = Effect.fn('Iam.users.mayAssignType')(function* (type: TypeRow) {
+  /** a system user type is provisioned, not assigned; pure check, no span */
+  const mayAssignType = Effect.fnUntraced(function* (type: TypeRow) {
     if (type.isSystem) {
       return yield* new AccessDenied({ reason: 'a system user type is provisioned, not assigned' })
     }

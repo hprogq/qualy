@@ -122,8 +122,11 @@ export const listEvents = (
     return query.execute()
   })
 
-/** a timestamp filter the database would refuse is a bad request, not a defect */
-const timeBound = Effect.fn('audit.timeBound')(function* (value: string | undefined) {
+/**
+ * A timestamp filter the database would refuse is a bad request, not a
+ * defect. Parsing wears no span; the refusal lands on the handler's own.
+ */
+const timeBound = Effect.fnUntraced(function* (value: string | undefined) {
   if (value === undefined) return undefined
   if (Number.isNaN(Date.parse(value))) {
     return yield* new BadRequest({ message: `not a timestamp: ${value}` })

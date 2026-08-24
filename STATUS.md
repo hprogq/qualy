@@ -8386,3 +8386,39 @@ frozen-routes、OpenAPI 深比较、catalogs 全过);`pnpm test:browser` 116 pas
 (exit 0;既知 playwright 收尾 flake 出现一次,重跑两次干净);`pnpm build` 成功;
 生产 smoke 全过退出 0;`pnpm vendor:check` 两树一致;prettier 通过。
 独立 commit(chore(effect): upgrade v4 baseline to rc.111),与 Phase 6 代码不混。
+
+## 业务 span 清点(OTel 计划 Phase 6.4):全量盘点后的小修(2026-08-25)
+
+按 docs/PHASE6-OPENTELEMETRY-DESIGN.md §11 与 §26 的 6.4,对生产源码全部
+`Effect.fn`/`Effect.withSpan` 命名做了一次全量盘点(约 300 处,含 handler 层),
+结论:**覆盖面与命名纪律已经达标,需要动的只有四处**。
+
+**盘点结果**:§11.1 点名的每一类操作都已有 span——Iam.users 全生命周期(setStatus
+统摄 delete/restore)、Rbac.require/canAt 与 grants.grantRole/revoke、
+Assessment.setEntryStatus(submit/withdraw/abandon 一个落点)/decideReview/
+appealReview/advancePhase、Storage.prepareUpload/completeUpload 与两个 sweep、
+Audit.record、Auth.signIn 全链(resolveProvider/findIdentity/failAttempt/
+completeLogin/record)、Auth.resolveSession。命名统一为 `Service.operation`
+(服务)与 `domain.op.handler`(handler);**零动态构造的 span 名**(§27.4 的
+UUID/动态 URL 红线在源头上就不存在)。四个看似可疑的扁平名(audit.timeBound、
+authLocal.login.fail、health.ready、iam.requireUserRead)逐一读过,均为真实边界。
+
+**四处修正**:
+
+- 一个真缺口:`Assessment.patrolReviewRounds`(评审巡逻,调度器的另一半)裸奔,
+  补 `Effect.withSpan`——sweepDueBoundaries 早有,巡逻没有,§11.1 的
+  「Scheduler.run / boundary processing」至此两翼齐全。
+- 三个纯函数退场(§11.2):`Iam.users.requireVersion`(版本比对)、
+  `Iam.users.mayAssignType`(字段检查)、`audit.timeBound`(时间戳解析)从
+  `Effect.fn` 改 `Effect.fnUntraced`——纯比对/解析不产 span,拒绝落在所属操作
+  自己的 span 上。曾用脚本按「函数体只有 typed fail」批量筛,被参数类型注解里的
+  花括号大面积误报(Org.createNode 这种真写库的都被标成纯),最终以人工逐个读
+  定案——assert 类(assertNoSelfEscalation、roles.assertComplete)都有真查询,
+  span 全部保留。
+
+§11.3 的 qualy.* 低风险属性是「允许的示例」而非本阶段清单项,未加;真机验证沿用
+6.2/6.3 的 Tempo 证据(业务 span 已在 trace 里挂在 HTTP root 之下)。
+
+验收:`pnpm typecheck` 零错;`pnpm test` 824 passed | 17 skipped;prettier 通过
+(未动 web 源)。下一步按计划 6.5:数据库边界 span(pg auto-instrumentation 评估
+与 orm.ts 手动兜底)。
