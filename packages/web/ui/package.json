@@ -67,7 +67,8 @@
     "./time-field": "./src/components/time-field.tsx",
     "./screen": "./src/components/screen/index.ts",
     "./stylex-probe": "./src/components/stylex-probe.tsx",
-    "./theme/tokens.stylex": "./src/theme/tokens.stylex.ts"
+    "./theme/tokens.stylex": "./src/theme/tokens.stylex.ts",
+    "./provider": "./src/theme/mantine.tsx"
   },
   "peerDependencies": {
     "react": "catalog:",

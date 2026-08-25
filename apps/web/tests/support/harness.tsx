@@ -2,7 +2,13 @@ import { StrictMode, type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
-import { ThemeProvider, RuntimeProvider, type ComponentRegistry } from '@qualy/web-runtime'
+import {
+  ThemeProvider,
+  RuntimeProvider,
+  useTheme,
+  type ComponentRegistry,
+} from '@qualy/web-runtime'
+import { UiProvider } from '@qualy/ui/provider'
 import { Effect } from 'effect'
 
 import { catalogs, errorMessages } from 'virtual:qualy/plugins'
@@ -48,6 +54,13 @@ export function fakeClient(stubs: Record<string, Record<string, unknown>>): Fake
 }
 
 export type FakeClient = Record<string, Record<string, unknown>>
+
+// same bridge the app mounts: the widget library follows the product
+// theme's resolved scheme and holds no scheme state of its own
+function WidgetBridge({ children }: { children: ReactNode }) {
+  const { resolved } = useTheme()
+  return <UiProvider scheme={resolved}>{children}</UiProvider>
+}
 
 /**
  * A failure shaped the way the derived client surfaces one.
@@ -99,22 +112,24 @@ export function renderScreen({
         {/* the same order the app composes: theme around the runtime, so a
             component reading the theme works here exactly as it does there */}
         <ThemeProvider>
-          <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
-            <MemoryRouter initialEntries={[route]}>
-              <Address />
-              {routes ? (
-                <Routes>
-                  {routes.map((entry) => (
-                    <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
-                  ))}
-                </Routes>
-              ) : path ? (
-                <RouteHost path={path}>{children}</RouteHost>
-              ) : (
-                children
-              )}
-            </MemoryRouter>
-          </RuntimeProvider>
+          <WidgetBridge>
+            <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
+              <MemoryRouter initialEntries={[route]}>
+                <Address />
+                {routes ? (
+                  <Routes>
+                    {routes.map((entry) => (
+                      <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
+                    ))}
+                  </Routes>
+                ) : path ? (
+                  <RouteHost path={path}>{children}</RouteHost>
+                ) : (
+                  children
+                )}
+              </MemoryRouter>
+            </RuntimeProvider>
+          </WidgetBridge>
         </ThemeProvider>
       </I18nProvider>
     </StrictMode>,

@@ -1,4 +1,4 @@
-import { lazy, useMemo, type ComponentType } from 'react'
+import { lazy, useMemo, type ComponentType, type ReactNode } from 'react'
 import { BrowserRouter, Link } from 'react-router'
 import { primaryNavigation } from '@qualy/ui-contract'
 import {
@@ -6,10 +6,12 @@ import {
   RuntimeProvider,
   ThemeProvider,
   useManifest,
+  useTheme,
   useUiCollection,
   type ComponentRegistry,
   type RouteSlots,
 } from '@qualy/web-runtime'
+import { UiProvider } from '@qualy/ui/provider'
 import { I18nProvider, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
@@ -31,14 +33,23 @@ export default function App() {
   return (
     <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
       <ThemeProvider>
-        <RuntimeProvider registry={registry}>
-          <BrowserRouter>
-            <ManifestRouter />
-          </BrowserRouter>
-        </RuntimeProvider>
+        <WidgetBridge>
+          <RuntimeProvider registry={registry}>
+            <BrowserRouter>
+              <ManifestRouter />
+            </BrowserRouter>
+          </RuntimeProvider>
+        </WidgetBridge>
       </ThemeProvider>
     </I18nProvider>
   )
+}
+
+// the product ThemeProvider stays the only source of the scheme choice; the
+// widget library follows its resolved value and keeps no state of its own
+function WidgetBridge({ children }: { children: ReactNode }) {
+  const { resolved } = useTheme()
+  return <UiProvider scheme={resolved}>{children}</UiProvider>
 }
 
 // the host is only a routing engine: layouts, pages and the home target all
