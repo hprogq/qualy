@@ -8807,3 +8807,28 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 沉淀项(§23 的查询能力已由 LGTM Drilldown 与 TMP/云端 Grafana 覆盖),不阻塞
 6.9 验收。secret 状态:真实凭据仅存于 gitignored 的 collector.env,tracked
 文件/文档/测试均无。
+
+## UI 平台 pivot:PrimeReact 实验冻结,Mantine 底座就位前的 salvage(2026-08-26)
+
+裁决与全案见 [ADR 0010](docs/adr/0010-ui-widget-platform.md) 与 docs/ui-platform-migration-mantine.md。
+
+- **PrimeReact 11 实验冻结**:分支 `ui-platform` 推进到 overlay 家族中途后中止,未提交
+  的中间态以 wip commit 封存于 c0b51d7b,打只读 tag `ui-prime-m4-checkpoint`;实查
+  事实(NodeNext 类型分发失效、trigger 缺 type="button"、compound 层不自足、CSS 层
+  序陷阱、主题渗漏等)存 docs/notes/primereact.md,原设计文档 docs/ui-platform-migration.md
+  加 superseded 标注后历史保留。
+- **新分支 `refactor/ui-mantine` 建自真实迁移基线 af2c71ab**(= main HEAD,main 期间
+  未动),不含任何 Prime 依赖与残留;Prime 分支只作 salvage 来源,按 KEEP/PORT/DROP
+  逐项甄别,不做整体 merge。
+- **salvage 落地(6 个提交)**:①StyleX 工具链(@stylexjs/stylex+unplugin 0.19.0 进
+  catalog、unref patch、vite/vitest 双管线接线、tokens.stylex.ts + `--q-*` 语义
+  token 层);②StyleX 探针组件与浏览器测试;③admin.tsx/screen.tsx 单文件拆为
+  admin/、screen/ 目录(纯重排,shadcn 实现原样);④`--q-*` token 引入(shadcn 变量
+  改为别名指向);⑤供应商中立的组件契约测试(overlay 六场景、button、checkbox 玻璃态
+  与灰阶钉、theme 探针、date-time-picker、shell)——业务断言不绑库 DOM 形状,已在
+  Radix 基线上全绿;⑥本文档组(Mantine 设计文档、ADR 0010、历史文档回收)。
+- **验收(全部真实执行)**:`pnpm typecheck` 零错误;`pnpm test` = Test Files 123
+  passed | 3 skipped,Tests 838 passed | 17 skipped;`pnpm test:browser` = 19 files
+  / 129 tests 全通过;`pnpm build` 成功(staged 89 files precompressed)。残留扫描:
+  docs 之外源码零 primereact/@primeuix/VITE_PRIMEUI 引用,pnpm-lock.yaml 零命中。
+  M3M(Mantine 底座接入)未开始,按设计文档等待下一阶段指令。
