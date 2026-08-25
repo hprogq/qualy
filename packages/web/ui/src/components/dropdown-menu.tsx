@@ -31,6 +31,9 @@ function DropdownMenu({
     <MMenu
       withinPortal
       offset={4}
+      // parity with the previous substrate: the dropdown stays visible even
+      // if the trigger leaves the viewport (hideDetached would blank it)
+      hideDetached={false}
       transitionProps={{ duration: 100 }}
       {...(open === undefined ? {} : { opened: open })}
       {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}

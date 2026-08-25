@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Combobox, useCombobox } from '@mantine/core'
+import { Combobox, InputBase as MInputBase, InputPlaceholder, useCombobox } from '@mantine/core'
 
 import { cn } from '../lib/utils.ts'
 import { ChevronDownIcon, CheckIcon } from 'lucide-react'
@@ -89,6 +89,9 @@ function Select({
     <Combobox
       store={store}
       withinPortal
+      // parity with the previous substrate: the dropdown stays visible even
+      // if the trigger leaves the viewport (hideDetached would blank it)
+      hideDetached={false}
       // a closed list leaves the document entirely - a hidden copy of every
       // option is a phantom for tests and assistive tech alike
       keepMounted={false}
@@ -110,22 +113,33 @@ function SelectTrigger({
   size = 'default',
   children,
   onKeyDown,
+  'aria-invalid': ariaInvalid,
   ...props
 }: React.ComponentProps<'button'> & {
   size?: 'sm' | 'default'
 }) {
-  const { value, disabled, opened, toggle } = useSelect()
-  const empty = value === undefined || value === ''
+  const { disabled, opened, toggle } = useSelect()
+  // the product marks invalid controls with aria-invalid; the widget wants
+  // its own error prop
+  const invalid = ariaInvalid === true || ariaInvalid === 'true'
   return (
     <Combobox.Target>
-      <button
+      <MInputBase
+        component="button"
         type="button"
         role="combobox"
         aria-expanded={opened}
+        pointer
         data-slot="select-trigger"
         data-size={size}
-        {...(empty ? { 'data-placeholder': '' } : {})}
+        size={size === 'sm' ? 'xs' : 'sm'}
+        // the wrapper is where a caller sizes the field; fit by default,
+        // as the closed control has always been
+        className={cn('w-fit', className)}
+        {...(invalid ? { error: true } : {})}
         disabled={disabled}
+        rightSection={<Combobox.Chevron />}
+        rightSectionPointerEvents="none"
         onClick={toggle}
         onKeyDown={(event) => {
           onKeyDown?.(event)
@@ -133,15 +147,10 @@ function SelectTrigger({
           // close a modal underneath; when it is closed, it may
           if (event.key === 'Escape' && opened) event.stopPropagation()
         }}
-        className={cn(
-          "flex w-fit items-center justify-between gap-1.5 rounded-4xl border border-input bg-input/30 px-3 py-2 text-sm whitespace-nowrap transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-          className,
-        )}
         {...props}
       >
         {children}
-        <ChevronDownIcon aria-hidden className="pointer-events-none size-4 text-muted-foreground" />
-      </button>
+      </MInputBase>
     </Combobox.Target>
   )
 }
@@ -149,8 +158,14 @@ function SelectTrigger({
 function SelectValue({ placeholder }: { placeholder?: React.ReactNode }) {
   const { value, items } = useSelect()
   const chosen = value !== undefined && items.has(value) ? items.get(value) : undefined
+  if (chosen === undefined) return <InputPlaceholder>{placeholder}</InputPlaceholder>
   return (
-    <span data-slot="select-value">{chosen === undefined ? (placeholder ?? null) : chosen}</span>
+    <span
+      data-slot="select-value"
+      className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap"
+    >
+      {chosen}
+    </span>
   )
 }
 
@@ -205,10 +220,9 @@ function SelectItem({
       value={value}
       {...(disabled === undefined ? {} : { disabled })}
       data-slot="select-item"
-      className={cn(
-        "relative flex w-full cursor-default items-center gap-2.5 rounded-xl py-2 pr-8 pl-3 text-sm outline-hidden select-none data-combobox-active:bg-accent data-combobox-active:text-accent-foreground data-combobox-active:**:text-accent-foreground data-combobox-disabled:pointer-events-none data-combobox-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
+      // structure only - the reserved indicator seat and the row's shape;
+      // hover, active and disabled looks are the widget's own
+      className={cn('relative flex w-full items-center gap-2.5 pr-8', className)}
       {...props}
     >
       {/* the indicator seat is always reserved, so choosing never reflows the row */}

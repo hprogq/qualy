@@ -75,6 +75,9 @@ function Popover({
       withinPortal
       trapFocus
       returnFocus
+      // parity with the previous substrate: the dropdown stays visible even
+      // if the trigger leaves the viewport (hideDetached would blank it)
+      hideDetached={false}
       // withRoles would overwrite the trigger's own id, severing any
       // label-for association a form built; the adapter wears the aria
       // state itself instead
