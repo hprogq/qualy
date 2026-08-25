@@ -66,7 +66,10 @@
     "./kbd": "./src/components/kbd.tsx",
     "./time-field": "./src/components/time-field.tsx",
     "./screen": "./src/components/screen.tsx",
-    "./stylex-probe": "./src/components/stylex-probe.tsx"
+    "./stylex-probe": "./src/components/stylex-probe.tsx",
+    "./prime-probe": "./src/components/prime-probe.tsx",
+    "./theme/tokens.stylex": "./src/theme/tokens.stylex.ts",
+    "./theme/prime": "./src/theme/prime.ts"
   },
   "peerDependencies": {
     "react": "catalog:",

@@ -1,6 +1,8 @@
 import { lazy, useMemo, type ComponentType } from 'react'
 import { BrowserRouter, Link } from 'react-router'
+import { PrimeReactProvider } from '@primereact/core/config'
 import { primaryNavigation } from '@qualy/ui-contract'
+import { qualyPrimeTheme } from '@qualy/ui/theme/prime'
 import {
   ManifestRoutes,
   RuntimeProvider,
@@ -25,17 +27,26 @@ const registry: ComponentRegistry = Object.fromEntries(
   ]),
 )
 
+// the PrimeUI license is a client-side configuration value, not a server
+// secret: it ships in the bundle by design. Set VITE_PRIMEUI_LICENSE in the
+// root .env (gitignored); the placeholder lives in .env.example.
+const primeLicense: string | undefined = import.meta.env.VITE_PRIMEUI_LICENSE
+
 export default function App() {
   // localization wraps everything: even the manifest loading and error
-  // states are localized, so the shell never renders untranslated copy
+  // states are localized, so the shell never renders untranslated copy.
+  // PrimeReactProvider sits inside ThemeProvider - dark mode stays owned by
+  // ThemeProvider, PrimeReact only follows the .dark class it toggles.
   return (
     <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
       <ThemeProvider>
-        <RuntimeProvider registry={registry}>
-          <BrowserRouter>
-            <ManifestRouter />
-          </BrowserRouter>
-        </RuntimeProvider>
+        <PrimeReactProvider theme={qualyPrimeTheme} license={primeLicense}>
+          <RuntimeProvider registry={registry}>
+            <BrowserRouter>
+              <ManifestRouter />
+            </BrowserRouter>
+          </RuntimeProvider>
+        </PrimeReactProvider>
       </ThemeProvider>
     </I18nProvider>
   )

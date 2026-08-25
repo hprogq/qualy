@@ -421,6 +421,9 @@ importers:
       '@qualy/web-build':
         specifier: workspace:*
         version: link:../../packages/build/web
+      '@stylexjs/stylex':
+        specifier: 'catalog:'
+        version: 0.19.0
       '@stylexjs/unplugin':
         specifier: 'catalog:'
         version: 0.19.0(patch_hash=98bf35f7744801285eed2a11f80d539915f2b69b3fd8f6fa2e1f58d918295f90)(unplugin@2.3.11)
