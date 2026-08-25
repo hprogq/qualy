@@ -240,6 +240,8 @@ function Queue({
                     className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
                   />
                   <Input
+                    name="review-search"
+                    aria-label={format(m.reviewSearchPlaceholder)}
                     className="h-9 w-60 pl-8.5"
                     value={search}
                     placeholder={format(m.reviewSearchPlaceholder)}
@@ -283,6 +285,8 @@ function Queue({
               <Input
                 // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
+                name="review-search"
+                aria-label={format(m.reviewSearchPlaceholder)}
                 className="h-9 w-full pl-8.5"
                 value={search}
                 placeholder={format(m.reviewSearchPlaceholder)}

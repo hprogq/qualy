@@ -152,6 +152,7 @@ export default function BatchListPage() {
           <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
             <InputGroup className="w-full sm:max-w-xs">
               <InputGroupInput
+                name="batches-search"
                 value={search}
                 placeholder={format(m.searchPlaceholder)}
                 aria-label={format(m.searchPlaceholder)}

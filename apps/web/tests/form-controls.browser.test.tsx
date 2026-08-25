@@ -170,3 +170,33 @@ describe('the input is a native form citizen', () => {
       .toBe('oklch(0.577 0.245 27.325)')
   })
 })
+
+describe('a leading icon laid over the input', () => {
+  // caught by eye: the widget's positioning wrapper painted over the
+  // absolutely-laid search glass every list screen draws inside its field,
+  // leaving 40px of blank padding. The icon must be the thing under the
+  // cursor at its own coordinates.
+  it('stays visible above the field', async () => {
+    mount(
+      <div className="relative">
+        <svg
+          data-testid="glass"
+          aria-hidden
+          viewBox="0 0 24 24"
+          className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2"
+        />
+        <Input aria-label="find" name="find" className="pl-8.5" />
+      </div>,
+    )
+    await expect.element(page.getByRole('textbox', { name: 'find' })).toBeVisible()
+    const glass = page.getByTestId('glass').element()
+    const rect = glass.getBoundingClientRect()
+    const onTop = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+    // pointer-events none makes hit-testing skip the icon itself; strip it
+    // for the probe so the answer names whoever paints on top
+    ;(glass as SVGElement).style.pointerEvents = 'auto'
+    const winner = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+    expect(onTop).not.toBeNull()
+    expect(winner).toBe(glass)
+  })
+})

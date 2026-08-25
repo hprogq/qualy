@@ -168,6 +168,14 @@
   .mantine-Textarea-input {
     min-height: 4rem;
   }
+  /* The input's wrapper only needs to BE positioned when it carries
+     sections. Left unpositioned otherwise, a consumer's absolutely-laid
+     icon over the field keeps painting above it - the pre-pivot ordering;
+     a positioned wrapper later in the DOM painted over the icon and made
+     every search field's glass vanish. */
+  .mantine-Input-wrapper:not(:has(.mantine-Input-section)) {
+    position: static;
+  }
   /* A badge's content is a row. The product badge always laid out its
      children - a status dot, an icon, the word - side by side; the widget's
      label is a plain block, and the preflight makes svg (and any flex span)

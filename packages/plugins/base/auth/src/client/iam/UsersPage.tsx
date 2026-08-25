@@ -134,6 +134,7 @@ export default function UsersPage() {
                 className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
               />
               <Input
+                name="tree-search"
                 value={treeSearch}
                 placeholder={format(m.treeSearch)}
                 aria-label={format(m.treeSearch)}
@@ -156,6 +157,7 @@ export default function UsersPage() {
           <div className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <Input
+                name="users-search"
                 className="w-full sm:max-w-52"
                 value={draft}
                 placeholder={format(m.searchPlaceholder)}

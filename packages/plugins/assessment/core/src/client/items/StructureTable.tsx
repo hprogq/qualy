@@ -128,6 +128,8 @@ export function StructureTable({
             className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
           />
           <Input
+            name="structure-search"
+            aria-label={format(m.structureSearch)}
             className="pl-8 max-sm:w-full sm:w-56"
             value={search}
             placeholder={format(m.structureSearch)}
