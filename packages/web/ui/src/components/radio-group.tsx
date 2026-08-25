@@ -1,43 +1,60 @@
 'use client'
 
 import * as React from 'react'
-import { RadioGroup as RadioGroupPrimitive } from 'radix-ui'
+import { Radio as MRadio } from '@mantine/core'
 
 import { cn } from '../lib/utils.ts'
 
+// One-of-several, keeping the established Qualy API: the group holds
+// `value`/`onValueChange`/`name`/`disabled`, items hold their `value`.
+// Underneath are native radio inputs sharing a name, so arrow keys, the
+// radiogroup role and form participation are the platform's own.
 function RadioGroup({
   className,
+  value,
+  defaultValue,
+  onValueChange,
+  name,
+  disabled,
+  children,
   ...props
-}: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
+}: Omit<React.ComponentProps<'div'>, 'defaultValue' | 'onChange'> & {
+  value?: string
+  defaultValue?: string
+  onValueChange?: (value: string) => void
+  name?: string
+  disabled?: boolean
+}) {
   return (
-    <RadioGroupPrimitive.Root
+    <MRadio.Group
       data-slot="radio-group"
+      {...(value === undefined ? {} : { value })}
+      {...(defaultValue === undefined ? {} : { defaultValue })}
+      {...(onValueChange === undefined ? {} : { onChange: onValueChange })}
+      {...(name === undefined ? {} : { name })}
+      {...(disabled === undefined ? {} : { disabled })}
       className={cn('grid w-full gap-3', className)}
       {...props}
-    />
+    >
+      {children}
+    </MRadio.Group>
   )
 }
 
 function RadioGroupItem({
   className,
+  value,
+  disabled,
   ...props
-}: React.ComponentProps<typeof RadioGroupPrimitive.Item>) {
+}: Omit<React.ComponentProps<'input'>, 'size' | 'type' | 'value'> & { value: string }) {
   return (
-    <RadioGroupPrimitive.Item
+    <MRadio
       data-slot="radio-group-item"
-      className={cn(
-        'group/radio-group-item peer relative flex aspect-square size-4 shrink-0 rounded-full border border-input outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary',
-        className,
-      )}
+      value={value}
+      {...(disabled === undefined ? {} : { disabled })}
+      classNames={{ root: className ?? '' }}
       {...props}
-    >
-      <RadioGroupPrimitive.Indicator
-        data-slot="radio-group-indicator"
-        className="flex size-4 items-center justify-center"
-      >
-        <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-foreground" />
-      </RadioGroupPrimitive.Indicator>
-    </RadioGroupPrimitive.Item>
+    />
   )
 }
 

@@ -1,28 +1,37 @@
 'use client'
 
 import * as React from 'react'
-import { Checkbox as CheckboxPrimitive } from 'radix-ui'
+import { Checkbox as MCheckbox } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
-import { CheckIcon } from 'lucide-react'
+// The Qualy checkbox keeps its established API: `checked` is a boolean or
+// the literal 'indeterminate', changes arrive through `onCheckedChange` as
+// the next boolean. Underneath is a real input[type="checkbox"], so Space,
+// label click-through and form semantics are the native ones.
+export interface CheckboxProps extends Omit<
+  React.ComponentProps<'input'>,
+  'checked' | 'onChange' | 'size' | 'type'
+> {
+  checked?: boolean | 'indeterminate'
+  defaultChecked?: boolean
+  onCheckedChange?: (checked: boolean) => void
+}
 
-function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+function Checkbox({ checked, defaultChecked, onCheckedChange, readOnly, ...props }: CheckboxProps) {
+  const indeterminate = checked === 'indeterminate'
+  // mixed is native indeterminate over an unchecked input, so a click
+  // resolves it to checked - the platform's own behavior
   return (
-    <CheckboxPrimitive.Root
+    <MCheckbox
       data-slot="checkbox"
-      className={cn(
-        'peer relative flex size-4 shrink-0 items-center justify-center rounded-[6px] border border-input transition-shadow outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary',
-        className,
-      )}
+      {...(checked === undefined ? {} : { checked: indeterminate ? false : checked })}
+      {...(defaultChecked === undefined ? {} : { defaultChecked })}
+      indeterminate={indeterminate}
+      onChange={(event) => onCheckedChange?.(event.currentTarget.checked)}
+      // a controlled value with no handler is a display, not a control; the
+      // readOnly path shows it without react's missing-onChange warning
+      readOnly={readOnly ?? (checked !== undefined && onCheckedChange === undefined)}
       {...props}
-    >
-      <CheckboxPrimitive.Indicator
-        data-slot="checkbox-indicator"
-        className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
-      >
-        <CheckIcon />
-      </CheckboxPrimitive.Indicator>
-    </CheckboxPrimitive.Root>
+    />
   )
 }
 
