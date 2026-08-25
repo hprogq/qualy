@@ -1,11 +1,37 @@
 'use client'
 
 import * as React from 'react'
+import { cva } from 'class-variance-authority'
 import { DayPicker, getDefaultClassNames, type DayButton, type Locale } from 'react-day-picker'
 
 import { cn } from '../lib/utils.ts'
-import { Button, buttonVariants } from './button.tsx'
+import { Button } from './button.tsx'
 import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from 'lucide-react'
+
+// The day-cell styling this calendar was built on: utility classes shaped
+// like the pre-pivot button. Local to the calendar because the Button itself
+// no longer exposes class recipes; goes away when the calendar family moves
+// onto the widget platform.
+const buttonVariants = cva(
+  "inline-flex shrink-0 items-center justify-center rounded-4xl border border-transparent text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground hover:bg-primary/80',
+        outline:
+          'border-border bg-input/30 hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground',
+        secondary:
+          'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]',
+        ghost:
+          'hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50',
+        destructive:
+          'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20',
+        link: 'text-primary underline-offset-4 hover:underline',
+      },
+    },
+    defaultVariants: { variant: 'default' },
+  },
+)
 
 function Calendar({
   className,
