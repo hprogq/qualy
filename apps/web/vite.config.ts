@@ -4,18 +4,29 @@
 import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { qualyPlugins } from '@qualy/web-build/vite'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
 
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
+
 export default defineConfig(({ mode }) => ({
   // StyleX must transform the file before the React plugin sees it; Tailwind
   // stays until the last migration phase (docs/ui-platform-migration.md)
   plugins: [
     qualyPlugins(),
-    stylexUnplugin({ useCSSLayers: true, dev: mode !== 'production', runtimeInjection: false }),
+    stylexUnplugin({
+      useCSSLayers: true,
+      dev: mode !== 'production',
+      runtimeInjection: false,
+      // defineVars derives variable names from file paths relative to this
+      // root; pinned so every pipeline (dev server, test, build) agrees
+      // regardless of its working directory
+      unstable_moduleResolution: { type: 'commonJS', rootDir: repoRoot },
+    }),
     react(),
     tailwindcss(),
   ],
@@ -23,6 +34,9 @@ export default defineConfig(({ mode }) => ({
     // one react instance for the host and every plugin chunk
     dedupe: ['react', 'react-dom'],
   },
+  // .env lives at the repo root next to the server's; only VITE_-prefixed
+  // variables ever reach client code (the PrimeUI license rides this)
+  envDir: repoRoot,
   build: {
     rollupOptions: {
       output: {

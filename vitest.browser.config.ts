@@ -5,11 +5,14 @@ import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import { qualyPlugins } from '@qualy/web-build/vite'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
+
+const repoRoot = fileURLToPath(new URL('.', import.meta.url))
 
 // Component tests run in a real browser rather than a simulated dom. What
 // this project's screens actually get wrong lives in the gap between the
@@ -27,7 +30,13 @@ export default defineConfig({
   // unstyled markup and pass vacuously
   plugins: [
     qualyPlugins(),
-    stylexUnplugin({ useCSSLayers: true, dev: true, runtimeInjection: false }),
+    stylexUnplugin({
+      useCSSLayers: true,
+      dev: true,
+      runtimeInjection: false,
+      // same pinned root as the app pipeline, so defineVars hashes agree
+      unstable_moduleResolution: { type: 'commonJS', rootDir: repoRoot },
+    }),
     react(),
     tailwindcss(),
   ],
