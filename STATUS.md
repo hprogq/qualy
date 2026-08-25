@@ -8832,3 +8832,44 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
   / 129 tests 全通过;`pnpm build` 成功(staged 89 files precompressed)。残留扫描:
   docs 之外源码零 primereact/@primeuix/VITE_PRIMEUI 引用,pnpm-lock.yaml 零命中。
   M3M(Mantine 底座接入)未开始,按设计文档等待下一阶段指令。
+
+## UI 平台 M3M:Mantine commodity primitives 落地(2026-08-26)
+
+设计见 docs/ui-platform-migration-mantine.md 的 M3M 节;裁决背景见 [ADR 0010](docs/adr/0010-ui-widget-platform.md)。分支 refactor/ui-mantine,共 9 个提交(6a71f64a…1c7a8b3b)。
+
+- **基座**:@mantine/core + @mantine/hooks 9.5.2 进 catalog,仅 @qualy/ui 消费;layered
+  distribution(styles.layer.css,全部规则在 `@layer mantine`)。**层序单点声明**
+  `theme, base, mantine, components, utilities, priority1..5`,三处同步(index.html 首
+  元素 / app.css / 浏览器测试 setup)——实测踩到层序首声明陷阱:dev 下 StyleX 的
+  transformIndexHtml link 先于 app.css 声明 priority 层,把 StyleX 压到 mantine 之下,
+  显式全序声明后 StyleX-over-Mantine 契约转绿。
+- **主题桥**:@qualy/ui/provider 的 `UiProvider({scheme})` 挂 MantineProvider,
+  `forceColorScheme` 跟随产品 ThemeProvider 的 resolved,零自有主题状态(测试断言无
+  mantine localStorage 键);qualyMantineTheme 只做系统级最小面——产品字体、radius md、
+  36/32/24/40 控件节奏(theme vars resolver)、`variantColorResolver` 以 q-* 变体名全量
+  映射 --q-* token(light/dark 随 token 自翻转);cssVariablesResolver 把 Mantine 语义
+  变量(text/surface/border/placeholder/error/disabled)与其控件用到的灰阶指向产品
+  token,压掉原生灰阶的蓝调。
+- **八件迁移,公共 API 不动**:Button(变体/尺寸词表、asChild 经 renderRoot 多态、icon
+  尺寸走 ActionIcon、form 内默认 type=button)、Input/Textarea(原生 props 直达 input,
+  className 仍作用于 input 元素,新增 wrapperClassName 逃生口;aria-invalid 桥到 error
+  通道)、Checkbox(checked/'indeterminate' + onCheckedChange над原生 input,mixed=原生
+  indeterminate)、RadioGroup(原生同名 radio,方向键/radiogroup role 平台自带)、
+  Badge/Skeleton/Separator。calendar 留 shadcn 配方为局部私有;input-group 直接子选择器
+  放宽为后代。
+- **用户目检抓到三处回归,已修并钉进 commodity 契约**:①控件内 icon 失去尺寸约束按自身
+  24px 裸跑(components 层恢复 16/12px 几何 + size-* 逃生口);②Badge 内容折行(label 是
+  普通块 + preflight 把 svg/flex span 变块级;label 改 flex 行);③禁用态蓝调(disabled
+  变量并入 token 桥)。
+- **新契约**:widget-platform(主题桥双侧同步 + 无第二存储;StyleX 无 !important 压过
+  mantine 层)、form-controls(checkbox 受控/mixed/Space/label;radio 方向键与禁用;
+  input 的 label/FormData/ref/aria-invalid)、button 表单安全(非显式 submit 不提交)。
+- **依赖修正**:apps/web 补 @stylexjs/stylex devDependency——测试直接 import 它,pnpm
+  隔离下未声明的解析靠优化缓存侥幸,冷缓存即断。
+- **验收(全部真实执行)**:`pnpm typecheck` 零错误;`pnpm test` = 838 passed | 17
+  skipped;`pnpm test:browser` = 21 files / **142 passed**(P0 基线 129 + 新增 13,无删
+  除无弱化);`pnpm build` 成功(staged 89 files precompressed);`prettier --check`
+  通过(唯一告警是未跟踪的本地 .mcp.json,不入库)。Prime 残留:源码零引用。
+- **明确未做(等下一阶段)**:M4M 的 overlay 家族;@mantine/dates(日期/日历族仍是
+  Radix/shadcn 基线,是否换 @mantine/dates 是 M4M 前的待裁决项);Radix Slot 已从
+  Button 退场但包依赖仍在(其余未迁组件在用)。
