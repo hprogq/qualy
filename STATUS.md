@@ -8873,3 +8873,36 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **明确未做(等下一阶段)**:M4M 的 overlay 家族;@mantine/dates(日期/日历族仍是
   Radix/shadcn 基线,是否换 @mantine/dates 是 M4M 前的待裁决项);Radix Slot 已从
   Button 退场但包依赖仍在(其余未迁组件在用)。
+
+## UI 平台 M4M:overlay 家族落上 Mantine(2026-08-26)
+
+设计见 docs/ui-platform-migration-mantine.md 的 M4M 节。分支 refactor/ui-mantine,7 个提交(9e2562ea…adc078d3)。@qualy/ui 公共边界不动,业务零 Mantine 泄漏。
+
+- **七件迁移**:Tooltip(compound→单组件收集,focus 也触发,带箭头)、Popover(Target/Dropdown
+  对映;受控根补 click toggle——库只给非受控接;`withRoles` 会覆写触发器 id 切断 label-for,
+  关掉后 aria/tabIndex 由适配器自持)、Dialog/AlertDialog(Modal compound;alertdialog role 与
+  aria-describedby 经稳定身份 ref 回调写属性——库在 props 展开后硬编码这两项,且 ref 身份不稳
+  会让 focus trap 每次渲染抢焦点,两条候选 upstream issue)、Sheet(Drawer 四向;PhotoView 共存
+  经 body MutationObserver 喂 closeOnEscape)、DropdownMenu(Menu 全对映含 Sub/Radio/Checkbox
+  items)、Select(Combobox children 注册,无数组/索引反查;唯一派生结构是关闭态触发器回显)。
+- **产品自有 a11y 层**:modal 开启时背景(页面 + 叠层时下层 modal 的 portal 分支)标
+  `inert` + `aria-hidden`(lib/inert-background.ts,引用计数)——旧底座内建的行为,Mantine 只
+  trap 焦点不隐藏背景,补齐后跨层 role 查询与点击语义与 Radix 时代一致。
+- **嵌套 Escape 统一机制**:内层 overlay 处理完的 Escape 在层内截断传播(Modal 的 window 监听
+  按 target 的 data-mantine-stop-propagation 忽略 + 层内 stopPropagation),Dialog→Popover 与
+  Dialog→Select 一次一层,契约钉死。
+- **入场动画归 CSS 插入动画**(components 层):库的 transition 机对"挂载即 open"判 entered,
+  按需挂载的申报弹窗曾无入场——keyframe 对每次插入统一生效,出场仍归库;两者都俯首
+  prefers-reduced-motion,theme 同步开 respectReducedMotion。用户目检抓的三处(弹窗未居中/
+  侧拉位置错=className 被复制到定位 inner,改走 classNames.content;入场丢失)全修并覆盖。
+- **modal-guard 删除**:releaseStuckBody 是 Radix dismissable-layer 记账竞态的补丁,守它的回归
+  契约(双 modal 交接不留死 body)在新底座上继续绿,守卫单独一笔退场。
+- **新契约 12 条**(overlay-widgets):菜单方向键/Enter/Escape/焦点归位/禁用项;tooltip 键盘
+  焦点 + describedby;select 表单内不误提交/回显/键盘走查;Dialog↔Select 逐层 Escape;dialog
+  的 title/description/aria-modal;alertdialog 落焦安全键;sheet 三向停靠/scroll lock/焦点归位。
+- **验收(全部真实执行)**:`pnpm typecheck` 零错误;`pnpm test` = 838 passed | 17 skipped;
+  `pnpm test:browser` = 22 files / **154 passed**(M3M 基线 142 + 12,零删除零弱化);
+  `pnpm build` 成功;生产 smoke 全过(探针/壳/manifest/brotli 资源/SIGTERM 退出 0)。
+- **Radix 现状**:overlay 七件的 radix 依赖已无消费者但包共享(radix-ui umbrella 仍被
+  avatar/breadcrumb/tabs/collapsible/scroll-area/toggle/hover-card/label 等未迁件使用,M9 清
+  场);日期族(C 类)未动,@mantine/dates 未引入,取舍待单独 ADR。
