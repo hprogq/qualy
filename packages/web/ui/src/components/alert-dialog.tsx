@@ -1,62 +1,165 @@
+'use client'
+
 import * as React from 'react'
-import { AlertDialog as AlertDialogPrimitive } from 'radix-ui'
+import { Modal as MModal } from '@mantine/core'
 
 import { cn } from '../lib/utils.ts'
-import { releaseStuckBody } from '../lib/modal-guard.ts'
+import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 
-function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+// An interruption that demands an answer: same modal substrate as the
+// dialog, but with alertdialog semantics, no dismissal by clicking outside,
+// and initial focus resting on the cancelling button - the safe answer is
+// the one a stray Enter lands on.
+
+interface AlertState {
+  open: boolean
+  setOpen: (next: boolean) => void
+  descriptionId: string
+  hasDescription: boolean
+  setHasDescription: (present: boolean) => void
+}
+const AlertCtx = React.createContext<AlertState | null>(null)
+
+function useAlert(): AlertState {
+  const ctx = React.use(AlertCtx)
+  if (ctx === null) throw new Error('AlertDialog components must sit inside <AlertDialog>')
+  return ctx
+}
+
+function AlertDialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  children?: React.ReactNode
+}) {
+  const [inner, setInner] = React.useState(defaultOpen ?? false)
+  const [hasDescription, setHasDescription] = React.useState(false)
+  const descriptionId = React.useId()
+  const value = React.useMemo<AlertState>(
+    () => ({
+      open: open ?? inner,
+      setOpen: (next) => {
+        setInner(next)
+        onOpenChange?.(next)
+      },
+      descriptionId,
+      hasDescription,
+      setHasDescription,
+    }),
+    [open, inner, onOpenChange, descriptionId, hasDescription],
+  )
+  return <AlertCtx value={value}>{children}</AlertCtx>
 }
 
 function AlertDialogTrigger({
+  asChild = false,
+  children,
+  onClick,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
-  return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
-}
-
-function AlertDialogPortal({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
-  return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
-}
-
-function AlertDialogOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  const { setOpen } = useAlert()
+  if (asChild) {
+    const child = React.Children.only(children) as React.ReactElement<{
+      onClick?: React.MouseEventHandler
+    }>
+    return React.cloneElement(child, {
+      onClick: (event: React.MouseEvent) => {
+        child.props.onClick?.(event)
+        setOpen(true)
+      },
+    })
+  }
   return (
-    <AlertDialogPrimitive.Overlay
-      data-slot="alert-dialog-overlay"
-      className={cn(
-        'fixed inset-0 z-50 bg-black/80 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
-        className,
-      )}
+    <button
+      type="button"
+      data-slot="alert-dialog-trigger"
+      onClick={(event) => {
+        onClick?.(event)
+        setOpen(true)
+      }}
       {...props}
-    />
+    >
+      {children}
+    </button>
   )
 }
 
 function AlertDialogContent({
   className,
   size = 'default',
+  children,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+}: React.ComponentProps<'div'> & {
   size?: 'default' | 'sm'
 }) {
-  // see modal-guard: verify radix actually let go of the body on the way out
-  React.useEffect(() => releaseStuckBody, [])
+  const { open, setOpen, descriptionId, hasDescription } = useAlert()
+  // Compensation, not preference: the library hard-codes role="dialog" and
+  // aria-describedby after spreading props, so the alertdialog role and the
+  // description association are written on the element. Candidate upstream
+  // issue.
+  //
+  // The mechanics matter twice over. The ref callback must keep a STABLE
+  // identity (the focus trap re-runs its focus routine whenever the ref
+  // identity changes, which stole focus on every re-render), and the write
+  // must happen both on attach (the content mounts through the library's
+  // own transition state, outside this component's renders) and when the
+  // description arrives later (effect).
+  const a11y = React.useRef({ hasDescription, descriptionId })
+  a11y.current = { hasDescription, descriptionId }
+  const contentRef = React.useRef<HTMLDivElement | null>(null)
+  const applyA11y = React.useCallback((el?: HTMLDivElement | null) => {
+    const node = el === undefined ? contentRef.current : el
+    if (el !== undefined) contentRef.current = el
+    if (node === null || node === undefined) return
+    node.setAttribute('role', 'alertdialog')
+    if (a11y.current.hasDescription)
+      node.setAttribute('aria-describedby', a11y.current.descriptionId)
+    else node.removeAttribute('aria-describedby')
+  }, [])
+  React.useEffect(() => applyA11y())
+  // the page behind a modal leaves the conversation entirely
+  React.useEffect(() => {
+    if (!open) return
+    return retainInertBackground(() => contentRef.current)
+  }, [open])
   return (
-    <AlertDialogPortal>
-      <AlertDialogOverlay />
-      <AlertDialogPrimitive.Content
+    <MModal.Root
+      opened={open}
+      onClose={() => setOpen(false)}
+      centered
+      trapFocus
+      returnFocus
+      lockScroll
+      closeOnEscape
+      // an alert is answered, not dismissed by a stray click on the page
+      closeOnClickOutside={false}
+      transitionProps={{ duration: 100 }}
+    >
+      <MModal.Overlay data-slot="alert-dialog-overlay" blur={2} />
+      <MModal.Content
         data-slot="alert-dialog-content"
         data-size={size}
-        className={cn(
-          'group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-6 rounded-4xl bg-popover p-6 text-popover-foreground ring-1 ring-foreground/5 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-          className,
-        )}
+        ref={applyA11y}
+        // structure only; the surface is the widget's own under the theme.
+        // classNames.content, not className: the widget duplicates className
+        // onto its positioning inner element
+        classNames={{
+          content: cn(
+            'group/alert-dialog-content grid gap-6 p-6 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-md',
+            className,
+          ),
+        }}
         {...props}
-      />
-    </AlertDialogPortal>
+      >
+        {children}
+      </MModal.Content>
+    </MModal.Root>
   )
 }
 
@@ -99,12 +202,9 @@ function AlertDialogMedia({ className, ...props }: React.ComponentProps<'div'>) 
   )
 }
 
-function AlertDialogTitle({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Title>) {
+function AlertDialogTitle({ className, ...props }: React.ComponentProps<'h2'>) {
   return (
-    <AlertDialogPrimitive.Title
+    <MModal.Title
       data-slot="alert-dialog-title"
       className={cn(
         'font-heading text-lg font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
@@ -115,12 +215,15 @@ function AlertDialogTitle({
   )
 }
 
-function AlertDialogDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Description>) {
+function AlertDialogDescription({ className, ...props }: React.ComponentProps<'p'>) {
+  const { descriptionId, setHasDescription } = useAlert()
+  React.useEffect(() => {
+    setHasDescription(true)
+    return () => setHasDescription(false)
+  }, [setHasDescription])
   return (
-    <AlertDialogPrimitive.Description
+    <p
+      id={descriptionId}
       data-slot="alert-dialog-description"
       className={cn(
         'text-sm text-balance text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
@@ -135,17 +238,24 @@ function AlertDialogAction({
   className,
   variant = 'default',
   size = 'default',
+  onClick,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Action> &
-  Pick<React.ComponentProps<typeof Button>, 'variant' | 'size'>) {
+}: React.ComponentProps<typeof Button>) {
+  const { setOpen } = useAlert()
   return (
-    <Button variant={variant} size={size} asChild>
-      <AlertDialogPrimitive.Action
-        data-slot="alert-dialog-action"
-        className={cn(className)}
-        {...props}
-      />
-    </Button>
+    <Button
+      data-slot="alert-dialog-action"
+      variant={variant}
+      size={size}
+      className={className}
+      // answering closes: the caller's handler records the decision, the
+      // dialog's own close then flows through onOpenChange as always
+      onClick={(event) => {
+        onClick?.(event)
+        setOpen(false)
+      }}
+      {...props}
+    />
   )
 }
 
@@ -153,17 +263,25 @@ function AlertDialogCancel({
   className,
   variant = 'outline',
   size = 'default',
+  onClick,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Cancel> &
-  Pick<React.ComponentProps<typeof Button>, 'variant' | 'size'>) {
+}: React.ComponentProps<typeof Button>) {
+  const { setOpen } = useAlert()
   return (
-    <Button variant={variant} size={size} asChild>
-      <AlertDialogPrimitive.Cancel
-        data-slot="alert-dialog-cancel"
-        className={cn(className)}
-        {...props}
-      />
-    </Button>
+    <Button
+      data-slot="alert-dialog-cancel"
+      // the safe answer is where a stray Enter lands: the focus trap's
+      // documented mark sends initial focus here
+      data-autofocus
+      variant={variant}
+      size={size}
+      className={className}
+      onClick={(event) => {
+        onClick?.(event)
+        setOpen(false)
+      }}
+      {...props}
+    />
   )
 }
 
@@ -176,8 +294,6 @@ export {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogMedia,
-  AlertDialogOverlay,
-  AlertDialogPortal,
   AlertDialogTitle,
   AlertDialogTrigger,
 }

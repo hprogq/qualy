@@ -79,13 +79,9 @@ export function FormDialog({
           reached. The three rows are the header, the body and the footer -
           a dialog without a footer simply leaves the last one empty. */}
       <DialogContent
-        // prevented, the focus scope settles on the dialog container: keys
-        // still land, tab still reaches every control, nothing wears a ring
-        {...(restfulFocus ? { onOpenAutoFocus: (event: Event) => event.preventDefault() } : {})}
-        className={cn(
-          'max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]',
-          size === 'wide' ? 'sm:max-w-4xl' : 'sm:max-w-lg',
-        )}
+        restfulFocus={restfulFocus}
+        size={size === 'wide' ? '56rem' : '32rem'}
+        className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]"
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

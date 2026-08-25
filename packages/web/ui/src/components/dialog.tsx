@@ -1,40 +1,127 @@
+'use client'
+
 import * as React from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+import { FocusTrap, Modal as MModal } from '@mantine/core'
 
 import { cn } from '../lib/utils.ts'
-import { releaseStuckBody } from '../lib/modal-guard.ts'
+import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+// The Qualy dialog keeps its compound shape over the widget library's modal.
+// The library owns the portal, the focus trap, the scroll lock, the Escape
+// policy (window listener that ignores marked elements - what lets an inner
+// popover or select answer first) and the exit transition; the adapter owns
+// the product's prop shape and the title/description accessibility wiring.
+
+interface DialogState {
+  open: boolean
+  setOpen: (next: boolean) => void
+  descriptionId: string
+  hasDescription: boolean
+  setHasDescription: (present: boolean) => void
+}
+const DialogCtx = React.createContext<DialogState | null>(null)
+
+function Dialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  children?: React.ReactNode
+}) {
+  const [inner, setInner] = React.useState(defaultOpen ?? false)
+  const [hasDescription, setHasDescription] = React.useState(false)
+  const descriptionId = React.useId()
+  const value = React.useMemo<DialogState>(
+    () => ({
+      open: open ?? inner,
+      setOpen: (next) => {
+        setInner(next)
+        onOpenChange?.(next)
+      },
+      descriptionId,
+      hasDescription,
+      setHasDescription,
+    }),
+    [open, inner, onOpenChange, descriptionId, hasDescription],
+  )
+  return <DialogCtx value={value}>{children}</DialogCtx>
 }
 
-function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+function useDialog(): DialogState {
+  const ctx = React.use(DialogCtx)
+  if (ctx === null) throw new Error('Dialog components must sit inside <Dialog>')
+  return ctx
 }
 
-function DialogPortal({ ...props }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
-}
-
-function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
-  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
-}
-
-function DialogOverlay({
-  className,
+function DialogTrigger({
+  asChild = false,
+  children,
+  onClick,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  const { setOpen } = useDialog()
+  if (asChild) {
+    const child = React.Children.only(children) as React.ReactElement<{
+      onClick?: React.MouseEventHandler
+    }>
+    return React.cloneElement(child, {
+      onClick: (event: React.MouseEvent) => {
+        child.props.onClick?.(event)
+        setOpen(true)
+      },
+    })
+  }
   return (
-    <DialogPrimitive.Overlay
-      data-slot="dialog-overlay"
-      className={cn(
-        'fixed inset-0 isolate z-50 bg-black/80 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
-        className,
-      )}
+    <button
+      type="button"
+      data-slot="dialog-trigger"
+      onClick={(event) => {
+        onClick?.(event)
+        setOpen(true)
+      }}
       {...props}
-    />
+    >
+      {children}
+    </button>
+  )
+}
+
+function DialogClose({
+  asChild = false,
+  children,
+  onClick,
+  ...props
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  const { setOpen } = useDialog()
+  if (asChild) {
+    const child = React.Children.only(children) as React.ReactElement<{
+      onClick?: React.MouseEventHandler
+    }>
+    return React.cloneElement(child, {
+      onClick: (event: React.MouseEvent) => {
+        child.props.onClick?.(event)
+        setOpen(false)
+      },
+    })
+  }
+  return (
+    <button
+      type="button"
+      data-slot="dialog-close"
+      onClick={(event) => {
+        onClick?.(event)
+        setOpen(false)
+      }}
+      {...props}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -42,34 +129,91 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  size,
+  /**
+   * Open with focus resting on the dialog itself rather than its first
+   * control - for a dialog whose first control is a choice made by key,
+   * where the default focus ring reads as "this one is chosen".
+   */
+  restfulFocus = false,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+}: React.ComponentProps<'div'> & {
   showCloseButton?: boolean
+  /** the modal's width, any CSS size; the widget's own default otherwise */
+  size?: string | number
+  restfulFocus?: boolean
 }) {
-  // see modal-guard: verify radix actually let go of the body on the way out
-  React.useEffect(() => releaseStuckBody, [])
+  const { open, setOpen, descriptionId, hasDescription } = useDialog()
+  // Compensation, not preference: the library hard-codes aria-describedby
+  // after spreading props (undefined without its own Body element), so the
+  // association with the product's description paragraph is written on the
+  // element. Candidate upstream issue.
+  //
+  // The mechanics matter twice over. The ref callback must keep a STABLE
+  // identity (the focus trap re-runs its focus-the-first-control routine
+  // whenever the ref identity changes, which stole focus on every
+  // re-render), and the write must happen both on attach (the content
+  // mounts through the library's own transition state, outside this
+  // component's renders) and when the description arrives later (effect).
+  const a11y = React.useRef({ hasDescription, descriptionId })
+  a11y.current = { hasDescription, descriptionId }
+  const contentRef = React.useRef<HTMLDivElement | null>(null)
+  const applyA11y = React.useCallback((el?: HTMLDivElement | null) => {
+    const node = el === undefined ? contentRef.current : el
+    if (el !== undefined) contentRef.current = el
+    if (node === null || node === undefined) return
+    if (a11y.current.hasDescription)
+      node.setAttribute('aria-describedby', a11y.current.descriptionId)
+    else node.removeAttribute('aria-describedby')
+  }, [])
+  React.useEffect(() => applyA11y())
+  // the page behind a modal leaves the conversation entirely
+  React.useEffect(() => {
+    if (!open) return
+    return retainInertBackground(() => contentRef.current)
+  }, [open])
   return (
-    <DialogPortal>
-      <DialogOverlay />
-      <DialogPrimitive.Content
+    <MModal.Root
+      opened={open}
+      onClose={() => setOpen(false)}
+      centered
+      trapFocus
+      returnFocus
+      lockScroll
+      closeOnEscape
+      closeOnClickOutside
+      transitionProps={{ duration: 100 }}
+      {...(size === undefined ? {} : { size })}
+    >
+      <MModal.Overlay data-slot="dialog-overlay" blur={2} />
+      <MModal.Content
         data-slot="dialog-content"
-        className={cn(
-          'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 rounded-4xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/5 duration-100 outline-none sm:max-w-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-          className,
-        )}
+        ref={applyA11y}
+        // structure only - the rows a dialog is made of; the surface (color,
+        // radius, shadow) is the widget's own under the product theme.
+        // classNames.content, not className: the widget duplicates className
+        // onto its positioning inner element, where layout classes wreak havoc
+        classNames={{ content: cn('grid gap-6 p-6 text-sm outline-none', className) }}
         {...props}
       >
+        {/* the trap's own documented resting place: focus settles on this
+            hidden point instead of the first control */}
+        {restfulFocus && <FocusTrap.InitialFocus />}
         {children}
         {showCloseButton && (
-          <DialogPrimitive.Close data-slot="dialog-close" asChild>
-            <Button variant="ghost" className="absolute top-4 right-4" size="icon-sm">
-              <XIcon />
-              <span className="sr-only">Close</span>
-            </Button>
-          </DialogPrimitive.Close>
+          <Button
+            data-slot="dialog-close"
+            variant="ghost"
+            className="absolute top-4 right-4"
+            size="icon-sm"
+            onClick={() => setOpen(false)}
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </Button>
         )}
-      </DialogPrimitive.Content>
-    </DialogPortal>
+      </MModal.Content>
+    </MModal.Root>
   )
 }
 
@@ -81,15 +225,9 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
 
 /**
  * The scrollable middle of a dialog. It continues DialogContent's own gap-6
- * rhythm one level down (the scroll wrapper takes its children out of the
- * content grid), and trades a margin for padding at net zero so a focus
- * ring at the scroll edge has room instead of being clipped.
- *
- * The height cap belongs here rather than on DialogContent: the content box
- * is centred with a -50% translate, so once it outgrows the viewport its top
- * edge leaves the screen and cannot be scrolled back into reach. Capping the
- * body instead leaves the header and footer outside the scroll region, and a
- * body shorter than the cap is laid out exactly as if the cap were absent.
+ * rhythm one level down, and trades a margin for padding at net zero so a
+ * focus ring at the scroll edge has room instead of being clipped. The
+ * height cap belongs to the caller (FormDialog caps the whole content).
  */
 function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
   return (
@@ -109,6 +247,7 @@ function DialogFooter({
 }: React.ComponentProps<'div'> & {
   showCloseButton?: boolean
 }) {
+  const { setOpen } = useDialog()
   return (
     <div
       data-slot="dialog-footer"
@@ -117,17 +256,17 @@ function DialogFooter({
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
-        </DialogPrimitive.Close>
+        <Button variant="outline" onClick={() => setOpen(false)}>
+          Close
+        </Button>
       )}
     </div>
   )
 }
 
-function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+function DialogTitle({ className, ...props }: React.ComponentProps<'h2'>) {
   return (
-    <DialogPrimitive.Title
+    <MModal.Title
       data-slot="dialog-title"
       className={cn('font-heading text-base leading-none font-medium', className)}
       {...props}
@@ -135,12 +274,17 @@ function DialogTitle({ className, ...props }: React.ComponentProps<typeof Dialog
   )
 }
 
-function DialogDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Description>) {
+function DialogDescription({ className, ...props }: React.ComponentProps<'p'>) {
+  const { descriptionId, setHasDescription } = useDialog()
+  // announce presence so the content only points aria-describedby at a
+  // paragraph that exists
+  React.useEffect(() => {
+    setHasDescription(true)
+    return () => setHasDescription(false)
+  }, [setHasDescription])
   return (
-    <DialogPrimitive.Description
+    <p
+      id={descriptionId}
       data-slot="dialog-description"
       className={cn(
         'text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
@@ -159,8 +303,6 @@ export {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogOverlay,
-  DialogPortal,
   DialogTitle,
   DialogTrigger,
 }
