@@ -8966,3 +8966,37 @@ Radix modal workaround(modal-guard.ts 等)只有在新实现不再用 Radix 且�
 preset 的 semantic.surface 整体换成产品中性灰阶(值逐字来自 tokens.css),tag.secondary
 文字色对齐 secondary-foreground。两处钉进 commodity.browser.test.tsx(computed style
 断言)。验收:`pnpm test:browser` 19 文件 124 passed;`pnpm typecheck` exit 0。
+
+## UI 平台迁移 M4 进行中:overlay 家族 + Select(未收口,2026-08-25)
+
+**工作树有大量未提交改动**(overlay 基线测试已提交,其余待套件全绿后分组提交)。
+
+已完成并经探针/单文件验证:
+
+- 七个 overlay 适配器全部落 Prime:Tooltip、Popover、Dialog、AlertDialog、Sheet→Drawer
+  (position 交给 Prime Root,children 遍历取 side)、DropdownMenu→Menu、Select(compound
+  保持;Prime options 数组在 Root、Option 是视图,适配器遍历 children 注册;触发器回显
+  自渲染;SelectTrigger 的 className/size 提升到 Root——Prime 的样式盒子是 Root)。
+- overlay 回归探针 6/6 绿(dialog 关闭释放页面、双模态交接、Escape 逐层、dialog 内
+  select、连续 confirm、side panel)。
+- 用户目检修复:遮罩动画突变(适配器不再往 Prime mask 上盖静态 bg 类)、抽屉从右侧/底部
+  出(position 归 Prime)、Select 双重外形(剥掉 shadcn 药丸类)、绿色高亮(Aura primary
+  默认 emerald,preset 把 primary 50-950 整体映射到中性 surface 色阶,noir 方案)、选项勾
+  常驻占位防跳动(data-unselected:invisible)、按压反馈归 :hover/:active 且选中行不随列表
+  焦点变色。
+- 方向纠偏(用户裁决):适配器不再搬运 shadcn 视觉类,Prime styled 自带样式接管;preset
+  删除所有胶囊圆角覆写;Dialog 各部件改戴 Prime 的 p-dialog-* 部件类。
+- 关键 debug 结论已验:Prime 覆写自设 data-slot(测试事实属性经 pt.input/自渲染补偿);
+  trigger 默认无 type、表单内点击即提交(所有 trigger/close 适配器补 type=button——
+  org-admin 双次 create 的根因);合成 Escape 事件 Prime 不接(shell 测试改真实按键);
+  卸载时序断言改轮询。
+
+**未收口**:测试环境从"无样式 iframe"迁往"带 app.css + 1280x800 桌面视口 + shell 等价
+外框"(harness 三处改动,已实施)——无样式环境的命中测试对 Prime 的布局几何不成立。
+当前全套 17 红,聚簇:entry-workflow 的层叠对话框(file-claim 按钮不可见等)、batch
+概览 timeline、PeoplePicker、review 手机布局、date-time-picker 一条。每条需要按 §15
+判定(产品回归 vs 测试环境假设)。回退方案:还原 harness/viewport 三处改动即回到
+无样式环境(约 10 红,聚在 popover 几何拦截)。
+
+**下一步**:逐条清剩余 17 红 → 四命令验收 → 分组提交(popover+dialog 相邻,原因:混栈
+Escape 分层只在两者都归 Prime 后成立)→ workaround 删除判定(modal-guard 等)→ STATUS 收口。

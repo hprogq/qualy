@@ -34,13 +34,35 @@ export const QualyPreset = definePreset(Aura, {
       900: 'oklch(0.205 0 0)',
       950: 'oklch(0.145 0 0)',
     },
+    // The whole primary scale maps onto the neutral surfaces (the noir
+    // pattern from the theming guide): Aura's default primary is emerald,
+    // and every token that references a primary shade - the select
+    // highlight, focus tints, checked states - was coming up green.
     primary: {
+      50: '{surface.50}',
+      100: '{surface.100}',
+      200: '{surface.200}',
+      300: '{surface.300}',
+      400: '{surface.400}',
+      500: '{surface.500}',
+      600: '{surface.600}',
+      700: '{surface.700}',
+      800: '{surface.800}',
+      900: '{surface.900}',
+      950: '{surface.950}',
       color: 'var(--q-primary)',
       contrastColor: 'var(--q-primary-foreground)',
-      // the same 90%/80% blends the current Tailwind buttons use for
-      // hover:bg-primary/90 and active states
       hoverColor: 'color-mix(in oklab, var(--q-primary) 90%, transparent)',
       activeColor: 'color-mix(in oklab, var(--q-primary) 80%, transparent)',
+    },
+    // What a chosen row wears: the product's muted surface, not a tinted
+    // accent. Focus does not repaint it - a chosen row that darkens when
+    // the list gains focus reads as if the press landed on it.
+    highlight: {
+      background: 'var(--q-surface-muted)',
+      focusBackground: 'var(--q-surface-muted)',
+      color: 'var(--q-foreground)',
+      focusColor: 'var(--q-foreground)',
     },
     focusRing: {
       // the product's 3px translucent ring, worn by every Prime widget
@@ -50,6 +72,8 @@ export const QualyPreset = definePreset(Aura, {
     // every form widget reads these: the product's tinted field surface,
     // its border, and the focus border that matches the ring
     formField: {
+      // the product's 14px form scale; Aura defaults to 1rem
+      fontSize: '0.875rem',
       background: 'color-mix(in oklab, var(--q-input) 30%, transparent)',
       borderColor: 'var(--q-input)',
       hoverBorderColor: 'var(--q-input)',
@@ -68,7 +92,6 @@ export const QualyPreset = definePreset(Aura, {
     // Tailwind implementation exposed.
     button: {
       root: {
-        borderRadius: 'calc(var(--q-radius-lg) * 2.6)',
         gap: '0.375rem',
         paddingX: '0.75rem',
         fontSize: '0.875rem',
@@ -130,9 +153,7 @@ export const QualyPreset = definePreset(Aura, {
 `,
     },
     inputtext: {
-      root: {
-        borderRadius: 'calc(var(--q-radius-lg) * 2.6)',
-      },
+      root: {},
       // the 36px field the whole form rhythm hangs on; 16px type under a
       // coarse pointer so phones do not zoom the page on focus, 14px under
       // a fine one. The file selector button mirrors the old file: styles.
@@ -185,21 +206,43 @@ export const QualyPreset = definePreset(Aura, {
 .p-radiobutton-group { display: grid; width: 100%; gap: 0.75rem; }
 `,
     },
-    tooltip: {
+    select: {
+      // The closed trigger echoes the choice on one line whatever the
+      // option carried. Press feedback belongs to the row under the
+      // pointer: hover tints it, active tints it deeper.
+      css: () => `
+.p-select-option:not(.p-disabled):hover { background: color-mix(in oklch, var(--q-surface-muted), var(--q-foreground) 3%); }
+.p-select-option:not(.p-disabled):active { background: color-mix(in oklch, var(--q-surface-muted), var(--q-foreground) 8%); }
+.p-select-value [data-slot='select-item-description'] { display: none; }
+.p-select-list { outline: none; }
+`,
+    },
+    menu: {
+      // Prime marks the highlighted item with a class instead of real
+      // focus, so the product's item states are said here
+      css: () => `
+.p-menu-item[data-variant='destructive'] { color: var(--q-danger); }
+.p-menu-item[data-variant='destructive'] svg { color: var(--q-danger); }
+.p-menu-item[data-variant='destructive'].p-focus { background: color-mix(in oklab, var(--q-danger) 10%, transparent); color: var(--q-danger); }
+.p-menu-list { outline: none; }
+`,
+    },
+    popover: {
       root: {
-        maxWidth: '20rem',
-        padding: '0.375rem 0.75rem',
-        borderRadius: 'calc(var(--q-radius-lg) * 1.8)',
-        background: 'var(--q-foreground)',
-        color: 'var(--q-background)',
+        gutter: '4px',
       },
+      // the product panel: a 288px column with its own rhythm; callers strip
+      // or resize it with utility classes that outrank this layer
+      css: () => `
+.p-popover-popup { display: flex; width: 18rem; flex-direction: column; gap: 1rem; padding: 1rem; font-size: 0.875rem; }
+`,
+    },
+    tooltip: {
       // the bubble keeps the product type scale and the kbd chips keep
       // their inset look inside the inverted surface
       css: () => `
-.p-tooltip-popup { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; width: fit-content; }
 .p-tooltip-popup:has([data-slot='kbd']) { padding-inline-end: 0.375rem; }
 .p-tooltip-popup [data-slot='kbd'] { position: relative; isolation: isolate; z-index: 50; border-radius: calc(var(--q-radius-lg) * 2.6); }
-.p-tooltip-arrow { color: var(--q-foreground); }
 `,
     },
     tag: {
@@ -207,7 +250,6 @@ export const QualyPreset = definePreset(Aura, {
         fontWeight: '500',
         padding: '0.125rem 0.5rem',
         gap: '0.25rem',
-        borderRadius: 'calc(var(--q-radius-lg) * 2.6)',
       },
       primary: {
         background: 'var(--q-primary)',
@@ -233,7 +275,6 @@ export const QualyPreset = definePreset(Aura, {
     },
     skeleton: {
       root: {
-        borderRadius: 'calc(var(--q-radius-lg) + 4px)',
         background: 'var(--q-surface-muted)',
       },
     },
@@ -251,9 +292,7 @@ export const QualyPreset = definePreset(Aura, {
       },
     },
     textarea: {
-      root: {
-        borderRadius: 'calc(var(--q-radius-lg) + 4px)',
-      },
+      root: {},
       // grows with its content, never a drag handle; same anti-zoom type
       // scale as the input
       css: () => `

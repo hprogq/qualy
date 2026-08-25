@@ -9,6 +9,12 @@ import { Effect } from 'effect'
 
 import { catalogs, errorMessages } from 'virtual:qualy/plugins'
 
+// The app's stylesheet, loaded the way the app loads it. Screens are hit-
+// tested by a real browser here: unstyled, widgets sprawl at the wrong
+// sizes and places, and a click that lands fine in production gets
+// intercepted by whatever happens to cover the target.
+import '../../src/app.css'
+
 // The harness lives in the host's own test folder, not in a package export.
 // A screen needs a client, a manifest, a locale and a router to exist at
 // all, and assembling those is exactly what the host does — so the tests
@@ -107,18 +113,23 @@ export function renderScreen({
           >
             <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
               <MemoryRouter initialEntries={[route]}>
+                {/* the frame the shell always provides: screens are built
+                    from flex-1/min-h-0 chains that need a sized column
+                    above them, or they collapse to nothing under real css */}
                 <Address />
-                {routes ? (
-                  <Routes>
-                    {routes.map((entry) => (
-                      <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
-                    ))}
-                  </Routes>
-                ) : path ? (
-                  <RouteHost path={path}>{children}</RouteHost>
-                ) : (
-                  children
-                )}
+                <div className="flex h-dvh flex-col overflow-hidden">
+                  {routes ? (
+                    <Routes>
+                      {routes.map((entry) => (
+                        <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
+                      ))}
+                    </Routes>
+                  ) : path ? (
+                    <RouteHost path={path}>{children}</RouteHost>
+                  ) : (
+                    children
+                  )}
+                </div>
               </MemoryRouter>
             </RuntimeProvider>
           </PrimeReactProvider>

@@ -34,7 +34,7 @@ function Tooltip({
       {...(defaultOpen === undefined ? {} : { defaultOpen })}
       {...(onOpenChange === undefined
         ? {}
-        : { onOpenChange: (event: { open?: boolean }) => onOpenChange(Boolean(event.open)) })}
+        : { onOpenChange: (event: { value?: boolean }) => onOpenChange(Boolean(event.value)) })}
     >
       {children}
     </PrimeTooltip.Root>
@@ -47,7 +47,7 @@ function TooltipTrigger({
 }: React.ComponentProps<'button'> & { asChild?: boolean }) {
   return (
     <PrimeTooltip.Trigger
-      {...(asChild ? { as: Slot.Root } : {})}
+      {...(asChild ? { as: Slot.Root } : { type: 'button' as const })}
       data-slot="tooltip-trigger"
       {...props}
     />

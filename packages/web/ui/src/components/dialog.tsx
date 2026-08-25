@@ -1,81 +1,149 @@
-import * as React from 'react'
-import { Dialog as DialogPrimitive } from 'radix-ui'
+'use client'
 
-import { cn } from '../lib/utils.ts'
-import { releaseStuckBody } from '../lib/modal-guard.ts'
-import { Button } from './button.tsx'
+import * as React from 'react'
+import { Dialog as PrimeDialog } from '@primereact/ui/dialog'
+import { Slot } from 'radix-ui'
 import { XIcon } from 'lucide-react'
 
-function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
-}
+import { cn } from '../lib/utils.ts'
+import { useNamesClosestPopup } from '../lib/overlay-aria.ts'
+import { Button } from './button.tsx'
 
-function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
-}
+// The product dialog over Prime's compound dialog. The Radix-shaped surface
+// stays: controlled open, asChild trigger/close, Title and Description that
+// name the dialog for a screen reader and a test. The look is Prime's own -
+// the parts wear Prime's dialog classes so the theme styles them, and the
+// adapters add layout only where the product structure differs (a header
+// that stacks its description under the title).
 
-function DialogPortal({ ...props }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
-}
-
-function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
-  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
-}
-
-function DialogOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+function Dialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  modal?: boolean
+  children?: React.ReactNode
+}) {
   return (
-    <DialogPrimitive.Overlay
-      data-slot="dialog-overlay"
-      className={cn(
-        'fixed inset-0 isolate z-50 bg-black/80 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
-        className,
-      )}
+    <PrimeDialog.Root
+      modal
+      {...(open === undefined ? {} : { open })}
+      {...(defaultOpen === undefined ? {} : { defaultOpen })}
+      {...(onOpenChange === undefined
+        ? {}
+        : { onOpenChange: (event: { value?: boolean }) => onOpenChange(Boolean(event.value)) })}
+    >
+      {children}
+    </PrimeDialog.Root>
+  )
+}
+
+function DialogTrigger({
+  asChild = false,
+  ...props
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  return (
+    <PrimeDialog.Trigger
+      {...(asChild ? { as: Slot.Root } : { type: 'button' as const })}
+      data-slot="dialog-trigger"
       {...props}
     />
   )
+}
+
+function DialogPortal({ children }: { children?: React.ReactNode }) {
+  return <PrimeDialog.Portal>{children}</PrimeDialog.Portal>
+}
+
+function DialogClose({
+  asChild = false,
+  ...props
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  return (
+    <PrimeDialog.Close
+      {...(asChild ? { as: Slot.Root } : { type: 'button' as const })}
+      data-slot="dialog-close"
+      {...props}
+    />
+  )
+}
+
+function DialogOverlay({ className, ...props }: React.ComponentProps<'div'>) {
+  // no classes of its own: Prime's overlay mask carries the tint and the
+  // fade, and a painted-over mask snaps instead of fading
+  return (
+    <PrimeDialog.Backdrop
+      data-slot="dialog-overlay"
+      {...(className === undefined ? {} : { className })}
+      {...props}
+    />
+  )
+}
+
+// Focus resting on the dialog itself instead of its first control: the
+// caller says so by cancelling the open-autofocus event, exactly as it did
+// with Radix. The marker finds its own popup, which carries tabIndex=-1.
+function OpenAutoFocus({ handler }: { handler: (event: Event) => void }) {
+  const marker = React.useRef<HTMLSpanElement>(null)
+  React.useEffect(() => {
+    const probe = new Event('openautofocus', { cancelable: true })
+    handler(probe)
+    if (!probe.defaultPrevented) return
+    const popup = marker.current?.closest<HTMLElement>('[data-part="popup"]')
+    popup?.focus()
+  }, [handler])
+  return <span ref={marker} hidden />
 }
 
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onOpenAutoFocus,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+}: React.ComponentProps<'div'> & {
   showCloseButton?: boolean
+  onOpenAutoFocus?: (event: Event) => void
 }) {
-  // see modal-guard: verify radix actually let go of the body on the way out
-  React.useEffect(() => releaseStuckBody, [])
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content
-        data-slot="dialog-content"
-        className={cn(
-          'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 rounded-4xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/5 duration-100 outline-none sm:max-w-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-          className,
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close data-slot="dialog-close" asChild>
-            <Button variant="ghost" className="absolute top-4 right-4" size="icon-sm">
-              <XIcon />
-              <span className="sr-only">Close</span>
-            </Button>
-          </DialogPrimitive.Close>
-        )}
-      </DialogPrimitive.Content>
+      <PrimeDialog.Positioner>
+        <PrimeDialog.Popup
+          data-slot="dialog-content"
+          tabIndex={-1}
+          className={cn('flex w-full max-w-[calc(100%-2rem)] flex-col sm:max-w-md', className)}
+          {...props}
+        >
+          {onOpenAutoFocus !== undefined && <OpenAutoFocus handler={onOpenAutoFocus} />}
+          {children}
+          {showCloseButton && (
+            <DialogClose asChild>
+              <Button variant="ghost" className="absolute top-4 right-4" size="icon-sm">
+                <XIcon />
+                <span className="sr-only">Close</span>
+              </Button>
+            </DialogClose>
+          )}
+        </PrimeDialog.Popup>
+      </PrimeDialog.Positioner>
     </DialogPortal>
   )
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
+  // Prime's header class brings the theme's padding; the product header
+  // stacks a description under the title, so the row becomes a column
   return (
-    <div data-slot="dialog-header" className={cn('flex flex-col gap-2', className)} {...props} />
+    <div
+      data-slot="dialog-header"
+      className={cn('p-dialog-header flex-col items-stretch gap-2', className)}
+      {...props}
+    />
   )
 }
 
@@ -95,7 +163,7 @@ function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="dialog-body"
-      className={cn('-m-1 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-1', className)}
+      className={cn('p-dialog-content flex min-h-0 flex-1 flex-col gap-6', className)}
       {...props}
     />
   )
@@ -112,40 +180,44 @@ function DialogFooter({
   return (
     <div
       data-slot="dialog-footer"
-      className={cn('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)}
+      className={cn('p-dialog-footer flex-col-reverse sm:flex-row sm:justify-end', className)}
       {...props}
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close asChild>
+        <DialogClose asChild>
           <Button variant="outline">Close</Button>
-        </DialogPrimitive.Close>
+        </DialogClose>
       )}
     </div>
   )
 }
 
-function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+function DialogTitle({ className, ...props }: React.ComponentProps<'h2'>) {
+  const id = React.useId()
+  const ref = React.useRef<HTMLHeadingElement>(null)
+  useNamesClosestPopup(ref, id, 'aria-labelledby')
   return (
-    <DialogPrimitive.Title
+    <h2
+      ref={ref}
+      id={id}
       data-slot="dialog-title"
-      className={cn('font-heading text-base leading-none font-medium', className)}
+      className={cn('p-dialog-title', className)}
       {...props}
     />
   )
 }
 
-function DialogDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Description>) {
+function DialogDescription({ className, ...props }: React.ComponentProps<'p'>) {
+  const id = React.useId()
+  const ref = React.useRef<HTMLParagraphElement>(null)
+  useNamesClosestPopup(ref, id, 'aria-describedby')
   return (
-    <DialogPrimitive.Description
+    <p
+      ref={ref}
+      id={id}
       data-slot="dialog-description"
-      className={cn(
-        'text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
-        className,
-      )}
+      className={cn('text-sm text-muted-foreground', className)}
       {...props}
     />
   )

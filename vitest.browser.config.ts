@@ -65,6 +65,11 @@ export default defineConfig({
       '@primereact/ui/skeleton',
       '@primereact/ui/divider',
       '@primereact/ui/tooltip',
+      '@primereact/ui/popover',
+      '@primereact/ui/dialog',
+      '@primereact/ui/drawer',
+      '@primereact/ui/menu',
+      '@primereact/ui/select',
     ],
   },
   test: {
@@ -74,6 +79,9 @@ export default defineConfig({
       provider: playwright(),
       headless: true,
       instances: [{ browser: 'chromium' }],
+      // a desktop viewport by default, matching where these screens are
+      // authored; phone tests set their own with page.viewport
+      viewport: { width: 1280, height: 800 },
     },
   },
 })

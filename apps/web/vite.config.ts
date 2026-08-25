@@ -53,6 +53,11 @@ export default defineConfig(({ mode }) => ({
       '@primereact/ui/skeleton',
       '@primereact/ui/divider',
       '@primereact/ui/tooltip',
+      '@primereact/ui/popover',
+      '@primereact/ui/dialog',
+      '@primereact/ui/drawer',
+      '@primereact/ui/menu',
+      '@primereact/ui/select',
     ],
   },
   build: {

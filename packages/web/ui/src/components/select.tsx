@@ -1,94 +1,184 @@
+'use client'
+
 import * as React from 'react'
-import { Select as SelectPrimitive } from 'radix-ui'
+import { Select as PrimeSelect, useSelectContext } from '@primereact/ui/select'
+import { CheckIcon, ChevronDownIcon } from 'lucide-react'
 
 import { cn } from '../lib/utils.ts'
-import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from 'lucide-react'
 
-function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+// The product select over Prime's compound select, with two impedance
+// matches the adapter absorbs. Prime's options are a data array on the
+// root and its Option parts are views over it, so the adapter walks its
+// children and registers what it finds. And Prime's styled field box is
+// the ROOT element - the trigger inside is bare - so the classes and size
+// callers put on SelectTrigger are lifted onto the root where the theme
+// expects them.
+
+interface ItemEntry {
+  value: string
+  disabled?: boolean
+  node: React.ReactNode
+  index: number
 }
 
-function SelectGroup({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.Group>) {
+const ItemsContext = React.createContext<ReadonlyMap<string, ItemEntry> | null>(null)
+
+function collectItems(children: React.ReactNode, out: ItemEntry[]): void {
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    const props = child.props as {
+      value?: string
+      disabled?: boolean
+      children?: React.ReactNode
+    }
+    if (child.type === SelectItem && typeof props.value === 'string') {
+      out.push({
+        value: props.value,
+        disabled: props.disabled,
+        node: props.children,
+        index: out.length,
+      })
+      return
+    }
+    if (props.children !== undefined) collectItems(props.children, out)
+  })
+}
+
+function triggerStyleOf(children: React.ReactNode): {
+  className?: string
+  size?: 'sm' | 'default'
+} {
+  let found: { className?: string; size?: 'sm' | 'default' } | undefined
+  const walk = (node: React.ReactNode): void => {
+    React.Children.forEach(node, (child) => {
+      if (found !== undefined || !React.isValidElement(child)) return
+      const props = child.props as {
+        className?: string
+        size?: 'sm' | 'default'
+        children?: React.ReactNode
+      }
+      if (child.type === SelectTrigger) {
+        found = { className: props.className, size: props.size }
+        return
+      }
+      if (props.children !== undefined) walk(props.children)
+    })
+  }
+  walk(children)
+  return found ?? {}
+}
+
+function Select({
+  value,
+  defaultValue,
+  onValueChange,
+  children,
+  ...props
+}: {
+  value?: string
+  defaultValue?: string
+  onValueChange?: (value: string) => void
+  disabled?: boolean
+  name?: string
+  required?: boolean
+  children?: React.ReactNode
+}) {
+  const entries: ItemEntry[] = []
+  collectItems(children, entries)
+  const byValue = new Map(entries.map((entry) => [entry.value, entry]))
+  const trigger = triggerStyleOf(children)
   return (
-    <SelectPrimitive.Group
-      data-slot="select-group"
-      className={cn('scroll-my-1 p-1', className)}
-      {...props}
-    />
+    <ItemsContext.Provider value={byValue}>
+      <PrimeSelect.Root
+        options={entries.map((entry) => ({ value: entry.value, disabled: entry.disabled }))}
+        optionKey="value"
+        optionValue="value"
+        optionLabel="value"
+        optionDisabled="disabled"
+        {...(trigger.size === 'sm' ? { size: 'small' as const } : {})}
+        {...(trigger.className === undefined ? {} : { className: cn('w-fit', trigger.className) })}
+        {...(value === undefined ? {} : { value })}
+        {...(defaultValue === undefined ? {} : { defaultValue })}
+        {...(onValueChange === undefined
+          ? {}
+          : { onValueChange: (event: { value?: unknown }) => onValueChange(String(event.value)) })}
+        {...props}
+      >
+        {children}
+      </PrimeSelect.Root>
+    </ItemsContext.Provider>
   )
 }
 
-function SelectValue({ ...props }: React.ComponentProps<typeof SelectPrimitive.Value>) {
-  return <SelectPrimitive.Value data-slot="select-value" {...props} />
+function SelectGroup({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div data-slot="select-group" className={cn('scroll-my-1 p-1', className)} {...props} />
+}
+
+// The closed trigger echoes the chosen item's own markup, exactly as the
+// Radix ItemText echo did; Prime renders the placeholder when nothing is.
+function SelectValue({
+  placeholder,
+  ...props
+}: React.ComponentProps<'span'> & { placeholder?: string }) {
+  const select = useSelectContext() as { state?: { value?: unknown } } | null
+  const items = React.useContext(ItemsContext)
+  const value = select?.state?.value
+  const chosen =
+    typeof value === 'string' && items?.has(value) === true ? items.get(value)?.node : undefined
+  return (
+    <PrimeSelect.Value {...(placeholder === undefined ? {} : { placeholder })} {...props}>
+      {chosen === undefined ? undefined : <>{chosen}</>}
+    </PrimeSelect.Value>
+  )
 }
 
 function SelectTrigger({
-  className,
-  size = 'default',
+  className: _className,
+  size: _size = 'default',
   children,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
+}: React.ComponentProps<'button'> & {
   size?: 'sm' | 'default'
 }) {
+  // className and size were lifted onto the root by the Select adapter,
+  // where Prime's theme reads them; the trigger itself stays bare
   return (
-    <SelectPrimitive.Trigger
-      data-slot="select-trigger"
-      data-size={size}
-      className={cn(
-        "flex w-fit items-center justify-between gap-1.5 rounded-4xl border border-input bg-input/30 px-3 py-2 text-sm whitespace-nowrap transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
-      {...props}
-    >
+    <PrimeSelect.Trigger type="button" data-slot="select-trigger" {...props}>
       {children}
-      <SelectPrimitive.Icon asChild>
+      <PrimeSelect.Indicator>
         <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
-      </SelectPrimitive.Icon>
-    </SelectPrimitive.Trigger>
+      </PrimeSelect.Indicator>
+    </PrimeSelect.Trigger>
   )
 }
 
 function SelectContent({
   className,
   children,
-  position = 'item-aligned',
-  align = 'center',
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: React.ComponentProps<'div'> & {
+  position?: 'item-aligned' | 'popper'
+  align?: 'start' | 'center' | 'end'
+}) {
+  const { position: _position, align, ...rest } = props
   return (
-    <SelectPrimitive.Portal>
-      <SelectPrimitive.Content
-        data-slot="select-content"
-        data-align-trigger={position === 'item-aligned'}
-        className={cn(
-          'relative z-50 max-h-(--radix-select-content-available-height) min-w-36 origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-2xl bg-popover text-popover-foreground shadow-2xl ring-1 ring-foreground/5 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-          position === 'popper' &&
-            'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
-          className,
-        )}
-        position={position}
-        align={align}
-        {...props}
-      >
-        <SelectScrollUpButton />
-        <SelectPrimitive.Viewport
-          data-position={position}
-          className={cn(
-            'data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)',
-            position === 'popper' && '',
-          )}
+    <PrimeSelect.Portal>
+      <PrimeSelect.Positioner sideOffset={4} {...(align === undefined ? {} : { align })}>
+        <PrimeSelect.Popup
+          data-slot="select-content"
+          className={cn('min-w-36', className)}
+          {...rest}
         >
-          {children}
-        </SelectPrimitive.Viewport>
-        <SelectScrollDownButton />
-      </SelectPrimitive.Content>
-    </SelectPrimitive.Portal>
+          <PrimeSelect.List>{children}</PrimeSelect.List>
+        </PrimeSelect.Popup>
+      </PrimeSelect.Positioner>
+    </PrimeSelect.Portal>
   )
 }
 
-function SelectLabel({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.Label>) {
+function SelectLabel({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <SelectPrimitive.Label
+    <div
       data-slot="select-label"
       className={cn('px-3 py-2.5 text-xs text-muted-foreground', className)}
       {...props}
@@ -100,51 +190,53 @@ function SelectItem({
   className,
   children,
   description,
+  value,
+  disabled: _disabled,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Item> & {
+}: React.ComponentProps<'div'> & {
+  value: string
+  disabled?: boolean
   /**
    * A grey second line under the label, shown in the open list only: the
-   * closed trigger echoes ItemText alone, so the choice stays one line where
-   * the room is one line and explains itself where there is room to.
-   *
-   * The column overrides the base class's `items-center` (aimed at the last
-   * span for the one-line case) with an important `items-start`, or the two
-   * rows would be centered against each other.
+   * closed trigger echoes the label alone, so the choice stays one line
+   * where the room is one line and explains itself where there is room to.
    */
   description?: React.ReactNode
 }) {
+  const items = React.useContext(ItemsContext)
+  const index = items?.get(value)?.index
   return (
-    <SelectPrimitive.Item
+    <PrimeSelect.Option
+      // the option data itself lives on the root; the key and index pair
+      // this view with its entry there. Prime's theme paints the row.
+      uKey={value}
+      {...(index === undefined ? {} : { index })}
       data-slot="select-item"
-      className={cn(
-        "relative flex w-full cursor-default items-center gap-2.5 rounded-xl py-2 pr-8 pl-3 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
-        className,
-      )}
+      className={cn("[&_svg:not([class*='size-'])]:size-4", className)}
       {...props}
     >
-      <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center">
-        <SelectPrimitive.ItemIndicator>
-          <CheckIcon className="pointer-events-none" />
-        </SelectPrimitive.ItemIndicator>
-      </span>
       {description === undefined ? (
-        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+        <span data-slot="select-item-text">{children}</span>
       ) : (
-        <span className="flex min-w-0 flex-col gap-0.5 text-left items-start!">
-          <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-          <span className="text-xs text-muted-foreground">{description}</span>
+        <span className="flex min-w-0 flex-col gap-0.5 text-left">
+          <span data-slot="select-item-text">{children}</span>
+          <span data-slot="select-item-description" className="text-xs text-muted-foreground">
+            {description}
+          </span>
         </span>
       )}
-    </SelectPrimitive.Item>
+      {/* always in the row so a selection never shifts the layout; the
+          unselected mark is invisible, not absent */}
+      <PrimeSelect.OptionIndicator className="ml-auto data-unselected:invisible">
+        <CheckIcon className="pointer-events-none size-4" />
+      </PrimeSelect.OptionIndicator>
+    </PrimeSelect.Option>
   )
 }
 
-function SelectSeparator({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.Separator>) {
+function SelectSeparator({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <SelectPrimitive.Separator
+    <div
       data-slot="select-separator"
       className={cn('pointer-events-none -mx-1 my-1 h-px bg-border/50', className)}
       {...props}
@@ -152,40 +244,15 @@ function SelectSeparator({
   )
 }
 
-function SelectScrollUpButton({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.ScrollUpButton>) {
-  return (
-    <SelectPrimitive.ScrollUpButton
-      data-slot="select-scroll-up-button"
-      className={cn(
-        "z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
-      {...props}
-    >
-      <ChevronUpIcon />
-    </SelectPrimitive.ScrollUpButton>
-  )
+// Prime's list scrolls natively; the Radix scroll chrome has no equivalent
+// and nothing outside this file composed it, so the exports stay for the
+// surface and render nothing.
+function SelectScrollUpButton(_props: React.ComponentProps<'div'>) {
+  return null
 }
 
-function SelectScrollDownButton({
-  className,
-  ...props
-}: React.ComponentProps<typeof SelectPrimitive.ScrollDownButton>) {
-  return (
-    <SelectPrimitive.ScrollDownButton
-      data-slot="select-scroll-down-button"
-      className={cn(
-        "z-10 flex cursor-default items-center justify-center bg-popover py-1 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
-      {...props}
-    >
-      <ChevronDownIcon />
-    </SelectPrimitive.ScrollDownButton>
-  )
+function SelectScrollDownButton(_props: React.ComponentProps<'div'>) {
+  return null
 }
 
 export {

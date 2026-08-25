@@ -1,40 +1,82 @@
 import * as React from 'react'
-import { Popover as PopoverPrimitive } from 'radix-ui'
+import { Popover as PrimePopover } from '@primereact/ui/popover'
+import { Slot } from 'radix-ui'
 
-import { cn } from '../lib/utils.ts'
+import { cn } from '../lib/cn.ts'
 
-function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+// The product popover over Prime's compound popover. The Radix-shaped
+// surface stays - controlled open, asChild trigger, align/side on the
+// content; the panel look comes from the theme preset, and a caller's own
+// classes (the calendar popovers strip the padding) still win from the
+// utilities layer.
+
+function Popover({
+  open,
+  defaultOpen,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  modal?: boolean
+  children?: React.ReactNode
+}) {
+  return (
+    <PrimePopover.Root
+      {...(open === undefined ? {} : { open })}
+      {...(defaultOpen === undefined ? {} : { defaultOpen })}
+      {...(onOpenChange === undefined
+        ? {}
+        : { onOpenChange: (event: { value?: boolean }) => onOpenChange(Boolean(event.value)) })}
+    >
+      {children}
+    </PrimePopover.Root>
+  )
 }
 
-function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
+function PopoverTrigger({
+  asChild = false,
+  ...props
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  return (
+    <PrimePopover.Trigger
+      {...(asChild ? { as: Slot.Root } : { type: 'button' as const })}
+      data-slot="popover-trigger"
+      {...props}
+    />
+  )
 }
 
 function PopoverContent({
   className,
   align = 'center',
+  side,
   sideOffset = 4,
+  children,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+}: React.ComponentProps<'div'> & {
+  align?: 'start' | 'center' | 'end'
+  side?: 'top' | 'right' | 'bottom' | 'left'
+  sideOffset?: number
+}) {
   return (
-    <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
-        data-slot="popover-content"
+    <PrimePopover.Portal>
+      <PrimePopover.Positioner
         align={align}
         sideOffset={sideOffset}
-        className={cn(
-          'z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-4 rounded-2xl bg-popover p-4 text-sm text-popover-foreground shadow-2xl ring-1 ring-foreground/5 outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-          className,
-        )}
-        {...props}
-      />
-    </PopoverPrimitive.Portal>
+        {...(side === undefined ? {} : { side })}
+      >
+        <PrimePopover.Popup
+          data-slot="popover-content"
+          {...(className === undefined ? {} : { className })}
+          {...props}
+        >
+          {children}
+        </PrimePopover.Popup>
+      </PrimePopover.Positioner>
+    </PrimePopover.Portal>
   )
-}
-
-function PopoverAnchor({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
-  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />
 }
 
 function PopoverHeader({ className, ...props }: React.ComponentProps<'div'>) {
@@ -63,12 +105,4 @@ function PopoverDescription({ className, ...props }: React.ComponentProps<'p'>) 
   )
 }
 
-export {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-}
+export { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger }
