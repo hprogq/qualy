@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '@qualy/web-runtime'
-import { isAuthenticationError, localeNames, useI18n, useLocale } from '@qualy/web-i18n'
-import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
+import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -11,17 +10,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@qualy/ui/dropdown-menu'
 import { authMessages as m } from './i18n.ts'
 import { authApi } from './api.ts'
-import { ThemeChoicePicker } from './identity-bits.tsx'
+import { LocaleChoicePicker, ThemeChoicePicker } from './identity-bits.tsx'
 import { initialsOf } from './initials.ts'
 
 // The account at the end of the top bar: an avatar and a name, opening a menu
@@ -38,7 +32,6 @@ export default function UserMenu() {
   const orpc = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
-  const [locale, setLocale] = useLocale()
   const [signOutError, setSignOutError] = useState<string | null>(null)
   // one identity, told once: surfaces that remount (the drawer, this menu
   // after a layout change) read the cached answer instead of asking again
@@ -112,8 +105,11 @@ export default function UserMenu() {
               single level it sits at */}
           <DropdownMenuLabel className="flex flex-col gap-1 font-normal">
             {user.primaryOrgNode.lineage.map((step) => (
-              <span key={step.id} className="flex items-baseline justify-between gap-3 text-xs">
-                <span className="shrink-0 text-muted-foreground">{step.typeName}</span>
+              <span key={step.id} className="flex items-center justify-between gap-3 text-xs">
+                {/* the level's kind is a tag, not a sentence fragment */}
+                <Badge variant="outline" className="shrink-0 font-normal">
+                  {step.typeName}
+                </Badge>
                 <span className="truncate">{step.name}</span>
               </span>
             ))}
@@ -125,24 +121,11 @@ export default function UserMenu() {
           <PreferenceRow label={format(m.appearance)}>
             <ThemeChoicePicker />
           </PreferenceRow>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <span className="flex-1">{format(m.language)}</span>
-              <span className="text-muted-foreground">{localeNames[locale]}</span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuRadioGroup
-                value={locale}
-                onValueChange={(next) => setLocale(next as SupportedLocale)}
-              >
-                {supportedLocales.map((candidate) => (
-                  <DropdownMenuRadioItem key={candidate} value={candidate}>
-                    {localeNames[candidate]}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+          {/* the same row shape as the appearance above: chosen in place,
+              nothing opens over the menu */}
+          <PreferenceRow label={format(m.language)}>
+            <LocaleChoicePicker />
+          </PreferenceRow>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"

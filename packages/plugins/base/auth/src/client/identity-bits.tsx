@@ -1,7 +1,9 @@
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { useTheme, type ThemeChoice } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { localeNames, useI18n, useLocale } from '@qualy/web-i18n'
+import { supportedLocales, type SupportedLocale } from '@qualy/i18n-contract'
 import { authMessages as m } from './i18n.ts'
 
 // The theme control the account surfaces share, wherever one is standing -
@@ -33,5 +35,31 @@ export function ThemeChoicePicker() {
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
+  )
+}
+
+/**
+ * The language, chosen in place beside the appearance - no submenu to hover
+ * open. A select rather than a toggle row: the list of languages only
+ * grows, and a row of N toggles would outgrow the menu long before the
+ * product runs out of translators. Each option names itself in its own
+ * language, which is the one label its reader is sure to know.
+ */
+export function LocaleChoicePicker() {
+  const [locale, setLocale] = useLocale()
+  const { format } = useI18n()
+  return (
+    <Select value={locale} onValueChange={(next) => setLocale(next as SupportedLocale)}>
+      <SelectTrigger size="sm" aria-label={format(m.language)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {supportedLocales.map((candidate) => (
+          <SelectItem key={candidate} value={candidate}>
+            {localeNames[candidate]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
