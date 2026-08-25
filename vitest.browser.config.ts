@@ -58,6 +58,9 @@ export default defineConfig({
       '@primereact/ui/button',
       '@primereact/ui/inputtext',
       '@primereact/ui/textarea',
+      '@primereact/ui/checkbox',
+      '@primereact/ui/radiobutton',
+      '@primereact/ui/radiobuttongroup',
     ],
   },
   test: {

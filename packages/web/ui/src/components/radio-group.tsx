@@ -1,18 +1,33 @@
 'use client'
 
 import * as React from 'react'
-import { RadioGroup as RadioGroupPrimitive } from 'radix-ui'
+import { RadioButton } from '@primereact/ui/radiobutton'
+import { RadioButtonGroup } from '@primereact/ui/radiobuttongroup'
 
-import { cn } from '../lib/utils.ts'
+// The product radio group over Prime's. The Radix-shaped surface stays:
+// the group takes value/onValueChange(string)/name, an item takes value and
+// an optional id that must keep pairing with an external label - it lands
+// on the native input, the element a label's htmlFor can actually reach.
 
 function RadioGroup({
   className,
+  onValueChange,
   ...props
-}: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
+}: Omit<React.ComponentProps<'div'>, 'defaultValue' | 'onChange'> & {
+  value?: string
+  defaultValue?: string
+  onValueChange?: (value: string) => void
+  name?: string
+  disabled?: boolean
+  required?: boolean
+}) {
   return (
-    <RadioGroupPrimitive.Root
+    <RadioButtonGroup
       data-slot="radio-group"
-      className={cn('grid w-full gap-3', className)}
+      {...(onValueChange === undefined
+        ? {}
+        : { onValueChange: (event: { value: unknown }) => onValueChange(String(event.value)) })}
+      {...(className === undefined ? {} : { className })}
       {...props}
     />
   )
@@ -20,24 +35,31 @@ function RadioGroup({
 
 function RadioGroupItem({
   className,
+  id,
   ...props
-}: React.ComponentProps<typeof RadioGroupPrimitive.Item>) {
+}: Omit<React.ComponentProps<'span'>, 'defaultChecked'> & {
+  value: string
+  disabled?: boolean
+}) {
+  // the element with role=radio is Prime's native input; data-* facts and
+  // aria-* relations belong there, where a test or a reader finds the role
+  const rootProps: Record<string, unknown> = {}
+  const inputProps: Record<string, unknown> = { 'data-slot': 'radio-group-item' }
+  for (const [key, prop] of Object.entries(props)) {
+    if (key.startsWith('data-') || key.startsWith('aria-')) inputProps[key] = prop
+    else rootProps[key] = prop
+  }
   return (
-    <RadioGroupPrimitive.Item
-      data-slot="radio-group-item"
-      className={cn(
-        'group/radio-group-item peer relative flex aspect-square size-4 shrink-0 rounded-full border border-input outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary',
-        className,
-      )}
-      {...props}
+    <RadioButton.Root
+      {...(id === undefined ? {} : { inputId: id })}
+      {...(className === undefined ? {} : { className })}
+      pt={{ input: inputProps }}
+      {...rootProps}
     >
-      <RadioGroupPrimitive.Indicator
-        data-slot="radio-group-indicator"
-        className="flex size-4 items-center justify-center"
-      >
-        <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-foreground" />
-      </RadioGroupPrimitive.Indicator>
-    </RadioGroupPrimitive.Item>
+      <RadioButton.Box>
+        <RadioButton.Indicator data-slot="radio-group-indicator" />
+      </RadioButton.Box>
+    </RadioButton.Root>
   )
 }
 

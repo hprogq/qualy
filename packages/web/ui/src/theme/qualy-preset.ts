@@ -125,6 +125,43 @@ export const QualyPreset = definePreset(Aura, {
 .p-inputtext:disabled { pointer-events: none; cursor: not-allowed; opacity: 0.5; }
 `,
     },
+    checkbox: {
+      root: {
+        width: '1rem',
+        height: '1rem',
+        borderRadius: '6px',
+        background: 'light-dark(transparent, color-mix(in oklab, var(--q-input) 30%, transparent))',
+      },
+      icon: {
+        size: '0.875rem',
+      },
+      // the touch target reaches well past the 16px box, as it always has
+      css: () => `
+.p-checkbox { position: relative; }
+.p-checkbox::after { content: ''; position: absolute; inset: -0.5rem -0.75rem; }
+`,
+    },
+    radiobutton: {
+      root: {
+        width: '1rem',
+        height: '1rem',
+        background: 'light-dark(transparent, color-mix(in oklab, var(--q-input) 30%, transparent))',
+      },
+      icon: {
+        size: '0.5rem',
+      },
+      css: () => `
+.p-radiobutton { position: relative; }
+.p-radiobutton::after { content: ''; position: absolute; inset: -0.5rem -0.75rem; }
+`,
+    },
+    radiobuttongroup: {
+      // the stacked default every form uses; a caller's own layout classes
+      // sit in the utilities layer and win over this
+      css: () => `
+.p-radiobutton-group { display: grid; width: 100%; gap: 0.75rem; }
+`,
+    },
     textarea: {
       root: {
         borderRadius: 'calc(var(--q-radius-lg) + 4px)',
