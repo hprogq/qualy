@@ -8956,3 +8956,13 @@ role/name 驱动,零断言弱化,唯一改动的测试是 Tailwind 扫描探针�
 **下一步**:M4(overlay + Select:Dialog/AlertDialog/Sheet→Drawer/Popover/Tooltip/
 DropdownMenu/Select),高风险区,每迁一个 primitive 跑 overlay regression(§11 十条),
 Radix modal workaround(modal-guard.ts 等)只有在新实现不再用 Radix 且回归全绿后才删。
+
+## M3 补丁:用户目检抓到的两处视觉回归(2026-08-25)
+
+①未选中的 checkbox 带黑勾:Prime 基础 css 对 indicator 里的内容只管尺寸从不显隐,
+适配器塞入的 Lucide 勾常驻;修复为按态显隐(preset css),indeterminate 保留旧视觉
+(无底色框 + 前景色勾,root 无状态类,适配器补 data-indeterminate 钩子)。
+②secondary 类部件泛蓝:Aura 默认 surface 是 slate/zinc(带色相),产品灰零 chroma;
+preset 的 semantic.surface 整体换成产品中性灰阶(值逐字来自 tokens.css),tag.secondary
+文字色对齐 secondary-foreground。两处钉进 commodity.browser.test.tsx(computed style
+断言)。验收:`pnpm test:browser` 19 文件 124 passed;`pnpm typecheck` exit 0。
