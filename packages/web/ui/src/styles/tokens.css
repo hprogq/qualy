@@ -1,8 +1,8 @@
 /* Qualy semantic tokens: the single source every styling system reads.
  * Tailwind consumes them through the shadcn variable aliases in theme.css,
- * StyleX through theme/tokens.stylex.ts, PrimeReact through the preset in
- * theme/qualy-preset.ts. Values are today's palette moved verbatim, not a
- * redesign; dark mode flips on the .dark root class exactly as before. */
+ * StyleX through theme/tokens.stylex.ts, and the widget library theme
+ * bridge reads the same names. Values are today's palette moved verbatim,
+ * not a redesign; dark mode flips on the .dark root class as before. */
 :root {
   --q-background: oklch(1 0 0);
   --q-foreground: oklch(0.145 0 0);

@@ -4,7 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 // stable --q-* custom property defined in styles/tokens.css, so light/dark
 // keeps flipping on the .dark root class and StyleX components never learn
 // a second theming mechanism. Consumers import this group instead of
-// hardcoding colors, radii or PrimeReact-generated variable names.
+// hardcoding colors, radii or any widget library's variable names.
 export const tokens = stylex.defineVars({
   background: 'var(--q-background)',
   foreground: 'var(--q-foreground)',
