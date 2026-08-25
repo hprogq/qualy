@@ -1,3 +1,13 @@
+/* The cascade order of the coexistence period, pinned before anything else
+   can declare a layer. PrimeReact injects its widget CSS at runtime into the
+   `primereact` layer (see @qualy/ui theme/prime.ts); it must sit above the
+   Tailwind preflight (or `base` would strip Prime's backgrounds) and below
+   `utilities` (or a caller's `hidden`/sizing class could never win over a
+   widget's own display). StyleX layers append after all of these and rank
+   highest. Unlayered Prime CSS would beat every layered rule on the page -
+   that was a real regression, not a hypothetical. */
+@layer theme, base, primereact, components, utilities;
+
 @import 'tailwindcss' source(none);
 @import '@qualy/ui/theme.css';
 

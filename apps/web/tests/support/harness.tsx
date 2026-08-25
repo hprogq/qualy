@@ -1,7 +1,9 @@
 import { StrictMode, type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { render } from 'vitest-browser-react'
+import { PrimeReactProvider } from '@primereact/core/config'
 import { I18nProvider } from '@qualy/web-i18n'
+import { qualyPrimeTheme } from '@qualy/ui/theme/prime'
 import { ThemeProvider, RuntimeProvider, type ComponentRegistry } from '@qualy/web-runtime'
 import { Effect } from 'effect'
 
@@ -99,22 +101,27 @@ export function renderScreen({
         {/* the same order the app composes: theme around the runtime, so a
             component reading the theme works here exactly as it does there */}
         <ThemeProvider>
-          <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
-            <MemoryRouter initialEntries={[route]}>
-              <Address />
-              {routes ? (
-                <Routes>
-                  {routes.map((entry) => (
-                    <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
-                  ))}
-                </Routes>
-              ) : path ? (
-                <RouteHost path={path}>{children}</RouteHost>
-              ) : (
-                children
-              )}
-            </MemoryRouter>
-          </RuntimeProvider>
+          <PrimeReactProvider
+            theme={qualyPrimeTheme}
+            license={import.meta.env.VITE_PRIMEUI_LICENSE}
+          >
+            <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
+              <MemoryRouter initialEntries={[route]}>
+                <Address />
+                {routes ? (
+                  <Routes>
+                    {routes.map((entry) => (
+                      <Route key={entry.path} path={entry.path} element={<>{entry.element}</>} />
+                    ))}
+                  </Routes>
+                ) : path ? (
+                  <RouteHost path={path}>{children}</RouteHost>
+                ) : (
+                  children
+                )}
+              </MemoryRouter>
+            </RuntimeProvider>
+          </PrimeReactProvider>
         </ThemeProvider>
       </I18nProvider>
     </StrictMode>,

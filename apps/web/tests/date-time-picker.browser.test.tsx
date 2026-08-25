@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
+import { PrimeReactProvider } from '@primereact/core/config'
 import { DateTimePicker } from '@qualy/ui/date-time-picker'
+import { qualyPrimeTheme } from '@qualy/ui/theme/prime'
 import '../src/app.css'
 
 // The one control behind every start time in the product.
@@ -21,7 +23,9 @@ import '../src/app.css'
 function Harness({ initial }: { initial: string | null }) {
   const [value, setValue] = useState(initial)
   return (
-    <>
+    // the platform provider the app always supplies; the picker's buttons
+    // render through it
+    <PrimeReactProvider theme={qualyPrimeTheme} license={import.meta.env.VITE_PRIMEUI_LICENSE}>
       <DateTimePicker
         value={value}
         onChange={setValue}
@@ -35,7 +39,7 @@ function Harness({ initial }: { initial: string | null }) {
       {/* the value itself, where an assertion can read it without going
           through anything this component chose to display */}
       <output data-testid="value">{value ?? ''}</output>
-    </>
+    </PrimeReactProvider>
   )
 }
 

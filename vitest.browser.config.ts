@@ -25,6 +25,9 @@ export default defineConfig({
   // declare it - under pnpm isolation that silently fails, and every plugin
   // package loads its own copy: the "Invalid hook call" crash, cold cache only
   root: 'apps/web',
+  // the root .env, same as the app pipeline: VITE_PRIMEUI_LICENSE reaches
+  // the test provider so every Prime mount stops warning about the license
+  envDir: repoRoot,
   // StyleX sits before the React plugin, mirroring the production Vite
   // pipeline - a test run that skipped the compiler would assert against
   // unstyled markup and pass vacuously

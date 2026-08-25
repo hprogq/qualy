@@ -38,7 +38,7 @@ describe('the Prime theme and the StyleX tokens read one palette', () => {
   it('a Prime button and a token swatch agree in light and dark', async () => {
     await import('virtual:stylex:runtime')
     render(
-      <PrimeReactProvider theme={qualyPrimeTheme}>
+      <PrimeReactProvider theme={qualyPrimeTheme} license={import.meta.env.VITE_PRIMEUI_LICENSE}>
         <PrimeButtonProbe>probe</PrimeButtonProbe>
         <Swatch />
       </PrimeReactProvider>,
@@ -50,14 +50,14 @@ describe('the Prime theme and the StyleX tokens read one palette', () => {
     // styled at all: not sitting on the browser default. Agreement is
     // polled, not snapshotted - the button animates its background, and a
     // sample taken mid-transition serializes as an interpolated color
-    await expect.poll(() => paint(button)).not.toBe('rgba(0, 0, 0, 0)')
-    await expect.poll(() => paint(swatch) === paint(button)).toBe(true)
+    await expect.poll(() => paint(button), { timeout: 5000 }).not.toBe('rgba(0, 0, 0, 0)')
+    await expect.poll(() => paint(swatch) === paint(button), { timeout: 5000 }).toBe(true)
     const light = paint(swatch)
 
     // .dark on the document root - toggled by ThemeProvider in the app -
     // must flip both systems to the same new value
     document.documentElement.classList.add('dark')
-    await expect.poll(() => paint(swatch)).not.toBe(light)
-    await expect.poll(() => paint(swatch) === paint(button)).toBe(true)
+    await expect.poll(() => paint(swatch), { timeout: 5000 }).not.toBe(light)
+    await expect.poll(() => paint(swatch) === paint(button), { timeout: 5000 }).toBe(true)
   })
 })

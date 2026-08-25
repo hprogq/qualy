@@ -1,9 +1,72 @@
 import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
+import { Button as PrimeButton } from '@primereact/ui/button'
+import { cva } from 'class-variance-authority'
 import { Slot } from 'radix-ui'
 
-import { cn } from '../lib/utils.ts'
+// The Qualy button contract over the PrimeReact button. Callers keep the
+// product vocabulary (variant/size/asChild) and never see Prime's
+// severity/variant/iconOnly split; colors come from the theme preset, the
+// product geometry (36px rhythm, the xs tier, svg sizing) from the button
+// css in theme/qualy-preset.ts, keyed on the data attributes set here.
 
+type ButtonVariant = 'default' | 'outline' | 'secondary' | 'ghost' | 'destructive' | 'link'
+type ButtonSize = 'default' | 'xs' | 'sm' | 'lg' | 'icon' | 'icon-xs' | 'icon-sm' | 'icon-lg'
+
+const primeLook: Record<
+  ButtonVariant,
+  { severity?: 'secondary' | 'danger'; variant?: 'outlined' | 'text' | 'link' }
+> = {
+  default: {},
+  outline: { severity: 'secondary', variant: 'outlined' },
+  secondary: { severity: 'secondary' },
+  ghost: { severity: 'secondary', variant: 'text' },
+  destructive: { severity: 'danger', variant: 'text' },
+  link: { variant: 'link' },
+}
+
+const primeShape: Record<ButtonSize, { size?: 'small' | 'large'; iconOnly?: boolean }> = {
+  default: {},
+  xs: {},
+  sm: { size: 'small' },
+  lg: { size: 'large' },
+  icon: { iconOnly: true },
+  'icon-xs': { iconOnly: true },
+  'icon-sm': { size: 'small', iconOnly: true },
+  'icon-lg': { size: 'large', iconOnly: true },
+}
+
+function Button({
+  className,
+  variant = 'default',
+  size = 'default',
+  asChild = false,
+  ...props
+}: React.ComponentProps<'button'> & {
+  variant?: ButtonVariant | null
+  size?: ButtonSize | null
+  asChild?: boolean
+}) {
+  const look = primeLook[variant ?? 'default']
+  const shape = primeShape[size ?? 'default']
+  return (
+    <PrimeButton
+      // asChild keeps its Radix meaning: Prime renders the Slot as its root
+      // and the Slot merges the computed props onto the only child
+      {...(asChild ? { as: Slot.Root } : {})}
+      {...look}
+      {...shape}
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      {...(className === undefined ? {} : { className })}
+      {...props}
+    />
+  )
+}
+
+// The Tailwind class recipe of the pre-Prime button. Not used by Button
+// anymore; calendar.tsx still composes day cells from it, and it leaves with
+// the calendar migration.
 const buttonVariants = cva(
   "group/button inline-flex shrink-0 items-center justify-center rounded-4xl border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
@@ -38,28 +101,5 @@ const buttonVariants = cva(
     },
   },
 )
-
-function Button({
-  className,
-  variant = 'default',
-  size = 'default',
-  asChild = false,
-  ...props
-}: React.ComponentProps<'button'> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) {
-  const Comp = asChild ? Slot.Root : 'button'
-
-  return (
-    <Comp
-      data-slot="button"
-      data-variant={variant}
-      data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
-}
 
 export { Button, buttonVariants }
