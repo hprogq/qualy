@@ -1,8 +1,15 @@
+// the package ships one commonjs-flavored d.ts for both builds, so TS wraps
+// the factory in an extra `default` that the esm build vitest actually loads
+// does not have; the cast re-aligns the type with the runtime value
+import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 import { qualyPlugins } from '@qualy/web-build/vite'
+
+const stylexUnplugin =
+  stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
 
 // Component tests run in a real browser rather than a simulated dom. What
 // this project's screens actually get wrong lives in the gap between the
@@ -15,7 +22,15 @@ export default defineConfig({
   // declare it - under pnpm isolation that silently fails, and every plugin
   // package loads its own copy: the "Invalid hook call" crash, cold cache only
   root: 'apps/web',
-  plugins: [qualyPlugins(), react(), tailwindcss()],
+  // StyleX sits before the React plugin, mirroring the production Vite
+  // pipeline - a test run that skipped the compiler would assert against
+  // unstyled markup and pass vacuously
+  plugins: [
+    qualyPlugins(),
+    stylexUnplugin({ useCSSLayers: true, dev: true, runtimeInjection: false }),
+    react(),
+    tailwindcss(),
+  ],
   resolve: {
     // one react instance for the host and every plugin component
     dedupe: ['react', 'react-dom'],

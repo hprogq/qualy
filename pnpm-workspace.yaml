@@ -65,6 +65,15 @@ catalog:
   '@vitest/browser-playwright': 4.1.10
   'vitest-browser-react': 2.2.0
   playwright: 1.62.1
+  # UI platform migration (docs/ui-platform-migration.md): PrimeReact 11 Styled
+  # is the commodity widget layer behind @qualy/ui, StyleX the styling
+  # compiler. One version each across the workspace - two copies of the stylex
+  # runtime or the prime core would split the injected CSS and provider context
+  '@primereact/ui': 11.1.0
+  '@primereact/core': 11.1.0
+  '@primeuix/themes': 3.0.0
+  '@stylexjs/stylex': 0.19.0
+  '@stylexjs/unplugin': 0.19.0
   # tencent cloud object storage, in three parts that never meet: the node sdk
   # is the control plane (head/delete/sign), the sts package mints the
   # exact-object upload credential, and the browser sdk is the only one that
@@ -89,3 +98,5 @@ minimumReleaseAgeExclude:
   - '@effect/tsgo-win32-arm64@0.36.4'
   - '@effect/tsgo-win32-x64@0.36.4'
   - '@effect/tsgo@0.36.4'
+patchedDependencies:
+  '@stylexjs/unplugin': patches/@stylexjs__unplugin.patch

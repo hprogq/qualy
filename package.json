@@ -27,6 +27,7 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/web-build": "workspace:*",
+    "@stylexjs/unplugin": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
