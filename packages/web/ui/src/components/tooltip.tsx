@@ -1,53 +1,102 @@
 'use client'
 
 import * as React from 'react'
-import { Tooltip as TooltipPrimitive } from 'radix-ui'
+import { Tooltip as MTooltip } from '@mantine/core'
 
 import { cn } from '../lib/utils.ts'
 
+// The Qualy tooltip keeps its compound shape (Provider/Root/Trigger/Content)
+// over the widget library's single-component model: the root collects the
+// trigger element and the content label from its children and hands both to
+// the library, which owns positioning, portal, delays and the describedby
+// wiring. Opens on keyboard focus as well as hover - a hint only pointer
+// users can read is not a hint.
+
+const DelayContext = React.createContext(0)
+
 function TooltipProvider({
   delayDuration = 0,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
-  return (
-    <TooltipPrimitive.Provider
-      data-slot="tooltip-provider"
-      delayDuration={delayDuration}
-      {...props}
-    />
-  )
-}
-
-function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />
-}
-
-function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
-}
-
-function TooltipContent({
-  className,
-  sideOffset = 0,
   children,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
-  return (
-    <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Content
-        data-slot="tooltip-content"
-        sideOffset={sideOffset}
-        className={cn(
-          'z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-2xl bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-4xl data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-          className,
-        )}
-        {...props}
-      >
-        {children}
-        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground data-[side=left]:translate-x-[-1.5px] data-[side=right]:translate-x-[1.5px]" />
-      </TooltipPrimitive.Content>
-    </TooltipPrimitive.Portal>
+}: {
+  delayDuration?: number
+  children?: React.ReactNode
+}) {
+  return <DelayContext value={delayDuration}>{children}</DelayContext>
+}
+
+interface TriggerProps {
+  asChild?: boolean
+  children?: React.ReactNode
+}
+
+interface ContentProps {
+  className?: string
+  sideOffset?: number
+  side?: 'top' | 'right' | 'bottom' | 'left'
+  children?: React.ReactNode
+}
+
+function Tooltip({
+  open,
+  defaultOpen,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  children?: React.ReactNode
+}) {
+  const delay = React.use(DelayContext)
+  let trigger: TriggerProps | null = null
+  let content: ContentProps | null = null
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type === TooltipTrigger) trigger = child.props as TriggerProps
+    if (child.type === TooltipContent) content = child.props as ContentProps
+  })
+  if (trigger === null || content === null) return null
+  const { asChild = false, children: triggerChildren } = trigger as TriggerProps
+  const { className, side = 'top', sideOffset = 4, children: label } = content as ContentProps
+
+  // the library needs one element that takes a ref; a text trigger gets the
+  // same native button the previous substrate rendered
+  const target = asChild ? (
+    (React.Children.only(triggerChildren) as React.ReactElement)
+  ) : (
+    <button type="button" data-slot="tooltip-trigger">
+      {triggerChildren}
+    </button>
   )
+
+  return (
+    <MTooltip
+      label={label}
+      position={side}
+      offset={sideOffset}
+      openDelay={delay}
+      withinPortal
+      withArrow
+      arrowSize={8}
+      events={{ hover: true, focus: true, touch: false }}
+      {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}
+      {...(open === undefined ? {} : { opened: open })}
+      {...(onOpenChange === undefined ? {} : { onDismiss: () => onOpenChange(false) })}
+      // structure only; the surface is the widget's own under the theme
+      classNames={{ tooltip: cn('max-w-xs text-xs', className) }}
+    >
+      {target}
+    </MTooltip>
+  )
+}
+
+// Both are declarations read by the Tooltip root, never rendered directly.
+function TooltipTrigger(_props: TriggerProps & React.ComponentProps<'button'>) {
+  return null
+}
+
+function TooltipContent(_props: ContentProps) {
+  return null
 }
 
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger }

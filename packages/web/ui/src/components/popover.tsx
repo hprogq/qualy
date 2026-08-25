@@ -1,40 +1,148 @@
+'use client'
+
 import * as React from 'react'
-import { Popover as PopoverPrimitive } from 'radix-ui'
+import { Popover as MPopover, type PopoverProps as MPopoverProps } from '@mantine/core'
 
 import { cn } from '../lib/utils.ts'
 
-function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
-  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+// The Qualy popover keeps its compound shape over the widget library's own
+// Target/Dropdown model, which is close enough that the adapter is mostly
+// renaming. Two deliberate mechanisms, both from the library's documented
+// vocabulary:
+//
+// - `trapFocus`: focus moves into the dropdown while it is open, so Escape
+//   fires from inside it.
+// - `data-mantine-stop-propagation`: worn by the dropdown always and by the
+//   trigger while open. A modal underneath listens for Escape on window and
+//   ignores events from marked elements - this is what makes Escape peel
+//   one layer at a time instead of closing everything at once.
+
+interface PopoverState {
+  opened: boolean
+  /** with a controlled root the library's target does not toggle on click;
+      the trigger wires it through here instead */
+  controlled: boolean
+  toggle: () => void
+}
+const PopoverCtx = React.createContext<PopoverState>({
+  opened: false,
+  controlled: false,
+  toggle: () => {},
+})
+
+const positionOf = (side: string, align: string) =>
+  (align === 'center' ? side : `${side}-${align}`) as NonNullable<MPopoverProps['position']>
+
+interface ContentDecl {
+  className?: string
+  align?: 'start' | 'center' | 'end'
+  side?: 'top' | 'right' | 'bottom' | 'left'
+  sideOffset?: number
 }
 
-function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
-}
-
-function PopoverContent({
-  className,
-  align = 'center',
-  sideOffset = 4,
-  ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+function Popover({
+  open,
+  defaultOpen,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  children?: React.ReactNode
+}) {
+  // uncontrolled state stays the library's; the adapter mirrors it so the
+  // trigger knows when to wear the stop-propagation mark
+  const [inner, setInner] = React.useState(defaultOpen ?? false)
+  const opened = open ?? inner
+  const observe = (next: boolean) => {
+    setInner(next)
+    onOpenChange?.(next)
+  }
+  // position lives on the Content in the established API but on the root
+  // here; read the direct declaration before rendering
+  let decl: ContentDecl = {}
+  React.Children.forEach(children, (child) => {
+    if (React.isValidElement(child) && child.type === PopoverContent) {
+      decl = child.props as ContentDecl
+    }
+  })
+  const side = decl.side ?? 'bottom'
+  const align = decl.align ?? 'center'
+  const controlled = open !== undefined
   return (
-    <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
-        data-slot="popover-content"
-        align={align}
-        sideOffset={sideOffset}
-        className={cn(
-          'z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-4 rounded-2xl bg-popover p-4 text-sm text-popover-foreground shadow-2xl ring-1 ring-foreground/5 outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-          className,
-        )}
-        {...props}
-      />
-    </PopoverPrimitive.Portal>
+    <MPopover
+      withinPortal
+      trapFocus
+      returnFocus
+      // withRoles would overwrite the trigger's own id, severing any
+      // label-for association a form built; the adapter wears the aria
+      // state itself instead
+      withRoles={false}
+      position={positionOf(side, align)}
+      offset={decl.sideOffset ?? 4}
+      transitionProps={{ duration: 100 }}
+      {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}
+      {...(controlled ? { opened: open } : {})}
+      onChange={observe}
+    >
+      <PopoverCtx value={{ opened, controlled, toggle: () => observe(!opened) }}>
+        {children}
+      </PopoverCtx>
+    </MPopover>
   )
 }
 
-function PopoverAnchor({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
-  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />
+function PopoverTrigger({
+  asChild = false,
+  children,
+  ...props
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  const { opened, controlled, toggle } = React.use(PopoverCtx)
+  const child = asChild ? (
+    (React.Children.only(children) as React.ReactElement<Record<string, unknown>>)
+  ) : (
+    <button type="button" data-slot="popover-trigger" {...props}>
+      {children}
+    </button>
+  )
+  const childOnClick = child.props.onClick as React.MouseEventHandler | undefined
+  const extra: Record<string, unknown> = {
+    'data-state': opened ? 'open' : 'closed',
+    'aria-haspopup': 'dialog',
+    'aria-expanded': opened,
+    // while open, Escape may fire from the trigger (focus returns there
+    // when the dropdown closes); the mark keeps a modal underneath out
+    ...(opened ? { 'data-mantine-stop-propagation': 'true' } : {}),
+    // the library's target only toggles on click for uncontrolled roots;
+    // a controlled one gets the same behavior wired here
+    ...(controlled
+      ? {
+          onClick: (event: React.MouseEvent) => {
+            childOnClick?.(event)
+            toggle()
+          },
+        }
+      : {}),
+  }
+  return <MPopover.Target>{React.cloneElement(child, extra)}</MPopover.Target>
+}
+
+function PopoverContent({ className, children }: ContentDecl & { children?: React.ReactNode }) {
+  return (
+    <MPopover.Dropdown
+      data-slot="popover-content"
+      data-mantine-stop-propagation="true"
+      // withRoles={false} on the root also dropped these two; the trap
+      // needs a focusable dropdown for Escape to fire from inside it
+      role="dialog"
+      tabIndex={-1}
+      // structure only; the surface is the widget's own under the theme
+      className={cn('flex w-72 flex-col gap-4 p-4 text-sm outline-hidden', className)}
+    >
+      {children}
+    </MPopover.Dropdown>
+  )
 }
 
 function PopoverHeader({ className, ...props }: React.ComponentProps<'div'>) {
@@ -63,12 +171,4 @@ function PopoverDescription({ className, ...props }: React.ComponentProps<'p'>) 
   )
 }
 
-export {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-}
+export { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger }
