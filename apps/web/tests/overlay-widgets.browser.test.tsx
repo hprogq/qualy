@@ -170,6 +170,50 @@ describe('the select as a form citizen', () => {
   })
 })
 
+describe('a menu hosting a select', () => {
+  // caught by eye in the account menu: the menu's outside-press detection
+  // fires on mousedown, and the select's list lives in a portal - holding
+  // the mouse on an option tore down the menu (and with it the list) before
+  // the click could land. A press inside an inner layer belongs to it.
+  it('a held press on an option still lands, and the menu stands', async () => {
+    function Harness() {
+      const [pick, setPick] = useState('zh')
+      return (
+        <>
+          <output data-testid="pick">{pick}</output>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">account</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+                <span>language</span>
+                <Select value={pick} onValueChange={setPick}>
+                  <SelectTrigger size="sm" aria-label="language">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="zh">Chinese</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )
+    }
+    mount(<Harness />)
+    await page.getByRole('button', { name: 'account' }).click()
+    await page.getByRole('combobox', { name: 'language' }).click()
+    await expect.element(page.getByRole('option', { name: 'English' })).toBeVisible()
+    // the slow press that used to tear everything down
+    await page.getByRole('option', { name: 'English' }).click({ delay: 400 })
+    await expect.element(page.getByTestId('pick')).toHaveTextContent('en')
+    await expect.element(page.getByRole('menu')).toBeVisible()
+  })
+})
+
 describe('a dialog hosting a select answers Escape one layer at a time', () => {
   it('first the list, then the dialog', async () => {
     function Harness() {

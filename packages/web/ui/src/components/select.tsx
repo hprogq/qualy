@@ -165,6 +165,12 @@ function SelectContent({
   return (
     <Combobox.Dropdown
       data-slot="select-content"
+      // presses inside this layer belong to it: a menu or popover BENEATH
+      // listens for outside presses on mousedown, and a portal makes this
+      // list "outside" - without the stop, holding the mouse on an option
+      // unmounted everything under the cursor before the click could land
+      onMouseDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
       // structure only; the surface is the widget's own under the theme
       className={cn('max-h-72 min-w-36 overflow-x-hidden overflow-y-auto', className)}
     >

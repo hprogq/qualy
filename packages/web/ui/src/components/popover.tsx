@@ -133,6 +133,12 @@ function PopoverContent({ className, children }: ContentDecl & { children?: Reac
     <MPopover.Dropdown
       data-slot="popover-content"
       data-mantine-stop-propagation="true"
+      // presses inside this layer belong to it: a menu or popover BENEATH
+      // listens for outside presses on mousedown, and a portal makes this
+      // list "outside" - without the stop, holding the mouse on an option
+      // unmounted everything under the cursor before the click could land
+      onMouseDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
       // withRoles={false} on the root also dropped these two; the trap
       // needs a focusable dropdown for Escape to fire from inside it
       role="dialog"

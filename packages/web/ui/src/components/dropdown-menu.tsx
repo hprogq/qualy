@@ -87,6 +87,12 @@ function DropdownMenuContent({
   return (
     <MMenu.Dropdown
       data-slot="dropdown-menu-content"
+      // presses inside this layer belong to it: a menu or popover BENEATH
+      // listens for outside presses on mousedown, and a portal makes this
+      // list "outside" - without the stop, holding the mouse on an option
+      // unmounted everything under the cursor before the click could land
+      onMouseDown={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
       // while open, the Escape the menu answers stops here instead of
       // travelling on to a modal's window listener underneath
       onKeyDown={(event) => {
