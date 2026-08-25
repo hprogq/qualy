@@ -98,6 +98,9 @@ const iconSizes: Record<string, string> = {
 export const qualyMantineTheme = createTheme({
   fontFamily: "'Inter Variable', sans-serif",
   defaultRadius: 'md',
+  // overlay and control transitions stand down for readers who asked the
+  // OS for less motion
+  respectReducedMotion: true,
   variantColorResolver: variantColors,
   components: {
     Button: Button.extend({

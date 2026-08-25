@@ -204,3 +204,74 @@
     height: 0.75rem;
   }
 }
+
+/* Overlay entrances as CSS insertion animations. The widget library's own
+ * transition machine treats a modal that mounts already open as already
+ * entered (a dialog a page mounts on demand appeared with no entrance at
+ * all), while a keyframe plays on every DOM insertion - so the entrance is
+ * declared here once and behaves identically for first mounts and reopens.
+ * Exits stay with the library's transitions. */
+@layer components {
+  @keyframes q-overlay-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes q-pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+  @keyframes q-slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes q-slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+  }
+  @keyframes q-slide-in-top {
+    from {
+      transform: translateY(-100%);
+    }
+  }
+  @keyframes q-slide-in-bottom {
+    from {
+      transform: translateY(100%);
+    }
+  }
+  [data-slot='dialog-overlay'],
+  [data-slot='alert-dialog-overlay'],
+  [data-slot='sheet-overlay'] {
+    animation: q-overlay-in 150ms ease;
+  }
+  [data-slot='dialog-content'],
+  [data-slot='alert-dialog-content'] {
+    animation: q-pop-in 150ms ease;
+  }
+  [data-slot='sheet-content'][data-side='right'] {
+    animation: q-slide-in-right 200ms ease;
+  }
+  [data-slot='sheet-content'][data-side='left'] {
+    animation: q-slide-in-left 200ms ease;
+  }
+  [data-slot='sheet-content'][data-side='top'] {
+    animation: q-slide-in-top 200ms ease;
+  }
+  [data-slot='sheet-content'][data-side='bottom'] {
+    animation: q-slide-in-bottom 200ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot='dialog-overlay'],
+    [data-slot='alert-dialog-overlay'],
+    [data-slot='sheet-overlay'],
+    [data-slot='dialog-content'],
+    [data-slot='alert-dialog-content'],
+    [data-slot='sheet-content'] {
+      animation: none;
+    }
+  }
+}
