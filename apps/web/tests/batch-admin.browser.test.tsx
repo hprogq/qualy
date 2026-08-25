@@ -409,6 +409,18 @@ describe('the countdown', () => {
   })
 })
 
+/** some instance of the text the user can actually see: a phrase may render
+    in both panes of a responsive layout, with CSS hiding one per viewport */
+async function expectVisibleText(text: string) {
+  await vi.waitFor(() => {
+    const shown = page
+      .getByText(text)
+      .elements()
+      .some((el) => (el as HTMLElement).checkVisibility())
+    expect(shown).toBe(true)
+  })
+}
+
 describe('the batch overview', () => {
   it('keeps the whole flow on the page, beside the desk', async () => {
     await page.viewport(1280, 800)
@@ -423,8 +435,8 @@ describe('the batch overview', () => {
 
     // the stage plan stands on the page itself now: the current stage and
     // its neighbours are readable without opening anything
-    await expect.element(page.getByText('正式填报').first()).toBeVisible()
-    await expect.element(page.getByText('审核').first()).toBeVisible()
+    await expectVisibleText('正式填报')
+    await expectVisibleText('审核')
     // read-only: nothing here offers to arrange the plan
     expect(page.getByTestId('phase-schedule').elements()).toHaveLength(0)
   })
@@ -490,8 +502,8 @@ describe('the batch overview', () => {
     )
 
     // the stage says its time is still to be decided, and why
-    await expect.element(page.getByText('时间待定').first()).toBeVisible()
-    await expect.element(page.getByText('待学院审批名单后确定').first()).toBeVisible()
+    await expectVisibleText('时间待定')
+    await expectVisibleText('待学院审批名单后确定')
   })
 })
 

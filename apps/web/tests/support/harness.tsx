@@ -10,8 +10,13 @@ import {
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
 import { Effect } from 'effect'
+import { toast } from '@qualy/ui/toast'
 
 import { catalogs, errorMessages } from 'virtual:qualy/plugins'
+// the real stylesheet, exactly as the app loads it: a screen asserted
+// unstyled is a screen the user never sees - overlay positioning, icon
+// sizing and responsive layout all behave differently without it
+import '../../src/app.css'
 
 // The harness lives in the host's own test folder, not in a package export.
 // A screen needs a client, a manifest, a locale and a router to exist at
@@ -100,7 +105,14 @@ export function renderScreen({
   path?: string
   locale?: 'zh-CN' | 'en-US'
 }) {
+  // every screen starts from a fresh browser: view modes and toggles the
+  // product persists must not leak from one test into the next (styled
+  // layouts genuinely hide things in a remembered mode)
+  localStorage.clear()
   localStorage.setItem('qualy.locale', locale)
+  // the toast queue is module-global: a success said in one test would
+  // replay into the next screen's toaster and stand over its top bar
+  toast.dismiss()
   // Under the same strictness the app runs under. Not pedantry: React
   // re-invokes state updaters and re-runs effects here, which is how an
   // impure updater shows itself. One that sent an api request from inside

@@ -38,6 +38,28 @@ const ITEM3_ID = '99999999-7777-4777-8777-777777777777'
 // whatever a case did to the window, the next one starts on the phone
 afterEach(() => page.viewport(414, 896))
 
+/**
+ * The instance of a hook the user can actually see. A testid may render in
+ * several seats (a desktop header row, a mobile empty state) with CSS
+ * choosing one per viewport; clicking "the first in the DOM" clicks a
+ * hidden one on a phone.
+ */
+async function clickVisible(testId: string) {
+  await expect.element(page.getByTestId(testId).first()).toBeInTheDocument()
+  await vi.waitFor(() => {
+    const el = page
+      .getByTestId(testId)
+      .elements()
+      .find((candidate) => (candidate as HTMLElement).checkVisibility())
+    expect(el).toBeDefined()
+  })
+  const el = page
+    .getByTestId(testId)
+    .elements()
+    .find((candidate) => (candidate as HTMLElement).checkVisibility())!
+  await userEvent.click(el)
+}
+
 const PAGES = [
   { id: 'assessment/batch-my-entries', path: '/assessment/batches/:batchId/my-entries' },
   { id: 'assessment/batch-overview', path: '/assessment/batches/:batchId' },
@@ -334,7 +356,7 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    await page.getByTestId('file-claim').first().click()
+    await clickVisible('file-claim')
     await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
     // keeping it is one press and handing it on is another, so a claim can be
     // written down before anybody is asked to look at it
@@ -387,7 +409,7 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    await page.getByTestId('file-claim').first().click()
+    await clickVisible('file-claim')
     await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
 
     // The press writes the claim down and hands it on, so the question it
@@ -420,7 +442,7 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    await page.getByTestId('file-claim').first().click()
+    await clickVisible('file-claim')
     await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
     await page.getByRole('button', { name: '保存并提交审核' }).click()
     await page.getByTestId('confirm-accept').click()
@@ -461,7 +483,7 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    await page.getByTestId('file-claim').first().click()
+    await clickVisible('file-claim')
 
     // two kilobytes into a field that keeps one: the round has already said
     // no, so nothing is asked of the server and nothing joins the answer
@@ -522,7 +544,7 @@ describe('filing a claim', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    await page.getByTestId('file-claim').first().click()
+    await clickVisible('file-claim')
     const said = '2024 年入伍，2026 年退役复学'
     await page.getByLabelText('事项说明').fill(said)
     await page.getByRole('button', { name: '存为草稿' }).click()
@@ -546,6 +568,8 @@ describe('filing a claim', () => {
   })
 
   it('asks the server again on the refresh key', async () => {
+    // the refresh key is a desk affordance; the phone flow refreshes live
+    await page.viewport(1280, 800)
     const listed = vi.fn(() =>
       Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
     )
@@ -999,6 +1023,8 @@ describe('filing a claim', () => {
   })
 
   it('keeps every layer in the address, and takes it back out on close', async () => {
+    // the layered addresses belong to the desk's two-pane layout
+    await page.viewport(1280, 800)
     screen(
       {
         listItems: () => Effect.succeed({ items: [item()], capabilities: { canManage: false } }),
@@ -1028,7 +1054,9 @@ describe('filing a claim', () => {
     // parameter left behind would open the layer again on the next reload,
     // and the layer underneath keeps its own
     await page.getByRole('button', { name: /关闭|Close/ }).click()
-    await vi.waitFor(() => expect(addressNow()).not.toContain('detail='))
+    // the layer leaves with its exit transition; give the address the same
+    // patience the rest of the suite gives animations
+    await vi.waitFor(() => expect(addressNow()).not.toContain('detail='), { timeout: 5000 })
     expect(addressNow()).toContain(`open=${ITEM_ID}`)
 
     await page.getByRole('button', { name: /2024 年入伍/ }).click()
@@ -1059,7 +1087,7 @@ describe('filing a claim', () => {
       [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
     )
 
-    await page.getByTestId('file-claim').first().click()
+    await clickVisible('file-claim')
     // both layers landed in one write: the question and the fresh claim
     await vi.waitFor(() => expect(addressNow()).toContain(`open=${ITEM_ID}`))
     expect(addressNow()).toContain('entry=new')
@@ -1590,7 +1618,7 @@ describe('the phase gate on the paper', () => {
     )
 
     await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
-    await page.getByTestId('file-claim').first().click()
+    await clickVisible('file-claim')
     const handOn = page.getByTestId('save-and-submit')
     await expect.element(handOn).toBeDisabled()
     await expect.element(handOn).toHaveAttribute('data-gate', 'blocked')

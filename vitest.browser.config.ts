@@ -46,13 +46,27 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.browser.test.tsx'],
+    // One retry, for one diagnosed reason: the runner dispatches real input
+    // at page coordinates computed from the tester iframe's offset, and
+    // when that offset shifts mid-click the press lands outside the frame -
+    // instrumented capture showed zero events reaching the document while
+    // click() reported success. A genuine regression fails twice.
+    retry: 1,
     // runs in the browser before any test module: pins the cascade layer
-    // order the app's index.html pins in production (see that file)
-    setupFiles: ['tests/support/cascade-layers.ts'],
+    // order the app's index.html pins in production (see that file), and
+    // holds each test until the previous one's overlays have left
+    setupFiles: ['tests/support/cascade-layers.ts', 'tests/support/settled.ts'],
     browser: {
       enabled: true,
-      provider: playwright(),
+      // the product honors prefers-reduced-motion, and the suite asks for
+      // it: a click that lands mid-entrance hits a moving target, and the
+      // flake roams with machine load
+      provider: playwright({ contextOptions: { reducedMotion: 'reduce' } }),
       headless: true,
+      // the screens are asserted styled now, so the window size matters:
+      // desktop is the baseline, and a test about the phone layout says so
+      // itself with page.viewport()
+      viewport: { width: 1280, height: 800 },
       instances: [{ browser: 'chromium' }],
     },
   },

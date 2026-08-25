@@ -107,10 +107,12 @@ describe('the organization screen', () => {
     // a college may hold classes and nothing else, so the create control
     // offers exactly that - the rule never gets a chance to become an error
     await page.getByRole('combobox', { name: '选择类型' }).click()
-    expect(
-      await page.getByRole('option').elements(),
-      'exactly the one legal child type',
-    ).toHaveLength(1)
+    await expect.element(page.getByRole('listbox')).toBeVisible()
+    await vi.waitFor(() =>
+      expect(page.getByRole('option').elements(), 'exactly the one legal child type').toHaveLength(
+        1,
+      ),
+    )
     await page.getByRole('option', { name: '班级' }).click()
     await page.getByRole('textbox', { name: '名称' }).fill('软件2302班')
     await page.getByRole('button', { name: '创建' }).click()
