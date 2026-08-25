@@ -162,6 +162,11 @@ const cssVariables: CSSVariablesResolver = () => ({
     '--mantine-color-default-border': 'var(--q-border)',
     '--mantine-primary-color-filled': 'var(--q-primary)',
     '--mantine-primary-color-contrast': 'var(--q-primary-foreground)',
+    // disabled controls rest on the product greys too; the stock values
+    // come from the tinted gray/dark ramps and read as a blue cast
+    '--mantine-color-disabled': 'var(--q-surface-muted)',
+    '--mantine-color-disabled-color': 'var(--q-muted-foreground)',
+    '--mantine-color-disabled-border': 'var(--q-border)',
   },
   light: {
     '--mantine-color-gray-3': 'var(--q-border)',

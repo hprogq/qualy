@@ -96,3 +96,36 @@ describe('an icon inside a control sizes to the control', () => {
     expect(getComputedStyle(badge!.querySelector('svg')!).width).toBe('12px')
   })
 })
+
+describe('the badge lays its content in one row', () => {
+  // caught by eye twice on real pages: a status dot (a flex span) and its
+  // word, an icon and its message, each split onto two lines - the widget's
+  // label is a plain block and the preflight makes svg and flex spans
+  // block-level. Pinned on geometry: everything shares one line box.
+  it('a dot, an icon and the word sit on the same line', async () => {
+    mount(
+      <Badge variant="secondary">
+        <span style={{ display: 'flex' }} data-testid="dot" />
+        <Glyph />
+        Submission limit reached
+      </Badge>,
+    )
+    await expect.element(page.getByText('Submission limit reached')).toBeVisible()
+    const badge = page
+      .getByText('Submission limit reached')
+      .element()
+      .closest('[data-slot="badge"]')!
+    await expect.poll(() => badge.getBoundingClientRect().height, { timeout: 5000 }).toBe(20)
+  })
+})
+
+describe('the disabled state carries no chroma', () => {
+  it('a disabled button rests on the product greys', async () => {
+    mount(<Button disabled>stuck</Button>)
+    const stuck = page.getByRole('button', { name: 'stuck' })
+    const paint = () => getComputedStyle(stuck.element())
+    // --q-surface-muted and --q-muted-foreground, not a slate tint
+    await expect.poll(() => paint().backgroundColor, { timeout: 5000 }).toBe('oklch(0.97 0 0)')
+    expect(paint().color).toBe('oklch(0.54 0 0)')
+  })
+})

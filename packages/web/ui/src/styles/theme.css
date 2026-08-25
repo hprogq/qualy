@@ -168,6 +168,19 @@
   .mantine-Textarea-input {
     min-height: 4rem;
   }
+  /* A badge's content is a row. The product badge always laid out its
+     children - a status dot, an icon, the word - side by side; the widget's
+     label is a plain block, and the preflight makes svg (and any flex span)
+     block-level, which pushed each onto its own line. */
+  .mantine-Badge-label {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  /* the same breathing room between an icon and its word the old button had */
+  .mantine-Button-label {
+    gap: 0.375rem;
+  }
   /* An icon inside a control sizes to the control, not to its own default
      (lucide draws 24px). Same geometry and escape hatch as the pre-pivot
      recipes: 16px in buttons, 12px in the smallest sizes and in badges, an
