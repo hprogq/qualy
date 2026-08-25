@@ -65,7 +65,8 @@
     "./use-lingering": "./src/hooks/use-lingering.ts",
     "./kbd": "./src/components/kbd.tsx",
     "./time-field": "./src/components/time-field.tsx",
-    "./screen": "./src/components/screen.tsx"
+    "./screen": "./src/components/screen.tsx",
+    "./stylex-probe": "./src/components/stylex-probe.tsx"
   },
   "peerDependencies": {
     "react": "catalog:",
