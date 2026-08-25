@@ -6,6 +6,7 @@ import { ConfirmDialog, FormDialog, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
+import { UiProvider } from '@qualy/ui/provider'
 import '../src/app.css'
 
 // The overlay contract of docs/ui-platform-migration.md §11, pinned before
@@ -14,7 +15,7 @@ import '../src/app.css'
 // modals traded places, focus lost on close, an Escape that fell through a
 // popover into the dialog under it. The assertions drive roles and real
 // clicks - whether Radix or Prime renders the layers must not matter.
-const mount = (ui: React.ReactNode) => render(<>{ui}</>)
+const mount = (ui: React.ReactNode) => render(<UiProvider scheme="light">{ui}</UiProvider>)
 
 const bodyAlive = () => document.body.style.pointerEvents !== 'none'
 

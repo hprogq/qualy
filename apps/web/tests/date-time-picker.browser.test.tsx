@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { DateTimePicker } from '@qualy/ui/date-time-picker'
+import { UiProvider } from '@qualy/ui/provider'
 import '../src/app.css'
 
 // The one control behind every start time in the product.
@@ -21,7 +22,7 @@ import '../src/app.css'
 function Harness({ initial }: { initial: string | null }) {
   const [value, setValue] = useState(initial)
   return (
-    <>
+    <UiProvider scheme="light">
       <DateTimePicker
         value={value}
         onChange={setValue}
@@ -35,7 +36,7 @@ function Harness({ initial }: { initial: string | null }) {
       {/* the value itself, where an assertion can read it without going
           through anything this component chose to display */}
       <output data-testid="value">{value ?? ''}</output>
-    </>
+    </UiProvider>
   )
 }
 

@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { Button } from '@qualy/ui/button'
+import { UiProvider } from '@qualy/ui/provider'
 import '../src/app.css'
 
 // The Qualy button contract, asserted on the computed result rather than on
@@ -16,7 +18,7 @@ const box = (locator: { element: () => Element }) => {
   return { h: style.height, w: style.width, font: style.fontSize, bg: style.backgroundColor }
 }
 
-const mount = (ui: React.ReactNode) => render(<>{ui}</>)
+const mount = (ui: React.ReactNode) => render(<UiProvider scheme="light">{ui}</UiProvider>)
 
 describe('the button keeps its product contract', () => {
   it('sizes follow the product rhythm', async () => {
@@ -84,5 +86,31 @@ describe('the button keeps its product contract', () => {
     await page.getByRole('button', { name: 'go' }).click()
     expect(pressed).toBe(1)
     await expect.element(page.getByRole('button', { name: 'stuck' })).toBeDisabled()
+  })
+
+  // The defect class a whole earlier migration tripped on: a widget button
+  // inside a form without an explicit type is a submit button, and every
+  // "open picker" click posts the form. Pinned as a product contract.
+  it('inside a form only an explicit submit submits', async () => {
+    function FormHarness() {
+      const [submits, setSubmits] = useState(0)
+      return (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            setSubmits((n) => n + 1)
+          }}
+        >
+          <Button>just a button</Button>
+          <Button type="submit">send</Button>
+          <output data-testid="submits">{submits}</output>
+        </form>
+      )
+    }
+    mount(<FormHarness />)
+    await page.getByRole('button', { name: 'just a button' }).click()
+    await expect.element(page.getByTestId('submits')).toHaveTextContent('0')
+    await page.getByRole('button', { name: 'send' }).click()
+    await expect.element(page.getByTestId('submits')).toHaveTextContent('1')
   })
 })
