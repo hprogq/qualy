@@ -8914,3 +8914,45 @@ skipped);`pnpm test:browser` exit 0(118 passed);`pnpm build` exit 0。
 
 **下一步**:M3(低风险 commodity 组件上 Prime adapter:Button 先行,先全仓统计
 `asChild` 用法再定兼容策略)。
+
+## UI 平台迁移 M3:低风险 commodity 组件上 Prime(2026-08-25)
+
+四个组件 commit:Button;Input/Textarea;Checkbox/RadioGroup;Badge/Skeleton/Separator。
+每个都是 adapter-first、公共 API 逐符号不变、业务页面零改动;产品几何(36px 节奏、pill
+圆角、xs 档、触达区)与产品配色差异(soft destructive、badge 的 outline/ghost/link)
+全部收在 QualyPreset 的组件 token 与组件 css 里,键在适配器写的 data-variant/data-size 上。
+
+**asChild 普查**:Button 7 处(全是 Link/a 包装)+ Badge 0 处;兼容实现为 Prime `as` 挂
+Radix Slot,原语义保留,调用点零改动。`buttonVariants` 留给 calendar(唯一内部消费者,
+随 calendar 迁移退场);`badgeVariants` 零消费,已随迁移删除。
+
+**记录性跳过**:Avatar(Prime Avatar 是单元素 label/icon/image,无 Radix 那台"图片加载
+失败落 fallback"状态机,compound API 映射不过去;留待 M5 用 StyleX + 手写 15 行状态机
+去 Radix 化);ButtonGroup(全仓零使用,连内部引用都没有,M9 清理候选,不为无人用的
+东西写适配器)。
+
+**三次真实回归与修复**(细节在 docs/notes/primereact.md):
+① cascade fight:Prime 无层 CSS 压过调用方工具类(review-layout 的 min-[84rem]:hidden
+失效)→ cssLayer + 完整层序 `theme, base, primereact, components, utilities`(只给 name
+不给 order 会沉到 preflight 之下,按钮全透明——也实测踩过);
+② 双 React 复活:Prime 子路径中途被发现触发 re-optimize,56 个并行测试失败 →
+optimizeDeps.include 逐子路径预注册(两份 vite 配置同步维护);
+③ role 元素易主:Prime 的 role 在原生 input 上,调用方 data-_/aria-_ 经 pt.input 转发,
+测试按 role 定位读事实属性的契约不破(batch-admin 红过两条)。
+
+**Go/No-Go 判定:GO**。适配器普遍比旧 wrapper 短(Button 例外持平——它承担了尺寸档
+映射);preset 稳定;cascade 冲突已有结构性答案(层序);bundle 无异常;浏览器测试仍以
+role/name 驱动,零断言弱化,唯一改动的测试是 Tailwind 扫描探针换到仍在该管线的 Alert。
+
+**验收**(全部真实执行):`pnpm typecheck` exit 0;`pnpm test` exit 0(838|17);
+`pnpm test:browser` **冷缓存**全绿(18 文件 122 passed,连续多轮);`pnpm build` exit 0。
+真实页面 playwright 目检:404 页(asChild outline 按钮)、登录页、本地账号表单,
+明暗两态均正常,无 console error。
+
+**bundle(M3 记录,对比 M2)**:chunk 101→99,总 JS 2480→2544KB(+64K,Prime 组件实现
+进 page/shared chunks),入口 index 528K→488K(-40K),<2KB 13,CSS 173,738→170,071B
+(-3.7KB,已迁组件的 Tailwind 类退出扫描——首次出现"迁移使 CSS 变小"的信号)。
+
+**下一步**:M4(overlay + Select:Dialog/AlertDialog/Sheet→Drawer/Popover/Tooltip/
+DropdownMenu/Select),高风险区,每迁一个 primitive 跑 overlay regression(§11 十条),
+Radix modal workaround(modal-guard.ts 等)只有在新实现不再用 Radix 且回归全绿后才删。
