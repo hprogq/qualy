@@ -194,18 +194,23 @@ describe('the workspace shell', () => {
     await expect.element(page.getByRole('link', { name: '测评' })).toBeVisible()
 
     // closing consumes the history entry the drawer stands on: the escape
-    // key here is the phone's back gesture in this harness
-    await page
-      .getByRole('link', { name: '阶段安排' })
-      .element()
-      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    // key here is the phone's back gesture in this harness. A real key
+    // press, because the layer manager under the drawer is entitled to
+    // ignore a synthetic event dispatched at an arbitrary node.
+    await userEvent.keyboard('{Escape}')
     await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
-    expect(
-      page
-        .getByRole('link', { name: '阶段安排' })
-        .elements()
-        .filter((el) => el.checkVisibility()),
-    ).toHaveLength(0)
+    // polled: how long the drawer's exit takes is the layer manager's
+    // business - what must hold is that it ends closed
+    await expect
+      .poll(
+        () =>
+          page
+            .getByRole('link', { name: '阶段安排' })
+            .elements()
+            .filter((el) => el.checkVisibility()).length,
+        { timeout: 5000 },
+      )
+      .toBe(0)
   })
 
   it('seats the person at the drawer head and the account at its foot', async () => {
@@ -347,14 +352,20 @@ describe('the workspace shell', () => {
 
     await page.getByRole('button', { name: '导航' }).click()
     await page.getByRole('link', { name: '阶段安排' }).click()
-    // the destination stands clear; the drawer went with the navigation
+    // the destination stands clear; the drawer went with the navigation.
+    // Polled, because how long the drawer's exit takes is the layer
+    // manager's business - what must hold is that it ends closed.
     await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
-    expect(
-      page
-        .getByRole('link', { name: '阶段安排' })
-        .elements()
-        .filter((el) => el.checkVisibility()),
-    ).toHaveLength(0)
+    await expect
+      .poll(
+        () =>
+          page
+            .getByRole('link', { name: '阶段安排' })
+            .elements()
+            .filter((el) => el.checkVisibility()).length,
+        { timeout: 5000 },
+      )
+      .toBe(0)
   })
 
   it('keeps the control that closes the rail inside the rail, and offers it back', async () => {
