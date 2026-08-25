@@ -8807,3 +8807,43 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 沉淀项(§23 的查询能力已由 LGTM Drilldown 与 TMP/云端 Grafana 覆盖),不阻塞
 6.9 验收。secret 状态:真实凭据仅存于 gitignored 的 collector.env,tracked
 文件/文档/测试均无。
+
+## UI 平台迁移 M0:PrimeReact + StyleX 基建共存(2026-08-25)
+
+设计文档 docs/ui-platform-migration.md(基线 commit af2c71ab,与实施时 HEAD 一致)。
+本步只让两套新基建进入构建系统,页面行为与样式零变化;分支 ui-platform-m0。
+
+**已完成**:
+
+- catalog 新增 @primereact/ui、@primereact/core 11.1.0、@primeuix/themes 3.0.0、
+  @stylexjs/stylex、@stylexjs/unplugin 0.19.0;@qualy/ui 挂 primereact/ui+themes+stylex,
+  apps/web 挂 @primereact/core(M1 provider 用),ping 挂 stylex+@qualy/ui。未引 @primeicons/react。
+- vite.config.ts 与 vitest.browser.config.ts 都在 React 插件之前接入 StyleX
+  (useCSSLayers,runtimeInjection: false;vite.config 改函数形态按 mode 定 dev)。
+  Tailwind 插件保留,共存。
+- 探针两处:@qualy/ui/stylex-probe(#0b1621)与 ping 插件 StyleXProbe(#2c3742),
+  都渲染在 ping demo 页;浏览器测试 stylex-probe.browser.test.tsx 断言 computed style
+  (测试页不经 index.html,自行 import virtual:stylex:runtime,类型声明在 tests/support)。
+- 实查记录 docs/notes/stylexjs-unplugin.md:`@stylex;` 标记只属 PostCSS 路径、
+  treeshakeCompensation vite 下默认开、dev 注入由 transformIndexHtml 自动完成。
+- 上游缺陷 patch:unplugin vite 适配器 configureServer 的 150ms setInterval 未 unref,
+  vitest 退出被挂 10 秒(实测去插件即干净退出);patches/@stylexjs__unplugin@0.19.0.patch
+  补 `interval.unref?.()`,esm/cjs 各一处。另:包的 commonjs 味 d.ts 与 esm 运行产物
+  default 形状不一致,两处 config 用自引用类型断言对齐(注释在场)。
+
+**dev/HMR 实测**(pnpm dev,middlewareMode):页面 HTML 注入 virtual:stylex:runtime
+脚本与 /virtual:stylex.css 链接;探针模块编译为静态 className;CSS 端点含哨兵;
+改哨兵值→模块重取→dev CSS 跟进(vite 日志有对应 hmr update 事件);SIGINT 优雅退出。
+
+**验收**(全部真实执行):`pnpm typecheck` exit 0;`pnpm test` 838 passed | 17 skipped
+(123/3 文件);`pnpm test:browser` 16 文件 117 passed(连续两轮,exit 0;lockfile
+变更后的首轮曾有 4 个文件级失败、0 测试失败,系 vite 中途 re-optimize,后续不可复现);
+`pnpm build` exit 0,dist 单一 CSS asset(173,278 B)含两个哨兵各一次(@layer priority 内)。
+
+**bundle 基线记录**(M0 后,供 M3/M4 对比):JS chunks 93,总 JS ≈2300 KB,
+<2KB chunks 12,CSS 1 份 173,278 B,入口 index JS 368 KB。本步 JS 图未引入任何
+PrimeReact import,增量仅探针;PrimeReact 依赖已装但零模块进图。
+
+**下一步**:M1(--q-* semantic tokens、shadcn vars alias、tokens.stylex.ts、
+QualyPreset(Aura)、darkModeSelector '.dark'、App 树挂 PrimeReactProvider、license
+经配置注入、theme smoke test)。PrimeUI license 获取方式需用户裁决。
