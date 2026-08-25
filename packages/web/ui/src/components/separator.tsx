@@ -1,25 +1,27 @@
 'use client'
 
 import * as React from 'react'
-import { Separator as SeparatorPrimitive } from 'radix-ui'
+import { Divider } from '@primereact/ui/divider'
 
-import { cn } from '../lib/utils.ts'
-
+// The product separator over Prime's Divider, reduced to what it always
+// was: a hairline. The preset zeroes the Divider margins; decorative lines
+// stay out of the accessibility tree the way the Radix version kept them.
 function Separator({
   className,
   orientation = 'horizontal',
   decorative = true,
   ...props
-}: React.ComponentProps<typeof SeparatorPrimitive.Root>) {
+}: React.ComponentProps<'div'> & {
+  orientation?: 'horizontal' | 'vertical'
+  decorative?: boolean
+}) {
   return (
-    <SeparatorPrimitive.Root
+    <Divider
       data-slot="separator"
-      decorative={decorative}
       orientation={orientation}
-      className={cn(
-        'shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch',
-        className,
-      )}
+      role={decorative ? 'none' : 'separator'}
+      {...(decorative ? { 'aria-orientation': undefined } : {})}
+      {...(className === undefined ? {} : { className })}
       {...props}
     />
   )

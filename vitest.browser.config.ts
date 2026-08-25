@@ -61,6 +61,9 @@ export default defineConfig({
       '@primereact/ui/checkbox',
       '@primereact/ui/radiobutton',
       '@primereact/ui/radiobuttongroup',
+      '@primereact/ui/tag',
+      '@primereact/ui/skeleton',
+      '@primereact/ui/divider',
     ],
   },
   test: {

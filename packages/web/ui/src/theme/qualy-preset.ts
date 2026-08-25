@@ -162,6 +162,51 @@ export const QualyPreset = definePreset(Aura, {
 .p-radiobutton-group { display: grid; width: 100%; gap: 0.75rem; }
 `,
     },
+    tag: {
+      root: {
+        fontWeight: '500',
+        padding: '0.125rem 0.5rem',
+        gap: '0.25rem',
+        borderRadius: 'calc(var(--q-radius-lg) * 2.6)',
+      },
+      primary: {
+        background: 'var(--q-primary)',
+        color: 'var(--q-primary-foreground)',
+      },
+      danger: {
+        background: 'color-mix(in oklab, var(--q-danger) 10%, transparent)',
+        color: 'var(--q-danger)',
+      },
+      // the 20px chip line the product sets badges on, and the variants Tag
+      // has no severity for
+      css: () => `
+.p-tag { height: 1.25rem; white-space: nowrap; }
+.p-tag > svg { pointer-events: none; width: 0.75rem; height: 0.75rem; }
+.p-tag[data-variant='outline'] { background: color-mix(in oklab, var(--q-input) 30%, transparent); border: 1px solid var(--q-border); color: var(--q-foreground); }
+.p-tag[data-variant='ghost'] { background: transparent; color: var(--q-foreground); }
+.p-tag[data-variant='link'] { background: transparent; color: var(--q-primary); text-underline-offset: 4px; }
+.p-tag[data-variant='link']:hover { text-decoration: underline; }
+`,
+    },
+    skeleton: {
+      root: {
+        borderRadius: 'calc(var(--q-radius-lg) + 4px)',
+        background: 'var(--q-surface-muted)',
+      },
+    },
+    divider: {
+      root: {
+        borderColor: 'var(--q-border)',
+      },
+      horizontal: {
+        margin: '0',
+        padding: '0',
+      },
+      vertical: {
+        margin: '0',
+        padding: '0',
+      },
+    },
     textarea: {
       root: {
         borderRadius: 'calc(var(--q-radius-lg) + 4px)',
