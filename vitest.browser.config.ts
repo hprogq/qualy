@@ -47,6 +47,19 @@ export default defineConfig({
     // one react instance for the host and every plugin component
     dedupe: ['react', 'react-dom'],
   },
+  optimizeDeps: {
+    // Prime subpaths reached only through @qualy/ui adapters: discovered
+    // mid-run they trigger a re-optimize that hands some modules a second
+    // React instance (the cold-cache invalid-hook crash, again). Every
+    // subpath an adapter imports is declared here so the first optimize
+    // pass already knows them; extend this list with each migrated widget.
+    include: [
+      '@primereact/core/config',
+      '@primereact/ui/button',
+      '@primereact/ui/inputtext',
+      '@primereact/ui/textarea',
+    ],
+  },
   test: {
     include: ['tests/**/*.browser.test.tsx'],
     browser: {

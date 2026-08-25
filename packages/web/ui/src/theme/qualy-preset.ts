@@ -29,6 +29,18 @@ export const QualyPreset = definePreset(Aura, {
       width: '3px',
       color: 'color-mix(in oklab, var(--q-focus-ring) 50%, transparent)',
     },
+    // every form widget reads these: the product's tinted field surface,
+    // its border, and the focus border that matches the ring
+    formField: {
+      background: 'color-mix(in oklab, var(--q-input) 30%, transparent)',
+      borderColor: 'var(--q-input)',
+      hoverBorderColor: 'var(--q-input)',
+      focusBorderColor: 'var(--q-focus-ring)',
+      invalidBorderColor: 'var(--q-danger)',
+      color: 'var(--q-foreground)',
+      placeholderColor: 'var(--q-muted-foreground)',
+      paddingX: '0.75rem',
+    },
   },
   components: {
     // The Qualy button geometry and palette over Prime's button machinery.
@@ -97,6 +109,31 @@ export const QualyPreset = definePreset(Aura, {
 .p-button-text[aria-expanded='true'], .p-button-outlined[aria-expanded='true'] { background: var(--q-surface-muted); color: var(--q-foreground); }
 .p-button-text.p-button-danger { background: color-mix(in oklab, var(--q-danger) 10%, transparent); }
 .p-button-text.p-button-danger[aria-expanded='true'] { background: color-mix(in oklab, var(--q-danger) 20%, transparent); color: var(--q-danger); }
+`,
+    },
+    inputtext: {
+      root: {
+        borderRadius: 'calc(var(--q-radius-lg) * 2.6)',
+      },
+      // the 36px field the whole form rhythm hangs on; 16px type under a
+      // coarse pointer so phones do not zoom the page on focus, 14px under
+      // a fine one. The file selector button mirrors the old file: styles.
+      css: () => `
+.p-inputtext { height: 2.25rem; padding-block: 0.25rem; font-size: 1rem; transition: border-color 0.2s, background-color 0.2s; }
+@media (pointer: fine) { .p-inputtext { font-size: 0.875rem; } }
+.p-inputtext::file-selector-button { display: inline-flex; height: 1.75rem; border: 0; background: transparent; font-size: 0.875rem; font-weight: 500; color: var(--q-foreground); }
+.p-inputtext:disabled { pointer-events: none; cursor: not-allowed; opacity: 0.5; }
+`,
+    },
+    textarea: {
+      root: {
+        borderRadius: 'calc(var(--q-radius-lg) + 4px)',
+      },
+      // grows with its content, never a drag handle; same anti-zoom type
+      // scale as the input
+      css: () => `
+.p-textarea { field-sizing: content; min-height: 4rem; resize: none; padding: 0.75rem; font-size: 1rem; }
+@media (pointer: fine) { .p-textarea { font-size: 0.875rem; } }
 `,
     },
   },

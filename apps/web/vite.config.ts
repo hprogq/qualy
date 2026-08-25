@@ -37,6 +37,17 @@ export default defineConfig(({ mode }) => ({
   // .env lives at the repo root next to the server's; only VITE_-prefixed
   // variables ever reach client code (the PrimeUI license rides this)
   envDir: repoRoot,
+  optimizeDeps: {
+    // Prime subpaths reached only through @qualy/ui adapters: discovered
+    // mid-session they trigger a re-optimize reload; declared up front the
+    // first pass already bundles them. Keep in step with the vitest config.
+    include: [
+      '@primereact/core/config',
+      '@primereact/ui/button',
+      '@primereact/ui/inputtext',
+      '@primereact/ui/textarea',
+    ],
+  },
   build: {
     rollupOptions: {
       output: {

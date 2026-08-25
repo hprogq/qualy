@@ -1,15 +1,14 @@
 import * as React from 'react'
+import { Textarea as PrimeTextarea } from '@primereact/ui/textarea'
 
-import { cn } from '../lib/utils.ts'
-
+// The product textarea over Prime's: it grows with its content instead of
+// dragging a resize handle, from the textarea css in theme/qualy-preset.ts.
 function Textarea({ className, ...props }: React.ComponentProps<'textarea'>) {
   return (
-    <textarea
+    <PrimeTextarea
+      fluid
       data-slot="textarea"
-      className={cn(
-        'flex field-sizing-content min-h-16 w-full resize-none rounded-xl border border-input bg-input/30 px-3 py-3 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 pointer-fine:text-sm dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
-        className,
-      )}
+      {...(className === undefined ? {} : { className })}
       {...props}
     />
   )
