@@ -1,10 +1,35 @@
+// the package ships one commonjs-flavored d.ts for both builds, so TS wraps
+// the factory in an extra `default` that the esm build vite actually loads
+// does not have; the cast re-aligns the type with the runtime value
+import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { qualyPlugins } from '@qualy/web-build/vite'
 
-export default defineConfig({
-  plugins: [qualyPlugins(), react(), tailwindcss()],
+const stylexUnplugin =
+  stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
+
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
+
+export default defineConfig(({ mode }) => ({
+  // StyleX must transform the file before the React plugin sees it; Tailwind
+  // stays until the last migration phase (docs/ui-platform-migration-mantine.md)
+  plugins: [
+    qualyPlugins(),
+    stylexUnplugin({
+      useCSSLayers: true,
+      dev: mode !== 'production',
+      runtimeInjection: false,
+      // defineVars derives variable names from file paths relative to this
+      // root; pinned so every pipeline (dev server, test, build) agrees
+      // regardless of its working directory
+      unstable_moduleResolution: { type: 'commonJS', rootDir: repoRoot },
+    }),
+    react(),
+    tailwindcss(),
+  ],
   resolve: {
     // one react instance for the host and every plugin chunk
     dedupe: ['react', 'react-dom'],
@@ -73,4 +98,4 @@ export default defineConfig({
     host: true,
     allowedHosts: ['qualy-dev.hprogq.com'],
   },
-})
+}))
