@@ -2,6 +2,7 @@
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/inter';
 @import 'react-photo-view/dist/react-photo-view.css';
+@import './tokens.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -25,79 +26,55 @@
   pointer-events: auto;
 }
 
-/* shadcn-style design tokens for tailwind v4; dark mode flips the variables
-   on the .dark class */
+/* shadcn-style design tokens for tailwind v4. Where a Qualy semantic token
+ * exists the shadcn variable is an alias onto it, so the old Tailwind pages
+ * and the new StyleX/PrimeReact surfaces read one palette during the
+ * coexistence period (docs/ui-platform-migration.md); remove the aliases
+ * with the Tailwind teardown once nothing consumes the shadcn names.
+ * Dark mode still flips on the .dark class - inside tokens.css for the
+ * aliased variables, here for the rest. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  --background: var(--q-background);
+  --foreground: var(--q-foreground);
+  --card: var(--q-surface);
+  --card-foreground: var(--q-foreground);
+  --popover: var(--q-surface-elevated);
+  --popover-foreground: var(--q-foreground);
+  --primary: var(--q-primary);
+  --primary-foreground: var(--q-primary-foreground);
+  --secondary: var(--q-surface-muted);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  /* 0.556 was shadcn's default and misses WCAG AA on the tinted panels this
-     product puts secondary text on: 4.34:1 on a muted avatar, 4.40:1 on the
-     phase strip, against the 4.5:1 the standard asks for. 0.54 clears it on
-     every surface here with room to spare. */
-  --muted-foreground: oklch(0.54 0 0);
-  --accent: oklch(0.97 0 0);
+  --muted: var(--q-surface-muted);
+  --muted-foreground: var(--q-muted-foreground);
+  --accent: var(--q-surface-muted);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --destructive: var(--q-danger);
+  --border: var(--q-border);
+  --input: var(--q-input);
+  --ring: var(--q-focus-ring);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --radius: var(--q-radius-lg);
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-foreground: var(--q-foreground);
+  --sidebar-primary: var(--q-primary);
+  --sidebar-primary-foreground: var(--q-primary-foreground);
+  --sidebar-accent: var(--q-surface-muted);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-border: var(--q-border);
+  --sidebar-ring: var(--q-focus-ring);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @theme inline {
