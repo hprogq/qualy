@@ -2,6 +2,9 @@
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/inter';
 @import 'react-photo-view/dist/react-photo-view.css';
+/* the layered distribution: every widget rule arrives inside @layer mantine,
+   whose place in the cascade the app entry declares up front */
+@import '@mantine/core/styles.layer.css';
 @import './tokens.css';
 
 @custom-variant dark (&:is(.dark *));
@@ -138,5 +141,31 @@
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+  }
+}
+
+/* Product adjustments to widget baselines. The components layer sits above
+ * the mantine layer by the declared order, so these plain selectors win
+ * without !important; consumer utilities and StyleX still sit above both.
+ * Static widget class names are the documented Styles API selectors. */
+@layer components {
+  /* the product voice: badges are quiet labels, not shouting pills */
+  .mantine-Badge-root {
+    text-transform: none;
+    font-weight: 500;
+  }
+  .mantine-Button-root {
+    font-weight: 500;
+  }
+  .mantine-Button-root[data-variant='q-link']:hover {
+    text-decoration: underline;
+  }
+  /* forms mark invalid controls with aria-invalid, the accessibility fact,
+     not with a library-specific error prop */
+  .mantine-Input-input[aria-invalid='true'] {
+    border-color: var(--q-danger);
+  }
+  .mantine-Textarea-input {
+    min-height: 4rem;
   }
 }

@@ -46,6 +46,9 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.browser.test.tsx'],
+    // runs in the browser before any test module: pins the cascade layer
+    // order the app's index.html pins in production (see that file)
+    setupFiles: ['tests/support/cascade-layers.ts'],
     browser: {
       enabled: true,
       provider: playwright(),

@@ -71,6 +71,10 @@ catalog:
   # injected CSS
   '@stylexjs/stylex': 0.19.0
   '@stylexjs/unplugin': 0.19.0
+  # Mantine is the commodity widget substrate behind @qualy/ui (ADR 0010);
+  # hooks is core's peer dependency and must match its version exactly
+  '@mantine/core': 9.5.2
+  '@mantine/hooks': 9.5.2
   # tencent cloud object storage, in three parts that never meet: the node sdk
   # is the control plane (head/delete/sign), the sts package mints the
   # exact-object upload credential, and the browser sdk is the only one that

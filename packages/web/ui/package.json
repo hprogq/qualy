@@ -75,6 +75,8 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
+    "@mantine/core": "catalog:",
+    "@mantine/hooks": "catalog:",
     "@stylexjs/stylex": "catalog:",
     "@radix-ui/react-label": "catalog:",
     "@radix-ui/react-slot": "catalog:",

@@ -1,6 +1,15 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
+    <!-- The cascade layer order, declared before any stylesheet can declare
+         its own: a layer's position is fixed by its first declaration, and in
+         dev the StyleX runtime's injected sheet arrives ahead of the compiled
+         app.css - without this line the priority layers would sink below the
+         widget layer. Keep in sync with src/app.css and the browser test
+         setup (tests/support/cascade-layers.ts). -->
+    <style>
+      @layer theme, base, mantine, components, utilities, priority1, priority2, priority3, priority4, priority5;
+    </style>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta

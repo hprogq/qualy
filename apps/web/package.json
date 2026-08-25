@@ -32,6 +32,7 @@
     "@qualy/assembly": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/web-build": "workspace:*",
+    "@stylexjs/stylex": "catalog:",
     "@stylexjs/unplugin": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@types/react": "catalog:",

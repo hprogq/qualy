@@ -1,3 +1,13 @@
+/* One declared cascade order for the whole app, stated before any sheet can
+   state its own: the widget library's layer sits below the product layers,
+   so component and utility rules override widget baselines by layer order
+   alone - no !important, no reliance on import order. The StyleX priority
+   layers are named explicitly because in dev the compiler's early <link>
+   injection would otherwise declare them first - before mantine - and
+   invert the cascade (first declaration fixes a layer's position for the
+   whole document). */
+@layer theme, base, mantine, components, utilities, priority1, priority2, priority3, priority4, priority5;
+
 @import 'tailwindcss' source(none);
 @import '@qualy/ui/theme.css';
 
