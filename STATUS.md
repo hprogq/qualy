@@ -8906,3 +8906,21 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **Radix 现状**:overlay 七件的 radix 依赖已无消费者但包共享(radix-ui umbrella 仍被
   avatar/breadcrumb/tabs/collapsible/scroll-area/toggle/hover-card/label 等未迁件使用,M9 清
   场);日期族(C 类)未动,@mantine/dates 未引入,取舍待单独 ADR。
+
+## UI 平台跟进:Select 触发器归原生面,浏览器套件改为「有样式断言」(2026-08-26)
+
+- **Select 触发器去 shadcn 配方**(16f27fbe):InputBase over button、库自带 chevron 与
+  placeholder 声部、尺寸走 input 档、aria-invalid 桥 error 通道;调用方 className 落
+  wrapper(全部调用点都在用它定宽);选项行只留结构(预留指示器席位),hover/active/禁用
+  归库。三浮层关 hideDetached(触发器滚出视野不再拉黑打开的列表——旧底座从不如此)。
+- **测试基建大修**(a0c05eb2):①harness 加载真实 app.css——裸奔断言的是用户永远见不到的
+  页面,本轮连续三个真 bug(hideDetached 拉黑、图标遮盖、响应式藏元素)都是它捂出来的;
+  ②套件默认桌面视口 1280×800,手机流测试自声明;③「可见实例」定位(clickVisible/
+  expectVisibleText)替代 .first()——同一 testid 在响应式布局下有多个席位;④每测试开场
+  「静场守卫」(先 unmount 前树、等 overlay 与 scroll-lock 真正退场、清 localStorage 视图
+  态与 sonner 全局队列——四类曾隐形前泄的状态);⑤套件模拟 prefers-reduced-motion(产品
+  已尊重;此前 context 键名无效被静默忽略,修为 provider 级 contextOptions 后才生效);
+  ⑥保留 retry:1,对应已插桩实证的 runner 竞态(点击派发落在 tester iframe 外,document
+  级捕获零事件而 click() 报成功);⑦org-admin 补选项渲染等待(原为点开即同步计数)。
+- **验收**:typecheck 零错;node 838 passed | 17 skipped;浏览器 **连续三轮全量 156/156**;
+  build 成功。**screenshots** 仅存失败现场且已 gitignore,tests 根下历史遗留 png 清除。
