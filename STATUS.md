@@ -8893,3 +8893,24 @@ Aura preset 进 boot 链,M1 预期成本,观察项);总 JS 2300→2460 KB;CSS 17
 
 **下一步**:M2(拆 admin.tsx/screen.tsx 为可迁移单元,纯重构零行为差异)。开始前请在
 根 .env 填 `VITE_PRIMEUI_LICENSE`,填后跑一次 `pnpm dev` 目检徽标消失。
+
+## UI 平台迁移 M2:产品组件文件拆分(纯重构)(2026-08-25)
+
+license 已由用户配置,playwright 目检徽标消失。
+
+**已完成**:admin.tsx(623 行)拆为 `admin/{page,async,field,dialog,index}`,
+screen.tsx(663 行)拆为 `screen/{shell,sections,pick,rail,blank,index}`;代码逐字搬移,
+只改相对导入路径(screen→admin 的 PageHeader 现指 `../admin/page.tsx`),丢弃 admin.tsx
+里一组从未使用的 Card 导入。`@qualy/ui/admin`、`@qualy/ui/screen` 公共入口不变
+(exports 指向各自 index.ts,显式具名重导出,面与原文件逐符号相等)。全仓 50 处调用
+全走包子路径,无深路径引用,调用方零改动。
+
+**验收**(全部真实执行):`pnpm typecheck` exit 0;`pnpm test` exit 0(838 passed | 17
+skipped);`pnpm test:browser` exit 0(118 passed);`pnpm build` exit 0。
+
+**构建形状漂移(记录)**:chunk 93→101(+8)、总 JS 2460→2480KB(+20KB)、<2KB
+13(+1)、CSS 与入口 index 528K 不变——子模块可被 entriesAware 池独立分组所致,
+行为无差异;M3 起如继续漂移再依数据调 grouping。
+
+**下一步**:M3(低风险 commodity 组件上 Prime adapter:Button 先行,先全仓统计
+`asChild` 用法再定兼容策略)。
