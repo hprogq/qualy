@@ -36,6 +36,8 @@ function Checkbox({
     if (key.startsWith('data-') || key.startsWith('aria-')) inputProps[key] = prop
     else rootProps[key] = prop
   }
+  // data-indeterminate is the hook the preset css shows the mixed-state
+  // mark on; Prime puts no class on the root for this state
   const indeterminate = checked === 'indeterminate'
   return (
     <PrimeCheckbox.Root
@@ -49,6 +51,7 @@ function Checkbox({
           })}
       {...(id === undefined ? {} : { inputId: id })}
       {...(className === undefined ? {} : { className })}
+      {...(indeterminate ? { 'data-indeterminate': 'true' } : {})}
       pt={{ input: inputProps }}
       {...rootProps}
     >

@@ -16,6 +16,24 @@ export const QualyPreset = definePreset(Aura, {
     },
   },
   semantic: {
+    // the product grey is pure neutral; Aura's default surfaces are slate
+    // (light) and zinc (dark), and the blue cast leaked into everything
+    // severity-secondary. One chroma-free scale for both schemes, values
+    // taken verbatim from the product palette in styles/tokens.css.
+    surface: {
+      0: '#ffffff',
+      50: 'oklch(0.985 0 0)',
+      100: 'oklch(0.97 0 0)',
+      200: 'oklch(0.922 0 0)',
+      300: 'oklch(0.87 0 0)',
+      400: 'oklch(0.708 0 0)',
+      500: 'oklch(0.556 0 0)',
+      600: 'oklch(0.439 0 0)',
+      700: 'oklch(0.371 0 0)',
+      800: 'oklch(0.269 0 0)',
+      900: 'oklch(0.205 0 0)',
+      950: 'oklch(0.145 0 0)',
+    },
     primary: {
       color: 'var(--q-primary)',
       contrastColor: 'var(--q-primary-foreground)',
@@ -135,10 +153,15 @@ export const QualyPreset = definePreset(Aura, {
       icon: {
         size: '0.875rem',
       },
-      // the touch target reaches well past the 16px box, as it always has
+      // The touch target reaches well past the 16px box, as it always has.
+      // The glyph shows only for a state that has something to say: Prime's
+      // base css sizes whatever sits in the indicator but never hides it,
+      // so an unticked box wore a dark check. Indeterminate keeps the old
+      // look - an unfilled box with a foreground-colored mark.
       css: () => `
 .p-checkbox { position: relative; }
 .p-checkbox::after { content: ''; position: absolute; inset: -0.5rem -0.75rem; }
+.p-checkbox:not(.p-checkbox-checked):not([data-indeterminate='true']) .p-checkbox-indicator svg { display: none; }
 `,
     },
     radiobutton: {
@@ -172,6 +195,9 @@ export const QualyPreset = definePreset(Aura, {
       primary: {
         background: 'var(--q-primary)',
         color: 'var(--q-primary-foreground)',
+      },
+      secondary: {
+        color: 'light-dark(oklch(0.205 0 0), oklch(0.985 0 0))',
       },
       danger: {
         background: 'color-mix(in oklab, var(--q-danger) 10%, transparent)',
