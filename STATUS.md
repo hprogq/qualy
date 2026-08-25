@@ -8847,3 +8847,49 @@ PrimeReact import,增量仅探针;PrimeReact 依赖已装但零模块进图。
 **下一步**:M1(--q-* semantic tokens、shadcn vars alias、tokens.stylex.ts、
 QualyPreset(Aura)、darkModeSelector '.dark'、App 树挂 PrimeReactProvider、license
 经配置注入、theme smoke test)。PrimeUI license 获取方式需用户裁决。
+
+## UI 平台迁移 M1:主题桥(--q-* tokens + Prime provider)(2026-08-25)
+
+分支 ui-platform(原 ui-platform-m0 改名,整条迁移共用)。
+
+**已完成**:
+
+- `packages/web/ui/src/styles/tokens.css` 落 `--q-*` 语义 token(值为原 shadcn 调色板
+  逐字搬移,非重设计),theme.css 的 shadcn 变量凡有对应 token 一律 alias(`--background:
+var(--q-background)` 等),dark 翻转对不上 q-token 的少数变量(secondary/accent
+  foreground、sidebar 系)保留显式覆盖——逐值核对无漂移。
+- `theme/tokens.stylex.ts` 经 `stylex.defineVars` 暴露同一组 token(值引用 --q-*),
+  导出 `@qualy/ui/theme/tokens.stylex`;两份 vite 配置显式钉住
+  `unstable_moduleResolution.rootDir = 仓库根`(unplugin 默认 cwd,三管线 cwd 不一致)。
+- `theme/qualy-preset.ts`(definePreset(Aura):primary/focusRing 指 --q-_,radius 指
+  --q-radius-_,hover/active 用与 Tailwind `/90` 等价的 color-mix;其余留 Aura 默认)、
+  `theme/prime.ts`(darkModeSelector '.dark')。
+- App.tsx:PrimeReactProvider 挂在 ThemeProvider 内、RuntimeProvider 外;license 经
+  `import.meta.env.VITE_PRIMEUI_LICENSE`(vite envDir 指向仓库根,.env.example 有占位;
+  **key 未填**,填后右下角 "Invalid PrimeUI License" 徽标消失)。ThemeProvider 不知道
+  Prime 的存在。
+- theme smoke(prime-theme.browser.test.tsx):StyleX 色块与 Prime 按钮 computed 背景
+  **相等**(同源 --q-primary),`.dark` 后仍相等且翻转;断言用轮询收敛——按钮背景带
+  过渡,瞬时采样会拿到插值色(oklab 序列化),已实测踩过。
+- 实查记录 docs/notes/primereact.md:@primereact/core 声明文件 NodeNext 下 `export *`
+  静默丢符号(ESM 模式 d.ts + 无扩展名带内点相对导入),`--traceResolution` 实证;
+  workaround 为 apps/web/src/primereact-config.d.ts 模块增补(自包含,移除条件在文件内)。
+  Provider 的 theme CSS 按需注入:M1 阶段真实应用无 Prime 组件,`--p-*` 为空,首个
+  组件渲染时注入(浏览器测试实证)。
+
+**验收**(全部真实执行):`pnpm typecheck` exit 0;`pnpm test` 838 passed | 17 skipped;
+`pnpm test:browser` 17 文件 118 passed(exit 0);`pnpm build` exit 0。真实页面
+playwright 复核:壳/导航/按钮渲染正常,body 背景亮 `oklch(1 0 0)`、暗 `oklch(0.145 0 0)`
+随 .dark 翻转,`--background` ≡ `--q-background`;唯一可见 artifact 是无 license 徽标。
+
+**bundle 记录**(对比 M0):入口 index JS 368K→528K(+160K:@primereact/core provider +
+Aura preset 进 boot 链,M1 预期成本,观察项);总 JS 2300→2460 KB;CSS 173,278→173,738 B
+(+460B:tokens.css 与别名);chunk 93、<2KB 12 均不变。defineVars 的 :root 规则尚未进
+生产 CSS(app 图里还没有消费者,测试管线已验证),首个用 token 的组件落地时会出现。
+
+**已知褶皱**:依赖图变更后的**首轮**浏览器套件偶发文件级失败(vite 中途 re-optimize
+触发页面重载,poll 超时),暖跑稳定全绿;若 CI 冷启动复现,考虑 optimizeDeps.include
+预打包 @primereact 子路径。
+
+**下一步**:M2(拆 admin.tsx/screen.tsx 为可迁移单元,纯重构零行为差异)。开始前请在
+根 .env 填 `VITE_PRIMEUI_LICENSE`,填后跑一次 `pnpm dev` 目检徽标消失。
