@@ -1,100 +1,209 @@
 'use client'
 
 import * as React from 'react'
-import { Dialog as SheetPrimitive } from 'radix-ui'
+import { Drawer as MDrawer } from '@mantine/core'
 
 import { cn } from '../lib/utils.ts'
-import { releaseStuckBody } from '../lib/modal-guard.ts'
+import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+// A panel sliding in from an edge, over the widget library's drawer. The
+// library owns portal, focus trap, scroll lock, Escape and the slide
+// transition per position; the adapter owns the product prop shape and the
+// photo-viewer coexistence rule below.
+
+interface SheetState {
+  open: boolean
+  setOpen: (next: boolean) => void
+}
+const SheetCtx = React.createContext<SheetState | null>(null)
+
+function useSheet(): SheetState {
+  const ctx = React.use(SheetCtx)
+  if (ctx === null) throw new Error('Sheet components must sit inside <Sheet>')
+  return ctx
 }
 
-function SheetTrigger({ ...props }: React.ComponentProps<typeof SheetPrimitive.Trigger>) {
-  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
+function Sheet({
+  open,
+  defaultOpen,
+  onOpenChange,
+  children,
+}: {
+  open?: boolean
+  defaultOpen?: boolean
+  onOpenChange?: (open: boolean) => void
+  children?: React.ReactNode
+}) {
+  const [inner, setInner] = React.useState(defaultOpen ?? false)
+  const value = React.useMemo<SheetState>(
+    () => ({
+      open: open ?? inner,
+      setOpen: (next) => {
+        setInner(next)
+        onOpenChange?.(next)
+      },
+    }),
+    [open, inner, onOpenChange],
+  )
+  return <SheetCtx value={value}>{children}</SheetCtx>
 }
 
-function SheetClose({ ...props }: React.ComponentProps<typeof SheetPrimitive.Close>) {
-  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
-}
-
-function SheetPortal({ ...props }: React.ComponentProps<typeof SheetPrimitive.Portal>) {
-  return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
-}
-
-function SheetOverlay({
-  className,
+function SheetTrigger({
+  asChild = false,
+  children,
+  onClick,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Overlay>) {
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  const { setOpen } = useSheet()
+  if (asChild) {
+    const child = React.Children.only(children) as React.ReactElement<{
+      onClick?: React.MouseEventHandler
+    }>
+    return React.cloneElement(child, {
+      onClick: (event: React.MouseEvent) => {
+        child.props.onClick?.(event)
+        setOpen(true)
+      },
+    })
+  }
   return (
-    <SheetPrimitive.Overlay
-      data-slot="sheet-overlay"
-      className={cn(
-        'fixed inset-0 z-50 bg-black/80 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
-        className,
-      )}
+    <button
+      type="button"
+      data-slot="sheet-trigger"
+      onClick={(event) => {
+        onClick?.(event)
+        setOpen(true)
+      }}
       {...props}
-    />
+    >
+      {children}
+    </button>
   )
 }
 
-/** whether a photo viewer is standing over everything right now */
-const photoViewerOpen = () => document.querySelector('.PhotoView-Portal') !== null
+function SheetClose({
+  asChild = false,
+  children,
+  onClick,
+  ...props
+}: React.ComponentProps<'button'> & { asChild?: boolean }) {
+  const { setOpen } = useSheet()
+  if (asChild) {
+    const child = React.Children.only(children) as React.ReactElement<{
+      onClick?: React.MouseEventHandler
+    }>
+    return React.cloneElement(child, {
+      onClick: (event: React.MouseEvent) => {
+        child.props.onClick?.(event)
+        setOpen(false)
+      },
+    })
+  }
+  return (
+    <button
+      type="button"
+      data-slot="sheet-close"
+      onClick={(event) => {
+        onClick?.(event)
+        setOpen(false)
+      }}
+      {...props}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Whether a photo viewer is standing over the sheet.
+ *
+ * The viewer portals to <body> and answers Escape itself; while it is up,
+ * that Escape must not also close the sheet under it. The viewer mounts
+ * imperatively (no prop reaches this component), so its presence is watched
+ * on the body and fed to the drawer's own closeOnEscape switch.
+ */
+function usePhotoViewerOpen(active: boolean): boolean {
+  const [viewerOpen, setViewerOpen] = React.useState(false)
+  React.useEffect(() => {
+    if (!active) return
+    const read = () => setViewerOpen(document.querySelector('.PhotoView-Portal') !== null)
+    read()
+    const observer = new MutationObserver(read)
+    observer.observe(document.body, { childList: true })
+    return () => observer.disconnect()
+  }, [active])
+  return viewerOpen
+}
 
 function SheetContent({
   className,
   children,
   side = 'right',
   showCloseButton = true,
-  onEscapeKeyDown,
-  onInteractOutside,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content> & {
+}: React.ComponentProps<'div'> & {
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
 }) {
-  // see modal-guard: verify radix actually let go of the body on the way out
-  React.useEffect(() => releaseStuckBody, [])
+  const { open, setOpen } = useSheet()
+  const photoOpen = usePhotoViewerOpen(open)
+  // a STABLE ref object - the focus trap re-runs its focus routine when
+  // the content ref identity changes
+  const contentRef = React.useRef<HTMLDivElement>(null)
+  // the page behind a modal leaves the conversation entirely
+  React.useEffect(() => {
+    if (!open) return
+    return retainInertBackground(() => contentRef.current)
+  }, [open])
   return (
-    <SheetPortal>
-      <SheetOverlay />
-      <SheetPrimitive.Content
+    <MDrawer.Root
+      opened={open}
+      onClose={() => setOpen(false)}
+      position={side}
+      trapFocus
+      returnFocus
+      lockScroll
+      closeOnEscape={!photoOpen}
+      closeOnClickOutside
+      transitionProps={{ duration: 200 }}
+    >
+      <MDrawer.Overlay data-slot="sheet-overlay" blur={2} />
+      <MDrawer.Content
         data-slot="sheet-content"
         data-side={side}
-        // A photo viewer over the sheet is its own layer: escape belongs to
-        // it, and clicks inside it are not "outside the sheet". Without
-        // this, escape closed both at once and any click in the viewer
-        // dismissed the sheet under it.
-        onEscapeKeyDown={(event) => {
-          if (photoViewerOpen()) event.preventDefault()
-          onEscapeKeyDown?.(event)
+        ref={contentRef}
+        // structure only; surface and slide transition are the widget's own.
+        // classNames.content, not className: the widget duplicates className
+        // onto its positioning inner element. The panel itself does not
+        // scroll (overflow back to visible) - its children own scrolling,
+        // which is what keeps a footer standing while the middle moves.
+        classNames={{
+          content: cn(
+            'flex flex-col overflow-y-visible text-sm',
+            (side === 'left' || side === 'right') && 'h-full w-3/4 sm:max-w-sm',
+            (side === 'top' || side === 'bottom') && 'h-auto w-full',
+            className,
+          ),
         }}
-        onInteractOutside={(event) => {
-          const at = event.target
-          if (at instanceof Element && at.closest('.PhotoView-Portal') !== null) {
-            event.preventDefault()
-          }
-          onInteractOutside?.(event)
-        }}
-        className={cn(
-          'fixed z-50 flex flex-col bg-popover bg-clip-padding text-sm text-popover-foreground shadow-lg transition duration-200 ease-in-out data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-[side=bottom]:data-open:slide-in-from-bottom-10 data-[side=left]:data-open:slide-in-from-left-10 data-[side=right]:data-open:slide-in-from-right-10 data-[side=top]:data-open:slide-in-from-top-10 data-closed:animate-out data-closed:fade-out-0 data-[side=bottom]:data-closed:slide-out-to-bottom-10 data-[side=left]:data-closed:slide-out-to-left-10 data-[side=right]:data-closed:slide-out-to-right-10 data-[side=top]:data-closed:slide-out-to-top-10',
-          className,
-        )}
         {...props}
       >
         {children}
         {showCloseButton && (
-          <SheetPrimitive.Close data-slot="sheet-close" asChild>
-            <Button variant="ghost" className="absolute top-4 right-4" size="icon-sm">
-              <XIcon />
-              <span className="sr-only">Close</span>
-            </Button>
-          </SheetPrimitive.Close>
+          <Button
+            data-slot="sheet-close"
+            variant="ghost"
+            className="absolute top-4 right-4"
+            size="icon-sm"
+            onClick={() => setOpen(false)}
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </Button>
         )}
-      </SheetPrimitive.Content>
-    </SheetPortal>
+      </MDrawer.Content>
+    </MDrawer.Root>
   )
 }
 
@@ -118,9 +227,9 @@ function SheetFooter({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
-function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Title>) {
+function SheetTitle({ className, ...props }: React.ComponentProps<'h2'>) {
   return (
-    <SheetPrimitive.Title
+    <MDrawer.Title
       data-slot="sheet-title"
       className={cn('font-heading text-base font-medium text-foreground', className)}
       {...props}
@@ -128,12 +237,9 @@ function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPr
   )
 }
 
-function SheetDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof SheetPrimitive.Description>) {
+function SheetDescription({ className, ...props }: React.ComponentProps<'p'>) {
   return (
-    <SheetPrimitive.Description
+    <p
       data-slot="sheet-description"
       className={cn('text-sm text-muted-foreground', className)}
       {...props}
