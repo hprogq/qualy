@@ -64,6 +64,7 @@ export default defineConfig({
       '@primereact/ui/tag',
       '@primereact/ui/skeleton',
       '@primereact/ui/divider',
+      '@primereact/ui/tooltip',
     ],
   },
   test: {

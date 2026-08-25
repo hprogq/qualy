@@ -185,6 +185,23 @@ export const QualyPreset = definePreset(Aura, {
 .p-radiobutton-group { display: grid; width: 100%; gap: 0.75rem; }
 `,
     },
+    tooltip: {
+      root: {
+        maxWidth: '20rem',
+        padding: '0.375rem 0.75rem',
+        borderRadius: 'calc(var(--q-radius-lg) * 1.8)',
+        background: 'var(--q-foreground)',
+        color: 'var(--q-background)',
+      },
+      // the bubble keeps the product type scale and the kbd chips keep
+      // their inset look inside the inverted surface
+      css: () => `
+.p-tooltip-popup { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; width: fit-content; }
+.p-tooltip-popup:has([data-slot='kbd']) { padding-inline-end: 0.375rem; }
+.p-tooltip-popup [data-slot='kbd'] { position: relative; isolation: isolate; z-index: 50; border-radius: calc(var(--q-radius-lg) * 2.6); }
+.p-tooltip-arrow { color: var(--q-foreground); }
+`,
+    },
     tag: {
       root: {
         fontWeight: '500',
