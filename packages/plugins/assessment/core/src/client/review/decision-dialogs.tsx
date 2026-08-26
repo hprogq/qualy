@@ -106,23 +106,38 @@ const styles = stylex.create({
   },
   // The verdict solids: the semantic tokens mixed toward black stand in for
   // the fixed emerald and rose shades, hover a step darker, in both schemes.
+  // The verdict keys paint their own ground, so they also owe their own
+  // answer to a pointer - and their own silence when there is nothing to
+  // press. `:hover` still matches a disabled button (only `:active` does
+  // not), so a key that refuses every click was lighting up under the
+  // cursor as though it were on offer. The lift is a separate style, worn
+  // only while the key can be pressed.
   approveSolid: {
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 80%, black)`,
+    color: 'white',
+  },
+  approveLift: {
     backgroundColor: {
-      default: `color-mix(in oklab, ${tokens.success} 80%, black)`,
+      default: null,
       ':hover': `color-mix(in oklab, ${tokens.success} 70%, black)`,
     },
-    color: 'white',
   },
   rejectSolid: {
-    backgroundColor: {
-      default: `color-mix(in oklab, ${tokens.danger} 80%, black)`,
-      ':hover': `color-mix(in oklab, ${tokens.danger} 70%, black)`,
-    },
+    backgroundColor: `color-mix(in oklab, ${tokens.danger} 80%, black)`,
     color: 'white',
   },
-  escalateSolid: {
+  rejectLift: {
     backgroundColor: {
-      default: `color-mix(in oklab, ${tokens.primary} 90%, transparent)`,
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.danger} 70%, black)`,
+    },
+  },
+  escalateSolid: {
+    backgroundColor: `color-mix(in oklab, ${tokens.primary} 90%, transparent)`,
+  },
+  escalateLift: {
+    backgroundColor: {
+      default: null,
       ':hover': tokens.primary,
     },
   },
@@ -448,7 +463,10 @@ export function ApproveDialog({
             {format(commonMessages.cancel)}
             <Kbd>Esc</Kbd>
           </Button>
-          <Button className={stylex.props(styles.approveSolid).className} onClick={confirm}>
+          <Button
+            className={stylex.props(styles.approveSolid, styles.approveLift).className}
+            onClick={confirm}
+          >
             {format(m.reviewApprove)}
             <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
           </Button>
@@ -605,7 +623,7 @@ export function RejectDialog({
           </Button>
           <Button
             disabled={!ready}
-            className={stylex.props(styles.rejectSolid).className}
+            className={stylex.props(styles.rejectSolid, ready && styles.rejectLift).className}
             onClick={confirm}
           >
             {format(m.reviewRejectConfirm)}
@@ -843,7 +861,7 @@ export function EscalateDialog({
           </Button>
           <Button
             disabled={!ready}
-            className={stylex.props(styles.escalateSolid).className}
+            className={stylex.props(styles.escalateSolid, ready && styles.escalateLift).className}
             onClick={confirm}
           >
             {format(m.reviewEscalate)}

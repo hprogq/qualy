@@ -52,6 +52,13 @@ const press = stylex.create({
   off: {
     opacity: 0.55,
   },
+  // Hover is an offer. A key with nothing to offer must not answer the
+  // pointer with colour - but it still has to say what it is, so it keeps
+  // its pointer events: `pointer-events: none` would take the cursor and
+  // the tooltip that explains a refusal along with the hover.
+  refused: {
+    cursor: 'not-allowed',
+  },
   // a link has no ground to film over; it answers with its own ink
   ink: {
     color: {
@@ -94,6 +101,20 @@ export interface ButtonProps extends React.ComponentProps<'button'> {
   asChild?: boolean
 }
 
+/**
+ * A control that answers nothing should look like it answers nothing.
+ *
+ * A refused key stays a real button - it has to, so it can still say why it
+ * is refused - which means the widget's own hover rule fires on it and
+ * lights it up as though it were on offer. The widget states that colour
+ * through one variable per component, so pointing it back at the resting
+ * colour ends the hover without knowing which variant is underneath.
+ */
+const noHover = {
+  '--button-hover': 'var(--button-bg)',
+  '--ai-hover': 'var(--ai-bg)',
+} as React.CSSProperties
+
 function Button({
   variant,
   size,
@@ -101,6 +122,7 @@ function Button({
   className,
   children,
   disabled,
+  style,
   ...props
 }: ButtonProps) {
   const v = variant ?? 'default'
@@ -121,6 +143,7 @@ function Button({
   const pressed = stylex.props(
     press.base,
     !off && (v === 'link' ? press.ink : press.surface),
+    off && press.refused,
     disabled === true && press.off,
   ).className
   const shared = {
@@ -130,6 +153,7 @@ function Button({
     'data-variant': v,
     'data-size': s,
     ...(disabled === undefined ? {} : { disabled }),
+    style: off ? { ...noHover, ...style } : style,
   }
 
   if (asChild) {
