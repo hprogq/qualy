@@ -9216,3 +9216,42 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **验收(全部真实执行)**:typecheck 零错;node **843** passed | 17 skipped;浏览器 25
   files / **174 passed** 连续两轮(本阶段 pointer 残留零复现);build 成功;生产 smoke 干净
   退出;prettier 通过(.mcp.json 除外)。Review(M8)未开始。
+
+## UI 平台 M8-A:Review 收件箱与决策面迁 StyleX(2026-08-26)
+
+- **范围**:审核核心决策链——ReviewInboxPage(三种排布/筛选/统计/空态)、AwaitingSection、
+  QueueBadge、decision-dialogs(通过/退回/复核三对话框 + DecisionSheet)、SupplementDialog、
+  touch(SlideKey)、history(版本选择器),以及 ReviewInstancePage 内的决策区(EscalationNotice/
+  DecisionBar/ActionKey/SiblingSheet/UndoPill/KeysPanel/DoneScreen)。**M8-B 边界成立**:同文件
+  的阅读工作台组合(Workbench/QueueRail/RunStrip/PersonStrip/PartStrip/Pane/Flow/Filing/
+  Context 三列,约 1900 行)一行未动、零业务重构污染——按区域迁,不拆文件。业务语义全冻结:
+  决策 payload(WordedDecision/suggestedPayload)、reason 必填规则、快捷键协议(数字选事由/
+  ⌘↵/⌥G/⌥数字/JK)、blocked reason 码表、五秒撤销 staging、run scope、live 失效与全部
+  data-* 契约逐字保留。
+- **Select 宽度契约**:切片内最后一处(`max-w-52`)改 SelectTrigger xstyle,切片归零。**但全仓
+  未清零**:扫描发现 auth/audit 还有 3 处 M6.5 时代豁免的 legacy(PeoplePicker `w-auto`、
+  AuditEventsPage `w-56`/`w-36`)——此前"全仓只剩 1 处"的台账少计了,已纠正,留 M9。
+- **verdict 色板收敛**:决策键与实心确认钮的裸 emerald/rose 全部改 success/danger 令牌 mixes
+  over background(danger 自翻转,无需新令牌);Kbd 边界上的着色改 token 取值的 arbitrary
+  utilities(`bg-[color-mix(...var(--q-success)...)]`),不再有原始 palette;升级卡加入 warning
+  令牌同款处理。
+- **SlideKey 两轮打磨(用户现场反馈)**:①静止色斑——trail 只填到把手左缘;②拖动丑+不跟手——
+  覆盖区改为与把手同内缩同圆角的"填充胶囊"(把手作盖帽),几何在读到指针的同一事件里直写
+  DOM(state 照旧跟进 attribute 与文字淡出),不再等 render 提交。
+- **bottom sheet 拖拽关闭(用户新需求)**:adapter 增 drag-down-to-dismiss——手势只在
+  `data-sheet-grab` 区域起手(SheetHeader 自带;各抽屉的 grabber/顶栏手动标注),内容区下拉
+  照常滚动;跟手直写,过阈值把面板连同当前位移交给既有 data-closing 退场续动画,不足弹回;
+  抓取区 touch-action: none。
+- **度量**:切片 8 文件 utility className 454 → 决策面字面 20(全部注明边界:Sheet*/Dialog*
+  家族、Tabs、ToggleGroup*、Kbd/KbdGroup、Label 一处待后续)+ ReviewInstancePage 的 M8-B 区
+  213(原样待迁);cn 仅存两文件且全部服务 M8-B 区与 ToggleGroupItem 边界;stylex.props 241;
+  业务 @mantine 0;新 !important 0;新 cast 0;Badge.labelClassName 产品消费 0(无摩擦)。
+- **商品件裁决**:Timeline/Pagination/Breadcrumb/InputGroup/Collapsible 切片内零消费;Tabs、
+  ToggleGroup(ReasonPicker)、Kbd、Avatar 正常消费不阻塞,DEFER M9。共享阅读件
+  (AttachmentLink/EntryHistory/Basis)直接消费 M7-B 成果,零 Review 分支。
+- **视觉走查**:13 场景(收件箱按项目明/暗、待补充视图、全部处理完、无审核身份、414 收件箱、
+  工作台明/暗、退回对话框明/暗(事由数字键+修改建议)、通过对话框、撤销 pill(真 staging
+  路径)、414 决策面 2×2 + 滑动确认 sheet)。零回归。
+- **验收(全部真实执行)**:typecheck 零错;node 843 passed | 17 skipped;浏览器 25 files /
+  **174 passed** 连续两轮(pointer 残留零复现);build 成功;生产 smoke 干净退出;
+  vendor:check 两树一致;prettier 通过(.mcp.json 除外)。M8-B(paper-reading/工作台)未开始。
