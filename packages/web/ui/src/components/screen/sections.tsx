@@ -1,9 +1,209 @@
 import type { ReactNode } from 'react'
 import { CheckIcon, XIcon } from 'lucide-react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '../../theme/tokens.stylex.ts'
 import { Badge } from '../badge.tsx'
-import { Label } from '../label.tsx'
 import { RadioGroup, RadioGroupItem } from '../radio-group.tsx'
+
+const styles = stylex.create({
+  headRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  headTitle: {
+    flexShrink: 0,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 600,
+  },
+  count: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  quietNote: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  facts: {
+    display: 'grid',
+    minWidth: 0,
+    columnGap: 24,
+    rowGap: 12,
+  },
+  factsTwo: {
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  },
+  factsThree: {
+    gridTemplateColumns: {
+      default: 'repeat(2, minmax(0, 1fr))',
+      '@media (min-width: 640px)': 'repeat(3, minmax(0, 1fr))',
+    },
+  },
+  factsFour: {
+    gridTemplateColumns: {
+      default: 'repeat(2, minmax(0, 1fr))',
+      '@media (min-width: 640px)': 'repeat(4, minmax(0, 1fr))',
+    },
+  },
+  fact: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  factLabel: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  factValue: {
+    minWidth: 0,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    textWrap: 'pretty',
+  },
+  defRow: {
+    display: 'grid',
+    minWidth: 0,
+    gridTemplateColumns: '6rem minmax(0, 1fr)',
+    alignItems: 'baseline',
+    gap: 16,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 16,
+  },
+  defLabel: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  defBody: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 12,
+  },
+  defValue: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  barred: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 6,
+  },
+  barredRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  barredQuiet: {
+    color: tokens.mutedForeground,
+  },
+  barredReason: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+    textWrap: 'pretty',
+  },
+  editorRow: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editorTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '1rem',
+    lineHeight: '1.5rem',
+    fontWeight: 600,
+  },
+  chipPlain: {
+    flexShrink: 0,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 6,
+    paddingBlock: 2,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontWeight: 500,
+  },
+  chipQuiet: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  chipAlert: {
+    color: tokens.danger,
+  },
+  modeRow: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 16,
+    rowGap: 8,
+  },
+  modeLegend: {
+    flexShrink: 0,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 600,
+  },
+  modePair: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  modeLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: '0.875rem',
+    lineHeight: 1,
+    fontWeight: 400,
+    userSelect: 'none',
+  },
+  saveBar: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 16,
+  },
+})
 
 /** a heading for one part of a screen, with what it counts and what it rules */
 export function SectionHead({
@@ -19,15 +219,11 @@ export function SectionHead({
   actions?: ReactNode
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <h2 className="shrink-0 text-sm font-semibold">{title}</h2>
-      {count !== undefined && (
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
-      )}
-      <span className="flex-1" />
-      {aside !== undefined && (
-        <span className="min-w-0 truncate text-xs text-muted-foreground">{aside}</span>
-      )}
+    <div {...stylex.props(styles.headRow)}>
+      <h2 {...stylex.props(styles.headTitle)}>{title}</h2>
+      {count !== undefined && <span {...stylex.props(styles.count)}>{count}</span>}
+      <span {...stylex.props(styles.spacer)} />
+      {aside !== undefined && <span {...stylex.props(styles.quietNote)}>{aside}</span>}
       {actions}
     </div>
   )
@@ -43,17 +239,17 @@ export function Facts({
 }) {
   return (
     <dl
-      className={cn(
-        'grid min-w-0 gap-x-6 gap-y-3',
-        columns === 2 && 'grid-cols-2',
-        columns === 3 && 'grid-cols-2 sm:grid-cols-3',
-        columns === 4 && 'grid-cols-2 sm:grid-cols-4',
+      {...stylex.props(
+        styles.facts,
+        columns === 2 && styles.factsTwo,
+        columns === 3 && styles.factsThree,
+        columns === 4 && styles.factsFour,
       )}
     >
       {items.map((item) => (
-        <div key={item.label} className="flex min-w-0 flex-col gap-0.5">
-          <dt className="text-xs text-muted-foreground">{item.label}</dt>
-          <dd className="min-w-0 text-sm text-pretty">{item.value}</dd>
+        <div key={item.label} {...stylex.props(styles.fact)}>
+          <dt {...stylex.props(styles.factLabel)}>{item.label}</dt>
+          <dd {...stylex.props(styles.factValue)}>{item.value}</dd>
         </div>
       ))}
     </dl>
@@ -74,10 +270,10 @@ export function DefRow({
   action?: ReactNode
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] items-baseline gap-4 border-t pt-4">
-      <span className="text-sm font-medium">{label}</span>
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="min-w-0 flex-1 text-sm">{children}</div>
+    <div {...stylex.props(styles.defRow)}>
+      <span {...stylex.props(styles.defLabel)}>{label}</span>
+      <div {...stylex.props(styles.defBody)}>
+        <div {...stylex.props(styles.defValue)}>{children}</div>
         {action}
       </div>
     </div>
@@ -101,27 +297,21 @@ export function Barred({
   reason?: ReactNode
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-2">
+    <div {...stylex.props(styles.barred)}>
+      <div {...stylex.props(styles.barredRow)}>
         {actions.map((action) => (
           <Badge
             key={action.label}
             variant={action.barred ? 'secondary' : 'outline'}
             data-barred={action.barred}
-            className={action.barred ? 'text-muted-foreground' : ''}
+            className={action.barred ? stylex.props(styles.barredQuiet).className : ''}
           >
-            {action.barred ? (
-              <XIcon aria-hidden className="size-3" />
-            ) : (
-              <CheckIcon aria-hidden className="size-3" />
-            )}
+            {action.barred ? <XIcon aria-hidden /> : <CheckIcon aria-hidden />}
             {action.label}
           </Badge>
         ))}
       </div>
-      {reason !== undefined && (
-        <p className="text-xs text-muted-foreground text-pretty">{reason}</p>
-      )}
+      {reason !== undefined && <p {...stylex.props(styles.barredReason)}>{reason}</p>}
     </div>
   )
 }
@@ -147,32 +337,24 @@ export function EditorHead({
   actions?: ReactNode
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2">
-      <h2 className="min-w-0 truncate text-base font-semibold">{title}</h2>
+    <div {...stylex.props(styles.editorRow)}>
+      <h2 {...stylex.props(styles.editorTitle)}>{title}</h2>
       {chips?.map((chip) =>
         (chip.tone ?? 'plain') === 'plain' ? (
-          <span
-            key={chip.label}
-            className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium"
-          >
+          <span key={chip.label} {...stylex.props(styles.chipPlain)}>
             {chip.label}
           </span>
         ) : (
           <span
             key={chip.label}
-            className={cn(
-              'shrink-0 text-xs',
-              chip.tone === 'alert' ? 'text-destructive' : 'text-muted-foreground',
-            )}
+            {...stylex.props(styles.chipQuiet, chip.tone === 'alert' && styles.chipAlert)}
           >
             {chip.label}
           </span>
         ),
       )}
-      {note !== undefined && (
-        <span className="min-w-0 truncate text-xs text-muted-foreground">{note}</span>
-      )}
-      <span className="flex-1" />
+      {note !== undefined && <span {...stylex.props(styles.quietNote)}>{note}</span>}
+      <span {...stylex.props(styles.spacer)} />
       {actions}
     </div>
   )
@@ -203,28 +385,28 @@ export function ModeChoice<T extends string>({
   disabled?: boolean
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-      <h3 className="shrink-0 text-sm font-semibold">{legend}</h3>
+    <div {...stylex.props(styles.modeRow)}>
+      <h3 {...stylex.props(styles.modeLegend)}>{legend}</h3>
       <RadioGroup
         aria-label={legend}
         value={value}
         disabled={disabled}
         onValueChange={(next) => onChange(next as T)}
+        // a same-property override at the group adapter's Tailwind boundary
+        // stays a class string until that boundary migrates
         className="flex w-auto shrink-0 items-center gap-4"
       >
         {options.map((option) => (
-          <div key={option.value} className="flex shrink-0 items-center gap-2">
+          <div key={option.value} {...stylex.props(styles.modePair)}>
             <RadioGroupItem value={option.value} id={`${legend}-${option.value}`} />
-            <Label htmlFor={`${legend}-${option.value}`} className="text-sm font-normal">
+            <label htmlFor={`${legend}-${option.value}`} {...stylex.props(styles.modeLabel)}>
               {option.label}
-            </Label>
+            </label>
           </div>
         ))}
       </RadioGroup>
-      <span className="flex-1" />
-      {hint !== undefined && (
-        <span className="min-w-0 truncate text-xs text-muted-foreground">{hint}</span>
-      )}
+      <span {...stylex.props(styles.spacer)} />
+      {hint !== undefined && <span {...stylex.props(styles.quietNote)}>{hint}</span>}
     </div>
   )
 }
@@ -239,11 +421,9 @@ export function ModeChoice<T extends string>({
  */
 export function SaveBar({ summary, children }: { summary?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2 border-t pt-4">
-      {summary !== undefined && (
-        <span className="min-w-0 truncate text-xs text-muted-foreground">{summary}</span>
-      )}
-      <span className="flex-1" />
+    <div {...stylex.props(styles.saveBar)}>
+      {summary !== undefined && <span {...stylex.props(styles.quietNote)}>{summary}</span>}
+      <span {...stylex.props(styles.spacer)} />
       {children}
     </div>
   )

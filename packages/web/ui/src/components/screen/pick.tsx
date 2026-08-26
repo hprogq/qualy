@@ -1,7 +1,175 @@
-import type { ReactNode } from 'react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '../../theme/tokens.stylex.ts'
 import { Checkbox } from '../checkbox.tsx'
-import { Label } from '../label.tsx'
+
+const styles = stylex.create({
+  emptyNote: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  fields: {
+    minWidth: 0,
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  grid: {
+    display: 'grid',
+    minWidth: 0,
+    gap: 8,
+  },
+  gridTwo: {
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  gridThree: {
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      '@media (min-width: 1024px)': 'repeat(3, minmax(0, 1fr))',
+    },
+  },
+  cell: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 10,
+    fontSize: '0.875rem',
+    lineHeight: 1,
+    fontWeight: 400,
+    userSelect: 'none',
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  cellLive: {
+    cursor: 'pointer',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  cellDisabled: {
+    color: tokens.mutedForeground,
+  },
+  cellPicked: {
+    borderColor: `color-mix(in oklab, ${tokens.primary} 40%, transparent)`,
+    // the pointer still answers over a picked cell, exactly as before
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.primary} 5%, transparent)`,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  // a disabled cell keeps its tint and stops answering the pointer
+  cellPickedStill: {
+    backgroundColor: `color-mix(in oklab, ${tokens.primary} 5%, transparent)`,
+  },
+  cellName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  tally: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  list: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  listHead: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    paddingInline: 12,
+    paddingBlock: 6,
+  },
+  listTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontWeight: 600,
+  },
+  toggleAll: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontWeight: 500,
+    textDecoration: {
+      default: 'none',
+      ':hover': 'underline',
+    },
+  },
+  row: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 8,
+    fontSize: '0.875rem',
+    lineHeight: 1,
+    fontWeight: 400,
+    userSelect: 'none',
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  note: {
+    minWidth: 0,
+    flexShrink: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontFamily:
+      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    fontSize: '0.6875rem',
+    color: tokens.mutedForeground,
+  },
+})
 
 /**
  * A set of things to tick, each its own bordered cell.
@@ -22,7 +190,7 @@ export function PickGrid({
   columns = 3,
 }: {
   legend: string
-  options: readonly { value: string; label: string; tally?: ReactNode }[]
+  options: readonly { value: string; label: string; tally?: React.ReactNode }[]
   selected: readonly string[]
   onChange: (next: string[]) => void
   emptyLabel: string
@@ -30,27 +198,23 @@ export function PickGrid({
   columns?: 2 | 3
 }) {
   if (options.length === 0) {
-    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+    return <p {...stylex.props(styles.emptyNote)}>{emptyLabel}</p>
   }
   return (
-    <fieldset className="min-w-0">
-      <legend className="sr-only">{legend}</legend>
-      <div
-        className={cn(
-          'grid min-w-0 gap-2',
-          columns === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3',
-        )}
-      >
+    <fieldset {...stylex.props(styles.fields)}>
+      <legend {...stylex.props(styles.srOnly)}>{legend}</legend>
+      <div {...stylex.props(styles.grid, columns === 2 ? styles.gridTwo : styles.gridThree)}>
         {options.map((option) => {
           const on = selected.includes(option.value)
           return (
-            <Label
+            <label
               key={option.value}
               data-picked={on}
-              className={cn(
-                'flex min-w-0 items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-normal transition-colors',
-                disabled ? 'text-muted-foreground' : 'cursor-pointer hover:bg-accent/70',
-                on && 'border-primary/40 bg-primary/5',
+              {...stylex.props(
+                styles.cell,
+                disabled ? styles.cellDisabled : styles.cellLive,
+                on && styles.cellPicked,
+                on && disabled && styles.cellPickedStill,
               )}
             >
               <Checkbox
@@ -64,14 +228,12 @@ export function PickGrid({
                   )
                 }
               />
-              <span className="min-w-0 truncate">{option.label}</span>
-              <span className="flex-1" />
+              <span {...stylex.props(styles.cellName)}>{option.label}</span>
+              <span {...stylex.props(styles.spacer)} />
               {option.tally !== undefined && (
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {option.tally}
-                </span>
+                <span {...stylex.props(styles.tally)}>{option.tally}</span>
               )}
-            </Label>
+            </label>
           )
         })}
       </div>
@@ -98,8 +260,8 @@ export function PickList({
 }: {
   title: string
   /** how many of this group are on, as the caller wants it worded */
-  count?: ReactNode
-  options: readonly { value: string; label: string; note?: ReactNode }[]
+  count?: React.ReactNode
+  options: readonly { value: string; label: string; note?: React.ReactNode }[]
   selected: readonly string[]
   onChange: (next: string[]) => void
   toggleAllLabel: string
@@ -108,17 +270,15 @@ export function PickList({
   const values = options.map((option) => option.value)
   const all = values.every((value) => selected.includes(value))
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
-      <div className="flex min-w-0 items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
-        <h3 className="min-w-0 truncate text-xs font-semibold">{title}</h3>
-        {count !== undefined && (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
-        )}
-        <span className="flex-1" />
+    <section {...stylex.props(styles.list)}>
+      <div {...stylex.props(styles.listHead)}>
+        <h3 {...stylex.props(styles.listTitle)}>{title}</h3>
+        {count !== undefined && <span {...stylex.props(styles.tally)}>{count}</span>}
+        <span {...stylex.props(styles.spacer)} />
         {!disabled && (
           <button
             type="button"
-            className="shrink-0 text-xs font-medium hover:underline"
+            {...stylex.props(styles.toggleAll)}
             aria-pressed={all}
             onClick={() =>
               onChange(
@@ -135,13 +295,10 @@ export function PickList({
       {options.map((option) => {
         const on = selected.includes(option.value)
         return (
-          <Label
+          <label
             key={option.value}
             data-picked={on}
-            className={cn(
-              'flex min-w-0 items-center gap-2.5 border-t px-3 py-2 text-sm font-normal transition-colors first:border-t-0',
-              disabled ? 'text-muted-foreground' : 'cursor-pointer hover:bg-accent/70',
-            )}
+            {...stylex.props(styles.row, disabled ? styles.cellDisabled : styles.cellLive)}
           >
             <Checkbox
               checked={on}
@@ -154,14 +311,10 @@ export function PickList({
                 )
               }
             />
-            <span className="min-w-0 truncate">{option.label}</span>
-            <span className="flex-1" />
-            {option.note !== undefined && (
-              <span className="min-w-0 shrink truncate font-mono text-[0.6875rem] text-muted-foreground">
-                {option.note}
-              </span>
-            )}
-          </Label>
+            <span {...stylex.props(styles.cellName)}>{option.label}</span>
+            <span {...stylex.props(styles.spacer)} />
+            {option.note !== undefined && <span {...stylex.props(styles.note)}>{option.note}</span>}
+          </label>
         )
       })}
     </section>

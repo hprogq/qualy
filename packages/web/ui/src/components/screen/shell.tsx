@@ -1,8 +1,32 @@
 import type { ReactNode } from 'react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
+import { clsx } from 'clsx'
+import { tokens } from '../../theme/tokens.stylex.ts'
 import { PageHeader } from '../admin/page.tsx'
 import { PageContainer } from '../page-container.tsx'
 import { Tabs, TabsList, TabsTrigger } from '../tabs.tsx'
+
+const styles = stylex.create({
+  band: {
+    flexShrink: 0,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: tokens.background,
+  },
+  // the band's own rhythm: tighter than a page body
+  bandInset: {
+    paddingBlock: 20,
+  },
+  stack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  pinned: {
+    flexShrink: 0,
+  },
+})
 
 export function Screen({
   title,
@@ -22,8 +46,8 @@ export function Screen({
     <>
       {/* edge to edge: a band inset inside the page's own width is a card
           pretending to be a header */}
-      <div className="shrink-0 border-b bg-background">
-        <PageContainer size={size} className="py-5">
+      <div {...stylex.props(styles.band)}>
+        <PageContainer size={size} style={styles.bandInset}>
           <PageHeader
             title={title}
             {...(description === undefined ? {} : { description })}
@@ -32,7 +56,7 @@ export function Screen({
           />
         </PageContainer>
       </div>
-      <PageContainer size={size} className="flex flex-col gap-5">
+      <PageContainer size={size} style={styles.stack}>
         {children}
       </PageContainer>
     </>
@@ -64,7 +88,7 @@ export function Segmented<T extends string>({
     <Tabs
       value={value}
       onValueChange={(next) => onChange(next as T)}
-      className={cn('shrink-0', className)}
+      className={clsx(stylex.props(styles.pinned).className, className)}
     >
       <TabsList aria-label={label}>
         {options.map((option) => (

@@ -1,6 +1,124 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
+import { clsx } from 'clsx'
+import { tokens } from '../../theme/tokens.stylex.ts'
 import { Skeleton } from '../skeleton.tsx'
+
+const styles = stylex.create({
+  rail: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  row: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 8,
+    textAlign: 'left',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  rowSelected: {
+    backgroundColor: {
+      default: tokens.surfaceMuted,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
+  rowHead: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  name: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  nameSelected: {
+    fontWeight: 600,
+  },
+  badge: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  badgeAlert: {
+    color: tokens.danger,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  tally: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  metaLine: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  metaAlert: {
+    color: tokens.danger,
+  },
+  skeletonRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 12,
+  },
+  lineWide: { height: 16, width: '40%' },
+  lineNarrow: { height: 12, width: '60%' },
+  editorSkeleton: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 16,
+  },
+  editorTitleLine: { height: 24, width: 192 },
+  editorBlock: { height: 80, width: '100%', borderRadius: tokens.radiusLg },
+  editorGrid: {
+    display: 'grid',
+    gap: 8,
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      '@media (min-width: 1024px)': 'repeat(3, minmax(0, 1fr))',
+    },
+  },
+  editorCell: { height: 44, width: '100%', borderRadius: tokens.radiusLg },
+})
 
 /** the bordered column a screen selects from: one box, one hairline per row */
 export function Rail({
@@ -11,11 +129,9 @@ export function Rail({
   ComponentProps<'div'>,
   'children' | 'className'
 >) {
+  const sx = stylex.props(styles.rail)
   return (
-    <div
-      className={cn('flex min-w-0 flex-col overflow-hidden rounded-lg border', className)}
-      {...props}
-    >
+    <div {...sx} {...props} className={clsx(sx.className, className)}>
       {children}
     </div>
   )
@@ -49,40 +165,25 @@ export function RailRow({
       type="button"
       aria-current={selected}
       onClick={onSelect}
-      className={cn(
-        'flex min-w-0 flex-col gap-0.5 border-t px-3 py-2 text-left first:border-t-0 hover:bg-accent/70',
-        selected && 'bg-accent',
-      )}
+      {...stylex.props(styles.row, selected && styles.rowSelected)}
     >
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span
-          className={cn('min-w-0 truncate text-sm', selected ? 'font-semibold' : 'font-medium')}
-        >
-          {name}
-        </span>
+      <span {...stylex.props(styles.rowHead)}>
+        <span {...stylex.props(styles.name, selected && styles.nameSelected)}>{name}</span>
         {badges?.map((badge) => (
           <span
             key={badge.label}
-            className={cn(
-              'shrink-0 text-xs',
-              badge.tone === 'alert' ? 'text-destructive' : 'text-muted-foreground',
-            )}
+            {...stylex.props(styles.badge, badge.tone === 'alert' && styles.badgeAlert)}
           >
             {badge.label}
           </span>
         ))}
-        <span className="flex-1" />
-        {tally !== undefined && (
-          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{tally}</span>
-        )}
+        <span {...stylex.props(styles.spacer)} />
+        {tally !== undefined && <span {...stylex.props(styles.tally)}>{tally}</span>}
       </span>
       {meta?.map((line) => (
         <span
           key={line.text}
-          className={cn(
-            'min-w-0 truncate text-xs',
-            line.tone === 'alert' ? 'text-destructive' : 'text-muted-foreground',
-          )}
+          {...stylex.props(styles.metaLine, line.tone === 'alert' && styles.metaAlert)}
         >
           {line.text}
         </span>
@@ -101,9 +202,9 @@ export function RailSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <Rail aria-hidden>
       {Array.from({ length: rows }, (_, index) => (
-        <div key={index} className="flex flex-col gap-2 border-t px-3 py-3 first:border-t-0">
-          <Skeleton className="h-4 w-2/5" />
-          <Skeleton className="h-3 w-3/5" />
+        <div key={index} {...stylex.props(styles.skeletonRow)}>
+          <Skeleton className={stylex.props(styles.lineWide).className} />
+          <Skeleton className={stylex.props(styles.lineNarrow).className} />
         </div>
       ))}
     </Rail>
@@ -113,12 +214,12 @@ export function RailSkeleton({ rows = 5 }: { rows?: number }) {
 /** the shape of an editor while the thing it edits is still being fetched */
 export function EditorSkeleton() {
   return (
-    <div className="flex min-w-0 flex-col gap-4" aria-hidden>
-      <Skeleton className="h-6 w-48" />
-      <Skeleton className="h-20 w-full rounded-lg" />
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div {...stylex.props(styles.editorSkeleton)} aria-hidden>
+      <Skeleton className={stylex.props(styles.editorTitleLine).className} />
+      <Skeleton className={stylex.props(styles.editorBlock).className} />
+      <div {...stylex.props(styles.editorGrid)}>
         {Array.from({ length: 6 }, (_, index) => (
-          <Skeleton key={index} className="h-11 w-full rounded-lg" />
+          <Skeleton key={index} className={stylex.props(styles.editorCell).className} />
         ))}
       </div>
     </div>

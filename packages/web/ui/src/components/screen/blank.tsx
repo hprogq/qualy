@@ -1,6 +1,15 @@
 import type { ReactNode } from 'react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../empty.tsx'
+
+const styles = stylex.create({
+  // tall enough to be an answer, and visibly an edge: the empty state
+  // leaves its border to callers, and this one wants it
+  shape: {
+    minHeight: '22rem',
+    borderWidth: 1,
+  },
+})
 
 /**
  * What a screen shows before anything is open.
@@ -24,7 +33,7 @@ export function Blank({
   className?: string
 }) {
   return (
-    <Empty className={cn('min-h-[22rem] rounded-lg border border-dashed', className)}>
+    <Empty style={styles.shape} className={className}>
       <EmptyHeader>
         {icon !== undefined && <EmptyMedia variant="icon">{icon}</EmptyMedia>}
         <EmptyTitle>{title}</EmptyTitle>
