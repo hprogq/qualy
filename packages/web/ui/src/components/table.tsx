@@ -1,86 +1,113 @@
 import * as React from 'react'
+import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
+import { clsx } from 'clsx'
+import { tokens } from '../theme/tokens.stylex.ts'
 
-import { cn } from '../lib/utils.ts'
+// The semantic table, styled in its own StyleX base. `xstyle` is the
+// standard extension seat; `className` stays as the legacy escape hatch,
+// whose utilities keep winning by cascade for callers not yet on StyleX.
+// What depends on caller content - an expanded row's tint, the checkbox
+// column's padding - lives in theme.css under [data-slot='table-*'].
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+const styles = stylex.create({
+  container: {
+    position: 'relative',
+    width: '100%',
+    overflowX: 'auto',
+  },
+  table: {
+    width: '100%',
+    captionSide: 'bottom',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  footer: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    fontWeight: 500,
+  },
+  row: {
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+  },
+  head: {
+    height: 48,
+    paddingInline: 12,
+    textAlign: 'left',
+    verticalAlign: 'middle',
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    color: tokens.foreground,
+  },
+  cell: {
+    padding: 12,
+    verticalAlign: 'middle',
+    whiteSpace: 'nowrap',
+  },
+  caption: {
+    marginTop: 16,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+})
+
+type Extendable = { xstyle?: StyleXStyles }
+
+function Table({ className, xstyle, ...props }: React.ComponentProps<'table'> & Extendable) {
+  const sx = stylex.props(styles.table, xstyle)
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
-      <table
-        data-slot="table"
-        className={cn('w-full caption-bottom text-sm', className)}
-        {...props}
-      />
+    <div data-slot="table-container" {...stylex.props(styles.container)}>
+      <table data-slot="table" {...sx} {...props} className={clsx(sx.className, className)} />
     </div>
   )
 }
 
 function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
-  return <thead data-slot="table-header" className={cn('[&_tr]:border-b', className)} {...props} />
+  return <thead data-slot="table-header" {...props} className={className} />
 }
 
 function TableBody({ className, ...props }: React.ComponentProps<'tbody'>) {
+  return <tbody data-slot="table-body" {...props} className={className} />
+}
+
+function TableFooter({ className, xstyle, ...props }: React.ComponentProps<'tfoot'> & Extendable) {
+  const sx = stylex.props(styles.footer, xstyle)
   return (
-    <tbody
-      data-slot="table-body"
-      className={cn('[&_tr:last-child]:border-0', className)}
-      {...props}
-    />
+    <tfoot data-slot="table-footer" {...sx} {...props} className={clsx(sx.className, className)} />
   )
 }
 
-function TableFooter({ className, ...props }: React.ComponentProps<'tfoot'>) {
-  return (
-    <tfoot
-      data-slot="table-footer"
-      className={cn('border-t bg-muted/50 font-medium [&>tr]:last:border-b-0', className)}
-      {...props}
-    />
-  )
+function TableRow({ className, xstyle, ...props }: React.ComponentProps<'tr'> & Extendable) {
+  const sx = stylex.props(styles.row, xstyle)
+  return <tr data-slot="table-row" {...sx} {...props} className={clsx(sx.className, className)} />
 }
 
-function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
-  return (
-    <tr
-      data-slot="table-row"
-      className={cn(
-        'border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted',
-        className,
-      )}
-      {...props}
-    />
-  )
+function TableHead({ className, xstyle, ...props }: React.ComponentProps<'th'> & Extendable) {
+  const sx = stylex.props(styles.head, xstyle)
+  return <th data-slot="table-head" {...sx} {...props} className={clsx(sx.className, className)} />
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
-  return (
-    <th
-      data-slot="table-head"
-      className={cn(
-        'h-12 px-3 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0',
-        className,
-      )}
-      {...props}
-    />
-  )
+function TableCell({ className, xstyle, ...props }: React.ComponentProps<'td'> & Extendable) {
+  const sx = stylex.props(styles.cell, xstyle)
+  return <td data-slot="table-cell" {...sx} {...props} className={clsx(sx.className, className)} />
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
+function TableCaption({ className, xstyle, ...props }: React.ComponentProps<'caption'> & Extendable) {
+  const sx = stylex.props(styles.caption, xstyle)
   return (
-    <td
-      data-slot="table-cell"
-      className={cn('p-3 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0', className)}
-      {...props}
-    />
-  )
-}
-
-function TableCaption({ className, ...props }: React.ComponentProps<'caption'>) {
-  return (
-    <caption
-      data-slot="table-caption"
-      className={cn('mt-4 text-sm text-muted-foreground', className)}
-      {...props}
-    />
+    <caption data-slot="table-caption" {...sx} {...props} className={clsx(sx.className, className)} />
   )
 }
 

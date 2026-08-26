@@ -332,6 +332,21 @@
     width: 1.5rem;
     height: 1.5rem;
   }
+  /* the table's structural row rules: the last body row keeps no divider,
+     an expanded row and a selected row wear the muted tint, and a checkbox
+     column sheds its trailing padding - all keyed on caller content or
+     position, which compiled styles cannot reach */
+  [data-slot='table-body'] [data-slot='table-row']:last-child {
+    border-bottom-width: 0;
+  }
+  [data-slot='table-row']:has([aria-expanded]),
+  [data-slot='table-row'][data-state='selected'] {
+    background-color: color-mix(in oklab, var(--q-surface-muted) 50%, transparent);
+  }
+  [data-slot='table-head']:has([role='checkbox']),
+  [data-slot='table-cell']:has([role='checkbox']) {
+    padding-right: 0;
+  }
   [data-slot='empty-description'] a,
   [data-slot='field-description'] a {
     text-decoration: underline;
