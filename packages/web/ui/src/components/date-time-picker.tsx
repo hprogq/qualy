@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '../theme/tokens.stylex.ts'
 import { CalendarIcon, ClockIcon, XIcon } from 'lucide-react'
 import { enUS, zhCN, type Locale } from 'date-fns/locale'
 import { Button } from './button.tsx'
@@ -23,6 +25,15 @@ import { TimeField } from './time-field.tsx'
 //
 // The value is an iso instant or nothing at all; the fields it serves are
 // optional, so clearing has to be reachable. Every word arrives as a prop.
+
+const pickerStyles = stylex.create({
+  clock: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+})
 
 const CALENDAR_LOCALES: Record<string, Locale> = {
   'zh-CN': zhCN,
@@ -119,7 +130,7 @@ export function DateTimePicker({
           {/* choosing a day leaves the popover open, because the time is the
               other half of the same answer and it is on this panel */}
           <div className="flex items-center justify-center gap-2 border-t border-border p-3">
-            <ClockIcon className="size-4 shrink-0 text-muted-foreground" />
+            <ClockIcon className={stylex.props(pickerStyles.clock).className} />
             <TimeField
               hours={at?.getHours() ?? 0}
               minutes={at?.getMinutes() ?? 0}

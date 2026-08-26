@@ -23,6 +23,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsib
 export type TreeSelectNode = TreeSelectionNode
 
 const styles = stylex.create({
+  gutter: {
+    width: 32,
+    height: 32,
+    flexShrink: 0,
+  },
   list: {
     display: 'flex',
     width: 'max-content',
@@ -100,7 +105,7 @@ function TreeRow({
           </Button>
         </CollapsibleTrigger>
       ) : (
-        <span aria-hidden className="size-8 shrink-0" />
+        <span aria-hidden {...stylex.props(styles.gutter)} />
       )}
       <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm whitespace-nowrap hover:bg-muted/50">
         <Checkbox
