@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Feedback, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
@@ -15,6 +17,27 @@ import type { EntryDto, EntrySupplementDto } from './model.ts'
 // Answering the reviewer's ask. The filing itself stays exactly as it was -
 // the answer travels beside it, on the round that asked - which is why this
 // dialog draws the ask's own pieces and nothing of the original form.
+
+const styles = stylex.create({
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  body: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  instructions: {
+    borderLeftWidth: 2,
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+    paddingLeft: 10,
+    fontSize: 14,
+    lineHeight: 1.625,
+  },
+})
 
 export function SupplementAnswerDialog({
   open,
@@ -91,7 +114,7 @@ export function SupplementAnswerDialog({
       title={format(m.entrySupplementDialogTitle)}
       onClose={onClose}
       footer={
-        <div className="flex justify-end gap-2">
+        <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
@@ -101,10 +124,8 @@ export function SupplementAnswerDialog({
         </div>
       }
     >
-      <div className="flex flex-col gap-4">
-        <p className="border-l-2 border-border pl-2.5 text-sm leading-relaxed">
-          {supplement.instructions}
-        </p>
+      <div {...stylex.props(styles.body)}>
+        <p {...stylex.props(styles.instructions)}>{supplement.instructions}</p>
         <EvidenceForm
           fields={fields}
           value={payload}

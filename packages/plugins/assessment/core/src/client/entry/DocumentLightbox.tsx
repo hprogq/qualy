@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
 import { Spinner } from '@qualy/ui/spinner'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 // A document read where it stands, in the browser's own sandboxed viewer.
 //
@@ -9,6 +11,33 @@ import { Spinner } from '@qualy/ui/spinner'
 // frame a blob whose type it chose. Only types the browser renders inertly
 // are ever offered this way (LOOKS_LIKE_A_DOCUMENT); Esc closes, like the
 // photo viewer.
+
+const styles = stylex.create({
+  waiting: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spinner: {
+    width: 24,
+    height: 24,
+  },
+  frame: {
+    minHeight: 0,
+    width: '100%',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+})
 
 export function DocumentLightbox({
   href,
@@ -51,11 +80,11 @@ export function DocumentLightbox({
           <DialogTitle className="min-w-0 truncate pr-8 text-sm">{name}</DialogTitle>
         </DialogHeader>
         {url === null ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center">
-            <Spinner className="size-6" />
+          <div {...stylex.props(styles.waiting)}>
+            <Spinner className={stylex.props(styles.spinner).className} />
           </div>
         ) : (
-          <iframe src={url} title={name} className="min-h-0 w-full flex-1 rounded-lg border" />
+          <iframe src={url} title={name} {...stylex.props(styles.frame)} />
         )}
       </DialogContent>
     </Dialog>

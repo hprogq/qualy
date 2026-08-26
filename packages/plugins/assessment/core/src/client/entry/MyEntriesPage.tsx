@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import {
   useApi,
   useApiQuery,
@@ -11,8 +12,8 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { RefreshCwIcon, TableOfContentsIcon } from 'lucide-react'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
-import { cn } from '@qualy/ui/cn'
 import { Appear, Glide, Sift, SiftRow, Swap } from '@qualy/ui/reveal'
 import { Button } from '@qualy/ui/button'
 import { ScrollArea } from '@qualy/ui/scroll-area'
@@ -32,7 +33,7 @@ import { SupplementAnswerDialog } from './SupplementAnswerDialog.tsx'
 import { EntryDialog } from './EntryDialog.tsx'
 import { EntrySheet } from './EntrySheet.tsx'
 import { Paper } from './Paper.tsx'
-import { ROW_DOT, ROW_TAG, standingRows, type Standing, type StructureRow } from './standing.ts'
+import { ROW_TAG, standingRows, type RowTag, type Standing, type StructureRow } from './standing.ts'
 import { trimAmount, type EntryDto, type FilingGateDto, type ItemDto } from './model.ts'
 
 // One's own filings: the round's structure down the left, and whatever is
@@ -43,6 +44,906 @@ import { trimAmount, type EntryDto, type FilingGateDto, type ItemDto } from './m
 // of them does not think of the groups as a different kind of place - they
 // think "what is in here, and what have I done about it". Selecting a group
 // answers the first, selecting a question answers the second.
+
+const md = '@media (min-width: 768px)'
+const lg = '@media (min-width: 1024px)'
+const xl = '@media (min-width: 1280px)'
+const belowSm = '@media (max-width: 639.98px)'
+const belowLg = '@media (max-width: 1023.98px)'
+
+const spin = stylex.keyframes({
+  '100%': { transform: 'rotate(360deg)' },
+})
+
+const styles = stylex.create({
+  fill: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  emptyNote: {
+    padding: 24,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  // the structure as its own column, the paper as the page: both panes
+  // scroll inside themselves where they stand side by side; narrow, the
+  // paper flows in the page and the structure folds into a drawer
+  pageWrap: {
+    position: 'relative',
+    display: 'flex',
+    minHeight: {
+      default: 384,
+      [lg]: 0,
+    },
+    flexDirection: 'column',
+    flexGrow: {
+      default: null,
+      [lg]: 1,
+    },
+    flexShrink: {
+      default: null,
+      [lg]: 1,
+    },
+    flexBasis: {
+      default: null,
+      [lg]: '0%',
+    },
+  },
+  panes: {
+    display: 'grid',
+    minHeight: {
+      default: null,
+      [lg]: 0,
+    },
+    flexGrow: {
+      default: null,
+      [lg]: 1,
+    },
+    flexShrink: {
+      default: null,
+      [lg]: 1,
+    },
+    flexBasis: {
+      default: null,
+      [lg]: '0%',
+    },
+    gridTemplateColumns: {
+      default: null,
+      [lg]: '17rem minmax(0, 1fr)',
+      [xl]: '20rem minmax(0, 1fr)',
+    },
+    gridTemplateRows: {
+      default: null,
+      [lg]: 'minmax(0, 1fr)',
+    },
+  },
+  paperPane: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    minHeight: {
+      default: null,
+      [lg]: 0,
+    },
+    borderLeftWidth: {
+      default: 0,
+      [lg]: 1,
+    },
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+  },
+  headSticky: {
+    zIndex: 10,
+    position: {
+      default: null,
+      [belowLg]: 'sticky',
+    },
+    top: {
+      default: null,
+      [belowLg]: 0,
+    },
+  },
+  headSurface: {
+    backgroundColor: tokens.background,
+  },
+  // phone: the name gets a line, the controls get the next
+  narrowHead: {
+    display: {
+      default: 'flex',
+      [md]: 'none',
+    },
+    flexDirection: 'column',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  narrowTitleRow: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: 12,
+  },
+  narrowTitleCol: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  narrowTitle: {
+    fontSize: 17,
+    lineHeight: 1.25,
+    fontWeight: 600,
+  },
+  narrowMeta: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  countSeat: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'baseline',
+    gap: 6,
+    whiteSpace: 'nowrap',
+  },
+  countLabel: {
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  countValue: {
+    fontSize: 20,
+    lineHeight: 1,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  narrowControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shrinkNone: {
+    flexShrink: 0,
+  },
+  nums: {
+    fontVariantNumeric: 'tabular-nums',
+  },
+  // tablet up: one row; the structure key leaves once the rail stands
+  // beside the paper
+  wideHead: {
+    display: {
+      default: 'none',
+      [md]: 'block',
+    },
+    height: 48,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
+  wideHeadInner: {
+    marginInline: 'auto',
+    display: 'flex',
+    height: '100%',
+    width: '100%',
+    maxWidth: '72rem',
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: {
+      default: 16,
+      [lg]: 24,
+    },
+  },
+  wideTitle: {
+    flexShrink: 0,
+    fontSize: 16,
+    fontWeight: 600,
+  },
+  headRule: {
+    height: 14,
+    width: 1,
+    flexShrink: 0,
+    backgroundColor: tokens.border,
+  },
+  wideCountValue: {
+    fontSize: 18,
+    lineHeight: 1,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  countLabelXs: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  spinning: {
+    animationName: spin,
+    animationDuration: '1s',
+    animationTimingFunction: 'linear',
+    animationIterationCount: 'infinite',
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  statChip: {
+    display: {
+      default: 'none',
+      '@media (min-width: 640px)': 'inline-flex',
+    },
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 10,
+    paddingBlock: 6,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  statPair: {
+    display: 'inline-flex',
+    alignItems: 'baseline',
+    gap: 4,
+  },
+  statNum: {
+    fontWeight: 600,
+    color: tokens.foreground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  statNumAlert: {
+    color: tokens.danger,
+  },
+  stripSeat: {
+    display: {
+      default: 'block',
+      [lg]: 'none',
+    },
+  },
+  strip: {
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.background} 95%, transparent)`,
+    backdropFilter: 'blur(4px)',
+  },
+  stripInner: {
+    marginInline: 'auto',
+    display: 'flex',
+    height: 36,
+    width: '100%',
+    maxWidth: '72rem',
+    alignItems: 'center',
+    gap: 10,
+    paddingInline: 16,
+  },
+  stripNo: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: 600,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  stripName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  stripLedger: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  paneScroller: {
+    position: 'relative',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  swapSeat: {
+    width: '100%',
+  },
+  dragHandle: {
+    marginInline: 'auto',
+    marginTop: 10,
+    marginBottom: 4,
+    height: 4,
+    width: 36,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  },
+  // ---- skeleton: the page it is about to become, greyed ----
+  skBarWide: {
+    display: {
+      default: 'none',
+      [md]: 'flex',
+    },
+    height: 48,
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: {
+      default: 16,
+      [lg]: 24,
+    },
+  },
+  skLineTitle: {
+    height: 20,
+    width: 80,
+  },
+  skLineName: {
+    height: 20,
+    width: 96,
+  },
+  skLineTabs: {
+    height: 28,
+    width: 176,
+    borderRadius: tokens.radiusLg,
+  },
+  skBarNarrow: {
+    display: {
+      default: 'flex',
+      [md]: 'none',
+    },
+    flexDirection: 'column',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+  skNarrowTitleRow: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: 12,
+  },
+  skNarrowTitleCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  skLineMeta: {
+    height: 14,
+    width: 144,
+  },
+  skLineCount: {
+    height: 24,
+    width: 64,
+  },
+  skNarrowControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  skLineFilter: {
+    height: 36,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    borderRadius: tokens.radiusLg,
+  },
+  skLineKey: {
+    height: 32,
+    width: 96,
+    borderRadius: tokens.radiusLg,
+  },
+  skGrid: {
+    display: 'grid',
+    minHeight: {
+      default: null,
+      [lg]: 0,
+    },
+    flexGrow: {
+      default: null,
+      [lg]: 1,
+    },
+    flexShrink: {
+      default: null,
+      [lg]: 1,
+    },
+    flexBasis: {
+      default: null,
+      [lg]: '0%',
+    },
+    gridTemplateColumns: {
+      default: null,
+      [lg]: '17rem minmax(0, 1fr)',
+      [xl]: '20rem minmax(0, 1fr)',
+    },
+  },
+  skRail: {
+    display: {
+      default: 'none',
+      [lg]: 'flex',
+    },
+    flexDirection: 'column',
+    gap: 16,
+    paddingInline: 16,
+    paddingBlock: 16,
+  },
+  skTree: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  skTreeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  skDotSquare: {
+    width: 7,
+    height: 7,
+    flexShrink: 0,
+    borderRadius: 2,
+  },
+  skDotRound: {
+    width: 7,
+    height: 7,
+    flexShrink: 0,
+    borderRadius: '9999px',
+  },
+  skTreeLine: {
+    height: 16,
+  },
+  skTreeLedger: {
+    marginLeft: 'auto',
+    height: 14,
+    width: 48,
+    flexShrink: 0,
+  },
+  skMain: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 24,
+    paddingInline: {
+      default: 16,
+      [lg]: 24,
+    },
+    paddingBlock: 20,
+    borderLeftWidth: {
+      default: 0,
+      [lg]: 1,
+    },
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+  },
+  skCard: {
+    height: 96,
+    width: '100%',
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+  },
+  skBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  skBlockTitle: {
+    height: 20,
+    width: 176,
+  },
+  skBlockMeta: {
+    height: 14,
+    width: 256,
+  },
+  skBlockBody: {
+    marginTop: 4,
+    height: 64,
+    width: '100%',
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+  },
+  // ---- the structure rail and its drawer twin ----
+  railRoot: {
+    position: 'relative',
+    display: {
+      default: 'none',
+      [lg]: 'flex',
+    },
+    minWidth: 0,
+    flexDirection: 'column',
+    minHeight: {
+      default: null,
+      [lg]: 0,
+    },
+  },
+  railHead: {
+    display: 'flex',
+    height: 48,
+    flexShrink: 0,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 16,
+  },
+  railTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  railBody: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: 12,
+  },
+  railTop: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 12,
+  },
+  railCount: {
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  // the round in one card over the list of it: its name, what it has
+  // granted, and how much paper there is
+  summaryCard: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 8,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    paddingInline: 12,
+    paddingBlock: 10,
+  },
+  sumRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  sumName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  sumValue: {
+    flexShrink: 0,
+    fontSize: 18,
+    lineHeight: 1,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  sumValueZero: {
+    color: tokens.mutedForeground,
+  },
+  sumUnit: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  meter: {
+    display: 'block',
+    height: 3,
+    overflow: 'hidden',
+    borderRadius: '9999px',
+    backgroundColor: tokens.border,
+  },
+  meterFill: {
+    display: 'block',
+    height: '100%',
+    borderRadius: '9999px',
+    backgroundColor: tokens.foreground,
+  },
+  sumFoot: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  noWrap: {
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+  },
+  treeEmpty: {
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 16,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  tree: {
+    position: 'relative',
+    isolation: 'isolate',
+    display: 'flex',
+    minHeight: 0,
+    flexDirection: 'column',
+  },
+  glideMark: {
+    zIndex: -1,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  row: {
+    position: 'relative',
+    isolation: 'isolate',
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: tokens.radiusLg,
+    paddingBlock: 6,
+    paddingRight: 10,
+    textAlign: 'left',
+    transitionProperty: 'color, background-color',
+  },
+  rowHoverable: {
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+  },
+  rowTopGap: {
+    marginTop: 4,
+  },
+  // withdrawn: still listed, because what was filed under it is still
+  // there to read, but it takes less room and wears the fact on its name
+  rowGone: {
+    paddingBlock: 4,
+  },
+  // the joints of the tree: an elbow into this row, and the sibling line
+  // running past it while siblings remain
+  elbow: {
+    position: 'absolute',
+    top: 0,
+    height: '50%',
+    width: 10,
+    borderBottomLeftRadius: 7,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    borderLeftWidth: 1,
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+  },
+  siblingLine: {
+    position: 'absolute',
+    insetBlock: 0,
+    width: 1,
+    backgroundColor: tokens.border,
+  },
+  downLine: {
+    position: 'absolute',
+    bottom: 0,
+    height: '50%',
+    width: 1,
+    backgroundColor: tokens.border,
+  },
+  groupSquare: {
+    width: 7,
+    height: 7,
+    flexShrink: 0,
+    borderRadius: 2,
+    backgroundColor: tokens.border,
+  },
+  // unread paints over everything: something here changed and its owner
+  // has not seen it
+  unreadDot: {
+    width: 7,
+    height: 7,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: tokens.danger,
+  },
+  // the row's own word as a colour, never an alarm: amber waits on the
+  // reader, verdict inks say how it ended, hollow means nothing is
+  // claimed here yet
+  dot: {
+    width: 7,
+    height: 7,
+    flexShrink: 0,
+    borderRadius: '9999px',
+  },
+  dotHollow: {
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  },
+  dotOpen: {
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.mutedForeground} 45%, transparent)`,
+  },
+  dotWaits: {
+    backgroundColor: tokens.warning,
+  },
+  dotDraft: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  dotInReview: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+  },
+  dotRejected: {
+    backgroundColor: `color-mix(in oklab, ${tokens.danger} 80%, transparent)`,
+  },
+  dotPartial: {
+    backgroundColor: `color-mix(in oklab, ${tokens.danger} 60%, transparent)`,
+  },
+  dotApproved: {
+    backgroundColor: tokens.success,
+  },
+  dotQuiet: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+  },
+  rowName: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+  },
+  rowNameStrong: {
+    fontWeight: 600,
+  },
+  rowNameGone: {
+    fontSize: 12,
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+    textDecorationLine: 'line-through',
+    textDecorationColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+  },
+  tagWord: {
+    maxWidth: 96,
+    flexShrink: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  tagWordUrgent: {
+    fontWeight: 500,
+    color: tokens.warningForeground,
+  },
+  // the group's own ledger line: how much, of how much
+  ledgerCol: {
+    display: 'flex',
+    width: 64,
+    flexShrink: 0,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  ledgerLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 2,
+    whiteSpace: 'nowrap',
+  },
+  ledgerGot: {
+    fontSize: 12,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  ledgerGotZero: {
+    color: tokens.mutedForeground,
+  },
+  ledgerCap: {
+    fontSize: 10,
+    color: tokens.mutedForeground,
+  },
+  miniMeter: {
+    display: 'block',
+    height: 3,
+    width: '100%',
+    overflow: 'hidden',
+    borderRadius: '9999px',
+    backgroundColor: tokens.border,
+  },
+  itemWorth: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  sheetRoot: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  sheetHead: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 16,
+    paddingBottom: 10,
+  },
+  sheetTitle: {
+    flexShrink: 0,
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  sheetMeta: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  sheetBody: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflowY: 'auto',
+    paddingInline: 8,
+    paddingTop: 6,
+    paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
+  },
+})
+
+/**
+ * The dot beside each question, coloured by the row's own word (§32.72,
+ * amended): amber where the round waits on the reader, neutral for the
+ * reader's own states and for waiting on others, verdict colours for how
+ * it ended, hollow where nothing has been claimed. Unread stays a separate
+ * signal and paints over all of these in red.
+ */
+const DOT: Record<RowTag, stylex.StyleXStyles> = {
+  voided: styles.dotHollow,
+  supplement: styles.dotWaits,
+  needs_revision: styles.dotWaits,
+  draft: styles.dotDraft,
+  in_review: styles.dotInReview,
+  rejected: styles.dotRejected,
+  partial: styles.dotPartial,
+  approved: styles.dotApproved,
+  recorded: styles.dotQuiet,
+  granted: styles.dotQuiet,
+  open: styles.dotOpen,
+}
 
 /**
  * Whether the two panes are standing side by side.
@@ -664,84 +1565,85 @@ function Body({
         // structure rail with its tree, the paper with its display card
         // and question blocks - and on a phone only the paper, because
         // the structure lives in a drawer there
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="hidden h-12 shrink-0 items-center gap-3 border-b px-4 md:flex lg:px-6">
-            <Skeleton className="h-5 w-20" />
-            <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />
-            <Skeleton className="h-5 w-24" />
-            <span className="flex-1" />
-            <Skeleton className="h-7 w-44 rounded-lg" />
+        <div {...stylex.props(styles.fill)}>
+          <div {...stylex.props(styles.skBarWide)}>
+            <Skeleton className={stylex.props(styles.skLineTitle).className} />
+            <span aria-hidden {...stylex.props(styles.headRule)} />
+            <Skeleton className={stylex.props(styles.skLineName).className} />
+            <span {...stylex.props(styles.spacer)} />
+            <Skeleton className={stylex.props(styles.skLineTabs).className} />
           </div>
-          <div className="flex flex-col gap-2.5 border-b px-4 pt-3 pb-2.5 md:hidden">
-            <div className="flex items-end gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Skeleton className="h-5 w-24" />
-                <Skeleton className="h-3.5 w-36" />
+          <div {...stylex.props(styles.skBarNarrow)}>
+            <div {...stylex.props(styles.skNarrowTitleRow)}>
+              <div {...stylex.props(styles.skNarrowTitleCol)}>
+                <Skeleton className={stylex.props(styles.skLineTitle).className} />
+                <Skeleton className={stylex.props(styles.skLineMeta).className} />
               </div>
-              <span className="flex-1" />
-              <Skeleton className="h-6 w-16" />
+              <span {...stylex.props(styles.spacer)} />
+              <Skeleton className={stylex.props(styles.skLineCount).className} />
             </div>
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-9 flex-1 rounded-lg" />
-              <Skeleton className="h-8 w-24 rounded-lg" />
+            <div {...stylex.props(styles.skNarrowControls)}>
+              <Skeleton className={stylex.props(styles.skLineFilter).className} />
+              <Skeleton className={stylex.props(styles.skLineKey).className} />
             </div>
           </div>
-          <div className="grid lg:min-h-0 lg:flex-1 lg:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)]">
-            <div className="hidden flex-col gap-4 px-4 py-4 lg:flex">
-              <Skeleton className="h-9 w-36 rounded-lg" />
-              <div className="flex flex-col gap-2.5">
+          <div {...stylex.props(styles.skGrid)}>
+            <div {...stylex.props(styles.skRail)}>
+              <Skeleton className={stylex.props(styles.skLineKey).className} />
+              <div {...stylex.props(styles.skTree)}>
                 {(
                   [
-                    ['group', 'w-24', 0],
-                    ['item', 'w-3/5', 1],
-                    ['item', 'w-2/5', 1],
-                    ['group', 'w-20', 0],
-                    ['item', 'w-1/2', 1],
-                    ['item', 'w-3/4', 1],
-                    ['item', 'w-2/5', 1],
+                    ['group', '96px', 0],
+                    ['item', '60%', 1],
+                    ['item', '40%', 1],
+                    ['group', '80px', 0],
+                    ['item', '50%', 1],
+                    ['item', '75%', 1],
+                    ['item', '40%', 1],
                   ] as const
                 ).map(([kind, width, depth], index) => (
                   <div
                     key={index}
-                    className="flex items-center gap-2.5"
+                    {...stylex.props(styles.skTreeRow)}
                     style={{ paddingLeft: `${String(depth * 14)}px` }}
                   >
                     <Skeleton
                       className={
-                        kind === 'group'
-                          ? 'size-[7px] shrink-0 rounded-[2px]'
-                          : 'size-[7px] shrink-0 rounded-full'
+                        stylex.props(kind === 'group' ? styles.skDotSquare : styles.skDotRound)
+                          .className
                       }
                     />
-                    <Skeleton className={`h-4 ${width}`} />
-                    {kind === 'group' && <Skeleton className="ml-auto h-3.5 w-12 shrink-0" />}
+                    <Skeleton
+                      className={stylex.props(styles.skTreeLine).className}
+                      style={{ width }}
+                    />
+                    {kind === 'group' && (
+                      <Skeleton className={stylex.props(styles.skTreeLedger).className} />
+                    )}
                   </div>
                 ))}
               </div>
             </div>
-            <div className="flex min-w-0 flex-col gap-6 px-4 py-5 lg:border-l lg:px-6">
-              <Skeleton className="h-24 w-full rounded-xl" />
+            <div {...stylex.props(styles.skMain)}>
+              <Skeleton className={stylex.props(styles.skCard).className} />
               {[0, 1].map((block) => (
-                <div key={block} className="flex flex-col gap-2.5">
-                  <Skeleton className="h-5 w-44" />
-                  <Skeleton className="h-3.5 w-64" />
-                  <Skeleton className="mt-1 h-16 w-full rounded-xl" />
+                <div key={block} {...stylex.props(styles.skBlock)}>
+                  <Skeleton className={stylex.props(styles.skBlockTitle).className} />
+                  <Skeleton className={stylex.props(styles.skBlockMeta).className} />
+                  <Skeleton className={stylex.props(styles.skBlockBody).className} />
                 </div>
               ))}
             </div>
           </div>
         </div>
       }
-      className="flex min-h-0 flex-1 flex-col"
+      xstyle={styles.fill}
     >
       {rows.length === 0 ? (
-        <p className="p-6 text-sm text-muted-foreground">{format(m.myEntriesEmpty)}</p>
+        <p {...stylex.props(styles.emptyNote)}>{format(m.myEntriesEmpty)}</p>
       ) : (
-        // the structure as its own column, the paper as the page: both panes
-        // scroll inside themselves where they stand side by side; narrow,
-        // the paper flows in the page and the structure folds into a drawer
-        <div className="relative flex min-h-96 flex-col lg:min-h-0 lg:flex-1">
-          <div className="grid lg:min-h-0 lg:flex-1 lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)]">
+        <div {...stylex.props(styles.pageWrap)}>
+          <div {...stylex.props(styles.panes)}>
             <Structure
               rows={rows}
               batchName={batchName}
@@ -750,7 +1652,7 @@ function Body({
               onOpen={goTo}
             />
 
-            <div ref={setPaper} className="flex min-w-0 flex-col lg:min-h-0 lg:border-l">
+            <div ref={setPaper} {...stylex.props(styles.paperPane)}>
               {/* The paper's own toolbar. Beside the rail it is the pane's
                   own edge, outside the scroller and level with the rail's
                   heading; narrow it rides sticky at the top of the page's
@@ -758,35 +1660,32 @@ function Body({
                   to its underside. The display card stays in the paper; the
                   strip is its short understudy, gone whenever the card
                   itself is on screen. */}
-              <div className="z-10 max-lg:sticky max-lg:top-0">
-                <div ref={setHead} className="bg-background">
-                  {/* phone: the name gets a line, the controls get the next */}
-                  <div className="flex flex-col gap-2.5 border-b px-4 pt-3 pb-2.5 md:hidden">
-                    <div className="flex items-end gap-3">
-                      <div className="flex min-w-0 flex-col gap-0.5">
-                        <h1 className="text-[17px] leading-tight font-semibold">
-                          {format(m.myEntriesTab)}
-                        </h1>
-                        <p className="text-xs text-muted-foreground">
+              <div {...stylex.props(styles.headSticky)}>
+                <div ref={setHead} {...stylex.props(styles.headSurface)}>
+                  <div {...stylex.props(styles.narrowHead)}>
+                    <div {...stylex.props(styles.narrowTitleRow)}>
+                      <div {...stylex.props(styles.narrowTitleCol)}>
+                        <h1 {...stylex.props(styles.narrowTitle)}>{format(m.myEntriesTab)}</h1>
+                        <p {...stylex.props(styles.narrowMeta)}>
                           {format(m.myEntriesPaperMeta, {
                             groups: bandCount,
                             items: questionCount,
                           })}
                         </p>
                       </div>
-                      <span className="flex-1" />
-                      <div className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
-                        <span className="text-[11px] text-muted-foreground">
+                      <span {...stylex.props(styles.spacer)} />
+                      <div {...stylex.props(styles.countSeat)}>
+                        <span {...stylex.props(styles.countLabel)}>
                           {format(m.myEntriesCounted)}
                         </span>
-                        <span className="text-xl leading-none font-semibold tabular-nums">
+                        <span {...stylex.props(styles.countValue)}>
                           {standing.data === undefined
                             ? '—'
                             : Number(standing.data.total).toFixed(2)}
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div {...stylex.props(styles.narrowControls)}>
                       <Tabs
                         className="min-w-0 flex-1"
                         value={paperView}
@@ -798,14 +1697,16 @@ function Body({
                           </TabsTrigger>
                           <TabsTrigger className="flex-1" value="todo">
                             {format(m.paperViewTodo)}
-                            {todoCount > 0 && <span className="tabular-nums">{todoCount}</span>}
+                            {todoCount > 0 && (
+                              <span {...stylex.props(styles.nums)}>{todoCount}</span>
+                            )}
                           </TabsTrigger>
                         </TabsList>
                       </Tabs>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="shrink-0"
+                        className={stylex.props(styles.shrinkNone).className}
                         onClick={() => setStructure('1')}
                       >
                         <TableOfContentsIcon aria-hidden />
@@ -813,56 +1714,50 @@ function Body({
                       </Button>
                     </div>
                   </div>
-                  {/* tablet up: one row; the structure key leaves once the
-                      rail stands beside the paper */}
-                  <div className="hidden h-12 border-b md:block">
-                    <div className="mx-auto flex h-full w-full max-w-6xl items-center gap-3 px-4 lg:px-6">
-                      <h1 className="shrink-0 text-base font-semibold">{format(m.myEntriesTab)}</h1>
-                      <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />
-                      <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
-                        <span className="text-xs text-muted-foreground">
+                  <div {...stylex.props(styles.wideHead)}>
+                    <div {...stylex.props(styles.wideHeadInner)}>
+                      <h1 {...stylex.props(styles.wideTitle)}>{format(m.myEntriesTab)}</h1>
+                      <span aria-hidden {...stylex.props(styles.headRule)} />
+                      <span {...stylex.props(styles.countSeat)}>
+                        <span {...stylex.props(styles.countLabelXs)}>
                           {format(m.myEntriesCounted)}
                         </span>
-                        <span className="text-lg leading-none font-semibold tabular-nums">
+                        <span {...stylex.props(styles.wideCountValue)}>
                           {standing.data === undefined
                             ? '—'
                             : Number(standing.data.total).toFixed(2)}
                         </span>
                       </span>
-                      <span className="flex-1" />
+                      <span {...stylex.props(styles.spacer)} />
                       {/* the escape hatch, not the mechanism: state flows in
                           on its own, and this is for the person who wants to
                           ask the server directly anyway */}
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="shrink-0"
+                        className={stylex.props(styles.shrinkNone).className}
                         disabled={anyFetching}
                         onClick={refetchAll}
                       >
-                        <RefreshCwIcon aria-hidden className={cn(anyFetching && 'animate-spin')} />
-                        <span className="sr-only">{format(m.myEntriesRefresh)}</span>
+                        <RefreshCwIcon
+                          aria-hidden
+                          className={stylex.props(anyFetching && styles.spinning).className}
+                        />
+                        <span {...stylex.props(styles.srOnly)}>{format(m.myEntriesRefresh)}</span>
                       </Button>
-                      <span className="hidden shrink-0 items-center gap-3 rounded-lg bg-muted px-2.5 py-1.5 text-xs whitespace-nowrap text-muted-foreground sm:inline-flex">
-                        <span className="inline-flex items-baseline gap-1">
+                      <span {...stylex.props(styles.statChip)}>
+                        <span {...stylex.props(styles.statPair)}>
                           {format(m.entryStatusInReview)}
-                          <span className="font-semibold text-foreground tabular-nums">
-                            {pendingCount}
-                          </span>
+                          <span {...stylex.props(styles.statNum)}>{pendingCount}</span>
                         </span>
-                        <span className="inline-flex items-baseline gap-1">
+                        <span {...stylex.props(styles.statPair)}>
                           {format(m.entryStatusDraft)}
-                          <span className="font-semibold text-foreground tabular-nums">
-                            {draftCount}
-                          </span>
+                          <span {...stylex.props(styles.statNum)}>{draftCount}</span>
                         </span>
-                        <span className="inline-flex items-baseline gap-1">
+                        <span {...stylex.props(styles.statPair)}>
                           {format(m.entryStatusNeedsRevision)}
                           <span
-                            className={cn(
-                              'font-semibold tabular-nums',
-                              backCount > 0 ? 'text-destructive' : 'text-foreground',
-                            )}
+                            {...stylex.props(styles.statNum, backCount > 0 && styles.statNumAlert)}
                           >
                             {backCount}
                           </span>
@@ -891,18 +1786,16 @@ function Body({
                 </div>
                 {/* the 36px understudy of the section card, narrow only:
                     the rail keeps the desktop reader oriented instead */}
-                <div className="lg:hidden">
+                <div {...stylex.props(styles.stripSeat)}>
                   <Appear show={currentBand !== null} collapse>
-                    <div className="border-b bg-background/95 backdrop-blur-sm">
-                      <div className="mx-auto flex h-9 w-full max-w-6xl items-center gap-2.5 px-4">
-                        <span className="shrink-0 text-xs font-semibold text-muted-foreground/60 tabular-nums">
+                    <div {...stylex.props(styles.strip)}>
+                      <div {...stylex.props(styles.stripInner)}>
+                        <span {...stylex.props(styles.stripNo)}>
                           {currentBand !== null ? bandNoOf(currentBand) : ''}
                         </span>
-                        <span className="min-w-0 truncate text-[13px] font-semibold">
-                          {currentBand?.name}
-                        </span>
-                        <span className="flex-1" />
-                        <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                        <span {...stylex.props(styles.stripName)}>{currentBand?.name}</span>
+                        <span {...stylex.props(styles.spacer)} />
+                        <span {...stylex.props(styles.stripLedger)}>
                           {currentBand === null || currentBand.right === ''
                             ? ''
                             : Number(currentBand.right).toFixed(2)}
@@ -919,7 +1812,7 @@ function Body({
                 {/* the same paper, narrowed: it fades over itself so the
                     switch reads as this paper changing rather than another
                     one arriving */}
-                <Swap swapKey={paperView} className="w-full">
+                <Swap swapKey={paperView} className={stylex.props(styles.swapSeat).className}>
                   <Paper
                     rows={rows}
                     entriesByItem={entriesByItem}
@@ -955,10 +1848,7 @@ function Body({
             className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
           >
             <SheetTitle className="sr-only">{format(m.paperStructure)}</SheetTitle>
-            <span
-              aria-hidden
-              className="mx-auto mt-2.5 mb-1 h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30"
-            />
+            <span aria-hidden {...stylex.props(styles.dragHandle)} />
             <Structure
               variant="sheet"
               rows={rows}
@@ -1052,7 +1942,7 @@ function Body({
 function PaneScroller({ children }: { children: ReactNode }) {
   const beside = useSideBySide()
   return beside ? (
-    <ScrollArea className="relative min-h-0 flex-1">{children}</ScrollArea>
+    <ScrollArea className={stylex.props(styles.paneScroller).className}>{children}</ScrollArea>
   ) : (
     <>{children}</>
   )
@@ -1187,13 +2077,15 @@ function Structure({
   // the tree itself, one list shared by the rail and the drawer
   const tree =
     listed.length === 0 ? (
-      <p className="rounded-xl border px-3 py-4 text-sm text-muted-foreground">
-        {format(m.myEntriesFilterNone)}
-      </p>
+      <p {...stylex.props(styles.treeEmpty)}>{format(m.myEntriesFilterNone)}</p>
     ) : (
-      <ul ref={listRef} className="relative isolate flex min-h-0 flex-col">
+      <ul ref={listRef} {...stylex.props(styles.tree)}>
         {markBox !== null && (
-          <Glide top={markBox.top} height={markBox.height} className="-z-10 rounded-lg bg-accent" />
+          <Glide
+            top={markBox.top}
+            height={markBox.height}
+            className={stylex.props(styles.glideMark).className}
+          />
         )}
         <Sift>
           {listed.map((row, index) => {
@@ -1215,30 +2107,25 @@ function Structure({
                   // screen reader can hear
                   aria-current={openId === row.id ? 'true' : undefined}
                   onClick={() => onOpen(row.id)}
-                  style={{ paddingLeft: `${depth * 14 + 10}px` }}
-                  className={cn(
-                    'relative isolate flex w-full items-center gap-2 rounded-lg py-1.5 pr-2.5 text-left transition-colors',
-                    openId !== row.id && 'hover:bg-accent/50',
-                    row.kind === 'group' && row.depth === 0 && index > 0 && 'mt-1',
-                    // withdrawn: still listed, because what was filed
-                    // under it is still there to read, but it takes
-                    // less room and wears the fact on its name
-                    gone && 'py-1',
+                  {...stylex.props(
+                    styles.row,
+                    openId !== row.id && styles.rowHoverable,
+                    row.kind === 'group' && row.depth === 0 && index > 0 && styles.rowTopGap,
+                    gone && styles.rowGone,
                   )}
+                  style={{ paddingLeft: `${depth * 14 + 10}px` }}
                 >
-                  {/* the joints of the tree: an elbow into this row, and the
-                  sibling line running past it while siblings remain */}
                   {showing === 'all' && depth > 0 && (
                     <>
                       <span
                         aria-hidden
-                        className="absolute top-0 h-1/2 w-2.5 rounded-bl-[7px] border-b border-l border-border"
+                        {...stylex.props(styles.elbow)}
                         style={{ left: `${(depth - 1) * 14 + 12}px` }}
                       />
                       {!joint.last && (
                         <span
                           aria-hidden
-                          className="absolute inset-y-0 w-px bg-border"
+                          {...stylex.props(styles.siblingLine)}
                           style={{ left: `${(depth - 1) * 14 + 12}px` }}
                         />
                       )}
@@ -1247,78 +2134,60 @@ function Structure({
                   {showing === 'all' && row.kind === 'group' && joint.hasKids && (
                     <span
                       aria-hidden
-                      className="absolute bottom-0 h-1/2 w-px bg-border"
+                      {...stylex.props(styles.downLine)}
                       style={{ left: `${depth * 14 + 12}px` }}
                     />
                   )}
                   {row.kind === 'group' ? (
-                    <span aria-hidden className="size-[7px] shrink-0 rounded-[2px] bg-border" />
+                    <span aria-hidden {...stylex.props(styles.groupSquare)} />
                   ) : row.unread ? (
-                    // unread paints over everything: something here changed
-                    // and its owner has not seen it
                     <span
                       role="status"
                       data-testid="unread-dot"
                       aria-label={format(m.rowUnread)}
-                      className="size-[7px] shrink-0 rounded-full bg-destructive"
+                      {...stylex.props(styles.unreadDot)}
                     />
                   ) : (
-                    // the row's own word as a colour, never an alarm: amber
-                    // waits on the reader, verdict inks say how it ended,
-                    // hollow means nothing is claimed here yet
                     <span
                       aria-hidden
-                      className={cn(
-                        'size-[7px] shrink-0 rounded-full',
-                        row.tag === null ? 'border border-muted-foreground/30' : ROW_DOT[row.tag],
+                      {...stylex.props(
+                        styles.dot,
+                        row.tag === null ? styles.dotHollow : DOT[row.tag],
                       )}
                     />
                   )}
                   <span
-                    className={cn(
-                      'min-w-0 flex-1 truncate text-sm',
-                      row.kind === 'group' && 'font-semibold',
-                      openId === row.id && 'font-semibold',
-                      gone &&
-                        'text-xs font-normal text-muted-foreground line-through decoration-muted-foreground/40',
+                    {...stylex.props(
+                      styles.rowName,
+                      (row.kind === 'group' || openId === row.id) && styles.rowNameStrong,
+                      gone && styles.rowNameGone,
                     )}
                   >
                     {row.name}
                   </span>
                   {row.kind === 'item' && row.tag !== null && (
-                    <span
-                      className={cn(
-                        'max-w-24 shrink-0 truncate text-xs',
-                        urgent
-                          ? 'font-medium text-amber-700 dark:text-amber-300'
-                          : 'text-muted-foreground',
-                      )}
-                    >
+                    <span {...stylex.props(styles.tagWord, urgent && styles.tagWordUrgent)}>
                       {format(ROW_TAG[row.tag])}
                     </span>
                   )}
                   {row.kind === 'group' ? (
-                    // the group's own ledger line: how much, of how much
-                    <span className="flex w-16 shrink-0 flex-col items-end gap-1">
-                      <span className="flex items-baseline gap-0.5 whitespace-nowrap">
+                    <span {...stylex.props(styles.ledgerCol)}>
+                      <span {...stylex.props(styles.ledgerLine)}>
                         <span
-                          className={cn(
-                            'text-xs font-semibold tabular-nums',
-                            gotNum === 0 && 'text-muted-foreground',
-                          )}
+                          {...stylex.props(styles.ledgerGot, gotNum === 0 && styles.ledgerGotZero)}
                         >
                           {row.right === '' ? '0' : trimAmount(row.right)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span {...stylex.props(styles.ledgerCap)}>
                           {capNum > 0
                             ? `/ ${trimAmount(String(capNum))}`
                             : format(m.myEntriesPaperUnit)}
                         </span>
                       </span>
                       {capNum > 0 && (
-                        <span className="block h-0.75 w-full overflow-hidden rounded-full bg-border">
+                        <span {...stylex.props(styles.miniMeter)}>
                           <span
-                            className="block h-full rounded-full bg-foreground"
+                            {...stylex.props(styles.meterFill)}
                             style={{
                               width: `${Math.round(Math.min(1, gotNum / capNum) * 100)}%`,
                             }}
@@ -1331,7 +2200,7 @@ function Structure({
                     // nothing: a 0 beside every untouched row reads as a
                     // page full of failures
                     gotNum > 0 && (
-                      <span className="shrink-0 text-xs whitespace-nowrap tabular-nums">
+                      <span {...stylex.props(styles.itemWorth)}>
                         {trimAmount(row.right)} {format(m.myEntriesPaperUnit)}
                       </span>
                     )
@@ -1350,7 +2219,7 @@ function Structure({
         <TabsTrigger value="all">{format(m.myEntriesFilterAll)}</TabsTrigger>
         <TabsTrigger value="todo">
           {format(m.myEntriesFilterTodo)}
-          {todo > 0 && <span className="tabular-nums">{todo}</span>}
+          {todo > 0 && <span {...stylex.props(styles.nums)}>{todo}</span>}
         </TabsTrigger>
       </TabsList>
     </Tabs>
@@ -1358,18 +2227,16 @@ function Structure({
 
   if (variant === 'sheet') {
     return (
-      <div ref={railRef} className="flex min-h-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center gap-2.5 border-b px-4 pb-2.5">
-          <p className="shrink-0 text-[13px] font-semibold">{format(m.paperStructure)}</p>
-          <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+      <div ref={railRef} {...stylex.props(styles.sheetRoot)}>
+        <div {...stylex.props(styles.sheetHead)}>
+          <p {...stylex.props(styles.sheetTitle)}>{format(m.paperStructure)}</p>
+          <span {...stylex.props(styles.sheetMeta)}>
             {format(m.myEntriesPaperMeta, { groups: groupCount, items: questions })}
           </span>
-          <span className="flex-1" />
+          <span {...stylex.props(styles.spacer)} />
           {filterTabs}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-1.5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          {tree}
-        </div>
+        <div {...stylex.props(styles.sheetBody)}>{tree}</div>
       </div>
     )
   }
@@ -1377,56 +2244,45 @@ function Structure({
   return (
     // its own column, on the widths that afford one: the page's index,
     // scrolling inside itself beside the paper
-    <div ref={railRef} className="relative flex min-w-0 flex-col max-lg:hidden lg:min-h-0">
-      <div className="flex h-12 shrink-0 items-center border-b px-4">
-        <p className="text-sm font-semibold">{format(m.paperStructure)}</p>
+    <div ref={railRef} {...stylex.props(styles.railRoot)}>
+      <div {...stylex.props(styles.railHead)}>
+        <p {...stylex.props(styles.railTitle)}>{format(m.paperStructure)}</p>
       </div>
       <PaneScroller>
-        <div className="flex flex-col gap-2.5 p-3">
-          <div className="flex shrink-0 items-center gap-3">
+        <div {...stylex.props(styles.railBody)}>
+          <div {...stylex.props(styles.railTop)}>
             {filterTabs}
-            <span className="flex-1" />
-            <p className="text-xs whitespace-nowrap text-muted-foreground">
+            <span {...stylex.props(styles.spacer)} />
+            <p {...stylex.props(styles.railCount)}>
               {format(m.myEntriesQuestions, { count: questions })}
             </p>
           </div>
 
-          {/* the round in one card over the list of it: its name, what it has
-          granted, and how much paper there is */}
-          <div className="flex shrink-0 flex-col gap-2 rounded-xl border bg-muted/40 px-3 py-2.5">
-            <div className="flex items-baseline gap-2">
-              <span className="min-w-0 truncate text-xs font-semibold">
-                {root?.name ?? batchName}
-              </span>
-              <span className="flex-1" />
-              <span
-                className={cn(
-                  'shrink-0 text-lg leading-none font-semibold tabular-nums',
-                  got === 0 && 'text-muted-foreground',
-                )}
-              >
+          <div {...stylex.props(styles.summaryCard)}>
+            <div {...stylex.props(styles.sumRow)}>
+              <span {...stylex.props(styles.sumName)}>{root?.name ?? batchName}</span>
+              <span {...stylex.props(styles.spacer)} />
+              <span {...stylex.props(styles.sumValue, got === 0 && styles.sumValueZero)}>
                 {got.toFixed(2)}
               </span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {format(m.myEntriesPaperUnit)}
-              </span>
+              <span {...stylex.props(styles.sumUnit)}>{format(m.myEntriesPaperUnit)}</span>
             </div>
             {capSum > 0 && (
-              <span className="block h-0.75 overflow-hidden rounded-full bg-border">
+              <span {...stylex.props(styles.meter)}>
                 <span
-                  className="block h-full rounded-full bg-foreground"
+                  {...stylex.props(styles.meterFill)}
                   style={{ width: `${Math.min(100, Math.round((got / capSum) * 100))}%` }}
                 />
               </span>
             )}
-            <div className="flex items-baseline gap-2 text-[11px] text-muted-foreground">
+            <div {...stylex.props(styles.sumFoot)}>
               {capSum > 0 && (
-                <span className="shrink-0 whitespace-nowrap">
+                <span {...stylex.props(styles.noWrap)}>
                   {format(m.myEntriesPaperCap, { value: capSum.toFixed(0) })}
                 </span>
               )}
-              <span className="flex-1" />
-              <span className="shrink-0 whitespace-nowrap">
+              <span {...stylex.props(styles.spacer)} />
+              <span {...stylex.props(styles.noWrap)}>
                 {format(m.myEntriesPaperMeta, { groups: groupCount, items: questions })}
               </span>
             </div>

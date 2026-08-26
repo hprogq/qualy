@@ -1,5 +1,6 @@
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
-import { cn } from '@qualy/ui/cn'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { entryStatusMessage, type EntryDto } from './model.ts'
 
@@ -12,6 +13,50 @@ import { entryStatusMessage, type EntryDto } from './model.ts'
  * without reading the word. One component for the card and the drawer, so
  * the two can never call the same claim two different things.
  */
+
+const styles = stylex.create({
+  pill: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 10,
+    paddingBlock: 2,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+  },
+  pillAlert: {
+    borderColor: `color-mix(in oklab, ${tokens.danger} 35%, transparent)`,
+    color: tokens.danger,
+  },
+  pillHollow: {
+    color: tokens.mutedForeground,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: '9999px',
+  },
+  dotHollow: {
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  dotAlert: {
+    backgroundColor: tokens.danger,
+  },
+  dotApproved: {
+    backgroundColor: tokens.foreground,
+  },
+  dotDefault: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+})
+
 export function EntryStanding({
   status,
   revised,
@@ -39,23 +84,19 @@ export function EntryStanding({
       // claim is doing asks this, not the sentence the word happens to be
       data-testid="entry-standing"
       data-entry-standing={asked === true ? 'awaiting_supplement' : status}
-      className={cn(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap',
-        alert && 'border-destructive/35 text-destructive',
-        hollow && 'text-muted-foreground',
-      )}
+      {...stylex.props(styles.pill, alert && styles.pillAlert, hollow && styles.pillHollow)}
     >
       <span
         aria-hidden
-        className={cn(
-          'size-1.5 rounded-full',
+        {...stylex.props(
+          styles.dot,
           hollow
-            ? 'border border-muted-foreground/50'
+            ? styles.dotHollow
             : alert
-              ? 'bg-destructive'
+              ? styles.dotAlert
               : status === 'approved'
-                ? 'bg-foreground'
-                : 'bg-muted-foreground/60',
+                ? styles.dotApproved
+                : styles.dotDefault,
         )}
       />
       {format(word)}

@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Appear } from '@qualy/ui/reveal'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
-import { cn } from '@qualy/ui/cn'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -42,10 +43,951 @@ import {
 // three-column table with the version folded into the content cell; wider,
 // the four-column table. The same rows, the same drawer behind them - only
 // the columns give way, never the content.
-//
-// Rules run edge to edge while the writing stays inside one measure: the
-// paper reads as sheets divided by lines, not as a stack of floating cards.
-const MEASURE = 'mx-auto w-full max-w-6xl px-4 lg:px-6'
+
+const md = '@media (min-width: 768px)'
+const lg = '@media (min-width: 1024px)'
+const xl = '@media (min-width: 1280px)'
+const belowMd = '@media (max-width: 767.98px)'
+
+const styles = stylex.create({
+  // Rules run edge to edge while the writing stays inside one measure: the
+  // paper reads as sheets divided by lines, not as a stack of floating cards.
+  measure: {
+    marginInline: 'auto',
+    width: '100%',
+    maxWidth: '72rem',
+    paddingInline: {
+      default: 16,
+      [lg]: 24,
+    },
+  },
+  // room at the foot for the shell's floating capsule where it floats
+  paper: {
+    display: 'flex',
+    flexDirection: 'column',
+    paddingBottom: {
+      default: 112,
+      [lg]: 64,
+    },
+  },
+  band: {
+    scrollMarginTop: {
+      default: 120,
+      [lg]: 64,
+    },
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundImage: `linear-gradient(to right, color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent), ${tokens.background} 65%)`,
+  },
+  // phone: the name gets a line, the progress gets the next
+  bandNarrow: {
+    display: {
+      default: 'flex',
+      [md]: 'none',
+    },
+    flexDirection: 'column',
+    gap: 8,
+    paddingBlock: 12,
+  },
+  bandNarrowHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  bandNoNarrow: {
+    flexShrink: 0,
+    fontSize: 18,
+    lineHeight: 1,
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  bandNameNarrow: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 16,
+    lineHeight: 1.25,
+    fontWeight: 600,
+  },
+  bandNarrowMeter: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  // tablet: one line, worth its 42px and no more
+  bandMid: {
+    display: {
+      default: 'none',
+      [md]: 'flex',
+      [lg]: 'none',
+    },
+    height: 42,
+    alignItems: 'center',
+    gap: 14,
+  },
+  bandNoMid: {
+    flexShrink: 0,
+    fontSize: 15,
+    lineHeight: 1,
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  bandNameMid: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    lineHeight: 1.25,
+    fontWeight: 600,
+  },
+  // laptop and wider: the display card the section deserves
+  bandWide: {
+    display: {
+      default: 'none',
+      [lg]: 'flex',
+    },
+    alignItems: 'center',
+    gap: 24,
+    paddingBlock: 16,
+  },
+  bandNoWide: {
+    flexShrink: 0,
+    fontSize: 30,
+    lineHeight: 1,
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  bandWideCol: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 6,
+  },
+  bandNameWide: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 18,
+    lineHeight: 1.25,
+    fontWeight: 600,
+  },
+  bandWideMeter: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  share: {
+    flexShrink: 0,
+    fontSize: {
+      default: 11,
+      [md]: 12,
+    },
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  ledger: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'baseline',
+    gap: 6,
+    whiteSpace: 'nowrap',
+  },
+  ledgerGot: {
+    lineHeight: 1,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  ledgerGotZero: {
+    color: tokens.mutedForeground,
+  },
+  ledgerLg: {
+    fontSize: 18,
+  },
+  ledgerBase: {
+    fontSize: 16,
+  },
+  ledgerXl: {
+    fontSize: 20,
+  },
+  ledgerCap: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  meter: {
+    display: 'block',
+    overflow: 'hidden',
+    borderRadius: '9999px',
+    backgroundColor: tokens.border,
+  },
+  meterNarrow: {
+    height: 4,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  meterWide: {
+    height: 3,
+    width: 96,
+    flexShrink: 0,
+  },
+  meterFill: {
+    display: 'block',
+    height: '100%',
+    borderRadius: '9999px',
+    backgroundColor: tokens.foreground,
+  },
+  subBand: {
+    scrollMarginTop: {
+      default: 136,
+      [lg]: 96,
+    },
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundImage: `linear-gradient(to right, color-mix(in oklab, ${tokens.surfaceMuted} 45%, transparent), ${tokens.background} 55%)`,
+  },
+  subBandRow: {
+    display: 'flex',
+    height: {
+      default: 36,
+      [lg]: 44,
+    },
+    alignItems: 'center',
+    gap: {
+      default: 12,
+      [lg]: 16,
+    },
+  },
+  subBandNo: {
+    flexShrink: 0,
+    fontSize: {
+      default: 12,
+      [lg]: 14,
+    },
+    fontWeight: 600,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+  },
+  subBandName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: {
+      default: 13,
+      [lg]: 14,
+    },
+    fontWeight: 600,
+  },
+  subBandGot: {
+    fontSize: {
+      default: 14,
+      [lg]: 16,
+    },
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  question: {
+    scrollMarginTop: {
+      default: 136,
+      [lg]: 96,
+    },
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
+  questionVoided: {
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 15%, transparent)`,
+  },
+  questionBody: {
+    display: 'grid',
+    gap: {
+      default: 16,
+      [md]: 24,
+      [lg]: 32,
+      [xl]: 40,
+    },
+    paddingBlock: {
+      default: 20,
+      [md]: 24,
+      [lg]: 28,
+    },
+    gridTemplateColumns: {
+      default: null,
+      [md]: '17rem minmax(0, 1fr)',
+      [lg]: '19rem minmax(0, 1fr)',
+      [xl]: '21rem minmax(0, 1fr)',
+    },
+  },
+  questionBodyVoided: {
+    paddingTop: 8,
+    opacity: 0.75,
+  },
+  // the question itself: what it asks, what it pays, the way in
+  terms: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  termsHead: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  questionNo: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: 600,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  questionTitle: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: {
+      default: 15,
+      [md]: 16,
+    },
+    lineHeight: 1.375,
+    fontWeight: 600,
+  },
+  questionCounted: {
+    flexShrink: 0,
+    fontSize: {
+      default: 15,
+      [md]: 16,
+    },
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  description: {
+    fontSize: 14,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+  },
+  // what the question pays and asks for - one line on a phone, a term to a
+  // line where there is height to spend - closing with the clause it scores
+  // under; the association feature takes that seat next
+  termsCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    fontSize: 12,
+  },
+  termsLine: {
+    display: {
+      default: 'block',
+      [md]: 'none',
+    },
+    paddingInline: 12,
+    paddingBlock: 8,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  termsList: {
+    display: {
+      default: 'none',
+      [md]: 'flex',
+    },
+    flexDirection: 'column',
+    gap: 6,
+    paddingInline: 12,
+    paddingBlock: 10,
+    color: tokens.mutedForeground,
+  },
+  termsRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    paddingInline: 12,
+    paddingBlock: 8,
+    color: tokens.mutedForeground,
+  },
+  termsDivided: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+  },
+  basisRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    paddingInline: 12,
+    paddingBlock: 8,
+    color: tokens.mutedForeground,
+  },
+  routeLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  keepShort: {
+    flexShrink: 0,
+  },
+  routeSteps: {
+    minWidth: 0,
+    lineHeight: 1.625,
+  },
+  basisWords: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  termsFoot: {
+    display: {
+      default: 'none',
+      [md]: 'block',
+    },
+    minHeight: 8,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  // the way in and the quota live in the claims list on a phone, where the
+  // thumb already is
+  wayIn: {
+    display: {
+      default: 'none',
+      [md]: 'flex',
+    },
+    alignItems: 'center',
+    gap: 12,
+  },
+  quota: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'baseline',
+    gap: 6,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+  },
+  quotaLabel: {
+    color: tokens.mutedForeground,
+  },
+  nums: {
+    fontVariantNumeric: 'tabular-nums',
+  },
+  shrinkNone: {
+    flexShrink: 0,
+  },
+  noPointer: {
+    pointerEvents: 'none',
+  },
+  // The claims, a row each, in their own sheet; the row is the way into the
+  // drawer. The sheet keeps its head whether or not there is anything under
+  // it - a question with nothing filed yet is the same table, empty, not a
+  // different thing on the page.
+  claims: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+  },
+  claimsSheet: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    overflow: {
+      default: null,
+      [md]: 'hidden',
+    },
+    borderRadius: {
+      default: null,
+      [md]: `calc(${tokens.radiusLg} + 4px)`,
+    },
+    borderWidth: {
+      default: 0,
+      [md]: 1,
+    },
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  claimsSheetFilled: {
+    backgroundColor: {
+      default: null,
+      [md]: tokens.surface,
+    },
+  },
+  claimsSheetTopRule: {
+    borderTopWidth: {
+      default: 1,
+      [md]: 1,
+    },
+  },
+  // a question granted to everybody has no claims to table, ever, so it
+  // says so inside a tray instead of under column headings that will never
+  // have anything under them
+  claimsSheetGranted: {
+    overflow: 'hidden',
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 20%, transparent)`,
+  },
+  claimHead: {
+    display: {
+      default: 'none',
+      [md]: 'grid',
+    },
+    gridTemplateColumns: {
+      default: null,
+      [md]: 'minmax(0, 1fr) 6rem 5.5rem',
+      [lg]: 'minmax(0, 1fr) 8.5rem 6rem 5.5rem',
+    },
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: 16,
+    height: 32,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  colToLg: {
+    display: {
+      default: 'inline',
+      [lg]: 'none',
+    },
+  },
+  colFromLg: {
+    display: {
+      default: 'none',
+      [lg]: 'inline',
+    },
+  },
+  colRight: {
+    textAlign: 'right',
+  },
+  foldButton: {
+    display: 'flex',
+    height: 36,
+    width: '100%',
+    cursor: 'pointer',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderBottomWidth: {
+      default: 1,
+      ':last-child': 0,
+      [md]: 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    fontSize: 12,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    transitionProperty: 'color',
+  },
+  foldIcon: {
+    width: 14,
+    height: 14,
+  },
+  foldIconOpen: {
+    transform: 'rotate(180deg)',
+  },
+  // the next claim's own seat: it takes whatever room the filed ones
+  // leave, so a question with one claim still stands as tall as the terms
+  // beside it
+  addSeat: {
+    display: 'flex',
+    width: '100%',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  addRow: {
+    display: 'flex',
+    minHeight: 44,
+    width: '100%',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    fontSize: {
+      default: 13,
+      [md]: 12,
+    },
+    fontWeight: {
+      default: 500,
+      [md]: 400,
+    },
+    transitionProperty: 'color, background-color',
+    borderBottomWidth: {
+      default: 1,
+      [md]: 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: {
+      default: null,
+      [md]: `color-mix(in oklab, ${tokens.surfaceMuted} 20%, transparent)`,
+    },
+  },
+  addRowOpen: {
+    cursor: 'pointer',
+    color: {
+      default: tokens.foreground,
+      [md]: tokens.mutedForeground,
+    },
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    },
+  },
+  addRowOpenHoverInk: {
+    color: {
+      default: tokens.foreground,
+      ':hover': tokens.foreground,
+    },
+  },
+  addRowShut: {
+    pointerEvents: 'none',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  addIcon: {
+    width: 14,
+    height: 14,
+  },
+  // the quota, spoken where the next claim would have gone
+  fullNote: {
+    display: {
+      default: 'flex',
+      [md]: 'none',
+    },
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    borderBottomWidth: {
+      default: 1,
+      [md]: 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
+  // why the table stands empty: never filed, or never this person's to
+  // file. Tinted, not white: an empty table body that matches the page
+  // reads as a table that failed to draw its rows.
+  emptyTray: {
+    display: 'flex',
+    minHeight: 112,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: 16,
+  },
+  emptyTrayFrame: {
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 25%, transparent)`,
+    borderRadius: {
+      default: `calc(${tokens.radiusLg} + 4px)`,
+      [md]: 0,
+    },
+    borderWidth: {
+      default: 1,
+      [md]: 0,
+    },
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  emptyBadge: {
+    display: 'flex',
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    backgroundColor: tokens.surfaceMuted,
+    color: tokens.mutedForeground,
+  },
+  emptyIcon: {
+    width: 16,
+    height: 16,
+  },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  emptyHint: {
+    fontSize: 12,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  // A withdrawn question stays on the paper - what was filed under it is
+  // still the reader's, and still theirs to argue about - but it is folded
+  // away and greyed, and it says on its face why it was withdrawn.
+  voidedHead: {
+    display: 'flex',
+    cursor: 'pointer',
+    alignItems: 'center',
+    gap: 12,
+    paddingBlock: 12,
+    textAlign: 'left',
+  },
+  voidedNo: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: 600,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  voidedTitle: {
+    maxWidth: 256,
+    flexShrink: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+    textDecorationLine: 'line-through',
+    textDecorationColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+  },
+  voidedBadge: {
+    flexShrink: 0,
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    paddingInline: 6,
+    paddingBlock: 2,
+    fontSize: 11,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  voidedWhy: {
+    display: {
+      default: 'none',
+      [md]: 'inline',
+    },
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  voidedChevron: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+    transitionProperty: 'transform',
+  },
+  // ---- one claim as one table row ----
+  claimRow: {
+    display: 'grid',
+    width: '100%',
+    cursor: 'pointer',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) auto auto',
+      [md]: 'minmax(0, 1fr) 6rem 5.5rem',
+      [lg]: 'minmax(0, 1fr) 8.5rem 6rem 5.5rem',
+    },
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: {
+      default: 1,
+      ':last-child': 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingBlock: {
+      default: 10,
+      [md]: 14,
+    },
+    paddingInline: {
+      default: 0,
+      [md]: 16,
+    },
+    textAlign: 'left',
+    transitionProperty: 'color, background-color',
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+  },
+  claimMain: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+  },
+  claimIdentity: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  claimLead: {
+    maxWidth: 176,
+    flexShrink: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  // the rest of the identity stays on a phone too: without it a claim
+  // named by its second and third fields reads as nothing
+  claimSub: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  // the folded cells, under the content where the width folds them
+  claimFoldNarrow: {
+    display: {
+      default: 'flex',
+      [md]: 'none',
+    },
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+  },
+  claimWhenNarrow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 11,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  claimWhenMid: {
+    display: {
+      default: 'none',
+      [md]: 'flex',
+      [lg]: 'none',
+    },
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 11,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  claimWhenWide: {
+    display: {
+      default: 'none',
+      [lg]: 'flex',
+    },
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  claimWhenClock: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  claimStandingCell: {
+    display: {
+      default: 'none',
+      [md]: 'block',
+    },
+    minWidth: 0,
+  },
+  claimScore: {
+    display: 'flex',
+    flexDirection: {
+      default: 'column',
+      [md]: 'row',
+    },
+    alignItems: {
+      default: 'flex-end',
+      [md]: 'baseline',
+    },
+    justifyContent: {
+      default: null,
+      [md]: 'flex-end',
+    },
+    gap: {
+      default: 2,
+      [md]: 6,
+    },
+    whiteSpace: 'nowrap',
+  },
+  claimScoreWord: {
+    fontSize: {
+      default: 10.5,
+      [md]: 12,
+    },
+    color: tokens.mutedForeground,
+  },
+  claimScoreValue: {
+    fontSize: 14,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  claimScoreValueOk: {
+    fontWeight: 600,
+    color: tokens.foreground,
+  },
+  claimChevron: {
+    display: {
+      default: 'block',
+      [md]: 'none',
+    },
+    width: 14,
+    height: 14,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+})
 
 export function Paper({
   rows,
@@ -115,8 +1057,7 @@ export function Paper({
   }
 
   return (
-    // room at the foot for the shell's floating capsule where it floats
-    <div className="flex flex-col pb-16 max-lg:pb-28">
+    <div {...stylex.props(styles.paper)}>
       {kept.map((row) => {
         if (row.kind === 'group' && row.depth === 0) {
           return (
@@ -183,97 +1124,73 @@ function Band({
   const cap = row.cap == null || row.cap === '' ? null : Number(row.cap)
   const got = row.right === '' ? 0 : Number(row.right)
   const pct = cap === null || cap === 0 ? 0 : Math.min(100, Math.round((got / cap) * 100))
-  const ledger = (gotSize: string, capSize: string) => (
-    <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
-      <span
-        className={cn(
-          gotSize,
-          'leading-none font-semibold tabular-nums',
-          got === 0 && 'text-muted-foreground',
-        )}
-      >
+  const ledger = (gotSize: stylex.StyleXStyles) => (
+    <span {...stylex.props(styles.ledger)}>
+      <span {...stylex.props(styles.ledgerGot, gotSize, got === 0 && styles.ledgerGotZero)}>
         {two(got)}
       </span>
       {cap !== null && (
-        <span className="text-xs text-muted-foreground tabular-nums">
+        <span {...stylex.props(styles.ledgerCap)}>
           {format(m.paperCap, { value: trimAmount(String(cap)) })}
         </span>
       )}
     </span>
   )
-  const bar = (className: string) =>
+  const bar = (size: stylex.StyleXStyles) =>
     cap !== null && (
-      <span className={cn('block overflow-hidden rounded-full bg-border', className)}>
-        <span className="block h-full rounded-full bg-foreground" style={{ width: `${pct}%` }} />
+      <span {...stylex.props(styles.meter, size)}>
+        <span {...stylex.props(styles.meterFill)} style={{ width: `${pct}%` }} />
       </span>
     )
   return (
-    <div
-      data-paper-row={row.id}
-      data-paper-band={row.id}
-      className="scroll-mt-30 border-b bg-linear-to-r from-muted/70 to-background to-65% lg:scroll-mt-16"
-    >
-      {/* phone: the name gets a line, the progress gets the next */}
-      <div className={cn(MEASURE, 'flex flex-col gap-2 py-3 md:hidden')}>
-        <div className="flex items-center gap-2.5">
-          <span
-            aria-hidden
-            className="shrink-0 text-lg leading-none font-semibold tracking-tight text-muted-foreground/60 tabular-nums"
-          >
+    <div data-paper-row={row.id} data-paper-band={row.id} {...stylex.props(styles.band)}>
+      <div {...stylex.props(styles.measure, styles.bandNarrow)}>
+        <div {...stylex.props(styles.bandNarrowHead)}>
+          <span aria-hidden {...stylex.props(styles.bandNoNarrow)}>
             {no}
           </span>
-          <h2 className="min-w-0 flex-1 truncate text-base leading-tight font-semibold">
-            {row.name}
-          </h2>
-          {ledger('text-lg', 'text-[11px]')}
+          <h2 {...stylex.props(styles.bandNameNarrow)}>{row.name}</h2>
+          {ledger(styles.ledgerLg)}
         </div>
-        <div className="flex items-center gap-2.5">
-          {bar('h-1 min-w-0 flex-1')}
+        <div {...stylex.props(styles.bandNarrowMeter)}>
+          {bar(styles.meterNarrow)}
           {share !== null && (
-            <span className="shrink-0 text-[11px] whitespace-nowrap text-muted-foreground">
+            <span {...stylex.props(styles.share)}>
               {format(m.paperBandShare, { pct: Math.round(share * 100) })}
             </span>
           )}
         </div>
       </div>
-      {/* tablet: one line, worth its 42px and no more */}
-      <div className={cn(MEASURE, 'hidden h-10.5 items-center gap-3.5 md:flex lg:hidden')}>
-        <span
-          aria-hidden
-          className="shrink-0 text-[15px] leading-none font-semibold tracking-tight text-muted-foreground/60 tabular-nums"
-        >
+      <div {...stylex.props(styles.measure, styles.bandMid)}>
+        <span aria-hidden {...stylex.props(styles.bandNoMid)}>
           {no}
         </span>
-        <h2 className="min-w-0 truncate text-sm leading-tight font-semibold">{row.name}</h2>
+        <h2 {...stylex.props(styles.bandNameMid)}>{row.name}</h2>
         {share !== null && (
-          <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+          <span {...stylex.props(styles.share)}>
             {format(m.paperBandShare, { pct: Math.round(share * 100) })}
           </span>
         )}
-        <span className="flex-1" />
-        {ledger('text-base', 'text-xs')}
+        <span {...stylex.props(styles.spacer)} />
+        {ledger(styles.ledgerBase)}
       </div>
-      {/* laptop and wider: the display card the section deserves */}
-      <div className={cn(MEASURE, 'hidden items-center gap-6 py-4 lg:flex')}>
-        <span
-          aria-hidden
-          className="shrink-0 text-3xl leading-none font-semibold tracking-tight text-muted-foreground/50"
-        >
+      <div {...stylex.props(styles.measure, styles.bandWide)}>
+        <span aria-hidden {...stylex.props(styles.bandNoWide)}>
           {no}
         </span>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <h2 className="min-w-0 truncate text-lg leading-tight font-semibold">{row.name}</h2>
-          <div className="flex items-center gap-2.5">
-            {bar('h-0.75 w-24 shrink-0')}
+        <div {...stylex.props(styles.bandWideCol)}>
+          <h2 {...stylex.props(styles.bandNameWide)}>{row.name}</h2>
+          <div {...stylex.props(styles.bandWideMeter)}>
+            {bar(styles.meterWide)}
             {share !== null && (
-              <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+              <span {...stylex.props(styles.share)}>
                 {format(m.paperBandShare, { pct: Math.round(share * 100) })}
               </span>
             )}
           </div>
         </div>
-        <span className="flex-1" />
-        {ledger('text-xl', 'text-xs')}
+        <span {...stylex.props(styles.spacer)} />
+        {ledger(styles.ledgerXl)}
       </div>
     </div>
   )
@@ -284,30 +1201,24 @@ function SubBand({ row, no }: { row: StructureRow; no: string }) {
   const { format } = useI18n()
   const cap = row.cap == null || row.cap === '' ? null : Number(row.cap)
   return (
-    <div
-      data-paper-row={row.id}
-      className="scroll-mt-34 border-b bg-linear-to-r from-muted/45 to-background to-55% lg:scroll-mt-24"
-    >
-      <div className={cn(MEASURE, 'flex h-9 items-center gap-3 lg:h-11 lg:gap-4')}>
-        <span
-          aria-hidden
-          className="shrink-0 text-xs font-semibold text-muted-foreground/70 lg:text-sm"
-        >
+    <div data-paper-row={row.id} {...stylex.props(styles.subBand)}>
+      <div {...stylex.props(styles.measure, styles.subBandRow)}>
+        <span aria-hidden {...stylex.props(styles.subBandNo)}>
           {no}
         </span>
-        <h3 className="min-w-0 truncate text-[13px] font-semibold lg:text-sm">{row.name}</h3>
-        <span className="flex-1" />
-        <span className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
+        <h3 {...stylex.props(styles.subBandName)}>{row.name}</h3>
+        <span {...stylex.props(styles.spacer)} />
+        <span {...stylex.props(styles.ledger)}>
           <span
-            className={cn(
-              'text-sm font-semibold tabular-nums lg:text-base',
-              (row.right === '' || Number(row.right) === 0) && 'text-muted-foreground',
+            {...stylex.props(
+              styles.subBandGot,
+              (row.right === '' || Number(row.right) === 0) && styles.ledgerGotZero,
             )}
           >
             {two(row.right === '' ? 0 : row.right)}
           </span>
           {cap !== null && (
-            <span className="text-xs text-muted-foreground tabular-nums">
+            <span {...stylex.props(styles.ledgerCap)}>
               {format(m.paperCap, { value: trimAmount(String(cap)) })}
             </span>
           )}
@@ -316,14 +1227,6 @@ function SubBand({ row, no }: { row: StructureRow; no: string }) {
     </div>
   )
 }
-
-/**
- * The claims table's columns, shared by its header and rows: three of them
- * on a tablet with the version folded into the content cell, four on a
- * laptop. The header only exists where there are columns to head.
- */
-const CLAIM_COLS =
-  'grid grid-cols-[minmax(0,1fr)_6rem_5.5rem] items-center gap-3 px-4 lg:grid-cols-[minmax(0,1fr)_8.5rem_6rem_5.5rem]'
 
 /**
  * A control the phase has shut, wearing its reason on hover.
@@ -335,12 +1238,12 @@ const CLAIM_COLS =
 function Shut({
   when,
   why,
-  className,
+  xstyle,
   children,
 }: {
   when: boolean
   why: string | null
-  className?: string
+  xstyle?: stylex.StyleXStyles
   children: ReactNode
 }) {
   const { format } = useI18n()
@@ -350,7 +1253,7 @@ function Shut({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span tabIndex={0} className={className}>
+          <span tabIndex={0} {...stylex.props(xstyle)}>
             {children}
           </span>
         </TooltipTrigger>
@@ -452,42 +1355,24 @@ function Question({
 
   const body = (
     <div
-      className={cn(
-        MEASURE,
-        'grid gap-4 py-5 md:grid-cols-[17rem_minmax(0,1fr)] md:gap-6 md:py-6 lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-8 lg:py-7 xl:grid-cols-[21rem_minmax(0,1fr)] xl:gap-10',
-        voided && 'pt-2 opacity-75',
-      )}
+      {...stylex.props(styles.measure, styles.questionBody, voided && styles.questionBodyVoided)}
     >
-      {/* the question itself: what it asks, what it pays, the way in */}
-      <div className="flex min-w-0 flex-col gap-2.5">
-        <div className="flex items-baseline gap-2.5">
-          <span
-            aria-hidden
-            className="shrink-0 text-xs font-semibold text-muted-foreground/70 tabular-nums"
-          >
+      <div {...stylex.props(styles.terms)}>
+        <div {...stylex.props(styles.termsHead)}>
+          <span aria-hidden {...stylex.props(styles.questionNo)}>
             {no}.
           </span>
-          <h3 className="min-w-0 flex-1 text-[15px] leading-snug font-semibold md:text-base">
-            {item.title}
-          </h3>
+          <h3 {...stylex.props(styles.questionTitle)}>{item.title}</h3>
           {counted !== null && Number(counted) > 0 && (
-            <span className="shrink-0 text-[15px] font-semibold whitespace-nowrap tabular-nums md:text-base">
-              {two(counted)}
-            </span>
+            <span {...stylex.props(styles.questionCounted)}>{two(counted)}</span>
           )}
         </div>
-        {description !== '' && <p className="text-sm leading-relaxed text-pretty">{description}</p>}
-        {/* what the question pays and asks for - one line on a phone, a term
-            to a line where there is height to spend - closing with the
-            clause it scores under; the association feature takes that seat
-            next */}
-        <div className="flex flex-col rounded-lg border bg-muted/30 text-xs">
+        {description !== '' && <p {...stylex.props(styles.description)}>{description}</p>}
+        <div {...stylex.props(styles.termsCard)}>
           {terms.length > 0 && (
             <>
-              <p className="px-3 py-2 leading-relaxed text-muted-foreground md:hidden">
-                {terms.join('，')}
-              </p>
-              <ul className="hidden flex-col gap-1.5 px-3 py-2.5 text-muted-foreground md:flex">
+              <p {...stylex.props(styles.termsLine)}>{terms.join('，')}</p>
+              <ul {...stylex.props(styles.termsList)}>
                 {terms.map((term) => (
                   <li key={term}>{term}</li>
                 ))}
@@ -497,69 +1382,64 @@ function Question({
           {routes.length > 0 && (
             <div
               data-testid="question-chain"
-              className={cn(
-                'flex flex-col gap-1 px-3 py-2 text-muted-foreground',
-                terms.length > 0 && 'border-t',
-              )}
+              {...stylex.props(styles.termsRow, terms.length > 0 && styles.termsDivided)}
             >
               {routes.map((route) => (
-                <p key={route.name} className="flex items-baseline gap-2">
-                  <span className="shrink-0">{route.name}</span>
-                  <span className="min-w-0 leading-relaxed">{route.steps.join(' → ')}</span>
+                <p key={route.name} {...stylex.props(styles.routeLine)}>
+                  <span {...stylex.props(styles.keepShort)}>{route.name}</span>
+                  <span {...stylex.props(styles.routeSteps)}>{route.steps.join(' → ')}</span>
                 </p>
               ))}
             </div>
           )}
           <p
-            className={cn(
-              'flex items-baseline gap-2 px-3 py-2 text-muted-foreground',
-              (terms.length > 0 || routes.length > 0) && 'border-t',
+            {...stylex.props(
+              styles.basisRow,
+              (terms.length > 0 || routes.length > 0) && styles.termsDivided,
             )}
           >
-            <span className="shrink-0">{format(m.myEntriesBasis)}</span>
-            <span className="min-w-0 truncate">{format(m.myEntriesBasisSoon)}</span>
+            <span {...stylex.props(styles.keepShort)}>{format(m.myEntriesBasis)}</span>
+            <span {...stylex.props(styles.basisWords)}>{format(m.myEntriesBasisSoon)}</span>
           </p>
         </div>
-        <span className="hidden min-h-2 flex-1 md:block" />
-        {/* the way in and the quota live in the claims list on a phone,
-            where the thumb already is */}
-        <div className="hidden items-center gap-3 md:flex">
+        <span {...stylex.props(styles.termsFoot)} />
+        <div {...stylex.props(styles.wayIn)}>
           {!granted && !recorded && item.maxEntries !== null && (
-            <span className="flex shrink-0 items-baseline gap-1.5 text-xs whitespace-nowrap">
-              <span className="text-muted-foreground">{format(m.myEntriesQuota)}</span>
-              <span className="tabular-nums">
+            <span {...stylex.props(styles.quota)}>
+              <span {...stylex.props(styles.quotaLabel)}>{format(m.myEntriesQuota)}</span>
+              <span {...stylex.props(styles.nums)}>
                 {live.length} / {item.maxEntries}
               </span>
             </span>
           )}
-          <span className="flex-1" />
+          <span {...stylex.props(styles.spacer)} />
           {/* Where there is nothing to press, a badge says why in a word
               rather than a control that exists only to be refused. Three
               reasons, one shape: the quota is used up, somebody else fills
               this one in, or it lands by itself. */}
           {full ? (
-            <Badge variant="secondary" className="shrink-0">
+            <Badge variant="secondary" className={stylex.props(styles.shrinkNone).className}>
               <CircleSlashIcon aria-hidden />
               {format(m.myEntriesAddFull)}
             </Badge>
           ) : granted ? (
-            <Badge variant="secondary" className="shrink-0">
+            <Badge variant="secondary" className={stylex.props(styles.shrinkNone).className}>
               <CheckIcon aria-hidden />
               {format(m.paperEmptyGranted)}
             </Badge>
           ) : recorded ? (
-            <Badge variant="secondary" className="shrink-0">
+            <Badge variant="secondary" className={stylex.props(styles.shrinkNone).className}>
               <ClockIcon aria-hidden />
               {format(m.myEntriesRecorded)}
             </Badge>
           ) : (
             mayAdd && (
-              <Shut when={shut} why={gate?.create.reason ?? null} className="shrink-0">
+              <Shut when={shut} why={gate?.create.reason ?? null} xstyle={styles.shrinkNone}>
                 <Button
                   data-testid="file-claim"
                   data-gate={gate?.create.state ?? 'available'}
                   size="sm"
-                  className={cn('shrink-0', shut && 'pointer-events-none')}
+                  className={stylex.props(styles.shrinkNone, shut && styles.noPointer).className}
                   disabled={busy || shut}
                   onClick={add}
                 >
@@ -572,36 +1452,24 @@ function Question({
         </div>
       </div>
 
-      {/* The claims, a row each, in their own sheet; the row is the way into
-            the drawer. The sheet keeps its head whether or not there is
-            anything under it - a question with nothing filed yet is the same
-            table, empty, not a different thing on the page. The exception is
-            a question granted to everybody: it has no claims to table, ever,
-            so it says so inside a tray instead of under column headings that
-            will never have anything under them. */}
-      <div className="flex min-w-0 flex-col">
+      <div {...stylex.props(styles.claims)}>
         <div
-          className={cn(
-            'flex min-w-0 flex-1 flex-col md:overflow-hidden md:rounded-xl md:border',
+          {...stylex.props(
+            styles.claimsSheet,
             granted
-              ? 'overflow-hidden rounded-xl border border-dashed bg-muted/20'
-              : cn('md:bg-card', live.length > 0 && 'max-md:border-t'),
+              ? styles.claimsSheetGranted
+              : [styles.claimsSheetFilled, live.length > 0 && styles.claimsSheetTopRule],
           )}
         >
           {!granted && (
-            <div
-              className={cn(
-                CLAIM_COLS,
-                'h-8 border-b bg-muted/40 text-xs text-muted-foreground max-md:hidden',
-              )}
-            >
+            <div {...stylex.props(styles.claimHead)}>
               <span>
-                <span className="lg:hidden">{format(m.paperColContentVersion)}</span>
-                <span className="max-lg:hidden">{format(m.paperColContent)}</span>
+                <span {...stylex.props(styles.colToLg)}>{format(m.paperColContentVersion)}</span>
+                <span {...stylex.props(styles.colFromLg)}>{format(m.paperColContent)}</span>
               </span>
-              <span className="max-lg:hidden">{format(m.paperColVersion)}</span>
+              <span {...stylex.props(styles.colFromLg)}>{format(m.paperColVersion)}</span>
               <span>{format(m.paperColStatus)}</span>
-              <span className="text-right">{format(m.paperColScore)}</span>
+              <span {...stylex.props(styles.colRight)}>{format(m.paperColScore)}</span>
             </div>
           )}
           {live.length > 0 ? (
@@ -619,46 +1487,42 @@ function Question({
                 <button
                   type="button"
                   onClick={() => setUnfolded((now) => !now)}
-                  className="flex h-9 w-full cursor-pointer items-center justify-center gap-1.5 border-b text-xs text-muted-foreground transition-colors last:border-b-0 hover:text-foreground md:border-b-0"
+                  {...stylex.props(styles.foldButton)}
                 >
                   {unfolded
                     ? format(m.paperFoldLess)
                     : format(m.paperFoldMore, { count: live.length - 6 })}
                   <ChevronDownIcon
                     aria-hidden
-                    className={cn('size-3.5', unfolded && 'rotate-180')}
+                    className={
+                      stylex.props(styles.foldIcon, unfolded && styles.foldIconOpen).className
+                    }
                   />
                 </button>
               )}
-              {/* the next claim's own seat: it takes whatever room the
-                    filed ones leave, so a question with one claim still
-                    stands as tall as the terms beside it */}
               {mayAdd && (
-                <Shut when={shut} why={gate?.create.reason ?? null} className="flex w-full flex-1">
+                <Shut when={shut} why={gate?.create.reason ?? null} xstyle={styles.addSeat}>
                   <button
                     type="button"
                     data-testid="file-claim"
                     data-gate={gate?.create.state ?? 'available'}
                     disabled={busy || shut}
                     onClick={add}
-                    className={cn(
-                      'flex min-h-11 w-full flex-1 items-center justify-center gap-1.5 text-[13px] font-medium transition-colors max-md:border-b md:bg-muted/20 md:text-xs md:font-normal',
-                      shut
-                        ? 'pointer-events-none text-muted-foreground/60'
-                        : 'cursor-pointer text-foreground md:text-muted-foreground md:hover:bg-accent/40 md:hover:text-foreground',
+                    {...stylex.props(
+                      styles.addRow,
+                      shut ? styles.addRowShut : [styles.addRowOpen, styles.addRowOpenHoverInk],
                     )}
                   >
-                    <PlusIcon aria-hidden className="size-3.5" />
+                    <PlusIcon aria-hidden className={stylex.props(styles.addIcon).className} />
                     {format(declared ? m.entryDeclare : m.paperEmptyFile)}
                   </button>
                 </Shut>
               )}
-              {/* the quota, spoken where the next claim would have gone */}
               {full && (
-                <span className="flex h-10 items-center justify-center gap-1.5 text-xs text-muted-foreground max-md:border-b md:hidden">
+                <span {...stylex.props(styles.fullNote)}>
                   {format(m.myEntriesAddFull)}
                   {item.maxEntries !== null && (
-                    <span className="tabular-nums">
+                    <span {...stylex.props(styles.nums)}>
                       {live.length} / {item.maxEntries}
                     </span>
                   )}
@@ -669,25 +1533,18 @@ function Question({
             // why the table stands empty: never filed, or never this
             // person's to file. Staff record theirs, so the notice here
             // goes the moment the first one lands.
-            // tinted, not white: an empty table body that matches the
-            // page reads as a table that failed to draw its rows
-            <div
-              className={cn(
-                'flex min-h-28 flex-1 flex-col items-center justify-center gap-2.5 p-4',
-                !granted && 'bg-muted/25 max-md:rounded-xl max-md:border',
-              )}
-            >
-              <span className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <div {...stylex.props(styles.emptyTray, !granted && styles.emptyTrayFrame)}>
+              <span {...stylex.props(styles.emptyBadge)}>
                 {granted ? (
-                  <CheckIcon aria-hidden className="size-4" />
+                  <CheckIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
                 ) : recorded ? (
                   // waiting on somebody else, which is not the same as done
-                  <ClockIcon aria-hidden className="size-4" />
+                  <ClockIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
                 ) : (
-                  <FileTextIcon aria-hidden className="size-4" />
+                  <FileTextIcon aria-hidden className={stylex.props(styles.emptyIcon).className} />
                 )}
               </span>
-              <span className="text-sm font-medium">
+              <span {...stylex.props(styles.emptyTitle)}>
                 {format(
                   granted
                     ? m.paperEmptyGranted
@@ -703,7 +1560,7 @@ function Question({
                     data-gate={gate?.create.state ?? 'available'}
                     size="xs"
                     variant="outline"
-                    className={cn(shut && 'pointer-events-none')}
+                    className={stylex.props(shut && styles.noPointer).className}
                     disabled={busy || shut}
                     onClick={add}
                   >
@@ -712,7 +1569,7 @@ function Question({
                   </Button>
                 </Shut>
               ) : (
-                <span className="text-xs leading-relaxed text-muted-foreground">
+                <span {...stylex.props(styles.emptyHint)}>
                   {format(
                     voided
                       ? m.itemVoided
@@ -734,43 +1591,31 @@ function Question({
   return (
     <div
       data-paper-row={row.id}
-      className={cn('scroll-mt-34 border-b lg:scroll-mt-24', voided && 'bg-muted/15')}
+      {...stylex.props(styles.question, voided && styles.questionVoided)}
     >
       {voided ? (
         <>
-          {/* A withdrawn question stays on the paper - what was filed under
-              it is still the reader's, and still theirs to argue about - but
-              it is folded away and greyed, and it says on its face why it
-              was withdrawn. */}
           <button
             type="button"
             onClick={() => setOpened((now) => !now)}
-            className={cn(MEASURE, 'flex cursor-pointer items-center gap-3 py-3 text-left')}
+            {...stylex.props(styles.measure, styles.voidedHead)}
           >
-            <span
-              aria-hidden
-              className="shrink-0 text-xs font-semibold text-muted-foreground/60 tabular-nums"
-            >
+            <span aria-hidden {...stylex.props(styles.voidedNo)}>
               {no}.
             </span>
-            <h3 className="max-w-64 shrink-0 truncate text-sm font-medium text-muted-foreground line-through decoration-muted-foreground/40">
-              {item.title}
-            </h3>
-            <span className="shrink-0 rounded-md border bg-background px-1.5 py-0.5 text-[11px] whitespace-nowrap text-muted-foreground">
-              {format(m.itemsStatusVoided)}
-            </span>
+            <h3 {...stylex.props(styles.voidedTitle)}>{item.title}</h3>
+            <span {...stylex.props(styles.voidedBadge)}>{format(m.itemsStatusVoided)}</span>
             {item.voidReason !== null && item.voidReason.trim() !== '' && (
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground max-md:hidden">
+              <span {...stylex.props(styles.voidedWhy)}>
                 {format(m.paperVoidedWhy, { reason: item.voidReason })}
               </span>
             )}
-            <span className="flex-1" />
+            <span {...stylex.props(styles.spacer)} />
             <ChevronDownIcon
               aria-hidden
-              className={cn(
-                'size-4 shrink-0 text-muted-foreground transition-transform',
-                opened && 'rotate-180',
-              )}
+              className={
+                stylex.props(styles.voidedChevron, opened && styles.foldIconOpen).className
+              }
             />
           </button>
           <Appear show={opened} collapse>
@@ -831,12 +1676,12 @@ function ClaimRow({
     )
   const verWhen = (
     <>
-      <span className="shrink-0">
+      <span {...stylex.props(styles.keepShort)}>
         {entry.status === 'draft' || revisionNo === undefined
           ? format(m.paperUnsubmitted)
           : format(m.entryVersionNo, { no: revisionNo })}
       </span>
-      <span className="min-w-0 truncate tabular-nums">{when(entry)}</span>
+      <span {...stylex.props(styles.claimWhenClock)}>{when(entry)}</span>
     </>
   )
   return (
@@ -845,38 +1690,26 @@ function ClaimRow({
       data-testid="claim-row"
       data-files={String(files)}
       onClick={onOpen}
-      className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b py-2.5 text-left transition-colors last:border-b-0 md:grid-cols-[minmax(0,1fr)_6rem_5.5rem] md:px-4 md:py-3.5 lg:grid-cols-[minmax(0,1fr)_8.5rem_6rem_5.5rem] hover:bg-accent/50"
+      {...stylex.props(styles.claimRow)}
     >
-      <span className="flex min-w-0 flex-col gap-1">
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="max-w-44 shrink-0 truncate text-sm font-medium">
-            {lead === '' ? item.title : lead}
-          </span>
-          {/* the rest of the identity stays on a phone too: without it a
-              claim named by its second and third fields reads as nothing */}
-          {sub !== '' && (
-            <span className="min-w-0 truncate text-xs text-muted-foreground">{sub}</span>
-          )}
+      <span {...stylex.props(styles.claimMain)}>
+        <span {...stylex.props(styles.claimIdentity)}>
+          <span {...stylex.props(styles.claimLead)}>{lead === '' ? item.title : lead}</span>
+          {sub !== '' && <span {...stylex.props(styles.claimSub)}>{sub}</span>}
         </span>
         {/* the folded cells, under the content where the width folds them */}
-        <span className="flex min-w-0 items-center gap-2.5 md:hidden">
+        <span {...stylex.props(styles.claimFoldNarrow)}>
           <EntryStanding
             status={entry.status}
             revised={entry.currentReviewInstanceId !== null}
             asked={entry.supplement !== null}
           />
-          <span className="flex min-w-0 items-baseline gap-2 text-[11px] whitespace-nowrap text-muted-foreground">
-            {verWhen}
-          </span>
+          <span {...stylex.props(styles.claimWhenNarrow)}>{verWhen}</span>
         </span>
-        <span className="hidden min-w-0 items-baseline gap-2 text-[11px] whitespace-nowrap text-muted-foreground md:flex lg:hidden">
-          {verWhen}
-        </span>
+        <span {...stylex.props(styles.claimWhenMid)}>{verWhen}</span>
       </span>
-      <span className="hidden min-w-0 items-baseline gap-2 text-xs whitespace-nowrap text-muted-foreground lg:flex">
-        {verWhen}
-      </span>
-      <span className="min-w-0 max-md:hidden">
+      <span {...stylex.props(styles.claimWhenWide)}>{verWhen}</span>
+      <span {...stylex.props(styles.claimStandingCell)}>
         <EntryStanding
           status={entry.status}
           revised={entry.currentReviewInstanceId !== null}
@@ -884,8 +1717,8 @@ function ClaimRow({
         />
       </span>
       {score !== null ? (
-        <span className="flex flex-col items-end gap-0.5 whitespace-nowrap md:flex-row md:items-baseline md:justify-end md:gap-1.5">
-          <span className="text-[10.5px] text-muted-foreground md:text-xs">
+        <span {...stylex.props(styles.claimScore)}>
+          <span {...stylex.props(styles.claimScoreWord)}>
             {format(
               ok
                 ? m.entryScoreCounted
@@ -894,19 +1727,14 @@ function ClaimRow({
                   : m.entryScoreIfApproved,
             )}
           </span>
-          <span
-            className={cn(
-              'text-sm tabular-nums',
-              ok ? 'font-semibold' : 'font-medium text-muted-foreground',
-            )}
-          >
+          <span {...stylex.props(styles.claimScoreValue, ok && styles.claimScoreValueOk)}>
             {trimAmount(score)}
           </span>
         </span>
       ) : (
         <span />
       )}
-      <ChevronRightIcon aria-hidden className="size-3.5 text-muted-foreground/60 md:hidden" />
+      <ChevronRightIcon aria-hidden className={stylex.props(styles.claimChevron).className} />
     </button>
   )
 }

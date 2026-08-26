@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -17,6 +18,19 @@ import { entryRefusalMessage } from './refusals.ts'
 // again, and that one is a different button. A single "try again" would have
 // to guess which of the two somebody meant, and it would guess wrong for
 // whoever was sure.
+
+const styles = stylex.create({
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  body: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+})
 
 export function AppealDialog({
   open,
@@ -63,7 +77,7 @@ export function AppealDialog({
       description={format(m.entryAppealHint)}
       onClose={onClose}
       footer={
-        <div className="flex justify-end gap-2">
+        <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
@@ -73,7 +87,7 @@ export function AppealDialog({
         </div>
       }
     >
-      <div className="flex flex-col gap-4">
+      <div {...stylex.props(styles.body)}>
         <Field label={format(m.entryAppealReason)}>
           {(id) => (
             <Textarea
