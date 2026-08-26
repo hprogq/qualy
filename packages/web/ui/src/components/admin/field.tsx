@@ -1,18 +1,140 @@
 import { useId, type ReactNode } from 'react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '../../theme/tokens.stylex.ts'
 import { Checkbox } from '../checkbox.tsx'
 import {
   Field as FormField,
-  FieldContent as FormFieldContent,
   FieldDescription as FormFieldDescription,
   FieldLabel as FormFieldLabel,
-  FieldTitle as FormFieldTitle,
 } from '../field.tsx'
 import { RadioGroup as RadioGroupRoot, RadioGroupItem } from '../radio-group.tsx'
 
 // a labelled control; the generated id ties label to input, which is what
 // makes these screens reachable by name in a browser test and by a screen
 // reader in real use
+
+const styles = stylex.create({
+  requiredMark: {
+    paddingLeft: 2,
+    color: tokens.danger,
+  },
+  group: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  legend: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  // a legend is not part of the flow box, so its spacing is its own
+  legendSpaced: {
+    marginBottom: 8,
+  },
+  emptyNote: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  optionGrid: {
+    display: 'grid',
+    gap: 4,
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  optionRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderRadius: tokens.radiusMd,
+    paddingInline: 8,
+    paddingBlock: 4,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  optionRowLive: {
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+  },
+  optionRowDisabled: {
+    opacity: 0.5,
+  },
+  controlNudge: {
+    marginTop: 2,
+  },
+  optionText: {
+    minWidth: 0,
+  },
+  optionLabel: {
+    display: 'block',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  optionHint: {
+    display: 'block',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  // a radio's hint wraps: the choice hangs on the difference between hints,
+  // and an ellipsis would hide exactly the words that differ
+  optionHintWrap: {
+    display: 'block',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  // one choice as a bordered card: the row is one object - name, hint and
+  // the radio that answers for it - and the tint says which one is chosen.
+  // The admin layer knows the selected value, so the checked face is plain
+  // state here, not a :has() dig through the DOM.
+  card: {
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 16,
+    fontSize: '0.875rem',
+    lineHeight: 1.375,
+    userSelect: 'none',
+  },
+  cardChecked: {
+    borderColor: tokens.selectedBorder,
+    backgroundColor: tokens.selectedSurface,
+  },
+  cardBody: {
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 4,
+    minWidth: 0,
+  },
+  cardTitle: {
+    fontWeight: 500,
+  },
+  cardHint: {
+    fontWeight: 400,
+    lineHeight: 1.5,
+    textAlign: 'left',
+    color: tokens.mutedForeground,
+  },
+})
+
 /**
  * The asterisk a required label wears.
  *
@@ -24,7 +146,7 @@ import { RadioGroup as RadioGroupRoot, RadioGroupItem } from '../radio-group.tsx
  */
 export function RequiredMark() {
   return (
-    <span aria-hidden className="pl-0.5 text-destructive">
+    <span aria-hidden {...stylex.props(styles.requiredMark)}>
       *
     </span>
   )
@@ -92,36 +214,32 @@ export function CheckboxGroup({
     onChange([...next])
   }
   return (
-    <fieldset className="flex flex-col gap-2" disabled={disabled}>
-      <legend className="text-sm font-medium">{legend}</legend>
+    <fieldset {...stylex.props(styles.group)} disabled={disabled}>
+      <legend {...stylex.props(styles.legend)}>{legend}</legend>
       {options.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{emptyLabel}</p>
+        <p {...stylex.props(styles.emptyNote)}>{emptyLabel}</p>
       ) : (
-        <div className="grid gap-1 sm:grid-cols-2">
-          {options.map((option) => (
-            <label
-              key={option.value}
-              className={cn(
-                'flex items-start gap-2 rounded-md px-2 py-1 text-sm',
-                option.disabled || disabled ? 'opacity-50' : 'hover:bg-muted/50',
-              )}
-            >
-              <Checkbox
-                className="mt-0.5"
-                checked={chosen.has(option.value)}
-                disabled={option.disabled ?? disabled}
-                onCheckedChange={() => toggle(option.value)}
-              />
-              <span className="min-w-0">
-                <span className="block truncate">{option.label}</span>
-                {option.hint && (
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {option.hint}
-                  </span>
-                )}
-              </span>
-            </label>
-          ))}
+        <div {...stylex.props(styles.optionGrid)}>
+          {options.map((option) => {
+            const off = (option.disabled ?? false) || (disabled ?? false)
+            return (
+              <label
+                key={option.value}
+                {...stylex.props(styles.optionRow, off ? styles.optionRowDisabled : styles.optionRowLive)}
+              >
+                <Checkbox
+                  className={stylex.props(styles.controlNudge).className}
+                  checked={chosen.has(option.value)}
+                  disabled={option.disabled ?? disabled}
+                  onCheckedChange={() => toggle(option.value)}
+                />
+                <span {...stylex.props(styles.optionText)}>
+                  <span {...stylex.props(styles.optionLabel)}>{option.label}</span>
+                  {option.hint && <span {...stylex.props(styles.optionHint)}>{option.hint}</span>}
+                </span>
+              </label>
+            )
+          })}
         </div>
       )}
     </fieldset>
@@ -151,39 +269,40 @@ export function RadioGroup({
 }) {
   if (variant === 'cards') {
     return (
-      <fieldset className="flex flex-col gap-2" disabled={disabled}>
-        {/* a legend is not part of the flow box, so its spacing is its own */}
-        <legend className="mb-2 text-sm font-medium">{legend}</legend>
+      <fieldset {...stylex.props(styles.group)} disabled={disabled}>
+        <legend {...stylex.props(styles.legend, styles.legendSpaced)}>{legend}</legend>
         <RadioGroupRoot
           name={name}
           value={selected}
           onValueChange={onChange}
           {...(disabled !== undefined ? { disabled } : {})}
+          // the group adapter still speaks Tailwind inside, so a same-property
+          // override at its boundary stays a class string until it migrates
           className="grid gap-2"
         >
-          {options.map((option) => (
-            <FormFieldLabel key={option.value}>
-              {/* a card is one choice, not a paragraph with a control beside
-                  it: the same has- modifier the variant uses, so this wins */}
-              <FormField
-                orientation="horizontal"
-                className="has-[>[data-slot=field-content]]:items-center"
+          {options.map((option) => {
+            const on = selected === option.value
+            return (
+              <label
+                key={option.value}
+                data-picked={on}
+                {...stylex.props(styles.card, on && styles.cardChecked)}
               >
-                <FormFieldContent>
-                  <FormFieldTitle>{option.label}</FormFieldTitle>
-                  {option.hint && <FormFieldDescription>{option.hint}</FormFieldDescription>}
-                </FormFieldContent>
+                <span {...stylex.props(styles.cardBody)}>
+                  <span {...stylex.props(styles.cardTitle)}>{option.label}</span>
+                  {option.hint && <span {...stylex.props(styles.cardHint)}>{option.hint}</span>}
+                </span>
                 <RadioGroupItem value={option.value} disabled={option.disabled ?? disabled} />
-              </FormField>
-            </FormFieldLabel>
-          ))}
+              </label>
+            )
+          })}
         </RadioGroupRoot>
       </fieldset>
     )
   }
   return (
-    <fieldset className="flex flex-col gap-2" disabled={disabled}>
-      <legend className="text-sm font-medium">{legend}</legend>
+    <fieldset {...stylex.props(styles.group)} disabled={disabled}>
+      <legend {...stylex.props(styles.legend)}>{legend}</legend>
       <RadioGroupRoot
         name={name}
         value={selected}
@@ -191,27 +310,27 @@ export function RadioGroup({
         {...(disabled !== undefined ? { disabled } : {})}
         className="grid gap-1 sm:grid-cols-2"
       >
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className={cn(
-              'flex items-start gap-2 rounded-md px-2 py-1 text-sm',
-              option.disabled || disabled ? 'opacity-50' : 'hover:bg-muted/50',
-            )}
-          >
-            <RadioGroupItem
-              className="mt-0.5"
-              value={option.value}
-              disabled={option.disabled ?? disabled}
-            />
-            <span className="min-w-0">
-              <span className="block truncate">{option.label}</span>
-              {option.hint && (
-                <span className="block text-xs text-muted-foreground">{option.hint}</span>
-              )}
-            </span>
-          </label>
-        ))}
+        {options.map((option) => {
+          const off = (option.disabled ?? false) || (disabled ?? false)
+          return (
+            <label
+              key={option.value}
+              {...stylex.props(styles.optionRow, off ? styles.optionRowDisabled : styles.optionRowLive)}
+            >
+              <RadioGroupItem
+                className={stylex.props(styles.controlNudge).className}
+                value={option.value}
+                disabled={option.disabled ?? disabled}
+              />
+              <span {...stylex.props(styles.optionText)}>
+                <span {...stylex.props(styles.optionLabel)}>{option.label}</span>
+                {option.hint && (
+                  <span {...stylex.props(styles.optionHintWrap)}>{option.hint}</span>
+                )}
+              </span>
+            </label>
+          )
+        })}
       </RadioGroupRoot>
     </fieldset>
   )

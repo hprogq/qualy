@@ -335,11 +335,13 @@
     width: 1.5rem;
     height: 1.5rem;
   }
-  [data-slot='empty-description'] a {
+  [data-slot='empty-description'] a,
+  [data-slot='field-description'] a {
     text-decoration: underline;
     text-underline-offset: 4px;
   }
-  [data-slot='empty-description'] a:hover {
+  [data-slot='empty-description'] a:hover,
+  [data-slot='field-description'] a:hover {
     color: var(--q-primary);
   }
 }

@@ -18,6 +18,10 @@
   /* 0.556 was shadcn's default and misses WCAG AA on the tinted panels this
      product puts secondary text on; 0.54 clears 4.5:1 on every surface here */
   --q-muted-foreground: oklch(0.54 0 0);
+  /* the tint a chosen option wears: a whisper of the primary, stronger on
+     the edge than the fill, re-balanced for dark where 5% vanishes */
+  --q-selected-border: color-mix(in oklab, var(--q-primary) 30%, transparent);
+  --q-selected-surface: color-mix(in oklab, var(--q-primary) 5%, transparent);
   --q-radius-lg: 0.625rem;
   --q-radius-md: calc(var(--q-radius-lg) - 2px);
   --q-radius-sm: calc(var(--q-radius-lg) - 4px);
@@ -36,4 +40,6 @@
   --q-primary-foreground: oklch(0.205 0 0);
   --q-danger: oklch(0.704 0.191 22.216);
   --q-muted-foreground: oklch(0.708 0 0);
+  --q-selected-border: color-mix(in oklab, var(--q-primary) 20%, transparent);
+  --q-selected-surface: color-mix(in oklab, var(--q-primary) 10%, transparent);
 }

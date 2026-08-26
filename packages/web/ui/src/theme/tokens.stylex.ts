@@ -18,6 +18,8 @@ export const tokens = stylex.defineVars({
   primaryForeground: 'var(--q-primary-foreground)',
   danger: 'var(--q-danger)',
   mutedForeground: 'var(--q-muted-foreground)',
+  selectedBorder: 'var(--q-selected-border)',
+  selectedSurface: 'var(--q-selected-surface)',
   radiusSm: 'var(--q-radius-sm)',
   radiusMd: 'var(--q-radius-md)',
   radiusLg: 'var(--q-radius-lg)',
