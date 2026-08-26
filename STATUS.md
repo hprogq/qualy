@@ -9121,3 +9121,50 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **验收(全部真实执行)**:typecheck 零错;node **839** passed | 17 skipped;浏览器 25
   files / **174 passed** 连续两轮;build 成功;生产 smoke 干净退出;prettier 通过(.mcp.json
   除外)。M6.5 型 runner 派发失败零复现。M7 未开始。
+
+## UI 平台 M7-A:批次/阶段管理纵切迁 StyleX(2026-08-26)
+
+- **范围**:assessment 管理侧批次/阶段家族全量——共享层 table 语义包装器、phase 家族
+  (PhaseRow/PhaseTimelineEditor/PhaseDetailsPanel/PhaseDialogs)、batch 家族(Screen/Card/
+  Flow/Progress/Switcher/两 ContextBar/StatusBadge/SettingsForm)、页面(BatchListPage/
+  BatchOverviewPage/RosterPanel/NewBatchForm)。Entry/Item(M7-B)与 Review(M8)未触碰。
+  业务语义全冻结:阶段排序/startRule/endRule/advancePhase/version 乐观并发/query keys/
+  useBatchLive/i18n 与全部 data-testid 契约逐字保留,浏览器断言零弱化。
+- **共享层裁决**:①table 迁 StyleX——切片需要行级同属性覆盖(ended/wrong 行态、fixed 布局、
+  seam 行),每个部件开 `xstyle` 席位,className 留 legacy 逃生口;caller-content 结构规则
+  (末行去边、含 aria-expanded 行着色、checkbox 列内边距)入 theme.css components 层。
+  ②Collapsible 零样式 Radix 壳,裁决 DEFER 到 M9。③Timeline 保持 Tailwind 内部实现:其部件
+  靠 orientation data 属性自我布局,消费端覆盖按层序契约留 utility 字符串(BatchFlow 内注明)。
+  ④Pagination/InputGroup/ToggleGroup 同理为 utility 适配器边界,覆盖不迁。⑤FieldGroup 补上
+  产品组件契约规定的 xstyle 席位(内部 gap 是 StyleX,className 层序覆盖并不可靠)。
+  ⑥PageContainer 消费者全数改 xstyle 后 legacy className 逃生口**删除**(全仓零消费实证)。
+- **语义色令牌**:standing 色从裸 palette 类(emerald/amber)收敛为 --q-warning/--q-success
+  - foreground 对(light amber/emerald 500 基色 + 700 前景,dark 只翻转前景为 300 档);
+    中途一次真事故:两对令牌只落了 .dark 前景覆盖、:root 基值漏写,var() 解析为空导致全部
+    绿色透明消失(用户现场报告),补 :root 后即恢复——教训:成对令牌必须同笔写完两个作用域。
+    BatchProgress 的 soon 档从 amber-600/400 归一到 warningForeground(700/300,一档之差,
+    与 StatusBadge pending 同源)。
+- **显式状态替代**:BatchCard 卡级 group-hover(页脚增亮+箭头位移)与 StageBar 分段
+  group-hover/segment(名字浮现+条增高)改 useState 悬停;BatchSwitcher 触发器
+  data-[state=open] 改用已有 open 状态;PhaseRow 铅笔、SettingsForm 的 divide-y(实际单行
+  恒渲染,直接删除)同理。动画三处(StatusBadge ping/BatchProgress 呼吸/BatchFlow ping)
+  stylex.keyframes + prefers-reduced-motion 条件。
+- **度量**:切片 17 文件 className ~340 → 字面 12(BatchFlow 7 + BatchListPage 3 +
+  Switcher/PhaseContextBar 各 1,全部为上述注明的适配器边界);stylex.props 295;cn 仅
+  BatchFlow(Timeline 边界);业务 @mantine import 0;新 !important 0;PageContainer/Empty/
+  Table/FieldGroup/BatchProgress/StatusBadge/BatchFlow/PhaseContextBar 的 xstyle 消费落地。
+  Select 宽度:切片内零残留;剩余 3 处在 ItemConfigEditor/Choice(M7-B)与 ReviewInboxPage
+  (M8)。PhaseContextBar 迁毕后发现全仓零消费者(疑为 M7-B 页面预留),已记录。
+- **日期子系统判定:KEEP CURRENT DATE SUBSYSTEM**——DateTimePicker/DateRangePicker 在
+  ScheduleDialog/SettingsForm 中以纯 props 消费,迁移全程零摩擦、零内部断言;@mantine/dates
+  与 dayjs 未引入,无 ADR 必要。
+- **视觉走查**:15 场景(列表明/暗/414、概览明/暗/414 横滑 strip、阶段表明/暗/414 卡片、
+  设置明/暗、名册明/暗、切换器菜单明/暗;fixture 含超长批次名、四种 standing、未排期
+  entryNote)。绿色/琥珀 standing 色、行态、seam、当前阶段 pill、倒计时全部如前。零回归。
+- **runner 备案**:全量浏览器套件第 1/2 轮 button.browser「variants paint from the shared
+  palette」失败,值恰为 q-primary hover mix(oklch 0.205/0.8),失败截图显示 primary 按钮
+  处于 hover 渲染——CDP 指针停驻视口左上(前序文件点过 context bar 返回键同一坐标)所致的
+  指针残留,单跑/与 batch-admin 连跑/第 3、4 轮全量均绿。未弱化测试,按协议记录。
+- **验收(全部真实执行)**:typecheck 零错;node 839 passed | 17 skipped;浏览器 25 files /
+  **174 passed** 连续两轮;build 成功;生产 smoke 干净退出(/health、壳、manifest、brotli
+  资源、SIGTERM 0);prettier 通过(.mcp.json 除外)。M7-B(Entry/Item)未开始。
