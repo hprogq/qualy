@@ -8967,3 +8967,28 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
   xstyle 契约 3 + cascade 让位 1 + alert tone 1 + probe 2 重排);`pnpm build` 成功;生产
   smoke 全过(探针/壳/manifest/brotli/SIGTERM 退出 0);prettier 全仓通过(.mcp.json 除外,
   用户本地文件不动)。
+
+## UI 平台 M6 第一刀:RBAC Roles/RoleEditor 竖切迁 StyleX(2026-08-26)
+
+- **范围**:RolesPage / RoleEditor / NewRoleForm 三件全量;业务(query/mutation、version 乐观
+  并发、locked 语义、任命门控、query-string 选中、i18n、路由)零改动,既有 12 条 roles 相关
+  浏览器用例零改动通过即为证。
+- **共享层直接受益**:RolesPage 手搓的角色列表(hairline 行/hover/选中面/badge 声调/计数)
+  与 M5 Rail/RailRow 语义逐项吻合,整段删除换共享件;其余布局(19rem 分栏、权限 xl 双栏、
+  堆叠、quiet 段落、facts 面板底)全部 semantic HTML + StyleX,tokens 经 @qualy/ui/theme/
+  tokens.stylex 首次被业务插件消费(rbac 补 @stylexjs/stylex 依赖)。搜索框尺寸以编译后
+  StyleX 类穿 input 适配器边界(该适配器 className 直落 input 槽、无内部 utility 冲突)。
+- **xstyle 实战结论**:该 slice **零处需要覆盖共享组件默认样式**——Field/PickGrid/PickList/
+  Segmented/FormDialog/ConfirmDialog/EditorHead/Facts/SaveBar/ModeChoice/Blank/AsyncSection
+  原样即合身;xstyle 席位保持零使用(机制本身由 M5 的 xstyle-contract 钉住)。共享层无一处
+  为 Roles 反向修改。
+- **度量**:className 34→1(唯一一处携带编译 StyleX 类,零 Tailwind);cn 3→0;cva 0→0;
+  业务直接 Mantine import 0;新 !important 0;新 unsafe cast 0;stylex.props 23 处。
+- **补测**:活跃角色改权限 → SaveBar 保存 → 影响面确认框 → 确认后 payload 带 version 与
+  终态 codes(identity 套件 +1,共 13)。
+- **视觉走查**:9 场景截图逐张审看(列表+权限明暗、可担任、可任命门控、锁定角色、新建
+  对话框、暗色删除确认、414 窄屏、空列表、长名字/多选中),零回归;RailRow 采纳带来 2px
+  行距收紧(共享节奏,记录不回调)。
+- **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 24 files /
+  **165 passed**(164 + 1,零删除零弱化,连续两轮);build 成功;生产 smoke 全过;prettier
+  通过(.mcp.json 除外,用户本地文件不动)。Users/Organization/Shell 未开始。
