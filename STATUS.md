@@ -8924,3 +8924,46 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
   级捕获零事件而 click() 报成功);⑦org-admin 补选项渲染等待(原为点开即同步计数)。
 - **验收**:typecheck 零错;node 838 passed | 17 skipped;浏览器 **连续三轮全量 156/156**;
   build 成功。**screenshots** 仅存失败现场且已 gitignore,tests 根下历史遗留 png 清除。
+
+## UI 平台 M5:共享产品层整体迁 StyleX,xstyle 成为正式扩展 API(2026-08-26)
+
+- **范围**:admin 四件(page/async/field/dialog)、screen 五件(shell/sections/pick/rail/
+  blank)、PageContainer、PersonCell、Steps、field 系统(field.tsx)、Empty/Alert(admin 的
+  结构基底)、Motion 件残余样式(ticker、reveal 的 CountdownRing/DoneMark)。**缓迁并记录
+  理由**:card(唯一消费者 LoginPage→M6)、pagination/breadcrumb/timeline(唯一消费者在
+  assessment→M7)、input-group(样式整体是对 vendor input DOM 的补偿,归 adapter 族)、
+  button-group(零消费者,M9 删除候选)。业务页零改动。
+- **层序裁决(前置)**:utilities 移到 StyleX priority 层**之后**(index.html/app.css/
+  cascade-layers.ts 三处同笔)。旧世界消费者 className 与组件类同层、由 tailwind-merge 裁决
+  且消费者赢;若 priority 压过 utilities,业务页现存的每一处同属性覆盖(ItemConfigEditor 对
+  Empty 的整套紧凑化、DoneMark size-12、'font-normal' 标签等)都会静默反转。迁移窗口契约由
+  CascadeYieldProbe + 浏览器测试钉住;M9 删除 utility 层后该顺序自然失义。
+- **xstyle API 规则(会中新增,已入 docs/stylex.md)**:Qualy 产品组件的正式样式扩展是
+  `xstyle?: StyleXStyles`(spread 末位,属性级合成);`className` 只作 legacy/interop 逃生口
+  且必须注明;禁用 `style` 命名。M5 内 23 个产品组件带 xstyle;仍保留 className 的 6 个
+  (PageContainer/Empty 族/Alert 族/AsyncSection/Blank/DoneMark)各有真实 Tailwind 业务消费
+  者;PageContainer 的 xstyle 用 `StyleXStylesWithout` 锁宽度契约(size prop 的领地)。
+  组合契约由 xstyle-contract.browser.test 钉住(覆盖基值/未触属性存活/穿透组合链)。
+- **选择器迷宫 → 显式状态**(§8):Field 以 context 携带 orientation/hasContent/inContent,
+  has-[…] 全部退场;FieldLabel 改原生 label 全量 StyleX;admin 卡片选中态由已知的 selected
+  值直接驱动(新 tokens --q-selected-border/surface,明暗各自配比)。已死选择器(legend 相邻
+  负 margin、data-invalid/data-disabled 钩、nth-last-2)不复刻,列入报告。调用方内容的浅层
+  后代规则(alert 图标席位、empty/field 描述内链接)集中 theme.css components 层,循 M3M
+  图标几何惯例。
+- **视觉走查修复两处**:①ModeChoice 选项自 M3M 起竖排挤压——Mantine Radio.Group 根是
+  InputWrapper、子项在无样式 inner 盒里,根上的 flex 从未生效;改为组件自持行容器。
+  ②destructive Feedback 文字失色——variant 色放在 components 层被自身 StyleX(priority 层)
+  压住;改为 Alert 经 context 传 tone、描述按状态取色,并入 theme 套件计算断言。走查覆盖
+  5 场景 × 明暗 + 2 窄屏(414px)截图逐张审看。
+- **上游档案**:docs/notes/mantine-upstream.md 收 M4M 四条 issue-ready 复现(className 复制
+  到 inner、role/describedby 硬写、focus-trap 随 ref 身份重抓焦、Target 覆盖显式 id)与
+  四条行为差异备忘(含本轮 Radio.Group inner 盒)。
+- **质量表**:业务代码 Mantine import 0;产品层 Mantine 布局件/style props 0;M5 范围
+  Tailwind 残余 7 处 class 字符串(全部是向未迁适配器的同属性边界覆盖:sheet 宽度/footer
+  方向、RadioGroup root 网格、avatar 配色,各带注释);cn/cva 在 M5 范围 0;新增
+  !important 0;vendor 细节泄漏 0(产品件不识 data-mantine-*)。
+- **验收(全部真实执行)**:`pnpm typecheck` 零错误;`pnpm test` = 838 passed | 17 skipped;
+  `pnpm test:browser` = 24 files / **164 passed**(154 原有零删除零弱化 + field 行为 3 +
+  xstyle 契约 3 + cascade 让位 1 + alert tone 1 + probe 2 重排);`pnpm build` 成功;生产
+  smoke 全过(探针/壳/manifest/brotli/SIGTERM 退出 0);prettier 全仓通过(.mcp.json 除外,
+  用户本地文件不动)。

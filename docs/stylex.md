@@ -575,8 +575,7 @@ official extension seat:
 type Props = {
   xstyle?: StyleXStyles
 }
-
-<div {...stylex.props(styles.root, xstyle)} />
+;<div {...stylex.props(styles.root, xstyle)} />
 ```
 
 - The prop is named `xstyle`, never `style` — React DOM already owns

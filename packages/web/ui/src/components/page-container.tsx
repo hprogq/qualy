@@ -44,11 +44,6 @@ export function PageContainer({
 }) {
   const sx = stylex.props(styles.root, size !== 'full' && styles[size], xstyle)
   return (
-    <div
-      data-slot="page-container"
-      {...props}
-      {...sx}
-      className={clsx(sx.className, className)}
-    />
+    <div data-slot="page-container" {...props} {...sx} className={clsx(sx.className, className)} />
   )
 }

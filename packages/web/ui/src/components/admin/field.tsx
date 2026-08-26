@@ -225,7 +225,10 @@ export function CheckboxGroup({
             return (
               <label
                 key={option.value}
-                {...stylex.props(styles.optionRow, off ? styles.optionRowDisabled : styles.optionRowLive)}
+                {...stylex.props(
+                  styles.optionRow,
+                  off ? styles.optionRowDisabled : styles.optionRowLive,
+                )}
               >
                 <Checkbox
                   className={stylex.props(styles.controlNudge).className}
@@ -315,7 +318,10 @@ export function RadioGroup({
           return (
             <label
               key={option.value}
-              {...stylex.props(styles.optionRow, off ? styles.optionRowDisabled : styles.optionRowLive)}
+              {...stylex.props(
+                styles.optionRow,
+                off ? styles.optionRowDisabled : styles.optionRowLive,
+              )}
             >
               <RadioGroupItem
                 className={stylex.props(styles.controlNudge).className}
@@ -324,9 +330,7 @@ export function RadioGroup({
               />
               <span {...stylex.props(styles.optionText)}>
                 <span {...stylex.props(styles.optionLabel)}>{option.label}</span>
-                {option.hint && (
-                  <span {...stylex.props(styles.optionHintWrap)}>{option.hint}</span>
-                )}
+                {option.hint && <span {...stylex.props(styles.optionHintWrap)}>{option.hint}</span>}
               </span>
             </label>
           )
