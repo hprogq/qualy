@@ -10,7 +10,8 @@ import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { cn } from '@qualy/ui/cn'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from './i18n.ts'
 import { useBatchLive } from './live.ts'
 import { assessmentApi } from './api.ts'
@@ -37,6 +38,183 @@ import { ScheduleDialog, TemplateDialog, UnscheduleDialog } from './phase/PhaseD
 // root: queries, mutations and the modes; the row, the panel and the dialogs
 // live next to it.
 
+const styles = stylex.create({
+  stack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  controlsRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  controlsSeat: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  pendingNote: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  boneStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  bone: {
+    height: 48,
+    width: '100%',
+  },
+  emptyPlan: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: tokens.border,
+    padding: 32,
+    textAlign: 'center',
+  },
+  emptyNote: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  emptyActions: {
+    display: 'flex',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  planStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  tableShell: {
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  // fixed tracks, so a long stage name cannot take the width the other
+  // columns need
+  fixedTable: {
+    tableLayout: 'fixed',
+  },
+  stillRow: {
+    backgroundColor: {
+      default: null,
+      ':hover': null,
+    },
+  },
+  colStage: { width: '26%' },
+  colOpens: { width: '26%' },
+  colStart: { width: '26%' },
+  colStatus: { width: '22%', textAlign: 'right' },
+  boundaryCell: {
+    borderBottomWidth: 0,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    paddingBlock: 4,
+    textAlign: 'center',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  seamRow: {
+    height: 0,
+    borderBottomWidth: 0,
+    backgroundColor: {
+      default: null,
+      ':hover': null,
+    },
+  },
+  seamCell: {
+    position: 'relative',
+    height: 0,
+    borderBottomWidth: 0,
+    padding: 0,
+  },
+  seamStrip: {
+    position: 'absolute',
+    insetInline: 0,
+    top: -6,
+    zIndex: 10,
+    display: 'flex',
+    height: 12,
+    alignItems: 'center',
+    gap: 8,
+    paddingInline: 12,
+    transitionProperty: 'opacity',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    opacity: {
+      default: 0,
+      ':focus-within': 1,
+    },
+  },
+  seamShown: {
+    opacity: 1,
+  },
+  seamLine: {
+    height: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    backgroundColor: tokens.border,
+  },
+  seamButton: {
+    height: 24,
+    gap: 4,
+    backgroundColor: tokens.background,
+    paddingInline: 8,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+  },
+  seamGlyph: {
+    width: 12,
+    height: 12,
+  },
+  addCell: {
+    padding: 8,
+  },
+  wideGhost: {
+    width: '100%',
+    color: tokens.mutedForeground,
+  },
+  cardList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  cardBoundary: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 4,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  cardSeamButton: {
+    height: 28,
+    width: '100%',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  fullGhost: {
+    width: '100%',
+  },
+})
+
 /** the gap between two rows, which offers to become a stage when pointed at */
 function SeamRow({
   label,
@@ -50,25 +228,22 @@ function SeamRow({
   onInsert: () => void
 }) {
   return (
-    <TableRow className="h-0 border-0 hover:bg-transparent">
+    <TableRow xstyle={styles.seamRow}>
       {/* the strip takes no height of its own: it straddles the seam the two
           neighbouring rows already draw, so revealing it moves nothing.
           movement decides what is shown, not :hover - inserting a row moves
           the strip under a pointer that has not moved, and css would leave it
           lit until the pointer did */}
-      <TableCell colSpan={4} className="relative h-0 border-0 p-0">
+      <TableCell colSpan={4} xstyle={styles.seamCell}>
         <div
           onMouseMove={() => onPoint(true)}
           onMouseLeave={() => onPoint(false)}
-          className={cn(
-            'absolute inset-x-0 -top-1.5 z-10 flex h-3 items-center gap-2 px-3 transition-opacity focus-within:opacity-100',
-            shown ? 'opacity-100' : 'opacity-0',
-          )}
+          {...stylex.props(styles.seamStrip, shown && styles.seamShown)}
         >
-          <span aria-hidden className="h-px flex-1 bg-border" />
+          <span aria-hidden {...stylex.props(styles.seamLine)} />
           <Button
             variant="outline"
-            className="h-6 gap-1 bg-background px-2 text-xs"
+            className={stylex.props(styles.seamButton).className}
             onClick={(event) => {
               // the strip is also held open by focus, and the row it just
               // added has moved it out from under the pointer
@@ -76,10 +251,10 @@ function SeamRow({
               onInsert()
             }}
           >
-            <PlusIcon aria-hidden className="size-3" />
+            <PlusIcon aria-hidden className={stylex.props(styles.seamGlyph).className} />
             {label}
           </Button>
-          <span aria-hidden className="h-px flex-1 bg-border" />
+          <span aria-hidden {...stylex.props(styles.seamLine)} />
         </div>
       </TableCell>
     </TableRow>
@@ -328,13 +503,13 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
   })
 
   return (
-    <div className="space-y-3">
+    <div {...stylex.props(styles.stack)}>
       {/* the page header says what a stage plan is; this row is only the
           controls that act on it */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <div className="flex shrink-0 items-center gap-2">
+      <div {...stylex.props(styles.controlsRow)}>
+        <div {...stylex.props(styles.controlsSeat)}>
           {editing && dirty > 0 && (
-            <span className="text-xs text-muted-foreground">
+            <span {...stylex.props(styles.pendingNote)}>
               {format(m.pendingShort, { count: dirty })}
             </span>
           )}
@@ -386,21 +561,18 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void phases.refetch()}
         skeleton={
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
+          <div {...stylex.props(styles.boneStack)}>
+            <Skeleton className={stylex.props(styles.bone).className} />
+            <Skeleton className={stylex.props(styles.bone).className} />
+            <Skeleton className={stylex.props(styles.bone).className} />
           </div>
         }
       >
         {drafts.length === 0 ? (
-          <div
-            data-testid="phase-plan-empty"
-            className="space-y-4 rounded-lg border border-dashed p-8 text-center"
-          >
-            <p className="text-sm text-muted-foreground">{format(m.phasesEmpty)}</p>
+          <div data-testid="phase-plan-empty" {...stylex.props(styles.emptyPlan)}>
+            <p {...stylex.props(styles.emptyNote)}>{format(m.phasesEmpty)}</p>
             {!readOnly && (
-              <div className="flex justify-center gap-2">
+              <div {...stylex.props(styles.emptyActions)}>
                 <Button size="sm" onClick={addPhase}>
                   {format(m.addPhase)}
                 </Button>
@@ -411,31 +583,26 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
             )}
           </div>
         ) : (
-          <div className="space-y-2">
+          <div {...stylex.props(styles.planStack)}>
             {/* a table where there are columns to be had, stacked cards where
                 there are not - the same four facts either way */}
             {!isMobile && (
-              <div className="overflow-hidden rounded-lg border">
-                {/* fixed tracks, so a long stage name cannot take the width
-                  the other columns need */}
-                <Table className="table-fixed">
+              <div {...stylex.props(styles.tableShell)}>
+                <Table xstyle={styles.fixedTable}>
                   <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[26%]">{format(m.colStage)}</TableHead>
-                      <TableHead className="w-[26%]">{format(m.colOpens)}</TableHead>
-                      <TableHead className="w-[26%]">{format(m.colPlannedStart)}</TableHead>
-                      <TableHead className="w-[22%] text-right">{format(m.colStatus)}</TableHead>
+                    <TableRow xstyle={styles.stillRow}>
+                      <TableHead xstyle={styles.colStage}>{format(m.colStage)}</TableHead>
+                      <TableHead xstyle={styles.colOpens}>{format(m.colOpens)}</TableHead>
+                      <TableHead xstyle={styles.colStart}>{format(m.colPlannedStart)}</TableHead>
+                      <TableHead xstyle={styles.colStatus}>{format(m.colStatus)}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {drafts.map((row, index) => (
                       <Fragment key={row.id ?? `new-${row.phaseKey}`}>
                         {index === shape.scheduled && index > 0 && (
-                          <TableRow className="hover:bg-transparent">
-                            <TableCell
-                              colSpan={4}
-                              className="border-b-0 bg-muted/30 py-1 text-center text-xs text-muted-foreground"
-                            >
+                          <TableRow xstyle={styles.stillRow}>
+                            <TableCell colSpan={4} xstyle={styles.boundaryCell}>
                               {format(m.unscheduledFrom)}
                             </TableCell>
                           </TableRow>
@@ -455,12 +622,12 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                       </Fragment>
                     ))}
                     {editing && !readOnly && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={4} className="p-2">
+                      <TableRow xstyle={styles.stillRow}>
+                        <TableCell colSpan={4} xstyle={styles.addCell}>
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="w-full text-muted-foreground"
+                            className={stylex.props(styles.wideGhost).className}
                             onClick={addPhase}
                           >
                             <PlusIcon aria-hidden />
@@ -475,14 +642,14 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
             )}
 
             {isMobile && (
-              <ol className="space-y-2">
+              <ol {...stylex.props(styles.cardList)}>
                 {drafts.map((row, index) => (
                   <Fragment key={row.id ?? `new-${row.phaseKey}`}>
                     {index === shape.scheduled && index > 0 && (
-                      <li className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
-                        <span aria-hidden className="h-px flex-1 bg-border" />
+                      <li {...stylex.props(styles.cardBoundary)}>
+                        <span aria-hidden {...stylex.props(styles.seamLine)} />
                         {format(m.unscheduledFrom)}
-                        <span aria-hidden className="h-px flex-1 bg-border" />
+                        <span aria-hidden {...stylex.props(styles.seamLine)} />
                       </li>
                     )}
                     <PhaseCard {...rowProps(row, index)} />
@@ -491,10 +658,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-7 w-full text-xs text-muted-foreground"
+                          className={stylex.props(styles.cardSeamButton).className}
                           onClick={() => insertAt(index + 1)}
                         >
-                          <PlusIcon aria-hidden className="size-3" />
+                          <PlusIcon aria-hidden className={stylex.props(styles.seamGlyph).className} />
                           {format(m.insertHere)}
                         </Button>
                       </li>
@@ -503,7 +670,12 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                 ))}
                 {editing && !readOnly && (
                   <li>
-                    <Button size="sm" variant="outline" className="w-full" onClick={addPhase}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={stylex.props(styles.fullGhost).className}
+                      onClick={addPhase}
+                    >
                       <PlusIcon aria-hidden />
                       {format(m.addPhase)}
                     </Button>
