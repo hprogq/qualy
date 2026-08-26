@@ -98,7 +98,7 @@ function Select({
       // a closed list leaves the document entirely - a hidden copy of every
       // option is a phantom for tests and assistive tech alike
       keepMounted={false}
-      transitionProps={{ duration: 100 }}
+      transitionProps={{ transition: 'pop', duration: 130 }}
       disabled={disabled}
       onOptionSubmit={(next) => {
         setInner(next)

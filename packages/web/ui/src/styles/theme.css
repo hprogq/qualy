@@ -149,13 +149,10 @@
  * without !important; consumer utilities and StyleX still sit above both.
  * Static widget class names are the documented Styles API selectors. */
 @layer components {
-  /* the product voice: badges are quiet labels, not shouting pills */
+  /* the product voice: badges are quiet labels, not shouting pills. The
+     weight itself is the theme's `fontWeights.medium`, not a patch here. */
   .mantine-Badge-root {
     text-transform: none;
-    font-weight: 500;
-  }
-  .mantine-Button-root {
-    font-weight: 500;
   }
   .mantine-Button-root[data-variant='q-link']:hover {
     text-decoration: underline;

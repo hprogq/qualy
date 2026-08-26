@@ -84,7 +84,9 @@ function Popover({
       withRoles={false}
       position={positionOf(side, align)}
       offset={decl.sideOffset ?? 4}
-      transitionProps={{ duration: 100 }}
+      // an anchored surface pops: opacity with a whisper of scale, which
+      // reads the same whichever side the placement flipped to
+      transitionProps={{ transition: 'pop', duration: 130 }}
       {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}
       {...(controlled ? { opened: open } : {})}
       onChange={observe}

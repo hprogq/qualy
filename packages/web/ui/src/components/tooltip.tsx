@@ -78,6 +78,9 @@ function Tooltip({
 
   return (
     <MTooltip
+      // the one surface that appears without being asked for; it fades, and
+      // quickly - a tooltip that pops on every hover makes the page restless
+      transitionProps={{ transition: 'fade', duration: 90 }}
       label={label}
       position={side}
       offset={sideOffset}

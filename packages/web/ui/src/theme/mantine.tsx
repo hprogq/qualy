@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { MotionConfig } from 'motion/react'
 import {
   ActionIcon,
   Button,
@@ -95,12 +96,50 @@ const iconSizes: Record<string, string> = {
   'q-icon-lg': rem(40),
 }
 
+// The substrate's platform policy, and nothing else.
+//
+// Every field here is a decision that must hold for EVERY widget, present
+// and future. Anything a single component decides - which transition a
+// popover uses, how long a tooltip waits, what a pressed button looks like -
+// belongs to that component's adapter, where a reader of the call site can
+// find it. A default set here instead is styling at a distance: the adapter
+// reads as though it configured nothing while this file quietly rules it.
 export const qualyMantineTheme = createTheme({
-  fontFamily: "'Inter Variable', sans-serif",
-  defaultRadius: 'md',
-  // overlay and control transitions stand down for readers who asked the
-  // OS for less motion
+  // --- accessibility ---
+  // Mantine ships this off; a reader who asked the OS for less motion gets
+  // it from every layer of this product, and this is the widget layer's
+  // half of that contract (StyleX has its reduced-motion block, Motion has
+  // MotionConfig in the provider below).
   respectReducedMotion: true,
+  // rings for the keyboard, silence for the mouse - the stock behaviour,
+  // pinned because it is a decision rather than an accident
+  focusRing: 'auto',
+
+  // --- interaction ---
+  // No default press motion. The widget library answers a press by shifting
+  // the control down a pixel, which in a toolbar of eight small buttons
+  // reads as the row twitching; and the geometry says nothing the colour
+  // does not. Pressed feedback is real and stays - each adapter states it
+  // as a surface step, instant on the way in, unhurried on the way out.
+  activeClassName: '',
+  // anything that answers a click says so under the cursor, including the
+  // native controls the platform leaves as an arrow
+  cursorType: 'pointer',
+
+  // --- product baseline ---
+  fontFamily: "'Inter Variable', sans-serif",
+  // The widget library moved `medium` to 600 in its ninth version, which on
+  // a screen of badges, buttons and labels reads heavier than this product
+  // speaks. 500 is the product's medium.
+  fontWeights: {
+    regular: '400',
+    medium: '500',
+    bold: '700',
+  },
+  defaultRadius: 'md',
+  // The product pairs each semantic colour with its own foreground token,
+  // so nothing is left for a luminance threshold to guess.
+  autoContrast: false,
   variantColorResolver: variantColors,
   components: {
     Button: Button.extend({
@@ -195,12 +234,18 @@ export function UiProvider({
   children: ReactNode
 }) {
   return (
-    <MantineProvider
-      theme={qualyMantineTheme}
-      forceColorScheme={scheme}
-      cssVariablesResolver={cssVariables}
-    >
-      {children}
-    </MantineProvider>
+    // One reduced-motion contract over all three motion systems: the widget
+    // library has respectReducedMotion, StyleX has its media block, and this
+    // is Motion's half - `user` drops movement and keeps the fades, so a
+    // screen still tells the reader that something changed.
+    <MotionConfig reducedMotion="user">
+      <MantineProvider
+        theme={qualyMantineTheme}
+        forceColorScheme={scheme}
+        cssVariablesResolver={cssVariables}
+      >
+        {children}
+      </MantineProvider>
+    </MotionConfig>
   )
 }

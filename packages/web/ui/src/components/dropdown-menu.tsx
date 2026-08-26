@@ -34,7 +34,7 @@ function DropdownMenu({
       // parity with the previous substrate: the dropdown stays visible even
       // if the trigger leaves the viewport (hideDetached would blank it)
       hideDetached={false}
-      transitionProps={{ duration: 100 }}
+      transitionProps={{ transition: 'pop', duration: 130 }}
       {...(open === undefined ? {} : { opened: open })}
       {...(defaultOpen === undefined ? {} : { defaultOpened: defaultOpen })}
       onOpen={() => {
