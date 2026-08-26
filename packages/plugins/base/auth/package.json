@@ -37,6 +37,7 @@
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
+    "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "cookie": "catalog:",
     "effect": "catalog:",

@@ -764,6 +764,9 @@ importers:
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web/runtime
+      '@stylexjs/stylex':
+        specifier: 'catalog:'
+        version: 0.19.0
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)

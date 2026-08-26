@@ -4,6 +4,8 @@ import { Building2Icon, PlusIcon, SearchIcon, UserRoundIcon } from 'lucide-react
 import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import { Blank, RailSkeleton, Screen, SectionHead, Segmented } from '@qualy/ui/screen'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
@@ -13,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { initialsOf } from '@qualy/ui/person'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
-import { cn } from '@qualy/ui/cn'
 import { iamMessages as m } from '../i18n.ts'
 import { NewUserForm } from './NewUserForm.tsx'
 import { NodePicker, type PickableNode } from './NodePicker.tsx'
@@ -31,6 +32,194 @@ import { authApi } from '../api.ts'
 // radix refuses an empty select value, and "every type" is a real choice
 // rather than the absence of one
 const ALL_TYPES = 'all'
+
+const rosterColumns = 'minmax(0, 1.3fr) 7rem 5rem minmax(0, 1.2fr) 3.5rem'
+
+const styles = stylex.create({
+  emptyNote: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  threePane: {
+    display: 'grid',
+    alignItems: 'start',
+    gap: 24,
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 1024px)': '15rem minmax(0, 1fr) 19rem',
+    },
+  },
+  pane: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 12,
+  },
+  searchSeat: {
+    position: 'relative',
+  },
+  searchGlass: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: '50%',
+    left: 12,
+    width: 14,
+    height: 14,
+    transform: 'translateY(-50%)',
+    color: tokens.mutedForeground,
+  },
+  indentedInput: {
+    paddingLeft: 36,
+  },
+  treeBox: {
+    maxHeight: '60vh',
+    overflow: 'auto',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 4,
+  },
+  filterRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rosterSearch: {
+    width: '100%',
+    maxWidth: {
+      default: 'none',
+      '@media (min-width: 640px)': '13rem',
+    },
+  },
+  awaySpinner: {
+    marginLeft: 'auto',
+  },
+  rosterBox: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  rosterHead: {
+    display: 'grid',
+    gridTemplateColumns: rosterColumns,
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    paddingInline: 16,
+    paddingBlock: 8,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  headEnd: {
+    textAlign: 'right',
+  },
+  rosterEmpty: {
+    paddingInline: 16,
+    paddingBlock: 16,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  row: {
+    display: 'grid',
+    minWidth: 0,
+    gridTemplateColumns: rosterColumns,
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 16,
+    paddingBlock: 10,
+    textAlign: 'left',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  rowOpen: {
+    backgroundColor: {
+      default: tokens.surfaceMuted,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
+  cellName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  cellQuiet: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  cellNo: {
+    fontVariantNumeric: 'tabular-nums',
+  },
+  cellStatus: {
+    textAlign: 'right',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  alert: {
+    color: tokens.danger,
+  },
+  footerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 16,
+    paddingBlock: 8,
+  },
+  countNote: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  pinned: {
+    flexShrink: 0,
+  },
+  // the empty detail seat only earns its room on the wide layout
+  deskOnly: {
+    display: {
+      default: 'none',
+      '@media (min-width: 1024px)': 'flex',
+    },
+  },
+})
 
 export default function UsersPage() {
   const api = useApi(authApi)
@@ -124,25 +313,22 @@ export default function UsersPage() {
     >
       {options.isError && <Feedback message={formatError(options.error)} />}
       {!options.isPending && nodes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{format(m.noAnchors)}</p>
+        <p {...stylex.props(styles.emptyNote)}>{format(m.noAnchors)}</p>
       ) : (
-        <div className="grid items-start gap-6 lg:grid-cols-[15rem_minmax(0,1fr)_19rem]">
-          <div className="flex min-w-0 flex-col gap-3">
-            <div className="relative">
-              <SearchIcon
-                aria-hidden
-                className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
-              />
+        <div {...stylex.props(styles.threePane)}>
+          <div {...stylex.props(styles.pane)}>
+            <div {...stylex.props(styles.searchSeat)}>
+              <SearchIcon aria-hidden {...stylex.props(styles.searchGlass)} />
               <Input
                 name="tree-search"
                 value={treeSearch}
                 placeholder={format(m.treeSearch)}
                 aria-label={format(m.treeSearch)}
                 onChange={(event) => setTreeSearch(event.target.value)}
-                className="pl-9"
+                className={stylex.props(styles.indentedInput).className}
               />
             </div>
-            <div className="max-h-[60vh] overflow-auto rounded-lg border p-1">
+            <div {...stylex.props(styles.treeBox)}>
               <OrgTree
                 nodes={treeMatches}
                 flat={treeTerm !== ''}
@@ -154,11 +340,11 @@ export default function UsersPage() {
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2">
+          <div {...stylex.props(styles.pane)}>
+            <div {...stylex.props(styles.filterRow)}>
               <Input
                 name="users-search"
-                className="w-full sm:max-w-52"
+                wrapperClassName={stylex.props(styles.rosterSearch).className}
                 value={draft}
                 placeholder={format(m.searchPlaceholder)}
                 aria-label={format(m.searchPlaceholder)}
@@ -199,7 +385,10 @@ export default function UsersPage() {
                 </SelectContent>
               </Select>
               {users.isFetching && !users.isPending && (
-                <Spinner aria-label={format(commonMessages.loading)} className="ml-auto size-4" />
+                <Spinner
+                  aria-label={format(commonMessages.loading)}
+                  className={stylex.props(styles.awaySpinner).className}
+                />
               )}
             </div>
 
@@ -210,16 +399,16 @@ export default function UsersPage() {
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void users.refetch()}
             >
-              <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
-                <div className="grid grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3.5rem] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+              <div {...stylex.props(styles.rosterBox)}>
+                <div {...stylex.props(styles.rosterHead)}>
                   <span>{format(m.columnName)}</span>
                   <span>{format(m.columnBusinessNo)}</span>
                   <span>{format(m.columnType)}</span>
                   <span>{format(m.columnUnit)}</span>
-                  <span className="text-right">{format(m.columnStatus)}</span>
+                  <span {...stylex.props(styles.headEnd)}>{format(m.columnStatus)}</span>
                 </div>
                 {rows.length === 0 ? (
-                  <p className="px-4 py-4 text-sm text-muted-foreground">{format(m.usersEmpty)}</p>
+                  <p {...stylex.props(styles.rosterEmpty)}>{format(m.usersEmpty)}</p>
                 ) : (
                   rows.map((user) => (
                     <button
@@ -228,27 +417,20 @@ export default function UsersPage() {
                       aria-current={user.id === openUserId}
                       data-user-status={user.status}
                       onClick={() => setOpenUserId(user.id === openUserId ? '' : user.id)}
-                      className={cn(
-                        'grid min-w-0 grid-cols-[minmax(0,1.3fr)_7rem_5rem_minmax(0,1.2fr)_3.5rem] items-center gap-3 border-t px-4 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
-                        user.id === openUserId && 'bg-accent',
-                      )}
+                      {...stylex.props(styles.row, user.id === openUserId && styles.rowOpen)}
                     >
-                      <span className="min-w-0 truncate text-sm font-medium">
-                        {user.displayName}
-                      </span>
-                      <span className="truncate text-xs tabular-nums text-muted-foreground">
+                      <span {...stylex.props(styles.cellName)}>{user.displayName}</span>
+                      <span {...stylex.props(styles.cellQuiet, styles.cellNo)}>
                         {user.businessNo ?? '—'}
                       </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {user.userType?.name ?? '—'}
-                      </span>
-                      <span className="min-w-0 truncate text-xs text-muted-foreground">
+                      <span {...stylex.props(styles.cellQuiet)}>{user.userType?.name ?? '—'}</span>
+                      <span {...stylex.props(styles.cellQuiet)}>
                         {user.primaryOrgNode?.name ?? '—'}
                       </span>
                       <span
-                        className={cn(
-                          'text-right text-xs',
-                          user.status === 'disabled' ? 'text-destructive' : 'text-muted-foreground',
+                        {...stylex.props(
+                          styles.cellStatus,
+                          user.status === 'disabled' && styles.alert,
                         )}
                       >
                         {format(
@@ -262,21 +444,21 @@ export default function UsersPage() {
                     </button>
                   ))
                 )}
-                <div className="flex items-center gap-3 border-t px-4 py-2">
+                <div {...stylex.props(styles.footerRow)}>
                   <span
-                    className="min-w-0 truncate text-xs text-muted-foreground"
+                    {...stylex.props(styles.countNote)}
                     data-testid="roster-count"
                     data-count={rows.length}
                   >
                     {active !== undefined &&
                       `${pathOf(active.orgNodeId)} · ${format(m.loadedCount, { count: rows.length })}`}
                   </span>
-                  <span className="flex-1" />
+                  <span {...stylex.props(styles.spacer)} />
                   {users.hasNextPage && (
                     <Button
                       size="sm"
                       variant="outline"
-                      className="shrink-0"
+                      className={stylex.props(styles.pinned).className}
                       disabled={users.isFetchingNextPage}
                       onClick={() => void users.fetchNextPage()}
                     >
@@ -309,6 +491,124 @@ export default function UsersPage() {
     </Screen>
   )
 }
+
+const paneStyles = stylex.create({
+  stack: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 16,
+  },
+  headRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 12,
+  },
+  frame: {
+    borderRadius: tokens.radiusLg,
+  },
+  monogram: {
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontWeight: 500,
+  },
+  nameCol: {
+    minWidth: 0,
+  },
+  personName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 600,
+  },
+  personMeta: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  metaNo: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  alert: {
+    color: tokens.danger,
+  },
+  section: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 12,
+  },
+  sectionRoomy: {
+    gap: 8,
+  },
+  plainText: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  pathText: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    textWrap: 'pretty',
+  },
+  quietText: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  roleList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  roleRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  roleName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  roleWhere: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  widthFit: {
+    width: 'fit-content',
+  },
+  skeletonStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  lineTitle: { height: 40, width: 160 },
+  lineFull: { height: 16, width: '100%' },
+  linePart: { height: 16, width: '66%' },
+})
 
 /**
  * Who the open row is, beside the roster rather than instead of it.
@@ -356,7 +656,7 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
         icon={<UserRoundIcon />}
         title={format(m.pickSomeoneTitle)}
         description={format(m.pickSomeone)}
-        className="max-lg:hidden"
+        xstyle={styles.deskOnly}
       />
     )
   }
@@ -366,10 +666,10 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
   const person = detail.data
   if (person === undefined) {
     return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-10 w-40" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-2/3" />
+      <div {...stylex.props(paneStyles.skeletonStack)}>
+        <Skeleton className={stylex.props(paneStyles.lineTitle).className} />
+        <Skeleton className={stylex.props(paneStyles.lineFull).className} />
+        <Skeleton className={stylex.props(paneStyles.linePart).className} />
       </div>
     )
   }
@@ -380,18 +680,18 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
   )
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex min-w-0 items-center gap-3">
-        <Avatar className="rounded-lg">
-          <AvatarFallback className="rounded-lg bg-primary text-xs font-medium text-primary-foreground">
+    <div {...stylex.props(paneStyles.stack)}>
+      <div {...stylex.props(paneStyles.headRow)}>
+        <Avatar className={stylex.props(paneStyles.frame).className}>
+          <AvatarFallback className={stylex.props(paneStyles.monogram).className}>
             {initialsOf(person.user.displayName)}
           </AvatarFallback>
         </Avatar>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{person.user.displayName}</p>
-          <p className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-            <span className="truncate tabular-nums">{person.user.businessNo ?? '—'}</span>
-            <span className={cn(person.user.status !== 'active' && 'text-destructive')}>
+        <div {...stylex.props(paneStyles.nameCol)}>
+          <p {...stylex.props(paneStyles.personName)}>{person.user.displayName}</p>
+          <p {...stylex.props(paneStyles.personMeta)}>
+            <span {...stylex.props(paneStyles.metaNo)}>{person.user.businessNo ?? '—'}</span>
+            <span {...stylex.props(person.user.status !== 'active' && paneStyles.alert)}>
               {format(
                 person.user.status === 'deleted'
                   ? m.deletedBadge
@@ -404,26 +704,28 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
+      <div {...stylex.props(paneStyles.section)}>
         <SectionHead title={format(m.userTypeLabel)} />
-        <p className="text-sm">{person.user.userType?.name ?? '—'}</p>
+        <p {...stylex.props(paneStyles.plainText)}>{person.user.userType?.name ?? '—'}</p>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
+      <div {...stylex.props(paneStyles.section)}>
         <SectionHead title={format(m.placementSection)} />
-        <p className="text-sm text-pretty">{person.orgPath.map((node) => node.name).join(' / ')}</p>
+        <p {...stylex.props(paneStyles.pathText)}>
+          {person.orgPath.map((node) => node.name).join(' / ')}
+        </p>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
+      <div {...stylex.props(paneStyles.section)}>
         <SectionHead title={format(m.rolesLabel)} count={person.roles.length} />
         {person.roles.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{format(m.rolesNone)}</p>
+          <p {...stylex.props(paneStyles.quietText)}>{format(m.rolesNone)}</p>
         ) : (
-          <ul className="flex flex-col gap-1">
+          <ul {...stylex.props(paneStyles.roleList)}>
             {person.roles.map((role) => (
-              <li key={role.grantId} className="flex min-w-0 items-baseline gap-2 text-sm">
-                <span className="min-w-0 truncate">{role.roleName}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
+              <li key={role.grantId} {...stylex.props(paneStyles.roleRow)}>
+                <span {...stylex.props(paneStyles.roleName)}>{role.roleName}</span>
+                <span {...stylex.props(paneStyles.roleWhere)}>
                   {role.orgNodeName ?? format(m.personRoleTenantWide)}
                 </span>
               </li>
@@ -432,10 +734,13 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
         )}
       </div>
 
-      <div className="flex min-w-0 flex-col gap-1.5 border-t pt-3">
+      <div {...stylex.props(paneStyles.section)}>
         <SectionHead title={format(m.accountsLabel)} />
         <p
-          className={cn('text-sm', person.user.identityCount === 0 && 'text-destructive')}
+          {...stylex.props(
+            paneStyles.plainText,
+            person.user.identityCount === 0 && paneStyles.alert,
+          )}
           data-accounts={person.user.identityCount}
         >
           {person.user.identityCount === 0
@@ -448,7 +753,7 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
           to what a reader just looked up, and the rules that refuse it belong
           to the destination rather than to this form */}
       {person.user.manageable && movable.length > 0 && (
-        <div className="flex min-w-0 flex-col gap-2 border-t pt-3">
+        <div {...stylex.props(paneStyles.section, paneStyles.sectionRoomy)}>
           <SectionHead title={format(m.moveLabel)} />
           <NodePicker
             label={format(m.moveLabel)}
@@ -461,7 +766,7 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
           <Button
             size="sm"
             variant="outline"
-            className="w-fit"
+            className={stylex.props(paneStyles.widthFit).className}
             disabled={destination === '' || move.isPending}
             onClick={() => move.mutate(destination)}
           >
@@ -470,7 +775,7 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
         </div>
       )}
 
-      <div className="border-t pt-3">
+      <div {...stylex.props(paneStyles.section)}>
         <Button size="sm" asChild>
           <PageLink page="auth/user-detail" params={{ userId }}>
             {format(m.fullProfile)}
