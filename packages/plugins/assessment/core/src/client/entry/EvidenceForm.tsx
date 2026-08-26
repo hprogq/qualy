@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -9,6 +10,7 @@ import { Dropzone, FileTile, type Accept, type FileRejection } from '@qualy/ui/d
 import { Input } from '@qualy/ui/input'
 import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
 import { Spinner } from '@qualy/ui/spinner'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { uploadFile, type UploadDoors, type UploadedFile } from './upload.ts'
@@ -25,6 +27,62 @@ import {
 // in the item's form configuration and gets back exactly the payload shape
 // the server's driver reads: text and dates as strings, attachments as the
 // ids of files this person just put in or already cited.
+
+const styles = stylex.create({
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  files: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  icon: {
+    width: 16,
+    height: 16,
+  },
+  dropWords: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dropRules: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    columnGap: 8,
+    rowGap: 2,
+    fontSize: 12,
+  },
+  refusals: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  refusal: {
+    fontSize: 14,
+    color: tokens.danger,
+  },
+  imgFill: {
+    width: '100%',
+    height: '100%',
+    cursor: 'zoom-in',
+    objectFit: 'cover',
+  },
+})
 
 export interface EvidenceFieldSpec {
   /** what this field is called across versions of the form; older forms have none */
@@ -110,7 +168,7 @@ export function EvidenceForm({
     onChange({ ...value, [key]: next })
 
   return (
-    <div className="flex flex-col gap-5">
+    <div {...stylex.props(styles.form)}>
       {fields.map((field) => {
         if (field.type === 'text') {
           return (
@@ -217,7 +275,7 @@ export function EvidenceForm({
           <Field key={field.key} label={field.label} required={field.required === true}>
             {() => (
               <PhotoProvider maskOpacity={0.85}>
-                <div className="flex flex-col gap-2">
+                <div {...stylex.props(styles.files)}>
                   {cited.map((attachmentId) => (
                     <CitedFile
                       key={attachmentId}
@@ -243,7 +301,7 @@ export function EvidenceForm({
                     (uploading?.names ?? []).map((name) => (
                       <FileTile
                         key={`uploading:${name}`}
-                        media={<Spinner className="size-4" />}
+                        media={<Spinner className={stylex.props(styles.icon).className} />}
                         name={name}
                         meta={format(m.entryFileUploading)}
                       />
@@ -267,15 +325,15 @@ export function EvidenceForm({
                         })
                       }
                     >
-                      <span className="flex items-center gap-2">
-                        <UploadIcon aria-hidden className="size-4" />
+                      <span {...stylex.props(styles.dropWords)}>
+                        <UploadIcon aria-hidden className={stylex.props(styles.icon).className} />
                         {format(m.entryFileDrop)}
                       </span>
                       {/* what the round will take, before anybody picks a
                           file: the rules are the administrator's and they
                           are cheap to say, while finding them out by being
                           refused costs the reader a round trip each time */}
-                      <span className="flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-xs">
+                      <span {...stylex.props(styles.dropRules)}>
                         {kinds !== null && <span>{format(m.entryFileKinds, { kinds })}</span>}
                         {field.maxFileBytes !== undefined && (
                           <span>
@@ -292,12 +350,12 @@ export function EvidenceForm({
                   {/* named, one line each: "some files were not added" leaves
                       the reader counting rows to work out which */}
                   {turnedAway?.field === field.key && turnedAway.files.length > 0 && (
-                    <ul data-testid="files-turned-away" className="flex flex-col gap-0.5">
+                    <ul data-testid="files-turned-away" {...stylex.props(styles.refusals)}>
                       {turnedAway.files.map((one, index) => (
                         <li
                           key={`${one.name}:${index}`}
                           data-turned-away={one.reason}
-                          className="text-sm text-destructive"
+                          {...stylex.props(styles.refusal)}
                         >
                           {format(REFUSALS[one.reason], {
                             name: one.name,
@@ -313,7 +371,7 @@ export function EvidenceForm({
                   )}
 
                   {uploadError !== null && !busy && (
-                    <p className="text-sm text-destructive">{uploadError}</p>
+                    <p {...stylex.props(styles.refusal)}>{uploadError}</p>
                   )}
                 </div>
               </PhotoProvider>
@@ -363,11 +421,11 @@ function CitedFile({
               alt={name}
               loading="lazy"
               decoding="async"
-              className="size-full cursor-zoom-in object-cover"
+              className={stylex.props(styles.imgFill).className}
             />
           </PhotoView>
         ) : (
-          <FileTextIcon aria-hidden className="size-4" />
+          <FileTextIcon aria-hidden className={stylex.props(styles.icon).className} />
         )
       }
       name={name}
@@ -379,13 +437,13 @@ function CitedFile({
           <Button variant="ghost" size="icon-sm" asChild>
             <a href={href} download={data?.filename} target="_blank" rel="noreferrer">
               <DownloadIcon aria-hidden />
-              <span className="sr-only">{name}</span>
+              <span {...stylex.props(styles.srOnly)}>{name}</span>
             </a>
           </Button>
           {onRemove !== undefined && (
             <Button variant="ghost" size="icon-sm" type="button" onClick={onRemove}>
               <XIcon aria-hidden />
-              <span className="sr-only">{format(m.entryFileRemove)}</span>
+              <span {...stylex.props(styles.srOnly)}>{format(m.entryFileRemove)}</span>
             </Button>
           )}
         </>

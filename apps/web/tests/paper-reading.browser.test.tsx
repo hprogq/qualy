@@ -247,8 +247,10 @@ describe('reading the paper', () => {
 
     await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
     const scroller = document.querySelector('main') as HTMLElement
+    // the strip by its own hook, not by a styling class: which classes the
+    // strip wears is presentation, that it exists and pins is the contract
     const strip = () =>
-      Array.from(document.querySelectorAll('.backdrop-blur-sm')).some(
+      Array.from(document.querySelectorAll('[data-testid="band-strip"]')).some(
         (el) => el.textContent?.includes('品德行为表现') === true,
       )
     // reading the top of the paper: the band's own card is on screen, so
@@ -257,11 +259,11 @@ describe('reading the paper', () => {
     scroller.scrollTop = 600
     await expect.poll(strip).toBe(true)
     // and it is pinned: more scroll does not carry it away
-    const at = document.querySelector('.backdrop-blur-sm')!.getBoundingClientRect().top
+    const at = document.querySelector('[data-testid="band-strip"]')!.getBoundingClientRect().top
     scroller.scrollTop = 800
     await expect.poll(strip).toBe(true)
     expect(
-      Math.round(document.querySelector('.backdrop-blur-sm')!.getBoundingClientRect().top),
+      Math.round(document.querySelector('[data-testid="band-strip"]')!.getBoundingClientRect().top),
     ).toBe(Math.round(at))
   })
 

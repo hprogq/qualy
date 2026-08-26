@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { AlertCircleIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
@@ -15,11 +16,11 @@ import {
   BreadcrumbSeparator,
 } from '@qualy/ui/breadcrumb'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { Swap } from '@qualy/ui/reveal'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { entryRefusalReason } from './refusals.ts'
@@ -38,6 +39,309 @@ import { fieldsOf, type ActionAvailability, type EntryDto, type ItemDto } from '
 // answered them, the whole account - and so do the acts, because acting on
 // a claim is done while reading it, not from a row of buttons on a card
 // that had no room to say why.
+
+const styles = stylex.create({
+  head: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'flex-start',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 20,
+    paddingBlock: 16,
+  },
+  headWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+  },
+  titleRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  versionNote: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  tabBar: {
+    display: 'flex',
+    flexShrink: 0,
+    gap: 2,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 20,
+  },
+  tab: {
+    position: 'relative',
+    display: 'inline-flex',
+    height: 36,
+    alignItems: 'center',
+    gap: 6,
+    paddingInline: 10,
+    fontSize: 14,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  tabOn: {
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
+  tabCount: {
+    borderRadius: tokens.radiusSm,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 4,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  tabInk: {
+    position: 'absolute',
+    insetInline: 8,
+    bottom: -1,
+    height: 2,
+    backgroundColor: tokens.foreground,
+  },
+  scroller: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  body: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+    paddingInline: 20,
+    paddingBlock: 16,
+  },
+  // why it came back, first: it is the reason this drawer was opened at
+  // all when the claim is waiting on its owner
+  notice: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    backgroundColor: tokens.surfaceMuted,
+    padding: 12,
+  },
+  noticeAsk: {
+    gap: 10,
+  },
+  noticeHead: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  noticeTitle: {
+    flexShrink: 0,
+    fontSize: 14,
+    fontWeight: 600,
+    color: tokens.danger,
+  },
+  reasonBadge: {
+    backgroundColor: tokens.background,
+    fontWeight: 400,
+  },
+  noticeWhen: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  prose: {
+    fontSize: 14,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+  },
+  suggested: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 8,
+  },
+  quietNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  suggestedLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 14,
+  },
+  keepShort: {
+    flexShrink: 0,
+  },
+  suggestedLabel: {
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  anywhere: {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  askHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  askIcon: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.danger,
+  },
+  askTitle: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  askNeeds: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 10,
+  },
+  askPiece: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+  },
+  askDot: {
+    width: 4,
+    height: 4,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  askPieceName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  askPieceKind: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  askPieceRequired: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.danger,
+  },
+  // what was filed, whole: the card's three lines are a reminder, this is
+  // the filing
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  sectionHead: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  sectionTitle: {
+    flexShrink: 0,
+    fontSize: 14,
+    fontWeight: 600,
+    color: tokens.mutedForeground,
+  },
+  sectionRule: {
+    height: 1,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    backgroundColor: tokens.border,
+  },
+  sectionNote: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    overflowWrap: 'anywhere',
+    color: tokens.mutedForeground,
+  },
+  fieldValue: {
+    fontSize: 15,
+    lineHeight: 1.625,
+    overflowWrap: 'anywhere',
+  },
+  fieldCleared: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  fileRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  supAsk: {
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 12,
+    paddingBlock: 8,
+    fontSize: 14,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  // The acts, once, where the whole claim is on screen: quitting on the
+  // far left where it cannot be pressed for one of the others, and handing
+  // on - the act that moves things - carrying the ink.
+  actionBar: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 20,
+    paddingBlock: 12,
+  },
+  ghostInk: {
+    color: tokens.mutedForeground,
+  },
+  noPointer: {
+    pointerEvents: 'none',
+  },
+})
 
 type History = ApiResult<typeof assessmentApi, 'assessment', 'getEntryHistory'>
 
@@ -66,12 +370,12 @@ function SuggestedChanges({
   )
   if (rows.length === 0) return null
   return (
-    <div className="flex flex-col gap-1 border-t pt-2" data-testid="suggested-changes">
-      <p className="text-xs text-muted-foreground">{format(m.entrySuggestedTitle)}</p>
+    <div {...stylex.props(styles.suggested)} data-testid="suggested-changes">
+      <p {...stylex.props(styles.quietNote)}>{format(m.entrySuggestedTitle)}</p>
       {rows.map((field) => (
-        <p key={field.key} className="flex items-baseline gap-2 text-sm">
-          <span className="shrink-0 text-muted-foreground">{field.label}</span>
-          <span className="min-w-0 [overflow-wrap:anywhere]">
+        <p key={field.key} {...stylex.props(styles.suggestedLine)}>
+          <span {...stylex.props(styles.suggestedLabel)}>{field.label}</span>
+          <span {...stylex.props(styles.anywhere)}>
             {String(record[field.key] ?? '') === '' ? '—' : String(record[field.key] ?? '')}
           </span>
         </p>
@@ -145,8 +449,8 @@ export function EntrySheet({
         className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-3xl"
         showCloseButton={false}
       >
-        <div className="flex shrink-0 items-start gap-3 border-b px-5 py-4">
-          <div className="flex min-w-0 flex-col gap-1">
+        <div {...stylex.props(styles.head)}>
+          <div {...stylex.props(styles.headWords)}>
             <Breadcrumb>
               <BreadcrumbList className="flex-nowrap text-xs sm:gap-1.5">
                 {/* the separator is a list item of its own, never nested in
@@ -166,7 +470,7 @@ export function EntrySheet({
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
-            <div className="flex flex-wrap items-center gap-2">
+            <div {...stylex.props(styles.titleRow)}>
               <SheetTitle className="shrink-0 text-base font-semibold">
                 {format(m.entrySheetTitle)}
               </SheetTitle>
@@ -176,13 +480,13 @@ export function EntrySheet({
                 asked={entry.supplement !== null}
               />
               {revisionNo !== undefined && entry.status !== 'draft' && (
-                <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                <span {...stylex.props(styles.versionNote)}>
                   {format(m.entryVersionNo, { no: revisionNo })}
                 </span>
               )}
             </div>
           </div>
-          <span className="flex-1" />
+          <span {...stylex.props(styles.spacer)} />
           <Button
             variant="ghost"
             size="icon-sm"
@@ -193,7 +497,7 @@ export function EntrySheet({
           </Button>
         </div>
 
-        <div className="flex shrink-0 gap-0.5 border-b px-5">
+        <div {...stylex.props(styles.tabBar)}>
           {(
             [
               [
@@ -208,33 +512,26 @@ export function EntrySheet({
               key={key}
               type="button"
               onClick={() => setTab(key)}
-              className={cn(
-                'relative inline-flex h-9 items-center gap-1.5 px-2.5 text-sm whitespace-nowrap',
-                tab === key ? 'font-medium' : 'text-muted-foreground',
-              )}
+              {...stylex.props(styles.tab, tab === key && styles.tabOn)}
             >
               {format(label)}
-              <span className="rounded bg-muted px-1 text-xs tabular-nums">{count}</span>
-              {tab === key && (
-                <span aria-hidden className="absolute inset-x-2 -bottom-px h-0.5 bg-foreground" />
-              )}
+              <span {...stylex.props(styles.tabCount)}>{count}</span>
+              {tab === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
             </button>
           ))}
         </div>
 
-        <ScrollArea className="min-h-0 flex-1">
+        <ScrollArea className={stylex.props(styles.scroller).className}>
           {/* the two tabs replace each other in place, seen to change */}
-          <Swap swapKey={tab} className="flex flex-col gap-5 px-5 py-4">
+          <Swap swapKey={tab} className={stylex.props(styles.body).className}>
             {tab === 'trail' ? (
               <EntryTrail entryId={entry.id} />
             ) : (
               <>
-                {/* why it came back, first: it is the reason this drawer was
-                    opened at all when the claim is waiting on its owner */}
                 {entry.refusal !== null && (
-                  <div className="flex flex-col gap-1.5 rounded-xl bg-muted p-3">
-                    <div className="flex flex-wrap items-baseline gap-2">
-                      <p className="shrink-0 text-sm font-semibold text-destructive">
+                  <div {...stylex.props(styles.notice)}>
+                    <div {...stylex.props(styles.noticeHead)}>
+                      <p {...stylex.props(styles.noticeTitle)}>
                         {format(
                           entry.refusal.kind === 'rejected'
                             ? m.entryRefusedTitle
@@ -242,17 +539,20 @@ export function EntrySheet({
                         )}
                       </p>
                       {entry.refusal.reason !== null && (
-                        <Badge variant="outline" className="bg-background font-normal">
+                        <Badge
+                          variant="outline"
+                          className={stylex.props(styles.reasonBadge).className}
+                        >
                           {entry.refusal.reason}
                         </Badge>
                       )}
-                      <span className="flex-1" />
-                      <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                      <span {...stylex.props(styles.spacer)} />
+                      <span {...stylex.props(styles.noticeWhen)}>
                         {new Date(entry.refusal.at).toLocaleString()}
                       </span>
                     </div>
                     {(entry.refusal.comment ?? '') !== '' && (
-                      <p className="text-sm leading-relaxed text-pretty">{entry.refusal.comment}</p>
+                      <p {...stylex.props(styles.prose)}>{entry.refusal.comment}</p>
                     )}
                     <SuggestedChanges
                       suggested={entry.refusal.suggestedPayload}
@@ -266,34 +566,30 @@ export function EntrySheet({
                 {entry.supplement !== null && (
                   <div
                     data-testid="supplement-ask"
-                    className="flex flex-col gap-2.5 rounded-xl bg-muted p-3"
+                    {...stylex.props(styles.notice, styles.noticeAsk)}
                   >
-                    <div className="flex items-center gap-2">
-                      <AlertCircleIcon aria-hidden className="size-4 shrink-0 text-destructive" />
-                      <p className="min-w-0 flex-1 text-sm font-medium">
-                        {format(m.entrySupplementTitle)}
-                      </p>
+                    <div {...stylex.props(styles.askHead)}>
+                      <AlertCircleIcon
+                        aria-hidden
+                        className={stylex.props(styles.askIcon).className}
+                      />
+                      <p {...stylex.props(styles.askTitle)}>{format(m.entrySupplementTitle)}</p>
                     </div>
-                    <p className="text-sm leading-relaxed text-pretty">
-                      {entry.supplement.instructions}
-                    </p>
+                    <p {...stylex.props(styles.prose)}>{entry.supplement.instructions}</p>
                     {entry.supplement.requirements.length > 0 && (
-                      <div className="flex flex-col gap-1.5 border-t pt-2.5">
-                        <p className="text-xs text-muted-foreground">{format(m.supplementNeeds)}</p>
+                      <div {...stylex.props(styles.askNeeds)}>
+                        <p {...stylex.props(styles.quietNote)}>{format(m.supplementNeeds)}</p>
                         {entry.supplement.requirements.map((asked) => (
-                          <span key={asked.key} className="flex items-center gap-2 text-sm">
-                            <span
-                              aria-hidden
-                              className="size-1 shrink-0 rounded-full bg-muted-foreground/50"
-                            />
-                            <span className="min-w-0 truncate">{asked.label}</span>
-                            <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                          <span key={asked.key} {...stylex.props(styles.askPiece)}>
+                            <span aria-hidden {...stylex.props(styles.askDot)} />
+                            <span {...stylex.props(styles.askPieceName)}>{asked.label}</span>
+                            <span {...stylex.props(styles.askPieceKind)}>
                               {format(
                                 asked.kind === 'file' ? m.supplementAddFile : m.supplementAddText,
                               )}
                             </span>
                             {asked.required && (
-                              <span className="shrink-0 text-xs whitespace-nowrap text-destructive">
+                              <span {...stylex.props(styles.askPieceRequired)}>
                                 {format(m.supplementPieceRequired)}
                               </span>
                             )}
@@ -307,16 +603,12 @@ export function EntrySheet({
                   </div>
                 )}
 
-                {/* what was filed, whole: the card's three lines are a
-                    reminder, this is the filing */}
-                <section className="flex flex-col gap-3">
-                  <div className="flex items-baseline gap-2.5">
-                    <p className="shrink-0 text-sm font-semibold text-muted-foreground">
-                      {format(m.entrySheetOwn)}
-                    </p>
-                    <span aria-hidden className="h-px min-w-0 flex-1 bg-border" />
+                <section {...stylex.props(styles.section)}>
+                  <div {...stylex.props(styles.sectionHead)}>
+                    <p {...stylex.props(styles.sectionTitle)}>{format(m.entrySheetOwn)}</p>
+                    <span aria-hidden {...stylex.props(styles.sectionRule)} />
                     {revisionNo !== undefined && (
-                      <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                      <p {...stylex.props(styles.sectionNote)}>
                         {format(m.entryVersionNo, { no: revisionNo })}
                       </p>
                     )}
@@ -324,13 +616,11 @@ export function EntrySheet({
                   {fields.map((field) => {
                     const value = payload[field.key]
                     return (
-                      <div key={field.key} className="flex flex-col gap-1">
-                        <p className="text-[13px] [overflow-wrap:anywhere] text-muted-foreground">
-                          {field.label}
-                        </p>
+                      <div key={field.key} {...stylex.props(styles.field)}>
+                        <p {...stylex.props(styles.fieldLabel)}>{field.label}</p>
                         {field.type === 'attachment' ? (
                           Array.isArray(value) && value.length > 0 ? (
-                            <span className="flex flex-wrap gap-2">
+                            <span {...stylex.props(styles.fileRow)}>
                               {value.map((id) => (
                                 <AttachmentLink
                                   key={String(id)}
@@ -340,12 +630,12 @@ export function EntrySheet({
                               ))}
                             </span>
                           ) : (
-                            <p className="text-sm text-muted-foreground">
+                            <p {...stylex.props(styles.fieldCleared)}>
                               {format(m.entryFieldCleared)}
                             </p>
                           )
                         ) : (
-                          <p className="text-[15px] leading-relaxed [overflow-wrap:anywhere]">
+                          <p {...stylex.props(styles.fieldValue)}>
                             {typeof value === 'string' && value !== ''
                               ? value
                               : format(m.entryFieldCleared)}
@@ -355,11 +645,9 @@ export function EntrySheet({
                     )
                   })}
                   {(entry.currentRevision?.note ?? null) !== null && (
-                    <div className="flex flex-col gap-1">
-                      <p className="text-[13px] text-muted-foreground">{format(m.entryNote)}</p>
-                      <p className="text-[15px] leading-relaxed [overflow-wrap:anywhere]">
-                        {entry.currentRevision!.note}
-                      </p>
+                    <div {...stylex.props(styles.field)}>
+                      <p {...stylex.props(styles.fieldLabel)}>{format(m.entryNote)}</p>
+                      <p {...stylex.props(styles.fieldValue)}>{entry.currentRevision!.note}</p>
                     </div>
                   )}
                 </section>
@@ -368,13 +656,11 @@ export function EntrySheet({
                     section per ask: the requirement and the material stay
                     together, because apart neither says what it is for */}
                 {answered.map((ask) => (
-                  <section key={ask.id} className="flex flex-col gap-3">
-                    <div className="flex items-baseline gap-2.5">
-                      <p className="shrink-0 text-sm font-semibold text-muted-foreground">
-                        {format(m.entrySheetSupHead)}
-                      </p>
-                      <span aria-hidden className="h-px min-w-0 flex-1 bg-border" />
-                      <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                  <section key={ask.id} {...stylex.props(styles.section)}>
+                    <div {...stylex.props(styles.sectionHead)}>
+                      <p {...stylex.props(styles.sectionTitle)}>{format(m.entrySheetSupHead)}</p>
+                      <span aria-hidden {...stylex.props(styles.sectionRule)} />
+                      <p {...stylex.props(styles.sectionNote)}>
                         {format(m.entrySheetSupNote, {
                           round: ask.roundNo,
                           asked: timeOf(ask.requestedAt),
@@ -382,19 +668,17 @@ export function EntrySheet({
                         })}
                       </p>
                     </div>
-                    <p className="rounded-lg bg-muted px-3 py-2 text-sm leading-relaxed text-muted-foreground">
+                    <p {...stylex.props(styles.supAsk)}>
                       {format(m.entrySheetSupAsk)}　{ask.instructions}
                     </p>
                     {ask.requirements.map((piece) => {
                       const value = (ask.response!.payload as Record<string, unknown>)[piece.key]
                       return (
-                        <div key={piece.key} className="flex flex-col gap-1">
-                          <p className="text-[13px] [overflow-wrap:anywhere] text-muted-foreground">
-                            {piece.label}
-                          </p>
+                        <div key={piece.key} {...stylex.props(styles.field)}>
+                          <p {...stylex.props(styles.fieldLabel)}>{piece.label}</p>
                           {piece.kind === 'file' ? (
                             Array.isArray(value) && value.length > 0 ? (
-                              <span className="flex flex-wrap gap-2">
+                              <span {...stylex.props(styles.fileRow)}>
                                 {value.map((id) => (
                                   <AttachmentLink
                                     key={String(id)}
@@ -405,10 +689,10 @@ export function EntrySheet({
                                 ))}
                               </span>
                             ) : (
-                              <p className="text-sm text-muted-foreground">—</p>
+                              <p {...stylex.props(styles.fieldCleared)}>—</p>
                             )
                           ) : (
-                            <p className="text-[15px] leading-relaxed [overflow-wrap:anywhere]">
+                            <p {...stylex.props(styles.fieldValue)}>
                               {typeof value === 'string' && value !== '' ? value : '—'}
                             </p>
                           )}
@@ -422,19 +706,16 @@ export function EntrySheet({
           </Swap>
         </ScrollArea>
 
-        {/* The acts, once, where the whole claim is on screen: quitting on
-            the far left where it cannot be pressed for one of the others,
-            and handing on - the act that moves things - carrying the ink. */}
-        <div className="flex shrink-0 items-center gap-2 border-t px-5 py-3">
+        <div {...stylex.props(styles.actionBar)}>
           <Offered
             can={entry.capabilities.abandon}
             busy={busy}
             variant="ghost"
-            className="text-muted-foreground"
+            xstyle={styles.ghostInk}
             label={format(m.entryAbandon)}
             onPress={() => setAsking('voided')}
           />
-          <span className="flex-1" />
+          <span {...stylex.props(styles.spacer)} />
           <Offered
             can={entry.capabilities.appeal}
             busy={busy}
@@ -527,14 +808,14 @@ function Offered({
   busy,
   label,
   variant = 'outline',
-  className,
+  xstyle,
   onPress,
 }: {
   can: ActionAvailability
   busy: boolean
   label: string
   variant?: 'outline' | 'default' | 'ghost'
-  className?: string
+  xstyle?: stylex.StyleXStyles
   onPress: () => void
 }) {
   const { format } = useI18n()
@@ -544,7 +825,7 @@ function Offered({
       variant={variant}
       size="sm"
       disabled={busy || can.state === 'blocked'}
-      className={cn(can.state === 'blocked' && 'pointer-events-none', className)}
+      className={stylex.props(can.state === 'blocked' && styles.noPointer, xstyle).className}
       onClick={onPress}
     >
       {label}

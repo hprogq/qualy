@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react'
 import type * as React from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { FileTile } from '@qualy/ui/dropzone'
 import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { DocumentLightbox } from './DocumentLightbox.tsx'
 import { useAttachmentDescriptor } from './use-attachment-descriptor.ts'
@@ -37,6 +38,240 @@ import {
 // file is being worked with. `preview` draws the file large, for the review
 // screen, whose whole job is looking at what was submitted.
 
+const styles = stylex.create({
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  arriving: {
+    opacity: 0,
+    transitionProperty: 'opacity',
+    transitionDuration: '300ms',
+  },
+  arrived: {
+    opacity: 1,
+  },
+  imgFill: {
+    width: '100%',
+    height: '100%',
+    cursor: 'zoom-in',
+    objectFit: 'cover',
+  },
+  lineRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+  },
+  clipIcon: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  lineName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    textAlign: 'left',
+    textUnderlineOffset: 2,
+    textDecorationLine: {
+      default: 'none',
+      ':hover': 'underline',
+    },
+  },
+  zoomIn: {
+    cursor: 'zoom-in',
+  },
+  pointer: {
+    cursor: 'pointer',
+  },
+  quietDownload: {
+    flexShrink: 0,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+  },
+  smallIcon: {
+    width: 14,
+    height: 14,
+  },
+  cardFigure: {
+    display: 'flex',
+    width: 168,
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 6,
+  },
+  cardBox: {
+    position: 'relative',
+    display: 'flex',
+    height: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    color: tokens.mutedForeground,
+  },
+  cardBoxMarked: {
+    borderColor: tokens.foreground,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  fillButton: {
+    display: 'flex',
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: {
+      default: 'default',
+      ':enabled': 'pointer',
+    },
+  },
+  fillColumn: {
+    flexDirection: 'column',
+    gap: 6,
+  },
+  docIconCard: {
+    width: 22,
+    height: 22,
+  },
+  docIconPreview: {
+    width: 24,
+    height: 24,
+  },
+  docIconTile: {
+    width: 16,
+    height: 16,
+  },
+  slotBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    borderRadius: tokens.radiusSm,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    paddingInline: 4,
+    fontFamily:
+      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    fontSize: 10,
+    color: tokens.foreground,
+  },
+  markBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    borderRadius: tokens.radiusSm,
+    backgroundColor: tokens.foreground,
+    paddingInline: 6,
+    fontSize: 10,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    color: tokens.background,
+  },
+  cardDownload: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    display: 'flex',
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    opacity: {
+      default: 0,
+      ':focus-visible': 1,
+    },
+    transitionProperty: 'opacity',
+  },
+  cardDownloadShown: {
+    opacity: 1,
+  },
+  cardCaption: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 1,
+  },
+  cardName: {
+    fontSize: 11,
+    lineHeight: 1.375,
+    overflowWrap: 'anywhere',
+  },
+  cardSize: {
+    fontSize: 10,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  previewFigure: {
+    display: 'flex',
+    width: 224,
+    flexDirection: 'column',
+    gap: 8,
+  },
+  previewBox: {
+    display: 'flex',
+    height: 144,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    color: tokens.mutedForeground,
+  },
+  previewCaption: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+  },
+  previewName: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+  },
+  tileMediaButton: {
+    display: 'flex',
+    width: '100%',
+    height: '100%',
+    cursor: 'pointer',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+})
+
 /**
  * A photograph that arrives, not one that assembles.
  *
@@ -65,11 +300,9 @@ function ArrivingImg({ className, onLoad, ...rest }: React.ComponentProps<'img'>
         setReady(true)
         onLoad?.(event)
       }}
-      className={cn(
-        'transition-opacity duration-300',
-        ready ? 'opacity-100' : 'opacity-0',
-        className,
-      )}
+      className={[stylex.props(styles.arriving, ready && styles.arrived).className, className]
+        .filter(Boolean)
+        .join(' ')}
     />
   )
 }
@@ -110,6 +343,9 @@ export function AttachmentLink({
   const isImage = data !== undefined && LOOKS_LIKE_A_PHOTOGRAPH.has(data.declaredMime)
   const isDocument = data !== undefined && LOOKS_LIKE_A_DOCUMENT.has(data.declaredMime)
   const [reading, setReading] = useState(false)
+  // whether the pointer is on the card tile: the download button in its
+  // corner reads that from here rather than from a selector on the figure
+  const [rested, setRested] = useState(false)
   const lightbox = reading && data !== undefined && (
     <DocumentLightbox
       href={href}
@@ -122,15 +358,15 @@ export function AttachmentLink({
   if (variant === 'line') {
     return (
       <Shown photo={isImage}>
-        <span className="flex min-w-0 items-center gap-1.5">
-          <PaperclipIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span {...stylex.props(styles.lineRow)}>
+          <PaperclipIcon aria-hidden className={stylex.props(styles.clipIcon).className} />
           {/* a picture or a document opens where it stands; anything else
               is a download */}
           {isImage ? (
             <PhotoView src={href}>
               <button
                 type="button"
-                className="min-w-0 cursor-zoom-in truncate text-left underline-offset-2 hover:underline"
+                className={stylex.props(styles.lineName, styles.zoomIn).className}
               >
                 {name}
               </button>
@@ -139,7 +375,7 @@ export function AttachmentLink({
             <button
               type="button"
               onClick={() => setReading(true)}
-              className="min-w-0 cursor-pointer truncate text-left underline-offset-2 hover:underline"
+              {...stylex.props(styles.lineName, styles.pointer)}
             >
               {name}
             </button>
@@ -149,7 +385,7 @@ export function AttachmentLink({
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
-              className="min-w-0 truncate underline-offset-2 hover:underline"
+              {...stylex.props(styles.lineName)}
             >
               {name}
             </a>
@@ -161,10 +397,10 @@ export function AttachmentLink({
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 text-muted-foreground hover:text-foreground"
+              {...stylex.props(styles.quietDownload)}
             >
-              <DownloadIcon aria-hidden className="size-3.5" />
-              <span className="sr-only">{name}</span>
+              <DownloadIcon aria-hidden className={stylex.props(styles.smallIcon).className} />
+              <span {...stylex.props(styles.srOnly)}>{name}</span>
             </a>
           )}
         </span>
@@ -182,21 +418,18 @@ export function AttachmentLink({
       <Shown photo={isImage}>
         <figure
           data-file-slot={slot}
-          className="group/file flex w-42 shrink-0 flex-col gap-1.5"
+          {...stylex.props(styles.cardFigure)}
           aria-label={name}
+          onMouseEnter={() => setRested(true)}
+          onMouseLeave={() => setRested(false)}
         >
-          <div
-            className={cn(
-              'relative flex h-24 items-center justify-center overflow-hidden rounded-lg border text-muted-foreground',
-              mark !== undefined ? 'border-foreground bg-muted' : 'bg-muted/50',
-            )}
-          >
+          <div {...stylex.props(styles.cardBox, mark !== undefined && styles.cardBoxMarked)}>
             {isImage ? (
               <PhotoView src={href}>
                 <ArrivingImg
                   src={href}
                   alt={name}
-                  className="size-full cursor-zoom-in object-cover"
+                  className={stylex.props(styles.imgFill).className}
                 />
               </PhotoView>
             ) : (
@@ -204,19 +437,15 @@ export function AttachmentLink({
                 type="button"
                 disabled={!isDocument}
                 onClick={() => setReading(true)}
-                className="flex size-full items-center justify-center enabled:cursor-pointer"
+                {...stylex.props(styles.fillButton)}
               >
-                <FileTextIcon aria-hidden className="size-5.5" />
-                <span className="sr-only">{name}</span>
+                <FileTextIcon aria-hidden className={stylex.props(styles.docIconCard).className} />
+                <span {...stylex.props(styles.srOnly)}>{name}</span>
               </button>
             )}
-            {slot !== undefined && (
-              <span className="absolute top-1.5 left-1.5 rounded border bg-background px-1 font-mono text-[10px] text-foreground">
-                {slot}
-              </span>
-            )}
+            {slot !== undefined && <span {...stylex.props(styles.slotBadge)}>{slot}</span>}
             {mark !== undefined && (
-              <span className="absolute top-1.5 right-1.5 rounded bg-foreground px-1.5 text-[10px] font-medium whitespace-nowrap text-background">
+              <span {...stylex.props(styles.markBadge)}>
                 {format(mark === 'added' ? m.reviewFileAdded : m.reviewFileSupplement)}
               </span>
             )}
@@ -230,15 +459,15 @@ export function AttachmentLink({
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
-              className="absolute right-1.5 bottom-1.5 flex size-6 items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 transition-opacity group-hover/file:opacity-100 hover:text-foreground focus-visible:opacity-100"
+              {...stylex.props(styles.cardDownload, rested && styles.cardDownloadShown)}
             >
-              <DownloadIcon aria-hidden className="size-3.5" />
-              <span className="sr-only">{name}</span>
+              <DownloadIcon aria-hidden className={stylex.props(styles.smallIcon).className} />
+              <span {...stylex.props(styles.srOnly)}>{name}</span>
             </a>
           </div>
-          <figcaption className="flex min-w-0 flex-col gap-px">
-            <span className="text-[11px] leading-snug [overflow-wrap:anywhere]">{name}</span>
-            <span className="text-[10px] text-muted-foreground tabular-nums">
+          <figcaption {...stylex.props(styles.cardCaption)}>
+            <span {...stylex.props(styles.cardName)}>{name}</span>
+            <span {...stylex.props(styles.cardSize)}>
               {data === undefined ? '' : sizeLabel(Number(data.size))}
             </span>
           </figcaption>
@@ -251,14 +480,14 @@ export function AttachmentLink({
   if (variant === 'preview') {
     return (
       <Shown photo={isImage}>
-        <figure className="flex w-56 flex-col gap-2">
-          <div className="flex h-36 items-center justify-center overflow-hidden rounded-xl border bg-muted/60 text-muted-foreground">
+        <figure {...stylex.props(styles.previewFigure)}>
+          <div {...stylex.props(styles.previewBox)}>
             {isImage ? (
               <PhotoView src={href}>
                 <ArrivingImg
                   src={href}
                   alt={name}
-                  className="size-full cursor-zoom-in object-cover"
+                  className={stylex.props(styles.imgFill).className}
                 />
               </PhotoView>
             ) : (
@@ -266,15 +495,18 @@ export function AttachmentLink({
                 type="button"
                 disabled={!isDocument}
                 onClick={() => setReading(true)}
-                className="flex size-full flex-col items-center justify-center gap-1.5 enabled:cursor-pointer"
+                {...stylex.props(styles.fillButton, styles.fillColumn)}
               >
-                <FileTextIcon aria-hidden className="size-6" />
-                <span className="sr-only">{name}</span>
+                <FileTextIcon
+                  aria-hidden
+                  className={stylex.props(styles.docIconPreview).className}
+                />
+                <span {...stylex.props(styles.srOnly)}>{name}</span>
               </button>
             )}
           </div>
-          <figcaption className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-xs" title={name}>
+          <figcaption {...stylex.props(styles.previewCaption)}>
+            <span {...stylex.props(styles.previewName)} title={name}>
               {name}
             </span>
             <a
@@ -282,10 +514,10 @@ export function AttachmentLink({
               download={data?.filename}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 text-muted-foreground hover:text-foreground"
+              {...stylex.props(styles.quietDownload)}
             >
-              <DownloadIcon aria-hidden className="size-3.5" />
-              <span className="sr-only">{name}</span>
+              <DownloadIcon aria-hidden className={stylex.props(styles.smallIcon).className} />
+              <span {...stylex.props(styles.srOnly)}>{name}</span>
             </a>
           </figcaption>
         </figure>
@@ -304,20 +536,20 @@ export function AttachmentLink({
               <ArrivingImg
                 src={href}
                 alt={name}
-                className="size-full cursor-zoom-in object-cover"
+                className={stylex.props(styles.imgFill).className}
               />
             </PhotoView>
           ) : isDocument ? (
             <button
               type="button"
               onClick={() => setReading(true)}
-              className="flex size-full cursor-pointer items-center justify-center"
+              {...stylex.props(styles.tileMediaButton)}
             >
-              <FileTextIcon aria-hidden className="size-4" />
-              <span className="sr-only">{name}</span>
+              <FileTextIcon aria-hidden className={stylex.props(styles.docIconTile).className} />
+              <span {...stylex.props(styles.srOnly)}>{name}</span>
             </button>
           ) : (
-            <FileTextIcon aria-hidden className="size-4" />
+            <FileTextIcon aria-hidden className={stylex.props(styles.docIconTile).className} />
           )
         }
         name={name}
@@ -326,7 +558,7 @@ export function AttachmentLink({
           <Button variant="ghost" size="icon-sm" asChild>
             <a href={href} download={data?.filename} target="_blank" rel="noreferrer">
               <DownloadIcon aria-hidden />
-              <span className="sr-only">{name}</span>
+              <span {...stylex.props(styles.srOnly)}>{name}</span>
             </a>
           </Button>
         }

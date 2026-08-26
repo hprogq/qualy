@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
@@ -7,8 +8,8 @@ import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, SidePanel } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
-import { cn } from '@qualy/ui/cn'
 import { Skeleton } from '@qualy/ui/skeleton'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
@@ -28,6 +29,229 @@ import { ownReviewEventMessage, reviewEventMessage } from '../review/events.ts'
 // that ends one round and opens the next: the old section closes with
 // where the work went, the new one opens with where it came from, and the
 // same administrator's act is never listed as two.
+
+const styles = stylex.create({
+  skeleton: {
+    height: 160,
+    width: '100%',
+  },
+  empty: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  trail: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+    fontSize: 14,
+  },
+  roundSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  headRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  roundTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  ongoingBadge: {
+    borderColor: `color-mix(in oklab, ${tokens.success} 45%, transparent)`,
+    color: tokens.successForeground,
+  },
+  thread: {
+    marginLeft: 5,
+    display: 'flex',
+    flexDirection: 'column',
+    borderLeftWidth: 1,
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+    paddingLeft: 20,
+  },
+  node: {
+    position: 'relative',
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 6,
+    paddingBottom: {
+      default: 20,
+      ':last-child': 4,
+    },
+  },
+  dot: {
+    position: 'absolute',
+    top: 4,
+    left: -25,
+    width: 9,
+    height: 9,
+    borderRadius: '9999px',
+    borderWidth: 1.5,
+    borderStyle: 'solid',
+  },
+  dotAlert: {
+    borderColor: tokens.danger,
+    backgroundColor: tokens.danger,
+  },
+  dotStrong: {
+    borderColor: tokens.foreground,
+    backgroundColor: tokens.foreground,
+  },
+  dotPlain: {
+    borderColor: tokens.mutedForeground,
+    backgroundColor: tokens.background,
+  },
+  stack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  lineTitle: {
+    minWidth: 0,
+    fontSize: 14,
+  },
+  lineAlert: {
+    fontWeight: 600,
+    color: tokens.danger,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  lineWhen: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  mark: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  quoted: {
+    borderLeftWidth: 2,
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+    paddingLeft: 12,
+    fontSize: 14,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+  },
+  quotedAlert: {
+    borderLeftColor: `color-mix(in oklab, ${tokens.danger} 30%, transparent)`,
+  },
+  quietNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  mutedInk: {
+    color: tokens.mutedForeground,
+  },
+  reasonRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  plainBadge: {
+    fontWeight: 400,
+  },
+  standingBadge: {
+    flexShrink: 0,
+    fontWeight: 400,
+  },
+  chipRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 8,
+    paddingBlock: 2,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  chipKind: {
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+  },
+  card: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+    padding: 12,
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: '4rem minmax(0, 1fr)',
+    columnGap: 12,
+    rowGap: 6,
+    fontSize: 14,
+  },
+  gridRow: {
+    gridColumn: 'span 2',
+    display: 'grid',
+    gridTemplateColumns: 'subgrid',
+  },
+  term: {
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  detail: {
+    minWidth: 0,
+  },
+  softNote: {
+    fontSize: 12,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  asideNote: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  filed: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  filedTerm: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  filedFiles: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+  },
+})
 
 /** one thing that happened, whatever kind of thing it was */
 interface Node {
@@ -106,7 +330,7 @@ export function EntryHistory({
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void history.refetch()}
-        skeleton={<Skeleton className="h-40 w-full" />}
+        skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
       >
         {data !== undefined && <Trail data={data} subject={subject} />}
       </AsyncSection>
@@ -136,7 +360,7 @@ export function EntryTrail({
       loadingLabel={format(commonMessages.loading)}
       retryLabel={format(commonMessages.retry)}
       onRetry={() => void history.refetch()}
-      skeleton={<Skeleton className="h-40 w-full" />}
+      skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
     >
       {history.data !== undefined && <Trail data={history.data} subject={subject} />}
     </AsyncSection>
@@ -152,10 +376,10 @@ function Trail({ data, subject }: { data: History; subject: string | undefined }
   const { format } = useI18n()
   const items = useTrail(data, subject)
   if (items.length === 0) {
-    return <p className="text-sm text-muted-foreground">{format(m.entryTrailEmpty)}</p>
+    return <p {...stylex.props(styles.empty)}>{format(m.entryTrailEmpty)}</p>
   }
   return (
-    <div className="flex flex-col gap-5 text-sm">
+    <div {...stylex.props(styles.trail)}>
       {items.map((item) =>
         item.kind === 'round' ? (
           <section
@@ -163,19 +387,16 @@ function Trail({ data, subject }: { data: History; subject: string | undefined }
             data-testid="trail-round"
             data-round-no={item.round.roundNo}
             data-standing={item.round.state === 'completed' ? 'ended' : 'ongoing'}
-            className="flex flex-col gap-3"
+            {...stylex.props(styles.roundSection)}
           >
-            <div className="flex items-baseline gap-2">
-              <h4 className="text-sm font-semibold">
+            <div {...stylex.props(styles.headRow)}>
+              <h4 {...stylex.props(styles.roundTitle)}>
                 {format(m.entryTrailRound, { no: item.round.roundNo })}
               </h4>
               {item.round.state === 'completed' ? (
                 <Badge variant="secondary">{format(m.entryRoundEnded)}</Badge>
               ) : (
-                <Badge
-                  variant="outline"
-                  className="border-emerald-300 text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"
-                >
+                <Badge variant="outline" className={stylex.props(styles.ongoingBadge).className}>
                   {format(m.entryRoundOngoing)}
                 </Badge>
               )}
@@ -193,7 +414,7 @@ function Trail({ data, subject }: { data: History; subject: string | undefined }
 /** one border, and every node hangs a dot on it */
 function Thread({ nodes }: { nodes: readonly Node[] }) {
   return (
-    <div className="ml-[5px] flex flex-col border-l pl-5">
+    <div {...stylex.props(styles.thread)}>
       {nodes.map((node) => (
         <div
           key={node.key}
@@ -201,17 +422,17 @@ function Thread({ nodes }: { nodes: readonly Node[] }) {
           // account's shape asks for the nodes, not for their sentences
           data-testid="trail-node"
           data-kind={node.kind}
-          className="relative flex min-w-0 flex-col gap-1.5 pb-5 last:pb-1"
+          {...stylex.props(styles.node)}
         >
           <span
             aria-hidden
-            className={cn(
-              'absolute top-1 -left-[25px] size-[9px] rounded-full border-[1.5px]',
+            {...stylex.props(
+              styles.dot,
               node.weight === 'alert'
-                ? 'border-destructive bg-destructive'
+                ? styles.dotAlert
                 : node.weight === 'strong'
-                  ? 'border-foreground bg-foreground'
-                  : 'border-muted-foreground bg-background',
+                  ? styles.dotStrong
+                  : styles.dotPlain,
             )}
           />
           {node.render()}
@@ -437,7 +658,7 @@ function useTrail(data: History, subject: string | undefined): readonly TrailIte
         kind: 'act',
         weight: 'plain',
         render: () => (
-          <div className="flex flex-col gap-1">
+          <div {...stylex.props(styles.stack)}>
             <Line title={actTitle(format, event, subject)} at={event.at} />
             {event.reason !== null && <Quoted>{event.reason}</Quoted>}
           </div>
@@ -470,15 +691,11 @@ function Line({
   tone?: 'alert'
 }) {
   return (
-    <div className="flex items-baseline gap-2">
-      <p className={cn('min-w-0 text-sm', tone === 'alert' && 'font-semibold text-destructive')}>
-        {title}
-      </p>
+    <div {...stylex.props(styles.headRow)}>
+      <p {...stylex.props(styles.lineTitle, tone === 'alert' && styles.lineAlert)}>{title}</p>
       {aside}
-      <span className="flex-1" />
-      <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-        {timeOf(at)}
-      </p>
+      <span {...stylex.props(styles.spacer)} />
+      <p {...stylex.props(styles.lineWhen)}>{timeOf(at)}</p>
     </div>
   )
 }
@@ -491,11 +708,7 @@ function Line({
 function LifecycleMark({ marker, no }: { marker: 'started' | 'ended'; no: number }) {
   const { format } = useI18n()
   return (
-    <p
-      data-testid="round-mark"
-      data-mark={marker}
-      className="text-xs font-medium text-muted-foreground"
-    >
+    <p data-testid="round-mark" data-mark={marker} {...stylex.props(styles.mark)}>
       {format(marker === 'started' ? m.entryRoundStartedMark : m.entryRoundEndedMark, { no })}
     </p>
   )
@@ -503,16 +716,7 @@ function LifecycleMark({ marker, no }: { marker: 'started' | 'ended'; no: number
 
 /** somebody's own words, quoted rather than restated */
 function Quoted({ children, tone }: { children: ReactNode; tone?: 'alert' }) {
-  return (
-    <p
-      className={cn(
-        'border-l-2 pl-3 text-sm leading-relaxed text-pretty',
-        tone === 'alert' ? 'border-destructive/30' : 'border-border',
-      )}
-    >
-      {children}
-    </p>
-  )
+  return <p {...stylex.props(styles.quoted, tone === 'alert' && styles.quotedAlert)}>{children}</p>
 }
 
 /** how a re-routed round begins: where it came from, and on whose word */
@@ -529,13 +733,11 @@ function RerouteStart({
 }) {
   const { format } = useI18n()
   return (
-    <div className="flex flex-col gap-1">
+    <div {...stylex.props(styles.stack)}>
       <Line title={format(m.entryRoundReroutedStart)} at={at} />
       <LifecycleMark marker="started" no={no} />
       {from !== null && (
-        <p className="text-xs text-muted-foreground">
-          {format(m.entryRoundReroutedFrom, { no: from })}
-        </p>
+        <p {...stylex.props(styles.quietNote)}>{format(m.entryRoundReroutedFrom, { no: from })}</p>
       )}
       {reason !== null && reason !== '' && <Quoted>{reason}</Quoted>}
     </div>
@@ -577,7 +779,7 @@ function Version({
         formConfig={revision.formConfig}
         attachments={revision.attachments}
       />
-      {revision.note !== null && <p className="text-muted-foreground">{revision.note}</p>}
+      {revision.note !== null && <p {...stylex.props(styles.mutedInk)}>{revision.note}</p>}
     </>
   )
 }
@@ -633,13 +835,13 @@ function Act({
       <Line title={title} at={event.at} />
       {marker !== undefined && <LifecycleMark marker={marker} no={roundNo} />}
       {continuedBy != null && (
-        <p className="text-xs text-muted-foreground">
+        <p {...stylex.props(styles.quietNote)}>
           {format(m.entryRoundReroutedNext, { no: continuedBy })}
         </p>
       )}
       {event.reason !== null && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="font-normal">
+        <div {...stylex.props(styles.reasonRow)}>
+          <Badge variant="secondary" className={stylex.props(styles.plainBadge).className}>
             {format(m.entryTrailReason, { value: event.reason })}
           </Badge>
         </div>
@@ -663,24 +865,21 @@ function Ask({ supplement, subject }: { supplement: Supplement; subject: string 
         title={format(subject === undefined ? m.entrySupplementTitle : m.entryTrailAskOut)}
         tone="alert"
         aside={
-          <Badge variant="secondary" className="shrink-0 font-normal">
+          <Badge variant="secondary" className={stylex.props(styles.standingBadge).className}>
             {format(standing)}
           </Badge>
         }
         at={supplement.requestedAt}
       />
       {supplement.requestedByName !== null && (
-        <p className="text-xs text-muted-foreground">{supplement.requestedByName}</p>
+        <p {...stylex.props(styles.quietNote)}>{supplement.requestedByName}</p>
       )}
       <Quoted tone="alert">{supplement.instructions}</Quoted>
-      <div className="flex flex-wrap gap-2">
+      <div {...stylex.props(styles.chipRow)}>
         {supplement.requirements.map((asked) => (
-          <span
-            key={asked.key}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs whitespace-nowrap text-muted-foreground"
-          >
+          <span key={asked.key} {...stylex.props(styles.chip)}>
             {asked.label}
-            <span className="text-muted-foreground/70">
+            <span {...stylex.props(styles.chipKind)}>
               {format(asked.kind === 'file' ? m.supplementAddFile : m.supplementAddText)}
             </span>
           </span>
@@ -713,14 +912,14 @@ function Answer({
         }
         at={response.respondedAt}
       />
-      <div className="flex flex-col gap-2 rounded-lg bg-muted p-3">
-        <dl className="grid grid-cols-[4rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+      <div {...stylex.props(styles.card)}>
+        <dl {...stylex.props(styles.grid)}>
           {supplement.requirements
             .filter((asked) => asked.kind === 'text')
             .map((asked) => (
-              <div key={asked.key} className="col-span-2 grid grid-cols-subgrid">
-                <dt className="whitespace-nowrap text-muted-foreground">{asked.label}</dt>
-                <dd className="min-w-0">
+              <div key={asked.key} {...stylex.props(styles.gridRow)}>
+                <dt {...stylex.props(styles.term)}>{asked.label}</dt>
+                <dd {...stylex.props(styles.detail)}>
                   {typeof answers[asked.key] === 'string' ? (answers[asked.key] as string) : '—'}
                 </dd>
               </div>
@@ -736,7 +935,7 @@ function Answer({
         {/* the one thing about a supplement a reader cannot see for
             themselves: it did not overwrite what they had already filed */}
         {revisionNo !== null && (
-          <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
+          <p {...stylex.props(styles.softNote)}>
             {format(subject === undefined ? m.entryTrailAnswerKept : m.entryTrailAnswerKeptOut, {
               no: revisionNo,
             })}
@@ -758,16 +957,14 @@ function Suggestion({
 }) {
   const { format } = useI18n()
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-muted p-3">
-      <div className="flex items-baseline gap-2">
-        <p className="text-sm font-medium">{format(m.entrySuggestionTitle)}</p>
-        <span className="flex-1" />
-        <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-          {format(m.entrySuggestionAdvisory)}
-        </p>
+    <div {...stylex.props(styles.card)}>
+      <div {...stylex.props(styles.headRow)}>
+        <p {...stylex.props(styles.cardTitle)}>{format(m.entrySuggestionTitle)}</p>
+        <span {...stylex.props(styles.spacer)} />
+        <p {...stylex.props(styles.asideNote)}>{format(m.entrySuggestionAdvisory)}</p>
       </div>
       <FiledFields payload={payload} formConfig={formConfig} />
-      <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
+      <p {...stylex.props(styles.softNote)}>
         {format(subject === undefined ? m.entrySuggestionHint : m.entrySuggestionHintOut)}
       </p>
     </div>
@@ -832,17 +1029,17 @@ function FiledFields({
   const orphaned = (attachments ?? []).map((one) => one.attachmentId).filter((id) => !cited.has(id))
   if (rows.length === 0 && orphaned.length === 0) return null
   return (
-    <div className="flex flex-col gap-1.5">
-      <dl className="grid grid-cols-[4rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
+    <div {...stylex.props(styles.filed)}>
+      <dl {...stylex.props(styles.grid)}>
         {rows.map((row) => (
-          <div key={row.key} className="col-span-2 grid grid-cols-subgrid">
-            <dt className="min-w-0 truncate text-muted-foreground">{row.label}</dt>
+          <div key={row.key} {...stylex.props(styles.gridRow)}>
+            <dt {...stylex.props(styles.filedTerm)}>{row.label}</dt>
             {row.value.kind === 'text' ? (
-              <dd className={cn('min-w-0', row.value.text === '' && 'text-muted-foreground')}>
+              <dd {...stylex.props(styles.detail, row.value.text === '' && styles.mutedInk)}>
                 {row.value.text === '' ? format(m.entryFieldCleared) : row.value.text}
               </dd>
             ) : (
-              <dd className="flex min-w-0 flex-col gap-1">
+              <dd {...stylex.props(styles.filedFiles)}>
                 {row.value.ids.map((attachmentId) => (
                   <AttachmentLink key={attachmentId} attachmentId={attachmentId} variant="line" />
                 ))}

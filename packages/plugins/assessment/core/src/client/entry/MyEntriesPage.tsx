@@ -1796,7 +1796,7 @@ function Body({
                     the rail keeps the desktop reader oriented instead */}
                 <div {...stylex.props(styles.stripSeat)}>
                   <Appear show={currentBand !== null} collapse>
-                    <div {...stylex.props(styles.strip)}>
+                    <div data-testid="band-strip" {...stylex.props(styles.strip)}>
                       <div {...stylex.props(styles.stripInner)}>
                         <span {...stylex.props(styles.stripNo)}>
                           {currentBand !== null ? bandNoOf(currentBand) : ''}

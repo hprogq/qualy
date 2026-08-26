@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -10,6 +11,7 @@ import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
 import { Textarea } from '@qualy/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { entryRefusalMessage, entryRefusalReason } from './refusals.ts'
 import { toast } from '@qualy/ui/toast'
@@ -31,6 +33,213 @@ import {
 // terms of the question beside it, and the two ways out - keep it as a draft,
 // or hand it to the first reviewer. Both are one press, because a claim saved
 // but not submitted is the common case and should not need explaining.
+
+const lg = '@media (min-width: 1024px)'
+
+const spin = stylex.keyframes({
+  '100%': { transform: 'rotate(360deg)' },
+})
+
+const styles = stylex.create({
+  titleRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+  },
+  worthBadge: {
+    fontWeight: 400,
+  },
+  footer: {
+    display: 'flex',
+    width: '100%',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+  },
+  quietNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  noPointer: {
+    pointerEvents: 'none',
+  },
+  // Above the work and never over it: the standing colour carries the
+  // warning, mixed over the scheme's own ground so both modes read it
+  notice: {
+    marginBottom: 20,
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 16,
+    rowGap: 8,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.warning} 35%, ${tokens.background})`,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.background})`,
+    paddingInline: 16,
+    paddingBlock: 14,
+  },
+  noticeWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  noticeTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
+  noticeBody: {
+    fontSize: 13,
+    lineHeight: 1.625,
+    color: `color-mix(in oklab, ${tokens.foreground} 75%, transparent)`,
+  },
+  noticeButton: {
+    borderColor: `color-mix(in oklab, ${tokens.warning} 45%, ${tokens.background})`,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.warning} 20%, ${tokens.background})`,
+    },
+    color: {
+      default: tokens.foreground,
+      ':hover': tokens.foreground,
+    },
+  },
+  spinning: {
+    animationName: spin,
+    animationDuration: '1s',
+    animationTimingFunction: 'linear',
+    animationIterationCount: 'infinite',
+  },
+  body: {
+    display: 'grid',
+    gap: 24,
+    gridTemplateColumns: {
+      default: null,
+      [lg]: 'minmax(0, 1fr) 18rem',
+    },
+  },
+  form: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 20,
+  },
+  issueList: {
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.danger} 40%, transparent)`,
+    padding: 12,
+    fontSize: 14,
+    color: tokens.danger,
+  },
+  aside: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 16,
+  },
+  asideCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 16,
+  },
+  asideCardRoomy: {
+    gap: 10,
+  },
+  asideTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  siblingLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  siblingDot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  siblingWords: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  asideFoot: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 8,
+    fontSize: 12,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  stepLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+  },
+  stepNo: {
+    display: 'flex',
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    backgroundColor: tokens.surfaceMuted,
+    fontSize: 10,
+    fontWeight: 500,
+  },
+  stepName: {
+    minWidth: 0,
+  },
+  escalationLine: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+    rowGap: 2,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 8,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  keepShort: {
+    flexShrink: 0,
+  },
+  escalationSteps: {
+    minWidth: 0,
+    lineHeight: 1.625,
+  },
+  flowNote: {
+    fontSize: 12,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+})
 
 /** the payload refusals the driver can raise, as sentences about one field */
 const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
@@ -235,14 +444,14 @@ export function EntryDialog({
       open={open}
       size="wide"
       title={
-        <span className="flex flex-wrap items-center gap-2.5">
+        <span {...stylex.props(styles.titleRow)}>
           {entry === null
             ? format(m.entryNth, {
                 n: siblings.filter((one) => one.status !== 'voided').length + 1,
               })
             : format(m.entryEdit)}
           {each !== undefined && (
-            <Badge variant="secondary" className="font-normal">
+            <Badge variant="secondary" className={stylex.props(styles.worthBadge).className}>
               {format(m.entryCountsFor, { value: trimAmount(each) })}
             </Badge>
           )}
@@ -251,9 +460,9 @@ export function EntryDialog({
       description={[...trail, asked.title].join(' › ')}
       onClose={onClose}
       footer={
-        <div className="flex w-full flex-wrap items-center gap-3">
-          <p className="text-xs text-muted-foreground">{format(m.entryDraftKept)}</p>
-          <span className="flex-1" />
+        <div {...stylex.props(styles.footer)}>
+          <p {...stylex.props(styles.quietNote)}>{format(m.entryDraftKept)}</p>
+          <span {...stylex.props(styles.spacer)} />
           {/* while the question is out of date both ways out are shut: either
               would file an answer under rules its author has not seen */}
           <Button
@@ -274,7 +483,7 @@ export function EntryDialog({
                       data-testid="save-and-submit"
                       data-gate={submitGate?.state}
                       disabled
-                      className="pointer-events-none"
+                      className={stylex.props(styles.noPointer).className}
                     >
                       {format(m.entrySaveAndSubmit)}
                     </Button>
@@ -299,24 +508,16 @@ export function EntryDialog({
           screen and stays in state, and the only press that changes the
           form is the reader's own. */}
       {stale && (
-        <div
-          ref={notice}
-          data-testid="rules-changed"
-          className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 dark:border-amber-900/50 dark:bg-amber-950/25"
-        >
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
-              {format(m.entryRulesChangedTitle)}
-            </p>
-            <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
-              {format(m.entryRulesChangedBody)}
-            </p>
+        <div ref={notice} data-testid="rules-changed" {...stylex.props(styles.notice)}>
+          <div {...stylex.props(styles.noticeWords)}>
+            <p {...stylex.props(styles.noticeTitle)}>{format(m.entryRulesChangedTitle)}</p>
+            <p {...stylex.props(styles.noticeBody)}>{format(m.entryRulesChangedBody)}</p>
           </div>
-          <span className="flex-1" />
+          <span {...stylex.props(styles.spacer)} />
           <Button
             variant="outline"
             size="sm"
-            className="border-amber-300 bg-transparent text-amber-950 hover:bg-amber-100/60 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-900/40"
+            className={stylex.props(styles.noticeButton).className}
             disabled={awaiting}
             onClick={() => {
               if (item.currentRevision?.id !== asked.currentRevision?.id) adopt(item)
@@ -326,14 +527,17 @@ export function EntryDialog({
               }
             }}
           >
-            <RefreshCwIcon aria-hidden className={awaiting ? 'animate-spin' : undefined} />
+            <RefreshCwIcon
+              aria-hidden
+              className={stylex.props(awaiting && styles.spinning).className}
+            />
             {format(m.entryRulesChangedAction)}
           </Button>
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="flex min-w-0 flex-col gap-5">
+      <div {...stylex.props(styles.body)}>
+        <div {...stylex.props(styles.form)}>
           <EvidenceForm
             fields={fields}
             value={payload}
@@ -349,7 +553,7 @@ export function EntryDialog({
           </Field>
           <Feedback message={problem} />
           {issues.length > 0 && (
-            <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+            <ul {...stylex.props(styles.issueList)}>
               {issues.map((issue, index) => (
                 <li key={index}>
                   {labelOf(issue.field)}{' '}
@@ -360,22 +564,19 @@ export function EntryDialog({
           )}
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-4">
+        <aside {...stylex.props(styles.aside)}>
           <Basis compact />
 
           {siblings.length > 0 && (
-            <div className="flex flex-col gap-2 rounded-xl border p-4">
-              <p className="text-sm font-semibold">{format(m.entryAlreadyFiled)}</p>
+            <div {...stylex.props(styles.asideCard)}>
+              <p {...stylex.props(styles.asideTitle)}>{format(m.entryAlreadyFiled)}</p>
               {siblings.map((one) => (
-                <p key={one.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span
-                    aria-hidden
-                    className="size-1.5 shrink-0 rounded-full bg-muted-foreground/60"
-                  />
-                  <span className="truncate">{summary(one, item)}</span>
+                <p key={one.id} {...stylex.props(styles.siblingLine)}>
+                  <span aria-hidden {...stylex.props(styles.siblingDot)} />
+                  <span {...stylex.props(styles.siblingWords)}>{summary(one, item)}</span>
                 </p>
               ))}
-              <p className="border-t pt-2 text-xs leading-relaxed text-muted-foreground">
+              <p {...stylex.props(styles.asideFoot)}>
                 {format(m.entryNoDuplicates)}
                 {room !== null && room <= 1 && entry === null && ` ${format(m.entryLastRoom)}`}
               </p>
@@ -383,37 +584,32 @@ export function EntryDialog({
           )}
 
           {chain.normal.length > 0 && (
-            <div className="flex flex-col gap-2.5 rounded-xl border p-4">
-              <p className="text-sm font-semibold">{format(m.entryFlow)}</p>
+            <div {...stylex.props(styles.asideCard, styles.asideCardRoomy)}>
+              <p {...stylex.props(styles.asideTitle)}>{format(m.entryFlow)}</p>
               {/* Steps by the names the administrator gave them, and only
                   the names: who each step lands on is the round's business
                   and not this reader's to be told. */}
               {chain.normal.map((label, index) => (
-                <span key={index} className="flex items-center gap-2 text-xs">
-                  <span
-                    aria-hidden
-                    className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-[0.625rem] font-medium"
-                  >
+                <span key={index} {...stylex.props(styles.stepLine)}>
+                  <span aria-hidden {...stylex.props(styles.stepNo)}>
                     {index + 1}
                   </span>
-                  <span className="min-w-0">
+                  <span {...stylex.props(styles.stepName)}>
                     {label ?? format(m.entryFlowStep, { n: index + 1 })}
                   </span>
                 </span>
               ))}
               {chain.escalation.length > 0 && (
-                <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs text-muted-foreground">
-                  <span className="shrink-0">{format(m.reviewRouteEscalation)}</span>
-                  <span className="min-w-0 leading-relaxed">
+                <p {...stylex.props(styles.escalationLine)}>
+                  <span {...stylex.props(styles.keepShort)}>{format(m.reviewRouteEscalation)}</span>
+                  <span {...stylex.props(styles.escalationSteps)}>
                     {chain.escalation
                       .map((label, index) => label ?? format(m.entryFlowStep, { n: index + 1 }))
                       .join(' → ')}
                   </span>
                 </p>
               )}
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {format(m.entryFlowNote)}
-              </p>
+              <p {...stylex.props(styles.flowNote)}>{format(m.entryFlowNote)}</p>
             </div>
           )}
         </aside>
