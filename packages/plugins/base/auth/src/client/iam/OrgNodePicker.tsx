@@ -215,14 +215,10 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
           <div {...stylex.props(styles.filterRow)}>
             {context.scope !== undefined && (
               <ToggleGroup
-                type="single"
-                spacing={0}
                 value={context.scope}
                 onValueChange={(next) =>
                   next && context.onScopeChange?.(next as 'self' | 'subtree')
                 }
-                variant="outline"
-                size="sm"
                 className={stylex.props(styles.pinned).className}
               >
                 <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
@@ -317,11 +313,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
       {context.value.length > 0 && (
         <div {...stylex.props(styles.chosenRow)}>
           {context.value.map((nodeId) => (
-            <Badge
-              key={nodeId}
-              variant="secondary"
-              className={stylex.props(styles.chosenBadge).className}
-            >
+            <Badge key={nodeId} className={stylex.props(styles.chosenBadge).className}>
               {named.get(nodeId) ?? nodeId}
               <button
                 type="button"

@@ -11,7 +11,7 @@ import { Input } from '@qualy/ui/input'
 import { Kbd, KbdGroup } from '@qualy/ui/kbd'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Textarea } from '@qualy/ui/textarea'
-import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
+import { Chip, ChipGroup } from '@qualy/ui/chip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { fieldsOf } from '../entry/model.ts'
@@ -27,6 +27,12 @@ import type { ReviewDto } from './model.ts'
 const sm = '@media (min-width: 640px)'
 
 const styles = stylex.create({
+  reasonWords: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    whiteSpace: 'nowrap',
+  },
   picker: {
     display: 'flex',
     flexDirection: 'column',
@@ -300,36 +306,16 @@ function ReasonPicker({
         </span>
         <span {...stylex.props(styles.quietNote)}>{format(m.reviewReasonHint)}</span>
       </div>
-      <ToggleGroup
-        type="single"
-        variant="outline"
-        size="sm"
-        className="flex-wrap justify-start"
-        value={value}
-        onValueChange={(next) => onChange(next)}
-      >
-        {reasons.map((reason, index) => {
-          const picked = value === reason
-          return (
-            <ToggleGroupItem
-              key={reason}
-              value={reason}
-              className={cn(
-                'whitespace-nowrap',
-                'data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground',
-              )}
-            >
-              {picked && (
-                <CheckIcon aria-hidden className={stylex.props(styles.checkIcon).className} />
-              )}
+      <ChipGroup value={value} onChange={(next) => onChange(next)}>
+        {reasons.map((reason, index) => (
+          <Chip key={reason} value={reason}>
+            <span {...stylex.props(styles.reasonWords)}>
               {reason}
-              {fine && index < 9 && (
-                <Kbd className={cn(picked && 'bg-current/20 text-current')}>{index + 1}</Kbd>
-              )}
-            </ToggleGroupItem>
-          )
-        })}
-      </ToggleGroup>
+              {fine && index < 9 && <Kbd>{index + 1}</Kbd>}
+            </span>
+          </Chip>
+        ))}
+      </ChipGroup>
     </div>
   )
 }

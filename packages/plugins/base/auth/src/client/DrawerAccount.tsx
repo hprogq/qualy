@@ -41,16 +41,12 @@ export default function DrawerAccount() {
       <span {...stylex.props(styles.spacer)} />
       <span {...stylex.props(styles.label)}>{format(m.language)}</span>
       <ToggleGroup
-        type="single"
-        spacing={0}
-        variant="outline"
-        size="sm"
         value={locale}
         aria-label={format(m.language)}
         onValueChange={(next) => next !== '' && setLocale(next as SupportedLocale)}
       >
         {supportedLocales.map((candidate) => (
-          <ToggleGroupItem key={candidate} value={candidate} className="px-2 text-xs">
+          <ToggleGroupItem key={candidate} value={candidate}>
             {localeNames[candidate]}
           </ToggleGroupItem>
         ))}

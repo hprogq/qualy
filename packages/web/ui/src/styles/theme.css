@@ -392,21 +392,14 @@
     width: 1.5rem;
     height: 1.5rem;
   }
-  /* the pressed state the behavior primitive stamps on a toggle, and the
-     icon sizing inside caller-provided children - neither is readable by a
-     compiled style on its own element */
-  [data-slot='toggle-group-item'][data-state='on'] {
-    background-color: var(--q-surface-muted);
-  }
-  [data-slot='toggle-group-item']:disabled {
-    pointer-events: none;
-    opacity: 0.5;
-  }
-  [data-slot='toggle-group-item'] svg {
+  /* A segmented option's own icon. It arrives inside a label the caller
+     wrote, so no compiled style can reach it; lucide draws at 24px when
+     nothing says otherwise, which dwarfs the words beside it. A caller who
+     states a size still wins - a compiled StyleX class sits in a priority
+     layer above this one. */
+  [data-slot='toggle-group'] svg {
     pointer-events: none;
     flex-shrink: 0;
-  }
-  [data-slot='toggle-group-item'] svg:not([class*='size-']) {
     width: 1rem;
     height: 1rem;
   }

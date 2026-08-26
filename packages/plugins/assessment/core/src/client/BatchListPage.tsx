@@ -370,10 +370,6 @@ export default function BatchListPage() {
             )}
             <div {...stylex.props(styles.chipScroller)}>
               <ToggleGroup
-                type="single"
-                variant="outline"
-                size="sm"
-                spacing={0}
                 className="w-max"
                 value={statusFilter}
                 aria-label={format(m.filterStatus)}

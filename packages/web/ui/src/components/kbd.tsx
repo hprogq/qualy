@@ -34,7 +34,7 @@ const styles = stylex.create({
     fontWeight: 500,
     lineHeight: 1,
     color: 'currentColor',
-    backgroundColor: 'color-mix(in oklab, currentColor 15%, transparent)',
+    backgroundColor: 'color-mix(in oklab, currentColor 8%, transparent)',
     borderWidth: 0,
     boxShadow: 'none',
     userSelect: 'none',

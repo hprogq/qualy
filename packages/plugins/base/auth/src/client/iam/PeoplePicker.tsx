@@ -149,12 +149,8 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
             </SelectContent>
           </Select>
           <ToggleGroup
-            type="single"
-            spacing={0}
             value={scope}
             onValueChange={(next) => next && setScope(next as 'self' | 'subtree')}
-            variant="outline"
-            size="sm"
           >
             <ToggleGroupItem value="self">{format(m.pickerScopeSelf)}</ToggleGroupItem>
             <ToggleGroupItem value="subtree">{format(m.pickerScopeSubtree)}</ToggleGroupItem>
@@ -209,16 +205,12 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           </span>
           <div className="flex items-center gap-1">
             <Button
-              size="sm"
-              variant="ghost"
               disabled={at === 0}
               onClick={() => setPaging({ question, cursors, at: Math.max(0, at - 1) })}
             >
               {format(m.pickerPrevious)}
             </Button>
             <Button
-              size="sm"
-              variant="ghost"
               disabled={nextCursor === null}
               onClick={() => setPaging({ question, cursors, at: at + 1 })}
             >
