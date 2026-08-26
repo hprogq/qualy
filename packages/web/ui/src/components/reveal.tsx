@@ -1,7 +1,9 @@
 import { Children, useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
-import { cn } from '../lib/utils.ts'
+import * as stylex from '@stylexjs/stylex'
+import { clsx } from 'clsx'
+import { tokens } from '../theme/tokens.stylex.ts'
 
 // The entrance a screen makes: a short fade and lift, once, on mount.
 // Deliberately subtle - page content should arrive, not perform.
@@ -175,6 +177,38 @@ export function Drill({
 // it is the same fact drawn twice rather than decoration - which is why it
 // runs on the real deadline instead of a fixed loop. Reduced motion keeps
 // the number and drops the sweep.
+const ringStyles = stylex.create({
+  seat: {
+    position: 'relative',
+    display: 'flex',
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sweep: {
+    position: 'absolute',
+    inset: 0,
+    transform: 'rotate(-90deg)',
+  },
+  track: {
+    stroke: tokens.border,
+  },
+  ink: {
+    stroke: tokens.foreground,
+  },
+  digits: {
+    position: 'relative',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  mark: {
+    width: 64,
+    height: 64,
+  },
+})
+
 export function CountdownRing({
   seconds,
   remaining,
@@ -191,10 +225,18 @@ export function CountdownRing({
   const reduced = useReducedMotion()
   const circumference = 2 * Math.PI * 11
   const left = Math.max(0, Math.min(1, remaining / seconds))
+  const sx = stylex.props(ringStyles.seat)
   return (
-    <span className={cn('relative flex size-6.5 items-center justify-center', className)}>
-      <svg viewBox="0 0 26 26" className="absolute inset-0 -rotate-90">
-        <circle cx="13" cy="13" r="11" fill="none" strokeWidth="2" className="stroke-border" />
+    <span {...sx} className={clsx(sx.className, className)}>
+      <svg viewBox="0 0 26 26" {...stylex.props(ringStyles.sweep)}>
+        <circle
+          cx="13"
+          cy="13"
+          r="11"
+          fill="none"
+          strokeWidth="2"
+          {...stylex.props(ringStyles.track)}
+        />
         <motion.circle
           cx="13"
           cy="13"
@@ -202,7 +244,7 @@ export function CountdownRing({
           fill="none"
           strokeWidth="2"
           strokeLinecap="round"
-          className="stroke-foreground"
+          className={stylex.props(ringStyles.ink).className}
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference * (1 - left) }}
           animate={{
@@ -211,7 +253,7 @@ export function CountdownRing({
           transition={{ duration: reduced === true ? 0 : seconds * left, ease: 'linear' }}
         />
       </svg>
-      <span className="relative text-xs tabular-nums">{children}</span>
+      <span {...stylex.props(ringStyles.digits)}>{children}</span>
     </span>
   )
 }
@@ -225,9 +267,17 @@ export function CountdownRing({
 export function DoneMark({ className }: { className?: string }) {
   const reduced = useReducedMotion()
   const still = reduced === true
+  const sx = stylex.props(ringStyles.mark)
   return (
-    <svg viewBox="0 0 76 76" className={cn('size-16', className)} aria-hidden>
-      <circle cx="38" cy="38" r="32" fill="none" strokeWidth="2" className="stroke-border" />
+    <svg viewBox="0 0 76 76" {...sx} className={clsx(sx.className, className)} aria-hidden>
+      <circle
+        cx="38"
+        cy="38"
+        r="32"
+        fill="none"
+        strokeWidth="2"
+        {...stylex.props(ringStyles.track)}
+      />
       <motion.circle
         cx="38"
         cy="38"
@@ -235,7 +285,7 @@ export function DoneMark({ className }: { className?: string }) {
         fill="none"
         strokeWidth="2"
         strokeLinecap="round"
-        className="stroke-foreground"
+        className={stylex.props(ringStyles.ink).className}
         transform="rotate(-90 38 38)"
         initial={{ pathLength: still ? 1 : 0 }}
         animate={{ pathLength: 1 }}
@@ -247,7 +297,7 @@ export function DoneMark({ className }: { className?: string }) {
         strokeWidth="2.6"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="stroke-foreground"
+        className={stylex.props(ringStyles.ink).className}
         initial={{ pathLength: still ? 1 : 0 }}
         animate={{ pathLength: 1 }}
         transition={{ duration: still ? 0 : 0.38, delay: still ? 0 : 0.52, ease: [0.4, 0, 0.2, 1] }}

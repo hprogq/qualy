@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { cn } from '../lib/utils.ts'
+import * as stylex from '@stylexjs/stylex'
+import { clsx } from 'clsx'
 
 // A value that changes while you are looking at it.
 //
@@ -54,6 +55,40 @@ const pieces = (value: string): string[] => {
 // Memoised on the value, which is the whole input: a caller that re-renders
 // on a clock would otherwise walk this tree every tick whether or not a single
 // character moved.
+const styles = stylex.create({
+  box: {
+    display: 'inline-block',
+    overflow: 'hidden',
+    verticalAlign: 'bottom',
+    transitionProperty: 'width',
+    transitionDuration: '300ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  line: {
+    display: 'inline-flex',
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  },
+  seat: {
+    position: 'relative',
+    display: 'inline-flex',
+  },
+  // pre, because a space at the edge of an inline block is trimmed:
+  // "3 分 20 秒" set as boxes comes out as "3分20秒"
+  glyph: {
+    display: 'inline-block',
+    whiteSpace: 'pre',
+  },
+  leavingGlyph: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    display: 'inline-block',
+    whiteSpace: 'pre',
+  },
+})
+
 export const Ticker = memo(function Ticker({
   value,
   className,
@@ -73,15 +108,14 @@ export const Ticker = memo(function Ticker({
     if (line.current) setWidth(line.current.offsetWidth)
   }, [value])
 
+  const sx = stylex.props(styles.box)
   return (
     <span
-      className={cn(
-        'inline-block overflow-hidden align-bottom transition-[width] duration-300',
-        className,
-      )}
+      {...sx}
+      className={clsx(sx.className, className)}
       style={width === null ? undefined : { width }}
     >
-      <span ref={line} className="inline-flex tabular-nums whitespace-nowrap">
+      <span ref={line} {...stylex.props(styles.line)}>
         {pieces(value).map((piece, at) => (
           <Piece key={at} text={piece} />
         ))}
@@ -109,12 +143,10 @@ function Piece({ text }: { text: string }) {
   }
 
   return (
-    <span className="relative inline-flex">
+    <span {...stylex.props(styles.seat)}>
       <motion.span
         key={shown}
-        // pre, because a space at the edge of an inline block is trimmed:
-        // "3 分 20 秒" set as boxes comes out as "3分20秒"
-        className="inline-block whitespace-pre"
+        className={stylex.props(styles.glyph).className}
         initial={{ opacity: 0, y: 5, filter: 'blur(4px)' }}
         animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
         transition={SWAP}
@@ -125,7 +157,7 @@ function Piece({ text }: { text: string }) {
         <motion.span
           key={leaving}
           aria-hidden
-          className="pointer-events-none absolute top-0 left-0 inline-block whitespace-pre"
+          className={stylex.props(styles.leavingGlyph).className}
           initial={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
           animate={{ opacity: 0, y: -5, filter: 'blur(4px)' }}
           transition={SWAP}
