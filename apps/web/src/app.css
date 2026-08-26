@@ -5,8 +5,15 @@
    layers are named explicitly because in dev the compiler's early <link>
    injection would otherwise declare them first - before mantine - and
    invert the cascade (first declaration fixes a layer's position for the
-   whole document). */
-@layer theme, base, mantine, components, utilities, priority1, priority2, priority3, priority4, priority5;
+   whole document).
+
+   utilities sits LAST, above the StyleX priority layers: a caller's
+   `className="p-6"` on a StyleX-styled component keeps winning, exactly as
+   it did when both sides were Tailwind and tailwind-merge arbitrated. The
+   order is transitional by design - it holds the consumer-override contract
+   steady while the shared layer migrates, and stops meaning anything once
+   the utility layer itself is deleted. */
+@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5, utilities;
 
 @import 'tailwindcss' source(none);
 @import '@qualy/ui/theme.css';

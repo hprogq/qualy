@@ -19,3 +19,22 @@ const styles = stylex.create({
 export function StyleXProbe() {
   return <div data-testid="stylex-probe-ui" aria-hidden {...stylex.props(styles.probe)} />
 }
+
+// The transitional cascade contract, worn by one element: a legacy Tailwind
+// utility on a StyleX-styled node must keep winning, the way it won when both
+// sides were Tailwind and tailwind-merge arbitrated. The utility layer is
+// declared after the StyleX priority layers for exactly this reason, and the
+// probe is what notices if that order ever regresses. Mixing className with a
+// stylex.props spread is the antipattern the migration permits at exactly this
+// boundary - a caller's classes over a component's compiled styles.
+export function CascadeYieldProbe() {
+  const sx = stylex.props(styles.probe)
+  return (
+    <div
+      data-testid="stylex-yield-probe"
+      aria-hidden
+      {...sx}
+      className={`${sx.className ?? ''} bg-[#123456]`}
+    />
+  )
+}

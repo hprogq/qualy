@@ -6,5 +6,5 @@
 // index.html and src/app.css.
 const order = document.createElement('style')
 order.textContent =
-  '@layer theme, base, mantine, components, utilities, priority1, priority2, priority3, priority4, priority5;'
+  '@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5, utilities;'
 document.head.prepend(order)
