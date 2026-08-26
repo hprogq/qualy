@@ -612,6 +612,20 @@ Do not mass-migrate: the `xstyle` convention applies to components as they
 are brought onto StyleX, not as a repo-wide rewrite of everything that
 still takes `className`.
 
+### Test fixture styling
+
+Browser/unit test fixture styling MUST NOT rely on Tailwind utilities being
+emitted because production source happens to reference them: the tests
+directory sits outside the `@source` scan, so such a class works only until
+a migration removes its last production use - and then the fixture silently
+changes shape (this blanked a viewport fixture during the shell migration).
+
+Fixture-owned layout uses explicit inline `style`, test-local
+`stylex.create`, or another self-contained mechanism. The one exception is
+a test whose contract IS the legacy Tailwind/className/cascade behavior;
+those name themselves in `tools/tests/fixture-styling.test.ts`, which gates
+everything else.
+
 ## More resources
 
 - Official documentation: https://stylexjs.com
