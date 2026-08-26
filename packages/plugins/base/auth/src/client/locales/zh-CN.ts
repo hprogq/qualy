@@ -125,7 +125,7 @@ export default {
   'auth/user-types/empty': '还没有用户类型。',
   'auth/user-types/select-hint': '点开一个用户类型，设置该类人可以归属的组织。',
   'auth/users/detail-title': '用户',
-  'auth/users/back': '← 返回用户列表',
+  'auth/users/back': '返回用户列表',
   'auth/users/profile': '基本资料',
   'auth/users/placement': '组织归属',
   'auth/users/grants': '角色授权',

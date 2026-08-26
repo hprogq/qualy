@@ -257,7 +257,7 @@ const i18n = definePluginMessages({
       defaultMessage: 'Open a user type to set where people of that kind may belong.',
     },
     userDetailTitle: { id: 'auth/users/detail-title', defaultMessage: 'User' },
-    backToUsers: { id: 'auth/users/back', defaultMessage: '← All users' },
+    backToUsers: { id: 'auth/users/back', defaultMessage: 'All users' },
     profileSection: { id: 'auth/users/profile', defaultMessage: 'Profile' },
     placementSection: { id: 'auth/users/placement', defaultMessage: 'Organization placement' },
     grantsSection: { id: 'auth/users/grants', defaultMessage: 'Role grants' },
