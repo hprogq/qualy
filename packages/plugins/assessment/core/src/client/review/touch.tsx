@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronsRightIcon } from 'lucide-react'
-import { cn } from '@qualy/ui/cn'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 // The act that confirms a decision under a thumb. Its pointer-reading hooks
 // live next door in pointer.ts - the fast-refresh gate holds a component
@@ -8,6 +9,82 @@ import { cn } from '@qualy/ui/cn'
 
 /** how far along the track a release still counts as meant */
 const FAR_ENOUGH = 0.85
+
+const styles = stylex.create({
+  track: {
+    position: 'relative',
+    height: 44,
+    width: '100%',
+    touchAction: 'none',
+    overflow: 'hidden',
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    userSelect: 'none',
+  },
+  trackWaiting: {
+    opacity: 0.6,
+  },
+  trail: {
+    position: 'absolute',
+    insetBlock: 0,
+    left: 0,
+    backgroundColor: `color-mix(in oklab, ${tokens.primary} 10%, transparent)`,
+  },
+  // transitions only while nothing is held: a finger tracks raw, a release
+  // runs the handle and its trail back smoothly
+  trailSettling: {
+    transitionProperty: 'width',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  word: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 14,
+    fontWeight: 500,
+    opacity: 1,
+    transitionProperty: 'opacity',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  wordFaded: {
+    opacity: 0.3,
+  },
+  wordReady: {
+    color: tokens.foreground,
+  },
+  wordWaiting: {
+    color: tokens.mutedForeground,
+  },
+  handle: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 4,
+    display: 'flex',
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+  },
+  handleSettling: {
+    transitionProperty: 'transform',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  handleIcon: {
+    width: 16,
+    height: 16,
+  },
+})
 
 /**
  * An act keyed to a drag across, for a pointer that is a thumb.
@@ -101,22 +178,22 @@ export function SlideKey({
       ref={track}
       data-testid={testId}
       data-slide-at={span > 0 ? Math.round((at / span) * 100) : 0}
-      className={cn(
-        'relative h-11 w-full touch-none overflow-hidden rounded-xl border bg-muted/50 select-none',
-        !ready && 'opacity-60',
-      )}
+      {...stylex.props(styles.track, !ready && styles.trackWaiting)}
     >
-      {/* the trail the handle has covered, so progress reads as progress */}
+      {/* The trail the handle has covered, so progress reads as progress.
+          It fills to the handle's left edge and no further: reaching past
+          it painted a tinted block under the resting handle, and the sliver
+          of it in the track's rounded corner read as a stain. */}
       <span
         aria-hidden
-        style={{ width: at + 44 }}
-        className={cn('absolute inset-y-0 left-0 bg-primary/10', !dragging && 'transition-[width]')}
+        {...stylex.props(styles.trail, !dragging && styles.trailSettling)}
+        style={{ width: at }}
       />
       <span
-        className={cn(
-          'absolute inset-0 flex items-center justify-center text-sm font-medium transition-opacity',
-          dragging && at > span * 0.3 ? 'opacity-30' : 'opacity-100',
-          ready ? 'text-foreground' : 'text-muted-foreground',
+        {...stylex.props(
+          styles.word,
+          dragging && at > span * 0.3 && styles.wordFaded,
+          ready ? styles.wordReady : styles.wordWaiting,
         )}
       >
         {ready ? label : waiting}
@@ -126,7 +203,6 @@ export function SlideKey({
         data-slide-handle
         disabled={!ready}
         aria-label={label}
-        style={{ transform: `translateX(${at}px)` }}
         // Pointer events with capture: one set of handlers answers a finger,
         // a stylus and a mouse alike, and the capture keeps the drag alive
         // when it strays off the handle mid-carry.
@@ -144,12 +220,10 @@ export function SlideKey({
         onPointerUp={release}
         onPointerCancel={letGo}
         onContextMenu={(event) => event.preventDefault()}
-        className={cn(
-          'absolute top-1 bottom-1 left-1 flex w-11 items-center justify-center rounded-[9px] bg-primary text-primary-foreground',
-          !dragging && 'transition-transform',
-        )}
+        {...stylex.props(styles.handle, !dragging && styles.handleSettling)}
+        style={{ transform: `translateX(${at}px)` }}
       >
-        <ChevronsRightIcon aria-hidden className="size-4" />
+        <ChevronsRightIcon aria-hidden className={stylex.props(styles.handleIcon).className} />
       </button>
     </div>
   )

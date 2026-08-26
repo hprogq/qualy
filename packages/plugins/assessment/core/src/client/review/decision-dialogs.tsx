@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { CheckIcon } from 'lucide-react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog, RequiredMark } from '@qualy/ui/admin'
@@ -11,6 +12,7 @@ import { Kbd, KbdGroup } from '@qualy/ui/kbd'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Textarea } from '@qualy/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { fieldsOf } from '../entry/model.ts'
 import { SlideKey } from './touch.tsx'
@@ -21,6 +23,226 @@ import type { ReviewDto } from './model.ts'
 // dialog collects the word (and the picked reason when the batch configured
 // a list), and hands one staged decision back to the workbench - the same
 // undo window applies to these as to a plain approval.
+
+const sm = '@media (min-width: 640px)'
+
+const styles = stylex.create({
+  picker: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  pickerHead: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  pickerLabel: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  quietNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  checkIcon: {
+    width: 14,
+    height: 14,
+  },
+  grabber: {
+    marginInline: 'auto',
+    marginTop: 10,
+    height: 4,
+    width: 36,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  },
+  sheetBody: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 16,
+    overflowY: 'auto',
+    paddingInline: 16,
+    paddingBottom: 16,
+  },
+  sheetFoot: {
+    flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 16,
+    paddingTop: 12,
+    paddingBottom: 'max(1.125rem, env(safe-area-inset-bottom))',
+  },
+  footerRow: {
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+  },
+  footerEnd: {
+    justifyContent: 'flex-end',
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  panel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  // The verdict solids: the semantic tokens mixed toward black stand in for
+  // the fixed emerald and rose shades, hover a step darker, in both schemes.
+  approveSolid: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.success} 80%, black)`,
+      ':hover': `color-mix(in oklab, ${tokens.success} 70%, black)`,
+    },
+    color: 'white',
+  },
+  rejectSolid: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.danger} 80%, black)`,
+      ':hover': `color-mix(in oklab, ${tokens.danger} 70%, black)`,
+    },
+    color: 'white',
+  },
+  escalateSolid: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.primary} 90%, transparent)`,
+      ':hover': tokens.primary,
+    },
+  },
+  frame: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 16,
+  },
+  frameTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  suggestToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  suggestGrid: {
+    display: 'grid',
+    gridTemplateColumns: '8rem minmax(0, 1fr) minmax(0, 1fr)',
+    alignItems: 'center',
+    columnGap: 16,
+    rowGap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 12,
+  },
+  gridFoot: {
+    gridColumn: 'span 3 / span 3',
+    paddingTop: 4,
+  },
+  rowName: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 14,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  rowTheirs: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+  },
+  rowStruck: {
+    color: tokens.mutedForeground,
+    textDecorationLine: 'line-through',
+  },
+  suggestInput: {
+    height: 32,
+    fontSize: 14,
+  },
+  suggestChanged: {
+    borderColor: tokens.focusRing,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+  },
+  suggestIdle: {
+    backgroundColor: `color-mix(in oklab, ${tokens.input} 10%, transparent)`,
+    color: tokens.mutedForeground,
+  },
+  stageList: {
+    display: 'flex',
+    flexDirection: {
+      default: 'column',
+      [sm]: 'row',
+    },
+    gap: {
+      default: 8,
+      [sm]: 12,
+    },
+  },
+  stage: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 8,
+  },
+  stageLast: {
+    borderColor: `color-mix(in oklab, ${tokens.foreground} 30%, transparent)`,
+  },
+  stageNo: {
+    display: 'flex',
+    width: 20,
+    height: 20,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    fontSize: 10,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  stageNoLast: {
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+  },
+  stageNoIdle: {
+    backgroundColor: tokens.surfaceMuted,
+    color: tokens.mutedForeground,
+  },
+  stageName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+  },
+})
 
 /** what both dialogs hand back: exactly the decision endpoint's payload */
 export interface WordedDecision {
@@ -70,13 +292,13 @@ function ReasonPicker({
   }, [fine, reasons, onChange])
   if (reasons.length === 0) return null
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-baseline gap-2">
-        <span className="text-sm font-medium">
+    <div {...stylex.props(styles.picker)}>
+      <div {...stylex.props(styles.pickerHead)}>
+        <span {...stylex.props(styles.pickerLabel)}>
           {format(m.reviewReasonLabel)}
           <RequiredMark />
         </span>
-        <span className="text-xs text-muted-foreground">{format(m.reviewReasonHint)}</span>
+        <span {...stylex.props(styles.quietNote)}>{format(m.reviewReasonHint)}</span>
       </div>
       <ToggleGroup
         type="single"
@@ -97,7 +319,9 @@ function ReasonPicker({
                 'data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground',
               )}
             >
-              {picked && <CheckIcon aria-hidden className="size-3.5" />}
+              {picked && (
+                <CheckIcon aria-hidden className={stylex.props(styles.checkIcon).className} />
+              )}
               {reason}
               {fine && index < 9 && (
                 <Kbd className={cn(picked && 'bg-white/20 text-white')}>{index + 1}</Kbd>
@@ -148,18 +372,13 @@ export function DecisionSheet({
         side="bottom"
         className="max-h-[85dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
       >
-        <span
-          aria-hidden
-          className="mx-auto mt-2.5 h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30"
-        />
+        <span aria-hidden {...stylex.props(styles.grabber)} />
         <SheetHeader className="gap-0.5 px-4 pt-1.5 pb-2">
           <SheetTitle className="text-[15px]">{title}</SheetTitle>
           <SheetDescription className="text-xs">{hint}</SheetDescription>
         </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
-          {children}
-        </div>
-        <div className="shrink-0 border-t px-4 pt-3 pb-[max(1.125rem,env(safe-area-inset-bottom))]">
+        <div {...stylex.props(styles.sheetBody)}>{children}</div>
+        <div {...stylex.props(styles.sheetFoot)}>
           <SlideKey label={slideLabel} waiting={waiting} ready={ready} onConfirmed={onConfirm} />
         </div>
       </SheetContent>
@@ -238,15 +457,12 @@ export function ApproveDialog({
       })}
       onClose={onClose}
       footer={
-        <div className="flex w-full items-center justify-end gap-3">
+        <div {...stylex.props(styles.footerRow, styles.footerEnd)}>
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
             <Kbd>Esc</Kbd>
           </Button>
-          <Button
-            className="bg-emerald-600/90 text-white hover:bg-emerald-600 dark:bg-emerald-700/80 dark:hover:bg-emerald-700"
-            onClick={confirm}
-          >
+          <Button className={stylex.props(styles.approveSolid).className} onClick={confirm}>
             {format(m.reviewApprove)}
             <Kbd className="bg-white/20 text-white">⌘↵</Kbd>
           </Button>
@@ -254,7 +470,7 @@ export function ApproveDialog({
       }
     >
       <div
-        className="flex flex-col gap-5"
+        {...stylex.props(styles.panel)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
             event.preventDefault()
@@ -394,16 +610,16 @@ export function RejectDialog({
       })}
       onClose={onClose}
       footer={
-        <div className="flex w-full items-center gap-3">
-          <p className="text-xs text-muted-foreground">{format(m.reviewRejectFoot)}</p>
-          <span className="flex-1" />
+        <div {...stylex.props(styles.footerRow)}>
+          <p {...stylex.props(styles.quietNote)}>{format(m.reviewRejectFoot)}</p>
+          <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
             <Kbd>Esc</Kbd>
           </Button>
           <Button
             disabled={!ready}
-            className="bg-rose-600/90 text-white hover:bg-rose-600 dark:bg-rose-700/80 dark:hover:bg-rose-700"
+            className={stylex.props(styles.rejectSolid).className}
             onClick={confirm}
           >
             {format(m.reviewRejectConfirm)}
@@ -413,7 +629,7 @@ export function RejectDialog({
       }
     >
       <div
-        className="flex flex-col gap-5"
+        {...stylex.props(styles.panel)}
         onKeyDown={(event) => {
           // the panel answers for the submit chord and nothing else: the
           // suggestion keys are on the document, and a second handler for
@@ -456,8 +672,8 @@ export function RejectDialog({
         </Field>
 
         {fields.length > 0 && (
-          <div className="flex flex-col gap-3 rounded-xl border p-4">
-            <label className="flex items-center gap-2 text-sm font-medium">
+          <div {...stylex.props(styles.frame)}>
+            <label {...stylex.props(styles.suggestToggle)}>
               <Checkbox
                 checked={suggesting}
                 onCheckedChange={(next) => setSuggesting(next === true)}
@@ -469,14 +685,10 @@ export function RejectDialog({
               </KbdGroup>
             </label>
             {suggesting && (
-              <div className="grid grid-cols-[8rem_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-4 gap-y-2 border-t pt-3">
-                <span className="text-xs text-muted-foreground">
-                  {format(m.reviewSuggestField)}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {format(m.reviewSuggestTheirs)}
-                </span>
-                <span className="text-xs text-muted-foreground">{format(m.reviewSuggestMine)}</span>
+              <div {...stylex.props(styles.suggestGrid)}>
+                <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestField)}</span>
+                <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestTheirs)}</span>
+                <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestMine)}</span>
                 {fields.map((field, index) => {
                   const original =
                     typeof filed[field.key] === 'string' ? (filed[field.key] as string) : ''
@@ -496,7 +708,7 @@ export function RejectDialog({
                     />
                   )
                 })}
-                <p className="col-span-3 pt-1 text-xs text-muted-foreground">
+                <p {...stylex.props(styles.quietNote, styles.gridFoot)}>
                   {format(m.reviewSuggestHint)}
                 </p>
               </div>
@@ -533,7 +745,7 @@ function FieldRow({
   const changed = value.trim() !== ''
   return (
     <>
-      <span className="flex items-center gap-1.5 text-sm whitespace-nowrap text-muted-foreground">
+      <span {...stylex.props(styles.rowName)}>
         {slot <= 9 && (
           <KbdGroup>
             <Kbd>⌥</Kbd>
@@ -542,18 +754,16 @@ function FieldRow({
         )}
         {label}
       </span>
-      <span
-        className={cn('min-w-0 truncate text-sm', changed && 'text-muted-foreground line-through')}
-      >
+      <span {...stylex.props(styles.rowTheirs, changed && styles.rowStruck)}>
         {original || '—'}
       </span>
       <Input
         type={type}
         data-suggest-slot={slot}
-        className={cn(
-          'h-8 text-sm',
-          changed ? 'border-ring bg-accent/50' : 'bg-input/10 text-muted-foreground',
-        )}
+        className={
+          stylex.props(styles.suggestInput, changed ? styles.suggestChanged : styles.suggestIdle)
+            .className
+        }
         value={value}
         placeholder={keepLabel}
         onChange={(event) => onChange(event.target.value)}
@@ -638,14 +848,18 @@ export function EscalateDialog({
       })}
       onClose={onClose}
       footer={
-        <div className="flex w-full items-center gap-3">
-          <p className="text-xs text-muted-foreground">{format(m.reviewEscalateFoot)}</p>
-          <span className="flex-1" />
+        <div {...stylex.props(styles.footerRow)}>
+          <p {...stylex.props(styles.quietNote)}>{format(m.reviewEscalateFoot)}</p>
+          <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
             <Kbd>Esc</Kbd>
           </Button>
-          <Button disabled={!ready} className="bg-primary/90 hover:bg-primary" onClick={confirm}>
+          <Button
+            disabled={!ready}
+            className={stylex.props(styles.escalateSolid).className}
+            onClick={confirm}
+          >
             {format(m.reviewEscalate)}
             <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
           </Button>
@@ -653,7 +867,7 @@ export function EscalateDialog({
       }
     >
       <div
-        className="flex flex-col gap-5"
+        {...stylex.props(styles.panel)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
             event.preventDefault()
@@ -691,25 +905,17 @@ export function EscalateDialog({
           )}
         </Field>
         {stages.length > 0 && (
-          <div className="flex flex-col gap-3 rounded-xl border p-4">
-            <p className="text-sm font-medium">{format(m.reviewEscalateFlow)}</p>
-            <ol className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+          <div {...stylex.props(styles.frame)}>
+            <p {...stylex.props(styles.frameTitle)}>{format(m.reviewEscalateFlow)}</p>
+            <ol {...stylex.props(styles.stageList)}>
               {stages.map((stage, index) => {
                 const last = index === stages.length - 1
                 return (
-                  <li
-                    key={stage.id}
-                    className={cn(
-                      'flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border px-3 py-2',
-                      last && 'border-foreground/30',
-                    )}
-                  >
+                  <li key={stage.id} {...stylex.props(styles.stage, last && styles.stageLast)}>
                     <span
-                      className={cn(
-                        'flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] tabular-nums',
-                        last
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground',
+                      {...stylex.props(
+                        styles.stageNo,
+                        last ? styles.stageNoLast : styles.stageNoIdle,
                       )}
                     >
                       {index + 1}
@@ -718,7 +924,7 @@ export function EscalateDialog({
                         exists; the unit only as the fallback. What each step
                         may do is the same at every rung - any of them can
                         settle it - so the chain says the names and stops */}
-                    <span className="min-w-0 truncate text-sm">
+                    <span {...stylex.props(styles.stageName)}>
                       {stage.label ?? stage.nodeName ?? format(m.reviewStageSkipped)}
                     </span>
                   </li>

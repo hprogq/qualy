@@ -75,6 +75,8 @@ import { attachmentContentUrl } from '../entry/model.ts'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { Appear, CountdownRing, DoneMark, Drill, GlideAcross, Stagger } from '@qualy/ui/reveal'
 import { useFinePointer, useMedia } from './pointer.ts'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 // The workbench: one submission a screen, walked in a run.
 //
@@ -84,6 +86,373 @@ import { useFinePointer, useMedia } from './pointer.ts'
 // it can be taken back; then it is submitted and the next one is already on
 // screen. Sending back and escalating each carry a word, so they open their
 // dialog instead of arming silently.
+
+// The decision surface's own styles; the reading workbench around it keeps
+// its utility classes until its own migration pass.
+const lg = '@media (min-width: 1024px)'
+const belowSm = '@media (max-width: 639.98px)'
+
+const styles = stylex.create({
+  // the escalation environment's one card: the standing colour carries the
+  // asking-to-be-read-closely tone, mixed over the scheme's own ground
+  escalationCard: {
+    margin: {
+      default: 12,
+      [lg]: 0,
+    },
+    display: 'flex',
+    minWidth: 0,
+    flexShrink: 0,
+    alignItems: 'flex-start',
+    gap: 12,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.warning} 35%, ${tokens.background})`,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.background})`,
+    paddingInline: 16,
+    paddingBlock: 14,
+  },
+  escalationIcon: {
+    marginTop: 2,
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.warningForeground,
+  },
+  escalationWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+  },
+  escalationTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+    letterSpacing: '-0.025em',
+    color: tokens.foreground,
+  },
+  escalationGrounds: {
+    fontSize: 14,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+    color: tokens.foreground,
+  },
+  escalationBody: {
+    fontSize: 13,
+    lineHeight: 1.625,
+    color: `color-mix(in oklab, ${tokens.foreground} 75%, transparent)`,
+  },
+  decisionFooter: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: {
+      default: 12,
+      [lg]: 16,
+    },
+    paddingTop: {
+      default: 10,
+      [lg]: 12,
+    },
+    paddingBottom: {
+      default: 'max(0.625rem, env(safe-area-inset-bottom))',
+      [lg]: 12,
+    },
+  },
+  decisionRow: {
+    display: {
+      default: 'flex',
+      [belowSm]: 'grid',
+    },
+    gridTemplateColumns: {
+      default: null,
+      [belowSm]: 'repeat(2, minmax(0, 1fr))',
+    },
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  decisionSpacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    display: {
+      default: 'block',
+      [belowSm]: 'none',
+    },
+  },
+  phoneRouting: {
+    height: {
+      default: null,
+      [belowSm]: 36,
+    },
+    width: {
+      default: null,
+      [belowSm]: '100%',
+    },
+  },
+  phoneVerdict: {
+    height: {
+      default: null,
+      [belowSm]: 44,
+    },
+    width: {
+      default: null,
+      [belowSm]: '100%',
+    },
+    fontSize: {
+      default: null,
+      [belowSm]: 15,
+    },
+  },
+  // the verdict keys wear their standing colours, mixed over the scheme's
+  // own ground so both modes read them
+  rejectKey: {
+    borderColor: `color-mix(in oklab, ${tokens.danger} 30%, ${tokens.background})`,
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.danger} 10%, ${tokens.background})`,
+      ':hover': `color-mix(in oklab, ${tokens.danger} 18%, ${tokens.background})`,
+    },
+    color: {
+      default: tokens.danger,
+      ':hover': tokens.danger,
+    },
+  },
+  approveKey: {
+    borderColor: `color-mix(in oklab, ${tokens.success} 35%, ${tokens.background})`,
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.success} 12%, ${tokens.background})`,
+      ':hover': `color-mix(in oklab, ${tokens.success} 20%, ${tokens.background})`,
+    },
+    color: {
+      default: tokens.successForeground,
+      ':hover': tokens.successForeground,
+    },
+  },
+  /**
+   * How the decision keys sit under a thumb: taller, sharing the row's full
+   * width, and squared off from the buttons' own pill - at 13px in a 44px
+   * capsule the words rattled around in the middle of their key. The shape
+   * follows the pointer, never the window: a width rule here meant a desktop
+   * window dragged narrower watched the keys grow mid-drag.
+   */
+  touchKey: {
+    height: 44,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    paddingInline: 12,
+    fontSize: 13,
+  },
+  blockedKey: {
+    pointerEvents: 'auto',
+    opacity: 0.45,
+    backgroundColor: {
+      default: null,
+      ':hover': 'transparent',
+    },
+    transform: {
+      default: null,
+      ':active': 'translateY(0)',
+    },
+  },
+  // a span, because a key that ignores the pointer cannot answer the hover
+  // that asks about it; it inherits the key's growth so wrapping for the
+  // tooltip never changes the row
+  keySeat: {
+    display: 'inline-flex',
+  },
+  siblingList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  siblingRow: {
+    display: 'grid',
+    gridTemplateColumns: '7rem minmax(0, 1fr)',
+    gap: 12,
+  },
+  siblingLabel: {
+    fontSize: 14,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  siblingValue: {
+    minWidth: 0,
+    fontSize: 14,
+  },
+  undoPill: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    paddingInline: 14,
+    paddingBlock: 10,
+    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+  },
+  undoSentence: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 14,
+    whiteSpace: 'nowrap',
+  },
+  undoName: {
+    fontWeight: 600,
+  },
+  undoClock: {
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  keysPanel: {
+    position: 'absolute',
+    right: 16,
+    bottom: 80,
+    zIndex: 10,
+    display: 'flex',
+    width: 320,
+    flexDirection: 'column',
+    gap: 10,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    padding: 16,
+    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
+  },
+  keysHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  keysTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  keysSpacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  keysToggle: {
+    fontSize: 12,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+  },
+  keysList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  keysRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  keysKey: {
+    width: 56,
+    flexShrink: 0,
+  },
+  keysWord: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+  },
+  keysFoot: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 8,
+    fontSize: 12,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  doneScreen: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflowY: 'auto',
+    padding: 24,
+  },
+  doneStack: {
+    display: 'flex',
+    width: '100%',
+    maxWidth: '36rem',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  doneHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+  },
+  doneMark: {
+    width: 48,
+    height: 48,
+    flexShrink: 0,
+  },
+  doneTitle: {
+    fontSize: 20,
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+  },
+  doneStats: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: 24,
+    borderBlockWidth: 1,
+    borderBlockStyle: 'solid',
+    borderBlockColor: tokens.border,
+    paddingBlock: 16,
+  },
+  doneActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+  },
+  doneLeft: {
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  doneStat: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  doneStatLabel: {
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  doneStatValue: {
+    fontSize: 18,
+    lineHeight: 1,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+})
 
 /**
  * The three parts of a workbench, in reading order: what has been said about
@@ -1576,28 +1945,18 @@ function EscalationNotice({ review }: { review: ReviewDto }) {
   if (review.state === 'completed' || review.chain.route !== 'escalation') return null
   const appealed = review.events.find((event) => event.kind === 'appealed')
   return (
-    <div
-      data-testid="escalation-card"
-      className="m-3 flex min-w-0 shrink-0 items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3.5 lg:m-0 dark:border-amber-900/50 dark:bg-amber-950/25"
-    >
-      <CircleArrowUpIcon
-        aria-hidden
-        className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400"
-      />
-      <div className="flex min-w-0 flex-col gap-1">
-        <p className="text-sm font-medium tracking-tight text-amber-950 dark:text-amber-100">
+    <div data-testid="escalation-card" {...stylex.props(styles.escalationCard)}>
+      <CircleArrowUpIcon aria-hidden className={stylex.props(styles.escalationIcon).className} />
+      <div {...stylex.props(styles.escalationWords)}>
+        <p {...stylex.props(styles.escalationTitle)}>
           {format(appealed !== undefined ? m.reviewAppealBannerTitle : m.reviewEscBannerTitle)}
         </p>
         {/* the appellant's grounds are business evidence, not chrome:
             shown in their own words wherever they exist */}
         {appealed !== undefined && appealed.comment !== null ? (
-          <p className="text-sm leading-relaxed text-pretty text-amber-950 dark:text-amber-100">
-            {appealed.comment}
-          </p>
+          <p {...stylex.props(styles.escalationGrounds)}>{appealed.comment}</p>
         ) : (
-          <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
-            {format(m.reviewEscBannerBody)}
-          </p>
+          <p {...stylex.props(styles.escalationBody)}>{format(m.reviewEscBannerBody)}</p>
         )}
       </div>
     </div>
@@ -2669,7 +3028,7 @@ function DecisionBar({
   const lastStep = route[route.length - 1]?.id === review.chain.stageId
 
   return (
-    <footer className="flex shrink-0 flex-col gap-2 border-t px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] lg:px-4 lg:py-3">
+    <footer {...stylex.props(styles.decisionFooter)}>
       {/* All four acts, always: a workbench whose buttons come and go has no
           stable map, and "why can I not escalate this one" is a question a
           missing button cannot answer. What varies is availability, and a
@@ -2686,14 +3045,14 @@ function DecisionBar({
           routing pair above in a lighter register, the verdicts below
           taller and heavier - four half-width keys, no stray blank. On
           anything wider, the same one row as always. */}
-      <div className="flex flex-wrap items-center gap-2 max-sm:grid max-sm:grid-cols-2">
+      <div {...stylex.props(styles.decisionRow)}>
         <ActionKey
           act="escalate"
           offer={review.actions.escalate}
           label={format(m.reviewEscalate)}
           kbd="E"
           why={format(onLadder ? m.reviewTipEscalateMid : m.reviewTipEscalate)}
-          className="max-sm:h-9 max-sm:w-full"
+          xstyle={styles.phoneRouting}
           onPress={() => onDialog('escalate')}
         />
         <ActionKey
@@ -2702,10 +3061,10 @@ function DecisionBar({
           label={format(m.reviewSupplementAsk)}
           kbd="S"
           why={format(m.reviewTipSupplement)}
-          className="max-sm:h-9 max-sm:w-full"
+          xstyle={styles.phoneRouting}
           onPress={() => onDialog('supplement')}
         />
-        <span aria-hidden className="flex-1 max-sm:hidden" />
+        <span aria-hidden {...stylex.props(styles.decisionSpacer)} />
         <ActionKey
           act="reject"
           offer={review.actions.reject}
@@ -2713,8 +3072,8 @@ function DecisionBar({
           icon={<CornerUpLeftIcon aria-hidden />}
           kbd="R"
           why={format(onLadder && !lastStep ? m.reviewTipRejectMid : m.reviewTipReject)}
-          className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-800 max-sm:h-11 max-sm:w-full max-sm:text-[15px] dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
-          kbdClassName="bg-rose-500/10 text-rose-700 dark:text-rose-300"
+          xstyle={[styles.rejectKey, styles.phoneVerdict]}
+          kbdClassName="bg-[color-mix(in_oklab,var(--q-danger)_12%,transparent)] text-[var(--q-danger)]"
           onPress={() => onDialog('reject')}
         />
         <ActionKey
@@ -2726,8 +3085,8 @@ function DecisionBar({
           // an ordinary middle step's approval hands the round on; the
           // ladder's every step and the ordinary route's last one settle it
           why={format(onLadder || lastStep ? m.reviewTipApprove : m.reviewTipApproveMid)}
-          className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 max-sm:h-11 max-sm:w-full max-sm:text-[15px] dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
-          kbdClassName="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+          xstyle={[styles.approveKey, styles.phoneVerdict]}
+          kbdClassName="bg-[color-mix(in_oklab,var(--q-success)_12%,transparent)] text-[var(--q-success-foreground)]"
           onPress={() => onDialog('approve')}
         />
       </div>
@@ -2750,7 +3109,7 @@ function ActionKey({
   kbd,
   why,
   icon,
-  className,
+  xstyle,
   kbdClassName,
   onPress,
 }: {
@@ -2762,7 +3121,7 @@ function ActionKey({
   why: string
   /** the act's glyph, in the key's own ink */
   icon?: ReactNode
-  className?: string
+  xstyle?: stylex.StyleXStyles | readonly stylex.StyleXStyles[]
   kbdClassName?: string
   onPress: () => void
 }) {
@@ -2778,11 +3137,9 @@ function ActionKey({
       // why it is not on offer, as the fact rather than the sentence
       data-blocked-reason={blocked ? offer.reason : undefined}
       aria-disabled={blocked || undefined}
-      className={cn(
-        !fine && TOUCH_KEY,
-        className,
-        blocked && 'pointer-events-auto opacity-45 hover:bg-transparent active:translate-y-0',
-      )}
+      className={
+        stylex.props(!fine && styles.touchKey, xstyle, blocked && styles.blockedKey).className
+      }
       onClick={() => {
         if (!blocked) {
           onPress()
@@ -2802,17 +3159,7 @@ function ActionKey({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* a span, because a key that ignores the pointer cannot answer
-              the hover that asks about it; it inherits the key's growth so
-              wrapping for the tooltip never changes the row */}
-          <span
-            className={cn(
-              'inline-flex',
-              className?.includes('flex-1') && 'max-sm:min-w-0 max-sm:flex-1',
-            )}
-          >
-            {key}
-          </span>
+          <span {...stylex.props(styles.keySeat)}>{key}</span>
         </TooltipTrigger>
         <TooltipContent>{because}</TooltipContent>
       </Tooltip>
@@ -2835,19 +3182,6 @@ const actionBlockedMessage = (reason: string | null): MessageDescriptor => {
       return m.reviewBlockedUnavailable
   }
 }
-
-/**
- * How the decision keys sit under a thumb: taller, sharing the row's full
- * width, and squared off from the buttons' own pill - at 13px in a 44px
- * capsule the words rattled around in the middle of their key. The shape
- * follows the pointer, never the window: a width rule here meant a desktop
- * window dragged narrower watched the keys grow mid-drag.
- *
- * `flex-auto`, not `flex-1`: the spare width is shared equally but every
- * key keeps at least its own words - an even split gave five keys of a
- * 390px row about 66px each, and 要求补充材料 does not fit in 66px.
- */
-const TOUCH_KEY = 'h-11 rounded-xl px-3 text-[13px]'
 
 function SiblingSheet({
   open,
@@ -2875,11 +3209,11 @@ function SiblingSheet({
             </span>
           </DialogTitle>
         </DialogHeader>
-        <dl className="flex flex-col gap-3">
+        <dl {...stylex.props(styles.siblingList)}>
           {(sibling?.values ?? []).map((pair) => (
-            <div key={pair.label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
-              <dt className="text-sm whitespace-nowrap text-muted-foreground">{pair.label}</dt>
-              <dd className="min-w-0 text-sm">{pair.value === '' ? '—' : pair.value}</dd>
+            <div key={pair.label} {...stylex.props(styles.siblingRow)}>
+              <dt {...stylex.props(styles.siblingLabel)}>{pair.label}</dt>
+              <dd {...stylex.props(styles.siblingValue)}>{pair.value === '' ? '—' : pair.value}</dd>
             </div>
           ))}
         </dl>
@@ -2914,22 +3248,20 @@ function UndoPill({
       // once here rather than read out of the sentence beside the clock
       data-testid="decision-staged"
       data-decision={staged.kind === 'supplement' ? 'supplement' : staged.decision}
-      className="flex items-center gap-3 rounded-xl border bg-background px-3.5 py-2.5 shadow-lg"
+      {...stylex.props(styles.undoPill)}
     >
       <CountdownRing seconds={5} remaining={started.current}>
         {left}
       </CountdownRing>
-      <p className="flex items-baseline gap-2 text-sm whitespace-nowrap">
-        <span className="font-semibold">{staged.participantName}</span>
+      <p {...stylex.props(styles.undoSentence)}>
+        <span {...stylex.props(styles.undoName)}>{staged.participantName}</span>
         {format(
           staged.kind === 'supplement'
             ? DECISION_LABEL.supplement
             : (DECISION_LABEL[staged.decision as SessionEntry['decision']] ?? m.reviewApprove),
         )}
       </p>
-      <p className="text-xs whitespace-nowrap text-muted-foreground">
-        {format(m.reviewUndoPending, { seconds: left })}
-      </p>
+      <p {...stylex.props(styles.undoClock)}>{format(m.reviewUndoPending, { seconds: left })}</p>
       <Button variant="outline" size="sm" onClick={onUndo}>
         {format(m.reviewUndo)}
         <Kbd>⌘Z</Kbd>
@@ -2957,31 +3289,25 @@ function KeysPanel({ onClose }: { onClose: () => void }) {
     ['Esc', m.reviewKeyCancel],
   ]
   return (
-    <div className="absolute right-4 bottom-20 z-10 flex w-80 flex-col gap-2.5 rounded-xl border bg-background p-4 shadow-lg">
-      <div className="flex items-center gap-2">
-        <p className="text-sm font-semibold">{format(m.reviewKeysTitle)}</p>
-        <span className="flex-1" />
-        <button
-          type="button"
-          className="text-xs text-muted-foreground hover:text-foreground"
-          onClick={onClose}
-        >
+    <div {...stylex.props(styles.keysPanel)}>
+      <div {...stylex.props(styles.keysHead)}>
+        <p {...stylex.props(styles.keysTitle)}>{format(m.reviewKeysTitle)}</p>
+        <span {...stylex.props(styles.keysSpacer)} />
+        <button type="button" {...stylex.props(styles.keysToggle)} onClick={onClose}>
           {format(m.reviewKeysToggle)}
         </button>
       </div>
-      <dl className="flex flex-col gap-1.5">
+      <dl {...stylex.props(styles.keysList)}>
         {keys.map(([key, message]) => (
-          <div key={key} className="flex items-center gap-3">
-            <dt className="w-14 shrink-0">
+          <div key={key} {...stylex.props(styles.keysRow)}>
+            <dt {...stylex.props(styles.keysKey)}>
               <Kbd className="w-full justify-center">{key}</Kbd>
             </dt>
-            <dd className="min-w-0 flex-1 truncate text-sm">{format(message)}</dd>
+            <dd {...stylex.props(styles.keysWord)}>{format(message)}</dd>
           </div>
         ))}
       </dl>
-      <p className="border-t pt-2 text-xs leading-relaxed text-muted-foreground">
-        {format(m.reviewKeysFoot)}
-      </p>
+      <p {...stylex.props(styles.keysFoot)}>{format(m.reviewKeysFoot)}</p>
     </div>
   )
 }
@@ -3023,23 +3349,23 @@ function DoneScreen({
       // the run is finished, and this many were handled in it
       data-testid="run-done"
       data-handled={String(log.length)}
-      className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6"
+      {...stylex.props(styles.doneScreen)}
     >
-      <Stagger className="flex w-full max-w-xl flex-col gap-5" step={0.08}>
-        <div className="flex items-center gap-4">
-          <DoneMark className="size-12 shrink-0" />
-          <h2 className="text-xl font-semibold tracking-tight">
+      <Stagger className={stylex.props(styles.doneStack).className} step={0.08}>
+        <div {...stylex.props(styles.doneHead)}>
+          <DoneMark className={stylex.props(styles.doneMark).className} />
+          <h2 {...stylex.props(styles.doneTitle)}>
             {format(m.reviewDoneTitle, { count: log.length })}
           </h2>
         </div>
-        <div className="flex items-end gap-6 border-y py-4">
+        <div {...stylex.props(styles.doneStats)}>
           <DoneStat label={format(m.reviewApprove)} value={counts.approve} />
           <DoneStat label={format(m.reviewReject)} value={counts.reject} />
           <DoneStat label={format(m.reviewEscalate)} value={counts.escalate} />
-          <span className="flex-1" />
+          <span {...stylex.props(styles.keysSpacer)} />
           <DoneStat label={format(m.reviewDoneSpent)} value={spentLabel} />
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div {...stylex.props(styles.doneActions)}>
           {next !== null && (
             <Button
               onClick={() =>
@@ -3058,8 +3384,8 @@ function DoneScreen({
           >
             {format(m.reviewDoneBack)}
           </Button>
-          <span className="flex-1" />
-          <p className="text-xs whitespace-nowrap text-muted-foreground">
+          <span {...stylex.props(styles.keysSpacer)} />
+          <p {...stylex.props(styles.doneLeft)}>
             {format(m.reviewDoneLeft, { count: inboxRows.length })}
           </p>
         </div>
@@ -3070,9 +3396,9 @@ function DoneScreen({
 
 function DoneStat({ label, value }: { label: string; value: number | string }) {
   return (
-    <span className="flex flex-col gap-0.5">
-      <span className="text-xs whitespace-nowrap text-muted-foreground">{label}</span>
-      <span className="text-lg leading-none font-semibold tabular-nums">{value}</span>
+    <span {...stylex.props(styles.doneStat)}>
+      <span {...stylex.props(styles.doneStatLabel)}>{label}</span>
+      <span {...stylex.props(styles.doneStatValue)}>{value}</span>
     </span>
   )
 }

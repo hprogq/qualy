@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FileIcon, PlusIcon, TypeIcon, XIcon } from 'lucide-react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -9,6 +10,7 @@ import { Input } from '@qualy/ui/input'
 import { Kbd, KbdGroup } from '@qualy/ui/kbd'
 import { Label } from '@qualy/ui/label'
 import { Textarea } from '@qualy/ui/textarea'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { DecisionSheet } from './decision-dialogs.tsx'
 import { useFinePointer } from './pointer.ts'
@@ -22,6 +24,66 @@ import { useFinePointer } from './pointer.ts'
 // is a disposition like approving, so it goes out through the same five
 // second window - which is also the only way to take back a wording nobody
 // should have been shown.
+
+const styles = stylex.create({
+  body: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  pieces: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  piecesTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  pieceRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pieceKind: {
+    display: 'flex',
+    width: 96,
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  kindIcon: {
+    width: 14,
+    height: 14,
+  },
+  grow: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  addRow: {
+    display: 'flex',
+    gap: 8,
+  },
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+})
 
 interface Piece {
   label: string
@@ -119,7 +181,7 @@ export function SupplementDialog({
     })
 
   const body = (
-    <div className="flex flex-col gap-4">
+    <div {...stylex.props(styles.body)}>
       <Field label={format(m.supplementInstructionsLabel)} required>
         {(id) => (
           <Textarea
@@ -133,15 +195,15 @@ export function SupplementDialog({
         )}
       </Field>
 
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium">{format(m.supplementPiecesLabel)}</p>
+      <div {...stylex.props(styles.pieces)}>
+        <p {...stylex.props(styles.piecesTitle)}>{format(m.supplementPiecesLabel)}</p>
         {pieces.map((piece, index) => (
-          <div key={index} className="flex items-center gap-2">
-            <span className="flex w-24 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <div key={index} {...stylex.props(styles.pieceRow)}>
+            <span {...stylex.props(styles.pieceKind)}>
               {piece.kind === 'file' ? (
-                <FileIcon aria-hidden className="size-3.5" />
+                <FileIcon aria-hidden className={stylex.props(styles.kindIcon).className} />
               ) : (
-                <TypeIcon aria-hidden className="size-3.5" />
+                <TypeIcon aria-hidden className={stylex.props(styles.kindIcon).className} />
               )}
               {format(piece.kind === 'file' ? m.supplementAddFile : m.supplementAddText)}
             </span>
@@ -149,7 +211,7 @@ export function SupplementDialog({
               value={piece.label}
               data-piece-slot={index + 1}
               placeholder={format(m.supplementPieceLabel)}
-              className="flex-1"
+              className={stylex.props(styles.grow).className}
               onChange={(event) => edit(index, { label: event.target.value })}
             />
             {fine && index < 9 && (
@@ -172,11 +234,11 @@ export function SupplementDialog({
               onClick={() => remove(index)}
             >
               <XIcon aria-hidden />
-              <span className="sr-only">{format(m.supplementPieceRemove)}</span>
+              <span {...stylex.props(styles.srOnly)}>{format(m.supplementPieceRemove)}</span>
             </Button>
           </div>
         ))}
-        <div className="flex gap-2">
+        <div {...stylex.props(styles.addRow)}>
           <Button variant="outline" size="sm" onClick={() => add('file')}>
             <PlusIcon aria-hidden />
             {format(m.supplementAddFile)}
@@ -230,7 +292,7 @@ export function SupplementDialog({
       description={format(m.supplementDialogHint)}
       onClose={onClose}
       footer={
-        <div className="flex justify-end gap-2">
+        <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
