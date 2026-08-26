@@ -1,5 +1,7 @@
 import { useId } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Checkbox } from '@qualy/ui/checkbox'
 import {
   Field,
@@ -25,6 +27,41 @@ import { assessmentMessages as m } from './i18n.ts'
 // Eleven checkboxes in a row read as a wall, so they are grouped the way the
 // gate itself families them: filling something in, reviewing it, seeing the
 // outcome.
+
+const styles = stylex.create({
+  column: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  heading: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  legend: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  hint: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  group: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  codeGrid: {
+    display: 'grid',
+    columnGap: 24,
+    rowGap: 12,
+    gridTemplateColumns: {
+      default: null,
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+})
 
 const GROUPS: readonly { key: 'entry' | 'review' | 'result'; codes: readonly PhaseGatedCode[] }[] =
   [
@@ -73,19 +110,19 @@ export function PermissionProfileEditor({
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium">{legend}</p>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    <div {...stylex.props(styles.column)}>
+      <div {...stylex.props(styles.heading)}>
+        <p {...stylex.props(styles.legend)}>{legend}</p>
+        {hint && <p {...stylex.props(styles.hint)}>{hint}</p>}
       </div>
       {GROUPS.map((group, index) => (
-        <div key={group.key} className="flex flex-col gap-3">
+        <div key={group.key} {...stylex.props(styles.group)}>
           {index > 0 && <FieldSeparator />}
           <FieldSet disabled={disabled}>
             <FieldLegend variant="label">{format(GROUP_LABELS[group.key])}</FieldLegend>
             {/* two columns where the panel is wide enough: a group of five
                 reads as a list, not as a wall */}
-            <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+            <div {...stylex.props(styles.codeGrid)}>
               {group.codes.map((code) => (
                 <PermissionRow
                   key={code}

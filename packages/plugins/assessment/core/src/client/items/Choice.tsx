@@ -1,3 +1,4 @@
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 
 // One value out of a short list, in the product's own control rather than the
@@ -16,7 +17,7 @@ export function Choice({
   options,
   placeholder,
   disabled,
-  className,
+  xstyle,
   onChange,
 }: {
   id?: string
@@ -25,12 +26,12 @@ export function Choice({
   options: readonly { value: string; label: string; description?: string }[]
   placeholder?: string
   disabled?: boolean
-  className?: string
+  xstyle?: StyleXStyles
   onChange: (value: string) => void
 }) {
   return (
     <Select value={value === '' ? undefined : value} disabled={disabled} onValueChange={onChange}>
-      <SelectTrigger id={id} className={className}>
+      <SelectTrigger id={id} xstyle={xstyle}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

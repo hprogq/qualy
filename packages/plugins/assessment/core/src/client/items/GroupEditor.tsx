@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog, Field, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -23,6 +25,31 @@ import type { TreeGroup } from './paper.ts'
 // Saving sends the whole tree because that is what the api takes - and every
 // row keeps the id it came with, which is what tells the server this is the
 // same group rather than a new one replacing it.
+
+const styles = stylex.create({
+  removeAction: {
+    color: tokens.danger,
+  },
+  footerGap: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  limitGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 12,
+  },
+  refusals: {
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.danger} 40%, transparent)`,
+    padding: 12,
+    fontSize: 14,
+    color: tokens.danger,
+  },
+})
 
 export function GroupEditor({
   open,
@@ -176,13 +203,13 @@ export function GroupEditor({
             <>
               <Button
                 variant="ghost"
-                className="text-destructive"
+                className={stylex.props(styles.removeAction).className}
                 disabled={remove.isPending}
                 onClick={() => setRemoving(true)}
               >
                 {format(m.itemsGroupRemove)}
               </Button>
-              <span className="flex-1" />
+              <span {...stylex.props(styles.footerGap)} />
             </>
           )}
           <Button variant="outline" onClick={onClose}>
@@ -214,7 +241,7 @@ export function GroupEditor({
           )}
         </Field>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div {...stylex.props(styles.limitGrid)}>
         <Field label={format(m.itemsGroupCap)} hint={format(m.itemsGroupCapHint)}>
           {(id) => <Input id={id} value={cap} onChange={(event) => setCap(event.target.value)} />}
         </Field>
@@ -232,7 +259,7 @@ export function GroupEditor({
         </Field>
       )}
       {refusals.length > 0 && (
-        <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+        <ul {...stylex.props(styles.refusals)}>
           {refusals.map((refusal, index) => (
             <li key={index}>
               {groups.find((group) => group.id === refusal.groupId)?.name ?? ''}{' '}

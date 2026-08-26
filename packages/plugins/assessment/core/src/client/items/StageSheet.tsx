@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -16,6 +18,31 @@ import type { ItemOptions } from './options.ts'
 // The chain itself is a path to be read at a glance; a step's settings are
 // four controls and a coverage answer, which is a panel's worth of screen
 // and would crowd the path if it were opened in place.
+
+const styles = stylex.create({
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
+  roleList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  roleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+  },
+  coverageNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  coverageUncovered: {
+    color: tokens.danger,
+  },
+})
 
 export interface StageDraft {
   /**
@@ -79,7 +106,7 @@ export function StageSheet({
       title={format(m.itemsStageSettings)}
       onClose={onClose}
       footer={
-        <div className="flex justify-end">
+        <div {...stylex.props(styles.footer)}>
           <Button onClick={onClose}>{format(commonMessages.close)}</Button>
         </div>
       }
@@ -130,9 +157,9 @@ export function StageSheet({
           </Field>
           <Field label={format(m.itemsReviewRoles)} hint={format(m.itemsReviewRolesHint)}>
             {() => (
-              <div className="flex flex-col gap-1.5">
+              <div {...stylex.props(styles.roleList)}>
                 {options.roles.map((role) => (
-                  <label key={role.id} className="flex items-center gap-2 text-sm">
+                  <label key={role.id} {...stylex.props(styles.roleRow)}>
                     <Checkbox
                       checked={stage.roleIds.includes(role.id)}
                       onCheckedChange={(next) =>
@@ -152,9 +179,10 @@ export function StageSheet({
           </Field>
           {coverage.data !== undefined && (
             <p
-              className={
-                uncovered.length > 0 ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
-              }
+              {...stylex.props(
+                styles.coverageNote,
+                uncovered.length > 0 && styles.coverageUncovered,
+              )}
             >
               {coverage.data.nodes.length === 0
                 ? format(m.itemsReviewNoUnits)

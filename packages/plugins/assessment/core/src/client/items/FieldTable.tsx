@@ -1,10 +1,11 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronDownIcon, GripVerticalIcon, PlusIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
-import { cn } from '@qualy/ui/cn'
 import { Input } from '@qualy/ui/input'
 import { Choice } from './Choice.tsx'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -38,6 +39,352 @@ export interface FieldDraft {
   accept: string
 }
 
+const sm = '@media (min-width: 640px)'
+
+const MONO =
+  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+
+const styles = stylex.create({
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  listHeader: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 10,
+    rowGap: 4,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingBottom: 8,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  divider: {
+    height: 12,
+    width: 1,
+    backgroundColor: tokens.border,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  emptyNote: {
+    paddingBlock: 12,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  /**
+   * The columns a field line reads across, once there is room for them.
+   *
+   * Four rather than five: what used to be the "required" column is now a mark
+   * beside the name, because a column whose every cell reads the same word is
+   * a column that costs width and says nothing.
+   */
+  row: {
+    cursor: 'pointer',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: `color-mix(in oklab, ${tokens.border} 60%, transparent)`,
+    paddingInline: 2,
+    transitionProperty: 'color, background-color, border-color',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    },
+    display: 'grid',
+    gridTemplateColumns: {
+      default: '2.25rem minmax(0, 1fr) 1.5rem',
+      [sm]: '2.25rem minmax(0, 1fr) 6.25rem 12.5rem 1.5rem',
+    },
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: {
+      default: 2,
+      [sm]: 0,
+    },
+    paddingBlock: {
+      default: 8,
+      [sm]: 6,
+    },
+  },
+  markBefore: {
+    boxShadow: `inset 0 2px 0 0 ${tokens.primary}`,
+  },
+  markAfter: {
+    boxShadow: `inset 0 -2px 0 0 ${tokens.primary}`,
+  },
+  handleCell: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  grip: {
+    width: 14,
+    height: 14,
+    cursor: 'grab',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  ordinal: {
+    width: 12,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  nameCell: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+  },
+  nameText: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+  },
+  requiredDot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: tokens.danger,
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  typeCell: {
+    display: {
+      default: 'none',
+      [sm]: 'block',
+    },
+    fontSize: 14,
+  },
+  limitCell: {
+    display: {
+      default: 'none',
+      [sm]: 'block',
+    },
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  limitNone: {
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  chevron: {
+    width: 14,
+    height: 14,
+    justifySelf: 'end',
+    color: tokens.mutedForeground,
+    transitionProperty: 'transform',
+  },
+  chevronOpen: {
+    transform: 'rotate(180deg)',
+  },
+  narrowFacts: {
+    gridColumnStart: 2,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    display: {
+      default: null,
+      [sm]: 'none',
+    },
+  },
+  addSeat: {
+    paddingTop: 8,
+  },
+  addButton: {
+    marginLeft: -8,
+  },
+  ghost: {
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+  },
+  settings: {
+    display: 'grid',
+    gap: 16,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: `color-mix(in oklab, ${tokens.border} 60%, transparent)`,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 12,
+    paddingBlock: 14,
+    gridTemplateColumns: {
+      default: null,
+      [sm]: 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  onBackground: {
+    backgroundColor: tokens.background,
+  },
+  span2: {
+    gridColumn: {
+      default: null,
+      [sm]: 'span 2 / span 2',
+    },
+  },
+  dateNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  settingsFooter: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  checkLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+  },
+  dangerText: {
+    color: tokens.danger,
+  },
+  picker: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  pickerTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  kindGrid: {
+    display: 'grid',
+    gap: 8,
+    gridTemplateColumns: {
+      default: null,
+      [sm]: 'repeat(3, minmax(0, 1fr))',
+    },
+  },
+  kindButton: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 10,
+    textAlign: 'left',
+    transitionProperty: 'color, background-color, border-color',
+  },
+  kindOn: {
+    borderColor: tokens.foreground,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+  },
+  kindOff: {
+    backgroundColor: {
+      default: tokens.background,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    },
+  },
+  kindHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  kindBox: {
+    display: 'flex',
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderStyle: 'solid',
+  },
+  kindBoxOn: {
+    borderColor: tokens.foreground,
+    backgroundColor: tokens.foreground,
+    color: tokens.background,
+  },
+  kindBoxOff: {
+    borderColor: tokens.input,
+  },
+  checkGlyph: {
+    width: 10,
+    height: 10,
+  },
+  kindName: {
+    fontSize: 14,
+  },
+  kindTokens: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontFamily: MONO,
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  customBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    padding: 12,
+  },
+  customInput: {
+    fontFamily: MONO,
+    fontSize: 12,
+  },
+  customHint: {
+    fontSize: 12,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  unwritableNote: {
+    fontSize: 12,
+    color: tokens.danger,
+  },
+  resolvedRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 12,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 12,
+    paddingBlock: 8,
+  },
+  resolvedLabel: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  resolvedValue: {
+    minWidth: 0,
+    fontFamily: MONO,
+    fontSize: 12,
+  },
+})
+
 // a module that exports anything but components cannot be hot-replaced, and
 // nothing outside this file needs it
 /**
@@ -57,7 +404,8 @@ const liftGhost = (event: React.DragEvent<HTMLElement>) => {
   ghost.style.left = '-1000px'
   ghost.style.width = `${String(box.width)}px`
   ghost.style.pointerEvents = 'none'
-  ghost.classList.add('rounded-lg', 'border', 'bg-background', 'shadow-md')
+  const ghostClass = stylex.props(styles.ghost).className
+  if (ghostClass !== undefined && ghostClass !== '') ghost.classList.add(...ghostClass.split(' '))
   document.body.append(ghost)
   event.dataTransfer.setDragImage(ghost, event.clientX - box.left, box.height / 2)
   // the browser has taken its picture by the next frame
@@ -69,16 +417,6 @@ const FIELD_TYPE_LABEL = {
   date: m.itemsTypeDate,
   attachment: m.itemsTypeAttachment,
 } as const
-
-/**
- * The columns a field line reads across, once there is room for them.
- *
- * Four rather than five: what used to be the "required" column is now a mark
- * beside the name, because a column whose every cell reads the same word is
- * a column that costs width and says nothing.
- */
-const COLUMNS_AT_SM =
-  'sm:grid-cols-[2.25rem_minmax(0,1fr)_6.25rem_12.5rem_1.5rem] sm:gap-x-3 sm:gap-y-0'
 
 export function FieldList({
   fields,
@@ -146,25 +484,23 @@ export function FieldList({
   }
 
   return (
-    <div className="flex flex-col">
+    <div {...stylex.props(styles.root)}>
       {/* What the header row used to be. Column names over rows this short
           were four labels explaining four words; what is worth saying above
           the list is how much of it there is, and that a row opens. */}
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b pb-2 text-xs text-muted-foreground">
+      <div {...stylex.props(styles.listHeader)}>
         <span>{format(m.itemsFieldCount, { count: fields.length })}</span>
         {required > 0 && (
           <>
-            <span aria-hidden className="h-3 w-px bg-border" />
+            <span aria-hidden {...stylex.props(styles.divider)} />
             <span>{format(m.itemsRequiredCount, { count: required })}</span>
           </>
         )}
-        <span className="flex-1" />
+        <span {...stylex.props(styles.spacer)} />
         {fields.length > 0 && <span>{format(m.itemsFieldOpenHint)}</span>}
       </div>
 
-      {fields.length === 0 && (
-        <p className="py-3 text-sm text-muted-foreground">{format(m.itemsFormEmpty)}</p>
-      )}
+      {fields.length === 0 && <p {...stylex.props(styles.emptyNote)}>{format(m.itemsFormEmpty)}</p>}
 
       {fields.map((field, index) => {
         const marked = drop?.key === field.key ? drop.edge : null
@@ -191,26 +527,20 @@ export function FieldList({
                 if (dragged !== '') move(dragged, field.key, edgeOf(event))
               }}
               onClick={() => onOpen(open ? null : field.key)}
-              className={cn(
-                'cursor-pointer border-b border-border/60 px-0.5 transition-colors hover:bg-accent/30',
-                'grid grid-cols-[2.25rem_minmax(0,1fr)_1.5rem] items-center gap-x-3 gap-y-0.5 py-2',
-                'sm:py-1.5',
-                COLUMNS_AT_SM,
-                marked === 'before' && 'shadow-[inset_0_2px_0_0_var(--primary)]',
-                marked === 'after' && 'shadow-[inset_0_-2px_0_0_var(--primary)]',
+              {...stylex.props(
+                styles.row,
+                marked === 'before' && styles.markBefore,
+                marked === 'after' && styles.markAfter,
               )}
             >
-              <span className="flex items-center gap-1.5">
-                <GripVerticalIcon
-                  aria-hidden
-                  className="size-3.5 cursor-grab text-muted-foreground/60"
-                />
+              <span {...stylex.props(styles.handleCell)}>
+                <GripVerticalIcon aria-hidden className={stylex.props(styles.grip).className} />
                 {/* the order is the thing "fill these in in this order"
                     refers to, and it was the one fact the row never showed */}
-                <span className="w-3 text-xs text-muted-foreground tabular-nums">{index + 1}</span>
+                <span {...stylex.props(styles.ordinal)}>{index + 1}</span>
               </span>
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate text-sm">
+              <span {...stylex.props(styles.nameCell)}>
+                <span {...stylex.props(styles.nameText)}>
                   {field.label.trim() === '' ? format(m.itemsFieldUnnamed) : field.label}
                 </span>
                 {/* required as a mark on the name rather than a column of its
@@ -218,30 +548,25 @@ export function FieldList({
                     same word repeated said nothing */}
                 {field.required && (
                   <>
-                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-destructive" />
-                    <span className="sr-only">{format(m.itemsFieldRequired)}</span>
+                    <span aria-hidden {...stylex.props(styles.requiredDot)} />
+                    <span {...stylex.props(styles.srOnly)}>{format(m.itemsFieldRequired)}</span>
                   </>
                 )}
               </span>
-              <span className="hidden text-sm sm:block">
-                {format(FIELD_TYPE_LABEL[field.type])}
-              </span>
-              <span className="hidden truncate text-xs text-muted-foreground sm:block">
+              <span {...stylex.props(styles.typeCell)}>{format(FIELD_TYPE_LABEL[field.type])}</span>
+              <span {...stylex.props(styles.limitCell)}>
                 {limitOf(field) === '' ? (
-                  <span className="text-muted-foreground/50">—</span>
+                  <span {...stylex.props(styles.limitNone)}>—</span>
                 ) : (
                   limitOf(field)
                 )}
               </span>
               <ChevronDownIcon
                 aria-hidden
-                className={cn(
-                  'size-3.5 justify-self-end text-muted-foreground transition-transform',
-                  open && 'rotate-180',
-                )}
+                className={stylex.props(styles.chevron, open && styles.chevronOpen).className}
               />
               {/* what the columns would have said, on its own line */}
-              <span className="col-start-2 text-xs text-muted-foreground sm:hidden">
+              <span {...stylex.props(styles.narrowFacts)}>
                 {[
                   format(FIELD_TYPE_LABEL[field.type]),
                   field.required ? format(m.itemsFieldRequired) : '',
@@ -263,8 +588,13 @@ export function FieldList({
         )
       })}
 
-      <div className="pt-2">
-        <Button variant="ghost" size="sm" className="-ml-2" onClick={onAdd}>
+      <div {...stylex.props(styles.addSeat)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={stylex.props(styles.addButton).className}
+          onClick={onAdd}
+        >
           <PlusIcon aria-hidden />
           {format(m.itemsFieldAdd)}
         </Button>
@@ -287,13 +617,13 @@ function FieldSettings({
 }) {
   const { format } = useI18n()
   return (
-    <div className="grid gap-4 border-b border-border/60 bg-muted px-3 py-3.5 sm:grid-cols-2">
+    <div {...stylex.props(styles.settings)}>
       <Field label={format(m.itemsFieldLabel)}>
         {(id) => (
           <Input
             id={id}
             autoFocus
-            className="bg-background"
+            className={stylex.props(styles.onBackground).className}
             value={field.label}
             onChange={(event) => onChange({ label: event.target.value })}
           />
@@ -303,7 +633,7 @@ function FieldSettings({
         {(id) => (
           <Choice
             id={id}
-            className="bg-background"
+            xstyle={styles.onBackground}
             value={field.type}
             options={[
               { value: 'text', label: format(m.itemsTypeText) },
@@ -322,7 +652,7 @@ function FieldSettings({
               id={id}
               type="number"
               min={1}
-              className="bg-background"
+              className={stylex.props(styles.onBackground).className}
               value={field.maxLength}
               onChange={(event) => onChange({ maxLength: event.target.value })}
             />
@@ -337,7 +667,7 @@ function FieldSettings({
               <Input
                 id={id}
                 type="date"
-                className="bg-background"
+                className={stylex.props(styles.onBackground).className}
                 value={field.min}
                 min={materialRange.start}
                 max={lastDay(materialRange.end)}
@@ -350,7 +680,7 @@ function FieldSettings({
               <Input
                 id={id}
                 type="date"
-                className="bg-background"
+                className={stylex.props(styles.onBackground).className}
                 value={field.max}
                 min={materialRange.start}
                 max={lastDay(materialRange.end)}
@@ -361,7 +691,7 @@ function FieldSettings({
           {/* the round decides the outer window; a bound outside it changes
               nothing, and silence about that is how a date the form seemed to
               accept came back refused */}
-          <p className="text-xs text-muted-foreground sm:col-span-2">
+          <p {...stylex.props(styles.dateNote, styles.span2)}>
             {format(m.itemsDateWindow, {
               from: materialRange.start,
               until: lastDay(materialRange.end),
@@ -378,7 +708,7 @@ function FieldSettings({
                 id={id}
                 type="number"
                 min={1}
-                className="bg-background"
+                className={stylex.props(styles.onBackground).className}
                 value={field.maxCount}
                 onChange={(event) => onChange({ maxCount: event.target.value })}
               />
@@ -390,27 +720,32 @@ function FieldSettings({
                 id={id}
                 type="number"
                 min={1}
-                className="bg-background"
+                className={stylex.props(styles.onBackground).className}
                 value={field.maxSizeMb}
                 onChange={(event) => onChange({ maxSizeMb: event.target.value })}
               />
             )}
           </Field>
-          <div className="sm:col-span-2">
+          <div {...stylex.props(styles.span2)}>
             <AcceptPicker accept={field.accept} onChange={(accept) => onChange({ accept })} />
           </div>
         </>
       )}
 
-      <div className="flex items-center justify-between gap-3 sm:col-span-2">
-        <label className="flex items-center gap-2 text-sm">
+      <div {...stylex.props(styles.settingsFooter, styles.span2)}>
+        <label {...stylex.props(styles.checkLabel)}>
           <Checkbox
             checked={field.required}
             onCheckedChange={(next) => onChange({ required: next === true })}
           />
           {format(m.itemsFieldRequired)}
         </label>
-        <Button variant="ghost" size="sm" className="text-destructive" onClick={onRemove}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={stylex.props(styles.dangerText).className}
+          onClick={onRemove}
+        >
           {format(m.itemsFieldRemove)}
         </Button>
       </div>
@@ -456,9 +791,9 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
   const unwritable = other ? unwritableTokens(custom) : []
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm font-medium">{format(m.itemsFieldAccept)}</p>
-      <div className="grid gap-2 sm:grid-cols-3">
+    <div {...stylex.props(styles.picker)}>
+      <p {...stylex.props(styles.pickerTitle)}>{format(m.itemsFieldAccept)}</p>
+      <div {...stylex.props(styles.kindGrid)}>
         {FILE_KINDS.map((kind) => {
           const on = picked.includes(kind.id)
           return (
@@ -467,35 +802,27 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
               type="button"
               aria-pressed={on}
               onClick={() => toggle(kind.id)}
-              className={cn(
-                'flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-colors',
-                on ? 'border-foreground bg-accent/50' : 'bg-background hover:bg-accent/40',
-              )}
+              {...stylex.props(styles.kindButton, on ? styles.kindOn : styles.kindOff)}
             >
-              <span className="flex items-center gap-2">
+              <span {...stylex.props(styles.kindHead)}>
                 <span
                   aria-hidden
-                  className={cn(
-                    'flex size-3.5 shrink-0 items-center justify-center rounded border',
-                    on ? 'border-foreground bg-foreground text-background' : 'border-input',
-                  )}
+                  {...stylex.props(styles.kindBox, on ? styles.kindBoxOn : styles.kindBoxOff)}
                 >
-                  {on && <CheckIcon className="size-2.5" />}
+                  {on && <CheckIcon className={stylex.props(styles.checkGlyph).className} />}
                 </span>
-                <span className="text-sm">{format(kind.name)}</span>
+                <span {...stylex.props(styles.kindName)}>{format(kind.name)}</span>
               </span>
               {/* the notation it stands for, so the custom box below has a
                   worked example above it */}
-              <span className="truncate font-mono text-[11px] text-muted-foreground">
-                {kind.tokens.join(', ')}
-              </span>
+              <span {...stylex.props(styles.kindTokens)}>{kind.tokens.join(', ')}</span>
             </button>
           )
         })}
       </div>
 
-      <div className="flex flex-col gap-2 rounded-lg border bg-background p-3">
-        <label className="flex items-center gap-2 text-sm">
+      <div {...stylex.props(styles.customBox)}>
+        <label {...stylex.props(styles.checkLabel)}>
           <Checkbox
             checked={other}
             onCheckedChange={(next) => {
@@ -508,7 +835,7 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
         {other && (
           <>
             <Input
-              className="font-mono text-xs"
+              className={stylex.props(styles.customInput).className}
               value={custom}
               placeholder="application/vnd.ms-outlook"
               onChange={(event) => {
@@ -516,11 +843,9 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
                 write(picked, event.target.value, true)
               }}
             />
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {format(m.itemsAcceptOtherHint)}
-            </p>
+            <p {...stylex.props(styles.customHint)}>{format(m.itemsAcceptOtherHint)}</p>
             {unwritable.length > 0 && (
-              <p className="text-xs text-destructive">
+              <p {...stylex.props(styles.unwritableNote)}>
                 {format(m.itemsAcceptUnwritable, { tokens: unwritable.join('、') })}
               </p>
             )}
@@ -529,11 +854,9 @@ function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: s
       </div>
 
       {/* what the two halves add up to, which is the only thing stored */}
-      <div className="flex items-baseline gap-3 rounded-lg bg-muted px-3 py-2">
-        <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-          {format(m.itemsAcceptResolved)}
-        </span>
-        <span className="min-w-0 font-mono text-xs">
+      <div {...stylex.props(styles.resolvedRow)}>
+        <span {...stylex.props(styles.resolvedLabel)}>{format(m.itemsAcceptResolved)}</span>
+        <span {...stylex.props(styles.resolvedValue)}>
           {resolved.length === 0 ? format(m.itemsAcceptAny) : resolved.join(', ')}
         </span>
       </div>

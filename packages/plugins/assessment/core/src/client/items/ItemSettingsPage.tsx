@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { PencilIcon, TriangleAlertIcon } from 'lucide-react'
 import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@qualy/ui/dropdown-menu'
 import { Drill, type DrillMove } from '@qualy/ui/reveal'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -43,6 +44,7 @@ import { amountOf, trimAmount, unitsOf, type ItemDto } from '../entry/model.ts'
 // rather than recorded at each press: back and forward are moves nobody in
 // this file gets told about, and they deserve the same direction as the
 // buttons that do the same thing.
+
 const moveBetween = (from: string, to: string, questions: readonly { id: string }[]): DrillMove => {
   if (from === to) return 'none'
   if (from === STRUCTURE) return 'in'
@@ -69,6 +71,121 @@ const refusedPublish = (error: unknown, fallback: (value: unknown) => string): s
     ? issues.map((issue) => `${issue.path}: ${issue.reason}`).join('; ')
     : fallback(error)
 }
+
+const styles = stylex.create({
+  grow: {
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  structureArea: {
+    gap: 16,
+  },
+  editorColumn: {
+    gap: 20,
+  },
+  skeleton: {
+    height: 384,
+    width: '100%',
+  },
+  alert: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.danger} 40%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.danger} 5%, transparent)`,
+    padding: 16,
+  },
+  alertIcon: {
+    marginTop: 2,
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.danger,
+  },
+  alertBody: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  alertTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+    color: tokens.danger,
+  },
+  alertList: {
+    paddingTop: 4,
+    fontSize: 14,
+  },
+  alertReason: {
+    color: tokens.mutedForeground,
+  },
+  alertHint: {
+    paddingTop: 4,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  summary: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    paddingInline: 16,
+    paddingBlock: 12,
+  },
+  summaryHead: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 12,
+    rowGap: 4,
+  },
+  summaryTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  summaryMeta: {
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  editButton: {
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  bar: {
+    display: 'flex',
+    height: 6,
+    gap: 2,
+    overflow: 'hidden',
+    borderRadius: '9999px',
+    backgroundColor: tokens.background,
+  },
+  overNote: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.danger,
+  },
+  unsetNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+})
 
 /** a counter, so two things composed in one session never share a handle */
 let composed = 0
@@ -455,7 +572,7 @@ function Editor({
     paper === undefined ? (
       <PaperStart batchId={batchId} onCreated={() => void refresh()} />
     ) : (
-      <div className="flex flex-1 flex-col gap-4">
+      <div {...stylex.props(styles.grow, styles.structureArea)}>
         <PaperSummary
           paper={paper as TreeGroup}
           roots={roots as readonly TreeGroup[]}
@@ -494,16 +611,16 @@ function Editor({
         void groups.refetch()
         void items.refetch()
       }}
-      skeleton={<Skeleton className="h-96 w-full" />}
-      className="flex flex-1 flex-col"
+      skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
+      xstyle={styles.grow}
     >
-      <div className="flex flex-1 flex-col gap-5">
+      <div {...stylex.props(styles.grow, styles.editorColumn)}>
         {(alerts.data?.groups ?? []).length > 0 && selection === null && (
-          <section className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-            <TriangleAlertIcon aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-destructive">{format(m.itemsStuckTitle)}</p>
-              <ul className="pt-1 text-sm">
+          <section {...stylex.props(styles.alert)}>
+            <TriangleAlertIcon aria-hidden className={stylex.props(styles.alertIcon).className} />
+            <div {...stylex.props(styles.alertBody)}>
+              <p {...stylex.props(styles.alertTitle)}>{format(m.itemsStuckTitle)}</p>
+              <ul {...stylex.props(styles.alertList)}>
                 {(alerts.data?.groups ?? []).map((row) => (
                   <li key={`${row.nodeId}:${row.roleNames.join(',')}:${row.reason}`}>
                     {format(m.itemsStuckRow, {
@@ -514,7 +631,7 @@ function Editor({
                     {/* a staffing gap and a recusal rule call for different
                         fixes, so the row says which one it is looking at */}
                     {row.reason !== 'no-assignee' && (
-                      <span className="text-muted-foreground">
+                      <span {...stylex.props(styles.alertReason)}>
                         {' - '}
                         {format(
                           row.reason === 'panel-seat-unfilled'
@@ -526,12 +643,12 @@ function Editor({
                   </li>
                 ))}
               </ul>
-              <p className="pt-1 text-xs text-muted-foreground">{format(m.itemsStuckHint)}</p>
+              <p {...stylex.props(styles.alertHint)}>{format(m.itemsStuckHint)}</p>
             </div>
           </section>
         )}
 
-        <Drill move={move} drillKey={drillKey} className="flex flex-1 flex-col">
+        <Drill move={move} drillKey={drillKey} className={stylex.props(styles.grow).className}>
           {selection === null ? structure : editorArea}
         </Drill>
       </div>
@@ -693,19 +810,24 @@ function PaperSummary({
   ].join(' · ')
 
   return (
-    <section className="flex flex-col gap-2.5 rounded-lg bg-muted/60 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 className="min-w-0 truncate text-sm font-semibold">
+    <section {...stylex.props(styles.summary)}>
+      <div {...stylex.props(styles.summaryHead)}>
+        <h3 {...stylex.props(styles.summaryTitle)}>
           {paper.name.trim() === '' ? format(m.itemsGroupUnnamed) : paper.name}
         </h3>
-        <p className="text-xs tabular-nums text-muted-foreground">{limits}</p>
-        <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={onEdit}>
+        <p {...stylex.props(styles.summaryMeta)}>{limits}</p>
+        <Button
+          variant="ghost"
+          size="xs"
+          className={stylex.props(styles.editButton).className}
+          onClick={onEdit}
+        >
           <PencilIcon aria-hidden />
           {format(m.paperEdit)}
         </Button>
-        <span className="flex-1" />
+        <span {...stylex.props(styles.spacer)} />
         {sum !== null && (
-          <p className="text-xs tabular-nums text-muted-foreground">
+          <p {...stylex.props(styles.summaryMeta)}>
             {total === null
               ? format(m.paperAllocatedFree, { sum })
               : format(m.paperAllocated, { sum, total: trimAmount(paper.cap!) })}
@@ -716,7 +838,7 @@ function PaperSummary({
       {/* measured against the paper, so the part nobody has handed out yet
           reads as the part nobody has handed out */}
       {sum !== null && total !== null && total > 0 && (
-        <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-background">
+        <div {...stylex.props(styles.bar)}>
           {roots.map((group, index) => (
             <div
               key={group.id}
@@ -730,12 +852,12 @@ function PaperSummary({
       )}
 
       {over && (
-        <p className="text-xs font-medium text-destructive">
+        <p {...stylex.props(styles.overNote)}>
           {format(m.paperCapOver, { sum: sum!, total: trimAmount(paper.cap!) })}
         </p>
       )}
       {sum === null && roots.length > 0 && (
-        <p className="text-xs text-muted-foreground">{format(m.paperCapUnset)}</p>
+        <p {...stylex.props(styles.unsetNote)}>{format(m.paperCapUnset)}</p>
       )}
     </section>
   )

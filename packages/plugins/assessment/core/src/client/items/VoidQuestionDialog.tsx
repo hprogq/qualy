@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -14,6 +15,14 @@ import type { ItemDto } from '../entry/model.ts'
 // Withdrawing a question from a running round: open work under it ends, and
 // what was already decided keeps its outcome. The reason is required because
 // everyone who filed under it reads it.
+
+const styles = stylex.create({
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+})
 
 export function VoidQuestionDialog({
   open,
@@ -51,7 +60,7 @@ export function VoidQuestionDialog({
       description={format(m.itemsVoidHint)}
       onClose={onClose}
       footer={
-        <div className="flex justify-end gap-2">
+        <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>

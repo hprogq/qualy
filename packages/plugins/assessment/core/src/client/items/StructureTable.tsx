@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import {
   ChevronDownIcon,
   EllipsisVerticalIcon,
@@ -9,8 +10,8 @@ import {
   SearchIcon,
 } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,9 +36,399 @@ import type { StructureRow } from './structure.ts'
 // the columns. Only groups are numbered, because a number on every row makes
 // the column noise rather than a map.
 
+const sm = '@media (min-width: 640px)'
+const maxSm = '@media (max-width: 639.98px)'
+const md = '@media (min-width: 768px)'
+
 /** the eight columns every row lines up against, groups included */
-const COLUMNS =
-  'grid-cols-[3.5rem_minmax(0,1fr)_5.25rem_4.25rem_9.25rem_9.75rem_4rem_1.75rem] gap-3'
+const COLUMNS = '3.5rem minmax(0, 1fr) 5.25rem 4.25rem 9.25rem 9.75rem 4rem 1.75rem'
+
+const styles = stylex.create({
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  toolbar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  toolbarTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  dragHint: {
+    display: {
+      default: 'none',
+      [md]: 'block',
+    },
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  searchSeat: {
+    position: 'relative',
+    width: {
+      default: null,
+      [maxSm]: '100%',
+    },
+  },
+  searchIcon: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: '50%',
+    left: 12,
+    width: 14,
+    height: 14,
+    transform: 'translateY(-50%)',
+    color: tokens.mutedForeground,
+  },
+  searchInput: {
+    paddingLeft: 32,
+    width: {
+      default: null,
+      [maxSm]: '100%',
+      [sm]: 224,
+    },
+  },
+  chevronDim: {
+    opacity: 0.7,
+  },
+  statusChoice: {
+    width: 128,
+  },
+  tableFrame: {
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    overflowX: {
+      default: null,
+      [md]: 'auto',
+    },
+  },
+  tableMin: {
+    minWidth: {
+      default: null,
+      [md]: '48rem',
+    },
+  },
+  headerRow: {
+    display: {
+      default: 'none',
+      [md]: 'grid',
+    },
+    gridTemplateColumns: COLUMNS,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    paddingInline: 12,
+    paddingBlock: 8,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  cellRight: {
+    textAlign: 'right',
+  },
+  noMatch: {
+    paddingInline: 12,
+    paddingBlock: 32,
+    textAlign: 'center',
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  groupRow: {
+    cursor: 'pointer',
+    borderBottomWidth: {
+      default: 1,
+      ':last-child': 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 10,
+    transitionProperty: 'color, background-color, border-color',
+    display: {
+      default: 'flex',
+      [md]: 'grid',
+    },
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: {
+      default: 8,
+      [md]: 12,
+    },
+    // the same last column as a question row, so every menu down the
+    // table sits on one line rather than wherever its row's words ended
+    gridTemplateColumns: {
+      default: null,
+      [md]: '3.5rem minmax(0, 1fr) auto 1.75rem',
+    },
+  },
+  groupIdle: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
+  rowSelected: {
+    backgroundColor: `color-mix(in oklab, ${tokens.primary} 10%, transparent)`,
+  },
+  ordinalWide: {
+    display: {
+      default: 'none',
+      [md]: 'block',
+    },
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  ordinalNarrow: {
+    display: {
+      default: null,
+      [md]: 'none',
+    },
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  groupMain: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 2,
+  },
+  groupNameSeat: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  folderIcon: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  groupTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  capChip: {
+    flexShrink: 0,
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    paddingInline: 6,
+    paddingBlock: 1,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  subtotal: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  countNote: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  groupActions: {
+    display: {
+      default: 'none',
+      [md]: 'flex',
+    },
+    alignItems: 'center',
+    gap: 8,
+  },
+  shrinkNone: {
+    flexShrink: 0,
+  },
+  menuButton: {
+    flexShrink: 0,
+    justifySelf: 'center',
+    color: tokens.mutedForeground,
+  },
+  itemNarrow: {
+    display: {
+      default: 'flex',
+      [md]: 'none',
+    },
+    cursor: 'pointer',
+    flexDirection: 'column',
+    gap: 4,
+    borderBottomWidth: {
+      default: 1,
+      ':last-child': 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    borderLeftWidth: 2,
+    borderLeftStyle: 'solid',
+    paddingBlock: 8,
+    paddingRight: 8,
+    fontSize: 14,
+    transitionProperty: 'color, background-color, border-color',
+  },
+  itemWide: {
+    display: {
+      default: 'none',
+      [md]: 'grid',
+    },
+    cursor: 'pointer',
+    alignItems: 'center',
+    gridTemplateColumns: COLUMNS,
+    gap: 12,
+    borderBottomWidth: {
+      default: 1,
+      ':last-child': 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    borderLeftWidth: 2,
+    borderLeftStyle: 'solid',
+    paddingInline: 12,
+    paddingBlock: 8,
+    fontSize: 14,
+    transitionProperty: 'color, background-color, border-color',
+  },
+  edgeDraft: {
+    borderLeftColor: `color-mix(in oklab, ${tokens.foreground} 35%, transparent)`,
+  },
+  edgeVoided: {
+    borderLeftColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  },
+  edgeNone: {
+    borderLeftColor: 'transparent',
+  },
+  itemHover: {
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    },
+  },
+  itemVoidedSurface: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.surfaceMuted} 25%, transparent)`,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    },
+  },
+  narrowHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  indentGuide: {
+    marginTop: '-0.35rem',
+    marginRight: 8,
+    width: 8,
+    height: 8,
+    flexShrink: 0,
+    borderBottomLeftRadius: 3,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    borderLeftWidth: 1,
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+  },
+  nameText: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  nameVoided: {
+    color: tokens.mutedForeground,
+    textDecorationLine: 'line-through',
+  },
+  nameComposing: {
+    color: tokens.mutedForeground,
+  },
+  factsLine: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  wideName: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  numCell: {
+    textAlign: 'right',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  numCellMuted: {
+    textAlign: 'right',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  metaCell: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  pill: {
+    display: 'inline-flex',
+    width: 'fit-content',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 8,
+    paddingBlock: 1,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+  },
+  pillDot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+  },
+  pillDotActive: {
+    backgroundColor: tokens.foreground,
+  },
+  pillDotIdle: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  markBefore: {
+    boxShadow: `inset 0 2px 0 0 ${tokens.primary}`,
+  },
+  markAfter: {
+    boxShadow: `inset 0 -2px 0 0 ${tokens.primary}`,
+  },
+  markInto: {
+    backgroundColor: `color-mix(in oklab, ${tokens.primary} 10%, transparent)`,
+  },
+})
 
 export function StructureTable({
   rows,
@@ -104,40 +495,37 @@ export function StructureTable({
     onClick: () => onOpen(row),
   })
 
-  const markOf = (row: StructureRow) => {
+  const markOf = (row: StructureRow): stylex.StyleXStyles | null => {
     const marked = drop?.key === row.key ? drop.edge : null
-    return cn(
-      marked === 'before' && 'shadow-[inset_0_2px_0_0_var(--primary)]',
-      marked === 'after' && 'shadow-[inset_0_-2px_0_0_var(--primary)]',
-      marked === 'into' && 'bg-primary/10',
-    )
+    return marked === 'before'
+      ? styles.markBefore
+      : marked === 'after'
+        ? styles.markAfter
+        : marked === 'into'
+          ? styles.markInto
+          : null
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold">{format(m.itemsTreeTitle)}</h3>
+    <div {...stylex.props(styles.root)}>
+      <div {...stylex.props(styles.toolbar)}>
+        <h3 {...stylex.props(styles.toolbarTitle)}>{format(m.itemsTreeTitle)}</h3>
         {/* dragging is a pointer's trick, so the line about it is for pointers */}
-        <p className="hidden text-xs text-muted-foreground md:block">
-          {format(m.structureDragHint)}
-        </p>
-        <span className="flex-1" />
-        <div className="relative max-sm:w-full">
-          <SearchIcon
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
-          />
+        <p {...stylex.props(styles.dragHint)}>{format(m.structureDragHint)}</p>
+        <span {...stylex.props(styles.spacer)} />
+        <div {...stylex.props(styles.searchSeat)}>
+          <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
           <Input
             name="structure-search"
             aria-label={format(m.structureSearch)}
-            className="pl-8 max-sm:w-full sm:w-56"
+            className={stylex.props(styles.searchInput).className}
             value={search}
             placeholder={format(m.structureSearch)}
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
         <Choice
-          className="w-32"
+          xstyle={styles.statusChoice}
           value={status}
           options={[
             { value: 'all', label: format(m.structureStatusAll) },
@@ -158,7 +546,7 @@ export function StructureTable({
             <Button>
               <PlusIcon aria-hidden />
               {format(m.structureNew)}
-              <ChevronDownIcon aria-hidden className="opacity-70" />
+              <ChevronDownIcon aria-hidden className={stylex.props(styles.chevronDim).className} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
@@ -178,18 +566,13 @@ export function StructureTable({
           the same rows read as lines - name and standing on top, everything
           the columns would have said underneath - because a table nobody can
           see the right-hand end of is worse than no table. */}
-      <div className="rounded-lg border md:overflow-x-auto">
-        <div className="md:min-w-3xl">
-          <div
-            className={cn(
-              'hidden border-b bg-muted/60 px-3 py-2 text-xs font-medium text-muted-foreground md:grid',
-              COLUMNS,
-            )}
-          >
+      <div {...stylex.props(styles.tableFrame)}>
+        <div {...stylex.props(styles.tableMin)}>
+          <div {...stylex.props(styles.headerRow)}>
             <span>{format(m.structureColOrdinal)}</span>
             <span>{format(m.structureColName)}</span>
-            <span className="text-right">{format(m.structureColEach)}</span>
-            <span className="text-right">{format(m.structureColMost)}</span>
+            <span {...stylex.props(styles.cellRight)}>{format(m.structureColEach)}</span>
+            <span {...stylex.props(styles.cellRight)}>{format(m.structureColMost)}</span>
             <span>{format(m.structureColSource)}</span>
             <span>{format(m.structureColChain)}</span>
             <span>{format(m.structureColStatus)}</span>
@@ -197,9 +580,7 @@ export function StructureTable({
           </div>
 
           {shown.length === 0 && (
-            <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-              {format(m.structureNoMatch)}
-            </p>
+            <p {...stylex.props(styles.noMatch)}>{format(m.structureNoMatch)}</p>
           )}
 
           {shown.map((row) =>
@@ -257,7 +638,7 @@ function GroupRow({
 }: {
   row: StructureRow
   selected: boolean
-  mark: string
+  mark: stylex.StyleXStyles | null
   handlers: RowHandlers
   onAddGroup: () => void
   onAddItem: () => void
@@ -267,40 +648,28 @@ function GroupRow({
   return (
     <div
       {...handlers}
-      className={cn(
-        'cursor-pointer border-b bg-muted/50 px-3 py-2.5 transition-colors last:border-b-0',
-        'flex flex-wrap items-center gap-2',
-        // the same last column as a question row, so every menu down the
-        // table sits on one line rather than wherever its row's words ended
-        'md:grid md:grid-cols-[3.5rem_minmax(0,1fr)_auto_1.75rem] md:gap-3',
-        selected ? 'bg-primary/10' : 'hover:bg-muted',
-        mark,
-      )}
+      {...stylex.props(styles.groupRow, selected ? styles.rowSelected : styles.groupIdle, mark)}
       style={{ paddingLeft: `${row.depth * 1.25 + 0.75}rem` }}
     >
-      <span className="hidden text-xs tabular-nums text-muted-foreground md:block">
-        {row.ordinal}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="text-xs tabular-nums text-muted-foreground md:hidden">
-            {row.ordinal}
-          </span>
+      <span {...stylex.props(styles.ordinalWide)}>{row.ordinal}</span>
+      <span {...stylex.props(styles.groupMain)}>
+        <span {...stylex.props(styles.groupNameSeat)}>
+          <span {...stylex.props(styles.ordinalNarrow)}>{row.ordinal}</span>
           {/* what a section is, rather than a chevron promising a fold that
               these rows do not do */}
-          <FolderIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 truncate text-sm font-semibold">
+          <FolderIcon aria-hidden className={stylex.props(styles.folderIcon).className} />
+          <span {...stylex.props(styles.groupTitle)}>
             {row.name.trim() === '' ? format(m.itemsGroupUnnamed) : row.name}
           </span>
         </span>
-        <span className="shrink-0 rounded-md border bg-background px-1.5 py-px text-xs tabular-nums">
+        <span {...stylex.props(styles.capChip)}>
           {row.cap === null || row.cap === undefined
             ? format(m.structureUncapped)
             : format(m.itemsCapChip, { value: trimAmount(row.cap) })}
         </span>
         {row.subtotal !== undefined && (
           <span
-            className="shrink-0 text-xs tabular-nums text-muted-foreground"
+            {...stylex.props(styles.subtotal)}
             data-testid="group-subtotal"
             data-subtotal={row.subtotal}
           >
@@ -308,7 +677,7 @@ function GroupRow({
           </span>
         )}
         {row.count !== undefined && (
-          <span className="shrink-0 text-xs text-muted-foreground">
+          <span {...stylex.props(styles.countNote)}>
             {format(m.itemsTreeSummaryNoCap, { count: row.count })}
           </span>
         )}
@@ -316,7 +685,7 @@ function GroupRow({
       {/* the two things a section can gain are one press away on a pointer
           and one more press away in the menu, which is where they live when
           there is no room for them */}
-      <span className="hidden items-center gap-2 md:flex">
+      <span {...stylex.props(styles.groupActions)}>
         <RowButton
           label={format(m.structureRowAddGroup)}
           onClick={(event) => {
@@ -355,7 +724,7 @@ function ItemRow({
 }: {
   row: StructureRow
   selected: boolean
-  mark: string
+  mark: stylex.StyleXStyles | null
   handlers: RowHandlers
   onOpen: () => void
   onPublish: () => void
@@ -376,10 +745,10 @@ function ItemRow({
   const steps = row.steps === undefined ? '' : format(m.structureSteps, { count: row.steps })
   const name = (
     <span
-      className={cn(
-        'min-w-0 truncate',
-        row.status === 'voided' && 'text-muted-foreground line-through',
-        composing && 'text-muted-foreground',
+      {...stylex.props(
+        styles.nameText,
+        row.status === 'voided' && styles.nameVoided,
+        composing && styles.nameComposing,
       )}
     >
       {row.name.trim() === '' ? format(m.itemsUntitled) : row.name}
@@ -407,14 +776,18 @@ function ItemRow({
       )}
     </RowMenu>
   )
-  const standing = cn(
+  const standing = [
     row.status === 'draft' || composing
-      ? 'border-l-foreground/35'
+      ? styles.edgeDraft
       : row.status === 'voided'
-        ? 'border-l-muted-foreground/30 bg-muted/25'
-        : 'border-l-transparent',
-    selected ? 'bg-primary/10' : 'hover:bg-accent/40',
-  )
+        ? styles.edgeVoided
+        : styles.edgeNone,
+    selected
+      ? styles.rowSelected
+      : row.status === 'voided'
+        ? styles.itemVoidedSurface
+        : styles.itemHover,
+  ]
 
   // Narrow: name and standing on one line, everything the columns would have
   // said on the next, each still carrying the column's own word so a number
@@ -430,61 +803,36 @@ function ItemRow({
     <>
       <div
         {...handlers}
-        className={cn(
-          'flex cursor-pointer flex-col gap-1 border-b border-l-2 py-2 pr-2 text-sm transition-colors last:border-b-0 md:hidden',
-          standing,
-          mark,
-        )}
+        {...stylex.props(styles.itemNarrow, ...standing, mark)}
         style={{ paddingLeft: `${row.depth * 1.25 + 0.75}rem` }}
       >
-        <span className="flex items-center gap-2">
-          {row.depth > 0 && (
-            <span
-              aria-hidden
-              className="mt-[-0.35rem] mr-2 size-2 shrink-0 rounded-bl-[3px] border-b border-l"
-            />
-          )}
+        <span {...stylex.props(styles.narrowHead)}>
+          {row.depth > 0 && <span aria-hidden {...stylex.props(styles.indentGuide)} />}
           {name}
-          <span className="flex-1" />
+          <span {...stylex.props(styles.spacer)} />
           <StatusPill status={row.status} />
           {menu}
         </span>
         {facts.length > 0 && (
-          <span className="text-xs text-muted-foreground">
+          <span {...stylex.props(styles.factsLine)}>
             {facts.join(` ${format(m.listSeparator).trim()} `)}
           </span>
         )}
       </div>
 
-      <div
-        {...handlers}
-        className={cn(
-          'hidden cursor-pointer items-center border-b border-l-2 px-3 py-2 text-sm transition-colors last:border-b-0 md:grid',
-          COLUMNS,
-          standing,
-          mark,
-        )}
-      >
+      <div {...handlers} {...stylex.props(styles.itemWide, ...standing, mark)}>
         <span />
-        <span
-          className="flex min-w-0 items-center gap-2"
-          style={{ paddingLeft: `${row.depth * 1.25}rem` }}
-        >
+        <span {...stylex.props(styles.wideName)} style={{ paddingLeft: `${row.depth * 1.25}rem` }}>
           {/* the guide is what tells a question inside a section from one
               sitting straight on the paper; indentation alone is a gap the
               eye has nothing to measure against */}
-          {row.depth > 0 && (
-            <span
-              aria-hidden
-              className="mt-[-0.35rem] mr-2 size-2 shrink-0 rounded-bl-[3px] border-b border-l"
-            />
-          )}
+          {row.depth > 0 && <span aria-hidden {...stylex.props(styles.indentGuide)} />}
           {name}
         </span>
-        <span className="text-right tabular-nums">{each}</span>
-        <span className="text-right tabular-nums text-muted-foreground">{most}</span>
-        <span className="truncate text-xs text-muted-foreground">{source}</span>
-        <span className="truncate text-xs text-muted-foreground">{steps}</span>
+        <span {...stylex.props(styles.numCell)}>{each}</span>
+        <span {...stylex.props(styles.numCellMuted)}>{most}</span>
+        <span {...stylex.props(styles.metaCell)}>{source}</span>
+        <span {...stylex.props(styles.metaCell)}>{steps}</span>
         <StatusPill status={row.status} />
         {menu ?? <span />}
       </div>
@@ -496,12 +844,12 @@ function StatusPill({ status }: { status: StructureRow['status'] }) {
   const { format } = useI18n()
   if (status === undefined) return <span />
   return (
-    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border px-2 py-px text-xs whitespace-nowrap">
+    <span {...stylex.props(styles.pill)}>
       <span
         aria-hidden
-        className={cn(
-          'size-1.5 shrink-0 rounded-full',
-          status === 'active' ? 'bg-foreground' : 'bg-muted-foreground/60',
+        {...stylex.props(
+          styles.pillDot,
+          status === 'active' ? styles.pillDotActive : styles.pillDotIdle,
         )}
       />
       {format(
@@ -526,7 +874,12 @@ function RowButton({
   onClick: (event: React.MouseEvent) => void
 }) {
   return (
-    <Button variant="outline" size="xs" className="shrink-0" onClick={onClick}>
+    <Button
+      variant="outline"
+      size="xs"
+      className={stylex.props(styles.shrinkNone).className}
+      onClick={onClick}
+    >
       <PlusIcon aria-hidden />
       {label}
     </Button>
@@ -542,7 +895,7 @@ function RowMenu({ children }: { children: React.ReactNode }) {
           variant="ghost"
           size="icon-xs"
           aria-label={format(m.structureRowMenu)}
-          className="shrink-0 justify-self-center text-muted-foreground"
+          className={stylex.props(styles.menuButton).className}
           onClick={(event) => event.stopPropagation()}
         >
           <EllipsisVerticalIcon aria-hidden />

@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { FormDialog, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -12,6 +14,34 @@ import { assessmentMessages as m } from '../i18n.ts'
 // happens to the reviews already running" have different right answers, and
 // a single "apply the new configuration" would force a guess on whichever
 // one was not being thought about.
+
+const styles = stylex.create({
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  column: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 24,
+  },
+  formQuestions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  reviewQuestions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  pastChangedNote: {
+    fontSize: 12,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+})
 
 export interface ChangeImpact {
   readonly impactToken: string
@@ -87,7 +117,7 @@ export function ImpactDialog({
       description={format(m.itemsImpactHint)}
       onClose={onClose}
       footer={
-        <div className="flex justify-end gap-2">
+        <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
@@ -114,9 +144,9 @@ export function ImpactDialog({
         </div>
       }
     >
-      <div className="flex flex-col gap-6">
+      <div {...stylex.props(styles.column)}>
         {asked.form && (
-          <div className="flex flex-col gap-4">
+          <div {...stylex.props(styles.formQuestions)}>
             {impact.form.inReview.incompatible > 0 && (
               <RadioGroup
                 name="in-review"
@@ -153,7 +183,7 @@ export function ImpactDialog({
         )}
 
         {asked.review && (
-          <div className="flex flex-col gap-2">
+          <div {...stylex.props(styles.reviewQuestions)}>
             <RadioGroup
               name="rounds"
               variant="cards"
@@ -185,7 +215,7 @@ export function ImpactDialog({
             {/* the steps already walked will not run again - said out loud
                 exactly when the new process disagrees about what they were */}
             {rounds !== 'keep' && landing === 'current-stage' && impact.review.pastChanged > 0 && (
-              <p className="text-xs leading-relaxed text-muted-foreground">
+              <p {...stylex.props(styles.pastChangedNote)}>
                 {format(m.itemsImpactPastChanged, { count: impact.review.pastChanged })}
               </p>
             )}

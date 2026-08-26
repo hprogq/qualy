@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Field, FormDialog } from '@qualy/ui/admin'
@@ -12,6 +13,14 @@ import { assessmentMessages as m } from '../i18n.ts'
 // the sentence is read later by people reconstructing why a result moved. It
 // is asked at the moment of saving rather than parked in the form, where it
 // reads as one more optional field and is filled in with a shrug.
+
+const styles = stylex.create({
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+})
 
 export function ReasonDialog({
   open,
@@ -39,7 +48,7 @@ export function ReasonDialog({
       description={description}
       onClose={onClose}
       footer={
-        <div className="flex justify-end gap-2">
+        <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>

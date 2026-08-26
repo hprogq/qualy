@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react'
 import { Feedback, Field, PageHeader } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
-import { cn } from '@qualy/ui/cn'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -43,6 +44,836 @@ import type { ItemOptions } from './options.ts'
 import type { Placement } from './paper.ts'
 import { countedEntries, type Folding } from './structure.ts'
 
+const sm = '@media (min-width: 640px)'
+const md = '@media (min-width: 768px)'
+const xl = '@media (min-width: 1280px)'
+
+const styles = stylex.create({
+  // shared scraps
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  shrinkNone: {
+    flexShrink: 0,
+  },
+  minWidth0: {
+    minWidth: 0,
+  },
+  inlineFlex: {
+    display: 'inline-flex',
+  },
+  fullWidth: {
+    width: '100%',
+  },
+  truncateMin: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  tabular: {
+    fontVariantNumeric: 'tabular-nums',
+  },
+  icon12: {
+    width: 12,
+    height: 12,
+  },
+  icon14: {
+    width: 14,
+    height: 14,
+  },
+  icon16: {
+    width: 16,
+    height: 16,
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  smallMuted: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  smallProse: {
+    fontSize: 12,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  mutedText: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  subheading: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  mutedControl: {
+    color: tokens.mutedForeground,
+  },
+  // the summary picker
+  summaryRoot: {
+    display: 'flex',
+    maxWidth: '42rem',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  chosenHead: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  chosenLabel: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  chosenCount: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  emptySeat: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: tokens.border,
+    padding: 24,
+  },
+  emptyHeadGap: {
+    gap: 6,
+  },
+  emptyMediaSize: {
+    marginBottom: 4,
+    width: 32,
+    height: 32,
+    borderRadius: tokens.radiusLg,
+  },
+  emptyTitleText: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  emptyDescText: {
+    fontSize: 12,
+    lineHeight: 1.625,
+  },
+  chosenList: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  chosenRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: {
+      default: 1,
+      ':last-child': 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: tokens.background,
+    paddingBlock: 6,
+    paddingRight: 8,
+    paddingLeft: 6,
+    userSelect: 'none',
+  },
+  rowMarkBefore: {
+    boxShadow: `inset 0 2px 0 0 ${tokens.primary}`,
+  },
+  rowMarkAfter: {
+    boxShadow: `inset 0 -2px 0 0 ${tokens.primary}`,
+  },
+  handle: {
+    flexShrink: 0,
+    cursor: {
+      default: 'grab',
+      ':active': 'grabbing',
+    },
+    paddingInline: 2,
+    paddingBlock: 4,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  ordinal: {
+    display: 'flex',
+    width: 20,
+    height: 20,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    backgroundColor: tokens.foreground,
+    fontSize: 10,
+    fontWeight: 600,
+    color: tokens.background,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  rowName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 13,
+    fontWeight: 500,
+  },
+  rowType: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  leadTag: {
+    flexShrink: 0,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 6,
+    paddingBlock: 2,
+    fontSize: 10,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  othersRow: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 6,
+  },
+  othersLabel: {
+    paddingRight: 2,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  addKey: {
+    display: 'inline-flex',
+    height: 28,
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: tokens.border,
+    paddingInline: 10,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+  },
+  addKeyFull: {
+    cursor: 'not-allowed',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  addKeyOpen: {
+    cursor: 'pointer',
+    color: tokens.foreground,
+    transitionProperty: 'color, background-color, border-color, box-shadow',
+    borderStyle: {
+      default: 'dashed',
+      ':hover': 'solid',
+    },
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+  },
+  capNote: {
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  // the editor's own frame
+  editorRoot: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  backButton: {
+    flexShrink: 0,
+    transitionProperty: 'color, background-color, border-color, box-shadow',
+    color: {
+      default: null,
+      ':hover': tokens.foreground,
+    },
+  },
+  trailSep: {
+    paddingInline: 6,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  trailDot: {
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  menuButton: {
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  layout: {
+    display: 'grid',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    columnGap: 36,
+    gridTemplateColumns: {
+      default: null,
+      [xl]: 'minmax(0, 1fr) 19.5rem',
+    },
+  },
+  mainColumn: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+  },
+  problemSeat: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    paddingTop: 16,
+  },
+  issueList: {
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.danger} 40%, transparent)`,
+    padding: 12,
+    fontSize: 14,
+    color: tokens.danger,
+  },
+  fieldColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  pairGrid: {
+    display: 'grid',
+    gap: 16,
+    gridTemplateColumns: {
+      default: null,
+      [sm]: 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  statBand: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 14,
+    paddingBlock: 12,
+  },
+  statCell: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  statLabel: {
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  divider: {
+    height: 28,
+    width: 1,
+    backgroundColor: tokens.border,
+  },
+  scoringRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    gap: 20,
+  },
+  w96: {
+    width: 96,
+  },
+  w112: {
+    width: 112,
+  },
+  w152: {
+    width: 152,
+  },
+  w208: {
+    width: 208,
+  },
+  w240: {
+    width: 240,
+  },
+  inlineRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  anyLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  reviewColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  escalationBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 16,
+  },
+  subhint: {
+    paddingTop: 2,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  escalationEmptyRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 16,
+    fontSize: 12,
+    fontWeight: 500,
+  },
+  quietNote: {
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+  },
+  aside: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    paddingBlock: 24,
+  },
+  asidePanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    backgroundColor: tokens.surfaceMuted,
+    padding: 16,
+  },
+  // the kind cards
+  kindRoot: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  kindGrid: {
+    display: 'grid',
+    gap: 10,
+    gridTemplateColumns: {
+      default: null,
+      [sm]: 'repeat(3, minmax(0, 1fr))',
+    },
+  },
+  kindCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 12,
+    textAlign: 'left',
+    transitionProperty: 'color, background-color, border-color, box-shadow',
+  },
+  kindCardRest: {
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    },
+  },
+  kindCardChosen: {
+    borderColor: tokens.foreground,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+  },
+  kindCardLocked: {
+    cursor: 'default',
+    opacity: 0.7,
+  },
+  kindCardLockedChosen: {
+    backgroundColor: {
+      default: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+      ':hover': 'transparent',
+    },
+  },
+  kindHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  kindDot: {
+    display: 'flex',
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: 'solid',
+  },
+  kindDotChosen: {
+    borderColor: tokens.foreground,
+  },
+  kindDotRest: {
+    borderColor: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  kindDotFill: {
+    width: 6,
+    height: 6,
+    borderRadius: '9999px',
+    backgroundColor: tokens.foreground,
+  },
+  kindName: {
+    fontSize: 14,
+  },
+  kindNameChosen: {
+    fontWeight: 600,
+  },
+  kindHint: {
+    fontSize: 12,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
+  // one part of the question
+  section: {
+    display: 'grid',
+    columnGap: 28,
+    rowGap: 16,
+    borderTopWidth: {
+      default: 1,
+      ':first-of-type': 0,
+    },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingBlock: 24,
+    gridTemplateColumns: {
+      default: null,
+      [md]: '10.5rem minmax(0, 1fr)',
+    },
+  },
+  sectionWords: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  // the standing chip
+  chip: {
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 10,
+    paddingBlock: 2,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+  },
+  chipItems: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '9999px',
+  },
+  statusDotActive: {
+    backgroundColor: tokens.foreground,
+  },
+  statusDotIdle: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  inlineAdd: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    transitionProperty: 'color, background-color, border-color, box-shadow',
+    color: {
+      default: null,
+      ':hover': tokens.mutedForeground,
+    },
+  },
+  // the chain, drawn as markers over labels
+  chainScroll: {
+    marginInline: -4,
+    overflowX: 'auto',
+    paddingInline: 4,
+    paddingBottom: 4,
+  },
+  chainGrid: {
+    display: 'grid',
+    width: 'max-content',
+  },
+  markRow: {
+    display: 'flex',
+    alignItems: 'center',
+  },
+  labelCell: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+    paddingTop: 8,
+    paddingRight: 24,
+  },
+  startDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '9999px',
+    backgroundColor: tokens.mutedForeground,
+  },
+  gapSeat: {
+    position: 'relative',
+    display: 'flex',
+    height: 24,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+  },
+  gapLine: {
+    height: 1,
+    width: '100%',
+    backgroundColor: tokens.border,
+  },
+  gapAdd: {
+    position: 'absolute',
+    left: '50%',
+    display: 'flex',
+    width: 20,
+    height: 20,
+    transform: 'translateX(-50%)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: {
+      default: 'dashed',
+      ':hover': 'solid',
+      ':focus-visible': 'solid',
+    },
+    borderColor: {
+      default: tokens.border,
+      ':hover': `color-mix(in oklab, ${tokens.foreground} 50%, transparent)`,
+    },
+    backgroundColor: tokens.background,
+    color: {
+      default: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+      ':hover': tokens.foreground,
+      ':focus-visible': tokens.foreground,
+    },
+    transitionProperty: 'color, background-color, border-color, box-shadow',
+  },
+  marker: {
+    display: 'flex',
+    width: 24,
+    height: 24,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    color: tokens.mutedForeground,
+  },
+  stageMark: {
+    display: 'flex',
+    width: 24,
+    height: 24,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    fontSize: 12,
+    fontWeight: 500,
+  },
+  stageMarkDone: {
+    backgroundColor: tokens.foreground,
+    color: tokens.background,
+  },
+  stageMarkUnset: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: `color-mix(in oklab, ${tokens.danger} 60%, transparent)`,
+    color: tokens.danger,
+  },
+  stepRoot: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+  },
+  stepName: {
+    minWidth: 0,
+    textAlign: 'left',
+    fontSize: 14,
+    fontWeight: 500,
+    overflowWrap: 'break-word',
+    textUnderlineOffset: 4,
+    textDecorationLine: {
+      default: 'none',
+      ':hover': 'underline',
+    },
+  },
+  stepNameBad: {
+    color: tokens.danger,
+  },
+  stepWho: {
+    fontSize: 12,
+    overflowWrap: 'break-word',
+    color: tokens.mutedForeground,
+  },
+  stepControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 2,
+    paddingTop: 2,
+  },
+  coverageNote: {
+    fontSize: 12,
+  },
+  coverageBad: {
+    color: tokens.danger,
+  },
+  coverageOk: {
+    color: tokens.mutedForeground,
+  },
+  // the aside: preview, placement, versions
+  previewTitle: {
+    paddingBottom: 12,
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  previewCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.background,
+    padding: 14,
+  },
+  declarePill: {
+    display: 'inline-flex',
+    height: 32,
+    width: 'fit-content',
+    alignItems: 'center',
+    borderRadius: `calc(${tokens.radiusLg} * 2.6)`,
+    backgroundColor: tokens.primary,
+    paddingInline: 14,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.primaryForeground,
+  },
+  previewFields: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  previewField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  requiredStar: {
+    paddingLeft: 2,
+    color: tokens.danger,
+  },
+  uploadBox: {
+    display: 'flex',
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: tokens.border,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  inputBox: {
+    height: 36,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  asideTitle: {
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  placedBlock: {
+    marginTop: 16,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 14,
+  },
+  versionsBlock: {
+    marginTop: 16,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 14,
+  },
+  amountRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    fontSize: 12,
+  },
+  amountLabel: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  amountValue: {
+    flexShrink: 0,
+    fontVariantNumeric: 'tabular-nums',
+  },
+})
+
 /**
  * The row's own picture, carried under the pointer.
  *
@@ -60,7 +891,12 @@ const liftGhost = (event: React.DragEvent<HTMLElement>) => {
   ghost.style.left = '-1000px'
   ghost.style.width = `${String(box.width)}px`
   ghost.style.pointerEvents = 'none'
-  ghost.classList.add('rounded-lg', 'border', 'bg-background', 'shadow-md')
+  // dressed by hand: a clone parked on the body is outside every compiled
+  // stylesheet's reach, so the lifted look is written straight onto it
+  ghost.style.borderRadius = '10px'
+  ghost.style.border = '1px solid var(--q-border)'
+  ghost.style.background = 'var(--q-background)'
+  ghost.style.boxShadow = '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
   document.body.append(ghost)
   event.dataTransfer.setDragImage(ghost, event.clientX - box.left, box.height / 2)
   // the browser has taken its picture by the next frame
@@ -107,35 +943,33 @@ function SummaryPicker({
     onChange(order)
   }
   return (
-    <div className="flex max-w-2xl min-w-0 flex-col gap-2.5">
+    <div {...stylex.props(styles.summaryRoot)}>
       {chosen.length > 0 && (
-        <div className="flex items-baseline gap-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            {format(m.itemsSummaryChosen)}
-          </p>
-          <span className="flex-1" />
-          <p className="text-xs text-muted-foreground tabular-nums">
+        <div {...stylex.props(styles.chosenHead)}>
+          <p {...stylex.props(styles.chosenLabel)}>{format(m.itemsSummaryChosen)}</p>
+          <span {...stylex.props(styles.spacer)} />
+          <p {...stylex.props(styles.chosenCount)}>
             {format(m.itemsSummaryCount, { count: chosen.length, most: SUMMARY_FIELDS_MOST })}
           </p>
         </div>
       )}
 
       {chosen.length === 0 ? (
-        <Empty className="rounded-[10px] border border-dashed p-6">
-          <EmptyHeader className="gap-1.5">
-            <EmptyMedia variant="icon" className="mb-1 size-8 rounded-lg [&_svg]:size-4">
-              <TagIcon />
+        <Empty xstyle={styles.emptySeat}>
+          <EmptyHeader xstyle={styles.emptyHeadGap}>
+            <EmptyMedia variant="icon" xstyle={styles.emptyMediaSize}>
+              <TagIcon className={stylex.props(styles.icon16).className} />
             </EmptyMedia>
-            <EmptyTitle className="text-sm font-medium">
+            <EmptyTitle xstyle={styles.emptyTitleText}>
               {format(m.itemsSummaryEmptyTitle)}
             </EmptyTitle>
-            <EmptyDescription className="text-xs leading-relaxed">
+            <EmptyDescription xstyle={styles.emptyDescText}>
               {format(m.itemsSummaryFallback)}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
-        <ul className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border">
+        <ul {...stylex.props(styles.chosenList)}>
           {chosen.map((id, index) => {
             const field = eligible.find((one) => one.id === id)!
             const marked = drop?.id === id ? drop.edge : null
@@ -167,42 +1001,38 @@ function SummaryPicker({
                   const dragged = event.dataTransfer.getData('qualy/summary-field')
                   if (dragged !== '') move(dragged, id, edgeOf(event))
                 }}
-                className={cn(
-                  'flex min-w-0 items-center gap-2.5 border-b bg-background py-1.5 pr-2 pl-1.5 select-none last:border-b-0',
-                  marked === 'before' && 'shadow-[inset_0_2px_0_0_var(--primary)]',
-                  marked === 'after' && 'shadow-[inset_0_-2px_0_0_var(--primary)]',
+                {...stylex.props(
+                  styles.chosenRow,
+                  marked === 'before' && styles.rowMarkBefore,
+                  marked === 'after' && styles.rowMarkAfter,
                 )}
               >
                 <span
                   aria-hidden
                   onPointerDown={() => setHeld(id)}
                   onPointerUp={() => setHeld(null)}
-                  className="shrink-0 cursor-grab px-0.5 py-1 text-muted-foreground/60 active:cursor-grabbing"
+                  {...stylex.props(styles.handle)}
                 >
-                  <GripVerticalIcon className="size-3.5" />
+                  <GripVerticalIcon className={stylex.props(styles.icon14).className} />
                 </span>
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background tabular-nums">
-                  {index + 1}
-                </span>
-                <span className="min-w-0 truncate text-[13px] font-medium">{nameOf(field)}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">
+                <span {...stylex.props(styles.ordinal)}>{index + 1}</span>
+                <span {...stylex.props(styles.rowName)}>{nameOf(field)}</span>
+                <span {...stylex.props(styles.rowType)}>
                   {format(SUMMARY_TYPE_LABEL[field.type])}
                 </span>
                 {index === 0 && (
-                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] whitespace-nowrap text-muted-foreground">
-                    {format(m.itemsSummaryLead)}
-                  </span>
+                  <span {...stylex.props(styles.leadTag)}>{format(m.itemsSummaryLead)}</span>
                 )}
-                <span className="flex-1" />
+                <span {...stylex.props(styles.spacer)} />
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="shrink-0"
+                  className={stylex.props(styles.shrinkNone).className}
                   onClick={() => onChange(chosen.filter((one) => one !== id))}
                 >
                   <XIcon aria-hidden />
-                  <span className="sr-only">{format(m.itemsSummaryRemove)}</span>
+                  <span {...stylex.props(styles.srOnly)}>{format(m.itemsSummaryRemove)}</span>
                 </Button>
               </li>
             )
@@ -211,24 +1041,17 @@ function SummaryPicker({
       )}
 
       {remaining.length > 0 && (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
-          <span className="pr-0.5 text-xs text-muted-foreground">
-            {format(m.itemsSummaryOthers)}
-          </span>
+        <div {...stylex.props(styles.othersRow)}>
+          <span {...stylex.props(styles.othersLabel)}>{format(m.itemsSummaryOthers)}</span>
           {remaining.map((field) => (
             <button
               key={field.id}
               type="button"
               disabled={full}
               onClick={() => onChange([...chosen, field.id])}
-              className={cn(
-                'inline-flex h-7 items-center gap-1 rounded-lg border border-dashed px-2.5 text-xs whitespace-nowrap',
-                full
-                  ? 'cursor-not-allowed text-muted-foreground/50'
-                  : 'cursor-pointer text-foreground transition-colors hover:border-solid hover:bg-accent/50',
-              )}
+              {...stylex.props(styles.addKey, full ? styles.addKeyFull : styles.addKeyOpen)}
             >
-              <PlusIcon aria-hidden className="size-3" />
+              <PlusIcon aria-hidden className={stylex.props(styles.icon12).className} />
               {nameOf(field)}
             </button>
           ))}
@@ -236,7 +1059,7 @@ function SummaryPicker({
       )}
 
       {full && (
-        <p className="text-[11px] text-muted-foreground">
+        <p {...stylex.props(styles.capNote)}>
           {format(m.itemsSummaryCapFull, { most: SUMMARY_FIELDS_MOST })}
         </p>
       )}
@@ -921,7 +1744,7 @@ export function ItemConfigEditor({
       : amountOf(unitsOf(draft.fixedValue.trim()) * counted)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div {...stylex.props(styles.editorRoot)}>
       {/* The page's own band says which question this is - built to the same
           two lines every section heading has, name over context, so taking
           the band over changes what it says and not where anything sits. */}
@@ -930,7 +1753,7 @@ export function ItemConfigEditor({
           variant="banner"
           title={
             <>
-              <span className="min-w-0 truncate">
+              <span {...stylex.props(styles.truncateMin)}>
                 {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
               </span>
               <StandingChip item={item} />
@@ -944,25 +1767,25 @@ export function ItemConfigEditor({
               <button
                 type="button"
                 aria-label={format(m.itemsBack)}
-                className="shrink-0 transition-colors hover:text-foreground"
+                {...stylex.props(styles.backButton)}
                 onClick={onCancel}
               >
-                <ArrowLeftIcon aria-hidden className="size-3.5" />
+                <ArrowLeftIcon aria-hidden className={stylex.props(styles.icon14).className} />
               </button>
-              <span className="min-w-0 truncate">
+              <span {...stylex.props(styles.truncateMin)}>
                 {trail.map((name, index) => (
                   <span key={`${index}:${name}`}>
-                    {index > 0 && <span className="px-1.5 text-muted-foreground/60">&rsaquo;</span>}
+                    {index > 0 && <span {...stylex.props(styles.trailSep)}>&rsaquo;</span>}
                     {name}
                   </span>
                 ))}
               </span>
               {at >= 0 && paper.length > 1 && (
                 <>
-                  <span aria-hidden className="text-muted-foreground/50">
+                  <span aria-hidden {...stylex.props(styles.trailDot)}>
                     &middot;
                   </span>
-                  <span className="shrink-0">
+                  <span {...stylex.props(styles.shrinkNone)}>
                     {format(m.itemsPaperPosition, { index: at + 1, total: paper.length })}
                   </span>
                 </>
@@ -978,7 +1801,7 @@ export function ItemConfigEditor({
                       variant="outline"
                       size="icon"
                       aria-label={format(m.structureRowMenu)}
-                      className="shrink-0 text-muted-foreground"
+                      className={stylex.props(styles.menuButton).className}
                     >
                       <EllipsisVerticalIcon aria-hidden />
                     </Button>
@@ -1016,13 +1839,13 @@ export function ItemConfigEditor({
         />
       </BatchBanner>
 
-      <div className="grid min-h-0 flex-1 gap-x-9 xl:grid-cols-[minmax(0,1fr)_19.5rem]">
-        <div className="flex min-w-0 flex-col">
+      <div {...stylex.props(styles.layout)}>
+        <div {...stylex.props(styles.mainColumn)}>
           {(problem !== null || issues.length > 0) && (
-            <div className="flex flex-col gap-2 pt-4">
+            <div {...stylex.props(styles.problemSeat)}>
               <Feedback message={problem} />
               {issues.length > 0 && (
-                <ul className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">
+                <ul {...stylex.props(styles.issueList)}>
                   {issues.map((issue, index) => (
                     <li key={index}>
                       {issue.path}: {issue.reason}
@@ -1034,7 +1857,7 @@ export function ItemConfigEditor({
           )}
 
           <Section title={format(m.itemsTabBasics)} hint={format(m.itemsBasicsHint)}>
-            <div className="flex flex-col gap-4">
+            <div {...stylex.props(styles.fieldColumn)}>
               {/* The kind decides which of the sections below exist at all,
                   and a dropdown hides that: what a reader needs to see when
                   choosing is the consequence, not the word. Three cards
@@ -1054,7 +1877,7 @@ export function ItemConfigEditor({
                   />
                 )}
               </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div {...stylex.props(styles.pairGrid)}>
                 <Field label={format(m.itemsFieldGroup)}>
                   {(id) => (
                     <Choice
@@ -1101,25 +1924,21 @@ export function ItemConfigEditor({
             <Section title={format(m.itemsGrantedTitle)} hint={format(m.itemsGrantedHint)}>
               {/* who "everybody" is, as a number: an amount granted to a list
                   nobody can see the size of is an amount nobody can check */}
-              <div className="flex items-center gap-3.5 rounded-lg bg-muted px-3.5 py-3">
-                <div className="flex shrink-0 flex-col gap-0.5">
-                  <p className="text-xs whitespace-nowrap text-muted-foreground">
-                    {format(m.itemsGrantedRoster)}
-                  </p>
-                  <p className="text-base font-semibold tabular-nums">
+              <div {...stylex.props(styles.statBand)}>
+                <div {...stylex.props(styles.statCell)}>
+                  <p {...stylex.props(styles.statLabel)}>{format(m.itemsGrantedRoster)}</p>
+                  <p {...stylex.props(styles.statValue)}>
                     {format(m.itemsGrantedRosterCount, { count: participantCount })}
                   </p>
                 </div>
-                <div aria-hidden className="h-7 w-px bg-border" />
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  {format(m.itemsGrantedBody)}
-                </p>
+                <div aria-hidden {...stylex.props(styles.divider)} />
+                <p {...stylex.props(styles.smallProse)}>{format(m.itemsGrantedBody)}</p>
               </div>
             </Section>
           )}
           {declaredKind && (
             <Section title={format(m.itemsTabFields)} hint={format(m.itemsDeclaredHint)}>
-              <p className="text-sm text-muted-foreground">{format(m.itemsDeclaredBody)}</p>
+              <p {...stylex.props(styles.mutedText)}>{format(m.itemsDeclaredBody)}</p>
             </Section>
           )}
           {fielded && (
@@ -1170,11 +1989,11 @@ export function ItemConfigEditor({
             </Section>
           )}
           <Section title={format(m.itemsTabScoring)} hint={format(m.itemsScoringHint)}>
-            <div className="flex flex-col gap-4">
+            <div {...stylex.props(styles.fieldColumn)}>
               {/* the width belongs to the wrapper: a field stretches whatever
                   control it is given to its own width */}
-              <div className="flex flex-wrap items-start gap-5">
-                <div className="w-38">
+              <div {...stylex.props(styles.scoringRow)}>
+                <div {...stylex.props(styles.w152)}>
                   <Field label={format(granted ? m.itemsGrantedValue : m.itemsFixedValue)}>
                     {(id) => (
                       <InputGroup>
@@ -1196,14 +2015,14 @@ export function ItemConfigEditor({
                     question granted to everybody is never filed */}
                 {!granted && (
                   <>
-                    <div className="w-52">
+                    <div {...stylex.props(styles.w208)}>
                       <Field label={format(m.itemsFolding)} hint={format(m.itemsFoldingHint)}>
                         {(id) => (
                           <Select
                             value={draft.folding}
                             onValueChange={(next) => patch({ folding: next as Draft['folding'] })}
                           >
-                            <SelectTrigger id={id} className="w-full">
+                            <SelectTrigger id={id} xstyle={styles.fullWidth}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -1225,12 +2044,12 @@ export function ItemConfigEditor({
                       </Field>
                     </div>
                     {draft.folding === 'top-n' && (
-                      <div className="w-28">
+                      <div {...stylex.props(styles.w112)}>
                         <Field label={format(m.itemsFoldingN)}>
                           {(id) => (
                             <Input
                               id={id}
-                              className="tabular-nums"
+                              className={stylex.props(styles.tabular).className}
                               value={draft.topN}
                               onChange={(event) => patch({ topN: event.target.value })}
                             />
@@ -1238,20 +2057,20 @@ export function ItemConfigEditor({
                         </Field>
                       </div>
                     )}
-                    <div className="w-60">
+                    <div {...stylex.props(styles.w240)}>
                       <Field label={format(m.itemsFieldMax)}>
                         {(id) => (
-                          <div className="flex items-center gap-2.5">
+                          <div {...stylex.props(styles.inlineRow)}>
                             <Input
                               id={id}
                               type="number"
                               min={1}
-                              className="w-24 tabular-nums"
+                              className={stylex.props(styles.w96, styles.tabular).className}
                               disabled={entries === null}
                               value={draft.maxEntries}
                               onChange={(event) => patch({ maxEntries: event.target.value })}
                             />
-                            <label className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
+                            <label {...stylex.props(styles.anyLabel)}>
                               <Checkbox
                                 checked={entries === null}
                                 onCheckedChange={(next) =>
@@ -1292,7 +2111,7 @@ export function ItemConfigEditor({
                   : m.itemsChainHintNew,
               )}
             >
-              <div className="flex flex-col gap-5">
+              <div {...stylex.props(styles.reviewColumn)}>
                 {/* "no review" is said, never implied by an empty route */}
                 <Choice
                   value={draft.reviewMode}
@@ -1303,7 +2122,7 @@ export function ItemConfigEditor({
                   onChange={(next) => patch({ reviewMode: next as Draft['reviewMode'] })}
                 />
                 {draft.reviewMode === 'none' ? (
-                  <p className="text-sm text-muted-foreground">{format(m.itemsReviewNoneHint)}</p>
+                  <p {...stylex.props(styles.mutedText)}>{format(m.itemsReviewNoneHint)}</p>
                 ) : (
                   <>
                     <ChainFlow
@@ -1322,12 +2141,12 @@ export function ItemConfigEditor({
                       }
                     />
                     {draft.stages.some((one) => one.chain === 'escalation') ? (
-                      <div className="flex flex-col gap-3 border-t pt-4">
+                      <div {...stylex.props(styles.escalationBlock)}>
                         <div>
-                          <h4 className="text-sm font-medium">{format(m.itemsEscalationTitle)}</h4>
-                          <p className="pt-0.5 text-xs text-muted-foreground">
-                            {format(m.itemsEscalationHint)}
-                          </p>
+                          <h4 {...stylex.props(styles.subheading)}>
+                            {format(m.itemsEscalationTitle)}
+                          </h4>
+                          <p {...stylex.props(styles.subhint)}>{format(m.itemsEscalationHint)}</p>
                         </div>
                         <ChainFlow
                           batchId={batchId}
@@ -1346,12 +2165,12 @@ export function ItemConfigEditor({
                         />
                       </div>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-2.5 border-t pt-4 text-xs font-medium">
+                      <div {...stylex.props(styles.escalationEmptyRow)}>
                         <InlineAdd
                           label={format(m.itemsEscalationAddStep)}
                           onClick={() => addStage('escalation')}
                         />
-                        <span className="font-normal text-muted-foreground">
+                        <span {...stylex.props(styles.quietNote)}>
                           {format(m.itemsEscalationEmpty)}
                         </span>
                       </div>
@@ -1363,8 +2182,8 @@ export function ItemConfigEditor({
           )}
         </div>
 
-        <aside className="flex min-w-0 flex-col py-6">
-          <div className="flex flex-col rounded-xl bg-muted p-4">
+        <aside {...stylex.props(styles.aside)}>
+          <div {...stylex.props(styles.asidePanel)}>
             <ParticipantPreview draft={draft} />
             <Placed ceiling={ceiling} placement={placement} />
             <Versions item={item} />
@@ -1450,9 +2269,9 @@ function KindCards({
     ['constant', m.itemsKindConstant, m.itemsKindConstantHint],
   ]
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">{format(m.itemsKind)}</p>
-      <div className="grid gap-2.5 sm:grid-cols-3">
+    <div {...stylex.props(styles.kindRoot)}>
+      <p {...stylex.props(styles.subheading)}>{format(m.itemsKind)}</p>
+      <div {...stylex.props(styles.kindGrid)}>
         {kinds.map(([kind, name, hint]) => {
           const chosen = value === kind
           return (
@@ -1462,32 +2281,33 @@ function KindCards({
               disabled={locked}
               aria-pressed={chosen}
               onClick={() => onChange(kind)}
-              className={cn(
-                'flex flex-col gap-1.5 rounded-xl border p-3 text-left transition-colors',
-                chosen ? 'border-foreground bg-accent/50' : 'hover:bg-accent/40',
-                locked && 'cursor-default opacity-70 hover:bg-transparent',
+              {...stylex.props(
+                styles.kindCard,
+                chosen ? styles.kindCardChosen : !locked && styles.kindCardRest,
+                locked && styles.kindCardLocked,
+                locked && chosen && styles.kindCardLockedChosen,
               )}
             >
-              <span className="flex items-center gap-2">
+              <span {...stylex.props(styles.kindHead)}>
                 <span
                   aria-hidden
-                  className={cn(
-                    'flex size-3.5 shrink-0 items-center justify-center rounded-full border',
-                    chosen ? 'border-foreground' : 'border-muted-foreground/50',
+                  {...stylex.props(
+                    styles.kindDot,
+                    chosen ? styles.kindDotChosen : styles.kindDotRest,
                   )}
                 >
-                  {chosen && <span className="size-1.5 rounded-full bg-foreground" />}
+                  {chosen && <span {...stylex.props(styles.kindDotFill)} />}
                 </span>
-                <span className={cn('text-sm', chosen && 'font-semibold')}>{format(name)}</span>
+                <span {...stylex.props(styles.kindName, chosen && styles.kindNameChosen)}>
+                  {format(name)}
+                </span>
               </span>
-              <span className="text-xs leading-relaxed text-pretty text-muted-foreground">
-                {format(hint)}
-              </span>
+              <span {...stylex.props(styles.kindHint)}>{format(hint)}</span>
             </button>
           )
         })}
       </div>
-      {locked && <p className="text-xs text-muted-foreground">{format(m.itemsKindLocked)}</p>}
+      {locked && <p {...stylex.props(styles.smallMuted)}>{format(m.itemsKindLocked)}</p>}
     </div>
   )
 }
@@ -1502,12 +2322,12 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="grid gap-x-7 gap-y-4 border-t py-6 first-of-type:border-t-0 md:grid-cols-[10.5rem_minmax(0,1fr)]">
-      <div className="flex flex-col gap-1.5">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>
+    <section {...stylex.props(styles.section)}>
+      <div {...stylex.props(styles.sectionWords)}>
+        <h3 {...stylex.props(styles.sectionTitle)}>{title}</h3>
+        <p {...stylex.props(styles.smallProse)}>{hint}</p>
       </div>
-      <div className="min-w-0">{children}</div>
+      <div {...stylex.props(styles.minWidth0)}>{children}</div>
     </section>
   )
 }
@@ -1516,19 +2336,15 @@ function Section({
 function StandingChip({ item }: { item: ItemDto | null }) {
   const { format } = useI18n()
   if (item === null) {
-    return (
-      <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs whitespace-nowrap">
-        {format(m.itemsNew)}
-      </span>
-    )
+    return <span {...stylex.props(styles.chip)}>{format(m.itemsNew)}</span>
   }
   return (
-    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-xs whitespace-nowrap">
+    <span {...stylex.props(styles.chip, styles.chipItems)}>
       <span
         aria-hidden
-        className={cn(
-          'size-1.5 rounded-full',
-          item.status === 'active' ? 'bg-foreground' : 'bg-muted-foreground/60',
+        {...stylex.props(
+          styles.statusDot,
+          item.status === 'active' ? styles.statusDotActive : styles.statusDotIdle,
         )}
       />
       {item.status === 'voided'
@@ -1542,12 +2358,8 @@ function StandingChip({ item }: { item: ItemDto | null }) {
 
 function InlineAdd({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      className="flex items-center gap-1.5 transition-colors hover:text-muted-foreground"
-      onClick={onClick}
-    >
-      <PlusIcon aria-hidden className="size-3.5" />
+    <button type="button" {...stylex.props(styles.inlineAdd)} onClick={onClick}>
+      <PlusIcon aria-hidden className={stylex.props(styles.icon14).className} />
       {label}
     </button>
   )
@@ -1583,23 +2395,23 @@ function ScoringSummary({
     )
     .join(format(m.listSeparator))
   return (
-    <div className="flex items-center gap-3.5 rounded-lg bg-muted px-3.5 py-3">
-      <div className="flex shrink-0 flex-col gap-0.5">
-        <p className="text-xs whitespace-nowrap text-muted-foreground">{format(m.itemsCeiling)}</p>
+    <div {...stylex.props(styles.statBand)}>
+      <div {...stylex.props(styles.statCell)}>
+        <p {...stylex.props(styles.statLabel)}>{format(m.itemsCeiling)}</p>
         <p
-          className="text-base font-semibold tabular-nums"
+          {...stylex.props(styles.statValue)}
           data-testid="item-ceiling"
           data-ceiling={ceiling ?? 'unlimited'}
         >
           {ceiling === null ? format(m.structureUnlimited) : ceiling}
         </p>
       </div>
-      <div aria-hidden className="h-7 w-px bg-border" />
+      <div aria-hidden {...stylex.props(styles.divider)} />
       {/* where the number comes from, said in the sentence rather than in a
           control of its own. It used to be a dropdown with one option that
           could not be changed, sitting under a heading with the same name as
           the section around it. */}
-      <p className="text-xs leading-relaxed text-muted-foreground">
+      <p {...stylex.props(styles.smallProse)}>
         {/* the sentence names the rule the number was worked out under:
             "2 × 5 entries" beside a ceiling of 2 reads as a mistake */}
         {granted
@@ -1662,7 +2474,7 @@ function ChainFlow({
       key: 'start',
       mark: (
         <Marker>
-          <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground" />
+          <span aria-hidden {...stylex.props(styles.startDot)} />
         </Marker>
       ),
       label: (
@@ -1693,7 +2505,7 @@ function ChainFlow({
       key: 'end',
       mark: (
         <Marker>
-          <CheckIcon aria-hidden className="size-3" />
+          <CheckIcon aria-hidden className={stylex.props(styles.icon12).className} />
         </Marker>
       ),
       label: (
@@ -1706,10 +2518,13 @@ function ChainFlow({
   ]
 
   return (
-    <div className="-mx-1 overflow-x-auto px-1 pb-1">
-      <div className="grid w-max" style={{ gridTemplateColumns: `repeat(${nodes.length}, 11rem)` }}>
+    <div {...stylex.props(styles.chainScroll)}>
+      <div
+        {...stylex.props(styles.chainGrid)}
+        style={{ gridTemplateColumns: `repeat(${nodes.length}, 11rem)` }}
+      >
         {nodes.map((node, index) => (
-          <div key={`mark:${node.key}`} className="flex items-center">
+          <div key={`mark:${node.key}`} {...stylex.props(styles.markRow)}>
             {node.mark}
             {index < nodes.length - 1 && (
               <Gap label={format(m.itemsStageAdd)} onAdd={() => onAdd(index)} />
@@ -1717,7 +2532,7 @@ function ChainFlow({
           </div>
         ))}
         {nodes.map((node) => (
-          <div key={`label:${node.key}`} className="flex min-w-0 flex-col gap-1 pt-2 pr-6">
+          <div key={`label:${node.key}`} {...stylex.props(styles.labelCell)}>
             {node.label}
           </div>
         ))}
@@ -1734,10 +2549,10 @@ function ChainFlow({
  */
 function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
-    <span className="relative flex h-6 flex-1 items-center">
-      <span aria-hidden className="h-px w-full bg-border" />
+    <span {...stylex.props(styles.gapSeat)}>
+      <span aria-hidden {...stylex.props(styles.gapLine)} />
       {/* Always on show, and visibly not a step: a step marker is a solid
-          size-6 circle with a number, this is a smaller dashed one with a
+          24px circle with a number, this is a smaller dashed one with a
           plus. Revealed-on-hover was tried and failed the only person it
           was hidden from - somebody who does not yet know where steps come
           from cannot know where to hover. */}
@@ -1745,10 +2560,10 @@ function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
         type="button"
         aria-label={label}
         title={label}
-        className="absolute left-1/2 flex size-5 -translate-x-1/2 items-center justify-center rounded-full border border-dashed bg-background text-muted-foreground/70 transition-colors hover:border-solid hover:border-foreground/50 hover:text-foreground focus-visible:border-solid focus-visible:text-foreground"
+        {...stylex.props(styles.gapAdd)}
         onClick={onAdd}
       >
-        <PlusIcon aria-hidden className="size-3" />
+        <PlusIcon aria-hidden className={stylex.props(styles.icon12).className} />
       </button>
     </span>
   )
@@ -1756,18 +2571,14 @@ function Gap({ label, onAdd }: { label: string; onAdd: () => void }) {
 
 /** where a submission enters the path, and where it leaves it */
 function Marker({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="flex size-6 shrink-0 items-center justify-center rounded-full border text-muted-foreground">
-      {children}
-    </span>
-  )
+  return <span {...stylex.props(styles.marker)}>{children}</span>
 }
 
 function NodeLabel({ title, sub }: { title: string; sub: string }) {
   return (
     <>
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-xs text-muted-foreground">{sub}</p>
+      <p {...stylex.props(styles.subheading)}>{title}</p>
+      <p {...stylex.props(styles.smallMuted)}>{sub}</p>
     </>
   )
 }
@@ -1784,11 +2595,9 @@ function StageMarker({
 }) {
   return (
     <span
-      className={cn(
-        'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium',
-        completeStage(stage, options)
-          ? 'bg-foreground text-background'
-          : 'border border-dashed border-destructive/60 text-destructive',
+      {...stylex.props(
+        styles.stageMark,
+        completeStage(stage, options) ? styles.stageMarkDone : styles.stageMarkUnset,
       )}
     >
       {index + 1}
@@ -1822,7 +2631,7 @@ function StageLabel({
   const named = stage.label.trim() !== ''
   return (
     <div
-      className="group flex min-w-0 flex-col gap-1"
+      {...stylex.props(styles.stepRoot)}
       data-testid="chain-step"
       data-step-complete={named && settled}
     >
@@ -1832,34 +2641,27 @@ function StageLabel({
           looking finished. */}
       <button
         type="button"
-        className={cn(
-          'min-w-0 text-left text-sm font-medium break-words underline-offset-4 hover:underline',
-          (!named || !settled) && 'text-destructive',
-        )}
+        {...stylex.props(styles.stepName, (!named || !settled) && styles.stepNameBad)}
         onClick={onOpen}
       >
         {named ? stage.label.trim() : format(m.itemsStageUnnamed)}
       </button>
       {/* who actually reviews stays said, in small print, once it is known */}
-      {settled && (
-        <p className="text-xs break-words text-muted-foreground">
-          {whoReviews(stage, options, format)}
-        </p>
-      )}
+      {settled && <p {...stylex.props(styles.stepWho)}>{whoReviews(stage, options, format)}</p>}
       {settled ? (
         <StageCoverage batchId={batchId} stage={stage} />
       ) : (
-        <p className="text-xs text-muted-foreground">{format(m.itemsStageUnsetHint)}</p>
+        <p {...stylex.props(styles.smallMuted)}>{format(m.itemsStageUnsetHint)}</p>
       )}
       {/* The step's handling, always on show: order and removal are how the
           chain is composed, and controls that only exist under a hover are
           controls a newcomer never finds. The one unremovable step keeps
           its key, standing but disabled, and the key itself says why. */}
-      <span className="flex items-center gap-0.5 pt-0.5">
+      <span {...stylex.props(styles.stepControls)}>
         <Button
           variant="ghost"
           size="icon-xs"
-          className="text-muted-foreground"
+          className={stylex.props(styles.mutedControl).className}
           disabled={atStart}
           onClick={() => onMove(-1)}
           aria-label={format(m.itemsStageMoveEarlier)}
@@ -1869,7 +2671,7 @@ function StageLabel({
         <Button
           variant="ghost"
           size="icon-xs"
-          className="text-muted-foreground"
+          className={stylex.props(styles.mutedControl).className}
           disabled={atEnd}
           onClick={() => onMove(1)}
           aria-label={format(m.itemsStageMoveLater)}
@@ -1880,7 +2682,7 @@ function StageLabel({
           <Button
             variant="ghost"
             size="icon-xs"
-            className="text-muted-foreground"
+            className={stylex.props(styles.mutedControl).className}
             onClick={onRemove}
             aria-label={format(m.itemsStageRemove)}
           >
@@ -1892,11 +2694,11 @@ function StageLabel({
               <TooltipTrigger asChild>
                 {/* a span, because a disabled key ignores the pointer and
                     could not answer the hover that asks about it */}
-                <span className="inline-flex">
+                <span {...stylex.props(styles.inlineFlex)}>
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="text-muted-foreground"
+                    className={stylex.props(styles.mutedControl).className}
                     disabled
                     aria-label={format(m.itemsStageRemove)}
                   >
@@ -1971,7 +2773,10 @@ function StageCoverage({ batchId, stage }: { batchId: string; stage: StageDraft 
   const uncovered = coverage.data.nodes.filter((node) => node.reviewers === 0)
   return (
     <p
-      className={cn('text-xs', uncovered.length > 0 ? 'text-destructive' : 'text-muted-foreground')}
+      {...stylex.props(
+        styles.coverageNote,
+        uncovered.length > 0 ? styles.coverageBad : styles.coverageOk,
+      )}
     >
       {coverage.data.nodes.length === 0
         ? format(m.itemsReviewNoUnits)
@@ -1992,12 +2797,12 @@ function ParticipantPreview({ draft }: { draft: Draft }) {
   const { format } = useI18n()
   return (
     <>
-      <p className="pb-3 text-xs font-semibold">{format(m.itemsPreviewTitle)}</p>
-      <div className="flex flex-col gap-2.5 rounded-lg bg-background p-3.5">
-        <h4 className="text-sm font-semibold">
+      <p {...stylex.props(styles.previewTitle)}>{format(m.itemsPreviewTitle)}</p>
+      <div {...stylex.props(styles.previewCard)}>
+        <h4 {...stylex.props(styles.sectionTitle)}>
           {draft.title.trim() === '' ? format(m.itemsUntitled) : draft.title}
         </h4>
-        <p className="text-xs leading-relaxed text-muted-foreground">
+        <p {...stylex.props(styles.smallProse)}>
           {draft.description.trim() === '' ? '' : `${draft.description.trim()} `}
           {draft.itemType === 'constant' ? (
             format(m.itemsCeilingHowGranted, { value: trimAmount(draft.fixedValue.trim()) })
@@ -2012,25 +2817,23 @@ function ParticipantPreview({ draft }: { draft: Draft }) {
           )}
         </p>
         {draft.itemType === 'constant' ? (
-          <p className="text-xs text-muted-foreground">{format(m.itemsGrantedBody)}</p>
+          <p {...stylex.props(styles.smallMuted)}>{format(m.itemsGrantedBody)}</p>
         ) : draft.itemType === 'declaration' ? (
-          <span className="inline-flex h-8 w-fit items-center rounded-4xl bg-primary px-3.5 text-xs font-medium text-primary-foreground">
-            {format(m.entryDeclare)}
-          </span>
+          <span {...stylex.props(styles.declarePill)}>{format(m.entryDeclare)}</span>
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div {...stylex.props(styles.previewFields)}>
             {draft.fields.map((field) => (
-              <div key={field.key} className="flex flex-col gap-1">
-                <p className="text-xs text-muted-foreground">
+              <div key={field.key} {...stylex.props(styles.previewField)}>
+                <p {...stylex.props(styles.smallMuted)}>
                   {field.label.trim() === '' ? '—' : field.label}
-                  {field.required && <span className="pl-0.5 text-destructive">*</span>}
+                  {field.required && <span {...stylex.props(styles.requiredStar)}>*</span>}
                 </p>
                 {field.type === 'attachment' ? (
-                  <div className="flex h-9 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground">
+                  <div {...stylex.props(styles.uploadBox)}>
                     {format(m.itemsPreviewUpload, { count: Number(field.maxCount) || 1 })}
                   </div>
                 ) : (
-                  <div className="h-9 rounded-lg border" />
+                  <div {...stylex.props(styles.inputBox)} />
                 )}
               </div>
             ))}
@@ -2046,8 +2849,8 @@ function Placed({ ceiling, placement }: { ceiling: string | null; placement: Pla
   const { format } = useI18n()
   const innermost = placement.sections[0]
   return (
-    <div className="mt-4 flex flex-col gap-2 border-t pt-3.5">
-      <p className="text-xs font-semibold">{format(m.itemsPlacementTitle)}</p>
+    <div {...stylex.props(styles.placedBlock)}>
+      <p {...stylex.props(styles.asideTitle)}>{format(m.itemsPlacementTitle)}</p>
       <Amount
         label={format(m.itemsCeiling)}
         value={ceiling === null ? format(m.structureUnlimited) : ceiling}
@@ -2077,9 +2880,9 @@ function Placed({ ceiling, placement }: { ceiling: string | null; placement: Pla
 
 function Amount({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-3 text-xs">
-      <span className="min-w-0 truncate text-muted-foreground">{label}</span>
-      <span className="shrink-0 tabular-nums">{value}</span>
+    <div {...stylex.props(styles.amountRow)}>
+      <span {...stylex.props(styles.amountLabel)}>{label}</span>
+      <span {...stylex.props(styles.amountValue)}>{value}</span>
     </div>
   )
 }
@@ -2089,9 +2892,9 @@ function Versions({ item }: { item: ItemDto | null }) {
   const { format } = useI18n()
   const revision = item?.currentRevision ?? null
   return (
-    <div className="mt-4 flex flex-col gap-1.5 border-t pt-3.5">
-      <p className="text-xs font-semibold">{format(m.itemsVersionTitle)}</p>
-      <p className="text-xs leading-relaxed text-muted-foreground">
+    <div {...stylex.props(styles.versionsBlock)}>
+      <p {...stylex.props(styles.asideTitle)}>{format(m.itemsVersionTitle)}</p>
+      <p {...stylex.props(styles.smallProse)}>
         {revision === null
           ? format(m.itemsVersionNew)
           : format(m.itemsVersionNote, {

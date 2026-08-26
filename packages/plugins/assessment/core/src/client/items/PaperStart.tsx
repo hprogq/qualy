@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { useLingering } from '@qualy/ui/use-lingering'
@@ -19,6 +21,88 @@ import { assessmentMessages as m } from '../i18n.ts'
 // nothing to arrange, so this screen is about starting one rather than an
 // empty list with an add button somewhere in it.
 
+const styles = stylex.create({
+  screen: {
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 24,
+    paddingBlock: 64,
+  },
+  words: {
+    display: 'flex',
+    maxWidth: 560,
+    flexDirection: 'column',
+    gap: 8,
+    textAlign: 'center',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 600,
+  },
+  hint: {
+    fontSize: 14,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
+  cardRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  card: {
+    display: 'flex',
+    width: 296,
+    flexDirection: 'column',
+    gap: 12,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 16,
+  },
+  cardSuggested: {
+    borderColor: `color-mix(in oklab, ${tokens.foreground} 20%, transparent)`,
+    boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+  },
+  cardTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  cardHint: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: 14,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  fullWidth: {
+    width: '100%',
+  },
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  wizardFields: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+})
+
 export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated: () => void }) {
   const { format } = useI18n()
   const [wizard, setWizard] = useState(false)
@@ -26,37 +110,38 @@ export function PaperStart({ batchId, onCreated }: { batchId: string; onCreated:
   const opened = useLingering(wizard ? 'guided' : blank ? 'blank' : null)
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 py-16">
-      <div className="flex max-w-140 flex-col gap-2 text-center">
-        <h3 className="text-lg font-semibold">{format(m.paperStartTitle)}</h3>
-        <p className="text-sm leading-relaxed text-pretty text-muted-foreground">
-          {format(m.paperStartHint)}
-        </p>
+    <div {...stylex.props(styles.screen)}>
+      <div {...stylex.props(styles.words)}>
+        <h3 {...stylex.props(styles.title)}>{format(m.paperStartTitle)}</h3>
+        <p {...stylex.props(styles.hint)}>{format(m.paperStartHint)}</p>
       </div>
 
-      <div className="flex flex-wrap justify-center gap-4">
+      <div {...stylex.props(styles.cardRow)}>
         {/* the suggested route carries the darker edge and the filled button;
             two identical cards make the reader choose before they know what
             either one does */}
-        <div className="flex w-74 flex-col gap-3 rounded-lg border border-foreground/20 p-4 shadow-xs">
-          <p className="flex items-center gap-2">
-            <span className="text-sm font-semibold">{format(m.paperStartGuided)}</span>
+        <div {...stylex.props(styles.card, styles.cardSuggested)}>
+          <p {...stylex.props(styles.cardTitleRow)}>
+            <span {...stylex.props(styles.cardTitle)}>{format(m.paperStartGuided)}</span>
             <Badge>{format(m.paperStartSuggested)}</Badge>
           </p>
-          <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
-            {format(m.paperStartGuidedHint)}
-          </p>
-          <Button className="w-full" onClick={() => setWizard(true)}>
+          <p {...stylex.props(styles.cardHint)}>{format(m.paperStartGuidedHint)}</p>
+          <Button
+            className={stylex.props(styles.fullWidth).className}
+            onClick={() => setWizard(true)}
+          >
             {format(m.paperStartAction)}
           </Button>
         </div>
 
-        <div className="flex w-74 flex-col gap-3 rounded-lg border p-4">
-          <p className="text-sm font-semibold">{format(m.paperStartBlank)}</p>
-          <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
-            {format(m.paperStartBlankHint)}
-          </p>
-          <Button variant="outline" className="w-full" onClick={() => setBlank(true)}>
+        <div {...stylex.props(styles.card)}>
+          <p {...stylex.props(styles.cardTitle)}>{format(m.paperStartBlank)}</p>
+          <p {...stylex.props(styles.cardHint)}>{format(m.paperStartBlankHint)}</p>
+          <Button
+            variant="outline"
+            className={stylex.props(styles.fullWidth).className}
+            onClick={() => setBlank(true)}
+          >
             {format(m.itemsGroupNew)}
           </Button>
         </div>
@@ -134,7 +219,7 @@ function PaperWizard({
       description={format(m.paperCreateHint)}
       onClose={onClose}
       footer={
-        <div className="flex justify-end gap-2">
+        <div {...stylex.props(styles.footer)}>
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
@@ -144,7 +229,7 @@ function PaperWizard({
         </div>
       }
     >
-      <div className="flex flex-col gap-4">
+      <div {...stylex.props(styles.wizardFields)}>
         <Field label={format(m.itemsGroupName)}>
           {(id) => (
             <Input
