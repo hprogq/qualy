@@ -9052,3 +9052,23 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 24 files /
   **171 passed**(168+3,连续两轮,零删除零弱化);build 成功;生产 smoke 干净退出;prettier
   通过(.mcp.json 除外)。Shell 未开始。
+
+## UI 平台 M6.5:Select 触发器宽度契约收敛(2026-08-26)
+
+- **根因定案**:14 处宽度边界不是 Mantine 也不是消费者滥用——是适配器自己把 `w-fit` 写在
+  utilities 层(层序在 StyleX priority 之上),任何消费端编译宽度类都输给它,消费者被迫
+  留在 Tailwind 字符串靠 tailwind-merge 取胜。
+- **新契约**:fit-content 仍是默认(14 处实证 3 全宽/7 固定/2 弹性/2 本征,无压倒多数;
+  闭合控件以 fit 为最少惊讶),但移入适配器自有 StyleX base;SelectTrigger 增 `xstyle` 席位
+  与 base 同一次 stylex.props 组合——**属性级覆盖是正式保证**;`className` 留作 legacy 逃生口,
+  其 utility 经层序继续取胜(这是层序契约,不是 prop 顺序承诺,注释言明)。
+- **消费者迁移**:已迁 slices 的 9 处全部改 xstyle(users 6:类型筛选/两表单全宽/授予三段;
+  org 3:移动 max-w+flex/子类型定宽/OrgNodePicker 种类筛选),**已迁 slices 宽度 Tailwind
+  边界归零**;M7/audit 的 5 处零改动且经新契约测试证明兼容(legacy `w-56` 在 400px 座内
+  计算命中 224px)。
+- **契约测试**:select-sizing.browser.test 四断言——默认 fit(<200px)、xstyle 固定 240、
+  xstyle 全宽 400、legacy utility 层序取胜;零 !important、零 Mantine 内部 DOM 断言。
+- **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 25 files /
+  **173 passed**(171+2;四轮全量中三轮全绿,一轮单条未捕获名称的失败未再复现,特征与已
+  存档的 runner 派发竞态一致);build 成功;生产 smoke 干净退出;prettier 通过(.mcp.json
+  除外)。Shell 未开始。
