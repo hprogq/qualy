@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
@@ -7,7 +8,7 @@ import { AsyncSection } from '@qualy/ui/admin'
 import { Screen } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { cn } from '@qualy/ui/cn'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { auditMessages as m } from './i18n.ts'
 import { auditApi } from './api.ts'
 
@@ -15,8 +16,196 @@ import { auditApi } from './api.ts'
 // correlation ids and details - reading is the whole page, because writing
 // is done by operations, never here.
 
-// radix refuses an empty select value, and "everything" is a real choice
+// the select refuses an empty value, and "everything" is a real choice
 const ALL = 'all'
+
+const MONO =
+  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+
+/** the six columns, stated once so the head and every row agree */
+const COLUMNS = '10.5rem minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr) 4rem 8rem'
+
+const styles = stylex.create({
+  filters: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 16,
+  },
+  actionFilter: {
+    width: 224,
+  },
+  outcomeFilter: {
+    width: 144,
+  },
+  table: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  head: {
+    display: 'grid',
+    gridTemplateColumns: COLUMNS,
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    paddingInline: 16,
+    paddingBlock: 8,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  right: {
+    textAlign: 'right',
+  },
+  empty: {
+    paddingInline: 16,
+    paddingBlock: 16,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  rowSeat: {
+    borderTopWidth: {
+      default: 1,
+      ':first-child': 0,
+    },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+  },
+  row: {
+    display: 'grid',
+    width: '100%',
+    minWidth: 0,
+    gridTemplateColumns: COLUMNS,
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: 16,
+    paddingBlock: 10,
+    textAlign: 'left',
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  rowOpen: {
+    backgroundColor: tokens.surfaceMuted,
+  },
+  when: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  actor: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+  },
+  action: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  target: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  outcome: {
+    fontSize: 12,
+  },
+  outcomeQuiet: {
+    color: tokens.mutedForeground,
+  },
+  // anything but success is the reason someone opened this page
+  outcomeBad: {
+    color: tokens.danger,
+  },
+  ip: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    textAlign: 'right',
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  detail: {
+    display: 'grid',
+    gridTemplateColumns: '8rem minmax(0, 1fr)',
+    columnGap: 16,
+    rowGap: 4,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    paddingInline: 16,
+    paddingBlock: 12,
+    fontSize: 12,
+  },
+  detailName: {
+    color: tokens.mutedForeground,
+  },
+  // correlation ids are copied into other systems, so they are read glyph
+  // by glyph rather than as words
+  mono: {
+    fontFamily: MONO,
+  },
+  truncate: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  pre: {
+    overflowX: 'auto',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-all',
+    fontFamily: MONO,
+  },
+  foot: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 16,
+    paddingBlock: 8,
+  },
+  count: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  more: {
+    flexShrink: 0,
+  },
+})
 
 type EventRow = {
   id: string
@@ -89,12 +278,12 @@ export default function AuditEventsPage() {
 
   return (
     <Screen title={format(m.title)} description={format(m.hint)} size="wide">
-      <div className="flex items-center gap-2 pb-4">
+      <div {...stylex.props(styles.filters)}>
         <Select
           value={action || ALL}
           onValueChange={(value) => setAction(value === ALL ? '' : value)}
         >
-          <SelectTrigger size="sm" className="w-56">
+          <SelectTrigger size="sm" xstyle={styles.actionFilter}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -110,7 +299,7 @@ export default function AuditEventsPage() {
           value={outcome || ALL}
           onValueChange={(value) => setOutcome(value === ALL ? '' : value)}
         >
-          <SelectTrigger size="sm" className="w-36">
+          <SelectTrigger size="sm" xstyle={styles.outcomeFilter}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -129,83 +318,76 @@ export default function AuditEventsPage() {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void events.refetch()}
       >
-        <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
-          <div className="grid grid-cols-[10.5rem_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_4rem_8rem] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+        <div {...stylex.props(styles.table)}>
+          <div {...stylex.props(styles.head)}>
             <span>{format(m.columnTime)}</span>
             <span>{format(m.columnActor)}</span>
             <span>{format(m.columnAction)}</span>
             <span>{format(m.columnTarget)}</span>
             <span>{format(m.columnOutcome)}</span>
-            <span className="text-right">{format(m.columnIp)}</span>
+            <span {...stylex.props(styles.right)}>{format(m.columnIp)}</span>
           </div>
           {rows.length === 0 ? (
-            <p className="px-4 py-4 text-sm text-muted-foreground">{format(m.empty)}</p>
+            <p {...stylex.props(styles.empty)}>{format(m.empty)}</p>
           ) : (
             rows.map((row) => (
-              <div key={row.id} className="border-t first:border-t-0">
+              <div key={row.id} {...stylex.props(styles.rowSeat)}>
                 <button
                   type="button"
                   aria-expanded={row.id === openId}
                   data-event-outcome={row.outcome}
                   onClick={() => setOpenId(row.id === openId ? '' : row.id)}
-                  className={cn(
-                    'grid w-full min-w-0 grid-cols-[10.5rem_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_4rem_8rem] items-center gap-3 px-4 py-2.5 text-left hover:bg-accent/70',
-                    row.id === openId && 'bg-accent',
-                  )}
+                  {...stylex.props(styles.row, row.id === openId && styles.rowOpen)}
                 >
-                  <span className="truncate text-xs tabular-nums text-muted-foreground">
-                    {when(row.occurredAt)}
-                  </span>
-                  <span className="min-w-0 truncate text-sm">{actorOf(row)}</span>
-                  <span className="min-w-0 truncate text-sm font-medium">{actionOf(row)}</span>
-                  <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  <span {...stylex.props(styles.when)}>{when(row.occurredAt)}</span>
+                  <span {...stylex.props(styles.actor)}>{actorOf(row)}</span>
+                  <span {...stylex.props(styles.action)}>{actionOf(row)}</span>
+                  <span {...stylex.props(styles.target)}>
                     {row.targetLabel ?? row.targetId ?? '—'}
                   </span>
                   <span
-                    className={cn(
-                      'text-xs',
-                      row.outcome === 'success' ? 'text-muted-foreground' : 'text-destructive',
+                    {...stylex.props(
+                      styles.outcome,
+                      row.outcome === 'success' ? styles.outcomeQuiet : styles.outcomeBad,
                     )}
                   >
                     {format(outcomeLabel[row.outcome])}
                   </span>
-                  <span className="truncate text-right text-xs tabular-nums text-muted-foreground">
-                    {row.clientIp ?? '—'}
-                  </span>
+                  <span {...stylex.props(styles.ip)}>{row.clientIp ?? '—'}</span>
                 </button>
                 {row.id === openId && (
-                  <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-4 gap-y-1 border-t bg-muted/30 px-4 py-3 text-xs">
-                    <dt className="text-muted-foreground">{format(m.detailSource)}</dt>
+                  <dl {...stylex.props(styles.detail)}>
+                    <dt {...stylex.props(styles.detailName)}>{format(m.detailSource)}</dt>
                     <dd>{row.source}</dd>
                     {row.reasonCode && (
                       <>
-                        <dt className="text-muted-foreground">{format(m.detailReason)}</dt>
-                        <dd className="font-mono">{row.reasonCode}</dd>
+                        <dt {...stylex.props(styles.detailName)}>{format(m.detailReason)}</dt>
+                        <dd {...stylex.props(styles.mono)}>{row.reasonCode}</dd>
                       </>
                     )}
                     {row.requestId && (
                       <>
-                        <dt className="text-muted-foreground">{format(m.detailRequest)}</dt>
-                        <dd className="font-mono">{row.requestId}</dd>
+                        <dt {...stylex.props(styles.detailName)}>{format(m.detailRequest)}</dt>
+                        <dd {...stylex.props(styles.mono)}>{row.requestId}</dd>
                       </>
                     )}
                     {row.traceId && (
                       <>
-                        <dt className="text-muted-foreground">{format(m.detailTrace)}</dt>
-                        <dd className="font-mono">{row.traceId}</dd>
+                        <dt {...stylex.props(styles.detailName)}>{format(m.detailTrace)}</dt>
+                        <dd {...stylex.props(styles.mono)}>{row.traceId}</dd>
                       </>
                     )}
                     {row.userAgent && (
                       <>
-                        <dt className="text-muted-foreground">{format(m.detailUserAgent)}</dt>
-                        <dd className="truncate">{row.userAgent}</dd>
+                        <dt {...stylex.props(styles.detailName)}>{format(m.detailUserAgent)}</dt>
+                        <dd {...stylex.props(styles.truncate)}>{row.userAgent}</dd>
                       </>
                     )}
                     {Object.keys(row.details).length > 0 && (
                       <>
-                        <dt className="text-muted-foreground">{format(m.detailDetails)}</dt>
+                        <dt {...stylex.props(styles.detailName)}>{format(m.detailDetails)}</dt>
                         <dd>
-                          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono">
+                          <pre {...stylex.props(styles.pre)}>
                             {JSON.stringify(row.details, null, 2)}
                           </pre>
                         </dd>
@@ -216,20 +398,20 @@ export default function AuditEventsPage() {
               </div>
             ))
           )}
-          <div className="flex items-center gap-3 border-t px-4 py-2">
+          <div {...stylex.props(styles.foot)}>
             <span
-              className="min-w-0 truncate text-xs text-muted-foreground"
+              {...stylex.props(styles.count)}
               data-testid="audit-count"
               data-count={rows.length}
             >
               {format(m.loadedCount, { count: rows.length })}
             </span>
-            <span className="flex-1" />
+            <span {...stylex.props(styles.spacer)} />
             {events.hasNextPage && (
               <Button
                 size="sm"
                 variant="outline"
-                className="shrink-0"
+                className={stylex.props(styles.more).className}
                 disabled={events.isFetchingNextPage}
                 onClick={() => void events.fetchNextPage()}
               >
