@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { PanelLeftIcon } from 'lucide-react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import {
   drawerAccount,
   drawerIdentity,
@@ -20,7 +22,6 @@ import {
   useWorkspaceCapabilities,
 } from '@qualy/web-runtime'
 import { LocalizedText, useI18n } from '@qualy/web-i18n'
-import { cn } from '@qualy/ui/cn'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
@@ -47,6 +48,403 @@ import { layoutMessages as m } from './i18n.ts'
 
 /** where the shell stops being two columns and becomes the capsule shape */
 const SHELL_BREAKPOINT = 1024
+
+// The scroll model, stated once: the body never scrolls (the root is the
+// viewport), the main column owns the page scroll, the rail and the drawer's
+// entry list each scroll themselves.
+const styles = stylex.create({
+  root: {
+    display: 'flex',
+    height: '100dvh',
+    width: '100%',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    backgroundColor: tokens.background,
+  },
+  topFold: {
+    flexShrink: 0,
+    overflow: 'hidden',
+    height: 56,
+    transitionProperty: 'height',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'linear',
+  },
+  topFolded: {
+    height: 0,
+  },
+  contextBar: {
+    position: 'relative',
+    display: 'flex',
+    height: 52,
+    flexShrink: 0,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: tokens.background,
+    paddingInline: {
+      default: 8,
+      '@media (min-width: 640px)': 16,
+    },
+  },
+  contextSeat: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  body: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  aside: {
+    height: '100%',
+    flexShrink: 0,
+    overflow: 'hidden',
+    transitionProperty: 'width',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'linear',
+  },
+  asideOpen: {
+    width: 224,
+    borderRightWidth: 1,
+    borderRightStyle: 'solid',
+    borderRightColor: tokens.border,
+  },
+  asideClosed: {
+    width: 52,
+    borderRightWidth: 1,
+    borderRightStyle: 'solid',
+    borderRightColor: tokens.border,
+  },
+  asideGone: {
+    width: 0,
+  },
+  // the rail is always its full width; the column around it is what narrows
+  railNav: {
+    display: 'flex',
+    height: '100%',
+    width: 224,
+    flexDirection: 'column',
+    gap: 20,
+    overflowY: 'auto',
+    padding: 12,
+  },
+  toggleSeat: {
+    display: 'flex',
+  },
+  toggleButton: {
+    borderRadius: tokens.radiusMd,
+    padding: 6,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    backgroundColor: {
+      default: null,
+      ':hover': tokens.surfaceMuted,
+    },
+    transitionProperty: 'color, background-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    outline: 'none',
+    boxShadow: {
+      default: 'none',
+      ':focus-visible': `0 0 0 2px ${tokens.focusRing}`,
+    },
+  },
+  toggleGlyph: {
+    width: 16,
+    height: 16,
+  },
+  fadeGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+    transitionProperty: 'opacity',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  fadedOut: {
+    opacity: 0,
+  },
+  entryList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  sectionLabel: {
+    paddingInline: 12,
+    paddingBottom: 4,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  entry: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: tokens.radiusMd,
+    paddingInline: 12,
+    paddingBlock: 8,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    transitionProperty: 'color, background-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  entryActive: {
+    backgroundColor: tokens.surfaceMuted,
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
+  entryIdle: {
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+  },
+  entryIcon: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+  },
+  entryLabel: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  main: {
+    display: 'flex',
+    minHeight: 0,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    overflowY: 'auto',
+  },
+  capsuleSeat: {
+    pointerEvents: 'none',
+    position: 'fixed',
+    insetInline: 0,
+    bottom: 'max(1.125rem, env(safe-area-inset-bottom))',
+    zIndex: 40,
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  capsuleFade: {
+    transitionProperty: 'opacity, translate',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'ease-out',
+    opacity: 1,
+    translate: '0 0',
+  },
+  capsuleHidden: {
+    opacity: 0,
+    translate: '0 0.5rem',
+  },
+  capsuleButton: {
+    pointerEvents: 'auto',
+    display: 'flex',
+    height: 44,
+    cursor: 'pointer',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.background} 90%, transparent)`,
+    paddingInline: 16,
+    boxShadow: '0 10px 28px -10px rgba(0, 0, 0, 0.3)',
+    backdropFilter: 'blur(4px)',
+  },
+  burger: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 3,
+  },
+  burgerLine: {
+    height: 1.5,
+    width: 14,
+    borderRadius: '9999px',
+    backgroundColor: tokens.foreground,
+  },
+  capsuleWord: {
+    fontSize: 13,
+    fontWeight: 500,
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  drawerHead: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 4,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    paddingInline: 14,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  grabber: {
+    marginInline: 'auto',
+    height: 4,
+    width: 36,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  },
+  headSkeleton: {
+    marginInline: 4,
+    marginTop: 4,
+    marginBottom: 2,
+    height: 44,
+    borderRadius: tokens.radiusLg,
+  },
+  drawerNav: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 16,
+    overflowY: 'auto',
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 14,
+    paddingTop: 14,
+    paddingBottom: 16,
+  },
+  drawerGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 8,
+  },
+  drawerSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  drawerSectionLabel: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  drawerEntry: {
+    display: 'flex',
+    height: 46,
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 12,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    backgroundColor: tokens.background,
+    color: tokens.foreground,
+  },
+  drawerEntryActive: {
+    borderColor: tokens.surfaceMuted,
+    backgroundColor: tokens.surfaceMuted,
+    fontWeight: 500,
+  },
+  drawerFoot: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    paddingInline: 16,
+    paddingTop: 10,
+    paddingBottom: 'max(1.375rem, env(safe-area-inset-bottom))',
+  },
+  footSkeleton: {
+    height: 28,
+    width: '100%',
+  },
+  modulesRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 10,
+  },
+  modulesLabel: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  modulesWrap: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 16,
+    rowGap: 6,
+  },
+  moduleLink: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 13,
+    color: tokens.foreground,
+  },
+  moduleIcon: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  moduleWord: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+})
 
 const byOrder = (a: { order?: number }, b: { order?: number }) => (a.order ?? 0) - (b.order ?? 0)
 
@@ -131,16 +529,12 @@ function RailEntry({
         end={exact}
         to={to}
         className={({ isActive }) =>
-          cn(
-            'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors',
-            isActive
-              ? 'bg-accent font-medium text-accent-foreground'
-              : 'text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground',
-          )
+          stylex.props(styles.entry, isActive ? styles.entryActive : styles.entryIdle).className ??
+          ''
         }
       >
-        <NavIcon name={icon} className="size-4 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">
+        <NavIcon name={icon} className={stylex.props(styles.entryIcon).className} />
+        <span {...stylex.props(styles.entryLabel)}>
           <LocalizedText value={label} />
         </span>
         {/* a live number the manifest cannot carry: whoever owns the page
@@ -168,15 +562,10 @@ function DrawerEntry({
       end={exact}
       to={to}
       className={({ isActive }) =>
-        cn(
-          'flex h-11.5 items-center gap-2 rounded-[11px] border px-3 text-sm transition-colors',
-          isActive
-            ? 'border-accent bg-accent font-medium text-accent-foreground'
-            : 'bg-background text-foreground',
-        )
+        stylex.props(styles.drawerEntry, isActive && styles.drawerEntryActive).className ?? ''
       }
     >
-      <span className="min-w-0 flex-1 truncate">
+      <span {...stylex.props(styles.entryLabel)}>
         <LocalizedText value={label} />
       </span>
       <UiSlot token={workspaceNavigationBadge} context={{ navigationId: id }} />
@@ -238,10 +627,10 @@ function CapableWorkspaceShell() {
       type="button"
       aria-label={label}
       aria-expanded={railOpen}
-      className="rounded-md p-1.5 text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      {...stylex.props(styles.toggleButton)}
       onClick={() => setRailOpen((open) => !open)}
     >
-      <PanelLeftIcon aria-hidden className="size-4" />
+      <PanelLeftIcon aria-hidden {...stylex.props(styles.toggleGlyph)} />
     </button>
   )
 
@@ -253,19 +642,16 @@ function CapableWorkspaceShell() {
   // in. Held at one width and clipped, nothing inside it moves at all; the
   // entries only fade, which changes no layout.
   const rail = (
-    <nav className="flex h-full w-56 flex-col gap-5 overflow-y-auto p-3">
-      <div className="flex">{toggle(format(m.toggleSidebar))}</div>
+    <nav {...stylex.props(styles.railNav)}>
+      <div {...stylex.props(styles.toggleSeat)}>{toggle(format(m.toggleSidebar))}</div>
       <div
         // out of reach as well as out of sight: a link nobody can see is
         // still a link the keyboard walks into and the screen reader reads
         {...(!railOpen || narrow ? { inert: true, 'aria-hidden': true } : {})}
-        className={cn(
-          'flex flex-col gap-5 transition-opacity duration-150',
-          (!railOpen || narrow) && 'opacity-0',
-        )}
+        {...stylex.props(styles.fadeGroup, (!railOpen || narrow) && styles.fadedOut)}
       >
         {loose.length > 0 && (
-          <ul className="flex flex-col gap-0.5">
+          <ul {...stylex.props(styles.entryList)}>
             {loose.map((item) => (
               <RailEntry
                 key={item.id}
@@ -280,10 +666,10 @@ function CapableWorkspaceShell() {
         )}
         {sections.map((section) => (
           <section key={section.id}>
-            <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">
+            <p {...stylex.props(styles.sectionLabel)}>
               <LocalizedText value={section.label} />
             </p>
-            <ul className="flex flex-col gap-0.5">
+            <ul {...stylex.props(styles.entryList)}>
               {section.items.map((item) => (
                 <RailEntry
                   key={item.id}
@@ -302,28 +688,25 @@ function CapableWorkspaceShell() {
   )
 
   return (
-    <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
+    <div {...stylex.props(styles.root)}>
       {/* Folded rather than removed below the breakpoint, so crossing it is
           the bar sliding away, not the page jumping. Switching applications
           is too rare on a phone to hold this row; the drawer carries them. */}
       <div
         {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
-        className={cn(
-          'shrink-0 overflow-hidden transition-[height] duration-200 ease-linear',
-          narrow ? 'h-0' : 'h-14',
-        )}
+        {...stylex.props(styles.topFold, narrow && styles.topFolded)}
       >
         <TopBar apps={apps} activeApp={activeApp} />
       </div>
       {/* its height is fixed rather than found: the slot arrives a moment after
           the shell does, and a bar that grows from empty to filled moves every
           page below it just as the reader starts reading */}
-      <div className="relative flex h-13 shrink-0 items-center border-b bg-background px-2 sm:px-4">
-        <div className="min-w-0 flex-1">
+      <div {...stylex.props(styles.contextBar)}>
+        <div {...stylex.props(styles.contextSeat)}>
           <UiSlot token={workspaceContext} />
         </div>
       </div>
-      <div className="flex min-h-0 flex-1">
+      <div {...stylex.props(styles.body)}>
         {/* Collapsed to a strip rather than to nothing, so the control that
             brings it back stays where it was taken from; on a narrow screen
             collapsed all the way, because the drawer has taken over. */}
@@ -331,9 +714,9 @@ function CapableWorkspaceShell() {
           // fully out of reach while folded: clipped is not gone, and the
           // keyboard would still walk into the toggle behind the fold
           {...(narrow ? { inert: true, 'aria-hidden': true } : {})}
-          className={cn(
-            'h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-linear',
-            narrow ? 'w-0' : railOpen ? 'w-56 border-r' : 'w-13 border-r',
+          {...stylex.props(
+            styles.aside,
+            narrow ? styles.asideGone : railOpen ? styles.asideOpen : styles.asideClosed,
           )}
         >
           {rail}
@@ -341,7 +724,7 @@ function CapableWorkspaceShell() {
         {/* auto, not scroll: the screens that fill the viewport - the review
             workbench, my filings - then carry a scrollbar that can never
             move, which reads as a page with somewhere to go. */}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <main {...stylex.props(styles.main)}>
           <Outlet />
         </main>
       </div>
@@ -355,7 +738,7 @@ function CapableWorkspaceShell() {
         data-narrow={String(narrow)}
         data-nav-open={String(drawer.open)}
         data-foot-taken={String(footTaken)}
-        className="pointer-events-none fixed inset-x-0 bottom-[max(1.125rem,env(safe-area-inset-bottom))] z-40 flex justify-center"
+        {...stylex.props(styles.capsuleSeat)}
       >
         {/* Always mounted, shown by CSS: presence-animating this button
             meant AnimatePresence unmounted it on exit, and under CI load
@@ -370,23 +753,20 @@ function CapableWorkspaceShell() {
             <div
               data-shown={String(shown)}
               {...(!shown ? { inert: true, 'aria-hidden': true } : {})}
-              className={cn(
-                'transition-[opacity,translate] duration-200 ease-out',
-                shown ? 'opacity-100' : 'translate-y-2 opacity-0',
-              )}
+              {...stylex.props(styles.capsuleFade, !shown && styles.capsuleHidden)}
             >
               <button
                 type="button"
                 data-testid="nav-capsule"
                 aria-haspopup="dialog"
                 onClick={drawer.show}
-                className="pointer-events-auto flex h-11 cursor-pointer items-center gap-2.5 rounded-[14px] border bg-background/90 px-4 shadow-[0_10px_28px_-10px_rgba(0,0,0,0.3)] backdrop-blur-sm"
+                {...stylex.props(styles.capsuleButton)}
               >
-                <span aria-hidden className="flex flex-col items-center gap-[3px]">
-                  <span className="h-[1.5px] w-3.5 rounded-full bg-foreground" />
-                  <span className="h-[1.5px] w-3.5 rounded-full bg-foreground" />
+                <span aria-hidden {...stylex.props(styles.burger)}>
+                  <span {...stylex.props(styles.burgerLine)} />
+                  <span {...stylex.props(styles.burgerLine)} />
                 </span>
-                <span className="text-[13px] font-medium">{format(m.navCapsule)}</span>
+                <span {...stylex.props(styles.capsuleWord)}>{format(m.navCapsule)}</span>
               </button>
             </div>
           )
@@ -412,31 +792,33 @@ function CapableWorkspaceShell() {
           if (!next) drawer.hide()
         }}
       >
+        {/* the drawer shape overrides the sheet adapter's own utilities
+            (overflow among them), so it stays a class string at that
+            boundary until the adapter sheds them */}
         <SheetContent
           side="bottom"
           showCloseButton={false}
           className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
         >
-          <SheetTitle className="sr-only">{format(m.navCapsule)}</SheetTitle>
+          <SheetTitle className={stylex.props(styles.srOnly).className}>
+            {format(m.navCapsule)}
+          </SheetTitle>
           {/* the person at the head, the pages in the middle, the account at
               the foot - and the shell owns none of the head or the foot's
               controls: whoever owns sessions fills those seats */}
-          <div className="flex shrink-0 flex-col gap-1 bg-muted/50 px-3.5 pt-2.5 pb-2">
-            <span
-              aria-hidden
-              className="mx-auto h-1 w-9 shrink-0 rounded-full bg-muted-foreground/30"
-            />
+          <div {...stylex.props(styles.drawerHead)}>
+            <span aria-hidden {...stylex.props(styles.grabber)} />
             <UiSlot
               token={drawerIdentity}
-              loading={<Skeleton className="mx-1 mt-1 mb-0.5 h-11 rounded-lg" />}
+              loading={<Skeleton className={stylex.props(styles.headSkeleton).className} />}
             />
           </div>
           {/* the same entries the rail carries, two to a row because a
               phone-wide column of 46px bars wastes the little height a
               drawer has */}
-          <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto border-t px-3.5 pt-3.5 pb-4">
+          <nav {...stylex.props(styles.drawerNav)}>
             {loose.length > 0 && (
-              <div className="grid grid-cols-2 gap-2">
+              <div {...stylex.props(styles.drawerGrid)}>
                 {loose.map((item) => (
                   <DrawerEntry
                     key={item.id}
@@ -449,11 +831,11 @@ function CapableWorkspaceShell() {
               </div>
             )}
             {sections.map((section) => (
-              <section key={section.id} className="flex flex-col gap-1.5">
-                <p className="text-xs text-muted-foreground">
+              <section key={section.id} {...stylex.props(styles.drawerSection)}>
+                <p {...stylex.props(styles.drawerSectionLabel)}>
                   <LocalizedText value={section.label} />
                 </p>
-                <div className="grid grid-cols-2 gap-2">
+                <div {...stylex.props(styles.drawerGrid)}>
                   {section.items.map((item) => (
                     <DrawerEntry
                       key={item.id}
@@ -467,29 +849,33 @@ function CapableWorkspaceShell() {
               </section>
             ))}
           </nav>
-          <div className="flex shrink-0 flex-col gap-2.5 border-t bg-muted/40 px-4 pt-2.5 pb-[max(1.375rem,env(safe-area-inset-bottom))]">
-            <UiSlot token={drawerAccount} loading={<Skeleton className="h-7 w-full" />} />
+          <div {...stylex.props(styles.drawerFoot)}>
+            <UiSlot
+              token={drawerAccount}
+              loading={<Skeleton className={stylex.props(styles.footSkeleton).className} />}
+            />
             {/* the applications the folded top bar carried - destinations,
                 not tabs - with the way out at the row's end */}
-            <div data-testid="drawer-modules" className="flex items-center gap-4 border-t pt-2.5">
-              <span className="shrink-0 text-[11px] font-medium whitespace-nowrap text-muted-foreground">
-                {format(m.otherPages)}
-              </span>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
+            <div data-testid="drawer-modules" {...stylex.props(styles.modulesRow)}>
+              <span {...stylex.props(styles.modulesLabel)}>{format(m.otherPages)}</span>
+              <div {...stylex.props(styles.modulesWrap)}>
                 {apps.map((app) => (
                   <NavLink
                     key={app.id}
                     to={app.path}
-                    className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground"
+                    className={stylex.props(styles.moduleLink).className}
                   >
-                    <NavIcon name={app.icon} className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 truncate">
+                    <NavIcon
+                      name={app.icon}
+                      className={stylex.props(styles.moduleIcon).className}
+                    />
+                    <span {...stylex.props(styles.moduleWord)}>
                       <LocalizedText value={app.label} />
                     </span>
                   </NavLink>
                 ))}
               </div>
-              <span className="flex-1" />
+              <span {...stylex.props(styles.spacer)} />
               <UiSlot token={drawerSignOut} />
             </div>
           </div>
