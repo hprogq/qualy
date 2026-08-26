@@ -104,10 +104,19 @@ function TableCell({ className, xstyle, ...props }: React.ComponentProps<'td'> &
   return <td data-slot="table-cell" {...sx} {...props} className={clsx(sx.className, className)} />
 }
 
-function TableCaption({ className, xstyle, ...props }: React.ComponentProps<'caption'> & Extendable) {
+function TableCaption({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'caption'> & Extendable) {
   const sx = stylex.props(styles.caption, xstyle)
   return (
-    <caption data-slot="table-caption" {...sx} {...props} className={clsx(sx.className, className)} />
+    <caption
+      data-slot="table-caption"
+      {...sx}
+      {...props}
+      className={clsx(sx.className, className)}
+    />
   )
 }
 

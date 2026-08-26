@@ -661,7 +661,10 @@ export function PhaseTimelineEditor({ batch }: { batch: BatchDto }) {
                           className={stylex.props(styles.cardSeamButton).className}
                           onClick={() => insertAt(index + 1)}
                         >
-                          <PlusIcon aria-hidden className={stylex.props(styles.seamGlyph).className} />
+                          <PlusIcon
+                            aria-hidden
+                            className={stylex.props(styles.seamGlyph).className}
+                          />
                           {format(m.insertHere)}
                         </Button>
                       </li>
