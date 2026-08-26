@@ -77,18 +77,22 @@ const styles = stylex.create({
 
 function Empty({
   className,
-  style,
+  xstyle,
   ...props
 }: Omit<React.ComponentProps<'div'>, 'style'> & {
-  /** StyleX overrides from product callers; legacy callers keep className */
-  style?: StyleXStyles
+  /** the standard StyleX seat; `className` is the legacy escape hatch */
+  xstyle?: StyleXStyles
 }) {
-  const sx = stylex.props(styles.root, style)
+  const sx = stylex.props(styles.root, xstyle)
   return <div data-slot="empty" {...props} {...sx} className={clsx(sx.className, className)} />
 }
 
-function EmptyHeader({ className, ...props }: React.ComponentProps<'div'>) {
-  const sx = stylex.props(styles.header)
+function EmptyHeader({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: StyleXStyles }) {
+  const sx = stylex.props(styles.header, xstyle)
   return (
     <div data-slot="empty-header" {...sx} {...props} className={clsx(sx.className, className)} />
   )
@@ -97,9 +101,10 @@ function EmptyHeader({ className, ...props }: React.ComponentProps<'div'>) {
 function EmptyMedia({
   className,
   variant = 'default',
+  xstyle,
   ...props
-}: React.ComponentProps<'div'> & { variant?: 'default' | 'icon' }) {
-  const sx = stylex.props(styles.media, variant === 'icon' && styles.mediaIcon)
+}: React.ComponentProps<'div'> & { variant?: 'default' | 'icon'; xstyle?: StyleXStyles }) {
+  const sx = stylex.props(styles.media, variant === 'icon' && styles.mediaIcon, xstyle)
   return (
     <div
       data-slot="empty-icon"
@@ -111,15 +116,23 @@ function EmptyMedia({
   )
 }
 
-function EmptyTitle({ className, ...props }: React.ComponentProps<'div'>) {
-  const sx = stylex.props(styles.title)
+function EmptyTitle({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: StyleXStyles }) {
+  const sx = stylex.props(styles.title, xstyle)
   return (
     <div data-slot="empty-title" {...sx} {...props} className={clsx(sx.className, className)} />
   )
 }
 
-function EmptyDescription({ className, ...props }: React.ComponentProps<'p'>) {
-  const sx = stylex.props(styles.description)
+function EmptyDescription({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'p'> & { xstyle?: StyleXStyles }) {
+  const sx = stylex.props(styles.description, xstyle)
   return (
     <div
       data-slot="empty-description"
@@ -130,8 +143,12 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<'p'>) {
   )
 }
 
-function EmptyContent({ className, ...props }: React.ComponentProps<'div'>) {
-  const sx = stylex.props(styles.content)
+function EmptyContent({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: StyleXStyles }) {
+  const sx = stylex.props(styles.content, xstyle)
   return (
     <div data-slot="empty-content" {...sx} {...props} className={clsx(sx.className, className)} />
   )

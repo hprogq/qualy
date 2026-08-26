@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { clsx } from 'clsx'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../theme/tokens.stylex.ts'
 import { Avatar, AvatarFallback } from './avatar.tsx'
 
@@ -60,15 +60,14 @@ const styles = stylex.create({
 export function PersonCell({
   name,
   secondary,
-  className,
+  xstyle,
 }: {
   name: string
   secondary?: ReactNode
-  className?: string
+  xstyle?: StyleXStyles
 }) {
-  const sx = stylex.props(styles.row)
   return (
-    <span {...sx} className={clsx(sx.className, className)}>
+    <span {...stylex.props(styles.row, xstyle)}>
       {/* the avatar adapter still speaks Tailwind, so its overrides stay
           class strings until that boundary migrates */}
       <Avatar className="rounded-lg">

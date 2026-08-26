@@ -1,6 +1,6 @@
 import { CheckIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { clsx } from 'clsx'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../theme/tokens.stylex.ts'
 
 // Where you are in a short guided form. Presentational only: the owner keeps
@@ -82,17 +82,16 @@ export function Steps({
   steps,
   current,
   onSelect,
-  className,
+  xstyle,
 }: {
   steps: readonly string[]
   current: number
   /** given, each step becomes a way back to that part of the form */
   onSelect?: (index: number) => void
-  className?: string
+  xstyle?: StyleXStyles
 }) {
-  const sx = stylex.props(styles.list)
   return (
-    <ol {...sx} className={clsx(sx.className, className)}>
+    <ol {...stylex.props(styles.list, xstyle)}>
       {steps.map((label, index) => {
         const done = index < current
         const active = index === current

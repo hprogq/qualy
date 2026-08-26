@@ -560,6 +560,59 @@ const styles = stylex.create({
 
 ---
 
+## Component styling API (Qualy)
+
+How a component lets callers extend its styling depends on which side of the
+vendor boundary it lives on.
+
+### Product / shared semantic components: `xstyle`
+
+Qualy-owned components (`admin/*`, `screen/*`, `PageContainer`, `PersonCell`,
+`Steps`, shared state surfaces, …) expose StyleX composition as their one
+official extension seat:
+
+```tsx
+type Props = {
+  xstyle?: StyleXStyles
+}
+
+<div {...stylex.props(styles.root, xstyle)} />
+```
+
+- The prop is named `xstyle`, never `style` — React DOM already owns
+  `style?: React.CSSProperties`, and the name must say "this is a compiled
+  StyleX object, not inline CSS".
+- Conflicts resolve property-by-property, last style wins: a caller's
+  `xstyle` overrides the component's base because it is spread last.
+- Do not add `className?: string` to these components. Where one still
+  exists it is a deliberate **legacy escape hatch** for callers that still
+  speak Tailwind utilities, documented as such, and it dies with them.
+- For a component with a structural invariant, constrain the seat instead
+  of trusting the caller: `PageContainer` takes
+  `StyleXStylesWithout<{ width: never; maxWidth: never; marginInline: never }>`
+  because page width is the `size` prop's contract. Use this only where a
+  real invariant exists — not as a default posture.
+
+### Low-level / vendor adapters: `className` stays
+
+Adapters over the widget library (`Button`, `Input`, `DialogContent`,
+`SelectTrigger`, …) keep `className`: they sit on the Mantine, legacy and
+third-party CSS interoperability boundary. Passing a compiled class from
+`stylex.props(...).className` across that boundary is fine for properties
+the adapter does not itself set; a same-property override of an adapter's
+own utility classes must remain a utility string until that adapter sheds
+them (cascade: the utility layer is deliberately declared above the StyleX
+priority layers for the whole migration window).
+
+If a component carries both, the split is fixed: `xstyle` is the standard
+Qualy extension mechanism, `className` is the external/legacy escape hatch.
+Do not claim `className` always beats `xstyle` — that holds only while the
+cascade order above holds, and only for utility classes.
+
+Do not mass-migrate: the `xstyle` convention applies to components as they
+are brought onto StyleX, not as a repo-wide rewrite of everything that
+still takes `className`.
+
 ## More resources
 
 - Official documentation: https://stylexjs.com

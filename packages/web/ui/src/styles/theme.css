@@ -312,9 +312,6 @@
   [data-slot='alert']:has([data-slot='alert-action']) {
     padding-right: 4.5rem;
   }
-  [data-slot='alert'][data-variant='destructive'] > [data-slot='alert-description'] {
-    color: color-mix(in oklab, var(--q-danger) 90%, transparent);
-  }
   [data-slot='alert-title'] a,
   [data-slot='alert-description'] a {
     text-decoration: underline;

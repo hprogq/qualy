@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { clsx } from 'clsx'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { Skeleton } from '../skeleton.tsx'
 
@@ -123,15 +123,14 @@ const styles = stylex.create({
 /** the bordered column a screen selects from: one box, one hairline per row */
 export function Rail({
   children,
-  className,
+  xstyle,
   ...props
-}: { children: ReactNode; className?: string } & Omit<
+}: { children: ReactNode; xstyle?: StyleXStyles } & Omit<
   ComponentProps<'div'>,
-  'children' | 'className'
+  'children' | 'className' | 'style'
 >) {
-  const sx = stylex.props(styles.rail)
   return (
-    <div {...sx} {...props} className={clsx(sx.className, className)}>
+    <div {...stylex.props(styles.rail, xstyle)} {...props}>
       {children}
     </div>
   )

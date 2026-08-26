@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { clsx } from 'clsx'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { PageHeader } from '../admin/page.tsx'
 import { PageContainer } from '../page-container.tsx'
@@ -47,7 +47,7 @@ export function Screen({
       {/* edge to edge: a band inset inside the page's own width is a card
           pretending to be a header */}
       <div {...stylex.props(styles.band)}>
-        <PageContainer size={size} style={styles.bandInset}>
+        <PageContainer size={size} xstyle={styles.bandInset}>
           <PageHeader
             title={title}
             {...(description === undefined ? {} : { description })}
@@ -56,7 +56,7 @@ export function Screen({
           />
         </PageContainer>
       </div>
-      <PageContainer size={size} style={styles.stack}>
+      <PageContainer size={size} xstyle={styles.stack}>
         {children}
       </PageContainer>
     </>
@@ -75,20 +75,22 @@ export function Segmented<T extends string>({
   onChange,
   options,
   label,
-  className,
+  xstyle,
 }: {
   value: T
   onChange: (next: T) => void
   options: readonly { value: T; label: string }[]
   /** spoken name for the group; the options name themselves */
   label: string
-  className?: string
+  xstyle?: StyleXStyles
 }) {
   return (
     <Tabs
       value={value}
       onValueChange={(next) => onChange(next as T)}
-      className={clsx(stylex.props(styles.pinned).className, className)}
+      // the tabs adapter takes classes; the compiled result of the StyleX
+      // seat is what crosses that boundary
+      className={stylex.props(styles.pinned, xstyle).className}
     >
       <TabsList aria-label={label}>
         {options.map((option) => (

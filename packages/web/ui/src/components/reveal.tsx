@@ -2,6 +2,7 @@ import { Children, useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
 import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { tokens } from '../theme/tokens.stylex.ts'
 
@@ -212,22 +213,21 @@ const ringStyles = stylex.create({
 export function CountdownRing({
   seconds,
   remaining,
-  className,
+  xstyle,
   children,
 }: {
   /** how long the whole window is */
   seconds: number
   /** how much of it is left when this renders, for a ring that resumes right */
   remaining: number
-  className?: string
+  xstyle?: StyleXStyles
   children?: ReactNode
 }) {
   const reduced = useReducedMotion()
   const circumference = 2 * Math.PI * 11
   const left = Math.max(0, Math.min(1, remaining / seconds))
-  const sx = stylex.props(ringStyles.seat)
   return (
-    <span {...sx} className={clsx(sx.className, className)}>
+    <span {...stylex.props(ringStyles.seat, xstyle)}>
       <svg viewBox="0 0 26 26" {...stylex.props(ringStyles.sweep)}>
         <circle
           cx="13"
@@ -264,10 +264,17 @@ export function CountdownRing({
 // The one place on these screens where an animation is the message. Clearing
 // a queue is the point of the work, and a static tick that was simply there
 // when the screen arrived says nothing happened. Drawn, it says you did that.
-export function DoneMark({ className }: { className?: string }) {
+export function DoneMark({
+  xstyle,
+  className,
+}: {
+  /** the standard StyleX seat; `className` is the legacy escape hatch */
+  xstyle?: StyleXStyles
+  className?: string
+}) {
   const reduced = useReducedMotion()
   const still = reduced === true
-  const sx = stylex.props(ringStyles.mark)
+  const sx = stylex.props(ringStyles.mark, xstyle)
   return (
     <svg viewBox="0 0 76 76" {...sx} className={clsx(sx.className, className)} aria-hidden>
       <circle

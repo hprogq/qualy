@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 
 const styles = stylex.create({
@@ -104,6 +105,7 @@ export function PageHeader({
   description,
   actions,
   variant = 'plain',
+  xstyle,
 }: {
   /**
    * Usually the page's name. Takes a node so a heading that has something to
@@ -124,9 +126,10 @@ export function PageHeader({
    * card pretending to be a header.
    */
   variant?: 'plain' | 'banner'
+  xstyle?: StyleXStyles
 }) {
   return (
-    <div {...stylex.props(styles.header, variant === 'banner' && styles.headerBanner)}>
+    <div {...stylex.props(styles.header, variant === 'banner' && styles.headerBanner, xstyle)}>
       <div {...stylex.props(styles.headerText)}>
         <h1 {...stylex.props(styles.title)}>{title}</h1>
         {description !== undefined && description !== '' && (
@@ -151,14 +154,16 @@ export function Panel({
   description,
   actions,
   children,
+  xstyle,
 }: {
   title: string
   description?: string
   actions?: ReactNode
   children: ReactNode
+  xstyle?: StyleXStyles
 }) {
   return (
-    <section {...stylex.props(styles.panel)}>
+    <section {...stylex.props(styles.panel, xstyle)}>
       <div {...stylex.props(styles.panelHead)}>
         <div {...stylex.props(styles.panelText)}>
           <h2 {...stylex.props(styles.panelTitle)}>{title}</h2>

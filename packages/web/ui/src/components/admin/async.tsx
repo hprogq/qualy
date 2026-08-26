@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { TriangleAlertIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { Alert, AlertDescription } from '../alert.tsx'
 import { Button } from '../button.tsx'
@@ -29,6 +30,7 @@ export function AsyncSection({
   retryLabel,
   onRetry,
   skeleton,
+  xstyle,
   className,
   children,
 }: {
@@ -40,18 +42,26 @@ export function AsyncSection({
   /** what the section looks like while it loads; a spinner when absent */
   skeleton?: ReactNode
   /** carried by every branch, for a section that has to fill its parent */
+  xstyle?: StyleXStyles
+  /** legacy escape hatch for callers still speaking utilities */
   className?: string
   children: ReactNode
 }) {
   if (pending) {
     if (skeleton) {
+      const sx = stylex.props(xstyle)
       return (
-        <div role="status" aria-label={loadingLabel} className={className}>
+        <div
+          role="status"
+          aria-label={loadingLabel}
+          {...sx}
+          className={clsx(sx.className, className)}
+        >
           {skeleton}
         </div>
       )
     }
-    const sx = stylex.props(styles.waiting)
+    const sx = stylex.props(styles.waiting, xstyle)
     return (
       <div {...sx} className={clsx(sx.className, className)}>
         <Spinner aria-label={loadingLabel} />
@@ -64,7 +74,7 @@ export function AsyncSection({
     // looking at, and the sentence and its one action should be where their
     // eye already is.
     return (
-      <Empty style={styles.bordered} className={className}>
+      <Empty xstyle={[styles.bordered, xstyle]} className={className}>
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <TriangleAlertIcon />
@@ -79,15 +89,23 @@ export function AsyncSection({
       </Empty>
     )
   }
-  return className === undefined ? <>{children}</> : <div className={className}>{children}</div>
+  if (className === undefined && xstyle === undefined) return <>{children}</>
+  const sx = stylex.props(xstyle)
+  return (
+    <div {...sx} className={clsx(sx.className, className)}>
+      {children}
+    </div>
+  )
 }
 
 export function Feedback({
   message,
   tone = 'error',
+  xstyle,
 }: {
   message?: string | null
   tone?: 'error' | 'success'
+  xstyle?: StyleXStyles
 }) {
   if (!message) return null
   return (
@@ -98,6 +116,7 @@ export function Feedback({
       data-tone={tone}
       variant={tone === 'error' ? 'destructive' : 'default'}
       role="alert"
+      {...(xstyle === undefined ? {} : { xstyle })}
     >
       <AlertDescription>{message}</AlertDescription>
     </Alert>

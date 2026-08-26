@@ -1,7 +1,7 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import * as stylex from '@stylexjs/stylex'
-import { clsx } from 'clsx'
+import type { StyleXStyles } from '@stylexjs/stylex'
 
 // A value that changes while you are looking at it.
 //
@@ -91,11 +91,11 @@ const styles = stylex.create({
 
 export const Ticker = memo(function Ticker({
   value,
-  className,
+  xstyle,
 }: {
   /** the value, already formatted; a change is what animates */
   value: string
-  className?: string
+  xstyle?: StyleXStyles
 }) {
   const line = useRef<HTMLSpanElement>(null)
   const [width, setWidth] = useState<number | null>(null)
@@ -108,13 +108,9 @@ export const Ticker = memo(function Ticker({
     if (line.current) setWidth(line.current.offsetWidth)
   }, [value])
 
-  const sx = stylex.props(styles.box)
+  const sx = stylex.props(styles.box, xstyle)
   return (
-    <span
-      {...sx}
-      className={clsx(sx.className, className)}
-      style={width === null ? undefined : { width }}
-    >
+    <span {...sx} style={width === null ? undefined : { ...sx.style, width }}>
       <span ref={line} {...stylex.props(styles.line)}>
         {pieces(value).map((piece, at) => (
           <Piece key={at} text={piece} />

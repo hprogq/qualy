@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../empty.tsx'
 
 const styles = stylex.create({
@@ -24,16 +25,19 @@ export function Blank({
   title,
   description,
   action,
+  xstyle,
   className,
 }: {
   icon?: ReactNode
   title: string
   description?: ReactNode
   action?: ReactNode
+  /** the standard StyleX seat; `className` is the legacy escape hatch */
+  xstyle?: StyleXStyles
   className?: string
 }) {
   return (
-    <Empty style={styles.shape} className={className}>
+    <Empty xstyle={[styles.shape, xstyle]} className={className}>
       <EmptyHeader>
         {icon !== undefined && <EmptyMedia variant="icon">{icon}</EmptyMedia>}
         <EmptyTitle>{title}</EmptyTitle>

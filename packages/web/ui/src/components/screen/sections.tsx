@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { CheckIcon, XIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { Badge } from '../badge.tsx'
 import { RadioGroup, RadioGroupItem } from '../radio-group.tsx'
@@ -177,6 +178,11 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     fontWeight: 600,
   },
+  modeOptions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+  },
   modePair: {
     display: 'flex',
     flexShrink: 0,
@@ -211,15 +217,17 @@ export function SectionHead({
   count,
   aside,
   actions,
+  xstyle,
 }: {
   title: string
   count?: ReactNode
   /** a rule or a summary, said quietly at the far end */
   aside?: ReactNode
   actions?: ReactNode
+  xstyle?: StyleXStyles
 }) {
   return (
-    <div {...stylex.props(styles.headRow)}>
+    <div {...stylex.props(styles.headRow, xstyle)}>
       <h2 {...stylex.props(styles.headTitle)}>{title}</h2>
       {count !== undefined && <span {...stylex.props(styles.count)}>{count}</span>}
       <span {...stylex.props(styles.spacer)} />
@@ -233,9 +241,11 @@ export function SectionHead({
 export function Facts({
   columns = 4,
   items,
+  xstyle,
 }: {
   columns?: 2 | 3 | 4
   items: readonly { label: string; value: ReactNode }[]
+  xstyle?: StyleXStyles
 }) {
   return (
     <dl
@@ -244,6 +254,7 @@ export function Facts({
         columns === 2 && styles.factsTwo,
         columns === 3 && styles.factsThree,
         columns === 4 && styles.factsFour,
+        xstyle,
       )}
     >
       {items.map((item) => (
@@ -264,13 +275,15 @@ export function DefRow({
   label,
   children,
   action,
+  xstyle,
 }: {
   label: string
   children: ReactNode
   action?: ReactNode
+  xstyle?: StyleXStyles
 }) {
   return (
-    <div {...stylex.props(styles.defRow)}>
+    <div {...stylex.props(styles.defRow, xstyle)}>
       <span {...stylex.props(styles.defLabel)}>{label}</span>
       <div {...stylex.props(styles.defBody)}>
         <div {...stylex.props(styles.defValue)}>{children}</div>
@@ -291,13 +304,15 @@ export function DefRow({
 export function Barred({
   actions,
   reason,
+  xstyle,
 }: {
   actions: readonly { label: string; barred: boolean }[]
   /** why, in one short phrase; omitted when nothing is barred */
   reason?: ReactNode
+  xstyle?: StyleXStyles
 }) {
   return (
-    <div {...stylex.props(styles.barred)}>
+    <div {...stylex.props(styles.barred, xstyle)}>
       <div {...stylex.props(styles.barredRow)}>
         {actions.map((action) => (
           <Badge
@@ -328,6 +343,7 @@ export function EditorHead({
   chips,
   note,
   actions,
+  xstyle,
 }: {
   title: string
   /** short, factual, at most a couple: a kind, a status, a count */
@@ -335,9 +351,10 @@ export function EditorHead({
   /** one quiet phrase after the chips, for a rule that applies to the whole editor */
   note?: ReactNode
   actions?: ReactNode
+  xstyle?: StyleXStyles
 }) {
   return (
-    <div {...stylex.props(styles.editorRow)}>
+    <div {...stylex.props(styles.editorRow, xstyle)}>
       <h2 {...stylex.props(styles.editorTitle)}>{title}</h2>
       {chips?.map((chip) =>
         (chip.tone ?? 'plain') === 'plain' ? (
@@ -375,6 +392,7 @@ export function ModeChoice<T extends string>({
   options,
   hint,
   disabled = false,
+  xstyle,
 }: {
   legend: string
   value: T
@@ -383,27 +401,32 @@ export function ModeChoice<T extends string>({
   /** what the current mode means, or what is waiting to be saved */
   hint?: ReactNode
   disabled?: boolean
+  xstyle?: StyleXStyles
 }) {
   return (
-    <div {...stylex.props(styles.modeRow)}>
+    <div {...stylex.props(styles.modeRow, xstyle)}>
       <h3 {...stylex.props(styles.modeLegend)}>{legend}</h3>
       <RadioGroup
         aria-label={legend}
         value={value}
         disabled={disabled}
         onValueChange={(next) => onChange(next as T)}
-        // a same-property override at the group adapter's Tailwind boundary
-        // stays a class string until that boundary migrates
-        className="flex w-auto shrink-0 items-center gap-4"
+        // the group adapter's full-width grid gives way to the row; a
+        // same-property override at its Tailwind boundary stays a class string
+        className="w-auto shrink-0"
       >
-        {options.map((option) => (
-          <div key={option.value} {...stylex.props(styles.modePair)}>
-            <RadioGroupItem value={option.value} id={`${legend}-${option.value}`} />
-            <label htmlFor={`${legend}-${option.value}`} {...stylex.props(styles.modeLabel)}>
-              {option.label}
-            </label>
-          </div>
-        ))}
+        {/* the group adapter nests children in an unstyled inner box, so the
+            row is laid out by this component's own element, not the group */}
+        <div {...stylex.props(styles.modeOptions)}>
+          {options.map((option) => (
+            <div key={option.value} {...stylex.props(styles.modePair)}>
+              <RadioGroupItem value={option.value} id={`${legend}-${option.value}`} />
+              <label htmlFor={`${legend}-${option.value}`} {...stylex.props(styles.modeLabel)}>
+                {option.label}
+              </label>
+            </div>
+          ))}
+        </div>
       </RadioGroup>
       <span {...stylex.props(styles.spacer)} />
       {hint !== undefined && <span {...stylex.props(styles.quietNote)}>{hint}</span>}
@@ -419,9 +442,17 @@ export function ModeChoice<T extends string>({
  * commit; the summary at the left is what the save will affect, said before
  * it is pressed rather than in a dialog afterwards.
  */
-export function SaveBar({ summary, children }: { summary?: ReactNode; children: ReactNode }) {
+export function SaveBar({
+  summary,
+  children,
+  xstyle,
+}: {
+  summary?: ReactNode
+  children: ReactNode
+  xstyle?: StyleXStyles
+}) {
   return (
-    <div {...stylex.props(styles.saveBar)}>
+    <div {...stylex.props(styles.saveBar, xstyle)}>
       {summary !== undefined && <span {...stylex.props(styles.quietNote)}>{summary}</span>}
       <span {...stylex.props(styles.spacer)} />
       {children}

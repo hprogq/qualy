@@ -1,6 +1,12 @@
+import { createContext, use } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { tokens } from '../theme/tokens.stylex.ts'
+
+// the description tints with the alert's tone; context says which tone,
+// so the child styles by state instead of a stylesheet digging by variant
+const ToneCtx = createContext<'default' | 'destructive'>('default')
 
 // One sentence with standing: an icon seat, a title, a description, and an
 // optional action pinned to the corner. What depends on caller-provided
@@ -41,6 +47,9 @@ const styles = stylex.create({
     },
     color: tokens.mutedForeground,
   },
+  descriptionDestructive: {
+    color: `color-mix(in oklab, ${tokens.danger} 90%, transparent)`,
+  },
   action: {
     position: 'absolute',
     top: 10,
@@ -51,30 +60,51 @@ const styles = stylex.create({
 function Alert({
   className,
   variant = 'default',
+  xstyle,
   ...props
-}: React.ComponentProps<'div'> & { variant?: 'default' | 'destructive' }) {
-  const sx = stylex.props(styles.root, variant === 'destructive' && styles.destructive)
+}: React.ComponentProps<'div'> & {
+  variant?: 'default' | 'destructive'
+  /** the standard StyleX seat; `className` is the legacy escape hatch */
+  xstyle?: StyleXStyles
+}) {
+  const sx = stylex.props(styles.root, variant === 'destructive' && styles.destructive, xstyle)
+  const { children, ...rest } = props
   return (
     <div
       data-slot="alert"
       data-variant={variant}
       role="alert"
       {...sx}
-      {...props}
+      {...rest}
       className={clsx(sx.className, className)}
-    />
+    >
+      <ToneCtx value={variant}>{children}</ToneCtx>
+    </div>
   )
 }
 
-function AlertTitle({ className, ...props }: React.ComponentProps<'div'>) {
-  const sx = stylex.props(styles.title)
+function AlertTitle({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: StyleXStyles }) {
+  const sx = stylex.props(styles.title, xstyle)
   return (
     <div data-slot="alert-title" {...sx} {...props} className={clsx(sx.className, className)} />
   )
 }
 
-function AlertDescription({ className, ...props }: React.ComponentProps<'div'>) {
-  const sx = stylex.props(styles.description)
+function AlertDescription({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: StyleXStyles }) {
+  const tone = use(ToneCtx)
+  const sx = stylex.props(
+    styles.description,
+    tone === 'destructive' && styles.descriptionDestructive,
+    xstyle,
+  )
   return (
     <div
       data-slot="alert-description"
@@ -85,8 +115,12 @@ function AlertDescription({ className, ...props }: React.ComponentProps<'div'>) 
   )
 }
 
-function AlertAction({ className, ...props }: React.ComponentProps<'div'>) {
-  const sx = stylex.props(styles.action)
+function AlertAction({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: StyleXStyles }) {
+  const sx = stylex.props(styles.action, xstyle)
   return (
     <div data-slot="alert-action" {...sx} {...props} className={clsx(sx.className, className)} />
   )

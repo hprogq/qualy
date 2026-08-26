@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import type { StyleXStyles } from '@stylexjs/stylex'
+import type { StyleXStylesWithout } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 
 // How wide a page is allowed to be.
@@ -31,14 +31,18 @@ const styles = stylex.create({
 export function PageContainer({
   size = 'default',
   className,
-  style,
+  xstyle,
   ...props
 }: Omit<ComponentProps<'div'>, 'style'> & {
   size?: 'default' | 'wide' | 'full'
-  /** StyleX overrides from product callers; legacy callers keep className */
-  style?: StyleXStyles
+  /**
+   * The standard StyleX extension seat - except for the width contract,
+   * which is the `size` prop's whole reason to exist. `className` below is
+   * the legacy escape hatch for callers still speaking utilities.
+   */
+  xstyle?: StyleXStylesWithout<{ width: never; maxWidth: never; marginInline: never }>
 }) {
-  const sx = stylex.props(styles.root, size !== 'full' && styles[size], style)
+  const sx = stylex.props(styles.root, size !== 'full' && styles[size], xstyle)
   return (
     <div
       data-slot="page-container"

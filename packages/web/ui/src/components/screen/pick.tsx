@@ -1,4 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { Checkbox } from '../checkbox.tsx'
 
@@ -188,6 +189,7 @@ export function PickGrid({
   emptyLabel,
   disabled = false,
   columns = 3,
+  xstyle,
 }: {
   legend: string
   options: readonly { value: string; label: string; tally?: React.ReactNode }[]
@@ -196,12 +198,13 @@ export function PickGrid({
   emptyLabel: string
   disabled?: boolean
   columns?: 2 | 3
+  xstyle?: StyleXStyles
 }) {
   if (options.length === 0) {
-    return <p {...stylex.props(styles.emptyNote)}>{emptyLabel}</p>
+    return <p {...stylex.props(styles.emptyNote, xstyle)}>{emptyLabel}</p>
   }
   return (
-    <fieldset {...stylex.props(styles.fields)}>
+    <fieldset {...stylex.props(styles.fields, xstyle)}>
       <legend {...stylex.props(styles.srOnly)}>{legend}</legend>
       <div {...stylex.props(styles.grid, columns === 2 ? styles.gridTwo : styles.gridThree)}>
         {options.map((option) => {
@@ -257,6 +260,7 @@ export function PickList({
   onChange,
   toggleAllLabel,
   disabled = false,
+  xstyle,
 }: {
   title: string
   /** how many of this group are on, as the caller wants it worded */
@@ -266,11 +270,12 @@ export function PickList({
   onChange: (next: string[]) => void
   toggleAllLabel: string
   disabled?: boolean
+  xstyle?: StyleXStyles
 }) {
   const values = options.map((option) => option.value)
   const all = values.every((value) => selected.includes(value))
   return (
-    <section {...stylex.props(styles.list)}>
+    <section {...stylex.props(styles.list, xstyle)}>
       <div {...stylex.props(styles.listHead)}>
         <h3 {...stylex.props(styles.listTitle)}>{title}</h3>
         {count !== undefined && <span {...stylex.props(styles.tally)}>{count}</span>}
