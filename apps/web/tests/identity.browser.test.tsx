@@ -11,13 +11,20 @@ type RoleDto = ApiResult<typeof accessApi, 'access', 'listRoles'>['roles'][numbe
 type UserDto = ApiResult<typeof authApi, 'identity', 'getUser'>['user']
 import { components } from 'virtual:qualy/plugins'
 import { Effect } from 'effect'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import {
+  addressNow,
+  apiError,
+  emptyManifest,
+  fakeClient,
+  renderScreen,
+} from './support/harness.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
 const UserTypesPage = (await components['auth/UserTypesPage']!()).default
 const RolesPage = (await components['rbac/RolesPage']!()).default
 const UserDetailPage = (await components['auth/UserDetailPage']!()).default
+const UsersPage = (await components['auth/UsersPage']!()).default
 
 // What these cover is exactly what a service test cannot: whether the screen
 // offers an action, whether a refusal reaches the reader in their own
@@ -29,6 +36,7 @@ const ADMIN_ROLE_ID = '33333333-3333-4333-8333-333333333333'
 const COLLEGE_TYPE_ID = '44444444-4444-4444-8444-444444444444'
 const DEPARTMENT_TYPE_ID = '55555555-5555-4555-8555-555555555555'
 const USER_ID = '66666666-6666-4666-8666-666666666666'
+const SECOND_USER_ID = '99999999-9999-4999-8999-999999999999'
 const ROOT_NODE_ID = '77777777-7777-4777-8777-777777777777'
 const BRANCH_NODE_ID = '88888888-8888-4888-8888-888888888888'
 
@@ -573,6 +581,93 @@ describe('roles screen', () => {
 // would arrive as a rejected submission.
 //
 // Before this, the screen could only revoke. The api had every piece.
+// The workspace reads left to right - the unit, its roster, the open
+// person - and every choice lives in the query string. The roster asks the
+// server for the unit it says it is showing, and the open person survives a
+// reload because the address carries them.
+describe('users workspace', () => {
+  const personAnswer = (over: Partial<UserDto> = {}) => ({
+    user: user({ manageable: true, identityCount: 1, ...over }),
+    orgPath: [
+      { id: ROOT_NODE_ID, name: '本部' },
+      { id: BRANCH_NODE_ID, name: '分部' },
+    ],
+    roles: [{ grantId: 'g-1', roleId: 'r-1', roleName: '审核员', orgNodeName: '分部' }],
+    identities: [],
+  })
+  const rosterStubs = (over: Stubs<'identity'> = {}) =>
+    stubs({
+      identity: {
+        listUsers: () =>
+          Effect.succeed({
+            items: [
+              user({ id: USER_ID, displayName: '张明远' }),
+              user({ id: SECOND_USER_ID, displayName: '李文静', status: 'disabled' }),
+            ],
+            nextCursor: null,
+          }),
+        getUser: () => Effect.succeed(personAnswer()),
+        ...over,
+      },
+    })
+
+  it('opens a person from the roster and says so in the address', async () => {
+    renderScreen({
+      client: fakeClient(rosterStubs()),
+      route: '/admin/users',
+      children: <UsersPage />,
+    })
+
+    await expect.element(page.getByRole('button', { name: /张明远/ })).toBeVisible()
+    await page.getByRole('button', { name: /张明远/ }).click()
+    // the open person is address state, not component state
+    await vi.waitFor(() => expect(addressNow()).toContain(`user=${USER_ID}`))
+    await expect
+      .element(page.getByRole('button', { name: /张明远/ }))
+      .toHaveAttribute('aria-current', 'true')
+    // the pane answers with the person, their standing and their roles
+    await expect.element(page.getByText('本部 / 分部')).toBeVisible()
+    await expect.element(page.getByText('审核员')).toBeVisible()
+  })
+
+  it('a deep link opens straight onto the person it names', async () => {
+    renderScreen({
+      client: fakeClient(rosterStubs()),
+      route: `/admin/users?user=${USER_ID}`,
+      children: <UsersPage />,
+    })
+    // no clicks: the address alone opens the pane
+    await expect.element(page.getByText('本部 / 分部')).toBeVisible()
+    await expect
+      .element(page.getByRole('button', { name: /张明远/ }))
+      .toHaveAttribute('aria-current', 'true')
+  })
+
+  it('asks the server for the unit the tree has selected', async () => {
+    const list = vi.fn(() =>
+      Effect.succeed({ items: [user({ id: USER_ID, displayName: '张明远' })], nextCursor: null }),
+    )
+    renderScreen({
+      client: fakeClient(rosterStubs({ listUsers: list })),
+      route: '/admin/users',
+      children: <UsersPage />,
+    })
+
+    await expect.element(page.getByRole('button', { name: /张明远/ })).toBeVisible()
+    await page.getByRole('button', { name: '分部' }).click()
+    await vi.waitFor(() => expect(addressNow()).toContain(`anchor=${BRANCH_NODE_ID}`))
+    await vi.waitFor(() =>
+      expect(
+        list.mock.calls.some(
+          (call) =>
+            (call as unknown as [{ query: { orgNodeId: string } }])[0].query.orgNodeId ===
+            BRANCH_NODE_ID,
+        ),
+      ).toBe(true),
+    )
+  })
+})
+
 describe('granting a role on the user screen', () => {
   const roleOptions = [{ id: ROLE_ID, code: 'reviewer', name: '审核员', kind: 'org' as const }]
 
