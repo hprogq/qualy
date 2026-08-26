@@ -8992,3 +8992,36 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 24 files /
   **165 passed**(164 + 1,零删除零弱化,连续两轮);build 成功;生产 smoke 全过;prettier
   通过(.mcp.json 除外,用户本地文件不动)。Users/Organization/Shell 未开始。
+
+## UI 平台 M6 第二刀:Users/UserDetail 竖切迁 StyleX,Avatar 迁 Mantine(2026-08-26)
+
+- **范围**:UsersPage(三栏工作台+PersonPane)、UserDetailPage、NewUserForm、GrantRoleForm、
+  UserGrants、NodePicker、OrgTree 七件全量;auth 插件补 @stylexjs/stylex 依赖。业务零改动:
+  infinite cursor、300ms 防抖、五个 query-string 键(anchor/scope/type/q/user/view)、version
+  payload、placement 过滤、grant 先选 target、状态机全部原样,既有 identity/org-admin/shell
+  用例零改动通过。主从架构与滚动归属未动(树盒自滚 60vh,页面整体滚,三栏 lg 拆分)。
+- **Avatar 裁决:现在迁**(§7 条件全满足)——全仓 7 个消费者只走 initials 回退路径,零
+  AvatarImage/Badge/Group 消费;适配器改为挖掘 AvatarFallback 声明喂给 Mantine placeholder
+  槽,compound API 原样,消费者一行未改(UserMenu/DrawerIdentity/Review 页的 Tailwind 覆盖
+  经 utilities>mantine 继续生效);person.tsx 的 M5 遗留 avatar 边界字符串就地转为编译
+  StyleX 类,未用到的 Image/Badge/Group/Count 出口随 Radix 依赖一并退场。Tabs(仅经
+  Segmented 正常消费)、ScrollArea(NodePicker 一处,非阻塞)、HoverCard(PersonCard,
+  slice 外)均缓迁。
+- **Blank 的 legacy className hatch 删除**:slice 内两处消费者(max-lg:hidden、min-h-[14rem])
+  转 xstyle 后全仓归零,prop 收缩;PageContainer hatch 保留(M7 assessment 尚余 3 处)。
+- **度量**:七文件 className 118→7(全部是 Select 触发器宽度 ×6 与 PopoverContent ×1 的
+  适配器同属性边界,携注释);另有 24 处 className 携带编译 StyleX 类穿 clean 边界(input/
+  button/skeleton/spinner/PageLink/ScrollArea/Stagger);cn 4 文件→0;stylex.props 106 处;
+  xstyle 4 处(Blank 窄屏隐藏、Blank 紧凑高、PageContainer 页布局、NodePicker 定宽);业务
+  Mantine import 0;新 !important 0;新 unsafe cast 0。
+- **补测**:users workspace 三条——点开人员进 query-string(?user=)+ aria-current + 侧栏
+  事实;深链直开;选树节点后 listUsers 以该 orgNodeId 重新请求且 anchor 入址(identity 套件
+  13→16)。
+- **视觉走查**:10 场景(工作台明/暗/空态/空名册/窄屏、详情页明/暗/编辑框/停用确认/窄屏,
+  fixture 含超长姓名与组织、停用行、never-used 入口)。两个"疑似回归"均实证为测试环境产物:
+  空 manifest 下 PageLink 正确降级为纯文本(生产 manifest 含目标页);名册在 414px 的列挤压
+  与迁移前逐类一致(固定列模板的既有债,记入 follow-up)。文案修正一处随行提交(返回链接
+  去掉与图标重复的箭头)。
+- **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 24 files /
+  **168 passed**(165+3,连续两轮,零删除零弱化);build 成功;生产 smoke 干净退出;prettier
+  通过(.mcp.json 除外)。Organization/Shell 未开始。
