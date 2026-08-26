@@ -90,6 +90,106 @@ const world = () => ({
 })
 
 describe('the organization screen', () => {
+  // Moving a unit re-anchors real authority, so what the picker offers is
+  // the contract: never itself or its descendants, never its current
+  // parent, and only units whose type the grammar allows above it.
+  it('moves a unit to a legal new parent only, and sends that parent', async () => {
+    const move = vi.fn(() => Effect.succeed({ ok: true }))
+    const client = world()
+    const COLLEGE2 = '22222222-2222-4222-8222-222222222204'
+    client.org.getTree = () =>
+      Effect.succeed({
+        roots: [ROOT],
+        nodes: [
+          node({ id: ROOT, name: '示例大学', parentId: null, orgTypeId: SCHOOL_TYPE, depth: 0 }),
+          node({
+            id: COLLEGE,
+            name: '软件学院',
+            parentId: ROOT,
+            orgTypeId: COLLEGE_TYPE,
+            depth: 1,
+          }),
+          node({
+            id: COLLEGE2,
+            name: '外国语学院',
+            parentId: ROOT,
+            orgTypeId: COLLEGE_TYPE,
+            depth: 1,
+          }),
+          node({
+            id: KLASS,
+            name: '软件2301班',
+            parentId: COLLEGE,
+            orgTypeId: CLASS_TYPE,
+            depth: 2,
+          }),
+        ],
+      })
+    renderScreen({
+      client: fakeClient({
+        ...client,
+        org: { ...client.org, setNodePlacement: move },
+      }),
+      route: `/admin/org?node=${KLASS}`,
+      children: <OrgPage />,
+    })
+
+    await page.getByRole('button', { name: '移动' }).click()
+    await page.getByRole('combobox', { name: '移动到' }).click()
+    const listbox = page.getByRole('listbox')
+    await expect.element(listbox).toBeVisible()
+    // the one legal destination, and none of the illegal ones
+    await expect.element(listbox.getByRole('option', { name: '外国语学院' })).toBeVisible()
+    expect(await listbox.getByRole('option', { name: '软件2301班' }).elements()).toHaveLength(0)
+    expect(await listbox.getByRole('option', { name: '软件学院' }).elements()).toHaveLength(0)
+    expect(await listbox.getByRole('option', { name: '示例大学' }).elements()).toHaveLength(0)
+
+    await listbox.getByRole('option', { name: '外国语学院' }).click()
+    await page.getByRole('button', { name: '移动' }).last().click()
+    await vi.waitFor(() => expect(move).toHaveBeenCalledTimes(1))
+    expect(move).toHaveBeenCalledWith({
+      params: { nodeId: KLASS },
+      payload: { parentId: COLLEGE2 },
+    })
+  })
+
+  // Deleting asks first and is only offered where the two counts allow it;
+  // a unit with children keeps the button struck through and inert.
+  it('deletes an empty leaf through the confirmation, and bars a parent', async () => {
+    const remove = vi.fn(() => Effect.succeed({ ok: true }))
+    const client = world()
+    renderScreen({
+      client: fakeClient({ ...client, org: { ...client.org, deleteNode: remove } }),
+      route: `/admin/org?node=${KLASS}`,
+      children: <OrgPage />,
+    })
+
+    const del = page.getByRole('button', { name: '删除节点' })
+    await expect.element(del).toBeEnabled()
+    await del.click()
+    await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
+    await page.getByRole('button', { name: '取消' }).click()
+    expect(remove).not.toHaveBeenCalled()
+
+    await del.click()
+    await page.getByRole('alertdialog').getByRole('button', { name: '删除节点' }).click()
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledTimes(1))
+    expect(remove).toHaveBeenCalledWith({ params: { nodeId: KLASS } })
+  })
+
+  it('keeps deletion barred while a unit still holds children', async () => {
+    const client = world()
+    renderScreen({
+      client: fakeClient(client),
+      route: `/admin/org?node=${COLLEGE}`,
+      children: <OrgPage />,
+    })
+    const del = page.getByRole('button', { name: '删除节点' })
+    await expect.element(del).toBeDisabled()
+    // the bar names its reason as data, beside the struck action
+    await expect.element(page.getByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
   it('opens a unit from the tree and creates a child of a legal type only', async () => {
     const create = vi.fn(() => Effect.succeed({ id: 'created' }))
     const client = world()
