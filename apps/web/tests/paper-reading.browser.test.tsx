@@ -131,9 +131,27 @@ const paper = (route: string) =>
         path: '/assessment/batches/:batchId/my-entries',
         // the shell the page is built for: a window-high frame the panes
         // scroll inside, not a document that grows
+        // inline, not utilities: the tests directory is outside the Tailwind
+        // scan, so a class here only ever worked while some production file
+        // happened to use it too - the shell's StyleX migration proved it
         element: (
-          <div className="flex h-dvh flex-col overflow-hidden">
-            <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div
+            style={{
+              display: 'flex',
+              height: '100dvh',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <main
+              style={{
+                display: 'flex',
+                minHeight: 0,
+                flex: '1 1 0%',
+                flexDirection: 'column',
+                overflowY: 'auto',
+              }}
+            >
               <MyEntriesPage />
             </main>
           </div>
