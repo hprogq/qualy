@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { Kbd } from '@qualy/ui/kbd'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { useIsBelow } from '@qualy/ui/use-mobile'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { timeLabel, useEntryHistory, type HistoryRevision } from './model.ts'
@@ -40,6 +41,181 @@ type History = {
     }[]
   }[]
 }
+
+const sm = '@media (min-width: 640px)'
+
+const styles = stylex.create({
+  subtitle: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  scroller: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  body: {
+    padding: 16,
+  },
+  skeleton: {
+    height: 128,
+    width: '100%',
+  },
+  blank: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  list: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  row: {
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 10,
+    textAlign: 'left',
+    transitionProperty: 'color, background-color, border-color',
+  },
+  rowJudged: {
+    cursor: 'not-allowed',
+    borderColor: 'transparent',
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    color: tokens.mutedForeground,
+  },
+  rowComparing: {
+    cursor: 'pointer',
+    borderColor: tokens.foreground,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+  },
+  rowOffered: {
+    cursor: 'pointer',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+  },
+  rowWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  rowLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  versionName: {
+    fontSize: 14,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  versionWhen: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  versionNote: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  rowChips: {
+    display: 'flex',
+    minWidth: 0,
+    flexShrink: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  chipNowrap: {
+    whiteSpace: 'nowrap',
+  },
+  outcomeChip: {
+    minWidth: 0,
+    fontWeight: 400,
+  },
+  truncate: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  foot: {
+    display: 'flex',
+    flexDirection: {
+      default: 'column',
+      [sm]: 'row',
+    },
+    alignItems: {
+      default: null,
+      [sm]: 'center',
+    },
+    gap: {
+      default: 8,
+      [sm]: 12,
+    },
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    padding: 12,
+  },
+  footHint: {
+    minWidth: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    flexGrow: {
+      default: null,
+      [sm]: 1,
+    },
+    flexShrink: {
+      default: null,
+      [sm]: 1,
+    },
+    flexBasis: {
+      default: null,
+      [sm]: '0%',
+    },
+  },
+  footActs: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: {
+      default: 8,
+      [sm]: 12,
+    },
+  },
+  footButton: {
+    flexGrow: {
+      default: 1,
+      [sm]: 0,
+    },
+    flexShrink: {
+      default: 1,
+      [sm]: 0,
+    },
+    flexBasis: {
+      default: '0%',
+      [sm]: 'auto',
+    },
+  },
+})
 
 /**
  * Which earlier version the filing is being read against (1j).
@@ -163,7 +339,7 @@ export function VersionPicker({
       >
         <SheetHeader className="border-b">
           <SheetTitle className="text-sm">{format(m.reviewVersionsTitle)}</SheetTitle>
-          <p className="text-xs text-muted-foreground">
+          <p {...stylex.props(styles.subtitle)}>
             {format(m.reviewVersionsSubtitle, {
               name: participantName,
               item: itemTitle,
@@ -171,20 +347,20 @@ export function VersionPicker({
             })}
           </p>
         </SheetHeader>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="p-4">
+        <ScrollArea className={stylex.props(styles.scroller).className}>
+          <div {...stylex.props(styles.body)}>
             <AsyncSection
               pending={history.isPending}
               error={history.error ? formatError(history.error) : null}
               loadingLabel={format(commonMessages.loading)}
               retryLabel={format(commonMessages.retry)}
               onRetry={() => void history.refetch()}
-              skeleton={<Skeleton className="h-32 w-full" />}
+              skeleton={<Skeleton className={stylex.props(styles.skeleton).className} />}
             >
               {revisions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{format(m.reviewCompareBlank)}</p>
+                <p {...stylex.props(styles.blank)}>{format(m.reviewCompareBlank)}</p>
               ) : (
-                <ul className="flex flex-col gap-2">
+                <ul {...stylex.props(styles.list)}>
                   {listed.map((revision) => {
                     const judged = revision.revisionNo === judgedRevisionNo
                     const ended = outcomeOf(revision.id)
@@ -207,48 +383,52 @@ export function VersionPicker({
                             judged ? 'judged' : revision.id === chosenId ? 'comparing' : 'available'
                           }
                           onClick={() => setChosen(revision.id)}
-                          className={cn(
-                            'flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors',
+                          {...stylex.props(
+                            styles.row,
                             judged
-                              ? 'cursor-not-allowed border-transparent bg-muted/40 text-muted-foreground'
+                              ? styles.rowJudged
                               : revision.id === chosenId
-                                ? 'cursor-pointer border-foreground bg-accent/60'
-                                : 'cursor-pointer hover:bg-accent/50',
+                                ? styles.rowComparing
+                                : styles.rowOffered,
                           )}
                         >
-                          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span {...stylex.props(styles.rowWords)}>
                             {/* the version and its clock never break across
                                 lines: at 390px the name wrapped to "第 1 /
                                 版" and the timestamp split down the middle,
                                 which is the row telling the reader it ran
                                 out of room rather than saying anything */}
-                            <span className="flex items-baseline gap-2">
-                              <span className="text-sm font-medium whitespace-nowrap">
+                            <span {...stylex.props(styles.rowLine)}>
+                              <span {...stylex.props(styles.versionName)}>
                                 {format(m.reviewVersionName, { no: revision.revisionNo })}
                               </span>
-                              <span className="truncate text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                              <span {...stylex.props(styles.versionWhen)}>
                                 {timeLabel(revision.createdAt)}
                               </span>
                             </span>
                             {revision.note !== null && (
-                              <span className="min-w-0 truncate text-xs text-muted-foreground">
-                                {revision.note}
-                              </span>
+                              <span {...stylex.props(styles.versionNote)}>{revision.note}</span>
                             )}
                           </span>
-                          <span className="flex min-w-0 shrink items-center gap-2">
+                          <span {...stylex.props(styles.rowChips)}>
                             {judged ? (
-                              <Badge variant="outline" className="whitespace-nowrap">
+                              <Badge
+                                variant="outline"
+                                className={stylex.props(styles.chipNowrap).className}
+                              >
                                 {format(m.reviewVersionJudged)}
                               </Badge>
                             ) : revision.id === chosenId ? (
-                              <Badge className="whitespace-nowrap">
+                              <Badge className={stylex.props(styles.chipNowrap).className}>
                                 {format(m.reviewVersionComparing)}
                               </Badge>
                             ) : (
                               ended !== null && (
-                                <Badge variant="outline" className="min-w-0 font-normal">
-                                  <span className="truncate">
+                                <Badge
+                                  variant="outline"
+                                  className={stylex.props(styles.outcomeChip).className}
+                                >
+                                  <span {...stylex.props(styles.truncate)}>
                                     {format(reviewOutcomeMessage(ended.outcome))}
                                     {/* who decided is the second fact here, and
                                         the first one is what the reader came
@@ -272,16 +452,18 @@ export function VersionPicker({
         {/* the hint sits above the keys on a phone: three items on one line
             at 390px left the confirm button too narrow to say which version
             it would confirm */}
-        <div className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground sm:flex-1">
-            {format(m.reviewVersionsFoot)}
-          </p>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Button variant="outline" className="flex-1 sm:flex-none" onClick={onClose}>
+        <div {...stylex.props(styles.foot)}>
+          <p {...stylex.props(styles.footHint)}>{format(m.reviewVersionsFoot)}</p>
+          <div {...stylex.props(styles.footActs)}>
+            <Button
+              variant="outline"
+              className={stylex.props(styles.footButton).className}
+              onClick={onClose}
+            >
               {format(commonMessages.close)}
             </Button>
             <Button
-              className="flex-1 sm:flex-none"
+              className={stylex.props(styles.footButton).className}
               disabled={picked === undefined}
               onClick={() => picked !== undefined && onPick(picked.id)}
             >
