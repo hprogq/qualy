@@ -1,10 +1,24 @@
 import type { ReactNode } from 'react'
 import { TriangleAlertIcon } from 'lucide-react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
+import { clsx } from 'clsx'
 import { Alert, AlertDescription } from '../alert.tsx'
 import { Button } from '../button.tsx'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia } from '../empty.tsx'
 import { Spinner } from '../spinner.tsx'
+
+const styles = stylex.create({
+  waiting: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBlock: 32,
+  },
+  // the visible edge the bare empty state leaves to its callers
+  bordered: {
+    borderWidth: 1,
+  },
+})
 
 // loading, failed-with-retry, or the content — the three states every remote
 // section has, so no screen invents its own combination of them
@@ -37,8 +51,9 @@ export function AsyncSection({
         </div>
       )
     }
+    const sx = stylex.props(styles.waiting)
     return (
-      <div className={cn('flex items-center justify-center py-8', className)}>
+      <div {...sx} className={clsx(sx.className, className)}>
         <Spinner aria-label={loadingLabel} />
       </div>
     )
@@ -49,7 +64,7 @@ export function AsyncSection({
     // looking at, and the sentence and its one action should be where their
     // eye already is.
     return (
-      <Empty className={cn('rounded-lg border border-dashed', className)}>
+      <Empty style={styles.bordered} className={className}>
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <TriangleAlertIcon />

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +31,27 @@ import {
 // The overlays, over the library primitives: the same prop shape as always
 // (open/title/description/onClose/footer), so a screen never re-states how a
 // modal opens, closes or animates.
+
+const styles = stylex.create({
+  // never taller than the window, and the middle row is what gives
+  formShell: {
+    maxHeight: 'calc(100dvh - 2rem)',
+    gridTemplateRows: 'auto minmax(0, 1fr) auto',
+  },
+  panelBody: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflowY: 'auto',
+    paddingInline: 16,
+  },
+  panelStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+    paddingBottom: 16,
+  },
+})
 
 // A centred modal for a short task - creating something, answering a
 // question with a form. Content and buttons arrive as children/footer so the
@@ -81,7 +102,7 @@ export function FormDialog({
       <DialogContent
         restfulFocus={restfulFocus}
         size={size === 'wide' ? '56rem' : '32rem'}
-        className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto]"
+        className={stylex.props(styles.formShell).className}
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -114,14 +135,16 @@ export function SidePanel({
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
       {/* the whole width on a phone: three quarters of a 390px screen is a
-          panel with a dead strip beside it and nothing readable inside */}
+          panel with a dead strip beside it and nothing readable inside.
+          Width and footer direction override the sheet adapter's own
+          utilities, so they stay class strings until that boundary migrates */}
       <SheetContent side="right" className="max-sm:w-full sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           {description && <SheetDescription>{description}</SheetDescription>}
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto px-4">
-          <div className="flex flex-col gap-5 pb-4">{children}</div>
+        <div {...stylex.props(styles.panelBody)}>
+          <div {...stylex.props(styles.panelStack)}>{children}</div>
         </div>
         {footer && <SheetFooter className="flex-row justify-end">{footer}</SheetFooter>}
       </SheetContent>

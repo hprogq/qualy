@@ -1,5 +1,95 @@
 import type { ReactNode } from 'react'
-import { cn } from '../../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '../../theme/tokens.stylex.ts'
+
+const styles = stylex.create({
+  header: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    columnGap: 16,
+    rowGap: 8,
+  },
+  headerBanner: {
+    paddingBlock: 4,
+  },
+  headerText: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  title: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+    fontSize: '1.125rem',
+    lineHeight: '1.75rem',
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+  },
+  description: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  // capped at the header's own width so what a page puts here wraps
+  // instead of running off the edge: a flex item that may not shrink is
+  // sized to its content, and its own wrapping never gets a chance
+  actions: {
+    display: 'flex',
+    maxWidth: '100%',
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  panel: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 12,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: { default: 16, ':first-child': 0 },
+  },
+  panelHead: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  panelText: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  panelTitle: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 600,
+  },
+  panelDescription: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  panelBody: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 16,
+  },
+})
 
 /**
  * What a page is, above what it shows.
@@ -36,28 +126,14 @@ export function PageHeader({
   variant?: 'plain' | 'banner'
 }) {
   return (
-    <div
-      className={cn(
-        'flex flex-wrap items-start justify-between gap-x-4 gap-y-2',
-        variant === 'banner' && 'py-1',
-      )}
-    >
-      <div className="min-w-0 space-y-1">
-        <h1 className="flex min-w-0 items-center gap-2.5 text-lg font-semibold tracking-tight">
-          {title}
-        </h1>
+    <div {...stylex.props(styles.header, variant === 'banner' && styles.headerBanner)}>
+      <div {...stylex.props(styles.headerText)}>
+        <h1 {...stylex.props(styles.title)}>{title}</h1>
         {description !== undefined && description !== '' && (
-          <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-            {description}
-          </p>
+          <p {...stylex.props(styles.description)}>{description}</p>
         )}
       </div>
-      {/* capped at the header's own width so what a page puts here wraps
-          instead of running off the edge: a flex item that may not shrink is
-          sized to its content, and its own wrapping never gets a chance */}
-      {actions && (
-        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
-      )}
+      {actions && <div {...stylex.props(styles.actions)}>{actions}</div>}
     </div>
   )
 }
@@ -82,15 +158,15 @@ export function Panel({
   children: ReactNode
 }) {
   return (
-    <section className="flex min-w-0 flex-col gap-3 border-t pt-4 first:border-t-0 first:pt-0">
-      <div className="flex min-w-0 items-start justify-between gap-4">
-        <div className="min-w-0 space-y-0.5">
-          <h2 className="text-sm font-semibold">{title}</h2>
-          {description && <p className="text-xs text-muted-foreground">{description}</p>}
+    <section {...stylex.props(styles.panel)}>
+      <div {...stylex.props(styles.panelHead)}>
+        <div {...stylex.props(styles.panelText)}>
+          <h2 {...stylex.props(styles.panelTitle)}>{title}</h2>
+          {description && <p {...stylex.props(styles.panelDescription)}>{description}</p>}
         </div>
         {actions}
       </div>
-      <div className="flex min-w-0 flex-col gap-4">{children}</div>
+      <div {...stylex.props(styles.panelBody)}>{children}</div>
     </section>
   )
 }
