@@ -9168,3 +9168,51 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **验收(全部真实执行)**:typecheck 零错;node 839 passed | 17 skipped;浏览器 25 files /
   **174 passed** 连续两轮;build 成功;生产 smoke 干净退出(/health、壳、manifest、brotli
   资源、SIGTERM 0);prettier 通过(.mcp.json 除外)。M7-B(Entry/Item)未开始。
+
+## UI 平台 M7-B:Entry/Item 纵切迁 StyleX(2026-08-26)
+
+- **范围**:参评人申报全家族(MyEntriesPage 双栏工作台/Paper/EntryDialog/EntrySheet/
+  EntryHistory/EvidenceForm/AttachmentLink/EntryStanding/Basis/DocumentLightbox/Appeal 与
+  Supplement 两对话框)+ 管理侧项目配置全家族(ItemSettingsPage/StructureTable/FieldTable/
+  ItemConfigEditor/StageSheet/GroupEditor/Impact/Reason/Void 对话框/PaperStart/Choice/
+  PermissionProfileEditor)。Review/paper-reading 未触碰(见共享边界)。业务语义全冻结:
+  entry 状态机、withdraw/resubmit、expectedItemRevisionId 乐观并发、stale-config 快照协议
+  (mark-never-adopt + 409 双路径)、query keys/live 失效、gate 三态、上传传输、item 类型/
+  字段身份铸造/版本与 impact 决议 payload——逐字保留,浏览器断言零弱化。
+- **token 完整性契约**(M7-A 事故的正式门禁):tools/tests/semantic-tokens.test.ts——
+  .dark 覆盖必有 :root 基值、18 个核心配对齐全、tokens.stylex.ts 指向的每个 var 必有声明、
+  sheet 内 var() 交叉引用可解析;纯 regex 读扁平块,零 CSS parser(node 套件 839→843)。
+- **切片内债务清零**:SelectTrigger 宽度消费 2 处全改 xstyle(Choice 的 className 透传 API
+  换成 xstyle 席位,StructureTable/FieldTable 两消费者随迁);拖拽 ghost 的 classList 借
+  utility(ItemConfigEditor/FieldTable)改为内联样式/编译类——生产侧扫描寄生照 M6.6 规则
+  出清。ROW_DOT 裸 palette 表(amber/emerald/rose)从 standing.ts 迁出为唯一消费者内的
+  StyleX 映射,rose→danger mixes、amber→warning、emerald→success;stale 横幅、退回通知、
+  行内 urgent 字 全部落 warning/danger 令牌。
+- **共享层反哺**:Badge 增 labelClassName 席位(Input.wrapperClassName 同型)——widget 的
+  label span 裁 overflow,把 live dot 的呼吸 halo 切成矩形;compact 徽章补 flexShrink 免压扁。
+- **动效所有权定案(用户连报七项,全修)**:动效探针实测 Mantine 过渡机在本装配从未运行
+  (关闭 30ms 硬 unmount),且 reduced-motion 块特异性低于带 data-side 的入场规则从未生效。
+  裁决:**sheet 动效单一所有者归 adapter**——Mantine transition 归零,退场由 closing 状态机
+  - data-closing CSS 按方向滑出/overlay 同步淡出(Escape/点外/角钮/父级状态四路同径),
+    入场保持 insertion keyframe(mount-already-open 语义不变);dialog/sheet 面板常驻
+    position:relative,角部关闭钮不再在入场 transform 释放瞬间跳去视口角(审核决定 Sheet 的
+    跳角即此);overlay 去 backdrop-blur(iOS 重栅格化闪烁);段头 strip 改工具栏下覆盖层
+    (布局恒定,滚动条 thumb 不再伸缩);触屏文本控件 16px 起(iOS 聚焦不再缩放页面);
+    paper-reading 的 .backdrop-blur-sm 探针改 data-testid="band-strip" 定位。
+    胶囊点击延迟为冻结的 history 语义固有(open=push→整页重渲染→再动画),备案不改。
+- **度量**:切片 24 文件 utility className 689 → 字面 22(全部注明边界:Sheet/Dialog 内容与
+  标题、Breadcrumb、Tabs、DropdownMenuContent、InputGroupInput、FileTile、FieldLabel、
+  sr-only-on-SheetTitle);cn 15 文件→0;cva 0;stylex.props 720;业务 @mantine 0;
+  新 !important 0;新 cast 0。Select 宽度残留全仓 1 处(ReviewInboxPage,M8)。
+- **商品件裁决**:Timeline/Pagination/ToggleGroup/Collapsible 切片内零消费(无需裁决);
+  Tabs ×2、Breadcrumb ×1、InputGroup ×1、ScrollArea ×2、dropdown-menu ×3 正常消费不阻塞,
+  全部 DEFER 到 M9(ScrollArea 经 safe-list 编译类消费)。日期子系统:判定不变(KEEP)。
+  PhaseContextBar:**DEFER**(用户确认:申报页未来会补批次上下文,但载体未定;历史考证其
+  唯一消费者随 2a/2b desk 改版移除)。
+- **视觉走查**:16 场景(工作台明/暗/414、段头覆盖层实景、claim 抽屉明/暗、填报对话框
+  明/暗/414、**stale 横幅(409 真路径触发)**、items 列表明/暗、编辑器明/暗/414;fixture 含
+  四种 standing、未读点、退回+补充材料并存)。零回归;走查过程中顺手抓获并修复 compact
+  badge 两缺陷(用户同步报告)。
+- **验收(全部真实执行)**:typecheck 零错;node **843** passed | 17 skipped;浏览器 25
+  files / **174 passed** 连续两轮(本阶段 pointer 残留零复现);build 成功;生产 smoke 干净
+  退出;prettier 通过(.mcp.json 除外)。Review(M8)未开始。
