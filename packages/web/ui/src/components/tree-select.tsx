@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
-import { cn } from '../lib/cn.ts'
+import { clsx } from 'clsx'
+import * as stylex from '@stylexjs/stylex'
 import {
   coverOf,
   hasSelectedDescendant,
@@ -20,6 +21,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './collapsib
 // flat, each node naming its parent; all words arrive as props.
 
 export type TreeSelectNode = TreeSelectionNode
+
+const styles = stylex.create({
+  list: {
+    display: 'flex',
+    width: 'max-content',
+    minWidth: '100%',
+    flexDirection: 'column',
+    gap: 2,
+  },
+})
 
 export function TreeSelect({
   value,
@@ -45,7 +56,7 @@ export function TreeSelect({
   return (
     // wider than its box when the tree is deep, so the box scrolls sideways
     // rather than truncating every name to an ellipsis
-    <ul className={cn('flex w-max min-w-full flex-col gap-0.5', className)}>
+    <ul className={clsx(stylex.props(styles.list).className, className)}>
       {shape.roots.map((root) => (
         <TreeRow
           key={root.id}

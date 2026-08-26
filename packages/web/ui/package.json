@@ -45,7 +45,6 @@
     "./collapsible": "./src/components/collapsible.tsx",
     "./empty": "./src/components/empty.tsx",
     "./toggle-group": "./src/components/toggle-group.tsx",
-    "./toggle": "./src/components/toggle.tsx",
     "./steps": "./src/components/steps.tsx",
     "./date-range-picker": "./src/components/date-range-picker.tsx",
     "./sheet": "./src/components/sheet.tsx",

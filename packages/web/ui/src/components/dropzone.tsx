@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { useDropzone, type Accept, type FileRejection as DropRejection } from 'react-dropzone'
-import { cn } from '../lib/cn.ts'
+import { clsx } from 'clsx'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '../theme/tokens.stylex.ts'
 
 // Somewhere to drop files, and a row for each one that landed.
 //
@@ -27,12 +29,113 @@ export interface FileRejection {
  * a file that vanishes without a word is the failure this channel exists to
  * end.
  */
+
 const reasonOf = (rejection: DropRejection): FileRejection['reason'] => {
   const codes = rejection.errors.map((error) => error.code)
   if (codes.includes('file-too-large')) return 'too-large'
   if (codes.includes('too-many-files')) return 'too-many'
   return 'type'
 }
+
+const styles = stylex.create({
+  drop: {
+    display: 'flex',
+    cursor: 'pointer',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: {
+      default: tokens.border,
+      ':hover': `color-mix(in oklab, ${tokens.focusRing} 60%, transparent)`,
+      ':focus-visible': tokens.focusRing,
+    },
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    },
+    boxShadow: {
+      default: null,
+      ':focus-visible': `0 0 0 3px color-mix(in oklab, ${tokens.focusRing} 50%, transparent)`,
+    },
+    paddingInline: 16,
+    paddingBlock: 20,
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    outline: 'none',
+  },
+  // a file is over the target: the box says so before it is let go
+  dropOver: {
+    borderColor: tokens.focusRing,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    color: tokens.foreground,
+  },
+  dropOff: {
+    pointerEvents: 'none',
+    opacity: 0.5,
+  },
+  tile: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 10,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+  },
+  tileMedia: {
+    display: 'flex',
+    width: 36,
+    height: 36,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surfaceMuted,
+    color: tokens.mutedForeground,
+  },
+  tileWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  truncate: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  tileMeta: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  tileActions: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 4,
+  },
+})
 
 export function Dropzone({
   onFiles,
@@ -76,11 +179,12 @@ export function Dropzone({
   return (
     <div
       {...getRootProps({
-        className: cn(
-          'flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed px-4 py-5 text-center text-sm text-muted-foreground transition-colors outline-none',
-          'hover:border-ring/60 hover:bg-accent/40 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
-          isDragActive && 'border-ring bg-accent/60 text-foreground',
-          disabled && 'pointer-events-none opacity-50',
+        className: clsx(
+          stylex.props(
+            styles.drop,
+            isDragActive && styles.dropOver,
+            disabled === true && styles.dropOff,
+          ).className,
           className,
         ),
       })}
@@ -107,19 +211,13 @@ export function FileTile({
   className?: string
 }) {
   return (
-    <div className={cn('flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm', className)}>
-      {media !== undefined && (
-        <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
-          {media}
-        </span>
-      )}
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate">{name}</span>
-        {meta !== undefined && (
-          <span className="truncate text-xs text-muted-foreground">{meta}</span>
-        )}
+    <div className={clsx(stylex.props(styles.tile).className, className)}>
+      {media !== undefined && <span {...stylex.props(styles.tileMedia)}>{media}</span>}
+      <span {...stylex.props(styles.tileWords)}>
+        <span {...stylex.props(styles.truncate)}>{name}</span>
+        {meta !== undefined && <span {...stylex.props(styles.tileMeta)}>{meta}</span>}
       </span>
-      {actions !== undefined && <span className="flex shrink-0 items-center gap-1">{actions}</span>}
+      {actions !== undefined && <span {...stylex.props(styles.tileActions)}>{actions}</span>}
     </div>
   )
 }

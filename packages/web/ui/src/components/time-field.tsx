@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { cn } from '../lib/utils.ts'
+import { clsx } from 'clsx'
+import * as stylex from '@stylexjs/stylex'
 import { Input } from './input.tsx'
 
 // A time of day as two boxes that behave like one clock.
@@ -24,6 +25,14 @@ import { Input } from './input.tsx'
 // The caret is hidden and every keystroke is interpreted rather than typed,
 // because half a time is not a time: a field that let you leave `9` sitting
 // in the hours would have to decide later what that meant.
+
+const fieldStyles = stylex.create({
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  },
+})
 
 const pad = (part: number) => String(part).padStart(2, '0')
 
@@ -59,7 +68,7 @@ export function TimeField({
   const secondBox = useRef<HTMLInputElement>(null)
 
   return (
-    <div className={cn('flex items-center gap-1', className)}>
+    <div className={clsx(stylex.props(fieldStyles.row).className, className)}>
       <Segment
         ref={hourBox}
         id={id}
