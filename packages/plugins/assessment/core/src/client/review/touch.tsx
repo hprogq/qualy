@@ -10,6 +10,10 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 /** how far along the track a release still counts as meant */
 const FAR_ENOUGH = 0.85
 
+/** the handle's box and its inset from the track, shared by the arithmetic */
+const HANDLE = 44
+const INSET = 4
+
 const styles = stylex.create({
   track: {
     position: 'relative',
@@ -27,15 +31,22 @@ const styles = stylex.create({
   trackWaiting: {
     opacity: 0.6,
   },
-  trail: {
+  // The ground the handle has covered, drawn as one pill the handle caps:
+  // same inset, same radius, ending under the handle's far edge - not a
+  // square smudge trailing a floating block. Its ink is the handle's own
+  // at a whisper, so the two read as one control filling up.
+  fill: {
     position: 'absolute',
-    insetBlock: 0,
-    left: 0,
-    backgroundColor: `color-mix(in oklab, ${tokens.primary} 10%, transparent)`,
+    top: INSET,
+    bottom: INSET,
+    left: INSET,
+    borderRadius: 9,
+    backgroundColor: `color-mix(in oklab, ${tokens.primary} 12%, transparent)`,
+    willChange: 'width',
   },
   // transitions only while nothing is held: a finger tracks raw, a release
-  // runs the handle and its trail back smoothly
-  trailSettling: {
+  // runs the handle and its fill back smoothly
+  fillSettling: {
     transitionProperty: 'width',
     transitionDuration: '150ms',
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
@@ -64,16 +75,18 @@ const styles = stylex.create({
   },
   handle: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 4,
+    top: INSET,
+    bottom: INSET,
+    left: INSET,
     display: 'flex',
-    width: 44,
+    width: HANDLE,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 9,
     backgroundColor: tokens.primary,
     color: tokens.primaryForeground,
+    boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.1)',
+    willChange: 'transform',
   },
   handleSettling: {
     transitionProperty: 'transform',
@@ -111,6 +124,8 @@ export function SlideKey({
   onConfirmed: () => void
 }) {
   const track = useRef<HTMLDivElement | null>(null)
+  const fill = useRef<HTMLSpanElement | null>(null)
+  const handle = useRef<HTMLButtonElement | null>(null)
   /** how far the handle has been carried, in px from the track's left */
   const [at, setAt] = useState(0)
   // The same distance again, readable at event time: a fast flick lands
@@ -127,9 +142,9 @@ export function SlideKey({
     const rail = track.current
     if (rail === null) return
     const measure = () => {
-      const handle = rail.querySelector('[data-slide-handle]')
-      const width = handle instanceof HTMLElement ? handle.offsetWidth : 0
-      setSpan(Math.max(0, rail.clientWidth - width - 8))
+      const grabbed = rail.querySelector('[data-slide-handle]')
+      const width = grabbed instanceof HTMLElement ? grabbed.offsetWidth : 0
+      setSpan(Math.max(0, rail.clientWidth - width - INSET * 2))
     }
     measure()
     const watch = new ResizeObserver(measure)
@@ -137,11 +152,24 @@ export function SlideKey({
     return () => watch.disconnect()
   }, [])
 
+  /**
+   * The carry, written to the elements in the same event that read the
+   * pointer: a handle that waits for the next render commit trails the
+   * finger by a frame or two, which is exactly what reads as "loose". The
+   * state below still updates - the attribute and the word's fade follow
+   * it - but the geometry never waits for it.
+   */
+  const paint = (next: number) => {
+    if (handle.current !== null) handle.current.style.transform = `translateX(${next}px)`
+    if (fill.current !== null) fill.current.style.width = next <= 0 ? '0px' : `${next + HANDLE}px`
+  }
+
   const letGo = useCallback(() => {
     grip.current = null
     carried.current = 0
     setDragging(false)
     setAt(0)
+    paint(0)
   }, [])
 
   // an act cleared out from under the drag takes the drag with it
@@ -155,6 +183,7 @@ export function SlideKey({
     if (held === null || held.pointer !== event.pointerId) return
     const next = Math.min(span, Math.max(0, held.from + event.clientX - held.start))
     carried.current = next
+    paint(next)
     setAt(next)
   }
 
@@ -167,6 +196,7 @@ export function SlideKey({
       grip.current = null
       setDragging(false)
       setAt(span)
+      paint(span)
       onConfirmed()
       return
     }
@@ -180,14 +210,11 @@ export function SlideKey({
       data-slide-at={span > 0 ? Math.round((at / span) * 100) : 0}
       {...stylex.props(styles.track, !ready && styles.trackWaiting)}
     >
-      {/* The trail the handle has covered, so progress reads as progress.
-          It fills to the handle's left edge and no further: reaching past
-          it painted a tinted block under the resting handle, and the sliver
-          of it in the track's rounded corner read as a stain. */}
       <span
+        ref={fill}
         aria-hidden
-        {...stylex.props(styles.trail, !dragging && styles.trailSettling)}
-        style={{ width: at }}
+        {...stylex.props(styles.fill, !dragging && styles.fillSettling)}
+        style={{ width: at <= 0 ? 0 : at + HANDLE }}
       />
       <span
         {...stylex.props(
@@ -199,6 +226,7 @@ export function SlideKey({
         {ready ? label : waiting}
       </span>
       <button
+        ref={handle}
         type="button"
         data-slide-handle
         disabled={!ready}
