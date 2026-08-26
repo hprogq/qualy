@@ -1,19 +1,6 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  AlertCircleIcon,
-  ArrowLeftIcon,
-  ChevronDownIcon,
-  CircleArrowUpIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CheckIcon,
-  ChevronUpIcon,
-  CornerUpLeftIcon,
-  DownloadIcon,
-  SparklesIcon,
-  InfoIcon,
-} from 'lucide-react'
+import { CheckIcon, CornerUpLeftIcon, InfoIcon } from 'lucide-react'
 import {
   useApi,
   useApiQuery,
@@ -27,13 +14,10 @@ import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog } from '@qualy/ui/admin'
-import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { Kbd } from '@qualy/ui/kbd'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@qualy/ui/dialog'
-import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { toast } from '@qualy/ui/toast'
@@ -41,24 +25,9 @@ import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { BatchScreen } from '../batch/BatchScreen.tsx'
-import { AttachmentLink } from '../entry/AttachmentLink.tsx'
-import { Basis } from '../entry/Basis.tsx'
-import { entryStatusMessage, fieldsOf, trimAmount, type EntryDto } from '../entry/model.ts'
-import { reviewEventMessage, reviewOutcomeMessage } from './events.ts'
-import {
-  readRunScope,
-  runRows,
-  summaryOf,
-  timeLabel,
-  clockLabel,
-  useDayClock,
-  useEntryHistory,
-  idsOf,
-  valueOf,
-  valuesOf,
-  type HistoryRevision,
-  type InboxItemDto,
-} from './model.ts'
+import { entryStatusMessage, type EntryDto } from '../entry/model.ts'
+import { reviewOutcomeMessage } from './events.ts'
+import { readRunScope, runRows, type InboxItemDto } from './model.ts'
 import type { BatchDto } from '../phase/model.ts'
 import type { ReviewDto } from './model.ts'
 import {
@@ -101,6 +70,244 @@ const lg = '@media (min-width: 1024px)'
 const belowSm = '@media (max-width: 639.98px)'
 
 const styles = stylex.create({
+  fill: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  bench: {
+    position: 'relative',
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  // Flex, not a two-track grid: with the rail display:none below its width,
+  // the content fell into the grid's auto track and the 1fr track sat empty
+  // beside it. The rail owns and animates its width as a shrink-0 flex
+  // child just as well.
+  benchRow: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  benchColumn: {
+    display: 'flex',
+    minHeight: 0,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    borderTopWidth: {
+      default: 1,
+      [lg]: 0,
+    },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    borderLeftWidth: {
+      default: 0,
+      [lg]: 1,
+    },
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+  },
+  benchSkeletonSeat: {
+    padding: 24,
+  },
+  benchSkeleton: {
+    height: 256,
+    width: '100%',
+  },
+  loadSkeleton: {
+    height: 384,
+    width: '100%',
+  },
+  readonlyBar: {
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    paddingInline: 20,
+    paddingBlock: 8,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  // the turn was lost mid-thought: the standing colour carries the fact,
+  // mixed over the scheme's own ground
+  goneBanner: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 16,
+    rowGap: 8,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: `color-mix(in oklab, ${tokens.warning} 35%, ${tokens.background})`,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.background})`,
+    paddingInline: 20,
+    paddingBlock: 12,
+  },
+  goneWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  goneTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
+  goneBody: {
+    fontSize: 13,
+    lineHeight: 1.625,
+    color: `color-mix(in oklab, ${tokens.foreground} 75%, transparent)`,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  drillSeat: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  // The same three faces at every width: below lg a snap pager - one whole
+  // face per screen - and beside, a three-column grid. Each face keeps its
+  // own vertical scroll either way.
+  pager: {
+    display: {
+      default: 'flex',
+      [lg]: 'grid',
+    },
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    scrollSnapType: {
+      default: 'x mandatory',
+      [lg]: 'none',
+    },
+    overflowX: {
+      default: 'auto',
+      [lg]: 'hidden',
+    },
+    overflowY: 'hidden',
+    overscrollBehaviorX: 'contain',
+    scrollbarWidth: 'none',
+    gridTemplateColumns: {
+      default: null,
+      [lg]: 'minmax(0, 0.82fr) minmax(0, 1.18fr) 21rem',
+    },
+    gridTemplateRows: {
+      default: null,
+      [lg]: 'minmax(0, 1fr)',
+    },
+  },
+  awaitingFoot: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 20,
+    paddingBlock: 12,
+  },
+  awaitingIcon: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  awaitingWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+  },
+  awaitingTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  awaitingBody: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  outcomeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 20,
+    paddingBlock: 12,
+  },
+  // centred across the workbench by a row that spans it; the row ignores
+  // the pointer so the filing under it stays readable
+  undoRow: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    insetInline: 0,
+    bottom: {
+      default: 144,
+      [lg]: 80,
+    },
+    zIndex: 10,
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  undoSeat: {
+    pointerEvents: 'auto',
+  },
+  // the decision dialogs' last quiet word: faces that matter, still unread
+  cautionCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.warning} 35%, ${tokens.background})`,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.background})`,
+    paddingInline: 12,
+    paddingBlock: 10,
+  },
+  cautionLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  cautionWords: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: 13,
+    lineHeight: 1.625,
+    color: tokens.foreground,
+  },
+  cautionGo: {
+    flexShrink: 0,
+    fontSize: 13,
+    fontWeight: 500,
+    color: tokens.foreground,
+    textDecorationLine: 'underline',
+    textUnderlineOffset: 2,
+  },
   decisionFooter: {
     display: 'flex',
     flexShrink: 0,
@@ -232,6 +439,11 @@ const styles = stylex.create({
     display: 'grid',
     gridTemplateColumns: '7rem minmax(0, 1fr)',
     gap: 12,
+  },
+  siblingStanding: {
+    fontSize: 12,
+    fontWeight: 400,
+    color: tokens.mutedForeground,
   },
   siblingLabel: {
     fontSize: 14,
@@ -662,18 +874,13 @@ function Workbench({ batch }: { batch: BatchDto }) {
   }
   const caution = (gaps: readonly { part: WorkbenchPart; say: MessageDescriptor }[]) =>
     gaps.length === 0 ? undefined : (
-      <div
-        data-testid="decision-caution"
-        className="flex flex-col gap-1.5 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/25"
-      >
+      <div data-testid="decision-caution" {...stylex.props(styles.cautionCard)}>
         {gaps.map((gap) => (
-          <span key={gap.part} className="flex items-baseline gap-2">
-            <span className="min-w-0 flex-1 text-[13px] leading-relaxed text-amber-950 dark:text-amber-100">
-              {format(gap.say)}
-            </span>
+          <span key={gap.part} {...stylex.props(styles.cautionLine)}>
+            <span {...stylex.props(styles.cautionWords)}>{format(gap.say)}</span>
             <button
               type="button"
-              className="shrink-0 text-[13px] font-medium text-amber-950 underline underline-offset-2 dark:text-amber-100"
+              {...stylex.props(styles.cautionGo)}
               onClick={() => {
                 setDialog(null)
                 partGo.current?.(gap.part)
@@ -920,8 +1127,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
         void inbox.refetch()
         void detail.refetch()
       }}
-      skeleton={<Skeleton className="h-96 w-full" />}
-      className="flex min-h-0 flex-1 flex-col"
+      skeleton={<Skeleton className={stylex.props(styles.loadSkeleton).className} />}
+      xstyle={styles.fill}
     >
       {/* Given its height by the shell rather than measuring the window for
           one. Measuring was wrong in both directions: taken while the pane
@@ -937,13 +1144,13 @@ function Workbench({ batch }: { batch: BatchDto }) {
           growing and the decision going off the bottom of it. On a phone
           that is the whole point - what is being decided scrolls, and what
           decides it stays under the thumb. */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div {...stylex.props(styles.bench)}>
         {/* Flex, not a two-track grid: with the rail display:none below its
             width, the content fell into the grid's `auto` track and the 1fr
             track sat empty beside it - the whole workbench at half width,
             found as a left-leaning done screen. The rail owns and animates
             its width as a shrink-0 flex child just as well. */}
-        <div className="flex min-h-0 flex-1">
+        <div {...stylex.props(styles.benchRow)}>
           <QueueRail
             rows={remaining}
             currentId={instanceId}
@@ -955,7 +1162,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
           />
           <div
             data-review-route={review?.chain.route ?? 'normal'}
-            className="flex min-h-0 min-w-0 flex-1 flex-col border-t lg:border-t-0 lg:border-l"
+            {...stylex.props(styles.benchColumn)}
           >
             {done ? (
               <DoneScreen
@@ -967,8 +1174,8 @@ function Workbench({ batch }: { batch: BatchDto }) {
                 )}
               />
             ) : review === undefined ? (
-              <div className="p-6">
-                <Skeleton className="h-64 w-full" />
+              <div {...stylex.props(styles.benchSkeletonSeat)}>
+                <Skeleton className={stylex.props(styles.benchSkeleton).className} />
               </div>
             ) : (
               <>
@@ -1005,10 +1212,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   !review.capabilities.canDecide &&
                   !review.capabilities.canCancelSupplement &&
                   !review.capabilities.canAnswerSupplement && (
-                    <p
-                      data-testid="review-readonly"
-                      className="border-b bg-muted/40 px-5 py-2 text-xs text-muted-foreground"
-                    >
+                    <p data-testid="review-readonly" {...stylex.props(styles.readonlyBar)}>
                       {format(m.reviewReadOnly)}
                     </p>
                   )}
@@ -1021,18 +1225,16 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   <div
                     data-testid="review-gone"
                     data-lost={detail.data?.review.outcome ?? 'unreadable'}
-                    className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-amber-200 bg-amber-50/70 px-5 py-3 dark:border-amber-900/50 dark:bg-amber-950/25"
+                    {...stylex.props(styles.goneBanner)}
                   >
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
-                        {format(m.reviewGoneTitle)}
-                      </p>
-                      <p className="text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-200/70">
+                    <div {...stylex.props(styles.goneWords)}>
+                      <p {...stylex.props(styles.goneTitle)}>{format(m.reviewGoneTitle)}</p>
+                      <p {...stylex.props(styles.goneBody)}>
                         {format(lostBecause)}
                         {` ${format(m.reviewGoneKept)}`}
                       </p>
                     </div>
-                    <span className="flex-1" />
+                    <span {...stylex.props(styles.spacer)} />
                     {remaining.some((row) => row.instanceId !== instanceId) ? (
                       <Button
                         size="sm"
@@ -1084,7 +1286,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
                     partGo.current = go
                   }}
                 />
-                <Drill move="next" drillKey={instanceId} className="flex min-h-0 flex-1 flex-col">
+                <Drill
+                  move="next"
+                  drillKey={instanceId}
+                  className={stylex.props(styles.drillSeat).className}
+                >
                   {/* The same three faces at every width. Beside each other
                       on a desk; below lg a snap pager - one whole face per
                       screen, the filing in the middle and first - because
@@ -1092,10 +1298,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                       focal point at all. Each face keeps its own vertical
                       scroll either way, so leaving and returning finds a
                       reading where it was left. */}
-                  <div
-                    ref={setStack}
-                    className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] lg:grid lg:snap-none lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)_21rem] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden"
-                  >
+                  <div ref={setStack} {...stylex.props(styles.pager)}>
                     <FlowColumn review={review} onTrail={openTrail} lifted={!beside} />
                     <FilingColumn
                       review={review}
@@ -1109,15 +1312,17 @@ function Workbench({ batch }: { batch: BatchDto }) {
                 </Drill>
                 {bar && <DecisionBar review={review} onDialog={setDialog} />}
                 {review.state === 'awaiting_supplement' && (
-                  <footer className="flex flex-wrap items-center gap-3 border-t px-5 py-3">
-                    <InfoIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                    <div className="flex min-w-0 flex-col">
-                      <p className="text-sm font-medium">{format(m.supplementWaitingTitle)}</p>
-                      <p className="text-xs text-muted-foreground">
+                  <footer {...stylex.props(styles.awaitingFoot)}>
+                    <InfoIcon aria-hidden className={stylex.props(styles.awaitingIcon).className} />
+                    <div {...stylex.props(styles.awaitingWords)}>
+                      <p {...stylex.props(styles.awaitingTitle)}>
+                        {format(m.supplementWaitingTitle)}
+                      </p>
+                      <p {...stylex.props(styles.awaitingBody)}>
                         {format(m.supplementWaitingBody, { who: review.participantName })}
                       </p>
                     </div>
-                    <span className="flex-1" />
+                    <span {...stylex.props(styles.spacer)} />
                     {review.capabilities.canCancelSupplement &&
                       (() => {
                         const open = review.supplements.find((one) => one.status === 'open')
@@ -1135,7 +1340,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
                   </footer>
                 )}
                 {review.state === 'completed' && review.outcome !== null && (
-                  <div className="flex items-center gap-2 border-t px-5 py-3">
+                  <div {...stylex.props(styles.outcomeRow)}>
                     <Badge variant="outline">{format(reviewOutcomeMessage(review.outcome))}</Badge>
                   </div>
                 )}
@@ -1151,8 +1356,11 @@ function Workbench({ batch }: { batch: BatchDto }) {
             that rail happened to be - and off the screen when it was not
             there at all. The row ignores the pointer so the filing under it
             stays readable. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-36 z-10 flex justify-center lg:bottom-20">
-          <Appear show={deferred.pending !== null} className="pointer-events-auto">
+        <div {...stylex.props(styles.undoRow)}>
+          <Appear
+            show={deferred.pending !== null}
+            className={stylex.props(styles.undoSeat).className}
+          >
             {lingeringStaged !== null && (
               <UndoPill staged={lingeringStaged} deadline={deferred.deadline} onUndo={undoStaged} />
             )}
@@ -1258,18 +1466,6 @@ const DECISION_LABEL: Record<SessionEntry['decision'], MessageDescriptor> = {
   reject: m.reviewReject,
   escalate: m.reviewEscalate,
   supplement: m.reviewSupplementAsked,
-}
-
-/** a button that says what it does before it is pressed */
-function Explained({ why, children }: { why: string; children: ReactNode }) {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent>{why}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
 }
 
 /** the word box and the four choices; only ⌘↵ ever submits */
@@ -1464,7 +1660,7 @@ function SiblingSheet({
         <DialogHeader>
           <DialogTitle className="flex items-baseline gap-2 text-sm">
             {itemTitle}
-            <span className="text-xs font-normal text-muted-foreground">
+            <span {...stylex.props(styles.siblingStanding)}>
               {sibling === null
                 ? ''
                 : format(entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther)}
