@@ -1,12 +1,288 @@
 import { memo, useMemo } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
-import { cn } from '@qualy/ui/cn'
 import { Kbd } from '@qualy/ui/kbd'
 import { assessmentMessages as m } from '../i18n.ts'
 import { entryStatusMessage, trimAmount, type EntryDto } from '../entry/model.ts'
 import { summaryOf, type ReviewDto } from './model.ts'
 import { useFinePointer } from './pointer.ts'
 import { Pane } from './Pane.tsx'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
+
+const paneStyles = stylex.create({
+  frame: {
+    borderLeftWidth: {
+      default: 0,
+      '@media (min-width: 1024px)': 1,
+    },
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+  },
+  inner: {
+    gap: 16,
+    padding: {
+      default: 16,
+      '@media (min-width: 1024px)': 20,
+    },
+  },
+})
+
+const styles = stylex.create({
+  clauseCard: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 8,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    paddingInline: 12,
+    paddingBlock: 10,
+  },
+  caption: {
+    fontSize: 11,
+    fontWeight: 500,
+    letterSpacing: '0.025em',
+    textTransform: 'uppercase',
+    color: tokens.mutedForeground,
+  },
+  clauseBody: {
+    fontSize: 14,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
+  block: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 16,
+  },
+  headRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  noShrink: {
+    flexShrink: 0,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  aside: {
+    flexShrink: 0,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  siblingList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  siblingButton: {
+    marginInline: -6,
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: tokens.radiusMd,
+    paddingInline: 6,
+    paddingBlock: 4,
+    textAlign: 'left',
+    fontSize: 14,
+    transitionProperty: 'color, background-color',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+  },
+  siblingDot: {
+    width: 6,
+    height: 6,
+    flexShrink: 0,
+    borderRadius: '9999px',
+  },
+  dotCurrent: {
+    backgroundColor: tokens.foreground,
+  },
+  dotRefused: {
+    backgroundColor: tokens.danger,
+  },
+  dotQuiet: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+  },
+  siblingName: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  nameCurrent: {
+    fontWeight: 500,
+  },
+  nameOther: {
+    color: tokens.mutedForeground,
+  },
+  thisMark: {
+    paddingRight: 6,
+    color: tokens.mutedForeground,
+  },
+  note: {
+    fontSize: 12,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  aboutRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+    rowGap: 2,
+    fontSize: 14,
+  },
+  aboutLabel: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  leader: {
+    height: 1,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    backgroundColor: tokens.border,
+  },
+  aboutValue: {
+    marginLeft: 'auto',
+    flexShrink: 0,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  routeStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  routeName: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  step: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  stepNo: {
+    marginTop: 1,
+    display: 'flex',
+    width: 20,
+    height: 20,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  stepNoCurrent: {
+    borderColor: tokens.foreground,
+    backgroundColor: tokens.foreground,
+    color: tokens.background,
+  },
+  stepNoPassed: {
+    borderColor: 'transparent',
+    backgroundColor: tokens.surfaceMuted,
+    color: tokens.foreground,
+  },
+  stepNoAhead: {
+    borderColor: tokens.border,
+    color: tokens.mutedForeground,
+  },
+  stepBody: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  stepHead: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  stepName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+  },
+  stepNameCurrent: {
+    fontWeight: 500,
+  },
+  stepWho: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  opinions: {
+    marginTop: 6,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    padding: 10,
+  },
+  opinion: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  opinionHead: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 8,
+    fontSize: 12,
+  },
+  opinionWho: {
+    fontWeight: 500,
+  },
+  opinionApprove: {
+    color: tokens.successForeground,
+  },
+  opinionReject: {
+    color: tokens.danger,
+  },
+  opinionReason: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+})
 
 /** what stands beside the filing: the terms it is judged under */
 export const ContextRail = memo(function ContextRail({
@@ -22,8 +298,8 @@ export const ContextRail = memo(function ContextRail({
       part="about"
       // a pager face is a whole page, so it keeps the page's white; only
       // the desk needs the border to mark where the reference column starts
-      className="lg:border-l"
-      inner="gap-4 p-4 lg:p-5"
+      xstyle={paneStyles.frame}
+      innerXstyle={paneStyles.inner}
     >
       <AboutParts review={review} onOpenSibling={onOpenSibling} />
     </Pane>
@@ -64,19 +340,13 @@ function AboutParts({
     <>
       {/* the clause. Reserved, not written: nothing in the round carries the
           wording yet, so the block holds its place. */}
-      <section className="flex shrink-0 flex-col gap-2 rounded-xl bg-muted/60 px-3 py-2.5">
-        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-          {format(m.myEntriesBasis)}
-        </p>
-        <p className="text-sm leading-relaxed text-pretty text-muted-foreground">
-          {format(m.myEntriesBasisSoon)}
-        </p>
+      <section {...stylex.props(styles.clauseCard)}>
+        <p {...stylex.props(styles.caption)}>{format(m.myEntriesBasis)}</p>
+        <p {...stylex.props(styles.clauseBody)}>{format(m.myEntriesBasisSoon)}</p>
       </section>
 
-      <section className="flex shrink-0 flex-col gap-2.5 border-t pt-4">
-        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-          {format(m.reviewChainTitle)}
-        </p>
+      <section {...stylex.props(styles.block)}>
+        <p {...stylex.props(styles.caption)}>{format(m.reviewChainTitle)}</p>
         <Route
           stages={review.chain.normal}
           here={review.chain.route === 'normal' ? review.chain.stageId : null}
@@ -94,10 +364,8 @@ function AboutParts({
       </section>
 
       {context !== null && (
-        <section className="flex shrink-0 flex-col gap-2.5 border-t pt-4">
-          <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            {format(m.reviewAboutTitle)}
-          </p>
+        <section {...stylex.props(styles.block)}>
+          <p {...stylex.props(styles.caption)}>{format(m.reviewAboutTitle)}</p>
           {context.worth.each !== null && (
             <AboutRow label={format(m.reviewAboutEach)} value={trimAmount(context.worth.each)} />
           )}
@@ -120,23 +388,23 @@ function AboutParts({
       )}
 
       {context !== null && context.siblings.length > 0 && (
-        <section className="flex shrink-0 flex-col gap-2.5 border-t pt-4">
-          <div className="flex items-baseline gap-2">
-            <p className="shrink-0 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        <section {...stylex.props(styles.block)}>
+          <div {...stylex.props(styles.headRow)}>
+            <p {...stylex.props(styles.caption, styles.noShrink)}>
               {format(m.reviewSiblingsTitle)}
             </p>
-            <span className="flex-1" />
+            <span {...stylex.props(styles.spacer)} />
             {/* the keys, once, over the list they open - rather than the
                 count, which the list itself already shows */}
             {fine && (
-              <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+              <span {...stylex.props(styles.aside)}>
                 {format(m.reviewSiblingsKeys, {
                   count: Math.min(context.siblings.length, 9),
                 })}
               </span>
             )}
           </div>
-          <ul className="flex flex-col gap-0.5">
+          <ul {...stylex.props(styles.siblingList)}>
             {context.siblings.map((sibling, index) => (
               <li key={sibling.entryId}>
                 {/* every claim opens: reading one against another is how a
@@ -144,35 +412,33 @@ function AboutParts({
                 <button
                   type="button"
                   onClick={() => onOpenSibling(sibling.entryId)}
-                  className="-mx-1.5 flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm transition-colors hover:bg-accent/60"
+                  {...stylex.props(styles.siblingButton)}
                 >
                   <span
                     aria-hidden
-                    className={cn(
-                      'size-1.5 shrink-0 rounded-full',
+                    {...stylex.props(
+                      styles.siblingDot,
                       sibling.current
-                        ? 'bg-foreground'
+                        ? styles.dotCurrent
                         : sibling.status === 'rejected' || sibling.status === 'needs_revision'
-                          ? 'bg-destructive'
-                          : 'bg-muted-foreground/40',
+                          ? styles.dotRefused
+                          : styles.dotQuiet,
                     )}
                   />
                   <span
-                    className={cn(
-                      'min-w-0 flex-1 truncate',
-                      sibling.current ? 'font-medium' : 'text-muted-foreground',
+                    {...stylex.props(
+                      styles.siblingName,
+                      sibling.current ? styles.nameCurrent : styles.nameOther,
                     )}
                   >
                     {sibling.current && (
-                      <span className="pr-1.5 text-muted-foreground">
-                        {format(m.reviewSiblingThis)}
-                      </span>
+                      <span {...stylex.props(styles.thisMark)}>{format(m.reviewSiblingThis)}</span>
                     )}
                     {summaryOf(sibling.values) === ''
                       ? review.itemTitle
                       : summaryOf(sibling.values)}
                   </span>
-                  <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                  <span {...stylex.props(styles.aside)}>
                     {format(
                       entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther,
                     )}
@@ -184,9 +450,7 @@ function AboutParts({
           </ul>
           {context.worth.maxEntries !== null &&
             context.siblings.length >= context.worth.maxEntries && (
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {format(m.reviewSiblingsFull)}
-              </p>
+              <p {...stylex.props(styles.note)}>{format(m.reviewSiblingsFull)}</p>
             )}
         </section>
       )}
@@ -200,10 +464,10 @@ function AboutRow({ label, value }: { label: string; value: string }) {
     // three rows down, which is what a column of unequal names needs. It
     // wraps rather than squeezing the name: a truncated "材料时间范围" names
     // nothing, and the range is long enough to want the width.
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-      <span className="min-w-0 truncate text-muted-foreground">{label}</span>
-      <span aria-hidden className="h-px min-w-0 flex-1 bg-border" />
-      <span className="ml-auto shrink-0 tabular-nums">{value}</span>
+    <div {...stylex.props(styles.aboutRow)}>
+      <span {...stylex.props(styles.aboutLabel)}>{label}</span>
+      <span aria-hidden {...stylex.props(styles.leader)} />
+      <span {...stylex.props(styles.aboutValue)}>{value}</span>
     </div>
   )
 }
@@ -224,34 +488,34 @@ function Route({
   const { format } = useI18n()
   const at = stages.findIndex((stage) => stage.id === here)
   return (
-    <div className="flex flex-col gap-1.5">
+    <div {...stylex.props(styles.routeStack)}>
       {/* the route's name is part of the map, not another caption: the
           caption above says what the block is, this says which road */}
-      {title !== null && <p className="text-sm font-medium">{title}</p>}
-      <ol className="flex flex-col gap-1.5">
+      {title !== null && <p {...stylex.props(styles.routeName)}>{title}</p>}
+      <ol {...stylex.props(styles.routeStack)}>
         {stages.map((stage, index) => {
           const current = stage.id === here
           // behind the step this round stands at, so it has been through
           const passed = at !== -1 && index < at
           return (
-            <li key={stage.id} className="flex items-start gap-2">
+            <li key={stage.id} {...stylex.props(styles.step)}>
               <span
-                className={cn(
-                  'mt-px flex size-5 shrink-0 items-center justify-center rounded-full border text-xs tabular-nums',
+                {...stylex.props(
+                  styles.stepNo,
                   current
-                    ? 'border-foreground bg-foreground text-background'
+                    ? styles.stepNoCurrent
                     : passed
-                      ? 'border-transparent bg-muted text-foreground'
-                      : 'border-border text-muted-foreground',
+                      ? styles.stepNoPassed
+                      : styles.stepNoAhead,
                 )}
               >
                 {index + 1}
               </span>
-              <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex min-w-0 items-baseline gap-2">
+              <div {...stylex.props(styles.stepBody)}>
+                <div {...stylex.props(styles.stepHead)}>
                   {/* the administrator's name for the step where one exists;
                       the unit-and-roles composite only as the fallback */}
-                  <span className={cn('min-w-0 truncate text-sm', current && 'font-medium')}>
+                  <span {...stylex.props(styles.stepName, current && styles.stepNameCurrent)}>
                     {stage.nodeName === null
                       ? format(
                           stage.skipped === 'no-holder'
@@ -260,11 +524,11 @@ function Route({
                         )
                       : (stage.label ?? `${stage.nodeName}／${listed.format(stage.roleNames)}`)}
                   </span>
-                  <span className="flex-1" />
+                  <span {...stylex.props(styles.spacer)} />
                   {/* what happened at this step, where the eye already is:
                       a step with nothing beside it is one still ahead */}
                   {(current || passed) && (
-                    <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                    <span {...stylex.props(styles.aside)}>
                       {format(
                         current
                           ? m.reviewStageHere
@@ -276,7 +540,7 @@ function Route({
                   )}
                 </div>
                 {stage.nodeName !== null && stage.reviewers !== null && (
-                  <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  <span {...stylex.props(styles.stepWho)}>
                     {stage.reviewers.length === 0
                       ? format(m.reviewStageNobody)
                       : format(m.reviewStageReviewers, { who: listed.format(stage.reviewers) })}
@@ -288,21 +552,21 @@ function Route({
                   <div
                     data-testid="stage-opinions"
                     data-stage={stage.id}
-                    className="mt-1.5 flex flex-col gap-1.5 rounded-lg bg-muted/50 p-2.5"
+                    {...stylex.props(styles.opinions)}
                   >
                     {stage.opinions.map((opinion, said) => (
-                      <div key={said} className="flex min-w-0 flex-col gap-0.5">
-                        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs">
-                          <span className="font-medium">
+                      <div key={said} {...stylex.props(styles.opinion)}>
+                        <div {...stylex.props(styles.opinionHead)}>
+                          <span {...stylex.props(styles.opinionWho)}>
                             {opinion.who ?? format(m.eventSomebody)}
                           </span>
                           <span
                             data-opinion={opinion.decision}
-                            className={
+                            {...stylex.props(
                               opinion.decision === 'approve'
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : 'text-rose-600 dark:text-rose-400'
-                            }
+                                ? styles.opinionApprove
+                                : styles.opinionReject,
+                            )}
                           >
                             {format(
                               opinion.decision === 'approve'
@@ -311,15 +575,11 @@ function Route({
                             )}
                           </span>
                           {opinion.reason !== null && (
-                            <span className="min-w-0 truncate text-muted-foreground">
-                              {opinion.reason}
-                            </span>
+                            <span {...stylex.props(styles.opinionReason)}>{opinion.reason}</span>
                           )}
                         </div>
                         {opinion.comment !== null && (
-                          <p className="text-xs leading-relaxed text-muted-foreground">
-                            {opinion.comment}
-                          </p>
+                          <p {...stylex.props(styles.note)}>{opinion.comment}</p>
                         )}
                       </div>
                     ))}

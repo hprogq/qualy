@@ -421,7 +421,7 @@ describe('the history under the flow pane', () => {
     const grounds = page.getByText('相关时间不在有效范围内').first().element() as HTMLElement
     expect(grounds.getBoundingClientRect().width).toBeGreaterThan(60)
     // and the card itself holds everything, clock included
-    const card = grounds.closest('[class*="rounded-xl"]') as HTMLElement
+    const card = grounds.closest('[data-testid="prior-round-card"]') as HTMLElement
     expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth + 1)
   })
 })

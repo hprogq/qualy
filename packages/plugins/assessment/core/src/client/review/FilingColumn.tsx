@@ -1,12 +1,13 @@
 import { memo } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { ChevronRightIcon, DownloadIcon, SparklesIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { Kbd } from '@qualy/ui/kbd'
 import { Appear } from '@qualy/ui/reveal'
 import { useLingering } from '@qualy/ui/use-lingering'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from '../entry/AttachmentLink.tsx'
 import { attachmentContentUrl, fieldsOf } from '../entry/model.ts'
@@ -21,6 +22,343 @@ import {
 } from './model.ts'
 import { useFinePointer } from './pointer.ts'
 import { Pane, type WorkbenchPart } from './Pane.tsx'
+
+const belowLg = '@media (max-width: 1023.98px)'
+const lg = '@media (min-width: 1024px)'
+
+const styles = stylex.create({
+  frame: {
+    borderLeftWidth: {
+      default: 0,
+      [lg]: 1,
+    },
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+  },
+  inner: {
+    gap: 16,
+    padding: 20,
+  },
+  insight: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    gap: 4,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    paddingInline: 20,
+    paddingBlock: 12,
+  },
+  insightHead: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 8,
+    rowGap: 2,
+  },
+  // in the theme's own ink: the workbench is greyscale but for the two
+  // verdict colours, and the machine's note is not a verdict
+  insightIcon: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  insightTitle: {
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  insightCaveat: {
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  insightBody: {
+    fontSize: 14,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  summary: {
+    marginTop: -4,
+    display: {
+      default: 'flex',
+      [lg]: 'none',
+    },
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: tokens.radiusLg,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    paddingInline: 12,
+    paddingBlock: 8,
+    textAlign: 'left',
+  },
+  summaryLines: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  summaryLine: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+  },
+  summaryLead: {
+    fontWeight: 500,
+  },
+  summaryRest: {
+    color: tokens.mutedForeground,
+  },
+  summaryChevron: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  filing: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 14,
+  },
+  filingHead: {
+    display: 'flex',
+    flexDirection: 'column',
+    borderBottomWidth: {
+      default: 1,
+      [belowLg]: 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingBottom: {
+      default: 8,
+      [belowLg]: 0,
+    },
+  },
+  headRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headTitle: {
+    display: {
+      default: null,
+      [belowLg]: 'none',
+    },
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  filedVersion: {
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  xs: {
+    fontSize: 12,
+  },
+  compareCount: {
+    paddingTop: 6,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  fieldList: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  fieldRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    paddingBottom: 20,
+  },
+  fieldName: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 10,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  anywhere: {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  filesCount: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  saveButton: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    cursor: 'pointer',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 12,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    transitionProperty: 'color',
+  },
+  saveIcon: {
+    width: 14,
+    height: 14,
+  },
+  fieldValue: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    fontSize: 16,
+  },
+  mutedInk: {
+    color: tokens.mutedForeground,
+  },
+  fileRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  answer: {
+    lineHeight: 1.625,
+  },
+  answerChanged: {
+    fontWeight: 500,
+  },
+  goneBlock: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+    paddingTop: 12,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  goneTag: {
+    alignSelf: 'flex-start',
+    borderRadius: tokens.radiusSm,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 6,
+    paddingBlock: 2,
+  },
+  struck: {
+    minWidth: 0,
+    textDecorationLine: 'line-through',
+  },
+  wasLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    paddingTop: 6,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  wasTag: {
+    flexShrink: 0,
+    borderRadius: tokens.radiusSm,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 6,
+    paddingBlock: 2,
+  },
+  noteName: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  proseValue: {
+    minWidth: 0,
+    fontSize: 16,
+    lineHeight: 1.625,
+  },
+  supSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  supHead: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    columnGap: 10,
+    rowGap: 4,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 12,
+  },
+  supTitle: {
+    flexShrink: 0,
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  supNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  card: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 14,
+  },
+  cardHead: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  cardWhen: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  instructions: {
+    borderLeftWidth: 2,
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+    paddingLeft: 10,
+    fontSize: 14,
+    lineHeight: 1.625,
+  },
+  answerList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  askedRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  askedName: {
+    minWidth: 0,
+    fontSize: 14,
+    overflowWrap: 'anywhere',
+    color: tokens.mutedForeground,
+  },
+})
 
 /**
  * What was actually filed, in the order it was asked for.
@@ -139,26 +477,21 @@ export const FilingColumn = memo(function FilingColumn({
     <Pane
       as="main"
       part="filing"
-      className="lg:border-l"
-      inner="gap-4 p-5"
+      xstyle={styles.frame}
+      innerXstyle={styles.inner}
       footer={
         // What the machine noticed, on the pane's own floor: there whatever
         // the filing's length, so the checks always sit after the evidence,
         // never over it. The caveat is part of the block: a machine's note
         // without its error bar reads as a verdict.
-        <aside className="flex shrink-0 flex-col gap-1 border-t bg-muted/30 px-5 py-3">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <SparklesIcon
-              aria-hidden
-              className="size-3.5 shrink-0 text-indigo-500 dark:text-indigo-400"
-            />
-            <p className="text-xs font-semibold">{format(m.reviewInsight)}</p>
-            <span className="flex-1" />
-            <p className="text-[11px] text-muted-foreground">{format(m.reviewInsightCaveat)}</p>
+        <aside {...stylex.props(styles.insight)}>
+          <div {...stylex.props(styles.insightHead)}>
+            <SparklesIcon aria-hidden className={stylex.props(styles.insightIcon).className} />
+            <p {...stylex.props(styles.insightTitle)}>{format(m.reviewInsight)}</p>
+            <span {...stylex.props(styles.spacer)} />
+            <p {...stylex.props(styles.insightCaveat)}>{format(m.reviewInsightCaveat)}</p>
           </div>
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {format(m.reviewInsightSoon)}
-          </p>
+          <p {...stylex.props(styles.insightBody)}>{format(m.reviewInsightSoon)}</p>
         </aside>
       }
     >
@@ -167,48 +500,53 @@ export const FilingColumn = memo(function FilingColumn({
         type="button"
         data-testid="filing-summary"
         onClick={() => onPart('flow')}
-        className="-mt-1 flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2 text-left lg:hidden"
+        {...stylex.props(styles.summary)}
       >
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span {...stylex.props(styles.summaryLines)}>
           {summaryLines.map((line, index) => (
             <span
               key={index}
-              className={cn(
-                'truncate',
-                index === 0 ? 'text-xs font-medium' : 'text-xs text-muted-foreground',
+              {...stylex.props(
+                styles.summaryLine,
+                index === 0 ? styles.summaryLead : styles.summaryRest,
               )}
             >
               {line}
             </span>
           ))}
         </span>
-        <ChevronRightIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <ChevronRightIcon aria-hidden className={stylex.props(styles.summaryChevron).className} />
       </button>
-      <section className="flex min-h-0 flex-1 flex-col gap-3.5">
-        <div className="flex flex-col border-b pb-2 max-lg:border-b-0 max-lg:pb-0">
-          <div className="flex flex-wrap items-center gap-2.5">
+      <section {...stylex.props(styles.filing)}>
+        <div {...stylex.props(styles.filingHead)}>
+          <div {...stylex.props(styles.headRow)}>
             {/* stacked, the strip names the part; the version and the
                 compare key are what is left to say */}
-            <h3 className="text-sm font-semibold max-lg:hidden">{format(m.reviewPayloadTitle)}</h3>
-            <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+            <h3 {...stylex.props(styles.headTitle)}>{format(m.reviewPayloadTitle)}</h3>
+            <p {...stylex.props(styles.filedVersion)}>
               {format(m.reviewFiledVersion, {
                 no: review.revision.revisionNo,
                 at: timeLabel(review.submittedAt),
               })}
             </p>
-            <span className="flex-1" />
+            <span {...stylex.props(styles.spacer)} />
             {review.revision.revisionNo > 1 && (
               <>
                 <Button
                   variant={comparing === null ? 'outline' : 'secondary'}
                   size="sm"
-                  className="text-xs"
+                  className={stylex.props(styles.xs).className}
                   onClick={() => onCompare(comparing === null ? 'previous' : null)}
                 >
                   {format(comparing === null ? m.reviewCompareOn : m.reviewCompareOff)}
                   {fine && <Kbd>D</Kbd>}
                 </Button>
-                <Button variant="outline" size="sm" className="text-xs" onClick={onVersions}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={stylex.props(styles.xs).className}
+                  onClick={onVersions}
+                >
                   {format(m.reviewPickVersion)}
                   {fine && <Kbd>⇧D</Kbd>}
                 </Button>
@@ -222,7 +560,7 @@ export const FilingColumn = memo(function FilingColumn({
               was reading against lingers through the exit - the sentence has
               to stay whole while it is leaving. */}
           <Appear key={String(arrived)} show={against !== null} collapse>
-            <p className="pt-1.5 text-xs text-muted-foreground">
+            <p {...stylex.props(styles.compareCount)}>
               {format(m.reviewCompareCount, {
                 count: changes,
                 no: lingeringAgainst?.revisionNo ?? 0,
@@ -230,7 +568,7 @@ export const FilingColumn = memo(function FilingColumn({
             </p>
           </Appear>
         </div>
-        <dl className="flex flex-col">
+        <dl {...stylex.props(styles.fieldList)}>
           {fields.map((field) => {
             const now = valueOf(record[field.key])
             const previous = was.get(field.key)
@@ -249,42 +587,45 @@ export const FilingColumn = memo(function FilingColumn({
               // a fixed label gutter there costs more width than the
               // alignment buys - a long field name wrapped to three lines
               // against a one-line answer.
-              <div key={field.key} className="flex flex-col gap-1.5 pb-5">
+              <div key={field.key} {...stylex.props(styles.fieldRow)}>
                 {/* A field's name is what identifies its row, so a long one
                     wraps rather than being cut or shoved into the answer
                     beside it: "参加校级以上竞赛并获奖" truncated to its first
                     few characters names nothing. The count of files sits
                     under the name, in the same column. */}
-                <dt className="flex min-w-0 items-baseline gap-2.5 text-sm text-muted-foreground">
-                  <span className="min-w-0 [overflow-wrap:anywhere]">{field.label}</span>
+                <dt {...stylex.props(styles.fieldName)}>
+                  <span {...stylex.props(styles.anywhere)}>{field.label}</span>
                   {field.type === 'attachment' && cited.length > 0 && (
                     <>
-                      <span className="shrink-0 text-xs tabular-nums">
+                      <span {...stylex.props(styles.filesCount)}>
                         {format(m.reviewFilesCount, { count: cited.length })}
                       </span>
-                      <span className="flex-1" />
+                      <span {...stylex.props(styles.spacer)} />
                       {/* this field's files in a run of saves: a zip would
                           be a server-side archive nobody asked for yet */}
                       <button
                         type="button"
                         onClick={() => saveAll(cited)}
-                        className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs transition-colors hover:text-foreground"
+                        {...stylex.props(styles.saveButton)}
                       >
-                        <DownloadIcon aria-hidden className="size-3.5" />
+                        <DownloadIcon
+                          aria-hidden
+                          className={stylex.props(styles.saveIcon).className}
+                        />
                         {format(m.reviewDownloadAll)}
                       </button>
                     </>
                   )}
                 </dt>
-                <dd className="flex min-w-0 flex-col text-base">
+                <dd {...stylex.props(styles.fieldValue)}>
                   {field.type === 'attachment' ? (
                     cited.length === 0 ? (
-                      <span className="text-muted-foreground">—</span>
+                      <span {...stylex.props(styles.mutedInk)}>—</span>
                     ) : (
                       // the files themselves, under the field that asked for
                       // them: one flat "materials" heap at the end of the page
                       // could not say which of them was the certificate
-                      <span className="flex flex-wrap gap-2">
+                      <span {...stylex.props(styles.fileRow)}>
                         {cited.map((attachmentId) => (
                           <AttachmentLink
                             key={attachmentId}
@@ -301,7 +642,7 @@ export const FilingColumn = memo(function FilingColumn({
                       </span>
                     )
                   ) : (
-                    <span className={cn('leading-relaxed', changed && 'font-medium')}>
+                    <span {...stylex.props(styles.answer, changed && styles.answerChanged)}>
                       {now === '' ? '—' : now}
                     </span>
                   )}
@@ -318,14 +659,12 @@ export const FilingColumn = memo(function FilingColumn({
                           this question, and a row of tiles is a heavy enough
                           block that a hairline gap under it reads as part of
                           the row. */}
-                      <span className="flex min-w-0 flex-col gap-1 pt-3 text-xs text-muted-foreground">
-                        <span className="self-start rounded bg-muted px-1.5 py-0.5">
-                          {format(m.reviewFileGone)}
-                        </span>
+                      <span {...stylex.props(styles.goneBlock)}>
+                        <span {...stylex.props(styles.goneTag)}>{format(m.reviewFileGone)}</span>
                         {gone.map((attachmentId) => (
                           // struck through, or a reviewer scanning the column
                           // reads it as one more file that is there
-                          <span key={attachmentId} className="min-w-0 line-through">
+                          <span key={attachmentId} {...stylex.props(styles.struck)}>
                             <AttachmentLink attachmentId={attachmentId} variant="line" />
                           </span>
                         ))}
@@ -333,14 +672,14 @@ export const FilingColumn = memo(function FilingColumn({
                     </Appear>
                   ) : (
                     <Appear key={String(arrived)} show={changed} collapse>
-                      <span className="flex items-baseline gap-2 pt-1.5 text-xs text-muted-foreground">
-                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5">
+                      <span {...stylex.props(styles.wasLine)}>
+                        <span {...stylex.props(styles.wasTag)}>
                           {format(m.reviewComparePrevious)}
                         </span>
                         {before === '' ? (
                           <span>{format(m.reviewCompareBlank)}</span>
                         ) : (
-                          <span className="min-w-0 line-through">{before}</span>
+                          <span {...stylex.props(styles.struck)}>{before}</span>
                         )}
                       </span>
                     </Appear>
@@ -350,9 +689,9 @@ export const FilingColumn = memo(function FilingColumn({
             )
           })}
           {review.revision.note !== null && (
-            <div className="flex flex-col gap-1.5 pb-5">
-              <dt className="text-sm text-muted-foreground">{format(m.entryNote)}</dt>
-              <dd className="min-w-0 text-base leading-relaxed">{review.revision.note}</dd>
+            <div {...stylex.props(styles.fieldRow)}>
+              <dt {...stylex.props(styles.noteName)}>{format(m.entryNote)}</dt>
+              <dd {...stylex.props(styles.proseValue)}>{review.revision.note}</dd>
             </div>
           )}
         </dl>
@@ -363,11 +702,11 @@ export const FilingColumn = memo(function FilingColumn({
           was reviewing at the time, so they are not the item's fields and
           must not read as though the filer answered them unprompted. */}
       {review.supplements.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-t pt-3">
-            <p className="shrink-0 text-sm font-semibold">{format(m.reviewSupplementSection)}</p>
-            <span className="flex-1" />
-            <p className="text-xs text-muted-foreground">{format(m.reviewSupplementSectionNote)}</p>
+        <section {...stylex.props(styles.supSection)}>
+          <div {...stylex.props(styles.supHead)}>
+            <p {...stylex.props(styles.supTitle)}>{format(m.reviewSupplementSection)}</p>
+            <span {...stylex.props(styles.spacer)} />
+            <p {...stylex.props(styles.supNote)}>{format(m.reviewSupplementSectionNote)}</p>
           </div>
           {review.supplements.map((one) => (
             <SupplementCard key={one.id} supplement={one} />
@@ -383,9 +722,9 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
   const { format } = useI18n()
   const answers = (supplement.response?.payload ?? {}) as Record<string, unknown>
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border p-3.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-medium">
+    <div {...stylex.props(styles.card)}>
+      <div {...stylex.props(styles.cardHead)}>
+        <p {...stylex.props(styles.cardTitle)}>
           {format(m.supplementRequestHeading, { no: supplement.requestNo })}
         </p>
         <Badge variant={supplement.status === 'answered' ? 'default' : 'outline'}>
@@ -397,27 +736,21 @@ function SupplementCard({ supplement }: { supplement: ReviewDto['supplements'][n
                 : m.supplementStatusOpen,
           )}
         </Badge>
-        <span className="flex-1" />
-        <p className="text-xs text-muted-foreground tabular-nums">
-          {timeLabel(supplement.requestedAt)}
-        </p>
+        <span {...stylex.props(styles.spacer)} />
+        <p {...stylex.props(styles.cardWhen)}>{timeLabel(supplement.requestedAt)}</p>
       </div>
-      <p className="border-l-2 border-border pl-2.5 text-sm leading-relaxed">
-        {supplement.instructions}
-      </p>
+      <p {...stylex.props(styles.instructions)}>{supplement.instructions}</p>
       {supplement.response !== null && (
-        <dl className="flex flex-col gap-3">
+        <dl {...stylex.props(styles.answerList)}>
           {supplement.requirements.map((asked) => {
             const value = answers[asked.key]
             return (
-              <div key={asked.key} className="flex flex-col gap-1.5">
-                <dt className="min-w-0 text-sm [overflow-wrap:anywhere] text-muted-foreground">
-                  {asked.label}
-                </dt>
-                <dd className="min-w-0 text-base leading-relaxed">
+              <div key={asked.key} {...stylex.props(styles.askedRow)}>
+                <dt {...stylex.props(styles.askedName)}>{asked.label}</dt>
+                <dd {...stylex.props(styles.proseValue)}>
                   {asked.kind === 'file' ? (
                     Array.isArray(value) && value.length > 0 ? (
-                      <span className="flex flex-wrap gap-2">
+                      <span {...stylex.props(styles.fileRow)}>
                         {value.map((attachmentId) => (
                           <AttachmentLink
                             key={String(attachmentId)}
