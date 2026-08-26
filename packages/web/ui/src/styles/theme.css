@@ -5,6 +5,9 @@
 /* the layered distribution: every widget rule arrives inside @layer mantine,
    whose place in the cascade the app entry declares up front */
 @import '@mantine/core/styles.layer.css';
+/* the date components' sheet, after core: it builds on core's own rules and
+   both land in the mantine layer, under everything the product states */
+@import '@mantine/dates/styles.layer.css';
 @import './tokens.css';
 
 @custom-variant dark (&:is(.dark *));
@@ -407,6 +410,40 @@
     flex-shrink: 0;
     width: 1rem;
     height: 1rem;
+  }
+
+  /* The shape of a chosen span.
+     A span reads as one continuous stretch with its ends capped, the way a
+     highlighter crosses a line of text - not as a row of separate boxes. The
+     ends are round; the days between them are square so the track never
+     breaks; and where a week runs out, the track caps itself at the edge of
+     the row. That last part is why this lives here: whether a day sits at
+     the start or end of its week is a fact about its position among its
+     siblings, which a compiled style cannot see. The ink is in the adapter. */
+  [class*='-day'] {
+    border-radius: 999px;
+  }
+  [class*='-day'][data-in-range] {
+    border-radius: 0;
+  }
+  [class*='-day'][data-first-in-range],
+  [class*='-day'][data-last-in-range],
+  [class*='-day'][data-selected] {
+    border-radius: 999px;
+  }
+  /* the weeks keep their air: closing the cells up made one continuous
+     track across a row, and the same move would have run the rows together
+     into a single block if the gap were not put back vertically */
+  [class*='-monthCell'] {
+    padding-block: 3px;
+  }
+  [class*='-monthCell']:first-child [data-in-range] {
+    border-start-start-radius: 999px;
+    border-end-start-radius: 999px;
+  }
+  [class*='-monthCell']:last-child [data-in-range] {
+    border-start-end-radius: 999px;
+    border-end-end-radius: 999px;
   }
 
   /* the table's structural row rules: the last body row keeps no divider,

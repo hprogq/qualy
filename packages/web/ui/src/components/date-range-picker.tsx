@@ -1,29 +1,76 @@
-import { CalendarIcon } from 'lucide-react'
-import type { DateRange as DayPickerRange } from 'react-day-picker'
-import { enUS, zhCN, type Locale } from 'date-fns/locale'
-import { Button } from './button.tsx'
-import { Calendar } from './calendar.tsx'
-import { Popover, PopoverContent, PopoverTrigger } from './popover.tsx'
+'use client'
 
-// One control for a span of days, over the calendar's own range mode, in the
-// shape the library documents: the calendar owns the interaction and the
-// popover closes when the person leaves it. Picking a start therefore leaves
-// the calendar open for the end, which is the whole point of a range.
+import type * as React from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { DatePickerInput } from '@mantine/dates'
+
+import { dateWordsIn, dayIn } from '../lib/date-format.ts'
+import { tokens } from '../theme/tokens.stylex.ts'
+import { seatOf } from '../lib/xstyle.ts'
+
+// One control for a span of days.
 //
-// The value stays the wire format at both ends (yyyy-mm-dd, or empty) and the
-// text follows the viewer's locale; every word arrives as a prop.
+// The value is a pair of calendar dates and stays that way from end to end.
+// A calendar date has no instant in it - `2026-08-27` is that day wherever
+// you read it - so nothing here turns one into a `Date` and back, which is
+// how a date quietly becomes the day before for half the world. The widget
+// speaks the same YYYY-MM-DD spelling the product stores, so the two ends
+// meet without a conversion at all; the only translation is between the
+// product's `{start, end}` and the widget's tuple, which never leaves this
+// file.
 
-const DAY_PICKER_LOCALES: Record<string, Locale> = {
-  'zh-CN': zhCN,
-  'en-US': enUS,
-}
+/** a day inside a span but not at either end of it */
+const MIDDLE = ':is([data-in-range]:not([data-first-in-range]):not([data-last-in-range]))'
+const MIDDLE_OVER =
+  ':is([data-in-range]:not([data-first-in-range]):not([data-last-in-range]):hover)'
 
-const wireOf = (date: Date) => {
-  const pad = (part: number) => String(part).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-}
-
-const dateOf = (value: string) => (value === '' ? undefined : new Date(`${value}T00:00:00`))
+const styles = stylex.create({
+  field: {
+    width: '100%',
+  },
+  // A span should read as ONE continuous stretch of days, not as a row of
+  // filled boxes: the widget's own range paints a saturated block per day
+  // with a white seam between them, which is a spreadsheet selection. The
+  // states it stamps on each day are enough to draw the whole thing - the
+  // range machine stays where it belongs, and only the ink is stated here.
+  //
+  // The conditions are written to be MUTUALLY EXCLUSIVE. An end of a span
+  // carries data-in-range as well as data-first-in-range, and two rules of
+  // equal weight over one property is a coin toss - the first attempt lost
+  // it, and the day at the end of the range had near-black text on a
+  // near-black ground. Excluded from each other, only one can ever apply.
+  day: {
+    fontWeight: 400,
+    backgroundColor: {
+      default: null,
+      // the track: faint enough to read the dates through it
+      [MIDDLE]: `color-mix(in oklab, ${tokens.primary} 9%, transparent)`,
+      [MIDDLE_OVER]: `color-mix(in oklab, ${tokens.primary} 15%, transparent)`,
+      // the two ends carry the weight
+      ':is([data-first-in-range],[data-last-in-range],[data-selected])': tokens.primary,
+    },
+    color: {
+      default: tokens.foreground,
+      // no red weekends: this is a working calendar, not a wall one, and the
+      // colour was competing with the selection for attention
+      ':is([data-weekend]:not([data-selected]):not([data-in-range]))': tokens.mutedForeground,
+      ':is([data-outside]:not([data-selected]):not([data-in-range]))': `color-mix(in oklab, ${tokens.mutedForeground} 55%, transparent)`,
+      ':is([data-first-in-range],[data-last-in-range],[data-selected])': tokens.primaryForeground,
+    },
+    transitionProperty: 'background-color, color',
+    transitionDuration: '120ms',
+    transitionTimingFunction: 'ease-out',
+  },
+  // the month a page is showing is a caption, not a headline
+  monthLabel: {
+    fontWeight: 500,
+    fontSize: 14,
+  },
+  weekday: {
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+  },
+})
 
 export interface DateRange {
   start: string
@@ -39,6 +86,8 @@ export function DateRangePicker({
   monthLabel,
   yearLabel,
   disabled,
+  className,
+  xstyle,
 }: {
   id?: string
   value: DateRange
@@ -50,49 +99,47 @@ export function DateRangePicker({
   monthLabel?: string
   yearLabel?: string
   disabled?: boolean
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
+  /** legacy interop hatch */
+  className?: string
 }) {
-  const from = dateOf(value.start)
-  const to = dateOf(value.end)
-  const selected: DayPickerRange | undefined = from ? { from, to } : undefined
-  const label = (date: Date) => date.toLocaleDateString(localeTag, { dateStyle: 'medium' })
-
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          data-empty={from === undefined}
-          className="w-full justify-start text-left font-normal data-[empty=true]:text-muted-foreground"
-        >
-          <CalendarIcon />
-          {from ? (to ? `${label(from)} – ${label(to)}` : label(from)) : placeholder}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="range"
-          numberOfMonths={2}
-          captionLayout="dropdown"
-          labels={{
-            ...(monthLabel ? { labelMonthDropdown: () => monthLabel } : {}),
-            ...(yearLabel ? { labelYearDropdown: () => yearLabel } : {}),
-          }}
-          {...(localeTag && DAY_PICKER_LOCALES[localeTag]
-            ? { locale: DAY_PICKER_LOCALES[localeTag] }
-            : {})}
-          defaultMonth={from}
-          selected={selected}
-          onSelect={(range) =>
-            onChange({
-              start: range?.from ? wireOf(range.from) : '',
-              end: range?.to ? wireOf(range.to) : '',
-            })
-          }
-        />
-      </PopoverContent>
-    </Popover>
+    <DatePickerInput
+      id={id}
+      data-slot="date-range-picker"
+      type="range"
+      value={[value.start === '' ? null : value.start, value.end === '' ? null : value.end]}
+      onChange={([start, end]) => onChange({ start: start ?? '', end: end ?? '' })}
+      placeholder={placeholder}
+      disabled={disabled}
+      // two months side by side: a span is chosen by seeing both ends
+      numberOfColumns={2}
+      // no gap between the cells: the seam is what broke a continuous span
+      // into a row of separate blue boxes
+      withCellSpacing={false}
+      valueFormatter={({ date }) => {
+        const [start, end] = Array.isArray(date) ? date : [date, null]
+        if (typeof start !== 'string') return ''
+        return typeof end === 'string'
+          ? `${dayIn(localeTag, start)} – ${dayIn(localeTag, end)}`
+          : dayIn(localeTag, start)
+      }}
+      classNames={{
+        day: stylex.props(styles.day).className,
+        calendarHeaderLevel: stylex.props(styles.monthLabel).className,
+        weekday: stylex.props(styles.weekday).className,
+      }}
+      {...dateWordsIn(localeTag)}
+      {...(monthLabel === undefined && yearLabel === undefined
+        ? {}
+        : {
+            ariaLabels: {
+              ...(monthLabel === undefined ? {} : { monthLevelControl: monthLabel }),
+              ...(yearLabel === undefined ? {} : { yearLevelControl: yearLabel }),
+            },
+          })}
+      {...seatOf(stylex.props(styles.field, xstyle), className)}
+    />
   )
 }

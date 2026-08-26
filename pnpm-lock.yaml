@@ -24,6 +24,9 @@ catalogs:
     '@mantine/core':
       specifier: 9.5.2
       version: 9.5.2
+    '@mantine/dates':
+      specifier: 9.5.2
+      version: 9.5.2
     '@mantine/hooks':
       specifier: 9.5.2
       version: 9.5.2
@@ -93,6 +96,9 @@ catalogs:
     cos-nodejs-sdk-v5:
       specifier: 3.0.0
       version: 3.0.0
+    dayjs:
+      specifier: 1.11.13
+      version: 1.11.13
     effect:
       specifier: 4.0.0-rc.111
       version: 4.0.0-rc.111
@@ -1340,6 +1346,9 @@ importers:
       '@mantine/core':
         specifier: 'catalog:'
         version: 9.5.2(@mantine/hooks@9.5.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@mantine/dates':
+        specifier: 'catalog:'
+        version: 9.5.2(@mantine/core@9.5.2(@mantine/hooks@9.5.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mantine/hooks@9.5.2(react@19.2.8))(dayjs@1.11.13)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@mantine/hooks':
         specifier: 'catalog:'
         version: 9.5.2(react@19.2.8)
@@ -1358,9 +1367,9 @@ importers:
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
-      date-fns:
-        specifier: ^4.4.0
-        version: 4.4.0
+      dayjs:
+        specifier: 'catalog:'
+        version: 1.11.13
       lucide-react:
         specifier: ^0.552.0
         version: 0.552.0(react@19.2.8)
@@ -1373,9 +1382,6 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
-      react-day-picker:
-        specifier: ^10.0.1
-        version: 10.0.1(@types/react@19.2.18)(react@19.2.8)
       react-dom:
         specifier: 'catalog:'
         version: 19.2.8(react@19.2.8)
@@ -1544,9 +1550,6 @@ packages:
 
   '@blazediff/core@1.9.1':
     resolution: {integrity: sha512-ehg3jIkYKulZh+8om/O25vkvSsXXwC+skXmyA87FFx6A/45eqOkZsBltMw/TVteb0mloiGT8oGRTcjRAz66zaA==}
-
-  '@date-fns/tz@1.5.0':
-    resolution: {integrity: sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==}
 
   '@dotenvx/dotenvx@1.75.1':
     resolution: {integrity: sha512-/BITOC9dmS/edY2zQwZNicQ059O6RKabtQfyEafV0nGtfYRNHYy1DIPiYVcov40+tob9hfmBnbR963dS+EQ1DQ==}
@@ -1868,6 +1871,15 @@ packages:
     resolution: {integrity: sha512-yhnR+XVGmy7S66abvj/tF9SxzNJ+k60w+UZlC/vGOztrU2Cxpbr95gtrBrin4fpWyiE80qzVC2AY0WzaHPufWw==}
     peerDependencies:
       '@mantine/hooks': 9.5.2
+      react: ^19.2.0
+      react-dom: ^19.2.0
+
+  '@mantine/dates@9.5.2':
+    resolution: {integrity: sha512-640r4aDYR7EfNV+qRqnIMC/HX0fuLiD8O4/qVVrLCgBV4w6ZtfcaTjLwDRR/F8uGIX5epNTujzhffz0n14HXCQ==}
+    peerDependencies:
+      '@mantine/core': 9.5.2
+      '@mantine/hooks': 9.5.2
+      dayjs: '>=1.0.0'
       react: ^19.2.0
       react-dom: ^19.2.0
 
@@ -3457,8 +3469,8 @@ packages:
     resolution: {integrity: sha512-jRFi8UDGo6j+odZiEpjazZaWqEal3w/basFjQHQEwVtZJGDpxbH1MeYluwCS8Xq5wmLJooDlMgvVarmWfGM44g==}
     engines: {node: '>=0.10'}
 
-  date-fns@4.4.0:
-    resolution: {integrity: sha512-+1UMbeh68lH1SegH83CGWwpb6OHHbpSgr3+s5Eww5M4CAgswBpoWS0AjTOfEJ33HiYKz1hdj/KTFprzXHmq/6w==}
+  dayjs@1.11.13:
+    resolution: {integrity: sha512-oaMBel6gjolK862uaPQOVTA7q3TZhuSvuMQAAglQDOWYO9A91IrAOUJEyKVlqJlHE0vq5p5UXxzdPfMH/x6xNg==}
 
   debounce-fn@4.0.0:
     resolution: {integrity: sha512-8pYCQiL9Xdcg0UPSD3d+0KMlOjp+KGU5EPwYddgzQ7DATsg4fuUDjQtsYLmWjnk2obnNHgV3vE2Y4jejSOJVBQ==}
@@ -4652,16 +4664,6 @@ packages:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
     engines: {node: '>= 0.10'}
 
-  react-day-picker@10.0.1:
-    resolution: {integrity: sha512-eNh6BlwcYInWaJtRv18mXQ06Ys/H6rdTZAnTaSdOYJuTpwP1JMCHNd1FDRadA+gbeinq+psdULN5Xnowy9mV8w==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/react': '>=16.8.0'
-      react: '>=16.8.0'
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
   react-dom@19.2.8:
     resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
     peerDependencies:
@@ -5483,8 +5485,6 @@ snapshots:
 
   '@blazediff/core@1.9.1': {}
 
-  '@date-fns/tz@1.5.0': {}
-
   '@dotenvx/dotenvx@1.75.1':
     dependencies:
       '@dotenvx/primitives': 0.8.0
@@ -5761,6 +5761,15 @@ snapshots:
       type-fest: 5.8.0
     transitivePeerDependencies:
       - '@types/react'
+
+  '@mantine/dates@9.5.2(@mantine/core@9.5.2(@mantine/hooks@9.5.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@mantine/hooks@9.5.2(react@19.2.8))(dayjs@1.11.13)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      '@mantine/core': 9.5.2(@mantine/hooks@9.5.2(react@19.2.8))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@mantine/hooks': 9.5.2(react@19.2.8)
+      clsx: 2.1.1
+      dayjs: 1.11.13
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   '@mantine/hooks@9.5.2(react@19.2.8)':
     dependencies:
@@ -7282,7 +7291,7 @@ snapshots:
     dependencies:
       assert-plus: 1.0.0
 
-  date-fns@4.4.0: {}
+  dayjs@1.11.13: {}
 
   debounce-fn@4.0.0:
     dependencies:
@@ -8379,14 +8388,6 @@ snapshots:
       http-errors: 2.0.1
       iconv-lite: 0.7.3
       unpipe: 1.0.0
-
-  react-day-picker@10.0.1(@types/react@19.2.18)(react@19.2.8):
-    dependencies:
-      '@date-fns/tz': 1.5.0
-      date-fns: 4.4.0
-      react: 19.2.8
-    optionalDependencies:
-      '@types/react': 19.2.18
 
   react-dom@19.2.8(react@19.2.8):
     dependencies:

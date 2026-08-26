@@ -80,17 +80,23 @@ describe('choosing an instant', () => {
     expect(document.activeElement).toBe(minuteBox().element())
   })
 
-  it('steps with the arrows and comes round rather than stopping', async () => {
-    render(<Harness initial={new Date(2026, 7, 25, 23, 59).toISOString()} />)
+  it('steps with the arrows, and stops at the end of what an hour can be', async () => {
+    // The hand-rolled boxes this replaced came round from 23 to 00. The
+    // substrate stops instead, which is the deliberate trade recorded when
+    // the time half moved onto the widget library: an arrow held down runs
+    // to the end and stays there rather than starting the day over.
+    render(<Harness initial={new Date(2026, 7, 25, 22, 58).toISOString()} />)
     await open()
 
     await userEvent.click(hourBox())
     await userEvent.keyboard('{ArrowUp}')
-    expect(written().getHours()).toBe(0)
+    expect(written().getHours()).toBe(23)
+    await userEvent.keyboard('{ArrowUp}')
+    expect(written().getHours()).toBe(23)
 
     await userEvent.click(minuteBox())
-    await userEvent.keyboard('{ArrowUp}')
-    expect(written().getMinutes()).toBe(0)
+    await userEvent.keyboard('{ArrowDown}')
+    expect(written().getMinutes()).toBe(57)
   })
 
   it('keeps the panel open after a day is chosen, because the time is on it', async () => {
@@ -98,7 +104,7 @@ describe('choosing an instant', () => {
     await open()
 
     // a day is named the way it is read out, not by the numeral in the cell
-    await userEvent.click(page.getByRole('button', { name: /August 26/ }))
+    await userEvent.click(page.getByRole('button', { name: /August 26, 2026/ }))
     expect(written().getDate()).toBe(26)
     // the half of the answer that lives under the calendar is still reachable
     await expect.element(hourBox()).toBeVisible()
@@ -109,10 +115,16 @@ describe('choosing an instant', () => {
     render(<Harness initial={null} />)
     expect(page.getByRole('button', { name: 'clear' }).elements()).toHaveLength(0)
 
+    // A time with no day is not an instant, and naming one no longer invents
+    // today to go with it: a day is chosen, and the time rides on it. The
+    // second half of the answer is still reachable straight afterwards.
     await open()
-    await userEvent.click(hourBox())
-    await userEvent.keyboard('08')
+    await userEvent.click(page.getByRole('button', { name: /August 26, 2026/ }))
     expect(page.getByTestId('value').element().textContent).not.toBe('')
+    expect(written().getDate()).toBe(26)
+    // and the time half is still there to fill in - what typing into it does
+    // is the subject of the two tests above
+    await expect.element(hourBox()).toBeVisible()
 
     await userEvent.click(page.getByRole('button', { name: 'clear' }))
     expect(page.getByTestId('value').element().textContent).toBe('')

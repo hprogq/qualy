@@ -74,7 +74,11 @@ catalog:
   # Mantine is the commodity widget substrate behind @qualy/ui (ADR 0010);
   # hooks is core's peer dependency and must match its version exactly
   '@mantine/core': 9.5.2
+  '@mantine/dates': 9.5.2
   '@mantine/hooks': 9.5.2
+  # the date components' own formatting engine; nothing else in the product
+  # uses it, and no domain date logic moves onto it
+  dayjs: 1.11.13
   # tencent cloud object storage, in three parts that never meet: the node sdk
   # is the control plane (head/delete/sign), the sts package mints the
   # exact-object upload credential, and the browser sdk is the only one that
