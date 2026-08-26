@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
-import { cn } from '../lib/cn.ts'
+import * as stylex from '@stylexjs/stylex'
+import { clsx } from 'clsx'
+import { tokens } from '../theme/tokens.stylex.ts'
 import { Avatar, AvatarFallback } from './avatar.tsx'
 
 // A person in a table row: avatar, name, one secondary line, and nothing else.
@@ -27,6 +29,34 @@ export const initialsOf = (name: string): string => {
     : characters.slice(0, 2).join('')
 }
 
+const styles = stylex.create({
+  row: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+  },
+  lines: { minWidth: 0 },
+  name: {
+    display: 'block',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  secondary: {
+    display: 'block',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+})
+
 export function PersonCell({
   name,
   secondary,
@@ -36,18 +66,19 @@ export function PersonCell({
   secondary?: ReactNode
   className?: string
 }) {
+  const sx = stylex.props(styles.row)
   return (
-    <span className={cn('flex min-w-0 items-center gap-2.5', className)}>
+    <span {...sx} className={clsx(sx.className, className)}>
+      {/* the avatar adapter still speaks Tailwind, so its overrides stay
+          class strings until that boundary migrates */}
       <Avatar className="rounded-lg">
         <AvatarFallback className="rounded-lg bg-primary text-xs font-medium text-primary-foreground">
           {initialsOf(name)}
         </AvatarFallback>
       </Avatar>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-medium">{name}</span>
-        {secondary !== undefined && (
-          <span className="block truncate text-xs text-muted-foreground">{secondary}</span>
-        )}
+      <span {...stylex.props(styles.lines)}>
+        <span {...stylex.props(styles.name)}>{name}</span>
+        {secondary !== undefined && <span {...stylex.props(styles.secondary)}>{secondary}</span>}
       </span>
     </span>
   )

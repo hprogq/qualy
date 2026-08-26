@@ -1,72 +1,94 @@
-import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
+import * as stylex from '@stylexjs/stylex'
+import { clsx } from 'clsx'
+import { tokens } from '../theme/tokens.stylex.ts'
 
-import { cn } from '../lib/utils.ts'
+// One sentence with standing: an icon seat, a title, a description, and an
+// optional action pinned to the corner. What depends on caller-provided
+// children - the icon's grid seat, prose links, the destructive tint on the
+// description - lives in theme.css under [data-slot='alert'], where a
+// descendant of arbitrary content can still be reached.
 
-const alertVariants = cva(
-  "group/alert relative grid w-full gap-0.5 rounded-lg border px-4 py-3 text-left text-sm has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2.5 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4",
-  {
-    variants: {
-      variant: {
-        default: 'bg-card text-card-foreground',
-        destructive:
-          'bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-    },
+const styles = stylex.create({
+  root: {
+    position: 'relative',
+    display: 'grid',
+    width: '100%',
+    gap: 2,
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 16,
+    paddingBlock: 12,
+    textAlign: 'left',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    backgroundColor: tokens.surface,
+    color: tokens.foreground,
   },
-)
+  destructive: {
+    color: tokens.danger,
+  },
+  title: {
+    fontWeight: 500,
+  },
+  description: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    textWrap: {
+      default: 'balance',
+      '@media (min-width: 768px)': 'pretty',
+    },
+    color: tokens.mutedForeground,
+  },
+  action: {
+    position: 'absolute',
+    top: 10,
+    right: 12,
+  },
+})
 
 function Alert({
   className,
-  variant,
+  variant = 'default',
   ...props
-}: React.ComponentProps<'div'> & VariantProps<typeof alertVariants>) {
+}: React.ComponentProps<'div'> & { variant?: 'default' | 'destructive' }) {
+  const sx = stylex.props(styles.root, variant === 'destructive' && styles.destructive)
   return (
     <div
       data-slot="alert"
+      data-variant={variant}
       role="alert"
-      className={cn(alertVariants({ variant }), className)}
+      {...sx}
       {...props}
+      className={clsx(sx.className, className)}
     />
   )
 }
 
 function AlertTitle({ className, ...props }: React.ComponentProps<'div'>) {
+  const sx = stylex.props(styles.title)
   return (
-    <div
-      data-slot="alert-title"
-      className={cn(
-        'font-medium group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground',
-        className,
-      )}
-      {...props}
-    />
+    <div data-slot="alert-title" {...sx} {...props} className={clsx(sx.className, className)} />
   )
 }
 
 function AlertDescription({ className, ...props }: React.ComponentProps<'div'>) {
+  const sx = stylex.props(styles.description)
   return (
     <div
       data-slot="alert-description"
-      className={cn(
-        'text-sm text-balance text-muted-foreground md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4',
-        className,
-      )}
+      {...sx}
       {...props}
+      className={clsx(sx.className, className)}
     />
   )
 }
 
 function AlertAction({ className, ...props }: React.ComponentProps<'div'>) {
+  const sx = stylex.props(styles.action)
   return (
-    <div
-      data-slot="alert-action"
-      className={cn('absolute top-2.5 right-3', className)}
-      {...props}
-    />
+    <div data-slot="alert-action" {...sx} {...props} className={clsx(sx.className, className)} />
   )
 }
 

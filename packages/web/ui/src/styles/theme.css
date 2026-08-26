@@ -283,3 +283,63 @@
     }
   }
 }
+
+/* What the shared StyleX components cannot say about content they did not
+ * write: an alert's icon and an empty state's icon arrive as caller
+ * children, prose links arrive inside caller sentences. Compiled styles
+ * stop at the element they are spread on, so these few shallow descendant
+ * rules live here - same layer as the icon geometry above, which means an
+ * explicit utility on the content still wins. */
+@layer components {
+  /* the icon seat: the alert becomes a two-column grid only when an icon
+     is actually there, and the icon spans title and description */
+  [data-slot='alert']:has(> svg) {
+    grid-template-columns: auto 1fr;
+    column-gap: 0.625rem;
+  }
+  [data-slot='alert'] > svg {
+    grid-row: span 2 / span 2;
+    transform: translateY(0.125rem);
+    color: currentColor;
+  }
+  [data-slot='alert'] > svg:not([class*='size-']) {
+    width: 1rem;
+    height: 1rem;
+  }
+  [data-slot='alert']:has(> svg) > [data-slot='alert-title'] {
+    grid-column-start: 2;
+  }
+  [data-slot='alert']:has([data-slot='alert-action']) {
+    padding-right: 4.5rem;
+  }
+  [data-slot='alert'][data-variant='destructive'] > [data-slot='alert-description'] {
+    color: color-mix(in oklab, var(--q-danger) 90%, transparent);
+  }
+  [data-slot='alert-title'] a,
+  [data-slot='alert-description'] a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  [data-slot='alert-title'] a:hover,
+  [data-slot='alert-description'] a:hover {
+    color: var(--q-foreground);
+  }
+  [data-slot='alert-description'] p:not(:last-child) {
+    margin-bottom: 1rem;
+  }
+  [data-slot='empty-icon'] svg {
+    pointer-events: none;
+    flex-shrink: 0;
+  }
+  [data-slot='empty-icon'][data-variant='icon'] svg:not([class*='size-']) {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  [data-slot='empty-description'] a {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  [data-slot='empty-description'] a:hover {
+    color: var(--q-primary);
+  }
+}

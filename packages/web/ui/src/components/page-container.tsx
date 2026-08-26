@@ -1,5 +1,7 @@
 import type { ComponentProps } from 'react'
-import { cn } from '../lib/utils.ts'
+import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
+import { clsx } from 'clsx'
 
 // How wide a page is allowed to be.
 //
@@ -8,25 +10,41 @@ import { cn } from '../lib/utils.ts'
 // of participants at 1100px wraps columns that had room to spare. So the page
 // says which kind it is, and the shell stays out of it.
 
-const widths = {
+const styles = stylex.create({
+  root: {
+    marginInline: 'auto',
+    width: '100%',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    paddingInline: 24,
+    paddingBlock: 24,
+  },
   /** reading and filling in: a form, a summary, a table of a few columns */
-  default: 'max-w-6xl',
+  default: { maxWidth: '72rem' },
   /** looking across: a queue, a wide grid, several panes side by side */
-  wide: 'max-w-[1440px]',
+  wide: { maxWidth: 1440 },
   /** whatever there is: a tree, a canvas, a split view */
-  full: 'max-w-none',
-} as const
+  full: {},
+})
 
 export function PageContainer({
   size = 'default',
   className,
+  style,
   ...props
-}: ComponentProps<'div'> & { size?: keyof typeof widths }) {
+}: Omit<ComponentProps<'div'>, 'style'> & {
+  size?: 'default' | 'wide' | 'full'
+  /** StyleX overrides from product callers; legacy callers keep className */
+  style?: StyleXStyles
+}) {
+  const sx = stylex.props(styles.root, size !== 'full' && styles[size], style)
   return (
     <div
       data-slot="page-container"
-      className={cn('mx-auto w-full flex-1 px-6 py-6', widths[size], className)}
       {...props}
+      {...sx}
+      className={clsx(sx.className, className)}
     />
   )
 }
