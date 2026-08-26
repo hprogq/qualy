@@ -9025,3 +9025,30 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 24 files /
   **168 passed**(165+3,连续两轮,零删除零弱化);build 成功;生产 smoke 干净退出;prettier
   通过(.mcp.json 除外)。Organization/Shell 未开始。
+
+## UI 平台 M6 第三刀:Organization 竖切迁 StyleX(2026-08-26)
+
+- **范围**:OrgPage 全量(结构视图:树 rail/塌缩行走/节点面板/行内 rename·move·create 表单/
+  删除区;类型视图:TypeRail/规则勾选网格/pair-diff 保存/TypeLadder/新建类型)+ OrgNodePicker
+  布局层(自然清理点);org 插件补 @stylexjs/stylex。领域零改动:forest roots 构建、sortOrder
+  排序、塌缩行走、moveTargets 计算(排除自身/后代/现父 + parent-type 规则)、规则顺序保存、
+  删除双计数门、根节点不可移/删、query keys、payloads、query-string(view/node/type)。
+- **OrgTree 复用裁决**:不直接复用——OrgPage 的树语法不同(headcount 列、锁、展开全部、
+  塌缩持久化)且插件隔离禁止 org→auth import;OrgTree 零改动继续服务 Users 与 OrgNodePicker
+  单选态,未 fork、未塞 page hack。TreeSelect 选择代数原样(OrgNodePicker 仅迁布局)。
+- **商品件裁决**:Collapsible 本 slice 零消费(唯一消费者 RosterPanel 在 M7)→ deferred;
+  ScrollArea 零消费(树盒本就是原生 overflow + StyleX)→ 无需裁决;ToggleGroup(OrgNodePicker
+  内,Radix)→ M9;Tabs/HoverCard 不涉及。
+- **度量**:OrgPage className 85→2、OrgNodePicker 21→1(剩 3 处全为 Select 触发器宽度边界);
+  cn 2 文件→0;stylex.props 104 处;产品组件方向 legacy className 0(Blank/Facts/DefRow/
+  Barred/SectionHead 本就干净消费,M5 抽象第三次零返工)。**Select 宽度边界全仓累计 14 处**
+  (已迁 slices 9 + M7 5),已成系统性模式:判定 **ADAPTER FOLLOW-UP RECOMMENDED**——把触发器
+  内部 `w-fit` 从 utility 移入适配器自有样式(或给 SelectTrigger 开 xstyle 席位),使消费端
+  编译类可按层序覆盖;本阶段未动 Select API。
+- **补测**:org-admin 3→6——move 流(非法目标不出现:自身/后代/现父/类型不合;payload 带新
+  parentId)、delete 流(确认框往返 + payload)、有下级时删除保持 barred。
+- **视觉走查**:8 场景(结构深节点明/暗、根选中、move 打开、暗色删除确认、类型+梯子明/暗、
+  414 窄屏;fixture 含超长名、锁定单位、真实 headcount)。零回归。
+- **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 24 files /
+  **171 passed**(168+3,连续两轮,零删除零弱化);build 成功;生产 smoke 干净退出;prettier
+  通过(.mcp.json 除外)。Shell 未开始。
