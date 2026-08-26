@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { components } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The two shells, against a manifest rather than against props: what the top
 // bar shows, which application counts as open, and what the workspace rail
@@ -340,6 +340,42 @@ describe('the workspace shell', () => {
     await reopen.click()
     await expect.element(page.getByRole('dialog').getByText('林知远')).toBeVisible()
     expect(sessionCalls).toBe(1)
+  })
+
+  // Leaving the drawer consumes the history entry it stands on and nothing
+  // else: the page underneath never changes. In this harness the router's
+  // history is a memory history, so the system back gesture is represented
+  // by the same one-entry pop the escape key drives.
+  it('closing the drawer pops its history entry and stays on the page', async () => {
+    await page.viewport(390, 844)
+    shell(
+      <WorkspaceShell />,
+      '/assessment/batches/:batchId/phases',
+      `/assessment/batches/${BATCH_ID}/phases`,
+    )
+
+    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
+    const before = addressNow()
+    expect(before).not.toBe('')
+    await page.getByRole('button', { name: '导航' }).click()
+    await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
+    // opening navigates in place: same address, one entry deeper
+    expect(addressNow()).toBe(before)
+
+    await userEvent.keyboard('{Escape}')
+    await expect
+      .poll(
+        () =>
+          page
+            .getByRole('link', { name: '阶段安排' })
+            .elements()
+            .filter((el) => el.checkVisibility()).length,
+        { timeout: 5000 },
+      )
+      .toBe(0)
+    // the pop landed on the page the drawer was opened from
+    expect(addressNow()).toBe(before)
+    await expect.element(page.getByRole('button', { name: '导航' })).toBeVisible()
   })
 
   it('navigating from the drawer lands with the drawer closed', async () => {
