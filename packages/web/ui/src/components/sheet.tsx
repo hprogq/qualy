@@ -304,10 +304,16 @@ function SheetContent({
       // the widget only mounts and unmounts
       transitionProps={{ duration: 0 }}
     >
-      {/* no backdrop blur: a backdrop-filter under an opacity entrance makes
-          mobile Safari re-rasterize the page behind on every frame, which
-          reads as the background flashing while the sheet opens */}
-      <MDrawer.Overlay data-slot="sheet-overlay" {...(closing ? { 'data-closing': '' } : {})} />
+      {/* the same veil the dialogs draw. A backdrop-filter under an opacity
+          entrance used to make mobile Safari re-rasterize the page behind on
+          every frame - the background flashed while the sheet opened - so the
+          blurred overlays now fade on their own compositing layer, stated
+          once for the family in theme.css */}
+      <MDrawer.Overlay
+        data-slot="sheet-overlay"
+        blur={2}
+        {...(closing ? { 'data-closing': '' } : {})}
+      />
       <MDrawer.Content
         data-slot="sheet-content"
         data-side={side}

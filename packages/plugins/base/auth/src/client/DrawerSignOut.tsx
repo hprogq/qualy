@@ -6,6 +6,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { toast } from '@qualy/ui/toast'
 import { authApi } from './api.ts'
+import { useIdentity } from './identity.ts'
 import { authMessages as m } from './i18n.ts'
 
 // The way out, at the end of the drawer's last row. Only for somebody who is
@@ -41,7 +42,7 @@ export default function DrawerSignOut() {
   const orpc = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
-  const me = useQuery({ ...orpc.auth.getSession.queryOptions(), retry: false, staleTime: 30_000 })
+  const me = useIdentity()
   if (!me.isSuccess) return null
   return (
     <button

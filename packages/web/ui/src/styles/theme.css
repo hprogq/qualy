@@ -251,10 +251,18 @@
       transform: translateY(100%);
     }
   }
+  /* One veil for the whole overlay family, blurred alike. The fade is
+     promoted to its own layer: a backdrop-filter whose opacity animates on
+     the page's layer makes mobile Safari re-rasterize everything behind it
+     on every frame, which reads as the background flashing while the panel
+     opens. Isolated, the blur is rasterized once and only the layer's
+     opacity moves. */
   [data-slot='dialog-overlay'],
   [data-slot='alert-dialog-overlay'],
   [data-slot='sheet-overlay'] {
     animation: q-overlay-in 150ms ease;
+    isolation: isolate;
+    will-change: opacity;
   }
   [data-slot='dialog-content'],
   [data-slot='alert-dialog-content'] {

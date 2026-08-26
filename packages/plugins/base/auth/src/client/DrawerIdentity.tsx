@@ -11,6 +11,7 @@ import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { authMessages as m } from './i18n.ts'
 import { authApi } from './api.ts'
+import { useIdentity } from './identity.ts'
 import { initialsOf } from './initials.ts'
 
 // Who is signed in, at the head of the narrow shell's navigation drawer -
@@ -160,14 +161,7 @@ export default function DrawerIdentity() {
   const orpc = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const [lineageOpen, setLineageOpen] = useState(false)
-  const me = useQuery({
-    ...orpc.auth.getSession.queryOptions(),
-    retry: false,
-    // The drawer mounts fresh on every open; the person did not change on
-    // the way. Within this window the cached identity stands as-is, so
-    // opening the drawer costs no request and the head never pops in late.
-    staleTime: 30_000,
-  })
+  const me = useIdentity()
 
   if (me.isPending) {
     // the shape of the answer, so the drawer opens at its final height

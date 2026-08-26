@@ -17,6 +17,7 @@ import {
 } from '@qualy/ui/dropdown-menu'
 import { authMessages as m } from './i18n.ts'
 import { authApi } from './api.ts'
+import { useIdentity } from './identity.ts'
 import { LocaleChoicePicker, ThemeChoicePicker } from './identity-bits.tsx'
 import { initialsOf } from './initials.ts'
 
@@ -196,7 +197,7 @@ export default function UserMenu() {
   const [menuOpen, setMenuOpen] = useState(false)
   // one identity, told once: surfaces that remount (the drawer, this menu
   // after a layout change) read the cached answer instead of asking again
-  const me = useQuery({ ...orpc.auth.getSession.queryOptions(), retry: false, staleTime: 30_000 })
+  const me = useIdentity()
 
   if (me.isPending) return null
   if (me.isError) {
