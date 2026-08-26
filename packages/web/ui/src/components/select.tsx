@@ -2,6 +2,9 @@
 
 import * as React from 'react'
 import { Combobox, InputBase as MInputBase, InputPlaceholder, useCombobox } from '@mantine/core'
+import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
+import { clsx } from 'clsx'
 
 import { cn } from '../lib/utils.ts'
 import { ChevronDownIcon, CheckIcon } from 'lucide-react'
@@ -108,8 +111,21 @@ function Select({
   )
 }
 
+// The trigger's own width opinion lives in its StyleX base, where an xstyle
+// override wins property by property in the same composition. It used to be
+// a utility class, which sat in the layer ABOVE consumer StyleX and forced
+// every caller that sized a field back into Tailwind strings.
+const triggerStyles = stylex.create({
+  base: {
+    // fit by default, as the closed control has always been: the caller
+    // whose field must fill or fix its width says so through xstyle
+    width: 'fit-content',
+  },
+})
+
 function SelectTrigger({
   className,
+  xstyle,
   size = 'default',
   children,
   onKeyDown,
@@ -117,11 +133,19 @@ function SelectTrigger({
   ...props
 }: React.ComponentProps<'button'> & {
   size?: 'sm' | 'default'
+  /**
+   * The standard StyleX seat, composed over the trigger's base styles -
+   * sizing a field is its main use. `className` stays as the legacy escape
+   * hatch: its utilities still win by cascade for callers not yet on
+   * StyleX, but that is the layer contract, not a promise of this API.
+   */
+  xstyle?: StyleXStyles
 }) {
   const { disabled, opened, toggle } = useSelect()
   // the product marks invalid controls with aria-invalid; the widget wants
   // its own error prop
   const invalid = ariaInvalid === true || ariaInvalid === 'true'
+  const sx = stylex.props(triggerStyles.base, xstyle)
   return (
     <Combobox.Target>
       <MInputBase
@@ -133,9 +157,7 @@ function SelectTrigger({
         data-slot="select-trigger"
         data-size={size}
         size={size === 'sm' ? 'xs' : 'sm'}
-        // the wrapper is where a caller sizes the field; fit by default,
-        // as the closed control has always been
-        className={cn('w-fit', className)}
+        className={clsx(sx.className, className)}
         {...(invalid ? { error: true } : {})}
         disabled={disabled}
         rightSection={<Combobox.Chevron />}
