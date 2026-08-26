@@ -9,14 +9,8 @@ import { describe, expect, it } from 'vitest'
 // the sheet is a flat pair of blocks and two regexes read it exactly.
 
 const root = join(import.meta.dirname, '..', '..')
-const sheet = readFileSync(
-  join(root, 'packages/web/ui/src/styles/tokens.css'),
-  'utf8',
-)
-const stylexFace = readFileSync(
-  join(root, 'packages/web/ui/src/theme/tokens.stylex.ts'),
-  'utf8',
-)
+const sheet = readFileSync(join(root, 'packages/web/ui/src/styles/tokens.css'), 'utf8')
+const stylexFace = readFileSync(join(root, 'packages/web/ui/src/theme/tokens.stylex.ts'), 'utf8')
 
 /** the custom properties DECLARED inside one top-level block */
 const declaredIn = (selector: string): Set<string> => {
