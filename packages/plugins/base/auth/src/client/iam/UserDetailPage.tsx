@@ -5,6 +5,8 @@ import { ChevronLeftIcon, KeyRoundIcon } from 'lucide-react'
 import { PageLink, useApi, useRunApi, useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Blank, EditorSkeleton, SectionHead, Segmented } from '@qualy/ui/screen'
 import { PageContainer } from '@qualy/ui/page-container'
@@ -15,7 +17,6 @@ import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Stagger } from '@qualy/ui/reveal'
 import { initialsOf } from '@qualy/ui/person'
-import { cn } from '@qualy/ui/cn'
 import { iamMessages as m } from '../i18n.ts'
 import { NodePicker } from './NodePicker.tsx'
 import { UserGrants } from './UserGrants.tsx'
@@ -27,6 +28,188 @@ import { authApi } from '../api.ts'
 //
 // The id comes from the route, typed by the page reference that declared the
 // `:userId` segment.
+
+const styles = stylex.create({
+  page: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  backSeat: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  backLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+  },
+  backGlyph: {
+    width: 14,
+    height: 14,
+  },
+  body: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  // who somebody is, before what may be done to them
+  headBand: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 16,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingBottom: 20,
+  },
+  portrait: {
+    width: 48,
+    height: 48,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+  },
+  portraitFace: {
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  headText: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  headName: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: '1.125rem',
+    lineHeight: '1.75rem',
+    fontWeight: 600,
+  },
+  headMeta: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 12,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  metaNo: {
+    fontVariantNumeric: 'tabular-nums',
+  },
+  metaPath: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  pinned: {
+    flexShrink: 0,
+  },
+  headActions: {
+    display: 'flex',
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tabBody: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 12,
+  },
+  manageLink: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontWeight: 500,
+    textDecoration: {
+      default: 'none',
+      ':hover': 'underline',
+    },
+  },
+  compactBlank: {
+    minHeight: '14rem',
+  },
+  entranceList: {
+    minWidth: 0,
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  entranceRow: {
+    display: 'grid',
+    minWidth: 0,
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: 16,
+    paddingInline: 16,
+    paddingBlock: 12,
+  },
+  // the hairline between rows is index state: the stagger wraps each row,
+  // so there is no usable first-child to key a divider on
+  entranceRowDivided: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+  },
+  entranceWho: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  entranceName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  entranceId: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontFamily:
+      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    fontSize: '0.75rem',
+    color: tokens.mutedForeground,
+  },
+  entranceWhen: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  alert: {
+    color: tokens.danger,
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+})
 export default function UserDetailPage() {
   const { userId } = usePageRouteParams('userId')
   const api = useApi(authApi)
@@ -130,13 +313,10 @@ export default function UserDetailPage() {
   const identities = user.data?.identities ?? []
 
   return (
-    <PageContainer size="default" className="flex flex-col gap-5">
-      <p className="text-sm">
-        <PageLink
-          page="auth/users"
-          className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
-        >
-          <ChevronLeftIcon className="size-3.5" aria-hidden />
+    <PageContainer size="default" xstyle={styles.page}>
+      <p {...stylex.props(styles.backSeat)}>
+        <PageLink page="auth/users" className={stylex.props(styles.backLink).className}>
+          <ChevronLeftIcon className={stylex.props(styles.backGlyph).className} aria-hidden />
           {format(m.backToUsers)}
         </PageLink>
       </p>
@@ -150,16 +330,15 @@ export default function UserDetailPage() {
         skeleton={<EditorSkeleton />}
       >
         {record && (
-          <div className="flex flex-col gap-5">
-            {/* who somebody is, before what may be done to them */}
-            <div className="flex flex-wrap items-center gap-4 border-b pb-5">
-              <Avatar className="size-12 rounded-xl">
-                <AvatarFallback className="rounded-xl bg-primary text-sm font-medium text-primary-foreground">
+          <div {...stylex.props(styles.body)}>
+            <div {...stylex.props(styles.headBand)}>
+              <Avatar className={stylex.props(styles.portrait).className}>
+                <AvatarFallback className={stylex.props(styles.portraitFace).className}>
                   {initialsOf(record.displayName)}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1 space-y-1">
-                <p className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+              <div {...stylex.props(styles.headText)}>
+                <p {...stylex.props(styles.headName)}>
                   {record.displayName}
                   {record.status === 'deleted' ? (
                     <Badge variant="outline">{format(m.deletedBadge)}</Badge>
@@ -169,10 +348,12 @@ export default function UserDetailPage() {
                     <Badge variant="secondary">{format(m.statusActive)}</Badge>
                   )}
                 </p>
-                <p className="flex min-w-0 flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
-                  {record.businessNo && <span className="tabular-nums">{record.businessNo}</span>}
+                <p {...stylex.props(styles.headMeta)}>
+                  {record.businessNo && (
+                    <span {...stylex.props(styles.metaNo)}>{record.businessNo}</span>
+                  )}
                   <span>{record.userType?.name ?? '—'}</span>
-                  <span className="min-w-0 truncate">
+                  <span {...stylex.props(styles.metaPath)}>
                     {(user.data?.orgPath ?? []).map((node) => node.name).join(' / ')}
                   </span>
                 </p>
@@ -183,7 +364,7 @@ export default function UserDetailPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="shrink-0"
+                  className={stylex.props(styles.pinned).className}
                   disabled={setStatus.isPending}
                   onClick={() => setStatus.mutate('disabled')}
                 >
@@ -191,7 +372,7 @@ export default function UserDetailPage() {
                 </Button>
               ) : (
                 manageable && (
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <div {...stylex.props(styles.headActions)}>
                     <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
                       {format(m.editProfile)}
                     </Button>
@@ -239,14 +420,14 @@ export default function UserDetailPage() {
             />
 
             {tab === 'identities' && (
-              <div className="flex min-w-0 flex-col gap-3">
+              <div {...stylex.props(styles.tabBody)}>
                 <SectionHead
                   title={format(m.boundHeading)}
                   count={format(m.boundCount, { count: identities.length })}
                   actions={
                     <PageLink
                       page="auth/login-methods"
-                      className="text-xs font-medium hover:underline"
+                      className={stylex.props(styles.manageLink).className}
                       unavailable={null}
                     >
                       {format(m.manageWaysIn)}
@@ -258,36 +439,40 @@ export default function UserDetailPage() {
                     icon={<KeyRoundIcon />}
                     title={format(m.boundEmptyTitle)}
                     description={format(m.boundEmptyBody)}
-                    className="min-h-[14rem]"
+                    xstyle={styles.compactBlank}
                   />
                 ) : (
-                  <Stagger className="min-w-0 divide-y overflow-hidden rounded-lg border">
-                    {identities.map((identity) => (
+                  <Stagger className={stylex.props(styles.entranceList).className}>
+                    {identities.map((identity, at) => (
                       <div
                         key={identity.id}
                         data-entrance-status={identity.providerStatus}
-                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-4 px-4 py-3"
+                        {...stylex.props(styles.entranceRow, at > 0 && styles.entranceRowDivided)}
                       >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span className="min-w-0 truncate text-sm font-medium">
+                        <span {...stylex.props(styles.entranceWho)}>
+                          <span {...stylex.props(styles.entranceName)}>
                             {identity.providerName}
                           </span>
-                          <Badge variant="secondary" className="shrink-0">
+                          <Badge
+                            variant="secondary"
+                            className={stylex.props(styles.pinned).className}
+                          >
                             {format(identity.hasCredential ? m.localAccount : m.federatedAccount)}
                           </Badge>
                           {identity.providerStatus === 'disabled' && (
-                            <Badge variant="destructive" className="shrink-0">
+                            <Badge
+                              variant="destructive"
+                              className={stylex.props(styles.pinned).className}
+                            >
                               {format(m.entranceDisabled)}
                             </Badge>
                           )}
                         </span>
-                        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-                          {identity.identifier}
-                        </span>
+                        <span {...stylex.props(styles.entranceId)}>{identity.identifier}</span>
                         <span
-                          className={cn(
-                            'shrink-0 text-xs text-muted-foreground',
-                            identity.lastUsedAt === null && 'text-destructive',
+                          {...stylex.props(
+                            styles.entranceWhen,
+                            identity.lastUsedAt === null && styles.alert,
                           )}
                         >
                           {identity.lastUsedAt === null
@@ -326,7 +511,7 @@ export default function UserDetailPage() {
             >
               <form
                 id="edit-profile"
-                className="flex flex-col gap-4"
+                {...stylex.props(styles.form)}
                 onSubmit={(event) => {
                   event.preventDefault()
                   saveProfile.mutate(undefined as never)

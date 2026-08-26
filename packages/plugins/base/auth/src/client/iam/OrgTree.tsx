@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronRightIcon } from 'lucide-react'
-import { cn } from '@qualy/ui/cn'
+import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 
 // The organization as somebody browsing it sees it: a tree of names.
 //
@@ -8,6 +10,81 @@ import { cn } from '@qualy/ui/cn'
 // pickers beside it answer what that means - a list of the people standing
 // there, or a unit added to an import. Kept separate for that reason: the
 // same tree serves both, and will serve the organization screen itself.
+
+const styles = stylex.create({
+  emptyNote: {
+    padding: 8,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  list: {
+    display: 'flex',
+    width: 'max-content',
+    minWidth: '100%',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  branch: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  // no truncation: five levels in, a truncated name is an ellipsis and
+  // nothing else. The box scrolls sideways instead, which at least
+  // leaves the name readable by moving to it.
+  rowButton: {
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: tokens.radiusMd,
+    paddingBlock: 6,
+    paddingRight: 8,
+    textAlign: 'left',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    whiteSpace: 'nowrap',
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    outline: 'none',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+    boxShadow: {
+      default: 'none',
+      ':focus-visible': `0 0 0 2px ${tokens.focusRing}`,
+    },
+  },
+  rowCurrent: {
+    backgroundColor: {
+      default: tokens.surfaceMuted,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
+  rowMarked: {
+    fontWeight: 500,
+  },
+  glyph: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+    transitionProperty: 'transform',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  glyphOpen: {
+    transform: 'rotate(90deg)',
+  },
+  glyphSeat: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+  },
+})
 
 export interface OrgTreeNode {
   id: string
@@ -53,7 +130,7 @@ export function OrgTree({
    * that would lead to them are not part of the answer.
    */
   flat,
-  className,
+  xstyle,
 }: {
   nodes: readonly OrgTreeNode[]
   emptyLabel: string
@@ -63,15 +140,15 @@ export function OrgTree({
   marked?: ReadonlySet<string>
   meta?: (node: OrgTreeNode) => ReactNode
   flat?: boolean
-  className?: string
+  xstyle?: StyleXStyles
 }) {
   const shape = shapeOf(nodes)
   if (nodes.length === 0) {
-    return <p className="p-2 text-sm text-muted-foreground">{emptyLabel}</p>
+    return <p {...stylex.props(styles.emptyNote)}>{emptyLabel}</p>
   }
   if (flat === true) {
     return (
-      <ul className={cn('flex w-max min-w-full flex-col gap-0.5', className)}>
+      <ul {...stylex.props(styles.list, xstyle)}>
         {nodes.map((node) => (
           <li key={node.id}>
             <Name
@@ -88,7 +165,7 @@ export function OrgTree({
     )
   }
   return (
-    <ul className={cn('flex w-max min-w-full flex-col gap-0.5', className)}>
+    <ul {...stylex.props(styles.list, xstyle)}>
       {shape.roots.map((root) => (
         <Row
           key={root.id}
@@ -146,13 +223,10 @@ function Name({
             'aria-label': `${node.name} ${expandLabel ?? ''}`.trim(),
           }
         : {})}
-      className={cn(
-        // no truncation: five levels in, a truncated name is an ellipsis and
-        // nothing else. The box scrolls sideways instead, which at least
-        // leaves the name readable by moving to it.
-        'flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-sm whitespace-nowrap transition-colors outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring',
-        selected === node.id && 'bg-accent',
-        marked?.has(node.id) === true && 'font-medium',
+      {...stylex.props(
+        styles.rowButton,
+        selected === node.id && styles.rowCurrent,
+        marked?.has(node.id) === true && styles.rowMarked,
       )}
       style={{ paddingLeft: `${String(depth * 0.75 + 0.5)}rem` }}
       onClick={() => onSelect(node)}
@@ -160,13 +234,10 @@ function Name({
       {hasChildren === true ? (
         <ChevronRightIcon
           aria-hidden
-          className={cn(
-            'size-3.5 shrink-0 text-muted-foreground transition-transform',
-            open === true && 'rotate-90',
-          )}
+          {...stylex.props(styles.glyph, open === true && styles.glyphOpen)}
         />
       ) : (
-        <span aria-hidden className="size-3.5 shrink-0" />
+        <span aria-hidden {...stylex.props(styles.glyphSeat)} />
       )}
       <span>{node.name}</span>
       {meta?.(node)}
@@ -215,7 +286,7 @@ function Row({
         {...(meta !== undefined ? { meta } : {})}
       />
       {open && children.length > 0 && (
-        <ul className="flex flex-col gap-0.5">
+        <ul {...stylex.props(styles.branch)}>
           {children.map((child) => (
             <Row
               key={child.id}

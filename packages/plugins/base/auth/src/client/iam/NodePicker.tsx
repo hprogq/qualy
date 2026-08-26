@@ -5,8 +5,117 @@ import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { ScrollArea } from '@qualy/ui/scroll-area'
-import { cn } from '@qualy/ui/cn'
+import * as stylex from '@stylexjs/stylex'
+import type { StyleXStyles } from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { iamMessages as m } from '../i18n.ts'
+
+const styles = stylex.create({
+  triggerFace: {
+    width: '100%',
+    justifyContent: 'space-between',
+    fontWeight: 400,
+  },
+  chosenWord: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  placeholderWord: {
+    color: tokens.mutedForeground,
+  },
+  chevron: {
+    flexShrink: 0,
+    opacity: 0.5,
+  },
+  searchRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 8,
+  },
+  searchGlass: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  bareInput: {
+    height: 28,
+    borderWidth: 0,
+    paddingInline: 0,
+    boxShadow: 'none',
+  },
+  listBox: {
+    maxHeight: '16rem',
+  },
+  noMatch: {
+    paddingInline: 12,
+    paddingBlock: 24,
+    textAlign: 'center',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  list: {
+    display: 'flex',
+    flexDirection: 'column',
+    padding: 4,
+  },
+  rowButton: {
+    display: 'flex',
+    width: '100%',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: tokens.radiusMd,
+    paddingBlock: 6,
+    paddingRight: 8,
+    textAlign: 'left',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  rowOffered: {
+    backgroundColor: {
+      default: null,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
+  rowWithheld: {
+    cursor: 'not-allowed',
+    color: tokens.mutedForeground,
+  },
+  rowCurrent: {
+    backgroundColor: {
+      default: tokens.surfaceMuted,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
+  rowName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  tick: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+  },
+})
 
 export type PickableNode = {
   orgNodeId: string
@@ -31,7 +140,7 @@ export function NodePicker({
   label,
   id,
   disabled = false,
-  className,
+  xstyle,
 }: {
   nodes: readonly PickableNode[]
   value: string
@@ -41,7 +150,8 @@ export function NodePicker({
   label?: string
   id?: string
   disabled?: boolean
-  className?: string
+  /** StyleX seat for the trigger; the popover face stays the picker's own */
+  xstyle?: StyleXStyles
 }) {
   const { format } = useI18n()
   const [open, setOpen] = useState(false)
@@ -68,35 +178,38 @@ export function NodePicker({
           disabled={disabled}
           {...(id === undefined ? {} : { id })}
           {...(label === undefined ? {} : { 'aria-label': label })}
-          className={cn('w-full justify-between font-normal', className)}
+          className={stylex.props(styles.triggerFace, xstyle).className}
         >
           <span
-            className={cn('min-w-0 truncate', current === undefined && 'text-muted-foreground')}
+            {...stylex.props(styles.chosenWord, current === undefined && styles.placeholderWord)}
           >
             {current?.name ?? placeholder}
           </span>
-          <ChevronsUpDownIcon className="shrink-0 opacity-50" data-icon="inline-end" />
+          <ChevronsUpDownIcon
+            className={stylex.props(styles.chevron).className}
+            data-icon="inline-end"
+          />
         </Button>
       </PopoverTrigger>
+      {/* width and padding override the popover adapter's own utilities,
+          so they stay a class string at that boundary */}
       <PopoverContent align="start" className="w-(--anchor-width) min-w-64 p-0">
-        <div className="flex items-center gap-2 border-b px-3 py-2">
-          <SearchIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <div {...stylex.props(styles.searchRow)}>
+          <SearchIcon className={stylex.props(styles.searchGlass).className} aria-hidden />
           <Input
             autoFocus
             aria-label={format(m.nodeSearch)}
             placeholder={format(m.nodeSearch)}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-7 border-0 px-0 shadow-none focus-visible:ring-0"
+            className={stylex.props(styles.bareInput).className}
           />
         </div>
-        <ScrollArea className="max-h-64">
+        <ScrollArea className={stylex.props(styles.listBox).className}>
           {shown.length === 0 ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-              {format(m.nodeNoMatch)}
-            </p>
+            <p {...stylex.props(styles.noMatch)}>{format(m.nodeNoMatch)}</p>
           ) : (
-            <ul className="flex flex-col p-1">
+            <ul {...stylex.props(styles.list)}>
               {shown.map((node) => (
                 <li key={node.orgNodeId}>
                   <button
@@ -108,21 +221,19 @@ export function NodePicker({
                       setOpen(false)
                       setSearch('')
                     }}
-                    className={cn(
-                      'flex w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm transition-colors',
-                      node.manageable
-                        ? 'hover:bg-accent'
-                        : 'cursor-not-allowed text-muted-foreground',
-                      node.orgNodeId === value && 'bg-accent',
+                    {...stylex.props(
+                      styles.rowButton,
+                      node.manageable ? styles.rowOffered : styles.rowWithheld,
+                      node.orgNodeId === value && styles.rowCurrent,
                     )}
                     // the depth is the whole reason a name is unambiguous, so
                     // it is spacing rather than a prefix that search would eat
                     style={{ paddingLeft: `${0.5 + Math.min(node.depth, 6) * 0.75}rem` }}
                   >
-                    <span className="min-w-0 truncate">{node.name}</span>
-                    <span className="flex-1" />
+                    <span {...stylex.props(styles.rowName)}>{node.name}</span>
+                    <span {...stylex.props(styles.spacer)} />
                     {node.orgNodeId === value && (
-                      <CheckIcon className="size-4 shrink-0" aria-hidden />
+                      <CheckIcon className={stylex.props(styles.tick).className} aria-hidden />
                     )}
                   </button>
                 </li>

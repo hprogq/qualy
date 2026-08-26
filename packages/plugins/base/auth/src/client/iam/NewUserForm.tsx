@@ -2,12 +2,21 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import * as stylex from '@stylexjs/stylex'
 import { Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { iamMessages as m } from '../i18n.ts'
 import { authApi } from '../api.ts'
+
+const styles = stylex.create({
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+})
 
 export function NewUserForm({
   open,
@@ -76,7 +85,7 @@ export function NewUserForm({
       <Feedback message={feedback} />
       <form
         id="new-user"
-        className="flex flex-col gap-5"
+        {...stylex.props(styles.form)}
         onSubmit={(event) => {
           event.preventDefault()
           create.mutate()

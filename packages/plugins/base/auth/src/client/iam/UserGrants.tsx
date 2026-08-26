@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Feedback, Panel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
@@ -16,6 +18,37 @@ import { authApi } from '../api.ts'
 // It reads access's own api directly. Both surfaces live under /iam and the
 // generated client is one object, so a user screen naming a grant endpoint
 // crosses no boundary the plugin graph cares about.
+const styles = stylex.create({
+  emptyNote: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  grantRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingBlock: 8,
+  },
+  grantText: {
+    minWidth: 0,
+  },
+  grantRole: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  grantWhere: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+})
+
 export function UserGrants({
   userId,
   nodes,
@@ -59,14 +92,14 @@ export function UserGrants({
         onRetry={() => void grants.refetch()}
       >
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{format(m.grantsEmpty)}</p>
+          <p {...stylex.props(styles.emptyNote)}>{format(m.grantsEmpty)}</p>
         ) : (
-          <ul className="divide-y">
+          <ul>
             {items.map((grant) => (
-              <li key={grant.id} className="flex items-center justify-between gap-4 py-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">{grant.roleName}</p>
-                  <p className="text-xs text-muted-foreground">
+              <li key={grant.id} {...stylex.props(styles.grantRow)}>
+                <div {...stylex.props(styles.grantText)}>
+                  <p {...stylex.props(styles.grantRole)}>{grant.roleName}</p>
+                  <p {...stylex.props(styles.grantWhere)}>
                     {grant.target.kind === 'tenant'
                       ? format(m.tenantWideGrant)
                       : `${grant.target.orgNodeName} · ${grant.target.coverage}`}

@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { iamMessages as m } from '../i18n.ts'
@@ -19,6 +21,28 @@ import { NodePicker } from './NodePicker.tsx'
 // role first would mean offering roles that the target then invalidates, and
 // the refusal would arrive from the server as a rejected submission.
 type Coverage = 'self' | 'subtree'
+
+const styles = stylex.create({
+  form: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 16,
+  },
+  anchorPicker: {
+    width: '14rem',
+  },
+  nothingNote: {
+    width: '100%',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+})
 
 export function GrantRoleForm({
   userId,
@@ -80,7 +104,7 @@ export function GrantRoleForm({
 
   return (
     <form
-      className="flex flex-wrap items-end gap-2 border-t pt-4"
+      {...stylex.props(styles.form)}
       onSubmit={(event) => {
         event.preventDefault()
         grant.mutate()
@@ -112,7 +136,7 @@ export function GrantRoleForm({
                 value={anchor ?? ''}
                 onChange={setOrgNodeId}
                 placeholder={format(m.grantScopeNode)}
-                className="w-56"
+                xstyle={styles.anchorPicker}
               />
             )}
           </Field>
@@ -160,7 +184,7 @@ export function GrantRoleForm({
       {/* an empty list is an answer, not a missing one: this caller holds
           nothing that may be passed on at this target */}
       {!options.isPending && roles.length === 0 && (
-        <p data-testid="grant-nothing-offered" className="w-full text-sm text-muted-foreground">
+        <p data-testid="grant-nothing-offered" {...stylex.props(styles.nothingNote)}>
           {format(m.grantRolesEmpty)}
         </p>
       )}
