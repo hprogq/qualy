@@ -67,6 +67,10 @@ export function Screen({
  * that is what a reader's screen reader should hear. The widget's segmented
  * control is the right shape for choosing a VALUE, which is a different
  * question from choosing a VIEW.
+ *
+ * It wears the segmented look because this is what a filter row asks for -
+ * and because these appear in pairs. Two underlined rows side by side read
+ * as one tablist with two things selected at once.
  */
 export function Segmented<T extends string>({
   value,
@@ -83,7 +87,12 @@ export function Segmented<T extends string>({
   xstyle?: StyleXStyles
 }) {
   return (
-    <Tabs value={value} onValueChange={(next) => onChange(next as T)} xstyle={xstyle}>
+    <Tabs
+      variant="segmented"
+      value={value}
+      onValueChange={(next) => onChange(next as T)}
+      xstyle={xstyle}
+    >
       <TabsList aria-label={label}>
         {options.map((option) => (
           <TabsTrigger key={option.value} value={option.value}>

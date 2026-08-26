@@ -43,8 +43,14 @@ const press = stylex.create({
   surface: {
     boxShadow: {
       default: null,
-      ':active': 'inset 0 0 0 999px color-mix(in oklab, currentColor 12%, transparent)',
+      ':active': 'inset 0 0 0 999px color-mix(in oklab, currentColor 8%, transparent)',
     },
+  },
+  // A control that cannot be pressed is a faded version of ITSELF, never a
+  // grey stand-in: the colour is how a reader picks the reject key out of a
+  // footer at a glance, and taking it away makes them read the labels again.
+  off: {
+    opacity: 0.55,
   },
   // a link has no ground to film over; it answers with its own ink
   ink: {
@@ -107,9 +113,15 @@ function Button({
 
   // a control that cannot be pressed does not answer a press: the seat is
   // simply not taken, rather than taken and then argued out of by a selector
+  // Blocked is not the same as disabled here. A key the workbench refuses is
+  // marked with aria-disabled and stays a real button, because it still has
+  // to say WHY it is refused when pointed at - so CSS still sees a pressable
+  // control, and the press film has to stand down on its own.
+  const off = disabled === true || props['aria-disabled'] === true
   const pressed = stylex.props(
     press.base,
-    disabled !== true && (v === 'link' ? press.ink : press.surface),
+    !off && (v === 'link' ? press.ink : press.surface),
+    disabled === true && press.off,
   ).className
   const shared = {
     variant: variantOf[v],

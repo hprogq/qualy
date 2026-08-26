@@ -18,14 +18,40 @@ import { seatOf } from '../lib/xstyle.ts'
 // View SWITCHERS - a segmented choice riding in a filter row - are not
 // tabs; they are the `Segmented` control in @qualy/ui/screen.
 
-/** the value the group holds, so a trigger can tell whether it is the one */
-const TabsCtx = React.createContext<string | undefined>(undefined)
+/**
+ * Two looks, one meaning.
+ *
+ * `line` is a row of views with the read one underlined: quiet, and right
+ * when a tablist is the only thing on its line. `segmented` puts the same
+ * views inside one bounded run with the read one raised out of the ground -
+ * which is what a compact switcher needs, and the only thing that works when
+ * two independent switchers sit side by side. Two underlined rows next to
+ * each other read as ONE tablist with two things selected at once.
+ *
+ * Both are tabs: a tablist, tabs, aria-selected, arrow keys. The choice is
+ * about the room the control sits in, never about what it means - a control
+ * that picks a VALUE rather than a VIEW is a different component.
+ */
+export type TabsVariant = 'line' | 'segmented'
+
+/** the value the group holds and the look it wears, read by every part */
+const TabsCtx = React.createContext<{ value?: string; variant: TabsVariant }>({
+  variant: 'line',
+})
 
 const styles = stylex.create({
   list: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 4,
+  },
+  // one bounded run: the ground holds the options together, which is what
+  // tells a reader that two switchers on the same row are two questions
+  listSegmented: {
+    gap: 2,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceMuted,
+    padding: 3,
   },
   trigger: {
     position: 'relative',
@@ -65,6 +91,17 @@ const styles = stylex.create({
   triggerReading: {
     color: tokens.foreground,
   },
+  triggerSegmented: {
+    borderRadius: `calc(${tokens.radiusMd} - 1px)`,
+    paddingInline: 10,
+    paddingBlock: 3,
+    transitionProperty: 'color, background-color, box-shadow',
+  },
+  // raised out of the ground rather than underlined
+  triggerSegmentedReading: {
+    backgroundColor: tokens.background,
+    boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.08)',
+  },
   // The underline is an element of its own, drawn only under the view being
   // read. The adapter already knows which one that is, so nothing has to go
   // looking for an attribute the widget stamped.
@@ -99,17 +136,25 @@ function Tabs({
   defaultValue,
   onValueChange,
   orientation = 'horizontal',
+  variant = 'line',
   children,
 }: Seat & {
   value?: string
   defaultValue?: string
   onValueChange?: (value: string) => void
   orientation?: 'horizontal' | 'vertical'
+  /** which room this tablist sits in; see TabsVariant */
+  variant?: TabsVariant
   children: React.ReactNode
 }) {
+  const held = React.useMemo(
+    () => ({ value: value ?? defaultValue, variant }),
+    [value, defaultValue, variant],
+  )
   return (
     <MTabs
       data-slot="tabs"
+      data-look={variant}
       variant="none"
       orientation={orientation}
       value={value}
@@ -121,7 +166,7 @@ function Tabs({
       }}
       {...seatOf(stylex.props(xstyle), className, style)}
     >
-      <TabsCtx value={value ?? defaultValue}>{children}</TabsCtx>
+      <TabsCtx value={held}>{children}</TabsCtx>
     </MTabs>
   )
 }
@@ -136,11 +181,16 @@ function TabsList({
   children: React.ReactNode
   'aria-label'?: string
 }) {
+  const { variant } = React.use(TabsCtx)
   return (
     <MTabs.List
       data-slot="tabs-list"
       {...rest}
-      {...seatOf(stylex.props(styles.list, xstyle), className, style)}
+      {...seatOf(
+        stylex.props(styles.list, variant === 'segmented' && styles.listSegmented, xstyle),
+        className,
+        style,
+      )}
     >
       {children}
     </MTabs.List>
@@ -161,7 +211,9 @@ function TabsTrigger({
   children: React.ReactNode
   'aria-label'?: string
 }) {
-  const reading = React.use(TabsCtx) === value
+  const { value: held, variant } = React.use(TabsCtx)
+  const reading = held === value
+  const segmented = variant === 'segmented'
   return (
     <MTabs.Tab
       data-slot="tabs-trigger"
@@ -169,13 +221,19 @@ function TabsTrigger({
       disabled={disabled}
       {...rest}
       {...seatOf(
-        stylex.props(styles.trigger, reading && styles.triggerReading, xstyle),
+        stylex.props(
+          styles.trigger,
+          reading && styles.triggerReading,
+          segmented && styles.triggerSegmented,
+          segmented && reading && styles.triggerSegmentedReading,
+          xstyle,
+        ),
         className,
         style,
       )}
     >
       {children}
-      {reading && <span aria-hidden {...stylex.props(styles.underline)} />}
+      {reading && !segmented && <span aria-hidden {...stylex.props(styles.underline)} />}
     </MTabs.Tab>
   )
 }
