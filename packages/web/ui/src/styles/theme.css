@@ -412,38 +412,65 @@
     height: 1rem;
   }
 
-  /* The shape of a chosen span.
-     A span reads as one continuous stretch with its ends capped, the way a
-     highlighter crosses a line of text - not as a row of separate boxes. The
-     ends are round; the days between them are square so the track never
-     breaks; and where a week runs out, the track caps itself at the edge of
-     the row. That last part is why this lives here: whether a day sits at
-     the start or end of its week is a fact about its position among its
-     siblings, which a compiled style cannot see. The ink is in the adapter. */
-  [class*='-day'] {
-    border-radius: 999px;
-  }
-  [class*='-day'][data-in-range] {
-    border-radius: 0;
-  }
-  [class*='-day'][data-first-in-range],
-  [class*='-day'][data-last-in-range],
-  [class*='-day'][data-selected] {
-    border-radius: 999px;
-  }
-  /* the weeks keep their air: closing the cells up made one continuous
-     track across a row, and the same move would have run the rows together
-     into a single block if the gap were not put back vertically */
-  [class*='-monthCell'] {
+  /* A chosen span, drawn as a weekly track.
+     The day control itself is ALWAYS a circle and never changes shape - a
+     radius that animated between round and square made the calendar flicker
+     as the pointer looked for an end. What changes is the track BEHIND it,
+     drawn on a pseudo-element a layer down, so the two ends can sit on top
+     of it as solid circles.
+     The state is the widget's: while a start is chosen and the pointer is
+     hunting for an end it recomputes the whole span on every hover and says
+     so through these attributes, so restating that in React would mean a
+     second copy of a working machine. The class is this adapter's own, so
+     nothing here depends on the widget's internal class names. */
+  .q-range-cell {
     padding-block: 3px;
   }
-  [class*='-monthCell']:first-child [data-in-range] {
-    border-start-start-radius: 999px;
-    border-end-start-radius: 999px;
+  .q-range-day {
+    position: relative;
+    isolation: isolate;
+    border-radius: 9999px;
+    transition:
+      background-color 120ms ease-out,
+      color 120ms ease-out;
   }
-  [class*='-monthCell']:last-child [data-in-range] {
-    border-start-end-radius: 999px;
-    border-end-end-radius: 999px;
+  .q-range-day[data-weekend] {
+    color: var(--q-foreground);
+  }
+  .q-range-day[data-outside] {
+    color: var(--q-muted-foreground);
+  }
+  /* the widget fills each day of a span; the track replaces that */
+  .q-range-day[data-in-range] {
+    background: transparent;
+  }
+  .q-range-day[data-in-range]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in oklab, var(--q-primary) 9%, transparent);
+    border-block: 1px solid color-mix(in oklab, var(--q-primary) 55%, transparent);
+  }
+  /* a capsule opens at the span's start, and again at the head of a week */
+  .q-range-day[data-in-range][data-first-in-range]::before,
+  .q-range-day[data-in-range][data-week-start]::before {
+    border-inline-start: 1px solid color-mix(in oklab, var(--q-primary) 55%, transparent);
+    border-start-start-radius: 9999px;
+    border-end-start-radius: 9999px;
+  }
+  /* and closes at its end, or where the week runs out */
+  .q-range-day[data-in-range][data-last-in-range]::before,
+  .q-range-day[data-in-range][data-week-end]::before {
+    border-inline-end: 1px solid color-mix(in oklab, var(--q-primary) 55%, transparent);
+    border-start-end-radius: 9999px;
+    border-end-end-radius: 9999px;
+  }
+  /* the two ends themselves: solid, and over the track rather than in it */
+  .q-range-day[data-selected],
+  .q-range-day[data-selected]:hover {
+    background: var(--q-primary);
+    color: var(--q-primary-foreground);
   }
 
   /* the table's structural row rules: the last body row keeps no divider,

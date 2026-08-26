@@ -19,47 +19,29 @@ import { seatOf } from '../lib/xstyle.ts'
 // product's `{start, end}` and the widget's tuple, which never leaves this
 // file.
 
-/** a day inside a span but not at either end of it */
-const MIDDLE = ':is([data-in-range]:not([data-first-in-range]):not([data-last-in-range]))'
-const MIDDLE_OVER =
-  ':is([data-in-range]:not([data-first-in-range]):not([data-last-in-range]):hover)'
+/**
+ * The class this adapter draws a span with.
+ *
+ * Its rules live in theme.css because they hang off state the WIDGET owns:
+ * `data-in-range` is not just the value that has been committed - while a
+ * start is chosen and the pointer is looking for an end, the library
+ * recomputes the whole span on every hover and says so through these same
+ * attributes. Restating that machine in React to satisfy a compiled style
+ * would mean keeping a second copy of a state machine that already works.
+ *
+ * The name is this adapter's own, not the library's: nothing here reaches
+ * for a `.mantine-*` selector, so the day can be restyled by whoever renders
+ * it and a version that renames its internals cannot silently undress this.
+ */
+const RANGE_DAY = 'q-range-day'
+const RANGE_CELL = 'q-range-cell'
+
+/** the first column of the calendar; the widget's own default */
+const FIRST_DAY_OF_WEEK = 1
 
 const styles = stylex.create({
   field: {
     width: '100%',
-  },
-  // A span should read as ONE continuous stretch of days, not as a row of
-  // filled boxes: the widget's own range paints a saturated block per day
-  // with a white seam between them, which is a spreadsheet selection. The
-  // states it stamps on each day are enough to draw the whole thing - the
-  // range machine stays where it belongs, and only the ink is stated here.
-  //
-  // The conditions are written to be MUTUALLY EXCLUSIVE. An end of a span
-  // carries data-in-range as well as data-first-in-range, and two rules of
-  // equal weight over one property is a coin toss - the first attempt lost
-  // it, and the day at the end of the range had near-black text on a
-  // near-black ground. Excluded from each other, only one can ever apply.
-  day: {
-    fontWeight: 400,
-    backgroundColor: {
-      default: null,
-      // the track: faint enough to read the dates through it
-      [MIDDLE]: `color-mix(in oklab, ${tokens.primary} 9%, transparent)`,
-      [MIDDLE_OVER]: `color-mix(in oklab, ${tokens.primary} 15%, transparent)`,
-      // the two ends carry the weight
-      ':is([data-first-in-range],[data-last-in-range],[data-selected])': tokens.primary,
-    },
-    color: {
-      default: tokens.foreground,
-      // no red weekends: this is a working calendar, not a wall one, and the
-      // colour was competing with the selection for attention
-      ':is([data-weekend]:not([data-selected]):not([data-in-range]))': tokens.mutedForeground,
-      ':is([data-outside]:not([data-selected]):not([data-in-range]))': `color-mix(in oklab, ${tokens.mutedForeground} 55%, transparent)`,
-      ':is([data-first-in-range],[data-last-in-range],[data-selected])': tokens.primaryForeground,
-    },
-    transitionProperty: 'background-color, color',
-    transitionDuration: '120ms',
-    transitionTimingFunction: 'ease-out',
   },
   // the month a page is showing is a caption, not a headline
   monthLabel: {
@@ -71,6 +53,23 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
 })
+
+/**
+ * Which column of the week a day sits in.
+ *
+ * The track has to close at the end of a week and open again at the start of
+ * the next, and only the day itself knows where in the week it falls. The
+ * widget hands each control its own date, so this is arithmetic rather than
+ * a lookup at the DOM.
+ */
+const weekEdgesOf = (date: string) => {
+  const weekday = new Date(`${date.slice(0, 10)}T00:00:00`).getDay()
+  const column = (weekday - FIRST_DAY_OF_WEEK + 7) % 7
+  return {
+    ...(column === 0 ? { 'data-week-start': true } : {}),
+    ...(column === 6 ? { 'data-week-end': true } : {}),
+  }
+}
 
 export interface DateRange {
   start: string
@@ -125,8 +124,10 @@ export function DateRangePicker({
           ? `${dayIn(localeTag, start)} – ${dayIn(localeTag, end)}`
           : dayIn(localeTag, start)
       }}
+      getDayProps={weekEdgesOf}
       classNames={{
-        day: stylex.props(styles.day).className,
+        day: RANGE_DAY,
+        monthCell: RANGE_CELL,
         calendarHeaderLevel: stylex.props(styles.monthLabel).className,
         weekday: stylex.props(styles.weekday).className,
       }}
