@@ -30,3 +30,8 @@ export function useMedia(query: string, initial: boolean): boolean {
 export function useFinePointer(): boolean {
   return useMedia('(pointer: fine)', true)
 }
+
+/** whether the workbench columns stand beside each other: the same line css draws at */
+export function useBeside(): boolean {
+  return useMedia('(min-width: 64rem)', true)
+}
