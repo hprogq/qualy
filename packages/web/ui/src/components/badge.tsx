@@ -20,16 +20,23 @@ const variantOf: Record<BadgeVariant, string> = {
 
 function Badge({
   className,
+  labelClassName,
   variant,
   asChild = false,
   children,
   ...props
-}: React.ComponentProps<'span'> & { variant?: BadgeVariant | null; asChild?: boolean }) {
+}: React.ComponentProps<'span'> & {
+  variant?: BadgeVariant | null
+  asChild?: boolean
+  /** the widget wraps children in its own label span; this styles that span */
+  labelClassName?: string
+}) {
   const v = variant ?? 'default'
   const shared = {
     variant: variantOf[v],
     'data-slot': 'badge',
     'data-variant': v,
+    ...(labelClassName === undefined ? {} : { classNames: { label: labelClassName } }),
   }
 
   if (asChild) {

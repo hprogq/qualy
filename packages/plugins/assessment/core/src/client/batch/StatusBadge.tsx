@@ -41,12 +41,21 @@ const styles = stylex.create({
     color: tokens.successForeground,
   },
   // with the word gone the badge is only a dot in a ground, and a ground
-  // longer than it is tall reads as a label that failed to load
+  // longer than it is tall reads as a label that failed to load - and a
+  // ground the row is allowed to squeeze reads as an ellipse
   compact: {
     width: 16,
     height: 16,
+    flexShrink: 0,
     justifyContent: 'center',
     padding: 0,
+  },
+  // the widget's own label span clips its overflow, which cut the live
+  // dot's halo into a rectangle mid-breath
+  label: {
+    overflow: 'visible',
+    display: 'flex',
+    alignItems: 'center',
   },
   // never squeezed: inside a tight row a flexible seat flattens the dot
   // into an ellipse
@@ -124,6 +133,7 @@ export function StatusBadge({
       className={
         stylex.props(styles.badge, tone.badge, compact && styles.compact, xstyle).className
       }
+      labelClassName={stylex.props(styles.label).className}
       // the word is what goes, not the meaning: the colour and the dot still
       // say it, and whoever cannot see them is reading this instead
       aria-label={compact ? format(label) : undefined}
