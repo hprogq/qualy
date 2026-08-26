@@ -30,8 +30,8 @@ import { placementLegal } from '../src/server/placement.ts'
 import { db } from '../src/server/db.ts'
 import { sql as ksql } from 'kysely'
 
-// The identity behaviours the cordis suite asserted and the Effect suite did
-// not. Each names the cordis test it comes from.
+// The identity behaviours no other suite asserts, carried here from a suite
+// that has since been deleted. Each names the one it came from.
 
 // the same declarations production compiles, stamped the same way
 const catalog = compileCatalog([
@@ -160,7 +160,7 @@ const seed = Effect.fn('seed')(function* () {
   return { tenant, orgType, root, staff, systemType, admin, principal }
 })
 
-describe.runIf(postgresAvailable).concurrent('what the cordis identity suite covered', () => {
+describe.runIf(postgresAvailable).concurrent('identity behaviours nothing else asserts', () => {
   it('gives a user type no authority of its own', async () => {
     // from iam.test.ts of the same name. A type says who someone is and where
     // they may stand; it carries no permission and no role, so a holder of a

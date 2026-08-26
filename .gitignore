@@ -89,3 +89,6 @@ __qualy-component-check__.tsx
 .claude/
 .agents/
 skills-lock.json
+
+# per-machine MCP server wiring
+.mcp.json

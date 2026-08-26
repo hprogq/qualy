@@ -31,11 +31,11 @@ import { loginDriversLayer } from '@qualy/auth-contract/login'
 import { Org } from '../src/server/index.ts'
 import { serviceLayer as orgLayer } from '../src/server/index.ts'
 
-// The tree behaviours the cordis suite asserted and the Effect suite did not.
+// The tree behaviours no other suite asserts.
 //
-// Both runtimes executed the same statements from queries.ts, so these are the
-// tests that were actually exercising much of that SQL. Each one names the
-// cordis test it comes from.
+// They were carried here from a suite that has since been deleted, which ran
+// the same statements from queries.ts and was therefore the only thing
+// exercising much of that SQL. Each one names the test it came from.
 
 // what the orm must know for a query to name a table: this suite runs auth and
 // rbac alongside org, so their tables are part of what the assembly serves
@@ -160,7 +160,7 @@ const seed = Effect.fn('seed')(function* () {
   return { tenant, root, university, college, department, section, principal }
 })
 
-describe.runIf(postgresAvailable).concurrent('what the cordis tree suite covered', () => {
+describe.runIf(postgresAvailable).concurrent('tree behaviours nothing else asserts', () => {
   it('enforces the type rule and the sibling name on creation', async () => {
     // from org.test.ts 'enforces type rules and sibling names on creation'. A
     // node's place in the tree is governed by the rule graph, and two siblings
