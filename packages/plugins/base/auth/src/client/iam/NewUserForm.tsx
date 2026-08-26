@@ -34,7 +34,7 @@ export function NewUserForm({
 }) {
   const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -59,7 +59,7 @@ export function NewUserForm({
       setDisplayName('')
       setBusinessNo('')
       onClose()
-      await queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
+      await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
   })

@@ -32,14 +32,14 @@ import { authApi } from '../api.ts'
 export default function LoginMethodsPage() {
   const api = useApi(authApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('provider')
   const [feedback, setFeedback] = useState<string | null>(null)
 
-  const providers = useQuery(orpc.identity.listAuthProviders.queryOptions())
-  const types = useQuery(orpc.identity.listUserTypes.queryOptions())
+  const providers = useQuery(query.identity.listAuthProviders.queryOptions())
+  const types = useQuery(query.identity.listUserTypes.queryOptions())
   const rows = providers.data?.providers ?? []
   const current = rows.find((provider) => provider.id === selected)
 
@@ -72,7 +72,7 @@ export default function LoginMethodsPage() {
         }),
       ),
     onMutate: () => setFeedback(null),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: orpc.identity.key() }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: query.identity.key() }),
     onError: (error: unknown) => setFeedback(formatError(error)),
   })
 

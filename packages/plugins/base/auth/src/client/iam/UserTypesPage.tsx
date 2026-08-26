@@ -17,12 +17,12 @@ import { authApi } from '../api.ts'
 // handful of rows, so the list stays beside the one being edited; the
 // selection lives in the query string so it stays linkable.
 export default function UserTypesPage() {
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('type')
   const [creating, setCreating] = useState(false)
 
-  const types = useQuery(orpc.identity.listUserTypes.queryOptions({}))
+  const types = useQuery(query.identity.listUserTypes.queryOptions({}))
   const canManage = types.data?.capabilities.canManage ?? false
   const current = types.data?.userTypes.find((type) => type.id === selected)
 

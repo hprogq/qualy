@@ -26,14 +26,14 @@ export function NewUserTypeForm({
 }) {
   const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [mode, setMode] = useState<'unrestricted' | 'allow-list'>('allow-list')
   const [orgTypeIds, setOrgTypeIds] = useState<string[]>([])
-  const catalog = useQuery(orpc.identity.getUserTypeOptions.queryOptions())
+  const catalog = useQuery(query.identity.getUserTypeOptions.queryOptions())
 
   const create = useMutation({
     mutationFn: () =>
@@ -53,7 +53,7 @@ export function NewUserTypeForm({
       setName('')
       setOrgTypeIds([])
 
-      await queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
+      await queryClient.invalidateQueries({ queryKey: query.identity.key() })
       onCreated(result.id)
     },
     onError: (error: unknown) => setFeedback(formatError(error)),

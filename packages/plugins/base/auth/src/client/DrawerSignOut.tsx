@@ -39,7 +39,7 @@ const styles = stylex.create({
 export default function DrawerSignOut() {
   const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const endSession = useSessionTransition()
   const me = useIdentity()

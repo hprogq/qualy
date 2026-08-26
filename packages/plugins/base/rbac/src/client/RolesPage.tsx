@@ -62,12 +62,12 @@ const styles = stylex.create({
 })
 
 export default function RolesPage() {
-  const orpc = useApiQuery(accessApi)
+  const query = useApiQuery(accessApi)
   const { format, formatError } = useI18n()
   const [selected, setSelected] = usePageQueryState('role')
   const [creating, setCreating] = useState(false)
 
-  const roles = useQuery(orpc.access.listRoles.queryOptions({ query: {} }))
+  const roles = useQuery(query.access.listRoles.queryOptions({ query: {} }))
   const canManage = roles.data?.capabilities.canManage ?? false
   const all = roles.data?.roles ?? []
   const current = all.find((role) => role.id === selected)

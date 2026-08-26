@@ -59,7 +59,7 @@ export function UserGrants({
 }) {
   const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   // whose authority is waiting on an answer; taking one away is not undone
@@ -67,7 +67,7 @@ export function UserGrants({
   const [revoking, setRevoking] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
 
-  const grants = useQuery(orpc.access.getUserRoleGrants.queryOptions({ params: { userId } }))
+  const grants = useQuery(query.access.getUserRoleGrants.queryOptions({ params: { userId } }))
   const items = grants.data?.grants ?? []
 
   // one grant at a time: replacing the whole set meant proposing to delete
@@ -76,7 +76,7 @@ export function UserGrants({
     mutationFn: (grantId: string) => run(api.access.deleteRoleGrant({ params: { grantId } })),
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: orpc.access.key() })
+      await queryClient.invalidateQueries({ queryKey: query.access.key() })
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
   })

@@ -120,7 +120,7 @@ type Tab = 'permissions' | 'eligibility' | 'appointment' | 'lifecycle'
 export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: boolean }) {
   const api = useApi(accessApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery(accessApi)
+  const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
   const { format, formatError, formatText } = useI18n()
   const [tab, setTab] = useState<Tab>('permissions')
@@ -167,11 +167,11 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   }, [role])
 
   const catalog = useQuery(
-    orpc.access.listPermissions.queryOptions({
+    query.access.listPermissions.queryOptions({
       query: { target: role.kind === 'org' ? 'org-node' : 'tenant' },
     }),
   )
-  const options = useQuery(orpc.access.getRoleOptions.queryOptions())
+  const options = useQuery(query.access.getRoleOptions.queryOptions())
   // the canonical administrator role is fixed wherever changing it would
   // lock a tenant out of its own administration; it also appoints everything
   // by being what it is, so it has no appointment list to edit
@@ -182,9 +182,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   // itself carry the matching grant administration before it can appoint
   // anybody: an edge that waits for some other role of the holder's to make
   // it work is exactly what the model no longer allows.
-  const allRoles = useQuery(orpc.access.listRoles.queryOptions({ query: {} }))
+  const allRoles = useQuery(query.access.listRoles.queryOptions({ query: {} }))
   const grantable = useQuery({
-    ...orpc.access.getRoleGrantableRoles.queryOptions({ params: { roleId: role.id } }),
+    ...query.access.getRoleGrantableRoles.queryOptions({ params: { roleId: role.id } }),
     enabled: !locked,
   })
   const [grantableIds, setGrantableIds] = useState<string[]>([])
@@ -192,7 +192,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
     setGrantableIds([...(grantable.data?.roleIds ?? [])])
   }, [grantable.data])
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.access.key() })
+  const refresh = () => queryClient.invalidateQueries({ queryKey: query.access.key() })
   // the one crossing from an effect to a promise on this screen: TanStack
   // needs a promise, and doing it here keeps every call site an effect
   const run = <Variables,>(call: (input: Variables) => Effect.Effect<unknown, unknown>) => ({

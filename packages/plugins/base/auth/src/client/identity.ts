@@ -20,10 +20,10 @@ import { authApi } from './api.ts'
  */
 export function useIdentity() {
   const api = useApi(authApi)
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const run = useRunApi()
   return useQuery({
-    queryKey: orpc.auth.getSession.key(),
+    queryKey: query.auth.getSession.key(),
     queryFn: () => run(api.auth.getSession()),
     retry: false,
     // The drawer mounts fresh on every open; the person did not change on

@@ -227,7 +227,7 @@ const styles = stylex.create({
 export default function UsersPage() {
   const api = useApi(authApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const [anchor, setAnchor] = usePageQueryState('anchor')
   const [scope, setScope] = usePageQueryState('scope', 'subtree')
@@ -241,7 +241,7 @@ export default function UsersPage() {
 
   // one call gives the units this caller may see, the types they may hand
   // out, and the tree the left pane draws - no permission beyond its own
-  const options = useQuery(orpc.identity.getUserOptions.queryOptions({ query: {} }))
+  const options = useQuery(query.identity.getUserOptions.queryOptions({ query: {} }))
   const nodes = useMemo(() => options.data?.nodes ?? [], [options.data])
   const active = nodes.find((entry) => entry.orgNodeId === anchor) ?? nodes[0]
   const userTypes = options.data?.userTypes ?? []
@@ -260,7 +260,7 @@ export default function UsersPage() {
     ...(typeFilter ? { userTypeId: typeFilter } : {}),
   }
   const users = useInfiniteQuery({
-    queryKey: [...orpc.identity.listUsers.key({ query: filter }), 'infinite'],
+    queryKey: [...query.identity.listUsers.key({ query: filter }), 'infinite'],
     queryFn: ({ pageParam }) =>
       runApi(
         api.identity.listUsers({
@@ -622,13 +622,13 @@ const paneStyles = stylex.create({
 function PersonPane({ userId, nodes }: { userId: string; nodes: readonly PickableNode[] }) {
   const api = useApi(authApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [destination, setDestination] = useState('')
   const [moveError, setMoveError] = useState<string | null>(null)
   const detail = useQuery({
-    ...orpc.identity.getUser.queryOptions({ params: { userId } }),
+    ...query.identity.getUser.queryOptions({ params: { userId } }),
     enabled: userId !== '',
   })
   const move = useMutation({
@@ -642,7 +642,7 @@ function PersonPane({ userId, nodes }: { userId: string; nodes: readonly Pickabl
     onMutate: () => setMoveError(null),
     onSuccess: async () => {
       setDestination('')
-      await queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
+      await queryClient.invalidateQueries({ queryKey: query.identity.key() })
     },
     onError: (error: unknown) => setMoveError(formatError(error)),
   })

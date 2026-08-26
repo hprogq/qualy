@@ -63,7 +63,7 @@ export function GrantRoleForm({
 }) {
   const api = useApi(authApi)
   const run = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -78,7 +78,7 @@ export function GrantRoleForm({
   // the target is part of the query key, so changing it refetches rather than
   // leaving a role list that was answered for somewhere else
   const options = useQuery(
-    orpc.access.getRoleGrantOptions.queryOptions({
+    query.access.getRoleGrantOptions.queryOptions({
       // the target is said outright: the server refuses to infer it from
       // which parameters happen to be present
       query: {
@@ -106,7 +106,7 @@ export function GrantRoleForm({
     onMutate: () => setFeedback(null),
     onSuccess: async () => {
       setRoleId('')
-      await queryClient.invalidateQueries({ queryKey: orpc.access.key() })
+      await queryClient.invalidateQueries({ queryKey: query.access.key() })
     },
     onError: (error: unknown) => setFeedback(formatError(error)),
   })

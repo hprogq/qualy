@@ -68,7 +68,7 @@ const styles = stylex.create({
 })
 
 export default function LoginPage() {
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const { format } = useI18n()
   const startSession = useSessionTransition()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -78,7 +78,7 @@ export default function LoginPage() {
   const onAuthenticated = () => {
     void startSession({ destination: { kind: 'home' } })
   }
-  const methodsQuery = useQuery(orpc.auth.listLoginMethods.queryOptions())
+  const methodsQuery = useQuery(query.auth.listLoginMethods.queryOptions())
 
   const body = () => {
     if (methodsQuery.isPending) {

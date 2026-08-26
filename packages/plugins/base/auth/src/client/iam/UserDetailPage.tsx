@@ -217,7 +217,7 @@ export default function UserDetailPage() {
   const { userId } = usePageRouteParams('userId')
   const api = useApi(authApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [tab, setTab] = useState<'identities' | 'roles'>('identities')
@@ -232,8 +232,8 @@ export default function UserDetailPage() {
   const [userTypeId, setUserTypeId] = useState('')
   const [placement, setPlacement] = useState('')
 
-  const user = useQuery(orpc.identity.getUser.queryOptions({ params: { userId } }))
-  const options = useQuery(orpc.identity.getUserOptions.queryOptions({ query: {} }))
+  const user = useQuery(query.identity.getUser.queryOptions({ params: { userId } }))
+  const options = useQuery(query.identity.getUserOptions.queryOptions({ query: {} }))
   const record = user.data?.user
 
   // a different person is a different form, so the draft re-seeds when the
@@ -248,7 +248,7 @@ export default function UserDetailPage() {
     setSaved(false)
   }, [record])
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
+  const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
   // the one crossing from an effect to a promise on this screen: TanStack
   // needs a promise, and doing so here keeps every call site an effect
   const run = <Variables,>(call: (input: Variables) => Effect.Effect<unknown, unknown>) => ({

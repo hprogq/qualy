@@ -545,7 +545,7 @@ const styles = stylex.create({
 export default function OrgPage() {
   const api = useApi(orgApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery(orgApi)
+  const query = useApiQuery(orgApi)
   const { format, formatError } = useI18n()
   const queryClient = useQueryClient()
   const [view, setView] = usePageQueryState('view')
@@ -553,14 +553,14 @@ export default function OrgPage() {
   const [selectedTypeId, setSelectedTypeId] = usePageQueryState('type')
   const [feedback, setFeedback] = useState<string | null>(null)
 
-  const treeQuery = useQuery(orpc.org.getTree.queryOptions({ query: {} }))
-  const typesQuery = useQuery(orpc.org.listTypes.queryOptions())
-  const rulesQuery = useQuery(orpc.org.listRules.queryOptions())
+  const treeQuery = useQuery(query.org.getTree.queryOptions({ query: {} }))
+  const typesQuery = useQuery(query.org.listTypes.queryOptions())
+  const rulesQuery = useQuery(query.org.listRules.queryOptions())
   // how many people stand at each unit. Allowed to fail: reading people is a
   // grant of its own, and an organization administrator without it should
   // still get the tree
   const headcounts = useQuery({
-    ...orpc.identity.getUserOptions.queryOptions({ query: {} }),
+    ...query.identity.getUserOptions.queryOptions({ query: {} }),
     retry: false,
   })
   const headcountOf = (orgNodeId: string) =>
@@ -569,7 +569,7 @@ export default function OrgPage() {
   // targeted invalidation: only this plugin's queries, never the whole cache
   const refresh = () => {
     setFeedback(null)
-    return queryClient.invalidateQueries({ queryKey: orpc.org.key() })
+    return queryClient.invalidateQueries({ queryKey: query.org.key() })
   }
   // the one crossing from an effect to a promise on this screen; typed api
   // errors localize from their code, the english message is the last resort

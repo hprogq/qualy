@@ -5,8 +5,8 @@ import { pingApi } from './api.ts'
 import StyleXProbe from './StyleXProbe.tsx'
 
 export default function PingPage() {
-  const queries = useApiQuery(pingApi)
-  const hello = useQuery(queries.ping.hello.queryOptions({ query: { name: 'web' } }))
+  const query = useApiQuery(pingApi)
+  const hello = useQuery(query.ping.hello.queryOptions({ query: { name: 'web' } }))
   // both StyleX probes render on this smoke page so the production build
   // compiles them: one from a plugin, one from the shared ui package
   return (

@@ -158,7 +158,7 @@ const styles = stylex.create({
 })
 
 export default function DrawerIdentity() {
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
   const [lineageOpen, setLineageOpen] = useState(false)
   const me = useIdentity()

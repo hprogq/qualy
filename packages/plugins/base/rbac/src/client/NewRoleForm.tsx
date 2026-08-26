@@ -36,7 +36,7 @@ export function NewRoleForm({
 }) {
   const api = useApi(accessApi)
   const run = useRunApi()
-  const orpc = useApiQuery(accessApi)
+  const query = useApiQuery(accessApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -48,7 +48,7 @@ export function NewRoleForm({
     onMutate: () => setFeedback(null),
     onSuccess: async (result: { id: string }) => {
       setName('')
-      await queryClient.invalidateQueries({ queryKey: orpc.access.key() })
+      await queryClient.invalidateQueries({ queryKey: query.access.key() })
       onCreated(result.id)
     },
     onError: (error: unknown) => setFeedback(formatError(error)),

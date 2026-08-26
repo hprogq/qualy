@@ -36,7 +36,7 @@ export function UserTypeEditor({
 }) {
   const api = useApi(authApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery(authApi)
+  const query = useApiQuery(authApi)
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -69,14 +69,14 @@ export function UserTypeEditor({
 
   // its own options endpoint, so administering types needs no permission over
   // the organization
-  const catalog = useQuery(orpc.identity.getUserTypeOptions.queryOptions())
+  const catalog = useQuery(query.identity.getUserTypeOptions.queryOptions())
   const providers = useQuery({
-    ...orpc.identity.listAuthProviders.queryOptions(),
+    ...query.identity.listAuthProviders.queryOptions(),
     retry: false,
   })
-  const roles = useQuery({ ...orpc.access.listRoles.queryOptions({ query: {} }), retry: false })
+  const roles = useQuery({ ...query.access.listRoles.queryOptions({ query: {} }), retry: false })
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: orpc.identity.key() })
+  const refresh = () => queryClient.invalidateQueries({ queryKey: query.identity.key() })
   // the one crossing from an effect to a promise on this screen: TanStack
   // needs a promise, and doing it here keeps every call site an effect
   const run = <Variables,>(call: (input: Variables) => Effect.Effect<unknown, unknown>) => ({

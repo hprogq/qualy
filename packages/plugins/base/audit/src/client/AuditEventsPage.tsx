@@ -233,13 +233,13 @@ type EventRow = {
 export default function AuditEventsPage() {
   const api = useApi(auditApi)
   const runApi = useRunApi()
-  const orpc = useApiQuery(auditApi)
+  const query = useApiQuery(auditApi)
   const { format, formatText, locale } = useI18n()
   const [action, setAction] = usePageQueryState('action')
   const [outcome, setOutcome] = usePageQueryState('outcome')
   const [openId, setOpenId] = useState('')
 
-  const options = useQuery(orpc.audit.getAuditEventOptions.queryOptions({}))
+  const options = useQuery(query.audit.getAuditEventOptions.queryOptions({}))
 
   const outcomeFilter: 'success' | 'denied' | 'failure' | undefined =
     outcome === 'success' || outcome === 'denied' || outcome === 'failure' ? outcome : undefined
@@ -248,7 +248,7 @@ export default function AuditEventsPage() {
     ...(outcomeFilter !== undefined ? { outcome: outcomeFilter } : {}),
   }
   const events = useInfiniteQuery({
-    queryKey: [...orpc.audit.listAuditEvents.key({ query: filter }), 'infinite'],
+    queryKey: [...query.audit.listAuditEvents.key({ query: filter }), 'infinite'],
     queryFn: ({ pageParam }) =>
       runApi(
         api.audit.listAuditEvents({

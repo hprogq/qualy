@@ -31,7 +31,7 @@ export function useBatchLive(
   onEvent: (kind: BatchLiveEvent['kind']) => void,
 ): { live: boolean } {
   const api = useApi(assessmentApi)
-  const orpc = useApiQuery(assessmentApi)
+  const query = useApiQuery(assessmentApi)
   const queryClient = useQueryClient()
   // the handler is read through a ref so a screen passing a fresh closure
   // every render neither re-subscribes the stream nor re-arms the alarm
@@ -46,7 +46,7 @@ export function useBatchLive(
   const timeline = useQuery(
     told
       ? {
-          ...orpc.assessment.getTimeline.queryOptions({ params: { batchId } }),
+          ...query.assessment.getTimeline.queryOptions({ params: { batchId } }),
           staleTime: 30_000,
         }
       : // hooks are unconditional, so the stubbed harness gets a query that
@@ -84,7 +84,7 @@ export function useBatchLive(
         // itself, so the alarm re-arms on the next boundary
         handler.current('phase-changed')
         void queryClient.invalidateQueries({
-          queryKey: orpc.assessment.getTimeline.key({ params: { batchId } }),
+          queryKey: query.assessment.getTimeline.key({ params: { batchId } }),
         })
       },
       Math.max(wait, 0),

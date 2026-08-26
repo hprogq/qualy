@@ -144,8 +144,8 @@ function RuntimeLoader({
   children,
 }: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
   const { format } = useI18n()
-  const orpc = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
-  const manifest = useQuery(orpc.app.getManifest.queryOptions())
+  const query = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
+  const manifest = useQuery(query.app.getManifest.queryOptions())
   if (manifest.isPending) return <LoadingScreen />
   if (manifest.isError) {
     return (
