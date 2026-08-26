@@ -298,7 +298,7 @@ export function SupplementDialog({
           </Button>
           <Button disabled={!ready} onClick={confirm}>
             {format(m.supplementSend)}
-            <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
+            <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
           </Button>
         </div>
       }

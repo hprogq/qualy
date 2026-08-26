@@ -324,7 +324,7 @@ function ReasonPicker({
               )}
               {reason}
               {fine && index < 9 && (
-                <Kbd className={cn(picked && 'bg-white/20 text-white')}>{index + 1}</Kbd>
+                <Kbd className={cn(picked && 'bg-current/20 text-current')}>{index + 1}</Kbd>
               )}
             </ToggleGroupItem>
           )
@@ -464,7 +464,7 @@ export function ApproveDialog({
           </Button>
           <Button className={stylex.props(styles.approveSolid).className} onClick={confirm}>
             {format(m.reviewApprove)}
-            <Kbd className="bg-white/20 text-white">⌘↵</Kbd>
+            <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
           </Button>
         </div>
       }
@@ -623,7 +623,7 @@ export function RejectDialog({
             onClick={confirm}
           >
             {format(m.reviewRejectConfirm)}
-            <Kbd className="bg-white/20 text-white">⌘↵</Kbd>
+            <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
           </Button>
         </div>
       }
@@ -861,7 +861,7 @@ export function EscalateDialog({
             onClick={confirm}
           >
             {format(m.reviewEscalate)}
-            <Kbd className="bg-primary-foreground/20 text-primary-foreground">⌘↵</Kbd>
+            <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
           </Button>
         </div>
       }
