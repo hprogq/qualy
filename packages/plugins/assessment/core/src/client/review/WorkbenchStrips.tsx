@@ -6,19 +6,312 @@ import {
   ChevronUpIcon,
   CircleArrowUpIcon,
 } from 'lucide-react'
+import * as stylex from '@stylexjs/stylex'
 import { usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
-import { Kbd } from '@qualy/ui/kbd'
 import { GlideAcross } from '@qualy/ui/reveal'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { useBeside, useFinePointer } from './pointer.ts'
 import type { ReviewDto } from './model.ts'
 import { PART_LABEL, WORKBENCH_PARTS, type WorkbenchPart } from './Pane.tsx'
+
+const lg = '@media (min-width: 1024px)'
+const belowLg = '@media (max-width: 1023.98px)'
+const wide = '@media (min-width: 84rem)'
+
+const styles = stylex.create({
+  // ---- the run's own strip ----
+  runStrip: {
+    display: {
+      default: 'none',
+      [lg]: 'flex',
+    },
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    paddingInline: 16,
+    paddingBlock: 8,
+  },
+  runPosition: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  runTrack: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    gap: 4,
+  },
+  runSegment: {
+    height: 4,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    borderRadius: '9999px',
+    transitionProperty: 'background-color',
+  },
+  runSegmentDone: {
+    backgroundColor: tokens.foreground,
+  },
+  runSegmentAt: {
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 45%, transparent)`,
+  },
+  runSegmentAhead: {
+    backgroundColor: tokens.border,
+  },
+  runExit: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  // ---- the person bar ----
+  personBar: {
+    display: 'flex',
+    height: 56,
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: {
+      default: 8,
+      [lg]: 10,
+    },
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: {
+      default: 8,
+      [lg]: 16,
+    },
+  },
+  queueKey: {
+    display: {
+      default: 'inline-flex',
+      [wide]: 'none',
+    },
+    height: 32,
+    flexShrink: 0,
+    gap: 4,
+    paddingInline: 8,
+    fontSize: 12,
+  },
+  queueKeyIcon: {
+    width: 14,
+    height: 14,
+  },
+  queueKeyCount: {
+    display: {
+      default: null,
+      [belowLg]: 'none',
+    },
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  avatar: {
+    width: {
+      default: 32,
+      [lg]: 36,
+    },
+    height: {
+      default: 32,
+      [lg]: 36,
+    },
+  },
+  avatarFace: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  personWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 1,
+  },
+  personLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: {
+      default: 8,
+      [lg]: 10,
+    },
+  },
+  personName: {
+    fontSize: {
+      default: 15,
+      [lg]: 16,
+    },
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+  },
+  businessNo: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  unitName: {
+    display: {
+      default: 'none',
+      [lg]: 'block',
+    },
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  itemLine: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  escalationLight: {
+    flexShrink: 0,
+    borderColor: `color-mix(in oklab, ${tokens.warning} 45%, ${tokens.background})`,
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 12%, ${tokens.background})`,
+    fontSize: 12,
+    color: tokens.warningForeground,
+  },
+  hadSupplements: {
+    display: {
+      default: 'none',
+      [lg]: 'inline-flex',
+    },
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+  },
+  keysHint: {
+    display: {
+      default: 'none',
+      [lg]: 'inline',
+    },
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  runAt: {
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  edgeKeys: {
+    display: {
+      default: 'none',
+      [lg]: 'flex',
+    },
+    gap: 4,
+  },
+  // ---- the part strip over a stacked workbench ----
+  partStrip: {
+    flexShrink: 0,
+    overflow: 'hidden',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    transitionProperty: 'height',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'linear',
+  },
+  partStripFolded: {
+    height: 0,
+    borderBottomWidth: 0,
+  },
+  partStripUp: {
+    height: 36,
+  },
+  partRow: {
+    position: 'relative',
+    display: 'flex',
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingInline: 8,
+  },
+  glideMark: {
+    top: 5,
+    height: 26,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  partChip: {
+    position: 'relative',
+    display: 'flex',
+    height: 26,
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: tokens.radiusMd,
+    paddingInline: 10,
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    transitionProperty: 'color',
+  },
+  partChipAt: {
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
+  partChipOff: {
+    color: tokens.mutedForeground,
+  },
+  chipWords: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  chipDetail: {
+    fontSize: 11,
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  attentionDot: {
+    position: 'absolute',
+    top: -2,
+    right: -8,
+    width: 6,
+    height: 6,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 70%, transparent)`,
+  },
+  // ---- the edge buttons ----
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  noPointer: {
+    pointerEvents: 'none',
+  },
+})
 
 /**
  * Where the run stands: one segment per filing, filled behind the reader and
@@ -44,17 +337,21 @@ export function RunStrip({
   const { format } = useI18n()
   const navigate = usePageNavigate()
   return (
-    <div className="hidden shrink-0 items-center gap-3 border-b bg-muted/40 px-4 py-2 lg:flex">
-      <p className="shrink-0 text-xs text-muted-foreground tabular-nums">
+    <div {...stylex.props(styles.runStrip)}>
+      <p {...stylex.props(styles.runPosition)}>
         {format(m.reviewRunPosition, { at, count: total })}
       </p>
-      <span className="flex min-w-0 flex-1 gap-1">
+      <span {...stylex.props(styles.runTrack)}>
         {Array.from({ length: Math.min(total, 60) }, (_, index) => (
           <span
             key={index}
-            className={cn(
-              'h-1 flex-1 rounded-full transition-colors',
-              index < done ? 'bg-foreground' : index === at - 1 ? 'bg-foreground/45' : 'bg-border',
+            {...stylex.props(
+              styles.runSegment,
+              index < done
+                ? styles.runSegmentDone
+                : index === at - 1
+                  ? styles.runSegmentAt
+                  : styles.runSegmentAhead,
             )}
           />
         ))}
@@ -62,7 +359,7 @@ export function RunStrip({
       <Button
         variant="ghost"
         size="sm"
-        className="shrink-0 text-xs text-muted-foreground"
+        className={stylex.props(styles.runExit).className}
         onClick={() => navigate('assessment/batch-reviews', { params: { batchId } })}
       >
         {format(m.reviewRunExit)}
@@ -94,7 +391,7 @@ export function PersonStrip({
   const fine = useFinePointer()
   const round = review.context?.worth.groupName
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2 lg:gap-2.5 lg:px-4">
+    <header {...stylex.props(styles.personBar)}>
       {/* The door back, for every width where the queue rail is not beside:
           a small key, the way the rail's own header key is small, because
           the person being judged owns this bar. On a phone the system back
@@ -103,39 +400,35 @@ export function PersonStrip({
         variant="outline"
         size="sm"
         data-testid="queue-key"
-        className="h-8 shrink-0 gap-1 px-2 text-xs min-[84rem]:hidden"
+        className={stylex.props(styles.queueKey).className}
         onClick={onBack}
       >
-        <ChevronLeftIcon aria-hidden className="size-3.5" />
+        <ChevronLeftIcon aria-hidden className={stylex.props(styles.queueKeyIcon).className} />
         {format(m.reviewQueueKey)}
-        <span className="text-muted-foreground tabular-nums max-lg:hidden">{of}</span>
+        <span {...stylex.props(styles.queueKeyCount)}>{of}</span>
       </Button>
-      <Avatar className="size-8 lg:size-9">
-        <AvatarFallback className="text-sm font-semibold">
+      <Avatar className={stylex.props(styles.avatar).className}>
+        <AvatarFallback className={stylex.props(styles.avatarFace).className}>
           {review.participantName.slice(0, 1)}
         </AvatarFallback>
       </Avatar>
-      <div className="flex min-w-0 flex-col gap-px">
-        <div className="flex items-baseline gap-2 lg:gap-2.5">
-          <h2 className="text-[15px] font-semibold whitespace-nowrap lg:text-base">
-            {review.participantName}
-          </h2>
+      <div {...stylex.props(styles.personWords)}>
+        <div {...stylex.props(styles.personLine)}>
+          <h2 {...stylex.props(styles.personName)}>{review.participantName}</h2>
           {review.businessNo !== null && (
-            <span className="text-xs text-muted-foreground tabular-nums">{review.businessNo}</span>
+            <span {...stylex.props(styles.businessNo)}>{review.businessNo}</span>
           )}
           {review.unitName !== null && (
-            <span className="hidden min-w-0 truncate text-xs text-muted-foreground lg:block">
-              {review.unitName}
-            </span>
+            <span {...stylex.props(styles.unitName)}>{review.unitName}</span>
           )}
         </div>
-        <p className="min-w-0 truncate text-xs text-muted-foreground">
+        <p {...stylex.props(styles.itemLine)}>
           {round !== null && round !== undefined
             ? `${round} › ${review.itemTitle}`
             : review.itemTitle}
         </p>
       </div>
-      <span className="flex-1" />
+      <span {...stylex.props(styles.spacer)} />
       {review.chain.route === 'escalation' && (
         // at every width: the mode must survive the narrowest header. In the
         // theme's own ink rather than a borrowed hue - the workbench is
@@ -144,7 +437,7 @@ export function PersonStrip({
         <Badge
           variant="outline"
           data-testid="escalation-light"
-          className="shrink-0 border-amber-300 bg-amber-50 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-200"
+          className={stylex.props(styles.escalationLight).className}
         >
           {/* the same mark the notice below carries: the filing climbed a
               level, and one glyph says it in both places */}
@@ -155,7 +448,7 @@ export function PersonStrip({
       {/* this filing has been round the supplement loop before: worth knowing
           before reading it, and only the round itself can say so */}
       {review.supplements.length > 0 && (
-        <Badge variant="outline" className="hidden shrink-0 whitespace-nowrap lg:inline-flex">
+        <Badge variant="outline" className={stylex.props(styles.hadSupplements).className}>
           <AlertCircleIcon aria-hidden />
           {format(m.reviewHadSupplements)}
         </Badge>
@@ -163,17 +456,11 @@ export function PersonStrip({
       {/* the keys hint belongs to a keyboard; without one the letters are
           not mounted and the panel would document controls that do not
           exist here */}
-      {fine && (
-        <span className="hidden shrink-0 text-xs font-medium whitespace-nowrap lg:inline">
-          {format(m.reviewKeysHint)}
-        </span>
-      )}
+      {fine && <span {...stylex.props(styles.keysHint)}>{format(m.reviewKeysHint)}</span>}
       {at !== null && (
-        <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-          {format(m.reviewRunPosition, { at, count: of })}
-        </p>
+        <p {...stylex.props(styles.runAt)}>{format(m.reviewRunPosition, { at, count: of })}</p>
       )}
-      <span className="hidden gap-1 lg:flex">
+      <span {...stylex.props(styles.edgeKeys)}>
         <EdgeButton
           can={canPrev}
           why={format(m.reviewFirstOne)}
@@ -319,18 +606,15 @@ export function PartStrip({
   return (
     <div
       // folded rather than removed, the way the shell folds its own bars
-      className={cn(
-        'shrink-0 overflow-hidden border-b transition-[height] duration-200 ease-linear',
-        beside ? 'h-0 border-b-0' : 'h-9',
-      )}
+      {...stylex.props(styles.partStrip, beside ? styles.partStripFolded : styles.partStripUp)}
       {...(beside ? { inert: true, 'aria-hidden': true } : {})}
     >
-      <div ref={row} className="relative flex h-9 items-center justify-center gap-0.5 px-2">
+      <div ref={row} {...stylex.props(styles.partRow)}>
         {mark !== null && (
           <GlideAcross
             left={mark.left}
             width={mark.width}
-            className="top-[5px] h-[26px] rounded-md bg-muted"
+            className={stylex.props(styles.glideMark).className}
           />
         )}
         {WORKBENCH_PARTS.map((part) => (
@@ -342,32 +626,26 @@ export function PartStrip({
             data-reading={part === at ? 'yes' : 'no'}
             data-attention={attention.has(part) && part !== at ? 'yes' : 'no'}
             onClick={() => goTo(part)}
-            className={cn(
-              'relative flex h-[26px] shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs whitespace-nowrap transition-colors',
-              part === at ? 'font-medium text-foreground' : 'text-muted-foreground',
-            )}
+            {...stylex.props(styles.partChip, part === at ? styles.partChipAt : styles.partChipOff)}
           >
-            <span className="relative flex items-baseline gap-1.5">
+            <span {...stylex.props(styles.chipWords)}>
               {format(PART_LABEL[part])}
               {/* the chip that is up says where in the thing it is: the
                   round for the flow, the version for the filing */}
               {part === at && part === 'flow' && (
-                <span className="text-[11px] font-normal text-muted-foreground tabular-nums">
+                <span {...stylex.props(styles.chipDetail)}>
                   {format(m.reviewStateRound, { round })}
                 </span>
               )}
               {part === at && part === 'filing' && (
-                <span className="text-[11px] font-normal text-muted-foreground tabular-nums">
+                <span {...stylex.props(styles.chipDetail)}>
                   {format(m.reviewFiledVersionShort, { no: revision })}
                 </span>
               )}
               {/* something on that face is worth this reader's look and has
                   not had one: a fact dot, not a notification */}
               {attention.has(part) && part !== at && (
-                <span
-                  aria-hidden
-                  className="absolute -top-0.5 -right-2 size-1.5 rounded-full bg-foreground/70"
-                />
+                <span aria-hidden {...stylex.props(styles.attentionDot)} />
               )}
             </span>
           </button>
@@ -399,7 +677,7 @@ function EdgeButton({
     return (
       <Button variant="outline" size="icon-sm" onClick={onPress}>
         {children}
-        <span className="sr-only">{label}</span>
+        <span {...stylex.props(styles.srOnly)}>{label}</span>
       </Button>
     )
   }
@@ -408,9 +686,14 @@ function EdgeButton({
       <Tooltip>
         <TooltipTrigger asChild>
           <span tabIndex={0}>
-            <Button variant="outline" size="icon-sm" disabled className="pointer-events-none">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled
+              className={stylex.props(styles.noPointer).className}
+            >
               {children}
-              <span className="sr-only">{label}</span>
+              <span {...stylex.props(styles.srOnly)}>{label}</span>
             </Button>
           </span>
         </TooltipTrigger>

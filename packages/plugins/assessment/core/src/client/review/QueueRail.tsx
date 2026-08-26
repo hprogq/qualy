@@ -1,11 +1,181 @@
 import { memo } from 'react'
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { ScrollArea } from '@qualy/ui/scroll-area'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { useDayClock, type InboxItemDto } from './model.ts'
+
+const wide = '@media (min-width: 84rem)'
+
+const styles = stylex.create({
+  aside: {
+    position: 'relative',
+    display: {
+      default: 'none',
+      [wide]: 'flex',
+    },
+    minHeight: 0,
+    flexShrink: 0,
+    overflow: 'hidden',
+    transitionProperty: 'width',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'linear',
+  },
+  asideOpen: {
+    width: 224,
+  },
+  asideFolded: {
+    width: 44,
+  },
+  list: {
+    display: 'flex',
+    height: '100%',
+    width: 224,
+    flexShrink: 0,
+    flexDirection: 'column',
+    transitionProperty: 'opacity',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  listHidden: {
+    opacity: 0,
+  },
+  head: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 4,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingBlock: 8,
+    paddingRight: 6,
+    paddingLeft: 4,
+  },
+  headTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  headCount: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  scroller: {
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  rowList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 1,
+    padding: 6,
+  },
+  row: {
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: tokens.radiusLg,
+    borderLeftWidth: 2,
+    borderLeftStyle: 'solid',
+    paddingInline: 10,
+    paddingBlock: 8,
+    textAlign: 'left',
+    transitionProperty: 'color, background-color, border-color',
+  },
+  rowCurrent: {
+    borderLeftColor: tokens.foreground,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  rowIdle: {
+    borderLeftColor: 'transparent',
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+    },
+  },
+  rowWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 1,
+  },
+  rowName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+  },
+  rowNameCurrent: {
+    fontWeight: 600,
+  },
+  rowItem: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  rowClock: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  folded: {
+    position: 'absolute',
+    insetBlock: 0,
+    left: 0,
+    display: 'flex',
+    width: 44,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 6,
+    paddingBlock: 8,
+    transitionProperty: 'opacity',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  foldedHidden: {
+    pointerEvents: 'none',
+    opacity: 0,
+  },
+  foldedRule: {
+    marginBlock: 2,
+    height: 1,
+    width: 20,
+    backgroundColor: tokens.border,
+  },
+  foldedCount: {
+    borderRadius: '9999px',
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 6,
+    paddingBlock: 2,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+})
 
 /**
  * What is still to do in this run, down the left.
@@ -45,20 +215,12 @@ export const QueueRail = memo(function QueueRail({
     // narrows and clips. Animating the contents' own layout warped every
     // row mid-flight - the shell's rail solved this the same way, and the
     // two folds should feel like one mechanism.
-    <aside
-      className={cn(
-        'relative hidden min-h-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-linear min-[84rem]:flex',
-        open ? 'w-56' : 'w-11',
-      )}
-    >
+    <aside {...stylex.props(styles.aside, open ? styles.asideOpen : styles.asideFolded)}>
       <nav
         {...(!open ? { inert: true, 'aria-hidden': true } : {})}
-        className={cn(
-          'flex h-full w-56 shrink-0 flex-col transition-opacity duration-150',
-          !open && 'opacity-0',
-        )}
+        {...stylex.props(styles.list, !open && styles.listHidden)}
       >
-        <div className="flex shrink-0 items-center gap-1 border-b py-2 pr-1.5 pl-1">
+        <div {...stylex.props(styles.head)}>
           {/* the way out: a workbench with no door back is a dead end */}
           <Button
             variant="ghost"
@@ -68,11 +230,9 @@ export const QueueRail = memo(function QueueRail({
           >
             <ArrowLeftIcon aria-hidden />
           </Button>
-          <p className="min-w-0 truncate text-sm font-semibold">{format(m.reviewQueueTitle)}</p>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            {remainingCount}
-          </span>
-          <span className="flex-1" />
+          <p {...stylex.props(styles.headTitle)}>{format(m.reviewQueueTitle)}</p>
+          <span {...stylex.props(styles.headCount)}>{remainingCount}</span>
+          <span {...stylex.props(styles.spacer)} />
           <Button
             variant="ghost"
             size="icon-sm"
@@ -82,8 +242,8 @@ export const QueueRail = memo(function QueueRail({
             <ChevronLeftIcon aria-hidden />
           </Button>
         </div>
-        <ScrollArea className="min-h-0 flex-1">
-          <ul className="flex flex-col gap-px p-1.5">
+        <ScrollArea className={stylex.props(styles.scroller).className}>
+          <ul {...stylex.props(styles.rowList)}>
             {rows.map((row) => {
               const current = row.instanceId === currentId
               return (
@@ -91,24 +251,15 @@ export const QueueRail = memo(function QueueRail({
                   <button
                     type="button"
                     onClick={() => onOpen(row.instanceId)}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-lg border-l-2 px-2.5 py-2 text-left transition-colors',
-                      current
-                        ? 'border-l-foreground bg-accent'
-                        : 'border-l-transparent hover:bg-accent/50',
-                    )}
+                    {...stylex.props(styles.row, current ? styles.rowCurrent : styles.rowIdle)}
                   >
-                    <span className="flex min-w-0 flex-1 flex-col gap-px">
-                      <span className={cn('truncate text-sm', current && 'font-semibold')}>
+                    <span {...stylex.props(styles.rowWords)}>
+                      <span {...stylex.props(styles.rowName, current && styles.rowNameCurrent)}>
                         {row.participantName}
                       </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {row.itemTitle}
-                      </span>
+                      <span {...stylex.props(styles.rowItem)}>{row.itemTitle}</span>
                     </span>
-                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {dayClock(row.submittedAt)}
-                    </span>
+                    <span {...stylex.props(styles.rowClock)}>{dayClock(row.submittedAt)}</span>
                   </button>
                 </li>
               )
@@ -122,10 +273,7 @@ export const QueueRail = memo(function QueueRail({
           list's answer, and folded only "how many" fits honestly. */}
       <div
         {...(open ? { inert: true, 'aria-hidden': true } : {})}
-        className={cn(
-          'absolute inset-y-0 left-0 flex w-11 flex-col items-center gap-1.5 py-2 transition-opacity duration-150',
-          open && 'pointer-events-none opacity-0',
-        )}
+        {...stylex.props(styles.folded, open && styles.foldedHidden)}
       >
         <Button
           variant="ghost"
@@ -143,10 +291,8 @@ export const QueueRail = memo(function QueueRail({
         >
           <ArrowLeftIcon aria-hidden />
         </Button>
-        <span aria-hidden className="my-0.5 h-px w-5 bg-border" />
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
-          {remainingCount}
-        </span>
+        <span aria-hidden {...stylex.props(styles.foldedRule)} />
+        <span {...stylex.props(styles.foldedCount)}>{remainingCount}</span>
       </div>
     </aside>
   )
