@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { describe, expect, it } from 'vitest'
+import * as stylex from '@stylexjs/stylex'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -171,6 +172,27 @@ describe('the input is a native form citizen', () => {
   })
 })
 
+// fixture-owned styling compiles with the test, never borrowed from the
+// production Tailwind scan: the scenario needs these styles to actually
+// apply, and a scan that stops emitting them must not blank the contract
+const glassStyles = stylex.create({
+  seat: {
+    position: 'relative',
+  },
+  glass: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: '50%',
+    left: 12,
+    width: 14,
+    height: 14,
+    transform: 'translateY(-50%)',
+  },
+  indented: {
+    paddingLeft: 34,
+  },
+})
+
 describe('a leading icon laid over the input', () => {
   // caught by eye: the widget's positioning wrapper painted over the
   // absolutely-laid search glass every list screen draws inside its field,
@@ -178,14 +200,18 @@ describe('a leading icon laid over the input', () => {
   // cursor at its own coordinates.
   it('stays visible above the field', async () => {
     mount(
-      <div className="relative">
+      <div {...stylex.props(glassStyles.seat)}>
         <svg
           data-testid="glass"
           aria-hidden
           viewBox="0 0 24 24"
-          className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2"
+          {...stylex.props(glassStyles.glass)}
         />
-        <Input aria-label="find" name="find" className="pl-8.5" />
+        <Input
+          aria-label="find"
+          name="find"
+          className={stylex.props(glassStyles.indented).className}
+        />
       </div>,
     )
     await expect.element(page.getByRole('textbox', { name: 'find' })).toBeVisible()

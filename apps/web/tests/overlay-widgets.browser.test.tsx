@@ -186,7 +186,17 @@ describe('a menu hosting a select', () => {
               <Button variant="outline">account</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+              {/* fixture-owned row layout, inline so it never leans on the
+                  production Tailwind scan */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  padding: '6px 8px',
+                }}
+              >
                 <span>language</span>
                 <Select value={pick} onValueChange={setPick}>
                   <SelectTrigger size="sm" aria-label="language">

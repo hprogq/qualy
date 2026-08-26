@@ -69,6 +69,11 @@ describe('the select trigger sizing contract', () => {
     expect(widthOf('full')).toBe(400)
   })
 
+  // Deliberately a REAL production utility: this contract is about the
+  // migration window's cascade, so the probe must be a class the build
+  // actually emits (w-56 currently rides on the audit screen). When its
+  // last production use migrates, switch the probe; when the utility layer
+  // itself goes, this test retires with the contract it pins.
   it('a legacy utility className still wins by cascade for unmigrated callers', async () => {
     render(
       <UiProvider scheme="light">
