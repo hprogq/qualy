@@ -806,8 +806,8 @@ function CapableWorkspaceShell() {
           {/* the person at the head, the pages in the middle, the account at
               the foot - and the shell owns none of the head or the foot's
               controls: whoever owns sessions fills those seats */}
-          <div {...stylex.props(styles.drawerHead)}>
-            <span aria-hidden {...stylex.props(styles.grabber)} />
+          <div data-sheet-grab="" {...stylex.props(styles.drawerHead)}>
+            <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grabber)} />
             <UiSlot
               token={drawerIdentity}
               loading={<Skeleton className={stylex.props(styles.headSkeleton).className} />}

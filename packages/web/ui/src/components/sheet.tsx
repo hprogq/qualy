@@ -177,6 +177,91 @@ function useExit(open: boolean): { shown: boolean; closing: boolean } {
   return { shown, closing }
 }
 
+/**
+ * Drag-down-to-dismiss for a bottom sheet, the way a phone expects.
+ *
+ * Only a drag that STARTS on a declared grab region counts - the grabber
+ * bar, a header stamped `data-sheet-grab` (SheetHeader carries it for
+ * free) - so pulling the content itself scrolls it and never closes the
+ * panel. The panel follows the finger raw; releasing past the threshold
+ * hands the panel, at its current offset, to the data-closing exit, and
+ * releasing short of it runs the panel back.
+ */
+function useDragDismiss(
+  active: boolean,
+  closing: boolean,
+  panelOf: () => HTMLElement | null,
+  requestClose: () => void,
+) {
+  const drag = React.useRef<{ pointer: number; startY: number; dy: number } | null>(null)
+
+  // the exit takes over from wherever the finger left the panel: clearing
+  // the inline transform while the closing transition stands lets CSS
+  // animate current offset -> off-screen instead of snapping to the top
+  React.useEffect(() => {
+    if (!closing) return
+    const panel = panelOf()
+    if (panel !== null) {
+      panel.style.transform = ''
+      panel.style.transition = ''
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closing])
+
+  if (!active) return {}
+  return {
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (closing || drag.current !== null) return
+      const target = event.target as HTMLElement
+      // a drag begins on a grab region and never on a control inside one
+      if (target.closest('[data-sheet-grab]') === null) return
+      if (target.closest('button, a, input, textarea, select') !== null) return
+      drag.current = { pointer: event.pointerId, startY: event.clientY, dy: 0 }
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {
+        // a pointer id the platform has no record of; the drag still counts
+      }
+      const panel = panelOf()
+      if (panel !== null) panel.style.transition = 'none'
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+      const held = drag.current
+      if (held === null || held.pointer !== event.pointerId) return
+      held.dy = Math.max(0, event.clientY - held.startY)
+      const panel = panelOf()
+      if (panel !== null) panel.style.transform = `translateY(${held.dy}px)`
+    },
+    onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
+      const held = drag.current
+      if (held === null || held.pointer !== event.pointerId) return
+      drag.current = null
+      const panel = panelOf()
+      const height = panel?.offsetHeight ?? 0
+      if (held.dy > Math.min(96, height * 0.3) && held.dy > 48) {
+        requestClose()
+        return
+      }
+      if (panel !== null) {
+        panel.style.transition = 'transform 150ms cubic-bezier(0.4, 0, 0.2, 1)'
+        panel.style.transform = 'translateY(0)'
+        window.setTimeout(() => {
+          panel.style.transition = ''
+          panel.style.transform = ''
+        }, 160)
+      }
+    },
+    onPointerCancel: () => {
+      drag.current = null
+      const panel = panelOf()
+      if (panel !== null) {
+        panel.style.transition = ''
+        panel.style.transform = ''
+      }
+    },
+  }
+}
+
 function SheetContent({
   className,
   children,
@@ -193,6 +278,12 @@ function SheetContent({
   // a STABLE ref object - the focus trap re-runs its focus routine when
   // the content ref identity changes
   const contentRef = React.useRef<HTMLDivElement>(null)
+  const dragHandlers = useDragDismiss(
+    side === 'bottom',
+    closing,
+    () => contentRef.current,
+    () => setOpen(false),
+  )
   // the page behind a modal leaves the conversation entirely
   React.useEffect(() => {
     if (!open) return
@@ -221,6 +312,7 @@ function SheetContent({
         data-slot="sheet-content"
         data-side={side}
         {...(closing ? { 'data-closing': '' } : {})}
+        {...dragHandlers}
         ref={contentRef}
         // structure only; surface and the panel chrome are the widget's own.
         // classNames.content, not className: the widget duplicates className
@@ -264,6 +356,9 @@ function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="sheet-header"
+      // the header is a grab region: on a bottom sheet, dragging it down
+      // dismisses the panel the way a phone expects
+      data-sheet-grab=""
       className={cn('flex flex-col gap-1.5 p-6', className)}
       {...props}
     />

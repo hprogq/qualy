@@ -279,6 +279,12 @@
   [data-slot='sheet-content'][data-closing] {
     pointer-events: none;
   }
+  /* grab regions answer the drag, not the scroll: without this the
+   * browser claims a downward pull for scrolling before the dismiss
+   * gesture ever sees it */
+  [data-slot='sheet-content'][data-side='bottom'] [data-sheet-grab] {
+    touch-action: none;
+  }
   [data-slot='sheet-overlay'][data-closing] {
     opacity: 0;
     transition: opacity 200ms ease;

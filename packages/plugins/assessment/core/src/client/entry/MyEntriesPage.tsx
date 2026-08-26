@@ -1856,7 +1856,7 @@ function Body({
             className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
           >
             <SheetTitle className="sr-only">{format(m.paperStructure)}</SheetTitle>
-            <span aria-hidden {...stylex.props(styles.dragHandle)} />
+            <span aria-hidden data-sheet-grab="" {...stylex.props(styles.dragHandle)} />
             <Structure
               variant="sheet"
               rows={rows}
@@ -2236,7 +2236,7 @@ function Structure({
   if (variant === 'sheet') {
     return (
       <div ref={railRef} {...stylex.props(styles.sheetRoot)}>
-        <div {...stylex.props(styles.sheetHead)}>
+        <div data-sheet-grab="" {...stylex.props(styles.sheetHead)}>
           <p {...stylex.props(styles.sheetTitle)}>{format(m.paperStructure)}</p>
           <span {...stylex.props(styles.sheetMeta)}>
             {format(m.myEntriesPaperMeta, { groups: groupCount, items: questions })}

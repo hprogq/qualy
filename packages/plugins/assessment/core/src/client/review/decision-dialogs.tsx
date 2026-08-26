@@ -372,7 +372,7 @@ export function DecisionSheet({
         side="bottom"
         className="max-h-[85dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
       >
-        <span aria-hidden {...stylex.props(styles.grabber)} />
+        <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grabber)} />
         <SheetHeader className="gap-0.5 px-4 pt-1.5 pb-2">
           <SheetTitle className="text-[15px]">{title}</SheetTitle>
           <SheetDescription className="text-xs">{hint}</SheetDescription>
