@@ -9072,3 +9072,35 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
   **173 passed**(171+2;四轮全量中三轮全绿,一轮单条未捕获名称的失败未再复现,特征与已
   存档的 runner 派发竞态一致);build 成功;生产 smoke 干净退出;prettier 通过(.mcp.json
   除外)。Shell 未开始。
+
+## UI 平台 M6 收官刀:Shell 迁 StyleX(2026-08-26)
+
+- **范围**:layout-default 全部(WorkspaceShell/TopBar+SectionBar/AppShell)+ auth 壳家具四件
+  (UserMenu/DrawerIdentity/DrawerAccount/DrawerSignOut);layout-default 补 @stylexjs/stylex。
+  架构冻结项全部原样:manifest/collection/capability 准入、layout provider、fill() 参数填充、
+  1024 断点与 useIsBelow、NAV_STATE history 抽屉语义(open=push、hide=navigate(-1))、capsule
+  常驻挂载(CI 竞态注释保留)、inert 折叠模式、预热隐藏槽、ScreenFootScope。滚动模型逐条
+  保持并写成注释:body 不滚(根即视口)、main 拥有页滚、rail 与抽屉导航区各自滚。
+- **显式状态替代**:NavLink 函数式 className 直接产出 stylex 组合;UserMenu 触发器的
+  data-[state=open] 改为 onOpenChange 显式受控;lineage 展开/收起、rail 折叠、capsule 显隐
+  全部 props 组合。`accent-foreground`(shadcn 别名,非 --q-*)按 M5 Rail 先例归一到
+  tokens.foreground(14px 文本灰阶差不可辨),不再制造 M9 债。
+- **度量**:七文件 className 111→2(剩两处注明的适配器同属性边界:底部抽屉的 SheetContent
+  串——overflow 与 sheet 内部 utility 冲突;DrawerAccount 的 ToggleGroupItem——Radix 内部
+  冲突)+ 23 处编译类穿干净边界;cn 4 文件→0;业务 Mantine import 0;Mantine 布局件 0;
+  新 !important 0;新 unsafe cast 0;xstyle 0(壳无需覆盖任何共享默认)。
+- **真回归一例,已修并转契约**:paper-reading 四条失败——根因不在壳代码,而是两个测试
+  fixture 的视口骨架(h-dvh/overflow-y-auto/min-h-0)**寄生于生产源码的 Tailwind 扫描**:
+  tests 目录不在 @source,这些 utility 此前恰因 WorkspaceShell 使用而存在,壳迁 StyleX 后
+  从产物消失,fixture 静默失去窗高滚动(review-layout 同病,断言未及故未红)。修法:两个
+  fixture 改 inline style,并注释立规——**测试骨架不得向扫描借 utility**。M6.5 那类未捕获
+  runner 失败本阶段未再出现;此项为独立的 test-infra 教训,与 runner 竞态无关。
+- **补测**:shell 套件 +1——抽屉关闭消费其 history 条目且地址不动(打开原地 push、Escape/
+  返回 pop 落回原页;window.history.back() 在 MemoryRouter harness 下会杀 tester 页,已注释
+  说明用 pop 等价表达)。
+- **视觉走查**:9 场景(桌面工作台明/暗、rail 折叠、账户菜单明/暗、手机 capsule、手机抽屉
+  明/暗、AppShell 段栏;fixture 含超长用户名/入口名、30 行正文撑滚动)。零壳回归;走查
+  过程中两处"空席位"均为 gallery 接线(slot key、registry)而非产品问题。
+- **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 25 files /
+  **174 passed**(173+1,连续两轮,零删除零弱化);build 成功;生产 smoke 干净退出;prettier
+  通过(.mcp.json 除外)。M7 未开始。
