@@ -9104,3 +9104,20 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **验收(全部真实执行)**:typecheck 零错;node 838 passed | 17 skipped;浏览器 25 files /
   **174 passed**(173+1,连续两轮,零删除零弱化);build 成功;生产 smoke 干净退出;prettier
   通过(.mcp.json 除外)。M7 未开始。
+
+## UI 平台 M6.6:测试 fixture 样式隔离(2026-08-26)
+
+- **全量 sweep 结果**:测试基建里字面 className 仅 6 处。寄生扫描的 4 处已隔离——
+  form-controls 的搜索镜片遮挡场景(定位/内边距契约靠真实样式成立)改测试内 stylex.create;
+  overlay-widgets 的菜单行骨架改 inline style。刻意的 2 处保留并注明:button asChild 的
+  `mt-2`(断言 class 属性字符串本身,不依赖编译产物)、select-sizing 的 `w-56`(层序契约
+  探针必须是真实产物 utility;注释写明其供给来源与 M9 退役条件)。assessment 套件
+  (batch-admin/entry-workflow/item-chain)零命中;harness/settled 无样式类;cn 零使用。
+- **规则入档**:docs/stylex.md 增「Test fixture styling」——fixture 布局必须自持(inline/
+  测试内 StyleX),唯一豁免是以 legacy 类行为为契约的测试,且须在门禁中点名。
+- **防回归门禁**:tools/tests/fixture-styling.test.ts——扫 apps/web/tests 的字面 className,
+  文件级豁免名单即上述两个契约文件;实现是十几行 walk+grep,零解析器、零误报面
+  (node 套件 838→839)。生产源码零改动、零 safelist、零新增 @source。
+- **验收(全部真实执行)**:typecheck 零错;node **839** passed | 17 skipped;浏览器 25
+  files / **174 passed** 连续两轮;build 成功;生产 smoke 干净退出;prettier 通过(.mcp.json
+  除外)。M6.5 型 runner 派发失败零复现。M7 未开始。
