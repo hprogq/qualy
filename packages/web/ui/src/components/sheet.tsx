@@ -167,7 +167,13 @@ function SheetContent({
       lockScroll
       closeOnEscape={!photoOpen}
       closeOnClickOutside
-      transitionProps={{ duration: 200 }}
+      // Fade, not slide: the slide-in is a CSS insertion animation (it must
+      // play for mount-already-open too), and two owners of transform meant
+      // the widget's slide took over mid-frame when the keyframe released -
+      // a visible stutter at the end of opening, and a close that could be
+      // cut short. The widget owns opacity alone: entrances fade under the
+      // keyframe's slide, exits fade out in full.
+      transitionProps={{ duration: 200, transition: 'fade' }}
     >
       {/* no backdrop blur: a backdrop-filter under an opacity entrance makes
           mobile Safari re-rasterize the page behind on every frame, which
