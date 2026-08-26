@@ -911,7 +911,11 @@ function MyDesk({
           )}
           <span {...stylex.props(styles.headSpacer)} />
           {mixed && (
-            <Tabs value={lane} onValueChange={(value) => setLane(value as Lane)}>
+            <Tabs
+              variant="segmented"
+              value={lane}
+              onValueChange={(value) => setLane(value as Lane)}
+            >
               <TabsList>
                 {(
                   [

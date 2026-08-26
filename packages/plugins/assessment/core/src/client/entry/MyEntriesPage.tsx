@@ -1695,6 +1695,7 @@ function Body({
                     </div>
                     <div {...stylex.props(styles.narrowControls)}>
                       <Tabs
+                        variant="segmented"
                         className="min-w-0 flex-1"
                         value={paperView}
                         onValueChange={(next) => setPaperView(next as 'all' | 'todo')}
@@ -1772,6 +1773,7 @@ function Body({
                         </span>
                       </span>
                       <Tabs
+                        variant="segmented"
                         value={paperView}
                         onValueChange={(next) => setPaperView(next as 'all' | 'todo')}
                       >
@@ -2222,7 +2224,11 @@ function Structure({
     )
 
   const filterTabs = (
-    <Tabs value={showing} onValueChange={(next) => setShowing(next as 'all' | 'todo')}>
+    <Tabs
+      variant="segmented"
+      value={showing}
+      onValueChange={(next) => setShowing(next as 'all' | 'todo')}
+    >
       <TabsList>
         <TabsTrigger value="all">{format(m.myEntriesFilterAll)}</TabsTrigger>
         <TabsTrigger value="todo">

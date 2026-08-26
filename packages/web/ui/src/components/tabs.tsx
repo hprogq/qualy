@@ -46,8 +46,11 @@ const styles = stylex.create({
     gap: 4,
   },
   // one bounded run: the ground holds the options together, which is what
-  // tells a reader that two switchers on the same row are two questions
+  // tells a reader that two switchers on the same row are two questions.
+  // 36px overall, because it stands in a filter row beside fields and
+  // buttons and a row of controls only reads as a row when they agree.
   listSegmented: {
+    height: 36,
     gap: 2,
     borderRadius: tokens.radiusMd,
     backgroundColor: tokens.surfaceMuted,
@@ -56,6 +59,9 @@ const styles = stylex.create({
   trigger: {
     position: 'relative',
     display: 'inline-flex',
+    // the product's control rhythm, so a tablist sitting in a row of fields
+    // and buttons lines up with them
+    height: 36,
     alignItems: 'center',
     gap: 6,
     borderRadius: tokens.radiusMd,
@@ -92,9 +98,11 @@ const styles = stylex.create({
     color: tokens.foreground,
   },
   triggerSegmented: {
+    // 30 inside the list's 3px padding: 36 again
+    height: 30,
     borderRadius: `calc(${tokens.radiusMd} - 1px)`,
     paddingInline: 10,
-    paddingBlock: 3,
+    paddingBlock: 0,
     transitionProperty: 'color, background-color, box-shadow',
   },
   // raised out of the ground rather than underlined
@@ -108,7 +116,7 @@ const styles = stylex.create({
   underline: {
     position: 'absolute',
     insetInline: 0,
-    bottom: -5,
+    bottom: 0,
     height: 2,
     borderRadius: 2,
     backgroundColor: tokens.foreground,

@@ -698,7 +698,12 @@ function Queue({
       <div {...stylex.props(styles.queue)}>
         <div {...stylex.props(styles.controls)}>
           <div {...stylex.props(styles.controlRow)}>
-            <Tabs value={view} onValueChange={onView} className="max-md:min-w-0 max-md:flex-1">
+            <Tabs
+              variant="segmented"
+              value={view}
+              onValueChange={onView}
+              className="max-md:min-w-0 max-md:flex-1"
+            >
               <TabsList className="max-md:grid max-md:w-full max-md:grid-cols-4">
                 <TabsTrigger value="item">{format(m.reviewTabByItem)}</TabsTrigger>
                 <TabsTrigger value="time">{format(m.reviewTabByTime)}</TabsTrigger>
