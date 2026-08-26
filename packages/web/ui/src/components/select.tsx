@@ -157,6 +157,7 @@ function SelectTrigger({
         data-slot="select-trigger"
         data-size={size}
         size={size === 'sm' ? 'xs' : 'sm'}
+        style={sx.style}
         className={clsx(sx.className, className)}
         {...(invalid ? { error: true } : {})}
         disabled={disabled}

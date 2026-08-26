@@ -16,11 +16,10 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@qualy/ui/empty'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@qualy/ui/input-group'
-import { Pagination, PaginationContent, PaginationItem } from '@qualy/ui/pagination'
 import { Badge } from '@qualy/ui/badge'
 import { Reveal } from '@qualy/ui/reveal'
 import { PageContainer } from '@qualy/ui/page-container'
+import { Input } from '@qualy/ui/input'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { ChevronLeftIcon, ChevronRightIcon, LayersIcon, PlusIcon, SearchIcon } from 'lucide-react'
@@ -34,6 +33,23 @@ import { BatchCard } from './batch/BatchCard.tsx'
 const PAGE_SIZE = 20
 
 const styles = stylex.create({
+  searchSeat: {
+    width: '100%',
+    maxWidth: {
+      default: null,
+      '@media (min-width: 640px)': 320,
+    },
+  },
+  searchGlyph: {
+    width: 16,
+    height: 16,
+    color: tokens.mutedForeground,
+  },
+  pager: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  },
   page: {
     display: 'flex',
     flexDirection: 'column',
@@ -335,18 +351,17 @@ export default function BatchListPage() {
 
         <div {...stylex.props(styles.body)}>
           <div {...stylex.props(styles.filterBar)}>
-            <InputGroup className="w-full sm:max-w-xs">
-              <InputGroupInput
-                name="batches-search"
-                value={search}
-                placeholder={format(m.searchPlaceholder)}
-                aria-label={format(m.searchPlaceholder)}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              <InputGroupAddon>
-                <SearchIcon />
-              </InputGroupAddon>
-            </InputGroup>
+            <Input
+              name="batches-search"
+              value={search}
+              placeholder={format(m.searchPlaceholder)}
+              aria-label={format(m.searchPlaceholder)}
+              onChange={(event) => setSearch(event.target.value)}
+              lead={
+                <SearchIcon aria-hidden className={stylex.props(styles.searchGlyph).className} />
+              }
+              wrapperXstyle={styles.searchSeat}
+            />
             {batches.isFetching && !batches.isPending && (
               <Spinner
                 aria-label={format(commonMessages.loading)}
@@ -502,37 +517,30 @@ export default function BatchListPage() {
                       ? format(m.pageOfTotal, { page: pageIndex + 1, pages: pageCount })
                       : ''}
                   </span>
-                  {/* the navigation structure is the library's; the controls
-                    are buttons rather than its anchors, because these move
-                    client-side state - an anchor with no href is neither
-                    focusable nor disableable, and its label is english */}
+                  {/* buttons, not anchors: these move client-side state,
+                    and an anchor with no href is neither focusable nor
+                    disableable */}
                   {(pageCount > 1 || pageIndex > 0) && (
-                    <Pagination className="mx-0 w-auto">
-                      <PaginationContent>
-                        <PaginationItem>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={pageIndex === 0}
-                            onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
-                          >
-                            <ChevronLeftIcon />
-                            {format(m.previousPage)}
-                          </Button>
-                        </PaginationItem>
-                        <PaginationItem>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={nextCursor === null}
-                            onClick={() => setPageIndex((index) => index + 1)}
-                          >
-                            {format(m.nextPage)}
-                            <ChevronRightIcon />
-                          </Button>
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
+                    <nav aria-label="pagination" {...stylex.props(styles.pager)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={pageIndex === 0}
+                        onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
+                      >
+                        <ChevronLeftIcon />
+                        {format(m.previousPage)}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={nextCursor === null}
+                        onClick={() => setPageIndex((index) => index + 1)}
+                      >
+                        {format(m.nextPage)}
+                        <ChevronRightIcon />
+                      </Button>
+                    </nav>
                   )}
                 </div>
               </div>

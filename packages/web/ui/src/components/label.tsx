@@ -1,20 +1,45 @@
 'use client'
 
-import * as React from 'react'
-import { Label as LabelPrimitive } from 'radix-ui'
+import type * as React from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { InputLabel } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import { seatOf } from '../lib/xstyle.ts'
 
-function Label({ className, ...props }: React.ComponentProps<typeof LabelPrimitive.Root>) {
+// The name of a control, tied to it by `htmlFor`.
+
+const styles = stylex.create({
+  label: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 14,
+    lineHeight: 1,
+    fontWeight: 500,
+    userSelect: 'none',
+  },
+})
+
+interface LabelProps {
+  children: React.ReactNode
+  htmlFor?: string
+  id?: string
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
+  /** legacy interop hatch */
+  className?: string
+  style?: React.CSSProperties
+}
+
+function Label({ className, style, xstyle, children, ...rest }: LabelProps) {
   return (
-    <LabelPrimitive.Root
+    <InputLabel
       data-slot="label"
-      className={cn(
-        'flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    />
+      {...rest}
+      {...seatOf(stylex.props(styles.label, xstyle), className, style)}
+    >
+      {children}
+    </InputLabel>
   )
 }
 

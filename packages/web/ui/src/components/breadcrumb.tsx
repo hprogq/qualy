@@ -1,102 +1,65 @@
-import * as React from 'react'
-import { Slot } from 'radix-ui'
+'use client'
 
-import { cn } from '../lib/utils.ts'
-import { ChevronRightIcon, MoreHorizontalIcon } from 'lucide-react'
+import type * as React from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { Breadcrumbs as MBreadcrumbs } from '@mantine/core'
 
-function Breadcrumb({ className, ...props }: React.ComponentProps<'nav'>) {
-  return <nav aria-label="breadcrumb" data-slot="breadcrumb" className={cn(className)} {...props} />
+import { tokens } from '../theme/tokens.stylex.ts'
+import { seatOf } from '../lib/xstyle.ts'
+
+// Where a screen sits in what contains it.
+//
+// The widget separates whatever it is given; the trail's own words, links
+// and truncation stay with the screen that knows them. The crumb's own
+// styling is bound to the widget's slot in here, which is the adapter's
+// business - no consumer has needed to reach it.
+
+const styles = stylex.create({
+  trail: {
+    minWidth: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  crumb: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+})
+
+interface BreadcrumbProps {
+  children: React.ReactNode
+  /** what stands between two crumbs */
+  separator?: React.ReactNode
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
+  /** legacy interop hatch: utilities and third-party class strings */
+  className?: string
+  style?: React.CSSProperties
+  'aria-label'?: string
 }
 
-function BreadcrumbList({ className, ...props }: React.ComponentProps<'ol'>) {
-  return (
-    <ol
-      data-slot="breadcrumb-list"
-      className={cn(
-        'flex flex-wrap items-center gap-1.5 text-sm wrap-break-word text-muted-foreground sm:gap-2.5',
-        className,
-      )}
-      {...props}
-    />
-  )
-}
-
-function BreadcrumbItem({ className, ...props }: React.ComponentProps<'li'>) {
-  return (
-    <li
-      data-slot="breadcrumb-item"
-      className={cn('inline-flex items-center gap-1.5', className)}
-      {...props}
-    />
-  )
-}
-
-function BreadcrumbLink({
-  asChild,
+function Breadcrumb({
   className,
-  ...props
-}: React.ComponentProps<'a'> & {
-  asChild?: boolean
-}) {
-  const Comp = asChild ? Slot.Root : 'a'
-
+  style,
+  xstyle,
+  separator = '/',
+  children,
+  ...rest
+}: BreadcrumbProps) {
   return (
-    <Comp
-      data-slot="breadcrumb-link"
-      className={cn('transition-colors hover:text-foreground', className)}
-      {...props}
-    />
-  )
-}
-
-function BreadcrumbPage({ className, ...props }: React.ComponentProps<'span'>) {
-  return (
-    <span
-      data-slot="breadcrumb-page"
-      role="link"
-      aria-disabled="true"
-      aria-current="page"
-      className={cn('font-normal text-foreground', className)}
-      {...props}
-    />
-  )
-}
-
-function BreadcrumbSeparator({ children, className, ...props }: React.ComponentProps<'li'>) {
-  return (
-    <li
-      data-slot="breadcrumb-separator"
-      role="presentation"
-      aria-hidden="true"
-      className={cn('[&>svg]:size-3.5', className)}
-      {...props}
+    <MBreadcrumbs
+      data-slot="breadcrumb"
+      separator={separator}
+      separatorMargin="xs"
+      classNames={{ breadcrumb: stylex.props(styles.crumb).className }}
+      {...rest}
+      {...seatOf(stylex.props(styles.trail, xstyle), className, style)}
     >
-      {children ?? <ChevronRightIcon />}
-    </li>
+      {children}
+    </MBreadcrumbs>
   )
 }
 
-function BreadcrumbEllipsis({ className, ...props }: React.ComponentProps<'span'>) {
-  return (
-    <span
-      data-slot="breadcrumb-ellipsis"
-      role="presentation"
-      aria-hidden="true"
-      className={cn('flex size-5 items-center justify-center [&>svg]:size-4', className)}
-      {...props}
-    >
-      <MoreHorizontalIcon />
-      <span className="sr-only">More</span>
-    </span>
-  )
-}
-
-export {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-  BreadcrumbEllipsis,
-}
+export { Breadcrumb }

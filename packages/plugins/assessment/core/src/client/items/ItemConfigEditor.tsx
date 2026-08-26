@@ -25,7 +25,6 @@ import { Checkbox } from '@qualy/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@qualy/ui/dropdown-menu'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@qualy/ui/input-group'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
@@ -49,6 +48,11 @@ const md = '@media (min-width: 768px)'
 const xl = '@media (min-width: 1280px)'
 
 const styles = stylex.create({
+  unitTail: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    whiteSpace: 'nowrap',
+  },
   // shared scraps
   spacer: {
     flexGrow: 1,
@@ -1996,17 +2000,17 @@ export function ItemConfigEditor({
                 <div {...stylex.props(styles.w152)}>
                   <Field label={format(granted ? m.itemsGrantedValue : m.itemsFixedValue)}>
                     {(id) => (
-                      <InputGroup>
-                        <InputGroupInput
-                          id={id}
-                          className="tabular-nums"
-                          value={draft.fixedValue}
-                          onChange={(event) => patch({ fixedValue: event.target.value })}
-                        />
-                        <InputGroupAddon align="inline-end">
-                          <InputGroupText>{format(m.itemsFixedValueUnit)}</InputGroupText>
-                        </InputGroupAddon>
-                      </InputGroup>
+                      <Input
+                        id={id}
+                        className="tabular-nums"
+                        value={draft.fixedValue}
+                        onChange={(event) => patch({ fixedValue: event.target.value })}
+                        tail={
+                          <span {...stylex.props(styles.unitTail)}>
+                            {format(m.itemsFixedValueUnit)}
+                          </span>
+                        }
+                      />
                     )}
                   </Field>
                 </div>

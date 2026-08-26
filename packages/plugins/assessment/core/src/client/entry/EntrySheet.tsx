@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { AlertCircleIcon, XIcon } from 'lucide-react'
@@ -8,13 +8,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { ConfirmDialog } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@qualy/ui/breadcrumb'
+import { Breadcrumb } from '@qualy/ui/breadcrumb'
 import { Button } from '@qualy/ui/button'
 import { Swap } from '@qualy/ui/reveal'
 import { ScrollArea } from '@qualy/ui/scroll-area'
@@ -41,6 +35,9 @@ import { fieldsOf, type ActionAvailability, type EntryDto, type ItemDto } from '
 // that had no room to say why.
 
 const styles = stylex.create({
+  crumbHere: {
+    color: tokens.foreground,
+  },
   head: {
     display: 'flex',
     flexShrink: 0,
@@ -452,23 +449,12 @@ export function EntrySheet({
         <div {...stylex.props(styles.head)}>
           <div {...stylex.props(styles.headWords)}>
             <Breadcrumb>
-              <BreadcrumbList className="flex-nowrap text-xs sm:gap-1.5">
-                {/* the separator is a list item of its own, never nested in
-                    one: an <li> inside an <li> is invalid HTML and react
-                    says so on every render */}
-                {trail.map((name, index) => (
-                  <Fragment key={index}>
-                    {index > 0 && <BreadcrumbSeparator />}
-                    <BreadcrumbItem className="min-w-0">
-                      <span className="min-w-0 truncate">{name}</span>
-                    </BreadcrumbItem>
-                  </Fragment>
-                ))}
-                {trail.length > 0 && <BreadcrumbSeparator />}
-                <BreadcrumbItem className="min-w-0">
-                  <BreadcrumbPage className="min-w-0 truncate">{item.title}</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
+              {trail.map((name, index) => (
+                <span key={index}>{name}</span>
+              ))}
+              <span aria-current="page" {...stylex.props(styles.crumbHere)}>
+                {item.title}
+              </span>
             </Breadcrumb>
             <div {...stylex.props(styles.titleRow)}>
               <SheetTitle className="shrink-0 text-base font-semibold">

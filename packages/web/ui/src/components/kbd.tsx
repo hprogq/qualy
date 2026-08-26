@@ -1,27 +1,70 @@
-import * as React from 'react'
+'use client'
 
-import { cn } from '../lib/utils.ts'
+import type * as React from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { Kbd as MKbd } from '@mantine/core'
 
-function Kbd({ className, ...props }: React.ComponentProps<'kbd'>) {
+import { seatOf } from '../lib/xstyle.ts'
+
+// A key, drawn where a sentence names one.
+//
+// The chip takes its ink from whatever it sits in rather than from a fixed
+// pair of tokens. A pinned muted-on-muted chip disappeared on a solid
+// button, and a pinned white one disappeared again on the disabled grey
+// ground under it - each fix belonged to the button that reported it, and
+// the next surface broke the same way. Following the current foreground is
+// one rule that holds on plain prose, on a primary button, on a destructive
+// one, on a disabled one, and inside a tooltip whose ink is inverted.
+
+const styles = stylex.create({
+  ink: {
+    height: 20,
+    minWidth: 20,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingInline: 4,
+    fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1,
+    color: 'currentColor',
+    backgroundColor: 'color-mix(in oklab, currentColor 15%, transparent)',
+    borderColor: 'transparent',
+    boxShadow: 'none',
+    userSelect: 'none',
+    pointerEvents: 'none',
+  },
+  group: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+  },
+})
+
+interface KeyProps {
+  children: React.ReactNode
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
+  /** legacy interop hatch */
+  className?: string
+  style?: React.CSSProperties
+}
+
+function Kbd({ className, style, xstyle, children }: KeyProps) {
   return (
-    <kbd
-      data-slot="kbd"
-      className={cn(
-        "pointer-events-none inline-flex h-5 w-fit min-w-5 items-center justify-center gap-1 rounded-sm bg-muted px-1 font-sans text-xs font-medium text-muted-foreground select-none [[data-slot=tooltip-content]_&]:bg-background/20 [[data-slot=tooltip-content]_&]:text-background dark:[[data-slot=tooltip-content]_&]:bg-background/10 [&_svg:not([class*='size-'])]:size-3",
-        className,
-      )}
-      {...props}
-    />
+    <MKbd data-slot="kbd" {...seatOf(stylex.props(styles.ink, xstyle), className, style)}>
+      {children}
+    </MKbd>
   )
 }
 
-function KbdGroup({ className, ...props }: React.ComponentProps<'kbd'>) {
+/** several keys pressed together, spaced as one phrase */
+function KbdGroup({ className, style, xstyle, children }: KeyProps) {
   return (
-    <kbd
-      data-slot="kbd-group"
-      className={cn('inline-flex items-center gap-1', className)}
-      {...props}
-    />
+    <span data-slot="kbd-group" {...seatOf(stylex.props(styles.group, xstyle), className, style)}>
+      {children}
+    </span>
   )
 }
 

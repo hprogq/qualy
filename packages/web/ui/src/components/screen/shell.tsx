@@ -84,13 +84,15 @@ export function Segmented<T extends string>({
   label: string
   xstyle?: StyleXStyles
 }) {
+  const sx = stylex.props(styles.pinned, xstyle)
   return (
     <Tabs
       value={value}
       onValueChange={(next) => onChange(next as T)}
-      // the tabs adapter takes classes; the compiled result of the StyleX
-      // seat is what crosses that boundary
-      className={stylex.props(styles.pinned, xstyle).className}
+      // the tabs adapter takes classes; the compiled seat crosses that
+      // boundary whole - its class AND its style, or a dynamic style dies
+      className={sx.className}
+      style={sx.style}
     >
       <TabsList aria-label={label}>
         {options.map((option) => (
