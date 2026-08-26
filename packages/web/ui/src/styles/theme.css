@@ -392,45 +392,6 @@
     width: 1.5rem;
     height: 1.5rem;
   }
-  /* tabs: the product's underline design over the widget's variant="none".
-     Resting ink and its state repaints sit together in this one layer -
-     a resting value stated in a higher layer would win over every state
-     rule below it. */
-  [data-slot='tabs-trigger'] {
-    border-radius: var(--q-radius-md);
-    color: color-mix(in oklab, var(--q-foreground) 60%, transparent);
-    transition:
-      color 150ms,
-      box-shadow 150ms;
-  }
-  [data-slot='tabs-trigger']:hover {
-    color: var(--q-foreground);
-  }
-  [data-slot='tabs-trigger'][data-active] {
-    color: var(--q-foreground);
-  }
-  [data-slot='tabs-trigger']::after {
-    content: '';
-    position: absolute;
-    inset-inline: 0;
-    bottom: -5px;
-    height: 2px;
-    background-color: var(--q-foreground);
-    opacity: 0;
-    transition: opacity 150ms;
-  }
-  [data-slot='tabs-trigger'][data-active]::after {
-    opacity: 1;
-  }
-  [data-slot='tabs-trigger']:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--q-focus-ring) 50%, transparent);
-  }
-  [data-slot='tabs-trigger']:disabled {
-    pointer-events: none;
-    opacity: 0.5;
-  }
-
   /* the pressed state the behavior primitive stamps on a toggle, and the
      icon sizing inside caller-provided children - neither is readable by a
      compiled style on its own element */

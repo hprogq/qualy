@@ -1,20 +1,25 @@
 'use client'
 
-import type * as React from 'react'
+import * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { Tabs as MTabs } from '@mantine/core'
 
+import { tokens } from '../theme/tokens.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
 // A row of exclusive views under an underline. The behavior - roving
 // focus, arrow keys, Home/End, the WAI-ARIA tablist contract - is the
 // widget's, mounted with `variant="none"` so it brings no look of its own.
-// The look is the product's: geometry here in StyleX, and every property
-// the selection state touches (ink, the underline, focus, disabled) in
-// theme.css under [data-slot='tabs-*'] - state rules must sit in the same
-// layer as their resting values, or the resting value wins forever.
+// The whole look is stated here: hover, focus and disabled as conditions
+// on the style itself, and the selected view as an ordinary React
+// comparison - the group knows which value is current, so no rule has to
+// go looking for an attribute the widget stamped.
+//
 // View SWITCHERS - a segmented choice riding in a filter row - are not
 // tabs; they are the `Segmented` control in @qualy/ui/screen.
+
+/** the value the group holds, so a trigger can tell whether it is the one */
+const TabsCtx = React.createContext<string | undefined>(undefined)
 
 const styles = stylex.create({
   list: {
@@ -22,18 +27,54 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 4,
   },
-  // geometry only: everything the active state repaints lives in theme.css
   trigger: {
     position: 'relative',
     display: 'inline-flex',
     alignItems: 'center',
     gap: 6,
+    borderRadius: tokens.radiusMd,
     paddingInline: 8,
     paddingBlock: 4,
     fontFamily: 'inherit',
     fontSize: 14,
     fontWeight: 500,
     whiteSpace: 'nowrap',
+    color: {
+      default: `color-mix(in oklab, ${tokens.foreground} 60%, transparent)`,
+      ':hover': tokens.foreground,
+    },
+    outline: {
+      default: null,
+      ':focus-visible': 'none',
+    },
+    boxShadow: {
+      default: null,
+      ':focus-visible': `0 0 0 3px color-mix(in oklab, ${tokens.focusRing} 50%, transparent)`,
+    },
+    opacity: {
+      default: null,
+      ':disabled': 0.5,
+    },
+    pointerEvents: {
+      default: null,
+      ':disabled': 'none',
+    },
+    transitionProperty: 'color, box-shadow',
+    transitionDuration: '150ms',
+  },
+  triggerReading: {
+    color: tokens.foreground,
+  },
+  // The underline is an element of its own, drawn only under the view being
+  // read. The adapter already knows which one that is, so nothing has to go
+  // looking for an attribute the widget stamped.
+  underline: {
+    position: 'absolute',
+    insetInline: 0,
+    bottom: -5,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: tokens.foreground,
   },
   content: {
     minWidth: 0,
@@ -80,7 +121,7 @@ function Tabs({
       }}
       {...seatOf(stylex.props(xstyle), className, style)}
     >
-      {children}
+      <TabsCtx value={value ?? defaultValue}>{children}</TabsCtx>
     </MTabs>
   )
 }
@@ -120,15 +161,21 @@ function TabsTrigger({
   children: React.ReactNode
   'aria-label'?: string
 }) {
+  const reading = React.use(TabsCtx) === value
   return (
     <MTabs.Tab
       data-slot="tabs-trigger"
       value={value}
       disabled={disabled}
       {...rest}
-      {...seatOf(stylex.props(styles.trigger, xstyle), className, style)}
+      {...seatOf(
+        stylex.props(styles.trigger, reading && styles.triggerReading, xstyle),
+        className,
+        style,
+      )}
     >
       {children}
+      {reading && <span aria-hidden {...stylex.props(styles.underline)} />}
     </MTabs.Tab>
   )
 }
