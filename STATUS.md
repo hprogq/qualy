@@ -9255,3 +9255,45 @@ smoke/浏览器套件即其等价物)。最终 acceptance:staging 配置 + 真�
 - **验收(全部真实执行)**:typecheck 零错;node 843 passed | 17 skipped;浏览器 25 files /
   **174 passed** 连续两轮(pointer 残留零复现);build 成功;生产 smoke 干净退出;
   vendor:check 两树一致;prettier 通过(.mcp.json 除外)。M8-B(paper-reading/工作台)未开始。
+
+## UI 平台 M8-B:Review 阅读工作台迁 StyleX(2026-08-26)
+
+- **范围**:审核纵切的收尾——ReviewInstancePage 的阅读工作台(三列 Pane、QueueRail、
+  Run/Person/Part 三条 strip、Flow/Filing/Context 三列内容、shell/pager/横幅/脚注),约 213
+  处 utility className 归零。滚动模型、选中态、导航、快捷键、响应式断点、业务状态归属逐一
+  保持;M8-A 决策面全程冻结未动。
+- **结构拆分(先拆后迁,独立提交)**:迁移前先做逐字搬运的抽取提交(3078→1666 行,新增
+  Pane/QueueRail/WorkbenchStrips/EscalationNotice/FlowColumn/FilingColumn/ContextRail 七文件 +
+  useBeside 归 pointer.ts),className/DOM/props/state 原样、43/43 绿后才动样式——抽取回归与
+  样式回归可分离归因。所有权按「页面=编排与状态、区域=呈现」划界:live 失效、决策 staging、
+  键盘监听、pager 元素与 IntersectionObserver root、部件 spy 全留在页面;新组件全部
+  Review-局部,零个进 @qualy/ui(无第二消费者)。Pane 契约 = as/part/xstyle/innerXstyle/
+  footer,滚动归 ScrollArea 编译类。
+- **滚动契约(迁移前成文,迁移后逐条复核)**:页面不滚(shell 高度 flex 链 min-h-0 到底);
+  QueueRail 只在自己的 ScrollArea 里滚;strip 定高;<lg 时 stack 横向 snap 分页、lg 起三列
+  grid overflow-hidden;每列在任何宽度都只在自身 Pane 内滚;Filing 脚注钉在列底;
+  UndoPill/KeysPanel 绝对定位于 relative 根。抽取与迁移后 43/43 与实滚截图双重验证。
+- **色板收敛**:lostTurn 横幅与决策 caution 卡的裸 amber → warning 令牌 mixes over
+  background;PersonStrip 升级灯 badge 同款;Route opinions 的 emerald/rose →
+  successForeground/danger;机器批注的 indigo Sparkles 按「工作台除两个 verdict 色外全灰阶」
+  条令归 mutedForeground。切片后全 review 目录零原始 palette。
+- **测试定位迁移一处**:review-layout:424 借 `[class*="rounded-xl"]` 找上一轮卡片,StyleX 化
+  后类名消失——按纪律改 `data-testid="prior-round-card"` 稳定钩子,断言原样(前例:M7-B 的
+  band-strip)。
+- **顺手修复(用户报告)**:实心按钮上的快捷键 chip 钉死 white/primary-foreground,disabled
+  的浅灰底上靠色不可见(暗色方案下 picked 亮底同病)——五处统一改 `bg-current/20
+text-current` 跟随按钮墨色,enabled 外观不变。
+- **度量**:切片 8 文件(页面+七新文件)utility className 213 → 字面 4(全部注明边界:
+  DialogContent/DialogTitle、Kbd ×2);cn 0;stylex.props 全区覆盖;业务 @mantine 0;
+  新 !important 0;新 cast 0;死代码清除(Explained 组件、Basis/27 处失效 import)。Select
+  宽度 legacy 全仓 3 处不变(auth/audit,M9)。
+- **商品件裁决**:Breadcrumb/Timeline/Pagination/Collapsible/HoverCard/ToggleGroup 切片内
+  零消费;Tabs(收件箱)、Kbd、ScrollArea(safe-list 编译类消费)不阻塞,全部 DEFER M9。
+  react-resizable-panels/文档渲染器不存在;PhotoView 经 AttachmentLink 沿用 M7-B 成果零改动。
+- **视觉走查**:24 场景(desk/laptop/tablet/phone 明暗、长队列 rail 实滚、长材料 filing
+  明暗实滚、flow/about 实滚、附件卡、复核路线明暗、只读、待补充、已完成、staged 撤销 pill、
+  撤回后、run 完成屏、414 caution 卡、键盘面板、失去任务横幅);决策集成走查(读→staged→
+  撤回→再决→自动前进→done)真路径全绿。零回归。
+- **验收(全部真实执行)**:typecheck 零错;node 843 passed | 17 skipped;浏览器 25 files /
+  **174 passed** 连续两轮(pointer 残留零复现);build 成功;生产 smoke 干净退出;
+  vendor:check 两树一致;prettier 通过(.mcp.json 除外)。M9 未开始。
