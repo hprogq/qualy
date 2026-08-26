@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { PageLink, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Spinner } from '@qualy/ui/spinner'
-import { cn } from '@qualy/ui/cn'
 import { Button } from '@qualy/ui/button'
 import {
   Empty,
@@ -32,21 +33,201 @@ import { BatchCard } from './batch/BatchCard.tsx'
 /** rows per page; the page indicator divides the total by it */
 const PAGE_SIZE = 20
 
+const styles = stylex.create({
+  page: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: {
+      default: 16,
+      '@media (min-width: 640px)': 20,
+    },
+  },
+  masthead: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  mastheadWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 6,
+  },
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+  },
+  totalBadge: {
+    fontVariantNumeric: 'tabular-nums',
+  },
+  hint: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  createButton: {
+    flexShrink: 0,
+  },
+  body: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: {
+      default: 16,
+      '@media (min-width: 640px)': 20,
+    },
+  },
+  filterBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: {
+      default: 10,
+      '@media (min-width: 640px)': 12,
+    },
+  },
+  fetchSpinner: {
+    marginLeft: 'auto',
+    width: 16,
+    height: 16,
+  },
+  // one line whatever the width: on a phone the chips scroll sideways
+  // rather than stacking under each other
+  chipScroller: {
+    width: {
+      default: null,
+      '@media (max-width: 639.98px)': '100%',
+    },
+    overflowX: {
+      default: null,
+      '@media (max-width: 639.98px)': 'auto',
+    },
+  },
+  // The room a chip's number will need is taken from the first paint, empty.
+  // Appearing into no room widened every chip the moment the count landed,
+  // and the filter bar shuffled under the reader's eye - 1ch of tabular
+  // figures is exactly one digit, which is what nearly every one of these is.
+  chipCount: {
+    minWidth: '1ch',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  skeletonColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  skeletonLine: {
+    height: 40,
+    width: '100%',
+  },
+  emptyFrame: {
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: tokens.border,
+  },
+  results: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 32,
+    transitionProperty: 'opacity',
+    transitionDuration: '300ms',
+  },
+  resultsStale: {
+    opacity: 0.5,
+  },
+  group: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  groupTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  endedList: {
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+  },
+  endedRow: {
+    position: 'relative',
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 16,
+    rowGap: 4,
+    paddingInline: 20,
+    paddingBlock: 12,
+    borderTopWidth: {
+      default: 1,
+      ':first-child': 0,
+    },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+  },
+  endedName: {
+    minWidth: 0,
+  },
+  endedLink: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 500,
+    '::before': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+    },
+  },
+  endedDate: {
+    flexShrink: 0,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  cardGrid: {
+    display: 'grid',
+    alignItems: 'stretch',
+    gap: 12,
+    gridTemplateColumns: {
+      default: null,
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  pagerRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  pagerNote: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+})
+
 // Every batch there is, and the way into one.
 //
 // Opening a batch is a link to the batch, not a selection this screen keeps:
 // the address names the batch and the section, so it survives a reload and
 // can be sent to somebody. Creation happens in a dialog on top of the list.
-/**
- * A chip's number, said only once the server has counted.
- *
- * The room it will need is taken from the first paint, empty. Appearing into
- * no room widened every chip the moment the count landed, and the filter bar
- * shuffled under the reader's eye - `1ch` of tabular figures is exactly one
- * digit, which is what nearly every one of these is.
- */
+
+/** a chip's number, said only once the server has counted */
 const chipCount = (count: number | undefined) => (
-  <span className="min-w-[1ch] text-muted-foreground tabular-nums">{count}</span>
+  <span {...stylex.props(styles.chipCount)}>{count}</span>
 )
 
 export default function BatchListPage() {
@@ -125,31 +306,35 @@ export default function BatchListPage() {
 
   return (
     <Reveal>
-      <PageContainer className="flex flex-col gap-4 sm:gap-5">
+      <PageContainer xstyle={styles.page}>
         {/* the application's own landing page, so it introduces itself once
             rather than repeating a banner on every screen below it */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-semibold tracking-tight">{format(m.batchesTitle)}</h1>
+        <div {...stylex.props(styles.masthead)}>
+          <div {...stylex.props(styles.mastheadWords)}>
+            <div {...stylex.props(styles.titleRow)}>
+              <h1 {...stylex.props(styles.title)}>{format(m.batchesTitle)}</h1>
               {total > 0 && (
-                <Badge variant="secondary" className="tabular-nums">
+                <Badge variant="secondary" className={stylex.props(styles.totalBadge).className}>
                   {format(m.totalCount, { count: total })}
                 </Badge>
               )}
             </div>
-            <p className="text-sm text-muted-foreground">{format(m.batchesHint)}</p>
+            <p {...stylex.props(styles.hint)}>{format(m.batchesHint)}</p>
           </div>
           {canCreate && (
-            <Button variant="outline" className="shrink-0" onClick={() => setCreating(true)}>
+            <Button
+              variant="outline"
+              className={stylex.props(styles.createButton).className}
+              onClick={() => setCreating(true)}
+            >
               <PlusIcon />
               {format(m.newBatch)}
             </Button>
           )}
         </div>
 
-        <div className="flex flex-col gap-4 sm:gap-5">
-          <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+        <div {...stylex.props(styles.body)}>
+          <div {...stylex.props(styles.filterBar)}>
             <InputGroup className="w-full sm:max-w-xs">
               <InputGroupInput
                 name="batches-search"
@@ -163,11 +348,12 @@ export default function BatchListPage() {
               </InputGroupAddon>
             </InputGroup>
             {batches.isFetching && !batches.isPending && (
-              <Spinner aria-label={format(commonMessages.loading)} className="ml-auto size-4" />
+              <Spinner
+                aria-label={format(commonMessages.loading)}
+                className={stylex.props(styles.fetchSpinner).className}
+              />
             )}
-            {/* one line whatever the width: on a phone the chips scroll
-                sideways rather than stacking under each other */}
-            <div className="max-sm:w-full max-sm:overflow-x-auto">
+            <div {...stylex.props(styles.chipScroller)}>
               <ToggleGroup
                 type="single"
                 variant="outline"
@@ -216,10 +402,10 @@ export default function BatchListPage() {
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void batches.refetch()}
             skeleton={
-              <div className="flex flex-col gap-2">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+              <div {...stylex.props(styles.skeletonColumn)}>
+                <Skeleton className={stylex.props(styles.skeletonLine).className} />
+                <Skeleton className={stylex.props(styles.skeletonLine).className} />
+                <Skeleton className={stylex.props(styles.skeletonLine).className} />
               </div>
             }
           >
@@ -229,7 +415,7 @@ export default function BatchListPage() {
               <Empty
                 data-testid="batch-list-empty"
                 data-empty={filtered ? 'filtered' : 'none'}
-                className="rounded-lg border border-dashed"
+                xstyle={styles.emptyFrame}
               >
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
@@ -262,12 +448,7 @@ export default function BatchListPage() {
                 </EmptyContent>
               </Empty>
             ) : (
-              <div
-                className={cn(
-                  'flex flex-col gap-8 transition-opacity duration-300',
-                  batches.isFetching && 'opacity-50',
-                )}
-              >
+              <div {...stylex.props(styles.results, batches.isFetching && styles.resultsStale)}>
                 {/* grouped by what the reader is looking for: what is running
                     now, what is about to, what is still being set up, and
                     what is over - and the last of those needs a line each
@@ -275,27 +456,22 @@ export default function BatchListPage() {
                     find it and open it */}
                 {groups.map((group) =>
                   group.rows.length === 0 ? null : (
-                    <section key={group.id} className="flex flex-col gap-3">
-                      <h2 className="text-sm font-medium text-muted-foreground">
-                        {format(group.label)}
-                      </h2>
+                    <section key={group.id} {...stylex.props(styles.group)}>
+                      <h2 {...stylex.props(styles.groupTitle)}>{format(group.label)}</h2>
                       {group.id === 'ended' ? (
-                        <ul className="divide-y rounded-xl border bg-background">
+                        <ul {...stylex.props(styles.endedList)}>
                           {group.rows.map((row) => (
-                            <li
-                              key={row.id}
-                              className="group relative flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-3"
-                            >
-                              <div className="min-w-0">
+                            <li key={row.id} {...stylex.props(styles.endedRow)}>
+                              <div {...stylex.props(styles.endedName)}>
                                 <PageLink
                                   page="assessment/batch"
                                   params={{ batchId: row.id }}
-                                  className="truncate text-sm font-medium before:absolute before:inset-0 before:content-['']"
+                                  className={stylex.props(styles.endedLink).className}
                                 >
                                   {row.name}
                                 </PageLink>
                               </div>
-                              <span className="shrink-0 text-sm text-muted-foreground">
+                              <span {...stylex.props(styles.endedDate)}>
                                 {format(m.endedOn, {
                                   date: new Date(row.createdAt).toLocaleDateString(locale),
                                 })}
@@ -304,7 +480,7 @@ export default function BatchListPage() {
                           ))}
                         </ul>
                       ) : (
-                        <ul className="grid items-stretch gap-3 sm:grid-cols-2">
+                        <ul {...stylex.props(styles.cardGrid)}>
                           {group.rows.map((row) => (
                             <BatchCard key={row.id} row={row} />
                           ))}
@@ -313,12 +489,12 @@ export default function BatchListPage() {
                     </section>
                   ),
                 )}
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div {...stylex.props(styles.pagerRow)}>
                   <span
                     data-testid="batch-pager"
                     data-page={String(pageIndex + 1)}
                     data-pages={String(pageCount)}
-                    className="text-sm text-muted-foreground"
+                    {...stylex.props(styles.pagerNote)}
                   >
                     {/* how many there are is said beside the title; here is
                       only where in them this page falls */}

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { ConfirmDialog, Field, FormDialog, RadioGroup } from '@qualy/ui/admin'
@@ -11,6 +13,13 @@ import { assessmentMessages as m } from '../i18n.ts'
 // enter it now, or take its time back. Each is short, focused and reversible
 // except the middle one, so each gets a dialog of its own rather than a
 // control parked in a row.
+
+const styles = stylex.create({
+  quietNote: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+})
 
 export function ScheduleDialog({
   open,
@@ -164,7 +173,7 @@ export function TemplateDialog({
       }
     >
       {templates.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{format(m.timelineTemplateEmpty)}</p>
+        <p {...stylex.props(styles.quietNote)}>{format(m.timelineTemplateEmpty)}</p>
       ) : (
         <Field label={format(m.timelineTemplateLabel)}>
           {(id) => (

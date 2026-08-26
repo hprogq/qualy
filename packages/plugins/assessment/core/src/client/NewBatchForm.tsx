@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n, useLocale } from '@qualy/web-i18n'
@@ -20,6 +22,18 @@ import { assessmentApi } from './api.ts'
 // picker that opens its own dialog on top of this one buries the thing being
 // decided. The options come from this domain's own endpoints, so an
 // administrator needs assessment permissions and nothing else.
+const styles = stylex.create({
+  scopeTreeFrame: {
+    maxHeight: 256,
+    overflowY: 'auto',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 8,
+  },
+})
+
 export function NewBatchDialog({
   open,
   onClose,
@@ -151,7 +165,7 @@ export function NewBatchDialog({
         <FieldGroup>
           <Field label={format(m.scopeLegend)}>
             {() => (
-              <div className="max-h-64 overflow-y-auto rounded-md border p-2">
+              <div {...stylex.props(styles.scopeTreeFrame)}>
                 <TreeSelect
                   value={scopeNodeIds}
                   onChange={setScopeNodeIds}

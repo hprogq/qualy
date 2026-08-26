@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Field, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -22,6 +23,19 @@ interface PresetPhase {
   readonly description?: string | undefined
   readonly permissionProfile?: readonly string[] | undefined
 }
+
+const styles = stylex.create({
+  presetRow: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  presetSeat: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+})
 
 export function PhaseDetailsPanel({
   draft,
@@ -100,8 +114,8 @@ export function PhaseDetailsPanel({
           </Field>
 
           {!readOnly && !frozen && presets.length > 0 && (
-            <div className="flex items-end gap-2">
-              <span className="flex-1">
+            <div {...stylex.props(styles.presetRow)}>
+              <span {...stylex.props(styles.presetSeat)}>
                 <Field label={format(m.phaseTemplateLegend)}>
                   {(id) => (
                     <NativeSelect

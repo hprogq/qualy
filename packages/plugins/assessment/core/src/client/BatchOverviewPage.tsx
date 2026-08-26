@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronRightIcon } from 'lucide-react'
 import {
   useApi,
@@ -9,9 +10,9 @@ import {
   useRunApi,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
-import { cn } from '@qualy/ui/cn'
 import { assessmentApi } from './api.ts'
 import { useBatchLive } from './live.ts'
 import type { ApiResult } from '@qualy/web-runtime/api'
@@ -24,6 +25,550 @@ import { assessmentMessages as m } from './i18n.ts'
 // straight at the work, and the stage plan keeps to the side - a column
 // beside the desk on a wide screen, a strip above it on a phone. The top
 // bar already names the current stage, so the page does not say it twice.
+
+const wide = '@media (min-width: 1024px)'
+const narrow = '@media (max-width: 1023.98px)'
+
+const styles = stylex.create({
+  desk: {
+    display: 'grid',
+    gap: {
+      default: 24,
+      [wide]: 48,
+    },
+    gridTemplateColumns: {
+      default: null,
+      [wide]: 'minmax(0, 1fr) 17.25rem',
+    },
+  },
+  main: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: {
+      default: 20,
+      [wide]: 32,
+    },
+  },
+  // the stage plan on a phone: the same strip, laid over the desk rather
+  // than beside it
+  planPhone: {
+    display: {
+      default: 'flex',
+      [wide]: 'none',
+    },
+    flexDirection: 'column',
+    gap: 10,
+    order: {
+      default: null,
+      [narrow]: 2,
+    },
+    marginTop: {
+      default: null,
+      [narrow]: 8,
+    },
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  planSkeleton: {
+    height: 64,
+    width: '100%',
+  },
+  aside: {
+    display: {
+      default: 'none',
+      [wide]: 'block',
+    },
+  },
+  asideTitle: {
+    paddingBottom: 12,
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  asideSkeletons: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  asideSkeletonLine: {
+    height: 20,
+    width: '100%',
+  },
+  failNote: {
+    fontSize: 14,
+    color: tokens.danger,
+  },
+  actions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    order: {
+      default: null,
+      [narrow]: 1,
+    },
+  },
+  actionsHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  actionsCount: {
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 6,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  actionsSkeleton: {
+    height: 64,
+    width: '100%',
+  },
+  clearCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 24,
+    paddingBlock: 36,
+  },
+  clearMark: {
+    display: 'flex',
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    color: tokens.mutedForeground,
+  },
+  clearIcon: {
+    width: 15,
+    height: 15,
+  },
+  clearWord: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  todoGroups: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  todoGroup: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 8,
+  },
+  laneHead: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  laneWord: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  laneCount: {
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  laneRule: {
+    height: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    backgroundColor: tokens.border,
+  },
+  todoBox: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  // the whole line is the way in; the verb inside is the same door with a
+  // keyboard-reachable handle
+  todoRow: {
+    display: 'grid',
+    cursor: 'pointer',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr) auto',
+      [wide]: 'minmax(0, 1fr) 3.5rem 7rem',
+    },
+    columnGap: {
+      default: 16,
+      [wide]: 20,
+    },
+    rowGap: 4,
+    alignItems: {
+      default: null,
+      [wide]: 'center',
+    },
+    borderTopWidth: {
+      default: 1,
+      ':first-child': 0,
+    },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: {
+      default: 16,
+      [wide]: 20,
+    },
+    paddingBlock: {
+      default: 14,
+      [wide]: 16,
+    },
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+  },
+  todoSubject: {
+    gridColumnStart: 1,
+    gridRowStart: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  todoAt: {
+    gridColumnStart: 2,
+    gridRowStart: 1,
+    gridRowEnd: {
+      default: null,
+      [wide]: 'span 2',
+    },
+    alignSelf: {
+      default: null,
+      [wide]: 'center',
+    },
+    textAlign: 'right',
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  todoDetail: {
+    gridColumnStart: 1,
+    gridRowStart: 2,
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
+    minWidth: 0,
+    fontSize: 13,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
+  todoVerbSeat: {
+    gridColumnStart: {
+      default: 2,
+      [wide]: 3,
+    },
+    gridRowStart: {
+      default: 2,
+      [wide]: 1,
+    },
+    gridRowEnd: {
+      default: null,
+      [wide]: 'span 2',
+    },
+    alignSelf: {
+      default: 'flex-end',
+      [wide]: 'center',
+    },
+  },
+  todoVerb: {
+    display: 'inline-flex',
+    cursor: 'pointer',
+    alignItems: 'center',
+    gap: {
+      default: 2,
+      [wide]: 4,
+    },
+    fontSize: 13,
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+    height: {
+      default: null,
+      [wide]: 36,
+    },
+    width: {
+      default: null,
+      [wide]: '100%',
+    },
+    justifyContent: {
+      default: null,
+      [wide]: 'center',
+    },
+    borderRadius: {
+      default: null,
+      [wide]: tokens.radiusLg,
+    },
+    borderWidth: {
+      default: 0,
+      [wide]: 1,
+    },
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: {
+      default: null,
+      [wide]: tokens.background,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+    transitionProperty: {
+      default: null,
+      [wide]: 'color, background-color',
+    },
+  },
+  todoVerbIcon: {
+    width: {
+      default: 14,
+      [wide]: 12,
+    },
+    height: {
+      default: 14,
+      [wide]: 12,
+    },
+  },
+  activity: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 20,
+    order: {
+      default: null,
+      [narrow]: 3,
+    },
+    marginTop: {
+      default: null,
+      [wide]: 16,
+    },
+  },
+  // the header holds the filter, and on a phone it stays put while the days
+  // scroll under it
+  activityHead: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 10,
+    rowGap: 8,
+    backgroundColor: tokens.background,
+    position: {
+      default: null,
+      [narrow]: 'sticky',
+    },
+    top: {
+      default: null,
+      [narrow]: -24,
+    },
+    zIndex: {
+      default: null,
+      [narrow]: 10,
+    },
+    paddingBlock: {
+      default: null,
+      [narrow]: 6,
+    },
+  },
+  activityTitle: {
+    flexShrink: 0,
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  unreadNote: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  headSpacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  activitySkeleton: {
+    height: 96,
+    width: '100%',
+  },
+  quietNote: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  feed: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 28,
+  },
+  day: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  dayHead: {
+    marginBottom: 6,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dayLabel: {
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  feedRow: {
+    marginInline: -12,
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1fr)',
+      [wide]: '3.25rem minmax(0, 1fr)',
+    },
+    columnGap: 20,
+    borderRadius: tokens.radiusLg,
+    paddingInline: 12,
+    paddingBlock: 6,
+    textAlign: 'left',
+  },
+  feedRowOpenable: {
+    cursor: 'pointer',
+    transitionProperty: 'color, background-color',
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+  },
+  feedClockWide: {
+    display: {
+      default: 'none',
+      [wide]: 'block',
+    },
+    paddingTop: 1,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  feedBody: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 6,
+  },
+  feedTitleLine: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 10,
+  },
+  feedTitleSeat: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+  },
+  unreadDot: {
+    width: 7,
+    height: 7,
+    flexShrink: 0,
+    borderRadius: '9999px',
+    backgroundColor: tokens.danger,
+  },
+  feedTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  feedLaneWord: {
+    display: {
+      default: 'none',
+      [wide]: 'inline',
+    },
+    marginLeft: 'auto',
+    flexShrink: 0,
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 80%, transparent)`,
+  },
+  feedClockNarrow: {
+    display: {
+      default: 'inline',
+      [wide]: 'none',
+    },
+    marginLeft: 'auto',
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  feedIdentity: {
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 1,
+    overflow: 'hidden',
+    fontSize: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 85%, transparent)`,
+  },
+  feedSentence: {
+    fontSize: 13,
+    lineHeight: 1.625,
+    color: tokens.mutedForeground,
+  },
+  feedQuote: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    borderLeftWidth: 2,
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.border,
+    paddingLeft: 10,
+    fontSize: 12,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+    color: `color-mix(in oklab, ${tokens.foreground} 70%, transparent)`,
+  },
+  feedComment: {
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
+    overflow: 'hidden',
+  },
+  moreButton: {
+    display: 'inline-flex',
+    cursor: 'pointer',
+    alignItems: 'center',
+    gap: 2,
+    alignSelf: 'flex-start',
+    fontSize: 12,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    transitionProperty: 'color',
+  },
+  moreIcon: {
+    width: 12,
+    height: 12,
+  },
+})
 
 type OverviewDto = ApiResult<typeof assessmentApi, 'assessment', 'getMyOverview'>
 type ActivityItem = ApiResult<typeof assessmentApi, 'assessment', 'listMyActivity'>['items'][number]
@@ -63,14 +608,12 @@ export default function BatchOverviewPage() {
   return (
     <BatchScreen title={format(m.tabOverview)} description={format(m.overviewHint)}>
       {() => (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17.25rem] lg:gap-12">
-          <div className="flex min-w-0 flex-col gap-5 lg:gap-8">
-            {/* the stage plan on a phone: the same strip, laid over the
-                desk rather than beside it */}
-            <section className="flex flex-col gap-2.5 max-lg:order-2 max-lg:mt-2 lg:hidden">
-              <h2 className="text-sm font-semibold">{format(m.flowTitle)}</h2>
+        <div {...stylex.props(styles.desk)}>
+          <div {...stylex.props(styles.main)}>
+            <section {...stylex.props(styles.planPhone)}>
+              <h2 {...stylex.props(styles.sectionTitle)}>{format(m.flowTitle)}</h2>
               {plan.isPending ? (
-                <Skeleton className="h-16 w-full" />
+                <Skeleton className={stylex.props(styles.planSkeleton).className} />
               ) : (
                 <BatchFlowStrip timeline={timeline} />
               )}
@@ -79,13 +622,13 @@ export default function BatchOverviewPage() {
             <MyDesk batchId={batchId} overview={overview} />
           </div>
 
-          <aside className="hidden lg:block">
-            <h2 className="pb-3 text-sm font-semibold">{format(m.flowTitle)}</h2>
+          <aside {...stylex.props(styles.aside)}>
+            <h2 {...stylex.props(styles.asideTitle)}>{format(m.flowTitle)}</h2>
             {plan.isPending ? (
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-5 w-full" />
-                <Skeleton className="h-5 w-full" />
-                <Skeleton className="h-5 w-full" />
+              <div {...stylex.props(styles.asideSkeletons)}>
+                <Skeleton className={stylex.props(styles.asideSkeletonLine).className} />
+                <Skeleton className={stylex.props(styles.asideSkeletonLine).className} />
+                <Skeleton className={stylex.props(styles.asideSkeletonLine).className} />
               </div>
             ) : (
               <BatchFlow timeline={timeline} keepPast={1} />
@@ -211,7 +754,7 @@ function MyDesk({
   const desk = overview.data
   const mixed = desk !== undefined && desk.participant !== null && desk.reviewer !== null
   if (overview.isError) {
-    return <p className="text-sm text-destructive">{formatError(overview.error as never)}</p>
+    return <p {...stylex.props(styles.failNote)}>{formatError(overview.error as never)}</p>
   }
   if (desk !== undefined && desk.participant === null && desk.reviewer === null) {
     // an administrator without a standing here reads the stage plan alone
@@ -299,67 +842,52 @@ function MyDesk({
 
   return (
     <>
-      <section className="flex flex-col gap-3 max-lg:order-1">
-        <div className="flex items-center gap-2.5">
-          <h2 className="text-sm font-semibold">{format(m.overviewActionsTitle)}</h2>
-          {todo.length > 0 && (
-            <span className="rounded-md bg-muted px-1.5 text-xs tabular-nums">{todo.length}</span>
-          )}
+      <section {...stylex.props(styles.actions)}>
+        <div {...stylex.props(styles.actionsHead)}>
+          <h2 {...stylex.props(styles.sectionTitle)}>{format(m.overviewActionsTitle)}</h2>
+          {todo.length > 0 && <span {...stylex.props(styles.actionsCount)}>{todo.length}</span>}
         </div>
         {overview.isPending ? (
-          <Skeleton className="h-16 w-full" />
+          <Skeleton className={stylex.props(styles.actionsSkeleton).className} />
         ) : todo.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-[10px] border px-6 py-9">
-            <span className="flex size-[30px] items-center justify-center rounded-full border bg-background text-muted-foreground">
-              <CheckIcon aria-hidden className="size-[15px]" />
+          <div {...stylex.props(styles.clearCard)}>
+            <span {...stylex.props(styles.clearMark)}>
+              <CheckIcon aria-hidden className={stylex.props(styles.clearIcon).className} />
             </span>
-            <p className="text-sm font-medium">{format(m.overviewActionsNone)}</p>
+            <p {...stylex.props(styles.clearWord)}>{format(m.overviewActionsNone)}</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-4" data-testid="overview-actions">
+          <div {...stylex.props(styles.todoGroups)} data-testid="overview-actions">
             {todoGroups.map((group) => (
-              <div key={group.which ?? 'all'} className="flex min-w-0 flex-col gap-2">
+              <div key={group.which ?? 'all'} {...stylex.props(styles.todoGroup)}>
                 {group.which !== null && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {laneWord(group.which)}
-                    </span>
-                    <span className="text-xs text-muted-foreground/80 tabular-nums">
-                      {group.rows.length}
-                    </span>
-                    <span aria-hidden className="h-px flex-1 bg-border" />
+                  <div {...stylex.props(styles.laneHead)}>
+                    <span {...stylex.props(styles.laneWord)}>{laneWord(group.which)}</span>
+                    <span {...stylex.props(styles.laneCount)}>{group.rows.length}</span>
+                    <span aria-hidden {...stylex.props(styles.laneRule)} />
                   </div>
                 )}
-                <div className="flex min-w-0 flex-col overflow-hidden rounded-[10px] border">
+                <div {...stylex.props(styles.todoBox)}>
                   {group.rows.map((row) => (
-                    // the whole line is the way in; the verb inside is the
-                    // same door with a keyboard-reachable handle
                     <div
                       key={row.key}
                       data-action={row.action}
                       {...(row.count !== undefined ? { 'data-count': row.count } : {})}
                       onClick={row.go}
-                      className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-t px-4 py-3.5 first:border-t-0 hover:bg-muted/60 lg:grid-cols-[minmax(0,1fr)_3.5rem_7rem] lg:items-center lg:gap-x-5 lg:px-5 lg:py-4"
+                      {...stylex.props(styles.todoRow)}
                     >
-                      <span className="col-start-1 row-start-1 min-w-0 truncate text-sm font-medium">
-                        {row.subject}
-                      </span>
-                      <span className="col-start-2 row-start-1 text-right text-xs whitespace-nowrap text-muted-foreground tabular-nums lg:row-span-2 lg:self-center">
-                        {row.at}
-                      </span>
+                      <span {...stylex.props(styles.todoSubject)}>{row.subject}</span>
+                      <span {...stylex.props(styles.todoAt)}>{row.at}</span>
                       {row.detail !== null && (
-                        <span className="col-start-1 row-start-2 line-clamp-2 min-w-0 text-[13px] leading-relaxed text-pretty text-muted-foreground">
-                          {row.detail}
-                        </span>
+                        <span {...stylex.props(styles.todoDetail)}>{row.detail}</span>
                       )}
-                      <span className="col-start-2 row-start-2 self-end lg:col-start-3 lg:row-span-2 lg:row-start-1 lg:self-center">
-                        <button
-                          type="button"
-                          onClick={row.go}
-                          className="inline-flex cursor-pointer items-center gap-0.5 text-[13px] font-medium whitespace-nowrap lg:h-9 lg:w-full lg:justify-center lg:gap-1 lg:rounded-lg lg:border lg:bg-background lg:text-[13px] lg:transition-colors lg:hover:bg-muted/60"
-                        >
+                      <span {...stylex.props(styles.todoVerbSeat)}>
+                        <button type="button" onClick={row.go} {...stylex.props(styles.todoVerb)}>
                           {row.verb}
-                          <ChevronRightIcon aria-hidden className="size-3.5 lg:size-3" />
+                          <ChevronRightIcon
+                            aria-hidden
+                            className={stylex.props(styles.todoVerbIcon).className}
+                          />
                         </button>
                       </span>
                     </div>
@@ -371,19 +899,17 @@ function MyDesk({
         )}
       </section>
 
-      <section className="flex min-w-0 flex-col gap-5 max-lg:order-3 lg:mt-4">
-        {/* the header holds the filter, and on a phone it stays put while
-            the days scroll under it */}
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 bg-background max-lg:sticky max-lg:-top-6 max-lg:z-10 max-lg:py-1.5">
-          <h2 className="shrink-0 text-sm font-semibold">{format(m.overviewActivityTitle)}</h2>
+      <section {...stylex.props(styles.activity)}>
+        <div {...stylex.props(styles.activityHead)}>
+          <h2 {...stylex.props(styles.activityTitle)}>{format(m.overviewActivityTitle)}</h2>
           {(desk?.participant?.unreadItemIds.length ?? 0) > 0 && (
-            <span className="shrink-0 text-xs text-muted-foreground">
+            <span {...stylex.props(styles.unreadNote)}>
               {format(m.overviewActivityUnread, {
                 count: desk!.participant!.unreadItemIds.length,
               })}
             </span>
           )}
-          <span className="flex-1" />
+          <span {...stylex.props(styles.headSpacer)} />
           {mixed && (
             <Tabs value={lane} onValueChange={(value) => setLane(value as Lane)}>
               <TabsList variant="line">
@@ -404,20 +930,18 @@ function MyDesk({
         </div>
 
         {activity.isPending ? (
-          <Skeleton className="h-24 w-full" />
+          <Skeleton className={stylex.props(styles.activitySkeleton).className} />
         ) : activity.isError ? (
-          <p className="text-sm text-destructive">{formatError(activity.error as never)}</p>
+          <p {...stylex.props(styles.failNote)}>{formatError(activity.error as never)}</p>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{format(m.overviewActivityNone)}</p>
+          <p {...stylex.props(styles.quietNote)}>{format(m.overviewActivityNone)}</p>
         ) : (
-          <div className="flex flex-col gap-7" data-testid="overview-activity">
+          <div {...stylex.props(styles.feed)} data-testid="overview-activity">
             {groups.map((group) => (
-              <section key={group.label} className="flex flex-col gap-1.5">
-                <div className="mb-1.5 flex items-center gap-2.5">
-                  <span className="shrink-0 text-xs font-medium text-muted-foreground">
-                    {group.label}
-                  </span>
-                  <span aria-hidden className="h-px flex-1 bg-border" />
+              <section key={group.label} {...stylex.props(styles.day)}>
+                <div {...stylex.props(styles.dayHead)}>
+                  <span {...stylex.props(styles.dayLabel)}>{group.label}</span>
+                  <span aria-hidden {...stylex.props(styles.laneRule)} />
                 </div>
                 {group.items.map((row) => {
                   const sentence = SAID[row.perspective][row.kind]
@@ -450,51 +974,42 @@ function MyDesk({
                         }
                         openEntry(row.itemId, row.entryId, 'detail')
                       }}
-                      className={cn(
-                        '-mx-3 grid grid-cols-[minmax(0,1fr)] gap-x-5 rounded-lg px-3 py-1.5 text-left lg:grid-cols-[3.25rem_minmax(0,1fr)]',
-                        openable && 'cursor-pointer transition-colors hover:bg-muted/60',
-                      )}
+                      {...stylex.props(styles.feedRow, openable && styles.feedRowOpenable)}
                     >
-                      <span className="hidden pt-px text-xs text-muted-foreground tabular-nums lg:block">
-                        {clockOf(row.at, locale)}
-                      </span>
-                      <span className="flex min-w-0 flex-col gap-1.5">
-                        <span className="flex min-w-0 items-baseline gap-2.5">
-                          <span className="flex min-w-0 items-center gap-1.5">
+                      <span {...stylex.props(styles.feedClockWide)}>{clockOf(row.at, locale)}</span>
+                      <span {...stylex.props(styles.feedBody)}>
+                        <span {...stylex.props(styles.feedTitleLine)}>
+                          <span {...stylex.props(styles.feedTitleSeat)}>
                             {freshRowIds.has(row.id + row.kind) && (
                               <span
                                 role="status"
                                 aria-label={format(m.rowUnread)}
-                                className="size-[7px] shrink-0 rounded-full bg-destructive"
+                                {...stylex.props(styles.unreadDot)}
                               />
                             )}
-                            <span className="min-w-0 truncate text-sm font-medium">
-                              {row.itemTitle}
-                            </span>
+                            <span {...stylex.props(styles.feedTitle)}>{row.itemTitle}</span>
                           </span>
                           {mixed && (
-                            <span className="ml-auto shrink-0 text-xs text-muted-foreground/80 max-lg:hidden">
+                            <span {...stylex.props(styles.feedLaneWord)}>
                               {laneWord(row.perspective)}
                             </span>
                           )}
-                          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums lg:hidden">
+                          <span {...stylex.props(styles.feedClockNarrow)}>
                             {clockOf(row.at, locale)}
                           </span>
                         </span>
                         {identity !== '' && (
-                          <span className="line-clamp-1 text-xs text-muted-foreground/85">
-                            {identity}
-                          </span>
+                          <span {...stylex.props(styles.feedIdentity)}>{identity}</span>
                         )}
-                        <span className="text-[13px] leading-relaxed text-muted-foreground">
+                        <span {...stylex.props(styles.feedSentence)}>
                           {sentence !== undefined &&
                             format(sentence as (typeof m)['activity.r.review-approved'], { who })}
                         </span>
                         {(row.reason !== null || row.comment !== null) && (
-                          <span className="flex flex-col gap-0.5 border-l-2 pl-2.5 text-xs leading-relaxed text-pretty text-foreground/70">
+                          <span {...stylex.props(styles.feedQuote)}>
                             {row.reason !== null && <span>{row.reason}</span>}
                             {row.comment !== null && (
-                              <span className="line-clamp-2">{row.comment}</span>
+                              <span {...stylex.props(styles.feedComment)}>{row.comment}</span>
                             )}
                           </span>
                         )}
@@ -509,10 +1024,10 @@ function MyDesk({
                 type="button"
                 disabled={activity.isFetchingNextPage}
                 onClick={() => void activity.fetchNextPage()}
-                className="inline-flex cursor-pointer items-center gap-0.5 self-start text-xs text-muted-foreground transition-colors hover:text-foreground"
+                {...stylex.props(styles.moreButton)}
               >
                 {format(m.overviewActivityMore)}
-                <ChevronRightIcon aria-hidden className="size-3" />
+                <ChevronRightIcon aria-hidden className={stylex.props(styles.moreIcon).className} />
               </button>
             )}
           </div>

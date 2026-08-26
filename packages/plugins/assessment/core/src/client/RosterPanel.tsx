@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { ChevronDownIcon } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import { AddPeopleDialog } from './roster/AddPeopleDialog.tsx'
 import { ImportDialog } from './roster/ImportDialog.tsx'
@@ -12,7 +14,6 @@ import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { PersonCell } from '@qualy/ui/person'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@qualy/ui/collapsible'
-import { cn } from '@qualy/ui/cn'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
@@ -34,6 +35,130 @@ const PAGE_SIZE = 25
 
 /** the width the tree and the table stop competing for, tailwind's `lg` */
 const TWO_COLUMNS = 1024
+
+const wide = '@media (min-width: 1024px)'
+
+const styles = stylex.create({
+  panel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  columns: {
+    display: 'grid',
+    gap: 16,
+    gridTemplateColumns: {
+      default: null,
+      [wide]: 'minmax(0, 18rem) minmax(0, 1fr)',
+    },
+  },
+  unitsAside: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 8,
+  },
+  unitsTrigger: {
+    width: '100%',
+    justifyContent: 'space-between',
+    paddingInline: 8,
+    pointerEvents: {
+      default: null,
+      [wide]: 'none',
+    },
+  },
+  unitsWord: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  unitsChevron: {
+    display: {
+      default: 'inline',
+      [wide]: 'none',
+    },
+    width: 16,
+    height: 16,
+    transitionProperty: 'transform',
+  },
+  unitsChevronOpen: {
+    transform: 'rotate(180deg)',
+  },
+  // as tall as what is left of the window: a filter that stops halfway down
+  // leaves a column of nothing beside a list that keeps going
+  unitsSeat: {
+    position: {
+      default: null,
+      [wide]: 'sticky',
+    },
+    top: {
+      default: null,
+      [wide]: 16,
+    },
+  },
+  treeSkeleton: {
+    height: 256,
+    width: '100%',
+  },
+  listColumn: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 8,
+  },
+  listHead: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  listTitleSeat: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  listTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  listCount: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  listActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  skeletonColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  skeletonLine: {
+    height: 36,
+    width: '100%',
+  },
+  quietNote: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  tableFrame: {
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  rightCell: {
+    textAlign: 'right',
+  },
+  pagerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+})
 
 export function RosterPanel({ batch }: { batch: BatchDto }) {
   const api = useApi(assessmentApi)
@@ -143,36 +268,36 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
   const rows = participants.data?.items ?? []
 
   return (
-    <div className="space-y-5">
+    <div {...stylex.props(styles.panel)}>
       <Feedback message={failure} />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+      <div {...stylex.props(styles.columns)}>
         {/* on a phone the tree is a second screenful in front of the list
             somebody came for, so it starts folded and says what it is */}
         <Collapsible
           open={unitsOpen}
           onOpenChange={setUnitsOpen}
-          className="min-w-0 space-y-2"
+          className={stylex.props(styles.unitsAside).className}
           asChild
         >
           <aside>
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-between px-2 lg:pointer-events-none"
+                className={stylex.props(styles.unitsTrigger).className}
                 aria-label={format(m.rosterUnits)}
               >
-                <span className="text-sm font-medium">{format(m.rosterUnits)}</span>
+                <span {...stylex.props(styles.unitsWord)}>{format(m.rosterUnits)}</span>
                 <ChevronDownIcon
                   aria-hidden
-                  className={cn('size-4 transition-transform lg:hidden', unitsOpen && 'rotate-180')}
+                  className={
+                    stylex.props(styles.unitsChevron, unitsOpen && styles.unitsChevronOpen)
+                      .className
+                  }
                 />
               </Button>
             </CollapsibleTrigger>
-            {/* as tall as what is left of the window: a filter that stops
-                halfway down leaves a column of nothing beside a list that
-                keeps going */}
-            <CollapsibleContent className="lg:sticky lg:top-4">
+            <CollapsibleContent className={stylex.props(styles.unitsSeat).className}>
               <UiSlot
                 token={orgNodePicker}
                 context={{
@@ -186,22 +311,22 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                   onScopeChange: setUnitScope,
                 }}
                 fallback={null}
-                loading={<Skeleton className="h-64 w-full" />}
+                loading={<Skeleton className={stylex.props(styles.treeSkeleton).className} />}
               />
             </CollapsibleContent>
           </aside>
         </Collapsible>
 
-        <section aria-label={format(m.tabRoster)} className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold">{format(m.tabRoster)}</h3>
-              <span className="text-xs text-muted-foreground">
+        <section aria-label={format(m.tabRoster)} {...stylex.props(styles.listColumn)}>
+          <div {...stylex.props(styles.listHead)}>
+            <div {...stylex.props(styles.listTitleSeat)}>
+              <h3 {...stylex.props(styles.listTitle)}>{format(m.tabRoster)}</h3>
+              <span {...stylex.props(styles.listCount)}>
                 {format(m.participantCount, { count: rows.length })}
               </span>
             </div>
             {batch.manageable && (
-              <div className="flex items-center gap-2">
+              <div {...stylex.props(styles.listActions)}>
                 <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
                   {format(m.importFromOrganization)}
                 </Button>
@@ -219,17 +344,17 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void participants.refetch()}
             skeleton={
-              <div className="flex flex-col gap-2">
-                <Skeleton className="h-9 w-full" />
-                <Skeleton className="h-9 w-full" />
-                <Skeleton className="h-9 w-full" />
+              <div {...stylex.props(styles.skeletonColumn)}>
+                <Skeleton className={stylex.props(styles.skeletonLine).className} />
+                <Skeleton className={stylex.props(styles.skeletonLine).className} />
+                <Skeleton className={stylex.props(styles.skeletonLine).className} />
               </div>
             }
           >
             {rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{format(m.rosterEmpty)}</p>
+              <p {...stylex.props(styles.quietNote)}>{format(m.rosterEmpty)}</p>
             ) : (
-              <div className="rounded-lg border">
+              <div {...stylex.props(styles.tableFrame)}>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -264,7 +389,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
                             <Badge variant="outline">{format(m.participantActive)}</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell xstyle={styles.rightCell}>
                           {batch.manageable && (
                             <Button
                               size="sm"
@@ -291,7 +416,7 @@ export function RosterPanel({ batch }: { batch: BatchDto }) {
           </AsyncSection>
 
           {(at > 0 || nextCursor !== null) && (
-            <div className="flex items-center justify-end gap-1">
+            <div {...stylex.props(styles.pagerRow)}>
               <Button
                 size="sm"
                 variant="ghost"
