@@ -284,6 +284,22 @@
   }
 }
 
+/* Text controls never render under 16px on a touch screen: iOS Safari
+ * zooms the whole page toward any focused control whose font is smaller,
+ * and no control here means that. Element-wide in the components layer, so
+ * the widget baseline below it loses and a migrated control is covered
+ * without asking; a legacy utility still wins, and sheds this debt when
+ * its file migrates. */
+@layer components {
+  @media (hover: none) and (pointer: coarse) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    textarea,
+    select {
+      font-size: max(16px, 1em);
+    }
+  }
+}
+
 /* What the shared StyleX components cannot say about content they did not
  * write: an alert's icon and an empty state's icon arrive as caller
  * children, prose links arrive inside caller sentences. Compiled styles

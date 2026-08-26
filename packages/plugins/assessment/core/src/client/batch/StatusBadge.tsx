@@ -24,6 +24,9 @@ const styles = stylex.create({
     gap: 6,
     fontWeight: 500,
     borderColor: 'transparent',
+    // the live dot's halo grows past the dot's own box; a badge that clips
+    // its overflow cuts the ring off mid-breath
+    overflow: 'visible',
   },
   quietTone: {
     backgroundColor: tokens.surfaceMuted,
@@ -45,11 +48,14 @@ const styles = stylex.create({
     justifyContent: 'center',
     padding: 0,
   },
+  // never squeezed: inside a tight row a flexible seat flattens the dot
+  // into an ellipse
   dotSeat: {
     position: 'relative',
     display: 'flex',
     width: 6,
     height: 6,
+    flexShrink: 0,
   },
   pulse: {
     position: 'absolute',

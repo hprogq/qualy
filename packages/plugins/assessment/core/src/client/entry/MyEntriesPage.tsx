@@ -310,11 +310,19 @@ const styles = stylex.create({
   statNumAlert: {
     color: tokens.danger,
   },
+  // An overlay, not a block in the flow: the strip appearing must not
+  // change the sticky header's height - every appearance shifted the whole
+  // paper under the reader and resized the scrollbar thumb with it. The
+  // spy's READING_EDGE already budgets the strip's 36px whether or not it
+  // is up, so hanging it under the toolbar costs the arithmetic nothing.
   stripSeat: {
     display: {
       default: 'block',
       [lg]: 'none',
     },
+    position: 'absolute',
+    insetInline: 0,
+    top: '100%',
   },
   strip: {
     borderBottomWidth: 1,

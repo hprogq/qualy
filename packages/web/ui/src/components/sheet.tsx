@@ -169,7 +169,10 @@ function SheetContent({
       closeOnClickOutside
       transitionProps={{ duration: 200 }}
     >
-      <MDrawer.Overlay data-slot="sheet-overlay" blur={2} />
+      {/* no backdrop blur: a backdrop-filter under an opacity entrance makes
+          mobile Safari re-rasterize the page behind on every frame, which
+          reads as the background flashing while the sheet opens */}
+      <MDrawer.Overlay data-slot="sheet-overlay" />
       <MDrawer.Content
         data-slot="sheet-content"
         data-side={side}
