@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import * as stylex from '@stylexjs/stylex'
 import { Feedback, Field, FormDialog, RadioGroup } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -16,6 +17,14 @@ import { accessApi } from './api.ts'
 // The kind is chosen here because it cannot be changed afterwards: it decides
 // whether the duty applies tenant-wide or is anchored to a node, and with it
 // which capabilities the role may hold.
+
+const styles = stylex.create({
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+})
 export function NewRoleForm({
   open,
   onClose,
@@ -65,7 +74,7 @@ export function NewRoleForm({
       <Feedback message={feedback} />
       <form
         id="new-role"
-        className="flex flex-col gap-5"
+        {...stylex.props(styles.form)}
         onSubmit={(event) => {
           event.preventDefault()
           create.mutate()

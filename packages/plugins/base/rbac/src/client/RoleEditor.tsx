@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, ConfirmDialog, Feedback, Field, FormDialog } from '@qualy/ui/admin'
 import {
@@ -31,6 +33,87 @@ import { accessApi } from './api.ts'
 // reader needs whichever tab they came for.
 /** the row as the api answers it, not a copy that can drift from it */
 export type RoleRow = ApiResult<typeof accessApi, 'access', 'listRoles'>['roles'][number]
+
+const styles = stylex.create({
+  editor: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 16,
+  },
+  // the summary strip: one quiet surface, not a card among cards
+  factsStrip: {
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    paddingInline: 16,
+    paddingBlock: 12,
+  },
+  toolbar: {
+    display: 'flex',
+    minWidth: 0,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  search: {
+    height: 32,
+    width: 192,
+  },
+  quietNote: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  smallNote: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  permissionGrid: {
+    display: 'grid',
+    minWidth: 0,
+    gap: 12,
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 1280px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  stack: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 16,
+  },
+  stackTight: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 12,
+  },
+  anchorSection: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 16,
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+})
 
 type Tab = 'permissions' | 'eligibility' | 'appointment' | 'lifecycle'
 
@@ -254,7 +337,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
   const kindWord = format(role.kind === 'tenant' ? m.tenantGroup : m.orgGroup)
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div {...stylex.props(styles.editor)}>
       <EditorHead
         title={role.name}
         chips={[
@@ -271,7 +354,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
         }
       />
 
-      <div className="rounded-lg border bg-muted/30 px-4 py-3">
+      <div {...stylex.props(styles.factsStrip)}>
         <Facts
           items={[
             { label: format(m.factKind), value: kindWord },
@@ -302,7 +385,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
       <Feedback message={feedback} />
 
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div {...stylex.props(styles.toolbar)}>
         <Segmented
           label={format(m.editRole)}
           value={tab}
@@ -314,11 +397,13 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             { value: 'lifecycle', label: format(m.tabLifecycle) },
           ]}
         />
-        <span className="flex-1" />
+        <span {...stylex.props(styles.spacer)} />
         {tab === 'permissions' && !role.holdsEveryPermission && (
           <Input
             type="search"
-            className="h-8 w-48"
+            // the input adapter takes classes at its boundary; the compiled
+            // StyleX class carries the sizing across it
+            className={stylex.props(styles.search).className}
             aria-label={format(m.searchPermissions)}
             placeholder={format(m.searchPermissions)}
             value={search}
@@ -329,7 +414,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
 
       {tab === 'permissions' &&
         (role.holdsEveryPermission ? (
-          <p className="text-sm text-muted-foreground">{format(m.everyPermission)}</p>
+          <p {...stylex.props(styles.quietNote)}>{format(m.everyPermission)}</p>
         ) : (
           <AsyncSection
             pending={catalog.isPending}
@@ -339,9 +424,9 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             onRetry={() => void catalog.refetch()}
           >
             {groups.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{format(m.searchEmpty)}</p>
+              <p {...stylex.props(styles.quietNote)}>{format(m.searchEmpty)}</p>
             ) : (
-              <div className="grid min-w-0 gap-3 xl:grid-cols-2">
+              <div {...stylex.props(styles.permissionGrid)}>
                 {groups.map((group) => (
                   <PickList
                     key={group.title}
@@ -413,11 +498,11 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void options.refetch()}
         >
-          <div className="flex min-w-0 flex-col gap-4">
+          <div {...stylex.props(styles.stack)}>
             {/* the mode first, and the list only when it is the mode: an
                 empty allow-list means nobody, which is a different rule from
                 anybody */}
-            <div className="flex min-w-0 flex-col gap-3">
+            <div {...stylex.props(styles.stackTight)}>
               <ModeChoice
                 legend={format(m.userTypesLegend)}
                 value={holderMode}
@@ -444,7 +529,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
             </div>
 
             {role.kind === 'org' && (
-              <div className="flex min-w-0 flex-col gap-3 border-t pt-4">
+              <div {...stylex.props(styles.anchorSection)}>
                 <ModeChoice
                   legend={format(m.orgTypesLegend)}
                   value={anchorMode}
@@ -513,8 +598,8 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
           {permissions.includes(
             role.kind === 'tenant' ? 'iam.tenant-grant.manage' : 'iam.grant.manage',
           ) ? (
-            <div className="flex min-w-0 flex-col gap-3">
-              <p className="text-xs text-muted-foreground">{format(m.grantableHint)}</p>
+            <div {...stylex.props(styles.stackTight)}>
+              <p {...stylex.props(styles.smallNote)}>{format(m.grantableHint)}</p>
               <PickGrid
                 legend={format(m.grantableLegend)}
                 emptyLabel={format(m.noOptions)}
@@ -552,13 +637,13 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
               )}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">{format(m.grantableNeedsManage)}</p>
+            <p {...stylex.props(styles.quietNote)}>{format(m.grantableNeedsManage)}</p>
           )}
         </AsyncSection>
       )}
 
       {tab === 'lifecycle' && (
-        <div className="flex min-w-0 flex-col gap-4">
+        <div {...stylex.props(styles.stack)}>
           <DefRow
             label={format(m.statusLegend)}
             action={
@@ -630,7 +715,7 @@ export function RoleEditor({ role, canManage }: { role: RoleRow; canManage: bool
       >
         <form
           id="rename-role"
-          className="flex flex-col gap-4"
+          {...stylex.props(styles.form)}
           onSubmit={(event) => {
             event.preventDefault()
             saveProfile.mutate(undefined as never)
