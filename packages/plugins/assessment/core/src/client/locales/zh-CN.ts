@@ -431,7 +431,7 @@ export default {
   'assessment/review/gone-title': '该审核任务的状态已发生变化',
   'assessment/review/gone-body': '任务已由他人处理、被申报人撤回或流程已调整。',
   'assessment/review/gone-withdrawn': '申报人已撤回该申报，本轮审核已结束。',
-  'assessment/review/gone-rerouted': '审核流程已调整，该任务已由新一轮承接。',
+  'assessment/review/gone-rerouted': '审核流程已更新，本任务已由新一轮审核任务替代。',
   'assessment/review/gone-decided': '该申报已由其他审核人员处理。',
   'assessment/review/gone-kept': '你填写的内容未提交。',
   'assessment/review/gone-next': '继续审核下一条',
