@@ -26,18 +26,15 @@ export function Blank({
   description,
   action,
   xstyle,
-  className,
 }: {
   icon?: ReactNode
   title: string
   description?: ReactNode
   action?: ReactNode
-  /** the standard StyleX seat; `className` is the legacy escape hatch */
   xstyle?: StyleXStyles
-  className?: string
 }) {
   return (
-    <Empty xstyle={[styles.shape, xstyle]} className={className}>
+    <Empty xstyle={[styles.shape, xstyle]}>
       <EmptyHeader>
         {icon !== undefined && <EmptyMedia variant="icon">{icon}</EmptyMedia>}
         <EmptyTitle>{title}</EmptyTitle>
