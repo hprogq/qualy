@@ -260,6 +260,11 @@
   [data-slot='alert-dialog-content'] {
     animation: q-pop-in 150ms ease;
   }
+  /* the hover card enters at the popover family's tempo; its exit is the
+   * primitive's immediate unmount, same as the dialogs above */
+  [data-slot='hover-card-content'] {
+    animation: q-pop-in 100ms ease;
+  }
   [data-slot='sheet-content'][data-side='right'] {
     animation: q-slide-in-right 200ms ease;
   }
@@ -310,6 +315,7 @@
     [data-slot='sheet-overlay'],
     [data-slot='dialog-content'],
     [data-slot='alert-dialog-content'],
+    [data-slot='hover-card-content'],
     [data-slot='sheet-content'],
     /* the side-specific entrances carry two attributes, so the plain
      * selector above never outweighed them - the one animation reduced
@@ -386,6 +392,45 @@
     width: 1.5rem;
     height: 1.5rem;
   }
+  /* tabs: the product's underline design over the widget's variant="none".
+     Resting ink and its state repaints sit together in this one layer -
+     a resting value stated in a higher layer would win over every state
+     rule below it. */
+  [data-slot='tabs-trigger'] {
+    border-radius: var(--q-radius-md);
+    color: color-mix(in oklab, var(--q-foreground) 60%, transparent);
+    transition:
+      color 150ms,
+      box-shadow 150ms;
+  }
+  [data-slot='tabs-trigger']:hover {
+    color: var(--q-foreground);
+  }
+  [data-slot='tabs-trigger'][data-active] {
+    color: var(--q-foreground);
+  }
+  [data-slot='tabs-trigger']::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    bottom: -5px;
+    height: 2px;
+    background-color: var(--q-foreground);
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+  [data-slot='tabs-trigger'][data-active]::after {
+    opacity: 1;
+  }
+  [data-slot='tabs-trigger']:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--q-focus-ring) 50%, transparent);
+  }
+  [data-slot='tabs-trigger']:disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
   /* the table's structural row rules: the last body row keeps no divider,
      an expanded row and a selected row wear the muted tint, and a checkbox
      column sheds its trailing padding - all keyed on caller content or
@@ -409,5 +454,43 @@
   [data-slot='empty-description'] a:hover,
   [data-slot='field-description'] a:hover {
     color: var(--q-primary);
+  }
+
+  /* scroll-area: what the scrollbar's orientation decides, and the look of
+     parts a consumer never addresses directly. The primitive stamps
+     data-orientation on the scrollbar, which a compiled style cannot read
+     on its own element; this layer also keeps a consumer's StyleX on the
+     root winning without a fight. */
+  [data-slot='scroll-area-viewport'] > div {
+    /* the primitive lays its content wrapper out as an inline
+       display: table, which only an !important outweighs - carried over
+       from the previous substrate, where the block! utility did the same */
+    display: block !important;
+  }
+  [data-slot='scroll-area-scrollbar'] {
+    display: flex;
+    padding: 1px;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    transition-property: color, background-color, border-color;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  [data-slot='scroll-area-scrollbar'][data-orientation='horizontal'] {
+    height: 10px;
+    flex-direction: column;
+    border-top: 1px solid transparent;
+  }
+  [data-slot='scroll-area-scrollbar'][data-orientation='vertical'] {
+    height: 100%;
+    width: 10px;
+    border-left: 1px solid transparent;
+  }
+  [data-slot='scroll-area-thumb'] {
+    position: relative;
+    flex: 1 1 0%;
+    border-radius: 9999px;
+    background-color: var(--q-border);
   }
 }

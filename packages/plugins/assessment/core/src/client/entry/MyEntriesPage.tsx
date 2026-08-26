@@ -18,8 +18,8 @@ import { Appear, Glide, Sift, SiftRow, Swap } from '@qualy/ui/reveal'
 import { Button } from '@qualy/ui/button'
 import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
+import { Segmented } from '@qualy/ui/screen'
 import { Skeleton } from '@qualy/ui/skeleton'
-import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { assessmentApi } from '../api.ts'
@@ -56,6 +56,17 @@ const spin = stylex.keyframes({
 })
 
 const styles = stylex.create({
+  switchGrow: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  switchOption: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+  },
   fill: {
     display: 'flex',
     minHeight: 0,
@@ -1694,23 +1705,27 @@ function Body({
                       </div>
                     </div>
                     <div {...stylex.props(styles.narrowControls)}>
-                      <Tabs
-                        className="min-w-0 flex-1"
+                      <Segmented
                         value={paperView}
-                        onValueChange={(next) => setPaperView(next as 'all' | 'todo')}
-                      >
-                        <TabsList className="w-full">
-                          <TabsTrigger className="flex-1" value="all">
-                            {format(m.paperViewAll)}
-                          </TabsTrigger>
-                          <TabsTrigger className="flex-1" value="todo">
-                            {format(m.paperViewTodo)}
-                            {todoCount > 0 && (
-                              <span {...stylex.props(styles.nums)}>{todoCount}</span>
-                            )}
-                          </TabsTrigger>
-                        </TabsList>
-                      </Tabs>
+                        onChange={(next) => setPaperView(next as 'all' | 'todo')}
+                        label={format(m.paperViewAll)}
+                        fill
+                        xstyle={styles.switchGrow}
+                        options={[
+                          { value: 'all', label: format(m.paperViewAll) },
+                          {
+                            value: 'todo',
+                            label: (
+                              <span {...stylex.props(styles.switchOption)}>
+                                {format(m.paperViewTodo)}
+                                {todoCount > 0 && (
+                                  <span {...stylex.props(styles.nums)}>{todoCount}</span>
+                                )}
+                              </span>
+                            ),
+                          },
+                        ]}
+                      />
                       <Button
                         variant="outline"
                         size="sm"
@@ -1771,15 +1786,15 @@ function Body({
                           </span>
                         </span>
                       </span>
-                      <Tabs
+                      <Segmented
                         value={paperView}
-                        onValueChange={(next) => setPaperView(next as 'all' | 'todo')}
-                      >
-                        <TabsList>
-                          <TabsTrigger value="all">{format(m.paperViewAll)}</TabsTrigger>
-                          <TabsTrigger value="todo">{format(m.paperViewTodo)}</TabsTrigger>
-                        </TabsList>
-                      </Tabs>
+                        onChange={(next) => setPaperView(next as 'all' | 'todo')}
+                        label={format(m.paperViewAll)}
+                        options={[
+                          { value: 'all', label: format(m.paperViewAll) },
+                          { value: 'todo', label: format(m.paperViewTodo) },
+                        ]}
+                      />
                       <Button
                         variant="outline"
                         size="sm"
@@ -2222,15 +2237,23 @@ function Structure({
     )
 
   const filterTabs = (
-    <Tabs value={showing} onValueChange={(next) => setShowing(next as 'all' | 'todo')}>
-      <TabsList>
-        <TabsTrigger value="all">{format(m.myEntriesFilterAll)}</TabsTrigger>
-        <TabsTrigger value="todo">
-          {format(m.myEntriesFilterTodo)}
-          {todo > 0 && <span {...stylex.props(styles.nums)}>{todo}</span>}
-        </TabsTrigger>
-      </TabsList>
-    </Tabs>
+    <Segmented
+      value={showing}
+      onChange={(next) => setShowing(next as 'all' | 'todo')}
+      label={format(m.myEntriesFilterAll)}
+      options={[
+        { value: 'all', label: format(m.myEntriesFilterAll) },
+        {
+          value: 'todo',
+          label: (
+            <span {...stylex.props(styles.switchOption)}>
+              {format(m.myEntriesFilterTodo)}
+              {todo > 0 && <span {...stylex.props(styles.nums)}>{todo}</span>}
+            </span>
+          ),
+        },
+      ]}
+    />
   )
 
   if (variant === 'sheet') {

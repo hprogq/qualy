@@ -912,7 +912,7 @@ function MyDesk({
           <span {...stylex.props(styles.headSpacer)} />
           {mixed && (
             <Tabs value={lane} onValueChange={(value) => setLane(value as Lane)}>
-              <TabsList variant="line">
+              <TabsList>
                 {(
                   [
                     ['all', m.overviewFilterAll],

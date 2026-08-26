@@ -4,7 +4,7 @@ import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { PageHeader } from '../admin/page.tsx'
 import { PageContainer } from '../page-container.tsx'
-import { Tabs, TabsList, TabsTrigger } from '../tabs.tsx'
+import { SegmentedControl } from '@mantine/core'
 
 const styles = stylex.create({
   band: {
@@ -66,41 +66,37 @@ export function Screen({
 /**
  * A choice between a few views of the same page.
  *
- * The product's tab list, not a hand-rolled one: it stands 36px tall like
- * every button and field beside it, which is the whole reason a filter row
- * reads as one row.
+ * The widget's segmented control - a sliding thumb over radio semantics -
+ * standing 36px tall like every button and field beside it, which is the
+ * whole reason a filter row reads as one row.
  */
 export function Segmented<T extends string>({
   value,
   onChange,
   options,
   label,
+  fill = false,
   xstyle,
 }: {
   value: T
   onChange: (next: T) => void
-  options: readonly { value: T; label: string }[]
+  options: readonly { value: T; label: ReactNode }[]
   /** spoken name for the group; the options name themselves */
   label: string
+  /** stretch across the row instead of hugging the options */
+  fill?: boolean
   xstyle?: StyleXStyles
 }) {
   const sx = stylex.props(styles.pinned, xstyle)
   return (
-    <Tabs
+    <SegmentedControl
       value={value}
-      onValueChange={(next) => onChange(next as T)}
-      // the tabs adapter takes classes; the compiled seat crosses that
-      // boundary whole - its class AND its style, or a dynamic style dies
+      onChange={(next) => onChange(next as T)}
+      data={options.map((option) => ({ value: option.value, label: option.label }))}
+      aria-label={label}
+      fullWidth={fill}
       className={sx.className}
       style={sx.style}
-    >
-      <TabsList aria-label={label}>
-        {options.map((option) => (
-          <TabsTrigger key={option.value} value={option.value}>
-            {option.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
+    />
   )
 }
