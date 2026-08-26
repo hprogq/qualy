@@ -17,6 +17,10 @@ import { seatOf } from '../lib/xstyle.ts'
 // one, on a disabled one, and inside a tooltip whose ink is inverted.
 
 const styles = stylex.create({
+  // A flat chip, not the widget's three-dimensional key: its 3px bottom
+  // border under a transparent color painted as part of the wash and pushed
+  // the glyph high. And the product's own face, not the widget's monospace
+  // stack - ⌘ and ↵ fell into different fallback fonts at different heights.
   ink: {
     height: 20,
     minWidth: 20,
@@ -25,12 +29,13 @@ const styles = stylex.create({
     justifyContent: 'center',
     gap: 4,
     paddingInline: 4,
+    fontFamily: 'inherit',
     fontSize: 12,
     fontWeight: 500,
     lineHeight: 1,
     color: 'currentColor',
     backgroundColor: 'color-mix(in oklab, currentColor 15%, transparent)',
-    borderColor: 'transparent',
+    borderWidth: 0,
     boxShadow: 'none',
     userSelect: 'none',
     pointerEvents: 'none',
