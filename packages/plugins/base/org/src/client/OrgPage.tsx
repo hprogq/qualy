@@ -13,6 +13,8 @@ import {
 import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import {
   Barred,
@@ -29,7 +31,6 @@ import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
-import { cn } from '@qualy/ui/cn'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import { orgMessages as m } from './i18n.ts'
 import { orgApi } from './api.ts'
@@ -62,6 +63,474 @@ interface OrgShape {
 }
 
 const listJoin = (names: readonly string[]) => names.join('，')
+
+const styles = stylex.create({
+  split: {
+    display: 'grid',
+    alignItems: 'start',
+    gap: 24,
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 1024px)': '19rem minmax(0, 1fr)',
+    },
+  },
+  typesSplit: {
+    display: 'grid',
+    alignItems: 'start',
+    gap: 24,
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 1024px)': '17rem minmax(0, 1fr) 16rem',
+    },
+  },
+  quietNote: {
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  quietNoteInset: {
+    paddingInline: 8,
+    paddingBlock: 6,
+  },
+  quietNoteRoomy: {
+    paddingInline: 16,
+    paddingBlock: 12,
+  },
+  smallNote: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  railPane: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  railTools: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchSeat: {
+    position: 'relative',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  searchGlass: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: '50%',
+    left: 12,
+    width: 14,
+    height: 14,
+    transform: 'translateY(-50%)',
+    color: tokens.mutedForeground,
+  },
+  indentedInput: {
+    paddingLeft: 36,
+  },
+  pinned: {
+    flexShrink: 0,
+  },
+  widthFit: {
+    width: 'fit-content',
+  },
+  box: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  // the tree owns its own scroll; the page keeps the footer line in sight
+  treeScroll: {
+    maxHeight: '60vh',
+    minHeight: 0,
+    overflow: 'auto',
+    padding: 4,
+  },
+  railFoot: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 10,
+    paddingBlock: 8,
+  },
+  footNote: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  footNoteEnd: {
+    minWidth: 0,
+    flexShrink: 1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  spacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  nodeRow: {
+    display: 'flex',
+    height: 32,
+    width: '100%',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: tokens.radiusMd,
+    paddingRight: 8,
+    textAlign: 'left',
+    transitionProperty: 'color, background-color, border-color',
+    transitionDuration: '150ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  nodeRowOpen: {
+    backgroundColor: {
+      default: tokens.surfaceMuted,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
+  rowGlyph: {
+    width: 12,
+    height: 12,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  rowGlyphSeat: {
+    width: 12,
+    height: 12,
+    flexShrink: 0,
+  },
+  rowName: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  rowNameOpen: {
+    fontWeight: 500,
+  },
+  rowTally: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  panel: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 20,
+  },
+  panelTight: {
+    gap: 16,
+  },
+  panelIntro: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 12,
+  },
+  headRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+  },
+  headName: {
+    flexShrink: 0,
+    fontSize: '1rem',
+    lineHeight: '1.5rem',
+    fontWeight: 600,
+  },
+  headChip: {
+    flexShrink: 0,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surfaceMuted,
+    paddingInline: 8,
+    paddingBlock: 2,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontWeight: 500,
+  },
+  headCount: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  inlineForm: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  nameInput: {
+    maxWidth: '18rem',
+  },
+  section: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingTop: 16,
+  },
+  sectionRoomy: {
+    gap: 12,
+  },
+  childRow: {
+    display: 'grid',
+    minWidth: 0,
+    gridTemplateColumns: 'minmax(0, 1fr) 5rem 5rem 3.5rem',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 16,
+    paddingBlock: 10,
+    textAlign: 'left',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  childName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  childKind: {
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  childTally: {
+    textAlign: 'right',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  childOpen: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 2,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  childOpenGlyph: {
+    width: 12,
+    height: 12,
+  },
+  createRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 16,
+    paddingBlock: 8,
+  },
+  // the empty seat a new unit would fill, said with a dashed edge
+  draftInput: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    borderStyle: 'dashed',
+  },
+  peopleLink: {
+    width: 'fit-content',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+    textDecoration: {
+      default: 'none',
+      ':hover': 'underline',
+    },
+  },
+  typeRow: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 10,
+    textAlign: 'left',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  typeRowOpen: {
+    backgroundColor: {
+      default: tokens.surfaceMuted,
+      ':hover': tokens.surfaceMuted,
+    },
+  },
+  typeRowHead: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 8,
+  },
+  typeRowName: {
+    flexShrink: 0,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  typeRowNameOpen: {
+    fontWeight: 600,
+  },
+  typeRowMeta: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  ruleSection: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  ruleGrid: {
+    display: 'grid',
+    minWidth: 0,
+    gap: 8,
+    gridTemplateColumns: {
+      default: 'none',
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  ruleCell: {
+    display: 'flex',
+    minWidth: 0,
+    cursor: 'pointer',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 8,
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  ruleName: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  ruleTally: {
+    flexShrink: 0,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  smallBox: {
+    width: 16,
+    height: 16,
+  },
+  ladderPane: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  ladderBox: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 4,
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+    paddingInline: 12,
+    paddingBlock: 12,
+  },
+  ladderRow: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+  },
+  ladderTick: {
+    color: tokens.mutedForeground,
+  },
+  ladderName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  ladderNameTop: {
+    fontWeight: 500,
+  },
+  smallGlyph: {
+    width: 12,
+    height: 12,
+  },
+  compactInput: {
+    width: '10rem',
+  },
+})
 
 export default function OrgPage() {
   const api = useApi(orgApi)
@@ -179,14 +648,14 @@ export default function OrgPage() {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void refresh()}
         skeleton={
-          <div className="grid items-start gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
+          <div {...stylex.props(styles.split)}>
             <RailSkeleton rows={7} />
             <EditorSkeleton />
           </div>
         }
       >
         {types ? (
-          <div className="grid items-start gap-6 lg:grid-cols-[17rem_minmax(0,1fr)_16rem]">
+          <div {...stylex.props(styles.typesSplit)}>
             <TypeRail shape={shape} openId={openTypeId} onOpen={setSelectedTypeId} />
             {openType ? (
               <TypePanel
@@ -207,7 +676,7 @@ export default function OrgPage() {
             <TypeLadder shape={shape} />
           </div>
         ) : (
-          <div className="grid items-start gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
+          <div {...stylex.props(styles.split)}>
             <NodeRail
               shape={shape}
               openId={selected?.id ?? null}
@@ -268,38 +737,37 @@ function NodeRail({
   for (const root of shape.roots) walk(root, 0)
 
   return (
-    <div className="flex min-w-0 flex-col gap-2.5">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <SearchIcon
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground"
-          />
+    <div {...stylex.props(styles.railPane)}>
+      <div {...stylex.props(styles.railTools)}>
+        <div {...stylex.props(styles.searchSeat)}>
+          <SearchIcon aria-hidden {...stylex.props(styles.searchGlass)} />
           <Input
             name="org-search"
             value={search}
             placeholder={format(m.searchPlaceholder)}
             aria-label={format(m.searchPlaceholder)}
             onChange={(event) => setSearch(event.target.value)}
-            className="pl-9"
+            className={stylex.props(styles.indentedInput).className}
           />
         </div>
         <Button
           size="sm"
           variant="outline"
-          className="shrink-0"
+          className={stylex.props(styles.pinned).className}
           onClick={() => setCollapsed(new Set())}
         >
           {format(m.expandAll)}
         </Button>
       </div>
-      <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
-        <div className="max-h-[60vh] min-h-0 overflow-auto p-1">
+      <div {...stylex.props(styles.box)}>
+        <div {...stylex.props(styles.treeScroll)}>
           {matches !== null ? (
             // what a search leaves is a set of matches, not a tree: the
             // branches that would lead to them are not part of the answer
             matches.length === 0 ? (
-              <p className="px-2 py-1.5 text-sm text-muted-foreground">{format(m.searchEmpty)}</p>
+              <p {...stylex.props(styles.quietNote, styles.quietNoteInset)}>
+                {format(m.searchEmpty)}
+              </p>
             ) : (
               matches.map((node) => (
                 <NodeRow
@@ -314,7 +782,7 @@ function NodeRail({
               ))
             )
           ) : rows.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-muted-foreground">{format(m.treeEmpty)}</p>
+            <p {...stylex.props(styles.quietNote, styles.quietNoteInset)}>{format(m.treeEmpty)}</p>
           ) : (
             rows.map(({ node, depth }) => (
               <NodeRow
@@ -335,12 +803,12 @@ function NodeRail({
             ))
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2 border-t px-2.5 py-2">
-          <span className="shrink-0 text-xs text-muted-foreground">
+        <div {...stylex.props(styles.railFoot)}>
+          <span {...stylex.props(styles.footNote)}>
             {format(m.unitCount, { count: shape.nodes.length })}
           </span>
-          <span className="flex-1" />
-          <span className="min-w-0 truncate text-xs text-muted-foreground">
+          <span {...stylex.props(styles.spacer)} />
+          <span {...stylex.props(styles.footNote, styles.footNoteEnd)}>
             {format(m.manageableCount, { count: manageable })}
           </span>
         </div>
@@ -387,31 +855,21 @@ function NodeRow({
         if (expandable) onToggle()
         onOpen()
       }}
-      className={cn(
-        'flex h-8 w-full min-w-0 items-center gap-1.5 rounded-md pr-2 text-left transition-colors hover:bg-accent/70',
-        open && 'bg-accent',
-      )}
+      {...stylex.props(styles.nodeRow, open && styles.nodeRowOpen)}
       style={{ paddingLeft: 4 + depth * 14 }}
     >
       {expandable ? (
         collapsed === true ? (
-          <ChevronRightIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+          <ChevronRightIcon aria-hidden {...stylex.props(styles.rowGlyph)} />
         ) : (
-          <ChevronDownIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+          <ChevronDownIcon aria-hidden {...stylex.props(styles.rowGlyph)} />
         )
       ) : (
-        <span aria-hidden className="size-3 shrink-0" />
+        <span aria-hidden {...stylex.props(styles.rowGlyphSeat)} />
       )}
-      <span className={cn('min-w-0 flex-1 truncate text-sm', open && 'font-medium')}>
-        {node.name}
-      </span>
-      {!node.manageable && (
-        <LockIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
-      )}
-      <span
-        className="shrink-0 text-xs tabular-nums text-muted-foreground"
-        data-headcount={headcount}
-      >
+      <span {...stylex.props(styles.rowName, open && styles.rowNameOpen)}>{node.name}</span>
+      {!node.manageable && <LockIcon aria-hidden {...stylex.props(styles.rowGlyph)} />}
+      <span {...stylex.props(styles.rowTally)} data-headcount={headcount}>
         {headcount > 0 ? headcount : ''}
       </span>
     </button>
@@ -484,14 +942,12 @@ function NodePanel({
   )
 
   return (
-    <div className="flex min-w-0 flex-col gap-5">
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <h2 className="shrink-0 text-base font-semibold">{node.name}</h2>
-          <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-            {typeName(node.orgTypeId)}
-          </span>
-          <span className="flex-1" />
+    <div {...stylex.props(styles.panel)}>
+      <div {...stylex.props(styles.panelIntro)}>
+        <div {...stylex.props(styles.headRow)}>
+          <h2 {...stylex.props(styles.headName)}>{node.name}</h2>
+          <span {...stylex.props(styles.headChip)}>{typeName(node.orgTypeId)}</span>
+          <span {...stylex.props(styles.spacer)} />
           {node.manageable && (
             <>
               <Button
@@ -516,7 +972,7 @@ function NodePanel({
 
         {renaming && (
           <form
-            className="flex items-center gap-2"
+            {...stylex.props(styles.inlineForm)}
             onSubmit={(event) => {
               event.preventDefault()
               void run(api.org.updateNode({ params: { nodeId: node.id }, payload: { name } })).then(
@@ -529,7 +985,7 @@ function NodePanel({
               value={name}
               aria-label={format(m.nameLabel)}
               onChange={(event) => setName(event.target.value)}
-              className="max-w-72"
+              wrapperClassName={stylex.props(styles.nameInput).className}
             />
             <Button size="sm" type="submit" disabled={name.trim() === '' || name === node.name}>
               {format(m.save)}
@@ -538,7 +994,7 @@ function NodePanel({
         )}
         {moving && (
           <form
-            className="flex items-center gap-2"
+            {...stylex.props(styles.inlineForm)}
             onSubmit={(event) => {
               event.preventDefault()
               void run(
@@ -567,7 +1023,7 @@ function NodePanel({
           </form>
         )}
 
-        {!node.manageable && <p className="text-sm text-muted-foreground">{format(m.readOnly)}</p>}
+        {!node.manageable && <p {...stylex.props(styles.quietNote)}>{format(m.readOnly)}</p>}
 
         <Facts
           items={[
@@ -585,7 +1041,7 @@ function NodePanel({
         />
       </div>
 
-      <div className="flex min-w-0 flex-col gap-2.5 border-t pt-4">
+      <div {...stylex.props(styles.section)}>
         <SectionHead
           title={format(m.childrenTitle)}
           count={children.length}
@@ -595,32 +1051,34 @@ function NodePanel({
               : format(m.allowedHere, { types: listJoin(allowedChildTypes.map((t) => t.name)) })
           }
         />
-        <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
+        <div {...stylex.props(styles.box)}>
           {children.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-muted-foreground">{format(m.childrenEmpty)}</p>
+            <p {...stylex.props(styles.quietNote, styles.quietNoteRoomy)}>
+              {format(m.childrenEmpty)}
+            </p>
           ) : (
             children.map((child) => (
               <button
                 key={child.id}
                 type="button"
                 onClick={() => onOpen(child.id)}
-                className="grid min-w-0 grid-cols-[minmax(0,1fr)_5rem_5rem_3.5rem] items-center gap-3 border-t px-4 py-2.5 text-left first:border-t-0 hover:bg-accent/70"
+                {...stylex.props(styles.childRow)}
               >
-                <span className="min-w-0 truncate text-sm font-medium">{child.name}</span>
-                <span className="text-xs text-muted-foreground">{typeName(child.orgTypeId)}</span>
-                <span className="text-right text-xs tabular-nums text-muted-foreground">
+                <span {...stylex.props(styles.childName)}>{child.name}</span>
+                <span {...stylex.props(styles.childKind)}>{typeName(child.orgTypeId)}</span>
+                <span {...stylex.props(styles.childTally)}>
                   {format(m.childCount, { count: (shape.childrenOf.get(child.id) ?? []).length })}
                 </span>
-                <span className="inline-flex items-center justify-end gap-0.5 text-xs text-muted-foreground">
+                <span {...stylex.props(styles.childOpen)}>
                   {format(m.open)}
-                  <ChevronRightIcon aria-hidden className="size-3" />
+                  <ChevronRightIcon aria-hidden {...stylex.props(styles.childOpenGlyph)} />
                 </span>
               </button>
             ))
           )}
           {node.manageable && allowedChildTypes.length > 0 && (
             <form
-              className="flex min-w-0 items-center gap-2 border-t px-4 py-2"
+              {...stylex.props(styles.createRow)}
               onSubmit={(event) => {
                 event.preventDefault()
                 void run(
@@ -635,7 +1093,8 @@ function NodePanel({
                 placeholder={format(m.namePlaceholder)}
                 aria-label={format(m.namePlaceholder)}
                 onChange={(event) => setChildName(event.target.value)}
-                className="flex-1 border-dashed"
+                wrapperClassName={stylex.props(styles.draftInput).className}
+                className={stylex.props(styles.draftInput).className}
               />
               <Select value={childTypeId} onValueChange={setChildTypeId}>
                 <SelectTrigger aria-label={format(m.selectType)} className="w-36 shrink-0">
@@ -652,7 +1111,7 @@ function NodePanel({
               <Button
                 size="sm"
                 type="submit"
-                className="shrink-0"
+                className={stylex.props(styles.pinned).className}
                 disabled={childName.trim() === '' || childTypeId === ''}
               >
                 {format(m.create)}
@@ -665,7 +1124,7 @@ function NodePanel({
       {/* how many stand here, and the way through to them. The roster
           belongs to the users screen; the number is what decides whether a
           unit may be removed, so the count comes with the tree */}
-      <div className="flex min-w-0 flex-col gap-2.5 border-t pt-4">
+      <div {...stylex.props(styles.section)}>
         <SectionHead
           title={format(m.peopleTitle)}
           count={format(m.peopleCount, { count: headcount })}
@@ -673,7 +1132,7 @@ function NodePanel({
         <PageLink
           page="auth/users"
           search={{ anchor: node.id, scope: 'self' }}
-          className="w-fit text-sm font-medium hover:underline"
+          className={stylex.props(styles.peopleLink).className}
           unavailable={null}
         >
           {format(m.peopleOpen)}
@@ -681,7 +1140,7 @@ function NodePanel({
       </div>
 
       {node.manageable && !isRoot && (
-        <div className="flex min-w-0 flex-col gap-3 border-t pt-4">
+        <div {...stylex.props(styles.section, styles.sectionRoomy)}>
           <SectionHead title={format(m.deleteTitle)} />
           <Barred
             actions={[{ label: format(m.deleteNode), barred: !removable }]}
@@ -699,7 +1158,7 @@ function NodePanel({
           <Button
             size="sm"
             variant="outline"
-            className="w-fit"
+            className={stylex.props(styles.widthFit).className}
             disabled={!removable}
             onClick={() => setConfirmingDelete(true)}
           >
@@ -744,38 +1203,31 @@ function TypeRail({
       .filter((name): name is string => name !== undefined)
 
   if (shape.types.length === 0) {
-    return <p className="text-sm text-muted-foreground">{format(m.typeListEmpty)}</p>
+    return <p {...stylex.props(styles.quietNote)}>{format(m.typeListEmpty)}</p>
   }
   return (
-    <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
+    <div {...stylex.props(styles.box)}>
       {shape.types.map((type) => {
         const held = childNames(type.id)
+        const openNow = type.id === openId
         return (
           <button
             key={type.id}
             type="button"
-            aria-current={type.id === openId}
+            aria-current={openNow}
             onClick={() => onOpen(type.id)}
-            className={cn(
-              'flex min-w-0 flex-col gap-0.5 border-t px-3 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
-              type.id === openId && 'bg-accent',
-            )}
+            {...stylex.props(styles.typeRow, openNow && styles.typeRowOpen)}
           >
-            <span className="flex min-w-0 items-center gap-2">
-              <span
-                className={cn(
-                  'shrink-0 text-sm',
-                  type.id === openId ? 'font-semibold' : 'font-medium',
-                )}
-              >
+            <span {...stylex.props(styles.typeRowHead)}>
+              <span {...stylex.props(styles.typeRowName, openNow && styles.typeRowNameOpen)}>
                 {type.name}
               </span>
-              <span className="flex-1" />
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              <span {...stylex.props(styles.spacer)} />
+              <span {...stylex.props(styles.rowTally)}>
                 {format(m.typeNodeCount, { count: shape.nodesOfType.get(type.id) ?? 0 })}
               </span>
             </span>
-            <span className="min-w-0 truncate text-xs text-muted-foreground">
+            <span {...stylex.props(styles.typeRowMeta)}>
               {held.length === 0
                 ? format(m.noChildrenAllowed)
                 : format(m.allowedHere, { types: listJoin(held) })}
@@ -843,13 +1295,11 @@ function TypePanel({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <h2 className="shrink-0 text-base font-semibold">{type.name}</h2>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {format(m.typeNodeCount, { count: inUse })}
-        </span>
-        <span className="flex-1" />
+    <div {...stylex.props(styles.panel, styles.panelTight)}>
+      <div {...stylex.props(styles.headRow)}>
+        <h2 {...stylex.props(styles.headName)}>{type.name}</h2>
+        <span {...stylex.props(styles.headCount)}>{format(m.typeNodeCount, { count: inUse })}</span>
+        <span {...stylex.props(styles.spacer)} />
         {canManage && (
           <Button size="sm" variant="outline" onClick={() => setRenaming((current) => !current)}>
             {format(m.rename)}
@@ -858,7 +1308,7 @@ function TypePanel({
       </div>
       {renaming && (
         <form
-          className="flex items-center gap-2"
+          {...stylex.props(styles.inlineForm)}
           onSubmit={(event) => {
             event.preventDefault()
             void run(api.org.updateType({ params: { typeId: type.id }, payload: { name } })).then(
@@ -871,7 +1321,7 @@ function TypePanel({
             value={name}
             aria-label={format(m.nameLabel)}
             onChange={(event) => setName(event.target.value)}
-            className="max-w-72"
+            wrapperClassName={stylex.props(styles.nameInput).className}
           />
           <Button size="sm" type="submit" disabled={name.trim() === '' || name === type.name}>
             {format(m.save)}
@@ -879,19 +1329,16 @@ function TypePanel({
         </form>
       )}
 
-      <div className="flex min-w-0 flex-col gap-2.5">
+      <div {...stylex.props(styles.ruleSection)}>
         <SectionHead
           title={format(m.allowedChildrenTitle)}
           aside={format(m.chosenCount, { count: draft.size })}
         />
-        <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+        <div {...stylex.props(styles.ruleGrid)}>
           {shape.types.map((candidate) => (
-            <label
-              key={candidate.id}
-              className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 hover:bg-accent/70"
-            >
+            <label key={candidate.id} {...stylex.props(styles.ruleCell)}>
               <Checkbox
-                className="size-4"
+                className={stylex.props(styles.smallBox).className}
                 checked={draft.has(candidate.id)}
                 disabled={!canManage}
                 onCheckedChange={(checked) => {
@@ -901,15 +1348,20 @@ function TypePanel({
                   setDraft(next)
                 }}
               />
-              <span className="min-w-0 flex-1 truncate text-sm">{candidate.name}</span>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              <span {...stylex.props(styles.ruleName)}>{candidate.name}</span>
+              <span {...stylex.props(styles.ruleTally)}>
                 {shape.nodesOfType.get(candidate.id) ?? 0}
               </span>
             </label>
           ))}
         </div>
         {canManage && (
-          <Button size="sm" className="w-fit" disabled={!dirty} onClick={saveRules}>
+          <Button
+            size="sm"
+            className={stylex.props(styles.widthFit).className}
+            disabled={!dirty}
+            onClick={saveRules}
+          >
             {format(m.save)}
           </Button>
         )}
@@ -926,7 +1378,7 @@ function TypePanel({
             <Button
               size="sm"
               variant="outline"
-              className="shrink-0"
+              className={stylex.props(styles.pinned).className}
               disabled={inUse > 0}
               onClick={() => setConfirmingDelete(true)}
             >
@@ -976,27 +1428,27 @@ function TypeLadder({ shape }: { shape: OrgShape }) {
   for (const top of tops) walk(top.id, 0, new Set())
 
   return (
-    <div className="flex min-w-0 flex-col gap-2.5">
+    <div {...stylex.props(styles.ladderPane)}>
       <SectionHead title={format(m.ladderTitle)} />
-      <div className="flex min-w-0 flex-col gap-1 overflow-hidden rounded-lg border bg-muted/40 px-3 py-3">
+      <div {...stylex.props(styles.ladderBox)}>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{format(m.ladderEmpty)}</p>
+          <p {...stylex.props(styles.quietNote)}>{format(m.ladderEmpty)}</p>
         ) : (
           rows.map((row, at) => (
             <div
               key={`${row.name}-${at}`}
-              className="flex min-w-0 items-center gap-1.5 text-sm"
+              {...stylex.props(styles.ladderRow)}
               style={{ paddingLeft: row.depth * 14 }}
             >
-              {row.depth > 0 && <span className="text-muted-foreground">└</span>}
-              <span className={cn('min-w-0 truncate', row.depth === 0 && 'font-medium')}>
+              {row.depth > 0 && <span {...stylex.props(styles.ladderTick)}>└</span>}
+              <span {...stylex.props(styles.ladderName, row.depth === 0 && styles.ladderNameTop)}>
                 {row.name}
               </span>
             </div>
           ))
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p {...stylex.props(styles.smallNote)}>
         {format(m.ruleCount, { count: shape.rules.length })}
       </p>
     </div>
@@ -1018,14 +1470,14 @@ function NewTypeButton({
   if (!open) {
     return (
       <Button size="sm" onClick={() => setOpen(true)}>
-        <PlusIcon aria-hidden className="size-3" />
+        <PlusIcon aria-hidden {...stylex.props(styles.smallGlyph)} />
         {format(m.newTypeTitle)}
       </Button>
     )
   }
   return (
     <form
-      className="flex items-center gap-2"
+      {...stylex.props(styles.inlineForm)}
       onSubmit={(event) => {
         event.preventDefault()
         void run(api.org.createType({ payload: { name } })).then((created) => {
@@ -1042,7 +1494,7 @@ function NewTypeButton({
         placeholder={format(m.newTypeTitle)}
         aria-label={format(m.newTypeTitle)}
         onChange={(event) => setName(event.target.value)}
-        className="w-40"
+        wrapperClassName={stylex.props(styles.compactInput).className}
       />
       <Button size="sm" type="submit" disabled={name.trim() === ''}>
         {format(m.create)}
