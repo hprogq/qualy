@@ -466,6 +466,64 @@ describe('roles screen', () => {
     expect(create).toHaveBeenCalledWith({ payload: { name: '审核员', kind: 'tenant' } })
   })
 
+  // Editing an active role's permissions is editing the office itself: the
+  // save must state its blast radius and carry the version the editor read,
+  // and a tick the user takes back before saving must send nothing.
+  it('saves a changed permission set through the stated-impact confirmation', async () => {
+    const save = vi.fn(() => Effect.succeed({ ok: true as const }))
+    const permission = (code: string, label: string) => ({
+      code,
+      plugin: 'assessment',
+      name: { kind: 'literal' as const, value: label },
+      description: null,
+      groupKey: 'assessment',
+      group: { kind: 'literal' as const, value: '综合测评' },
+      target: 'org-node' as const,
+    })
+    renderScreen({
+      client: fakeClient(
+        stubs({
+          access: {
+            listRoles: () =>
+              Effect.succeed({
+                roles: [role({ grantCount: 3, permissions: ['assessment.batch.read'] })],
+                capabilities: { canManage: true, canEscalate: false },
+              }),
+            listPermissions: () =>
+              Effect.succeed({
+                permissions: [
+                  permission('assessment.batch.read', '查看批次'),
+                  permission('assessment.batch.manage', '编辑批次'),
+                ],
+              }),
+            setRolePermissions: save,
+          },
+        }),
+      ),
+      route: `/admin/roles?role=${ROLE_ID}`,
+      children: <RolesPage />,
+    })
+
+    const manage = page.getByRole('checkbox', { name: '编辑批次' })
+    await expect.element(manage).toBeInTheDocument()
+    await expect.element(manage).not.toBeChecked()
+    await manage.click()
+    await expect.element(manage).toBeChecked()
+
+    // the role is active and held: the save asks first, out loud
+    await page.getByRole('button', { name: '保存权限' }).click()
+    await expect.element(page.getByRole('alertdialog')).toBeInTheDocument()
+    await page.getByRole('alertdialog').getByRole('button', { name: '保存' }).click()
+
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    // the version the editor read, and the set as the user left it: the
+    // held tick first, the new one appended by the click
+    expect(save).toHaveBeenCalledWith({
+      params: { roleId: ROLE_ID },
+      payload: { version: 5, codes: ['assessment.batch.read', 'assessment.batch.manage'] },
+    })
+  })
+
   it('asks before deleting, in a dialog that can be read and cancelled', async () => {
     const remove = vi.fn(() => Effect.succeed({ ok: true as const }))
     renderScreen({
