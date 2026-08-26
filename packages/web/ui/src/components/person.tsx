@@ -37,6 +37,17 @@ const styles = stylex.create({
     gap: 10,
   },
   lines: { minWidth: 0 },
+  frame: {
+    borderRadius: tokens.radiusLg,
+  },
+  monogram: {
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+    fontSize: '0.75rem',
+    lineHeight: '1rem',
+    fontWeight: 500,
+  },
   name: {
     display: 'block',
     overflow: 'hidden',
@@ -68,10 +79,8 @@ export function PersonCell({
 }) {
   return (
     <span {...stylex.props(styles.row, xstyle)}>
-      {/* the avatar adapter still speaks Tailwind, so its overrides stay
-          class strings until that boundary migrates */}
-      <Avatar className="rounded-lg">
-        <AvatarFallback className="rounded-lg bg-primary text-xs font-medium text-primary-foreground">
+      <Avatar className={stylex.props(styles.frame).className}>
+        <AvatarFallback className={stylex.props(styles.monogram).className}>
           {initialsOf(name)}
         </AvatarFallback>
       </Avatar>
