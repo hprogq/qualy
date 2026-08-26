@@ -9297,3 +9297,50 @@ text-current` 跟随按钮墨色,enabled 外观不变。
 - **验收(全部真实执行)**:typecheck 零错;node 843 passed | 17 skipped;浏览器 25 files /
   **174 passed** 连续两轮(pointer 残留零复现);build 成功;生产 smoke 干净退出;
   vendor:check 两树一致;prettier 通过(.mcp.json 除外)。M9 未开始。
+
+## UI 平台 M9(进行中):残留清理与遗留退役(2026-08-26)
+
+**已完成并提交**
+
+- **全仓 residual inventory**:业务直连 @mantine = 0、业务裸 palette = 0(令牌条令守住);产品 Tailwind
+  字面 className 400(assessment 200 / auth 103 / audit 29 / @qualy/ui 55 / 其余 13);产品 cn 26、
+  adapter cn 132;cva 仅 adapter 5 文件;Radix 经 unified `radix-ui` 包(9 文件),
+  `@radix-ui/react-label`、`@radix-ui/react-slot` 两个 direct dep **零 import**;`cn` 有两份重复实现。
+- **audit 页迁 StyleX**,Select 宽度 legacy 该区归零(全仓余 auth PeoplePicker 1 处)。
+- **死件删除**:resizable(0 消费)、button-group(0)、toggle(0,仅 toggle-group 借其 variants)、
+  pagination(**语义不匹配**:本仓 keyset 分页无页码,组件只被当 nav/ul/li 空壳)、
+  input-group(**Mantine Input 的 leftSection/rightSection 就是它的真实用途**,Input 新增 lead/tail 席位)。
+- **小件改坐 Mantine 真实组件**:Kbd、Label(InputLabel)、Card、Breadcrumb(Breadcrumbs)、
+  NativeSelect;Spinner **刻意不用 Loader**——它要画 i18n catalog 与 manifest 两个加载屏,
+  那两处在 MantineProvider 之外(实测直接白屏崩溃),故保持自绘 + 编译期 keyframe。
+- **adapter 契约两条硬修**(用户审计):①`stylex.props()` 的 `style` 此前被丢弃,新增 `seatOf` 接缝
+  同时透传 class 与 inline style(动态 StyleX 值才不会半路消失),select/shell 两处旧漏点一并补;
+  ②**不得把 `ComponentProps<typeof M*>` 当公开契约**——adapter 一律声明 DOM 形状或显式 props,
+  Mantine 只存在于 adapter 内部。
+- **Kbd 视觉契约**:chip 跟随当前墨色(`currentColor` + 15% 混色),平面无边框、继承产品字体——
+  实心/禁用/暗色/tooltip 四种底都可读(此前钉死白色在禁用灰底上不可见;⌘ 与 ↵ 掉进不同回退字体)。
+- **Tabs 全部实现回到 adapter**:widget 只提供 tablist 行为(`variant="none"`),hover/focus/disabled
+  是 StyleX 条件,选中态是 adapter 自己比较 value 的普通 React 判断,下划线是自有元素;
+  theme.css 少一整块。视图切换器保持 tablist 语义(SegmentedControl 是 radio,面板式切换不适用)。
+- hover-card / scroll-area / dropzone / tree-select / time-field / toggle-group 内部去 Tailwind;
+  badge/button 改用 clsx,tooltip/radio-group 末两处工具类改编译样式。
+
+**已裁决但尚未执行(下一段的确定范围)**
+
+- `[class*='size-']` 探针(theme.css 7 处):**必须消除,但阻塞在产品 Tailwind**——实测直接摘除会让
+  产品用 `size-*` 定尺寸的图标被全局规则压回默认值、触发布局位移。层序已保证编译 StyleX 覆盖全局规则,
+  所以产品侧 20 处 `size-*` 清完即可摘。adapter 侧已清 2 处(tree-select、date-time-picker)。
+- theme.css 终态四分:删 Tailwind/shadcn bridge、保留 global baseline 与 caller-DOM relational、
+  Button/Badge/Textarea/Input/Chip/overlay motion 搬回各自 adapter、`.mantine-*` 逐条只留真 substrate
+  normalization;必要时按 tokens/base/mantine/motion/relational 拆文件。
+- 未迁:overlay 家族(dialog/alert-dialog/sheet/popover/dropdown-menu/select 共 31 处 cn)、calendar(31)、
+  timeline(reui 下载件,**Mantine Timeline 仅纵向,消费者 BatchFlow 需横向**,应收进 BatchFlow 为自有件);
+  产品 residual 页(MyResultPage 52、AccessPanel 30、PersonCard 29、PeoplePicker 23 等约 330 处)。
+- Radix 两个零 import 的 direct dep 可删;Tailwind/cva/tailwind-merge 退役、CSS layer 终态、
+  shadcn alias 清理、M6.6 兼容测试退役均待产品 Tailwind 归零后执行。
+
+**验收(本段全部真实执行)**:typecheck 零错;node 843 passed | 17 skipped;浏览器 25 files /
+**174 passed 连续两轮**;build 成功;生产 smoke 干净退出;vendor:check 两树一致;prettier 通过
+(.mcp.json 除外)。**已知不稳定**:shell 的「一次身份问一次」用例(`sessionCalls === 1`)在整套并跑、
+机器负载高时偶发变 2,单跑与低负载连跑均绿;经 revert 验证与本段提交无因果关系,待查(该用例自带
+两处 CI-only ghost 的历史注释)。M9 未完成,不得视作迁移终局。
