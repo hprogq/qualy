@@ -137,6 +137,46 @@ function usePhotoViewerOpen(active: boolean): boolean {
   return viewerOpen
 }
 
+/** how long the exit plays; the closing transition in theme.css matches it */
+const EXIT_MS = 200
+
+/**
+ * The panel's presence, owning the exit the widget library cannot play.
+ *
+ * The library's transition machine never ran here (entrances are CSS
+ * insertion animations so they also play for mount-already-open), and with
+ * its duration at zero a close unmounted everything mid-breath. So the
+ * adapter holds the drawer mounted for one exit beat after `open` turns
+ * false - however the close arrived: Escape, a click outside, the corner
+ * button, or the parent flipping its own state - and marks both layers
+ * `data-closing` for the stylesheet to slide and fade them out.
+ */
+function useExit(open: boolean): { shown: boolean; closing: boolean } {
+  const [shown, setShown] = React.useState(open)
+  const [closing, setClosing] = React.useState(false)
+  React.useEffect(() => {
+    if (open) {
+      setClosing(false)
+      setShown(true)
+      return
+    }
+    if (!shown) return
+    // a reader who asked for less motion gets the instant close
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setShown(false)
+      return
+    }
+    setClosing(true)
+    const timer = window.setTimeout(() => {
+      setClosing(false)
+      setShown(false)
+    }, EXIT_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+  return { shown, closing }
+}
+
 function SheetContent({
   className,
   children,
@@ -148,6 +188,7 @@ function SheetContent({
   showCloseButton?: boolean
 }) {
   const { open, setOpen } = useSheet()
+  const { shown, closing } = useExit(open)
   const photoOpen = usePhotoViewerOpen(open)
   // a STABLE ref object - the focus trap re-runs its focus routine when
   // the content ref identity changes
@@ -159,38 +200,41 @@ function SheetContent({
   }, [open])
   return (
     <MDrawer.Root
-      opened={open}
+      opened={shown}
       onClose={() => setOpen(false)}
       position={side}
       trapFocus
       returnFocus
       lockScroll
-      closeOnEscape={!photoOpen}
+      closeOnEscape={!photoOpen && !closing}
       closeOnClickOutside
-      // Fade, not slide: the slide-in is a CSS insertion animation (it must
-      // play for mount-already-open too), and two owners of transform meant
-      // the widget's slide took over mid-frame when the keyframe released -
-      // a visible stutter at the end of opening, and a close that could be
-      // cut short. The widget owns opacity alone: entrances fade under the
-      // keyframe's slide, exits fade out in full.
-      transitionProps={{ duration: 200, transition: 'fade' }}
+      // motion has one owner and it is not the widget: entrances are CSS
+      // insertion animations, exits are the data-closing transition, and
+      // the widget only mounts and unmounts
+      transitionProps={{ duration: 0 }}
     >
       {/* no backdrop blur: a backdrop-filter under an opacity entrance makes
           mobile Safari re-rasterize the page behind on every frame, which
           reads as the background flashing while the sheet opens */}
-      <MDrawer.Overlay data-slot="sheet-overlay" />
+      <MDrawer.Overlay data-slot="sheet-overlay" {...(closing ? { 'data-closing': '' } : {})} />
       <MDrawer.Content
         data-slot="sheet-content"
         data-side={side}
+        {...(closing ? { 'data-closing': '' } : {})}
         ref={contentRef}
-        // structure only; surface and slide transition are the widget's own.
+        // structure only; surface and the panel chrome are the widget's own.
         // classNames.content, not className: the widget duplicates className
-        // onto its positioning inner element. The panel itself does not
-        // scroll (overflow back to visible) - its children own scrolling,
-        // which is what keeps a footer standing while the middle moves.
+        // onto its positioning inner element. `relative`, because the corner
+        // button is anchored to this panel: while the entrance animation
+        // holds a transform the panel is a containing block by accident, and
+        // the moment it ends an unpositioned panel hands the button to the
+        // viewport - the corner button leaping to the page corner. The panel
+        // itself does not scroll (overflow back to visible) - its children
+        // own scrolling, which is what keeps a footer standing while the
+        // middle moves.
         classNames={{
           content: cn(
-            'flex flex-col overflow-y-visible text-sm',
+            'relative flex flex-col overflow-y-visible text-sm',
             (side === 'left' || side === 'right') && 'h-full w-3/4 sm:max-w-sm',
             (side === 'top' || side === 'bottom') && 'h-auto w-full',
             className,

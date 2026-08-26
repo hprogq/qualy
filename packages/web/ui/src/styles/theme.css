@@ -272,14 +272,46 @@
   [data-slot='sheet-content'][data-side='bottom'] {
     animation: q-slide-in-bottom 200ms ease;
   }
+  /* The exit, played by the adapter: it holds the drawer mounted for one
+   * beat with data-closing set, and these transitions carry both layers
+   * out the way they came. Nothing answers the pointer mid-exit. */
+  [data-slot='sheet-overlay'][data-closing],
+  [data-slot='sheet-content'][data-closing] {
+    pointer-events: none;
+  }
+  [data-slot='sheet-overlay'][data-closing] {
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+  [data-slot='sheet-content'][data-closing] {
+    transition: transform 200ms ease;
+  }
+  [data-slot='sheet-content'][data-side='right'][data-closing] {
+    transform: translateX(100%);
+  }
+  [data-slot='sheet-content'][data-side='left'][data-closing] {
+    transform: translateX(-100%);
+  }
+  [data-slot='sheet-content'][data-side='top'][data-closing] {
+    transform: translateY(-100%);
+  }
+  [data-slot='sheet-content'][data-side='bottom'][data-closing] {
+    transform: translateY(100%);
+  }
   @media (prefers-reduced-motion: reduce) {
     [data-slot='dialog-overlay'],
     [data-slot='alert-dialog-overlay'],
     [data-slot='sheet-overlay'],
     [data-slot='dialog-content'],
     [data-slot='alert-dialog-content'],
-    [data-slot='sheet-content'] {
+    [data-slot='sheet-content'],
+    /* the side-specific entrances carry two attributes, so the plain
+     * selector above never outweighed them - the one animation reduced
+     * motion failed to reduce */
+    [data-slot='sheet-content'][data-side],
+    [data-slot='sheet-content'][data-side][data-closing] {
       animation: none;
+      transition: none;
     }
   }
 }

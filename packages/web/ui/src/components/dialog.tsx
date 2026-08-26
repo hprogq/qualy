@@ -193,7 +193,11 @@ function DialogContent({
         // radius, shadow) is the widget's own under the product theme.
         // classNames.content, not className: the widget duplicates className
         // onto its positioning inner element, where layout classes wreak havoc
-        classNames={{ content: cn('grid gap-6 p-6 text-sm outline-none', className) }}
+        // `relative`, so the corner button stays anchored to the panel: the
+        // entrance animation's transform makes the panel a containing block
+        // only while it plays, and an unpositioned panel hands its absolute
+        // children to the viewport the moment it ends
+        classNames={{ content: cn('relative grid gap-6 p-6 text-sm outline-none', className) }}
         {...props}
       >
         {/* the trap's own documented resting place: focus settles on this
