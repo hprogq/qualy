@@ -3,12 +3,21 @@
 import * as React from 'react'
 import { Radio as MRadio } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import { clsx } from 'clsx'
+import * as stylex from '@stylexjs/stylex'
 
 // One-of-several, keeping the established Qualy API: the group holds
 // `value`/`onValueChange`/`name`/`disabled`, items hold their `value`.
 // Underneath are native radio inputs sharing a name, so arrow keys, the
 // radiogroup role and form participation are the platform's own.
+
+const groupStyles = stylex.create({
+  root: {
+    display: 'grid',
+    width: '100%',
+    gap: 12,
+  },
+})
 function RadioGroup({
   className,
   value,
@@ -33,7 +42,7 @@ function RadioGroup({
       {...(onValueChange === undefined ? {} : { onChange: onValueChange })}
       {...(name === undefined ? {} : { name })}
       {...(disabled === undefined ? {} : { disabled })}
-      className={cn('grid w-full gap-3', className)}
+      className={clsx(stylex.props(groupStyles.root).className, className)}
       {...props}
     >
       {children}

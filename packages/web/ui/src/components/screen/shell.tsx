@@ -4,7 +4,7 @@ import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { PageHeader } from '../admin/page.tsx'
 import { PageContainer } from '../page-container.tsx'
-import { SegmentedControl } from '@mantine/core'
+import { Tabs, TabsList, TabsTrigger } from '../tabs.tsx'
 
 const styles = stylex.create({
   band: {
@@ -22,9 +22,6 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: 20,
-  },
-  pinned: {
-    flexShrink: 0,
   },
 })
 
@@ -66,16 +63,16 @@ export function Screen({
 /**
  * A choice between a few views of the same page.
  *
- * The widget's segmented control - a sliding thumb over radio semantics -
- * standing 36px tall like every button and field beside it, which is the
- * whole reason a filter row reads as one row.
+ * A tablist, not a radio group: each option swaps what the page shows, and
+ * that is what a reader's screen reader should hear. The widget's segmented
+ * control is the right shape for choosing a VALUE, which is a different
+ * question from choosing a VIEW.
  */
 export function Segmented<T extends string>({
   value,
   onChange,
   options,
   label,
-  fill = false,
   xstyle,
 }: {
   value: T
@@ -83,20 +80,17 @@ export function Segmented<T extends string>({
   options: readonly { value: T; label: ReactNode }[]
   /** spoken name for the group; the options name themselves */
   label: string
-  /** stretch across the row instead of hugging the options */
-  fill?: boolean
   xstyle?: StyleXStyles
 }) {
-  const sx = stylex.props(styles.pinned, xstyle)
   return (
-    <SegmentedControl
-      value={value}
-      onChange={(next) => onChange(next as T)}
-      data={options.map((option) => ({ value: option.value, label: option.label }))}
-      aria-label={label}
-      fullWidth={fill}
-      className={sx.className}
-      style={sx.style}
-    />
+    <Tabs value={value} onValueChange={(next) => onChange(next as T)} xstyle={xstyle}>
+      <TabsList aria-label={label}>
+        {options.map((option) => (
+          <TabsTrigger key={option.value} value={option.value}>
+            {option.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }

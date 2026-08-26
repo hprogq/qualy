@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { Badge as MBadge } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import { clsx } from 'clsx'
 
 // The Qualy badge vocabulary; colors resolve from the --q-* tokens through
 // the theme's variantColorResolver, never through vendor palette names.
@@ -53,7 +53,7 @@ function Badge({
         renderRoot={(rootProps) =>
           React.cloneElement(child, {
             ...rootProps,
-            className: cn(rootProps.className as string, childClassName as string | undefined),
+            className: clsx(rootProps.className as string, childClassName as string | undefined),
           })
         }
       >

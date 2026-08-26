@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { ActionIcon as MActionIcon, Button as MButton } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import { clsx } from 'clsx'
 
 // The Qualy button. The public surface is the product vocabulary - semantic
 // variants, the 36/32/24/40 size rhythm, asChild polymorphism - and none of
@@ -75,7 +75,7 @@ function Button({ variant, size, asChild = false, className, children, ...props 
         renderRoot={(rootProps) =>
           React.cloneElement(child, {
             ...rootProps,
-            className: cn(rootProps.className as string, childClassName as string | undefined),
+            className: clsx(rootProps.className as string, childClassName as string | undefined),
           })
         }
       >

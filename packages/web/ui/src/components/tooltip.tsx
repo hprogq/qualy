@@ -3,7 +3,8 @@
 import * as React from 'react'
 import { Tooltip as MTooltip } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import { clsx } from 'clsx'
+import * as stylex from '@stylexjs/stylex'
 
 // The Qualy tooltip keeps its compound shape (Provider/Root/Trigger/Content)
 // over the widget library's single-component model: the root collects the
@@ -12,6 +13,12 @@ import { cn } from '../lib/utils.ts'
 // wiring. Opens on keyboard focus as well as hover - a hint only pointer
 // users can read is not a hint.
 
+const surfaceStyles = stylex.create({
+  tip: {
+    maxWidth: 320,
+    fontSize: 12,
+  },
+})
 const DelayContext = React.createContext(0)
 
 function TooltipProvider({
@@ -83,7 +90,7 @@ function Tooltip({
       {...(open === undefined ? {} : { opened: open })}
       {...(onOpenChange === undefined ? {} : { onDismiss: () => onOpenChange(false) })}
       // structure only; the surface is the widget's own under the theme
-      classNames={{ tooltip: cn('max-w-xs text-xs', className) }}
+      classNames={{ tooltip: clsx(stylex.props(surfaceStyles.tip).className, className) }}
     >
       {target}
     </MTooltip>

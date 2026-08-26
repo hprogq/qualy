@@ -13,7 +13,7 @@ import { Input } from '@qualy/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { DoneMark, Stagger } from '@qualy/ui/reveal'
-import { Segmented } from '@qualy/ui/screen'
+import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
@@ -42,21 +42,6 @@ const belowSm = '@media (max-width: 639.98px)'
 const belowMd = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
-  viewSwitch: {
-    minWidth: {
-      default: null,
-      '@media (max-width: 767.98px)': 0,
-    },
-    flexGrow: {
-      default: null,
-      '@media (max-width: 767.98px)': 1,
-    },
-  },
-  askedOption: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-  },
   fill: {
     display: 'flex',
     flexGrow: 1,
@@ -713,30 +698,22 @@ function Queue({
       <div {...stylex.props(styles.queue)}>
         <div {...stylex.props(styles.controls)}>
           <div {...stylex.props(styles.controlRow)}>
-            {/* The awaiting view gets its own room, not a section under the
-                queue: what is out with somebody else is nothing to decide
-                now. The count rides the option so the door says whether it
-                is worth opening. */}
-            <Segmented
-              value={view}
-              onChange={onView}
-              label={format(m.reviewTabByItem)}
-              xstyle={styles.viewSwitch}
-              options={[
-                { value: 'item', label: format(m.reviewTabByItem) },
-                { value: 'time', label: format(m.reviewTabByTime) },
-                { value: 'person', label: format(m.reviewTabByPerson) },
-                {
-                  value: 'asked',
-                  label: (
-                    <span {...stylex.props(styles.askedOption)}>
-                      {format(m.reviewAwaitingTab)}
-                      {awaiting > 0 && <span {...stylex.props(styles.tabCount)}>{awaiting}</span>}
-                    </span>
-                  ),
-                },
-              ]}
-            />
+            <Tabs value={view} onValueChange={onView} className="max-md:min-w-0 max-md:flex-1">
+              <TabsList className="max-md:grid max-md:w-full max-md:grid-cols-4">
+                <TabsTrigger value="item">{format(m.reviewTabByItem)}</TabsTrigger>
+                <TabsTrigger value="time">{format(m.reviewTabByTime)}</TabsTrigger>
+                <TabsTrigger value="person">{format(m.reviewTabByPerson)}</TabsTrigger>
+                {/* Its own room, not a section under the queue: what is out
+                    with somebody else is nothing to decide now, and stacked
+                    below the queue it shouted over every empty state. The
+                    count rides the tab so the door says whether it is worth
+                    opening. */}
+                <TabsTrigger value="asked">
+                  {format(m.reviewAwaitingTab)}
+                  {awaiting > 0 && <span {...stylex.props(styles.tabCount)}>{awaiting}</span>}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
             {view !== 'asked' && (
               <Button
                 variant="outline"
