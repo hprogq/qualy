@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-react'
 import { useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
-import { cn } from '@qualy/ui/cn'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -22,6 +23,185 @@ import { StatusBadge } from './StatusBadge.tsx'
  * above it - or the list itself - is the way to the rest.
  */
 const NEARBY = 10
+
+const styles = stylex.create({
+  // No ceiling of its own: whoever mounts this measures what the row can
+  // spare and hands it down, so the name takes every pixel that is going and
+  // is cut only when there are none left.
+  trigger: {
+    display: 'flex',
+    minWidth: 0,
+    maxWidth: '100%',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: {
+      default: 'transparent',
+      ':hover': tokens.border,
+    },
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    },
+    paddingInline: 12,
+    paddingBlock: 4,
+    transitionProperty: 'color, background-color, border-color, transform',
+    outline: 'none',
+    boxShadow: {
+      default: 'none',
+      ':focus-visible': `0 0 0 2px ${tokens.focusRing}`,
+    },
+    transform: {
+      default: null,
+      ':active': 'scale(0.98)',
+    },
+  },
+  // the popover's data-state lives on the trigger, but the open flag is
+  // already ours: the same state drives the menu and the trigger's ground
+  triggerOpen: {
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+  },
+  triggerName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 600,
+  },
+  chevron: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+    transitionProperty: 'transform',
+  },
+  chevronFlipped: {
+    transform: 'rotate(180deg)',
+  },
+  searchBand: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingInline: 12,
+  },
+  searchIcon: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  searchInput: {
+    height: 40,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    backgroundColor: 'transparent',
+    fontSize: 14,
+    outline: 'none',
+    '::placeholder': {
+      color: tokens.mutedForeground,
+    },
+    '::-webkit-search-cancel-button': {
+      display: 'none',
+    },
+  },
+  searchSpinner: {
+    width: 14,
+    height: 14,
+    flexShrink: 0,
+    color: tokens.mutedForeground,
+  },
+  list: {
+    maxHeight: 'min(50vh, 18rem)',
+    overflowY: 'auto',
+    padding: 4,
+  },
+  loading: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  loadingLine: {
+    height: 32,
+    width: '100%',
+    borderRadius: tokens.radiusMd,
+  },
+  rows: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  // one shape for every round, including the open one: a switcher whose
+  // current entry is a different kind of thing reads as two lists that
+  // happen to touch
+  row: {
+    display: 'flex',
+    width: '100%',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: tokens.radiusMd,
+    paddingInline: 10,
+    paddingBlock: 6,
+    textAlign: 'left',
+    fontSize: 14,
+    outline: 'none',
+    transitionProperty: 'color, background-color',
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': tokens.surfaceMuted,
+      ':focus-visible': tokens.surfaceMuted,
+    },
+  },
+  rowMark: {
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+  },
+  rowName: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  rowNameHere: {
+    fontWeight: 500,
+  },
+  emptyRow: {
+    paddingInline: 10,
+    paddingBlock: 20,
+    textAlign: 'center',
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  exitBand: {
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    padding: 4,
+  },
+  exitButton: {
+    width: '100%',
+    justifyContent: 'flex-start',
+    gap: 10,
+    paddingInline: 10,
+    color: tokens.mutedForeground,
+  },
+  exitIcon: {
+    width: 16,
+    height: 16,
+  },
+})
 
 // Which batch is open, and the way to another one.
 //
@@ -101,21 +281,15 @@ export function BatchSwitcher({
         <button
           type="button"
           aria-label={format(m.switchBatch)}
-          // No ceiling of its own: whoever mounts this measures what the row
-          // can spare and hands it down, so the name takes every pixel that
-          // is going and is cut only when there are none left.
-          className="flex min-w-0 max-w-full items-center gap-2 rounded-full border border-transparent px-3 py-1 transition-[colors,transform] outline-none active:scale-[0.98] hover:border-border hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:border-border data-[state=open]:bg-muted/60"
+          {...stylex.props(styles.trigger, open && styles.triggerOpen)}
         >
-          <span className="min-w-0 truncate text-sm font-semibold" title={name}>
+          <span {...stylex.props(styles.triggerName)} title={name}>
             {name}
           </span>
           <StatusBadge status={status} currentPhaseId={currentPhaseId} compact={narrow} />
           <ChevronDownIcon
             aria-hidden
-            className={cn(
-              'size-3.5 shrink-0 text-muted-foreground transition-transform',
-              open && 'rotate-180',
-            )}
+            className={stylex.props(styles.chevron, open && styles.chevronFlipped).className}
           />
         </button>
       </PopoverTrigger>
@@ -124,8 +298,8 @@ export function BatchSwitcher({
           Three bands - search, the rounds themselves, the way out - each with
           its own edge, so the eye reads a list and not a stack of controls. */}
       <PopoverContent align="center" className="w-[min(92vw,26rem)] overflow-hidden p-0">
-        <div className="flex items-center gap-2.5 border-b px-3">
-          <SearchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <div {...stylex.props(styles.searchBand)}>
+          <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
           <input
             autoFocus
             type="search"
@@ -133,49 +307,46 @@ export function BatchSwitcher({
             placeholder={format(m.searchPlaceholder)}
             aria-label={format(m.searchPlaceholder)}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
+            {...stylex.props(styles.searchInput)}
           />
           {nearby.isFetching && !waiting && (
             <Spinner
               aria-label={format(commonMessages.loading)}
-              className="size-3.5 shrink-0 text-muted-foreground"
+              className={stylex.props(styles.searchSpinner).className}
             />
           )}
         </div>
 
-        <div className="max-h-[min(50vh,18rem)] overflow-y-auto p-1">
+        <div {...stylex.props(styles.list)}>
           {waiting ? (
             // the first open pays for a round trip; lines of the shape that is
             // coming beat an empty box that reads as "none"
-            <div className="flex flex-col gap-1" data-testid="switcher-loading">
+            <div {...stylex.props(styles.loading)} data-testid="switcher-loading">
               {[0, 1, 2].map((row) => (
-                <Skeleton key={row} className="h-8 w-full rounded-md" />
+                <Skeleton key={row} className={stylex.props(styles.loadingLine).className} />
               ))}
             </div>
           ) : (
-            <ul className="flex flex-col">
+            <ul {...stylex.props(styles.rows)}>
               {rows.map((row) => {
                 const here = row.id === batchId
                 return (
                   <li key={row.id}>
                     <button
                       type="button"
-                      // one shape for every round, including the open one: a
-                      // switcher whose current entry is a different kind of
-                      // thing reads as two lists that happen to touch
                       data-testid={here ? 'switcher-current' : undefined}
-                      className="flex w-full min-w-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
+                      {...stylex.props(styles.row)}
                       onClick={() => {
                         setOpen(false)
                         if (!here) navigate('assessment/batch', { params: { batchId: row.id } })
                       }}
                     >
                       {here ? (
-                        <CheckIcon aria-hidden className="size-4 shrink-0" />
+                        <CheckIcon aria-hidden className={stylex.props(styles.rowMark).className} />
                       ) : (
-                        <span aria-hidden className="size-4 shrink-0" />
+                        <span aria-hidden {...stylex.props(styles.rowMark)} />
                       )}
-                      <span className={cn('min-w-0 flex-1 truncate', here && 'font-medium')}>
+                      <span {...stylex.props(styles.rowName, here && styles.rowNameHere)}>
                         {row.name}
                       </span>
                       <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
@@ -184,7 +355,7 @@ export function BatchSwitcher({
                 )
               })}
               {rows.length === 0 && (
-                <li className="px-2.5 py-5 text-center text-sm text-muted-foreground">
+                <li {...stylex.props(styles.emptyRow)}>
                   {format(searching ? m.noMatchTitle : m.switcherOnlyThis)}
                 </li>
               )}
@@ -192,17 +363,17 @@ export function BatchSwitcher({
           )}
         </div>
 
-        <div className="border-t p-1">
+        <div {...stylex.props(styles.exitBand)}>
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start gap-2.5 px-2.5 text-muted-foreground"
+            className={stylex.props(styles.exitButton).className}
             onClick={() => {
               setOpen(false)
               navigate('assessment/batches')
             }}
           >
-            <ArrowLeftIcon className="size-4" />
+            <ArrowLeftIcon className={stylex.props(styles.exitIcon).className} />
             {format(m.backToList)}
           </Button>
         </div>

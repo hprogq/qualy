@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection, PageHeader } from '@qualy/ui/admin'
-import { cn } from '@qualy/ui/cn'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Portal } from '@qualy/ui/portal'
 import { Resizing } from '@qualy/ui/reveal'
@@ -25,6 +26,85 @@ import type { BatchDto } from '../phase/model.ts'
 // heading never moves, so nothing below it has to move out of the way, and
 // the reader watches one thing become another rather than a page being
 // replaced.
+
+const styles = stylex.create({
+  fillColumn: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  band: {
+    position: 'relative',
+    flexShrink: 0,
+    overflow: 'hidden',
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: tokens.background,
+  },
+  // hairlines in one direction, widely spaced, gathered at the far corner
+  // and gone by the time they reach the words: only depth, never texture
+  hairlines: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    inset: 0,
+    opacity: 0.06,
+    backgroundImage: 'repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 24px)',
+    maskImage: 'radial-gradient(130% 115% at 100% 0%, black, transparent 62%)',
+  },
+  bandInset: {
+    position: 'relative',
+    paddingBlock: 24,
+  },
+  bannerSeat: {
+    position: 'relative',
+  },
+  bannerShown: {
+    opacity: 1,
+    transitionProperty: 'opacity',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  },
+  bannerParked: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    insetInline: 0,
+    top: 0,
+    opacity: 0,
+  },
+  bodyColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  fillFlex: {
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  sectionStack: {
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  draftNote: {
+    borderRadius: tokens.radiusMd,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    paddingInline: 12,
+    paddingBlock: 8,
+    fontSize: '0.875rem',
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+})
 
 const BannerSlot = createContext<HTMLElement | null>(null)
 
@@ -93,7 +173,7 @@ export function BatchScreen({
         loadingLabel={format(commonMessages.loading)}
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void detail.refetch()}
-        className="flex min-h-0 flex-1 flex-col"
+        xstyle={styles.fillColumn}
       >
         {batch && children(batch)}
       </AsyncSection>
@@ -105,15 +185,12 @@ export function BatchScreen({
       {/* Edge to edge, cutting the content area in two: a band inset inside
           the page's own width is a card pretending to be a header, and it
           reads as one more box among the boxes below it. */}
-      <div className="relative shrink-0 overflow-hidden border-b bg-background">
+      <div {...stylex.props(styles.band)}>
         {/* Hairlines in one direction, widely spaced, gathered at the far
             corner and gone by the time they reach the words: crossed the
             other way they read as graph paper, and evenly spread they read
             as a texture somebody chose. Here it is only depth. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:repeating-linear-gradient(-45deg,currentColor_0_1px,transparent_1px_24px)] [mask-image:radial-gradient(130%_115%_at_100%_0%,black,transparent_62%)]"
-        />
+        <div aria-hidden {...stylex.props(styles.hairlines)} />
         {/* Two headings changing places where they stand. Whatever takes the
             band over is built to the same shape as the section's own
             heading, so the swap moves nothing; Resizing is the fallback for
@@ -125,15 +202,11 @@ export function BatchScreen({
             the same breath. Taking it back, the one leaving is already gone
             - the screen it belonged to left with it - so a fade in would be
             a fade up from nothing, which is the band blinking. */}
-        <PageContainer size={size} className="relative py-6">
+        <PageContainer size={size} xstyle={styles.bandInset}>
           <Resizing>
-            <div className="relative">
+            <div {...stylex.props(styles.bannerSeat)}>
               <div
-                className={cn(
-                  showing === 'section'
-                    ? 'opacity-100'
-                    : 'pointer-events-none absolute inset-x-0 top-0 opacity-0 transition-opacity duration-200',
-                )}
+                {...stylex.props(showing === 'section' ? styles.bannerShown : styles.bannerParked)}
               >
                 <PageHeader
                   title={title}
@@ -144,31 +217,25 @@ export function BatchScreen({
               </div>
               <div
                 ref={setSlot}
-                className={cn(
-                  showing === 'section'
-                    ? 'pointer-events-none absolute inset-x-0 top-0 opacity-0'
-                    : 'opacity-100 transition-opacity duration-200',
-                )}
+                {...stylex.props(showing === 'section' ? styles.bannerParked : styles.bannerShown)}
               />
             </div>
           </Resizing>
         </PageContainer>
       </div>
-      <PageContainer size={size} className="flex flex-col gap-5">
+      <PageContainer size={size} xstyle={styles.bodyColumn}>
         <AsyncSection
           pending={detail.isPending}
           error={detail.isError ? formatError(detail.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void detail.refetch()}
-          className="flex flex-1 flex-col"
+          xstyle={styles.fillFlex}
         >
           {batch && (
-            <div className="flex flex-1 flex-col gap-4">
+            <div {...stylex.props(styles.sectionStack)}>
               {batch.status === 'draft' && (
-                <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
-                  {format(m.draftBanner)}
-                </p>
+                <p {...stylex.props(styles.draftNote)}>{format(m.draftBanner)}</p>
               )}
               {children(batch)}
             </div>

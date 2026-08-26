@@ -1,16 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import { GripVerticalIcon, PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog, Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
 import { FieldGroup } from '@qualy/ui/field'
 import { Input } from '@qualy/ui/input'
 import { Badge } from '@qualy/ui/badge'
-import { cn } from '@qualy/ui/cn'
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { assessmentApi } from '../api.ts'
@@ -25,6 +26,169 @@ import type { BatchDto } from '../phase/model.ts'
 // The lifecycle actions live here rather than in the bar above the rail: they
 // are rare, they are the kind that asks twice, and a row of them across the
 // top of every section made the section itself look like the smaller subject.
+
+const styles = stylex.create({
+  column: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  section: {
+    display: 'grid',
+    gridTemplateColumns: {
+      default: null,
+      '@media (min-width: 768px)': '15rem minmax(0, 1fr)',
+    },
+    columnGap: 40,
+    rowGap: 16,
+    borderBottomWidth: {
+      default: 1,
+      ':last-child': 0,
+    },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    paddingTop: {
+      default: 24,
+      ':first-child': 0,
+    },
+    paddingBottom: {
+      default: 24,
+      ':last-child': 0,
+    },
+  },
+  sectionWords: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  sectionHint: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  sectionBody: {
+    minWidth: 0,
+    maxWidth: '36rem',
+  },
+  lifecycleRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 24,
+    rowGap: 8,
+    paddingBlock: 16,
+  },
+  lifecycleWords: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+  },
+  lifecycleTitle: {
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  lifecycleHint: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  lifecycleAction: {
+    flexShrink: 0,
+  },
+  reasonColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  reasonNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  chipRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  chip: {
+    gap: 4,
+    paddingRight: 4,
+  },
+  chipGrabbable: {
+    cursor: 'grab',
+  },
+  chipMarkBefore: {
+    boxShadow: `inset 2px 0 0 0 ${tokens.primary}`,
+  },
+  chipMarkAfter: {
+    boxShadow: `inset -2px 0 0 0 ${tokens.primary}`,
+  },
+  chipGrip: {
+    width: 12,
+    height: 12,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  chipRemove: {
+    borderRadius: '9999px',
+    padding: 2,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+  },
+  chipRemoveIcon: {
+    width: 12,
+    height: 12,
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  addRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  addInput: {
+    height: 32,
+    maxWidth: 224,
+    fontSize: 14,
+  },
+  formGaps: {
+    gap: 20,
+  },
+  saveRow: {
+    marginTop: 20,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  unsavedNote: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  deleteButton: {
+    borderColor: `color-mix(in oklab, ${tokens.danger} 30%, transparent)`,
+    color: {
+      default: tokens.danger,
+      ':hover': tokens.danger,
+    },
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.danger} 5%, transparent)`,
+    },
+  },
+})
 
 /**
  * One subject of the screen: what it is on the left, what to do about it on
@@ -44,12 +208,12 @@ function Section({
   children: ReactNode
 }) {
   return (
-    <section className="grid gap-x-10 gap-y-4 border-b py-6 first:pt-0 last:border-b-0 last:pb-0 md:grid-cols-[15rem_minmax(0,1fr)]">
-      <div className="space-y-1">
-        <h3 className="text-sm font-medium">{title}</h3>
-        <p className="text-xs text-muted-foreground">{description}</p>
+    <section {...stylex.props(styles.section)}>
+      <div {...stylex.props(styles.sectionWords)}>
+        <h3 {...stylex.props(styles.sectionTitle)}>{title}</h3>
+        <p {...stylex.props(styles.sectionHint)}>{description}</p>
       </div>
-      <div className="min-w-0 max-w-xl">{children}</div>
+      <div {...stylex.props(styles.sectionBody)}>{children}</div>
     </section>
   )
 }
@@ -65,12 +229,12 @@ function LifecycleRow({
   action: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
-      <div className="min-w-0 space-y-0.5">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
+    <div {...stylex.props(styles.lifecycleRow)}>
+      <div {...stylex.props(styles.lifecycleWords)}>
+        <p {...stylex.props(styles.lifecycleTitle)}>{title}</p>
+        <p {...stylex.props(styles.lifecycleHint)}>{description}</p>
       </div>
-      <div className="shrink-0">{action}</div>
+      <div {...stylex.props(styles.lifecycleAction)}>{action}</div>
     </div>
   )
 }
@@ -118,14 +282,14 @@ function ReasonList({
     onChange(order)
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div {...stylex.props(styles.reasonColumn)}>
       {/* an empty list is a configuration, not a blank: say what it does */}
-      {reasons.length === 0 && <p className="text-xs text-muted-foreground">{emptyNote}</p>}
+      {reasons.length === 0 && <p {...stylex.props(styles.reasonNote)}>{emptyNote}</p>}
       {reasons.length > 0 && (
         // the order here is the order the reviewer's dialog offers, and the
         // digits it hands out; a chip drags to its place the way the form
         // fields do
-        <div className="flex flex-wrap gap-1.5">
+        <div {...stylex.props(styles.chipRow)}>
           {reasons.map((reason) => {
             const marked = drop?.reason === reason ? drop.edge : null
             return (
@@ -149,25 +313,30 @@ function ReasonList({
                   const dragged = event.dataTransfer.getData('qualy/reason')
                   if (dragged !== '') move(dragged, reason, edgeOf(event))
                 }}
-                className={cn(
-                  'gap-1 pr-1',
-                  !disabled && 'cursor-grab',
-                  marked === 'before' && 'shadow-[inset_2px_0_0_0_var(--primary)]',
-                  marked === 'after' && 'shadow-[inset_-2px_0_0_0_var(--primary)]',
-                )}
+                className={
+                  stylex.props(
+                    styles.chip,
+                    !disabled && styles.chipGrabbable,
+                    marked === 'before' && styles.chipMarkBefore,
+                    marked === 'after' && styles.chipMarkAfter,
+                  ).className
+                }
               >
                 {!disabled && (
-                  <GripVerticalIcon aria-hidden className="size-3 text-muted-foreground/60" />
+                  <GripVerticalIcon
+                    aria-hidden
+                    className={stylex.props(styles.chipGrip).className}
+                  />
                 )}
                 {reason}
                 {!disabled && (
                   <button
                     type="button"
-                    className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                    {...stylex.props(styles.chipRemove)}
                     onClick={() => onChange(reasons.filter((one) => one !== reason))}
                   >
-                    <XIcon aria-hidden className="size-3" />
-                    <span className="sr-only">{reason}</span>
+                    <XIcon aria-hidden className={stylex.props(styles.chipRemoveIcon).className} />
+                    <span {...stylex.props(styles.srOnly)}>{reason}</span>
                   </button>
                 )}
               </Badge>
@@ -175,10 +344,10 @@ function ReasonList({
           })}
         </div>
       )}
-      <div className="flex items-center gap-2">
+      <div {...stylex.props(styles.addRow)}>
         <Input
           id={id}
-          className="h-8 max-w-56 text-sm"
+          className={stylex.props(styles.addInput).className}
           value={draft}
           disabled={disabled}
           placeholder={format(m.settingsReasonPlaceholder)}
@@ -350,7 +519,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
     JSON.stringify(escalateReasons) === JSON.stringify(batch.reviewReasons.escalate)
 
   return (
-    <div className="flex flex-col">
+    <div {...stylex.props(styles.column)}>
       <Feedback message={failure} />
 
       <Section title={format(m.settingsBasics)} description={format(m.settingsBasicsHint)}>
@@ -360,7 +529,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
             save.mutate()
           }}
         >
-          <FieldGroup className="gap-5">
+          <FieldGroup xstyle={styles.formGaps}>
             <Field label={format(m.nameLabel)}>
               {(id) => (
                 <Input
@@ -422,9 +591,9 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
               )}
             </Field>
           </FieldGroup>
-          <div className="mt-5 flex items-center justify-end gap-3">
+          <div {...stylex.props(styles.saveRow)}>
             {!unchanged && (
-              <span className="text-xs text-muted-foreground">{format(m.settingsUnsaved)}</span>
+              <span {...stylex.props(styles.unsavedNote)}>{format(m.settingsUnsaved)}</span>
             )}
             <Button type="submit" disabled={!editable || unchanged || save.isPending}>
               {format(m.saveShort)}
@@ -435,7 +604,9 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
 
       {batch.manageable && (
         <Section title={format(m.settingsLifecycle)} description={format(m.settingsLifecycleHint)}>
-          <div className="divide-y">
+          {/* one row at a time: the batch is in exactly one status, so only
+              the action that status allows is on the page */}
+          <div>
             {batch.status === 'active' && (
               <LifecycleRow
                 title={format(m.archive)}
@@ -474,7 +645,7 @@ export function BatchSettingsForm({ batch }: { batch: BatchDto }) {
                 action={
                   <Button
                     variant="outline"
-                    className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                    className={stylex.props(styles.deleteButton).className}
                     disabled={remove.isPending}
                     onClick={() => setConfirming('delete')}
                   >

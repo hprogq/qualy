@@ -15,6 +15,13 @@
   --q-primary: oklch(0.205 0 0);
   --q-primary-foreground: oklch(0.985 0 0);
   --q-danger: oklch(0.577 0.245 27.325);
+  /* standing colours: the hue carries the meaning (about to change, under
+     way), the foreground pair is the darker shade that reads on the 15%
+     tint the badges put it on; dark mode only swaps the foregrounds */
+  --q-warning: oklch(0.769 0.188 70.08);
+  --q-warning-foreground: oklch(0.555 0.163 48.998);
+  --q-success: oklch(0.696 0.17 162.48);
+  --q-success-foreground: oklch(0.508 0.118 165.612);
   /* 0.556 was shadcn's default and misses WCAG AA on the tinted panels this
      product puts secondary text on; 0.54 clears 4.5:1 on every surface here */
   --q-muted-foreground: oklch(0.54 0 0);
@@ -39,6 +46,8 @@
   --q-primary: oklch(0.922 0 0);
   --q-primary-foreground: oklch(0.205 0 0);
   --q-danger: oklch(0.704 0.191 22.216);
+  --q-warning-foreground: oklch(0.879 0.169 91.605);
+  --q-success-foreground: oklch(0.845 0.143 164.978);
   --q-muted-foreground: oklch(0.708 0 0);
   --q-selected-border: color-mix(in oklab, var(--q-primary) 20%, transparent);
   --q-selected-surface: color-mix(in oklab, var(--q-primary) 10%, transparent);

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { ClockIcon, RouteIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -23,12 +24,98 @@ import { useWhen } from './when.ts'
 const DEADLINE = 150
 const LABEL = 64
 
+const styles = stylex.create({
+  // one line, whatever the width: this sits above somebody's work and a
+  // second row of it would push the work down the page
+  bar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: {
+      default: 8,
+      '@media (min-width: 640px)': 12,
+    },
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 30%, transparent)`,
+    paddingInline: 12,
+    paddingBlock: 8,
+    fontSize: 14,
+  },
+  head: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    gap: {
+      default: 8,
+      '@media (min-width: 640px)': 12,
+    },
+  },
+  label: {
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  name: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontWeight: 500,
+  },
+  deadline: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    color: tokens.mutedForeground,
+  },
+  clockIcon: {
+    width: 14,
+    height: 14,
+  },
+  hour: {
+    fontVariantNumeric: 'tabular-nums',
+  },
+  tail: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: {
+      default: 8,
+      '@media (min-width: 640px)': 12,
+    },
+  },
+  progressText: {
+    fontSize: 14,
+  },
+  flowButton: {
+    marginRight: -4,
+    color: tokens.mutedForeground,
+  },
+  flowButtonBare: {
+    width: 32,
+    height: 32,
+    padding: 0,
+  },
+  sheetBody: {
+    overflowY: 'auto',
+    paddingInline: 16,
+    paddingBottom: 24,
+  },
+})
+
 export function PhaseContextBar({
   timeline,
-  className,
+  xstyle,
 }: {
   timeline: readonly FlowEntry[]
-  className?: string
+  xstyle?: stylex.StyleXStyles
 }) {
   const { format } = useI18n()
   const when = useWhen()
@@ -73,46 +160,40 @@ export function PhaseContextBar({
 
   return (
     <>
-      <div
-        ref={bar}
-        className={cn(
-          // one line, whatever the width: this sits above somebody's work and
-          // a second row of it would push the work down the page
-          'flex items-center gap-2 overflow-hidden rounded-lg border bg-muted/30 px-3 py-2 text-sm sm:gap-3',
-          className,
-        )}
-      >
+      <div ref={bar} {...stylex.props(styles.bar, xstyle)}>
         {/* A name with nothing in front of it was read as a page title: the
             dot that used to stand here said "happening" to whoever already
             knew what the line was about, which is not who needs the line. */}
         {/* what the stage is and when it ends, in that order and together:
             the hour belongs to the name beside it, not to the clock at the
             far end of the row */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-          <span className="shrink-0 text-xs text-muted-foreground">{format(m.currentStage)}</span>
-          <span ref={name} className="min-w-0 truncate font-medium">
+        <div {...stylex.props(styles.head)}>
+          <span {...stylex.props(styles.label)}>{format(m.currentStage)}</span>
+          <span ref={name} {...stylex.props(styles.name)}>
             {stage?.name ?? format(m.notStartedYet)}
           </span>
           {stage !== undefined && showDeadline && (
             // an hour with a clock beside it: the word "until" is what a
             // narrow row can least afford
-            <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-              <ClockIcon aria-hidden className="size-3.5" />
-              <span className="tabular-nums">
+            <span {...stylex.props(styles.deadline)}>
+              <ClockIcon aria-hidden className={stylex.props(styles.clockIcon).className} />
+              <span {...stylex.props(styles.hour)}>
                 {stage.until === null ? format(m.flowEndPending) : when.moment(stage.until)}
               </span>
             </span>
           )}
         </div>
-        <div ref={tail} className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <div ref={tail} {...stylex.props(styles.tail)}>
           {/* the same countdown the bar above the rail shows, so the two never
               disagree about how long is left */}
-          <BatchProgress dense={dense} timeline={timeline} className="text-sm" />
+          <BatchProgress dense={dense} timeline={timeline} xstyle={styles.progressText} />
           <Button
             variant="ghost"
             size="sm"
             aria-label={format(m.viewFullFlow)}
-            className={cn('-mr-1 text-muted-foreground', !showLabel && 'size-8 p-0')}
+            className={
+              stylex.props(styles.flowButton, !showLabel && styles.flowButtonBare).className
+            }
             onClick={() => setOpen(true)}
           >
             <RouteIcon aria-hidden />
@@ -128,7 +209,7 @@ export function PhaseContextBar({
           <SheetHeader>
             <SheetTitle>{format(m.flowTitle)}</SheetTitle>
           </SheetHeader>
-          <div className="overflow-y-auto px-4 pb-6">
+          <div {...stylex.props(styles.sheetBody)}>
             <BatchFlow timeline={timeline} />
           </div>
         </SheetContent>

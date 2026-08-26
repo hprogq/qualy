@@ -195,8 +195,12 @@ function FieldLegend({
   )
 }
 
-function FieldGroup({ className, ...props }: React.ComponentProps<'div'>) {
-  const sx = stylex.props(styles.group)
+function FieldGroup({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & { xstyle?: stylex.StyleXStyles }) {
+  const sx = stylex.props(styles.group, xstyle)
   return (
     <div data-slot="field-group" {...sx} {...props} className={clsx(sx.className, className)} />
   )

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
-import { cn } from '@qualy/ui/cn'
 import { Ticker } from '@qualy/ui/ticker'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -29,13 +30,116 @@ import {
 // only says where it has got to, so it is sized and coloured to be read after
 // everything else - the colour arrives when the time does, not before.
 
+// it breathes only once the time is short: an animation that never stops is
+// decoration, and decoration is what people stop seeing
+const breathe = stylex.keyframes({
+  '50%': { opacity: 0.5 },
+})
+
+const styles = stylex.create({
+  root: {
+    display: 'inline-flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: {
+      default: 12,
+      '@media (max-width: 639.98px)': 6,
+    },
+  },
+  stageSeat: {
+    display: {
+      default: 'inline-flex',
+      '@media (max-width: 767.98px)': 'none',
+    },
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  stageLabel: {
+    display: {
+      default: 'inline',
+      '@media (max-width: 1023.98px)': 'none',
+    },
+    flexShrink: 0,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  stageBadge: {
+    position: 'relative',
+    maxWidth: '100%',
+    minWidth: 0,
+    overflow: 'hidden',
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    paddingInline: 8,
+    paddingBlock: 2,
+    fontSize: '0.8125rem',
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
+  breath: {
+    position: 'absolute',
+    inset: 0,
+    display: {
+      default: 'block',
+      '@media (prefers-reduced-motion: reduce)': 'none',
+    },
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 10%, transparent)`,
+    animationName: breathe,
+    animationDuration: '2.8s',
+    animationTimingFunction: 'cubic-bezier(0.4, 0, 0.6, 1)',
+    animationIterationCount: 'infinite',
+  },
+  stageName: {
+    position: 'relative',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  rule: {
+    display: {
+      default: 'block',
+      '@media (max-width: 767.98px)': 'none',
+    },
+    height: 14,
+    width: 1,
+    flexShrink: 0,
+    backgroundColor: tokens.border,
+  },
+  clock: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontWeight: 500,
+  },
+  toneCalm: {
+    color: tokens.mutedForeground,
+  },
+  toneSoon: {
+    color: tokens.warningForeground,
+  },
+  toneUrgent: {
+    color: tokens.danger,
+  },
+  ring: {
+    width: 12,
+    height: 12,
+    flexShrink: 0,
+    transform: 'rotate(-90deg)',
+  },
+  plannedLabel: {
+    color: tokens.mutedForeground,
+  },
+})
+
 // Only the clock takes a colour. The stage name is a fact that does not
 // change when the time runs short, and a name that turns red says the stage
 // itself is wrong.
 const TONES = {
-  calm: 'text-muted-foreground',
-  soon: 'text-amber-600 dark:text-amber-400',
-  urgent: 'text-destructive',
+  calm: styles.toneCalm,
+  soon: styles.toneSoon,
+  urgent: styles.toneUrgent,
 } as const
 
 /**
@@ -49,7 +153,7 @@ function Ring({ fraction }: { fraction: number }) {
   const radius = 5
   const circumference = 2 * Math.PI * radius
   return (
-    <svg viewBox="0 0 14 14" className="size-3 shrink-0 -rotate-90" aria-hidden>
+    <svg viewBox="0 0 14 14" {...stylex.props(styles.ring)} aria-hidden>
       <circle
         cx="7"
         cy="7"
@@ -78,14 +182,14 @@ export function BatchProgress({
   timeline,
   showStage = false,
   dense = false,
-  className,
+  xstyle,
 }: {
   timeline: readonly TimelineLike[]
   /** the bar names the stage; a card has already said it on the line above */
   showStage?: boolean
   /** one unit, whatever the window: the row it sits in is out of room */
   dense?: boolean
-  className?: string
+  xstyle?: stylex.StyleXStyles
 }) {
   const { format, locale } = useI18n()
   // One threshold: under a tablet the bar has no room for the stage, so the
@@ -133,39 +237,24 @@ export function BatchProgress({
   const filled = progress.kind === 'until' ? progress.fraction : null
 
   return (
-    <span className={cn('inline-flex min-w-0 items-center gap-3 max-sm:gap-1.5', className)}>
+    <span {...stylex.props(styles.root, xstyle)}>
       {stage !== null && (
         // "审核期" on its own is a word, not a fact about this batch: whoever
         // reads it has to already know that the bar names the stage the batch
         // is in. The label is narrower than the name it introduces, so it is
         // the first thing dropped when the bar runs out of room.
-        <span
-          data-slot="stage"
-          className="inline-flex min-w-0 items-baseline gap-1.5 max-md:hidden"
-        >
-          <span className="shrink-0 text-xs text-muted-foreground max-lg:hidden">
-            {format(m.currentStage)}
-          </span>
-          <Badge
-            variant="secondary"
-            className="relative max-w-full min-w-0 overflow-hidden bg-muted/70 px-2 py-0.5 text-[0.8125rem] font-medium text-foreground"
-          >
-            {/* it breathes only once the time is short: an animation that never
-                stops is decoration, and decoration is what people stop seeing */}
-            {toneOf(progress) === 'urgent' && (
-              <span
-                aria-hidden
-                className="absolute inset-0 animate-pulse rounded-full bg-foreground/10 [animation-duration:2.8s] motion-reduce:hidden"
-              />
-            )}
-            <span className="relative truncate">{stage}</span>
+        <span data-slot="stage" {...stylex.props(styles.stageSeat)}>
+          <span {...stylex.props(styles.stageLabel)}>{format(m.currentStage)}</span>
+          <Badge variant="secondary" className={stylex.props(styles.stageBadge).className}>
+            {toneOf(progress) === 'urgent' && <span aria-hidden {...stylex.props(styles.breath)} />}
+            <span {...stylex.props(styles.stageName)}>{stage}</span>
           </Badge>
         </span>
       )}
       {stage !== null && said !== null && (
         // a rule rather than more space: the two halves answer different
         // questions, and at a glance the gap alone read as one long phrase
-        <span aria-hidden className="h-3.5 w-px shrink-0 bg-border max-md:hidden" />
+        <span aria-hidden {...stylex.props(styles.rule)} />
       )}
       {said !== null && (
         <span
@@ -182,11 +271,11 @@ export function BatchProgress({
                 'data-rest': String(progress.span.rest),
               }
             : {})}
-          className={cn('inline-flex shrink-0 items-center gap-1.5 font-medium', tone)}
+          {...stylex.props(styles.clock, tone)}
         >
           {filled !== null && <Ring fraction={filled} />}
           {progress.kind === 'starts' && (
-            <span className="text-muted-foreground">{format(m.plannedStart)}</span>
+            <span {...stylex.props(styles.plannedLabel)}>{format(m.plannedStart)}</span>
           )}
           <Ticker value={said} />
         </span>

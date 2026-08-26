@@ -1,6 +1,7 @@
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
-import { cn } from '@qualy/ui/cn'
 import { assessmentMessages as m } from '../i18n.ts'
 import { standingOf } from './standing.ts'
 
@@ -13,40 +14,94 @@ import { standingOf } from './standing.ts'
 // The dot is not decoration either: a running batch is the only one whose
 // screen can change under the reader, and it is the only one whose dot moves.
 
+const ping = stylex.keyframes({
+  '75%': { transform: 'scale(2)', opacity: 0 },
+  '100%': { transform: 'scale(2)', opacity: 0 },
+})
+
+const styles = stylex.create({
+  badge: {
+    gap: 6,
+    fontWeight: 500,
+    borderColor: 'transparent',
+  },
+  quietTone: {
+    backgroundColor: tokens.surfaceMuted,
+    color: tokens.mutedForeground,
+  },
+  pendingTone: {
+    backgroundColor: `color-mix(in oklab, ${tokens.warning} 15%, transparent)`,
+    color: tokens.warningForeground,
+  },
+  activeTone: {
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 15%, transparent)`,
+    color: tokens.successForeground,
+  },
+  // with the word gone the badge is only a dot in a ground, and a ground
+  // longer than it is tall reads as a label that failed to load
+  compact: {
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    padding: 0,
+  },
+  dotSeat: {
+    position: 'relative',
+    display: 'flex',
+    width: 6,
+    height: 6,
+  },
+  pulse: {
+    position: 'absolute',
+    display: 'inline-flex',
+    width: '100%',
+    height: '100%',
+    borderRadius: '9999px',
+    opacity: 0.75,
+    animationName: {
+      default: ping,
+      '@media (prefers-reduced-motion: reduce)': 'none',
+    },
+    animationDuration: '1s',
+    animationTimingFunction: 'cubic-bezier(0, 0, 0.2, 1)',
+    animationIterationCount: 'infinite',
+  },
+  dot: {
+    position: 'relative',
+    display: 'inline-flex',
+    width: 6,
+    height: 6,
+    borderRadius: '9999px',
+  },
+  quietDot: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)`,
+  },
+  pendingDot: {
+    backgroundColor: tokens.warning,
+  },
+  activeDot: {
+    backgroundColor: tokens.success,
+  },
+})
+
 const tones = {
-  draft: {
-    badge: 'border-transparent bg-muted text-muted-foreground',
-    dot: 'bg-muted-foreground/60',
-    live: false,
-  },
-  pending: {
-    badge: 'border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-300',
-    dot: 'bg-amber-500',
-    live: false,
-  },
-  active: {
-    badge: 'border-transparent bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-    dot: 'bg-emerald-500',
-    live: true,
-  },
-  archived: {
-    badge: 'border-transparent bg-muted text-muted-foreground',
-    dot: 'bg-muted-foreground/60',
-    live: false,
-  },
+  draft: { badge: styles.quietTone, dot: styles.quietDot, live: false },
+  pending: { badge: styles.pendingTone, dot: styles.pendingDot, live: false },
+  active: { badge: styles.activeTone, dot: styles.activeDot, live: true },
+  archived: { badge: styles.quietTone, dot: styles.quietDot, live: false },
 } as const
 
 export function StatusBadge({
   status,
   currentPhaseId = null,
   compact = false,
-  className,
+  xstyle,
 }: {
   status: 'draft' | 'active' | 'archived'
   currentPhaseId?: string | null
   /** the dot and its ground only, for a bar with no room for the word */
   compact?: boolean
-  className?: string
+  xstyle?: stylex.StyleXStyles
 }) {
   const { format } = useI18n()
   const standing = standingOf(status, currentPhaseId)
@@ -60,28 +115,16 @@ export function StatusBadge({
 
   return (
     <Badge
-      className={cn(
-        'gap-1.5 font-medium',
-        tone.badge,
-        // with the word gone the badge is only a dot in a ground, and a
-        // ground longer than it is tall reads as a label that failed to load
-        compact && 'size-4 justify-center p-0',
-        className,
-      )}
+      className={
+        stylex.props(styles.badge, tone.badge, compact && styles.compact, xstyle).className
+      }
       // the word is what goes, not the meaning: the colour and the dot still
       // say it, and whoever cannot see them is reading this instead
       aria-label={compact ? format(label) : undefined}
     >
-      <span aria-hidden className="relative flex size-1.5">
-        {tone.live && (
-          <span
-            className={cn(
-              'absolute inline-flex size-full animate-ping rounded-full opacity-75 motion-reduce:animate-none',
-              tone.dot,
-            )}
-          />
-        )}
-        <span className={cn('relative inline-flex size-1.5 rounded-full', tone.dot)} />
+      <span aria-hidden {...stylex.props(styles.dotSeat)}>
+        {tone.live && <span {...stylex.props(styles.pulse, tone.dot)} />}
+        <span {...stylex.props(styles.dot, tone.dot)} />
       </span>
       {!compact && format(label)}
     </Badge>

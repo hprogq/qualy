@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import {
   ChevronsLeftIcon,
@@ -6,6 +7,7 @@ import {
   LocateFixedIcon,
   MoreVerticalIcon,
 } from 'lucide-react'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Badge } from '@qualy/ui/badge'
 import { cn } from '@qualy/ui/cn'
 import {
@@ -34,6 +36,180 @@ import { useWhen } from './when.ts'
 // waiting for, and whatever prose was written about it. Nothing waits behind
 // a hover - a touch screen has no pointer to rest, and a detail worth writing
 // down is worth reading without asking for it.
+//
+// The timeline parts keep their utility-class overrides: the rail component
+// styles itself by orientation data attributes, and overrides into it ride
+// the same cascade layer. The elements this file owns are StyleX.
+
+// a mark that keeps moving, because this is the one stage that is happening
+// rather than recorded
+const ping = stylex.keyframes({
+  '75%': { transform: 'scale(2)', opacity: 0 },
+  '100%': { transform: 'scale(2)', opacity: 0 },
+})
+
+const styles = stylex.create({
+  pulse: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    display: {
+      default: 'block',
+      '@media (prefers-reduced-motion: reduce)': 'none',
+    },
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklab, ${tokens.foreground} 25%, transparent)`,
+    animationName: ping,
+    animationDuration: '2.6s',
+    animationTimingFunction: 'cubic-bezier(0, 0, 0.2, 1)',
+    animationIterationCount: 'infinite',
+  },
+  dot: {
+    position: 'relative',
+    borderRadius: '9999px',
+  },
+  dotEnded: {
+    width: 8,
+    height: 8,
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 25%, transparent)`,
+  },
+  dotCurrent: {
+    width: 10,
+    height: 10,
+    backgroundColor: tokens.foreground,
+  },
+  dotFuture: {
+    width: 8,
+    height: 8,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+    backgroundColor: tokens.background,
+  },
+  // the word, not only the dot: three shades of grey on a rail are a legend
+  // nobody was given
+  stageBadge: {
+    flexShrink: 0,
+    paddingInline: 6,
+    paddingBlock: 0,
+    fontSize: 10,
+    fontWeight: 400,
+  },
+  // what is over is drawn faintest of the three: next to a solid mark for
+  // the stage in hand, a grey that is nearly as dark reads as another live
+  // one
+  stageBadgeEnded: {
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+  },
+  stageBadgeFuture: {
+    backgroundColor: 'transparent',
+    color: tokens.mutedForeground,
+    boxShadow: `0 0 0 1px ${tokens.border}`,
+  },
+  quietNote: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+  foldIcon: {
+    width: 14,
+    height: 14,
+  },
+  foldButton: {
+    marginTop: -2,
+    textAlign: 'left',
+    fontSize: 12,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    textDecorationLine: {
+      default: 'none',
+      ':hover': 'underline',
+    },
+    textUnderlineOffset: 2,
+  },
+  // room under the rail for the way-back button to hang in: floating it over
+  // the stages would cover the line it is offering to take you to
+  strip: {
+    position: 'relative',
+    paddingBottom: 28,
+  },
+  // the arrows are a hint, not a control: they say which way the rail still
+  // has stages, and a thumb is already the way to go there
+  edgeHint: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    top: '50%',
+    zIndex: 10,
+    width: 14,
+    height: 14,
+    transform: 'translateY(-50%)',
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+    transitionProperty: 'opacity',
+    opacity: 0,
+  },
+  edgeHintStart: {
+    left: 0,
+  },
+  edgeHintEnd: {
+    right: 0,
+  },
+  edgeHintShown: {
+    opacity: 1,
+  },
+  // the transform is one declaration for both axes: a transition animates
+  // only properties it names, so composing the translate from two sources
+  // moved one axis in a step - the few pixels of jump just as the rail came
+  // back to centre
+  wayBack: {
+    position: 'absolute',
+    bottom: 0,
+    left: '50%',
+    zIndex: 10,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: '9999px',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: tokens.background,
+    paddingInline: 10,
+    paddingBlock: 4,
+    fontSize: 12,
+    color: {
+      default: tokens.mutedForeground,
+      ':hover': tokens.foreground,
+    },
+    boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+    transitionProperty: 'opacity, transform',
+    transitionDuration: '200ms',
+    opacity: 0,
+    transform: 'translate(-50%, 4px)',
+    pointerEvents: 'none',
+  },
+  wayBackShown: {
+    opacity: 1,
+    transform: 'translate(-50%, 0)',
+    pointerEvents: 'auto',
+  },
+  wayBackIcon: {
+    width: 14,
+    height: 14,
+  },
+  track: {
+    scrollSnapType: 'x mandatory',
+    overflowX: 'auto',
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': {
+      display: 'none',
+    },
+  },
+  rail: {
+    width: 'max-content',
+  },
+})
 
 /**
  * When a stage runs.
@@ -72,20 +248,13 @@ function Marker({ status }: { status: FlowStage['status'] }) {
         'group-data-[orientation=vertical]/timeline:top-2.5 group-data-[orientation=vertical]/timeline:-translate-y-1/2',
       )}
     >
-      {status === 'current' && (
-        // a mark that keeps moving, because this is the one stage that is
-        // happening rather than recorded
-        <span
-          aria-hidden
-          className="absolute size-2.5 animate-ping rounded-full bg-foreground/25 [animation-duration:2.6s] motion-reduce:hidden"
-        />
-      )}
+      {status === 'current' && <span aria-hidden {...stylex.props(styles.pulse)} />}
       <span
-        className={cn(
-          'relative rounded-full',
-          status === 'ended' && 'size-2 bg-muted-foreground/25',
-          status === 'current' && 'size-2.5 bg-foreground',
-          status === 'future' && 'size-2 border border-muted-foreground/40 bg-background',
+        {...stylex.props(
+          styles.dot,
+          status === 'ended' && styles.dotEnded,
+          status === 'current' && styles.dotCurrent,
+          status === 'future' && styles.dotFuture,
         )}
       />
     </TimelineIndicator>
@@ -131,18 +300,15 @@ function Stage({ stage }: { stage: FlowStage }) {
         >
           {stage.name}
         </TimelineTitle>
-        {/* the word, not only the dot: three shades of grey on a rail are a
-            legend nobody was given */}
         <Badge
           variant={stage.status === 'current' ? 'default' : 'secondary'}
-          className={cn(
-            'shrink-0 px-1.5 py-0 text-[10px] font-normal',
-            // what is over is drawn faintest of the three: next to a solid
-            // mark for the stage in hand, a grey that is nearly as dark reads
-            // as another live one
-            stage.status === 'ended' && 'bg-muted/60 text-muted-foreground/70',
-            stage.status === 'future' && 'bg-transparent text-muted-foreground ring-1 ring-border',
-          )}
+          className={
+            stylex.props(
+              styles.stageBadge,
+              stage.status === 'ended' && styles.stageBadgeEnded,
+              stage.status === 'future' && styles.stageBadgeFuture,
+            ).className
+          }
         >
           {format(STATUS[stage.status])}
         </Badge>
@@ -181,18 +347,18 @@ function Stage({ stage }: { stage: FlowStage }) {
 export function BatchFlow({
   timeline,
   keepPast,
-  className,
+  xstyle,
 }: {
   timeline: readonly FlowEntry[]
   /** how many finished stages to keep above the one in hand */
   keepPast?: number
-  className?: string
+  xstyle?: stylex.StyleXStyles
 }) {
   const { format } = useI18n()
   const [opened, setOpened] = useState(false)
   const stages = stagesOf(timeline)
   if (stages.length === 0) {
-    return <p className={cn('text-sm text-muted-foreground', className)}>{format(m.noStagesYet)}</p>
+    return <p {...stylex.props(styles.quietNote, xstyle)}>{format(m.noStagesYet)}</p>
   }
 
   const here = stages.findIndex((stage) => stage.status === 'current')
@@ -201,16 +367,16 @@ export function BatchFlow({
   const shown = folded > 1 ? stages.slice(folded) : stages
 
   return (
-    <Timeline value={reachedIn(stages)} className={className}>
+    <Timeline value={reachedIn(stages)} className={stylex.props(xstyle).className}>
       {folded > 1 && (
         <TimelineItem step={0} className="ms-6 pb-4">
           <TimelineIndicator className="flex items-center justify-center border-0 bg-background text-muted-foreground/50">
-            <MoreVerticalIcon className="size-3.5" />
+            <MoreVerticalIcon className={stylex.props(styles.foldIcon).className} />
           </TimelineIndicator>
           <TimelineSeparator className="w-px bg-border/50" />
           <button
             type="button"
-            className="-mt-0.5 text-left text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            {...stylex.props(styles.foldButton)}
             onClick={() => setOpened(true)}
           >
             {format(m.flowEarlier, { count: folded })}
@@ -229,10 +395,10 @@ export function BatchFlow({
 /** the same timeline on its side, for a screen with height to spend */
 export function BatchFlowStrip({
   timeline,
-  className,
+  xstyle,
 }: {
   timeline: readonly FlowEntry[]
-  className?: string
+  xstyle?: stylex.StyleXStyles
 }) {
   const { format } = useI18n()
   const stages = stagesOf(timeline)
@@ -298,28 +464,24 @@ export function BatchFlowStrip({
   }, [timeline])
 
   if (stages.length === 0) {
-    return <p className={cn('text-sm text-muted-foreground', className)}>{format(m.noStagesYet)}</p>
+    return <p {...stylex.props(styles.quietNote, xstyle)}>{format(m.noStagesYet)}</p>
   }
 
   return (
-    // room under the rail for the way-back button to hang in: floating it
-    // over the stages would cover the line it is offering to take you to
-    <div className={cn('relative pb-7', className)}>
-      {/* the arrows are a hint, not a control: they say which way the rail
-          still has stages, and a thumb is already the way to go there */}
+    <div {...stylex.props(styles.strip, xstyle)}>
       <ChevronsLeftIcon
         aria-hidden
-        className={cn(
-          'pointer-events-none absolute top-1/2 left-0 z-10 size-3.5 -translate-y-1/2 text-muted-foreground/50 transition-opacity',
-          more.before ? 'opacity-100' : 'opacity-0',
-        )}
+        className={
+          stylex.props(styles.edgeHint, styles.edgeHintStart, more.before && styles.edgeHintShown)
+            .className
+        }
       />
       <ChevronsRightIcon
         aria-hidden
-        className={cn(
-          'pointer-events-none absolute top-1/2 right-0 z-10 size-3.5 -translate-y-1/2 text-muted-foreground/50 transition-opacity',
-          more.after ? 'opacity-100' : 'opacity-0',
-        )}
+        className={
+          stylex.props(styles.edgeHint, styles.edgeHintEnd, more.after && styles.edgeHintShown)
+            .className
+        }
       />
       {/* the way back, offered only to somebody who has gone looking: the
           rail opens on the stage in hand, so this appears when they leave it
@@ -336,32 +498,27 @@ export function BatchFlowStrip({
           const node = here.current
           if (rail && node) rail.scrollTo({ left: centreOf(rail, node), behavior: 'smooth' })
         }}
-        className={cn(
-          // the transform is written out rather than composed from the
-          // translate utilities: those set a custom property the transition
-          // does not name, so the way back down happened in one step - the
-          // few pixels of jump just as the rail came back to centre
-          'absolute bottom-0 left-1/2 z-10 flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs text-muted-foreground shadow-sm transition-[opacity,transform] duration-200 hover:text-foreground',
-          strayed
-            ? 'opacity-100 [transform:translate(-50%,0)]'
-            : 'pointer-events-none opacity-0 [transform:translate(-50%,4px)]',
-        )}
+        {...stylex.props(styles.wayBack, strayed && styles.wayBackShown)}
       >
-        <LocateFixedIcon aria-hidden className="size-3.5" />
+        <LocateFixedIcon aria-hidden className={stylex.props(styles.wayBackIcon).className} />
         {format(m.flowBackToCurrent)}
       </button>
       <div
         ref={track}
         onScroll={measure}
+        {...stylex.props(styles.track)}
         // the fade is the scrollbar this rail does not have: an end with more
         // beyond it dissolves, and an end with nothing beyond it stays sharp,
         // so the edge itself says which way there is anything to find
         style={{
           maskImage: more.before || more.after ? edgeMask(more) : undefined,
         }}
-        className="snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        <Timeline orientation="horizontal" value={reachedIn(stages)} className="w-max">
+        <Timeline
+          orientation="horizontal"
+          value={reachedIn(stages)}
+          className={stylex.props(styles.rail).className}
+        >
           {stages.map((stage, index) => (
             <TimelineItem
               key={stage.id}

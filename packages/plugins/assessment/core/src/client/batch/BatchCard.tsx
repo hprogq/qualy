@@ -1,8 +1,10 @@
+import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { ArrowRightIcon, CalendarRangeIcon, LayersIcon, UsersIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { PageLink } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { cn } from '@qualy/ui/cn'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { standingOf } from './standing.ts'
@@ -32,22 +34,255 @@ export interface BatchCardRow {
   timeline: readonly TimelineLike[]
 }
 
+const styles = stylex.create({
+  card: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: {
+      default: tokens.border,
+      ':hover': `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
+    },
+    backgroundColor: {
+      default: tokens.background,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 10%, transparent)`,
+    },
+    boxShadow: {
+      default: '0 0 rgb(0 0 0 / 0)',
+      ':hover': '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+    },
+    padding: 20,
+    transitionProperty: 'color, background-color, border-color, box-shadow',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  title: {
+    minWidth: 0,
+    fontSize: 16,
+    lineHeight: 1.375,
+    fontWeight: 600,
+  },
+  titleLink: {
+    '::before': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+    },
+  },
+  badgeSeat: {
+    flexShrink: 0,
+  },
+  facts: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    columnGap: 16,
+    rowGap: 4,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  fact: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+  },
+  factIcon: {
+    display: 'flex',
+    flexShrink: 0,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+  },
+  truncate: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  band: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    columnGap: 16,
+    rowGap: 4,
+    borderRadius: tokens.radiusLg,
+    paddingInline: 12,
+    paddingBlock: 10,
+  },
+  bandActive: {
+    backgroundColor: `color-mix(in oklab, ${tokens.success} 8%, transparent)`,
+  },
+  bandQuiet: {
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+  },
+  lead: {
+    minWidth: 0,
+  },
+  leadLabel: {
+    fontSize: 11,
+    letterSpacing: '0.025em',
+    color: tokens.mutedForeground,
+    textTransform: 'uppercase',
+  },
+  leadValue: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    fontWeight: 500,
+  },
+  progressText: {
+    fontSize: 14,
+  },
+  draftHint: {
+    fontSize: 12,
+    color: tokens.mutedForeground,
+  },
+  footer: {
+    marginTop: 'auto',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    fontSize: 14,
+    color: tokens.mutedForeground,
+    transitionProperty: 'color',
+  },
+  footerNear: {
+    color: tokens.foreground,
+  },
+  arrow: {
+    width: 14,
+    height: 14,
+    transitionProperty: 'transform',
+  },
+  arrowNudged: {
+    transform: 'translateX(2px)',
+  },
+  stageLink: {
+    position: 'relative',
+    zIndex: 10,
+    display: 'block',
+  },
+  bar: {
+    display: 'flex',
+    height: 4,
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  // The strip itself is four pixels tall with four between them, so a
+  // pointer crossing it enters and leaves a dozen times on the way: every
+  // crossing restarts two transitions, and the flicker that comes of it is
+  // what reads as stutter. The hit area is a band around the segment, half
+  // the gap wide, so one pass over the bar is one hover.
+  segment: {
+    position: 'relative',
+    height: 4,
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    '::before': {
+      content: '""',
+      position: 'absolute',
+      insetInline: -2,
+      top: -16,
+      bottom: -8,
+    },
+  },
+  // wider than the segment it belongs to and centred on it, so a
+  // four-character name is legible over a bar six pixels wide. The transform
+  // is one declaration for both axes: a transition animates only properties
+  // it names, and splitting the translate across two would move one axis in
+  // a step. No will-change either - switching it on with the hover and off
+  // again drops the layer as the way back begins.
+  segmentName: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    bottom: '100%',
+    left: '50%',
+    marginBottom: 4,
+    maxWidth: 160,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 10,
+    lineHeight: 1,
+    color: tokens.mutedForeground,
+    opacity: 0,
+    transform: 'translate(-50%, 4px)',
+    transitionProperty: 'opacity, transform',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'ease-out',
+  },
+  segmentNameShown: {
+    opacity: 1,
+    transform: 'translate(-50%, 0)',
+  },
+  // Height rather than a scale: two pixels of growth scaled out of four
+  // leaves the rounded ends landing between pixels, and the shimmer of that
+  // is worse than the layout this costs - the bar is absolutely positioned,
+  // so nothing else moves.
+  segmentFill: {
+    position: 'absolute',
+    insetInline: 0,
+    bottom: 0,
+    height: 4,
+    borderRadius: 2,
+    transitionProperty: 'height, background-color',
+    transitionDuration: '200ms',
+    transitionTimingFunction: 'ease-out',
+  },
+  fillTall: {
+    height: 6,
+  },
+  fillEnded: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+  },
+  fillEndedNear: {
+    height: 6,
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+  },
+  fillCurrent: {
+    backgroundColor: tokens.success,
+  },
+  fillFuture: {
+    backgroundColor: tokens.surfaceMuted,
+  },
+  fillFutureNear: {
+    height: 6,
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  },
+})
+
+const FILLS = {
+  ended: styles.fillEnded,
+  current: styles.fillCurrent,
+  future: styles.fillFuture,
+} as const
+
+const NEAR_FILLS = {
+  ended: styles.fillEndedNear,
+  current: styles.fillTall,
+  future: styles.fillFutureNear,
+} as const
+
 function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span aria-hidden className="shrink-0 text-muted-foreground/70 *:size-3.5">
+    <span {...stylex.props(styles.fact)}>
+      <span aria-hidden {...stylex.props(styles.factIcon)}>
         {icon}
       </span>
-      <span className="truncate">{children}</span>
+      <span {...stylex.props(styles.truncate)}>{children}</span>
     </span>
   )
 }
-
-const SEGMENTS = {
-  ended: 'bg-muted-foreground/40 group-hover/segment:bg-muted-foreground/70',
-  current: 'bg-emerald-500 group-hover/segment:bg-emerald-500',
-  future: 'bg-muted group-hover/segment:bg-muted-foreground/30',
-} as const
 
 /**
  * The plan as a bar of segments, one per stage.
@@ -67,6 +302,9 @@ const SEGMENTS = {
  * the card, so a phone gets the plain bar.
  */
 function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; batchId: string }) {
+  // which segment the pointer rests on, held as state rather than asked of a
+  // selector: the name and the fill answer to the same crossing
+  const [near, setNear] = useState<number | null>(null)
   return (
     // above the card's own overlay so the pointer reaches a segment at all,
     // and a link of its own so that reaching it costs nothing: a strip in the
@@ -76,45 +314,24 @@ function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; ba
       params={{ batchId }}
       tabIndex={-1}
       aria-hidden
-      className="relative z-10 block"
+      className={stylex.props(styles.stageLink).className}
     >
-      <div className="flex h-1 items-end gap-1">
+      <div {...stylex.props(styles.bar)}>
         {timeline.map((entry, index) => (
           <span
             key={entry.displayName + String(index)}
-            // The strip itself is four pixels tall with four between them, so
-            // a pointer crossing it enters and leaves a dozen times on the
-            // way: every crossing restarts two transitions, and the flicker
-            // that comes of it is what reads as stutter. The hit area is a
-            // band around the segment, half the gap wide, so one pass over
-            // the bar is one hover.
-            className="group/segment relative h-1 min-w-0 flex-1 before:absolute before:-inset-x-0.5 before:-top-4 before:-bottom-2 before:content-['']"
+            {...stylex.props(styles.segment)}
+            onMouseEnter={() => setNear(index)}
+            onMouseLeave={() => setNear((rested) => (rested === index ? null : rested))}
           >
-            {/* wider than the segment it belongs to and centred on it, so a
-                four-character name is legible over a bar six pixels wide */}
-            <span
-              className={cn(
-                // The transform is written out for the same reason as the
-                // bar's: the translate utilities set a custom property, and a
-                // property the transition does not name changes in one step.
-                // No will-change either - switching it on with the hover and
-                // off again drops the layer as the way back begins.
-                'pointer-events-none absolute bottom-full left-1/2 mb-1 max-w-40 truncate text-[10px] leading-none whitespace-nowrap text-muted-foreground opacity-0 [transform:translate(-50%,4px)] transition-[opacity,transform] duration-200 ease-out group-hover/segment:opacity-100 group-hover/segment:[transform:translate(-50%,0)]',
-              )}
-            >
+            <span {...stylex.props(styles.segmentName, near === index && styles.segmentNameShown)}>
               {entry.displayName}
             </span>
             <span
-              className={cn(
-                // scaled rather than grown: height is a layout property, and
-                // a card list relaying itself out on every frame of a hover
-                // is the one animation here that cannot run on the compositor
-                // Height rather than a scale: two pixels of growth scaled out
-                // of four leaves the rounded ends landing between pixels, and
-                // the shimmer of that is worse than the layout this costs -
-                // the bar is absolutely positioned, so nothing else moves.
-                'absolute inset-x-0 bottom-0 h-1 rounded-[2px] transition-[height,background-color] duration-200 ease-out group-hover/segment:h-1.5',
-                SEGMENTS[entry.status],
+              {...stylex.props(
+                styles.segmentFill,
+                FILLS[entry.status],
+                near === index && NEAR_FILLS[entry.status],
               )}
             />
           </span>
@@ -129,6 +346,10 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
   const standing = standingOf(row.status, row.currentPhaseId)
   const starting = row.timeline.find((entry) => entry.entry.kind === 'planned')
   const at = row.timeline.findIndex((entry) => entry.status === 'current')
+  // whether the pointer is anywhere on the card: the footer brightens and
+  // its arrow leans with it, and both read that from here rather than from a
+  // selector on an ancestor
+  const [rested, setRested] = useState(false)
 
   // the one thing this card is mostly about: which stage, or when it begins,
   // or that nobody has arranged it yet
@@ -146,32 +367,42 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
         : { label: null, value: format(m.noStagesYet) }
 
   return (
-    <li className="group relative flex flex-col gap-4 rounded-xl border bg-background p-5 transition-[color,background-color,border-color,box-shadow] hover:border-foreground/12 hover:bg-muted/10 hover:shadow-xs">
-      <div className="flex items-start justify-between gap-3">
+    <li
+      {...stylex.props(styles.card)}
+      onMouseEnter={() => setRested(true)}
+      onMouseLeave={() => setRested(false)}
+    >
+      <div {...stylex.props(styles.header)}>
         {/* the whole card is the target; the link carries the name so it is
             also reachable by keyboard and readable out of context */}
-        <h3 className="min-w-0 text-base leading-snug font-semibold">
+        <h3 {...stylex.props(styles.title)}>
           <PageLink
             page="assessment/batch"
             params={{ batchId: row.id }}
-            className="before:absolute before:inset-0 before:content-['']"
+            className={stylex.props(styles.titleLink).className}
           >
             {row.name}
           </PageLink>
         </h3>
-        <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} className="shrink-0" />
+        <StatusBadge
+          status={row.status}
+          currentPhaseId={row.currentPhaseId}
+          xstyle={styles.badgeSeat}
+        />
       </div>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <Fact icon={<CalendarRangeIcon />}>
+      <div {...stylex.props(styles.facts)}>
+        <Fact icon={<CalendarRangeIcon size={14} />}>
           {format(m.materialWindow, {
             from: row.materialRange.start,
             until: row.materialRange.end,
           })}
         </Fact>
-        <Fact icon={<UsersIcon />}>{format(m.enrolled, { count: row.participantCount })}</Fact>
+        <Fact icon={<UsersIcon size={14} />}>
+          {format(m.enrolled, { count: row.participantCount })}
+        </Fact>
         {row.timeline.length > 0 && (
-          <Fact icon={<LayersIcon />}>
+          <Fact icon={<LayersIcon size={14} />}>
             {at === -1
               ? format(m.stageCount, { total: row.timeline.length })
               : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
@@ -180,35 +411,26 @@ export function BatchCard({ row }: { row: BatchCardRow }) {
       </div>
 
       <div
-        className={cn(
-          'flex flex-wrap items-end justify-between gap-x-4 gap-y-1 rounded-lg px-3 py-2.5',
-          standing === 'active' ? 'bg-emerald-500/8' : 'bg-muted/50',
-        )}
+        {...stylex.props(styles.band, standing === 'active' ? styles.bandActive : styles.bandQuiet)}
       >
-        <div className="min-w-0">
-          {lead.label !== null && (
-            <p className="text-[11px] tracking-wide text-muted-foreground uppercase">
-              {lead.label}
-            </p>
-          )}
-          <p className="truncate text-sm font-medium">{lead.value}</p>
+        <div {...stylex.props(styles.lead)}>
+          {lead.label !== null && <p {...stylex.props(styles.leadLabel)}>{lead.label}</p>}
+          <p {...stylex.props(styles.leadValue)}>{lead.value}</p>
         </div>
         {standing === 'active' ? (
-          <BatchProgress timeline={row.timeline} className="text-sm" />
+          <BatchProgress timeline={row.timeline} xstyle={styles.progressText} />
         ) : (
-          standing === 'draft' && (
-            <p className="text-xs text-muted-foreground">{format(m.draftHint)}</p>
-          )
+          standing === 'draft' && <p {...stylex.props(styles.draftHint)}>{format(m.draftHint)}</p>
         )}
       </div>
 
       {row.timeline.length > 0 && <StageBar timeline={row.timeline} batchId={row.id} />}
 
-      <p className="mt-auto flex items-center justify-end gap-1 text-sm text-muted-foreground transition-colors group-hover:text-foreground">
+      <p {...stylex.props(styles.footer, rested && styles.footerNear)}>
         {format(standing === 'draft' ? m.configureBatch : m.enterBatch)}
         <ArrowRightIcon
           aria-hidden
-          className="size-3.5 transition-transform group-hover:translate-x-0.5"
+          className={stylex.props(styles.arrow, rested && styles.arrowNudged).className}
         />
       </p>
     </li>
