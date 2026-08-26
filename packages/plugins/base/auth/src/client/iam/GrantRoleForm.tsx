@@ -36,6 +36,15 @@ const styles = stylex.create({
   anchorPicker: {
     width: '14rem',
   },
+  scopeField: {
+    width: '11rem',
+  },
+  coverageField: {
+    width: '10rem',
+  },
+  roleField: {
+    width: '14rem',
+  },
   nothingNote: {
     width: '100%',
     fontSize: '0.875rem',
@@ -114,7 +123,7 @@ export function GrantRoleForm({
       <Field label={format(m.grantScope)}>
         {(id) => (
           <Select value={scope} onValueChange={(next) => setScope(next as 'tenant' | 'org-node')}>
-            <SelectTrigger id={id} className="w-44">
+            <SelectTrigger id={id} xstyle={styles.scopeField}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -143,7 +152,7 @@ export function GrantRoleForm({
           <Field label={format(m.grantCoverage)}>
             {(id) => (
               <Select value={coverage} onValueChange={(next) => setCoverage(next as Coverage)}>
-                <SelectTrigger id={id} className="w-40">
+                <SelectTrigger id={id} xstyle={styles.coverageField}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -163,7 +172,7 @@ export function GrantRoleForm({
             disabled={roles.length === 0}
             onValueChange={(next) => setRoleId(next)}
           >
-            <SelectTrigger id={id} className="w-56">
+            <SelectTrigger id={id} xstyle={styles.roleField}>
               <SelectValue placeholder={format(m.grantRole)} />
             </SelectTrigger>
             <SelectContent>

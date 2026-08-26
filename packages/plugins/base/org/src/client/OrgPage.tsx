@@ -530,6 +530,16 @@ const styles = stylex.create({
   compactInput: {
     width: '10rem',
   },
+  moveField: {
+    maxWidth: '24rem',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  kindField: {
+    width: '9rem',
+    flexShrink: 0,
+  },
 })
 
 export default function OrgPage() {
@@ -1006,7 +1016,7 @@ function NodePanel({
             }}
           >
             <Select value={moveTargetId} onValueChange={setMoveTargetId}>
-              <SelectTrigger aria-label={format(m.moveTo)} className="max-w-96 flex-1">
+              <SelectTrigger aria-label={format(m.moveTo)} xstyle={styles.moveField}>
                 <SelectValue placeholder={format(m.selectParent)} />
               </SelectTrigger>
               <SelectContent>
@@ -1097,7 +1107,7 @@ function NodePanel({
                 className={stylex.props(styles.draftInput).className}
               />
               <Select value={childTypeId} onValueChange={setChildTypeId}>
-                <SelectTrigger aria-label={format(m.selectType)} className="w-36 shrink-0">
+                <SelectTrigger aria-label={format(m.selectType)} xstyle={styles.kindField}>
                   <SelectValue placeholder={format(m.selectType)} />
                 </SelectTrigger>
                 <SelectContent>

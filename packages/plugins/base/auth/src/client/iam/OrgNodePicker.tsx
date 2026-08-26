@@ -133,6 +133,12 @@ const styles = stylex.create({
     width: 12,
     height: 12,
   },
+  kindField: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
 })
 
 export default function OrgNodePicker({ context }: { context: OrgNodePickerContext }) {
@@ -228,7 +234,7 @@ export default function OrgNodePicker({ context }: { context: OrgNodePickerConte
                 value={orgTypeId === '' ? ANY : orgTypeId}
                 onValueChange={(next) => setOrgTypeId(next === ANY ? '' : next)}
               >
-                <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={format(m.nodeKind)}>
+                <SelectTrigger size="sm" xstyle={styles.kindField} aria-label={format(m.nodeKind)}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

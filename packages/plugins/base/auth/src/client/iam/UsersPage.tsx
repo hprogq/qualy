@@ -212,6 +212,9 @@ const styles = stylex.create({
   pinned: {
     flexShrink: 0,
   },
+  typeFilter: {
+    width: '9rem',
+  },
   // the empty detail seat only earns its room on the wide layout
   deskOnly: {
     display: {
@@ -372,7 +375,7 @@ export default function UsersPage() {
                 value={typeFilter === '' ? ALL_TYPES : typeFilter}
                 onValueChange={(next) => setTypeFilter(next === ALL_TYPES ? '' : next)}
               >
-                <SelectTrigger aria-label={format(m.typeFilterLabel)} className="w-36">
+                <SelectTrigger aria-label={format(m.typeFilterLabel)} xstyle={styles.typeFilter}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

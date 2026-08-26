@@ -16,6 +16,9 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 20,
   },
+  fullField: {
+    width: '100%',
+  },
 })
 
 export function NewUserForm({
@@ -113,7 +116,7 @@ export function NewUserForm({
         <Field label={format(m.userTypeLabel)}>
           {(id) => (
             <Select value={userTypeId} onValueChange={setUserTypeId}>
-              <SelectTrigger id={id} className="w-full">
+              <SelectTrigger id={id} xstyle={styles.fullField}>
                 <SelectValue placeholder={format(m.selectUserType)} />
               </SelectTrigger>
               <SelectContent>
