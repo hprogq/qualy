@@ -7,6 +7,7 @@ import {
   Button,
   Checkbox,
   Divider,
+  Input,
   MantineProvider,
   Radio,
   createTheme,
@@ -162,6 +163,26 @@ export const qualyMantineTheme = createTheme({
         const size = iconSizes[props.size as string]
         return { root: size === undefined ? {} : { '--ai-size': size } }
       },
+    }),
+    // The size a person types at, decided in one place for the whole
+    // input family.
+    //
+    // Text, textarea, select, date, time and number all render this one
+    // widget, so `--input-fz` is the family's type. It is pointed at a
+    // product token instead of a fixed value because that token answers a
+    // media query - 14px with a mouse, 16px under a finger, where iOS
+    // Safari zooms the page toward any focused control under 16px. Vars
+    // are inline styles and cannot hold a media query themselves; the
+    // token can, and one indirection keeps the whole family on it.
+    //
+    // The size stays `sm`: the geometry - a 36px field and its padding -
+    // is the product's density and does not move with the type. And the
+    // question is asked of the FAMILY, not of the element: the rule this
+    // replaces asked whether a control was an `<input>`, so a date field,
+    // being a button underneath, sat at 14px beside a 16px text field in
+    // the same form on the same phone.
+    Input: Input.extend({
+      vars: () => ({ wrapper: { '--input-fz': 'var(--q-input-fz)' } }),
     }),
     Checkbox: Checkbox.extend({
       defaultProps: {

@@ -127,6 +127,19 @@
 }
 
 @layer base {
+  :root {
+    /* The type every input-family control shows its value at. The product
+       is dense and reads at 14px; a finger gets 16px, because iOS Safari
+       zooms the page toward any focused control whose text is smaller.
+       One token, so the whole family answers together - see the Input
+       vars in theme/mantine.tsx. */
+    --q-input-fz: var(--mantine-font-size-sm);
+  }
+  @media (hover: none) and (pointer: coarse) {
+    :root {
+      --q-input-fz: var(--mantine-font-size-md);
+    }
+  }
   * {
     border-color: var(--color-border);
     @apply border-border outline-ring/50;
@@ -332,22 +345,6 @@
     [data-slot='sheet-content'][data-side][data-closing] {
       animation: none;
       transition: none;
-    }
-  }
-}
-
-/* Text controls never render under 16px on a touch screen: iOS Safari
- * zooms the whole page toward any focused control whose font is smaller,
- * and no control here means that. Element-wide in the components layer, so
- * the widget baseline below it loses and a migrated control is covered
- * without asking; a legacy utility still wins, and sheds this debt when
- * its file migrates. */
-@layer components {
-  @media (hover: none) and (pointer: coarse) {
-    input:not([type='checkbox']):not([type='radio']):not([type='range']),
-    textarea,
-    select {
-      font-size: max(16px, 1em);
     }
   }
 }

@@ -104,7 +104,8 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     backgroundColor: 'transparent',
-    fontSize: 14,
+    // what a person types, at the size every other field types at
+    fontSize: 'var(--q-input-fz)',
     outline: 'none',
     '::placeholder': {
       color: tokens.mutedForeground,

@@ -4,9 +4,14 @@ import * as stylex from '@stylexjs/stylex'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { Checkbox } from '@qualy/ui/checkbox'
+import { DateRangePicker, type DateRange } from '@qualy/ui/date-range-picker'
+import { DateTimePicker } from '@qualy/ui/date-time-picker'
 import { Input } from '@qualy/ui/input'
+import { NativeSelect } from '@qualy/ui/native-select'
 import { UiProvider } from '@qualy/ui/provider'
 import { RadioGroup, RadioGroupItem } from '@qualy/ui/radio-group'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
+import { Textarea } from '@qualy/ui/textarea'
 import '../src/app.css'
 
 // Form control contracts, asserted through roles, native state and form
@@ -224,5 +229,85 @@ describe('a leading icon laid over the input', () => {
     const winner = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
     expect(onTop).not.toBeNull()
     expect(winner).toBe(glass)
+  })
+})
+
+describe('the input family types at one size', () => {
+  // A form must not read at two type sizes because one of its fields is a
+  // <button> underneath and another is an <input>. One token carries the
+  // family's type - 14px here, 16px under a finger, where iOS Safari would
+  // otherwise zoom the page at a focused field - and the density (a 36px
+  // field, its padding) is a separate decision that does not move with it.
+  it('every control shows its value at one size and keeps its own height', async () => {
+    function Harness() {
+      const [range, setRange] = useState<DateRange>({ start: '', end: '' })
+      const [moment, setMoment] = useState<string | null>(null)
+      return (
+        <>
+          <Input aria-label="text" />
+          <Textarea aria-label="notes" />
+          <NativeSelect aria-label="native">
+            <option>a</option>
+          </NativeSelect>
+          <Select>
+            <SelectTrigger aria-label="picked">
+              <SelectValue placeholder="pick" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="a">a</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select>
+            <SelectTrigger size="sm" aria-label="compact">
+              <SelectValue placeholder="pick" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="a">a</SelectItem>
+            </SelectContent>
+          </Select>
+          <DateRangePicker value={range} onChange={setRange} placeholder="span" localeTag="en-US" />
+          <DateTimePicker
+            value={moment}
+            onChange={setMoment}
+            placeholder="moment"
+            localeTag="en-US"
+            hourLabel="hour"
+            minuteLabel="minute"
+            secondLabel="second"
+            clearLabel="clear"
+          />
+        </>
+      )
+    }
+    mount(<Harness />)
+    const sizeOf = (el: Element | null) => {
+      if (el === null) return 'missing'
+      const style = getComputedStyle(el)
+      return `${style.fontSize}/${style.height}`
+    }
+    // the pickers are located by the slot they publish: they are named by
+    // the field's own label in a form, not by an aria-label of their own
+    const face = (label: string) => sizeOf(page.getByLabelText(label).element())
+    const slot = (name: string) => sizeOf(document.querySelector(`[data-slot="${name}"]`))
+    await expect.poll(() => face('text'), { timeout: 5000 }).toBe('14px/36px')
+    expect(face('notes')).toBe('14px/64px')
+    expect(face('native')).toBe('14px/36px')
+    expect(face('picked')).toBe('14px/36px')
+    expect(slot('date-range-picker')).toBe('14px/36px')
+    expect(slot('date-time-picker')).toBe('14px/36px')
+    // a control asked to be compact keeps the family's type and gives up
+    // height instead
+    expect(face('compact')).toBe('14px/30px')
+
+    // and they are one family rather than seven controls that happen to
+    // agree: move the token and every one of them moves, which is what a
+    // touch screen does
+    document.documentElement.style.setProperty('--q-input-fz', '21px')
+    await expect.poll(() => face('text')).toBe('21px/36px')
+    for (const control of ['notes', 'native', 'picked', 'compact'])
+      expect(face(control).startsWith('21px')).toBe(true)
+    for (const picker of ['date-range-picker', 'date-time-picker'])
+      expect(slot(picker).startsWith('21px')).toBe(true)
+    document.documentElement.style.removeProperty('--q-input-fz')
   })
 })
