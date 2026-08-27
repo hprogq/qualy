@@ -9344,3 +9344,58 @@ text-current` 跟随按钮墨色,enabled 外观不变。
 (.mcp.json 除外)。**已知不稳定**:shell 的「一次身份问一次」用例(`sessionCalls === 1`)在整套并跑、
 机器负载高时偶发变 2,单跑与低负载连跑均绿;经 revert 验证与本段提交无因果关系,待查(该用例自带
 两处 CI-only ghost 的历史注释)。M9 未完成,不得视作迁移终局。
+
+### M9 续段:日期基座、区间绘制与控件字号(2026-08-27)
+
+**日期基座换 @mantine/dates**(已提交)
+
+- react-day-picker/date-fns 退场;DateRangePicker 与 DateTimePicker 的**公开契约冻结不变**:
+  区间是 `{start,end}` 的 `YYYY-MM-DD|''`,时刻是 `string|null` 的 ISO instant。Mantine 9 的
+  dates 本身说的就是无时区字符串(`YYYY-MM-DD` / `YYYY-MM-DD HH:mm:ss`),与本仓存储格式同形,
+  所以日期一路不经过 `Date`;唯一的换算是 instant ↔ 墙上时间,集中在 `lib/instant.ts` 并有
+  与运行时区无关的单元测试(午夜、进位、往返)。
+- i18n 不引入第二套语言真源:`lib/date-format.ts` 用 Intl 现算月/年/星期格式与 aria 标签,
+  星期宽度按「七个 narrow 是否互不相同」选 narrow 或 short(中文取「一二三四五六日」)。
+
+**区间绘制:根因是样式引擎不为隐藏日重跑 `:has()`**
+
+- 症状:月末轨道跑出边缘不收口(3/31、8/31),或月份边界上凭空多出选中圆(5/31、6/1);
+  「hover 一下就好、切月份又坏」。
+- 根因(实测三步:同一条选择器 `querySelectorAll` 命中 → 整表克隆重新插入仍不进级联 →
+  同文本规则放进新建 `<style>` 才生效):双月视图下 Mantine 用 `hidden` 隐藏越界日,
+  **隐藏日的属性变化不会触发相邻兄弟的 `:has()` 重新匹配**。此前「靠隐藏日是否 in-range
+  判断跨月延续」的整套判据因此在月份边界必然读到陈旧答案。
+- 终稿:所有判据**只问看得见的日期**。右侧没有可见的同区间日期(下一天在区间外/一行结束/
+  面板结束)→ 轨道停在圆的位置并收圆角;真正的终点自己的实心圆盖住这个收口,于是「终点」与
+  「视图断点」不必区分。候选终点由左右两侧邻格判定(可倒着选),不依赖 `:hover`——指针滑进
+  行间空隙时面板仍保留预览而 `:hover` 已消失。
+- 几何:圆是独立定尺寸元素(格子高 - 6px),格子仍是整块命中区;上下左右留白相同。
+  此前用 `background-clip` 裁日期自身背景,圆被压成胶囊、移开时可见形变。
+- 动画:圆过渡 `background-color` 150ms(与既有 hover 时长一致),字色 90ms(同速会出现
+  半黑圆配半灰字、数字一两帧读不出);**轨道零过渡**,跟手不许延迟。`prefers-reduced-motion`
+  下两条都关。
+- 两个日历合一:新 `lib/calendar.ts` 的 `CALENDAR_DAY`(原 `q-range-day` 更名)+ `calendarLook`,
+  单日期选择器不再是 Mantine 原生圆角方块与红色周末。
+- 新增 `apps/web/tests/date-range-picker.browser.test.tsx`:跨行闭合、跨月闭合(月末不得有圆)、
+  候选终点在指针离开日期格后仍为实心、已选端点悬停不变色——全部量几何,不绑文案。
+
+**控件字号提升到 input-family 层**
+
+- 删除按 HTML 标签分类的移动端 16px 规则(它让「底层是 button 的日期框」在同一表单里比文本框
+  小两像素)。改为 Mantine `Input` 的 `--input-fz` 指向产品令牌 `--q-input-fz`:细指针 14px、
+  粗指针 16px(iOS Safari 对 <16px 的聚焦控件会缩放整页),`size` 仍是 `sm`,**几何不动**。
+  产品内唯一不属于该 family 的裸控件(批次切换器搜索框)读同一令牌。
+- `form-controls.browser.test.tsx` 除逐个断言字号/高度外,**改一次根令牌断言七个控件一起变**,
+  杜绝「七个恰好相同」退化。注意副作用:紧凑变体(`SelectTrigger size="sm"`)由 Mantine 的
+  12px 跟随 family 变为 14/16px。
+
+**flake 修复**:button 变体用例偶发读到 hover 色——整轮运行中鼠标位置跨文件保留,新挂载的按钮
+可能正落在指针下(widget 没错,断言的是静止态)。mount 时提供停放处,两个测尺寸/颜色的用例先把
+指针移开;单跑三轮 + 整套两轮全绿(此前约三轮一红)。
+
+**验收(本段全部真实执行)**:`pnpm typecheck` 零错;`pnpm test:browser` 26 files /
+**179 passed** 连续两轮;`pnpm test` **851 passed | 17 skipped**;prettier 通过。
+
+**下一步**:回到 M9.2 剩余 adapter 清理(dropdown-menu 9、timeline 8、dialog 6、alert-dialog 6、
+sheet 5、select 5、popover 4),再依次 M9.1 产品残留页(assessment ~192、auth ~91 条字面
+className)、M9.3 overlay/motion/inert 加固、M9.4 依赖退役、M9.5 文档与终审。
