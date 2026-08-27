@@ -77,7 +77,6 @@
     "dayjs": "catalog:",
     "lucide-react": "^0.552.0",
     "motion": "^12.29.2",
-    "radix-ui": "^1.6.7",
     "react-dropzone": "^20.1.0",
     "react-photo-view": "^1.2.7",
     "sonner": "^2.0.8"

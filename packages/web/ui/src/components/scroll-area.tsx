@@ -2,37 +2,29 @@
 
 import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { ScrollArea as ScrollAreaPrimitive } from 'radix-ui'
+import { ScrollArea as MScrollArea } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
-// A scroll container with overlay scrollbars. The behavior - overflow
-// bookkeeping, scrollbar mounting, dragging - is the primitive's, and the
-// DOM shape (root > viewport > children, plus scrollbar and corner) is the
-// review workbench's frozen scroll model. The scrollbar and thumb look
-// lives in theme.css under [data-slot='scroll-area-*']: the primitive
-// stamps data-orientation on the scrollbar, which a compiled style cannot
-// read on its own element, and the components layer keeps a consumer's
-// StyleX or utilities on the root winning without a fight.
+// A scroll container with overlay scrollbars. The bookkeeping - measuring the
+// overflow, mounting and hiding the bars, dragging the thumb - is the widget
+// library's; the bar itself is the product's hairline rather than the
+// library's own.
+//
+// The viewport keeps its name. It is the element that actually scrolls, and
+// two screens reach for it by that name to put a row back in view, so it is
+// part of this component's contract rather than an implementation detail.
 
 const styles = stylex.create({
-  root: {
-    position: 'relative',
+  // the bar is a guide, not furniture: it sits over the content instead of
+  // taking a column of its own
+  bar: {
+    padding: 1,
+    backgroundColor: 'transparent',
   },
-  viewport: {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-    borderRadius: 'inherit',
-    transitionProperty: 'color, box-shadow',
-    transitionDuration: '150ms',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    outline: 'none',
-    boxShadow: {
-      default: 'none',
-      ':focus-visible': `0 0 0 3px color-mix(in oklab, ${tokens.focusRing} 50%, transparent)`,
-    },
+  thumb: {
+    backgroundColor: tokens.border,
   },
 })
 
@@ -50,43 +42,26 @@ function ScrollArea({
   xstyle,
   children,
   ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.Root> & Seat) {
+}: React.ComponentProps<typeof MScrollArea> & Seat) {
   return (
-    <ScrollAreaPrimitive.Root
+    <MScrollArea
       data-slot="scroll-area"
-      {...props}
-      {...seatOf(stylex.props(styles.root, xstyle), className, style)}
-    >
-      <ScrollAreaPrimitive.Viewport
-        data-slot="scroll-area-viewport"
-        {...stylex.props(styles.viewport)}
-      >
-        {children}
-      </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
-      <ScrollAreaPrimitive.Corner />
-    </ScrollAreaPrimitive.Root>
-  )
-}
-
-function ScrollBar({
-  className,
-  style,
-  xstyle,
-  orientation = 'vertical',
-  ...props
-}: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar> & Seat) {
-  return (
-    <ScrollAreaPrimitive.ScrollAreaScrollbar
-      data-slot="scroll-area-scrollbar"
-      data-orientation={orientation}
-      orientation={orientation}
+      scrollbarSize={10}
+      // the viewport's name is part of this component's contract; the prop
+      // type is a plain div's, which does not admit data attributes
+      viewportProps={
+        { 'data-slot': 'scroll-area-viewport' } as React.HTMLAttributes<HTMLDivElement>
+      }
+      classNames={{
+        scrollbar: stylex.props(styles.bar).className,
+        thumb: stylex.props(styles.thumb).className,
+      }}
       {...props}
       {...seatOf(stylex.props(xstyle), className, style)}
     >
-      <ScrollAreaPrimitive.ScrollAreaThumb data-slot="scroll-area-thumb" />
-    </ScrollAreaPrimitive.ScrollAreaScrollbar>
+      {children}
+    </MScrollArea>
   )
 }
 
-export { ScrollArea, ScrollBar }
+export { ScrollArea }

@@ -239,19 +239,6 @@
       transform: translateY(100%);
     }
   }
-  /* The hover card enters at the popover family's tempo; its exit is the
-   * primitive's immediate unmount, same as the dialogs. It is the last of
-   * this family still drawn from here - the dialogs, the alert and the sheet
-   * carry their own entrances now, where a reader who asked for less motion
-   * is answered by a compiled media query that carries its own weight. */
-  [data-slot='hover-card-content'] {
-    animation: q-pop-in 100ms ease;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    [data-slot='hover-card-content'] {
-      animation: none;
-    }
-  }
 }
 
 /* What the shared StyleX components cannot say about content they did not
@@ -384,43 +371,5 @@
   [data-slot='alert-dialog-description'] a:hover,
   [data-slot='dialog-description'] a:hover {
     color: var(--q-foreground);
-  }
-
-  /* scroll-area: what the scrollbar's orientation decides, and the look of
-     parts a consumer never addresses directly. The primitive stamps
-     data-orientation on the scrollbar, which a compiled style cannot read
-     on its own element; this layer also keeps a consumer's StyleX on the
-     root winning without a fight. */
-  [data-slot='scroll-area-viewport'] > div {
-    /* the primitive lays its content wrapper out as an inline
-       display: table, which only an !important outweighs - carried over
-       from the previous substrate, where the block! utility did the same */
-    display: block !important;
-  }
-  [data-slot='scroll-area-scrollbar'] {
-    display: flex;
-    padding: 1px;
-    touch-action: none;
-    -webkit-user-select: none;
-    user-select: none;
-    transition-property: color, background-color, border-color;
-    transition-duration: 150ms;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  [data-slot='scroll-area-scrollbar'][data-orientation='horizontal'] {
-    height: 10px;
-    flex-direction: column;
-    border-top: 1px solid transparent;
-  }
-  [data-slot='scroll-area-scrollbar'][data-orientation='vertical'] {
-    height: 100%;
-    width: 10px;
-    border-left: 1px solid transparent;
-  }
-  [data-slot='scroll-area-thumb'] {
-    position: relative;
-    flex: 1 1 0%;
-    border-radius: 9999px;
-    background-color: var(--q-border);
   }
 }

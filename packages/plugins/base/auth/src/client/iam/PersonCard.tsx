@@ -102,7 +102,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
 
   return (
     <>
-      <HoverCard openDelay={200} onOpenChange={(next) => next && setHovered(true)}>
+      <HoverCard openDelay={200} disabled={open} onOpenChange={(next) => next && setHovered(true)}>
         <HoverCardTrigger asChild>
           <button type="button" {...stylex.props(styles.trigger)} onFocus={() => setHovered(true)}>
             {/* the same two lines the plain cell draws: saying nothing where

@@ -1187,5 +1187,5 @@ function Filter({
   )
 }
 
-/** radix refuses an empty option value, so "no filter" needs a name of its own */
+/** a select cannot carry an empty value, so "no filter" needs a name of its own */
 const ALL = 'all'
