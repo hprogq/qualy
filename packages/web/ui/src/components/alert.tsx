@@ -9,10 +9,14 @@ import { tokens } from '../theme/tokens.stylex.ts'
 const ToneCtx = createContext<'default' | 'destructive'>('default')
 
 // One sentence with standing: an icon seat, a title, a description, and an
-// optional action pinned to the corner. What depends on caller-provided
-// children - the icon's grid seat, prose links, the destructive tint on the
-// description - lives in theme.css under [data-slot='alert'], where a
-// descendant of arbitrary content can still be reached.
+// optional action pinned to the corner.
+//
+// Whether there IS an icon, or an action, is something the caller decides by
+// what it passes as children - so the alert asks its own box with `:has()`
+// rather than being told. The title needs the same answer but cannot ask it
+// (the condition is on its parent), so the root hands it down as a variable.
+// What is left in theme.css is only what a compiled style cannot reach at
+// all: the caller's own icon element, and links inside caller prose.
 
 const styles = stylex.create({
   root: {
@@ -24,8 +28,14 @@ const styles = stylex.create({
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: tokens.border,
-    paddingInline: 16,
+    paddingInlineStart: 16,
+    // room for the action pinned to the corner, when there is one
+    paddingInlineEnd: { default: 16, ':has([data-slot="alert-action"])': '4.5rem' },
     paddingBlock: 12,
+    // a second column, only once an icon is actually sitting in it
+    gridTemplateColumns: { default: null, ':has(> svg)': 'auto 1fr' },
+    columnGap: { default: null, ':has(> svg)': '0.625rem' },
+    '--q-alert-title-column': { default: 'auto', ':has(> svg)': '2' },
     textAlign: 'left',
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
@@ -37,6 +47,8 @@ const styles = stylex.create({
   },
   title: {
     fontWeight: 500,
+    // beside the icon rather than under it, when the root says there is one
+    gridColumnStart: 'var(--q-alert-title-column, auto)',
   },
   description: {
     fontSize: '0.875rem',

@@ -250,10 +250,6 @@
 @layer components {
   /* the icon seat: the alert becomes a two-column grid only when an icon
      is actually there, and the icon spans title and description */
-  [data-slot='alert']:has(> svg) {
-    grid-template-columns: auto 1fr;
-    column-gap: 0.625rem;
-  }
   [data-slot='alert'] > svg {
     grid-row: span 2 / span 2;
     transform: translateY(0.125rem);
@@ -262,12 +258,6 @@
   [data-slot='alert'] > svg {
     width: 1rem;
     height: 1rem;
-  }
-  [data-slot='alert']:has(> svg) > [data-slot='alert-title'] {
-    grid-column-start: 2;
-  }
-  [data-slot='alert']:has([data-slot='alert-action']) {
-    padding-right: 4.5rem;
   }
   [data-slot='alert-title'] a,
   [data-slot='alert-description'] a {
@@ -333,22 +323,6 @@
     flex-shrink: 0;
     width: 1rem;
     height: 1rem;
-  }
-
-  /* the table's structural row rules: the last body row keeps no divider,
-     an expanded row and a selected row wear the muted tint, and a checkbox
-     column sheds its trailing padding - all keyed on caller content or
-     position, which compiled styles cannot reach */
-  [data-slot='table-body'] [data-slot='table-row']:last-child {
-    border-bottom-width: 0;
-  }
-  [data-slot='table-row']:has([aria-expanded]),
-  [data-slot='table-row'][data-state='selected'] {
-    background-color: color-mix(in oklab, var(--q-surface-muted) 50%, transparent);
-  }
-  [data-slot='table-head']:has([role='checkbox']),
-  [data-slot='table-cell']:has([role='checkbox']) {
-    padding-right: 0;
   }
   [data-slot='empty-description'] a,
   [data-slot='field-description'] a {

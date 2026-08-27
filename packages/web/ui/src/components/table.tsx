@@ -5,10 +5,15 @@ import { clsx } from 'clsx'
 import { tokens } from '../theme/tokens.stylex.ts'
 
 // The semantic table, styled in its own StyleX base. `xstyle` is the
-// standard extension seat; `className` stays as the legacy escape hatch,
-// whose utilities keep winning by cascade for callers not yet on StyleX.
-// What depends on caller content - an expanded row's tint, the checkbox
-// column's padding - lives in theme.css under [data-slot='table-*'].
+// standard extension seat; `className` stays as the legacy escape hatch.
+//
+// What a cell HOLDS is the caller's business, and two of these styles turn
+// on it: a row that carries a control for opening itself is tinted like a
+// hovered one, and a column of checkboxes sheds its trailing padding. Each
+// asks its own box with `:has()` rather than being told.
+//
+// Which section a row is in is not something a row can ask - so the body
+// tells the rows inside it, and the last of them drops its rule.
 
 const styles = stylex.create({
   container: {
@@ -36,14 +41,25 @@ const styles = stylex.create({
     transitionProperty: 'color, background-color, border-color',
     transitionDuration: '150ms',
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    // standing, not only pointing: a row holding the control that opens it,
+    // and a row that has been picked, read as the hovered one does
     backgroundColor: {
       default: null,
       ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+      ':has([aria-expanded])': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
+      '[data-state="selected"]': `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
     },
+  },
+  // the run of rows ends at the section's edge, which draws its own line
+  lastInBody: {
+    borderBottomWidth: { default: 1, ':last-child': 0 },
   },
   head: {
     height: 48,
-    paddingInline: 12,
+    paddingInlineStart: 12,
+    // a checkbox sits against the row's edge; the padding would double the
+    // gap between it and the first thing it selects
+    paddingInlineEnd: { default: 12, ':has([role="checkbox"])': 0 },
     textAlign: 'left',
     verticalAlign: 'middle',
     fontWeight: 500,
@@ -51,7 +67,9 @@ const styles = stylex.create({
     color: tokens.foreground,
   },
   cell: {
-    padding: 12,
+    paddingBlock: 12,
+    paddingInlineStart: 12,
+    paddingInlineEnd: { default: 12, ':has([role="checkbox"])': 0 },
     verticalAlign: 'middle',
     whiteSpace: 'nowrap',
   },
@@ -78,8 +96,15 @@ function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
   return <thead data-slot="table-header" {...props} className={className} />
 }
 
-function TableBody({ className, ...props }: React.ComponentProps<'tbody'>) {
-  return <tbody data-slot="table-body" {...props} className={className} />
+/** whether the rows below are the table's own run of records */
+const InBody = React.createContext(false)
+
+function TableBody({ className, children, ...props }: React.ComponentProps<'tbody'>) {
+  return (
+    <tbody data-slot="table-body" {...props} className={className}>
+      <InBody value>{children}</InBody>
+    </tbody>
+  )
 }
 
 function TableFooter({ className, xstyle, ...props }: React.ComponentProps<'tfoot'> & Extendable) {
@@ -90,7 +115,7 @@ function TableFooter({ className, xstyle, ...props }: React.ComponentProps<'tfoo
 }
 
 function TableRow({ className, xstyle, ...props }: React.ComponentProps<'tr'> & Extendable) {
-  const sx = stylex.props(styles.row, xstyle)
+  const sx = stylex.props(styles.row, React.use(InBody) && styles.lastInBody, xstyle)
   return <tr data-slot="table-row" {...sx} {...props} className={clsx(sx.className, className)} />
 }
 

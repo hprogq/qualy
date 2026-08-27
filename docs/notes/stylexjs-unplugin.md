@@ -26,3 +26,22 @@ timer 压住事件循环:每次 `pnpm test:browser` 结束都挂 10 秒后被 vi
 
 patch(`patches/@stylexjs__unplugin@0.19.0.patch`)在 setInterval 后补一行 `interval.unref?.()`,
 两个构建产物(esm/cjs)各一处。移除条件:上游修复该 timer 泄漏并升级到含修复的版本。
+
+## 条件键的实查边界(2026-08-28,编译产物验证)
+
+`stylex.create` 的条件键支持范围比想象宽,但结论一律以**编译出的 CSS** 为准,不以文档为准。
+
+- **`:has()` 可用**。`':has(> svg)'`、`':has([data-slot="alert-action"])'` 都正常编译,选择器形如
+  `.x888gsh:has( > svg){grid-template-columns:auto 1fr}`(注意 `(` 后有一个空格,写 grep 时会踩)。
+  自定义属性也可以按 `:has()` 分支取值,于是「父元素知道、子元素问不到」的情形有了不引入 JS 的解法:
+  父元素条件性地写 `--q-alert-title-column`,子元素读它。alert 的图标栅格与 table 的复选框列
+  就是这样从 theme.css 迁进组件的。
+- **`null` 不是「解除」而是「不生成这条声明」**。`maxWidth: { default: '20rem', [WIDE]: null }` 在宽屏
+  下仍然是 20rem——因为宽屏分支根本没有声明,默认那条继续生效。要在某个条件下取消上限,必须显式
+  写 `'none'`。(alert-dialog 的窄屏上限踩过:宽屏本该 448,实测 320。)
+- 已确认的其他条件键:同元素属性选择器、`:not()`、伪元素读宿主状态、`@media`。**取值相同的条件会被
+  合并成一条规则**,所以源码顺序不构成优先级,互斥判据要写成互斥的。
+
+判断一条规则能不能进组件,只有一个标准:**它作用的元素是不是这个组件自己渲染的**。
+`:has()` 把「自身盒子里有什么」变成可问的,但后代选择器仍然不可表达——
+`[data-slot='alert'] > svg` 这类指向调用方所写元素的规则,只能留在 theme.css。
