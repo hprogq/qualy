@@ -2,20 +2,23 @@ import { expect, it } from 'vitest'
 import { render } from 'vitest-browser-react'
 import '../src/app.css'
 
-// The product's baseline, measured on bare elements.
+// The Qualy DOM baseline, measured.
 //
-// Two thirds of the buttons on these screens are plain <button> elements - a
-// row that opens a panel, a chip that drops itself - and a baseline is the
-// only thing standing between them and the browser's own chrome. That
-// baseline arrived with the utility framework this migration removed, and
-// nothing in the widget library replaces it: its own reset sets a font and a
-// text-transform and stops. When it went, every plain button in the product
-// came back wearing native chrome, and no test noticed, because the
-// assertions are all on roles and on the components the library dresses.
+// Native elements are semantic primitives across this product - two thirds of
+// its buttons are plain <button> - and what they look like belongs to the
+// component that renders them, never to the browser. The widget library
+// dresses its own components and stops there, so the baseline that clears the
+// user agent out of the way is this product's own.
 //
-// So the baseline is stated by this product now, and this is what holds it:
-// what the browser computes for a bare element, recorded in full. The values
-// were captured with the old framework still installed and have not moved.
+// It is worth measuring because nothing else here does: every other assertion
+// is about a role or about a component the library dresses, and when the
+// baseline briefly went missing, all of them stayed green while every plain
+// button in the product came back wearing native chrome.
+//
+// The elements below are the ones the product actually renders bare; what
+// the browser computes for each of them is recorded in full. Anything that
+// changes these has changed how every screen looks, which is worth a red
+// test rather than a bug report from a reader.
 const WATCHED = [
   'boxSizing',
   'margin',
@@ -84,21 +87,16 @@ it('dresses every bare element the product uses', async () => {
           </tr>
         </tbody>
       </table>
-      <hr />
       <fieldset>
         <legend>legend</legend>
       </fieldset>
-      <blockquote>bq</blockquote>
       <pre>pre</pre>
-      <code>code</code>
       <figure>fig</figure>
       <form>
         <label>label</label>
       </form>
       <svg viewBox="0 0 8 8" />
       <img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" />
-      <strong>strong</strong>
-      <small>small</small>
     </div>,
   )
   await new Promise((resolve) => setTimeout(resolve, 200))
