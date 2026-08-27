@@ -1,9 +1,11 @@
 'use client'
 
 import * as React from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { Popover as MPopover, type PopoverProps as MPopoverProps } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import { tokens } from '../theme/tokens.stylex.ts'
+import { seatOf } from '../lib/xstyle.ts'
 
 // The Qualy popover keeps its compound shape over the widget library's own
 // Target/Dropdown model, which is close enough that the adapter is mostly
@@ -16,6 +18,35 @@ import { cn } from '../lib/utils.ts'
 //   trigger while open. A modal underneath listens for Escape on window and
 //   ignores events from marked elements - this is what makes Escape peel
 //   one layer at a time instead of closing everything at once.
+
+const styles = stylex.create({
+  // structure only; the surface is the widget's own under the theme
+  content: {
+    display: 'flex',
+    width: '18rem',
+    flexDirection: 'column',
+    gap: 16,
+    padding: 16,
+    // size and leading travel together, as the utility this replaces did
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    outlineStyle: 'none',
+  },
+  header: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    fontSize: 14,
+  },
+  title: {
+    fontSize: 16,
+    lineHeight: '1.5rem',
+    fontWeight: 500,
+  },
+  description: {
+    color: tokens.mutedForeground,
+  },
+})
 
 interface PopoverState {
   opened: boolean
@@ -148,8 +179,7 @@ function PopoverContent({ className, children }: ContentDecl & { children?: Reac
       // needs a focusable dropdown for Escape to fire from inside it
       role="dialog"
       tabIndex={-1}
-      // structure only; the surface is the widget's own under the theme
-      className={cn('flex w-72 flex-col gap-4 p-4 text-sm outline-hidden', className)}
+      {...seatOf(stylex.props(styles.content), className)}
     >
       {children}
     </MPopover.Dropdown>
@@ -160,15 +190,15 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="popover-header"
-      className={cn('flex flex-col gap-1 text-sm', className)}
       {...props}
+      {...seatOf(stylex.props(styles.header), className)}
     />
   )
 }
 
 function PopoverTitle({ className, ...props }: React.ComponentProps<'h2'>) {
   return (
-    <div data-slot="popover-title" className={cn('text-base font-medium', className)} {...props} />
+    <div data-slot="popover-title" {...props} {...seatOf(stylex.props(styles.title), className)} />
   )
 }
 
@@ -176,8 +206,8 @@ function PopoverDescription({ className, ...props }: React.ComponentProps<'p'>) 
   return (
     <p
       data-slot="popover-description"
-      className={cn('text-muted-foreground', className)}
       {...props}
+      {...seatOf(stylex.props(styles.description), className)}
     />
   )
 }

@@ -264,87 +264,17 @@
       transform: translateY(100%);
     }
   }
-  /* One veil for the whole overlay family, blurred alike. The fade is
-     promoted to its own layer: a backdrop-filter whose opacity animates on
-     the page's layer makes mobile Safari re-rasterize everything behind it
-     on every frame, which reads as the background flashing while the panel
-     opens. Isolated, the blur is rasterized once and only the layer's
-     opacity moves. */
-  [data-slot='dialog-overlay'],
-  [data-slot='alert-dialog-overlay'],
-  [data-slot='sheet-overlay'] {
-    animation: q-overlay-in 150ms ease;
-    isolation: isolate;
-    will-change: opacity;
-  }
-  [data-slot='dialog-content'],
-  [data-slot='alert-dialog-content'] {
-    animation: q-pop-in 150ms ease;
-  }
-  /* the hover card enters at the popover family's tempo; its exit is the
-   * primitive's immediate unmount, same as the dialogs above */
+  /* The hover card enters at the popover family's tempo; its exit is the
+   * primitive's immediate unmount, same as the dialogs. It is the last of
+   * this family still drawn from here - the dialogs, the alert and the sheet
+   * carry their own entrances now, where a reader who asked for less motion
+   * is answered by a compiled media query that carries its own weight. */
   [data-slot='hover-card-content'] {
     animation: q-pop-in 100ms ease;
   }
-  [data-slot='sheet-content'][data-side='right'] {
-    animation: q-slide-in-right 200ms ease;
-  }
-  [data-slot='sheet-content'][data-side='left'] {
-    animation: q-slide-in-left 200ms ease;
-  }
-  [data-slot='sheet-content'][data-side='top'] {
-    animation: q-slide-in-top 200ms ease;
-  }
-  [data-slot='sheet-content'][data-side='bottom'] {
-    animation: q-slide-in-bottom 200ms ease;
-  }
-  /* The exit, played by the adapter: it holds the drawer mounted for one
-   * beat with data-closing set, and these transitions carry both layers
-   * out the way they came. Nothing answers the pointer mid-exit. */
-  [data-slot='sheet-overlay'][data-closing],
-  [data-slot='sheet-content'][data-closing] {
-    pointer-events: none;
-  }
-  /* grab regions answer the drag, not the scroll: without this the
-   * browser claims a downward pull for scrolling before the dismiss
-   * gesture ever sees it */
-  [data-slot='sheet-content'][data-side='bottom'] [data-sheet-grab] {
-    touch-action: none;
-  }
-  [data-slot='sheet-overlay'][data-closing] {
-    opacity: 0;
-    transition: opacity 200ms ease;
-  }
-  [data-slot='sheet-content'][data-closing] {
-    transition: transform 200ms ease;
-  }
-  [data-slot='sheet-content'][data-side='right'][data-closing] {
-    transform: translateX(100%);
-  }
-  [data-slot='sheet-content'][data-side='left'][data-closing] {
-    transform: translateX(-100%);
-  }
-  [data-slot='sheet-content'][data-side='top'][data-closing] {
-    transform: translateY(-100%);
-  }
-  [data-slot='sheet-content'][data-side='bottom'][data-closing] {
-    transform: translateY(100%);
-  }
   @media (prefers-reduced-motion: reduce) {
-    [data-slot='dialog-overlay'],
-    [data-slot='alert-dialog-overlay'],
-    [data-slot='sheet-overlay'],
-    [data-slot='dialog-content'],
-    [data-slot='alert-dialog-content'],
-    [data-slot='hover-card-content'],
-    [data-slot='sheet-content'],
-    /* the side-specific entrances carry two attributes, so the plain
-     * selector above never outweighed them - the one animation reduced
-     * motion failed to reduce */
-    [data-slot='sheet-content'][data-side],
-    [data-slot='sheet-content'][data-side][data-closing] {
+    [data-slot='hover-card-content'] {
       animation: none;
-      transition: none;
     }
   }
 }
@@ -402,6 +332,40 @@
      nothing says otherwise, which dwarfs the words beside it. A caller who
      states a size still wins - a compiled StyleX class sits in a priority
      layer above this one. */
+  /* What a caller puts inside a menu row: an icon, or a second line in its
+     own colour. A row states its own look in compiled styles, but what it
+     contains is the caller's DOM, which only a relation can reach. A caller
+     who states a size still wins - a compiled style sits in a priority layer
+     above this one. */
+  [data-slot='dropdown-menu-item'] svg,
+  [data-slot='dropdown-menu-checkbox-item'] svg,
+  [data-slot='dropdown-menu-radio-item'] svg,
+  [data-slot='dropdown-menu-sub-trigger'] svg {
+    pointer-events: none;
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+  }
+  [data-slot='dropdown-menu-item'][data-variant='destructive'] svg {
+    color: var(--q-danger);
+  }
+  /* the whole row answers the pointer in one ink, including anything the
+     caller coloured differently */
+  [data-slot='dropdown-menu-item'][data-hovered]:not([data-variant='destructive']) *,
+  [data-slot='dropdown-menu-checkbox-item'][data-hovered] *,
+  [data-slot='dropdown-menu-radio-item'][data-hovered] *,
+  [data-slot='dropdown-menu-sub-trigger'][data-hovered] * {
+    color: var(--accent-foreground);
+  }
+
+  /* an ornament the caller hands an alert dialog: the icon inside it is
+     content this component did not write, so its size is stated by relation.
+     A caller who states a size still wins - a compiled style sits in a
+     priority layer above this one. */
+  [data-slot='alert-dialog-media'] svg {
+    width: 2rem;
+    height: 2rem;
+  }
   [data-slot='toggle-group'] svg {
     pointer-events: none;
     flex-shrink: 0;
@@ -432,6 +396,19 @@
   [data-slot='empty-description'] a:hover,
   [data-slot='field-description'] a:hover {
     color: var(--q-primary);
+  }
+  /* a dialog's description is prose the caller wrote, so a link inside it is
+     reached the same way - by relation, which a compiled style cannot state.
+     It sits a shade closer to the text than the two above, and darkens on
+     hover rather than turning primary. */
+  [data-slot='alert-dialog-description'] a,
+  [data-slot='dialog-description'] a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  [data-slot='alert-dialog-description'] a:hover,
+  [data-slot='dialog-description'] a:hover {
+    color: var(--q-foreground);
   }
 
   /* scroll-area: what the scrollbar's orientation decides, and the look of

@@ -1,9 +1,12 @@
 'use client'
 
 import * as React from 'react'
+import clsx from 'clsx'
+import * as stylex from '@stylexjs/stylex'
 import { Modal as MModal } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import { tokens } from '../theme/tokens.stylex.ts'
+import { seatOf } from '../lib/xstyle.ts'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 
@@ -11,6 +14,111 @@ import { Button } from './button.tsx'
 // dialog, but with alertdialog semantics, no dismissal by clicking outside,
 // and initial focus resting on the cancelling button - the safe answer is
 // the one a stray Enter lands on.
+
+const WIDE = '@media (min-width: 640px)'
+
+// the entrance is a CSS insertion animation for the same reason the dialog's
+// is; see that file
+const REDUCE = '@media (prefers-reduced-motion: reduce)'
+
+const styles = stylex.create({
+  overlay: {
+    animationName: { default: 'q-overlay-in', [REDUCE]: 'none' },
+    animationDuration: { default: '150ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'ease',
+    isolation: 'isolate',
+    willChange: 'opacity',
+  },
+  entrance: {
+    animationName: { default: 'q-pop-in', [REDUCE]: 'none' },
+    animationDuration: { default: '150ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'ease',
+  },
+  // structure only; the surface is the widget's own under the theme
+  content: {
+    display: 'grid',
+    gap: 24,
+    padding: 24,
+    outlineStyle: 'none',
+    maxWidth: '20rem',
+  },
+  contentWide: { maxWidth: { default: '20rem', [WIDE]: '28rem' } },
+  header: {
+    display: 'grid',
+    gridTemplateRows: 'auto 1fr',
+    placeItems: 'center',
+    gap: 6,
+    textAlign: 'center',
+  },
+  headerRoomy: {
+    placeItems: { default: 'center', [WIDE]: 'start' },
+    textAlign: { default: 'center', [WIDE]: 'left' },
+  },
+  headerWithMedia: {
+    gridTemplateRows: 'auto auto 1fr',
+    columnGap: 24,
+  },
+  headerRoomyWithMedia: {
+    gridTemplateRows: { default: 'auto auto 1fr', [WIDE]: 'auto 1fr' },
+  },
+  footer: {
+    display: 'flex',
+    flexDirection: { default: 'column-reverse', [WIDE]: 'row' },
+    justifyContent: { default: null, [WIDE]: 'flex-end' },
+    gap: 8,
+  },
+  footerPaired: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  },
+  media: {
+    marginBottom: 8,
+    display: 'inline-flex',
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  mediaRoomy: { gridRow: { default: null, [WIDE]: 'span 2' } },
+  title: {
+    fontFamily: 'var(--font-heading)',
+    // size and leading travel together, as the utility this replaces did
+    fontSize: 18,
+    lineHeight: '1.75rem',
+    fontWeight: 500,
+  },
+  // the title steps aside for the media column once there is room for both
+  titleBeside: { gridColumnStart: { default: null, [WIDE]: 2 } },
+  description: {
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    textWrap: { default: 'balance', '@media (min-width: 768px)': 'pretty' },
+    color: tokens.mutedForeground,
+  },
+})
+
+/**
+ * What the parts of an alert need to know about the whole.
+ *
+ * The header, the footer, the media and the title all change shape with the
+ * dialog's size and with whether a media ornament is present - facts that
+ * live on an ANCESTOR and in a SIBLING, which a compiled style cannot read.
+ * They are passed down instead, and the media announces itself the way the
+ * description announces itself to the root.
+ */
+interface AlertLayout {
+  roomy: boolean
+  hasMedia: boolean
+  setHasMedia: (present: boolean) => void
+}
+const LayoutCtx = React.createContext<AlertLayout>({
+  roomy: true,
+  hasMedia: false,
+  setHasMedia: () => {},
+})
+const useLayout = () => React.use(LayoutCtx)
 
 interface AlertState {
   open: boolean
@@ -99,6 +207,11 @@ function AlertDialogContent({
   size?: 'default' | 'sm'
 }) {
   const { open, setOpen, descriptionId, hasDescription } = useAlert()
+  const [hasMedia, setHasMedia] = React.useState(false)
+  const layout = React.useMemo<AlertLayout>(
+    () => ({ roomy: size === 'default', hasMedia, setHasMedia }),
+    [size, hasMedia],
+  )
   // Compensation, not preference: the library hard-codes role="dialog" and
   // aria-describedby after spreading props, so the alertdialog role and the
   // description association are written on the element. Candidate upstream
@@ -141,76 +254,83 @@ function AlertDialogContent({
       closeOnClickOutside={false}
       transitionProps={{ duration: 100 }}
     >
-      <MModal.Overlay data-slot="alert-dialog-overlay" blur={2} />
+      <MModal.Overlay data-slot="alert-dialog-overlay" blur={2} {...stylex.props(styles.overlay)} />
       <MModal.Content
         data-slot="alert-dialog-content"
         data-size={size}
         ref={applyA11y}
-        // structure only; the surface is the widget's own under the theme.
         // classNames.content, not className: the widget duplicates className
-        // onto its positioning inner element
+        // onto its positioning inner element. The slot takes a string, which
+        // these compiled styles are - they carry no dynamic value.
         classNames={{
-          content: cn(
-            'group/alert-dialog-content grid gap-6 p-6 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-md',
+          content: clsx(
+            stylex.props(styles.content, styles.entrance, size === 'default' && styles.contentWide)
+              .className,
             className,
           ),
         }}
         {...props}
       >
-        {children}
+        <LayoutCtx value={layout}>{children}</LayoutCtx>
       </MModal.Content>
     </MModal.Root>
   )
 }
 
 function AlertDialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
+  const { roomy, hasMedia } = useLayout()
   return (
     <div
       data-slot="alert-dialog-header"
-      className={cn(
-        'grid grid-rows-[auto_1fr] place-items-center gap-1.5 text-center has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-6 sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]',
+      {...props}
+      {...seatOf(
+        stylex.props(
+          styles.header,
+          roomy && styles.headerRoomy,
+          hasMedia && styles.headerWithMedia,
+          hasMedia && roomy && styles.headerRoomyWithMedia,
+        ),
         className,
       )}
-      {...props}
     />
   )
 }
 
 function AlertDialogFooter({ className, ...props }: React.ComponentProps<'div'>) {
+  const { roomy } = useLayout()
   return (
     <div
       data-slot="alert-dialog-footer"
-      className={cn(
-        'flex flex-col-reverse gap-2 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end',
-        className,
-      )}
       {...props}
+      {...seatOf(stylex.props(styles.footer, !roomy && styles.footerPaired), className)}
     />
   )
 }
 
 function AlertDialogMedia({ className, ...props }: React.ComponentProps<'div'>) {
+  const { roomy, setHasMedia } = useLayout()
+  // the header and the title lay themselves out around this, so its presence
+  // is announced rather than looked for
+  React.useEffect(() => {
+    setHasMedia(true)
+    return () => setHasMedia(false)
+  }, [setHasMedia])
   return (
     <div
       data-slot="alert-dialog-media"
-      className={cn(
-        "mb-2 inline-flex size-16 items-center justify-center rounded-full bg-muted sm:group-data-[size=default]/alert-dialog-content:row-span-2 *:[svg:not([class*='size-'])]:size-8",
-        className,
-      )}
       {...props}
+      {...seatOf(stylex.props(styles.media, roomy && styles.mediaRoomy), className)}
     />
   )
 }
 
 function AlertDialogTitle({ className, ...props }: React.ComponentProps<'h2'>) {
+  const { roomy, hasMedia } = useLayout()
   return (
     <MModal.Title
       data-slot="alert-dialog-title"
-      className={cn(
-        'font-heading text-lg font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
-        className,
-      )}
       {...props}
+      {...seatOf(stylex.props(styles.title, roomy && hasMedia && styles.titleBeside), className)}
     />
   )
 }
@@ -225,11 +345,8 @@ function AlertDialogDescription({ className, ...props }: React.ComponentProps<'p
     <p
       id={descriptionId}
       data-slot="alert-dialog-description"
-      className={cn(
-        'text-sm text-balance text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
-        className,
-      )}
       {...props}
+      {...seatOf(stylex.props(styles.description), className)}
     />
   )
 }

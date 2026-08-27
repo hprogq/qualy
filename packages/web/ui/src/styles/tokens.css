@@ -29,6 +29,9 @@
      the edge than the fill, re-balanced for dark where 5% vanishes */
   --q-selected-border: color-mix(in oklab, var(--q-primary) 30%, transparent);
   --q-selected-surface: color-mix(in oklab, var(--q-primary) 5%, transparent);
+  /* the ground a row that removes something takes under the pointer; it
+     carries further in the dark, where a 10% wash disappears */
+  --q-danger-surface: color-mix(in oklab, var(--q-danger) 10%, transparent);
   --q-radius-lg: 0.625rem;
   --q-radius-md: calc(var(--q-radius-lg) - 2px);
   --q-radius-sm: calc(var(--q-radius-lg) - 4px);
@@ -51,4 +54,5 @@
   --q-muted-foreground: oklch(0.708 0 0);
   --q-selected-border: color-mix(in oklab, var(--q-primary) 20%, transparent);
   --q-selected-surface: color-mix(in oklab, var(--q-primary) 10%, transparent);
+  --q-danger-surface: color-mix(in oklab, var(--q-danger) 20%, transparent);
 }

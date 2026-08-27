@@ -6,7 +6,8 @@ import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 
-import { cn } from '../lib/utils.ts'
+import { tokens } from '../theme/tokens.stylex.ts'
+import { seatOf } from '../lib/xstyle.ts'
 import { ChevronDownIcon, CheckIcon } from 'lucide-react'
 
 // The Qualy select keeps its compound shape (Root/Trigger/Value/Content/
@@ -123,6 +124,79 @@ const triggerStyles = stylex.create({
   },
 })
 
+const styles = stylex.create({
+  value: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 6,
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+  },
+  // structure only; the surface is the widget's own under the theme
+  content: {
+    maxHeight: '18rem',
+    minWidth: '9rem',
+    overflowX: 'hidden',
+    overflowY: 'auto',
+  },
+  // structure only - the reserved indicator seat and the row's shape; hover,
+  // active and disabled looks are the widget's own
+  item: {
+    position: 'relative',
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 10,
+    paddingRight: 32,
+  },
+  // the indicator seat is always reserved, so choosing never reflows the row
+  tick: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    right: 8,
+    display: 'flex',
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inert: {
+    pointerEvents: 'none',
+  },
+  said: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
+    textAlign: 'left',
+  },
+  aside: {
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  group: {
+    scrollMarginBlock: 4,
+    padding: 4,
+  },
+  label: {
+    paddingInline: 12,
+    paddingBlock: 10,
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  separator: {
+    pointerEvents: 'none',
+    marginInline: -4,
+    marginBlock: 4,
+    height: 1,
+    backgroundColor: `color-mix(in oklab, ${tokens.border} 50%, transparent)`,
+  },
+})
+
 function SelectTrigger({
   className,
   xstyle,
@@ -183,10 +257,7 @@ function SelectValue({ placeholder }: { placeholder?: React.ReactNode }) {
   const chosen = value !== undefined && items.has(value) ? items.get(value) : undefined
   if (chosen === undefined) return <InputPlaceholder>{placeholder}</InputPlaceholder>
   return (
-    <span
-      data-slot="select-value"
-      className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap"
-    >
+    <span data-slot="select-value" {...stylex.props(styles.value)}>
       {chosen}
     </span>
   )
@@ -209,8 +280,7 @@ function SelectContent({
       // unmounted everything under the cursor before the click could land
       onMouseDown={(event) => event.stopPropagation()}
       onTouchStart={(event) => event.stopPropagation()}
-      // structure only; the surface is the widget's own under the theme
-      className={cn('max-h-72 min-w-36 overflow-x-hidden overflow-y-auto', className)}
+      {...seatOf(stylex.props(styles.content), className)}
     >
       <Combobox.Options>{children}</Combobox.Options>
     </Combobox.Dropdown>
@@ -243,24 +313,19 @@ function SelectItem({
       value={value}
       {...(disabled === undefined ? {} : { disabled })}
       data-slot="select-item"
-      // structure only - the reserved indicator seat and the row's shape;
-      // hover, active and disabled looks are the widget's own
-      className={cn('relative flex w-full items-center gap-2.5 pr-8', className)}
       {...props}
+      {...seatOf(stylex.props(styles.item), className)}
     >
       {/* the indicator seat is always reserved, so choosing never reflows the row */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute right-2 flex size-4 items-center justify-center"
-      >
-        {selected && <CheckIcon className="pointer-events-none" />}
+      <span aria-hidden {...stylex.props(styles.tick)}>
+        {selected && <CheckIcon {...stylex.props(styles.inert)} />}
       </span>
       {description === undefined ? (
         <span data-slot="select-item-text">{children}</span>
       ) : (
-        <span className="flex min-w-0 flex-col items-start gap-0.5 text-left">
+        <span {...stylex.props(styles.said)}>
           <span data-slot="select-item-text">{children}</span>
-          <span className="text-xs text-muted-foreground">{description}</span>
+          <span {...stylex.props(styles.aside)}>{description}</span>
         </span>
       )}
     </Combobox.Option>
@@ -272,19 +337,15 @@ function SelectGroup({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       role="group"
       data-slot="select-group"
-      className={cn('scroll-my-1 p-1', className)}
       {...props}
+      {...seatOf(stylex.props(styles.group), className)}
     />
   )
 }
 
 function SelectLabel({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="select-label"
-      className={cn('px-3 py-2.5 text-xs text-muted-foreground', className)}
-      {...props}
-    />
+    <div data-slot="select-label" {...props} {...seatOf(stylex.props(styles.label), className)} />
   )
 }
 
@@ -293,8 +354,8 @@ function SelectSeparator({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="select-separator"
       aria-hidden
-      className={cn('pointer-events-none -mx-1 my-1 h-px bg-border/50', className)}
       {...props}
+      {...seatOf(stylex.props(styles.separator), className)}
     />
   )
 }

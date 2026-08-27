@@ -3,7 +3,11 @@
 import * as React from 'react'
 import { Drawer as MDrawer } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import clsx from 'clsx'
+import * as stylex from '@stylexjs/stylex'
+
+import { tokens } from '../theme/tokens.stylex.ts'
+import { seatOf } from '../lib/xstyle.ts'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
@@ -17,7 +21,153 @@ interface SheetState {
   open: boolean
   setOpen: (next: boolean) => void
 }
+// Entrances are CSS insertion animations and exits are transitions the
+// adapter drives with `data-closing`; the keyframes themselves stay in the
+// stylesheet, where they are a global name shared with the dialogs.
+const REDUCE = '@media (prefers-reduced-motion: reduce)'
+
+const SLIDE_IN = {
+  right: 'q-slide-in-right',
+  left: 'q-slide-in-left',
+  top: 'q-slide-in-top',
+  bottom: 'q-slide-in-bottom',
+} as const
+
+const styles = stylex.create({
+  // the same veil the dialogs draw, fading on its own compositing layer: a
+  // backdrop-filter under an animating opacity made mobile Safari
+  // re-rasterize the page behind it on every frame
+  overlay: {
+    animationName: { default: 'q-overlay-in', [REDUCE]: 'none' },
+    animationDuration: { default: '150ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'ease',
+    // a reader who asked for less motion is answered on the way in and on
+    // the way out alike, whether or not this panel is currently leaving
+    transitionProperty: { default: null, [REDUCE]: 'none' },
+    isolation: 'isolate',
+    willChange: 'opacity',
+  },
+  // both layers leave the way they came, and neither answers the pointer on
+  // the way out
+  overlayClosing: {
+    opacity: 0,
+    transitionProperty: { default: 'opacity', [REDUCE]: 'none' },
+    transitionDuration: { default: '200ms', [REDUCE]: '0s' },
+    transitionTimingFunction: 'ease',
+    pointerEvents: 'none',
+  },
+  panelClosing: {
+    transitionProperty: { default: 'transform', [REDUCE]: 'none' },
+    transitionDuration: { default: '200ms', [REDUCE]: '0s' },
+    transitionTimingFunction: 'ease',
+    pointerEvents: 'none',
+  },
+  entranceRight: {
+    animationName: { default: SLIDE_IN.right, [REDUCE]: 'none' },
+    animationDuration: { default: '200ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'ease',
+  },
+  entranceLeft: {
+    animationName: { default: SLIDE_IN.left, [REDUCE]: 'none' },
+    animationDuration: { default: '200ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'ease',
+  },
+  entranceTop: {
+    animationName: { default: SLIDE_IN.top, [REDUCE]: 'none' },
+    animationDuration: { default: '200ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'ease',
+  },
+  entranceBottom: {
+    animationName: { default: SLIDE_IN.bottom, [REDUCE]: 'none' },
+    animationDuration: { default: '200ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'ease',
+  },
+  outRight: { transform: 'translateX(100%)' },
+  outLeft: { transform: 'translateX(-100%)' },
+  outTop: { transform: 'translateY(-100%)' },
+  outBottom: { transform: 'translateY(100%)' },
+  // a grab region answers the drag, not the scroll: without this the browser
+  // claims a downward pull for scrolling before the dismiss gesture sees it
+  grab: { touchAction: 'none' },
+  // structure only; the surface is the widget's own under the theme. The
+  // panel itself does not scroll - its children own scrolling, which is what
+  // keeps a footer standing while the middle moves.
+  content: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    transitionProperty: { default: null, [REDUCE]: 'none' },
+    overflowY: 'visible',
+    // size and leading travel together, as the utility this replaces did
+    fontSize: 14,
+    lineHeight: '1.25rem',
+  },
+  // a panel that comes in from a side takes the full height and most of the
+  // width, up to a comfortable reading measure
+  contentBeside: {
+    height: '100%',
+    width: '75%',
+    maxWidth: { default: null, '@media (min-width: 640px)': '24rem' },
+  },
+  // one that comes from above or below takes the width and is as tall as it
+  // needs to be
+  contentAcross: {
+    height: 'auto',
+    width: '100%',
+  },
+  close: {
+    position: 'absolute',
+    insetBlockStart: 16,
+    insetInlineEnd: 16,
+  },
+  // announced, never shown
+  hidden: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clipPath: 'inset(50%)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
+  },
+  header: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    padding: 24,
+  },
+  footer: {
+    marginTop: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: 24,
+  },
+  title: {
+    fontFamily: 'var(--font-heading)',
+    fontSize: 16,
+    lineHeight: '1.5rem',
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
+  description: {
+    fontSize: 14,
+    color: tokens.mutedForeground,
+  },
+})
+
 const SheetCtx = React.createContext<SheetState | null>(null)
+
+/**
+ * Which way the panel came in.
+ *
+ * The header is a grab region only on a sheet that came up from the bottom -
+ * a fact that lives on the PANEL, one level above it, which a compiled style
+ * cannot read. It is passed down instead.
+ */
+const SideCtx = React.createContext<'top' | 'right' | 'bottom' | 'left'>('right')
 
 function useSheet(): SheetState {
   const ctx = React.use(SheetCtx)
@@ -304,15 +454,11 @@ function SheetContent({
       // the widget only mounts and unmounts
       transitionProps={{ duration: 0 }}
     >
-      {/* the same veil the dialogs draw. A backdrop-filter under an opacity
-          entrance used to make mobile Safari re-rasterize the page behind on
-          every frame - the background flashed while the sheet opened - so the
-          blurred overlays now fade on their own compositing layer, stated
-          once for the family in theme.css */}
       <MDrawer.Overlay
         data-slot="sheet-overlay"
         blur={2}
         {...(closing ? { 'data-closing': '' } : {})}
+        {...stylex.props(styles.overlay, closing && styles.overlayClosing)}
       />
       <MDrawer.Content
         data-slot="sheet-content"
@@ -331,26 +477,30 @@ function SheetContent({
         // own scrolling, which is what keeps a footer standing while the
         // middle moves.
         classNames={{
-          content: cn(
-            'relative flex flex-col overflow-y-visible text-sm',
-            (side === 'left' || side === 'right') && 'h-full w-3/4 sm:max-w-sm',
-            (side === 'top' || side === 'bottom') && 'h-auto w-full',
+          content: clsx(
+            stylex.props(
+              styles.content,
+              side === 'left' || side === 'right' ? styles.contentBeside : styles.contentAcross,
+              entranceOf(side),
+              closing && styles.panelClosing,
+              closing && outOf(side),
+            ).className,
             className,
           ),
         }}
         {...props}
       >
-        {children}
+        <SideCtx value={side}>{children}</SideCtx>
         {showCloseButton && (
           <Button
             data-slot="sheet-close"
             variant="ghost"
-            className="absolute top-4 right-4"
+            className={stylex.props(styles.close).className}
             size="icon-sm"
             onClick={() => setOpen(false)}
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span {...stylex.props(styles.hidden)}>Close</span>
           </Button>
         )}
       </MDrawer.Content>
@@ -358,26 +508,41 @@ function SheetContent({
   )
 }
 
+const entranceOf = (side: 'top' | 'right' | 'bottom' | 'left') =>
+  side === 'right'
+    ? styles.entranceRight
+    : side === 'left'
+      ? styles.entranceLeft
+      : side === 'top'
+        ? styles.entranceTop
+        : styles.entranceBottom
+
+const outOf = (side: 'top' | 'right' | 'bottom' | 'left') =>
+  side === 'right'
+    ? styles.outRight
+    : side === 'left'
+      ? styles.outLeft
+      : side === 'top'
+        ? styles.outTop
+        : styles.outBottom
+
 function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
+  const fromBottom = React.use(SideCtx) === 'bottom'
   return (
     <div
       data-slot="sheet-header"
       // the header is a grab region: on a bottom sheet, dragging it down
       // dismisses the panel the way a phone expects
       data-sheet-grab=""
-      className={cn('flex flex-col gap-1.5 p-6', className)}
       {...props}
+      {...seatOf(stylex.props(styles.header, fromBottom && styles.grab), className)}
     />
   )
 }
 
 function SheetFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="sheet-footer"
-      className={cn('mt-auto flex flex-col gap-2 p-6', className)}
-      {...props}
-    />
+    <div data-slot="sheet-footer" {...props} {...seatOf(stylex.props(styles.footer), className)} />
   )
 }
 
@@ -385,8 +550,8 @@ function SheetTitle({ className, ...props }: React.ComponentProps<'h2'>) {
   return (
     <MDrawer.Title
       data-slot="sheet-title"
-      className={cn('font-heading text-base font-medium text-foreground', className)}
       {...props}
+      {...seatOf(stylex.props(styles.title), className)}
     />
   )
 }
@@ -395,8 +560,8 @@ function SheetDescription({ className, ...props }: React.ComponentProps<'p'>) {
   return (
     <p
       data-slot="sheet-description"
-      className={cn('text-sm text-muted-foreground', className)}
       {...props}
+      {...seatOf(stylex.props(styles.description), className)}
     />
   )
 }

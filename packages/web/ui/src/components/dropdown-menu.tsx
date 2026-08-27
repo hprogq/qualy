@@ -3,7 +3,11 @@
 import * as React from 'react'
 import { Menu as MMenu } from '@mantine/core'
 
-import { cn } from '../lib/utils.ts'
+import clsx from 'clsx'
+import * as stylex from '@stylexjs/stylex'
+
+import { tokens } from '../theme/tokens.stylex.ts'
+import { seatOf } from '../lib/xstyle.ts'
 import { CheckIcon, ChevronRightIcon } from 'lucide-react'
 
 // The Qualy dropdown menu keeps its compound shape over the widget menu,
@@ -101,18 +105,99 @@ function DropdownMenuContent({
       onKeyDown={(event) => {
         if (event.key === 'Escape' && opened) event.stopPropagation()
       }}
-      className={cn('min-w-48 overflow-x-hidden overflow-y-auto', className)}
       {...rest}
+      {...seatOf(stylex.props(styles.content), className)}
     >
       {children}
     </MMenu.Dropdown>
   )
 }
 
-// the widget marks the active row with data-hovered, whether it got there
-// by pointer or by arrow keys; the product accent follows that mark
-const itemClasses =
-  "group/dropdown-menu-item relative flex w-full cursor-default items-center gap-2.5 rounded-xl px-3 py-2 text-sm outline-hidden select-none data-hovered:bg-accent data-hovered:text-accent-foreground not-data-[variant=destructive]:data-hovered:**:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:data-hovered:bg-destructive/10 data-[variant=destructive]:data-hovered:text-destructive dark:data-[variant=destructive]:data-hovered:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive"
+// The widget marks the active row with data-hovered, whether it got there by
+// pointer or by arrow keys; the product accent follows that mark.
+//
+// The row's own look is stated here. What a caller puts INSIDE a row - an
+// icon, a second line of muted text - is reached by relation in theme.css,
+// which a compiled style cannot do.
+const styles = stylex.create({
+  content: {
+    minWidth: '12rem',
+    overflowX: 'hidden',
+    overflowY: 'auto',
+  },
+  subContent: {
+    minWidth: '9rem',
+    overflow: 'hidden',
+  },
+  item: {
+    position: 'relative',
+    display: 'flex',
+    width: '100%',
+    cursor: 'default',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    paddingInline: 12,
+    paddingBlock: 8,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    outlineStyle: 'none',
+    userSelect: 'none',
+    backgroundColor: { default: null, '[data-hovered]': tokens.surfaceMuted },
+    color: { default: null, '[data-hovered]': 'var(--accent-foreground)' },
+    pointerEvents: { default: null, '[data-disabled]': 'none' },
+    opacity: { default: null, '[data-disabled]': 0.5 },
+  },
+  // a row that removes something says so in its own ink, and answers the
+  // pointer in it rather than in the accent
+  itemDestructive: {
+    color: { default: tokens.danger, '[data-hovered]': tokens.danger },
+    backgroundColor: { default: null, '[data-hovered]': tokens.dangerSurface },
+  },
+  // room for the indicator column, kept whether or not this row has one
+  inset: {
+    paddingLeft: { default: null, '[data-inset]': 38 },
+  },
+  ticked: {
+    paddingBlock: 8,
+    paddingRight: 32,
+    paddingLeft: 12,
+  },
+  indicator: {
+    pointerEvents: 'none',
+    position: 'absolute',
+    right: 8,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: {
+    paddingInline: 12,
+    paddingBlock: 10,
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+    paddingLeft: { default: null, '[data-inset]': 38 },
+  },
+  separator: {
+    marginInline: -4,
+    marginBlock: 4,
+    borderColor: `color-mix(in oklab, ${tokens.border} 50%, transparent)`,
+  },
+  shortcut: {
+    marginLeft: 'auto',
+    fontSize: 12,
+    lineHeight: '1rem',
+    letterSpacing: '0.1em',
+    color: tokens.mutedForeground,
+  },
+  subTriggerGap: {
+    gap: 8,
+  },
+  trailing: {
+    marginLeft: 'auto',
+  },
+})
 
 function DropdownMenuItem({
   className,
@@ -133,8 +218,12 @@ function DropdownMenuItem({
       data-variant={variant}
       {...(disabled === undefined ? {} : { disabled })}
       {...(onSelect === undefined ? {} : { onClick: onSelect })}
-      className={cn(itemClasses, 'data-inset:pl-9.5', className)}
       {...props}
+      className={clsx(
+        stylex.props(styles.item, variant === 'destructive' && styles.itemDestructive, styles.inset)
+          .className,
+        className,
+      )}
     />
   )
 }
@@ -161,13 +250,10 @@ function DropdownMenuCheckboxItem({
       closeMenuOnClick={false}
       {...(disabled === undefined ? {} : { disabled })}
       onClick={() => onCheckedChange?.(!(checked === true))}
-      className={cn(itemClasses, 'py-2 pr-8 pl-3 data-inset:pl-9.5', className)}
       {...props}
+      className={clsx(stylex.props(styles.item, styles.ticked, styles.inset).className, className)}
     >
-      <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-        data-slot="dropdown-menu-checkbox-item-indicator"
-      >
+      <span {...stylex.props(styles.indicator)} data-slot="dropdown-menu-checkbox-item-indicator">
         {checked === true && <CheckIcon />}
       </span>
       {children}
@@ -221,13 +307,10 @@ function DropdownMenuRadioItem({
       data-inset={inset}
       {...(disabled === undefined ? {} : { disabled })}
       onClick={() => group.onValueChange?.(value)}
-      className={cn(itemClasses, 'py-2 pr-8 pl-3 data-inset:pl-9.5', className)}
       {...props}
+      className={clsx(stylex.props(styles.item, styles.ticked, styles.inset).className, className)}
     >
-      <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-        data-slot="dropdown-menu-radio-item-indicator"
-      >
+      <span {...stylex.props(styles.indicator)} data-slot="dropdown-menu-radio-item-indicator">
         {checked && <CheckIcon />}
       </span>
       {children}
@@ -244,8 +327,8 @@ function DropdownMenuLabel({
     <MMenu.Label
       data-slot="dropdown-menu-label"
       data-inset={inset}
-      className={cn('px-3 py-2.5 text-xs text-muted-foreground data-inset:pl-9.5', className)}
       {...props}
+      className={clsx(stylex.props(styles.label).className, className)}
     />
   )
 }
@@ -254,8 +337,8 @@ function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<'di
   return (
     <MMenu.Divider
       data-slot="dropdown-menu-separator"
-      className={cn('-mx-1 my-1 border-border/50', className)}
       {...props}
+      className={clsx(stylex.props(styles.separator).className, className)}
     />
   )
 }
@@ -264,8 +347,8 @@ function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<'spa
   return (
     <span
       data-slot="dropdown-menu-shortcut"
-      className={cn('ml-auto text-xs tracking-widest text-muted-foreground', className)}
       {...props}
+      {...seatOf(stylex.props(styles.shortcut), className)}
     />
   )
 }
@@ -296,8 +379,11 @@ function DropdownMenuSubTrigger({
       <MMenu.Sub.Item
         data-slot="dropdown-menu-sub-trigger"
         data-inset={inset}
-        className={cn(itemClasses, 'gap-2 data-inset:pl-9.5', className)}
-        rightSection={<ChevronRightIcon className="ml-auto" />}
+        className={clsx(
+          stylex.props(styles.item, styles.subTriggerGap, styles.inset).className,
+          className,
+        )}
+        rightSection={<ChevronRightIcon {...stylex.props(styles.trailing)} />}
       >
         {children}
       </MMenu.Sub.Item>
@@ -309,8 +395,8 @@ function DropdownMenuSubContent({ className, ...props }: React.ComponentProps<'d
   return (
     <MMenu.Sub.Dropdown
       data-slot="dropdown-menu-sub-content"
-      className={cn('min-w-36 overflow-hidden', className)}
       {...props}
+      className={clsx(stylex.props(styles.subContent).className, className)}
     />
   )
 }

@@ -17,6 +17,7 @@ export const tokens = stylex.defineVars({
   primary: 'var(--q-primary)',
   primaryForeground: 'var(--q-primary-foreground)',
   danger: 'var(--q-danger)',
+  dangerSurface: 'var(--q-danger-surface)',
   warning: 'var(--q-warning)',
   warningForeground: 'var(--q-warning-foreground)',
   success: 'var(--q-success)',
