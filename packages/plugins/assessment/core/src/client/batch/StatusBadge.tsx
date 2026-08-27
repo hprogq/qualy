@@ -133,7 +133,7 @@ export function StatusBadge({
       className={
         stylex.props(styles.badge, tone.badge, compact && styles.compact, xstyle).className
       }
-      labelClassName={stylex.props(styles.label).className}
+      labelXstyle={styles.label}
       // the word is what goes, not the meaning: the colour and the dot still
       // say it, and whoever cannot see them is reading this instead
       aria-label={compact ? format(label) : undefined}

@@ -59,12 +59,25 @@ const press = stylex.create({
   refused: {
     cursor: 'not-allowed',
   },
-  // a link has no ground to film over; it answers with its own ink
+  // A link has no ground to film over; it answers with its own ink, and with
+  // the underline a link is expected to grow under the pointer. Both stand
+  // down on a refused key for the same reason the film does.
   ink: {
     color: {
       default: null,
       ':active': 'color-mix(in oklch, var(--q-primary), var(--q-foreground) 25%)',
     },
+    textDecorationLine: {
+      default: null,
+      ':hover': 'underline',
+    },
+  },
+})
+
+const part = stylex.create({
+  // the breathing room between an icon and its word
+  label: {
+    gap: '0.375rem',
   },
 })
 
@@ -153,6 +166,10 @@ function Button({
     'data-variant': v,
     'data-size': s,
     ...(disabled === undefined ? {} : { disabled }),
+    // the icon-button component has no label part to dress
+    ...(iconSize === undefined
+      ? { classNames: { label: stylex.props(part.label).className } }
+      : {}),
     style: off ? { ...noHover, ...style } : style,
   }
 
