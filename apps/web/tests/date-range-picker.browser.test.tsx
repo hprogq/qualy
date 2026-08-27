@@ -6,18 +6,21 @@ import { DateRangePicker, type DateRange } from '@qualy/ui/date-range-picker'
 import { UiProvider } from '@qualy/ui/provider'
 import '../src/app.css'
 
-// How a span is DRAWN, asserted as geometry rather than as a screenshot.
+// How a span is DRAWN, asserted as geometry and product colour rather than as
+// a screenshot.
 //
 // Every defect this control shipped looked the same from the outside: the
 // selection stopped mid-air with nothing closing it, or a day in the middle
-// of a month wore an end's circle. Both are facts about two elements - the
-// track behind the days and the circle on the chosen ones - so both are
-// measured here.
+// of a month wore an end's circle, or a span turned grey halfway across a
+// month boundary. All of those are facts about two elements - the track
+// behind the days and the circle on them - so all of them are measured.
 //
-// The states are the ones that broke: a span crossing rows, a span crossing
-// the two month panels, an end still being hunted for, the pointer wandering
-// off the days while the panel keeps its preview, and the pointer resting on
-// an end that is already chosen.
+// The assertions read the widget's own state attributes and the product's
+// own tokens. They never read the marks this control computes, so they stay
+// a check on the drawing rather than a restatement of it.
+
+const DESKTOP = { width: 1152, height: 700 }
+const PHONE = { width: 390, height: 844 }
 
 function Harness({ initial }: { initial: DateRange }) {
   const [value, setValue] = useState<DateRange>(initial)
@@ -44,15 +47,20 @@ const days = () =>
   ) as HTMLElement[]
 
 const day = (text: string) => days().find((candidate) => candidate.textContent === text)!
+/** a day named the way the calendar names it, when the number is ambiguous */
+const dated = (label: string) => days().find((candidate) => candidate.ariaLabel === label)!
 
-const circleOf = (element: Element) =>
-  getComputedStyle(element).getPropertyValue('--q-day-circle').trim()
+const token = (name: string) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+const circle = (element: Element) => getComputedStyle(element, '::after').backgroundColor
+const track = (element: Element) => getComputedStyle(element, '::before')
 
-/** a day wearing the full ink: an end, chosen or being hunted for */
-const solid = (element: Element) => circleOf(element).startsWith('oklch')
-
-/** a day the pointer is only warming: a tint, not the full ink */
-const warmed = (element: Element) => circleOf(element).startsWith('color-mix')
+/** wearing the full ink: an end, chosen or being hunted for */
+const solid = (element: Element) => circle(element) === token('--q-primary')
+/** warmed by the pointer: a tint of it, and not nothing */
+const warm = (element: Element) =>
+  circle(element) !== token('--q-primary') && circle(element) !== 'rgba(0, 0, 0, 0)'
+const bare = (element: Element) => circle(element) === 'rgba(0, 0, 0, 0)'
 
 /**
  * Where the span is left open: a day inside it whose track runs to the edge
@@ -65,7 +73,7 @@ const openEnds = () => {
     const inside = cell.querySelector('button')
     if (!inside || inside.hasAttribute('data-hidden') || !inside.hasAttribute('data-in-range'))
       continue
-    const track = getComputedStyle(inside, '::before')
+    const drawn = track(inside)
     const carries = (neighbour: Element | null) => {
       const next = neighbour?.querySelector('button')
       return (
@@ -75,19 +83,18 @@ const openEnds = () => {
       )
     }
     const stops = (side: 'left' | 'right') =>
-      track[side] === '3px' &&
-      track[side === 'left' ? 'borderLeftWidth' : 'borderRightWidth'] === '1px'
+      drawn[side] === '3px' &&
+      drawn[side === 'left' ? 'borderLeftWidth' : 'borderRightWidth'] === '1px'
+    const named = inside.ariaLabel ?? inside.textContent
     if (!carries(cell.nextElementSibling) && !stops('right'))
-      found.push(`${inside.textContent} runs off to the right`)
+      found.push(`${named} runs off to the right`)
     if (!carries(cell.previousElementSibling) && !stops('left'))
-      found.push(`${inside.textContent} runs off to the left`)
+      found.push(`${named} runs off to the left`)
   }
   return found
 }
 
 afterEach(() => page.viewport(DESKTOP.width, DESKTOP.height))
-
-const DESKTOP = { width: 1152, height: 700 }
 
 describe('a span is drawn as a track its ends sit on', () => {
   it('closes on both ends inside one row', async () => {
@@ -95,7 +102,7 @@ describe('a span is drawn as a track its ends sit on', () => {
     expect(openEnds()).toEqual([])
     expect(solid(day('3'))).toBe(true)
     expect(solid(day('6'))).toBe(true)
-    expect(solid(day('4'))).toBe(false)
+    expect(bare(day('4'))).toBe(true)
   })
 
   it('closes on both ends when it crosses rows', async () => {
@@ -103,15 +110,16 @@ describe('a span is drawn as a track its ends sit on', () => {
     expect(openEnds()).toEqual([])
     expect(solid(day('3'))).toBe(true)
     expect(solid(day('13'))).toBe(true)
-    // a day in the middle is track, not an end
-    expect(solid(day('8'))).toBe(false)
+    expect(bare(day('8'))).toBe(true)
   })
 
   it('closes when it crosses the two month panels', async () => {
     await open({ start: '2026-08-26', end: '2026-09-08' })
+    expect(document.querySelectorAll('table').length).toBe(2)
     expect(openEnds()).toEqual([])
     // the month's last day is a break in the view, not an end of the span
-    expect(solid(day('31'))).toBe(false)
+    expect(bare(dated('2026年8月31日'))).toBe(true)
+    expect(solid(dated('2026年9月8日'))).toBe(true)
   })
 
   it('draws the end being hunted for, and keeps it when the pointer leaves the days', async () => {
@@ -122,7 +130,7 @@ describe('a span is drawn as a track its ends sit on', () => {
     await expect.poll(() => solid(candidate)).toBe(true)
     expect(openEnds()).toEqual([])
     // the panel keeps its preview when the pointer slips into a gap between
-    // rows; :hover does not survive that, so the drawing must not need it
+    // rows; the mark this control keeps must not be lost with :hover
     const blank = document.querySelector('table tbody tr td')!
     for (const kind of ['pointerover', 'mouseover', 'pointermove', 'mousemove'])
       blank.dispatchEvent(new MouseEvent(kind, { bubbles: true }))
@@ -157,7 +165,7 @@ describe('every shape a span can take is closed', () => {
     expect(openEnds()).toEqual([])
     const alone = day('11')
     expect(solid(alone)).toBe(true)
-    expect(getComputedStyle(alone, '::before').display).toBe('none')
+    expect(track(alone).display).toBe('none')
   })
 
   it('is hunted backwards from its start just as well', async () => {
@@ -166,11 +174,11 @@ describe('every shape a span can take is closed', () => {
     const candidate = day('5')
     await userEvent.hover(candidate)
     await expect.poll(() => solid(candidate)).toBe(true)
+    expect(solid(day('17'))).toBe(true)
     expect(openEnds()).toEqual([])
   })
 
-  // the row's own edges, and the edge of the panel itself, where there is no
-  // neighbour to ask and the pointer is the only answer
+  // the row's own edges, and the edge of the panel itself
   it.each([
     ['a row start', '10'],
     ['a row end', '9'],
@@ -188,33 +196,94 @@ describe('every shape a span can take is closed', () => {
     await open({ start: '2026-08-03', end: '2026-08-13' })
     const middle = day('8')
     await userEvent.hover(middle)
-    await expect.poll(() => warmed(middle)).toBe(true)
+    await expect.poll(() => warm(middle)).toBe(true)
     expect(solid(middle)).toBe(false)
     expect(solid(day('3'))).toBe(true)
     expect(solid(day('13'))).toBe(true)
   })
+})
 
-  it('closes on a phone, where the panel shows one month', async () => {
-    page.viewport(390, 844)
-    await open({ start: '2026-08-26', end: '2026-09-08' })
+describe('one month at a time, with the neighbouring days on show', () => {
+  it('runs one unbroken track across the turn of the month', async () => {
+    page.viewport(PHONE.width, PHONE.height)
+    await open({ start: '2026-08-28', end: '2026-09-03' })
     await expect.poll(() => document.querySelectorAll('table').length).toBe(1)
     expect(openEnds()).toEqual([])
-    // the span leaves this panel rather than ending in it
-    expect(solid(day('31'))).toBe(false)
+
+    const last = dated('2026年8月31日')
+    const first = dated('2026年9月1日')
+    // the turn of the month is not a break in the view here: both days are in
+    // the same row, so the track walks straight through
+    expect(last.hasAttribute('data-track-cap-end')).toBe(false)
+    expect(first.hasAttribute('data-track-cap-start')).toBe(false)
+    expect(track(last).right).toBe('0px')
+    expect(track(first).left).toBe('0px')
+    // and it is the same track: same ground, same rule, same weight of ink
+    expect(track(first).backgroundColor).toBe(track(last).backgroundColor)
+    expect(track(first).borderTopColor).toBe(track(last).borderTopColor)
+    expect(getComputedStyle(first).opacity).toBe('1')
+    // only the number says the day belongs to another month
+    expect(first.hasAttribute('data-outside')).toBe(true)
+    expect(getComputedStyle(first).color).toBe(token('--q-muted-foreground'))
+    expect(getComputedStyle(last).color).toBe(token('--q-foreground'))
   })
 
-  it('keeps a guard against motion for a reader who asked for less', async () => {
-    // the runner cannot be told to prefer reduced motion per test, so what is
-    // pinned here is that the guard exists and still names the day
-    const guards = Array.from(document.styleSheets).flatMap((sheet) => {
-      try {
-        return Array.from(sheet.cssRules)
-      } catch {
-        return []
-      }
-    })
-    const reduced = JSON.stringify(guards.map((rule) => rule.cssText))
-    expect(reduced).toContain('prefers-reduced-motion')
-    expect(reduced.includes('q-calendar-day') && reduced.includes('transition: none')).toBe(true)
+  it('gives an end that falls on a neighbouring day the same circle as any other', async () => {
+    page.viewport(PHONE.width, PHONE.height)
+    await open({ start: '2026-08-28', end: '2026-09-03' })
+    const end = dated('2026年9月3日')
+    expect(end.hasAttribute('data-outside')).toBe(true)
+    expect(solid(end)).toBe(true)
+    expect(getComputedStyle(end).opacity).toBe('1')
+    expect(getComputedStyle(end).color).toBe(token('--q-primary-foreground'))
+  })
+
+  it('hunts backwards across the turn of the month', async () => {
+    page.viewport(PHONE.width, PHONE.height)
+    await open({ start: '', end: '' })
+    const second = dated('2026年9月2日')
+    await userEvent.click(second)
+    const candidate = dated('2026年8月30日')
+    await userEvent.hover(candidate)
+    await expect.poll(() => solid(candidate)).toBe(true)
+    expect(solid(second)).toBe(true)
+    expect(openEnds()).toEqual([])
+  })
+})
+
+describe('the day answers its own state', () => {
+  it('leaves the motion out for a reader who asked for less', async () => {
+    // the runner prefers reduced motion, so this is the reduced branch: the
+    // ink and the circle change without crossing
+    expect(window.matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(true)
+    await open({ start: '2026-08-03', end: '2026-08-13' })
+    const end = day('13')
+    expect(getComputedStyle(end).transitionDuration).toBe('0s')
+    expect(getComputedStyle(end, '::after').transitionDuration).toBe('0s')
+    // the track never crossed in either branch
+    expect(getComputedStyle(end, '::before').transitionDuration).toBe('0s')
+  })
+
+  it('draws from the palette of whichever scheme it is in', async () => {
+    render(
+      <UiProvider scheme="dark">
+        <DateRangePicker
+          value={{ start: '2026-08-03', end: '2026-08-13' }}
+          onChange={() => {}}
+          placeholder="span"
+          localeTag="zh-CN"
+        />
+      </UiProvider>,
+    )
+    await expect
+      .poll(() => document.querySelector('[data-slot="date-range-picker"]') !== null)
+      .toBe(true)
+    await userEvent.click(document.querySelector('[data-slot="date-range-picker"]')!)
+    await expect.poll(() => document.querySelectorAll('table').length > 0).toBe(true)
+    const dark = getComputedStyle(document.documentElement).getPropertyValue('--q-primary').trim()
+    expect(circle(day('3'))).toBe(dark)
+    expect(getComputedStyle(day('3')).color).toBe(
+      getComputedStyle(document.documentElement).getPropertyValue('--q-primary-foreground').trim(),
+    )
   })
 })

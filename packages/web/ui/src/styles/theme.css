@@ -9,9 +9,6 @@
    both land in the mantine layer, under everything the product states */
 @import '@mantine/dates/styles.layer.css';
 @import './tokens.css';
-/* the calendar's own rules, kept beside the module that names its classes:
-   they are one control's implementation rather than a product baseline */
-@import '../lib/calendar.css';
 
 @custom-variant dark (&:is(.dark *));
 

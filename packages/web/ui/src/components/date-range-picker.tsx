@@ -1,12 +1,14 @@
 'use client'
 
 import type * as React from 'react'
+import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import dayjs from 'dayjs'
 import { DatePickerInput } from '@mantine/dates'
 
 import { useIsBelow } from '../hooks/use-mobile.ts'
 
-import { calendarLook } from '../lib/calendar.ts'
+import { FIRST_DAY_OF_WEEK, calendarLook } from '../lib/calendar.ts'
 import { dateWordsIn, dayIn } from '../lib/date-format.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
@@ -27,21 +29,70 @@ const styles = stylex.create({
   },
 })
 
-/**
- * What this adapter has to tell the calendar about each day: only whether a
- * second end is being hunted for, which decides whether the day under the
- * pointer is drawn as the end it would become.
- *
- * It does NOT report which day that is. The widget claims the day's own
- * pointer handlers for its preview and drops any passed alongside its data
- * attributes, and the drawing turned out not to need it: an end is the day
- * whose neighbour is not in the span.
- */
-const dayMarksOf = (pickingEnd: boolean) => (pickingEnd ? { 'data-range-picking': true } : {})
-
 export interface DateRange {
   start: string
   end: string
+}
+
+/**
+ * The two ends of the run currently on screen: the chosen span, or the one
+ * being previewed while a second end is hunted for.
+ *
+ * The widget still owns the span itself - which days are in it, which end it,
+ * how a backwards hunt is ordered. This only names the two dates the drawing
+ * has to cap at, and it names them from the value this control already holds
+ * plus the day the pointer last entered. Calendar dates sort as text, so
+ * `YYYY-MM-DD` compares directly and no date ever becomes an instant.
+ */
+const runEnds = (value: DateRange, previewEnd: string | null) => {
+  if (value.start === '') return null
+  const other = value.end !== '' ? value.end : previewEnd
+  if (other === null || other === '') return null
+  return other < value.start
+    ? { first: other, last: value.start }
+    : { first: value.start, last: other }
+}
+
+/** the day's place in its row, counted from the day a week starts on here */
+const weekdayIndex = (date: string) => (dayjs(date).day() - FIRST_DAY_OF_WEEK + 7) % 7
+const isFirstOfMonth = (date: string) => date.endsWith('-01')
+const isLastOfMonth = (date: string) => dayjs(date).date() === dayjs(date).daysInMonth()
+
+/**
+ * Where the track has to close on this day, and whether it is the end being
+ * hunted for. Nothing about WHY it closes leaves this function.
+ *
+ * A run stops at its own end, at the edge of a row, and at the edge of a
+ * panel - but a month boundary is only a panel edge when the panel hides the
+ * days on the other side of it. Shown, they are ordinary cells in the same
+ * row, and a span crossing into the next month has to stay one unbroken
+ * track through them.
+ */
+const dayMarks = (
+  date: string,
+  value: DateRange,
+  previewEnd: string | null,
+  hideOutsideDates: boolean,
+): Record<string, true> => {
+  const run = runEnds(value, previewEnd)
+  if (run === null) return {}
+  const marks: Record<string, true> = {}
+  if (
+    date === run.first ||
+    weekdayIndex(date) === 0 ||
+    (hideOutsideDates && isFirstOfMonth(date))
+  ) {
+    marks['data-track-cap-start'] = true
+  }
+  if (date === run.last || weekdayIndex(date) === 6 || (hideOutsideDates && isLastOfMonth(date))) {
+    marks['data-track-cap-end'] = true
+  }
+  // Only while a second end is being hunted: once both are chosen the widget
+  // marks them selected itself. The mark is read together with the widget's
+  // own in-range, so a stale one - the pointer having left the calendar,
+  // which clears the widget's preview - draws nothing.
+  if (value.end === '' && date === previewEnd) marks['data-preview-end'] = true
+  return marks
 }
 
 export function DateRangePicker({
@@ -72,23 +123,35 @@ export function DateRangePicker({
   className?: string
 }) {
   const narrow = useIsBelow(560)
-  // one end chosen and the other still open: the day under the pointer is a
-  // candidate, and worth drawing as one
-  const pickingEnd = value.start !== '' && value.end === ''
+  // Two months side by side, because the task this control exists for is
+  // "from the end of one month into the next" and a single panel makes that
+  // a hunt. Where there is no room for two, one is better than two squeezed -
+  // and a single panel then shows the neighbouring month's days rather than
+  // blanks, so a span crossing into it stays one run on screen.
+  const numberOfColumns = narrow ? 1 : 2
+  const hideOutsideDates = numberOfColumns > 1
+  // The day the pointer last entered, which is all this control keeps of the
+  // hunt. The widget computes the span, its order and its marks; this only
+  // says which day to cap and circle at the loose end.
+  const [previewEnd, setPreviewEnd] = useState<string | null>(null)
+  const hunting = value.start !== '' && value.end === ''
   return (
     <DatePickerInput
       id={id}
       data-slot="date-range-picker"
       type="range"
       value={[value.start === '' ? null : value.start, value.end === '' ? null : value.end]}
-      onChange={([start, end]) => onChange({ start: start ?? '', end: end ?? '' })}
+      onChange={([start, end]) => {
+        setPreviewEnd(null)
+        onChange({ start: start ?? '', end: end ?? '' })
+      }}
       placeholder={placeholder}
       disabled={disabled}
-      // Two months side by side, because the task this control exists for is
-      // "from the end of one month into the next" and a single panel makes
-      // that a hunt. Where there is no room for two, one is better than two
-      // squeezed.
-      numberOfColumns={narrow ? 1 : 2}
+      numberOfColumns={numberOfColumns}
+      // stated rather than inherited: the same answer has to reach the widget
+      // and the marks below, or one would draw a boundary the other denies
+      hideOutsideDates={hideOutsideDates}
+      firstDayOfWeek={FIRST_DAY_OF_WEEK}
       valueFormatter={({ date }) => {
         const [start, end] = Array.isArray(date) ? date : [date, null]
         if (typeof start !== 'string') return ''
@@ -96,7 +159,12 @@ export function DateRangePicker({
           ? `${dayIn(localeTag, start)} – ${dayIn(localeTag, end)}`
           : dayIn(localeTag, start)
       }}
-      getDayProps={() => dayMarksOf(pickingEnd)}
+      getDayProps={(date) => ({
+        ...dayMarks(date, value, previewEnd, hideOutsideDates),
+        // the widget calls its own handler after this one, so the preview and
+        // the mark move together
+        onMouseEnter: hunting ? () => setPreviewEnd(date) : undefined,
+      })}
       {...calendarLook}
       {...dateWordsIn(localeTag)}
       {...(monthLabel === undefined && yearLabel === undefined
