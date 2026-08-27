@@ -2,7 +2,6 @@
 // the factory in an extra `default` that the esm build vitest actually loads
 // does not have; the cast re-aligns the type with the runtime value
 import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
-import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
 import { fileURLToPath } from 'node:url'
@@ -38,7 +37,6 @@ export default defineConfig({
       unstable_moduleResolution: { type: 'commonJS', rootDir: repoRoot },
     }),
     react(),
-    tailwindcss(),
   ],
   resolve: {
     // one react instance for the host and every plugin component

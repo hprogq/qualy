@@ -1,53 +1,144 @@
-import * as React from 'react'
+'use client'
 
-import { cn } from '../lib/utils.ts'
+import * as React from 'react'
+import * as stylex from '@stylexjs/stylex'
+
+import { tokens } from '../theme/tokens.stylex.ts'
+import { seatOf } from '../lib/xstyle.ts'
 
 // Events in the order they happen: a rail, a marker per event, and whatever
 // each event has to say.
 //
-// The markup and the class names are reui's timeline (reui.io/r/timeline),
-// with its render-prop polymorphism left out - nothing here needs to become
-// another element, and taking it meant taking a second component library
-// into a package that already has one.
+// The shape is reui's timeline (reui.io/r/timeline), with its render-prop
+// polymorphism left out - nothing here needs to become another element.
 //
 // Which events are behind the reader is stated rather than counted: the
 // caller sets `value` to the step it has reached, and every item at or below
 // it draws as done. That is the whole of the state; a timeline knows nothing
 // about what its events are.
+//
+// Which way it runs is passed down rather than read back up. Every part of
+// this changes shape with the orientation, and the orientation lives on the
+// root - so the root tells its parts, and none of them has to ask the DOM
+// what they are inside of.
 
 interface TimelineContextValue {
   activeStep: number
+  upright: boolean
 }
 
 const TimelineContext = React.createContext<TimelineContextValue | undefined>(undefined)
 
 const useTimeline = () => {
-  const context = React.useContext(TimelineContext)
+  const context = React.use(TimelineContext)
   if (!context) throw new Error('useTimeline must be used within a Timeline')
   return context
+}
+
+const styles = stylex.create({
+  root: { display: 'flex' },
+  rootUpright: { flexDirection: 'column' },
+  rootAcross: { width: '100%', flexDirection: 'row' },
+  item: {
+    position: 'relative',
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 2,
+    // the rail runs from one event to the next, so the last one has none: an
+    // item says whether it is the last, and the rail inside it reads that
+    '--q-timeline-rail': { default: 'block', ':last-child': 'none' },
+  },
+  itemUpright: {
+    marginInlineStart: 32,
+    paddingBottom: { default: 24, ':last-child': 0 },
+  },
+  itemAcross: {
+    marginTop: 32,
+    paddingInlineEnd: { default: 32, ':last-child': 0 },
+  },
+  date: {
+    marginBottom: 4,
+    display: 'block',
+    fontSize: 12,
+    lineHeight: '1rem',
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  // a date that wraps in a narrow upright rail still leaves its item the same
+  // height as its neighbours
+  dateUpright: { height: { default: null, '@media (max-width: 639.98px)': 16 } },
+  title: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
+  content: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  marker: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: 9999,
+    borderWidth: 2,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.primary} 20%, transparent)`,
+  },
+  markerDone: { borderColor: tokens.primary },
+  markerUpright: { insetBlockStart: 0, insetInlineStart: -24, transform: 'translateX(-50%)' },
+  markerAcross: { insetBlockStart: -24, insetInlineStart: 0, transform: 'translateY(-50%)' },
+  rail: {
+    display: 'var(--q-timeline-rail, block)',
+    position: 'absolute',
+    alignSelf: 'flex-start',
+    backgroundColor: `color-mix(in oklab, ${tokens.primary} 10%, transparent)`,
+  },
+  railDone: { backgroundColor: tokens.primary },
+  railUpright: {
+    height: 'calc(100% - 1rem - 0.25rem)',
+    width: 2,
+    insetInlineStart: -24,
+    transform: 'translate(-50%, 18px)',
+  },
+  railAcross: {
+    insetBlockStart: -24,
+    height: 2,
+    width: 'calc(100% - 1rem - 0.25rem)',
+    transform: 'translate(18px, -50%)',
+  },
+})
+
+/** what an item tells the parts inside it */
+const ItemContext = React.createContext({ done: false, nextDone: false })
+
+interface Seat {
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
+  className?: string
 }
 
 function Timeline({
   value = 1,
   orientation = 'vertical',
   className,
+  xstyle,
   children,
   ...props
-}: React.ComponentProps<'div'> & {
-  /** the step the reader has got to; everything up to it draws as done */
-  value?: number
-  orientation?: 'horizontal' | 'vertical'
-}) {
+}: React.ComponentProps<'div'> &
+  Seat & {
+    /** the step the reader has got to; everything up to it draws as done */
+    value?: number
+    orientation?: 'horizontal' | 'vertical'
+  }) {
+  const upright = orientation === 'vertical'
+  const held = React.useMemo(() => ({ activeStep: value, upright }), [value, upright])
   return (
-    <TimelineContext value={{ activeStep: value }}>
+    <TimelineContext value={held}>
       <div
         data-slot="timeline"
         data-orientation={orientation}
-        className={cn(
-          'group/timeline flex data-[orientation=horizontal]:w-full data-[orientation=horizontal]:flex-row data-[orientation=vertical]:flex-col',
+        {...props}
+        {...seatOf(
+          stylex.props(styles.root, upright ? styles.rootUpright : styles.rootAcross, xstyle),
           className,
         )}
-        {...props}
       >
         {children}
       </div>
@@ -58,82 +149,105 @@ function Timeline({
 function TimelineItem({
   step,
   className,
+  xstyle,
   children,
   ...props
-}: React.ComponentProps<'div'> & { step: number }) {
-  const { activeStep } = useTimeline()
+}: React.ComponentProps<'div'> & Seat & { step: number }) {
+  const { activeStep, upright } = useTimeline()
+  const done = step <= activeStep
+  const place = React.useMemo(
+    () => ({ done, nextDone: step + 1 <= activeStep }),
+    [done, step, activeStep],
+  )
   return (
     <div
       data-slot="timeline-item"
-      data-completed={step <= activeStep || undefined}
-      className={cn(
-        'group/timeline-item relative flex flex-1 flex-col gap-0.5 group-data-[orientation=horizontal]/timeline:mt-8 group-data-[orientation=vertical]/timeline:ms-8 group-data-[orientation=horizontal]/timeline:not-last:pe-8 group-data-[orientation=vertical]/timeline:not-last:pb-6 has-[+[data-completed]]:**:data-[slot=timeline-separator]:bg-primary',
+      data-completed={done || undefined}
+      {...props}
+      {...seatOf(
+        stylex.props(styles.item, upright ? styles.itemUpright : styles.itemAcross, xstyle),
         className,
       )}
-      {...props}
     >
-      {children}
+      <ItemContext value={place}>{children}</ItemContext>
     </div>
   )
 }
 
-function TimelineHeader({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="timeline-header" className={cn(className)} {...props} />
+function TimelineHeader({ className, xstyle, ...props }: React.ComponentProps<'div'> & Seat) {
+  return <div data-slot="timeline-header" {...props} {...seatOf(stylex.props(xstyle), className)} />
 }
 
-function TimelineDate({ className, ...props }: React.ComponentProps<'time'>) {
+function TimelineDate({ className, xstyle, ...props }: React.ComponentProps<'time'> & Seat) {
+  const { upright } = useTimeline()
   return (
     <time
       data-slot="timeline-date"
-      className={cn(
-        'mb-1 block text-xs font-medium text-muted-foreground group-data-[orientation=vertical]/timeline:max-sm:h-4',
-        className,
-      )}
       {...props}
+      {...seatOf(stylex.props(styles.date, upright && styles.dateUpright, xstyle), className)}
     />
   )
 }
 
-function TimelineTitle({ className, ...props }: React.ComponentProps<'h3'>) {
+function TimelineTitle({ className, xstyle, ...props }: React.ComponentProps<'h3'> & Seat) {
   return (
-    <h3 data-slot="timeline-title" className={cn('text-sm font-medium', className)} {...props} />
+    <h3
+      data-slot="timeline-title"
+      {...props}
+      {...seatOf(stylex.props(styles.title, xstyle), className)}
+    />
   )
 }
 
-function TimelineContent({ className, ...props }: React.ComponentProps<'div'>) {
+function TimelineContent({ className, xstyle, ...props }: React.ComponentProps<'div'> & Seat) {
   return (
     <div
       data-slot="timeline-content"
-      className={cn('text-sm text-muted-foreground', className)}
       {...props}
+      {...seatOf(stylex.props(styles.content, xstyle), className)}
     />
   )
 }
 
-function TimelineIndicator({ className, ...props }: React.ComponentProps<'div'>) {
+function TimelineIndicator({ className, xstyle, ...props }: React.ComponentProps<'div'> & Seat) {
+  const { upright } = useTimeline()
+  const { done } = React.use(ItemContext)
   return (
     <div
       aria-hidden
       data-slot="timeline-indicator"
-      className={cn(
-        'absolute size-4 rounded-full border-2 border-primary/20 group-data-completed/timeline-item:border-primary group-data-[orientation=horizontal]/timeline:-top-6 group-data-[orientation=horizontal]/timeline:left-0 group-data-[orientation=horizontal]/timeline:-translate-y-1/2 group-data-[orientation=vertical]/timeline:top-0 group-data-[orientation=vertical]/timeline:-left-6 group-data-[orientation=vertical]/timeline:-translate-x-1/2',
+      {...props}
+      {...seatOf(
+        stylex.props(
+          styles.marker,
+          done && styles.markerDone,
+          upright ? styles.markerUpright : styles.markerAcross,
+          xstyle,
+        ),
         className,
       )}
-      {...props}
     />
   )
 }
 
-function TimelineSeparator({ className, ...props }: React.ComponentProps<'div'>) {
+function TimelineSeparator({ className, xstyle, ...props }: React.ComponentProps<'div'> & Seat) {
+  const { upright } = useTimeline()
+  // the rail to the next event is drawn as reached once that event is
+  const { nextDone } = React.use(ItemContext)
   return (
     <div
       aria-hidden
       data-slot="timeline-separator"
-      className={cn(
-        'absolute self-start bg-primary/10 group-last/timeline-item:hidden group-data-[orientation=horizontal]/timeline:-top-6 group-data-[orientation=horizontal]/timeline:h-0.5 group-data-[orientation=horizontal]/timeline:w-[calc(100%-1rem-0.25rem)] group-data-[orientation=horizontal]/timeline:translate-x-4.5 group-data-[orientation=horizontal]/timeline:-translate-y-1/2 group-data-[orientation=vertical]/timeline:h-[calc(100%-1rem-0.25rem)] group-data-[orientation=vertical]/timeline:w-0.5 group-data-[orientation=vertical]/timeline:-left-6 group-data-[orientation=vertical]/timeline:translate-y-4.5 group-data-[orientation=vertical]/timeline:-translate-x-1/2',
+      {...props}
+      {...seatOf(
+        stylex.props(
+          styles.rail,
+          nextDone && styles.railDone,
+          upright ? styles.railUpright : styles.railAcross,
+          xstyle,
+        ),
         className,
       )}
-      {...props}
     />
   )
 }

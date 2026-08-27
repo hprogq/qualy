@@ -91,7 +91,6 @@ const styles = stylex.create({
     gap: 8,
   },
   title: {
-    fontFamily: 'var(--font-heading)',
     fontSize: 16,
     lineHeight: 1,
     fontWeight: 500,

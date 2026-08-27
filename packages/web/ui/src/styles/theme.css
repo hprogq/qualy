@@ -1,5 +1,3 @@
-@import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
 @import '@fontsource-variable/inter';
 @import 'react-photo-view/dist/react-photo-view.css';
 /* the layered distribution: every widget rule arrives inside @layer mantine,
@@ -10,8 +8,6 @@
 @import '@mantine/dates/styles.layer.css';
 @import './tokens.css';
 
-@custom-variant dark (&:is(.dark *));
-
 /* What "open" and "closed" mean on a panel that animates.
  *
  * Every overlay component is written with `data-open:animate-in` and
@@ -21,8 +17,6 @@
  * attribute nothing ever sets - so every dialog, sheet, menu, select,
  * popover and tooltip in the product appeared and vanished instantly, and no
  * amount of correcting the components would have shown a frame of it. */
-@custom-variant data-open (&[data-state='open']);
-@custom-variant data-closed (&[data-state='closed']);
 
 /* The photo viewer portals to <body>. While a modal sheet is open, Radix
  * sets pointer-events:none on everything outside its content - which is
@@ -30,100 +24,6 @@
  * onto the sheet beneath it. The viewer re-enables itself. */
 .PhotoView-Portal {
   pointer-events: auto;
-}
-
-/* shadcn-style design tokens for tailwind v4. Where a Qualy semantic token
- * exists the shadcn variable is an alias onto it, so the old Tailwind pages
- * and the new StyleX surfaces read one palette during the coexistence
- * period (docs/ui-platform-migration-mantine.md); remove the aliases
- * with the Tailwind teardown once nothing consumes the shadcn names.
- * Dark mode still flips on the .dark class - inside tokens.css for the
- * aliased variables, here for the rest. */
-:root {
-  --background: var(--q-background);
-  --foreground: var(--q-foreground);
-  --card: var(--q-surface);
-  --card-foreground: var(--q-foreground);
-  --popover: var(--q-surface-elevated);
-  --popover-foreground: var(--q-foreground);
-  --primary: var(--q-primary);
-  --primary-foreground: var(--q-primary-foreground);
-  --secondary: var(--q-surface-muted);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: var(--q-surface-muted);
-  --muted-foreground: var(--q-muted-foreground);
-  --accent: var(--q-surface-muted);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: var(--q-danger);
-  --border: var(--q-border);
-  --input: var(--q-input);
-  --ring: var(--q-focus-ring);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: var(--q-radius-lg);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: var(--q-foreground);
-  --sidebar-primary: var(--q-primary);
-  --sidebar-primary-foreground: var(--q-primary-foreground);
-  --sidebar-accent: var(--q-surface-muted);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: var(--q-border);
-  --sidebar-ring: var(--q-focus-ring);
-}
-
-.dark {
-  --secondary-foreground: oklch(0.985 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --font-heading: var(--font-sans);
-  --font-sans: 'Inter Variable', sans-serif;
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 @layer base {
@@ -140,17 +40,164 @@
       --q-input-fz: var(--mantine-font-size-md);
     }
   }
-  * {
-    border-color: var(--color-border);
-    @apply border-border outline-ring/50;
+  /* The product's own baseline.
+   *
+   * It arrived with the utility framework and left with it, which is a
+   * bigger hole than it sounds: two thirds of the buttons on these screens
+   * are plain <button> elements - a row that opens a panel, a chip that
+   * drops itself - and without a baseline they come back wearing the
+   * browser's own chrome. The widget library's baseline does not cover
+   * them; it sets a font and a text-transform and stops.
+   *
+   * So it is stated here, in the same layer it used to live in, and pinned
+   * by a test that measures bare elements rather than by hoping. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+    border-color: var(--q-border);
+    outline-color: color-mix(in oklab, var(--q-focus-ring) 50%, transparent);
+  }
+  hr {
+    height: 0;
+    color: inherit;
+    border-top-width: 1px;
+  }
+  abbr:where([title]) {
+    text-decoration: underline dotted;
+  }
+  /* headings take their size from the screen that writes them */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+  a {
+    color: inherit;
+    -webkit-text-decoration: inherit;
+    text-decoration: inherit;
+  }
+  b,
+  strong {
+    font-weight: bolder;
+  }
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    font-size: 1em;
+  }
+  small {
+    font-size: 80%;
+  }
+  sub,
+  sup {
+    position: relative;
+    font-size: 75%;
+    line-height: 0;
+    vertical-align: baseline;
+  }
+  sub {
+    bottom: -0.25em;
+  }
+  sup {
+    top: -0.5em;
+  }
+  table {
+    text-indent: 0;
+    border-color: inherit;
+    border-collapse: collapse;
+  }
+  progress {
+    vertical-align: baseline;
+  }
+  summary {
+    display: list-item;
+  }
+  /* lists are structure here, never bullets */
+  ol,
+  ul,
+  menu {
+    list-style: none;
+  }
+  img,
+  svg,
+  video,
+  canvas,
+  audio,
+  iframe,
+  embed,
+  object {
+    display: block;
+    vertical-align: middle;
+  }
+  img,
+  video {
+    max-width: 100%;
+    height: auto;
+  }
+  /* a control speaks with the page's voice and paints nothing of its own */
+  button,
+  input,
+  select,
+  optgroup,
+  textarea,
+  ::file-selector-button {
+    font: inherit;
+    font-feature-settings: inherit;
+    font-variation-settings: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background-color: transparent;
+    border-radius: 0;
+    opacity: 1;
+  }
+  :where(select:is([multiple], [size])) optgroup {
+    font-weight: bolder;
+  }
+  ::placeholder {
+    opacity: 1;
+    color: color-mix(in oklab, currentColor 50%, transparent);
+  }
+  textarea {
+    resize: vertical;
+  }
+  button,
+  input:where([type='button'], [type='reset'], [type='submit']),
+  ::file-selector-button {
+    appearance: button;
+  }
+  ::-webkit-inner-spin-button,
+  ::-webkit-outer-spin-button {
+    height: auto;
+  }
+  ::-webkit-search-decoration {
+    -webkit-appearance: none;
+  }
+  [hidden]:where(:not([hidden='until-found'])) {
+    display: none !important;
   }
   body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
-    @apply bg-background text-foreground;
+    background-color: var(--q-background);
+    color: var(--q-foreground);
+    line-height: inherit;
   }
   html {
-    @apply font-sans;
+    font-family: 'Inter Variable', sans-serif;
+    line-height: 1.5;
+    tab-size: 4;
     /* a phone browser's own flourishes, declined: the grey tap flash reads
        as a second, unstyled button under every control, and the automatic
        text inflation re-sizes copy the layout already sized */

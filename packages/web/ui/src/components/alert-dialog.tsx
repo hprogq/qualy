@@ -83,7 +83,6 @@ const styles = stylex.create({
   },
   mediaRoomy: { gridRow: { default: null, [WIDE]: 'span 2' } },
   title: {
-    fontFamily: 'var(--font-heading)',
     // size and leading travel together, as the utility this replaces did
     fontSize: 18,
     lineHeight: '1.75rem',

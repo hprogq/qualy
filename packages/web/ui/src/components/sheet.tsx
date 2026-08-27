@@ -135,7 +135,6 @@ const styles = stylex.create({
     padding: 24,
   },
   title: {
-    fontFamily: 'var(--font-heading)',
     fontSize: 16,
     lineHeight: '1.5rem',
     fontWeight: 500,

@@ -7,23 +7,8 @@
    invert the cascade (first declaration fixes a layer's position for the
    whole document).
 
-   utilities sits LAST, above the StyleX priority layers: a caller's
-   `className="p-6"` on a StyleX-styled component keeps winning, exactly as
-   it did when both sides were Tailwind and tailwind-merge arbitrated. The
-   order is transitional by design - it holds the consumer-override contract
-   steady while the shared layer migrates, and stops meaning anything once
-   the utility layer itself is deleted. */
-@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5, utilities;
+   Keep in sync with index.html and the browser test setup
+   (tests/support/cascade-layers.ts). */
+@layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;
 
-@import 'tailwindcss' source(none);
 @import '@qualy/ui/theme.css';
-
-/* the single tailwind compilation entry: workspace sources are registered
-   explicitly because the default scan does not follow pnpm symlinks */
-@source './';
-@source '../../../packages/web/ui/src';
-@source '../../../packages/web/runtime/src';
-@source '../../../packages/web/i18n/src';
-/* whole plugin tree: glob patterns are unreliable here (probed), and the
-   superset keeps css stable across plugin toggles like the schema set */
-@source '../../../packages/plugins';

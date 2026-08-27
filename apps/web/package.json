@@ -34,11 +34,9 @@
     "@qualy/web-build": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "@stylexjs/unplugin": "catalog:",
-    "@tailwindcss/vite": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
-    "tailwindcss": "catalog:",
     "vite": "catalog:"
   }
 }

@@ -23,6 +23,7 @@ export const tokens = stylex.defineVars({
   success: 'var(--q-success)',
   successForeground: 'var(--q-success-foreground)',
   mutedForeground: 'var(--q-muted-foreground)',
+  surfaceMutedForeground: 'var(--q-surface-muted-foreground)',
   selectedBorder: 'var(--q-selected-border)',
   selectedSurface: 'var(--q-selected-surface)',
   radiusSm: 'var(--q-radius-sm)',

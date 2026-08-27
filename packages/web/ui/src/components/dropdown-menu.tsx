@@ -144,7 +144,7 @@ const styles = stylex.create({
     outlineStyle: 'none',
     userSelect: 'none',
     backgroundColor: { default: null, '[data-hovered]': tokens.surfaceMuted },
-    color: { default: null, '[data-hovered]': 'var(--accent-foreground)' },
+    color: { default: null, '[data-hovered]': tokens.surfaceMutedForeground },
     pointerEvents: { default: null, '[data-disabled]': 'none' },
     opacity: { default: null, '[data-disabled]': 0.5 },
   },

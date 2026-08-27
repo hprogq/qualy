@@ -285,9 +285,7 @@ const useSaid = () => {
  */
 function Marker({ status, upright }: { status: FlowStage['status']; upright: boolean }) {
   return (
-    <TimelineIndicator
-      className={stylex.props(flow.marker, upright && flow.markerUpright).className}
-    >
+    <TimelineIndicator xstyle={[flow.marker, upright && flow.markerUpright]}>
       {status === 'current' && <span aria-hidden {...stylex.props(styles.pulse)} />}
       <span
         {...stylex.props(
@@ -329,16 +327,14 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
       <Marker status={stage.status} upright={upright} />
       {/* a hairline, not a bar: at two pixels the rail read as a ruled
           margin down the page and out-shouted the words beside it */}
-      <TimelineSeparator className={stylex.props(flow.rail).className} />
-      <TimelineHeader className={stylex.props(flow.head).className}>
+      <TimelineSeparator xstyle={flow.rail} />
+      <TimelineHeader xstyle={flow.head}>
         <TimelineTitle
-          className={
-            stylex.props(
-              stage.status === 'current' && flow.titleNow,
-              stage.status === 'future' && flow.titleLater,
-              stage.status === 'ended' && flow.titleDone,
-            ).className
-          }
+          xstyle={[
+            stage.status === 'current' && flow.titleNow,
+            stage.status === 'future' && flow.titleLater,
+            stage.status === 'ended' && flow.titleDone,
+          ]}
         >
           {stage.name}
         </TimelineTitle>
@@ -357,20 +353,16 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
       </TimelineHeader>
       {/* the whole row fades together, not only its name: a finished stage
           with a full-strength date under a pale title reads as two stages */}
-      <TimelineDate
-        className={stylex.props(flow.date, stage.status === 'ended' && flow.faded).className}
-      >
+      <TimelineDate xstyle={[flow.date, stage.status === 'ended' && flow.faded]}>
         {said(stage)}
       </TimelineDate>
       {/* what it waits on first, then what it is for: one is about now and
           the other is about the stage whenever it happens */}
       {stage.note !== '' && (
-        <TimelineContent className={stylex.props(flow.note, faded && flow.faded).className}>
-          {stage.note}
-        </TimelineContent>
+        <TimelineContent xstyle={[flow.note, faded && flow.faded]}>{stage.note}</TimelineContent>
       )}
       {stage.description !== '' && (
-        <TimelineContent className={stylex.props(flow.note, faded && flow.faded).className}>
+        <TimelineContent xstyle={[flow.note, faded && flow.faded]}>
           {stage.description}
         </TimelineContent>
       )}
@@ -410,13 +402,13 @@ export function BatchFlow({
   const shown = folded > 1 ? stages.slice(folded) : stages
 
   return (
-    <Timeline value={reachedIn(stages)} className={stylex.props(xstyle).className}>
+    <Timeline value={reachedIn(stages)} xstyle={xstyle}>
       {folded > 1 && (
-        <TimelineItem step={0} className={stylex.props(flow.foldItem).className}>
-          <TimelineIndicator className={stylex.props(flow.foldMark).className}>
+        <TimelineItem step={0} xstyle={flow.foldItem}>
+          <TimelineIndicator xstyle={flow.foldMark}>
             <MoreVerticalIcon className={stylex.props(styles.foldIcon).className} />
           </TimelineIndicator>
-          <TimelineSeparator className={stylex.props(flow.rail).className} />
+          <TimelineSeparator xstyle={flow.rail} />
           <button
             type="button"
             {...stylex.props(styles.foldButton)}
@@ -427,11 +419,7 @@ export function BatchFlow({
         </TimelineItem>
       )}
       {shown.map((stage, index) => (
-        <TimelineItem
-          key={stage.id}
-          step={folded + index + 1}
-          className={stylex.props(flow.item).className}
-        >
+        <TimelineItem key={stage.id} step={folded + index + 1} xstyle={flow.item}>
           <Stage stage={stage} upright />
         </TimelineItem>
       ))}
@@ -571,7 +559,7 @@ export function BatchFlowStrip({
               key={stage.id}
               step={index + 1}
               ref={stage.status === 'current' ? here : undefined}
-              className={stylex.props(flow.card).className}
+              xstyle={flow.card}
             >
               <Stage stage={stage} upright={false} />
             </TimelineItem>
