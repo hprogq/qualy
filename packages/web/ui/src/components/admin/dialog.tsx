@@ -33,6 +33,14 @@ import {
 // modal opens, closes or animates.
 
 const styles = stylex.create({
+  panel: {
+    width: { default: '100%', '@media (min-width: 640px)': null },
+    maxWidth: { default: null, '@media (min-width: 640px)': '36rem' },
+  },
+  panelFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
   // never taller than the window, and the middle row is what gives
   formShell: {
     maxHeight: 'calc(100dvh - 2rem)',
@@ -135,10 +143,8 @@ export function SidePanel({
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
       {/* the whole width on a phone: three quarters of a 390px screen is a
-          panel with a dead strip beside it and nothing readable inside.
-          Width and footer direction override the sheet adapter's own
-          utilities, so they stay class strings until that boundary migrates */}
-      <SheetContent side="right" className="max-sm:w-full sm:max-w-xl">
+          panel with a dead strip beside it and nothing readable inside */}
+      <SheetContent side="right" xstyle={styles.panel}>
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           {description && <SheetDescription>{description}</SheetDescription>}
@@ -146,7 +152,7 @@ export function SidePanel({
         <div {...stylex.props(styles.panelBody)}>
           <div {...stylex.props(styles.panelStack)}>{children}</div>
         </div>
-        {footer && <SheetFooter className="flex-row justify-end">{footer}</SheetFooter>}
+        {footer && <SheetFooter xstyle={styles.panelFooter}>{footer}</SheetFooter>}
       </SheetContent>
     </Sheet>
   )

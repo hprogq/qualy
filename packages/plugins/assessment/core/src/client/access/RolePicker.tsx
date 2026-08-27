@@ -1,7 +1,8 @@
 import { CheckIcon } from 'lucide-react'
+import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
-import { cn } from '@qualy/ui/cn'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 
 // The roles that were considered, including the ones that cannot be given.
@@ -17,6 +18,89 @@ export interface RoleCandidate {
   name: string
   refusal: 'user-type' | 'authority' | 'self-escalation' | 'unavailable' | 'beyond-batch' | null
 }
+
+const styles = stylex.create({
+  empty: {
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  list: {
+    maxHeight: '16rem',
+    overflow: 'auto',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  divided: {
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+  },
+  row: {
+    display: 'flex',
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: 12,
+    paddingBlock: 10,
+    textAlign: 'left',
+    outlineStyle: 'none',
+  },
+  rowOpen: {
+    backgroundColor: { default: null, ':hover': tokens.surfaceMuted },
+    outline: { default: null, ':focus-visible': `2px solid ${tokens.focusRing}` },
+    outlineOffset: { default: null, ':focus-visible': -2 },
+  },
+  // a role that cannot be given says so in its own weight, and answers
+  // nothing the pointer does
+  rowRefused: {
+    cursor: 'not-allowed',
+    color: tokens.mutedForeground,
+  },
+  rowChosen: {
+    backgroundColor: tokens.surfaceMuted,
+  },
+  // the mark keeps its space whether or not it is drawn: a row that shifts
+  // when it is chosen reads as a different row
+  mark: {
+    display: 'flex',
+    width: 16,
+    height: 16,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+  },
+  markChosen: {
+    borderColor: tokens.primary,
+    backgroundColor: tokens.primary,
+    color: tokens.primaryForeground,
+  },
+  tick: {
+    width: 12,
+    height: 12,
+  },
+  name: {
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+  },
+  nameChosen: {
+    fontWeight: 500,
+  },
+  reason: {
+    flexShrink: 0,
+    fontWeight: 400,
+  },
+})
 
 const REASONS = {
   'user-type': m.roleRefusedUserType,
@@ -39,46 +123,37 @@ export function RolePicker({
 }) {
   const { format } = useI18n()
   if (roles.length === 0) {
-    return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+    return <p {...stylex.props(styles.empty)}>{emptyLabel}</p>
   }
   return (
-    <ul role="radiogroup" className="max-h-64 divide-y overflow-auto rounded-md border">
+    <ul role="radiogroup" {...stylex.props(styles.list)}>
       {roles.map((role) => {
         const refused = role.refusal !== null
         return (
-          <li key={role.id}>
+          <li key={role.id} {...stylex.props(styles.divided)}>
             <button
               type="button"
               disabled={refused}
               role="radio"
               aria-checked={value === role.id}
               onClick={() => onChange(role.id)}
-              className={cn(
-                'flex w-full items-center gap-3 px-3 py-2.5 text-left outline-none',
-                refused
-                  ? 'cursor-not-allowed text-muted-foreground'
-                  : 'hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
-                value === role.id && 'bg-accent',
+              {...stylex.props(
+                styles.row,
+                refused ? styles.rowRefused : styles.rowOpen,
+                value === role.id && styles.rowChosen,
               )}
             >
-              {/* the mark keeps its space whether or not it is drawn: a row
-                  that shifts when it is chosen reads as a different row */}
               <span
                 aria-hidden
-                className={cn(
-                  'flex size-4 shrink-0 items-center justify-center rounded-full border',
-                  value === role.id
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-muted-foreground/40',
-                )}
+                {...stylex.props(styles.mark, value === role.id && styles.markChosen)}
               >
-                {value === role.id && <CheckIcon className="size-3" />}
+                {value === role.id && <CheckIcon {...stylex.props(styles.tick)} />}
               </span>
-              <span className={cn('min-w-0 flex-1 text-sm', value === role.id && 'font-medium')}>
+              <span {...stylex.props(styles.name, value === role.id && styles.nameChosen)}>
                 {role.name}
               </span>
               {role.refusal !== null && (
-                <Badge variant="outline" className="shrink-0 font-normal">
+                <Badge variant="outline" className={stylex.props(styles.reason).className}>
                   {format(REASONS[role.refusal])}
                 </Badge>
               )}

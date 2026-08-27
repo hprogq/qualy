@@ -20,6 +20,7 @@ const groupStyles = stylex.create({
 })
 function RadioGroup({
   className,
+  xstyle,
   value,
   defaultValue,
   onValueChange,
@@ -33,6 +34,8 @@ function RadioGroup({
   onValueChange?: (value: string) => void
   name?: string
   disabled?: boolean
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
 }) {
   return (
     <MRadio.Group
@@ -42,7 +45,7 @@ function RadioGroup({
       {...(onValueChange === undefined ? {} : { onChange: onValueChange })}
       {...(name === undefined ? {} : { name })}
       {...(disabled === undefined ? {} : { disabled })}
-      className={clsx(stylex.props(groupStyles.root).className, className)}
+      className={clsx(stylex.props(groupStyles.root, xstyle).className, className)}
       {...props}
     >
       {children}

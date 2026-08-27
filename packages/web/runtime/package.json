@@ -22,6 +22,7 @@
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
     "react-router": "catalog:"

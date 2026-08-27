@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import type { PeoplePickerContext } from '@qualy/ui-contract'
@@ -34,6 +36,94 @@ const PAGE = 25
 
 // a select cannot hold the empty string as a value, so "any" needs a word
 const ANY = 'any'
+
+const styles = stylex.create({
+  // the units on one side, the people on the other once there is room
+  frame: {
+    display: 'grid',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    gap: 16,
+    gridTemplateColumns: {
+      default: null,
+      '@media (min-width: 640px)': 'minmax(0, 1fr) minmax(0, 1.4fr)',
+    },
+  },
+  side: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 8 },
+  sideWide: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 12 },
+  heading: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
+  tree: {
+    minHeight: '14rem',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'auto',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 4,
+  },
+  aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
+  controls: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  search: { height: 32, minWidth: 160, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  typeField: { width: 'auto' },
+  results: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  waiting: { minHeight: '10rem', width: '100%', flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  nobody: {
+    display: 'flex',
+    minHeight: '10rem',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  list: {
+    minHeight: '10rem',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    overflow: 'auto',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  row: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    paddingInline: 12,
+    paddingBlock: 8,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+  },
+  rowName: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  foot: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  pager: { display: 'flex', alignItems: 'center', gap: 4 },
+  chips: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  chip: { gap: 4, fontWeight: 400 },
+  chipDrop: { width: 12, height: 12 },
+  quiet: { fontWeight: 400 },
+})
 
 export default function PeoplePicker({ context }: { context: PeoplePickerContext }) {
   const query = useApiQuery(authApi)
@@ -103,10 +193,10 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
   }
 
   return (
-    <div className="grid min-h-0 flex-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-      <div className="flex min-h-0 min-w-0 flex-col gap-2">
-        <p className="text-sm font-medium">{format(m.pickerUnits)}</p>
-        <div className="min-h-56 flex-1 overflow-auto rounded-md border p-1">
+    <div {...stylex.props(styles.frame)}>
+      <div {...stylex.props(styles.side)}>
+        <p {...stylex.props(styles.heading)}>{format(m.pickerUnits)}</p>
+        <div {...stylex.props(styles.tree)}>
           <OrgTree
             nodes={nodes.map((row) => ({
               id: row.orgNodeId,
@@ -120,23 +210,27 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           />
         </div>
         {options.data?.truncated === true && (
-          <p className="text-xs text-muted-foreground">{format(commonMessages.moreResults)}</p>
+          <p {...stylex.props(styles.aside)}>{format(commonMessages.moreResults)}</p>
         )}
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div {...stylex.props(styles.sideWide)}>
+        <div {...stylex.props(styles.controls)}>
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={format(m.pickerSearch)}
-            className="h-8 min-w-40 flex-1"
+            className={stylex.props(styles.search).className}
           />
           <Select
             value={userTypeId === '' ? ANY : userTypeId}
             onValueChange={(next) => setUserTypeId(next === ANY ? '' : next)}
           >
-            <SelectTrigger size="sm" className="w-auto" aria-label={format(m.personUserType)}>
+            <SelectTrigger
+              size="sm"
+              xstyle={styles.typeField}
+              aria-label={format(m.personUserType)}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -158,29 +252,27 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
         </div>
 
         <AsyncSection
-          className="flex min-h-0 flex-1 flex-col"
+          xstyle={styles.results}
           pending={people.isPending && here !== null}
           error={people.isError ? formatError(people.error) : null}
           loadingLabel={format(commonMessages.loading)}
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void people.refetch()}
-          skeleton={<Skeleton className="min-h-40 w-full flex-1" />}
+          skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
         >
           {rows.length === 0 ? (
-            <p className="flex min-h-40 flex-1 items-center justify-center rounded-md border text-sm text-muted-foreground">
-              {format(m.pickerNobody)}
-            </p>
+            <p {...stylex.props(styles.nobody)}>{format(m.pickerNobody)}</p>
           ) : (
-            <ul className="min-h-40 flex-1 divide-y overflow-auto rounded-md border">
+            <ul {...stylex.props(styles.list)}>
               {rows.map((row) => (
-                <li key={row.id} className="flex items-center gap-3 px-3 py-2">
+                <li key={row.id} {...stylex.props(styles.row)}>
                   <Checkbox
                     checked={chosen.has(row.id)}
                     disabled={blocked.has(row.id)}
                     aria-label={row.displayName}
                     onCheckedChange={() => toggle(row.id)}
                   />
-                  <span className="min-w-0 flex-1">
+                  <span {...stylex.props(styles.rowName)}>
                     <PersonCell
                       name={row.displayName}
                       secondary={row.businessNo ?? format(m.personNoBusinessNo)}
@@ -189,9 +281,7 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
                   {blocked.has(row.id) ? (
                     <Badge variant="secondary">{format(m.pickerAlreadyIn)}</Badge>
                   ) : (
-                    <span className="text-xs text-muted-foreground">
-                      {row.userType?.name ?? '—'}
-                    </span>
+                    <span {...stylex.props(styles.aside)}>{row.userType?.name ?? '—'}</span>
                   )}
                 </li>
               ))}
@@ -199,11 +289,11 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
           )}
         </AsyncSection>
 
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">
+        <div {...stylex.props(styles.foot)}>
+          <span {...stylex.props(styles.aside)}>
             {format(m.pickerChosen, { count: context.value.length })}
           </span>
-          <div className="flex items-center gap-1">
+          <div {...stylex.props(styles.pager)}>
             <Button
               disabled={at === 0}
               onClick={() => setPaging({ question, cursors, at: Math.max(0, at - 1) })}
@@ -220,25 +310,29 @@ export default function PeoplePicker({ context }: { context: PeoplePickerContext
         </div>
 
         {context.value.length > 0 && context.single !== true && (
-          <div className="flex flex-wrap gap-1.5">
+          <div {...stylex.props(styles.chips)}>
             {rows
               .filter((row) => chosen.has(row.id))
               .map((row) => (
-                <Badge key={row.id} variant="secondary" className="gap-1 font-normal">
+                <Badge
+                  key={row.id}
+                  variant="secondary"
+                  className={stylex.props(styles.chip).className}
+                >
                   {row.displayName}
                   <button
                     type="button"
                     aria-label={format(m.pickerRemove, { name: row.displayName })}
                     onClick={() => toggle(row.id)}
                   >
-                    <XIcon className="size-3" />
+                    <XIcon {...stylex.props(styles.chipDrop)} />
                   </button>
                 </Badge>
               ))}
             {/* whoever was chosen on another page is counted, not named: the
                 list only holds what this page fetched */}
             {context.value.length > rows.filter((row) => chosen.has(row.id)).length && (
-              <Badge variant="outline" className="font-normal">
+              <Badge variant="outline" className={stylex.props(styles.quiet).className}>
                 {format(m.pickerChosenElsewhere, {
                   count: context.value.length - rows.filter((row) => chosen.has(row.id)).length,
                 })}

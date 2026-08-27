@@ -14,6 +14,19 @@ import { RadioGroup as RadioGroupRoot, RadioGroupItem } from '../radio-group.tsx
 // reader in real use
 
 const styles = stylex.create({
+  // the choices stack, and the plain ones pair up once there is room
+  cardChoices: {
+    display: 'grid',
+    gap: 8,
+  },
+  plainChoices: {
+    display: 'grid',
+    gap: 4,
+    gridTemplateColumns: {
+      default: null,
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
   requiredMark: {
     paddingLeft: 2,
     color: tokens.danger,
@@ -279,9 +292,7 @@ export function RadioGroup({
           value={selected}
           onValueChange={onChange}
           {...(disabled !== undefined ? { disabled } : {})}
-          // the group adapter still speaks Tailwind inside, so a same-property
-          // override at its boundary stays a class string until it migrates
-          className="grid gap-2"
+          xstyle={styles.cardChoices}
         >
           {options.map((option) => {
             const on = selected === option.value
@@ -311,7 +322,7 @@ export function RadioGroup({
         value={selected}
         onValueChange={onChange}
         {...(disabled !== undefined ? { disabled } : {})}
-        className="grid gap-1 sm:grid-cols-2"
+        xstyle={styles.plainChoices}
       >
         {options.map((option) => {
           const off = (option.disabled ?? false) || (disabled ?? false)

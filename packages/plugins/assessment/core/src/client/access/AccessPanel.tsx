@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import { UiSlot, useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
@@ -31,6 +33,50 @@ import type { AccessSelection, AccessSource, AccessSubject } from './model.ts'
 // in the notice above until somebody decides on it.
 
 const PAGE_SIZE = 25
+
+const styles = stylex.create({
+  page: { display: 'flex', flexDirection: 'column', gap: 20 },
+  section: { display: 'flex', flexDirection: 'column', gap: 8 },
+  head: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  title: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 600 },
+  headSide: { display: 'flex', alignItems: 'center', gap: 12 },
+  aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
+  waitingRow: { height: 48, width: '100%' },
+  frame: {
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  frameEmpty: { borderStyle: 'dashed' },
+  personColumn: { width: '26%' },
+  sourceColumn: { width: '28%' },
+  actionColumn: { width: 96 },
+  pager: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
+  sources: { display: 'flex', flexDirection: 'column', gap: 4 },
+  source: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 6 },
+  roleName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+  },
+  drop: { width: 24, height: 24, color: tokens.mutedForeground },
+  dropIcon: { width: 14, height: 14 },
+  permissions: { display: 'flex', flexDirection: 'column', gap: 6 },
+  chips: { display: 'flex', flexWrap: 'wrap', gap: 4 },
+  withheld: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 },
+  chip: { fontWeight: 400 },
+  chipStruck: {
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+    textDecorationLine: 'line-through',
+  },
+  endCell: { textAlign: 'right' },
+})
 
 export function AccessPanel({ batchId }: { batchId: string }) {
   const api = useApi(assessmentApi)
@@ -164,7 +210,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
   const subject = staff.find((row) => row.userId === adjusting)
 
   return (
-    <div className="space-y-5">
+    <div {...stylex.props(styles.page)}>
       <Feedback message={failure} />
 
       {summary.data && (
@@ -183,11 +229,11 @@ export function AccessPanel({ batchId }: { batchId: string }) {
         onClose={() => setMerging(false)}
       />
 
-      <section aria-label={format(m.tabAccess)} className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">{format(m.tabAccess)}</h3>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">
+      <section aria-label={format(m.tabAccess)} {...stylex.props(styles.section)}>
+        <div {...stylex.props(styles.head)}>
+          <h3 {...stylex.props(styles.title)}>{format(m.tabAccess)}</h3>
+          <div {...stylex.props(styles.headSide)}>
+            <span {...stylex.props(styles.aside)}>
               {format(m.accessSourceCount, { count: staff.length })}
             </span>
             <Button size="sm" variant="outline" onClick={() => setAddingStaff(true)}>
@@ -203,28 +249,32 @@ export function AccessPanel({ batchId }: { batchId: string }) {
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void access.refetch()}
           skeleton={
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
+            <div {...stylex.props(styles.waiting)}>
+              <Skeleton className={stylex.props(styles.waitingRow).className} />
+              <Skeleton className={stylex.props(styles.waitingRow).className} />
             </div>
           }
         >
           {staff.length === 0 ? (
-            <Empty className="rounded-lg border border-dashed">
+            <Empty className={stylex.props(styles.frame, styles.frameEmpty).className}>
               <EmptyHeader>
                 <EmptyTitle>{format(m.accessEmpty)}</EmptyTitle>
                 <EmptyDescription>{format(m.accessEmptyHint)}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
-            <div className="rounded-lg border">
+            <div {...stylex.props(styles.frame)}>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[26%]">{format(m.accessColumnPerson)}</TableHead>
-                    <TableHead className="w-[28%]">{format(m.accessColumnSources)}</TableHead>
+                    <TableHead className={stylex.props(styles.personColumn).className}>
+                      {format(m.accessColumnPerson)}
+                    </TableHead>
+                    <TableHead className={stylex.props(styles.sourceColumn).className}>
+                      {format(m.accessColumnSources)}
+                    </TableHead>
                     <TableHead>{format(m.accessColumnPermissions)}</TableHead>
-                    <TableHead className="w-24" />
+                    <TableHead className={stylex.props(styles.actionColumn).className} />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -243,7 +293,7 @@ export function AccessPanel({ batchId }: { batchId: string }) {
         </AsyncSection>
 
         {(at > 0 || nextCursor !== null) && (
-          <div className="flex items-center justify-end gap-1">
+          <div {...stylex.props(styles.pager)}>
             <Button
               size="sm"
               variant="ghost"
@@ -332,10 +382,10 @@ function SubjectRow({
         />
       </TableCell>
       <TableCell>
-        <ul className="flex flex-col gap-1">
+        <ul {...stylex.props(styles.sources)}>
           {subject.sources.map((source) => (
-            <li key={source.sourceId} className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-sm">{source.roleName}</span>
+            <li key={source.sourceId} {...stylex.props(styles.source)}>
+              <span {...stylex.props(styles.roleName)}>{source.roleName}</span>
               <Badge
                 data-testid="access-origin"
                 data-origin={source.origin}
@@ -348,9 +398,7 @@ function SubjectRow({
               {/* the assignment behind it is gone, so it grants nothing; the
                   row stays because the round's own record of it stays */}
               {!source.active && (
-                <span className="text-xs text-muted-foreground">
-                  {format(m.accessSourceLapsed)}
-                </span>
+                <span {...stylex.props(styles.aside)}>{format(m.accessSourceLapsed)}</span>
               )}
               {/* only what this round handed out itself: an inherited
                   assignment belongs to the organization, and refusing what it
@@ -359,12 +407,12 @@ function SubjectRow({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="size-6 text-muted-foreground"
+                  className={stylex.props(styles.drop).className}
                   aria-label={format(m.accessRemove)}
                   title={format(m.accessRemove)}
                   onClick={() => onRemove(source)}
                 >
-                  <XIcon className="size-3.5" />
+                  <XIcon {...stylex.props(styles.dropIcon)} />
                 </Button>
               )}
             </li>
@@ -373,31 +421,35 @@ function SubjectRow({
       </TableCell>
       <TableCell>
         {subject.effective.length === 0 && denied.length === 0 ? (
-          <span className="text-sm text-muted-foreground">{format(m.accessNothing)}</span>
+          <span {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</span>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex flex-wrap gap-1">
+          <div {...stylex.props(styles.permissions)}>
+            <div {...stylex.props(styles.chips)}>
               {inCatalogOrder(subject.effective).map((code) => (
-                <Badge key={code} variant="secondary" className="font-normal">
+                <Badge
+                  key={code}
+                  variant="secondary"
+                  className={stylex.props(styles.chip).className}
+                >
                   {format(permissionLabel(code))}
                 </Badge>
               ))}
               {subject.effective.length === 0 && (
-                <span className="text-sm text-muted-foreground">{format(m.accessNothing)}</span>
+                <span {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</span>
               )}
             </div>
             {/* what was taken away is said here rather than left as an
                 absence: a shorter list of chips looks like nothing happened */}
             {denied.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="text-xs text-muted-foreground">
+              <div {...stylex.props(styles.withheld)}>
+                <span {...stylex.props(styles.aside)}>
                   {format(m.accessDeniedCount, { count: denied.length })}
                 </span>
                 {denied.map((code) => (
                   <Badge
                     key={code}
                     variant="outline"
-                    className="font-normal text-muted-foreground line-through"
+                    className={stylex.props(styles.chipStruck).className}
                   >
                     {format(permissionLabel(code))}
                   </Badge>
@@ -407,7 +459,7 @@ function SubjectRow({
           </div>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className={stylex.props(styles.endCell).className}>
         {/* their own row: the server refuses it too, this is so nobody is
             offered a button that answers with a refusal */}
         {subject.manageable && (

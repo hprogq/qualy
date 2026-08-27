@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
 import {
   createContext,
   useCallback,
@@ -107,6 +108,24 @@ export interface RuntimeProviderProps {
 
 // the runtime owns the manifest lifecycle: loading renders nothing, failure
 // renders a retry prompt instead of a permanently blank shell
+// the two screens the runtime draws itself, before a manifest exists to say
+// what a page looks like
+const styles = stylex.create({
+  failure: {
+    display: 'flex',
+    minHeight: '100vh',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  quiet: {
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: 'var(--q-muted-foreground)',
+  },
+})
+
 export function RuntimeProvider({ clientFor: provided, registry, children }: RuntimeProviderProps) {
   const [queryClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: retryQuery } } }),
@@ -149,8 +168,8 @@ function RuntimeLoader({
   if (manifest.isPending) return <LoadingScreen />
   if (manifest.isError) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <p className="text-sm text-muted-foreground">{format(commonMessages.manifestLoadFailed)}</p>
+      <div {...stylex.props(styles.failure)}>
+        <p {...stylex.props(styles.quiet)}>{format(commonMessages.manifestLoadFailed)}</p>
         <Button variant="outline" onClick={() => void manifest.refetch()}>
           {format(commonMessages.retry)}
         </Button>

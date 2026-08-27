@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { BarChart3Icon } from 'lucide-react'
 import { useApiQuery, usePageNavigate, usePageRouteParams } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -6,7 +8,6 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
-import { cn } from '@qualy/ui/cn'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -71,10 +72,279 @@ const inTreeOrder = <Group extends { groupId: string; parentGroupId: string | nu
 }
 
 /** the ledger's four columns, shared by header, rows and footer */
-const COLS = 'grid grid-cols-[minmax(0,1fr)_7rem_7rem_7rem] items-center gap-4 px-4'
+const styles = stylex.create({
+  // the ledger's four columns: what it is, and three figures that line up
+  cols: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 7rem 7rem 7rem',
+    alignItems: 'center',
+    gap: 16,
+    paddingInline: 16,
+  },
+  waiting: { height: 160, width: '100%' },
+  page: { display: 'flex', flexGrow: 1, flexShrink: 1, flexBasis: '0%', flexDirection: 'column' },
+  standing: {
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    gap: 18,
+  },
+  // the total, how it divides, and what is not in it - one band
+  band: {
+    display: 'flex',
+    flexDirection: { default: 'column', '@media (min-width: 640px)': 'row' },
+    alignItems: { default: null, '@media (min-width: 640px)': 'stretch' },
+    gap: 20,
+    borderRadius: 'var(--radius-2xl)',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    padding: 20,
+  },
+  totalSide: { display: 'flex', flexShrink: 0, flexDirection: 'column', gap: 6 },
+  totalHead: { display: 'flex', alignItems: 'center', gap: 8 },
+  totalLabel: {
+    flexShrink: 0,
+    fontSize: 12,
+    lineHeight: '1rem',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  mode: { fontWeight: 400, color: tokens.mutedForeground },
+  total: {
+    fontSize: 34,
+    lineHeight: 1,
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  full: {
+    fontSize: 12,
+    lineHeight: '1rem',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  // the band's parts stand apart only where there is room for a rule
+  rule: {
+    display: { default: 'none', '@media (min-width: 640px)': 'block' },
+    width: 1,
+    flexShrink: 0,
+    backgroundColor: tokens.border,
+  },
+  barSide: {
+    display: 'flex',
+    minWidth: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  bar: {
+    display: 'flex',
+    height: 8,
+    gap: 2,
+    overflow: 'hidden',
+    borderRadius: 9999,
+    backgroundColor: tokens.surfaceMuted,
+  },
+  segment: { flexShrink: 0 },
+  legend: { display: 'flex', flexWrap: 'wrap', columnGap: 16, rowGap: 6 },
+  legendItem: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12,
+    lineHeight: '1rem',
+    whiteSpace: 'nowrap',
+  },
+  swatch: { width: 8, height: 8, flexShrink: 0, borderRadius: 2 },
+  legendValue: { color: tokens.mutedForeground, fontVariantNumeric: 'tabular-nums' },
+  summarySide: {
+    display: 'flex',
+    flexShrink: 0,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  // the room the ledger would take says what will fill it
+  empty: {
+    display: 'flex',
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    paddingBlock: 56,
+  },
+  emptyMark: {
+    display: 'flex',
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    color: tokens.mutedForeground,
+  },
+  emptyIcon: { width: 22, height: 22 },
+  emptyWords: {
+    display: 'flex',
+    maxWidth: '28rem',
+    flexDirection: 'column',
+    gap: 8,
+    textAlign: 'center',
+  },
+  emptyTitle: { fontSize: 18, lineHeight: '1.75rem', fontWeight: 600, letterSpacing: '-0.025em' },
+  emptyHint: {
+    fontSize: 14,
+    lineHeight: 1.625,
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
+  ledger: {
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: 'var(--radius-2xl)',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  ledgerHead: {
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+    paddingBlock: 8,
+    fontSize: 12,
+    lineHeight: '1rem',
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  figure: { textAlign: 'right' },
+  ledgerFoot: {
+    height: 44,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+  },
+  footLabel: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 600 },
+  footValue: {
+    textAlign: 'right',
+    fontSize: 15,
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  summaryRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 16,
+    fontSize: 13,
+  },
+  summaryLabel: { whiteSpace: 'nowrap', color: tokens.mutedForeground },
+  summaryValue: { fontVariantNumeric: 'tabular-nums' },
+  summaryQuiet: { color: tokens.mutedForeground },
+  // every group but the last is closed by a rule
+  group: {
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.border,
+  },
+  groupRow: { height: 40 },
+  groupRowTop: { backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 75%, transparent)` },
+  groupRowNested: {
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, transparent)`,
+  },
+  rowName: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
+  groupName: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    fontWeight: 600,
+  },
+  capChip: {
+    flexShrink: 0,
+    backgroundColor: tokens.background,
+    fontWeight: 400,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  groupFigure: {
+    textAlign: 'right',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  groupTotal: {
+    textAlign: 'right',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    fontWeight: 600,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  line: { height: 38 },
+  lineRule: { height: 20, width: 1, flexShrink: 0, backgroundColor: tokens.border },
+  lineLabel: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+  },
+  spent: { color: tokens.mutedForeground },
+  voided: {
+    textDecorationLine: 'line-through',
+    textDecorationColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
+  },
+  lineNote: {
+    flexShrink: 0,
+    fontSize: 12,
+    lineHeight: '1rem',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+  lineValue: {
+    textAlign: 'right',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  adjustment: {
+    minWidth: 0,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    textWrap: 'pretty',
+    color: tokens.mutedForeground,
+  },
+  goRow: { display: 'flex', alignItems: 'center', gap: 10 },
+  goCounts: {
+    fontSize: 12,
+    lineHeight: '1rem',
+    whiteSpace: 'nowrap',
+    color: tokens.mutedForeground,
+  },
+})
 
 /** the shades the top groups wear in the bar and its legend, in turn */
-const SEGMENT_INKS = ['bg-foreground', 'bg-foreground/60', 'bg-foreground/35'] as const
+const inks = stylex.create({
+  first: { backgroundColor: tokens.foreground },
+  second: { backgroundColor: `color-mix(in oklab, ${tokens.foreground} 60%, transparent)` },
+  third: { backgroundColor: `color-mix(in oklab, ${tokens.foreground} 35%, transparent)` },
+})
+const SEGMENT_INKS = [inks.first, inks.second, inks.third] as const
 
 function Standing({ batchId }: { batchId: string }) {
   const query = useApiQuery(assessmentApi)
@@ -138,73 +408,60 @@ function Standing({ batchId }: { batchId: string }) {
         void items.refetch()
         void mine.refetch()
       }}
-      skeleton={<Skeleton className="h-40 w-full" />}
-      className="flex flex-1 flex-col"
+      skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
+      xstyle={styles.page}
     >
       {data !== undefined && (
-        <div className="flex flex-1 flex-col gap-4.5">
+        <div {...stylex.props(styles.standing)}>
           {/* the total, how it divides, and what is not in it - one band */}
-          <section className="flex flex-col gap-5 rounded-2xl border p-5 sm:flex-row sm:items-stretch">
-            <div className="flex shrink-0 flex-col gap-1.5">
-              <div className="flex items-center gap-2">
-                <p className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                  {format(m.resultTotal)}
-                </p>
+          <section {...stylex.props(styles.band)}>
+            <div {...stylex.props(styles.totalSide)}>
+              <div {...stylex.props(styles.totalHead)}>
+                <p {...stylex.props(styles.totalLabel)}>{format(m.resultTotal)}</p>
                 <Badge
                   data-testid="result-mode"
                   data-mode={data.mode}
                   variant="outline"
-                  className="font-normal text-muted-foreground"
+                  className={stylex.props(styles.mode).className}
                 >
                   {format(m.resultProvisional)}
                 </Badge>
               </div>
-              <p
-                data-testid="result-total"
-                className="text-[34px] leading-none font-semibold tracking-tight tabular-nums"
-              >
+              <p data-testid="result-total" {...stylex.props(styles.total)}>
                 {two(data.total)}
               </p>
               {full !== null && (
-                <p className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-                  {format(m.resultFull, { value: two(full) })}
-                </p>
+                <p {...stylex.props(styles.full)}>{format(m.resultFull, { value: two(full) })}</p>
               )}
             </div>
-            <span aria-hidden className="hidden w-px shrink-0 bg-border sm:block" />
-            <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5">
-              <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted">
+            <span aria-hidden {...stylex.props(styles.rule)} />
+            <div {...stylex.props(styles.barSide)}>
+              <div {...stylex.props(styles.bar)}>
                 {top.map((group, index) => (
                   <span
                     key={group.groupId}
-                    className={cn('shrink-0', SEGMENT_INKS[index % SEGMENT_INKS.length])}
+                    {...stylex.props(styles.segment, SEGMENT_INKS[index % SEGMENT_INKS.length])}
                     style={{
                       width: `${Math.min(100, (Number(group.final) / denominator) * 100)}%`,
                     }}
                   />
                 ))}
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              <div {...stylex.props(styles.legend)}>
                 {top.map((group, index) => (
-                  <span
-                    key={group.groupId}
-                    className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap"
-                  >
+                  <span key={group.groupId} {...stylex.props(styles.legendItem)}>
                     <span
                       aria-hidden
-                      className={cn(
-                        'size-2 shrink-0 rounded-[2px]',
-                        SEGMENT_INKS[index % SEGMENT_INKS.length],
-                      )}
+                      {...stylex.props(styles.swatch, SEGMENT_INKS[index % SEGMENT_INKS.length])}
                     />
                     {group.name}
-                    <span className="text-muted-foreground tabular-nums">{two(group.final)}</span>
+                    <span {...stylex.props(styles.legendValue)}>{two(group.final)}</span>
                   </span>
                 ))}
               </div>
             </div>
-            <span aria-hidden className="hidden w-px shrink-0 bg-border sm:block" />
-            <div className="flex shrink-0 flex-col justify-center gap-2">
+            <span aria-hidden {...stylex.props(styles.rule)} />
+            <div {...stylex.props(styles.summarySide)}>
               <SummaryRow label={format(m.resultCountedIn)} value={two(data.total)} strong />
               {/* a count, not an amount: what review will grant is not
                   decided, and a number shaped like the granted one reads as
@@ -220,33 +477,24 @@ function Standing({ batchId }: { batchId: string }) {
           {data.lines.length === 0 ? (
             // nothing counted yet: the room the ledger would take says what
             // will fill it and where the moving parts are
-            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-14">
-              <span className="flex size-13 items-center justify-center rounded-full border text-muted-foreground">
-                <BarChart3Icon aria-hidden className="size-5.5" />
+            <div {...stylex.props(styles.empty)}>
+              <span {...stylex.props(styles.emptyMark)}>
+                <BarChart3Icon aria-hidden {...stylex.props(styles.emptyIcon)} />
               </span>
-              <div className="flex max-w-md flex-col gap-2 text-center">
-                <h2 className="text-lg font-semibold tracking-tight">
-                  {format(m.resultEmptyTitle)}
-                </h2>
-                <p className="text-sm leading-relaxed text-pretty text-muted-foreground">
-                  {format(m.resultEmptyBody)}
-                </p>
+              <div {...stylex.props(styles.emptyWords)}>
+                <h2 {...stylex.props(styles.emptyTitle)}>{format(m.resultEmptyTitle)}</h2>
+                <p {...stylex.props(styles.emptyHint)}>{format(m.resultEmptyBody)}</p>
               </div>
               <GoToEntries pending={pendingCount} drafts={draftCount} />
             </div>
           ) : (
             <>
-              <div className="flex flex-col overflow-hidden rounded-2xl border">
-                <div
-                  className={cn(
-                    COLS,
-                    'border-b bg-muted/60 py-2 text-xs font-medium text-muted-foreground',
-                  )}
-                >
+              <div {...stylex.props(styles.ledger)}>
+                <div {...stylex.props(styles.cols, styles.ledgerHead)}>
                   <span>{format(m.resultTableHead)}</span>
-                  <span className="text-right">{format(m.resultGroupItems)}</span>
-                  <span className="text-right">{format(m.resultGroupChildren)}</span>
-                  <span className="text-right">{format(m.resultGroupFinal)}</span>
+                  <span {...stylex.props(styles.figure)}>{format(m.resultGroupItems)}</span>
+                  <span {...stylex.props(styles.figure)}>{format(m.resultGroupChildren)}</span>
+                  <span {...stylex.props(styles.figure)}>{format(m.resultGroupFinal)}</span>
                 </div>
                 {groups.map((group) => {
                   const lines = data.lines.filter(
@@ -273,13 +521,11 @@ function Standing({ batchId }: { batchId: string }) {
                     />
                   )
                 })}
-                <div className={cn(COLS, 'h-11 bg-muted/60')}>
-                  <span className="text-sm font-semibold">{format(m.resultTotal)}</span>
+                <div {...stylex.props(styles.cols, styles.ledgerFoot)}>
+                  <span {...stylex.props(styles.footLabel)}>{format(m.resultTotal)}</span>
                   <span />
                   <span />
-                  <span className="text-right text-[15px] font-semibold tabular-nums">
-                    {two(data.total)}
-                  </span>
+                  <span {...stylex.props(styles.footValue)}>{two(data.total)}</span>
                 </div>
               </div>
             </>
@@ -292,9 +538,9 @@ function Standing({ batchId }: { batchId: string }) {
 
 function SummaryRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 text-[13px]">
-      <span className="whitespace-nowrap text-muted-foreground">{label}</span>
-      <span className={cn('tabular-nums', !strong && 'text-muted-foreground')}>{value}</span>
+    <div {...stylex.props(styles.summaryRow)}>
+      <span {...stylex.props(styles.summaryLabel)}>{label}</span>
+      <span {...stylex.props(styles.summaryValue, !strong && styles.summaryQuiet)}>{value}</span>
     </div>
   )
 }
@@ -352,23 +598,27 @@ function GroupRows({
   const capped = group.cap !== null && final < raw
   const floored = group.floor !== null && final > raw
   return (
-    <div className="border-b last:border-b-0">
-      <div className={cn(COLS, 'h-10', group.depth === 0 ? 'bg-muted/75' : 'bg-muted/40')}>
-        <span className="flex min-w-0 items-center gap-2" style={pad}>
-          <span className="min-w-0 truncate text-sm font-semibold">{group.name}</span>
-          <Badge variant="outline" className="shrink-0 bg-background font-normal tabular-nums">
+    <div {...stylex.props(styles.group)}>
+      <div
+        {...stylex.props(
+          styles.cols,
+          styles.groupRow,
+          group.depth === 0 ? styles.groupRowTop : styles.groupRowNested,
+        )}
+      >
+        <span {...stylex.props(styles.rowName)} style={pad}>
+          <span {...stylex.props(styles.groupName)}>{group.name}</span>
+          <Badge variant="outline" className={stylex.props(styles.capChip).className}>
             {group.cap === null
               ? format(m.resultNoCap)
               : format(m.resultCapChip, { value: two(group.cap) })}
           </Badge>
         </span>
-        <span className="text-right text-sm text-muted-foreground tabular-nums">
-          {two(group.itemsTotal)}
-        </span>
-        <span className="text-right text-sm text-muted-foreground tabular-nums">
+        <span {...stylex.props(styles.groupFigure)}>{two(group.itemsTotal)}</span>
+        <span {...stylex.props(styles.groupFigure)}>
           {hasChildren ? two(group.childrenTotal) : '—'}
         </span>
-        <span className="text-right text-sm font-semibold tabular-nums">{two(group.final)}</span>
+        <span {...stylex.props(styles.groupTotal)}>{two(group.final)}</span>
       </div>
       {lines.map((line) => {
         const spent = line.kind !== 'entry' && line.kind !== 'derived'
@@ -383,41 +633,34 @@ function GroupRows({
                   ? m.resultLineVoided
                   : null
         return (
-          <div key={line.lineId} className={cn(COLS, 'h-9.5')}>
-            <span className="flex min-w-0 items-center gap-2" style={linePad}>
-              <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-              <span className={cn('min-w-0 truncate text-sm', spent && 'text-muted-foreground')}>
-                {line.label}
-              </span>
-              {note !== null && (
-                <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                  {format(note)}
-                </span>
-              )}
+          <div key={line.lineId} {...stylex.props(styles.cols, styles.line)}>
+            <span {...stylex.props(styles.rowName)} style={linePad}>
+              <span aria-hidden {...stylex.props(styles.lineRule)} />
+              <span {...stylex.props(styles.lineLabel, spent && styles.spent)}>{line.label}</span>
+              {note !== null && <span {...stylex.props(styles.lineNote)}>{format(note)}</span>}
             </span>
             <span />
             <span />
-            <span
-              className={cn('text-right text-sm tabular-nums', spent && 'text-muted-foreground')}
-            >
+            <span {...stylex.props(styles.lineValue, spent && styles.spent)}>
               {two(line.value)}
             </span>
           </div>
         )
       })}
       {silent.map((item) => (
-        <div key={item.id} className={cn(COLS, 'h-9.5')}>
-          <span className="flex min-w-0 items-center gap-2" style={linePad}>
-            <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
+        <div key={item.id} {...stylex.props(styles.cols, styles.line)}>
+          <span {...stylex.props(styles.rowName)} style={linePad}>
+            <span aria-hidden {...stylex.props(styles.lineRule)} />
             <span
-              className={cn(
-                'min-w-0 truncate text-sm text-muted-foreground',
-                item.status === 'voided' && 'line-through decoration-muted-foreground/40',
+              {...stylex.props(
+                styles.lineLabel,
+                styles.spent,
+                item.status === 'voided' && styles.voided,
               )}
             >
               {item.title}
             </span>
-            <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+            <span {...stylex.props(styles.lineNote)}>
               {format(
                 item.status === 'voided'
                   ? m.resultLineVoided
@@ -429,14 +672,14 @@ function GroupRows({
           </span>
           <span />
           <span />
-          <span className="text-right text-sm text-muted-foreground tabular-nums">{two(0)}</span>
+          <span {...stylex.props(styles.lineValue, styles.spent)}>{two(0)}</span>
         </div>
       ))}
       {(capped || floored) && (
-        <div data-testid="group-adjustment" className={cn(COLS, 'h-9.5')}>
-          <span className="flex min-w-0 items-center gap-2" style={linePad}>
-            <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
-            <span className="min-w-0 text-sm text-pretty text-muted-foreground">
+        <div data-testid="group-adjustment" {...stylex.props(styles.cols, styles.line)}>
+          <span {...stylex.props(styles.rowName)} style={linePad}>
+            <span aria-hidden {...stylex.props(styles.lineRule)} />
+            <span {...stylex.props(styles.adjustment)}>
               {format(m.resultLineAdjustment)}　
               {capped
                 ? format(m.resultGroupCapped, { raw: two(group.raw), cap: two(group.cap!) })
@@ -445,7 +688,7 @@ function GroupRows({
           </span>
           <span />
           <span />
-          <span className="text-right text-sm text-muted-foreground tabular-nums">
+          <span {...stylex.props(styles.lineValue, styles.spent)}>
             {capped ? `-${two(raw - final)}` : `+${two(final - raw)}`}
           </span>
         </div>
@@ -460,14 +703,12 @@ function GoToEntries({ pending, drafts }: { pending: number; drafts: number }) {
   const navigate = usePageNavigate()
   const { batchId } = usePageRouteParams('batchId')
   return (
-    <div className="flex items-center gap-2.5">
+    <div {...stylex.props(styles.goRow)}>
       <Button onClick={() => navigate('assessment/batch-my-entries', { params: { batchId } })}>
         {format(m.resultGoEntries)}
       </Button>
       {(pending > 0 || drafts > 0) && (
-        <p className="text-xs whitespace-nowrap text-muted-foreground">
-          {format(m.resultEmptyCounts, { pending, drafts })}
-        </p>
+        <p {...stylex.props(styles.goCounts)}>{format(m.resultEmptyCounts, { pending, drafts })}</p>
       )}
     </div>
   )

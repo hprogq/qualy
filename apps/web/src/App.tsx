@@ -1,4 +1,5 @@
 import { lazy, useMemo, type ComponentType, type ReactNode } from 'react'
+import * as stylex from '@stylexjs/stylex'
 import { BrowserRouter, Link } from 'react-router'
 import { primaryNavigation } from '@qualy/ui-contract'
 import {
@@ -20,6 +21,55 @@ import { catalogs, components, errorMessages } from 'virtual:qualy/plugins'
 
 // There is no global client to build: each plugin derives its own from the
 // api definitions it calls, through the runtime's per-definition cache.
+// what the host draws when there is no page to draw: a route that leads
+// nowhere, and a plugin component that failed to load
+const styles = stylex.create({
+  notice: {
+    display: 'flex',
+    minHeight: '60vh',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingInline: 24,
+    textAlign: 'center',
+  },
+  noticeTitle: {
+    fontSize: 24,
+    lineHeight: '2rem',
+    fontWeight: 600,
+  },
+  noticeHint: {
+    maxWidth: '28rem',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: 'var(--q-muted-foreground)',
+  },
+  noticeAction: {
+    marginTop: 8,
+  },
+  failureFull: {
+    display: 'flex',
+    minHeight: '100vh',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  failureInline: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingBlock: 32,
+  },
+  quiet: {
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: 'var(--q-muted-foreground)',
+  },
+})
+
 const registry: ComponentRegistry = Object.fromEntries(
   Object.entries(components).map(([name, thunk]) => [
     name,
@@ -118,11 +168,16 @@ function Notice({
   actionLabel?: string
 }) {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center">
-      <h2 className="text-2xl font-semibold">{title}</h2>
-      <p className="max-w-md text-sm text-muted-foreground">{hint}</p>
+    <div {...stylex.props(styles.notice)}>
+      <h2 {...stylex.props(styles.noticeTitle)}>{title}</h2>
+      <p {...stylex.props(styles.noticeHint)}>{hint}</p>
       {action && (
-        <Button asChild variant="outline" size="sm" className="mt-2">
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className={stylex.props(styles.noticeAction).className}
+        >
           <Link to={action}>{actionLabel}</Link>
         </Button>
       )}
@@ -143,15 +198,8 @@ function Failure({
 }) {
   const { format } = useI18n()
   return (
-    <div
-      className={
-        fullscreen
-          ? 'flex min-h-screen flex-col items-center justify-center gap-4'
-          : 'flex flex-col items-start gap-3 py-8'
-      }
-      role="alert"
-    >
-      <p className="text-sm text-muted-foreground">{message}</p>
+    <div {...stylex.props(fullscreen ? styles.failureFull : styles.failureInline)} role="alert">
+      <p {...stylex.props(styles.quiet)}>{message}</p>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
           {format(commonMessages.retry)}

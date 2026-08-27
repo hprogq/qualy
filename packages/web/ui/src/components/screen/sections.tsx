@@ -7,6 +7,10 @@ import { Badge } from '../badge.tsx'
 import { RadioGroup, RadioGroupItem } from '../radio-group.tsx'
 
 const styles = stylex.create({
+  modeGroup: {
+    width: 'auto',
+    flexShrink: 0,
+  },
   headRow: {
     display: 'flex',
     minWidth: 0,
@@ -411,9 +415,9 @@ export function ModeChoice<T extends string>({
         value={value}
         disabled={disabled}
         onValueChange={(next) => onChange(next as T)}
-        // the group adapter's full-width grid gives way to the row; a
-        // same-property override at its Tailwind boundary stays a class string
-        className="w-auto shrink-0"
+        // the group adapter's full-width grid gives way to the row, through
+        // the seat that merges with it rather than racing it
+        xstyle={styles.modeGroup}
       >
         {/* the group adapter nests children in an unstyled inner box, so the
             row is laid out by this component's own element, not the group */}

@@ -403,6 +403,7 @@ function useDragDismiss(
 
 function SheetContent({
   className,
+  xstyle,
   children,
   side = 'right',
   showCloseButton = true,
@@ -410,6 +411,8 @@ function SheetContent({
 }: React.ComponentProps<'div'> & {
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
 }) {
   const { open, setOpen } = useSheet()
   const { shown, closing } = useExit(open)
@@ -473,6 +476,7 @@ function SheetContent({
               entranceOf(side),
               closing && styles.panelClosing,
               closing && outOf(side),
+              xstyle,
             ).className,
             className,
           ),
@@ -529,9 +533,20 @@ function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
   )
 }
 
-function SheetFooter({ className, ...props }: React.ComponentProps<'div'>) {
+function SheetFooter({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & {
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
+}) {
   return (
-    <div data-slot="sheet-footer" {...props} {...seatOf(stylex.props(styles.footer), className)} />
+    <div
+      data-slot="sheet-footer"
+      {...props}
+      {...seatOf(stylex.props(styles.footer, xstyle), className)}
+    />
   )
 }
 

@@ -203,24 +203,26 @@
     gap: 0.375rem;
   }
   /* An icon inside a control sizes to the control, not to its own default
-     (lucide draws 24px). Same geometry and escape hatch as the pre-pivot
-     recipes: 16px in buttons, 12px in the smallest sizes and in badges, an
-     explicit size-* class on the icon always wins. Icons never intercept
-     the click meant for the control around them. */
+     (lucide draws 24px): 16px in buttons, 12px in the smallest sizes and in
+     badges. A caller who states a size still wins, a compiled style sitting
+     in a priority layer above this one - which is also why the rule no
+     longer asks whether the icon carries a size- class, there being none
+     left to ask about. Icons never intercept the click meant for the
+     control around them. */
   .mantine-Button-root svg,
   .mantine-ActionIcon-root svg,
   .mantine-Badge-root svg {
     pointer-events: none;
     flex-shrink: 0;
   }
-  .mantine-Button-root svg:not([class*='size-']),
-  .mantine-ActionIcon-root svg:not([class*='size-']) {
+  .mantine-Button-root svg,
+  .mantine-ActionIcon-root svg {
     width: 1rem;
     height: 1rem;
   }
-  [data-slot='button'][data-size='xs'] svg:not([class*='size-']),
-  [data-slot='button'][data-size='icon-xs'] svg:not([class*='size-']),
-  .mantine-Badge-root svg:not([class*='size-']) {
+  [data-slot='button'][data-size='xs'] svg,
+  [data-slot='button'][data-size='icon-xs'] svg,
+  .mantine-Badge-root svg {
     width: 0.75rem;
     height: 0.75rem;
   }
@@ -297,7 +299,7 @@
     transform: translateY(0.125rem);
     color: currentColor;
   }
-  [data-slot='alert'] > svg:not([class*='size-']) {
+  [data-slot='alert'] > svg {
     width: 1rem;
     height: 1rem;
   }
@@ -323,7 +325,7 @@
     pointer-events: none;
     flex-shrink: 0;
   }
-  [data-slot='empty-icon'][data-variant='icon'] svg:not([class*='size-']) {
+  [data-slot='empty-icon'][data-variant='icon'] svg {
     width: 1.5rem;
     height: 1.5rem;
   }

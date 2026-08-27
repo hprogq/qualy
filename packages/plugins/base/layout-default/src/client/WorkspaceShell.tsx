@@ -237,6 +237,14 @@ const styles = stylex.create({
     flexDirection: 'column',
     overflowY: 'auto',
   },
+  drawerPanel: {
+    maxHeight: '82dvh',
+    gap: 0,
+    overflow: 'hidden',
+    borderStartStartRadius: 20,
+    borderStartEndRadius: 20,
+    padding: 0,
+  },
   capsuleSeat: {
     pointerEvents: 'none',
     position: 'fixed',
@@ -782,14 +790,9 @@ function CapableWorkspaceShell() {
           if (!next) drawer.hide()
         }}
       >
-        {/* the drawer shape overrides the sheet adapter's own utilities
-            (overflow among them), so it stays a class string at that
-            boundary until the adapter sheds them */}
-        <SheetContent
-          side="bottom"
-          showCloseButton={false}
-          className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
-        >
+        {/* the drawer's own shape, merged into the sheet's rather than
+            racing it: same properties, one compiled rule */}
+        <SheetContent side="bottom" showCloseButton={false} xstyle={styles.drawerPanel}>
           <SheetTitle {...stylex.props(a11yStyles.visuallyHidden)}>
             {format(m.navCapsule)}
           </SheetTitle>
