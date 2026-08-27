@@ -3,18 +3,15 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../theme/tokens.stylex.ts'
 
 /**
- * The class a calendar day is drawn with.
+ * The class a calendar day is drawn with; its rules are in ./calendar.css,
+ * which the package stylesheet pulls in.
  *
- * Its rules live in styles/theme.css because they hang off state the WIDGET
- * owns: `data-in-range` is not just the value that has been committed -
- * while a start is chosen and the pointer is looking for an end, the library
+ * They are plain CSS because they hang off state the WIDGET owns:
+ * `data-in-range` is not only the value that has been committed - while a
+ * start is chosen and the pointer is looking for an end, the library
  * recomputes the whole span on every hover and says so through these same
  * attributes. Restating that machine in React to satisfy a compiled style
- * would mean keeping a second copy of a state machine that already works.
- *
- * The name is the product's own, not the library's: nothing reaches for a
- * `.mantine-*` selector, so a version that renames its internals cannot
- * silently undress the calendar.
+ * would mean keeping a second copy of one that already works.
  */
 export const CALENDAR_DAY = 'q-calendar-day'
 

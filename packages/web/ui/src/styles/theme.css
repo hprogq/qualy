@@ -9,6 +9,9 @@
    both land in the mantine layer, under everything the product states */
 @import '@mantine/dates/styles.layer.css';
 @import './tokens.css';
+/* the calendar's own rules, kept beside the module that names its classes:
+   they are one control's implementation rather than a product baseline */
+@import '../lib/calendar.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -407,146 +410,6 @@
     flex-shrink: 0;
     width: 1rem;
     height: 1rem;
-  }
-
-  /* A chosen span, drawn as a track its ends sit on.
-
-     The cell is the whole hit target - a click in the air between two
-     circles still lands on a day - while the circle is shorter than the
-     cell and centred in it. The gap between rows is then geometry, not
-     padding, and four adjacent days read as one capsule rather than a
-     rectangle. The circle is its own element at a fixed size, so nothing
-     about it moves: painted as the day's own background it had to be
-     clipped to a shorter box, which made it a wide capsule that visibly
-     squashed on the way out, and fading it in showed the grey track
-     through it first.
-
-     Where the track stops and which day wears a circle are two questions,
-     each asked once below and answered into a property; the track and the
-     circle only read them.
-
-     The circle FADES; the track does not. Following the pointer is the
-     track's whole job - a span that eased its way longer would lag behind
-     the hand - while the day under the pointer is a colour, and a colour
-     that snaps twitches. So the end lets go of black as the next day takes
-     it up, both crossing at once, over a track that is already there. The
-     ink turns faster than the ground it sits on, or the two would pass
-     through each other's grey halfway and the number would go unreadable
-     for a moment. */
-  .q-calendar-day {
-    position: relative;
-    isolation: isolate;
-    background: transparent;
-    border-radius: 9999px;
-    color: var(--q-day-ink, inherit);
-    transition: color 90ms ease-out;
-    --q-track-line: color-mix(in oklab, var(--q-primary) 45%, transparent);
-  }
-  .q-calendar-day[data-weekend] {
-    --q-day-ink: var(--q-foreground);
-  }
-  .q-calendar-day[data-outside] {
-    --q-day-ink: var(--q-muted-foreground);
-  }
-  .q-calendar-day:not([data-hidden])::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    height: calc(100% - 6px);
-    aspect-ratio: 1;
-    translate: -50% -50%;
-    z-index: -1;
-    border-radius: 9999px;
-    background-color: var(--q-day-circle, transparent);
-    transition: background-color 150ms ease-out;
-  }
-  .q-calendar-day[data-in-range]:not([data-hidden])::before {
-    content: '';
-    position: absolute;
-    inset-block: 3px;
-    left: var(--q-track-left, 0);
-    right: var(--q-track-right, 0);
-    z-index: -1;
-    background: color-mix(in oklab, var(--q-primary) 9%, transparent);
-    border-block: 1px solid var(--q-track-line);
-    /* a side is absent, not transparent: a 1px see-through border still
-       mitres, and the dark rule along the top ran into the corner as a
-       diagonal that stopped short of the next cell */
-    border-left: var(--q-track-cap-left, 0) solid var(--q-track-line);
-    border-right: var(--q-track-cap-right, 0) solid var(--q-track-line);
-    border-start-start-radius: var(--q-track-round-left, 0);
-    border-end-start-radius: var(--q-track-round-left, 0);
-    border-start-end-radius: var(--q-track-round-right, 0);
-    border-end-end-radius: var(--q-track-round-right, 0);
-  }
-  /* WHERE THE TRACK STOPS. Nothing visible to the right carries the span
-     on - the next day is outside it, the row ends, the panel ends - so the
-     track stops where the circle stands and is capped round there. An end
-     and a break need not be told apart: a day that really is the end wears
-     its circle over that cap, and the two draw the same.
-     Only VISIBLE days are ever asked. A day the panel hides is display:none,
-     and the engine will not re-run a :has() that turns on one of those: the
-     same selector matched under querySelectorAll, and under a freshly cloned
-     table, and still never reached the cascade - so a question about a
-     hidden day answers stale exactly on the month boundary it was asked
-     for. */
-  td:not(:has(+ td .q-calendar-day[data-in-range]:not([data-hidden])))
-    .q-calendar-day[data-in-range]:not([data-hidden]) {
-    --q-track-right: 3px;
-    --q-track-cap-right: 1px;
-    --q-track-round-right: 9999px;
-  }
-  td:not(:has(.q-calendar-day[data-in-range]:not([data-hidden])))
-    + td
-    .q-calendar-day[data-in-range]:not([data-hidden]),
-  tr > td:first-child .q-calendar-day[data-in-range]:not([data-hidden]) {
-    --q-track-left: 3px;
-    --q-track-cap-left: 1px;
-    --q-track-round-left: 9999px;
-  }
-  /* THE END STILL BEING HUNTED FOR wears the same solid circle as a chosen
-     one. While it is hunted it carries in-range and nothing else - no
-     last-in-range, no selected - so it is found by asking the visible day
-     next door, forwards or backwards, since a span may be hunted back from
-     its start. The grid wraps, so the question crosses rows; and the
-     pointer's own day answers for an end the panel cannot see past. */
-  td:has(+ td .q-calendar-day:not([data-hidden]):not([data-in-range]))
-    .q-calendar-day[data-range-picking][data-in-range]:not([data-hidden]),
-  td:has(.q-calendar-day:not([data-hidden]):not([data-in-range]))
-    + td
-    .q-calendar-day[data-range-picking][data-in-range]:not([data-hidden]),
-  tr:has(+ tr > td:first-child .q-calendar-day:not([data-hidden]):not([data-in-range]))
-    td:last-child
-    .q-calendar-day[data-range-picking][data-in-range]:not([data-hidden]),
-  tr:has(td:last-child .q-calendar-day:not([data-hidden]):not([data-in-range]))
-    + tr
-    td:first-child
-    .q-calendar-day[data-range-picking][data-in-range]:not([data-hidden]),
-  .q-calendar-day[data-range-picking][data-in-range]:not([data-hidden]):hover {
-    --q-day-circle: var(--q-primary);
-    --q-day-ink: var(--q-primary-foreground);
-  }
-  /* a span of one day is a day: the circle says all of it */
-  .q-calendar-day[data-in-range][data-first-in-range][data-last-in-range]::before {
-    display: none;
-  }
-  /* any day answers the pointer; one inside a span answers it more firmly */
-  .q-calendar-day:not([data-hidden]):hover {
-    --q-day-circle: color-mix(in oklab, var(--q-primary) 10%, transparent);
-  }
-  .q-calendar-day[data-in-range]:not([data-hidden]):not([data-selected]):hover {
-    --q-day-circle: color-mix(in oklab, var(--q-primary) 18%, transparent);
-  }
-  .q-calendar-day[data-selected]:not([data-hidden]) {
-    --q-day-circle: var(--q-primary);
-    --q-day-ink: var(--q-primary-foreground);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .q-calendar-day,
-    .q-calendar-day::after {
-      transition: none;
-    }
   }
 
   /* the table's structural row rules: the last body row keeps no divider,
