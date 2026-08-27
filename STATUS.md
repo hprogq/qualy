@@ -9399,3 +9399,81 @@ text-current` 跟随按钮墨色,enabled 外观不变。
 **下一步**:回到 M9.2 剩余 adapter 清理(dropdown-menu 9、timeline 8、dialog 6、alert-dialog 6、
 sheet 5、select 5、popover 4),再依次 M9.1 产品残留页(assessment ~192、auth ~91 条字面
 className)、M9.3 overlay/motion/inert 加固、M9.4 依赖退役、M9.5 文档与终审。
+
+### M9 续段:日历合并、覆盖层清理、Tailwind 退役与 DOM baseline(2026-08-27/28)
+
+**日历样式合并进 StyleX**(631f6e56、ecd7ec16)
+
+- `calendar.css` 删除,日历专属普通 CSS 归零。轨道判据全部改写为「当前格自身的属性 + 只问
+  可见邻格」的形式,`td/tr` 的 `:has()` 相邻判断整套退场——它依赖的正是上一段查出的
+  「隐藏日不触发 `:has()` 重跑」。**不复刻 Mantine 的区间状态机**,`data-in-range` 等仍由
+  它产出,适配器只读。
+- 跨月轨道变灰查出两个独立根因:①Mantine 的 `[data-outside]{opacity:.5}`(改 `opacity:1`);
+  ②`borderBlock` 简写在 StyleX 编译后丢色,拆成 `borderBlockStyle/Width/Color` 三条长写法。
+- 「越界+选中」日仍是灰字:**StyleX 会把取值相同的条件合并成一条规则**,源码顺序不构成
+  优先级。判据一律写成互斥的 `:not()` 键。同理 reduced-motion 守卫从普通类名移进 StyleX
+  的 `@media` 条件(媒体规则多带一个类,天然压过非媒体规则)。
+- `hideOutsideDates` 的上游行为不动(`?? numberOfColumns !== 1`);双月视图保持隐藏。
+
+**M9.2 覆盖层与选择器清理**(90eb0217)
+
+- dropdown-menu / dialog / alert-dialog / sheet / select / popover 六件实现样式迁 StyleX,
+  对应 theme.css 实现规则删除,Tailwind 字面归零,**行为冻结**:迁移前后逐属性对比计算样式,
+  `reducedMotion` 两条分支都取快照,零漂移。祖先/兄弟状态改由 React context 下传
+  (sheet 的 side、alert 的 size、timeline 的 orientation),不从 DOM 反读。
+- 迁移中出现面板高 6.3px 的漂移:Tailwind 的 `text-sm/base` 同时设了行高,补上即消。
+
+**幽灵滚动条**(032341e0)与 **VisuallyHidden 定案**(f070ac7f)
+
+- 批次设置页窄屏双层滚动条,根因是屏幕阅读器专用文本的绝对定位块**没有已定位祖先**,
+  以初始包含块为准逃出 `overflow:hidden`,把 `document.scrollHeight` 顶高。修正为钉在
+  包含块原点;全仓 11 份同形拷贝一并统一。
+- 定案:**不用 Mantine 的 `VisuallyHidden` 作 substrate**,由 `lib/visually-hidden.tsx` 提供
+  一个 Qualy StyleX 原语 + 两种消费形态(`a11yStyles.visuallyHidden` 供已有元素、
+  `<VisuallyHidden>` 供需要新元素时)。`legend` 一类场景的理由是**元素自身的盒子必须隐藏**,
+  与「包一层会不会破坏 fieldset 关系」无关。新增 `visually-hidden.browser.test.tsx` 8 例。
+
+**M9.1 产品残留归零 + Tailwind 退役**(9ed0485a、43ba16e6、e4017654、04f7376c)
+
+- 产品页字面 className 303 → **0**;`cn()` 30 → 0。tailwindcss / shadcn 脚手架 / cva /
+  tailwind-merge / tw-animate 全部退役,`utilities` 级联层删除(层声明的三处同步更新:
+  `apps/web/index.html`、`apps/web/src/app.css`、`apps/web/tests/support/cascade-layers.ts`),
+  删除 `lib/cn.ts`、`lib/utils.ts`、`components.json`。净 −2060 行。
+- **退役当场炸了整个界面**:Tailwind 供的是两样东西,utilities **和 preflight**,而全仓 67 个
+  裸 `<button>` 吃的是后者。所有门禁全绿而屏幕全是浏览器原生控件——因为每一条断言问的都是
+  role 或被 widget 装扮过的组件,没有一条问过裸元素。补 `apps/web/tests/baseline.browser.test.tsx`
+  与快照,测 34 个属性,成为常设门禁。
+
+**DOM baseline 定性与瘦身**(e13fe0f1)
+
+- 保留,但重述为**Qualy 自己的 DOM 契约**:本产品把原生元素当语义原语用(能开面板的一行是
+  `<button>`,一组事实是 `<dl>`),**长什么样归渲染它的组件**;widget 库只装扮自己的组件,
+  管不到别人产品里的 `<h2>`。注释改写为「今天为什么需要它」,不再讲 Tailwind 出身。
+- 逐条核对真实使用后从 20+ 条规则压到 **12 条**:删掉 `hr`(Mantine 的 Divider 渲染 `<span>`)、
+  `abbr/small/sub/sup/progress/summary/optgroup`(全仓零使用)、`[hidden]{!important}`
+  (Mantine 隐藏日用的是内联 `display:none`)、`::-webkit-*` 与等宽字族栈。唯一可见差异是
+  裸 `<pre>` 不再自带等宽字族;全仓唯一的 `<pre>`(AuditEventsPage)自己声明字面。
+  (行数受 prettier 每选择器一行影响仍在 100 行上下,**规则数**才是压下来的量。)
+
+**各适配器装扮自己的部件**(d31d1637)
+
+- theme.css 里四条按 widget 内部类名下手、却只服务单个适配器的规则,搬进对应组件,经
+  widget 自己的 `classNames` 通道交付(与日历的 day 同一路子):badge 的 `text-transform`
+  与 label 行布局、button 的 label 间距、textarea 的最小高度。计算样式逐属性零漂移。
+- badge 的 label 座位换成 StyleX 座位(`labelXstyle`):它唯一的调用方本就在传编译类,
+  按名字与本表竞争;走适配器自己的一次 composition 后改为逐属性覆盖。
+- 查出 `.mantine-Button-root[data-variant='q-link']:hover` **是死规则**:适配器把自己的
+  `data-variant="link"` 写在 widget 的 `q-link` 之上,选择器要的值根本不在元素上。搬进
+  适配器后 link 变体获得该规则本意的悬停下划线(与按压薄膜同策:被拒绝的键上不响应)。
+- **未下放且给出理由**:`.mantine-Input-input[aria-invalid]` 与 `.mantine-Input-wrapper:not(:has(…))`
+  服务整个 Input 家族(Select、DateInput 一起吃),放进 input.tsx 会静默丢掉别人的;
+  `.mantine-Button-root svg` 一类指向**调用方写的后代元素**,StyleX 只能给自己渲染的那个
+  元素上样式,structurally 不可下放。theme.css 现存 `.mantine-*` 规则 8 条(此前 14 条)。
+
+**验收(本段全部真实执行)**:`pnpm typecheck` 零错;`pnpm test:browser` **203 passed**;
+`pnpm test` **851 passed | 17 skipped**;`pnpm build` 通过;生产 smoke 通过(探针/壳/manifest/
+哈希资源/SIGTERM 退出 0);`pnpm vendor:check` 两树一致;prettier 通过。
+
+**下一步**:M9 剩余——三个 Radix 适配器(collapsible / hover-card / scroll-area)、theme.css
+终形(剩余规则多为调用方 DOM 的关系规则与共享 keyframes)、密度复核、M4M↔M9 产物对比、
+M9 终审报告。
