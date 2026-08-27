@@ -40,9 +40,12 @@ const styles = stylex.create({
     gap: 24,
     padding: 24,
     outlineStyle: 'none',
-    maxWidth: '20rem',
   },
-  contentWide: { maxWidth: { default: '20rem', [WIDE]: '28rem' } },
+  // The measure is the widget's `size` prop, because it sizes the panel with
+  // flex-basis and a max-width can only narrow that. What stays here is the
+  // narrow-screen cap, which the prop cannot express: a phone gets the small
+  // alert's measure whichever size was asked for.
+  narrowCap: { maxWidth: { default: '20rem', [WIDE]: 'none' } },
   header: {
     display: 'grid',
     gridTemplateRows: 'auto 1fr',
@@ -252,6 +255,7 @@ function AlertDialogContent({
       // an alert is answered, not dismissed by a stray click on the page
       closeOnClickOutside={false}
       transitionProps={{ duration: 100 }}
+      size={size === 'default' ? '28rem' : '20rem'}
     >
       <MModal.Overlay data-slot="alert-dialog-overlay" blur={2} {...stylex.props(styles.overlay)} />
       <MModal.Content
@@ -263,7 +267,7 @@ function AlertDialogContent({
         // these compiled styles are - they carry no dynamic value.
         classNames={{
           content: clsx(
-            stylex.props(styles.content, styles.entrance, size === 'default' && styles.contentWide)
+            stylex.props(styles.content, styles.entrance, size === 'default' && styles.narrowCap)
               .className,
             className,
           ),

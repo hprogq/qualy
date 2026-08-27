@@ -12,7 +12,6 @@ import { iamMessages as m } from '../i18n.ts'
 
 const styles = stylex.create({
   dropdown: {
-    width: 'var(--anchor-width)',
     minWidth: 256,
     padding: 0,
   },
@@ -197,7 +196,7 @@ export function NodePicker({
         </Button>
       </PopoverTrigger>
       {/* the picker's own width and padding, merged into the popover's */}
-      <PopoverContent align="start" xstyle={styles.dropdown}>
+      <PopoverContent align="start" width="target" xstyle={styles.dropdown}>
         <div {...stylex.props(styles.searchRow)}>
           <SearchIcon className={stylex.props(styles.searchGlass).className} aria-hidden />
           <Input

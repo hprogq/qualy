@@ -41,7 +41,6 @@ const PAGE_SIZE = 20
 const keyOf = (change: AccessChange) => `${change.kind}/${change.id}`
 
 const styles = stylex.create({
-  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '48rem' } },
   body: { gap: 36 },
   waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
   waitingRow: { height: 56, width: '100%' },
@@ -162,7 +161,7 @@ export function AccessSyncDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="access-sync" className={stylex.props(styles.panel).className}>
+      <DialogContent data-testid="access-sync" size="48rem">
         <DialogHeader>
           <DialogTitle>{format(m.accessSyncTitle)}</DialogTitle>
           <DialogDescription>{format(m.accessSyncHint)}</DialogDescription>

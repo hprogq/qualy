@@ -70,7 +70,6 @@ const lg = '@media (min-width: 1024px)'
 const belowSm = '@media (max-width: 639.98px)'
 
 const styles = stylex.create({
-  siblingPanel: { maxWidth: { default: null, '@media (min-width: 640px)': '32rem' } },
   siblingTitle: {
     display: 'flex',
     alignItems: 'baseline',
@@ -1665,7 +1664,7 @@ function SiblingSheet({
   const { format } = useI18n()
   return (
     <Dialog open={open && sibling !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={stylex.props(styles.siblingPanel).className}>
+      <DialogContent size="32rem">
         <DialogHeader>
           <DialogTitle className={stylex.props(styles.siblingTitle).className}>
             {itemTitle}

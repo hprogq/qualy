@@ -33,7 +33,6 @@ import { RolePicker } from './RolePicker.tsx'
 const STEPS = [m.addStaffStepWho, m.addStaffStepWhere, m.addStaffStepAs] as const
 
 const styles = stylex.create({
-  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '56rem' } },
   // a fixed height, so the step that holds a picker does not resize the
   // dialog as the reader walks through the steps
   body: { height: '58vh', gap: 20 },
@@ -117,7 +116,7 @@ export function AddStaffDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={stylex.props(styles.panel).className}>
+      <DialogContent size="56rem">
         <DialogHeader>
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
           <DialogDescription>{format(m.addStaffHint)}</DialogDescription>

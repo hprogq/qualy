@@ -18,7 +18,6 @@ const styles = stylex.create({
     height: '85vh',
     flexDirection: 'column',
     gap: 12,
-    maxWidth: { default: null, '@media (min-width: 640px)': '64rem' },
   },
   name: {
     minWidth: 0,
@@ -91,7 +90,7 @@ export function DocumentLightbox({
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={stylex.props(styles.panel).className}>
+      <DialogContent size="64rem" className={stylex.props(styles.panel).className}>
         <DialogHeader>
           <DialogTitle {...stylex.props(styles.name)}>{name}</DialogTitle>
         </DialogHeader>

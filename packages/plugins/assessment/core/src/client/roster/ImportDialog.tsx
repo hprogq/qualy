@@ -33,7 +33,6 @@ interface Selection {
 }
 
 const styles = stylex.create({
-  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '42rem' } },
   body: { height: '58vh' },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   foot: { justifyContent: { default: null, '@media (min-width: 640px)': 'space-between' } },
@@ -78,7 +77,7 @@ export function ImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={stylex.props(styles.panel).className}>
+      <DialogContent size="42rem">
         <DialogHeader>
           <DialogTitle>{format(m.importTitle)}</DialogTitle>
           <DialogDescription>{format(m.importHint)}</DialogDescription>

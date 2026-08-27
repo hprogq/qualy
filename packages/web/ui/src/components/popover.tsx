@@ -19,11 +19,14 @@ import { seatOf } from '../lib/xstyle.ts'
 //   ignores events from marked elements - this is what makes Escape peel
 //   one layer at a time instead of closing everything at once.
 
+// The dropdown's measure is a prop, not a compiled style: the widget writes
+// the dropdown's width as an inline style, which outranks every class on the
+// element. A width stated in a caller's xstyle was silently dropped and the
+// panel shrank to whatever it happened to contain.
 const styles = stylex.create({
   // structure only; the surface is the widget's own under the theme
   content: {
     display: 'flex',
-    width: '18rem',
     flexDirection: 'column',
     gap: 16,
     padding: 16,
@@ -71,6 +74,8 @@ interface ContentDecl {
   align?: 'start' | 'center' | 'end'
   side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
+  /** how wide the panel is; `'target'` matches the trigger it opened from */
+  width?: number | string
 }
 
 function Popover({
@@ -116,6 +121,7 @@ function Popover({
       // state itself instead
       withRoles={false}
       position={positionOf(side, align)}
+      width={decl.width ?? 288}
       offset={decl.sideOffset ?? 4}
       // an anchored surface pops: opacity with a whisper of scale, which
       // reads the same whichever side the placement flipped to

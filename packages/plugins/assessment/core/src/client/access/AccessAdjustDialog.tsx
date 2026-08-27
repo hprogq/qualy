@@ -52,7 +52,6 @@ const FAMILIES = [
 ] as const
 
 const styles = stylex.create({
-  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '42rem' } },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   families: { display: 'flex', flexDirection: 'column', gap: 20 },
   family: { display: 'flex', flexDirection: 'column', gap: 12 },
@@ -118,7 +117,7 @@ export function AccessAdjustDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={stylex.props(styles.panel).className}>
+      <DialogContent size="42rem">
         <DialogHeader>
           <DialogTitle>
             {format(m.accessAdjustTitle, { name: person?.displayName ?? '' })}

@@ -25,7 +25,6 @@ import { assessmentMessages as m } from '../i18n.ts'
 // is allowed to find.
 
 const styles = stylex.create({
-  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '56rem' } },
   body: { height: '58vh' },
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
 })
@@ -49,7 +48,7 @@ export function AddPeopleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className={stylex.props(styles.panel).className}>
+      <DialogContent size="56rem">
         <DialogHeader>
           <DialogTitle>{format(m.addPeopleTitle)}</DialogTitle>
           <DialogDescription>{format(m.addPeopleHint)}</DialogDescription>

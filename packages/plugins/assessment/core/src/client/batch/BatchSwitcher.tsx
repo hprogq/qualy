@@ -25,7 +25,7 @@ import { StatusBadge } from './StatusBadge.tsx'
 const NEARBY = 10
 
 const styles = stylex.create({
-  dropdown: { width: 'min(92vw, 26rem)', overflow: 'hidden', padding: 0 },
+  dropdown: { overflow: 'hidden', padding: 0 },
   // No ceiling of its own: whoever mounts this measures what the row can
   // spare and hands it down, so the name takes every pixel that is going and
   // is cut only when there are none left.
@@ -299,7 +299,7 @@ export function BatchSwitcher({
           and a menu narrower than the bar above it would ellipsize every one.
           Three bands - search, the rounds themselves, the way out - each with
           its own edge, so the eye reads a list and not a stack of controls. */}
-      <PopoverContent align="center" xstyle={styles.dropdown}>
+      <PopoverContent align="center" width="min(92vw, 26rem)" xstyle={styles.dropdown}>
         <div {...stylex.props(styles.searchBand)}>
           <SearchIcon aria-hidden className={stylex.props(styles.searchIcon).className} />
           <input

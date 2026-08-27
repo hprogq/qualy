@@ -216,7 +216,7 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
-  size,
+  size = '32rem',
   /**
    * Open with focus resting on the dialog itself rather than its first
    * control - for a dialog whose first control is a choice made by key,
@@ -226,7 +226,12 @@ function DialogContent({
   ...props
 }: React.ComponentProps<'div'> & {
   showCloseButton?: boolean
-  /** the modal's width, any CSS size; the widget's own default otherwise */
+  /**
+   * How wide the panel is, as any CSS size. It has to be said here rather
+   * than as a compiled `max-width`: the widget sizes the panel with
+   * `flex-basis`, which a max-width can narrow but never widen - six dialogs
+   * asking for 42 to 56rem all sat at the widget's own 440px default.
+   */
   size?: string | number
   restfulFocus?: boolean
 }) {
@@ -270,7 +275,7 @@ function DialogContent({
       closeOnEscape
       closeOnClickOutside
       transitionProps={{ duration: 100 }}
-      {...(size === undefined ? {} : { size })}
+      size={size}
     >
       <MModal.Overlay data-slot="dialog-overlay" blur={2} {...stylex.props(styles.overlay)} />
       <MModal.Content
