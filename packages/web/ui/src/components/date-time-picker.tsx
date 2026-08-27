@@ -4,6 +4,7 @@ import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DateTimePicker as MDateTimePicker } from '@mantine/dates'
 
+import { calendarLook } from '../lib/calendar.ts'
 import { dateWordsIn } from '../lib/date-format.ts'
 import { instantToLocal, localToInstant } from '../lib/instant.ts'
 import { seatOf } from '../lib/xstyle.ts'
@@ -73,6 +74,7 @@ export function DateTimePicker({
       onChange={(next) => onChange(localToInstant(typeof next === 'string' ? next : null))}
       placeholder={placeholder}
       disabled={disabled}
+      {...calendarLook}
       withSeconds
       // the fields this serves are optional, so clearing has to be reachable
       clearable

@@ -4,8 +4,10 @@ import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DatePickerInput } from '@mantine/dates'
 
+import { useIsBelow } from '../hooks/use-mobile.ts'
+
+import { calendarLook } from '../lib/calendar.ts'
 import { dateWordsIn, dayIn } from '../lib/date-format.ts'
-import { tokens } from '../theme/tokens.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
 // One control for a span of days.
@@ -19,57 +21,23 @@ import { seatOf } from '../lib/xstyle.ts'
 // product's `{start, end}` and the widget's tuple, which never leaves this
 // file.
 
-/**
- * The class this adapter draws a span with.
- *
- * Its rules live in theme.css because they hang off state the WIDGET owns:
- * `data-in-range` is not just the value that has been committed - while a
- * start is chosen and the pointer is looking for an end, the library
- * recomputes the whole span on every hover and says so through these same
- * attributes. Restating that machine in React to satisfy a compiled style
- * would mean keeping a second copy of a state machine that already works.
- *
- * The name is this adapter's own, not the library's: nothing here reaches
- * for a `.mantine-*` selector, so the day can be restyled by whoever renders
- * it and a version that renames its internals cannot silently undress this.
- */
-const RANGE_DAY = 'q-range-day'
-const RANGE_CELL = 'q-range-cell'
-
-/** the first column of the calendar; the widget's own default */
-const FIRST_DAY_OF_WEEK = 1
-
 const styles = stylex.create({
   field: {
     width: '100%',
   },
-  // the month a page is showing is a caption, not a headline
-  monthLabel: {
-    fontWeight: 500,
-    fontSize: 14,
-  },
-  weekday: {
-    fontWeight: 400,
-    color: tokens.mutedForeground,
-  },
 })
 
 /**
- * Which column of the week a day sits in.
+ * What this adapter has to tell the calendar about each day: only whether a
+ * second end is being hunted for, which decides whether the day under the
+ * pointer is drawn as the end it would become.
  *
- * The track has to close at the end of a week and open again at the start of
- * the next, and only the day itself knows where in the week it falls. The
- * widget hands each control its own date, so this is arithmetic rather than
- * a lookup at the DOM.
+ * It does NOT report which day that is. The widget claims the day's own
+ * pointer handlers for its preview and drops any passed alongside its data
+ * attributes, and the drawing turned out not to need it: an end is the day
+ * whose neighbour is not in the span.
  */
-const weekEdgesOf = (date: string) => {
-  const weekday = new Date(`${date.slice(0, 10)}T00:00:00`).getDay()
-  const column = (weekday - FIRST_DAY_OF_WEEK + 7) % 7
-  return {
-    ...(column === 0 ? { 'data-week-start': true } : {}),
-    ...(column === 6 ? { 'data-week-end': true } : {}),
-  }
-}
+const dayMarksOf = (pickingEnd: boolean) => (pickingEnd ? { 'data-range-picking': true } : {})
 
 export interface DateRange {
   start: string
@@ -103,6 +71,10 @@ export function DateRangePicker({
   /** legacy interop hatch */
   className?: string
 }) {
+  const narrow = useIsBelow(560)
+  // one end chosen and the other still open: the day under the pointer is a
+  // candidate, and worth drawing as one
+  const pickingEnd = value.start !== '' && value.end === ''
   return (
     <DatePickerInput
       id={id}
@@ -112,11 +84,11 @@ export function DateRangePicker({
       onChange={([start, end]) => onChange({ start: start ?? '', end: end ?? '' })}
       placeholder={placeholder}
       disabled={disabled}
-      // two months side by side: a span is chosen by seeing both ends
-      numberOfColumns={2}
-      // no gap between the cells: the seam is what broke a continuous span
-      // into a row of separate blue boxes
-      withCellSpacing={false}
+      // Two months side by side, because the task this control exists for is
+      // "from the end of one month into the next" and a single panel makes
+      // that a hunt. Where there is no room for two, one is better than two
+      // squeezed.
+      numberOfColumns={narrow ? 1 : 2}
       valueFormatter={({ date }) => {
         const [start, end] = Array.isArray(date) ? date : [date, null]
         if (typeof start !== 'string') return ''
@@ -124,13 +96,8 @@ export function DateRangePicker({
           ? `${dayIn(localeTag, start)} – ${dayIn(localeTag, end)}`
           : dayIn(localeTag, start)
       }}
-      getDayProps={weekEdgesOf}
-      classNames={{
-        day: RANGE_DAY,
-        monthCell: RANGE_CELL,
-        calendarHeaderLevel: stylex.props(styles.monthLabel).className,
-        weekday: stylex.props(styles.weekday).className,
-      }}
+      getDayProps={() => dayMarksOf(pickingEnd)}
+      {...calendarLook}
       {...dateWordsIn(localeTag)}
       {...(monthLabel === undefined && yearLabel === undefined
         ? {}
