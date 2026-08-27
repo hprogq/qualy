@@ -44,8 +44,12 @@ import { useWhen } from './when.ts'
 // rather than recorded
 const flow = stylex.create({
   // the hairline rail: at two pixels it read as a ruled margin down the page
-  // and out-shouted the words beside it
-  rail: { width: 1, backgroundColor: `color-mix(in oklab, ${tokens.border} 50%, transparent)` },
+  // and out-shouted the words beside it. Thickness is the cross axis, so the
+  // two directions state it on different properties - a width given to the
+  // sideways rail is its LENGTH, and the strip's rail vanished to a speck.
+  rail: { backgroundColor: `color-mix(in oklab, ${tokens.border} 50%, transparent)` },
+  railUpright: { width: 1 },
+  railAcross: { height: 1 },
   marker: {
     display: 'flex',
     alignItems: 'center',
@@ -53,10 +57,6 @@ const flow = stylex.create({
     borderWidth: 0,
     backgroundColor: tokens.background,
   },
-  // the dot's middle on the stage name's middle: at the top of the box it sat
-  // above the word it belongs to, which reads as a bullet for the whole item
-  // rather than a mark on the line
-  markerUpright: { insetBlockStart: 10, transform: 'translateY(-50%)' },
   foldItem: { marginInlineStart: 24, paddingBottom: 16 },
   foldMark: {
     display: 'flex',
@@ -283,9 +283,9 @@ const useSaid = () => {
  * which is enough to read a rail by and leaves the page's one accent for
  * things a reader has to act on.
  */
-function Marker({ status, upright }: { status: FlowStage['status']; upright: boolean }) {
+function Marker({ status }: { status: FlowStage['status'] }) {
   return (
-    <TimelineIndicator xstyle={[flow.marker, upright && flow.markerUpright]}>
+    <TimelineIndicator xstyle={flow.marker}>
       {status === 'current' && <span aria-hidden {...stylex.props(styles.pulse)} />}
       <span
         {...stylex.props(
@@ -324,10 +324,10 @@ function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
   const faded = stage.status === 'ended'
   return (
     <>
-      <Marker status={stage.status} upright={upright} />
+      <Marker status={stage.status} />
       {/* a hairline, not a bar: at two pixels the rail read as a ruled
           margin down the page and out-shouted the words beside it */}
-      <TimelineSeparator xstyle={flow.rail} />
+      <TimelineSeparator xstyle={[flow.rail, upright ? flow.railUpright : flow.railAcross]} />
       <TimelineHeader xstyle={flow.head}>
         <TimelineTitle
           xstyle={[
@@ -402,13 +402,13 @@ export function BatchFlow({
   const shown = folded > 1 ? stages.slice(folded) : stages
 
   return (
-    <Timeline value={reachedIn(stages)} xstyle={xstyle}>
+    <Timeline value={reachedIn(stages)} markOffset={10} xstyle={xstyle}>
       {folded > 1 && (
         <TimelineItem step={0} xstyle={flow.foldItem}>
           <TimelineIndicator xstyle={flow.foldMark}>
             <MoreVerticalIcon className={stylex.props(styles.foldIcon).className} />
           </TimelineIndicator>
-          <TimelineSeparator xstyle={flow.rail} />
+          <TimelineSeparator xstyle={[flow.rail, flow.railUpright]} />
           <button
             type="button"
             {...stylex.props(styles.foldButton)}

@@ -25,6 +25,7 @@ import { seatOf } from '../lib/xstyle.ts'
 interface TimelineContextValue {
   activeStep: number
   upright: boolean
+  markOffset: number
 }
 
 const TimelineContext = React.createContext<TimelineContextValue | undefined>(undefined)
@@ -82,8 +83,14 @@ const styles = stylex.create({
     borderColor: `color-mix(in oklab, ${tokens.primary} 20%, transparent)`,
   },
   markerDone: { borderColor: tokens.primary },
-  markerUpright: { insetBlockStart: 0, insetInlineStart: -24, transform: 'translateX(-50%)' },
-  markerAcross: { insetBlockStart: -24, insetInlineStart: 0, transform: 'translateY(-50%)' },
+  // Where the mark sits ACROSS the rail is this component's own business, and
+  // it is stated with `translate` rather than `transform` on purpose: a
+  // caller nudging the mark writes `transform`, and the two properties
+  // compose instead of one silently replacing the other. A percentage keeps
+  // it centred at whatever size the caller gives it. How far ALONG the rail
+  // it sits is `markOffset`, below.
+  markerUpright: { insetInlineStart: -24 },
+  markerAcross: { insetBlockStart: -24 },
   rail: {
     display: 'var(--q-timeline-rail, block)',
     position: 'absolute',
@@ -91,18 +98,32 @@ const styles = stylex.create({
     backgroundColor: `color-mix(in oklab, ${tokens.primary} 10%, transparent)`,
   },
   railDone: { backgroundColor: tokens.primary },
-  railUpright: {
-    height: 'calc(100% - 1rem - 0.25rem)',
-    width: 2,
-    insetInlineStart: -24,
-    transform: 'translate(-50%, 18px)',
-  },
+  // The rail's thickness is the cross axis, which is a different property in
+  // each direction - so a caller drawing a hairline has to say which rail it
+  // is drawing.
+  //
+  // Its length is the gap between two marks less the mark itself: whatever
+  // `markOffset` is, the rail leaves the same 2px above it as below, because
+  // both ends are measured from the mark rather than from the item.
+  railUpright: { height: 'calc(100% - 1rem - 0.25rem)', width: 2, insetInlineStart: -24 },
   railAcross: {
     insetBlockStart: -24,
     height: 2,
     width: 'calc(100% - 1rem - 0.25rem)',
-    transform: 'translate(18px, -50%)',
   },
+})
+
+// How far along the rail a mark sits, and where the rail therefore starts.
+//
+// A mark is centred on the item's first line by default. A caller whose first
+// line is taller says so once, on the timeline, and the rail moves with the
+// mark - the two used to be told separately, and a mark nudged two pixels
+// left the rail four pixels closer to the event above than to the one below.
+const along = stylex.create({
+  markUpright: (offset: number) => ({ insetBlockStart: offset, translate: '-50% -50%' }),
+  markAcross: (offset: number) => ({ insetInlineStart: offset, translate: '-50% -50%' }),
+  railUpright: (offset: number) => ({ translate: `-50% ${String(offset + 10)}px` }),
+  railAcross: (offset: number) => ({ translate: `${String(offset + 10)}px -50%` }),
 })
 
 /** what an item tells the parts inside it */
@@ -117,6 +138,7 @@ interface Seat {
 function Timeline({
   value = 1,
   orientation = 'vertical',
+  markOffset = 8,
   className,
   xstyle,
   children,
@@ -126,9 +148,17 @@ function Timeline({
     /** the step the reader has got to; everything up to it draws as done */
     value?: number
     orientation?: 'horizontal' | 'vertical'
+    /**
+     * how far from the leading edge of an item its mark's centre sits; the
+     * default centres it on a single line of text. The rail follows.
+     */
+    markOffset?: number
   }) {
   const upright = orientation === 'vertical'
-  const held = React.useMemo(() => ({ activeStep: value, upright }), [value, upright])
+  const held = React.useMemo(
+    () => ({ activeStep: value, upright, markOffset }),
+    [value, upright, markOffset],
+  )
   return (
     <TimelineContext value={held}>
       <div
@@ -210,7 +240,7 @@ function TimelineContent({ className, xstyle, ...props }: React.ComponentProps<'
 }
 
 function TimelineIndicator({ className, xstyle, ...props }: React.ComponentProps<'div'> & Seat) {
-  const { upright } = useTimeline()
+  const { upright, markOffset } = useTimeline()
   const { done } = React.use(ItemContext)
   return (
     <div
@@ -222,6 +252,7 @@ function TimelineIndicator({ className, xstyle, ...props }: React.ComponentProps
           styles.marker,
           done && styles.markerDone,
           upright ? styles.markerUpright : styles.markerAcross,
+          upright ? along.markUpright(markOffset) : along.markAcross(markOffset),
           xstyle,
         ),
         className,
@@ -231,7 +262,7 @@ function TimelineIndicator({ className, xstyle, ...props }: React.ComponentProps
 }
 
 function TimelineSeparator({ className, xstyle, ...props }: React.ComponentProps<'div'> & Seat) {
-  const { upright } = useTimeline()
+  const { upright, markOffset } = useTimeline()
   // the rail to the next event is drawn as reached once that event is
   const { nextDone } = React.use(ItemContext)
   return (
@@ -244,6 +275,7 @@ function TimelineSeparator({ className, xstyle, ...props }: React.ComponentProps
           styles.rail,
           nextDone && styles.railDone,
           upright ? styles.railUpright : styles.railAcross,
+          upright ? along.railUpright(markOffset) : along.railAcross(markOffset),
           xstyle,
         ),
         className,
