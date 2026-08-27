@@ -5,6 +5,7 @@ import { CornerDownLeftIcon, FileTextIcon, SearchIcon, ShieldIcon } from 'lucide
 import { useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { visuallyHidden } from '@qualy/ui/visually-hidden'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
@@ -90,17 +91,6 @@ const styles = stylex.create({
   },
   seekKeyOpen: {
     backgroundColor: tokens.surfaceMuted,
-  },
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
   },
   // every control on this row is the same height as the tabs beside it: a
   // row of filters that do not line up reads as two rows
@@ -728,7 +718,9 @@ function Queue({
                 onClick={() => setSeeking((open) => !open)}
               >
                 <SearchIcon aria-hidden />
-                <span {...stylex.props(styles.srOnly)}>{format(m.reviewSearchPlaceholder)}</span>
+                <span {...stylex.props(visuallyHidden.text)}>
+                  {format(m.reviewSearchPlaceholder)}
+                </span>
               </Button>
             )}
             <div {...stylex.props(styles.deskOnly)}>

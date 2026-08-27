@@ -2,6 +2,7 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronDownIcon, GripVerticalIcon, PlusIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
+import { visuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -153,17 +154,6 @@ const styles = stylex.create({
     flexShrink: 0,
     borderRadius: '9999px',
     backgroundColor: tokens.danger,
-  },
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
   },
   typeCell: {
     display: {
@@ -549,7 +539,9 @@ export function FieldList({
                 {field.required && (
                   <>
                     <span aria-hidden {...stylex.props(styles.requiredDot)} />
-                    <span {...stylex.props(styles.srOnly)}>{format(m.itemsFieldRequired)}</span>
+                    <span {...stylex.props(visuallyHidden.text)}>
+                      {format(m.itemsFieldRequired)}
+                    </span>
                   </>
                 )}
               </span>

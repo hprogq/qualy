@@ -5,6 +5,7 @@ import { GripVerticalIcon, PlusIcon, RotateCcwIcon, Trash2Icon, XIcon } from 'lu
 import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { visuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { ConfirmDialog, Feedback, Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -141,17 +142,6 @@ const styles = stylex.create({
   chipRemoveIcon: {
     width: 12,
     height: 12,
-  },
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
   },
   addRow: {
     display: 'flex',
@@ -336,7 +326,7 @@ function ReasonList({
                     onClick={() => onChange(reasons.filter((one) => one !== reason))}
                   >
                     <XIcon aria-hidden className={stylex.props(styles.chipRemoveIcon).className} />
-                    <span {...stylex.props(styles.srOnly)}>{reason}</span>
+                    <span {...stylex.props(visuallyHidden.text)}>{reason}</span>
                   </button>
                 )}
               </Badge>

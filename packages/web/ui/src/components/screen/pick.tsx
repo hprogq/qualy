@@ -1,4 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
+
+import { visuallyHidden } from '../../lib/visually-hidden.ts'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
 import { Checkbox } from '../checkbox.tsx'
@@ -11,17 +13,6 @@ const styles = stylex.create({
   },
   fields: {
     minWidth: 0,
-  },
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
   },
   grid: {
     display: 'grid',
@@ -205,7 +196,7 @@ export function PickGrid({
   }
   return (
     <fieldset {...stylex.props(styles.fields, xstyle)}>
-      <legend {...stylex.props(styles.srOnly)}>{legend}</legend>
+      <legend {...stylex.props(visuallyHidden.text)}>{legend}</legend>
       <div {...stylex.props(styles.grid, columns === 2 ? styles.gridTwo : styles.gridThree)}>
         {options.map((option) => {
           const on = selected.includes(option.value)

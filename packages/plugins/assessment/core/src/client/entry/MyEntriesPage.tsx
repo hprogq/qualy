@@ -12,6 +12,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { RefreshCwIcon, TableOfContentsIcon } from 'lucide-react'
+import { visuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Appear, Glide, Sift, SiftRow, Swap } from '@qualy/ui/reveal'
@@ -269,17 +270,6 @@ const styles = stylex.create({
     animationDuration: '1s',
     animationTimingFunction: 'linear',
     animationIterationCount: 'infinite',
-  },
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
   },
   statChip: {
     display: {
@@ -1752,7 +1742,9 @@ function Body({
                           aria-hidden
                           className={stylex.props(anyFetching && styles.spinning).className}
                         />
-                        <span {...stylex.props(styles.srOnly)}>{format(m.myEntriesRefresh)}</span>
+                        <span {...stylex.props(visuallyHidden.text)}>
+                          {format(m.myEntriesRefresh)}
+                        </span>
                       </Button>
                       <span {...stylex.props(styles.statChip)}>
                         <span {...stylex.props(styles.statPair)}>

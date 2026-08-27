@@ -9,6 +9,7 @@ import {
 import * as stylex from '@stylexjs/stylex'
 import { usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { visuallyHidden } from '@qualy/ui/visually-hidden'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -297,17 +298,6 @@ const styles = stylex.create({
     backgroundColor: `color-mix(in oklab, ${tokens.foreground} 70%, transparent)`,
   },
   // ---- the edge buttons ----
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
-  },
   noPointer: {
     pointerEvents: 'none',
   },
@@ -677,7 +667,7 @@ function EdgeButton({
     return (
       <Button variant="outline" size="icon-sm" onClick={onPress}>
         {children}
-        <span {...stylex.props(styles.srOnly)}>{label}</span>
+        <span {...stylex.props(visuallyHidden.text)}>{label}</span>
       </Button>
     )
   }
@@ -693,7 +683,7 @@ function EdgeButton({
               className={stylex.props(styles.noPointer).className}
             >
               {children}
-              <span {...stylex.props(styles.srOnly)}>{label}</span>
+              <span {...stylex.props(visuallyHidden.text)}>{label}</span>
             </Button>
           </span>
         </TooltipTrigger>

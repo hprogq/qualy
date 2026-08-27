@@ -3,6 +3,7 @@ import { FileIcon, PlusIcon, TypeIcon, XIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { visuallyHidden } from '@qualy/ui/visually-hidden'
 import { Field, FormDialog } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -62,17 +63,6 @@ const styles = stylex.create({
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-  },
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
   },
   addRow: {
     display: 'flex',
@@ -234,7 +224,7 @@ export function SupplementDialog({
               onClick={() => remove(index)}
             >
               <XIcon aria-hidden />
-              <span {...stylex.props(styles.srOnly)}>{format(m.supplementPieceRemove)}</span>
+              <span {...stylex.props(visuallyHidden.text)}>{format(m.supplementPieceRemove)}</span>
             </Button>
           </div>
         ))}

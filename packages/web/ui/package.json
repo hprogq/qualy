@@ -9,6 +9,7 @@
   ],
   "exports": {
     "./cn": "./src/lib/cn.ts",
+    "./visually-hidden": "./src/lib/visually-hidden.ts",
     "./button": "./src/components/button.tsx",
     "./input": "./src/components/input.tsx",
     "./label": "./src/components/label.tsx",

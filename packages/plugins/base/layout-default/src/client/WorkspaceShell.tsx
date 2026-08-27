@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { PanelLeftIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
+import { visuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import {
   drawerAccount,
@@ -287,17 +288,6 @@ const styles = stylex.create({
   capsuleWord: {
     fontSize: 13,
     fontWeight: 500,
-  },
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
   },
   drawerHead: {
     display: 'flex',
@@ -800,7 +790,7 @@ function CapableWorkspaceShell() {
           showCloseButton={false}
           className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
         >
-          <SheetTitle className={stylex.props(styles.srOnly).className}>
+          <SheetTitle className={stylex.props(visuallyHidden.text).className}>
             {format(m.navCapsule)}
           </SheetTitle>
           {/* the person at the head, the pages in the middle, the account at

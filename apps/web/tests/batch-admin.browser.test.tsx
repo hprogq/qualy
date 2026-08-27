@@ -1,4 +1,5 @@
 import { lazy, type ReactNode } from 'react'
+import { Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -21,6 +22,9 @@ const PeopleImportPicker = lazy(components['auth/PeopleImportPicker']!)
 // it stands, and what can be done to it. Mounted here the way the shell
 // mounts it, because half of what these cases drive lives in it.
 const BatchContextBar = (await components['assessment/BatchContextBar']!()).default
+// the shell these sections actually live in, mounted as their layout so the
+// page scrolls where the app scrolls it
+const WorkspaceShell = (await components['layout-default/WorkspaceShell']!()).default
 
 // What a service test cannot see: that a plan can be built with no template
 // at all, that the two template kinds stay in their own pickers and both stay
@@ -1151,5 +1155,60 @@ describe('the batch switcher', () => {
     // document aria-hidden, and the next case would find no roles at all
     await userEvent.keyboard('{Escape}')
     await expect.poll(() => menu()).toBe(null)
+  })
+})
+
+describe('a section inside the workspace shell', () => {
+  it('scrolls in its own region and never grows the page behind it', async () => {
+    // A narrow screen with a long form: the shell holds the viewport and its
+    // main scrolls. If anything reaches past that - and a visually hidden
+    // label with no positioned ancestor does, taking the page itself as its
+    // containing block - the window grows a second scrollbar over a strip of
+    // nothing, which is what a reader sees before anyone can explain it.
+    page.viewport(430, 820)
+    renderScreen({
+      client: fakeClient({
+        app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+        assessment: assessmentStubs({
+          getBatch: () =>
+            Effect.succeed({
+              batch: batch({
+                // the chips are what put a hidden label halfway down the page
+                reviewReasons: {
+                  reject: ['材料与所填不符', '缺少证明文件', '证明文件不清晰', '重复提交'],
+                  escalate: ['需要学院复核', '涉及跨院系认定'],
+                },
+              }),
+            }),
+        }),
+      }),
+      registry: {
+        'assessment/BatchContextBar': lazy(
+          components['assessment/BatchContextBar']! as () => Promise<never>,
+        ),
+      },
+      route: `/assessment/batches/${BATCH_ID}/settings`,
+      children: (
+        <Routes>
+          <Route element={<WorkspaceShell />}>
+            <Route
+              path="/assessment/batches/:batchId/settings"
+              element={workspace(<BatchSettingsPage />)}
+            />
+          </Route>
+        </Routes>
+      ),
+    })
+    await expect.element(page.getByRole('main')).toBeInTheDocument()
+    // the form is long enough for its own region to scroll
+    await expect
+      .poll(() => {
+        const main = document.querySelector('main')
+        return main !== null && main.scrollHeight > main.clientHeight
+      })
+      .toBe(true)
+    const doc = document.documentElement
+    expect(doc.scrollHeight).toBe(doc.clientHeight)
+    expect(doc.scrollWidth).toBe(doc.clientWidth)
   })
 })

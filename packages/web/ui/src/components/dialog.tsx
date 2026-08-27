@@ -7,6 +7,7 @@ import { FocusTrap, Modal as MModal } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
+import { visuallyHidden } from '../lib/visually-hidden.ts'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
@@ -63,18 +64,6 @@ const styles = stylex.create({
     position: 'absolute',
     insetBlockStart: 16,
     insetInlineEnd: 16,
-  },
-  // announced, never shown
-  hidden: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clipPath: 'inset(50%)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
   },
   header: {
     display: 'flex',
@@ -310,7 +299,7 @@ function DialogContent({
             onClick={() => setOpen(false)}
           >
             <XIcon />
-            <span {...stylex.props(styles.hidden)}>Close</span>
+            <span {...stylex.props(visuallyHidden.text)}>Close</span>
           </Button>
         )}
       </MModal.Content>

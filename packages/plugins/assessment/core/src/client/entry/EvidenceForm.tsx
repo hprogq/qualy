@@ -4,6 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { visuallyHidden } from '@qualy/ui/visually-hidden'
 import { Button } from '@qualy/ui/button'
 import { Field } from '@qualy/ui/admin'
 import { Dropzone, FileTile, type Accept, type FileRejection } from '@qualy/ui/dropzone'
@@ -29,17 +30,6 @@ import {
 // ids of files this person just put in or already cited.
 
 const styles = stylex.create({
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    padding: 0,
-    margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0, 0, 0, 0)',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
-  },
   form: {
     display: 'flex',
     flexDirection: 'column',
@@ -437,13 +427,13 @@ function CitedFile({
           <Button variant="ghost" size="icon-sm" asChild>
             <a href={href} download={data?.filename} target="_blank" rel="noreferrer">
               <DownloadIcon aria-hidden />
-              <span {...stylex.props(styles.srOnly)}>{name}</span>
+              <span {...stylex.props(visuallyHidden.text)}>{name}</span>
             </a>
           </Button>
           {onRemove !== undefined && (
             <Button variant="ghost" size="icon-sm" type="button" onClick={onRemove}>
               <XIcon aria-hidden />
-              <span {...stylex.props(styles.srOnly)}>{format(m.entryFileRemove)}</span>
+              <span {...stylex.props(visuallyHidden.text)}>{format(m.entryFileRemove)}</span>
             </Button>
           )}
         </>
