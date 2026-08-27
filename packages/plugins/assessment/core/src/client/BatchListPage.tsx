@@ -22,6 +22,7 @@ import { PageContainer } from '@qualy/ui/page-container'
 import { Input } from '@qualy/ui/input'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
+import { Count } from '@qualy/ui/count'
 import { ChevronLeftIcon, ChevronRightIcon, LayersIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
@@ -125,15 +126,6 @@ const styles = stylex.create({
       default: null,
       '@media (max-width: 639.98px)': 'auto',
     },
-  },
-  // The room a chip's number will need is taken from the first paint, empty.
-  // Appearing into no room widened every chip the moment the count landed,
-  // and the filter bar shuffled under the reader's eye - 1ch of tabular
-  // figures is exactly one digit, which is what nearly every one of these is.
-  chipCount: {
-    minWidth: '1ch',
-    color: tokens.mutedForeground,
-    fontVariantNumeric: 'tabular-nums',
   },
   skeletonColumn: {
     display: 'flex',
@@ -243,9 +235,7 @@ const styles = stylex.create({
 // can be sent to somebody. Creation happens in a dialog on top of the list.
 
 /** a chip's number, said only once the server has counted */
-const chipCount = (count: number | undefined) => (
-  <span {...stylex.props(styles.chipCount)}>{count}</span>
-)
+const chipCount = (count: number | undefined) => <Count>{count}</Count>
 
 export default function BatchListPage() {
   const query = useApiQuery(assessmentApi)

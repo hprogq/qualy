@@ -10,6 +10,7 @@
   "exports": {
     "./visually-hidden": "./src/lib/visually-hidden.tsx",
     "./button": "./src/components/button.tsx",
+    "./count": "./src/components/count.tsx",
     "./input": "./src/components/input.tsx",
     "./label": "./src/components/label.tsx",
     "./card": "./src/components/card.tsx",

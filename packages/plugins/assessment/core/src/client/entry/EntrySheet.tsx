@@ -15,6 +15,7 @@ import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { entryRefusalReason } from './refusals.ts'
@@ -104,13 +105,6 @@ const styles = stylex.create({
   tabOn: {
     fontWeight: 500,
     color: tokens.foreground,
-  },
-  tabCount: {
-    borderRadius: tokens.radiusSm,
-    backgroundColor: tokens.surfaceMuted,
-    paddingInline: 4,
-    fontSize: 12,
-    fontVariantNumeric: 'tabular-nums',
   },
   tabInk: {
     position: 'absolute',
@@ -507,7 +501,7 @@ export function EntrySheet({
               {...stylex.props(styles.tab, tab === key && styles.tabOn)}
             >
               {format(label)}
-              <span {...stylex.props(styles.tabCount)}>{count}</span>
+              <Count>{count}</Count>
               {tab === key && <span aria-hidden {...stylex.props(styles.tabInk)} />}
             </button>
           ))}
