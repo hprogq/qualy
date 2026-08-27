@@ -27,6 +27,26 @@ import { useFinePointer } from './pointer.ts'
 // should have been shown.
 
 const styles = stylex.create({
+  fixed: { flexShrink: 0 },
+  toggle: {
+    display: 'flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12,
+    lineHeight: '1rem',
+    whiteSpace: 'nowrap',
+  },
+  // a border adds to the box and made this cap wider than its siblings; a
+  // ring is paint
+  capOnSurface: {
+    backgroundColor: tokens.background,
+    boxShadow: `inset 0 0 0 1px ${tokens.border}`,
+  },
+  onSolid: {
+    backgroundColor: 'color-mix(in oklab, currentColor 20%, transparent)',
+    color: 'currentColor',
+  },
   body: {
     display: 'flex',
     flexDirection: 'column',
@@ -205,12 +225,12 @@ export function SupplementDialog({
               onChange={(event) => edit(index, { label: event.target.value })}
             />
             {fine && index < 9 && (
-              <KbdGroup className="shrink-0">
+              <KbdGroup className={stylex.props(styles.fixed).className}>
                 <Kbd>⌥</Kbd>
                 <Kbd>{index + 1}</Kbd>
               </KbdGroup>
             )}
-            <Label className="flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap">
+            <Label className={stylex.props(styles.toggle).className}>
               <Checkbox
                 checked={piece.required}
                 onCheckedChange={(checked) => edit(index, { required: checked === true })}
@@ -238,8 +258,8 @@ export function SupplementDialog({
               // it - but a border adds to the box and made this ⌥ two pixels
               // wider than its siblings in the rows above. A ring is paint.
               <KbdGroup>
-                <Kbd className="bg-background ring-1 ring-border ring-inset">⌥</Kbd>
-                <Kbd className="bg-background ring-1 ring-border ring-inset">F</Kbd>
+                <Kbd className={stylex.props(styles.capOnSurface).className}>⌥</Kbd>
+                <Kbd className={stylex.props(styles.capOnSurface).className}>F</Kbd>
               </KbdGroup>
             )}
           </Button>
@@ -248,8 +268,8 @@ export function SupplementDialog({
             {format(m.supplementAddText)}
             {fine && (
               <KbdGroup>
-                <Kbd className="bg-background ring-1 ring-border ring-inset">⌥</Kbd>
-                <Kbd className="bg-background ring-1 ring-border ring-inset">T</Kbd>
+                <Kbd className={stylex.props(styles.capOnSurface).className}>⌥</Kbd>
+                <Kbd className={stylex.props(styles.capOnSurface).className}>T</Kbd>
               </KbdGroup>
             )}
           </Button>
@@ -288,7 +308,7 @@ export function SupplementDialog({
           </Button>
           <Button disabled={!ready} onClick={confirm}>
             {format(m.supplementSend)}
-            <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
+            <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
           </Button>
         </div>
       }

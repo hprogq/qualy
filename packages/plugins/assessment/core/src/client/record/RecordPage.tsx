@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -20,6 +22,13 @@ import { fieldsOf, type ItemDto } from '../entry/model.ts'
 // moment it is filed - no review round - which is exactly why the basis is
 // required: a fact nobody can check is an assertion.
 
+const styles = stylex.create({
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  waiting: { height: 160, width: '100%' },
+  form: { display: 'flex', maxWidth: '36rem', flexDirection: 'column', gap: 16 },
+  foot: { display: 'flex', justifyContent: 'flex-end' },
+})
+
 export default function RecordPage() {
   const { format } = useI18n()
   return (
@@ -28,7 +37,7 @@ export default function RecordPage() {
         batch.capabilities.record ? (
           <Recorder batchId={batch.id} materialRange={batch.materialRange} />
         ) : (
-          <p className="text-sm text-muted-foreground">{format(m.recordNoStanding)}</p>
+          <p {...stylex.props(styles.quiet)}>{format(m.recordNoStanding)}</p>
         )
       }
     </BatchScreen>
@@ -99,12 +108,12 @@ function Recorder({
         void items.refetch()
         void roster.refetch()
       }}
-      skeleton={<Skeleton className="h-40 w-full" />}
+      skeleton={<Skeleton className={stylex.props(styles.waiting).className} />}
     >
       {administrative.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{format(m.recordEmpty)}</p>
+        <p {...stylex.props(styles.quiet)}>{format(m.recordEmpty)}</p>
       ) : (
-        <div className="flex max-w-xl flex-col gap-4">
+        <div {...stylex.props(styles.form)}>
           <Field label={format(m.itemsListTitle)}>
             {(id) => (
               <NativeSelect
@@ -159,7 +168,7 @@ function Recorder({
             )}
           </Field>
           <Feedback message={problem} />
-          <div className="flex justify-end">
+          <div {...stylex.props(styles.foot)}>
             <Button
               disabled={
                 record.isPending || itemId === '' || participantId === '' || basis.trim() === ''

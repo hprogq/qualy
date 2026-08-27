@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useApi, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -10,6 +12,13 @@ import { authLocalApi } from './api.ts'
 
 // embedded credential renderer: the auth core's login shell owns the page,
 // this form only proves the user against one local provider instance
+const styles = stylex.create({
+  form: { display: 'flex', flexDirection: 'column', gap: 16 },
+  field: { display: 'flex', flexDirection: 'column', gap: 8 },
+  refusal: { fontSize: 14, lineHeight: '1.25rem', color: tokens.danger },
+  submit: { width: '100%' },
+})
+
 export default function LocalLoginMethod({ method, onAuthenticated }: LoginMethodRendererProps) {
   const api = useApi(authLocalApi)
   const run = useRunApi()
@@ -39,8 +48,8 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <div className="space-y-2">
+    <form onSubmit={submit} {...stylex.props(styles.form)}>
+      <div {...stylex.props(styles.field)}>
         <Label htmlFor="identifier">{format(m.identifier)}</Label>
         <Input
           id="identifier"
@@ -49,7 +58,7 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
           onChange={(event) => setIdentifier(event.target.value)}
         />
       </div>
-      <div className="space-y-2">
+      <div {...stylex.props(styles.field)}>
         <Label htmlFor="password">{format(m.password)}</Label>
         <Input
           id="password"
@@ -59,8 +68,12 @@ export default function LocalLoginMethod({ method, onAuthenticated }: LoginMetho
           onChange={(event) => setPassword(event.target.value)}
         />
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" className="w-full" disabled={busy || !identifier || !password}>
+      {error && <p {...stylex.props(styles.refusal)}>{error}</p>}
+      <Button
+        type="submit"
+        className={stylex.props(styles.submit).className}
+        disabled={busy || !identifier || !password}
+      >
         {busy ? format(m.submitting) : format(m.submit)}
       </Button>
     </form>

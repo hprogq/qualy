@@ -44,6 +44,7 @@ const md = '@media (min-width: 768px)'
 const COLUMNS = '3.5rem minmax(0, 1fr) 5.25rem 4.25rem 9.25rem 9.75rem 4rem 1.75rem'
 
 const styles = stylex.create({
+  column: { width: 160 },
   root: {
     display: 'flex',
     flexDirection: 'column',
@@ -549,7 +550,7 @@ export function StructureTable({
               <ChevronDownIcon aria-hidden className={stylex.props(styles.chevronDim).className} />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuContent align="end" className={stylex.props(styles.column).className}>
             <DropdownMenuItem onSelect={() => onAddItem(null)}>
               <FilePlusIcon aria-hidden />
               {format(m.itemsNew)}
@@ -907,7 +908,7 @@ function RowMenu({ children }: { children: React.ReactNode }) {
           list. */}
       <DropdownMenuContent
         align="end"
-        className="w-40"
+        className={stylex.props(styles.column).className}
         onClick={(event) => event.stopPropagation()}
       >
         {children}

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -37,6 +39,43 @@ const PAGE_SIZE = 20
 
 /** the identity of one change, which is what a selection is keyed by */
 const keyOf = (change: AccessChange) => `${change.kind}/${change.id}`
+
+const styles = stylex.create({
+  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '48rem' } },
+  body: { gap: 36 },
+  waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
+  waitingRow: { height: 56, width: '100%' },
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
+  list: {
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  foot: { justifyContent: { default: null, '@media (min-width: 640px)': 'space-between' } },
+  footSide: { display: 'flex', alignItems: 'center', gap: 8 },
+  row: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    paddingInline: 16,
+    paddingBlock: 12,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+  },
+  who: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 4 },
+  name: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
+  permissions: { display: 'flex', flexWrap: 'wrap', columnGap: 16, rowGap: 6 },
+  struck: {
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+    textDecorationLine: 'line-through',
+  },
+  choice: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, lineHeight: '1.25rem' },
+})
 
 export function AccessSyncDialog({
   batchId,
@@ -123,12 +162,12 @@ export function AccessSyncDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="access-sync" className="sm:max-w-3xl">
+      <DialogContent data-testid="access-sync" className={stylex.props(styles.panel).className}>
         <DialogHeader>
           <DialogTitle>{format(m.accessSyncTitle)}</DialogTitle>
           <DialogDescription>{format(m.accessSyncHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="space-y-3">
+        <DialogBody xstyle={styles.body}>
           <AsyncSection
             pending={changes.isPending}
             error={changes.isError ? formatError(changes.error) : null}
@@ -136,16 +175,16 @@ export function AccessSyncDialog({
             retryLabel={format(commonMessages.retry)}
             onRetry={() => void changes.refetch()}
             skeleton={
-              <div className="flex flex-col gap-2">
-                <Skeleton className="h-14 w-full" />
-                <Skeleton className="h-14 w-full" />
+              <div {...stylex.props(styles.waiting)}>
+                <Skeleton className={stylex.props(styles.waitingRow).className} />
+                <Skeleton className={stylex.props(styles.waitingRow).className} />
               </div>
             }
           >
             {items.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{format(m.accessSyncQuiet)}</p>
+              <p {...stylex.props(styles.quiet)}>{format(m.accessSyncQuiet)}</p>
             ) : (
-              <ul className="divide-y rounded-lg border">
+              <ul {...stylex.props(styles.list)}>
                 {items.map((change) => (
                   <ChangeRow
                     key={keyOf(change)}
@@ -159,8 +198,8 @@ export function AccessSyncDialog({
             )}
           </AsyncSection>
         </DialogBody>
-        <DialogFooter className="sm:justify-between">
-          <div className="flex items-center gap-2">
+        <DialogFooter className={stylex.props(styles.foot).className}>
+          <div {...stylex.props(styles.footSide)}>
             <Button
               size="sm"
               variant="ghost"
@@ -183,9 +222,9 @@ export function AccessSyncDialog({
               </Button>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div {...stylex.props(styles.footSide)}>
             {!onlyWithdrawals && (
-              <span className="text-xs text-muted-foreground">
+              <span {...stylex.props(styles.aside)}>
                 {format(m.accessSyncSelected, { count: selectedCount })}
               </span>
             )}
@@ -224,32 +263,30 @@ function ChangeRow({
   const settled = change.kind === 'lapsed'
 
   return (
-    <li className="space-y-2 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-sm font-medium">{change.displayName}</span>
+    <li {...stylex.props(styles.row)}>
+      <div {...stylex.props(styles.who)}>
+        <span {...stylex.props(styles.name)}>{change.displayName}</span>
         {change.businessNo !== null && (
-          <span className="text-xs text-muted-foreground">{change.businessNo}</span>
+          <span {...stylex.props(styles.aside)}>{change.businessNo}</span>
         )}
         {change.roleName !== '' && (
-          <span className="text-xs text-muted-foreground">
+          <span {...stylex.props(styles.aside)}>
             {format(m.accessRoleAt, { role: change.roleName })}
           </span>
         )}
         <Badge variant={settled ? 'outline' : 'secondary'}>
           {format(KIND_LABELS[change.kind])}
         </Badge>
-        {settled && (
-          <span className="text-xs text-muted-foreground">{format(m.accessSyncLapsedHint)}</span>
-        )}
+        {settled && <span {...stylex.props(styles.aside)}>{format(m.accessSyncLapsedHint)}</span>}
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+      <div {...stylex.props(styles.permissions)}>
         {inCatalogOrder(change.permissions).map((code) =>
           settled ? (
-            <span key={code} className="text-xs text-muted-foreground line-through">
+            <span key={code} {...stylex.props(styles.struck)}>
               {format(permissionLabel(code))}
             </span>
           ) : (
-            <label key={code} className="flex items-center gap-2 text-sm">
+            <label key={code} {...stylex.props(styles.choice)}>
               <Checkbox
                 data-testid={`access-permission-${code}`}
                 checked={held.has(code)}

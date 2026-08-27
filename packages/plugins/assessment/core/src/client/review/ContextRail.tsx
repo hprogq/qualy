@@ -28,6 +28,7 @@ const paneStyles = stylex.create({
 })
 
 const styles = stylex.create({
+  fixed: { flexShrink: 0 },
   clauseCard: {
     display: 'flex',
     flexShrink: 0,
@@ -443,7 +444,9 @@ function AboutParts({
                       entryStatusMessage[sibling.status as EntryDto['status']] ?? m.eventOther,
                     )}
                   </span>
-                  {fine && index < 9 && <Kbd className="shrink-0">{`⌥${index + 1}`}</Kbd>}
+                  {fine && index < 9 && (
+                    <Kbd className={stylex.props(styles.fixed).className}>{`⌥${index + 1}`}</Kbd>
+                  )}
                 </button>
               </li>
             ))}

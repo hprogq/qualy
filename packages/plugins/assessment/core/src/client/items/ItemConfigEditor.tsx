@@ -49,6 +49,8 @@ const md = '@media (min-width: 768px)'
 const xl = '@media (min-width: 1280px)'
 
 const styles = stylex.create({
+  field: { width: 176 },
+  figure: { fontVariantNumeric: 'tabular-nums' },
   unitTail: {
     fontSize: 12,
     color: tokens.mutedForeground,
@@ -1800,7 +1802,7 @@ export function ItemConfigEditor({
                       <EllipsisVerticalIcon aria-hidden />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuContent align="end" className={stylex.props(styles.field).className}>
                     {menu}
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -1992,7 +1994,7 @@ export function ItemConfigEditor({
                     {(id) => (
                       <Input
                         id={id}
-                        className="tabular-nums"
+                        {...stylex.props(styles.figure)}
                         value={draft.fixedValue}
                         onChange={(event) => patch({ fixedValue: event.target.value })}
                         tail={

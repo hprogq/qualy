@@ -13,6 +13,22 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 // photo viewer.
 
 const styles = stylex.create({
+  panel: {
+    display: 'flex',
+    height: '85vh',
+    flexDirection: 'column',
+    gap: 12,
+    maxWidth: { default: null, '@media (min-width: 640px)': '64rem' },
+  },
+  name: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    paddingRight: 32,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+  },
   waiting: {
     display: 'flex',
     minHeight: 0,
@@ -75,9 +91,9 @@ export function DocumentLightbox({
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="flex h-[85vh] flex-col gap-3 sm:max-w-5xl">
+      <DialogContent className={stylex.props(styles.panel).className}>
         <DialogHeader>
-          <DialogTitle className="min-w-0 truncate pr-8 text-sm">{name}</DialogTitle>
+          <DialogTitle {...stylex.props(styles.name)}>{name}</DialogTitle>
         </DialogHeader>
         {url === null ? (
           <div {...stylex.props(styles.waiting)}>

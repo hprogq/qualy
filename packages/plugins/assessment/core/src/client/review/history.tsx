@@ -45,6 +45,17 @@ type History = {
 const sm = '@media (min-width: 640px)'
 
 const styles = stylex.create({
+  panel: {
+    display: 'flex',
+    width: '100%',
+    flexDirection: 'column',
+    gap: 0,
+    padding: 0,
+  },
+  panelUp: { maxHeight: '85vh' },
+  panelBeside: { maxWidth: { default: null, '@media (min-width: 640px)': '28rem' } },
+  head: { borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.border },
+  headTitle: { fontSize: 14, lineHeight: '1.25rem' },
   subtitle: {
     fontSize: 12,
     color: tokens.mutedForeground,
@@ -335,10 +346,12 @@ export function VersionPicker({
           arriving sideways, and the list it carries is a thumb's job. */}
       <SheetContent
         side={narrow ? 'bottom' : 'right'}
-        className="flex w-full flex-col gap-0 p-0 data-[side=bottom]:max-h-[85vh] data-[side=right]:sm:max-w-md"
+        xstyle={[styles.panel, narrow ? styles.panelUp : styles.panelBeside]}
       >
-        <SheetHeader className="border-b">
-          <SheetTitle className="text-sm">{format(m.reviewVersionsTitle)}</SheetTitle>
+        <SheetHeader className={stylex.props(styles.head).className}>
+          <SheetTitle className={stylex.props(styles.headTitle).className}>
+            {format(m.reviewVersionsTitle)}
+          </SheetTitle>
           <p {...stylex.props(styles.subtitle)}>
             {format(m.reviewVersionsSubtitle, {
               name: participantName,

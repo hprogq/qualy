@@ -40,6 +40,7 @@ import {
 // screen, whose whole job is looking at what was submitted.
 
 const styles = stylex.create({
+  cardPanel: { width: '100%', maxWidth: '24rem', backgroundColor: tokens.surface },
   arriving: {
     opacity: 0,
     transitionProperty: 'opacity',
@@ -519,7 +520,7 @@ export function AttachmentLink({
   return (
     <Shown photo={isImage}>
       <FileTile
-        className="w-full max-w-sm bg-card"
+        className={stylex.props(styles.cardPanel).className}
         media={
           isImage ? (
             <PhotoView src={href}>

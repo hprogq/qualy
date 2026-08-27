@@ -1,4 +1,6 @@
 import { useEffect, useId, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
@@ -49,6 +51,25 @@ const FAMILIES = [
   { key: 'result', label: m.permissionGroupResult },
 ] as const
 
+const styles = stylex.create({
+  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '42rem' } },
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  families: { display: 'flex', flexDirection: 'column', gap: 20 },
+  family: { display: 'flex', flexDirection: 'column', gap: 12 },
+  // two columns where the dialog is wide enough: eight rows in one column
+  // reads as a wall
+  pairs: {
+    display: 'grid',
+    columnGap: 24,
+    rowGap: 12,
+    gridTemplateColumns: {
+      default: null,
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  plainLabel: { fontWeight: 400 },
+})
+
 export function AccessAdjustDialog({
   subject,
   open,
@@ -97,7 +118,7 @@ export function AccessAdjustDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className={stylex.props(styles.panel).className}>
         <DialogHeader>
           <DialogTitle>
             {format(m.accessAdjustTitle, { name: person?.displayName ?? '' })}
@@ -106,20 +127,20 @@ export function AccessAdjustDialog({
         </DialogHeader>
         <DialogBody>
           {offered.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{format(m.accessNothing)}</p>
+            <p {...stylex.props(styles.quiet)}>{format(m.accessNothing)}</p>
           ) : (
-            <div className="flex flex-col gap-5">
+            <div {...stylex.props(styles.families)}>
               {FAMILIES.map(({ key, label }, index) => {
                 const codes = offered.filter((code) => familyOf(code) === key)
                 if (codes.length === 0) return null
                 return (
-                  <div key={key} className="flex flex-col gap-3">
+                  <div key={key} {...stylex.props(styles.family)}>
                     {index > 0 && <FieldSeparator />}
                     <FieldSet disabled={pending}>
                       <FieldLegend variant="label">{format(label)}</FieldLegend>
                       {/* two columns where the dialog is wide enough: eight
                           rows in one column reads as a wall */}
-                      <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                      <div {...stylex.props(styles.pairs)}>
                         {codes.map((code) => (
                           <PermissionRow
                             key={code}
@@ -175,7 +196,7 @@ function PermissionRow({
         onCheckedChange={onToggle}
       />
       <FieldContent>
-        <FieldLabel htmlFor={id} className="font-normal">
+        <FieldLabel htmlFor={id} className={stylex.props(styles.plainLabel).className}>
           {format(permissionLabel(code))}
         </FieldLabel>
         <FieldDescription>{format(permissionHint(code))}</FieldDescription>

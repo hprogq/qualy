@@ -23,6 +23,7 @@
     "@qualy/ui": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
+    "@stylexjs/stylex": "catalog:",
     "argon2": "catalog:",
     "zod": "catalog:"
   },

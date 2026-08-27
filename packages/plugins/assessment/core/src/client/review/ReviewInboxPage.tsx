@@ -43,6 +43,21 @@ const belowSm = '@media (max-width: 639.98px)'
 const belowMd = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
+  // on a phone the four views share the row rather than scrolling it
+  viewsField: {
+    minWidth: { default: 0, '@media (min-width: 768px)': null },
+    flexGrow: { default: 1, '@media (min-width: 768px)': null },
+    flexShrink: { default: 1, '@media (min-width: 768px)': null },
+    flexBasis: { default: '0%', '@media (min-width: 768px)': null },
+  },
+  viewsList: {
+    display: { default: 'grid', '@media (min-width: 768px)': null },
+    width: { default: '100%', '@media (min-width: 768px)': null },
+    gridTemplateColumns: {
+      default: 'repeat(4, minmax(0, 1fr))',
+      '@media (min-width: 768px)': null,
+    },
+  },
   fill: {
     display: 'flex',
     flexGrow: 1,
@@ -692,9 +707,9 @@ function Queue({
               variant="segmented"
               value={view}
               onValueChange={onView}
-              className="max-md:min-w-0 max-md:flex-1"
+              xstyle={styles.viewsField}
             >
-              <TabsList className="max-md:grid max-md:w-full max-md:grid-cols-4">
+              <TabsList xstyle={styles.viewsList}>
                 <TabsTrigger value="item">{format(m.reviewTabByItem)}</TabsTrigger>
                 <TabsTrigger value="time">{format(m.reviewTabByTime)}</TabsTrigger>
                 <TabsTrigger value="person">{format(m.reviewTabByPerson)}</TabsTrigger>

@@ -35,6 +35,15 @@ import { fieldsOf, type ActionAvailability, type EntryDto, type ItemDto } from '
 // that had no room to say why.
 
 const styles = stylex.create({
+  panel: {
+    display: 'flex',
+    width: '100%',
+    flexDirection: 'column',
+    gap: 0,
+    padding: 0,
+    maxWidth: { default: null, '@media (min-width: 640px)': '48rem' },
+  },
+  sheetTitle: { flexShrink: 0, fontSize: 16, lineHeight: '1.5rem', fontWeight: 600 },
   crumbHere: {
     color: tokens.foreground,
   },
@@ -442,10 +451,7 @@ export function EntrySheet({
 
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent
-        className="flex w-full flex-col gap-0 p-0 data-[side=right]:sm:max-w-3xl"
-        showCloseButton={false}
-      >
+      <SheetContent xstyle={styles.panel} showCloseButton={false}>
         <div {...stylex.props(styles.head)}>
           <div {...stylex.props(styles.headWords)}>
             <Breadcrumb>
@@ -457,7 +463,7 @@ export function EntrySheet({
               </span>
             </Breadcrumb>
             <div {...stylex.props(styles.titleRow)}>
-              <SheetTitle className="shrink-0 text-base font-semibold">
+              <SheetTitle className={stylex.props(styles.sheetTitle).className}>
                 {format(m.entrySheetTitle)}
               </SheetTitle>
               <EntryStanding

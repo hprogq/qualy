@@ -25,6 +25,7 @@ const DEADLINE = 150
 const LABEL = 64
 
 const styles = stylex.create({
+  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '24rem' } },
   // one line, whatever the width: this sits above somebody's work and a
   // second row of it would push the work down the page
   bar: {
@@ -205,7 +206,7 @@ export function PhaseContextBar({
       <Sheet open={open} onOpenChange={setOpen}>
         {/* from the side where there is room, and from the bottom where the
             thumb is: the same panel, reached the way each screen expects */}
-        <SheetContent side={narrow ? 'bottom' : 'right'} className="sm:max-w-sm">
+        <SheetContent side={narrow ? 'bottom' : 'right'} xstyle={styles.panel}>
           <SheetHeader>
             <SheetTitle>{format(m.flowTitle)}</SheetTitle>
           </SheetHeader>

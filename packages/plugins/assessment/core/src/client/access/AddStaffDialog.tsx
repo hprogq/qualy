@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { orgNodePicker, peoplePicker } from '@qualy/ui-contract'
@@ -29,6 +31,27 @@ import { RolePicker } from './RolePicker.tsx'
 // has an answer.
 
 const STEPS = [m.addStaffStepWho, m.addStaffStepWhere, m.addStaffStepAs] as const
+
+const styles = stylex.create({
+  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '56rem' } },
+  // a fixed height, so the step that holds a picker does not resize the
+  // dialog as the reader walks through the steps
+  body: { height: '58vh', gap: 20 },
+  step: {
+    display: 'flex',
+    minHeight: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    flexDirection: 'column',
+  },
+  stepWords: { display: 'flex', flexDirection: 'column', gap: 8 },
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  waitingFill: { minHeight: 0, width: '100%', flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  waitingTree: { height: '42vh', width: '100%' },
+  foot: { justifyContent: { default: null, '@media (min-width: 640px)': 'space-between' } },
+  footSide: { display: 'flex', alignItems: 'center', gap: 8 },
+})
 
 export function AddStaffDialog({
   batchId,
@@ -94,12 +117,12 @@ export function AddStaffDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-4xl">
+      <DialogContent className={stylex.props(styles.panel).className}>
         <DialogHeader>
           <DialogTitle>{format(m.addStaffTitle)}</DialogTitle>
           <DialogDescription>{format(m.addStaffHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="flex h-[58vh] flex-col gap-5">
+        <DialogBody xstyle={styles.body}>
           <Steps
             steps={STEPS.map((label) => format(label))}
             current={step}
@@ -108,21 +131,19 @@ export function AddStaffDialog({
           />
 
           {step === 0 && (
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div {...stylex.props(styles.step)}>
               <UiSlot
                 token={peoplePicker}
                 context={{ value: chosen, onChange: setChosen }}
-                fallback={
-                  <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
-                }
-                loading={<Skeleton className="min-h-0 w-full flex-1" />}
+                fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+                loading={<Skeleton className={stylex.props(styles.waitingFill).className} />}
               />
             </div>
           )}
 
           {step === 1 && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">{format(m.addStaffWhereHint)}</p>
+            <div {...stylex.props(styles.stepWords)}>
+              <p {...stylex.props(styles.quiet)}>{format(m.addStaffWhereHint)}</p>
               <UiSlot
                 token={orgNodePicker}
                 context={{
@@ -132,17 +153,15 @@ export function AddStaffDialog({
                   nodes: units.data?.nodes ?? [],
                   loading: units.isPending,
                 }}
-                fallback={
-                  <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
-                }
-                loading={<Skeleton className="h-[42vh] w-full" />}
+                fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
+                loading={<Skeleton className={stylex.props(styles.waitingTree).className} />}
               />
             </div>
           )}
 
           {step === 2 && (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">{format(m.addStaffAsHint)}</p>
+            <div {...stylex.props(styles.stepWords)}>
+              <p {...stylex.props(styles.quiet)}>{format(m.addStaffAsHint)}</p>
               <RolePicker
                 roles={roles}
                 value={roleId}
@@ -152,7 +171,7 @@ export function AddStaffDialog({
             </div>
           )}
         </DialogBody>
-        <DialogFooter className="sm:justify-between">
+        <DialogFooter className={stylex.props(styles.foot).className}>
           <Button
             variant="ghost"
             disabled={step === 0}
@@ -160,7 +179,7 @@ export function AddStaffDialog({
           >
             {format(commonMessages.back)}
           </Button>
-          <div className="flex items-center gap-2">
+          <div {...stylex.props(styles.footSide)}>
             <Button variant="outline" onClick={onClose}>
               {format(commonMessages.cancel)}
             </Button>

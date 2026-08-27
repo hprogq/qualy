@@ -9,7 +9,6 @@ import {
 } from 'lucide-react'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Badge } from '@qualy/ui/badge'
-import { cn } from '@qualy/ui/cn'
 import {
   Timeline,
   TimelineContent,
@@ -37,12 +36,59 @@ import { useWhen } from './when.ts'
 // a hover - a touch screen has no pointer to rest, and a detail worth writing
 // down is worth reading without asking for it.
 //
-// The timeline parts keep their utility-class overrides: the rail component
-// styles itself by orientation data attributes, and overrides into it ride
-// the same cascade layer. The elements this file owns are StyleX.
+// The rail component styles itself by orientation, which a compiled style
+// cannot read from inside it - so the two layouts tell their own parts which
+// one they are, rather than asking the DOM.
 
 // a mark that keeps moving, because this is the one stage that is happening
 // rather than recorded
+const flow = stylex.create({
+  // the hairline rail: at two pixels it read as a ruled margin down the page
+  // and out-shouted the words beside it
+  rail: { width: 1, backgroundColor: `color-mix(in oklab, ${tokens.border} 50%, transparent)` },
+  marker: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+    backgroundColor: tokens.background,
+  },
+  // the dot's middle on the stage name's middle: at the top of the box it sat
+  // above the word it belongs to, which reads as a bullet for the whole item
+  // rather than a mark on the line
+  markerUpright: { insetBlockStart: 10, transform: 'translateY(-50%)' },
+  foldItem: { marginInlineStart: 24, paddingBottom: 16 },
+  foldMark: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+    backgroundColor: tokens.background,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 50%, transparent)`,
+  },
+  item: { marginInlineStart: 24, overflowWrap: 'anywhere' },
+  // flex-none, or the timeline's own basis of zero shrinks every stage to the
+  // width of one character
+  card: {
+    width: 224,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    scrollSnapAlign: 'center',
+    overflowWrap: 'anywhere',
+  },
+  head: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 4 },
+  titleNow: { color: tokens.foreground },
+  titleLater: { fontWeight: 400, color: tokens.mutedForeground },
+  titleDone: {
+    fontWeight: 400,
+    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
+  },
+  date: { marginTop: 4, marginBottom: 0, fontWeight: 400, fontVariantNumeric: 'tabular-nums' },
+  faded: { color: `color-mix(in oklab, ${tokens.mutedForeground} 60%, transparent)` },
+  note: { marginTop: 4, fontSize: 12, lineHeight: '1rem' },
+})
+
 const ping = stylex.keyframes({
   '75%': { transform: 'scale(2)', opacity: 0 },
   '100%': { transform: 'scale(2)', opacity: 0 },
@@ -237,16 +283,10 @@ const useSaid = () => {
  * which is enough to read a rail by and leaves the page's one accent for
  * things a reader has to act on.
  */
-function Marker({ status }: { status: FlowStage['status'] }) {
+function Marker({ status, upright }: { status: FlowStage['status']; upright: boolean }) {
   return (
     <TimelineIndicator
-      className={cn(
-        'flex items-center justify-center border-0 bg-background',
-        // the dot's middle on the stage name's middle: at the top of the box
-        // it sat above the word it belongs to, which reads as a bullet for
-        // the whole item rather than a mark on the line
-        'group-data-[orientation=vertical]/timeline:top-2.5 group-data-[orientation=vertical]/timeline:-translate-y-1/2',
-      )}
+      className={stylex.props(flow.marker, upright && flow.markerUpright).className}
     >
       {status === 'current' && <span aria-hidden {...stylex.props(styles.pulse)} />}
       <span
@@ -280,23 +320,25 @@ const STATUS = {
 } as const
 
 /** one stage, said the same way whichever direction the timeline runs */
-function Stage({ stage }: { stage: FlowStage }) {
+function Stage({ stage, upright }: { stage: FlowStage; upright: boolean }) {
   const said = useSaid()
   const { format } = useI18n()
-  const faded = stage.status === 'ended' && 'text-muted-foreground/60'
+  const faded = stage.status === 'ended'
   return (
     <>
-      <Marker status={stage.status} />
+      <Marker status={stage.status} upright={upright} />
       {/* a hairline, not a bar: at two pixels the rail read as a ruled
           margin down the page and out-shouted the words beside it */}
-      <TimelineSeparator className="w-px bg-border/50 group-data-completed/timeline-item:bg-border/50" />
-      <TimelineHeader className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <TimelineSeparator className={stylex.props(flow.rail).className} />
+      <TimelineHeader className={stylex.props(flow.head).className}>
         <TimelineTitle
-          className={cn(
-            stage.status === 'current' && 'text-foreground',
-            stage.status === 'future' && 'font-normal text-muted-foreground',
-            stage.status === 'ended' && 'font-normal text-muted-foreground/70',
-          )}
+          className={
+            stylex.props(
+              stage.status === 'current' && flow.titleNow,
+              stage.status === 'future' && flow.titleLater,
+              stage.status === 'ended' && flow.titleDone,
+            ).className
+          }
         >
           {stage.name}
         </TimelineTitle>
@@ -316,20 +358,21 @@ function Stage({ stage }: { stage: FlowStage }) {
       {/* the whole row fades together, not only its name: a finished stage
           with a full-strength date under a pale title reads as two stages */}
       <TimelineDate
-        className={cn(
-          'mt-1 mb-0 font-normal tabular-nums',
-          stage.status === 'ended' && 'text-muted-foreground/60',
-        )}
+        className={stylex.props(flow.date, stage.status === 'ended' && flow.faded).className}
       >
         {said(stage)}
       </TimelineDate>
       {/* what it waits on first, then what it is for: one is about now and
           the other is about the stage whenever it happens */}
       {stage.note !== '' && (
-        <TimelineContent className={cn('mt-1 text-xs', faded)}>{stage.note}</TimelineContent>
+        <TimelineContent className={stylex.props(flow.note, faded && flow.faded).className}>
+          {stage.note}
+        </TimelineContent>
       )}
       {stage.description !== '' && (
-        <TimelineContent className={cn('mt-1 text-xs', faded)}>{stage.description}</TimelineContent>
+        <TimelineContent className={stylex.props(flow.note, faded && flow.faded).className}>
+          {stage.description}
+        </TimelineContent>
       )}
     </>
   )
@@ -369,11 +412,11 @@ export function BatchFlow({
   return (
     <Timeline value={reachedIn(stages)} className={stylex.props(xstyle).className}>
       {folded > 1 && (
-        <TimelineItem step={0} className="ms-6 pb-4">
-          <TimelineIndicator className="flex items-center justify-center border-0 bg-background text-muted-foreground/50">
+        <TimelineItem step={0} className={stylex.props(flow.foldItem).className}>
+          <TimelineIndicator className={stylex.props(flow.foldMark).className}>
             <MoreVerticalIcon className={stylex.props(styles.foldIcon).className} />
           </TimelineIndicator>
-          <TimelineSeparator className="w-px bg-border/50" />
+          <TimelineSeparator className={stylex.props(flow.rail).className} />
           <button
             type="button"
             {...stylex.props(styles.foldButton)}
@@ -384,8 +427,12 @@ export function BatchFlow({
         </TimelineItem>
       )}
       {shown.map((stage, index) => (
-        <TimelineItem key={stage.id} step={folded + index + 1} className="ms-6 wrap-anywhere">
-          <Stage stage={stage} />
+        <TimelineItem
+          key={stage.id}
+          step={folded + index + 1}
+          className={stylex.props(flow.item).className}
+        >
+          <Stage stage={stage} upright />
         </TimelineItem>
       ))}
     </Timeline>
@@ -524,11 +571,9 @@ export function BatchFlowStrip({
               key={stage.id}
               step={index + 1}
               ref={stage.status === 'current' ? here : undefined}
-              // flex-none, or the timeline's own flex-1 basis of zero shrinks
-              // every stage to the width of one character
-              className="w-56 flex-none snap-center wrap-anywhere"
+              className={stylex.props(flow.card).className}
             >
-              <Stage stage={stage} />
+              <Stage stage={stage} upright={false} />
             </TimelineItem>
           ))}
         </Timeline>

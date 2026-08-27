@@ -29,6 +29,7 @@ import { assessmentMessages as m } from './i18n.ts'
 // outcome.
 
 const styles = stylex.create({
+  plainLabel: { fontWeight: 400 },
   column: {
     display: 'flex',
     flexDirection: 'column',
@@ -167,7 +168,7 @@ function PermissionRow({
         onCheckedChange={onToggle}
       />
       <FieldContent>
-        <FieldLabel htmlFor={id} className="font-normal">
+        <FieldLabel htmlFor={id} className={stylex.props(styles.plainLabel).className}>
           {format(m[`permission.${code}`])}
         </FieldLabel>
         <FieldDescription>{format(m[`permission-hint.${code}`])}</FieldDescription>

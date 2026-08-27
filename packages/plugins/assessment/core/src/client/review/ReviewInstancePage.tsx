@@ -70,6 +70,15 @@ const lg = '@media (min-width: 1024px)'
 const belowSm = '@media (max-width: 639.98px)'
 
 const styles = stylex.create({
+  siblingPanel: { maxWidth: { default: null, '@media (min-width: 640px)': '32rem' } },
+  siblingTitle: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+  },
+  capWide: { width: '100%', justifyContent: 'center' },
   fill: {
     display: 'flex',
     minHeight: 0,
@@ -1656,9 +1665,9 @@ function SiblingSheet({
   const { format } = useI18n()
   return (
     <Dialog open={open && sibling !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={stylex.props(styles.siblingPanel).className}>
         <DialogHeader>
-          <DialogTitle className="flex items-baseline gap-2 text-sm">
+          <DialogTitle className={stylex.props(styles.siblingTitle).className}>
             {itemTitle}
             <span {...stylex.props(styles.siblingStanding)}>
               {sibling === null
@@ -1759,7 +1768,7 @@ function KeysPanel({ onClose }: { onClose: () => void }) {
         {keys.map(([key, message]) => (
           <div key={key} {...stylex.props(styles.keysRow)}>
             <dt {...stylex.props(styles.keysKey)}>
-              <Kbd className="w-full justify-center">{key}</Kbd>
+              <Kbd className={stylex.props(styles.capWide).className}>{key}</Kbd>
             </dt>
             <dd {...stylex.props(styles.keysWord)}>{format(message)}</dd>
           </div>

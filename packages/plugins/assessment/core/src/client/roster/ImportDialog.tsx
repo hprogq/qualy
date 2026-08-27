@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { peopleImportPicker } from '@qualy/ui-contract'
@@ -29,6 +31,14 @@ interface Selection {
   orgNodeIds: readonly string[]
   userTypeIds: readonly string[]
 }
+
+const styles = stylex.create({
+  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '42rem' } },
+  body: { height: '58vh' },
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  foot: { justifyContent: { default: null, '@media (min-width: 640px)': 'space-between' } },
+  footSide: { display: 'flex', alignItems: 'center', gap: 8 },
+})
 
 const EMPTY: Selection = { orgNodeIds: [], userTypeIds: [] }
 
@@ -68,34 +78,32 @@ export function ImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className={stylex.props(styles.panel).className}>
         <DialogHeader>
           <DialogTitle>{format(m.importTitle)}</DialogTitle>
           <DialogDescription>{format(m.importHint)}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="h-[58vh]">
+        <DialogBody xstyle={styles.body}>
           <UiSlot
             token={peopleImportPicker}
             context={{ value: selection, onChange: setSelection }}
-            fallback={
-              <p className="text-sm text-muted-foreground">{format(m.pickerUnavailable)}</p>
-            }
+            fallback={<p {...stylex.props(styles.quiet)}>{format(m.pickerUnavailable)}</p>}
           />
         </DialogBody>
-        <DialogFooter className="sm:justify-between">
+        <DialogFooter className={stylex.props(styles.foot).className}>
           <span
             // how many this import would add, as a number; the sentence
             // around it is copy and changes without the count changing
             data-testid="import-candidates"
             data-ready={String(ready && candidates.data !== undefined)}
             data-count={ready && candidates.data ? String(candidates.data.candidates) : ''}
-            className="text-sm text-muted-foreground"
+            {...stylex.props(styles.quiet)}
           >
             {ready && candidates.data
               ? format(m.importCandidates, { count: candidates.data.candidates })
               : format(m.importChoose)}
           </span>
-          <div className="flex items-center gap-2">
+          <div {...stylex.props(styles.footSide)}>
             <Button variant="outline" onClick={onClose}>
               {format(commonMessages.cancel)}
             </Button>

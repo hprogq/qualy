@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
+import { a11yStyles } from '@qualy/ui/visually-hidden'
 import {
   useApi,
   useApiQuery,
@@ -57,6 +58,22 @@ const spin = stylex.keyframes({
 })
 
 const styles = stylex.create({
+  viewsField: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  viewsList: { width: '100%' },
+  viewTab: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  structureButton: {
+    flexShrink: 0,
+    display: { default: null, '@media (min-width: 1024px)': 'none' },
+  },
+  // the drawer's own shape, merged into the sheet's
+  drawerPanel: {
+    maxHeight: '82dvh',
+    gap: 0,
+    overflow: 'hidden',
+    borderStartStartRadius: 20,
+    borderStartEndRadius: 20,
+    padding: 0,
+  },
   fill: {
     display: 'flex',
     minHeight: 0,
@@ -1686,15 +1703,15 @@ function Body({
                     <div {...stylex.props(styles.narrowControls)}>
                       <Tabs
                         variant="segmented"
-                        className="min-w-0 flex-1"
+                        xstyle={styles.viewsField}
                         value={paperView}
                         onValueChange={(next) => setPaperView(next as 'all' | 'todo')}
                       >
-                        <TabsList className="w-full">
-                          <TabsTrigger className="flex-1" value="all">
+                        <TabsList xstyle={styles.viewsList}>
+                          <TabsTrigger xstyle={styles.viewTab} value="all">
                             {format(m.paperViewAll)}
                           </TabsTrigger>
-                          <TabsTrigger className="flex-1" value="todo">
+                          <TabsTrigger xstyle={styles.viewTab} value="todo">
                             {format(m.paperViewTodo)}
                             {todoCount > 0 && (
                               <span {...stylex.props(styles.nums)}>{todoCount}</span>
@@ -1775,7 +1792,7 @@ function Body({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="shrink-0 lg:hidden"
+                        className={stylex.props(styles.structureButton).className}
                         onClick={() => setStructure('1')}
                       >
                         <TableOfContentsIcon aria-hidden />
@@ -1842,12 +1859,10 @@ function Body({
             if (!next) setStructure('')
           }}
         >
-          <SheetContent
-            side="bottom"
-            showCloseButton={false}
-            className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
-          >
-            <SheetTitle className="sr-only">{format(m.paperStructure)}</SheetTitle>
+          <SheetContent side="bottom" showCloseButton={false} xstyle={styles.drawerPanel}>
+            <SheetTitle {...stylex.props(a11yStyles.visuallyHidden)}>
+              {format(m.paperStructure)}
+            </SheetTitle>
             <span aria-hidden data-sheet-grab="" {...stylex.props(styles.dragHandle)} />
             <Structure
               variant="sheet"

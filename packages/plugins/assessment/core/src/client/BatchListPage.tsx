@@ -33,6 +33,7 @@ import { BatchCard } from './batch/BatchCard.tsx'
 const PAGE_SIZE = 20
 
 const styles = stylex.create({
+  wide: { width: 'max-content' },
   searchSeat: {
     width: '100%',
     maxWidth: {
@@ -370,7 +371,7 @@ export default function BatchListPage() {
             )}
             <div {...stylex.props(styles.chipScroller)}>
               <ToggleGroup
-                className="w-max"
+                className={stylex.props(styles.wide).className}
                 value={statusFilter}
                 aria-label={format(m.filterStatus)}
                 // a filter group always has an answer: clicking the active item

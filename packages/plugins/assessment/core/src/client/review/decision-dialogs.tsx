@@ -27,6 +27,23 @@ import type { ReviewDto } from './model.ts'
 const sm = '@media (min-width: 640px)'
 
 const styles = stylex.create({
+  // the drawer's own shape, merged into the sheet's
+  drawerPanel: {
+    maxHeight: '85dvh',
+    gap: 0,
+    overflow: 'hidden',
+    borderStartStartRadius: 20,
+    borderStartEndRadius: 20,
+    padding: 0,
+  },
+  drawerHead: { gap: 2, paddingInline: 16, paddingTop: 6, paddingBottom: 8 },
+  drawerTitle: { fontSize: 15 },
+  drawerHint: { fontSize: 12, lineHeight: '1rem' },
+  // a key cap on a solid button borrows that button's own ink
+  onSolid: {
+    backgroundColor: 'color-mix(in oklab, currentColor 20%, transparent)',
+    color: 'currentColor',
+  },
   reasonWords: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -369,14 +386,13 @@ export function DecisionSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent
-        side="bottom"
-        className="max-h-[85dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
-      >
+      <SheetContent side="bottom" xstyle={styles.drawerPanel}>
         <span aria-hidden data-sheet-grab="" {...stylex.props(styles.grabber)} />
-        <SheetHeader className="gap-0.5 px-4 pt-1.5 pb-2">
-          <SheetTitle className="text-[15px]">{title}</SheetTitle>
-          <SheetDescription className="text-xs">{hint}</SheetDescription>
+        <SheetHeader className={stylex.props(styles.drawerHead).className}>
+          <SheetTitle className={stylex.props(styles.drawerTitle).className}>{title}</SheetTitle>
+          <SheetDescription className={stylex.props(styles.drawerHint).className}>
+            {hint}
+          </SheetDescription>
         </SheetHeader>
         <div {...stylex.props(styles.sheetBody)}>{children}</div>
         <div {...stylex.props(styles.sheetFoot)}>
@@ -468,7 +484,7 @@ export function ApproveDialog({
             onClick={confirm}
           >
             {format(m.reviewApprove)}
-            <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
+            <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
           </Button>
         </div>
       }
@@ -627,7 +643,7 @@ export function RejectDialog({
             onClick={confirm}
           >
             {format(m.reviewRejectConfirm)}
-            <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
+            <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
           </Button>
         </div>
       }
@@ -865,7 +881,7 @@ export function EscalateDialog({
             onClick={confirm}
           >
             {format(m.reviewEscalate)}
-            <Kbd className="bg-current/20 text-current">⌘↵</Kbd>
+            <Kbd className={stylex.props(styles.onSolid).className}>⌘↵</Kbd>
           </Button>
         </div>
       }
