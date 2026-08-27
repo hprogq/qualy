@@ -11,6 +11,11 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { iamMessages as m } from '../i18n.ts'
 
 const styles = stylex.create({
+  dropdown: {
+    width: 'var(--anchor-width)',
+    minWidth: 256,
+    padding: 0,
+  },
   triggerFace: {
     width: '100%',
     justifyContent: 'space-between',
@@ -191,9 +196,8 @@ export function NodePicker({
           />
         </Button>
       </PopoverTrigger>
-      {/* width and padding override the popover adapter's own utilities,
-          so they stay a class string at that boundary */}
-      <PopoverContent align="start" className="w-(--anchor-width) min-w-64 p-0">
+      {/* the picker's own width and padding, merged into the popover's */}
+      <PopoverContent align="start" xstyle={styles.dropdown}>
         <div {...stylex.props(styles.searchRow)}>
           <SearchIcon className={stylex.props(styles.searchGlass).className} aria-hidden />
           <Input

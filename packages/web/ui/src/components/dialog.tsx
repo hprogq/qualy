@@ -318,9 +318,20 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
  * one level down; the height cap belongs to the caller (FormDialog caps the
  * whole content).
  */
-function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
+function DialogBody({
+  className,
+  xstyle,
+  ...props
+}: React.ComponentProps<'div'> & {
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
+}) {
   return (
-    <div data-slot="dialog-body" {...props} {...seatOf(stylex.props(styles.body), className)} />
+    <div
+      data-slot="dialog-body"
+      {...props}
+      {...seatOf(stylex.props(styles.body, xstyle), className)}
+    />
   )
 }
 

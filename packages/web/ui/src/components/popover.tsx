@@ -65,6 +65,8 @@ const positionOf = (side: string, align: string) =>
   (align === 'center' ? side : `${side}-${align}`) as NonNullable<MPopoverProps['position']>
 
 interface ContentDecl {
+  /** the formal StyleX extension seat */
+  xstyle?: stylex.StyleXStyles
   className?: string
   align?: 'start' | 'center' | 'end'
   side?: 'top' | 'right' | 'bottom' | 'left'
@@ -164,7 +166,11 @@ function PopoverTrigger({
   return <MPopover.Target>{React.cloneElement(child, extra)}</MPopover.Target>
 }
 
-function PopoverContent({ className, children }: ContentDecl & { children?: React.ReactNode }) {
+function PopoverContent({
+  className,
+  xstyle,
+  children,
+}: ContentDecl & { children?: React.ReactNode }) {
   return (
     <MPopover.Dropdown
       data-slot="popover-content"
@@ -179,7 +185,7 @@ function PopoverContent({ className, children }: ContentDecl & { children?: Reac
       // needs a focusable dropdown for Escape to fire from inside it
       role="dialog"
       tabIndex={-1}
-      {...seatOf(stylex.props(styles.content), className)}
+      {...seatOf(stylex.props(styles.content, xstyle), className)}
     >
       {children}
     </MPopover.Dropdown>

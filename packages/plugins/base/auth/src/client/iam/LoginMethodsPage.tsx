@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useEffect, useState } from 'react'
 import { useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -29,6 +31,27 @@ import { authApi } from '../api.ts'
 // answer until you say through which entrance. Nothing here creates or
 // removes a door - a door is a driver the assembly provides, and the only
 // thing an administrator owns about it is its audience.
+const styles = stylex.create({
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  frame: {
+    display: 'grid',
+    alignItems: 'start',
+    gap: 24,
+    gridTemplateColumns: { default: null, '@media (min-width: 1024px)': '19rem minmax(0, 1fr)' },
+  },
+  column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 16 },
+  panel: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
+  alert: { fontSize: 14, lineHeight: '1.25rem', color: tokens.danger },
+  code: { fontFamily: 'var(--font-mono, monospace)', fontSize: 12, lineHeight: '1rem' },
+  codeHint: {
+    marginLeft: 8,
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+  figure: { fontVariantNumeric: 'tabular-nums' },
+})
+
 export default function LoginMethodsPage() {
   const api = useApi(authApi)
   const runApi = useRunApi()
@@ -96,9 +119,9 @@ export default function LoginMethodsPage() {
         onRetry={() => void providers.refetch()}
       >
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{format(m.loginMethodsEmpty)}</p>
+          <p {...stylex.props(styles.quiet)}>{format(m.loginMethodsEmpty)}</p>
         ) : (
-          <div className="grid items-start gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
+          <div {...stylex.props(styles.frame)}>
             <Rail>
               {rows.map((provider) => (
                 <RailRow
@@ -135,7 +158,7 @@ export default function LoginMethodsPage() {
                 description={format(m.pickProviderBody)}
               />
             ) : (
-              <div className="flex min-w-0 flex-col gap-4">
+              <div {...stylex.props(styles.column)}>
                 <EditorHead
                   title={current.name}
                   chips={[
@@ -148,7 +171,7 @@ export default function LoginMethodsPage() {
 
                 <Feedback message={feedback} />
 
-                <div className="flex min-w-0 flex-col gap-3">
+                <div {...stylex.props(styles.panel)}>
                   <ModeChoice
                     legend={format(m.audienceLegend)}
                     value={mode}
@@ -178,20 +201,18 @@ export default function LoginMethodsPage() {
                       nobody; that is a legal rule, and it is said out loud
                       rather than refused */}
                   {mode === 'allow-list' && userTypeIds.length === 0 && (
-                    <p className="text-sm text-destructive" data-audience="empty">
+                    <p {...stylex.props(styles.alert)} data-audience="empty">
                       {format(m.audienceNobody)}
                     </p>
                   )}
                 </div>
 
                 <DefRow label={format(m.providerCodeLabel)}>
-                  <span className="font-mono text-xs">{current.code}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {format(m.providerCodeHint)}
-                  </span>
+                  <span {...stylex.props(styles.code)}>{current.code}</span>
+                  <span {...stylex.props(styles.codeHint)}>{format(m.providerCodeHint)}</span>
                 </DefRow>
                 <DefRow label={format(m.providerOrderLabel)}>
-                  <span className="tabular-nums">{current.sortOrder}</span>
+                  <span {...stylex.props(styles.figure)}>{current.sortOrder}</span>
                 </DefRow>
 
                 {canManage && (

@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useState } from 'react'
 import { useApi, useRunApi, useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -15,6 +17,14 @@ import { authApi } from '../api.ts'
 // without one constrains nothing while looking configured, and the window
 // before somebody remembers to set it is exactly when a person gets placed
 // where that kind of person should never be.
+const styles = stylex.create({
+  form: { display: 'flex', flexDirection: 'column', gap: 20 },
+  waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
+  waitingLabel: { height: 20, width: 128 },
+  waitingChoice: { height: 44, width: '100%', borderRadius: tokens.radiusLg },
+  choices: { display: 'flex', flexDirection: 'column', gap: 12 },
+})
+
 export function NewUserTypeForm({
   open,
   onClose,
@@ -87,7 +97,7 @@ export function NewUserTypeForm({
       <Feedback message={feedback} />
       <form
         id="new-user-type"
-        className="flex flex-col gap-5"
+        {...stylex.props(styles.form)}
         onSubmit={(event) => {
           event.preventDefault()
           create.mutate()
@@ -110,14 +120,14 @@ export function NewUserTypeForm({
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void catalog.refetch()}
           skeleton={
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-5 w-32" />
-              <Skeleton className="h-11 w-full rounded-lg" />
-              <Skeleton className="h-11 w-full rounded-lg" />
+            <div {...stylex.props(styles.waiting)}>
+              <Skeleton className={stylex.props(styles.waitingLabel).className} />
+              <Skeleton className={stylex.props(styles.waitingChoice).className} />
+              <Skeleton className={stylex.props(styles.waitingChoice).className} />
             </div>
           }
         >
-          <div className="flex flex-col gap-3">
+          <div {...stylex.props(styles.choices)}>
             <ModeChoice
               legend={format(m.placementLegend)}
               value={mode}

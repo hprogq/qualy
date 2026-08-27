@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
 import type { PersonCardContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
@@ -30,6 +32,60 @@ import { authMessages as m } from '../i18n.ts'
 // Nothing is fetched until somebody points at a row: a table of a hundred
 // names would otherwise be a hundred requests for a card nobody opened.
 
+const styles = stylex.create({
+  trigger: {
+    borderRadius: tokens.radiusMd,
+    textAlign: 'left',
+    outlineStyle: 'none',
+    boxShadow: { default: null, ':focus-visible': `0 0 0 2px ${tokens.focusRing}` },
+  },
+  // the card's own rhythm; its width is the adapter's
+  card: { display: 'flex', flexDirection: 'column', gap: 12 },
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  waiting: { display: 'flex', flexDirection: 'column', gap: 8 },
+  waitingLine: { height: 16, width: 128 },
+  waitingWide: { height: 16, width: '100%' },
+  waitingBlock: { height: 96, width: '100%' },
+  who: { display: 'flex', flexDirection: 'column', gap: 4 },
+  name: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
+  aside: { fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
+  facts: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, lineHeight: '1rem' },
+  cardAction: { width: '100%' },
+  // the dialog's own rhythm and this card's, as they have always stacked
+  body: { gap: 44 },
+  pairs: {
+    display: 'grid',
+    columnGap: 24,
+    rowGap: 8,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    gridTemplateColumns: {
+      default: null,
+      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+    },
+  },
+  section: { display: 'flex', flexDirection: 'column', gap: 8 },
+  sectionTitle: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
+  // spelled from the top: a class name alone says which class but never whose
+  path: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+  },
+  step: { display: 'flex', alignItems: 'center', gap: 6 },
+  here: { color: tokens.foreground },
+  roles: { display: 'flex', flexDirection: 'column', gap: 6 },
+  role: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  roleName: { fontSize: 14, lineHeight: '1.25rem' },
+  row: { display: 'flex', gap: 8 },
+  rowLabel: { flexShrink: 0, color: tokens.mutedForeground },
+  rowValue: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+})
+
 export default function PersonCard({ context }: { context: PersonCardContext }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
@@ -48,11 +104,7 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
     <>
       <HoverCard openDelay={200} onOpenChange={(next) => next && setHovered(true)}>
         <HoverCardTrigger asChild>
-          <button
-            type="button"
-            className="rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onFocus={() => setHovered(true)}
-          >
+          <button type="button" {...stylex.props(styles.trigger)} onFocus={() => setHovered(true)}>
             {/* the same two lines the plain cell draws: saying nothing where
                 the id would be made the second line vanish a beat after the
                 card arrived, and the row jump with it */}
@@ -62,23 +114,23 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
             />
           </button>
         </HoverCardTrigger>
-        <HoverCardContent className="w-72 space-y-3">
+        <HoverCardContent xstyle={styles.card}>
           {detail.isError ? (
-            <p className="text-sm text-muted-foreground">{formatError(detail.error)}</p>
+            <p {...stylex.props(styles.quiet)}>{formatError(detail.error)}</p>
           ) : person === undefined ? (
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-4 w-full" />
+            <div {...stylex.props(styles.waiting)}>
+              <Skeleton className={stylex.props(styles.waitingLine).className} />
+              <Skeleton className={stylex.props(styles.waitingWide).className} />
             </div>
           ) : (
             <>
-              <div className="space-y-1">
-                <p className="text-sm font-medium">{person.user.displayName}</p>
-                <p className="text-xs text-muted-foreground">
+              <div {...stylex.props(styles.who)}>
+                <p {...stylex.props(styles.name)}>{person.user.displayName}</p>
+                <p {...stylex.props(styles.aside)}>
                   {person.user.businessNo ?? format(m.personNoBusinessNo)}
                 </p>
               </div>
-              <dl className="space-y-1.5 text-xs">
+              <dl {...stylex.props(styles.facts)}>
                 <Row label={format(m.personUserType)} value={person.user.userType?.name ?? '—'} />
                 <Row
                   label={format(m.personPlacement)}
@@ -90,7 +142,12 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
               )}
             </>
           )}
-          <Button size="sm" variant="outline" className="w-full" onClick={() => setOpen(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={stylex.props(styles.cardAction).className}
+            onClick={() => setOpen(true)}
+          >
             {format(m.personOpenDetail)}
           </Button>
         </HoverCardContent>
@@ -101,14 +158,14 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
           <DialogHeader>
             <DialogTitle>{context.displayName}</DialogTitle>
           </DialogHeader>
-          <DialogBody className="space-y-5">
+          <DialogBody xstyle={styles.body}>
             {detail.isError ? (
-              <p className="text-sm text-muted-foreground">{formatError(detail.error)}</p>
+              <p {...stylex.props(styles.quiet)}>{formatError(detail.error)}</p>
             ) : person === undefined ? (
-              <Skeleton className="h-24 w-full" />
+              <Skeleton className={stylex.props(styles.waitingBlock).className} />
             ) : (
               <>
-                <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                <dl {...stylex.props(styles.pairs)}>
                   <Row
                     label={format(m.personBusinessNo)}
                     value={person.user.businessNo ?? format(m.personNoBusinessNo)}
@@ -122,15 +179,15 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                   />
                 </dl>
 
-                <section className="space-y-2">
-                  <h4 className="text-sm font-medium">{format(m.personPlacement)}</h4>
+                <section {...stylex.props(styles.section)}>
+                  <h4 {...stylex.props(styles.sectionTitle)}>{format(m.personPlacement)}</h4>
                   {/* spelled from the top: a class name alone says which class
                       but never whose */}
-                  <ol className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+                  <ol {...stylex.props(styles.path)}>
                     {person.orgPath.map((node, at) => (
-                      <li key={node.id} className="flex items-center gap-1.5">
+                      <li key={node.id} {...stylex.props(styles.step)}>
                         {at > 0 && <span aria-hidden>/</span>}
-                        <span className={at === person.orgPath.length - 1 ? 'text-foreground' : ''}>
+                        <span {...stylex.props(at === person.orgPath.length - 1 && styles.here)}>
                           {node.name}
                         </span>
                       </li>
@@ -138,16 +195,16 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
                   </ol>
                 </section>
 
-                <section className="space-y-2">
-                  <h4 className="text-sm font-medium">{format(m.personRoles)}</h4>
+                <section {...stylex.props(styles.section)}>
+                  <h4 {...stylex.props(styles.sectionTitle)}>{format(m.personRoles)}</h4>
                   {person.roles.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">{format(m.personNoRoles)}</p>
+                    <p {...stylex.props(styles.quiet)}>{format(m.personNoRoles)}</p>
                   ) : (
-                    <ul className="space-y-1.5">
+                    <ul {...stylex.props(styles.roles)}>
                       {person.roles.map((role) => (
-                        <li key={role.grantId} className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm">{role.roleName}</span>
-                          <span className="text-xs text-muted-foreground">
+                        <li key={role.grantId} {...stylex.props(styles.role)}>
+                          <span {...stylex.props(styles.roleName)}>{role.roleName}</span>
+                          <span {...stylex.props(styles.aside)}>
                             {role.orgNodeName === null
                               ? format(m.personRoleTenantWide)
                               : format(
@@ -181,9 +238,9 @@ export default function PersonCard({ context }: { context: PersonCardContext }) 
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex gap-2">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate">{value}</dd>
+    <div {...stylex.props(styles.row)}>
+      <dt {...stylex.props(styles.rowLabel)}>{label}</dt>
+      <dd {...stylex.props(styles.rowValue)}>{value}</dd>
     </div>
   )
 }

@@ -1,4 +1,6 @@
 import type { PeopleImportContext } from '@qualy/ui-contract'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -15,6 +17,13 @@ import OrgNodePicker from './OrgNodePicker.tsx'
 // person are the other half of the query. What running it does is the asking
 // screen's business.
 
+const styles = stylex.create({
+  page: { display: 'flex', flexDirection: 'column', gap: 20 },
+  section: { display: 'flex', flexDirection: 'column', gap: 8 },
+  head: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  title: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
+})
+
 export default function PeopleImportPicker({ context }: { context: PeopleImportContext }) {
   const query = useApiQuery(authApi)
   const { format } = useI18n()
@@ -24,9 +33,9 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
     types.length > 0 && types.every((type) => context.value.userTypeIds.includes(type.id))
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-2">
-        <p className="text-sm font-medium">{format(m.importUnits)}</p>
+    <div {...stylex.props(styles.page)}>
+      <div {...stylex.props(styles.section)}>
+        <p {...stylex.props(styles.title)}>{format(m.importUnits)}</p>
         <OrgNodePicker
           context={{
             value: context.value.orgNodeIds,
@@ -35,9 +44,9 @@ export default function PeopleImportPicker({ context }: { context: PeopleImportC
         />
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">{format(m.importTypes)}</p>
+      <div {...stylex.props(styles.section)}>
+        <div {...stylex.props(styles.head)}>
+          <p {...stylex.props(styles.title)}>{format(m.importTypes)}</p>
           {types.length > 0 && (
             <Button
               size="sm"

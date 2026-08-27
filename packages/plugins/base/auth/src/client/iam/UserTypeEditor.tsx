@@ -1,4 +1,6 @@
 import type { ApiResult } from '@qualy/web-runtime/api'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import type { Effect } from 'effect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
@@ -26,6 +28,21 @@ export type UserTypeRow = ApiResult<
   'identity',
   'listUserTypes'
 >['userTypes'][number]
+
+const styles = stylex.create({
+  column: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 16 },
+  panel: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 12 },
+  plain: { fontSize: 14, lineHeight: '1.25rem' },
+  actions: { display: 'flex', alignItems: 'center', gap: 8 },
+  link: {
+    fontSize: 12,
+    lineHeight: '1rem',
+    fontWeight: 500,
+    textDecorationLine: { default: null, ':hover': 'underline' },
+  },
+  alert: { color: tokens.danger },
+  form: { display: 'flex', flexDirection: 'column', gap: 16 },
+})
 
 export function UserTypeEditor({
   userType,
@@ -175,7 +192,7 @@ export function UserTypeEditor({
     .map((role) => role.name)
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div {...stylex.props(styles.column)}>
       <EditorHead
         title={userType.name}
         chips={[
@@ -204,9 +221,9 @@ export function UserTypeEditor({
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void catalog.refetch()}
       >
-        <div data-testid="placement-panel" className="flex min-w-0 flex-col gap-3">
+        <div data-testid="placement-panel" {...stylex.props(styles.panel)}>
           {fixed ? (
-            <p className="text-sm">{format(m.placementTenantRoot)}</p>
+            <p {...stylex.props(styles.plain)}>{format(m.placementTenantRoot)}</p>
           ) : (
             <>
               <ModeChoice
@@ -234,7 +251,7 @@ export function UserTypeEditor({
                 />
               )}
               {editable && (
-                <div className="flex items-center gap-2">
+                <div {...stylex.props(styles.actions)}>
                   <Button
                     size="sm"
                     // an allow-list naming nothing is not a policy, and the
@@ -264,13 +281,13 @@ export function UserTypeEditor({
         <DefRow
           label={format(m.signInLabel)}
           action={
-            <PageLink page="auth/login-methods" className="text-xs font-medium hover:underline">
+            <PageLink page="auth/login-methods" className={stylex.props(styles.link).className}>
               {format(m.signInSettings)}
             </PageLink>
           }
         >
           {admitting.length === 0 ? (
-            <span className="text-destructive">{format(m.signInNone)}</span>
+            <span {...stylex.props(styles.alert)}>{format(m.signInNone)}</span>
           ) : (
             admitting.join('、')
           )}
@@ -284,7 +301,7 @@ export function UserTypeEditor({
       )}
 
       <DefRow label={format(m.lifecycleLabel)}>
-        <div className="flex min-w-0 flex-col gap-3">
+        <div {...stylex.props(styles.panel)}>
           <Barred
             actions={[
               { label: format(m.disable), barred: populated },
@@ -297,7 +314,7 @@ export function UserTypeEditor({
                 : {})}
           />
           {canManage && (
-            <div className="flex items-center gap-2">
+            <div {...stylex.props(styles.actions)}>
               <Button
                 variant="outline"
                 size="sm"
@@ -344,7 +361,7 @@ export function UserTypeEditor({
       >
         <form
           id="rename-user-type"
-          className="flex flex-col gap-4"
+          {...stylex.props(styles.form)}
           onSubmit={(event) => {
             event.preventDefault()
             saveProfile.mutate(undefined as never)

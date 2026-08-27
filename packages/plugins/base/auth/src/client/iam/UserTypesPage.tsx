@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -7,7 +9,6 @@ import { AsyncSection } from '@qualy/ui/admin'
 import { Blank, EditorSkeleton, RailSkeleton, Screen } from '@qualy/ui/screen'
 import { Button } from '@qualy/ui/button'
 import { PlusIcon, UsersRoundIcon } from 'lucide-react'
-import { cn } from '@qualy/ui/cn'
 import { iamMessages as m } from '../i18n.ts'
 import { UserTypeEditor } from './UserTypeEditor.tsx'
 import { NewUserTypeForm } from './NewUserTypeForm.tsx'
@@ -16,6 +17,77 @@ import { authApi } from '../api.ts'
 // User types: the placement policy and standing of a class of people. A
 // handful of rows, so the list stays beside the one being edited; the
 // selection lives in the query string so it stays linkable.
+const styles = stylex.create({
+  // the list beside what it opens, once there is room for both
+  frame: {
+    display: 'grid',
+    alignItems: 'start',
+    gap: 24,
+    gridTemplateColumns: {
+      default: null,
+      '@media (min-width: 1024px)': '19rem minmax(0, 1fr)',
+    },
+  },
+  quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
+  list: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+  },
+  row: {
+    display: 'flex',
+    minWidth: 0,
+    flexDirection: 'column',
+    gap: 2,
+    borderTopWidth: { default: 1, ':first-child': 0 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
+    paddingInline: 12,
+    paddingBlock: 10,
+    textAlign: 'left',
+    backgroundColor: {
+      default: null,
+      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 70%, transparent)`,
+    },
+  },
+  rowOpen: { backgroundColor: tokens.surfaceMuted },
+  rowHead: { display: 'flex', minWidth: 0, alignItems: 'center', gap: 8 },
+  name: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    fontWeight: 500,
+  },
+  nameOpen: { fontWeight: 600 },
+  mark: { flexShrink: 0, fontSize: 12, lineHeight: '1rem', color: tokens.mutedForeground },
+  markOff: { flexShrink: 0, fontSize: 12, lineHeight: '1rem', color: tokens.danger },
+  spacer: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  count: {
+    flexShrink: 0,
+    fontSize: 12,
+    lineHeight: '1rem',
+    fontVariantNumeric: 'tabular-nums',
+    color: tokens.mutedForeground,
+  },
+  summary: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 12,
+    lineHeight: '1rem',
+    color: tokens.mutedForeground,
+  },
+})
+
 export default function UserTypesPage() {
   const query = useApiQuery(authApi)
   const { format, formatError } = useI18n()
@@ -46,43 +118,31 @@ export default function UserTypesPage() {
         retryLabel={format(commonMessages.retry)}
         onRetry={() => void types.refetch()}
       >
-        <div className="grid items-start gap-6 lg:grid-cols-[19rem_minmax(0,1fr)]">
+        <div {...stylex.props(styles.frame)}>
           {(types.data?.userTypes ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">{format(m.userTypesEmpty)}</p>
+            <p {...stylex.props(styles.quiet)}>{format(m.userTypesEmpty)}</p>
           ) : (
-            <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border">
+            <div {...stylex.props(styles.list)}>
               {(types.data?.userTypes ?? []).map((type) => (
                 <button
                   key={type.id}
                   type="button"
                   aria-current={type.id === selected}
-                  className={cn(
-                    'flex min-w-0 flex-col gap-0.5 border-t px-3 py-2.5 text-left first:border-t-0 hover:bg-accent/70',
-                    type.id === selected && 'bg-accent',
-                  )}
+                  {...stylex.props(styles.row, type.id === selected && styles.rowOpen)}
                   onClick={() => setSelected(type.id === selected ? '' : type.id)}
                 >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={cn(
-                        'min-w-0 truncate text-sm',
-                        type.id === selected ? 'font-semibold' : 'font-medium',
-                      )}
-                    >
+                  <span {...stylex.props(styles.rowHead)}>
+                    <span {...stylex.props(styles.name, type.id === selected && styles.nameOpen)}>
                       {type.name}
                     </span>
                     {type.isSystem && (
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {format(m.systemBadge)}
-                      </span>
+                      <span {...stylex.props(styles.mark)}>{format(m.systemBadge)}</span>
                     )}
                     {type.status === 'disabled' && (
-                      <span className="shrink-0 text-xs text-destructive">
-                        {format(m.disabledBadge)}
-                      </span>
+                      <span {...stylex.props(styles.markOff)}>{format(m.disabledBadge)}</span>
                     )}
-                    <span className="flex-1" />
-                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    <span {...stylex.props(styles.spacer)} />
+                    <span {...stylex.props(styles.count)}>
                       {format(m.userCount, { count: type.userCount })}
                     </span>
                   </span>
@@ -90,7 +150,7 @@ export default function UserTypesPage() {
                     data-testid="type-summary"
                     data-users={String(type.userCount)}
                     data-placement={type.placementPolicy.mode}
-                    className="min-w-0 truncate text-xs text-muted-foreground"
+                    {...stylex.props(styles.summary)}
                   >
                     {type.placementPolicy.mode === 'allow-list'
                       ? format(m.placementCount, {
