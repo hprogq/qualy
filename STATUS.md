@@ -9477,3 +9477,91 @@ className)、M9.3 overlay/motion/inert 加固、M9.4 依赖退役、M9.5 文档�
 **下一步**:M9 剩余——三个 Radix 适配器(collapsible / hover-card / scroll-area)、theme.css
 终形(剩余规则多为调用方 DOM 的关系规则与共享 keyframes)、密度复核、M4M↔M9 产物对比、
 M9 终审报告。
+
+### M9 收尾:遗留栈退役、覆盖层量纲与 theme.css 终形(2026-08-28)
+
+**timeline 的三处错位**(3fbb5cee)
+
+- 组件与页面各写了同一份定位的一半:点的横向居中写作 `transform`,页面把点压到标题行中线也写
+  `transform`,后者整条覆盖前者,轨道跑到点左边 8px(实测点中心 x=8、轨道中心 x=0)。改为**组件用
+  `translate` 属性落位、`transform` 留给调用方**,两者相乘而非互相覆盖(Tailwind 版本一直没出事,
+  正是因为它用的就是 `translate`)。
+- 页面把「发丝轨道」写成 `width: 1`。竖排时那是粗细,横排时那是**长度**,横向轨道被压成 1×2 像素,
+  手机上整条看不见。粗细是交叉轴,两个方向必须写不同属性。
+- 轨道两端是写死常数(起点 18px、长度 `100% - 20px`),假设点没被移动过;点下移 10px 后上间隙 0、
+  下间隙 4。现在「点沿轨道方向坐在哪」是 `<Timeline markOffset>` 一个数,点与轨道两端同读,
+  任意偏移下两端恒各留 2px。新增 `timeline.browser.test.tsx` 7 例全测几何。
+
+**覆盖层的量纲全错**(41e3ccb5)——三类载体,同一个病根
+
+- **Modal 的宽度是 flex-basis**,`max-width` 只能收窄不能撑宽:六个对话框(48/42/56/32rem)全部卡在
+  Mantine 自己的 440px,包括添加工作人员。**Popover/HoverCard 的宽度是行内样式**,任何 class 都压不过:
+  批次切换器与节点选择器的下拉缩成内容宽度,后者还在用 `--anchor-width` 这个**从未定义过**的变量。
+- 结论:**量纲必须走 widget 自己的属性**,不能写成编译样式。裸 Dialog 的默认宽度也从 widget 的 440px
+  改成产品自己的 32rem(与 admin FormDialog 一致)。留在 StyleX 的只剩 `size` 说不出来的那条——
+  alert 的窄屏上限。Sheet 实测正确(384px)未动。
+- 新增 `overlay-measure.browser.test.tsx`,每个家族开一个读回宽度。六个对话框错这么久零测试报警,
+  因为既有断言问的全是「它说什么/什么关掉它」。
+
+**最后三个遗留组件与依赖退役**(944873a5)
+
+- `radix-ui` 是最后一个遗留依赖,hover-card / scroll-area / collapsible 三处在用,现已全部迁走:
+  前两个归 Mantine(HoverCard / ScrollArea),collapsible 的**区域**用 Mantine `Collapse`
+  (实测 `Collapse.mjs:25` 会读 `respectReducedMotion`),但**控件与区域的 aria 配对自己写**——
+  那才是这个组件的全部,没有库提供。scroll-area 的 viewport 保留 `data-slot`:有两处页面按名字找它
+  滚动,那是契约不是实现细节。依赖删除,lockfile 净 −1524 行。
+- 附带:PersonCard 的悬浮卡在详情模态框之上不消失(指针停在触发器上,且 HoverCard 层级 300 > Modal 200)。
+  用 widget 自己的 `disabled`:详情已在读者面前,预览没有存在的理由。
+
+**theme.css 终形**(e3a83a3d)
+
+- 实查确认 **StyleX 0.19 支持 `:has()` 条件键**(编译产物 `.x888gsh:has( > svg){...}`),自定义属性也能按
+  `:has()` 取值。于是「父元素知道、子元素问不到」有了不引入 JS 的解法:alert 的图标栅格、action 留白、
+  标题移列,table 的展开/选中底色与复选框列内边距,全部迁进组件。「行在哪个 section」确实问不到,
+  由 tbody 用 context 下传。
+- **判断标准只有一条:规则作用的元素是不是这个组件自己渲染的。** 剩下的 24 条规则全部属于两类——
+  widget 家族级规范化(`.mantine-Input-*` 服务 Input/Select/DateInput 全家),或指向**调用方所写元素**
+  (`[data-slot='alert'] > svg`、调用方散文里的链接)。后代选择器 StyleX 不可表达,这是终点不是欠账。
+- 踩到一个 StyleX 语义并记档(docs/notes/stylexjs-unplugin.md):**条件里的 `null` 是「不生成声明」而非
+  「解除」**,`{default:'20rem',[WIDE]:null}` 在宽屏仍是 20rem,要取消上限必须写 `'none'`。
+- 导入清单与文档 §19 目标完全一致:font、PhotoView、Mantine core+dates 分层 CSS、tokens。
+
+**§20 密度复核(实测,非估计)**
+
+| 面                                             | 实测                                        | 判定           |
+| ---------------------------------------------- | ------------------------------------------- | -------------- |
+| Button 36/32/40/24、icon 36×36                 | 已有门禁                                    | 合鼓点         |
+| Input/NativeSelect/Select trigger/两个日期控件 | 14px/36px,已有门禁                          | 合鼓点         |
+| 菜单项                                         | h=36,padding 8/12,14px                      | 合鼓点         |
+| 对话框                                         | padding 24、gap 24;header/footer gap 8      | 合理           |
+| admin 表单                                     | FieldGroup gap 28、Field gap 12、label 14px | 合理           |
+| 表格                                           | 表头 48、单元格 padding 12 → 行高 44.5      | **最松的一面** |
+
+两处留给决定,不擅自改视觉:①`FieldDescription` 与 `EmptyDescription` 是 14px,与它所解释的值同号,
+而产品里其余十二处次要文字都是 12px;②表格行 44.5px,在一个自称高信息密度的产品里比 36px 鼓点松三成
+(垂直 padding 由 12 改 8 即 36px)。两条都影响每一块列表/表单的观感,属于产品判断而非工程判断。
+
+**§27 产物对照(Tailwind 期 → 现在)**
+
+|                        | Tailwind 期                 | 现在                               |
+| ---------------------- | --------------------------- | ---------------------------------- |
+| 渲染阻塞 CSS           | 167 KB / br 21.6 KB         | **329.2 KB / br 43.0 KB**          |
+| 其中产品自有样式       | `@layer utilities` 143.8 KB | StyleX priority 层合计 **66.3 KB** |
+| 其中 widget 库静态 CSS | 0                           | `@layer mantine` **251.4 KB**(76%) |
+
+产品自有样式减了 54%(原子化 + 去重),但 Mantine 的静态 CSS 是净增。**per-component CSS 拆分的证据**:
+全量 250.4 KB / br 29.7 KB,只取实际使用的 22 个组件文件 + variables/global/baseline 是 112.5 KB / br 13.3 KB,
+**可省 137.9 KB 原始 / 16.4 KB brotli**(占线上 CSS 的 38%)。裁决:**暂不拆**。理由是 Mantine 不公布
+组件间 CSS 依赖(Combobox 依赖 Popover、Select 依赖 Input 之类),手维护一张依赖表的失败模式是
+「线上某个控件悄悄没样式」,而「import 存在」这种门禁断言不了「样式完整」;16.4 KB brotli 换这个风险不值。
+文档 §27 要求「基于 bundle evidence」——证据在此,数字留档,重开条件是 Mantine 公布依赖关系或首屏 CSS 成为
+实测瓶颈。JS 侧:入口 387.8 KB、最大共享块 238.4 KB、100 个分块,既有分块门禁未变。
+
+**ADR 0010 补记**:`@mantine/dates` 已采纳,推翻原决定 5 中「本次 pivot 不迁 dates」一项,理由与代价写在
+ADR 的「后续变更」节。其余四条决定不变。
+
+**验收(本段全部真实执行)**:`pnpm typecheck` 零错;`pnpm test:browser` **216 passed**;
+`pnpm test` **851 passed | 17 skipped**;`pnpm build` 通过;生产 smoke 通过;prettier 通过。
+
+**M9 剩余**:仅两项密度决定待用户裁定;其余清理项(Tailwind/shadcn/cva/tw-animate/Radix/PrimeReact)
+全部完成,文档 §19 目标形态达成,§27 证据留档,§28 ADR 已补记。

@@ -46,3 +46,16 @@ Web 前端的样式底座原是 Tailwind CSS + shadcn 风格组件 + Radix primi
 ## 重新评估条件
 
 仅在模式级证据下重开选型:核心控件缺陷反复出现且上游不修;无法干净修复的可访问性缺口;与工具链(NodeNext/Vite/StyleX)的持续不兼容;适配器日益依赖库内部实现;Mantine 泄漏进业务层无法遏制;产品需求发生根本变化(如重型数据网格成为核心场景)。M4M 是正式的第二次 Go/No-Go;通过之后再次更换底座的门槛必须显著更高。
+
+## 后续变更
+
+**`@mantine/dates` 已采纳**(2026-08-27,推翻决定 5 中「本次 pivot 不迁 dates」那一项)。
+
+日期子系统原判定是 KEEP(react-day-picker + date-fns),理由是它属于 C 类保护件。实际动手时理由不成立:
+两个日期控件的公开契约是**无时区字符串**(区间 `YYYY-MM-DD`,时刻 ISO instant),而 Mantine 的 dates
+本身说的就是无时区字符串,与本仓存储格式同形——日期一路不经过 `Date`,唯一的换算是 instant ↔ 墙上时间,
+集中在一个有单元测试的模块里。继续留着 react-day-picker 反而要维护两套日历外观与两套语言真源。
+代价:多一个 Mantine 包的静态 CSS(见 §性能),以及区间绘制要绕开「隐藏日不触发 `:has()` 重跑」
+这一浏览器行为(过程记录在 STATUS.md)。
+
+其余四条决定不变;`@mantine/form`、notifications、dropzone 仍未引入。
