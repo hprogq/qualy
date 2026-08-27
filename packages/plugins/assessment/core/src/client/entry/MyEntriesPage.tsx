@@ -24,6 +24,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { toast } from '@qualy/ui/toast'
 import { useLingering } from '@qualy/ui/use-lingering'
+import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { entryRefusalMessage } from './refusals.ts'
@@ -58,9 +59,8 @@ const spin = stylex.keyframes({
 })
 
 const styles = stylex.create({
-  viewsField: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
-  viewsList: { width: '100%' },
-  viewTab: { flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
+  // the two views keep their own width; the structure key gives way first
+  viewsField: { flexShrink: 0 },
   structureButton: {
     flexShrink: 0,
     display: { default: null, '@media (min-width: 1024px)': 'none' },
@@ -232,9 +232,6 @@ const styles = stylex.create({
   },
   shrinkNone: {
     flexShrink: 0,
-  },
-  nums: {
-    fontVariantNumeric: 'tabular-nums',
   },
   // tablet up: one row; the structure key leaves once the rail stands
   // beside the paper
@@ -1707,15 +1704,11 @@ function Body({
                         value={paperView}
                         onValueChange={(next) => setPaperView(next as 'all' | 'todo')}
                       >
-                        <TabsList xstyle={styles.viewsList}>
-                          <TabsTrigger xstyle={styles.viewTab} value="all">
-                            {format(m.paperViewAll)}
-                          </TabsTrigger>
-                          <TabsTrigger xstyle={styles.viewTab} value="todo">
+                        <TabsList>
+                          <TabsTrigger value="all">{format(m.paperViewAll)}</TabsTrigger>
+                          <TabsTrigger value="todo">
                             {format(m.paperViewTodo)}
-                            {todoCount > 0 && (
-                              <span {...stylex.props(styles.nums)}>{todoCount}</span>
-                            )}
+                            {todoCount > 0 && <Count>{todoCount}</Count>}
                           </TabsTrigger>
                         </TabsList>
                       </Tabs>
@@ -2238,7 +2231,7 @@ function Structure({
         <TabsTrigger value="all">{format(m.myEntriesFilterAll)}</TabsTrigger>
         <TabsTrigger value="todo">
           {format(m.myEntriesFilterTodo)}
-          {todo > 0 && <span {...stylex.props(styles.nums)}>{todo}</span>}
+          {todo > 0 && <Count>{todo}</Count>}
         </TabsTrigger>
       </TabsList>
     </Tabs>

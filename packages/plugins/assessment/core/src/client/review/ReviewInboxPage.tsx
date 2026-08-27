@@ -16,6 +16,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { DoneMark, Stagger } from '@qualy/ui/reveal'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -44,20 +45,9 @@ const belowMd = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
   // on a phone the four views share the row rather than scrolling it
-  viewsField: {
-    minWidth: { default: 0, '@media (min-width: 768px)': null },
-    flexGrow: { default: 1, '@media (min-width: 768px)': null },
-    flexShrink: { default: 1, '@media (min-width: 768px)': null },
-    flexBasis: { default: '0%', '@media (min-width: 768px)': null },
-  },
-  viewsList: {
-    display: { default: 'grid', '@media (min-width: 768px)': null },
-    width: { default: '100%', '@media (min-width: 768px)': null },
-    gridTemplateColumns: {
-      default: 'repeat(4, minmax(0, 1fr))',
-      '@media (min-width: 768px)': null,
-    },
-  },
+  // the views are what this row is for: the filters and the search beside
+  // them give way first, and the row wraps before the tablist narrows
+  viewsField: { flexShrink: 0 },
   fill: {
     display: 'flex',
     flexGrow: 1,
@@ -88,13 +78,6 @@ const styles = stylex.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
-  },
-  tabCount: {
-    borderRadius: tokens.radiusSm,
-    backgroundColor: tokens.surfaceMuted,
-    paddingInline: 4,
-    fontSize: 12,
-    fontVariantNumeric: 'tabular-nums',
   },
   seekKey: {
     width: 36,
@@ -709,7 +692,7 @@ function Queue({
               onValueChange={onView}
               xstyle={styles.viewsField}
             >
-              <TabsList xstyle={styles.viewsList}>
+              <TabsList>
                 <TabsTrigger value="item">{format(m.reviewTabByItem)}</TabsTrigger>
                 <TabsTrigger value="time">{format(m.reviewTabByTime)}</TabsTrigger>
                 <TabsTrigger value="person">{format(m.reviewTabByPerson)}</TabsTrigger>
@@ -720,7 +703,7 @@ function Queue({
                     opening. */}
                 <TabsTrigger value="asked">
                   {format(m.reviewAwaitingTab)}
-                  {awaiting > 0 && <span {...stylex.props(styles.tabCount)}>{awaiting}</span>}
+                  {awaiting > 0 && <Count>{awaiting}</Count>}
                 </TabsTrigger>
               </TabsList>
             </Tabs>

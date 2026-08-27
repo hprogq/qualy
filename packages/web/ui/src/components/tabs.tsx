@@ -40,10 +40,23 @@ const TabsCtx = React.createContext<{ value?: string; variant: TabsVariant }>({
 })
 
 const styles = stylex.create({
+  // A tablist is as wide as the views it names, never as wide as the room it
+  // is in: sharing the row out equally pads the short names and crowds the
+  // long ones into their own edges. It also never wraps - the widget's list
+  // does by default, and a second row folded into a segmented run's fixed
+  // height is crushed against the first. Where there is genuinely not enough
+  // room the row scrolls, which keeps every name readable at its own width.
   list: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 4,
+    flexWrap: 'nowrap',
+    maxWidth: '100%',
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    // the row scrolls by drag and by wheel; a bar inside a 36px control
+    // would be most of the control
+    scrollbarWidth: 'none',
   },
   // one bounded run: the ground holds the options together, which is what
   // tells a reader that two switchers on the same row are two questions.
@@ -59,6 +72,8 @@ const styles = stylex.create({
   trigger: {
     position: 'relative',
     display: 'inline-flex',
+    // its own name's width, inside a row that scrolls rather than squeezes
+    flexShrink: 0,
     // the product's control rhythm, so a tablist sitting in a row of fields
     // and buttons lines up with them
     height: 36,
