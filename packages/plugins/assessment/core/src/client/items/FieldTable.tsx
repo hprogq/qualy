@@ -2,7 +2,7 @@ import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { CheckIcon, ChevronDownIcon, GripVerticalIcon, PlusIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
-import { visuallyHidden } from '@qualy/ui/visually-hidden'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
@@ -539,9 +539,7 @@ export function FieldList({
                 {field.required && (
                   <>
                     <span aria-hidden {...stylex.props(styles.requiredDot)} />
-                    <span {...stylex.props(visuallyHidden.text)}>
-                      {format(m.itemsFieldRequired)}
-                    </span>
+                    <VisuallyHidden>{format(m.itemsFieldRequired)}</VisuallyHidden>
                   </>
                 )}
               </span>

@@ -9,7 +9,7 @@ import {
 import * as stylex from '@stylexjs/stylex'
 import { usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { visuallyHidden } from '@qualy/ui/visually-hidden'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -667,7 +667,7 @@ function EdgeButton({
     return (
       <Button variant="outline" size="icon-sm" onClick={onPress}>
         {children}
-        <span {...stylex.props(visuallyHidden.text)}>{label}</span>
+        <VisuallyHidden>{label}</VisuallyHidden>
       </Button>
     )
   }
@@ -683,7 +683,7 @@ function EdgeButton({
               className={stylex.props(styles.noPointer).className}
             >
               {children}
-              <span {...stylex.props(visuallyHidden.text)}>{label}</span>
+              <VisuallyHidden>{label}</VisuallyHidden>
             </Button>
           </span>
         </TooltipTrigger>

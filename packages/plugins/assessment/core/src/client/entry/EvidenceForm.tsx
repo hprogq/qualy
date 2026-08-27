@@ -4,7 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
-import { visuallyHidden } from '@qualy/ui/visually-hidden'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Button } from '@qualy/ui/button'
 import { Field } from '@qualy/ui/admin'
 import { Dropzone, FileTile, type Accept, type FileRejection } from '@qualy/ui/dropzone'
@@ -427,13 +427,13 @@ function CitedFile({
           <Button variant="ghost" size="icon-sm" asChild>
             <a href={href} download={data?.filename} target="_blank" rel="noreferrer">
               <DownloadIcon aria-hidden />
-              <span {...stylex.props(visuallyHidden.text)}>{name}</span>
+              <VisuallyHidden>{name}</VisuallyHidden>
             </a>
           </Button>
           {onRemove !== undefined && (
             <Button variant="ghost" size="icon-sm" type="button" onClick={onRemove}>
               <XIcon aria-hidden />
-              <span {...stylex.props(visuallyHidden.text)}>{format(m.entryFileRemove)}</span>
+              <VisuallyHidden>{format(m.entryFileRemove)}</VisuallyHidden>
             </Button>
           )}
         </>

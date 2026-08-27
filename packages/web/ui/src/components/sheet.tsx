@@ -8,7 +8,7 @@ import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
-import { visuallyHidden } from '../lib/visually-hidden.ts'
+import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 import { XIcon } from 'lucide-react'
@@ -489,7 +489,7 @@ function SheetContent({
             onClick={() => setOpen(false)}
           >
             <XIcon />
-            <span {...stylex.props(visuallyHidden.text)}>Close</span>
+            <VisuallyHidden>Close</VisuallyHidden>
           </Button>
         )}
       </MDrawer.Content>

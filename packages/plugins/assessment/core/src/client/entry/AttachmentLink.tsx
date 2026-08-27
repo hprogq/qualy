@@ -3,7 +3,7 @@ import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, PaperclipIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
-import { visuallyHidden } from '@qualy/ui/visually-hidden'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Button } from '@qualy/ui/button'
 import { FileTile } from '@qualy/ui/dropzone'
 import { PhotoProvider, PhotoView } from '@qualy/ui/photo-view'
@@ -390,7 +390,7 @@ export function AttachmentLink({
               {...stylex.props(styles.quietDownload)}
             >
               <DownloadIcon aria-hidden className={stylex.props(styles.smallIcon).className} />
-              <span {...stylex.props(visuallyHidden.text)}>{name}</span>
+              <VisuallyHidden>{name}</VisuallyHidden>
             </a>
           )}
         </span>
@@ -430,7 +430,7 @@ export function AttachmentLink({
                 {...stylex.props(styles.fillButton)}
               >
                 <FileTextIcon aria-hidden className={stylex.props(styles.docIconCard).className} />
-                <span {...stylex.props(visuallyHidden.text)}>{name}</span>
+                <VisuallyHidden>{name}</VisuallyHidden>
               </button>
             )}
             {slot !== undefined && <span {...stylex.props(styles.slotBadge)}>{slot}</span>}
@@ -452,7 +452,7 @@ export function AttachmentLink({
               {...stylex.props(styles.cardDownload, rested && styles.cardDownloadShown)}
             >
               <DownloadIcon aria-hidden className={stylex.props(styles.smallIcon).className} />
-              <span {...stylex.props(visuallyHidden.text)}>{name}</span>
+              <VisuallyHidden>{name}</VisuallyHidden>
             </a>
           </div>
           <figcaption {...stylex.props(styles.cardCaption)}>
@@ -491,7 +491,7 @@ export function AttachmentLink({
                   aria-hidden
                   className={stylex.props(styles.docIconPreview).className}
                 />
-                <span {...stylex.props(visuallyHidden.text)}>{name}</span>
+                <VisuallyHidden>{name}</VisuallyHidden>
               </button>
             )}
           </div>
@@ -507,7 +507,7 @@ export function AttachmentLink({
               {...stylex.props(styles.quietDownload)}
             >
               <DownloadIcon aria-hidden className={stylex.props(styles.smallIcon).className} />
-              <span {...stylex.props(visuallyHidden.text)}>{name}</span>
+              <VisuallyHidden>{name}</VisuallyHidden>
             </a>
           </figcaption>
         </figure>
@@ -536,7 +536,7 @@ export function AttachmentLink({
               {...stylex.props(styles.tileMediaButton)}
             >
               <FileTextIcon aria-hidden className={stylex.props(styles.docIconTile).className} />
-              <span {...stylex.props(visuallyHidden.text)}>{name}</span>
+              <VisuallyHidden>{name}</VisuallyHidden>
             </button>
           ) : (
             <FileTextIcon aria-hidden className={stylex.props(styles.docIconTile).className} />
@@ -548,7 +548,7 @@ export function AttachmentLink({
           <Button variant="ghost" size="icon-sm" asChild>
             <a href={href} download={data?.filename} target="_blank" rel="noreferrer">
               <DownloadIcon aria-hidden />
-              <span {...stylex.props(visuallyHidden.text)}>{name}</span>
+              <VisuallyHidden>{name}</VisuallyHidden>
             </a>
           </Button>
         }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { PanelLeftIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
-import { visuallyHidden } from '@qualy/ui/visually-hidden'
+import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import {
   drawerAccount,
@@ -790,7 +790,7 @@ function CapableWorkspaceShell() {
           showCloseButton={false}
           className="max-h-[82dvh] gap-0 overflow-hidden rounded-t-[20px] p-0"
         >
-          <SheetTitle className={stylex.props(visuallyHidden.text).className}>
+          <SheetTitle {...stylex.props(a11yStyles.visuallyHidden)}>
             {format(m.navCapsule)}
           </SheetTitle>
           {/* the person at the head, the pages in the middle, the account at

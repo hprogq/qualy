@@ -5,7 +5,7 @@ import { CornerDownLeftIcon, FileTextIcon, SearchIcon, ShieldIcon } from 'lucide
 import { useApiQuery, usePageNavigate, usePageQueryState } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { visuallyHidden } from '@qualy/ui/visually-hidden'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
@@ -718,9 +718,7 @@ function Queue({
                 onClick={() => setSeeking((open) => !open)}
               >
                 <SearchIcon aria-hidden />
-                <span {...stylex.props(visuallyHidden.text)}>
-                  {format(m.reviewSearchPlaceholder)}
-                </span>
+                <VisuallyHidden>{format(m.reviewSearchPlaceholder)}</VisuallyHidden>
               </Button>
             )}
             <div {...stylex.props(styles.deskOnly)}>

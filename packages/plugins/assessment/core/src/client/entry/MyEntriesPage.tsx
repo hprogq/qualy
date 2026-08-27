@@ -12,7 +12,7 @@ import {
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { RefreshCwIcon, TableOfContentsIcon } from 'lucide-react'
-import { visuallyHidden } from '@qualy/ui/visually-hidden'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Appear, Glide, Sift, SiftRow, Swap } from '@qualy/ui/reveal'
@@ -1742,9 +1742,7 @@ function Body({
                           aria-hidden
                           className={stylex.props(anyFetching && styles.spinning).className}
                         />
-                        <span {...stylex.props(visuallyHidden.text)}>
-                          {format(m.myEntriesRefresh)}
-                        </span>
+                        <VisuallyHidden>{format(m.myEntriesRefresh)}</VisuallyHidden>
                       </Button>
                       <span {...stylex.props(styles.statChip)}>
                         <span {...stylex.props(styles.statPair)}>

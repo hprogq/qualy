@@ -16,7 +16,7 @@ import {
   TagIcon,
   XIcon,
 } from 'lucide-react'
-import { visuallyHidden } from '@qualy/ui/visually-hidden'
+import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Feedback, Field, PageHeader } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -1026,7 +1026,7 @@ function SummaryPicker({
                   onClick={() => onChange(chosen.filter((one) => one !== id))}
                 >
                   <XIcon aria-hidden />
-                  <span {...stylex.props(visuallyHidden.text)}>{format(m.itemsSummaryRemove)}</span>
+                  <VisuallyHidden>{format(m.itemsSummaryRemove)}</VisuallyHidden>
                 </Button>
               </li>
             )
