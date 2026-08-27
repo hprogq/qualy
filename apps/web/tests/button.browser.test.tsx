@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { Button } from '@qualy/ui/button'
 import { UiProvider } from '@qualy/ui/provider'
@@ -18,7 +18,20 @@ const box = (locator: { element: () => Element }) => {
   return { h: style.height, w: style.width, font: style.fontSize, bg: style.backgroundColor }
 }
 
-const mount = (ui: React.ReactNode) => render(<UiProvider scheme="light">{ui}</UiProvider>)
+const mount = (ui: React.ReactNode) =>
+  render(
+    <UiProvider scheme="light">
+      {/* Somewhere for the pointer to rest. It keeps whatever position the
+          last test left it in, and a button that lands under it reports its
+          hover colour - which is correct behaviour and the wrong thing to
+          assert, since what is pinned here is how a control looks at
+          rest. */}
+      <div data-testid="pointer-rest" style={{ height: 160 }} />
+      {ui}
+    </UiProvider>,
+  )
+
+const atRest = () => userEvent.hover(page.getByTestId('pointer-rest'))
 
 describe('the button keeps its product contract', () => {
   it('sizes follow the product rhythm', async () => {
@@ -31,6 +44,7 @@ describe('the button keeps its product contract', () => {
         <Button size="icon" aria-label="gear" />
       </>,
     )
+    await atRest()
     const plain = page.getByRole('button', { name: 'plain' })
     await expect.poll(() => box(plain).h, { timeout: 5000 }).toBe('36px')
     expect(box(page.getByRole('button', { name: 'small' })).h).toBe('32px')
@@ -51,6 +65,7 @@ describe('the button keeps its product contract', () => {
         <Button variant="ghost">quiet</Button>
       </>,
     )
+    await atRest()
     const primary = page.getByRole('button', { name: 'primary' })
     // --q-primary, light scheme
     await expect.poll(() => box(primary).bg, { timeout: 5000 }).toBe('oklch(0.205 0 0)')
