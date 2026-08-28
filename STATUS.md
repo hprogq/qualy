@@ -9913,3 +9913,28 @@ style 组合(三元的两臂是**替代而非同伴**,含嵌套),检查后面的
 
 **验收**:`pnpm typecheck` 零错;`pnpm test` **896 passed | 17 skipped**;`pnpm test:browser` **225 passed**;
 prettier 通过。
+
+**pnpm 12 让 `pnpm dev` 以 SIGINT 收场**(2026-08-28,用户实测报告)
+
+Ctrl+C 之后 shell 报告命令被 SIGINT 杀死,尽管关闭过程一切正常。**是 pnpm 12 的回归,不是本仓库的问题。**
+
+终端把 Ctrl+C 发给整个前台进程组,`pnpm` 和它跑的脚本都收到 SIGINT。脚本捕获信号、优雅关闭、退出 0;
+pnpm 11 与 npm 都撑到子进程结束并转发它的退出码,**pnpm 12 先被信号打死**,于是那个 0 没人汇报。
+
+最小复现(20 行,在仓库之外),各三轮,完全确定性:
+
+| 运行器         | 结果                           |
+| -------------- | ------------------------------ |
+| `node run.mjs` | `code=0 signal=null`           |
+| `npm run dev`  | `code=0 signal=null`           |
+| pnpm 11.8.0    | `code=0 signal=null`(3/3)      |
+| pnpm 12.0.0    | `code=null signal=SIGINT`(3/3) |
+
+触发条件是**子进程需要时间收尾**:立即退出的脚本在两个版本下都被报成信号杀死(两边的 runner 都没活到那时);
+只要脚本有事要做——任何长驻开发进程都有——差别就出现。
+
+**影响仅限于汇报的状态**:子进程的完整输出是 `["ready","child: handling SIGINT","child: exiting 0"]`,
+实测 `pnpm dev` 那一轮也确认关闭日志完整、零残留进程。
+
+已写成上游 issue 草稿存档 `docs/upstream/pnpm-1-run-dies-by-signal-instead-of-waiting.md`。
+本仓库不做规避:唯一能规避的方式是不经 pnpm 跑开发命令,而代价远大于一个退出码。
