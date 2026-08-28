@@ -9962,3 +9962,19 @@ pnpm 12 的那一刻留在分支 `scratch/pnpm12-state`(不推送),作为上游�
 
 **包管理器升级纪律**:今后包管理器版本的变更单独成一次改动,只动版本号,跑完整门禁,并检查 lockfile diff。
 manifest 没动而 lockfile 大面积变化,默认视为异常而不是"新版本就这样",先解释清楚再合入。
+
+**Aube 2.2.0 spike**(2026-08-28,分支 `spike/aube-2.2`)
+
+评估把包管理器换成 Aube(jdx 的 Rust 实现)。**结论:现在不换**,完整记录见 docs/notes/aube.md。
+
+阻塞只有一条:pnpm 与 Aube 对「自动装的 peer 该不该进 importer 的 dependencies」看法相反,
+而且两个方向都相反(Aube 多塞 `redis` 进 7 个 importer,又把三个 contract 包自己声明的 `effect` 拿掉),
+于是**两边的 frozen install 互相读不下去**。对本仓库这不是纸面问题:`apps/server/node_modules/redis`
+在 Aube 树里真的存在而无人声明,装配层的插件解析恰恰建立在「没声明就 resolve 不到」上。
+
+其余表现相当好:解析出的 `packages:` **421 对 421 零差异**,单实例约束(react/effect/mikro-orm/mantine)
+全部成立,typecheck 零错、浏览器 225 passed、构建 chunk 哈希与 pnpm 树逐字节相同,tsgo 与 stylex 两个
+patch 都生效,`allowBuilds` 策略被完整遵守,Linux x64 与 macOS arm64 写出的 lock sha256 相同。
+node 套件 894/896——那 2 个失败**不是 Aube 的问题**:`tools/tests/assembly-resolve.test.ts` 有两个用例
+一直靠 pnpm 把每个 workspace 包塞进 `.pnpm/node_modules` 并经 bin shim 写进 `NODE_PATH` 才走到它们
+真正要断言的那步,实测脱离 vitest 后在 pnpm 树下同样 UNRESOLVED。这是本仓库自己的潜在缺陷,待单独修。
