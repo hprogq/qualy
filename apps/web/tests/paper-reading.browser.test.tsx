@@ -267,6 +267,66 @@ describe('reading the paper', () => {
     ).toBe(Math.round(at))
   })
 
+  // The strip is the reader's answer to "which section am I in", so it is
+  // owed at every width, and it has to survive the window crossing the
+  // breakpoint. Three separate copies of "are the panes side by side" used
+  // to flip in three separate commits, and the spy rebound to the pane's
+  // scroller a beat before the pane went away - after which a reader who
+  // narrowed their window had no strip until they reloaded.
+  it('names the section at every width, and after the window crosses over', async () => {
+    await page.viewport(1440, 860)
+    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
+
+    const named = () => document.querySelector('[data-testid="band-strip"]')?.textContent ?? ''
+    paperScroller().scrollTop = 600
+    await expect.poll(named).toContain('品德行为表现')
+
+    await page.viewport(390, 844)
+    const page_ = document.querySelector('main') as HTMLElement
+    await expect.poll(() => page_.scrollHeight).toBeGreaterThan(page_.clientHeight)
+    page_.scrollTop = 600
+    await expect.poll(named).toContain('品德行为表现')
+  })
+
+  // The strip and the rail read one piece of geometry, so they can never
+  // disagree: whenever the rail has moved into a question of the second
+  // section, the strip names that section - it used to keep naming the one
+  // before it for the few pixels between two lines measured separately, by
+  // which time that section was nowhere on the screen.
+  it('never names a section the rail has already left', async () => {
+    await page.viewport(390, 844)
+    paper(`/assessment/batches/${BATCH_ID}/my-entries`)
+    await expect.element(page.getByRole('heading', { name: '品德题目 1' })).toBeVisible()
+    const scroller = document.querySelector('main') as HTMLElement
+    const strip = () => document.querySelector('[data-testid="band-strip"]')
+    const marked = () =>
+      document.querySelector('[data-rail-mark="1"], [aria-current="true"]')?.textContent ?? ''
+
+    let checked = 0
+    for (let top = 0; top < scroller.scrollHeight - scroller.clientHeight; top += 12) {
+      scroller.scrollTop = top
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      const bar = strip()
+      if (bar === null) continue
+      // whatever it names has to be a section the reader has actually
+      // reached: never one whose questions are all still below the fold
+      const name = bar.textContent ?? ''
+      if (name.includes('学业发展')) checked += 1
+      else {
+        // still in the first section - then the second section's own card
+        // must not have gone above the strip yet
+        const second = document.querySelector(`[data-paper-band="${BAND_B}"]`)!
+        expect(second.getBoundingClientRect().bottom).toBeGreaterThan(
+          bar.getBoundingClientRect().top,
+        )
+      }
+    }
+    expect(checked).toBeGreaterThan(0)
+    void marked
+  })
+
   it('glides to a question clicked in the rail, the first time as much as the tenth', async () => {
     await page.viewport(1440, 860)
     paper(`/assessment/batches/${BATCH_ID}/my-entries`)

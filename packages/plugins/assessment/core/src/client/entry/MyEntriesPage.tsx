@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { a11yStyles } from '@qualy/ui/visually-hidden'
@@ -157,7 +157,9 @@ const styles = stylex.create({
   headSticky: {
     zIndex: 10,
     position: {
-      default: null,
+      // the strip hangs off the toolbar's bottom edge, so the toolbar is
+      // its containing block wide as well as narrow
+      default: 'relative',
       [belowLg]: 'sticky',
     },
     top: {
@@ -319,11 +321,11 @@ const styles = stylex.create({
   // paper under the reader and resized the scrollbar thumb with it. The
   // spy's READING_EDGE already budgets the strip's 36px whether or not it
   // is up, so hanging it under the toolbar costs the arithmetic nothing.
+  //
+  // At every width. A reader on a wide screen scrolls past a section card
+  // just as a reader on a phone does, and the rail beside the paper says
+  // where a question SITS, not which section the eye is in right now.
   stripSeat: {
-    display: {
-      default: 'block',
-      [lg]: 'none',
-    },
     position: 'absolute',
     insetInline: 0,
     top: '100%',
@@ -960,22 +962,32 @@ const DOT: Record<RowTag, stylex.StyleXStyles> = {
 /**
  * Whether the two panes are standing side by side.
  *
- * The same query the layout switches on, asked in javascript for the one
- * thing css cannot decide: what pressing back should mean. Narrow, a layer
- * is somewhere the reader went and back is how anybody leaves it; wide, the
+ * The same query the layout switches on, asked in javascript for two things
+ * css cannot decide: what pressing back should mean - narrow, a layer is
+ * somewhere the reader went and back is how anybody leaves it; wide, the
  * layers are furniture beside a list, and clicking ten questions must not
- * cost ten presses of back to undo.
+ * cost ten presses of back to undo - and which element the paper scrolls in.
+ *
+ * ONE store, read by every caller, rather than a `useState` each. Three
+ * components asked this question and each held its own answer, so a window
+ * dragged past the breakpoint moved them in three separate commits: the spy
+ * rebound to the pane's scroller while the pane was still there, the pane
+ * then went away, and nothing changed again to tell the spy. The reader got
+ * a paper with no section strip until the next reload.
  */
+const wideEnough = () => window.matchMedia('(min-width: 64rem)')
+let sideBySide: MediaQueryList | null = null
+const watchSideBySide = (onChange: () => void) => {
+  sideBySide ??= wideEnough()
+  sideBySide.addEventListener('change', onChange)
+  return () => sideBySide?.removeEventListener('change', onChange)
+}
 function useSideBySide(): boolean {
-  const [beside, setBeside] = useState(true)
-  useEffect(() => {
-    const query = window.matchMedia('(min-width: 64rem)')
-    const read = () => setBeside(query.matches)
-    read()
-    query.addEventListener('change', read)
-    return () => query.removeEventListener('change', read)
-  }, [])
-  return beside
+  return useSyncExternalStore(
+    watchSideBySide,
+    () => (sideBySide ??= wideEnough()).matches,
+    () => true,
+  )
 }
 
 /**
@@ -1012,12 +1024,14 @@ export default function MyEntriesPage() {
   )
 }
 
+/** the section strip's own height, which is all that stands over the paper */
+const STRIP_HEIGHT = 36
+
 /**
  * The line a row has to reach before it counts as the one being read: clear
- * of the band strip pinned under the toolbar, which is all that stands over
- * the paper - 36px of strip and a little air.
+ * of the band strip pinned under the toolbar, and a little air.
  */
-const READING_EDGE = 44
+const READING_EDGE = STRIP_HEIGHT + 8
 
 /**
  * The paper's own scroller, where it has one.
@@ -1396,9 +1410,6 @@ function Body({
   // height is what a scroll target has to clear there
   const [head, setHead] = useState<HTMLElement | null>(null)
   const [passing, setPassing] = useState('')
-  // which band's card has gone above the toolbar, and so wants naming in the
-  // strip; a band whose card is still on screen names itself
-  const [passedBand, setPassedBand] = useState('')
   // While a click's scroll is in flight, the spy would call out every row it
   // passes and the rail's mark would strobe through all of them. The
   // steering lock holds the mark on the destination until the scroll gets
@@ -1433,16 +1444,6 @@ function Body({
           current = el.getAttribute('data-paper-row') ?? ''
         } else break
       }
-      // the strip is geometry, not inference: it names the band whose own
-      // card has left the top of the pane, so it never repeats a card the
-      // reader can still see
-      let band = ''
-      for (const el of viewport.querySelectorAll('[data-paper-band]')) {
-        if (el.getBoundingClientRect().bottom <= base + 1) {
-          band = el.getAttribute('data-paper-band') ?? ''
-        } else break
-      }
-      setPassedBand(band)
       const held = steering.current
       if (held !== null) {
         // parked where the click put it: the reader has not moved since, so
@@ -1513,15 +1514,29 @@ function Body({
     const at = rows.find((row) => row.id === id)
     return at !== undefined && at.kind === 'group' && at.depth === bandDepth
   }
-  // The band named by the strip pinned under the toolbar: the one whose own
-  // card has gone off the top, because a strip repeating a card still on
-  // screen names the place twice. A click that sent the reader to a band
-  // whose card is on screen quiets it too - naming the band before the one
-  // they asked for reads as a wrong answer.
-  const currentBand =
-    passedBand === '' || (passing !== passedBand && isBand(passing))
-      ? null
-      : (rows.find((row) => row.id === passedBand) ?? null)
+  /**
+   * The band named by the strip pinned under the toolbar.
+   *
+   * The same row the rail marks, read up to the section it sits in - ONE
+   * piece of geometry, not two. The strip used to measure section cards
+   * against a line of its own while the rail measured rows against another,
+   * and the few pixels between the two lines were a window where the rail
+   * had moved into the next section and the strip still named the last one,
+   * which by then was nowhere on the screen.
+   *
+   * A section whose own card is the marked row names itself, so the strip
+   * stays out of the way: repeating a card the reader can see says the
+   * place twice.
+   */
+  const currentBand = (() => {
+    const at = rows.findIndex((row) => row.id === passing)
+    if (at < 0 || isBand(passing)) return null
+    for (let up = at; up >= 0; up--) {
+      const row = rows[up]!
+      if (row.kind === 'group' && row.depth === bandDepth) return row
+    }
+    return null
+  })()
   const bandNoOf = (band: StructureRow): string => {
     const tops = rows.filter((row) => row.kind === 'group' && row.depth === bandDepth)
     return String(tops.findIndex((row) => row.id === band.id) + 1).padStart(2, '0')
