@@ -9996,3 +9996,34 @@ detached 与 retained 正是「离开清单但还在磁盘上」的状态。
 **验收**:新门禁承重(去掉 resolver 那道检查即点名失败);`pnpm typecheck` 零错;`pnpm test`
 **898 passed | 17 skipped**;`pnpm build` 与 `smoke-production` 通过;同一套 node 套件在 Aube 树下
 同样 **898 passed**——这个套件不再依赖是谁装的依赖。
+
+## 基础设施四线关账,转入业务开发期(2026-08-28)
+
+UI 平台、审计、telemetry、开发态进程监督四条线同时关账。**此后除非有真实业务需求、生产缺陷或可复现
+regression,不再主动重构这四块**(已写入 CLAUDE.md 禁止节)。
+
+| 线               | 状态     | 关账依据                                                                |
+| ---------------- | -------- | ----------------------------------------------------------------------- |
+| Mantine + StyleX | 完成     | docs/ui-platform-migration-mantine.md 已标 Completed,M9 收尾,旧依赖清零 |
+| 审计             | 平台完成 | Phase 5 四插件 mutation 扫尾,29 个审计动作及其测试                      |
+| OpenTelemetry    | 完成     | Phase 6.9 腾讯云真实联调验收(traces/metrics/logs 三路 + 关联 + 真凭据)  |
+| 开发态进程监督   | 完成     | Phase 0–4 实现并验收;Phase 5 逐条评估后关账                             |
+
+**Phase 5 的逐条结论**(写进 docs/runtime-redesign.md,该文抬头已改为「已完成」):startup timing 已是
+opt-in 的 debug instrumentation(`QUALY_BOOT_TIMING=1`),这条按第二个选项完成;`NodeServer` 公共服务
+**保持现状不回收**——收回它的理由在 Phase 2 就消失了(web 插件开发态已是独立进程、生产态走 sirv,
+生产源码里没有第二个消费者),剩下的是一个暴露面而不是一个耦合;browser collection 去重、watcher 分类
+细化、package install retrigger **三条都不做**,它们缺一个已经发生的问题来证明必要,按仓库既有元规则
+(复杂度必须由已发生的问题证明)关掉。
+
+Phase 5 不是欠账,是评估后决定不做。
+
+**§61 的 Vite 边界不是靠测试守的,而是结构性的**:`vite` 是 web 插件的 devDependency,`sirv` 才是
+它的生产依赖,生产入口只走 `./server` 叶子。这比一条断言更强,记下来免得日后有人以为缺门禁。
+
+**接下来新业务遵守既有 contract**:UI 走 `@qualy/ui`,不绕过 Mantine 边界;每个 mutation 明确落在
+Audit / 领域历史 / 都不需要 的哪一格(见 CLAUDE.md「记录」节);新服务沿用现有 telemetry 约定,
+不另造可观测性;supervisor 有缺陷才修,不再「优化架构」。
+
+telemetry 剩下的两类事情——进 VPC 后的环境复验、TMP/Grafana 面板与告警——属于部署与运维,
+不是架构开发的 blocker,不因此把 Phase 6 继续挂着。

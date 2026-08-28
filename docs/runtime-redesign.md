@@ -2,7 +2,7 @@
 
 ## 设计变更文档
 
-**状态**：设计冻结，可进入 Phase 0/1 实现验证  
+**状态**：已完成（2026-08-28）。Phase 0–4 全部实现并验收；Phase 5 是「按实际结果决定」的清理项，已逐条评估后关账，不再作为独立开发阶段推进。此后只在出现真实缺陷或可复现的性能问题时改动 supervisor。  
 **目标分支**：以当前开发分支实际源码为准；实施前先核对本文列出的路径和现状  
 **适用范围**：Qualy monorepo 的开发态进程生命周期、Backend 自动重载、Web/Vite 开发服务拆分  
 **不改变**：生产态 Effect Runtime 装配模型、插件 Runtime Assembly、Browser Assembly 的所有权、ADR 中“Effect 是唯一后端 Runtime”的结论
@@ -2650,17 +2650,22 @@ handoff
 
 ---
 
-## Phase 5 — Cleanup & optimization
+## Phase 5 — Cleanup & optimization（已评估关账，2026-08-28）
 
-根据实际结果决定：
+本阶段写的就是「根据实际结果决定」,不是验收条件。逐条结果:
 
-- `NodeServer` public service回收；
-- Browser collection duplicate work优化；
-- startup timing移除或转为debug instrumentation；
-- watcher classification细化；
-- package install retrigger改善。
+- **startup timing** —— 已落成 opt-in 的 debug instrumentation(`QUALY_BOOT_TIMING=1`,
+  `apps/server/src/boot-timing.ts`),不叙述每次启动。这一条按第二个选项完成。
+- **`NodeServer` public service 回收** —— **未做,保持现状**。收回它的理由在 Phase 2 就消失了:
+  web 插件的开发态已经是独立进程,生产态走 sirv,生产源码里除 `apps/server/src/runtime.ts` 自己
+  之外没有第二个消费者(仅该插件的测试还在用它造夹具)。剩下的是一个暴露面而不是一个耦合,
+  为它改动 api-kit 的公共 API 换不回等价的收益。
+- **Browser collection duplicate work / watcher classification 细化 / package install retrigger**
+  —— **未做**。实测的后端替换约 1.1s、冷启 1.3s,监听器按目录约定分类在真实使用中没有误判到需要细分;
+  这三条都缺一个已经发生的问题来证明其必要,按仓库既有的元规则(复杂度必须由已发生的问题证明)不做。
 
-不要在 Phase 1–4 未稳定前做这些优化。
+也就是说:Phase 5 不是「还欠着」,是「评估后决定不做」。此后 supervisor 只在出现真实缺陷或可复现的
+性能问题时改动。
 
 ---
 

@@ -108,6 +108,14 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 
 不要交互式运行 `pnpm approve-builds`。当 pnpm 报告 ignored builds 时:逐个检查依赖为什么需要脚本,仅对确认可信且确实需要的运行 `pnpm approve-builds <package...>`,明确不需要的用 `pnpm approve-builds '!<package>'`;不得使用 `--all`,除非用户明确要求;展示 pnpm-workspace.yaml 的变更。
 
+## 记录:审计、领域历史、遥测(三选一,不重复)
+
+- **Audit Trail**(`audit_events`):安全、管理、配置类操作——身份、授权、角色、登录方式、租户与组织结构,以及本身不留任何历史痕迹的动作(如批次的创建与删除)。
+- **领域历史**:业务实体自身的演进(状态流转、评审动作等),由该实体自己的历史表承载并带 actor;**已进领域历史的不再复制进 Audit Trail**。
+- **Telemetry**:诊断、性能、可观测性,不承担合规记录。
+
+新增 mutation 时必须明确它落在哪一格——「三格都不需要」也是合法答案;不要同一件事写三遍。
+
 ## 禁止
 
 - 重启技术选型讨论(ADR 0001-0003 与 notes/ 已定案);重开综测领域已冻结的设计(ADR 0004-0008 与 assessment-design.md §7)。
@@ -118,3 +126,4 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 组件内裸中文;客户端裸内部路径;裸 `limit N`。
 - 浏览器测试的业务断言绑界面文案(见测试分层第三条)。
 - 生产源码在入口/CLI/前端 runtime/测试边界之外 `Effect.run*`。
+- 在没有真实业务需求、生产缺陷或可复现 regression 的前提下,主动重构已关账的四条基础设施线:UI 平台(Mantine + StyleX)、审计、telemetry、开发态进程监督。关账记录见 STATUS.md 2026-08-28,设计文档各自已标 Completed。
