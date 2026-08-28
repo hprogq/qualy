@@ -18,7 +18,7 @@ stands on its own with no knowledge of this repository.
 | [mikro-orm-5-check-cast-strip-unbalances-parens](mikro-orm-5-check-cast-strip-unbalances-parens.md)     | **fixed in 7.1.13** | nothing; the patch is gone                                                 |
 | [mikro-orm-6-index-access-method-dropped](mikro-orm-6-index-access-method-dropped.md)                   | **fixed in 7.1.13** | nothing; same                                                              |
 | [mikro-orm-7-check-array-cast-strip](mikro-orm-7-check-array-cast-strip.md)                             | draft               | none: entity checks avoid `IN` lists (equality chains normalize cast-free) |
-| [pnpm-1-run-dies-by-signal-instead-of-waiting](pnpm-1-run-dies-by-signal-instead-of-waiting.md)         | draft               | nothing: the shutdown itself completes, only its reported status is lost   |
+| [pnpm-1-run-dies-by-signal-instead-of-waiting](pnpm-1-run-dies-by-signal-instead-of-waiting.md)         | draft               | the pin stays on pnpm 11; 11.24.0 is unaffected                            |
 
 Drafts 1 to 4 were filed and are **fixed in 7.1.11**; draft 1's patch hunk is
 deleted, and 2 to 4 never had one (they are reasons the entity generator was not

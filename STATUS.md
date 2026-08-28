@@ -9938,3 +9938,27 @@ pnpm 11 与 npm 都撑到子进程结束并转发它的退出码,**pnpm 12 先�
 
 已写成上游 issue 草稿存档 `docs/upstream/pnpm-1-run-dies-by-signal-instead-of-waiting.md`。
 本仓库不做规避:唯一能规避的方式是不经 pnpm 跑开发命令,而代价远大于一个退出码。
+
+**回到 pnpm 11**(2026-08-28)
+
+`packageManager` 从 `pnpm@12.0.0` 退回 `pnpm@11.24.0`,`pnpm-lock.yaml` 一并还原成 pnpm 12 之前的那份
+(pnpm 12 的改动是**纯追加**的 101 行,还原是精确的)。node 不动,仍是 24.20.0,`engines` 仍是 `>=24.12`。
+
+两个理由:
+
+1. **SIGINT 回归**(上文):11.24.0 与 11.8.0 一样,三轮全是 `code=0 signal=null`,12.0.0 三轮全是
+   `signal=SIGINT`。同一份最小复现、同一台机器。
+2. **lockfile 序列化契约**:pnpm 12 在 `lockfileVersion: '9.0'` 不变的前提下把文件变成两个 YAML document
+   (第一个记包管理器自己)。版本号没变而物理结构变了,只读第一个 document 的消费者会看到一个零依赖的项目。
+   这是接下来要评估别的包管理器时最不该带着的基线——一个变量都还没换,文件已经不是 v9 的原形。
+
+**验收**(pnpm 11.24.0,全部真实执行):清空全部 `node_modules` 后 `pnpm install --frozen-lockfile` 通过
+(5.2s),随后一次普通 `pnpm install` 让 lockfile 保持**逐字节相同**(sha256 `2f8d590c…`);`pnpm typecheck`
+零错;`pnpm test` **896 passed | 17 skipped**;`pnpm test:browser` **225 passed**;
+`pnpm qualy resolve --frozen-lockfile` 零写入;`pnpm build` 通过;prettier 通过;
+`./node_modules/.bin/tsc --version` 仍是 `7.0.2+effect-tsgo.0.36.4`。
+
+pnpm 12 的那一刻留在分支 `scratch/pnpm12-state`(不推送),作为上游报告的证据锚点。
+
+**包管理器升级纪律**:今后包管理器版本的变更单独成一次改动,只动版本号,跑完整门禁,并检查 lockfile diff。
+manifest 没动而 lockfile 大面积变化,默认视为异常而不是"新版本就这样",先解释清楚再合入。
