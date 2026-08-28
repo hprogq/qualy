@@ -9876,3 +9876,18 @@ Node 的类型擦除已稳定,而本仓库一直是朝可擦除方向写的:不�
 **验收(全部真实执行)**:`pnpm typecheck` 零错;`pnpm test` **894 passed | 17 skipped**;
 `pnpm test:browser` **225 passed**;`pnpm build` 通过;生产 smoke 通过(裸 node 与 pnpm exec 两种起法都验了);
 `pnpm vendor:check` 两树一致;完整 `pnpm dev` 循环复跑(改后端 → 只换后端 → 经 Vite 反代 200 → Ctrl+C 零残留)。
+
+**终端 Ctrl+C 的两个 bug**(2026-08-28,用户实测报告)
+
+`pnpm dev` 按 Ctrl+C 后监督者以 EPIPE 崩溃退出 1。根因是**终端把信号发给整个前台进程组**,不是只发给监督者:
+
+1. 子进程自己已经在退出,监督者再 `child.send()` 写进正在关闭的通道。失败以 **`error` 事件**上报,
+   没人监听就终止进程——会话在说完 "stopping" 的下一行带栈崩掉。现在发送容忍已消失的通道
+   (同步与回调两条路径都接),并给每个 fork 的子进程挂上 `error` 监听。
+2. **dev service runner 从来没处理过信号**。此前唯一会停它的是监督者经通道下达的 shutdown,
+   而终端会直接给它一个 SIGINT,没有处理器时默认行为当场终止进程——**scope 从不关闭,它持有的
+   Vite 从未被告知关闭**。现在信号与通道断开走同一个入口。
+
+**为什么测试没抓到**:既有用例全都只 `kill` 监督者本身,而那恰恰是这两个竞态都不可能发生的唯一形态。
+新增用例把监督者放进**独立进程组**再对整组发 SIGINT(macOS 无 `setsid`,用 Node 的 `detached`),
+断言退出码 0、输出里没有 EPIPE、端口已释放。**已实测:去掉修复该用例即红。**
