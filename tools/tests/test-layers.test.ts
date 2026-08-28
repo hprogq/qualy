@@ -296,6 +296,10 @@ describe('test layering', () => {
       // the process entry, and it runs exactly two: codegen with the
       // application's own logger, and the application itself
       'apps/server/src/main.ts',
+      // the other process entry: the one a development service runs in. It
+      // runs the plugin's own two effects and holds the scope open around
+      // them, which is the whole of what it does.
+      'apps/server/src/dev/service-runner.ts',
       // the browser's single runtime: pages hand it effects rather than
       // running them, which is what carries E across into the query's TError
       // the browser's single runtime: pages hand it effects rather than

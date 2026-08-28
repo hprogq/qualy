@@ -5,6 +5,9 @@ import { readManifest } from '@qualy/assembly'
 import { telemetryLayer } from '@qualy/telemetry'
 import { logLine, loggingLayer, resolveLogging } from './logging.ts'
 import { mark, reportBootTiming } from './boot-timing.ts'
+import { requestShutdown, shutdownRequested } from './shutdown.ts'
+import { devTopology } from './dev/topology.ts'
+import { supervisedPrepareFence } from './dev/fence.ts'
 import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
 
@@ -81,6 +84,11 @@ const application = await makeApplication(resolution, logging).catch(refuse)
 // layer below is built.
 mark('application composed')
 
+// The line: nothing above it acquired anything, and a supervisor staging this
+// process as a replacement holds it here until the process it replaces has
+// gone. Unsupervised this returns at once and the boot carries straight on.
+await supervisedPrepareFence(devTopology(resolution)).catch(refuse)
+
 /**
  * One report per failed boot, through the application logger.
  *
@@ -121,6 +129,10 @@ const reportStartupFailure = (cause: Cause.Cause<unknown>) =>
 // actually completed. It logs because it ran, so a silent exit means the
 // finalizers did not, which is exactly the failure worth seeing.
 const launched = Layer.launch(application).pipe(
+  // A stop asked for by anything other than a signal - a supervisor over the
+  // channel - interrupts the root fiber exactly as a signal does: same scope,
+  // same finalizers, same report below.
+  Effect.race(shutdownRequested),
   Effect.onExit((exit) =>
     Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)
       ? Effect.sync(() => mark('shutdown complete')).pipe(
@@ -171,6 +183,7 @@ for (const [signal, code] of [
       process.exit(code)
     }
     stoppingSince = Date.now()
+    requestShutdown()
     // say so at once: the drain that follows can take a few seconds, and a
     // silent one is indistinguishable from a press that did not land
     logLine(
@@ -202,6 +215,13 @@ NodeRuntime.runMain(launched, {
   // the report above is the one and only rendering of a failed boot
   disableErrorReporting: true,
   teardown: (exit, onExit) => {
+    // The channel to a supervisor is a referenced handle: while it is open
+    // the event loop has something to wait for, so a process whose runtime
+    // has finished unwinding would sit there having done everything it was
+    // asked to. The supervisor is waiting for this process to be gone before
+    // it lets the next one take the port, so sitting there is the one thing
+    // it must not do.
+    if (process.connected) process.disconnect()
     if (Exit.isSuccess(exit)) return onExit(0)
     if (Cause.hasInterruptsOnly(exit.cause)) return onExit(0)
     onExit(1)

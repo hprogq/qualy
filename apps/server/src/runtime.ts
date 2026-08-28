@@ -17,6 +17,7 @@ import { accessLog } from './access-log.ts'
 import type { LoggingSettings } from './logging.ts'
 import { healthApi, healthHandlers } from './health.ts'
 import { mark } from './boot-timing.ts'
+import { onShutdownRequested } from './shutdown.ts'
 
 // The composition root.
 //
@@ -105,8 +106,9 @@ const nodeServerLayer = Layer.sync(NodeServer, () => {
       server.closeAllConnections()
     }, 2_000).unref()
   }
-  process.once('SIGINT', hurry)
-  process.once('SIGTERM', hurry)
+  // registered with this host's own stop rather than with the signals: under
+  // a supervisor the stop arrives over a channel and no signal is ever sent
+  onShutdownRequested(hurry)
   return server
 })
 
