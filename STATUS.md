@@ -9797,3 +9797,47 @@ pinned commit、三种 handoff)。
 
 **下一步**:Phase 4(Vite 代理的 503 与 `X-Qualy-State`、浏览器侧 transient 分类、读查询有界重试、
 mutation 不重试、manifest 恢复窗口、proxy 集成矩阵)。
+
+### 开发态进程监督 Phase 4:浏览器侧的短暂不可用(2026-08-28)
+
+依据 docs/runtime-redesign.md §59 Phase 4、§35–§37。
+
+**两种 503,现在自报家门**(§36)
+
+后端替换期间,端口上要么没人、要么有个已绑定但还没建完自己的进程。两者都马上就会不成立,也都不是
+任何人能处理的失败——但默认表现完全不同:前者是连接错误,页面分不清它和"离线";后者是 503,
+页面分不清它和"服务器在拒绝"。现在两者都回 503 并带 `X-Qualy-State`(`unavailable` / `starting`)
+与 `Retry-After: 1`,开发代理替不在的后端作答,而不是直接断连。
+
+**光靠状态码承载不了这件事**:真正的 503 是另一回事,把它也等下去,恰恰会挂在唯一值得上报的那种失败上。
+
+**页面等得起,但有上限**(§37)
+
+读查询等 8 次(250ms 起翻倍、封顶 2s),manifest 等 20 次——整个应用在它后面,放弃得早等于把读者丢到
+一个还得自己找的重试按钮上。**两者都有界**:没有上限的等待就是永不结束的转圈,比一句话更糟,
+因为至少一句话是可以行动的。
+
+**mutation 永不自动重试**,而且是显式写出来而不是继承默认值:响应丢失的写入,在这里和从未发出的写入
+无法区分,重试就是一次没人要求的重复写——而它会重复发生的窗口,正好是后端在请求中途被替换的那个窗口。
+
+**Host 不改写**(§35):代理保留浏览器自己的 Host。常见示例都写 `changeOrigin: true`,而后端要从
+被请求的 Host 推 cookie 作用域、重定向目标与回调地址——公网域名下的会话会拿到指向环回地址的答复。
+
+**验证**
+
+- `packages/web/runtime/tests/transient.test.ts` 6 例:两种 503 都认得;**不认**没有头的 503、
+  别的 state、500 带 starting、普通 Error;读与 manifest 各自的上界;拒绝不等待;退避阶梯。
+- `apps/server/tests/dev-proxy.test.ts` 3 例:用一个会报告"被问到了什么"的桩后端,钉住 **Host 透传**
+  (浏览器看到的是 `127.0.0.1:5198` 而不是代理拨出去的地址)与路径不变;浏览器自身由 Vite 直接服务;
+  **后端完全不在时**回 503 + `x-qualy-state: unavailable` + `retry-after`。
+- `apps/web/tests/transient-recovery.browser.test.tsx` 2 例:manifest 连失败两次后到达——**从不显示失败屏**;
+  而服务器真的拒绝时立刻显示重试按钮。断言成对出现,因为这份耐心的正确性完全取决于别的东西继承不到它。
+
+SSE 按 §38 不动:现有 reconnect/backoff 已经覆盖后端重启。
+
+**验收(全部真实执行)**:`pnpm typecheck` 零错;`pnpm test` **894 passed | 17 skipped**;
+`pnpm test:browser` **225 passed**;`pnpm build` 通过;生产 smoke 通过;`pnpm vendor:check` 两树一致。
+
+**下一步**:Phase 5(收尾与优化)——`NodeServer` 公共 service 是否收回 apps/server 内部、
+浏览器收集的重复工作、启动计时保留或转 debug、watcher 分类细化、pnpm install 后重新 staging。
+按设计 §59 这些**要等 Phase 1–4 稳定后**再做。
