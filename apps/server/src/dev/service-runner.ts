@@ -1,5 +1,6 @@
 import { Deferred, Effect } from 'effect'
 import type { DevServiceContext, DevServiceModule, DevServiceSpec } from '@qualy/plugin-kit/dev'
+import { loggingLayer, resolveLogging } from '../logging.ts'
 import { PROTOCOL, hostMessage, tell } from './protocol.ts'
 
 // The process a development service runs in, whichever plugin declared it
@@ -80,22 +81,32 @@ const context: DevServiceContext = {
   runtime: { origin: spec.origin },
 }
 
+// the same rendering every other child of this session uses, and named by
+// which service is speaking: two log formats in one terminal is one too many
+const logs = loggingLayer(resolveLogging(undefined, process.env, 'development'))
+
 await Effect.runPromise(
-  Effect.scoped(
-    Effect.gen(function* () {
-      const prepared = yield* service.prepare(context)
-      yield* Effect.sync(() =>
-        tell({ protocol: PROTOCOL, type: 'prepared', role: 'service', key: spec.spec.key }),
-      )
-      yield* Deferred.await(accepted)
-      yield* service.acquire(prepared, context)
-      yield* Effect.sync(() =>
-        tell({ protocol: PROTOCOL, type: 'ready', role: 'service', key: spec.spec.key }),
-      )
-      // held here so the scope above stays open: everything acquire took is
-      // released by the scope closing, which is this returning
-      yield* Deferred.await(stopped)
-    }),
+  Effect.provide(
+    Effect.annotateLogs(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const prepared = yield* service.prepare(context)
+          yield* Effect.sync(() =>
+            tell({ protocol: PROTOCOL, type: 'prepared', role: 'service', key: spec.spec.key }),
+          )
+          yield* Deferred.await(accepted)
+          yield* service.acquire(prepared, context)
+          yield* Effect.sync(() =>
+            tell({ protocol: PROTOCOL, type: 'ready', role: 'service', key: spec.spec.key }),
+          )
+          // held here so the scope above stays open: everything acquire took is
+          // released by the scope closing, which is this returning
+          yield* Deferred.await(stopped)
+        }),
+      ),
+      { source: `dev:${spec.spec.id}` },
+    ),
+    logs,
   ),
 ).catch((error: unknown) => {
   fail(`${spec.spec.key} failed: ${error instanceof Error ? error.message : String(error)}`)

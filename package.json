@@ -46,7 +46,7 @@
   "scripts": {
     "build": "pnpm --filter @qualy/web-app build && tsx packages/build/web/src/stage.ts",
     "db:reset": "docker compose down -v && docker compose up -d --wait && tsx apps/cli/src/main.ts deploy",
-    "dev": "node --env-file-if-exists=.env --import tsx apps/server/src/run.ts development",
+    "dev": "node --import tsx apps/server/src/dev/host.ts",
     "format": "prettier --write .",
     "plugin:add": "tsx tools/repo/plugin-add.ts",
     "prepare": "effect-tsgo patch --typescript --no-oxlint",
