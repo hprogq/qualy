@@ -19,6 +19,13 @@ import '../src/app.css'
 // the browser computes for each of them is recorded in full. Anything that
 // changes these has changed how every screen looks, which is worth a red
 // test rather than a bug report from a reader.
+//
+// Two things are deliberately NOT read. A height is the probe page's own
+// length, not a rule - the baseline declares no heights - and it drifts by a
+// pixel between machines. And the widget library's default font stack names
+// the platform's own UI face, which each platform serializes under its own
+// name, so the stack is canonicalized below rather than left to make this
+// file pass on one operating system and fail on another.
 const WATCHED = [
   'boxSizing',
   'margin',
@@ -47,7 +54,6 @@ const WATCHED = [
   'borderSpacing',
   'minWidth',
   'maxWidth',
-  'height',
   'cursor',
   'whiteSpace',
   'overflowWrap',
@@ -101,19 +107,17 @@ it('dresses every bare element the product uses', async () => {
   )
   await new Promise((resolve) => setTimeout(resolve, 200))
   const seat = document.querySelector('[data-testid="bare"]')!
-  const rows: string[] = []
-  for (const node of seat.querySelectorAll('*')) {
+  // one name for the platform's own UI face: a mac reports it as
+  // `"system-ui"` and a linux box as `BlinkMacSystemFont`, for the one stack
+  const settled = (row: string) => row.replaceAll(/BlinkMacSystemFont|"system-ui"/g, '<system-ui>')
+  const read = (node: Element) => {
     const style = getComputedStyle(node)
-    rows.push(
+    return settled(
       `${node.tagName.toLowerCase()}: ${WATCHED.map((k) => `${k}=${style[k as never]}`).join(' ')}`,
     )
   }
+  const rows = [...seat.querySelectorAll('*')].map(read)
   // the html and body the app itself dresses
-  for (const node of [document.documentElement, document.body]) {
-    const style = getComputedStyle(node)
-    rows.push(
-      `${node.tagName.toLowerCase()}: ${WATCHED.map((k) => `${k}=${style[k as never]}`).join(' ')}`,
-    )
-  }
+  rows.push(read(document.documentElement), read(document.body))
   await expect(rows.join('\n')).toMatchFileSnapshot('./__snapshots__/baseline.txt')
 })
