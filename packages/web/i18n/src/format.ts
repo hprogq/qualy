@@ -64,6 +64,31 @@ export function isTransportError(error: unknown): boolean {
   return isNetworkError(error)
 }
 
+/**
+ * Whether the server is between processes rather than broken.
+ *
+ * In development the backend is replaced while the page stays open, and for a
+ * second or two there is either nothing on the port or a process that has
+ * bound it and not finished building itself. Both answer 503 and both say so
+ * in a header, because a status alone cannot tell "wait a moment" from "this
+ * failed" - and those want opposite things from the page.
+ *
+ * Read off the response rather than the message: which of the client's error
+ * reasons carries it depends on whether the body decoded, and all of them
+ * carry the response.
+ */
+const TRANSIENT_STATES = new Set(['starting', 'unavailable'])
+
+export function isBackendUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const response = (error as { response?: { status?: unknown; headers?: unknown } }).response
+  if (!response || typeof response !== 'object') return false
+  if (response.status !== 503) return false
+  const headers = response.headers as Record<string, string | undefined> | undefined
+  const state = headers?.['x-qualy-state']
+  return typeof state === 'string' && TRANSIENT_STATES.has(state)
+}
+
 // codes are upper snake case by declaration, which is what tells a declared
 // failure apart from Effect's own tagged internals (SchemaError and friends)
 const DECLARED_CODE = /^[A-Z][A-Z0-9_]*$/

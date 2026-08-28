@@ -31,6 +31,7 @@ export {
   isApiErrorCode,
   isAuthenticationError,
   isTransportError,
+  isBackendUnavailable,
 } from './format.ts'
 export type { MessageFormatter } from './format.ts'
 

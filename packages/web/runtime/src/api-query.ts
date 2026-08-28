@@ -1,6 +1,6 @@
 import { queryOptions, type QueryKey } from '@tanstack/react-query'
 import { Effect } from 'effect'
-import { isTransportError } from '@qualy/web-i18n'
+import { isBackendUnavailable, isTransportError } from '@qualy/web-i18n'
 
 // `Effect<A, E>` has an error type; `Promise<A>` does not, so the moment a
 // page calls `Effect.runPromise` the failure type is gone and TanStack Query
@@ -39,7 +39,37 @@ export const browserRuntime: ApiRuntime = {
 // predicate written as "no _tag" therefore retried the residue (defects and
 // interrupts) and never the one case it was for.
 export const retryQuery = (attempt: number, error: unknown) =>
-  attempt < 1 && isTransportError(error)
+  (attempt < 1 && isTransportError(error)) ||
+  (attempt < WAITING_OUT.reads && isBackendUnavailable(error))
+
+/**
+ * How long a page waits out a server that is between processes.
+ *
+ * Development replaces the backend while the page stays open, and for a
+ * second or two the api answers 503 with which kind it is. That is not a
+ * failure the reader can do anything about, and a screen that renders a
+ * refusal for it is a screen that has to be dismissed by hand every time
+ * somebody saves a file.
+ *
+ * Bounded, though. A window with no end is a spinner that never resolves,
+ * which is worse than a message: at least the message can be acted on. The
+ * read window covers a normal replacement; the manifest gets a longer one
+ * because the whole application is behind it, and the alternative there is a
+ * blank shell with a retry button somebody has to find.
+ */
+const WAITING_OUT = { reads: 8, manifest: 20 }
+
+/** a short ladder, capped: a replacement takes seconds, not minutes */
+export const retryDelay = (attempt: number) => Math.min(250 * 2 ** attempt, 2_000)
+
+/**
+ * The manifest's own patience.
+ *
+ * Nothing renders until it arrives, so this is the one query where giving up
+ * early costs the whole application rather than one section of it.
+ */
+export const retryManifest = (attempt: number, error: unknown) =>
+  retryQuery(attempt, error) || (attempt < WAITING_OUT.manifest && isBackendUnavailable(error))
 
 /**
  * Query options whose `TError` is the effect's error type.

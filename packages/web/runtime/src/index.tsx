@@ -25,7 +25,14 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { clientFor, type ClientOf } from './api.ts'
-import { createQueryUtils, retryQuery, runMutation, type QueryUtils } from './api-query.ts'
+import {
+  createQueryUtils,
+  retryDelay,
+  retryManifest,
+  retryQuery,
+  runMutation,
+  type QueryUtils,
+} from './api-query.ts'
 import { Api } from '@qualy/api-kit/local'
 import { appApiGroup } from '@qualy/plugin-ui-registry/api'
 import type { HttpApi } from 'effect/unstable/httpapi'
@@ -128,7 +135,18 @@ const styles = stylex.create({
 
 export function RuntimeProvider({ clientFor: provided, registry, children }: RuntimeProviderProps) {
   const [queryClient] = useState(
-    () => new QueryClient({ defaultOptions: { queries: { retry: retryQuery } } }),
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: { retry: retryQuery, retryDelay },
+          // Never, and stated rather than inherited. A write whose response
+          // was lost is indistinguishable here from one that never arrived,
+          // so retrying it is a second write nobody asked for - and the
+          // window this repeats in is exactly the one where the backend is
+          // being replaced mid-request.
+          mutations: { retry: false },
+        },
+      }),
   )
   const [runtime] = useState(() => {
     const provider = provided ?? defaultClientFor
@@ -164,7 +182,13 @@ function RuntimeLoader({
 }: Omit<Runtime, 'manifest'> & { children: ReactNode }) {
   const { format } = useI18n()
   const query = utilsFor(appApi) as QueryUtils<ClientOf<typeof appApi>>
-  const manifest = useQuery(query.app.getManifest.queryOptions())
+  const manifest = useQuery({
+    ...query.app.getManifest.queryOptions(),
+    // the whole application is behind this one, so it waits out a backend
+    // replacement rather than dropping the reader onto a retry button
+    retry: retryManifest,
+    retryDelay,
+  })
   if (manifest.isPending) return <LoadingScreen />
   if (manifest.isError) {
     return (
