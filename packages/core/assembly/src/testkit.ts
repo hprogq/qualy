@@ -25,7 +25,7 @@ import { lockPathFor } from './manifest.ts'
 export interface Workspace {
   dir: string
   manifestPath: string
-  /** overwrite the manifest, e.g. to remove a plugin and resolve again */
+  /** overwrite the manifest, installing anything newly selected; removal never uninstalls */
   writeManifest(plugins: readonly string[], options?: ManifestOptions): void
   dispose(): void
 }
@@ -106,10 +106,6 @@ export function createWorkspace(
     if (!fs.existsSync(at)) fs.symlinkSync(target, at, 'dir')
   }
   const synthetic = new Set((options.synthetic ?? []).map((entry) => entry.id))
-  for (const id of plugins) {
-    if (synthetic.has(id)) continue
-    link(id, host.resolvePackageDir(id))
-  }
   for (const entry of options.synthetic ?? []) {
     const at = path.join(modules, ...entry.id.split('/'))
     fs.mkdirSync(at, { recursive: true })
@@ -143,6 +139,15 @@ export function createWorkspace(
     dir,
     manifestPath,
     writeManifest(selection, overrides) {
+      // A selection names packages the workspace has to have, so adding one to
+      // the manifest installs it. Removing one deliberately does NOT uninstall
+      // it: detached and retained are exactly the states a plugin that left the
+      // manifest but is still on disk passes through, and they are most of what
+      // this testkit exists to exercise. A case that wants a selected plugin to
+      // be missing says so by deleting it.
+      for (const id of selection) {
+        if (!synthetic.has(id)) link(id, host.resolvePackageDir(id))
+      }
       fs.writeFileSync(manifestPath, renderManifestText(selection, overrides ?? options))
     },
     dispose() {

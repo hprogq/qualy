@@ -55,6 +55,28 @@ export function createPackageResolver(hostDir: string): PackageResolver {
   const hostRequire = createRequire(path.join(host, 'package.json'))
   const cache = new Map<string, PluginMetadata>()
 
+  /**
+   * Whether the host really installed this package, rather than something
+   * else on the machine having made it resolvable.
+   *
+   * `require.resolve` also consults `NODE_PATH`, and a runner's bin shim is
+   * free to put anything there - pnpm's puts the directory it hoists every
+   * workspace package into. That quietly turns "the host declared it" into
+   * "some runner exported a variable", which is the single distinction this
+   * module exists to make, and nothing says so: resolution succeeds against a
+   * package the host would never find when it actually ran.
+   */
+  const installedUnder = (id: string): boolean => {
+    const segments = id.split('/')
+    let dir = host
+    for (;;) {
+      if (fs.existsSync(path.join(dir, 'node_modules', ...segments))) return true
+      const parent = path.dirname(dir)
+      if (parent === dir) return false
+      dir = parent
+    }
+  }
+
   const resolvePackageDir = (id: string): string => {
     // Resolved through its manifest, not through a main entry. A plugin is a
     // package the assembly reads declarations from; whether it also has
@@ -63,6 +85,7 @@ export function createPackageResolver(hostDir: string): PackageResolver {
     // schema and no code" unexpressible.
     let entryPath: string
     try {
+      if (!installedUnder(id)) throw new Error('not installed under the host')
       entryPath = hostRequire.resolve(`${id}/package.json`)
     } catch {
       throw new Error(

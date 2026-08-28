@@ -15,7 +15,9 @@ import {
   resolveAssembly,
   writeLock,
 } from '@qualy/assembly'
+import { resolvePackageDir } from '@qualy/assembly/host'
 import { createWorkspace, renderManifestText, type SyntheticPackage } from '@qualy/assembly/testkit'
+import { manifestPath } from '../lib/manifest.ts'
 
 // What an assembly resolves to has to be a function of what it says, not of
 // how it was written or of what ran before. Everything here is a property of
@@ -43,6 +45,49 @@ const commit = async (manifestPath: string) => {
 
 // where a host would write the module; only its directory matters, for the
 // relative anchor back to the manifest
+
+describe('clean room', () => {
+  // A throwaway workspace must see exactly what it installed and nothing else.
+  // That is not automatic: `require` also consults NODE_PATH, and pnpm's bin
+  // shim points it at the directory every workspace package is hoisted into,
+  // so under vitest a synthetic workspace could resolve any package in this
+  // repository. Two cases below spent a while reaching their real assertion
+  // through a plugin they never linked, and nothing said so - the resolution
+  // that made it work belonged to the test runner, not to the assembly.
+  const ELSEWHERE = '@qualy/plugin-web'
+
+  it('cannot see a package the real host has but it never installed', () => {
+    // asserted first, so a failure below is about the workspace rather than
+    // about the package having moved
+    expect(resolvePackageDir(ELSEWHERE, manifestPath())).toContain('plugins/infra/web')
+
+    const workspace = createWorkspace(INFRA)
+    try {
+      expect(() => resolvePackageDir(ELSEWHERE, workspace.manifestPath)).toThrow(
+        /cannot be resolved/,
+      )
+    } finally {
+      workspace.dispose()
+    }
+  })
+
+  it('installs what a later manifest selects, and keeps what one drops', () => {
+    const workspace = createWorkspace(INFRA)
+    try {
+      workspace.writeManifest([...INFRA, ELSEWHERE])
+      expect(resolvePackageDir(ELSEWHERE, workspace.manifestPath)).toContain('plugins/infra/web')
+
+      // dropping it from the manifest leaves the package installed: detached
+      // and retained are states of a plugin that left the manifest and stayed
+      // on disk, and a workspace that uninstalled on removal could not pose
+      // the question at all
+      workspace.writeManifest(INFRA)
+      expect(resolvePackageDir(ELSEWHERE, workspace.manifestPath)).toContain('plugins/infra/web')
+    } finally {
+      workspace.dispose()
+    }
+  })
+})
 
 describe('manifest', () => {
   const parse = (text: string) => () => parseManifest(text, 'qualy.yml')
