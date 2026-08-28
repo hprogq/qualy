@@ -19,7 +19,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 
 ## 目录布局(2026-08-07 物理重组后)
 
-- `apps/server` 后端宿主(boot 入口 src/main.ts、运行 runner src/run.ts);`apps/web` 浏览器组合根(@qualy/web-app);`apps/cli` 装配 CLI(`pnpm qualy` 即 `tsx apps/cli/src/main.ts`)。
+- `apps/server` 后端宿主(boot 入口 src/main.ts、运行 runner src/run.ts);`apps/web` 浏览器组合根(@qualy/web-app);`apps/cli` 装配 CLI(`pnpm qualy` 即 `node apps/cli/src/main.ts`)。
 - `packages/core/` = plugin-kit、assembly(子路径 `/host` 宿主解析、`/testkit` 测试装配)、api-kit;`packages/contracts/` = assembly、auth、rbac、ui、i18n(**包名不变**,仍是 @qualy/\*-contract);`packages/web/` = runtime(含 `./api` typed client,原 api-client 已并入)、i18n、ui;`packages/build/web` = @qualy/web-build(vite 插件、组件收集、产物 staging);`packages/plugins/{infra,base,demo}/*` 插件。
 - `tools/` = fixtures(seed)、quality(typecheck、check-client-components、smoke-production)、repo(plugin-add、vendor-sync)、tests(仓库级门禁套件)、lib。根 scripts 只是转发,不放逻辑。
 - **零 codegen**:仓库唯一生成物是 `db/migrations/` 的 SQL。浏览器聚合是 vite 期 virtual module(`virtual:qualy/plugins`,@qualy/web-build 从 resolution 现算,物化到 `apps/web/.qualy/`,gitignored);类型聚合不存在——插件 client 直接 import 本插件 `src/client/api.ts`。生成的模块内 import 一律**相对路径**并配静态 import 的 scan 孪生文件:绝对文件路径在 vite 里是 root 相对 URL,扫描器与 dev server 都不跟进,曾以「冷缓存双 React」形式炸掉整个浏览器套件。
@@ -27,7 +27,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 ## 工程基线
 
 - Node 24 LTS(mise 管理,engines ≥24);pnpm workspaces;vitest。
-- tsconfig 分层:根 tsconfig.base.json 用 `module: NodeNext`,相对导入的 `.ts` 扩展名是编译器强制。types 分层:base 带 `["node"]`,web 侧包与插件 client 覆写 `"types": []` 或 `["vite/client"]` 并加 lib DOM、jsx: react-jsx,防 Node 全局类型泄进浏览器代码。**strip-types 是现实约束**:裸 node 会以 strip-only 模式加载 workspace TS 源,参数属性(constructor(readonly x))、enum、namespace 等带运行时语义的语法当场炸,一律写普通字段。
+- tsconfig 分层:根 tsconfig.base.json 用 `module: NodeNext`,相对导入的 `.ts` 扩展名是编译器强制。types 分层:base 带 `["node"]`,web 侧包与插件 client 覆写 `"types": []` 或 `["vite/client"]` 并加 lib DOM、jsx: react-jsx,防 Node 全局类型泄进浏览器代码。**TypeScript 由 node 自己擦除运行,没有加载器**(2026-08-28 起;`tsx` 仍在依赖里,那是 Vite 加载自身 TS 配置的可选 peer,不是本仓库的运行器)。因此 **strip-types 不再只是注意事项,而是运行前提**:node 以 strip-only 模式加载 workspace TS 源,参数属性(constructor(readonly x))、enum、namespace 等带运行时语义的语法当场炸,一律写普通字段。实测收益:后端冷启到端口 2.0s → 1.3s,开发态一次后端重载约 1.1s。
 - scripts 跨平台:禁止内联环境变量语法;.env 统一走 `node --env-file-if-exists=.env`。
 - 运行命令二分:`pnpm dev`(development)与 `pnpm start`(production)都经 apps/server/src/run.ts(跨平台设 NODE_ENV,矛盾的环境变量直接拒绝;production 的 QUALY_MIGRATIONS 缺省 off——迁移归 `pnpm qualy deploy`,单机便利可显式 apply)。生产 smoke(tools/quality/smoke-production.ts,CI 必跑)走同一入口:真启动生产装配,断言探针、壳、manifest、哈希资源、SIGTERM 退出 0。
 - 日志:qualy.yml 的 `application.logging` 是提交的默认值(**不进 manifestHash**,调级别不触发 resolve/drift;core 只携带不解释),QUALY_LOG_LEVEL/QUALY_LOG_FORMAT/QUALY_ACCESS_LOG 环境变量最高优先(LOG_LEVEL 兼容别名)。logger 在 main.ts 根部安装;pretty 格式 `时间 级别 [来源] 消息`(来源=`source` 日志注解,首现顺序取稳定色,fiber id 只留 json)。访问日志自研:5xx=Error、429=Warn、4xx=Info、成功=access.level(dev Debug/prod Info),客户端断开(499/纯中断)=Debug,SSE 事件流结束=Debug(时长是连接寿命不是延迟),mode off|api|all(默认 api)。插件层经装配器 `Layer.fromBuild` 包装,构建期与其 fork 的后台 fiber 自动携带 `source: <插件id>`。

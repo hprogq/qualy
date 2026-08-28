@@ -28,7 +28,6 @@ let generation = 0
 const start = (label: string, entry: string, argv: readonly string[], env: NodeJS.ProcessEnv) => {
   generation += 1
   const process = fork(entry, [...argv], {
-    execArgv: ['--import', 'tsx'],
     env,
     stdio: 'inherit',
   })

@@ -35,7 +35,7 @@ interface Report {
 }
 
 const compose = async (): Promise<Report> => {
-  const { stdout } = await run('node', ['--import', 'tsx', probe], {
+  const { stdout } = await run('node', [probe], {
     env: {
       ...process.env,
       // nothing is listening here, so anything that tries to connect fails

@@ -19,13 +19,7 @@ const base = `http://127.0.0.1:${PORT}`
 
 const server = spawn(
   process.execPath,
-  [
-    '--env-file-if-exists=.env',
-    '--import',
-    'tsx',
-    path.join(repoRoot, 'apps/server/src/run.ts'),
-    'production',
-  ],
+  ['--env-file-if-exists=.env', path.join(repoRoot, 'apps/server/src/run.ts'), 'production'],
   {
     cwd: repoRoot,
     env: {

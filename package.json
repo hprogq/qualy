@@ -44,21 +44,21 @@
     "zod": "catalog:"
   },
   "scripts": {
-    "build": "pnpm --filter @qualy/web-app build && tsx packages/build/web/src/stage.ts",
-    "db:reset": "docker compose down -v && docker compose up -d --wait && tsx apps/cli/src/main.ts deploy",
-    "dev": "node --import tsx apps/server/src/dev/host.ts",
+    "build": "pnpm --filter @qualy/web-app build && node packages/build/web/src/stage.ts",
+    "db:reset": "docker compose down -v && docker compose up -d --wait && node apps/cli/src/main.ts deploy",
+    "dev": "node apps/server/src/dev/host.ts",
     "format": "prettier --write .",
-    "plugin:add": "tsx tools/repo/plugin-add.ts",
+    "plugin:add": "node tools/repo/plugin-add.ts",
     "prepare": "effect-tsgo patch --typescript --no-oxlint",
-    "qualy": "tsx apps/cli/src/main.ts",
-    "seed": "tsx tools/fixtures/seed-cli.ts",
+    "qualy": "node apps/cli/src/main.ts",
+    "seed": "node tools/fixtures/seed-cli.ts",
     "test": "vitest run",
     "test:all": "pnpm test && pnpm test:browser",
     "test:browser": "vitest run --config vitest.browser.config.ts",
-    "typecheck": "tsx tools/quality/typecheck.ts",
-    "vendor:update": "tsx tools/repo/vendor-sync.ts update",
-    "vendor:restore": "tsx tools/repo/vendor-sync.ts restore",
-    "vendor:check": "tsx tools/repo/vendor-sync.ts check",
-    "start": "node --env-file-if-exists=.env --import tsx apps/server/src/run.ts production"
+    "typecheck": "node tools/quality/typecheck.ts",
+    "vendor:update": "node tools/repo/vendor-sync.ts update",
+    "vendor:restore": "node tools/repo/vendor-sync.ts restore",
+    "vendor:check": "node tools/repo/vendor-sync.ts check",
+    "start": "node --env-file-if-exists=.env apps/server/src/run.ts production"
   }
 }

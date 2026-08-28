@@ -55,7 +55,7 @@ afterAll(() => {
 })
 
 const start = () => {
-  const child = spawn('node', ['--import', 'tsx', host], {
+  const child = spawn('node', [host], {
     cwd: repoRoot,
     env: {
       ...process.env,

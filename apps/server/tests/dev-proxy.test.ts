@@ -62,7 +62,6 @@ const standIn = () =>
 
 const startWeb = async () => {
   const child = fork(serviceEntry, [], {
-    execArgv: ['--import', 'tsx'],
     env: { ...process.env, NODE_ENV: 'development' },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })

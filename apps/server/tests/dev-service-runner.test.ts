@@ -43,7 +43,6 @@ interface Run {
 
 const start = (): Run => {
   const child = fork(runner, [], {
-    execArgv: ['--import', 'tsx'],
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
   children.push(child)

@@ -197,11 +197,9 @@ describe('a second capability, beside the database', () => {
         path.dirname(fileURLToPath(import.meta.url)),
         '../../apps/cli/src/main.ts',
       )
-      const ran = spawnSync(
-        process.execPath,
-        ['--import', 'tsx', cli, 'resolve', '--yml', workspace.manifestPath],
-        { encoding: 'utf8' },
-      )
+      const ran = spawnSync(process.execPath, [cli, 'resolve', '--yml', workspace.manifestPath], {
+        encoding: 'utf8',
+      })
       expect(ran.status, ran.stderr).toBe(0)
       const generated = path.join(workspace.dir, 'cache.gen.ts')
       expect(fs.readFileSync(generated, 'utf8')).toBe('export const channels = ["sessions"]\n')

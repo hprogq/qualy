@@ -45,7 +45,6 @@ afterEach(() => {
 /** a supervised backend, forked the way a supervisor would fork one */
 const spawnBackend = (): ChildProcess => {
   const child = fork(runner, ['development'], {
-    execArgv: ['--import', 'tsx'],
     env: {
       ...process.env,
       QUALY_DEV_SUPERVISED: '1',

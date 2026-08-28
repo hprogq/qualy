@@ -88,7 +88,6 @@ const spoken = (child: ChildProcess, type: ChildMessage['type']) =>
 
 const startWeb = async () => {
   const child = fork(serviceEntry, [], {
-    execArgv: ['--import', 'tsx'],
     env: { ...process.env, NODE_ENV: 'development' },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
@@ -117,7 +116,6 @@ const startWeb = async () => {
 
 const startBackend = async () => {
   const child = fork(backendEntry, ['development'], {
-    execArgv: ['--import', 'tsx'],
     env: {
       ...process.env,
       QUALY_DEV_SUPERVISED: '1',
