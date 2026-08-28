@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./package.json": "./package.json",
     "./assemble": "./src/assemble.ts",
+    "./dev": "./src/dev.ts",
     "./cli": "./src/cli.ts"
   },
   "dependencies": {
