@@ -9841,3 +9841,38 @@ SSE 按 §38 不动:现有 reconnect/backoff 已经覆盖后端重启。
 **下一步**:Phase 5(收尾与优化)——`NodeServer` 公共 service 是否收回 apps/server 内部、
 浏览器收集的重复工作、启动计时保留或转 debug、watcher 分类细化、pnpm install 后重新 staging。
 按设计 §59 这些**要等 Phase 1–4 稳定后**再做。
+
+### 开发态日志统一,以及去掉 tsx 加载器(2026-08-28)
+
+**一个终端一种格式**
+
+监督者启动的每个进程都经产品 logger 渲染,而监督者自己写的是裸行——同一个终端里两种格式。
+眼睛扫的是级别列与来源列,没有这两列的行读起来像是别处的输出。它没有 Effect runtime 可以装 logger,
+所以直接渲染:同一份设置、同一套配色、同一条 per-source 最低级别,来源记作 `dev`。
+`logLine` 因此不再把来源写死为 `app`(它从诞生起就写死,为的是让 boot 在 logger 层建起来之前也能说话)。
+报告失败的那些行也终于按各自的级别输出,而不是全部以 INFO 出现。
+
+**TypeScript 直接由 node 擦除运行,不再经 tsx**
+
+Node 的类型擦除已稳定,而本仓库一直是朝可擦除方向写的:不可擦除的语法(参数属性、enum、namespace)
+自约束写下那天起就禁了,相对导入也早就带 `.ts` 扩展名(NodeNext 强制)。所以加载器从所有入口拿掉。
+
+**用 Phase 0 装的启动计时器实测,各三轮**:
+
+|                | 读完清单   | 装配校验    | 到端口监听 |
+| -------------- | ---------- | ----------- | ---------- |
+| `--import tsx` | 494–515 ms | +592–600 ms | ~2.0 s     |
+| 裸 node        | 313–338 ms | +351–359 ms | **~1.3 s** |
+
+省下的全部来自模块加载带。开发态一次后端替换现在约 **1.1 秒**(`-> backend` 到 `backend#N is serving`)。
+
+**`tsx` 依赖保留**:它是 Vite 加载自身 TS 配置的**可选 peer**(vite 8 的 peerDependencies 里有),
+不是本仓库的运行器。这个区别值得留着——删掉它改变的是 Vite 怎么读配置文件,不是这里的任何东西怎么运行。
+
+改动面:根 scripts(dev/start/build/qualy/typecheck/vendor:*/plugin:add/seed/db:reset)、
+监督者 fork 子进程的 `execArgv`、生产 smoke、以及所有 spawn 子进程的测试。CLAUDE.md 第 22、30 行同步改写——
+**strip-types 从"注意事项"升为"运行前提"**。
+
+**验收(全部真实执行)**:`pnpm typecheck` 零错;`pnpm test` **894 passed | 17 skipped**;
+`pnpm test:browser` **225 passed**;`pnpm build` 通过;生产 smoke 通过(裸 node 与 pnpm exec 两种起法都验了);
+`pnpm vendor:check` 两树一致;完整 `pnpm dev` 循环复跑(改后端 → 只换后端 → 经 Vite 反代 200 → Ctrl+C 零残留)。
