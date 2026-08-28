@@ -155,8 +155,13 @@ const styles = stylex.create({
     backgroundColor: { default: null, '[data-hovered]': tokens.dangerSurface },
   },
   // room for the indicator column, kept whether or not this row has one
+  // Restating the resting value rather than leaving it null: styles compose
+  // by property, so `default: null` here does not leave an earlier padding
+  // standing - it leaves the property unset. It happens to land on the same
+  // twelve pixels through the shorthand above, which is exactly the kind of
+  // coincidence that stops being one when somebody changes a number.
   inset: {
-    paddingLeft: { default: null, '[data-inset]': 38 },
+    paddingLeft: { default: 12, '[data-inset]': 38 },
   },
   ticked: {
     paddingBlock: 8,

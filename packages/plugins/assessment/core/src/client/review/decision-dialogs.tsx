@@ -25,6 +25,18 @@ import type { ReviewDto } from './model.ts'
 
 const sm = '@media (min-width: 640px)'
 
+/**
+ * Each verdict key's resting ground, named once.
+ *
+ * Named because it is written twice - the solid wears it, and the lift has to
+ * restate it - and two copies of a colour are two colours waiting to differ.
+ */
+const RESTING = {
+  approve: `color-mix(in oklab, ${tokens.success} 80%, black)`,
+  reject: `color-mix(in oklab, ${tokens.danger} 80%, black)`,
+  escalate: `color-mix(in oklab, ${tokens.primary} 90%, transparent)`,
+} as const
+
 const styles = stylex.create({
   // the drawer's own shape, merged into the sheet's
   drawerPanel: {
@@ -128,32 +140,39 @@ const styles = stylex.create({
   // not), so a key that refuses every click was lighting up under the
   // cursor as though it were on offer. The lift is a separate style, worn
   // only while the key can be pressed.
+  //
+  // Each lift restates the resting ground it lifts FROM, and has to: styles
+  // compose by property, not by property-and-condition, so a later one
+  // saying `default: null` does not leave the earlier value standing - it
+  // leaves the property unset, and the button falls back to the ground its
+  // own variant paints. These three went black the moment they became
+  // pressable, which is the moment somebody had finished filling the form.
   approveSolid: {
-    backgroundColor: `color-mix(in oklab, ${tokens.success} 80%, black)`,
+    backgroundColor: RESTING.approve,
     color: 'white',
   },
   approveLift: {
     backgroundColor: {
-      default: null,
+      default: RESTING.approve,
       ':hover': `color-mix(in oklab, ${tokens.success} 70%, black)`,
     },
   },
   rejectSolid: {
-    backgroundColor: `color-mix(in oklab, ${tokens.danger} 80%, black)`,
+    backgroundColor: RESTING.reject,
     color: 'white',
   },
   rejectLift: {
     backgroundColor: {
-      default: null,
+      default: RESTING.reject,
       ':hover': `color-mix(in oklab, ${tokens.danger} 70%, black)`,
     },
   },
   escalateSolid: {
-    backgroundColor: `color-mix(in oklab, ${tokens.primary} 90%, transparent)`,
+    backgroundColor: RESTING.escalate,
   },
   escalateLift: {
     backgroundColor: {
-      default: null,
+      default: RESTING.escalate,
       ':hover': tokens.primary,
     },
   },
