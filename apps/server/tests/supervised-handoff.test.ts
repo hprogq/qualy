@@ -20,8 +20,8 @@ import { PROTOCOL, type ChildMessage } from '../src/dev/protocol.ts'
 // is usable by one.
 
 const runner = path.resolve(import.meta.dirname, '../src/run.ts')
-const PORT = 3194
-const base = `http://127.0.0.1:${PORT}`
+const port = 3202
+const base = `http://127.0.0.1:${port}`
 
 const children: ChildProcess[] = []
 // its own scratch database, because these processes really do boot: they run
@@ -49,7 +49,7 @@ const spawnBackend = (): ChildProcess => {
     env: {
       ...process.env,
       QUALY_DEV_SUPERVISED: '1',
-      PORT: String(PORT),
+      PORT: String(port),
       NODE_ENV: 'development',
       DATABASE_URL: db!.url,
       // the scratch database is already at the head of the lineage; a second
@@ -62,13 +62,15 @@ const spawnBackend = (): ChildProcess => {
   return child
 }
 
+type PreparedBackend = Extract<ChildMessage, { type: 'prepared'; role: 'backend' }>
+
 const prepared = (child: ChildProcess) =>
-  new Promise<ChildMessage & { type: 'prepared' }>((resolve, reject) => {
+  new Promise<PreparedBackend>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('no prepared message')), 90_000)
     child.on('message', (message: ChildMessage) => {
-      if (message.type === 'prepared') {
+      if (message.type === 'prepared' && message.role === 'backend') {
         clearTimeout(timer)
-        resolve(message as ChildMessage & { type: 'prepared' })
+        resolve(message)
       }
     })
     child.once('exit', (code) => {
@@ -107,6 +109,11 @@ describe.runIf(postgresAvailable)('a supervised backend', () => {
     const report = await prepared(candidate)
     expect(report.protocol).toBe(PROTOCOL)
     expect(report.role).toBe('backend')
+    // what this assembly asks for beside it, resolved through the same
+    // dependency graph the runtime was built from. A headless assembly - one
+    // whose manifest does not run the web plugin - reports nothing here,
+    // because the topology is read from what runs.
+    expect(report.topology.map((service) => service.key)).toContain('@qualy/plugin-web:web')
 
     // prepared means composed, not running: nothing answers on the port and
     // nothing will until this candidate is accepted
