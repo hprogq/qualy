@@ -54,7 +54,7 @@ const refuse = (error: unknown): never => {
     logging,
     'Error',
     `startup failed: ${error instanceof Error ? error.message : String(error)}`,
-    crafted ? undefined : inspect(error),
+    crafted ? {} : { failure: inspect(error) },
   )
   process.exit(1)
 }

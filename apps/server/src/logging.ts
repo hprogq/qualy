@@ -294,21 +294,31 @@ export const qualyLogger = (settings: LoggingSettings): Logger.Logger<unknown, v
  * consumer parse both, which is how "just console.error it" reads a week
  * later.
  */
+/**
+ * One line, rendered the way the logger would, before or outside a runtime.
+ *
+ * The boot says things before the logger layer exists, and the development
+ * supervisor has no Effect runtime at all - both would otherwise print in a
+ * second format beside everything else in the same terminal. `source` is what
+ * the line is attributed to, and it keys the same per-source minimum and the
+ * same colour every other line does.
+ */
 export const logLine = (
   settings: LoggingSettings,
   level: LogLevel.LogLevel,
   message: string,
-  failure?: string,
+  options: { readonly failure?: string; readonly source?: string } = {},
 ): void => {
-  const minimum = settings.sources['app'] ?? settings.level
+  const source = options.source ?? 'app'
+  const minimum = settings.sources[source] ?? settings.level
   if (LogLevel.isGreaterThan(minimum, level)) return
   console.log(
     render(settings, {
       date: new Date(),
       level,
-      source: 'app',
+      source,
       message,
-      ...(failure === undefined ? {} : { failure }),
+      ...(options.failure === undefined ? {} : { failure: options.failure }),
     }),
   )
 }

@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url'
 import { parseEnv } from 'node:util'
 import type { FSWatcher } from 'chokidar'
 import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
+import { readManifest } from '@qualy/assembly'
 import { manifestPath } from '../manifest.ts'
+import { logLine, resolveLogging } from '../logging.ts'
 import { PROTOCOL, type PluginRoot } from './protocol.ts'
 import {
   backendPrepared,
@@ -44,7 +46,17 @@ import { merge, watch, type Action, type WatchPlan } from './watch.ts'
 
 const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../..')
 
-const say = (line: string) => process.stdout.write(`dev: ${line}\n`)
+// One format for the whole terminal.
+//
+// Everything this supervisor starts renders through the product's logger, and
+// a supervisor writing plain lines beside them is two formats for one
+// session: the eye scans a level column and a source column, and a line that
+// has neither reads as output from somewhere else entirely. It has no Effect
+// runtime to install a logger into, so it renders directly - the same
+// settings, the same colours, the same per-source minimum.
+const logging = resolveLogging(readManifest(manifestPath()).logging, process.env, 'development')
+const say = (line: string, level: 'Info' | 'Warn' | 'Error' = 'Info') =>
+  logLine(logging, level, line, { source: 'dev' })
 
 /**
  * One environment for every child of this session.
@@ -154,6 +166,7 @@ const drain = async () => {
     } catch (error) {
       say(
         `supervisor error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+        'Error',
       )
     }
   }
@@ -222,7 +235,7 @@ const startServices = async (
       await servicePrepared(child)
       into.set(spec.key, child)
     } catch {
-      say(`${spec.key} could not prepare`)
+      say(`${spec.key} could not prepare`, 'Warn')
       whole = false
       if (!tolerant) return false
     }
@@ -233,7 +246,7 @@ const startServices = async (
 const acceptServices = async (services: Map<string, Child>) => {
   for (const [key, child] of services) {
     send(child, { protocol: PROTOCOL, type: 'accept' })
-    await serviceReady(child).catch(() => say(`${key} failed while starting`))
+    await serviceReady(child).catch(() => say(`${key} failed while starting`, 'Error'))
   }
 }
 
@@ -249,6 +262,7 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
       active.backend === null
         ? `backend failed to start: ${error instanceof Error ? error.message : String(error)}`
         : `backend reload failed; keeping ${active.backend.name}`,
+      'Warn',
     )
     candidate = null
     return
@@ -266,7 +280,7 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
     // staged session that then fails would have taken the working one away
     const ready = await startServices(prepared.topology, candidate.services, { tolerant: false })
     if (!ready) {
-      say(`session reload failed; keeping ${active.backend.name}`)
+      say(`session reload failed; keeping ${active.backend.name}`, 'Warn')
       await discard()
       return
     }
@@ -280,7 +294,7 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
   active.backend = backend
   adopt(prepared)
   if (!(await listening(origin, backend, 60_000))) {
-    say(`${backend.name} did not come up; no backend is running`)
+    say(`${backend.name} did not come up; no backend is running`, 'Error')
   }
 
   if (wholeSession) {
@@ -319,7 +333,7 @@ const stageService = async (key: string): Promise<void> => {
   if (previous !== undefined) await stop(previous, 5_000)
   send(child, { protocol: PROTOCOL, type: 'accept' })
   active.services.set(key, child)
-  await serviceReady(child).catch(() => say(`${key} failed while starting`))
+  await serviceReady(child).catch(() => say(`${key} failed while starting`, 'Error'))
   candidate = null
   say(`${child.name} is serving`)
 }
@@ -347,7 +361,7 @@ const handle = async (event: Event): Promise<void> => {
     const { child } = event
     if (active.backend?.process === child.process) {
       active.backend = null
-      say(`${child.name} ended; save something to try again`)
+      say(`${child.name} ended; save something to try again`, 'Warn')
     }
     for (const [key, held] of active.services) {
       if (held.process === child.process) {
@@ -398,7 +412,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 // the first world
 
 if (await portTaken(port)) {
-  say(`port ${String(port)} is already in use; stop what is on it or set PORT`)
+  say(`port ${String(port)} is already in use; stop what is on it or set PORT`, 'Error')
   process.exit(1)
 }
 
@@ -407,7 +421,7 @@ await stageWorld('session')
 
 watcher = watch(plan(), (action, files) => {
   if (action === 'restart-host') {
-    say('the supervisor itself changed; restart pnpm dev to pick it up')
+    say('the supervisor itself changed; restart pnpm dev to pick it up', 'Warn')
     return
   }
   const what = action === 'session' ? 'session' : action === 'backend' ? 'backend' : action.service
