@@ -153,6 +153,38 @@ export const acquire = Effect.fn('Web.acquire')(function* (
               prefix,
               {
                 target: context.runtime.origin,
+                // What a request meets while the backend is being replaced.
+                //
+                // The default is a connection error, which reaches the page
+                // as a failed fetch - indistinguishable from being offline,
+                // and the browser answers it by showing the reader an error
+                // for something that is about to be true again in a second.
+                // A 503 that says which kind it is can be waited out; the
+                // backend answers the same way while it is still building.
+                configure: (proxy: {
+                  on: (
+                    event: 'error',
+                    handler: (
+                      error: Error,
+                      request: unknown,
+                      target: { writeHead?: (...args: never[]) => void; end?: () => void },
+                    ) => void,
+                  ) => void
+                }) => {
+                  proxy.on('error', (_error, _request, response) => {
+                    // a websocket upgrade has no writeHead: nothing to answer
+                    if (typeof response.writeHead !== 'function') return
+                    ;(response.writeHead as unknown as (status: number, headers: object) => void)(
+                      503,
+                      {
+                        'content-type': 'text/plain; charset=utf-8',
+                        'retry-after': '1',
+                        'x-qualy-state': 'unavailable',
+                      },
+                    )
+                    response.end?.()
+                  })
+                },
                 // The browser's own Host is kept. Rewriting it is the common
                 // example and it is wrong here: the backend decides cookie
                 // scope, redirect targets and callback urls from the host it

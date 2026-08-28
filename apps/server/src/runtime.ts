@@ -80,6 +80,13 @@ const nodeServerLayer = Layer.sync(NodeServer, () => {
     response.writeHead(503, {
       'content-type': 'text/plain; charset=utf-8',
       'retry-after': '1',
+      // Which kind of 503 this is, for the one caller that can act on it.
+      // A browser cannot tell "the server is building itself" from "the
+      // server is broken" by the status alone, and the two want opposite
+      // answers: wait a moment, or say so and stop. Named rather than
+      // inferred, because the other side of this is a development proxy
+      // answering for a backend that is not there at all.
+      'x-qualy-state': 'starting',
       // the assembly is still building; a kept-alive connection would
       // outlive this state and delay the close finalizer
       connection: 'close',
