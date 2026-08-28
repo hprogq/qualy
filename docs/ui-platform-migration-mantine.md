@@ -2,7 +2,7 @@
 
 ## Mantine 9 + StyleX Pivot
 
-> Status: **Approved architecture / implementation baseline**
+> Status: **Completed** — M9 收尾于 2026-08-28,§32/§33 逐条实查通过(见文末「完成确认」)
 >
 > Decision date: 2026-08-26
 >
@@ -2148,3 +2148,58 @@ M4M 是正式第二 Go/No-Go，因此之后再次 pivot 的门槛必须高。
 - Mantine TreeSelect supports checkbox/cascade/checked-strategy features, but Qualy’s custom minimal-cover algebra remains protected until equivalence is proven.
 
 You should re-check official docs if an exact Mantine API changed after this decision date.
+
+---
+
+# 37. 完成确认(2026-08-28)
+
+本节记录**实际跑出来的**结果,不是声明。分支 `refactor/ui-mantine`,较 `main` 领先 135 个提交、落后 0。
+
+## §32 最终清理门禁
+
+| 项                                                                | 依赖声明 | 源码引用 |
+| ----------------------------------------------------------------- | -------- | -------- |
+| primereact / primeicons / @primeuix                               | 0        | 0        |
+| tailwindcss / @tailwindcss/vite / tailwind-merge / tw-animate-css | 0        | 0        |
+| class-variance-authority                                          | 0        | 0        |
+| radix-ui / @radix-ui/\*                                           | 0        | 0        |
+| Tailwind `@apply` / `@source` / `@theme`                          | —        | 0        |
+| 业务代码直接 import `@mantine/*`                                  | —        | 0        |
+
+`@mantine/{core,hooks,dates}` 只声明在 `packages/web/ui`。**§2.1 那条 MUST NOT 现在有门禁**
+(`tools/tests/widget-boundary.test.ts`):扫源码与全部 package.json,已实测「加一行
+`import { Stack } from '@mantine/core'` 到业务页面 → 门禁点名该文件并变红」。这条不变量是会一行一行
+悄悄侵蚀的,靠记性守不住。
+
+## §33 Definition of Done
+
+1–11、14、15 全部满足。逐项证据:widget 底座封在 `@qualy/ui`(门禁);产品组件
+(Screen/PageContainer/Field/admin/WorkspaceShell/PhaseTimeline)仍是 Qualy 自持;Tailwind 字面
+class 全仓 0,产品样式归 StyleX;主题真源仍是 Qualy ThemeProvider(theme 浏览器测试守);
+`--q-*` 由 `semantic-tokens.test.ts` 冻结;层序由 `cascade-layers` 与 stylex 探针守;
+Motion 仍负责产品动效;PrimeReact 实验冻结在 tag `ui-prime-m4-checkpoint`,
+`docs/notes/primereact.md` 已标注为历史;ADR 0010 记录选型并补记了 dates 的偏离。
+
+第 12 条「不存在系统性 Mantine workaround layer」的诚实回答是**满足,但不是零**。现存三处对上游行为的
+定点依赖,都窄、都有注释与删除条件、都有测试守:①覆盖层的 `data-mantine-stop-propagation`(官方
+escape hatch,守 Escape 分层);②Dialog 里补写 `aria-describedby`(上游在 spread 之后硬写,候选上游
+issue);③api-kit 的 span rename seam 与 database 的事务传播两处 load-bearing gate。它们是**点**,
+不是一层。
+
+第 13 条「IA/业务行为不变」满足。M9 期间修的是视觉与交互缺陷(覆盖层量纲、标签行宽度、段头可见性),
+路由、页面 IA、业务状态机未动。
+
+## 门禁实跑
+
+`pnpm typecheck` 零错;`pnpm test` **853 passed | 17 skipped**;`pnpm test:browser` **223 passed**;
+`pnpm build` 通过;生产 smoke 通过;`pnpm vendor:check` 两树一致;prettier 通过。
+
+## 未决项(不阻塞合入)
+
+1. **两处密度判断**(§20):`FieldDescription`/`EmptyDescription` 是 14px、与它所解释的值同号,
+   而产品其余十二处次要文字是 12px;表格行 44.5px,比 36px 控件鼓点松三成。两条都影响每一块列表与
+   表单的观感,属产品判断。
+2. **Mantine per-component CSS 拆分**(§27):证据已量(全量 250.4 KB / br 29.7 KB,只取用到的
+   112.5 KB / br 13.3 KB,可省 16.4 KB brotli),裁决暂不拆——上游不公布组件间 CSS 依赖,手维护依赖表的
+   失败模式是「线上某控件悄悄没样式」,而门禁只能断言 import 存在、断言不了样式完整。重开条件:
+   上游公布依赖关系,或首屏 CSS 成为实测瓶颈。
