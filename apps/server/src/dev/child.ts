@@ -27,10 +27,10 @@ let generation = 0
 
 const start = (label: string, entry: string, argv: readonly string[], env: NodeJS.ProcessEnv) => {
   generation += 1
-  const process = fork(entry, [...argv], {
-    env,
-    stdio: 'inherit',
-  })
+  const process = fork(entry, [...argv], { env, stdio: 'inherit' })
+  // an EventEmitter that emits `error` with nobody listening throws, and a
+  // channel torn down mid-write is the one thing children reliably do
+  process.on('error', () => {})
   return { name: `${label}#${String(generation)}`, process }
 }
 
@@ -47,8 +47,28 @@ export const forkService = (
   return child
 }
 
+/**
+ * Say something to a child, tolerating a channel that is already closing.
+ *
+ * `connected` can be true when the check runs and false by the time the write
+ * lands, and a failed `send` with no callback reports itself by emitting an
+ * `error` event - which, unhandled, ends this process. That is not a rare
+ * race: a Ctrl+C in a terminal is delivered to the whole foreground group, so
+ * every child begins shutting down on its own while the supervisor is still
+ * politely telling them to.
+ *
+ * There is nothing to do about it either way. A child whose channel has gone
+ * is a child that is already leaving.
+ */
 export const send = (child: Child, message: HostMessage): void => {
-  if (child.process.connected) child.process.send(message)
+  if (!child.process.connected) return
+  try {
+    child.process.send(message, undefined, undefined, () => {
+      // the callback is what keeps the failure off the 'error' event
+    })
+  } catch {
+    // and this is the synchronous half of the same thing
+  }
 }
 
 export const exited = (child: Child): Promise<number | null> =>

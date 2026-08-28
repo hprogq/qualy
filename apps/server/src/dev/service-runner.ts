@@ -51,13 +51,24 @@ process.on('message', (raw: unknown) => {
     Deferred.doneUnsafe(stopped, Effect.void)
   }
 })
-// The channel closing is this process's lease, the same as for the backend,
-// and it means the same two things: a runner that has taken something
-// unwinds, and one still waiting to be let in has nothing to unwind.
-process.on('disconnect', () => {
+/** the one way this process is asked to stop, whoever is asking */
+const requested = () => {
   Deferred.doneUnsafe(stopped, Effect.void)
   if (!launched) process.exit(0)
-})
+}
+
+// The channel closing is this process's lease, the same as for the backend,
+// and it means the same two things: a runner that has taken something unwinds,
+// and one still waiting to be let in has nothing to unwind.
+process.on('disconnect', requested)
+
+// And a signal, because a Ctrl+C in a terminal is delivered to the whole
+// foreground group rather than to the supervisor alone. Without this the
+// default action ends this process where it stands, so the scope never closes
+// and the development server it holds is never told to shut down. Invisible
+// when a supervisor is killed on its own, which is how every test had been
+// stopping one - and what happens every time a person stops their session.
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, requested)
 
 const spec = await new Promise<{ spec: DevServiceSpec; origin: string }>((resolve) => {
   if (told !== null) return resolve(told)

@@ -32,6 +32,7 @@ const lock = path.join(repoRoot, 'qualy.supervisor-test.lock.json')
 
 let intact = ''
 let supervisor: ChildProcess | null = null
+let detached = false
 let output = ''
 
 beforeAll(() => {
@@ -43,10 +44,14 @@ beforeAll(() => {
 afterEach(async () => {
   fs.writeFileSync(manifest, intact)
   if (supervisor !== null && supervisor.exitCode === null) {
-    supervisor.kill('SIGINT')
+    // a detached child is its own group, and killing only its leader would
+    // leave the backend and the dev server behind
+    if (detached && supervisor.pid !== undefined) process.kill(-supervisor.pid, 'SIGKILL')
+    else supervisor.kill('SIGINT')
     await new Promise((resolve) => supervisor?.once('exit', resolve))
   }
   supervisor = null
+  detached = false
   output = ''
 })
 
@@ -54,9 +59,12 @@ afterAll(() => {
   for (const file of [manifest, lock]) fs.rmSync(file, { force: true })
 })
 
-const start = () => {
+const start = (options: { ownGroup?: boolean } = {}) => {
+  detached = options.ownGroup === true
   const child = spawn('node', [host], {
     cwd: repoRoot,
+    // its own process group, which is what a terminal gives a foreground job
+    ...(detached ? { detached: true } : {}),
     env: {
       ...process.env,
       PORT: String(port),
@@ -133,5 +141,29 @@ describe.runIf(postgresAvailable)('the development supervisor', () => {
     await until(() => serving().length === 2)
     await until(async () => (await answers()) === 200)
     expect(started()).toBe(1)
+  }, 300_000)
+
+  // A Ctrl+C in a terminal goes to the whole foreground group, not to the
+  // supervisor alone - so every child is already shutting down by the time
+  // the supervisor gets round to telling it to. Sending into a channel that
+  // is closing reports itself by emitting an `error` event, and an unhandled
+  // one of those ends the process: the session died with a stack trace after
+  // it had already said it was stopping.
+  //
+  // Every other case here kills the supervisor by itself, which is why this
+  // needs its own: that is the one shape in which the race cannot happen.
+  it('stops cleanly when the whole group is interrupted, as a terminal does', async () => {
+    const child = start({ ownGroup: true })
+    await until(() => output.includes('watching for changes'))
+    await until(async () => (await answers()) === 200)
+
+    process.kill(-child.pid!, 'SIGINT')
+    const code = await new Promise<number | null>((resolve) => {
+      child.once('exit', (status) => resolve(status))
+    })
+    expect(code).toBe(0)
+    expect(output).not.toContain('EPIPE')
+    // and the port is free, so nothing was left holding it
+    await until(async () => (await answers()) === 0)
   }, 300_000)
 })
