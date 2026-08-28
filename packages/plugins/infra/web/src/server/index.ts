@@ -1,60 +1,40 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { Config, Context, Data, Effect, Layer, Queue, Schema } from 'effect'
+import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
-import type { Logger as ViteLogger } from 'vite'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { AssemblyInfo } from '@qualy/api-kit/assembled'
-import { NodeServer, fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
+import { fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
+import { WebManifestConfig, rootsFrom } from '../config.ts'
 
-// The browser application, served by the same process that serves the api.
+// The built browser application, served beside the api.
 //
-// This is a resource rather than a descriptor, which is why it has a layer at
-// all: in development it owns a Vite server with a lifetime, and that server
-// has to be handed the process's own `http.Server` so its hot-reload websocket
-// shares the port instead of opening a second one.
+// This half serves files and nothing else. The development server used to
+// live here too, mounted into this process's own `http.Server` so its
+// hot-reload websocket shared the port - which tied the browser's dev server
+// to the backend's lifetime, and made every backend restart take the
+// browser's session with it. It runs in its own process now
+// (docs/runtime-redesign.md §29), declared as this plugin's dev service.
 //
-// Enabling this plugin means the ui must actually be served. Missing assets or
-// a missing Vite are startup failures, and a headless deployment disables the
-// plugin rather than getting a silently degraded one.
-
-// paths anchor at this package, never at the working directory
-const defaultAssetRoot = fileURLToPath(new URL('../../client-dist/', import.meta.url))
-const defaultSourceRoot = fileURLToPath(new URL('../../../../../../apps/web/', import.meta.url))
+// So there is no mode any more. A deployment serves the bundle; a development
+// backend serves the api and leaves the browser to Vite, which is in front of
+// it. Where the files are is still an assembly fact and comes from the
+// manifest.
+//
+// Enabling this plugin still means the ui must actually be served: missing
+// assets are a startup failure, and a headless deployment disables the plugin
+// rather than getting a silently degraded one.
 
 export class WebConfig extends Context.Service<
   WebConfig,
   {
-    readonly mode: 'development' | 'production'
-    readonly sourceRoot?: string
-    readonly assetRoot?: string
+    readonly sourceRoot: string
+    readonly assetRoot: string
   }
 >()('@qualy/plugin-web/WebConfig') {}
 
-/**
- * What this plugin accepts in `qualy.yml`.
- *
- * The two roots are paths, and a path in a manifest is relative to the
- * manifest - which is the whole reason the assembly hands `manifestDir` over.
- * Resolving them here rather than in the host is what keeps the host from
- * knowing this plugin serves files at all.
- */
-export const WebManifestConfig = Schema.Struct({
-  sourceRoot: Schema.optional(Schema.String),
-  assetRoot: Schema.optional(Schema.String),
-})
-export type WebManifestConfig = typeof WebManifestConfig.Type
-
-/**
- * How the browser application is served.
- *
- * `auto` follows NODE_ENV, the same rule the cordis config expressed. Which
- * mode this is decides whether the process owns a Vite server or a static file
- * handler, so it is a deployment fact and stays in the environment; where the
- * files are is an assembly fact and comes from the manifest.
- */
+/** the manifest block, as the two absolute roots the halves ask for */
 export const config = (
   // the block as the manifest parses it: unknown until the schema says
   manifest: unknown,
@@ -66,23 +46,7 @@ export const config = (
       const declared = yield* Schema.decodeUnknownEffect(WebManifestConfig)(manifest, {
         onExcessProperty: 'error',
       })
-      const mode = yield* Config.literals(
-        ['auto', 'development', 'production'],
-        'QUALY_WEB_MODE',
-      ).pipe(Config.withDefault('auto' as const))
-      const environment = yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))
-      const anchored = (declared: string | undefined) =>
-        declared === undefined ? undefined : path.resolve(context.manifestDir, declared)
-      return WebConfig.of({
-        mode:
-          mode === 'auto' ? (environment === 'production' ? 'production' : 'development') : mode,
-        ...(anchored(declared.sourceRoot) === undefined
-          ? {}
-          : { sourceRoot: anchored(declared.sourceRoot) }),
-        ...(anchored(declared.assetRoot) === undefined
-          ? {}
-          : { assetRoot: anchored(declared.assetRoot) }),
-      })
+      return WebConfig.of(rootsFrom(declared, context.manifestDir))
     }),
   )
 
@@ -162,116 +126,6 @@ const production = Effect.fn('Web.production')(function* (assetRoot: string) {
 })
 
 /**
- * Vite's log lines, in the application's own logger.
- *
- * Vite calls its logger synchronously from its own work, so the adapter cannot
- * `yield*` and there is no caller fiber for it to belong to. It offers onto a
- * queue instead and a forked fiber logs what it finds, which keeps the
- * timestamp, the level, the fiber id and the colours identical to everything
- * else the process says - with no `Effect.run*` inside a layer.
- *
- * The message is passed through as vite wrote it, colours and `[vite]` prefix
- * included. Vite's own timestamp is never asked for, because ours is already
- * in front of it.
- */
-export const viteLogger = Effect.gen(function* () {
-  const lines = yield* Queue.make<Effect.Effect<void>>()
-  yield* Effect.forkScoped(Effect.forever(Effect.flatten(Queue.take(lines))))
-  const emit = (line: Effect.Effect<void>) => {
-    Queue.offerUnsafe(lines, line.pipe(Effect.annotateLogs({ source: 'web:vite' })))
-  }
-  // vite reads this back to decide whether a run "had warnings", so it is
-  // state the adapter owns rather than something it can forward
-  const state = { warned: false }
-  const seen = new Set<string>()
-  // Vite's own logger remembers which Error values it has printed and asks
-  // through hasErrorLogged before printing again; an adapter that always
-  // answered false invited the same error twice
-  const loggedErrors = new WeakSet<Error>()
-  return {
-    info: (message: string) => emit(Effect.logInfo(message)),
-    warn: (message: string) => {
-      state.warned = true
-      emit(Effect.logWarning(message))
-    },
-    warnOnce: (message: string) => {
-      if (seen.has(message)) return
-      seen.add(message)
-      state.warned = true
-      emit(Effect.logWarning(message))
-    },
-    error: (message: string, options?: { error?: Error | null }) => {
-      // upstream's logger counts an error as "warned" too
-      state.warned = true
-      if (options?.error) loggedErrors.add(options.error)
-      emit(Effect.logError(message))
-    },
-    // the screen is shared with the application's own output, so clearing it
-    // would take that away; vite is started with clearScreen off for the same
-    // reason
-    clearScreen: () => {},
-    hasErrorLogged: (error: Error) => loggedErrors.has(error),
-    get hasWarned() {
-      return state.warned
-    },
-  } satisfies ViteLogger
-})
-
-const development = Effect.fn('Web.development')(function* (sourceRoot: string) {
-  if (!fs.existsSync(path.join(sourceRoot, 'index.html'))) {
-    return yield* Effect.die(
-      new WebUnservable({
-        message: `web source missing at ${sourceRoot}; set sourceRoot or disable @qualy/plugin-web`,
-      }),
-    )
-  }
-  // a defect rather than a failure: enabling this plugin is a claim that the ui
-  // will be served, so a missing Vite is a broken assembly, not something a
-  // caller could handle
-  const vite = yield* Effect.tryPromise({
-    try: () => import('vite'),
-    catch: () =>
-      new WebUnservable({
-        message: 'vite is not installed; development mode of @qualy/plugin-web requires it',
-      }),
-  }).pipe(Effect.catch((error) => Effect.die(error)))
-
-  // the server the process is already listening on: attaching to it is what
-  // puts the hot-reload websocket on the application's own port
-  const httpServer = yield* NodeServer
-
-  const customLogger = yield* viteLogger
-
-  const devServer = yield* Effect.acquireRelease(
-    Effect.promise(() =>
-      vite.createServer({
-        configFile: path.join(sourceRoot, 'vite.config.ts'),
-        root: sourceRoot,
-        appType: 'spa',
-        clearScreen: false,
-        server: { middlewareMode: { server: httpServer } },
-        customLogger,
-      }),
-    ),
-    // Capped: with the dependency optimizer mid-flight, vite's close has
-    // been observed to sit for the whole 20s http drain window, which turns
-    // every Ctrl+C during a cold boot into a hung shutdown. This is a dev
-    // process on its way out - whatever close has not finished in 3s dies
-    // with the process anyway, and the warning says it was vite that waited.
-    (server) =>
-      Effect.timeoutOrElse(
-        Effect.promise(() => server.close()),
-        {
-          duration: '3 seconds',
-          orElse: () => Effect.logWarning('vite close exceeded 3s; leaving it to process exit'),
-        },
-      ),
-  )
-  yield* Effect.logInfo(`vite middleware mounted from ${sourceRoot}`)
-  return devServer.middlewares as ConnectMiddleware
-})
-
-/**
  * The fallback route.
  *
  * Registered at the router's wildcard rather than as an api endpoint: the
@@ -282,38 +136,44 @@ const development = Effect.fn('Web.development')(function* (sourceRoot: string) 
  * whose handler is an effect runs that effect per request, which would have
  * started a Vite server for every navigation.
  */
-export const routes: Layer.Layer<
-  never,
-  never,
-  HttpRouter.HttpRouter | WebConfig | NodeServer | AssemblyInfo
-> = HttpRouter.use(
-  Effect.fnUntraced(function* (router) {
-    const config = yield* WebConfig
-    const middleware =
-      config.mode === 'production'
-        ? yield* production(config.assetRoot ?? defaultAssetRoot)
-        : yield* development(config.sourceRoot ?? defaultSourceRoot)
-    yield* router.add(
-      '*',
-      '/*',
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest
-        // An unmatched path inside the api prefix is a 404, never the browser
-        // shell. Serving html there answers 200 to a mistyped endpoint, which
-        // is how a doubled prefix looked like a working request until the
-        // page tried to parse the shell as json.
-        if (insideApi(request.url)) return HttpServerResponse.empty({ status: 404 })
-        return yield* fromConnect(middleware)
-      }),
-    )
-  }),
-)
+export const routes: Layer.Layer<never, never, HttpRouter.HttpRouter | WebConfig | AssemblyInfo> =
+  HttpRouter.use(
+    Effect.fnUntraced(function* (router) {
+      const config = yield* WebConfig
+      // A development backend serves the api and nothing else: the browser is
+      // asking Vite, which proxies the api back here. Registering a wildcard
+      // would answer navigations this process is not the entry point for.
+      // a NODE_ENV that cannot be read is a broken process, not a case a
+      // caller could handle
+      const deployed = yield* Config.string('NODE_ENV').pipe(
+        Config.withDefault('development'),
+        Effect.orDie,
+      )
+      if (deployed !== 'production') {
+        yield* Effect.logInfo('serving the api only; the browser is served by the dev service')
+        return
+      }
+      const middleware = yield* production(config.assetRoot)
+      yield* router.add(
+        '*',
+        '/*',
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest
+          // An unmatched path inside the api prefix is a 404, never the browser
+          // shell. Serving html there answers 200 to a mistyped endpoint, which
+          // is how a doubled prefix looked like a working request until the
+          // page tried to parse the shell as json.
+          if (insideApi(request.url)) return HttpServerResponse.empty({ status: 404 })
+          return yield* fromConnect(middleware)
+        }),
+      )
+    }),
+  )
 
 /**
  * No services, deliberately.
  *
- * The dev server this plugin owns is held by the route layer's own scope, so
- * there is nothing for a peer to ask for. The entry exists because the
- * assembly imports the routes from it.
+ * Nothing here has a lifetime any more: what this half owns is a file
+ * handler. The entry exists because the assembly imports the routes from it.
  */
 export const layer: Layer.Layer<never> = Layer.empty

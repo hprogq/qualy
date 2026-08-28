@@ -7,6 +7,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./dev": "./src/dev/index.ts",
     "./server": "./src/server/index.ts",
     "./package.json": "./package.json"
   },

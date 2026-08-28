@@ -9,7 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer } from '@qualy/api-kit/node'
-import { WebConfig, routes, viteLogger } from '../src/server/index.ts'
+import { WebConfig, routes } from '../src/server/index.ts'
+import { viteLogger } from '../src/dev/index.ts'
 
 // The boundary between the api and the browser shell.
 //
@@ -22,6 +23,11 @@ import { WebConfig, routes, viteLogger } from '../src/server/index.ts'
 // for /api/api/app/manifest, and the fallback answered 200 with the shell, so
 // the browser failed on parsing html as json rather than on a 404 - four
 // layers from the line that caused it.
+
+// The serving half is a deployment's: a development backend leaves the
+// browser to the dev service in front of it, so these cases say which they
+// are testing rather than relying on whatever NODE_ENV the runner has.
+process.env.NODE_ENV = 'production'
 
 const port = 3191
 const base = `http://127.0.0.1:${port}`
@@ -57,7 +63,7 @@ beforeAll(async () => {
   ).pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(WebConfig, WebConfig.of({ mode: 'production', assetRoot })),
+        Layer.succeed(WebConfig, WebConfig.of({ assetRoot, sourceRoot: assetRoot })),
         Layer.sync(NodeServer, () => createServer()),
         assemblyInfo,
       ),
@@ -100,7 +106,7 @@ describe('the shell against the api mount', () => {
             routes.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  Layer.succeed(WebConfig, WebConfig.of({ mode: 'production', assetRoot: empty })),
+                  Layer.succeed(WebConfig, WebConfig.of({ assetRoot: empty, sourceRoot: empty })),
                   Layer.sync(NodeServer, () => createServer()),
                   assemblyInfo,
                   HttpRouter.layer,
@@ -126,7 +132,7 @@ describe('the shell against the api mount', () => {
             routes.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  Layer.succeed(WebConfig, WebConfig.of({ mode: 'production', assetRoot: root })),
+                  Layer.succeed(WebConfig, WebConfig.of({ assetRoot: root, sourceRoot: root })),
                   Layer.sync(NodeServer, () => createServer()),
                   info,
                   HttpRouter.layer,

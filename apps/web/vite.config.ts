@@ -94,6 +94,11 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     host: true,
+    // stated here rather than left to vite's default, because it is this
+    // application's address: the development service in front of the backend
+    // refuses to drift off it, and a proxy pointed at nothing looks exactly
+    // like a backend that is down
+    port: 5173,
     allowedHosts: ['qualy-dev.hprogq.com'],
   },
 }))
