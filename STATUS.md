@@ -9618,3 +9618,65 @@ rbac-contract→api-kit、app→plugin-kit。pnpm 的存储布局让它们照样
 
 **下一步**:Phase 1(`@qualy/plugin-kit/dev`、`Dev.service`、PREPARED 栅栏与 supervised 协议),
 按设计 §59 在 Phase 0 边界处停下等复核。
+
+### 开发态进程监督 Phase 1:声明与 supervised 协议(2026-08-28)
+
+依据 docs/runtime-redesign.md §59 Phase 1。**不加 watcher**;协议与状态语义由真进程驱动的测试验证。
+
+**插件侧声明**(`@qualy/plugin-kit/dev`)
+
+`Dev.service({ id, module })` 是 external 扩展点,和 `Cli.command` 同一形态:内核不认识它,serving runtime
+也读不到它,只有监督者解释。声明的是**包导出子路径**而不是包内文件路径——后者是在替别人的目录布局做主张,
+而 `'./dev'` 经宿主自己的模块解析走到 `@qualy/plugin-web/dev`,与运行时装配同一张依赖图。
+
+`collectDevServices` 放在 plugin-kit 而不是 `@qualy/assembly`:后者按 CLAUDE.md 不得认识任何具体能力,
+而 plugin-kit 反向依赖 assembly 会成环。所以它照 `collectCliCommands` 的先例**只吃描述器**,宿主
+(`apps/server/src/dev/topology.ts`)把 Resolution 里的包根、config 与模块解析函数喂进去。
+
+**PREPARED 栅栏**(`apps/server/src/dev/fence.ts`)
+
+栅栏就架在 Phase 0 量出来的那条线上:`Layer.launch` 之前。`QUALY_DEV_SUPERVISED=1` **且** `process.send`
+存在才进入握手——只看环境变量会让一个走丢的变量把普通 `node run.ts development` 变成永远等消息的进程,
+只看通道则会误伤任何被 fork 的进程。**没有超时**:等着的候选什么资源都没占,而擅自启动就是两个进程抢一个端口。
+
+**停机改为幂等入口**(`apps/server/src/shutdown.ts`,§41.2)
+
+原来 http drain 直接监听 SIGINT/SIGTERM。监督者的停机走通道、根本没有信号,而伪造一个信号发给自己会让
+这个进程对所有其他监听者撒谎。现在 `requestShutdown()` 是唯一入口,信号处理器只是它的一个调用方;
+`Layer.launch` 与一个 latch race,停机请求以中断根 fiber 的方式收场——同一个 scope、同一批 finalizer。
+
+**两处实测出来的坑**(都是"日志说停完了、进程却不退"):
+
+1. **IPC 通道是 ref 住的句柄**。runtime 完全 unwind、`shutdown complete` 已打印,进程仍挂着,
+   因为通道开着事件循环就排不干。而监督者正等它消失才敢放下一个进 handoff——挂着正是唯一不能做的事。
+   `NodeRuntime.runMain` 的 teardown 里补 `process.disconnect()`。
+2. **未 settle 的顶层 await 让退出码变成 13**。候选还在栅栏前等待时父进程断开,只调 `requestShutdown()`
+   没有用——此时没有 runtime 可中断。租约的含义取决于进程在线的哪一侧:已启动的请求停机并 unwind,
+   还在等的直接离开。runner 同理。
+
+**Dev Service 通用 runner**(§16)
+
+scope 的形状才是重点:`acquire` 在一个**开到停机为止**的 scope 内被调用,所以插件 runner 里写的
+`Effect.acquireRelease` 活得和服务一样久,而不是和那次调用一样久——后者正是设计里点名的错误写法
+(`Effect.scoped(start())` 在 start 返回的瞬间就把刚拿到的东西释放了)。config 只走 IPC,不进 argv:
+argv 是任何能看见进程列表的人都读得到的。
+
+**验证**(真进程驱动,不是手工脚本)
+
+- `apps/server/tests/supervised-handoff.test.ts` 4 例:候选报告 prepared 后端口上仍无人应答(**ACCEPT 前
+  resource-cold**);旧进程一路服务到被要求停止(**old Backend 持续到 commit**);旧进程**退出码确认为 0**
+  之后新进程才被 accept,其间端口无人应答(**no double Runtime**);拒绝与父进程断开都让候选干净退出。
+  自带 scratch 库,按仓库规矩归 `createTestContext()`。
+- `apps/server/tests/dev-service-runner.test.ts` 3 例:accept 之前不 acquire;acquire 拿到的东西
+  一直持有到被要求停止才释放;父进程断开即退出。
+
+`tools/tests/test-layers.test.ts` 的允许清单新增 service-runner——它是进程入口,按 CLAUDE.md 的
+`Effect.run*` 边界规则具名登记。
+
+**退出条件**:三条全部达成,且各有测试。
+
+**验收(全部真实执行)**:`pnpm typecheck` 零错;`pnpm test` **866 passed | 17 skipped**;
+`pnpm test:browser` **223 passed**;`pnpm build` 通过;生产 smoke 通过;`pnpm vendor:check` 两树一致。
+
+**下一步**:Phase 2(Web 抽离:`Dev.service({id:'web'})`、独立 Vite、proxy、删 `QUALY_WEB_MODE`)。
+按 §59 在阶段边界停下。
