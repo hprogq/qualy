@@ -72,6 +72,9 @@ catalogs:
     argon2:
       specifier: 0.45.1
       version: 0.45.1
+    chokidar:
+      specifier: 5.0.0
+      version: 5.0.0
     clsx:
       specifier: 2.1.1
       version: 2.1.1
@@ -333,6 +336,9 @@ importers:
       chalk:
         specifier: ^6.0.0
         version: 6.0.0
+      chokidar:
+        specifier: 'catalog:'
+        version: 5.0.0
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
@@ -2354,6 +2360,10 @@ packages:
     resolution: {integrity: sha512-2uNTXIuTTxk7ciZgAU1BQcgnchcG0xXnrs6jzkQfj9SsRa9M2s5zE8WT96hS6KmG4MzWHSrvH43DF1m4XRkrFg==}
     engines: {node: '>=22'}
 
+  chokidar@5.0.0:
+    resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
+    engines: {node: '>= 20.19.0'}
+
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
@@ -3081,6 +3091,10 @@ packages:
   react@19.2.8:
     resolution: {integrity: sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==}
     engines: {node: '>=0.10.0'}
+
+  readdirp@5.1.1:
+    resolution: {integrity: sha512-Kko+Y5XQ6fM+Ce3dq3m9YGxnacYZYl9cA1wZjaF3Vbry2L3i1qVg8+CAgNPsXRArPMUMCaOR7oa9Nqntc43JKA==}
+    engines: {node: '>= 20.19.0'}
 
   redis@6.2.1:
     resolution: {integrity: sha512-Z9VHtgYs48PiQC77X9O2Er8Hj4T+5BtFjT91/vi5Is1D04N72cA946ZslM1ImJw8ZctFBZWAVjM7S5wJNeHMpg==}
@@ -4266,6 +4280,10 @@ snapshots:
 
   chalk@6.0.0: {}
 
+  chokidar@5.0.0:
+    dependencies:
+      readdirp: 5.1.1
+
   clsx@2.1.1: {}
 
   cluster-key-slot@1.1.2: {}
@@ -4910,6 +4928,8 @@ snapshots:
       '@types/react': 19.2.18
 
   react@19.2.8: {}
+
+  readdirp@5.1.1: {}
 
   redis@6.2.1:
     dependencies:

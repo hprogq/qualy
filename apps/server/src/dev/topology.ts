@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { collectDevServices, type DevServiceSpec } from '@qualy/plugin-kit/dev'
 import type { Resolution } from '@qualy/assembly'
+import type { PluginRoot } from './protocol.ts'
 
 // Which development services this assembly asks for, read from the same
 // resolution the runtime is built from.
@@ -28,3 +29,18 @@ export const devTopology = (resolution: Resolution): readonly DevServiceSpec[] =
       resolveModuleUrl: (specifier) => resolution.resolver.resolveModuleUrl(specifier),
     },
   )
+
+/**
+ * Where every active plugin's package really is.
+ *
+ * Resolved here for the same reason the service modules are: the dependency
+ * graph belongs to this process. A package whose real path lies outside a
+ * `node_modules` is one somebody is editing - a workspace member, or a link
+ * into a checkout beside this one - and is worth watching; an installed one
+ * does not change under anybody.
+ */
+export const pluginRoots = (resolution: Resolution): readonly PluginRoot[] =>
+  resolution.runtimePlugins.map((id) => {
+    const root = resolution.resolver.resolvePackageDir(id)
+    return { id, root, linked: !root.split(path.sep).includes('node_modules') }
+  })

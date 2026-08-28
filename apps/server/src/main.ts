@@ -6,7 +6,7 @@ import { telemetryLayer } from '@qualy/telemetry'
 import { logLine, loggingLayer, resolveLogging } from './logging.ts'
 import { mark, reportBootTiming } from './boot-timing.ts'
 import { requestShutdown, shutdownRequested } from './shutdown.ts'
-import { devTopology } from './dev/topology.ts'
+import { devTopology, pluginRoots } from './dev/topology.ts'
 import { supervisedPrepareFence } from './dev/fence.ts'
 import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
@@ -87,7 +87,7 @@ mark('application composed')
 // The line: nothing above it acquired anything, and a supervisor staging this
 // process as a replacement holds it here until the process it replaces has
 // gone. Unsupervised this returns at once and the boot carries straight on.
-await supervisedPrepareFence(devTopology(resolution)).catch(refuse)
+await supervisedPrepareFence(devTopology(resolution), pluginRoots(resolution)).catch(refuse)
 
 /**
  * One report per failed boot, through the application logger.

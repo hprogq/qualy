@@ -1,5 +1,20 @@
 import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
 
+/**
+ * Where an active plugin's package really is.
+ *
+ * A supervisor watching for changes needs the real directory, not the
+ * specifier: a workspace package reached through a symlink is edited at the
+ * place it is linked from. `linked` says which ones those are - a package
+ * living inside node_modules is installed and does not change under anyone,
+ * so watching it recursively would be a lot of file handles for nothing.
+ */
+export interface PluginRoot {
+  readonly id: string
+  readonly root: string
+  readonly linked: boolean
+}
+
 // What a supervised child and its host say to each other, and nothing more
 // (docs/runtime-redesign.md §39).
 //
@@ -21,6 +36,8 @@ export type ChildMessage =
       readonly role: 'backend'
       /** the development services this assembly asks for */
       readonly topology: readonly DevServiceSpec[]
+      /** every active plugin's real package directory */
+      readonly roots: readonly PluginRoot[]
     }
   | {
       readonly protocol: typeof PROTOCOL

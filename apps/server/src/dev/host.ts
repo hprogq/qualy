@@ -3,57 +3,75 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseEnv } from 'node:util'
-import { fork, type ChildProcess } from 'node:child_process'
-import { manifestPath } from '../manifest.ts'
-import { PROTOCOL, type ChildMessage, type HostMessage } from './protocol.ts'
+import type { FSWatcher } from 'chokidar'
 import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
+import { manifestPath } from '../manifest.ts'
+import { PROTOCOL, type PluginRoot } from './protocol.ts'
+import {
+  backendPrepared,
+  exited,
+  forkBackend,
+  forkService,
+  listening,
+  send,
+  serviceReady,
+  servicePrepared,
+  stop,
+  type Child,
+  type Prepared,
+} from './child.ts'
+import { merge, watch, type Action, type WatchPlan } from './watch.ts'
 
-// The process `pnpm dev` is (docs/runtime-redesign.md §45).
+// The process `pnpm dev` is (docs/runtime-redesign.md §45, §46).
 //
-// It owns one thing: which child processes exist. The backend owns its own
-// resources, Vite owns the browser's module graph, and this owns neither -
-// it starts them, tells them when they may take what they need, and stops
-// them together.
+// It owns exactly one thing: which child processes exist. The backend owns
+// its own resources, the browser's dev server owns the module graph, and this
+// owns neither - it starts them, tells each when it may take what it needs,
+// and stops them.
 //
-// It does not watch anything yet. Staging a replacement while the old one
-// serves is the next phase; what this establishes is that the two lifetimes
-// are already separate, so a backend can be replaced without the browser's
-// dev server noticing.
+// Everything that can change the world arrives as an event on one queue and
+// is handled by one loop, in order. That is not tidiness: a file event, a
+// child exiting and a Ctrl+C can all land in the same millisecond, and three
+// callbacks each free to kill and spawn is how a supervisor ends up with two
+// backends, or none, depending on the interleaving.
+//
+// A replacement is staged, never swapped. The candidate does everything that
+// touches nothing - reading the manifest, importing descriptors, composing
+// layers - while the process it would replace keeps serving; only once it
+// says it is ready is the old one asked to stop, and only once that one has
+// actually exited is the new one let in. So a candidate that cannot even be
+// composed costs nothing: the world it would have replaced never noticed.
 
-const here = fileURLToPath(new URL('.', import.meta.url))
-const backendEntry = path.resolve(here, '../run.ts')
-const serviceEntry = path.resolve(here, 'service-runner.ts')
+const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../..')
 
 const say = (line: string) => process.stdout.write(`dev: ${line}\n`)
 
 /**
  * One environment for every child of this session.
  *
- * Read here rather than by the launcher, because this process outlives many
+ * Read here rather than inherited, because this process outlives many
  * children: started with `--env-file`, its own `process.env` would hold the
- * `.env` of whenever it happened to start, and every later child would
- * inherit that instead of what is on disk. The shell wins over the file,
- * which is the precedence anyone typing a variable in front of a command
- * expects.
+ * `.env` of whenever it happened to start, and every later child would get
+ * that instead of what is on disk. The shell wins over the file, which is
+ * what anyone typing a variable in front of a command expects.
  */
 const childEnv = (manifest: string): NodeJS.ProcessEnv => {
-  const file = path.join(process.cwd(), '.env')
+  const file = path.join(repoRoot, '.env')
   const declared = fs.existsSync(file) ? parseEnv(fs.readFileSync(file, 'utf8')) : {}
   return {
     ...declared,
     ...process.env,
     NODE_ENV: 'development',
     QUALY_DEV_SUPERVISED: '1',
-    // every child reads one manifest, and this is where that is decided: a
-    // browser bundle built from a different selection than the api answering
-    // it is a mismatch neither half can notice
+    // every child reads one manifest: a browser bundle built from a different
+    // selection than the api answering it is a mismatch neither half notices
     QUALY_CONFIG: manifest,
   }
 }
 
 const port = Number(process.env.PORT ?? 3000)
+const origin = `http://127.0.0.1:${String(port)}`
 
-/** whether something is already answering where the backend is about to bind */
 const portTaken = (at: number) =>
   new Promise<boolean>((resolve) => {
     const probe = createConnection({ host: '127.0.0.1', port: at })
@@ -64,75 +82,320 @@ const portTaken = (at: number) =>
     probe.once('error', () => resolve(false))
   })
 
-const children = new Map<string, ChildProcess>()
-
-const start = (label: string, entry: string, argv: readonly string[], env: NodeJS.ProcessEnv) => {
-  const child = fork(entry, argv, { execArgv: ['--import', 'tsx'], env, stdio: 'inherit' })
-  children.set(label, child)
-  child.once('exit', (code, signal) => {
-    children.delete(label)
-    if (!stopping) say(`${label} ended (${signal ?? String(code)})`)
-    if (!stopping && label === 'backend') say('no backend is running; fix it and restart')
-  })
-  return child
+interface World {
+  backend: Child | null
+  topology: readonly DevServiceSpec[]
+  roots: readonly PluginRoot[]
+  services: Map<string, Child>
 }
 
-const tell = (child: ChildProcess, message: HostMessage) => {
-  if (child.connected) child.send(message)
+const active: World = { backend: null, topology: [], roots: [], services: new Map() }
+
+/**
+ * The replacement being got ready, and whether it is past the point of no
+ * return.
+ *
+ * Before the commit a candidate holds nothing, so a newer save simply
+ * replaces it. After it - the old world is being stopped - it is pinned:
+ * dropping it then would leave the old world already gone and the newer
+ * source unproven, which is how a supervisor ends up with nothing running.
+ */
+interface Candidate {
+  backend: Child | null
+  services: Map<string, Child>
+  committed: boolean
 }
-
-/** the first message matching, or a rejection if the child ends before it */
-const awaits = <Found extends ChildMessage>(
-  child: ChildProcess,
-  matches: (message: ChildMessage) => message is Found,
-  what: string,
-) =>
-  new Promise<Found>((resolve, reject) => {
-    const onMessage = (message: ChildMessage) => {
-      if (!matches(message)) return
-      child.off('message', onMessage)
-      resolve(message)
-    }
-    child.on('message', onMessage)
-    child.once('exit', () => reject(new Error(`the child ended before saying ${what}`)))
-  })
-
-const preparedBackend = (
-  message: ChildMessage,
-): message is Extract<ChildMessage, { type: 'prepared'; role: 'backend' }> =>
-  message.type === 'prepared' && message.role === 'backend'
-
-const preparedService = (
-  message: ChildMessage,
-): message is Extract<ChildMessage, { type: 'prepared'; role: 'service' }> =>
-  message.type === 'prepared' && message.role === 'service'
-
+let candidate: Candidate | null = null
+let pending: Action | null = null
 let stopping = false
-
-const stop = async () => {
-  if (stopping) return
-  stopping = true
-  say('stopping')
-  const ending = [...children.values()].map(
-    (child) =>
-      new Promise<void>((resolve) => {
-        if (child.exitCode !== null) return resolve()
-        child.once('exit', () => resolve())
-        tell(child, { protocol: PROTOCOL, type: 'shutdown' })
-      }),
-  )
-  // a development session on its way out: whatever has not finished by then
-  // dies with this process anyway
-  const deadline = new Promise<void>((resolve) => setTimeout(resolve, 10_000).unref())
-  await Promise.race([Promise.all(ending), deadline])
-  for (const child of children.values()) if (child.exitCode === null) child.kill('SIGKILL')
-  process.exit(0)
-}
-
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => void stop())
+let watcher: FSWatcher | null = null
 
 const manifest = manifestPath()
 const env = childEnv(manifest)
+
+const plan = (): WatchPlan => ({
+  bootstrap: [
+    manifest,
+    `${manifest.slice(0, -path.extname(manifest).length)}.lock.json`,
+    path.join(repoRoot, 'qualy.lock.json'),
+    path.join(repoRoot, '.env'),
+    path.join(repoRoot, 'package.json'),
+    path.join(repoRoot, 'pnpm-lock.yaml'),
+    path.join(repoRoot, 'pnpm-workspace.yaml'),
+  ],
+  roots: active.roots,
+  services: active.topology,
+  repoRoot,
+})
+
+// ---------------------------------------------------------------------------
+// the queue: everything that can change the world goes through here
+
+type Event =
+  | { readonly kind: 'change'; readonly action: Action }
+  | { readonly kind: 'exit'; readonly child: Child }
+  | { readonly kind: 'stop' }
+
+const queue: Event[] = []
+let draining = false
+
+const post = (event: Event) => {
+  queue.push(event)
+  void drain()
+}
+
+const drain = async () => {
+  if (draining) return
+  draining = true
+  while (queue.length > 0) {
+    const event = queue.shift()!
+    try {
+      await handle(event)
+    } catch (error) {
+      say(
+        `supervisor error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+      )
+    }
+  }
+  draining = false
+}
+
+const watchExit = (child: Child) => {
+  child.process.once('exit', () => post({ kind: 'exit', child }))
+  return child
+}
+
+// ---------------------------------------------------------------------------
+// staging
+
+/** whether the assembly's development topology has moved under us (§19) */
+const sameTopology = (next: readonly DevServiceSpec[]) => {
+  const key = (specs: readonly DevServiceSpec[]) =>
+    specs
+      .map((spec) => `${spec.key}@${spec.moduleUrl}`)
+      .sort((a, b) => a.localeCompare(b))
+      .join('|')
+  return key(next) === key(active.topology)
+}
+
+const adopt = (prepared: Prepared) => {
+  active.topology = prepared.topology
+  active.roots = prepared.roots
+}
+
+/**
+ * Stop the active backend and wait for the whole child to be gone.
+ *
+ * The whole child, not just the port: a process that has released the port
+ * may still be closing a pool, flushing telemetry or running a finalizer, and
+ * the next backend must not start on top of that.
+ */
+const retireBackend = async () => {
+  if (active.backend === null) return
+  await stop(active.backend, 20_000)
+  active.backend = null
+}
+
+/**
+ * Stop everything, for a replacement of the whole session.
+ *
+ * Only for that. A backend on its own is replaced without touching the
+ * development services beside it - taking them down too is exactly the
+ * coupling this supervisor exists to undo, and it is invisible from the
+ * backend's side: the api comes back, and the browser's session is gone.
+ */
+const retireSession = async () => {
+  await Promise.all([...active.services.values()].map((child) => stop(child, 5_000)))
+  active.services.clear()
+  await retireBackend()
+}
+
+const startServices = async (
+  specs: readonly DevServiceSpec[],
+  into: Map<string, Child>,
+  { tolerant }: { tolerant: boolean },
+): Promise<boolean> => {
+  const started = specs.map((spec) => ({ spec, child: watchExit(forkService(spec, origin, env)) }))
+  let whole = true
+  for (const { spec, child } of started) {
+    try {
+      await servicePrepared(child)
+      into.set(spec.key, child)
+    } catch {
+      say(`${spec.key} could not prepare`)
+      whole = false
+      if (!tolerant) return false
+    }
+  }
+  return whole || tolerant
+}
+
+const acceptServices = async (services: Map<string, Child>) => {
+  for (const [key, child] of services) {
+    send(child, { protocol: PROTOCOL, type: 'accept' })
+    await serviceReady(child).catch(() => say(`${key} failed while starting`))
+  }
+}
+
+/** a backend and, if asked, the services its own topology declares */
+const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
+  const backend = watchExit(forkBackend(env))
+  candidate = { backend, services: new Map(), committed: false }
+  let prepared: Prepared
+  try {
+    prepared = await backendPrepared(backend)
+  } catch (error) {
+    say(
+      active.backend === null
+        ? `backend failed to start: ${error instanceof Error ? error.message : String(error)}`
+        : `backend reload failed; keeping ${active.backend.name}`,
+    )
+    candidate = null
+    return
+  }
+  if (candidate === null) return // superseded while preparing
+
+  // The file that changed said "backend only", but the candidate's own
+  // resolution says which services this assembly wants. If those have moved,
+  // the classification was wrong and this becomes a session after all.
+  const wholeSession = kind === 'session' || !sameTopology(prepared.topology)
+  if (wholeSession && kind === 'backend') say('the development topology moved; staging the session')
+
+  if (wholeSession && active.backend !== null) {
+    // with a world already running, the replacement is all-or-nothing: a half
+    // staged session that then fails would have taken the working one away
+    const ready = await startServices(prepared.topology, candidate.services, { tolerant: false })
+    if (!ready) {
+      say(`session reload failed; keeping ${active.backend.name}`)
+      await discard()
+      return
+    }
+  }
+
+  candidate.committed = true
+  if (wholeSession) await retireSession()
+  else await retireBackend()
+
+  send(backend, { protocol: PROTOCOL, type: 'accept' })
+  active.backend = backend
+  adopt(prepared)
+  if (!(await listening(origin, backend, 60_000))) {
+    say(`${backend.name} did not come up; no backend is running`)
+  }
+
+  if (wholeSession) {
+    if (candidate.services.size === 0) {
+      // first boot, or a session whose services were never staged: start them
+      // now and let a failing one stay failed rather than taking the api with
+      // it - a working api beats nothing while a config is fixed
+      await startServices(prepared.topology, candidate.services, { tolerant: true })
+    }
+    for (const [key, child] of candidate.services) active.services.set(key, child)
+    await acceptServices(candidate.services)
+  }
+  candidate = null
+  say(`${backend.name} is serving`)
+}
+
+/** one development service, replaced under a backend that never stops */
+const stageService = async (key: string): Promise<void> => {
+  const spec = active.topology.find((one) => one.key === key)
+  if (spec === undefined) return
+  const child = watchExit(forkService(spec, origin, env))
+  candidate = { backend: null, services: new Map([[key, child]]), committed: false }
+  try {
+    await servicePrepared(child)
+  } catch {
+    const held = active.services.get(key)
+    say(
+      held === undefined ? `${key} failed to start` : `${key} reload failed; keeping ${held.name}`,
+    )
+    candidate = null
+    return
+  }
+  if (candidate === null) return
+  candidate.committed = true
+  const previous = active.services.get(key)
+  if (previous !== undefined) await stop(previous, 5_000)
+  send(child, { protocol: PROTOCOL, type: 'accept' })
+  active.services.set(key, child)
+  await serviceReady(child).catch(() => say(`${key} failed while starting`))
+  candidate = null
+  say(`${child.name} is serving`)
+}
+
+/** throw away a candidate that has taken nothing */
+const discard = async () => {
+  if (candidate === null) return
+  const going = candidate
+  candidate = null
+  await Promise.all(
+    [going.backend, ...going.services.values()]
+      .filter((child): child is Child => child !== null)
+      .map((child) => stop(child, 5_000)),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// the loop
+
+const handle = async (event: Event): Promise<void> => {
+  if (event.kind === 'stop') return teardown()
+  if (stopping) return
+
+  if (event.kind === 'exit') {
+    const { child } = event
+    if (active.backend?.process === child.process) {
+      active.backend = null
+      say(`${child.name} ended; save something to try again`)
+    }
+    for (const [key, held] of active.services) {
+      if (held.process === child.process) {
+        active.services.delete(key)
+        say(`${child.name} ended`)
+      }
+    }
+    return
+  }
+
+  pending = merge(pending, event.action)
+  await reconcile()
+}
+
+const reconcile = async (): Promise<void> => {
+  while (!stopping && pending !== null) {
+    if (candidate !== null) {
+      // A candidate past its commit point is pinned: the world it replaces is
+      // already being taken down, and dropping it now would leave nothing
+      // running while the newer source is still unproven. The change waits.
+      if (candidate.committed) return
+      say('newer changes; superseding the candidate')
+      await discard()
+    }
+    const action = pending
+    pending = null
+    if (action === 'session') await stageWorld('session')
+    else if (action === 'backend') await stageWorld('backend')
+    else await stageService(action.service)
+  }
+}
+
+const teardown = async () => {
+  if (stopping) return
+  stopping = true
+  say('stopping')
+  await watcher?.close()
+  await discard()
+  await retireSession()
+  process.exit(0)
+}
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => post({ kind: 'stop' }))
+}
+
+// ---------------------------------------------------------------------------
+// the first world
 
 if (await portTaken(port)) {
   say(`port ${String(port)} is already in use; stop what is on it or set PORT`)
@@ -140,28 +403,17 @@ if (await portTaken(port)) {
 }
 
 say(`assembly ${manifest}`)
-const backend = start('backend', backendEntry, ['development'], env)
-const { topology } = await awaits(backend, preparedBackend, 'prepared')
-// nothing else is running, so there is nothing to hand over from
-tell(backend, { protocol: PROTOCOL, type: 'accept' })
+await stageWorld('session')
 
-// The browser's own entry, and everything else a plugin asked for. Started
-// after the backend has been let in, because a proxy pointed at a port
-// nobody is on yet answers the first navigation with an error the developer
-// then has to reload past.
-const origin = `http://127.0.0.1:${String(port)}`
-const services = topology.map((spec: DevServiceSpec) => {
-  const child = start(`dev:${spec.key}`, serviceEntry, [], env)
-  tell(child, { protocol: PROTOCOL, type: 'spec', spec, origin })
-  return { spec, child }
+watcher = watch(plan(), (action, files) => {
+  if (action === 'restart-host') {
+    say('the supervisor itself changed; restart pnpm dev to pick it up')
+    return
+  }
+  const what = action === 'session' ? 'session' : action === 'backend' ? 'backend' : action.service
+  say(
+    `${path.relative(repoRoot, files[0] ?? '')}${files.length > 1 ? ` (+${String(files.length - 1)})` : ''} -> ${what}`,
+  )
+  post({ kind: 'change', action })
 })
-
-for (const { spec, child } of services) {
-  await awaits(child, preparedService, 'prepared').catch(() => {
-    say(`${spec.key} could not prepare; carrying on without it`)
-    return null
-  })
-  tell(child, { protocol: PROTOCOL, type: 'accept' })
-}
-
-if (services.length === 0) say('no development services declared; the api is on its own')
+say('watching for changes')

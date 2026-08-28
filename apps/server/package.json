@@ -31,6 +31,7 @@
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "chalk": "^6.0.0",
+    "chokidar": "catalog:",
     "effect": "catalog:"
   },
   "devDependencies": {}

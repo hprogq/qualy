@@ -92,3 +92,8 @@ skills-lock.json
 
 # per-machine MCP server wiring
 .mcp.json
+
+# the supervisor suite's own assembly, removed when it finishes and left
+# behind only by a run that was killed
+qualy.supervisor-test.yml
+qualy.supervisor-test.lock.json

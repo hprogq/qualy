@@ -1,6 +1,6 @@
 import type { DevServiceSpec } from '@qualy/plugin-kit/dev'
 import { requestShutdown } from '../shutdown.ts'
-import { PROTOCOL, hostMessage, supervised, tell } from './protocol.ts'
+import { PROTOCOL, hostMessage, supervised, tell, type PluginRoot } from './protocol.ts'
 
 // The line between preparing to be the server and being it
 // (docs/runtime-redesign.md §10).
@@ -35,7 +35,10 @@ const leave = (reason: string): never => {
  * Resolves when the host accepts. It never resolves on a refusal - the
  * process ends instead, because a refused candidate has nothing else to do.
  */
-export async function supervisedPrepareFence(topology: readonly DevServiceSpec[]): Promise<void> {
+export async function supervisedPrepareFence(
+  topology: readonly DevServiceSpec[],
+  roots: readonly PluginRoot[],
+): Promise<void> {
   if (!supervised()) return
 
   // The lease, for the whole lifetime rather than for this wait: a supervisor
@@ -69,6 +72,6 @@ export async function supervisedPrepareFence(topology: readonly DevServiceSpec[]
     process.on('message', onMessage)
     // said last: a host that answers instantly must find the listener already
     // installed
-    tell({ protocol: PROTOCOL, type: 'prepared', role: 'backend', topology })
+    tell({ protocol: PROTOCOL, type: 'prepared', role: 'backend', topology, roots })
   })
 }
