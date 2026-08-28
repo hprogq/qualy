@@ -9565,3 +9565,56 @@ ADR 的「后续变更」节。其余四条决定不变。
 
 **M9 剩余**:仅两项密度决定待用户裁定;其余清理项(Tailwind/shadcn/cva/tw-animate/Radix/PrimeReact)
 全部完成,文档 §19 目标形态达成,§27 证据留档,§28 ADR 已补记。
+
+### 开发态进程监督 Phase 0:基线与不变量(2026-08-28)
+
+依据 docs/runtime-redesign.md §59 Phase 0。**不改任何行为**,只把后面几个阶段要依赖的边界先证明出来。
+
+**资源边界的位置,已实测**
+
+启动分两段,中间那条线是 `Layer.launch`。线以上全是纯的:读清单、与 lock 比对、按依赖序 import 每个
+active 插件的描述器、组合 layer;线以下这个进程才拿端口、连接池、调度器和插件各自的资源。
+
+新增 `apps/server/tests/resource-cold.test.ts` 与它的探针:把 `DATABASE_URL` 指向一个**拒绝连接**的地址,
+跑完线以上的全部工作,并对 `net.Socket.prototype.connect` 与 `net.Server.prototype.listen` 打桩记录。
+结果 `{"connects":[],"listens":[],"composed":true}`——整个应用组合完成,零对外连接、零监听。
+探针**故意不调用 `process.exit`**:它能自行退出这件事本身就是断言,留下任何 timer、连接池或 watcher
+都会让它挂到超时。这同时回答了「描述器 import 有无副作用」:探针 import 了全部 active 描述器。
+
+**启动/关闭基线**(`QUALY_BOOT_TIMING=1`,新增 opt-in 计时,默认关闭,连跑三轮)
+
+| 段                                        | 用时          |
+| ----------------------------------------- | ------------- |
+| 进程起来到读完清单(node + tsx 模块加载)   | 501–555 ms    |
+| 装配校验(resolve + 描述器 import)         | +574–606 ms   |
+| **应用组合(纯)**                          | **+10–13 ms** |
+| 绑定端口                                  | +184–247 ms   |
+| 端口就绪到真正的路由挂上(Vite middleware) | 约 +600 ms    |
+| 到 "Listening" 合计                       | 约 2.0 s      |
+| SIGTERM 到 shutdown complete(无在途请求)  | 9 ms          |
+
+**这组数字直接支持该设计的前提**:纯组合只要 10–13ms,所以「候选进程先走完线以上、等旧进程退出再跨线」
+几乎不额外花时间;而当前 2 秒冷启动里约 600ms 是 Vite 挂载——正是本次要从后端关键路径上拆走的那段。
+
+**§12 不变量的登记**(`tools/tests/runtime-imports.test.ts`)
+
+审计全仓 serving runtime 的相对动态 import:**没有一处违规**。现存的都落在设计允许的类别里——
+`Plugin.capability`、`Cli.command({load})`、以及 `main.ts` 在 PREPARE 期内 import 组合根(动态是为了让
+错误由已装好的 logger 报出)。迁移执行走的是 `database/src/server/index.ts` 的**静态** import。
+门禁按文件登记豁免并写明理由,新增未登记的晚加载即红(已实测);同时反向校验登记表不留过期条目。
+类型位置的 `typeof import(...)` 与注释里的写法不计入——它们不是运行时加载。
+
+**§56 未声明的 workspace 依赖:6 处,已修**
+
+ping→plugin-database、database→api-kit、web→plugin-kit、storage-local→plugin-database、
+rbac-contract→api-kit、app→plugin-kit。pnpm 的存储布局让它们照样能解析,直到某天别人不再引它们为止。
+新增 `tools/tests/workspace-deps.test.ts` 冻结(已实测:去掉任一条声明即点名该文件变红)。
+这条门禁也是 §56 所要求的前置——在它成立之前,不得拿 workspace 依赖闭包当 watcher 的正确性边界。
+
+**退出条件**:两条都达成——资源边界可指明并有测试守;serving runtime 的本地晚加载已登记且有门禁。
+
+**验收(全部真实执行)**:`pnpm typecheck` 零错;`pnpm test` **859 passed | 17 skipped**;
+`pnpm test:browser` **223 passed**;`pnpm build` 通过;生产 smoke 通过;`pnpm vendor:check` 两树一致。
+
+**下一步**:Phase 1(`@qualy/plugin-kit/dev`、`Dev.service`、PREPARED 栅栏与 supervised 协议),
+按设计 §59 在 Phase 0 边界处停下等复核。
