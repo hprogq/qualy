@@ -9977,4 +9977,22 @@ manifest 没动而 lockfile 大面积变化,默认视为异常而不是"新版�
 patch 都生效,`allowBuilds` 策略被完整遵守,Linux x64 与 macOS arm64 写出的 lock sha256 相同。
 node 套件 894/896——那 2 个失败**不是 Aube 的问题**:`tools/tests/assembly-resolve.test.ts` 有两个用例
 一直靠 pnpm 把每个 workspace 包塞进 `.pnpm/node_modules` 并经 bin shim 写进 `NODE_PATH` 才走到它们
-真正要断言的那步,实测脱离 vitest 后在 pnpm 树下同样 UNRESOLVED。这是本仓库自己的潜在缺陷,待单独修。
+真正要断言的那步,实测脱离 vitest 后在 pnpm 树下同样 UNRESOLVED。这是本仓库自己的潜在缺陷,已单独修掉
+(见下)。
+
+两个 case 已提炼成四文件最小复现,上游草稿 `docs/upstream/aube-1-auto-installed-peers-in-importers.md`
+(Aube 的 Issues 是关着的,走 Discussions)。其中「不满足 importer 自己声明的 peer」更像 bug:
+那三个 contract 包声明的是 `peerDependencies: {effect: 'catalog:'}`,不是 `dependencies`,
+而 `autoInstallPeers` 的文档说的就是自动装上缺失的 peer 并提升进 importer。
+
+**合成 workspace 只能看见自己装了的东西**(2026-08-28)
+
+上一条的副产物,与换不换包管理器无关。`require` 除了逐级上溯还会查 `NODE_PATH`,pnpm 的 bin shim 把
+它指向那个塞了全部 workspace 包的目录,于是 vitest 下任何合成 workspace 都能 resolve 到本仓库的任何包。
+修在两处:`createPackageResolver` 现在要求包出现在宿主自己祖先链上的某个 `node_modules` 里才认
+(那正是该文件抬头一直声称的语义);testkit 的 `writeManifest` 安装新选中的插件,移除则**不**卸载——
+detached 与 retained 正是「离开清单但还在磁盘上」的状态。
+
+**验收**:新门禁承重(去掉 resolver 那道检查即点名失败);`pnpm typecheck` 零错;`pnpm test`
+**898 passed | 17 skipped**;`pnpm build` 与 `smoke-production` 通过;同一套 node 套件在 Aube 树下
+同样 **898 passed**——这个套件不再依赖是谁装的依赖。

@@ -1,5 +1,8 @@
 # Aube 2.2.0 spike
 
+> **状态:调查记录,结论为暂不采用。** 这不是路线图,不代表 Qualy 打算迁往 Aube。
+> 它的用处是:如果将来那条阻塞被上游修掉,重跑本文的五道关口即可,不必从零重查整个生态。
+
 一次受控评估:能不能把包管理器从 pnpm 换成 Aube(jdx 的 Rust 实现,`mise registry` 里是
 `aqua:jdx/aube`,2.2.0 发布于 2026-08-25)。**结论:现在不换。** 阻塞只有一条,但它是硬的;
 除此之外的表现好得出乎意料。
@@ -19,13 +22,22 @@ macOS arm64 + Linux x64(docker `node:24-bookworm`,`--platform linux/amd64`)。
 
 ## 阻塞:importer 里的自动装 peer
 
-pnpm 与 Aube 都默认 `autoInstallPeers: true`,但对「哪些 peer 该记进 importer 自己的
-dependencies」意见相反,而且是**两个方向都相反**:
+pnpm 与 Aube 都默认 `autoInstallPeers: true`,但对「哪些自动装的 peer 该记进 importer 自己的
+dependencies」看法相反,而且**两个方向都相反**。已提炼成一个四文件的最小复现,与本仓库无关,
+上游草稿见 [../upstream/aube-1-auto-installed-peers-in-importers.md](../upstream/aube-1-auto-installed-peers-in-importers.md)。
 
-- Aube **加**了 pnpm 没有的:`redis` 进 7 个 importer(它是 `@effect/platform-node` 的 peer)、
-  `react`/`react-dom` 进根、`unplugin` 进 2 个 importer。
-- Aube **删**了 pnpm 有的:`effect` 从三个 contract 包、`react` 从两个包——正是那些**自己在
-  `peerDependencies` 里声明了它**的包。
+**Case A——把依赖的 peer 提升进 importer。** 包只声明了 `react-dom`,Aube 在它的 importer 里
+补上一条 `react`,specifier 写成 `^19.2.0`——**那个 specifier 不出现在任何 manifest 里**,
+并把 `react` 链进该包的 `node_modules`。pnpm 不这么做。在本仓库,这条表现为 `redis`
+(`@effect/platform-node` 的 peer)进了 7 个 importer。
+
+**Case B——不满足 importer 自己声明的 peer。** 包在 `peerDependencies` 里写了 `react`,
+pnpm 自动装上并记进 importer,Aube 的 importer 是空的 `{}`,`node_modules` 里什么也没有。
+本仓库里对应的是三个 contract 包的 `effect`——**注意它们声明的是 `peerDependencies: {effect: 'catalog:'}`
+而不是 `dependencies`**,所以这不是「声明了的直接依赖凭空消失」,而是「自己声明的 peer 没被自动装上」;
+`aube config explain autoInstallPeers` 写的是"missing peer dependencies are auto-installed during
+resolution and hoisted into the importer",Case B 里缺的正是 importer 自己的那条。两者相比,
+Case B 更像 bug,Case A 更像取向分歧。
 
 于是两个方向的 frozen 检查都红:
 
@@ -37,16 +49,19 @@ dependencies」意见相反,而且是**两个方向都相反**:
 ERR_PNPM_OUTDATED_LOCKFILE ... packages/core/telemetry: 1 dependencies were removed: redis@>=5.0.0 <7.0.0
 ```
 
-这条对本仓库不是纸面差异。`apps/server/node_modules/redis` 在 Aube 树里**真的存在**,而没有任何
+各自读自己写的 lock 都没问题,所以两边都不是内部矛盾,是两套语义。两个 case 在 Aube 的**原生**
+`aube-lock.yaml` 里同样成立,所以这是 resolver/graph 的行为,不是 pnpm writer 的转写细节。
+
+Case A 对本仓库不是纸面差异。`apps/server/node_modules/redis` 在 Aube 树里**真的存在**,而没有任何
 manifest 声明过它;装配层的插件解析恰恰建立在「没声明就 resolve 不到」之上
-(`packages/core/assembly/src/metadata.ts` 从宿主 package.json 建 require)。反过来,
-`packages/contracts/audit/node_modules/effect` 在 Aube 树里**不存在**,尽管该包声明了这条 peer——
-今天不炸,只是因为根上也有一份 effect 兜着。
+(`packages/core/assembly/src/metadata.ts` 从宿主 package.json 建 require)。Case B 则让
+`packages/contracts/audit/node_modules/effect` 不存在,今天不炸,只是因为根上也有一份 effect 兜着。
 
 宽松回滚也救不回来:`pnpm install --no-frozen-lockfile` 能装上 Aube 写的 lock,但**不收敛**——
 与原 lock 差约 100 行,`supports-color` 作为 `debug` 的可选 peer 渗进整片 babel 图。
 (已排除是本地改动所致:把 patch 键改回原样重测,差异照旧。)真正的回滚路仍然是
-`git checkout pnpm-lock.yaml`,那条永远有效。
+`git checkout pnpm-lock.yaml`,那条永远有效——实测也确实用上了:spike 期间一次 `aube install`
+把 `pnpm-lock.yaml` 原地改写了。
 
 ## 次要不兼容:patch 键必须带版本
 
@@ -94,13 +109,16 @@ typecheck 在容器里也零错,而且写出的 lock 与 macOS 那份 **sha256 �
 而 `aube check` 说的是 `node_modules symlink tree is consistent (checked 0 packages)`——在一棵明确坏掉的
 树上报了一致,而且检查了 0 个包。
 
-**它顺手暴露了本仓库的一个潜在缺陷。** `tools/tests/assembly-resolve.test.ts` 有两个用例在 Aube 树下红,
-根因不在 Aube:pnpm 会把**每个 workspace 包**都塞进 `node_modules/.pnpm/node_modules`,并由 bin shim
-把那个目录写进 `NODE_PATH`,于是 vitest 里从任何地方——包括 testkit 造的、只链了 5 个插件的临时
-workspace——都能 resolve 到 `@qualy/plugin-web`。这两个用例一直是靠这个副作用走到它们真正想断言的那步的。
-实测:同一段代码脱离 vitest 直接跑,在 **pnpm 树下也 UNRESOLVED**。Aube 不设这个 `NODE_PATH`,
-假象就没了。这与仓库自己「没声明就 resolve 不到」的纪律相抵触,值得单独修(在 `createWorkspace` 的链接
-集合里补上该插件),与换不换包管理器无关。
+**它顺手暴露了本仓库的一个潜在缺陷,已单独修掉。** `tools/tests/assembly-resolve.test.ts` 有两个用例在
+Aube 树下红,根因不在 Aube:pnpm 会把**每个 workspace 包**都塞进 `node_modules/.pnpm/node_modules`,
+并由 bin shim 把那个目录写进 `NODE_PATH`,于是 vitest 里从任何地方——包括 testkit 造的、只链了 5 个插件的
+临时 workspace——都能 resolve 到 `@qualy/plugin-web`。这两个用例一直是靠这个副作用走到它们真正想断言的
+那步的。实测:同一段代码脱离 vitest 直接跑,在 **pnpm 树下也 UNRESOLVED**。
+
+修在两处,因为这个洞有两侧:`createPackageResolver` 现在要求包必须出现在宿主自己祖先链上的某个
+`node_modules` 里才认(那正是该文件抬头一直声称的语义);testkit 的 `writeManifest` 会安装新选中的插件,
+而移除仍然**不**卸载——detached 与 retained 正是「离开清单但还在磁盘上」的状态。新门禁是承重的:把 resolver
+那道检查去掉,它点名失败。现在 node 套件在 pnpm 与 Aube 两棵树下都是 **898 passed**。
 
 ## 什么时候重开这个评估
 
