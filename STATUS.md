@@ -9680,3 +9680,66 @@ argv 是任何能看见进程列表的人都读得到的。
 
 **下一步**:Phase 2(Web 抽离:`Dev.service({id:'web'})`、独立 Vite、proxy、删 `QUALY_WEB_MODE`)。
 按 §59 在阶段边界停下。
+
+### 开发态进程监督 Phase 2:Web 抽离(2026-08-28)
+
+依据 docs/runtime-redesign.md §59 Phase 2、§29–§35。**浏览器的开发入口从 :3000 变成 Vite 的 :5173。**
+
+**插件裂成两半**
+
+运行时那半只服务构建产物;Vite 搬进独立进程,经 `Dev.service({id:'web', module:'./dev'})` 声明。
+原来它挂在后端自己的 `http.Server` 上(为了让 HMR websocket 共用一个端口),代价是两者一条命:
+后端每次重启都关掉 Vite,连带 websocket、模块图、React 组件里的状态和人正在看的那一屏。
+
+`QUALY_WEB_MODE` 与 `WebConfig.mode` 一并删除——**运行时不再有"二选一"这个概念**:部署就服务产物,
+开发态后端只管 `/api` 与 `/health`,浏览器归它前面的 Vite。清单 schema 仍是一份(`sourceRoot`/`assetRoot`),
+两半各读各的那个,不拆成两个互相排斥的 schema。`apps/server/src/run.ts` 里那条 production 拒绝
+`QUALY_WEB_MODE=development` 的检查随之删除,CLAUDE.md 第 32、65 行同步改写。
+
+**prepare 不许碰运行中的世界**(§32)
+
+`prepare` 只解析配置、校验 sourceRoot、加载 vite 这个包;**不执行 vite 配置**——执行它会把浏览器聚合
+写进 `apps/web/.qualy/`,而那正是运行中的 Vite 在读的文件。`acquire` 才 createServer 并 listen,
+它拿到的东西由一个**开到停机为止**的 scope 持有。
+
+**Vite 是唯一在开发者面前的东西**,所以 `strictPort: true`:漂到下一个端口的服务器,表现就是"页面再也不
+热更新"而没有任何解释。端口写在 `apps/web/vite.config.ts` 里——那是浏览器应用自己的地址,不是监督者的事。
+反代只覆盖 `/api` 与 `/health`,其余由 Vite 的 SPA fallback;**不设 `changeOrigin`**:后端要从被请求的
+Host 推 cookie 作用域、重定向目标与回调地址,改写它会让公网域名下的会话拿到指向 127.0.0.1 的答复。
+
+**`pnpm dev` 变成一个监督进程**(§45、§25、§43)
+
+`node --import tsx apps/server/src/dev/host.ts`,**不再挂 `--env-file-if-exists`**:长命进程那样会永久
+持有启动那一刻的 `.env`,之后每个子进程都继承旧值。改为每轮自己用 Node 自带的 `parseEnv` 现读,
+shell 覆盖文件,再写入 `NODE_ENV` / `QUALY_DEV_SUPERVISED` / `QUALY_CONFIG`——**所有子进程读同一份清单**,
+免得浏览器包与回答它的 api 来自两次不同的选择。启动前查后端端口是否被占,占了就明确报错而不是让 Vite
+静静反代到别人的进程。`@qualy/web-build` 现在也尊重 `QUALY_CONFIG`(§26)。
+
+尚无 watcher(Phase 3),所以这一版只负责启动、放行、一起停。
+
+**验证**
+
+- `apps/server/tests/web-survives-backend.test.ts`:先起浏览器服务器,再在它下面**换两轮后端**——
+  每轮都经 Vite 的反代确认 api 通,再确认后端退出码 0;之后断言 Vite **PID 未变、仍返回 200**。
+  这就是本阶段存在的理由。另一例断言开发态后端对 `/` 返回 404(浏览器不归它服务)、`/health/live` 返回 200。
+  临时 source root 自带 `package.json`+不 import vite 的配置(工作区外解析不到 `vite`),并显式绑 127.0.0.1
+  (Vite 默认的 `localhost` 会先解析到 ::1)。
+- `packages/core/plugin-kit/tests/dev-services.test.ts` 5 例:key 的构成、无声明即无服务、同插件重名拒绝、
+  非导出子路径拒绝、解析失败时指名是哪条声明。
+- handoff 套件补断言:上报的 topology 里确有 `@qualy/plugin-web:web`。headless 是结构保证——
+  topology 只从 `runtimePlugins` 读,停用的插件根本不在里面。
+- 真跑 `pnpm dev` 实测:Vite :5173 返回 200、经它反代 `/health/live` 返回 200、后端 :3000 直连 200、
+  后端 `/` 返回 404、Ctrl+C 全部干净退出。
+
+**顺带修掉两处**:dev service 的日志此前是 Effect 默认格式,与主进程两种样子,现在装同一个 logger 并按
+`source: dev:<id>` 标注;`ports.test.ts` 在我把 handoff 套件的 `PORT` 改名成 `port` 后,抓出它与
+auth 的 effect-session 撞了 3194——**这是个此前一直存在、只是门禁看不见的冲突**,已改。
+
+**退出条件**:后端可反复替换而 Vite 进程与端口不动 ✔;headless 结构上不启 Vite ✔;
+production build/start 无回归(`pnpm build` 通过,生产 smoke 断言探针/壳/manifest/哈希资源/SIGTERM 全过)✔。
+
+**验收(全部真实执行)**:`pnpm typecheck` 零错;`pnpm test` **873 passed | 17 skipped**;
+`pnpm test:browser` **223 passed**;`pnpm build` 通过;生产 smoke 通过;`pnpm vendor:check` 两树一致。
+
+**下一步**:Phase 3(chokidar watcher、事件批处理、动作分类、active/candidate 世界、候选淘汰、
+pinned commit、三种 handoff)。
