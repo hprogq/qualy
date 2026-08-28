@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
     "effect": "catalog:",
     "sirv": "catalog:",
     "zod": "catalog:"

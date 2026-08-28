@@ -22,6 +22,7 @@
     "@mikro-orm/core": "catalog:",
     "@mikro-orm/migrations": "catalog:",
     "@mikro-orm/postgresql": "catalog:",
+    "@qualy/api-kit": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "effect": "catalog:",

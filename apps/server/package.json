@@ -16,6 +16,7 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-layout-default": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",

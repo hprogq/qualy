@@ -288,6 +288,9 @@ importers:
       '@qualy/plugin-database':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/database
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../packages/core/plugin-kit
       '@qualy/plugin-layout-default':
         specifier: workspace:*
         version: link:../../packages/plugins/base/layout-default
@@ -478,6 +481,9 @@ importers:
 
   packages/contracts/rbac:
     dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../core/api-kit
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../i18n
@@ -1054,6 +1060,9 @@ importers:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../contracts/i18n
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../../infra/database
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
@@ -1103,6 +1112,9 @@ importers:
       '@mikro-orm/postgresql':
         specifier: 'catalog:'
         version: 7.1.13(@mikro-orm/core@7.1.13)
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
       '@qualy/assembly-contract':
         specifier: workspace:*
         version: link:../../../contracts/assembly
@@ -1189,6 +1201,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/plugin-database':
+        specifier: workspace:*
+        version: link:../database
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
@@ -1244,6 +1259,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111

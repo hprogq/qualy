@@ -18,6 +18,7 @@
     "@mikro-orm/core": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/ui": "workspace:*",
