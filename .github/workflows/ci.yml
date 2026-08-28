@@ -34,7 +34,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
-          node-version: 24.18.0
+          node-version: 24.20.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The same trade the compose stack makes, for the same reason: this
@@ -75,7 +75,7 @@ jobs:
       - name: staged web assets must exist
         run: test -f packages/plugins/infra/web/client-dist/index.html
       - name: plugin chunk sentinel
-        run: pnpm exec tsx apps/web/scripts/check-chunks.ts
+        run: node apps/web/scripts/check-chunks.ts
       # The descriptor model gave up the compile-time closure proof; a real
       # production boot is the trust boundary now. Staged assets carry the
       # assembly's resolutionHash and the process refuses a mismatch, so this
@@ -89,7 +89,7 @@ jobs:
       - name: production boot serves the staged assembly
         env:
           DATABASE_URL: postgres://qualy:qualy@localhost:5432/qualy
-        run: pnpm exec tsx tools/quality/smoke-production.ts
+        run: node tools/quality/smoke-production.ts
 
   # The component suite, in the one environment that is always cold. Its
   # whole failure class - dependency scanning, chunk graphs, one react
@@ -103,7 +103,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
-          node-version: 24.18.0
+          node-version: 24.20.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: resolve playwright version

@@ -1,6 +1,17 @@
+# The toolchain, owned in one place.
+#
+# The package manager's version is not repeated here: it is declared in
+# package.json where every other tool looks for it, and mise reads it from
+# there. Two places to write one version is two versions waiting to disagree,
+# and the one that loses is whichever the reader did not check.
 [tools]
-node = "24.18.0"
-pnpm = "11.8.0"
+node = "24.20.0"
+
+[settings]
+# read `packageManager` out of package.json, the way corepack did - which node
+# stops shipping from 25, and which was only ever worth having because it came
+# with node
+idiomatic_version_file_enable_tools = ["pnpm"]
 
 [env]
 _.path = ["{{config_root}}/node_modules/.bin"]
