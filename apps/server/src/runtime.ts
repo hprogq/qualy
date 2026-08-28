@@ -16,6 +16,7 @@ import { ServerConfig, apiReferenceEnabled } from './config.ts'
 import { accessLog } from './access-log.ts'
 import type { LoggingSettings } from './logging.ts'
 import { healthApi, healthHandlers } from './health.ts'
+import { mark } from './boot-timing.ts'
 
 // The composition root.
 //
@@ -85,6 +86,9 @@ const nodeServerLayer = Layer.sync(NodeServer, () => {
     response.end('qualy is starting\n')
   }
   server.on('request', starting)
+  // the end of the acquiring band: the port is open, which is the first
+  // moment this process is of any use to anybody
+  server.once('listening', () => mark('http listening'))
   // A stopping process must not let its clients decide when the drain ends.
   // A browser tab alone holds idle keep-alive sockets, and a live event
   // stream is never idle at all - either pins `server.close` for the whole

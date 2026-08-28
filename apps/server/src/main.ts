@@ -4,6 +4,7 @@ import { Cause, Effect, Exit, Layer } from 'effect'
 import { readManifest } from '@qualy/assembly'
 import { telemetryLayer } from '@qualy/telemetry'
 import { logLine, loggingLayer, resolveLogging } from './logging.ts'
+import { mark, reportBootTiming } from './boot-timing.ts'
 import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
 
@@ -33,6 +34,8 @@ const logging = (() => {
   }
 })()
 const logs = loggingLayer(logging)
+mark('manifest read')
+reportBootTiming((line) => logLine(logging, 'Info', line))
 
 /**
  * A boot refusal, said once in the log's own voice, then exit.
@@ -68,9 +71,15 @@ const prepare = Effect.gen(function* () {
 })
 
 const resolution = await Effect.runPromise(Effect.provide(prepare, logs)).catch(refuse)
+mark('assembly verified')
 
 const { makeApplication } = await import('./runtime.ts').catch(refuse)
 const application = await makeApplication(resolution, logging).catch(refuse)
+// Everything above is pure: a manifest read, a lock compared, descriptors
+// imported, layers composed. Nothing has been acquired yet - the port, the
+// pool, the scheduler and every plugin's own resources all arrive when the
+// layer below is built.
+mark('application composed')
 
 /**
  * One report per failed boot, through the application logger.
@@ -114,7 +123,9 @@ const reportStartupFailure = (cause: Cause.Cause<unknown>) =>
 const launched = Layer.launch(application).pipe(
   Effect.onExit((exit) =>
     Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)
-      ? Effect.logInfo('shutdown complete')
+      ? Effect.sync(() => mark('shutdown complete')).pipe(
+          Effect.andThen(Effect.logInfo('shutdown complete')),
+        )
       : reportStartupFailure(exit.cause),
   ),
   // Telemetry wraps the application and sits inside the logger: every span
