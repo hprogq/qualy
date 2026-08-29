@@ -24,9 +24,10 @@ import {
   ENUM_LABELS,
   MAX_SCALE,
   isDateString,
-  type AtomicSchema,
-  type InputSchema,
+  type NormalizedAtomicSchema,
+  type NormalizedInputSchema,
 } from './profile.ts'
+import { compilePattern } from './regex.ts'
 
 export interface ValueIssue {
   /** instance path in JSON Pointer form; '' is the value itself */
@@ -56,6 +57,27 @@ const decimalKeyword = (
     },
   }) as const
 
+// the pattern keyword runs on the frozen linear-time engine, never on the
+// native backtracking RegExp: what RE2 refuses, the profile already refused
+// at configuration time, so compile here cannot fail on a legal schema
+const qualyRegExp = Object.assign(
+  (pattern: string, _u: string) => {
+    const compiled = compilePattern(pattern)
+    if (!compiled.ok) throw new Error(`pattern outside the regex profile: ${pattern}`)
+    return {
+      test: (value: string) => compiled.pattern.test(value),
+      // load-bearing, not cosmetic: ajv keys its codegen scope by the
+      // engine result's toString() (usePattern: `key: rx.toString()`).
+      // A native RegExp stringifies uniquely; a plain object says
+      // [object Object] for every pattern, and ajv then reuses the FIRST
+      // compiled instance for all of them - measured: the meta-schema's
+      // own pattern silently answered for user patterns
+      toString: () => `qualy-pattern:${pattern}`,
+    }
+  },
+  { code: 'qualyPattern' },
+)
+
 const build = (): Ajv2020 => {
   const ajv = new Ajv2020({
     strict: true,
@@ -64,6 +86,7 @@ const build = (): Ajv2020 => {
     useDefaults: false,
     removeAdditional: false,
     validateFormats: true,
+    code: { regExp: qualyRegExp },
   })
   ajv.addFormat('date', { type: 'string', validate: isDateString })
   ajv.addFormat(DECIMAL_FORMAT, { type: 'string', validate: isDecimalString })
@@ -86,7 +109,10 @@ const build = (): Ajv2020 => {
 let instance: Ajv2020 | undefined
 const compiled = new WeakMap<object, ValidateFunction>()
 
-const validatorFor = (schema: AtomicSchema | InputSchema): ValidateFunction => {
+// normalized-only on purpose: the cache below keys by object identity and
+// assumes the schema can never mutate afterwards, which is exactly what the
+// Normalized brand promises (frozen, produced by the normalize factories)
+const validatorFor = (schema: NormalizedAtomicSchema | NormalizedInputSchema): ValidateFunction => {
   const known = compiled.get(schema)
   if (known !== undefined) return known
   instance ??= build()
@@ -107,9 +133,9 @@ const asIssue = (error: ErrorObject): ValueIssue => {
   }
 }
 
-/** judge one value against a profile schema; empty means the value is admitted */
+/** judge one value against a normalized profile schema; empty means admitted */
 export const validateValue = (
-  schema: AtomicSchema | InputSchema,
+  schema: NormalizedAtomicSchema | NormalizedInputSchema,
   value: unknown,
 ): readonly ValueIssue[] => {
   const validator = validatorFor(schema)

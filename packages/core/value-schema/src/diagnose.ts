@@ -44,8 +44,11 @@ export const constraintOf = (schema: AtomicSchema, reason: string): string | und
       return 'enum' in schema ? (schema as ChoiceSchema).enum.join(', ') : undefined
     case 'type':
     case 'format':
-    case 'pattern':
       return kindOf(schema)
+    case 'pattern':
+      // the pattern itself is content the author configured; showing it is
+      // the only actionable answer
+      return (schema as TextSchema).pattern
     default:
       return undefined
   }

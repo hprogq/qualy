@@ -19,6 +19,10 @@ catalog:
   # 2020-12 plus the x-qualy-* keywords); the assignability prover next to it
   # is hand-written, ajv only judges single values
   ajv: 8.20.0
+  # the frozen regex engine behind the value-schema pattern keyword: RE2
+  # semantics in pure JS, linear-time matching, identical in Node and the
+  # browser - part of the scoring-contract interpreter, pinned like one
+  re2js: 2.8.6
   # the scoring sandbox engine, three parts that move as one version: the
   # core drives a QuickJS compiled to WASM; the release variant runs
   # formulas, the debug variant double-runs the escape suite in tests

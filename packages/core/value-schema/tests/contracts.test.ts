@@ -13,6 +13,7 @@ import {
   type InputSchema,
 } from '../src/profile.ts'
 import { semanticHashOfAtomic, semanticHashOfInput } from '../src/hash.ts'
+import { patternIssues } from '../src/regex.ts'
 
 describe('the profile', () => {
   it('admits each of the six kinds', () => {
@@ -55,7 +56,9 @@ describe('the profile', () => {
     expect(reasons({ type: 'string', enum: ['a'], 'x-qualy-enumLabels': { b: 'B' } })).toContain(
       'label-orphan',
     )
-    expect(reasons({ type: 'string', pattern: '(' })).toContain('pattern-invalid')
+    // pattern LEGALITY moved to ./regex (patternIssues): the structural
+    // layer only refuses a non-string, so the engine stays out of artifacts
+    expect(reasons({ type: 'string', pattern: 42 })).toContain('pattern-invalid')
     expect(reasons({ type: 'string', format: 'qualy-decimal', 'x-qualy-maxScale': -1 })).toContain(
       'max-scale-invalid',
     )
@@ -210,6 +213,76 @@ describe('canonical bytes and the semantic hash', () => {
   })
 })
 
+describe('the profile limits', () => {
+  it('refuses what the v1 language leaves out, by name', () => {
+    const reasons = (schema: unknown) => validateAtomicProfile(schema).map((issue) => issue.reason)
+    const patterns = (pattern: string) =>
+      patternIssues({ type: 'string', pattern }).map((issue) => issue.reason)
+    expect(patterns('(a+)+\\1')).toEqual(['pattern-invalid'])
+    expect(patterns('(?<=a)b')).toEqual(['pattern-invalid'])
+    expect(patterns('a(?=b)')).toEqual(['pattern-invalid'])
+    expect(patterns('x'.repeat(2000))).toEqual(['pattern-too-large'])
+    expect(reasons({ type: 'string', enum: ['', 'b'] })).toEqual(['choice-value-invalid'])
+    expect(
+      reasons({ type: 'string', enum: Array.from({ length: 300 }, (_, i) => `c${i}`) }),
+    ).toEqual(['choice-too-many'])
+    expect(reasons({ type: 'string', format: 'qualy-decimal', 'x-qualy-maxScale': 19 })).toEqual([
+      'max-scale-invalid',
+    ])
+    expect(reasons({ type: 'string', maxLength: 20_000 })).toEqual(['length-bound-invalid'])
+    const wide = validateInputProfile({
+      type: 'object',
+      properties: Object.fromEntries(
+        Array.from({ length: 65 }, (_, i) => [`p${i}`, { type: 'boolean' }]),
+      ),
+      required: Array.from({ length: 65 }, (_, i) => `p${i}`),
+      additionalProperties: false,
+    })
+    expect(wide.map((issue) => issue.reason)).toContain('too-many-parameters')
+    const proto = validateInputProfile({
+      type: 'object',
+      properties: { ['__proto__']: { type: 'boolean' } },
+      required: ['__proto__'],
+      additionalProperties: false,
+    })
+    expect(proto.map((issue) => issue.reason)).toContain('parameter-name-invalid')
+  })
+
+  it('keeps the real calendar at the century edges Date.UTC remaps', () => {
+    expect(isDateString('0004-02-29')).toBe(true)
+    expect(isDateString('0005-02-29')).toBe(false)
+    expect(isDateString('0100-02-29')).toBe(false)
+    expect(isDateString('0400-02-29')).toBe(true)
+  })
+})
+
+describe('semantic identity beyond spelling', () => {
+  it('is unmoved by choice order, zero min-length and restated safe bounds', () => {
+    expect(semanticHashOfAtomic({ type: 'string', enum: ['b', 'a'] })).toBe(
+      semanticHashOfAtomic({ type: 'string', enum: ['a', 'b'] }),
+    )
+    expect(semanticHashOfAtomic({ type: 'string', minLength: 0, maxLength: 5 })).toBe(
+      semanticHashOfAtomic({ type: 'string', maxLength: 5 }),
+    )
+    expect(
+      semanticHashOfAtomic({
+        type: 'integer',
+        minimum: Number.MIN_SAFE_INTEGER,
+        maximum: Number.MAX_SAFE_INTEGER,
+      }),
+    ).toBe(
+      semanticHashOfAtomic({
+        type: 'integer',
+        minimum: Number.MIN_SAFE_INTEGER,
+        maximum: Number.MAX_SAFE_INTEGER,
+      }),
+    )
+    expect(semanticHashOfAtomic({ type: 'integer', minimum: -3, maximum: 9 })).not.toBe(
+      semanticHashOfAtomic({ type: 'integer', minimum: Number.MIN_SAFE_INTEGER, maximum: 9 }),
+    )
+  })
+})
+
 describe('the named converter', () => {
   it('renders a safe integer as a canonical decimal string', () => {
     expect(integerToDecimal(3)).toBe('3')
@@ -230,6 +303,10 @@ describe('the browser-safe root', () => {
       const text = fs.readFileSync(path.join(src, file), 'utf8')
       for (const match of text.matchAll(/from '([^']+)'/g)) {
         const specifier = match[1]!
+        // re2js is the one third party the root may carry: the frozen regex
+        // engine, pure JS, identical in Node and the browser - which is the
+        // very reason it was chosen over a native binding
+        if (specifier === 're2js') continue
         expect(specifier, `${file} imports ${specifier}`).toMatch(/^\.\//)
         walk(specifier.slice(2))
       }

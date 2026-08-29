@@ -12,6 +12,29 @@
 
 import { canonicalDecimal, compareDecimal, fractionalDigits, parseDecimal } from './decimal.ts'
 
+/**
+ * The profile's own version: the number a frozen contract records so a later
+ * change to what this language admits cannot silently reinterpret it.
+ */
+export const VALUE_SCHEMA_PROFILE_VERSION = 1
+
+/**
+ * The language's hard ceilings - a definition, not a UI nicety. Everything a
+ * schema admits costs compilation, canonicalization, validation and screen
+ * space downstream; v1 draws the lines wide enough for every real scoring
+ * contract and refuses the rest until a business case raises the profile
+ * version.
+ */
+export const PROFILE_LIMITS = Object.freeze({
+  inputParameters: 64,
+  parameterNameLength: 64,
+  choiceOptions: 256,
+  choiceValueLength: 128,
+  choiceLabelLength: 255,
+  textLengthBound: 10_000,
+  decimalMaxScale: 18,
+})
+
 export const ENUM_LABELS = 'x-qualy-enumLabels'
 export const DECIMAL_FORMAT = 'qualy-decimal'
 export const MAX_SCALE = 'x-qualy-maxScale'
@@ -87,14 +110,23 @@ const issue = (path: string, reason: string): ProfileIssue => ({ path, reason })
 
 const DATE_SYNTAX = /^(\d{4})-(\d{2})-(\d{2})$/
 
-/** RFC 3339 full-date on the real calendar (leap years included) */
+const leap = (year: number): boolean => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
+
+/**
+ * RFC 3339 full-date on the real calendar, by arithmetic alone: Date.UTC
+ * remaps years 0-99 into 1900-1999, so it cannot be trusted at the edges.
+ */
 export const isDateString = (value: string): boolean => {
   const match = DATE_SYNTAX.exec(value)
   if (match === null) return false
+  const year = Number(match[1])
   const month = Number(match[2])
   const day = Number(match[3])
   if (month < 1 || month > 12 || day < 1) return false
-  return day <= new Date(Date.UTC(Number(match[1]), month, 0)).getUTCDate()
+  const days = month === 2 && leap(year) ? 29 : MONTH_DAYS[month - 1]!
+  return day <= days
 }
 
 const onlyKeys = (value: Record<string, unknown>, allowed: readonly string[], path: string) =>
@@ -103,6 +135,10 @@ const onlyKeys = (value: Record<string, unknown>, allowed: readonly string[], pa
     .map((key) => issue(path === '' ? key : `${path}.${key}`, 'unknown-key'))
 
 const PARAMETER_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/
+
+// a legal identifier, but assigning it mutates the prototype instead of
+// defining a property; no scoring parameter gets to be named after that trap
+const FORBIDDEN_PARAMETER = '__proto__'
 
 const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => {
   if (!isRecord(value)) return [issue(path, 'not-an-object')]
@@ -139,10 +175,20 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
       found.push(issue(`${path}.enum`, 'choice-empty'))
       return found
     }
+    if (choices.length > PROFILE_LIMITS.choiceOptions)
+      found.push(issue(`${path}.enum`, 'choice-too-many'))
     if (!choices.every((choice) => typeof choice === 'string'))
       found.push(issue(`${path}.enum`, 'choice-not-a-string'))
-    else if (new Set(choices).size !== choices.length)
-      found.push(issue(`${path}.enum`, 'choice-duplicate'))
+    else {
+      if (new Set(choices).size !== choices.length)
+        found.push(issue(`${path}.enum`, 'choice-duplicate'))
+      if (
+        choices.some(
+          (choice: string) => choice === '' || choice.length > PROFILE_LIMITS.choiceValueLength,
+        )
+      )
+        found.push(issue(`${path}.enum`, 'choice-value-invalid'))
+    }
     const labels = value[ENUM_LABELS]
     if (labels !== undefined) {
       if (!isRecord(labels)) found.push(issue(`${path}.${ENUM_LABELS}`, 'not-an-object'))
@@ -152,6 +198,8 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
             found.push(issue(`${path}.${ENUM_LABELS}.${key}`, 'label-orphan'))
           if (typeof label !== 'string')
             found.push(issue(`${path}.${ENUM_LABELS}.${key}`, 'label-not-a-string'))
+          else if (label.length > PROFILE_LIMITS.choiceLabelLength)
+            found.push(issue(`${path}.${ENUM_LABELS}.${key}`, 'label-too-long'))
         }
       }
     }
@@ -167,7 +215,12 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
       path,
     )
     const maxScale = value[MAX_SCALE]
-    if (typeof maxScale !== 'number' || !Number.isInteger(maxScale) || maxScale < 0)
+    if (
+      typeof maxScale !== 'number' ||
+      !Number.isInteger(maxScale) ||
+      maxScale < 0 ||
+      maxScale > PROFILE_LIMITS.decimalMaxScale
+    )
       found.push(issue(`${path}.${MAX_SCALE}`, 'max-scale-invalid'))
     for (const key of [DECIMAL_MINIMUM, DECIMAL_MAXIMUM] as const) {
       const bound = value[key]
@@ -197,7 +250,12 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
   for (const key of ['minLength', 'maxLength'] as const) {
     const bound = value[key]
     if (bound === undefined) continue
-    if (typeof bound !== 'number' || !Number.isInteger(bound) || bound < 0)
+    if (
+      typeof bound !== 'number' ||
+      !Number.isInteger(bound) ||
+      bound < 0 ||
+      bound > PROFILE_LIMITS.textLengthBound
+    )
       found.push(issue(`${path}.${key}`, 'length-bound-invalid'))
   }
   const minLength = value['minLength']
@@ -205,17 +263,12 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
   if (typeof minLength === 'number' && typeof maxLength === 'number' && minLength > maxLength)
     found.push(issue(path, 'bounds-inverted'))
   const pattern = value['pattern']
-  if (pattern !== undefined) {
-    if (typeof pattern !== 'string' || pattern === '')
-      found.push(issue(`${path}.pattern`, 'pattern-invalid'))
-    else {
-      try {
-        new RegExp(pattern)
-      } catch {
-        found.push(issue(`${path}.pattern`, 'pattern-invalid'))
-      }
-    }
-  }
+  // only the SHAPE here: whether the pattern belongs to the frozen regex
+  // profile is ./regex's patternIssues, which the host adds explicitly - the
+  // engine must never ride into a formula artifact just because the schema
+  // constructors run there
+  if (pattern !== undefined && typeof pattern !== 'string')
+    found.push(issue(`${path}.pattern`, 'pattern-invalid'))
   return found
 }
 
@@ -235,13 +288,19 @@ export const validateInputProfile = (value: unknown): readonly ProfileIssue[] =>
     found.push(issue('properties', 'not-an-object'))
     return found
   }
+  const names = Object.keys(properties)
+  if (names.length > PROFILE_LIMITS.inputParameters)
+    found.push(issue('properties', 'too-many-parameters'))
   for (const [name, property] of Object.entries(properties)) {
-    if (!PARAMETER_NAME.test(name))
+    if (
+      !PARAMETER_NAME.test(name) ||
+      name === FORBIDDEN_PARAMETER ||
+      name.length > PROFILE_LIMITS.parameterNameLength
+    )
       found.push(issue(`properties.${name}`, 'parameter-name-invalid'))
     found.push(...atomicIssues(property, `properties.${name}`))
   }
   const required = value['required']
-  const names = Object.keys(properties)
   if (
     !Array.isArray(required) ||
     required.length !== names.length ||
@@ -262,12 +321,22 @@ export const deepFreeze = <T>(value: T): T => {
 const sorted = <T extends object>(value: T): T =>
   Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1))) as T
 
+declare const NormalizedMark: unique symbol
+
+/** an atomic schema that went through normalize: frozen, canonical bounds */
+export type NormalizedAtomicSchema = AtomicSchema & { readonly [NormalizedMark]: 'atomic' }
+
+/** an input schema that went through normalize: frozen, sorted, complete */
+export type NormalizedInputSchema = InputSchema & { readonly [NormalizedMark]: 'input' }
+
 /**
  * A structurally-shared normal form of a legal schema: keys sorted, decimal
  * bounds canonicalized, everything deep-frozen. Callers validate first; this
- * throws on a schema the profile rejected.
+ * throws on a schema the profile rejected. The brand on the return type is
+ * what downstream caches (the ajv validator's WeakMap) rely on: a normalized
+ * schema never mutates, so compiling it once is sound.
  */
-export const normalizeAtomicSchema = (schema: AtomicSchema): AtomicSchema => {
+export const normalizeAtomicSchema = (schema: AtomicSchema): NormalizedAtomicSchema => {
   const wrong = validateAtomicProfile(schema)
   if (wrong.length > 0)
     throw new TypeError(`not a profile schema: ${wrong[0]!.path} ${wrong[0]!.reason}`)
@@ -281,7 +350,7 @@ export const normalizeAtomicSchema = (schema: AtomicSchema): AtomicSchema => {
       ...(minimum === undefined ? {} : { [DECIMAL_MINIMUM]: canonicalDecimal(minimum)! }),
       ...(maximum === undefined ? {} : { [DECIMAL_MAXIMUM]: canonicalDecimal(maximum)! }),
     }
-    return deepFreeze(sorted(normalized))
+    return deepFreeze(sorted(normalized)) as NormalizedAtomicSchema
   }
   if (kind === 'choice') {
     const choice = schema as ChoiceSchema
@@ -292,12 +361,12 @@ export const normalizeAtomicSchema = (schema: AtomicSchema): AtomicSchema => {
         enum: [...choice.enum],
         ...(labels === undefined ? {} : { [ENUM_LABELS]: sorted({ ...labels }) }),
       }),
-    ) as AtomicSchema
+    ) as unknown as NormalizedAtomicSchema
   }
-  return deepFreeze(sorted({ ...schema })) as AtomicSchema
+  return deepFreeze(sorted({ ...schema })) as NormalizedAtomicSchema
 }
 
-export const normalizeInputSchema = (schema: InputSchema): InputSchema => {
+export const normalizeInputSchema = (schema: InputSchema): NormalizedInputSchema => {
   const wrong = validateInputProfile(schema)
   if (wrong.length > 0)
     throw new TypeError(`not a profile input: ${wrong[0]!.path} ${wrong[0]!.reason}`)
@@ -309,5 +378,5 @@ export const normalizeInputSchema = (schema: InputSchema): InputSchema => {
     ),
     required: names,
     additionalProperties: false,
-  })
+  }) as unknown as NormalizedInputSchema
 }

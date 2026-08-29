@@ -9,9 +9,11 @@
     ".": "./src/index.ts",
     "./package.json": "./package.json",
     "./validate": "./src/validate.ts",
-    "./hash": "./src/hash.ts"
+    "./hash": "./src/hash.ts",
+    "./regex": "./src/regex.ts"
   },
   "dependencies": {
-    "ajv": "catalog:"
+    "ajv": "catalog:",
+    "re2js": "catalog:"
   }
 }

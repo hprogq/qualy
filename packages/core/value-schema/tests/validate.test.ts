@@ -1,14 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import type { DecimalSchema, InputSchema } from '../src/profile.ts'
+import {
+  normalizeAtomicSchema,
+  normalizeInputSchema,
+  type AtomicSchema,
+  type InputSchema,
+} from '../src/profile.ts'
 import { validateValue } from '../src/validate.ts'
 
-const decimal: DecimalSchema = {
+// the validator takes NORMALIZED schemas only: the brand is what lets its
+// compile cache key by identity, so every fixture goes through the factory
+const atomic = (schema: AtomicSchema) => normalizeAtomicSchema(schema)
+const input = (schema: InputSchema) => normalizeInputSchema(schema)
+
+const decimal = atomic({
   type: 'string',
   format: 'qualy-decimal',
   'x-qualy-maxScale': 2,
   'x-qualy-minimum': '1.00',
   'x-qualy-maximum': '6.00',
-}
+})
 
 const reasons = (schema: Parameters<typeof validateValue>[0], value: unknown) =>
   validateValue(schema, value).map((issue) => issue.reason)
@@ -27,23 +37,23 @@ describe('instance validation', () => {
   })
 
   it('never coerces, defaults or strips', () => {
-    expect(reasons({ type: 'integer', minimum: 1, maximum: 10 }, '3')).toEqual(['type'])
-    expect(reasons({ type: 'boolean' }, 'true')).toEqual(['type'])
-    const input: InputSchema = {
+    expect(reasons(atomic({ type: 'integer', minimum: 1, maximum: 10 }), '3')).toEqual(['type'])
+    expect(reasons(atomic({ type: 'boolean' }), 'true')).toEqual(['type'])
+    const shape = input({
       type: 'object',
       properties: { n: { type: 'integer', minimum: 0, maximum: 9 } },
       required: ['n'],
       additionalProperties: false,
-    }
-    expect(reasons(input, {})).toEqual(['required'])
+    })
+    expect(reasons(shape, {})).toEqual(['required'])
     const extra = { n: 3, stray: 1 }
-    expect(reasons(input, extra)).toEqual(['additionalProperties'])
+    expect(reasons(shape, extra)).toEqual(['additionalProperties'])
     // removeAdditional stays off: the judged object is untouched
     expect(extra).toEqual({ n: 3, stray: 1 })
   })
 
   it('walks every property and reports paths', () => {
-    const input: InputSchema = {
+    const shape = input({
       type: 'object',
       properties: {
         level: { type: 'string', enum: ['a', 'b'] },
@@ -51,9 +61,32 @@ describe('instance validation', () => {
       },
       required: ['level', 'when'],
       additionalProperties: false,
-    }
-    const issues = validateValue(input, { level: 'c', when: '2026-02-29' })
+    })
+    const issues = validateValue(shape, { level: 'c', when: '2026-02-29' })
     expect(issues).toContainEqual({ path: '/level', reason: 'enum' })
     expect(issues).toContainEqual({ path: '/when', reason: 'format' })
+  })
+})
+
+describe('the frozen pattern engine inside ajv', () => {
+  it('compiles each pattern once and never crosses instances', () => {
+    // pinned because ajv keys its codegen scope by the engine result's
+    // toString(): a shared key silently reuses the FIRST compiled pattern
+    // for every later one (measured before the unique key existed)
+    const plates = atomic({ type: 'string', pattern: '^[A-Z][0-9]{6}$' })
+    const beads = atomic({ type: 'string', pattern: '^b+$' })
+    expect(validateValue(plates, 'A123456')).toEqual([])
+    expect(validateValue(plates, 'bbb').map((issue) => issue.reason)).toEqual(['pattern'])
+    expect(validateValue(beads, 'bbb')).toEqual([])
+    expect(validateValue(beads, 'A123456').map((issue) => issue.reason)).toEqual(['pattern'])
+  })
+
+  it('finishes a would-be catastrophic input in linear time', () => {
+    const tricky = atomic({ type: 'string', pattern: '(a|a)*b', maxLength: 10_000 })
+    const bait = `${'a'.repeat(2_000)}c`
+    const began = performance.now()
+    const issues = validateValue(tricky, bait)
+    expect(performance.now() - began).toBeLessThan(200)
+    expect(issues.map((issue) => issue.reason)).toEqual(['pattern'])
   })
 })
