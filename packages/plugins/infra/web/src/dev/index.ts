@@ -65,6 +65,14 @@ export const viteLogger = Effect.gen(function* () {
       emit(Effect.logWarning(message))
     },
     error: (message: string, options?: { error?: Error | null }) => {
+      // a websocket upgrade the backend REFUSED (401/429/503) ends with the
+      // browser hanging up and vite's proxy hitting EPIPE/ECONNRESET on the
+      // way out; that is the refusal working, not a fault worth a stack
+      if (message.includes('ws proxy') && /EPIPE|ECONNRESET/.test(message)) {
+        if (options?.error) loggedErrors.add(options.error)
+        emit(Effect.logDebug(message.split('\n')[0] ?? message))
+        return
+      }
       // upstream's logger counts an error as "warned" too
       state.warned = true
       if (options?.error) loggedErrors.add(options.error)

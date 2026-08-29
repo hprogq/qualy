@@ -98,10 +98,17 @@ export const formulaLanguageLayer = (options?: {
             }),
             tameTransport(unavailable),
           )
+          // the goodbye is DETACHED: closing a session waits for the os
+          // process to die (up to seconds), and holding the request scope -
+          // and with it the per-user seat - for a funeral makes every dev
+          // remount answer 429. The sandbox's own fail-closed permit keeps
+          // guarding the real resource.
           yield* Effect.addFinalizer(() =>
             client.CloseLsp({ sessionId: opened.sessionId }).pipe(
               tameTransport(unavailable),
               Effect.ignore,
+              Effect.forkDetach,
+              Effect.asVoid,
             ),
           )
           // sends are serialized by the bridge's single consumer; the
