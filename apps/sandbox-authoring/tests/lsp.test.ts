@@ -20,6 +20,7 @@ import { FormulaAuthoringRpcs, SANDBOX_RPC_MAX_FRAME_BYTES } from '@qualy/sandbo
 const external = process.env.QUALY_SANDBOX_PARITY_EXTERNAL === '1'
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-lsp-suite-'))
+const mainTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-lsp-suite-tmp-'))
 const socketPath = external
   ? path.resolve('.qualy/run/sandbox/authoring/authoring.sock')
   : path.join(tempDir, 'authoring.sock')
@@ -52,8 +53,11 @@ const ownedLspPids = (): Set<number> => {
 
 const lspProcessCount = (): number => ownedLspPids().size
 
-const lspWorkspaceCount = (): number =>
-  fs.readdirSync(os.tmpdir()).filter((entry) => entry.startsWith('qualy-lsp-')).length
+// workspace counting is attributed the same way as the pids: each authoring
+// instance this suite spawns gets its own TMPDIR, so a neighbour suite's
+// workspaces never enter the count
+const lspWorkspaceCount = (root: string = mainTmp): number =>
+  fs.readdirSync(root).filter((entry) => entry.startsWith('qualy-lsp-')).length
 
 let child: ChildProcess | undefined
 let scope: Scope.Scope
@@ -84,6 +88,7 @@ beforeAll(async () => {
       env: {
         ...process.env,
         QUALY_SANDBOX_AUTHORING_SOCKET: socketPath,
+        TMPDIR: mainTmp,
         // roomy on purpose: a first completion builds the whole program and
         // can outlast a tight idle window; the reaper case spawns its own
         // short-idle instance instead
@@ -299,10 +304,15 @@ describe.sequential('the formula language service', () => {
           typed.method === 'textDocument/publishDiagnostics' &&
           (typed.params?.diagnostics?.length ?? 0) > 0
         )
-      })) as { params: { diagnostics: { code: string; source: string; message: string }[] } }
+      })) as {
+        params: { version?: number; diagnostics: { code: string; source: string; message: string }[] }
+      }
       const codes = refusals.params.diagnostics.map((diagnostic) => diagnostic.code)
       expect(codes).toContain('formula/import')
       expect(codes).toContain('formula/any')
+      // the push names the document version it judged (LSP 3.15), so a real
+      // client can drop a stale policy report instead of guessing
+      expect(refusals.params.version).toBe(2)
       for (const diagnostic of refusals.params.diagnostics)
         expect(diagnostic.source).toBe('qualy-formula')
     } finally {
@@ -332,11 +342,13 @@ describe.sequential('the formula language service', () => {
     // a dedicated short-idle instance, so the tight window cannot shoot the
     // slower cases of the main suite in the back
     const ownDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-lsp-idle-'))
+    const ownTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-lsp-idle-tmp-'))
     const ownSocket = path.join(ownDir, 'authoring.sock')
     const own = spawn(process.execPath, [mainOf()], {
       env: {
         ...process.env,
         QUALY_SANDBOX_AUTHORING_SOCKET: ownSocket,
+        TMPDIR: ownTmp,
         QUALY_LSP_IDLE_MS: '1500',
         QUALY_LSP_SWEEP_MS: '300',
       },
@@ -361,9 +373,9 @@ describe.sequential('the formula language service', () => {
           Scope.provide(ownScope as Scope.Closeable),
         ),
       )
-      const workspacesBefore = lspWorkspaceCount()
+      const workspacesBefore = lspWorkspaceCount(ownTmp)
       const opened = await Effect.runPromise(ownClient.OpenLsp({ initialSource: FIXTURE }))
-      expect(lspWorkspaceCount()).toBe(workspacesBefore + 1)
+      expect(lspWorkspaceCount(ownTmp)).toBe(workspacesBefore + 1)
       const reaped = Date.now() + 15_000
       const sessionsOf = () =>
         Effect.runPromise(ownClient.GetAuthoringCapabilities()).then(
@@ -372,12 +384,13 @@ describe.sequential('the formula language service', () => {
       while ((await sessionsOf()) > 0 && Date.now() < reaped)
         await new Promise((resolve) => setTimeout(resolve, 250))
       expect(await sessionsOf()).toBe(0)
-      expect(lspWorkspaceCount()).toBe(workspacesBefore)
+      expect(lspWorkspaceCount(ownTmp)).toBe(workspacesBefore)
       void opened
     } finally {
       await Effect.runPromise(Scope.close(ownScope as Scope.Closeable, Exit.void))
       own.kill('SIGKILL')
       fs.rmSync(ownDir, { recursive: true, force: true })
+      fs.rmSync(ownTmp, { recursive: true, force: true })
     }
   }, 60_000)
 

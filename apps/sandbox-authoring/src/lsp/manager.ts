@@ -76,6 +76,8 @@ interface Session {
   lastClientSequence: number
   outSequence: number
   text: string
+  /** the client's own document version, echoed on policy pushes (LSP 3.15) */
+  documentVersion: number
   closing: boolean
 }
 
@@ -178,7 +180,11 @@ export const makeLspManager = (): LspManager => {
       JSON.stringify({
         jsonrpc: '2.0',
         method: 'textDocument/publishDiagnostics',
-        params: { uri: FORMULA_URI, diagnostics: policyDiagnostics(session.text) },
+        params: {
+          uri: FORMULA_URI,
+          version: session.documentVersion,
+          diagnostics: policyDiagnostics(session.text),
+        },
       }),
     )
   }
@@ -207,6 +213,11 @@ export const makeLspManager = (): LspManager => {
       return
     }
     if (message['method'] === 'window/logMessage') return
+    // diagnostics are PULL-only for the type voice: the policy voice owns
+    // textDocument/publishDiagnostics, and letting the server's (measured:
+    // always absent on TS7, but not contractual) empty pushes through would
+    // race the policy markers clean on any real client
+    if (message['method'] === 'textDocument/publishDiagnostics') return
     const rewritten = rewriteStrings(message, session.boundary.outbound)
     if (rewritten === null) return
     const serialized = JSON.stringify(rewritten)
@@ -302,6 +313,7 @@ export const makeLspManager = (): LspManager => {
         lastClientSequence: 0,
         outSequence: 0,
         text: initialSource,
+        documentVersion: 0,
         closing: false,
       }
       sessions.set(id, session)
@@ -391,11 +403,15 @@ export const makeLspManager = (): LspManager => {
         if (Buffer.byteLength(text, 'utf8') > SOURCE_LIMIT)
           return Effect.fail(new LspSourceTooLarge({ limit: SOURCE_LIMIT }))
         session.text = text
+        session.documentVersion = textDocument['version']
       }
 
       // full-text sync only in F1: an incremental change would make the
       // policy run against a stale document
       if (method === 'textDocument/didChange') {
+        const textDocument = params['textDocument']
+        if (!isJsonRecord(textDocument) || typeof textDocument['version'] !== 'number')
+          return Effect.fail(new LspMalformedFrame())
         const changes = (params as { contentChanges?: unknown[] }).contentChanges
         if (
           !Array.isArray(changes) ||
@@ -408,6 +424,7 @@ export const makeLspManager = (): LspManager => {
         if (Buffer.byteLength(text, 'utf8') > SOURCE_LIMIT)
           return Effect.fail(new LspSourceTooLarge({ limit: SOURCE_LIMIT }))
         session.text = text
+        session.documentVersion = textDocument['version']
       }
 
       session.lastClientSequence = request.sequence
@@ -421,7 +438,7 @@ export const makeLspManager = (): LspManager => {
   const events: LspManager['events'] = (sessionId) =>
     Effect.gen(function* () {
       const session = sessions.get(sessionId)
-      if (session === undefined) return yield* Effect.fail(new LspSessionNotFound())
+      if (session === undefined) return yield* new LspSessionNotFound()
       session.lastActivity = Date.now()
       // the events stream IS the client's liveness: when its scope ends -
       // disconnect, interrupt, shutdown - the session ends with it

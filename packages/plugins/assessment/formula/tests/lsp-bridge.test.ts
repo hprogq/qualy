@@ -503,6 +503,9 @@ describe.runIf(postgresAvailable).sequential('the formula language bridge', () =
       expect(
         JSON.stringify((policy.params as { diagnostics: unknown }).diagnostics),
       ).toContain('import')
+      // stale protection is version-keyed on the client; the push must say
+      // which document version it speaks for
+      expect((policy.params as { version?: number }).version).toBe(3)
     } finally {
       client.socket.close(1000)
       await client.closed
