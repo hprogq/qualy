@@ -1497,3 +1497,26 @@ destructive 并明说后果(`assessment/entry/withdraw-final-hint`);submit 开�
 连接过滤上 phase 变化对任何可看批次的人都可见。四个订阅页把它当 `sync` 级处理(整组失效重读)。
 服务端闸门本就按时钟即时翻转,此事件只负责把「已翻转」告诉还画着旧界面的浏览器;轮询兜底不变。
 「我的申报」工具栏的手动刷新键顺带补上 getBatch 失效(此前漏掉阶段标头)。
+
+**32.77 审核认定(Recognition)落地为独立事实;§32.4 与 §32.57 随之重新界定**(2026-08-29,用户裁决)。
+
+`docs/assessment-formula-recognition.md` 定案为「材料 → 审核认定 → 严格类型参数绑定 → 确定性
+计分函数 → 精确计分」的实施蓝图。本条把它对既有裁决的改写正式登记:
+
+一、**§32.4「审核不定分」修订**:approve 决定可以携带受冻结 Schema 约束的 Recognition,包括
+reviewer-only decimal 等政策授权的人工核定参数;但 ReviewDecision 不直接写最终 amount,审核人
+永远不能直接修改 Breakdown/总分——amount 必须由冻结的 Calculator/Formula 产生,再进入
+Aggregator/ScoreGroup。administrative record 继续表示「工作人员直接登记事实」,不再承担
+「所有人工定值」的唯一通道。§32.4 尾句预留的 `range` 计算器由 Formula 取代,不再实现。
+
+二、**§32.57 重新界定**:该条预留的 ReviewAdjudication 即 Recognition,且升格为**独立于
+`EntryRevision.payload` 的正式 append-only 事实**(`entry_recognitions`),不是对学生 payload
+的修改或覆盖;「计分读生效事实」的边界不变——改动仍只发生在输入收集段,`calcParticipant`
+不动。`suggestedPayload` 仍然只是驳回时的只读建议(§32.2 照旧),与 Recognition 语义相反,
+两者并存、互不替代。
+
+三、**实施裁决**:`@qualy/formula` SDK 手写零第三方依赖(蓝图 §8 原 TypeBox 建议不采用),
+`@qualy/value-schema` 的受限 JSON Schema 是唯一运行时合同;蓝图第四阶段拆为 4a(发布闭环 +
+服务端完整诊断)与 4b(Monaco + native TS7 LSP,非发布安全门禁);公式 typecheck 的临时
+tsconfig 不启用 @effect/language-service。施工按蓝图 §38 分阶段推进,第一批为 value-schema →
+formula SDK → sandbox → formula 插件 4a,不触及审核链与 assessment 表(那是后续批次)。

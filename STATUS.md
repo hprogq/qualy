@@ -10085,3 +10085,23 @@ telemetry 剩下的两类事情——进 VPC 后的环境复验、TMP/Grafana �
 
 **验收**:`pnpm typecheck` 零错;`pnpm test` **910 passed | 17 skipped**(唯一失败即上面那条 5173);
 `pnpm test:browser` **227 passed**;prettier 通过。
+
+## 严格类型计分:裁决登记与第一批施工启动(2026-08-29)
+
+`docs/assessment-formula-recognition.md` 经评审定案为实施蓝图(严格类型认定与可编程计分:
+Evidence → Recognition → typed Formula → 精确计分)。规划期实查结论:ajv 8.20.0、esbuild 0.28.2、
+quickjs-emscripten 三件套 0.32.0 均真实存在;`tsc --lsp -stdio` 在 workspace 原生二进制上可用;
+QuickJS 0.32 支持引擎层 intrinsics 开关(Date/Eval 不进 context,比蓝图原设想的执行前 delete 更彻底)。
+
+**裁决**(详见 assessment-design.md §32.77 与蓝图内嵌修订):§32.4「审核不定分」修订为「审核
+不写 amount」——approve 可携带受冻结 Schema 约束的 Recognition(含 reviewer-only decimal),
+amount 永远出自 Calculator/Formula → Aggregator/ScoreGroup;§32.57 的 ReviewAdjudication 落地为
+独立 append-only 事实;`@qualy/formula` 手写零依赖(TypeBox 不采用);第四阶段拆 4a/4b(LSP 非
+发布安全门禁);公式 typecheck 临时 tsconfig 不启用 @effect/language-service。批准附带 15 项
+工程修正已并入计划(converter 域证明、Decimal 三层语义、OS temp 双包布置、browser-safe 子路径、
+deep-freeze、scoped worker pool、esbuild 虚拟 namespace 确定性、FORMULA_ABI_VERSION、编译管线
+资源控制、host-validate/QuickJS-decode 分工、q.fail 结构化、审计动作、dependsOn 真实推导)。
+
+**第一批范围**:阶段 0(本条)→ `@qualy/value-schema` → `@qualy/formula` + TS7 spike(硬闸门)→
+`@qualy/plugin-sandbox`(硬闸门)→ `@qualy/plugin-assessment-formula` 4a;完成后停,不进入
+Recognition/assessment 表改造,不做 4b。下一步:阶段一建 `packages/core/value-schema`。
