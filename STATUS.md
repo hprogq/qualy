@@ -10692,3 +10692,35 @@ workspace 目录归零。**容器 parity**:重建 hardened authoring 镜像后 e
 **验收**:`pnpm typecheck` 零错;`pnpm test` **1087 passed | 17 skipped**(+9);
 `pnpm test:browser` **227 passed**(本轮未动 browser,基线不变);lsp 套件 host 4s /
 容器 0.7s 双绿。**F1 完成,STOP——等复核后再谈 F2 authenticated WebSocket bridge。**
+
+## F1.1:LSP 边界收口(2026-08-30)
+
+复核裁定 F1 架构通过、三项边界问题先关再谈 F2。全部落地:
+
+**①URI/path boundary 分家**:源码文本是 opaque payload(只受 size + source policy),
+不再递归把所有字符串当 URI——`const homepage = "https://example.com"` 与注释里的 URL
+不再被 LspUriRefused(门禁:含 URL/路径散文的公式 didOpen/diagnostic 正常)。入站只对
+URI 字段(textDocument.uri)做两虚拟 scheme 校验;**initialize 的 rootUri/rootPath/
+workspaceFolders 由 service 一律覆写为 null**——client 不得选择 TS7 的 workspace 根
+(门禁:rootPath=/etc 与 /app 均被丢弃,completion 照常且事件里永不出现该路径)。
+出站深扫规则改为:file:// 与裸绝对路径必须属于 session workspace(重写为虚拟形态),
+其他文件系统引用整条弃;https:// 等非文件 scheme 与普通文案放行(uris.test 单测钉死
+双向矩阵,含 `/app/...` 沉没与 poisoned completion data 整条弃)。
+
+**②source ceiling 统一**:didOpen/didChange 与 OpenLsp 同守 SOURCE_LIMIT,超限返回
+**LspSourceTooLarge**(已入 SendLsp error union;didChange 原来误报 LspFrameTooLarge
+且 bytes 是整帧——修正);didOpen 严格校验 text/languageId/version 类型,畸形帧不再
+下送 TS7(门禁:小 initialSource + ~700KiB didOpen/didChange 均被 LspSourceTooLarge)。
+
+**③会话上限 permit 化**:名额在 open 的首个同步段原子预扣(并发窗口消失),
+closeSession 走 SIGTERM→**等 exit**≤1s→SIGKILL→**再等 exit**(3s fail-safe)→删
+workspace→end queue→**才释放 permit**——closing 进程真正死亡前仍占名额(门禁:16 路
+并发 OpenLsp 恰好 8 成功 8 LspBusy、live tsc 进程 ≤8、全关后名额回满可再开;
+CloseLsp 返回即断言 pid 已死、workspace 已删,零轮询)。
+
+**④hardening**:LSP 子进程 `cwd: workspace.root`(最小权限);边界注释改口——copied
+workspace 圈定的是语言服务器可导航的 project 面,OS 边界仍是 authoring 容器。
+
+**验收**:host 18/18(uris 5 + lsp 13);hardened 容器 parity **13/13**(重建镜像);
+`pnpm typecheck` 零错;`pnpm test` 1096 passed | 17 skipped;`pnpm test:browser` 227
+(基线不变)。**F2 仍 HOLD,等复核。**

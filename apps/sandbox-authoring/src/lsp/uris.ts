@@ -1,15 +1,28 @@
 /**
- * The URI boundary. The client's whole world is two virtual schemes:
+ * The URI/path boundary, in two distinct trades:
+ *
+ * INBOUND, only URI-bearing FIELDS are judged (textDocument.uri and
+ * friends, dispatched by the manager) - source text is an opaque payload
+ * that gets a size check and the source policy, never URI rules. A formula
+ * saying `const homepage = "https://example.com"` is code, not filesystem
+ * capability. The accepted universe is exactly two virtual schemes:
  *
  *   qualy-formula:///formula.ts
- *   qualy-formula-sdk:///formula/src/...   (the copied sdk tree)
+ *   qualy-formula-sdk:///...        (the copied sdk tree, traversal-proof)
  *
- * Inbound, only those two translate into the session workspace; every
- * other scheme or path - file://, absolute paths, traversal - is refused.
- * Outbound, workspace file URIs translate back (file URLs percent-encode
- * `@`, so matching happens on DECODED pathnames), and a message that still
- * carries any real path after rewriting is dropped whole: better a lost
- * hover than a leaked filesystem.
+ * OUTBOUND, the whole payload is swept, because the server smuggles paths
+ * into unknowable places (completion item data, messages): file:// URLs
+ * and bare absolute paths must belong to the session workspace and come
+ * out rewritten (URL or path form), any FOREIGN filesystem reference drops
+ * the entire message, and non-filesystem text - https:// links, type
+ * prose - passes untouched. file URLs percent-encode `@`, so matching
+ * happens on DECODED pathnames, against the REAL path spelling (macos tmp
+ * lives behind a /var -> /private/var symlink and the server answers in
+ * realpaths).
+ *
+ * This boundary scopes what the LANGUAGE SERVER can be talked into and
+ * what its answers may reveal; the operating-system boundary around the
+ * whole process stays the authoring container.
  */
 
 import os from 'node:os'
@@ -18,19 +31,22 @@ import { pathToFileURL } from 'node:url'
 
 export const FORMULA_URI = 'qualy-formula:///formula.ts'
 const SDK_SCHEME = 'qualy-formula-sdk:///'
+const PATH_FORM = 'qualy-formula:'
 
 export interface UriBoundary {
-  /** rewrite an inbound client value; null means refused */
-  readonly inbound: (value: string) => string | null
-  /** rewrite an outbound value; null means it may not leave */
+  /** translate one inbound URI FIELD; null means refused */
+  readonly inboundUri: (value: string) => string | null
+  /** rewrite one outbound string; null means the whole message may not leave */
   readonly outbound: (value: string) => string | null
   /** true when a serialized message still smells like a real path */
   readonly leaks: (serialized: string) => boolean
 }
 
 export const makeUriBoundary = (root: string): UriBoundary => {
-  const formulaFileUri = pathToFileURL(path.join(root, 'formula.ts')).href
+  const formulaPath = path.join(root, 'formula.ts')
+  const formulaFileUri = pathToFileURL(formulaPath).href
   const sdkFsRoot = path.join(root, 'node_modules', '@qualy') + path.sep
+
   const decodedPathOf = (value: string): string | null => {
     try {
       const url = new URL(value)
@@ -41,16 +57,8 @@ export const makeUriBoundary = (root: string): UriBoundary => {
     }
   }
 
-  const inbound = (value: string): string | null => {
+  const inboundUri = (value: string): string | null => {
     if (value === FORMULA_URI) return formulaFileUri
-    // the path form: opaque payloads (completion item data...) carry BARE
-    // workspace paths, rewritten on the way out; here they come home
-    if (value.startsWith('qualy-formula:/') && !value.startsWith('qualy-formula://')) {
-      const relative = value.slice('qualy-formula:'.length)
-      const resolved = path.resolve(root, `.${relative}`)
-      if (resolved !== root && !resolved.startsWith(root + path.sep)) return null
-      return resolved
-    }
     if (value.startsWith(SDK_SCHEME)) {
       const relative = decodeURIComponent(value.slice(SDK_SCHEME.length))
       const resolved = path.resolve(sdkFsRoot, relative)
@@ -59,27 +67,34 @@ export const makeUriBoundary = (root: string): UriBoundary => {
       if (!resolved.startsWith(sdkFsRoot)) return null
       return pathToFileURL(resolved).href
     }
-    // no other scheme crosses; a bare path is not a URI and passes through
-    // untouched only when it cannot be one
-    if (value.includes('://')) return null
-    return value
+    // the path form coming home (opaque payloads echoed back by a client)
+    if (value.startsWith(PATH_FORM) && !value.startsWith('qualy-formula://')) {
+      const relative = value.slice(PATH_FORM.length)
+      const resolved = path.resolve(root, `.${relative}`)
+      if (resolved !== root && !resolved.startsWith(root + path.sep)) return null
+      return resolved
+    }
+    return null
   }
 
   const outbound = (value: string): string | null => {
     if (!value.includes('://')) {
-      // bare workspace paths (completion item data and friends) leave in a
-      // path form the inbound side reverses; other text passes untouched
-      if (value.startsWith(root + path.sep) || value === root)
-        return `qualy-formula:${value.slice(root.length)}`
+      // bare paths: the workspace's own leave in a reversible path form,
+      // any other absolute filesystem reference sinks the message - and
+      // ordinary prose is not a path
+      if (value === formulaPath || value === root) return `${PATH_FORM}${value.slice(root.length)}`
+      if (value.startsWith(root + path.sep)) return `${PATH_FORM}${value.slice(root.length)}`
+      if (value.startsWith('/') && value.length > 1 && !value.startsWith('//')) return null
       return value
     }
     if (value === formulaFileUri) return FORMULA_URI
     const decoded = decodedPathOf(value)
     if (decoded === null) {
-      // not a file url; foreign schemes may not leave either
-      return value.startsWith('qualy-formula') ? value : null
+      // not a file url: virtual schemes stay, every other scheme
+      // (https, mailto...) is plain content, not filesystem capability
+      return value
     }
-    if (decoded === path.join(root, 'formula.ts')) return FORMULA_URI
+    if (decoded === formulaPath) return FORMULA_URI
     if (decoded.startsWith(sdkFsRoot))
       return SDK_SCHEME + decoded.slice(sdkFsRoot.length).split(path.sep).join('/')
     return null
@@ -89,7 +104,7 @@ export const makeUriBoundary = (root: string): UriBoundary => {
   const leaks = (serialized: string): boolean =>
     serialized.includes(root) || serialized.includes(`${tmpRoot}${path.sep}qualy-lsp-`)
 
-  return { inbound, outbound, leaks }
+  return { inboundUri, outbound, leaks }
 }
 
 /** walk a decoded json-rpc value, rewriting every string; null = refused */

@@ -365,6 +365,71 @@ describe.sequential('the formula language service', () => {
     }
   }, 60_000)
 
+  it('treats source text as code, never as filesystem capability', async () => {
+    const worldly = `// docs: https://example.com/how and file:///not/a/real/concern
+const homepage = "https://example.com"
+const notes = "see /usr/share/doc for prose"
+export default homepage
+`
+    const session = await openSession(worldly)
+    try {
+      await initialize(session, worldly)
+      const policy = (await session.awaitEvent(
+        (message) => (message as { method?: string }).method === 'textDocument/publishDiagnostics',
+      )) as { params: { diagnostics: unknown[] } }
+      expect(policy.params.diagnostics).toEqual([])
+      const diagnostics = (await session.request('textDocument/diagnostic', {
+        textDocument: { uri: 'qualy-formula:///formula.ts' },
+      })) as { kind: string }
+      expect(diagnostics.kind).toBe('full')
+    } finally {
+      await session.close()
+    }
+  }, 60_000)
+
+  it('owns the workspace: client-proposed roots are discarded', async () => {
+    for (const rootPath of ['/etc', '/app']) {
+      const session = await openSession(FIXTURE)
+      try {
+        const result = (await session.request('initialize', {
+          processId: null,
+          rootUri: `file://${rootPath}`,
+          rootPath,
+          workspaceFolders: [{ uri: `file://${rootPath}`, name: 'evil' }],
+          capabilities: {},
+        })) as { capabilities?: unknown }
+        expect(result.capabilities, rootPath).toBeTypeOf('object')
+        await session.send({ method: 'initialized', params: {} })
+        await session.send({
+          method: 'textDocument/didOpen',
+          params: {
+            textDocument: {
+              uri: 'qualy-formula:///formula.ts',
+              languageId: 'typescript',
+              version: 1,
+              text: FIXTURE,
+            },
+          },
+        })
+        // the language service still works from ITS OWN workspace, and no
+        // event ever mentions the proposed root
+        const lines = FIXTURE.split('\n')
+        const returnLine = lines.findIndex((line) => line.includes('return input.value'))
+        const completion = (await session.request('textDocument/completion', {
+          textDocument: { uri: 'qualy-formula:///formula.ts' },
+          position: { line: returnLine, character: lines[returnLine]!.indexOf('input.') + 6 },
+        })) as { items?: { label: string }[] } | { label: string }[]
+        const labels = (Array.isArray(completion) ? completion : (completion.items ?? [])).map(
+          (item) => item.label,
+        )
+        expect(labels, rootPath).toContain('value')
+        for (const event of session.events) expect(event.jsonRpc, rootPath).not.toContain(rootPath)
+      } finally {
+        await session.close()
+      }
+    }
+  }, 120_000)
+
   it('takes a departing events subscriber as the client leaving', async () => {
     const session = await openSession(FIXTURE)
     await initialize(session, FIXTURE)
@@ -419,6 +484,66 @@ describe.sequential('the hostile author', () => {
         if (Exit.isFailure(outcome))
           expect(String(outcome.cause), method).toContain('LspMethodRefused')
       }
+    } finally {
+      await session.close()
+    }
+  }, 60_000)
+
+  it('holds the formula source ceiling on didOpen and didChange alike', async () => {
+    const session = await openSession('export default 1')
+    try {
+      await session.request('initialize', { processId: null, rootUri: null, capabilities: {} })
+      await session.send({ method: 'initialized', params: {} })
+      // ~700KiB: comfortably inside the 1MiB frame, far past SOURCE_LIMIT
+      const oversized = `export default 1 // ${'x'.repeat(700 * 1024)}`
+      const opened = await session.raw(
+        session.nextSequence(),
+        JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'textDocument/didOpen',
+          params: {
+            textDocument: {
+              uri: 'qualy-formula:///formula.ts',
+              languageId: 'typescript',
+              version: 1,
+              text: oversized,
+            },
+          },
+        }),
+      )
+      expect(Exit.isFailure(opened)).toBe(true)
+      if (Exit.isFailure(opened)) expect(String(opened.cause)).toContain('LspSourceTooLarge')
+
+      const malformed = await session.raw(
+        session.nextSequence(),
+        JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'textDocument/didOpen',
+          params: {
+            textDocument: {
+              uri: 'qualy-formula:///formula.ts',
+              languageId: 'typescript',
+              version: 1,
+            },
+          },
+        }),
+      )
+      expect(Exit.isFailure(malformed)).toBe(true)
+      if (Exit.isFailure(malformed)) expect(String(malformed.cause)).toContain('LspMalformedFrame')
+
+      const changed = await session.raw(
+        session.nextSequence(),
+        JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'textDocument/didChange',
+          params: {
+            textDocument: { uri: 'qualy-formula:///formula.ts', version: 2 },
+            contentChanges: [{ text: oversized }],
+          },
+        }),
+      )
+      expect(Exit.isFailure(changed)).toBe(true)
+      if (Exit.isFailure(changed)) expect(String(changed.cause)).toContain('LspSourceTooLarge')
     } finally {
       await session.close()
     }
@@ -487,18 +612,59 @@ describe.sequential('the hostile author', () => {
     await session.stopEvents()
   }, 60_000)
 
-  it('holds the global session ceiling', async () => {
-    const sessions = []
+  it('holds the global ceiling as a process permit, even under concurrency', async () => {
+    const attempts = await Promise.all(
+      Array.from({ length: 16 }, () =>
+        Effect.runPromiseExit(client.OpenLsp({ initialSource: 'export default 1' })),
+      ),
+    )
+    const openedIds = attempts.flatMap((exit) =>
+      Exit.isSuccess(exit) ? [exit.value.sessionId] : [],
+    )
+    const refused = attempts.length - openedIds.length
     try {
-      for (let i = 0; i < 8; i += 1) sessions.push(await openSession('export default 1'))
+      expect(openedIds.length).toBe(8)
+      expect(refused).toBe(8)
+      if (!external) {
+        const live = execFileSync('ps', ['-ax', '-o', 'command'], { encoding: 'utf8' })
+          .split('\n')
+          .filter(
+            (line) => line.includes('@typescript+typescript-') && line.includes('--lsp'),
+          ).length
+        expect(live).toBeLessThanOrEqual(8 + 1) // +1 tolerates a parallel suite's server
+      }
       const overflow = await Effect.runPromiseExit(
         client.OpenLsp({ initialSource: 'export default 1' }),
       )
       expect(Exit.isFailure(overflow)).toBe(true)
       if (Exit.isFailure(overflow)) expect(String(overflow.cause)).toContain('LspBusy')
     } finally {
-      for (const session of sessions) await session.close()
+      for (const sessionId of openedIds) await Effect.runPromise(client.CloseLsp({ sessionId }))
     }
     expect(await activeSessions()).toBe(0)
+    // permits came back: a fresh session opens again at once
+    const reopened = await Effect.runPromise(client.OpenLsp({ initialSource: 'export default 1' }))
+    await Effect.runPromise(client.CloseLsp({ sessionId: reopened.sessionId }))
   }, 120_000)
+
+  it('returns from close only once the process is dead and the workspace gone', async () => {
+    if (external) return // pids and tmp directories are the container's own
+    const workspacesBefore = lspWorkspaceCount()
+    const pidsOf = (): Set<number> =>
+      new Set(
+        execFileSync('ps', ['-ax', '-o', 'pid,command'], { encoding: 'utf8' })
+          .split('\n')
+          .filter((line) => line.includes('@typescript+typescript-') && line.includes('--lsp'))
+          .map((line) => Number(line.trim().split(/\s+/)[0])),
+      )
+    const before = pidsOf()
+    const session = await openSession(FIXTURE)
+    await initialize(session, FIXTURE)
+    const born = [...pidsOf()].filter((pid) => !before.has(pid))
+    expect(born.length).toBe(1)
+    await session.close()
+    // no polling: by the time CloseLsp answered, both must already be true
+    expect(pidsOf().has(born[0]!)).toBe(false)
+    expect(lspWorkspaceCount()).toBe(workspacesBefore)
+  }, 60_000)
 })

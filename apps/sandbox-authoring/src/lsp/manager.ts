@@ -148,6 +148,14 @@ const ABSOLUTE_MS = limitOf('QUALY_LSP_ABSOLUTE_MS', LSP_SESSION_LIMITS.absolute
 
 export const makeLspManager = (): LspManager => {
   const sessions = new Map<string, Session>()
+  // a PROCESS permit, not a map count: reserved synchronously before the
+  // first await in open (so concurrent opens cannot both see room), and
+  // released only after the OS process is confirmed dead - a closing
+  // session still occupies its slot
+  let permits = LSP_SESSION_LIMITS.globalSessions
+  const releasePermit = (): void => {
+    permits += 1
+  }
 
   const pushEvent = (session: Session, jsonRpc: string): void => {
     session.outSequence += 1
@@ -210,31 +218,52 @@ export const makeLspManager = (): LspManager => {
     } catch {
       // a dead stdin changes nothing below
     }
-    await new Promise<void>((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) return resolve()
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL')
-        resolve()
-      }, 1_000)
-      child.once('exit', () => {
-        clearTimeout(timer)
-        resolve()
+    // the permit is held until the OS process is REALLY gone: SIGTERM, wait
+    // up to a second, SIGKILL, wait again (with a fail-safe deadline for a
+    // truly unkillable state) - only then is a slot free again
+    const gone = (deadlineMs: number): Promise<boolean> =>
+      new Promise((resolve) => {
+        if (child.exitCode !== null || child.signalCode !== null) return resolve(true)
+        const timer = setTimeout(() => {
+          child.off('exit', settle)
+          resolve(false)
+        }, deadlineMs)
+        const settle = () => {
+          clearTimeout(timer)
+          resolve(true)
+        }
+        child.once('exit', settle)
       })
-      child.kill('SIGTERM')
-    })
+    child.kill('SIGTERM')
+    if (!(await gone(1_000))) {
+      child.kill('SIGKILL')
+      await gone(3_000)
+    }
     dropLspWorkspace(session.workspace)
     Queue.endUnsafe(session.outbound)
+    releasePermit()
   }
 
   const open: LspManager['open'] = (initialSource) =>
-    Effect.gen(function* () {
+    Effect.suspend(() => {
       if (Buffer.byteLength(initialSource, 'utf8') > SOURCE_LIMIT)
-        return yield* Effect.fail(new LspSourceTooLarge({ limit: SOURCE_LIMIT }))
-      if (sessions.size >= LSP_SESSION_LIMITS.globalSessions)
-        return yield* Effect.fail(new LspBusy({ limit: LSP_SESSION_LIMITS.globalSessions }))
+        return Effect.fail(new LspSourceTooLarge({ limit: SOURCE_LIMIT }))
+      if (permits <= 0)
+        return Effect.fail(new LspBusy({ limit: LSP_SESSION_LIMITS.globalSessions }))
+      permits -= 1
+      return openReserved(initialSource).pipe(Effect.onError(() => Effect.sync(releasePermit)))
+    })
+
+  const openReserved = (
+    initialSource: string,
+  ): Effect.Effect<{ sessionId: string }, LspBusy | LspSourceTooLarge> =>
+    Effect.gen(function* () {
       const id = randomBytes(24).toString('base64url')
       const workspace = makeLspWorkspace(initialSource)
       const child = spawn(process.execPath, [tscEntry, '--lsp', '-stdio'], {
+        // least privilege: the server's working directory is its own
+        // session, never the app's
+        cwd: workspace.root,
         stdio: ['pipe', 'pipe', 'ignore'],
       })
       const outbound = yield* Queue.bounded<OutboundEvent, Cause.Done>(
@@ -289,11 +318,50 @@ export const makeLspManager = (): LspManager => {
         return Effect.fail(new LspMethodRefused({ method: '<response>' }))
       if (!INBOUND_METHODS.has(method)) return Effect.fail(new LspMethodRefused({ method }))
 
+      // URI-bearing FIELDS are judged; source text is an opaque payload.
+      // A formula saying "https://example.com" is code, not capability -
+      // only the metadata the server would treat as filesystem access is
+      // validated and rewritten here.
+      const params = (message['params'] ?? {}) as Record<string, unknown>
+
+      if (method === 'initialize') {
+        // the service owns the workspace: whatever rootUri/rootPath/
+        // workspaceFolders the client proposed is discarded outright
+        message['params'] = {
+          ...params,
+          rootUri: null,
+          rootPath: null,
+          workspaceFolders: null,
+        }
+      } else if (params['textDocument'] !== undefined) {
+        const textDocument = params['textDocument'] as Record<string, unknown>
+        const uri = textDocument['uri']
+        if (typeof uri !== 'string') return Effect.fail(new LspMalformedFrame())
+        const resolved = session.boundary.inboundUri(uri)
+        if (resolved === null) return Effect.fail(new LspUriRefused({ uri }))
+        textDocument['uri'] = resolved
+      }
+
+      if (method === 'textDocument/didOpen') {
+        const textDocument = params['textDocument'] as Record<string, unknown>
+        const text = textDocument['text']
+        if (
+          typeof text !== 'string' ||
+          typeof textDocument['languageId'] !== 'string' ||
+          typeof textDocument['version'] !== 'number'
+        )
+          return Effect.fail(new LspMalformedFrame())
+        // the FORMULA source ceiling, not just the frame's: an lsp frame
+        // may be a megabyte, a formula may not
+        if (Buffer.byteLength(text, 'utf8') > SOURCE_LIMIT)
+          return Effect.fail(new LspSourceTooLarge({ limit: SOURCE_LIMIT }))
+        session.text = text
+      }
+
       // full-text sync only in F1: an incremental change would make the
       // policy run against a stale document
       if (method === 'textDocument/didChange') {
-        const changes = (message['params'] as { contentChanges?: unknown[] } | undefined)
-          ?.contentChanges
+        const changes = (params as { contentChanges?: unknown[] }).contentChanges
         if (
           !Array.isArray(changes) ||
           changes.length !== 1 ||
@@ -303,23 +371,13 @@ export const makeLspManager = (): LspManager => {
           return Effect.fail(new LspMethodRefused({ method: 'textDocument/didChange#incremental' }))
         const text = (changes[0] as { text: string }).text
         if (Buffer.byteLength(text, 'utf8') > SOURCE_LIMIT)
-          return Effect.fail(new LspFrameTooLarge({ bytes, limit: LSP_FRAME_LIMIT }))
+          return Effect.fail(new LspSourceTooLarge({ limit: SOURCE_LIMIT }))
         session.text = text
       }
-      if (method === 'textDocument/didOpen') {
-        const text = (message['params'] as { textDocument?: { text?: unknown } } | undefined)
-          ?.textDocument?.text
-        if (typeof text === 'string') session.text = text
-      }
 
-      const rewritten = rewriteStrings(message, session.boundary.inbound)
-      if (rewritten === null) {
-        const offender = findRefusedUri(message, session.boundary)
-        return Effect.fail(new LspUriRefused({ uri: offender ?? '<unknown>' }))
-      }
       session.lastClientSequence = request.sequence
       session.lastActivity = Date.now()
-      session.child.stdin?.write(encodeFrame(JSON.stringify(rewritten)))
+      session.child.stdin?.write(encodeFrame(JSON.stringify(message)))
       if (method === 'textDocument/didOpen' || method === 'textDocument/didChange')
         pushPolicy(session)
       return Effect.void
@@ -364,20 +422,4 @@ export const makeLspManager = (): LspManager => {
     closeAll,
     workspaceOf: (sessionId) => sessions.get(sessionId)?.workspace.root,
   }
-}
-
-const findRefusedUri = (message: unknown, boundary: UriBoundary): string | undefined => {
-  let found: string | undefined
-  const walk = (value: unknown): void => {
-    if (found !== undefined) return
-    if (typeof value === 'string') {
-      if (boundary.inbound(value) === null) found = value
-      return
-    }
-    if (Array.isArray(value)) for (const entry of value) walk(entry)
-    else if (typeof value === 'object' && value !== null)
-      for (const entry of Object.values(value)) walk(entry)
-  }
-  walk(message)
-  return found
 }

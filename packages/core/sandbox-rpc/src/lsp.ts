@@ -64,6 +64,7 @@ export type LspSendError =
   | LspSessionNotFound
   | LspSequenceRejected
   | LspFrameTooLarge
+  | LspSourceTooLarge
   | LspMethodRefused
   | LspUriRefused
   | LspMalformedFrame
@@ -89,6 +90,7 @@ export const lspRpcs = [
       LspSessionNotFound,
       LspSequenceRejected,
       LspFrameTooLarge,
+      LspSourceTooLarge,
       LspMethodRefused,
       LspUriRefused,
       LspMalformedFrame,
