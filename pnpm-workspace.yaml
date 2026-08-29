@@ -25,6 +25,9 @@ catalog:
   quickjs-emscripten-core: 0.32.0
   '@jitl/quickjs-wasmfile-release-sync': 0.32.0
   '@jitl/quickjs-wasmfile-debug-sync': 0.32.0
+  # bundles admin formulas into self-contained sandbox artifacts at publish
+  # time; a runtime dependency of the formula plugin, not just tooling
+  esbuild: 0.28.2
   tsx: 4.23.1
   # every @mikro-orm package sits on one version: the driver re-exports core's
   # types, and two copies of core would make an entity defined against one

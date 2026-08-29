@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:a95afb5a0a17d9266f26edff02d6bb8d67a09369bcc76f9643e9cf897d4953a2",
-  "resolutionHash": "sha256:2b007684a2d84d614e9cabd6ed866ef3beb904a424a810e99811b94b25beb40f",
+  "manifestHash": "sha256:b121dabb4728c925631e2a71c979240f9c0585304d4627a37c398980ac34dd71",
+  "resolutionHash": "sha256:56f15ef733202293525275a6fe8f3032e2aa02ff0b9d03e7e4a2f443ff3895cd",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -66,6 +66,27 @@
     "@qualy/plugin-assessment-evidence": {
       "version": "0.0.0",
       "state": "active"
+    },
+    "@qualy/plugin-assessment-formula": {
+      "version": "0.0.0",
+      "state": "active",
+      "contributions": {
+        "database": {
+          "entities": [
+            "FormulaFunction",
+            "FormulaVersion"
+          ],
+          "dependsOn": [
+            "@qualy/plugin-org"
+          ]
+        },
+        "permissions": {
+          "owner": "assessment-formula",
+          "codes": [
+            "assessment.formula.manage"
+          ]
+        }
+      }
     },
     "@qualy/plugin-audit": {
       "version": "0.0.0",
@@ -248,6 +269,7 @@
           "@qualy/plugin-rbac",
           "@qualy/plugin-storage",
           "@qualy/plugin-assessment",
+          "@qualy/plugin-assessment-formula",
           "@qualy/plugin-audit",
           "@qualy/plugin-ping"
         ]
@@ -258,6 +280,7 @@
       "state": {
         "order": [
           "@qualy/plugin-assessment",
+          "@qualy/plugin-assessment-formula",
           "@qualy/plugin-audit",
           "@qualy/plugin-auth",
           "@qualy/plugin-org",
@@ -270,6 +293,7 @@
     "plugins": [
       "@qualy/plugin-assessment",
       "@qualy/plugin-assessment-evidence",
+      "@qualy/plugin-assessment-formula",
       "@qualy/plugin-audit",
       "@qualy/plugin-auth",
       "@qualy/plugin-auth-local",

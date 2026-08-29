@@ -58,6 +58,14 @@ export const FROZEN_ROUTES = [
   'GET /iam/users/{userId}/effective-permissions',
   'GET /iam/users/{userId}/role-grants',
 
+  'GET /assessment/formula-functions',
+  'POST /assessment/formula-functions',
+  'GET /assessment/formula-functions/{functionId}',
+  'PATCH /assessment/formula-functions/{functionId}',
+  'PUT /assessment/formula-functions/{functionId}/status',
+  'POST /assessment/formula-functions/{functionId}/versions',
+  'GET /assessment/formula-functions/{functionId}/versions/{versionNo}',
+
   'GET /assessment/batches',
   'POST /assessment/batches',
   'GET /assessment/batches/{batchId}',

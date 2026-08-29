@@ -1,5 +1,10 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { checkFormula, dropWorkspace, stageFormulaWorkspace } from './support/workspace.ts'
+import {
+  checkFormulaWorkspace,
+  dropWorkspace,
+  stageFormulaWorkspace,
+  tscEntry,
+} from './support/workspace.ts'
 
 // The stage-two gate: TypeScript 7, invoked exactly the way publication will
 // invoke it, must derive a formula's types from its schemas alone — literal
@@ -14,7 +19,7 @@ afterAll(() => {
 const check = async (source: string) => {
   const root = stageFormulaWorkspace(source)
   staged.push(root)
-  return checkFormula(root)
+  return checkFormulaWorkspace(root, tscEntry)
 }
 
 const COMPETITION = `import { Schema, defineFormula } from '@qualy/formula'

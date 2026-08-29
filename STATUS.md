@@ -10200,5 +10200,57 @@ runtime+context+eval+dispose)P50 0.23ms / P95 0.44ms / max 8.7ms —— §11.2 �
 「每次新建是否成为瓶颈」就此了案:不复用。
 
 **验收**:`pnpm typecheck` 零错;sandbox 套件 29 例全过(escape/determinism 双 variant ×13
-+ 池行为 3:watchdog 换活、超池排队、scope 关停后拒绝);全仓 `pnpm test`
-**1012 passed | 17 skipped**;prettier 通过。下一步:`@qualy/plugin-assessment-formula` 4a。
+
+- 池行为 3:watchdog 换活、超池排队、scope 关停后拒绝);全仓 `pnpm test`
+  **1012 passed | 17 skipped**;prettier 通过。下一步:`@qualy/plugin-assessment-formula` 4a。
+
+## 严格类型计分之四:公式库插件(4a)与第一批收官(2026-08-29)
+
+`packages/plugins/assessment/formula`(@qualy/plugin-assessment-formula)落地:管理员在页面上
+编写 TypeScript 公式、配示例、一键发布成不可变版本,全链真实走 TS7 → esbuild → QuickJS。
+
+**表**(迁移 `20260829124446_formula-library.sql`):`assessment_formula_functions`(身份 +
+mutable draft,draft_revision 乐观并发;owner_node_id 无 FK——节点消失后函数与版本仍是可读
+历史、经 canAt 的管理面自然收口,计分解释不走此授权)与 `assessment_formula_versions`
+(immutable;source/runtime/contract 三 hash + **formula_runtime_sha256**(打进 artifact 的
+SDK 文件集内容 hash)+ 编译器真实身份(`7.0.2+effect-tsgo.0.36.4`)+ esbuild 版本 +
+`formula_abi_version`(SDK 导出的 ABI 常量)+ 引擎身份(Sandbox 服务新增 `engine` 字段);
+复合 FK `(tenant_id, function_id)`)。踩坑两枚:`p.json<T[]>` 要 readonly 否则列类型炸出
+`[`;`p.datetime()` 裸调即 timestamptz(6)。
+
+**发布管线**(服务内 semaphore 串行,子进程一律 argv 数组无 shell,tsc 60s 超时):
+draft 快照 → 尺寸/triple-slash 早拒 → OS temp 双包 workspace TS7(布置逻辑提炼为
+**@qualy/formula/staging** 子路径,闸门测试与生产共用同一实现)→ esbuild **全虚拟
+namespace**(entry wrapper 由服务生成,`__qualyContract`/`__qualyInvoke` 不出自用户源码;
+用户源码只可 import `@qualy/formula`,SDK 闭包只含 formula+value-schema;产物零真实路径,
+跨构建逐字节相同,determinism 测试钉死)→ Sandbox 提取合同(宿主 value-schema/Ajv 完整
+校验:input 扁平 atomic、output decimal)→ 逐条跑示例(input/expected 先按 schema 验,
+canonical 比较;q.fail 以信封出、defect 以 SandboxEvalFailed 记行)→ 短事务锁行 + draft
+CAS + 写版本。实测一次完整发布(冷 workspace + 编译 + 沙箱)~390ms。esbuild 的 ts loader
+会**消除未使用的 import**(不进 resolve),但那类源码在更早的 typecheck 闸(types:[]、
+双包 workspace)就已解析失败——bundler 的按名拒绝守的是**被使用**的越界导入。
+
+**API**:`/assessment/formula-functions` 七条端点(列表/创建/详情/PATCH 草稿/`PUT status`/
+`POST versions`=发布/版本详情),frozen-routes 同笔登记;11 个错误码
+(`ASSESSMENT_FORMULA_*`)入 error-codes 门禁,诊断/报告/合同 issues 走结构化 data 完整回显。
+权限 `assessment.formula.manage`(org-node target,列表按 `listAuthorizedScope` +
+`scopeCoverage` 下推过滤);audit 三动作(create/draft.update/archive)——publish 不进
+Audit Trail:版本行本身就是领域历史(published_by/at 在行上),按三选一不重复记。
+
+**client**:函数列表页(建函数 dialog,归属单位用 org/tree 扁平缩进选择——`Api.local`
+同时挂 org 契约叶子)与编辑页(等宽源码区、示例表、保存带 409 冲突提示、发布后诊断表/
+示例结果/合同 issues 三块完整回显、版本历史带 hash 短码),i18n 全量(zh-CN 产品文案),
+导航挂 `assessment/main` 组。
+
+**测试**:bundler 3(自包含无路径/逐字节确定/越界按名拒)、artifact 2(真沙箱内合同 +
+0.9 精确计分 + q.fail 信封)、library 3(真 PG 全链发布与版本行断言;无示例/类型错/
+答案错/stale draft 四类拒绝;外人空列表与 NotFound、归档拒编辑)。
+
+**验收(第一批 0→1→2→3→4a 全部完成)**:`pnpm typecheck` 零错;`pnpm test`
+**1023 passed | 17 skipped**;`pnpm test:browser` **227 passed**;`pnpm build` 成功
+(浏览器聚合收进新插件两页面);prettier 通过。seed 权限计数 29→30 随新权限更新。
+
+**本批到此停**(裁决):不进入 Recognition/assessment 表改造(阶段五),不做 4b
+(Monaco + LSP bridge;`tsc --lsp` 存在性与「shutdown/exit 不应答、bridge 须自管进程」
+的实查已记录在案)。下一批入口:阶段五(EntryRecognition、ReviewEvent/Panel 认定、
+ItemRevision.scoring_plan、scorer 拆分),开工前按计划重新对表细化。

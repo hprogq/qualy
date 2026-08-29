@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@qualy/plugin-assessment": "workspace:*",
+    "@qualy/plugin-assessment-formula": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-auth-local": "workspace:*",

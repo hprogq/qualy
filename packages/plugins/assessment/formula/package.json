@@ -1,0 +1,50 @@
+{
+  "name": "@qualy/plugin-assessment-formula",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./actions": "./src/actions.ts",
+    "./db": "./src/db/entities.ts",
+    "./permissions": "./src/permissions.ts",
+    "./api": "./src/api.ts",
+    "./client/api": "./src/client/api.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@mikro-orm/core": "catalog:",
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/audit-contract": "workspace:*",
+    "@qualy/formula": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/plugin-auth": "workspace:*",
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-org": "workspace:*",
+    "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/plugin-sandbox": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*",
+    "@qualy/ui": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
+    "@qualy/value-schema": "workspace:*",
+    "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "effect": "catalog:",
+    "esbuild": "catalog:",
+    "kysely": "catalog:",
+    "typescript": "catalog:",
+    "@stylexjs/stylex": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/plugin-audit": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "@types/react": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
+  }
+}

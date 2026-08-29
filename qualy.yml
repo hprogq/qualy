@@ -42,3 +42,4 @@ plugins:
   '@qualy/plugin-assessment-evidence': {}
   '@qualy/plugin-audit': {}
   '@qualy/plugin-sandbox': {}
+  '@qualy/plugin-assessment-formula': {}

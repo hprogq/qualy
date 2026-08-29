@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { tscBinary } from './support/workspace.ts'
+import { tscEntry } from './support/workspace.ts'
 
 // Existence proof only: the native TS7 language server behind `tsc --lsp`
 // answers an LSP initialize over stdio. Measured while writing this: it does
@@ -21,7 +21,9 @@ interface Message {
 
 describe('the native language server', () => {
   it('answers initialize over stdio', async () => {
-    const server = spawn(tscBinary, ['--lsp', '-stdio'], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const server = spawn(process.execPath, [tscEntry, '--lsp', '-stdio'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
     try {
       const messages: Message[] = []
       let buffered = Buffer.alloc(0)

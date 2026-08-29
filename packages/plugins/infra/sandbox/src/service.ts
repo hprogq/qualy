@@ -10,6 +10,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { Context, Effect, Layer } from 'effect'
 import {
   SandboxArtifactMismatch,
@@ -47,10 +48,19 @@ export class Sandbox extends Context.Service<
   Sandbox,
   {
     readonly invoke: (invocation: SandboxInvocation) => Effect.Effect<JsonValue, SandboxError>
+    /** the engine's identity, for callers that freeze toolchains into records */
+    readonly engine: string
   }
 >()('@qualy/plugin-sandbox/Sandbox') {}
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
+
+const engineIdentity = (): string => {
+  const manifest = createRequire(import.meta.url)(
+    '@jitl/quickjs-wasmfile-release-sync/package.json',
+  ) as { name: string; version: string }
+  return `${manifest.name}@${manifest.version}`
+}
 
 const refuseOversize = (
   invocation: SandboxInvocation,
@@ -140,7 +150,7 @@ export const sandboxLayer = (options?: {
           catch: (problem) => lost(problem as PoolProblem),
         }).pipe(Effect.flatMap(settled))
       }
-      return { invoke }
+      return { invoke, engine: engineIdentity() }
     }),
   )
 
