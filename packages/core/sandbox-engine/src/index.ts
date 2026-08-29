@@ -8,12 +8,10 @@
 
 export { WorkerPool, type PoolOptions, type PoolProblem } from './pool.ts'
 export {
-  DEFAULT_LIMITS,
   ENTRYPOINT,
   type InvokeRequest,
   type InvokeResponse,
   type JsonValue,
-  type SandboxLimits,
   type WorkerVerdict,
 } from './protocol.ts'
 export { engineIdentity, runtimeBuildId } from './identity.ts'

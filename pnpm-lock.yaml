@@ -274,6 +274,21 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core/plugin-kit
 
+  apps/sandbox-runtime:
+    dependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
+      '@qualy/sandbox-engine':
+        specifier: workspace:*
+        version: link:../../packages/core/sandbox-engine
+      '@qualy/sandbox-rpc':
+        specifier: workspace:*
+        version: link:../../packages/core/sandbox-rpc
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
+
   apps/server:
     dependencies:
       '@effect/platform-node':
@@ -598,6 +613,15 @@ importers:
       '@jitl/quickjs-wasmfile-debug-sync':
         specifier: 'catalog:'
         version: 0.32.0
+      '@qualy/sandbox-rpc':
+        specifier: workspace:*
+        version: link:../sandbox-rpc
+
+  packages/core/sandbox-rpc:
+    dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
 
   packages/core/telemetry:
     dependencies:
@@ -1295,15 +1319,25 @@ importers:
 
   packages/plugins/infra/sandbox:
     dependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
-      '@qualy/sandbox-engine':
+      '@qualy/sandbox-rpc':
         specifier: workspace:*
-        version: link:../../../core/sandbox-engine
+        version: link:../../../core/sandbox-rpc
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
+    devDependencies:
+      '@qualy/sandbox-engine':
+        specifier: workspace:*
+        version: link:../../../core/sandbox-engine
+      '@qualy/sandbox-runtime':
+        specifier: workspace:*
+        version: link:../../../../apps/sandbox-runtime
 
   packages/plugins/infra/storage:
     dependencies:

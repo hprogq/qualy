@@ -4,6 +4,7 @@
     "*.config.ts",
     "tools",
     "apps/cli/src",
+    "apps/sandbox-runtime/src",
     "apps/server/src",
     "apps/server/tests",
     "packages/core/*/src",

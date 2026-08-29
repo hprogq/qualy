@@ -32,7 +32,7 @@ import { entities as auditEntities } from '@qualy/plugin-audit/db'
 import { sessionCookieName, layer as sessionLayer } from '@qualy/plugin-auth/server/session'
 import { AuthConfig } from '../../../base/auth/src/server/auth-config.ts'
 import { hashSessionToken } from '../../../base/auth/src/session.ts'
-import { sandboxLayer } from '@qualy/plugin-sandbox/service'
+import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { permissions as formulaPermissions } from '../src/permissions.ts'
 import { formulaActions } from '../src/actions.ts'
 import { entities } from '../src/db/entities.ts'
@@ -133,7 +133,7 @@ beforeAll(async () => {
     AuthConfig.of({ defaultTenantSlug: 'fx-http', sessionTtlSeconds: 3600, secureCookies: false }),
   )
   const library = formulaLayer.pipe(
-    Layer.provide(sandboxLayer({ size: 1, variant: 'release' })),
+    Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
     Layer.provideMerge(services),
   )
   const application = HttpRouter.serve(

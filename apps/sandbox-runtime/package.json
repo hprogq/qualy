@@ -1,0 +1,13 @@
+{
+  "name": "@qualy/sandbox-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@qualy/sandbox-engine": "workspace:*",
+    "@qualy/sandbox-rpc": "workspace:*",
+    "effect": "catalog:"
+  }
+}

@@ -43,6 +43,15 @@ export class SandboxEvalFailed extends Data.TaggedError('SandboxEvalFailed')<{
   readonly message: string
 }> {}
 
+/**
+ * The runtime sandbox process cannot be reached, refused the connection, or
+ * speaks an incompatible protocol. There is no local fallback on purpose:
+ * the operation fails and the caller reports an outage.
+ */
+export class SandboxUnavailable extends Data.TaggedError('SandboxUnavailable')<{
+  readonly reason: string
+}> {}
+
 export type SandboxError =
   | SandboxArtifactTooLarge
   | SandboxInputTooLarge
@@ -53,3 +62,4 @@ export type SandboxError =
   | SandboxOutputTooLarge
   | SandboxWorkerLost
   | SandboxEvalFailed
+  | SandboxUnavailable

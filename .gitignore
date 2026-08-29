@@ -72,6 +72,8 @@ cordis.gen.yml
 
 # materialised plugin aggregate, rewritten by the vite plugin on every start
 apps/web/.qualy/
+# sandbox process sockets and runtime scratch, owned by the sandbox apps
+.qualy/run/
 
 # attachments the local storage provider keeps when this machine is the
 # deployment (its default root, ./data/storage; QUALY_STORAGE_LOCAL_ROOT moves

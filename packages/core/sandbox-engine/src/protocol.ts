@@ -8,29 +8,6 @@
 export type JsonValue =
   string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue }
 
-export interface SandboxLimits {
-  /** interrupt-handler deadline inside the engine */
-  readonly softDeadlineMs: number
-  /** wall-clock watchdog on the host side; the worker is terminated past it */
-  readonly hardDeadlineMs: number
-  readonly memoryBytes: number
-  readonly stackBytes: number
-  readonly artifactBytes: number
-  readonly inputBytes: number
-  readonly outputBytes: number
-}
-
-/** starting points from the design note; measured, then tuned in one place */
-export const DEFAULT_LIMITS: SandboxLimits = Object.freeze({
-  softDeadlineMs: 25,
-  hardDeadlineMs: 100,
-  memoryBytes: 16 * 1024 * 1024,
-  stackBytes: 512 * 1024,
-  artifactBytes: 256 * 1024,
-  inputBytes: 64 * 1024,
-  outputBytes: 64 * 1024,
-})
-
 export interface InvokeRequest {
   readonly id: number
   readonly artifact: string

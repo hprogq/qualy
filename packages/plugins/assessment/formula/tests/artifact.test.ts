@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { Effect, Exit, Layer, Result, Scope, type Context } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { Sandbox, sandboxLayer } from '@qualy/plugin-sandbox/service'
+import { Sandbox } from '@qualy/plugin-sandbox/service'
+import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { validateAtomicProfile, validateInputProfile } from '@qualy/value-schema'
 import { bundleFormula } from '../src/server/bundler.ts'
 
@@ -61,7 +62,7 @@ let context: Context.Context<Sandbox>
 beforeAll(async () => {
   scope = await Effect.runPromise(Scope.make())
   context = await Effect.runPromise(
-    Layer.buildWithScope(sandboxLayer({ size: 1, variant: 'release' }), scope),
+    Layer.buildWithScope(sandboxLocalLayer({ size: 1, variant: 'release' }), scope),
   )
 })
 

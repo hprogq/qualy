@@ -23,7 +23,7 @@ import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { entities as auditEntities } from '@qualy/plugin-audit/db'
-import { sandboxLayer } from '@qualy/plugin-sandbox/service'
+import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import type { Principal } from '@qualy/rbac-contract'
 import type { Rbac } from '@qualy/rbac-contract/effect'
 import { permissions as formulaPermissions } from '../src/permissions.ts'
@@ -71,7 +71,7 @@ const stack = (url: string) => {
     { catalog },
   )
   return formulaLayer.pipe(
-    Layer.provide(sandboxLayer({ size: 1, variant: 'release' })),
+    Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
     Layer.provideMerge(services),
   )
 }

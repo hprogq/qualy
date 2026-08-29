@@ -8,11 +8,17 @@
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json",
-    "./service": "./src/service.ts"
+    "./service": "./src/service.ts",
+    "./testkit": "./src/local.ts"
   },
   "dependencies": {
+    "@effect/platform-node": "catalog:",
     "@qualy/plugin-kit": "workspace:*",
-    "@qualy/sandbox-engine": "workspace:*",
+    "@qualy/sandbox-rpc": "workspace:*",
     "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/sandbox-engine": "workspace:*",
+    "@qualy/sandbox-runtime": "workspace:*"
   }
 }

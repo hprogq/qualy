@@ -976,6 +976,11 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     // answers with the version that already exists; a toolchain upgrade
     // changes the fingerprint and may legitimately mint a new version.
     // draftRevision stays what it is: the EDITING concurrency token.
+    // The engine identity now comes from the runtime sandbox itself; not
+    // reaching it is the same outage as not reaching the compiler.
+    const engine = yield* sandbox.engine.pipe(
+      Effect.mapError(() => new FormulaCompileUnavailable()),
+    )
     const fingerprint = sha256(
       [
         compiled.sourceSha256,
@@ -991,7 +996,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         String(SANDBOX_ABI_VERSION),
         String(VALUE_SCHEMA_PROFILE_VERSION),
         String(REGEX_PROFILE_VERSION),
-        sandbox.engine,
+        engine,
       ].join('|'),
     )
 
@@ -1064,7 +1069,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                   esbuildVersion,
                   formulaAbiVersion: FORMULA_ABI_VERSION,
                   formulaRuntimeSha256: compiled.formulaRuntimeSha256,
-                  quickjsEngineVersion: sandbox.engine,
+                  quickjsEngineVersion: engine,
                   valueSchemaProfileVersion: VALUE_SCHEMA_PROFILE_VERSION,
                   regexProfileVersion: REGEX_PROFILE_VERSION,
                   sandboxAbiVersion: SANDBOX_ABI_VERSION,

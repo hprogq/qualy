@@ -1,12 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import {
-  DEFAULT_LIMITS,
-  WorkerPool,
-  type InvokeResponse,
-  type JsonValue,
-  type PoolProblem,
-  type SandboxLimits,
-} from '../src/index.ts'
+import { DEFAULT_LIMITS, type SandboxLimits } from '@qualy/sandbox-rpc'
+import { WorkerPool, type InvokeResponse, type JsonValue, type PoolProblem } from '../src/index.ts'
 
 // The engine gate, run against BOTH builds: the release variant that scores
 // in production and the debug variant with the engine's own assertions on.

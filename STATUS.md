@@ -10431,3 +10431,42 @@ Effect 服务半(Sandbox tag、限额校验、hash 复核、verdict→错误族�
 oversize 前置拒、verdict 映射、engine 身份)。
 
 **验收**:engine 33/33、sandbox service 5/5、formula 13/13、`pnpm typecheck` 零错。
+
+## 进程隔离 B:runtime sandbox 走 UDS RPC(2026-08-30)
+
+**@qualy/sandbox-rpc**(deps 只 effect)是两个安全域之间唯一的合同:RPC_API_VERSION、
+SANDBOX_ABI_VERSION(从 service 迁入——它本来就是两侧的调用约定)、SandboxLimits/
+DEFAULT_LIMITS/LIMIT_CEILINGS/limitIssue/ENTRYPOINT 单源、Schema 化错误集(登记
+error-codes 的 NOT_A_WIRE_CODE)、RuntimeSandboxRpcs(GetRuntimeCapabilities + Invoke,
+argumentsJson 单串防第二种数字表示)。**apps/sandbox-runtime** 极薄:unlink stale sock →
+RpcServer 四层组合(`disableFatalDefects: true`;ndjson maxBufferSize=帧限)→ engine pool;
+入参在 runtime 侧全部重验(socket 对端不是朋友);capabilities 报 engineIdentity 与
+runtimeBuildId。plugin-sandbox 变 **remote adapter**:前置快拒(limits/尺寸/hash)→
+RPC → wire 错误映射回 Data 错误族;`engine` 改 lazy Effect(首用取 capabilities 并断言
+rpc/abi 版本,不符即 SandboxUnavailable;boot 不连接);local 实现整体迁 `./testkit`
+(生产装配只有 remote,无 fallback——§21)。
+
+**帧预算的实测与両侧执行臂**:V8 的 JSON.stringify 不转义非 ASCII——最坏现实合法
+Invoke(1MiB 中文 artifact + 64KiB input)帧仅 1.11MiB,2MiB 帧限成立;真正病态面是
+控制字符(6x 膨胀),而超帧的代价是**连接级**关闭(1009)殃及全部 in-flight。裁决:
+两侧都在**写之前**量编码后大小(SANDBOX_RPC_ENVELOPE_BUDGET),病态密度到不了 socket
+(client 拒为 ArtifactTooLarge 且连接完好;runtime 拒为 OutputTooLarge——local 替身
+会照常返回,这是 transport 自己的护栏,测试注明为预期差异)。
+
+**三个实测出来的深坑**(全部有 repos/ 行级引证,已各自closed):
+①送信失败被上游**故意 orDie**(RpcClient.ts:1156)——mid-call 断连以 defect 形态穿透,
+在复现里表现为 unhandledRejection 直接崩掉 client 进程;曾误诊为 dist 里的同步 rethrow
+并打了 pnpm patch,定位到真因后已**撤回 patch(仓库保持零 patch)**,正解是 adapter 里
+catchCause 只把 SocketError 的 die 驯化回 SandboxUnavailable,真 defect 照飞。
+②v4 的 race/timeoutOrElse 都要等待/中断输家,而挂死的 write 不可中断——transport
+deadline(hard + 15s grace)最终形态是 **detached fiber**(Effect.runForkWith +
+Fiber.await + interruptUnsafe 撒手),slam-the-door 对端从 20s hung 变 9ms typed 拒绝。
+③结构化并发:child fiber 会被 parent 完成时等待,detached 是唯一不被拖死的形态
+(隔离复现:uninterruptible never 挂死 forkChild 版 parent)。
+
+**测试**:local/remote parity 8 例(逐 tag 逐字段相等 + engine 身份一致)、帧预算 2 例、
+恶意/缺席对端 5 例(absent/garbage/slam/flood/kill-restart,全部即时 typed,进程健在,
+重启后同 layer 自愈)。formula 全套走 testkit local 结果不变;`.qualy/run` 进 gitignore。
+
+**验收**:sandbox 20/20、engine 33/33、formula 13/13、error-codes 门禁绿、
+`pnpm typecheck` 零错。

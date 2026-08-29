@@ -1,7 +1,8 @@
 import { Effect, Exit, Layer, Result, Scope, type Context } from 'effect'
 import { createHash } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { Sandbox, sandboxLayer, type SandboxInvocation } from '../src/service.ts'
+import { Sandbox, type SandboxInvocation } from '../src/service.ts'
+import { sandboxLocalLayer } from '../src/local.ts'
 import type { SandboxError } from '../src/errors.ts'
 
 // The service half over a real engine: what the plugin adds on top of the
@@ -30,7 +31,7 @@ let context: Context.Context<Sandbox>
 beforeAll(async () => {
   scope = await Effect.runPromise(Scope.make())
   context = await Effect.runPromise(
-    Layer.buildWithScope(sandboxLayer({ size: 1, variant: 'release' }), scope),
+    Layer.buildWithScope(sandboxLocalLayer({ size: 1, variant: 'release' }), scope),
   )
 })
 
@@ -54,7 +55,7 @@ describe('the sandbox service', () => {
     const outcome = await run(invocation('globalThis.ok = () => "alive"', 'ok'))
     expect(Result.isSuccess(outcome) && outcome.success).toBe('alive')
     const engine = await Effect.runPromise(
-      Effect.map(Sandbox, (sandbox) => sandbox.engine).pipe(Effect.provide(context)),
+      Effect.flatMap(Sandbox, (sandbox) => sandbox.engine).pipe(Effect.provide(context)),
     )
     expect(engine).toMatch(/^@jitl\/quickjs-wasmfile-release-sync@/)
   })

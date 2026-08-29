@@ -1,5 +1,6 @@
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { DEFAULT_LIMITS, WorkerPool, type PoolProblem, type SandboxLimits } from '../src/index.ts'
+import { DEFAULT_LIMITS, type SandboxLimits } from '@qualy/sandbox-rpc'
+import { WorkerPool, type PoolProblem } from '../src/index.ts'
 
 // The pool as a resource: the hard watchdog replaces a wedged worker, load
 // beyond the pool size queues rather than fails, and shutdown is the end —

@@ -94,6 +94,9 @@ const SOURCES = [
 // dies inside a server-side listener fiber. Both are named like types rather
 // than like codes.
 const NOT_A_WIRE_CODE = [
+  // schema-tagged because they cross the sandbox PROCESS boundary; the
+  // plugin adapter maps them back to host-internal errors, never to HTTP
+  'packages/core/sandbox-rpc/src/errors.ts',
   'apps/server/src/health.ts',
   'packages/plugins/infra/database/src/server/notifications.ts',
 ]
