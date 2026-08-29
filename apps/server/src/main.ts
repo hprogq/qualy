@@ -48,8 +48,11 @@ reportBootTiming((line) => logLine(logging, 'Info', line))
  * Error; those get their message. Anything else is a genuine defect and
  * keeps its evidence.
  */
+const isCrafted = (error: unknown): error is Error =>
+  error instanceof Error && ('_tag' in error || error.name === 'Error')
+
 const refuse = (error: unknown): never => {
-  const crafted = error instanceof Error && ('_tag' in error || error.name === 'Error')
+  const crafted = isCrafted(error)
   logLine(
     logging,
     'Error',
@@ -100,23 +103,59 @@ await supervisedPrepareFence(devTopology(resolution), pluginRoots(resolution)).c
  * their message and nothing else. Anything untagged is a genuine defect, and
  * only that keeps the full cause.
  */
+const startupFailureLines = (cause: Cause.Cause<unknown>): readonly string[] => {
+  const lines: string[] = []
+  const seen = new Set<unknown>()
+  let dumped = false
+  for (const reason of cause.reasons) {
+    if (reason._tag === 'Interrupt') continue
+    const error = reason._tag === 'Fail' ? reason.error : reason.defect
+    if (seen.has(error)) continue
+    seen.add(error)
+    if (isCrafted(error)) {
+      lines.push(`startup failed: ${error.message}`)
+    } else if (!dumped) {
+      dumped = true
+      lines.push(`startup failed\n${Cause.pretty(cause)}`)
+    }
+  }
+  return lines
+}
+
+/** so a failure both reporters can see is only said by the one that saw it first */
+let reported = false
+
 const reportStartupFailure = (cause: Cause.Cause<unknown>) =>
   Effect.gen(function* () {
-    const seen = new Set<unknown>()
-    let dumped = false
-    for (const reason of cause.reasons) {
-      if (reason._tag === 'Interrupt') continue
-      const error = reason._tag === 'Fail' ? reason.error : reason.defect
-      if (seen.has(error)) continue
-      seen.add(error)
-      if (error instanceof Error && '_tag' in error) {
-        yield* Effect.logError(`startup failed: ${error.message}`)
-      } else if (!dumped) {
-        dumped = true
-        yield* Effect.logError(`startup failed\n${Cause.pretty(cause)}`)
-      }
-    }
+    if (reported) return
+    reported = true
+    for (const line of startupFailureLines(cause)) yield* Effect.logError(line)
   })
+
+/**
+ * The same refusal, for a failure the reporter above could not have seen.
+ *
+ * `Effect.provide` BUILDS what it provides, so a layer that fails while being
+ * built short-circuits before anything inside it runs - including an
+ * `onExit` attached inside it. The reporter above is inside telemetry and the
+ * logger; this one is outside both, which is the only position from which a
+ * telemetry or logging layer that refused its own configuration can be
+ * reported at all.
+ *
+ * It renders through `logLine` rather than through `Effect.logError` for the
+ * same reason: the layer carrying the logger is one of the things that can be
+ * the failure, and a report that needs it would be lost exactly when it
+ * matters. `logging` is a plain value resolved at the top of this file.
+ *
+ * Measured before it existed: `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` and
+ * `OTEL_SDK_DISABLED=True` each exited 1 with zero bytes on stdout and
+ * stderr, taking a deliberately worded refusal sentence with them.
+ */
+const reportOutsideTheLogger = (cause: Cause.Cause<unknown>): void => {
+  if (reported) return
+  reported = true
+  for (const line of startupFailureLines(cause)) logLine(logging, 'Error', line)
+}
 
 // The entry point.
 //
@@ -147,6 +186,13 @@ const launched = Layer.launch(application).pipe(
   // the process's one log format. Without an OTLP endpoint in the
   // environment this layer is a no-op.
   Effect.provide(telemetryLayer.pipe(Layer.provideMerge(logs))),
+  // Outside the provide above, because that is where a layer that fails while
+  // building lands. Nothing else in this pipe can reach it.
+  Effect.onExit((exit) =>
+    Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)
+      ? Effect.void
+      : Effect.sync(() => reportOutsideTheLogger(exit.cause)),
+  ),
 )
 
 /**
