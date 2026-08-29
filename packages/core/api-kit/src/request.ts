@@ -216,10 +216,20 @@ export const routeSpanNames = <A, E, R>(
  *
  * Every label is low-cardinality by where it comes from: the method is
  * normalized against the semconv known set (anything else says `_OTHER`),
- * the scheme and the route are what the platform tracer and the router
- * already wrote onto the span (`/things/:thingId`, never the raw URL) - one
- * source, so trace and metric cannot disagree. A request no route matched
- * carries no route label at all. Event streams are counted like every other
+ * and the route is what the ROUTER already wrote onto the span
+ * (`/things/:thingId`, never the raw URL) - written synchronously while
+ * dispatching, so it is there by the time this runs. A request no route
+ * matched carries no route label at all.
+ *
+ * The scheme is read from the request instead, and used to be read from the
+ * span beside the route. It could never work: the tracer writes `url.scheme`
+ * from inside its own `onExit`, on a scheduled task, and only for a sampled
+ * span (repos/effect/packages/effect/src/unstable/http/HttpMiddleware.ts:208,
+ * :224) - all of which happen after this recorder has already read it. So the
+ * label was the `'http'` fallback on every data point, and behind a
+ * TLS-terminating proxy the trace said https while the metric said http for
+ * the same request. Derived here the same way the tracer derives it, which is
+ * the only way the two can actually agree. Event streams are counted like every other
  * request, because the standard metric measures request duration and makes
  * no SSE exception; a latency dashboard excludes those routes by
  * `http.route`, not this recorder by content type.
@@ -270,7 +280,7 @@ export const httpMetrics = <A extends { readonly status: number }, E, R>(
           Metric.withAttributes(requestDuration, {
             unit: 's',
             'http.request.method': KNOWN_METHODS.has(request.method) ? request.method : '_OTHER',
-            'url.scheme': spanAttribute('url.scheme') ?? 'http',
+            'url.scheme': request.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http',
             'http.response.status_code': String(status),
             ...(route === undefined ? {} : { 'http.route': route }),
             // a server error is the condition semconv requires error.type

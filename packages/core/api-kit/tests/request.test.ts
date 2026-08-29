@@ -298,6 +298,15 @@ describe('the labels a request becomes', () => {
       ).toBe(true)
       expect(state.attributes?.['url.scheme']).toBe('http')
     }
+    // and it is a label rather than a constant: behind a TLS-terminating
+    // proxy the trace said https while the metric said http for the same
+    // request, because the recorder read the span - which the tracer writes
+    // only later, and only when sampled
+    await fetch(`${base}/things/${uuid}`, { headers: { 'x-forwarded-proto': 'https' } })
+    const after = (await Effect.runPromise(Metric.snapshot)).filter(
+      (state) => state.id === 'http.server.request.duration',
+    )
+    expect(after.map((state) => state.attributes?.['url.scheme'])).toContain('https')
     // the unmatched request was counted, without inventing a route label
     expect(
       requests.some(
