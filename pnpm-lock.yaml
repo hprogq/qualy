@@ -547,6 +547,12 @@ importers:
         specifier: 'catalog:'
         version: 2.9.0
 
+  packages/core/formula:
+    dependencies:
+      '@qualy/value-schema':
+        specifier: workspace:*
+        version: link:../value-schema
+
   packages/core/plugin-kit:
     dependencies:
       effect:

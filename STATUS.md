@@ -10133,3 +10133,33 @@ catalog 新增 `ajv: 8.20.0`(带注释;无 build script,安装零阻)。
 **验收**:`pnpm typecheck` 零错(根工程一处 cast 报错已改为类型化构造);包内 55 例全过;
 全仓 `pnpm test` **966 passed | 17 skipped**;prettier 通过。下一步:`@qualy/formula` SDK +
 TS7 spike(硬闸门)。
+
+## 严格类型计分之二:@qualy/formula SDK 与 TS7 闸门(2026-08-29)
+
+`packages/core/formula` 落地,零第三方依赖(仅 @qualy/value-schema)。没有第二套类型语言:
+`Schema.text/integer/decimal/choice/boolean/date/input` 的返回值**就是** value-schema profile
+对象本身(normalize + deep-freeze),泛型只保字面量;`Static<S>` 按结构分发(choice →
+literal union、decimal → opaque `Decimal`、date → brand string,禁 JS Date)。Decimal 运行时
+是 frozen `{coefficient: bigint, scale}`,类型面只有 brand;`q.decimal.*` 任意 scale bigint
+十进制(无 div;quantize 显式、half-away-from-zero 与 ledger 同规),`q.fail` 抛结构化
+`FormulaFailure`(属性标记跨 bundle 可识别,与普通异常/沙箱裁决三分)。入口两个:根 =
+作者面(Schema/defineFormula/类型/`FORMULA_ABI_VERSION = 1`),`./runtime` = wrapper 面
+(decode/encode 纯表示转换,**不复制 validator**——完整校验归宿主 Ajv)。
+
+**硬闸门通过**。OS temp 隔离 workspace(mkdtemp,显式 symlink formula + value-schema 两包,
+仓库树外、无上层 node_modules 可爬)+ 固定 tsconfig(strict 全家、exactOptionalPropertyTypes、
+verbatimModuleSyntax、lib ES2020、types: []、**无 plugins 节**、Bundler resolution +
+allowImportingTsExtensions 直吃 .ts 源),子进程跑 workspace 的 `tsc -p`(argv 数组、无 shell):
+蓝图竞赛公式与 identity 公式零错通过;`input.ordinal.toUpperCase()`、不存在的 choice 值、
+`return true` 对 decimal 输出、`Decimal + Decimal`、`import 'node:fs'` 五类全数拒绝,报错
+点名正确。单次编译约 350ms(tsgo 原生)。测试 `tests/typecheck.test.ts` 7 例即闸门本体,
+布置代码在 `tests/support/workspace.ts`,发布管线将提炼复用。
+
+**LSP 实查(载入 4b 设计)**:`tsc --lsp -stdio` 对 initialize 正常应答(capabilities 完整);
+但 **shutdown 请求不应答、exit 通知不退出**,还会主动发 `client/registerCapability`——未来
+编辑器 bridge 必须自己持有进程生命周期(信号收尾,不指望协议告别)。烟测按实查行为断言。
+
+竞赛公式端到端(decode → run → encode)精确得 `0.9`(canonical 最短形式;补零展示归 UI)。
+
+**验收**:`pnpm typecheck` 零错;`pnpm test` **982 passed | 17 skipped**(新增 16 例);
+prettier 通过。下一步:`@qualy/plugin-sandbox`(QuickJS,硬闸门)。
