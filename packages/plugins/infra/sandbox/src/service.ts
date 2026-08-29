@@ -10,8 +10,17 @@
  */
 
 import { createHash } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { Context, Effect, Layer } from 'effect'
+import {
+  DEFAULT_LIMITS,
+  ENTRYPOINT,
+  engineIdentity,
+  WorkerPool,
+  type InvokeResponse,
+  type JsonValue,
+  type PoolProblem,
+  type SandboxLimits,
+} from '@qualy/sandbox-engine'
 import {
   SandboxArtifactMismatch,
   SandboxArtifactTooLarge,
@@ -24,14 +33,6 @@ import {
   SandboxWorkerLost,
   type SandboxError,
 } from './errors.ts'
-import { WorkerPool, type PoolProblem } from './pool.ts'
-import {
-  DEFAULT_LIMITS,
-  ENTRYPOINT,
-  type InvokeResponse,
-  type JsonValue,
-  type SandboxLimits,
-} from './protocol.ts'
 
 /**
  * The sandbox ABI: how an artifact is entered (a global identifier called
@@ -62,13 +63,6 @@ export class Sandbox extends Context.Service<
 >()('@qualy/plugin-sandbox/Sandbox') {}
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
-
-const engineIdentity = (): string => {
-  const manifest = createRequire(import.meta.url)(
-    '@jitl/quickjs-wasmfile-release-sync/package.json',
-  ) as { name: string; version: string }
-  return `${manifest.name}@${manifest.version}`
-}
 
 const refuseOversize = (
   invocation: SandboxInvocation,

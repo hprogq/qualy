@@ -10413,3 +10413,21 @@ constructor 探测 ×2、forged 合同、分页门禁);`pnpm test:browser` **227
 4b 首件:server-side LSP spike(authenticated WS → 隔离 session → `tsc --lsp -stdio` →
 completion/hover/diagnostics → socket close 杀进程;LSP workspace 用只含 author-facing SDK 的
 复制树,浏览器 URI 固定映射虚拟 formula.ts,一切真实路径拒绝或重写),Monaco 之后再来。
+
+## 进程隔离 A:QuickJS 引擎自成一包(2026-08-30)
+
+按 docs/sandbox-process-isolation.md §48 的 A 阶段:worker.ts / pool.ts / protocol.ts 整体
+git mv 到新包 **@qualy/sandbox-engine**(packages/core/sandbox-engine,业务盲,依赖只有
+QuickJS 三件套),engineIdentity() 从 service 迁入,新增 runtimeBuildId()(启动时对引擎源
+文件 + engine 身份算 sha256,provenance 用,不参与 replay 兼容判定)。plugin-sandbox 只剩
+Effect 服务半(Sandbox tag、限额校验、hash 复核、verdict→错误族映射),经 engine 包驱动,
+行为零变化——B 阶段它将换成 remote adapter。
+
+顺手关掉已登记待办:boundedProblem 现在**先读 guest 字符串长度**,超 256 单位直接给
+`<name/message withheld>` 标记,不再把全串拷过 WASM 边界再 slice(新测试钉住)。
+
+测试分家:引擎逃逸/资源/确定性套件迁 engine 包并降到 pool 级驱动(verdict/PoolProblem
+断言,30+3 例,双 variant 保持);plugin-sandbox 留 service 层 5 例(hash mismatch、
+oversize 前置拒、verdict 映射、engine 身份)。
+
+**验收**:engine 33/33、sandbox service 5/5、formula 13/13、`pnpm typecheck` 零错。

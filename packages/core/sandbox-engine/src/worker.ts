@@ -109,8 +109,9 @@ const PROBLEM_TEXT_LIMIT = 256
 /**
  * A thrown guest value gives up two bounded strings and nothing else: no
  * dump of arbitrary objects into host memory, no lifting of the resource
- * limits to make room for one. If even this bounded read fails, the engine
- * is past reasoning about and the caller retires the worker.
+ * limits to make room for one, and no copying of an oversized string just
+ * to slice it. If even this bounded read fails, the engine is past
+ * reasoning about and the caller retires the worker.
  */
 const boundedProblem = (
   context: QuickJSContext,
@@ -119,9 +120,21 @@ const boundedProblem = (
   const read = (key: string): string => {
     const handle = context.getProp(errorHandle, key)
     try {
-      return context.typeof(handle) === 'string'
-        ? context.getString(handle).slice(0, PROBLEM_TEXT_LIMIT)
-        : ''
+      if (context.typeof(handle) !== 'string') return ''
+      // length first: getString copies the WHOLE guest string across the
+      // WASM boundary, so an oversized name/message is withheld outright
+      // rather than materialized-then-sliced. The engine's own resource
+      // messages are short; only a guest-constructed value can be this big,
+      // and the verdict for those is eval-failed either way.
+      const lengthHandle = context.getProp(handle, 'length')
+      try {
+        const units = context.dump(lengthHandle) as number
+        if (typeof units !== 'number' || units > PROBLEM_TEXT_LIMIT)
+          return `<${key} withheld: over ${PROBLEM_TEXT_LIMIT} units>`
+      } finally {
+        lengthHandle.dispose()
+      }
+      return context.getString(handle)
     } finally {
       handle.dispose()
     }

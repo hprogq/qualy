@@ -11,12 +11,8 @@
     "./service": "./src/service.ts"
   },
   "dependencies": {
-    "@jitl/quickjs-wasmfile-release-sync": "catalog:",
     "@qualy/plugin-kit": "workspace:*",
-    "effect": "catalog:",
-    "quickjs-emscripten-core": "catalog:"
-  },
-  "devDependencies": {
-    "@jitl/quickjs-wasmfile-debug-sync": "catalog:"
+    "@qualy/sandbox-engine": "workspace:*",
+    "effect": "catalog:"
   }
 }

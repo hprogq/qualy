@@ -1,0 +1,19 @@
+{
+  "name": "@qualy/sandbox-engine",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@jitl/quickjs-wasmfile-release-sync": "catalog:",
+    "quickjs-emscripten-core": "catalog:"
+  },
+  "devDependencies": {
+    "@jitl/quickjs-wasmfile-debug-sync": "catalog:"
+  }
+}
