@@ -76,10 +76,8 @@ const stack = (url: string) => {
   )
 }
 
-const run = <A, E>(
-  url: string,
-  effect: Effect.Effect<A, E, FormulaLibrary | Rbac | Orm>,
-) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+const run = <A, E>(url: string, effect: Effect.Effect<A, E, FormulaLibrary | Rbac | Orm>) =>
+  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value

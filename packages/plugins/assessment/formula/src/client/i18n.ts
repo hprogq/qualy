@@ -134,7 +134,7 @@ const i18n = definePluginMessages({
     },
     testInputInvalid: {
       id: 'assessment-formula/editor/test-input-invalid',
-      defaultMessage: 'Enter valid JSON before saving.',
+      defaultMessage: 'The input of example "{label}" is not valid JSON.',
     },
     save: {
       id: 'assessment-formula/editor/save',

@@ -41,6 +41,9 @@ interface DraftTest {
   expected: string
 }
 
+/** a refusal raised by this screen's own checks, worded here, never generic */
+class LocalFinding extends Error {}
+
 interface PublishFindings {
   readonly diagnostics?: readonly {
     line: number
@@ -102,9 +105,13 @@ export default function FormulaEditorPage() {
     )
   }, [fn?.id, fn?.draftRevision])
 
-  const parsedTests = (): { name: string; input: unknown; expected: string }[] | null => {
+  type ParsedTests =
+    | { readonly tests: { name: string; input: unknown; expected: string }[] }
+    | { readonly invalidLabel: string }
+
+  const parsedTests = (): ParsedTests => {
     const collected: { name: string; input: unknown; expected: string }[] = []
-    for (const test of tests) {
+    for (const [index, test] of tests.entries()) {
       try {
         collected.push({
           name: test.name,
@@ -112,30 +119,44 @@ export default function FormulaEditorPage() {
           expected: test.expected,
         })
       } catch {
-        return null
+        return { invalidLabel: test.name === '' ? `#${index + 1}` : test.name }
       }
     }
-    return collected
+    return { tests: collected }
   }
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.assessmentFormula.key() })
 
+  // whether the editor holds anything the server has not seen yet
+  const dirty = (): boolean =>
+    fn === undefined
+      ? false
+      : name.trim() !== fn.name ||
+        source !== fn.draftSourceTs ||
+        JSON.stringify(tests) !==
+          JSON.stringify(
+            fn.draftTests.map((test) => ({
+              name: test.name,
+              inputText: JSON.stringify(test.input),
+              expected: test.expected,
+            })),
+          )
+
+  const saveEffect = (collected: { name: string; input: unknown; expected: string }[]) =>
+    run(
+      api.assessmentFormula.updateFormulaDraft({
+        params: { functionId },
+        payload: {
+          expectedDraftRevision: fn!.draftRevision,
+          name: name.trim() === '' ? fn!.name : name.trim(),
+          draftSourceTs: source,
+          draftTests: collected,
+        },
+      }),
+    )
+
   const save = useMutation({
-    mutationFn: () => {
-      const collected = parsedTests()
-      if (collected === null) return Promise.reject(new Error(format(m.testInputInvalid)))
-      return run(
-        api.assessmentFormula.updateFormulaDraft({
-          params: { functionId },
-          payload: {
-            expectedDraftRevision: fn!.draftRevision,
-            name: name.trim() === '' ? fn!.name : name.trim(),
-            draftSourceTs: source,
-            draftTests: collected,
-          },
-        }),
-      )
-    },
+    mutationFn: saveEffect,
     onMutate: () => setFailure(null),
     onSuccess: async () => {
       toast.success(format(m.saved))
@@ -144,14 +165,42 @@ export default function FormulaEditorPage() {
     onError: (error: unknown) => setFailure(formatError(error)),
   })
 
+  // local validation stays OUT of the mutation: a malformed example is this
+  // screen's own finding, named precisely, never blurred into the generic
+  // api-failure copy (measured: it read as "something went wrong" with no
+  // request ever sent, which explained nothing)
+  const saveDraft = () => {
+    const parsed = parsedTests()
+    if ('invalidLabel' in parsed) {
+      setFailure(format(m.testInputInvalid, { label: parsed.invalidLabel }))
+      return
+    }
+    save.mutate(parsed.tests)
+  }
+
   const publish = useMutation({
-    mutationFn: () =>
-      run(
+    // publishing compiles the draft the SERVER holds, so unsaved edits are
+    // saved first - otherwise the button quietly proves yesterday's bytes
+    mutationFn: async () => {
+      let revision = fn!.draftRevision
+      if (dirty()) {
+        const parsed = parsedTests()
+        if ('invalidLabel' in parsed)
+          return Promise.reject(
+            new LocalFinding(format(m.testInputInvalid, { label: parsed.invalidLabel })),
+          )
+        const savedNow = (await saveEffect(parsed.tests)) as {
+          function: { draftRevision: number }
+        }
+        revision = savedNow.function.draftRevision
+      }
+      return run(
         api.assessmentFormula.publishFormulaVersion({
           params: { functionId },
-          payload: { expectedDraftRevision: fn!.draftRevision },
+          payload: { expectedDraftRevision: revision },
         }),
-      ),
+      )
+    },
     onMutate: () => {
       setFailure(null)
       setFindings({})
@@ -160,9 +209,13 @@ export default function FormulaEditorPage() {
       toast.success(format(m.published, { number: result.version.versionNo }))
       await refresh()
     },
-    onError: (error: unknown) => {
-      setFailure(formatError(error))
+    onError: async (error: unknown) => {
+      setFailure(error instanceof LocalFinding ? error.message : formatError(error))
       setFindings(findingsOf(error))
+      // the auto-save may have landed even though publishing was refused;
+      // without a refresh the editor still holds the old revision and the
+      // next save would conflict with its own work
+      await refresh()
     },
   })
 
@@ -206,7 +259,7 @@ export default function FormulaEditorPage() {
             >
               {format(archived ? m.restore : m.archive)}
             </Button>
-            <Button variant="outline" disabled={archived || busy} onClick={() => save.mutate()}>
+            <Button variant="outline" disabled={archived || busy} onClick={saveDraft}>
               {format(m.save)}
             </Button>
             <Button disabled={archived || busy} onClick={() => publish.mutate()}>
@@ -258,7 +311,7 @@ export default function FormulaEditorPage() {
               />
               <Input
                 aria-label={format(m.testInput)}
-                placeholder={format(m.testInput)}
+                placeholder={'{"value": "2.34"}'}
                 value={test.inputText}
                 disabled={archived}
                 onChange={(event) =>

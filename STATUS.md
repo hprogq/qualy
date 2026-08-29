@@ -10254,3 +10254,26 @@ Audit Trail:版本行本身就是领域历史(published_by/at 在行上),按三�
 (Monaco + LSP bridge;`tsc --lsp` 存在性与「shutdown/exit 不应答、bridge 须自管进程」
 的实查已记录在案)。下一批入口:阶段五(EntryRecognition、ReviewEvent/Panel 认定、
 ItemRevision.scoring_plan、scorer 拆分),开工前按计划重新对表细化。
+
+## 公式编辑器:用户验收发现的两处缺陷(2026-08-29)
+
+用户首次真实使用即抓到两个问题,均已修复:
+
+一、**本地校验的文案被通用兜底吞掉**。示例输入填了 `{value: "2.34"}`(键名没带引号,不是
+合法 JSON),保存在本地就被拦下、请求从未发出——但拦截错误被包成普通 Error 丢进
+`formatError`,后者只认 API 错误,把准备好的提示吞成「操作失败,请重试。」,且看不出没发请求。
+修法:本地校验移出 mutation,失败直接落屏,点名是哪条示例(`示例「{label}」的输入不是合法
+JSON,键名和字符串都要带双引号。`),输入框 placeholder 直接展示合法形态 `{"value": "2.34"}`。
+
+二、**发布不带未保存的修改**。发布编译的是服务器上的草稿(设计如此),但界面没说——用户
+编辑后未保存直接发布,得到 `TEST_FAILED report []`(服务端草稿还是零示例),两头都无从解释。
+修法:发布前检测本地未保存修改,先自动保存(本地校验失败同样拦下)再以保存后的 revision
+发布;发布被拒时也刷新,避免编辑器抱着旧 revision 下次保存 409。
+
+**补上缺的那层门禁**:此前集成测试只到 service 层,HttpApi wire(方法、cookie、JSON 编解码)
+无覆盖——用户撞的恰是这层附近。新增 `tests/formula-http.test.ts`(端口 3205):真 HTTP +
+真 session,逐字节走浏览器流(POST 创建 → GET → PATCH 保存 → POST 发布),外加真
+`HttpApiClient` 管线(与浏览器 `clientFor` 同款)双发(带示例与空示例)。诊断过程顺带证明:
+服务端、schema、客户端管线全部无罪,`Api.local` 自带 `/api` 前缀。
+
+**验收**:`pnpm typecheck` 零错;formula 套件 11 例全过;全仓 **1026 passed | 17 skipped**。
