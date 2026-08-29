@@ -65,6 +65,20 @@ export const formulaLspQuotaLayer: Layer.Layer<FormulaLspQuota> = Layer.effect(
   }),
 )
 
+/** the id of a json-rpc REQUEST, if the frame is one; null otherwise */
+const requestIdOf = (jsonRpc: string): number | string | null => {
+  try {
+    const parsed = JSON.parse(jsonRpc) as { id?: unknown }
+    return typeof parsed === 'object' &&
+      parsed !== null &&
+      (typeof parsed.id === 'number' || typeof parsed.id === 'string')
+      ? parsed.id
+      : null
+  } catch {
+    return null
+  }
+}
+
 type InboundFrame =
   | { readonly kind: 'text'; readonly jsonRpc: string }
   | { readonly kind: 'binary' }
@@ -99,6 +113,25 @@ export const bridgeSocket = (
           case 'text': {
             const sent = yield* Effect.result(session.send(frame.jsonRpc))
             if (Result.isFailure(sent)) {
+              // a method outside the sandbox's allowlist is a version drift
+              // (an older sandbox behind a newer browser), not an attack: a
+              // REQUEST gets the standard json-rpc answer and the
+              // conversation continues; every other refusal still ends it
+              if (
+                sent.failure._tag === 'FormulaLanguageRefused' &&
+                sent.failure.reason === 'method-refused'
+              ) {
+                const requestId = requestIdOf(frame.jsonRpc)
+                if (requestId !== null)
+                  yield* write(
+                    JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: requestId,
+                      error: { code: -32601, message: 'method not available' },
+                    }),
+                  ).pipe(Effect.ignore)
+                continue
+              }
               return yield* sent.failure._tag === 'FormulaLanguageRefused'
                 ? closeWith(1008, sent.failure.reason)
                 : closeWith(1011, 'language service unavailable')

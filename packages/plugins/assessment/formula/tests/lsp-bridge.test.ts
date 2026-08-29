@@ -512,6 +512,46 @@ describe.runIf(postgresAvailable).sequential('the formula language bridge', () =
     }
   }, 120_000)
 
+  it('formats the document through TS7, path-looking strings included', async () => {
+    const client = await handshake()
+    try {
+      await openDocument(client)
+      // ragged indentation plus a string that LOOKS like a filesystem path:
+      // the formatter's edits are the person's own source rearranged, and
+      // the response must arrive despite the path sanitizer on other routes
+      const ragged = `import { Schema, defineFormula } from '@qualy/formula'\nconst docs = "/usr/share/doc"\nexport default defineFormula({\n      input: Schema.input({ value: Schema.decimal() }),\n  output: Schema.scoreAmount(),\n        run: (input) => input.value,\n})\n`
+      client.send({
+        jsonrpc: '2.0',
+        method: 'textDocument/didChange',
+        params: {
+          textDocument: { uri: 'qualy-formula:///formula.ts', version: 12 },
+          contentChanges: [{ text: ragged }],
+        },
+      })
+      await client.wait(
+        (message) => message.method === 'textDocument/publishDiagnostics',
+        'the policy voice after the ragged didChange',
+      )
+      client.send({
+        jsonrpc: '2.0',
+        id: 41,
+        method: 'textDocument/formatting',
+        params: {
+          textDocument: { uri: 'qualy-formula:///formula.ts' },
+          options: { tabSize: 2, insertSpaces: true },
+        },
+      })
+      const formatted = await client.wait((message) => message.id === 41, 'formatting edits')
+      const edits = formatted.result as readonly { range: unknown; newText: unknown }[]
+      expect(Array.isArray(edits)).toBe(true)
+      expect(edits.length).toBeGreaterThan(0)
+      for (const edit of edits) expect(typeof edit.newText).toBe('string')
+    } finally {
+      client.socket.close(1000)
+      await client.closed
+    }
+  }, 120_000)
+
   it('answers a numbered burst without refusing any of them', async () => {
     const client = await handshake()
     try {
@@ -565,6 +605,38 @@ describe.runIf(postgresAvailable).sequential('the formula language bridge', () =
     const closed = await client.closed
     expect(closed.code).toBe(1009)
   }, 30_000)
+
+  it('answers an out-of-allowlist REQUEST with -32601 and keeps talking', async () => {
+    const client = await handshake()
+    try {
+      await openDocument(client)
+      // an older sandbox behind a newer browser refuses the method; the
+      // conversation survives it - json-rpc has a word for exactly this
+      client.send({
+        jsonrpc: '2.0',
+        id: 51,
+        method: 'textDocument/rename',
+        params: { textDocument: { uri: 'qualy-formula:///formula.ts' } },
+      })
+      const refusedAnswer = await client.wait((message) => message.id === 51, 'the -32601 answer')
+      expect((refusedAnswer as { error?: { code: number } }).error?.code).toBe(-32601)
+      // and the connection still serves real requests afterwards
+      client.send({
+        jsonrpc: '2.0',
+        id: 52,
+        method: 'textDocument/hover',
+        params: {
+          textDocument: { uri: 'qualy-formula:///formula.ts' },
+          position: { line: 2, character: 20 },
+        },
+      })
+      const hover = await client.wait((message) => message.id === 52, 'hover after refusal')
+      expect(hover.result).toBeDefined()
+    } finally {
+      client.socket.close(1000)
+      await client.closed
+    }
+  }, 60_000)
 
   it('turns a malformed frame into 1008', async () => {
     const client = await handshake()

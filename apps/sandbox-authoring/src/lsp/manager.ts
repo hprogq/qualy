@@ -56,6 +56,9 @@ const INBOUND_METHODS: ReadonlySet<string> = new Set([
   // pull diagnostics: measured on TS7, which declares a diagnosticProvider
   // and never pushes - without this method there are no type errors at all
   'textDocument/diagnostic',
+  // whole-document formatting: the response is handled as opaque source
+  // text (see onServerFrame), never path-scanned
+  'textDocument/formatting',
   'shutdown',
   'exit',
 ])
@@ -75,6 +78,8 @@ interface Session {
   lastActivity: number
   lastClientSequence: number
   outSequence: number
+  /** client request id -> method, so a response is judged by what it answers */
+  readonly requestedMethods: Map<number | string, string>
   text: string
   /** the client's own document version, echoed on policy pushes (LSP 3.15) */
   documentVersion: number
@@ -189,6 +194,41 @@ export const makeLspManager = (): LspManager => {
     )
   }
 
+  interface FormattingEdit {
+    readonly range: {
+      readonly start: { readonly line: number; readonly character: number }
+      readonly end: { readonly line: number; readonly character: number }
+    }
+    readonly newText: string
+  }
+
+  const editPosition = (value: unknown): { line: number; character: number } | null => {
+    if (!isJsonRecord(value)) return null
+    const line = value['line']
+    const character = value['character']
+    if (typeof line !== 'number' || !Number.isInteger(line) || line < 0) return null
+    if (typeof character !== 'number' || !Number.isInteger(character) || character < 0) return null
+    return { line, character }
+  }
+
+  /** strictly TextEdit[] (or null); anything else sinks the response */
+  const formattingEdits = (result: unknown): readonly FormattingEdit[] | null => {
+    if (result === null) return []
+    if (!Array.isArray(result)) return null
+    const edits: FormattingEdit[] = []
+    for (const entry of result) {
+      if (!isJsonRecord(entry)) return null
+      const range = entry['range']
+      const newText = entry['newText']
+      if (!isJsonRecord(range) || typeof newText !== 'string') return null
+      const start = editPosition(range['start'])
+      const end = editPosition(range['end'])
+      if (start === null || end === null) return null
+      edits.push({ range: { start, end }, newText })
+    }
+    return edits
+  }
+
   const onServerFrame = (session: Session, body: string): void => {
     let parsed: unknown
     try {
@@ -213,6 +253,27 @@ export const makeLspManager = (): LspManager => {
       return
     }
     if (message['method'] === 'window/logMessage') return
+    // a RESPONSE is judged by the request it answers. Formatting edits ARE
+    // the person's own source text rearranged - a formula legally says
+    // "/usr/share/doc" - so the deep path sanitizer must not eat them; the
+    // shape is verified strictly and the response rebuilt from scratch so
+    // nothing but ranges and text can ride along.
+    const responseId = message['id']
+    if (
+      (typeof responseId === 'number' || typeof responseId === 'string') &&
+      message['method'] === undefined
+    ) {
+      const answered = session.requestedMethods.get(responseId)
+      if (answered !== undefined) session.requestedMethods.delete(responseId)
+      if (answered === 'textDocument/formatting') {
+        const edits = formattingEdits(message['result'])
+        if (edits === null) return
+        const rebuilt = JSON.stringify({ jsonrpc: '2.0', id: responseId, result: edits })
+        if (Buffer.byteLength(rebuilt, 'utf8') > LSP_FRAME_LIMIT) return
+        pushEvent(session, rebuilt)
+        return
+      }
+    }
     // diagnostics are PULL-only for the type voice: the policy voice owns
     // textDocument/publishDiagnostics, and letting the server's (measured:
     // always absent on TS7, but not contractual) empty pushes through would
@@ -313,6 +374,7 @@ export const makeLspManager = (): LspManager => {
         lastClientSequence: 0,
         outSequence: 0,
         text: initialSource,
+        requestedMethods: new Map(),
         documentVersion: 0,
         closing: false,
       }
@@ -429,6 +491,15 @@ export const makeLspManager = (): LspManager => {
 
       session.lastClientSequence = request.sequence
       session.lastActivity = Date.now()
+      const requestId = message['id']
+      if (typeof requestId === 'number' || typeof requestId === 'string') {
+        session.requestedMethods.set(requestId, method)
+        // a client that never reads answers must not grow this map forever
+        if (session.requestedMethods.size > 256) {
+          const oldest = session.requestedMethods.keys().next().value
+          if (oldest !== undefined) session.requestedMethods.delete(oldest)
+        }
+      }
       session.child.stdin?.write(encodeFrame(JSON.stringify(message)))
       if (method === 'textDocument/didOpen' || method === 'textDocument/didChange')
         pushPolicy(session)

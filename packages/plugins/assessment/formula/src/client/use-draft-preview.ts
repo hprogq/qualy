@@ -2,13 +2,20 @@
  * The draft contract preview: what the CURRENT editor buffer compiles to,
  * fetched through the same authoritative pipeline publication uses, at a
  * humane cadence - about a second of idle after an edit, one request in
- * flight at a time, and the newest source always wins (a completed answer
- * for an older buffer is applied only as history, never over a fresher
- * one).
+ * flight at a time, and the newest source always winning.
  *
- * Freshness is two different questions, kept apart on purpose:
- *   - is THIS preview about the text on screen?   (forSource === source)
- *   - does the contract still admit my test data? (contractSha256)
+ * Two concepts, deliberately separate so they cannot be confused:
+ *
+ *   current   the verdict about ONE source: loading, ready(contract) or
+ *             refused(words). The AUTHORITY - running cases and saving
+ *             tests may only proceed on `ready` for the exact buffer.
+ *   lastGood  the most recent source->contract pair that compiled. The
+ *             CONVENIENCE - a typo mid-edit must not unmake the form, so
+ *             screens keep rendering from here.
+ *
+ * `ensureFresh` retries a refusal for the same source on purpose: a 503
+ * from the sandbox is not a property of the code, and an explicit Run
+ * click deserves a fresh attempt. The idle loop does not loop on refusals.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -24,21 +31,24 @@ export interface DraftContract {
   readonly outputSchema: NormalizedAtomicSchema
 }
 
-export interface DraftPreviewState {
-  readonly status: 'idle' | 'loading' | 'ready' | 'refused'
-  /** the latest successful contract, possibly for an older source */
-  readonly contract: DraftContract | null
-  /** the source the latest outcome (contract or refusal) speaks about */
-  readonly forSource: string | null
-  /** already-formatted words for a refusal */
-  readonly refusal: string | null
+export type PreviewCurrent =
+  | { readonly status: 'idle' }
+  | { readonly status: 'loading'; readonly source: string }
+  | { readonly status: 'ready'; readonly source: string; readonly contract: DraftContract }
+  | { readonly status: 'refused'; readonly source: string; readonly refusal: string }
+
+export interface LastGoodContract {
+  readonly source: string
+  readonly contract: DraftContract
 }
 
 const IDLE_MS = 900
 
-export interface DraftPreviewHandle extends DraftPreviewState {
-  /** compile the current buffer NOW (run buttons skip the idle wait) */
-  readonly ensureFresh: () => Promise<DraftPreviewState>
+export interface DraftPreviewHandle {
+  readonly current: PreviewCurrent
+  readonly lastGood: LastGoodContract | null
+  /** compile the current buffer NOW; retries an earlier refusal */
+  readonly ensureFresh: () => Promise<PreviewCurrent>
 }
 
 export const useDraftPreview = (
@@ -46,71 +56,43 @@ export const useDraftPreview = (
   fetchPreview: (sourceTs: string) => Promise<DraftContract>,
   describeRefusal: (error: unknown) => string,
 ): DraftPreviewHandle => {
-  const [state, setState] = useState<DraftPreviewState>({
-    status: 'idle',
-    contract: null,
-    forSource: null,
-    refusal: null,
-  })
+  const [current, setCurrent] = useState<PreviewCurrent>({ status: 'idle' })
+  const [lastGood, setLastGood] = useState<LastGoodContract | null>(null)
   const sourceRef = useRef(source)
   sourceRef.current = source
-  const inFlight = useRef<Promise<DraftPreviewState> | null>(null)
+  const inFlight = useRef<Promise<PreviewCurrent> | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const disposed = useRef(false)
 
-  const runPreview = useCallback(
-    (sourceTs: string): Promise<DraftPreviewState> => {
-      const attempt = fetchPreview(sourceTs).then(
-        (contract): DraftPreviewState => ({
-          status: 'ready',
-          contract,
-          forSource: sourceTs,
-          refusal: null,
-        }),
-        (error): DraftPreviewState => ({
+  const launch = useCallback((): Promise<PreviewCurrent> => {
+    const wanted = sourceRef.current
+    if (wanted === null) return Promise.resolve({ status: 'idle' })
+    if (inFlight.current !== null) return inFlight.current
+    if (!disposed.current) setCurrent({ status: 'loading', source: wanted })
+    const flight = fetchPreview(wanted)
+      .then(
+        (contract): PreviewCurrent => ({ status: 'ready', source: wanted, contract }),
+        (error): PreviewCurrent => ({
           status: 'refused',
-          // the last good contract stays around: test data compatibility is
-          // keyed on it, and a typo in the code does not unmake the form
-          contract: null,
-          forSource: sourceTs,
+          source: wanted,
           refusal: describeRefusal(error),
         }),
       )
-      return attempt
-    },
-    [fetchPreview, describeRefusal],
-  )
-
-  const settle = useCallback(
-    (outcome: DraftPreviewState): DraftPreviewState => {
-      if (disposed.current) return outcome
-      setState((previous) => ({
-        ...outcome,
-        contract: outcome.contract ?? previous.contract,
-        status: outcome.status === 'refused' && previous.contract !== null ? 'refused' : outcome.status,
-      }))
-      return outcome
-    },
-    [],
-  )
-
-  const launch = useCallback((): Promise<DraftPreviewState> => {
-    const wanted = sourceRef.current
-    if (wanted === null) return Promise.resolve(state)
-    if (inFlight.current !== null) return inFlight.current
-    setState((previous) => ({ ...previous, status: 'loading' }))
-    const flight = runPreview(wanted)
       .then((outcome) => {
         inFlight.current = null
-        settle(outcome)
-        // latest coalescing: while this ran, the buffer may have moved on -
+        if (!disposed.current) {
+          setCurrent(outcome)
+          if (outcome.status === 'ready')
+            setLastGood({ source: outcome.source, contract: outcome.contract })
+        }
+        // latest coalescing: while this ran the buffer may have moved on -
         // one follow-up for the newest text, never a queue
         if (!disposed.current && sourceRef.current !== wanted) return launch()
         return outcome
       })
     inFlight.current = flight
     return flight
-  }, [runPreview, settle, state])
+  }, [fetchPreview, describeRefusal])
   const launchRef = useRef(launch)
   launchRef.current = launch
 
@@ -138,20 +120,30 @@ export const useDraftPreview = (
     }
   }, [])
 
-  const ensureFresh = useCallback((): Promise<DraftPreviewState> => {
+  const currentRef = useRef(current)
+  currentRef.current = current
+
+  const ensureFresh = useCallback((): Promise<PreviewCurrent> => {
     const wanted = sourceRef.current
-    if (wanted !== null && state.forSource === wanted && state.status !== 'loading')
-      return Promise.resolve(state)
+    const known = currentRef.current
+    // only a READY verdict for the exact buffer short-circuits; a refusal
+    // is retried - the code may be fine and the sandbox was not
+    if (
+      wanted !== null &&
+      known.status === 'ready' &&
+      known.source === wanted
+    )
+      return Promise.resolve(known)
     if (timer.current !== null) {
       clearTimeout(timer.current)
       timer.current = null
     }
     return launchRef.current().then((outcome) =>
-      // the flight we joined may have been about an older buffer; the
-      // coalescing follow-up inside launch() already covers the newer one
-      outcome.forSource === sourceRef.current ? outcome : launchRef.current(),
+      outcome.status !== 'idle' && outcome.source === sourceRef.current
+        ? outcome
+        : launchRef.current(),
     )
-  }, [state])
+  }, [])
 
-  return { ...state, ensureFresh }
+  return { current, lastGood, ensureFresh }
 }

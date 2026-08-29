@@ -152,6 +152,13 @@ export const makeFormulaDocument = (options: FormulaDocumentOptions): FormulaDoc
     },
     changed: () => {
       if (disposed) return
+      // painted markers describe text; when the language service cannot
+      // speak about the NEW text, yesterday's red lines come off rather
+      // than aging on someone else's code
+      if (connection === null || connection.state !== 'ready') {
+        options.onTypeDiagnostics([])
+        options.onPolicyDiagnostics([])
+      }
       if (syncTimer !== null) clearTimeout(syncTimer)
       syncTimer = setTimeout(syncNow, SYNC_DEBOUNCE_MS)
       scheduleDiagnostics()

@@ -14,6 +14,7 @@ import type {
   LspPosition,
   LspRange,
   LspSignatureHelp,
+  LspTextEdit,
 } from './protocol.ts'
 
 export const toLspPosition = (position: monaco.Position): LspPosition => ({
@@ -210,3 +211,8 @@ export const toMonacoMarker = (
     ...(diagnostic.source === undefined ? {} : { source: diagnostic.source }),
   }
 }
+
+export const toMonacoTextEdits = (
+  edits: readonly LspTextEdit[],
+): monaco.languages.TextEdit[] =>
+  edits.map((edit) => ({ range: toMonacoRange(edit.range), text: edit.newText }))

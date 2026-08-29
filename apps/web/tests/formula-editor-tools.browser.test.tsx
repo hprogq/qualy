@@ -184,10 +184,10 @@ describe('the formula authoring tools', () => {
         { name: 'ghost', input: { level: 'municipal', ordinal: 1, base: '1' }, expected: '1' },
       ],
       (cases) =>
-        cases.map((one) => ({
+        cases.map((one, index) => ({
           clientId: one.clientId,
-          passed: one.clientId === '0',
-          actual: one.clientId === '0' ? '8' : '2',
+          passed: index === 0,
+          actual: index === 0 ? '8' : '2',
           expected: '8',
         })),
     )
@@ -214,10 +214,34 @@ describe('the formula authoring tools', () => {
       const results = view.container.querySelectorAll('[data-testid="formula-case-result"]')
       expect(results[0]!.getAttribute('data-passed')).toBe('true')
 
-      // saving now keeps the code and holds the broken cases back
+      // a CLEAN save is a business no-op: the button is disabled and no
+      // request leaves the browser
       const saveButton = [...view.container.querySelectorAll('button')].find(
         (button) => button.textContent === '保存草稿',
       )!
+      expect(saveButton.disabled).toBe(true)
+      expect(wire.saves.length).toBe(0)
+
+      // dirty the tests (rename a case) and the function name; saving then
+      // patches the name only - the broken case holds the tests back, and
+      // nothing claims they were contract-checked
+      const caseName = rows[0]!.querySelector('input')! as HTMLInputElement
+      const nameSetter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value',
+      )!.set!
+      nameSetter.call(caseName, 'renamed case')
+      caseName.dispatchEvent(new Event('input', { bubbles: true }))
+      const inputs = [...view.container.querySelectorAll('input')] as HTMLInputElement[]
+      const nameField = inputs.find((one) => one.value === '认定分值')!
+      nameSetter.call(nameField, '认定分值 v2')
+      nameField.dispatchEvent(new Event('input', { bubbles: true }))
+      await vi.waitFor(
+        () => {
+          if (saveButton.disabled) throw new Error('still clean')
+        },
+        { timeout: 5_000 },
+      )
       saveButton.click()
       await vi.waitFor(
         () => {
@@ -225,8 +249,113 @@ describe('the formula authoring tools', () => {
         },
         { timeout: 10_000 },
       )
+      expect(wire.saves[0]).toHaveProperty('name', '认定分值 v2')
       expect(wire.saves[0]).not.toHaveProperty('draftTests')
-      expect(wire.saves[0]).toHaveProperty('draftSourceTs')
+      expect(wire.saves[0]).not.toHaveProperty('draftSourceTs')
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
+  it('keeps results honest: edits stale them, and a stale actual cannot be adopted', async () => {
+    const { screen } = screenFor(
+      [{ name: 'seed', input: { level: 'national', ordinal: 2, base: '4' }, expected: '8' }],
+      (cases) => cases.map((one) => ({ clientId: one.clientId, actual: '5' })),
+    )
+    const view = await screen
+    try {
+      await waitForForm(view)
+      const tryForm = view.container.querySelector('[data-testid="value-form-try"]')!
+      const select = tryForm.querySelector('select')!
+      select.value = 'national'
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      const [ordinalInput, baseInput] = [
+        ...tryForm.querySelectorAll('input:not([type="checkbox"])'),
+      ] as HTMLInputElement[]
+      setter.call(ordinalInput!, '2')
+      ordinalInput!.dispatchEvent(new Event('input', { bubbles: true }))
+      setter.call(baseInput!, '4')
+      baseInput!.dispatchEvent(new Event('input', { bubbles: true }))
+      const runButton = [...view.container.querySelectorAll('button')].find(
+        (button) => button.textContent === '运行',
+      )!
+      runButton.click()
+      await vi.waitFor(
+        () => {
+          if (view.container.querySelector('[data-testid="formula-try-result"]') === null)
+            throw new Error('no result yet')
+        },
+        { timeout: 10_000 },
+      )
+      // fresh: the adopt button offers the actual
+      expect(
+        [...view.container.querySelectorAll('button')].some((button) =>
+          button.textContent?.includes('设为预期值'),
+        ),
+      ).toBe(true)
+
+      // the INPUT moves; the result and the adopt offer both go stale,
+      // though the code never changed
+      setter.call(ordinalInput!, '9')
+      ordinalInput!.dispatchEvent(new Event('input', { bubbles: true }))
+      await vi.waitFor(
+        () => {
+          const result = view.container.querySelector('[data-testid="formula-try-result"]')
+          if (result?.getAttribute('data-stale') !== 'true') throw new Error('not stale yet')
+        },
+        { timeout: 5_000 },
+      )
+      expect(
+        [...view.container.querySelectorAll('button')].some((button) =>
+          button.textContent?.includes('设为预期值'),
+        ),
+      ).toBe(false)
+    } finally {
+      view.unmount()
+    }
+  }, 60_000)
+
+  it('keeps results with their case when a neighbour is deleted', async () => {
+    const { screen } = screenFor(
+      [
+        { name: 'first', input: { level: 'national', ordinal: 1, base: '1' }, expected: '2' },
+        { name: 'second', input: { level: 'provincial', ordinal: 2, base: '2' }, expected: '2' },
+      ],
+      (cases) => cases.map((one) => ({ clientId: one.clientId, passed: true, actual: '2' })),
+    )
+    const view = await screen
+    try {
+      await waitForForm(view)
+      const rows = () => [...view.container.querySelectorAll('[data-testid="formula-test-case"]')]
+      // run the SECOND row only
+      const secondRun = [...rows()[1]!.querySelectorAll('button')].find(
+        (button) => button.textContent === '运行',
+      )!
+      secondRun.click()
+      await vi.waitFor(
+        () => {
+          if (rows()[1]!.querySelector('[data-testid="formula-case-result"]') === null)
+            throw new Error('no result yet')
+        },
+        { timeout: 10_000 },
+      )
+      // delete the FIRST row: the survivor keeps ITS result
+      const firstDelete = [...rows()[0]!.querySelectorAll('button')].find(
+        (button) => button.textContent === '移除',
+      )!
+      firstDelete.click()
+      await vi.waitFor(
+        () => {
+          if (rows().length !== 1) throw new Error('row not deleted yet')
+        },
+        { timeout: 5_000 },
+      )
+      const survivor = rows()[0]!
+      expect(survivor.querySelector('input')!.value).toBe('second')
+      expect(
+        survivor.querySelector('[data-testid="formula-case-result"]')?.getAttribute('data-passed'),
+      ).toBe('true')
     } finally {
       view.unmount()
     }

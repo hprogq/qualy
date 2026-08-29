@@ -94,6 +94,9 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
       readOnly: props.readOnly,
       automaticLayout: true,
       minimap: { enabled: false },
+      // the page owns the wheel once the editor has nothing left to
+      // scroll; without this the editor pins the page under the cursor
+      scrollbar: { alwaysConsumeMouseWheel: false },
       fontSize: 13,
       lineNumbersMinChars: 3,
       scrollBeyondLastLine: false,
@@ -104,23 +107,29 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
     const connectionRef: { current: LspConnection | null } = { current: null }
     const documentRef: { current: FormulaDocument | null } = { current: null }
 
+    const deps = {
+      connection: () => connectionRef.current,
+      document: () => documentRef.current,
+    }
+    // providers register immediately on fallback triggers so the editor is
+    // never dumb, then RE-register from the server's own initialize answer
+    // (trigger characters, and formatting only where the server offers it)
+    let providers = registerFormulaProviders(monaco, deps, {})
+    let torndown = false
+
     const document = makeFormulaDocument({
       model,
       onTypeDiagnostics: (diagnostics) =>
         applyMarkers(monaco, model, TYPESCRIPT_MARKERS, diagnostics),
       onPolicyDiagnostics: (diagnostics) =>
         applyMarkers(monaco, model, POLICY_MARKERS, diagnostics),
-      onServerCapabilities: () => {},
+      onServerCapabilities: (capabilities) => {
+        if (torndown) return
+        for (const provider of providers) provider.dispose()
+        providers = registerFormulaProviders(monaco, deps, capabilities)
+      },
     })
     documentRef.current = document
-
-    const providers = registerFormulaProviders(
-      monaco,
-      { connection: () => connectionRef.current, document: () => documentRef.current },
-      // trigger characters are static here; the server's initialize answer
-      // is honored by re-registration being unnecessary for TS7's fixed set
-      {},
-    )
 
     const connection = openLspConnection({
       url: languageUrl(props.functionId),
@@ -138,6 +147,7 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
     })
 
     return () => {
+      torndown = true
       contentListener.dispose()
       for (const provider of providers) provider.dispose()
       connection.dispose()

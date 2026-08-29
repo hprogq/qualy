@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -14,9 +14,10 @@ import { validateValue } from '@qualy/value-schema/validate'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { useDraftPreview, type DraftContract } from './use-draft-preview.ts'
-import { InputValueForm } from './value-form/InputValueForm.tsx'
+import { AtomicValueField, InputValueForm } from './value-form/InputValueForm.tsx'
 import {
   draftsFromStored,
+  materializeField,
   materializeInput,
   type FieldDraft,
 } from './value-form/model.ts'
@@ -66,10 +67,23 @@ const styles = stylex.create({
 })
 
 interface DraftTest {
+  /** client-local identity: react keys, drafts, results and clientIds all
+   * ride this, so copying or deleting a row can never shift state onto a
+   * neighbour. Not persisted (yet) - reloading reseeds fresh keys. */
+  key: string
   name: string
   inputText: string
   expected: string
 }
+
+const newTestKey = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2)
+
+/** the wire/compare projection: identity is local, never sent or compared */
+const bareTests = (tests: readonly DraftTest[]) =>
+  tests.map(({ key: _key, ...rest }) => rest)
 
 /** a refusal raised by this screen's own checks, worded here, never generic */
 class LocalFinding extends Error {}
@@ -148,18 +162,16 @@ export default function FormulaEditorPage() {
       ) as Promise<DraftContract>,
     [api, run, functionId],
   )
-  const preview = useDraftPreview(
-    fn === undefined || source === '' ? null : source,
-    fetchPreview,
-    formatError,
-  )
-  const contract = preview.contract
+  const preview = useDraftPreview(fn === undefined ? null : source, fetchPreview, formatError)
+  // screens render from the last contract that compiled; running and saving
+  // tests take their authority from preview.current alone
+  const contract = preview.lastGood?.contract ?? null
 
   // per-row form drafts; the row's inputText stays the stored truth and
   // the drafts are the editing view over it. A changed contract identity
   // re-derives every view (legal stored values survive verbatim).
-  const [rowDrafts, setRowDrafts] = useState<Record<number, Record<string, FieldDraft>>>({})
-  const [rowIssues, setRowIssues] = useState<Record<number, ReadonlyMap<string, string>>>({})
+  const [rowDrafts, setRowDrafts] = useState<Record<string, Record<string, FieldDraft>>>({})
+  const [rowIssues, setRowIssues] = useState<Record<string, ReadonlyMap<string, string>>>({})
   const [tryDrafts, setTryDrafts] = useState<Record<string, FieldDraft>>({})
   const [tryIssues, setTryIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
   interface RunOutcome {
@@ -168,10 +180,12 @@ export default function FormulaEditorPage() {
     readonly refusal?: string
     readonly defect?: string
     readonly problems?: unknown
-    /** the buffer this ran against; anything else on screen means stale */
+    /** the buffer this ran against */
     readonly forSource: string
+    /** the case (input + expectation) this ran; edits make it stale too */
+    readonly forCase: string
   }
-  const [runResults, setRunResults] = useState<Record<number, RunOutcome>>({})
+  const [runResults, setRunResults] = useState<Record<string, RunOutcome>>({})
   const [tryResult, setTryResult] = useState<RunOutcome | null>(null)
   const [running, setRunning] = useState(false)
   useEffect(() => {
@@ -209,57 +223,92 @@ export default function FormulaEditorPage() {
       ]),
     )
 
-  const storedInput = (index: number): unknown => {
+  const rowByKey = (key: string): DraftTest | undefined => tests.find((one) => one.key === key)
+
+  const storedInput = (row: DraftTest | undefined): unknown => {
+    if (row === undefined) return undefined
     try {
-      return JSON.parse(tests[index]?.inputText === '' ? '{}' : (tests[index]?.inputText ?? '{}'))
+      return JSON.parse(row.inputText === '' ? '{}' : row.inputText)
     } catch {
       return undefined
     }
   }
 
-  /** the row's editing view: live drafts, or the stored value redrawn */
-  const draftsOfRow = (index: number): Record<string, FieldDraft> =>
-    rowDrafts[index] ??
-    (contract === null ? {} : draftsFromStored(contract.inputSchema, storedInput(index)))
+  /** what a result answered: the exact case content at run time */
+  const caseFingerprint = (row: DraftTest): string =>
+    JSON.stringify([row.inputText, row.expected])
 
-  const editRow = (index: number, name: string, draft: FieldDraft) => {
+  /** the row's editing view: live drafts, or the stored value redrawn */
+  const draftsOfRow = (row: DraftTest): Record<string, FieldDraft> =>
+    rowDrafts[row.key] ??
+    (contract === null ? {} : draftsFromStored(contract.inputSchema, storedInput(row)))
+
+  const editRow = (row: DraftTest, name_: string, draft: FieldDraft) => {
     if (contract === null) return
-    const next = { ...draftsOfRow(index), [name]: draft }
-    setRowDrafts((previous) => ({ ...previous, [index]: next }))
+    const next = { ...draftsOfRow(row), [name_]: draft }
+    setRowDrafts((previous) => ({ ...previous, [row.key]: next }))
     const materialized = materializeInput(contract.inputSchema, next)
     if (materialized.value !== null) {
       setTests(
-        tests.map((one, at) =>
-          at === index ? { ...one, inputText: JSON.stringify(materialized.value) } : one,
+        tests.map((one) =>
+          one.key === row.key ? { ...one, inputText: JSON.stringify(materialized.value) } : one,
         ),
       )
       setRowIssues((previous) => {
-        const { [index]: _dropped, ...rest } = previous
+        const { [row.key]: _dropped, ...rest } = previous
         return rest
       })
       return
     }
     setRowIssues((previous) => ({
       ...previous,
-      [index]: translateIssues(contract.inputSchema, materialized.issues),
+      [row.key]: translateIssues(contract.inputSchema, materialized.issues),
     }))
   }
 
-  /** whether a row's STORED input satisfies the current contract */
-  const rowLegal = (index: number): boolean => {
-    if (contract === null) return true
-    const stored = storedInput(index)
+  /** the expected value judged against the output contract; '' = not yet given */
+  const expectedIssueOf = (row: DraftTest, against: DraftContract | null): string | null => {
+    if (against === null || row.expected === '') return null
+    const outcome = materializeField(against.outputSchema, row.expected)
+    if (outcome.kind === 'invalid') return fieldIssueText(against.outputSchema, outcome.reason)
+    if (outcome.kind === 'empty') return null
+    const wrong = validateValue(against.outputSchema, outcome.value)
+    return wrong.length === 0 ? null : fieldIssueText(against.outputSchema, wrong[0]!.reason)
+  }
+
+  /** whether a row's STORED case satisfies a given contract, output included */
+  const rowLegalAgainst = (row: DraftTest, against: DraftContract | null): boolean => {
+    if (against === null) return true
+    const stored = storedInput(row)
     if (stored === undefined) return false
-    return validateValue(contract.inputSchema, stored).length === 0
+    if (validateValue(against.inputSchema, stored).length > 0) return false
+    return expectedIssueOf(row, against) === null
+  }
+
+  const rowLegal = (row: DraftTest): boolean => rowLegalAgainst(row, contract)
+
+  // ---- one evaluator, always against a FROZEN snapshot -----------------
+  // ensureFresh may resolve for a newer buffer than the click; the run then
+  // uses that newer pair wholesale - schema and source always travel
+  // together, and results are stamped with what they actually ran.
+  interface RunSnapshot {
+    readonly sourceTs: string
+    readonly contract: DraftContract
+  }
+  const freezeForRun = async (): Promise<RunSnapshot | null> => {
+    const fresh = await preview.ensureFresh()
+    if (fresh.status !== 'ready') return null
+    return { sourceTs: fresh.source, contract: fresh.contract }
   }
 
   const evaluate = async (
+    sourceTs: string,
     cases: readonly { clientId: string; input: unknown; expected?: string }[],
   ) => {
     const outcome = (await run(
       api.assessmentFormula.evaluateFormulaDraft({
         params: { functionId },
-        payload: { sourceTs: source, cases },
+        payload: { sourceTs, cases },
       }),
     )) as {
       cases: readonly {
@@ -274,26 +323,45 @@ export default function FormulaEditorPage() {
     return outcome.cases
   }
 
-  const runRows = async (indices: readonly number[]) => {
+  const runRows = async (keys: readonly string[]) => {
     setRunning(true)
     setFailure(null)
     try {
-      const fresh = await preview.ensureFresh()
-      if (fresh.contract === null) return
-      const runnable = indices.filter((index) => storedInput(index) !== undefined)
-      if (runnable.length === 0) return
+      const snapshot = await freezeForRun()
+      if (snapshot === null) return
+      // capture each runnable row's content NOW; later edits mark results
+      // stale rather than confusing what actually ran
+      const frozen = keys
+        .map((key) => rowByKey(key))
+        .filter((row): row is DraftTest => row !== undefined)
+        .map((row) => ({
+          key: row.key,
+          fingerprint: caseFingerprint(row),
+          input: storedInput(row),
+          expected: row.expected,
+        }))
+        .filter((row) => row.input !== undefined)
+      if (frozen.length === 0) return
       const answers = await evaluate(
-        runnable.map((index) => ({
-          clientId: String(index),
-          input: storedInput(index),
-          expected: tests[index]!.expected,
+        snapshot.sourceTs,
+        frozen.map((row) => ({
+          clientId: row.key,
+          input: row.input,
+          ...(row.expected === '' ? {} : { expected: row.expected }),
         })),
       )
-      const bySource = source
+      const byKey = new Map(frozen.map((row) => [row.key, row]))
       setRunResults((previous) => {
         const next = { ...previous }
-        for (const answer of answers)
-          next[Number(answer.clientId)] = { ...answer, forSource: bySource }
+        for (const answer of answers) {
+          const asked = byKey.get(answer.clientId)
+          if (asked === undefined) continue
+          next[answer.clientId] = {
+            ...answer,
+            forSource: snapshot.sourceTs,
+            forCase: asked.fingerprint,
+          }
+        }
         return next
       })
     } catch (error) {
@@ -308,21 +376,33 @@ export default function FormulaEditorPage() {
     setFailure(null)
     setTryIssues(undefined)
     try {
-      const fresh = await preview.ensureFresh()
-      if (fresh.contract === null) return
-      const materialized = materializeInput(fresh.contract.inputSchema, tryDrafts)
+      const snapshot = await freezeForRun()
+      if (snapshot === null) return
+      const frozenDrafts = { ...tryDrafts }
+      const materialized = materializeInput(snapshot.contract.inputSchema, frozenDrafts)
       if (materialized.value === null) {
-        setTryIssues(translateIssues(fresh.contract.inputSchema, materialized.issues))
+        setTryIssues(translateIssues(snapshot.contract.inputSchema, materialized.issues))
         return
       }
-      const answers = await evaluate([{ clientId: 'try', input: materialized.value }])
-      setTryResult({ ...answers[0]!, forSource: source })
+      const answers = await evaluate(snapshot.sourceTs, [
+        { clientId: 'try', input: materialized.value },
+      ])
+      setTryResult({
+        ...answers[0]!,
+        forSource: snapshot.sourceTs,
+        forCase: JSON.stringify(frozenDrafts),
+      })
     } catch (error) {
       setFailure(formatError(error))
     } finally {
       setRunning(false)
     }
   }
+
+  /** a try result speaks for the current screen only while neither the
+   * code nor the inputs moved; a stale actual may NOT become an expected */
+  const tryStale = (outcome: RunOutcome): boolean =>
+    outcome.forSource !== source || outcome.forCase !== JSON.stringify(tryDrafts)
 
   const saveTryAsCase = (expected: string) => {
     if (contract === null) return
@@ -333,19 +413,20 @@ export default function FormulaEditorPage() {
     }
     setTests([
       ...tests,
-      { name: '', inputText: JSON.stringify(materialized.value), expected },
+      { key: newTestKey(), name: '', inputText: JSON.stringify(materialized.value), expected },
     ])
   }
 
-  const loadIntoTry = (index: number) => {
+  const loadIntoTry = (row: DraftTest) => {
     if (contract === null) return
-    setTryDrafts(draftsFromStored(contract.inputSchema, storedInput(index)))
+    setTryDrafts(draftsFromStored(contract.inputSchema, storedInput(row)))
     setTryIssues(undefined)
     setTryResult(null)
   }
 
   const seededTests = (loaded: NonNullable<typeof fn>) =>
     loaded.draftTests.map((test) => ({
+      key: newTestKey(),
       name: test.name,
       inputText: JSON.stringify(test.input),
       expected: test.expected,
@@ -360,7 +441,7 @@ export default function FormulaEditorPage() {
       baseRevision !== null &&
       (name.trim() !== fn.name ||
         source !== fn.draftSourceTs ||
-        JSON.stringify(tests) !== JSON.stringify(seededTests(fn)))
+        JSON.stringify(bareTests(tests)) !== JSON.stringify(bareTests(seededTests(fn))))
     if (baseRevision !== null && fn.draftRevision !== baseRevision && holdsEdits) {
       setRemoteMoved(true)
       return
@@ -406,33 +487,49 @@ export default function FormulaEditorPage() {
 
   // the two dirts, apart on purpose: big code edits may leave cases
   // temporarily broken, and that must never hold the CODE hostage
-  const sourceDirty = (): boolean =>
-    fn === undefined ? false : name.trim() !== fn.name || source !== fn.draftSourceTs
+  const nameDirty = (): boolean => (fn === undefined ? false : name.trim() !== fn.name)
+  const sourceChanged = (): boolean => (fn === undefined ? false : source !== fn.draftSourceTs)
+  const sourceDirty = (): boolean => nameDirty() || sourceChanged()
   const testsDirty = (): boolean =>
     fn === undefined
       ? false
-      : JSON.stringify(tests) !== JSON.stringify(seededTests(fn))
+      : JSON.stringify(bareTests(tests)) !== JSON.stringify(bareTests(seededTests(fn)))
   const dirty = (): boolean => sourceDirty() || testsDirty()
 
-  /** every row's stored input parses and satisfies the current contract */
-  const allRowsLegal = (): boolean => tests.every((_one, index) => rowLegal(index))
+  /** every row satisfies a given contract, expectation included */
+  const allRowsLegalAgainst = (against: DraftContract): boolean =>
+    tests.every((row) => rowLegalAgainst(row, against))
 
-  const saveEffect = (collected: { name: string; input: unknown; expected: string }[] | null) =>
+  /** tests may only claim contract-checked when the preview is READY for
+   * the exact buffer on screen; the lastGood convenience never qualifies */
+  const testsSaveable = (): boolean =>
+    preview.current.status === 'ready' &&
+    preview.current.source === source &&
+    allRowsLegalAgainst(preview.current.contract)
+
+  interface SavePatch {
+    readonly name: string | null
+    readonly source: string | null
+    readonly tests: { name: string; input: unknown; expected: string }[] | null
+  }
+
+  // a real PATCH: only what changed travels, so a clean save is a business
+  // no-op instead of a new revision and a new audit row
+  const saveEffect = (patch: SavePatch) =>
     run(
       api.assessmentFormula.updateFormulaDraft({
         params: { functionId },
         payload: {
           expectedDraftRevision: baseRevision ?? fn!.draftRevision,
-          name: name.trim() === '' ? fn!.name : name.trim(),
-          draftSourceTs: source,
-          ...(collected === null ? {} : { draftTests: collected }),
+          ...(patch.name === null ? {} : { name: patch.name }),
+          ...(patch.source === null ? {} : { draftSourceTs: patch.source }),
+          ...(patch.tests === null ? {} : { draftTests: patch.tests }),
         },
       }),
     )
 
   const save = useMutation({
-    mutationFn: (collected: { name: string; input: unknown; expected: string }[] | null) =>
-      saveEffect(collected),
+    mutationFn: (patch: SavePatch) => saveEffect(patch),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
       toast.success(format(m.saved))
@@ -446,19 +543,57 @@ export default function FormulaEditorPage() {
   // api-failure copy (measured: it read as "something went wrong" with no
   // request ever sent, which explained nothing)
   const saveDraft = () => {
-    if (testsDirty() && !allRowsLegal()) {
-      // the code saves; the cases wait for their fixes
-      toast.info(format(m.testsHeldBack))
-      save.mutate(null)
-      return
+    const wantTests = testsDirty()
+    const canTests = wantTests && testsSaveable()
+    const patchName = nameDirty() ? (name.trim() === '' ? fn!.name : name.trim()) : null
+    const patchSource = sourceChanged() ? source : null
+    if (wantTests && !canTests) toast.info(format(m.testsHeldBack))
+    if (patchName === null && patchSource === null && !canTests) return
+    let collected: SavePatch['tests'] = null
+    if (canTests) {
+      const parsed = parsedTests()
+      if ('invalidLabel' in parsed) {
+        setFailure(format(m.testInputInvalid, { label: parsed.invalidLabel }))
+        return
+      }
+      collected = parsed.tests
     }
-    const parsed = parsedTests()
-    if ('invalidLabel' in parsed) {
-      setFailure(format(m.testInputInvalid, { label: parsed.invalidLabel }))
-      return
-    }
-    save.mutate(testsDirty() ? parsed.tests : null)
+    save.mutate({ name: patchName, source: patchSource, tests: collected })
   }
+  const saveDraftRef = useRef(saveDraft)
+  saveDraftRef.current = saveDraft
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+
+  // the whole page saves on Cmd/Ctrl+S, wherever focus sits - code, name,
+  // a test field; capture-phase so Monaco cannot swallow it first
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === 's'
+      ) {
+        event.preventDefault()
+        saveDraftRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
+  // closing or reloading the tab with unsaved work asks first; in-app
+  // navigation guarding waits for a data router (BrowserRouter has no
+  // blocker seam)
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current()) return
+      event.preventDefault()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
 
   const publish = useMutation({
     // publishing compiles the draft the SERVER holds, so unsaved edits are
@@ -466,12 +601,20 @@ export default function FormulaEditorPage() {
     mutationFn: async () => {
       let revision = baseRevision ?? fn!.draftRevision
       if (dirty()) {
+        // publication needs the whole draft coherent: tests that changed
+        // must be checkable against the CURRENT buffer's contract
+        if (testsDirty() && !testsSaveable())
+          return Promise.reject(new LocalFinding(format(m.testsHeldBack)))
         const parsed = parsedTests()
         if ('invalidLabel' in parsed)
           return Promise.reject(
             new LocalFinding(format(m.testInputInvalid, { label: parsed.invalidLabel })),
           )
-        const savedNow = (await saveEffect(parsed.tests)) as {
+        const savedNow = (await saveEffect({
+          name: nameDirty() ? (name.trim() === '' ? fn!.name : name.trim()) : null,
+          source: sourceChanged() ? source : null,
+          tests: testsDirty() ? parsed.tests : null,
+        })) as {
           function: { draftRevision: number }
         }
         revision = savedNow.function.draftRevision
@@ -632,7 +775,7 @@ export default function FormulaEditorPage() {
             >
               {format(archived ? m.restore : m.archive)}
             </Button>
-            <Button variant="outline" disabled={archived || busy} onClick={saveDraft}>
+            <Button variant="outline" disabled={archived || busy || !dirty()} onClick={saveDraft}>
               {format(m.save)}
             </Button>
             <Button disabled={archived || busy} onClick={() => publish.mutate()}>
@@ -687,21 +830,21 @@ export default function FormulaEditorPage() {
           {...stylex.props(styles.hint)}
           data-testid="formula-structure"
           data-state={
-            preview.status === 'refused'
-              ? 'refused'
-              : contract === null
-                ? 'loading'
-                : preview.forSource === source
-                  ? 'synced'
+            preview.current.status === 'ready' && preview.current.source === source
+              ? 'synced'
+              : preview.current.status === 'refused' && preview.current.source === source
+                ? 'refused'
+                : contract === null
+                  ? 'loading'
                   : 'stale'
           }
         >
-          {preview.status === 'refused'
-            ? format(m.structureRefused)
-            : contract === null
-              ? format(m.structureLoading)
-              : preview.forSource === source
-                ? format(m.structureSynced)
+          {preview.current.status === 'ready' && preview.current.source === source
+            ? format(m.structureSynced)
+            : preview.current.status === 'refused' && preview.current.source === source
+              ? format(m.structureRefused)
+              : contract === null
+                ? format(m.structureLoading)
                 : format(m.structureStale)}
         </p>
         {contract === null ? null : (
@@ -722,7 +865,9 @@ export default function FormulaEditorPage() {
               <Button variant="outline" disabled={archived || running} onClick={() => saveTryAsCase('')}>
                 {format(m.trySave)}
               </Button>
-              {tryResult?.actual === undefined ? null : (
+              {tryResult?.actual === undefined || tryStale(tryResult) ? null : (
+                // a STALE actual may never become an expectation: the button
+                // exists only while code and inputs both still match the run
                 <Button
                   variant="outline"
                   disabled={archived || running}
@@ -735,9 +880,9 @@ export default function FormulaEditorPage() {
             {tryResult === null ? null : (
               <p
                 data-testid="formula-try-result"
-                data-stale={tryResult.forSource === source ? undefined : true}
+                data-stale={tryStale(tryResult) ? true : undefined}
               >
-                {tryResult.forSource !== source
+                {tryStale(tryResult)
                   ? format(m.resultStale)
                   : tryResult.actual !== undefined
                     ? format(m.resultActual, { value: tryResult.actual })
@@ -754,13 +899,16 @@ export default function FormulaEditorPage() {
 
       <Panel title={format(m.testsTitle)} description={format(m.testsHint)}>
         <div {...stylex.props(styles.testGrid)}>
-          {tests.map((test, index) => {
-            const outcome = runResults[index]
-            const stale = outcome !== undefined && outcome.forSource !== source
-            const legal = rowLegal(index)
+          {tests.map((test) => {
+            const outcome = runResults[test.key]
+            const stale =
+              outcome !== undefined &&
+              (outcome.forSource !== source || outcome.forCase !== caseFingerprint(test))
+            const expectedProblem = expectedIssueOf(test, contract)
+            const legal = rowLegal(test)
             return (
               <div
-                key={index}
+                key={test.key}
                 {...stylex.props(styles.testCase)}
                 data-testid="formula-test-case"
                 data-legal={legal}
@@ -773,21 +921,8 @@ export default function FormulaEditorPage() {
                     disabled={archived}
                     onChange={(event) =>
                       setTests(
-                        tests.map((one, at) =>
-                          at === index ? { ...one, name: event.target.value } : one,
-                        ),
-                      )
-                    }
-                  />
-                  <Input
-                    aria-label={format(m.testExpected)}
-                    placeholder={format(m.expectedLabel)}
-                    value={test.expected}
-                    disabled={archived}
-                    onChange={(event) =>
-                      setTests(
-                        tests.map((one, at) =>
-                          at === index ? { ...one, expected: event.target.value } : one,
+                        tests.map((one) =>
+                          one.key === test.key ? { ...one, name: event.target.value } : one,
                         ),
                       )
                     }
@@ -796,24 +931,24 @@ export default function FormulaEditorPage() {
                     <Button
                       variant="outline"
                       disabled={archived || running}
-                      onClick={() => void runRows([index])}
+                      onClick={() => void runRows([test.key])}
                     >
                       {format(m.run)}
                     </Button>
-                    <Button variant="ghost" disabled={archived} onClick={() => loadIntoTry(index)}>
+                    <Button variant="ghost" disabled={archived} onClick={() => loadIntoTry(test)}>
                       {format(m.loadIntoTry)}
                     </Button>
                     <Button
                       variant="ghost"
                       disabled={archived}
-                      onClick={() => setTests([...tests, { ...test }])}
+                      onClick={() => setTests([...tests, { ...test, key: newTestKey() }])}
                     >
                       {format(m.copyTest)}
                     </Button>
                     <Button
                       variant="ghost"
                       disabled={archived}
-                      onClick={() => setTests(tests.filter((_, at) => at !== index))}
+                      onClick={() => setTests(tests.filter((one) => one.key !== test.key))}
                     >
                       {format(m.removeTest)}
                     </Button>
@@ -827,8 +962,8 @@ export default function FormulaEditorPage() {
                     disabled={archived}
                     onChange={(event) =>
                       setTests(
-                        tests.map((one, at) =>
-                          at === index ? { ...one, inputText: event.target.value } : one,
+                        tests.map((one) =>
+                          one.key === test.key ? { ...one, inputText: event.target.value } : one,
                         ),
                       )
                     }
@@ -836,12 +971,48 @@ export default function FormulaEditorPage() {
                 ) : (
                   <InputValueForm
                     schema={contract.inputSchema}
-                    drafts={draftsOfRow(index)}
-                    onDraft={(name_, draft) => editRow(index, name_, draft)}
+                    drafts={draftsOfRow(test)}
+                    onDraft={(name_, draft) => editRow(test, name_, draft)}
                     locale={locale}
                     disabled={archived}
-                    problems={rowIssues[index]}
-                    scope={`case-${index}`}
+                    problems={rowIssues[test.key]}
+                    scope={`case-${test.key}`}
+                  />
+                )}
+                {contract === null ? (
+                  <Input
+                    aria-label={format(m.testExpected)}
+                    placeholder={format(m.expectedLabel)}
+                    value={test.expected}
+                    disabled={archived}
+                    onChange={(event) =>
+                      setTests(
+                        tests.map((one) =>
+                          one.key === test.key ? { ...one, expected: event.target.value } : one,
+                        ),
+                      )
+                    }
+                  />
+                ) : (
+                  // the expectation faces the OUTPUT contract like inputs
+                  // face the input contract; '' stays legal until publish
+                  <AtomicValueField
+                    schema={contract.outputSchema}
+                    name={`expected-${test.key}`}
+                    label={format(m.expectedLabel)}
+                    draft={test.expected}
+                    onDraft={(draft) =>
+                      setTests(
+                        tests.map((one) =>
+                          one.key === test.key
+                            ? { ...one, expected: typeof draft === 'string' ? draft : String(draft) }
+                            : one,
+                        ),
+                      )
+                    }
+                    locale={locale}
+                    disabled={archived}
+                    {...(expectedProblem === null ? {} : { problem: expectedProblem })}
                   />
                 )}
                 {legal ? null : (
@@ -874,14 +1045,16 @@ export default function FormulaEditorPage() {
           <Button
             variant="outline"
             disabled={archived}
-            onClick={() => setTests([...tests, { name: '', inputText: '{}', expected: '' }])}
+            onClick={() =>
+              setTests([...tests, { key: newTestKey(), name: '', inputText: '{}', expected: '' }])
+            }
           >
             {format(m.addTest)}
           </Button>
           <Button
             variant="outline"
             disabled={archived || running || tests.length === 0}
-            onClick={() => void runRows(tests.map((_one, index) => index))}
+            onClick={() => void runRows(tests.map((one) => one.key))}
           >
             {format(running ? m.running : m.runAll)}
           </Button>

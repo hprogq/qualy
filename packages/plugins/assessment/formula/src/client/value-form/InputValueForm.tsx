@@ -98,6 +98,61 @@ const AtomicControl = ({
   )
 }
 
+export interface AtomicValueFieldProps {
+  readonly schema: AtomicSchema
+  readonly name: string
+  readonly draft: FieldDraft
+  readonly onDraft: (draft: FieldDraft) => void
+  readonly locale: string
+  readonly disabled?: boolean
+  /** already-translated words about what stops this field */
+  readonly problem?: string
+  /** overrides the annotation/key label (e.g. an output's own caption) */
+  readonly label?: string
+}
+
+/**
+ * One schema-typed field on its own: the expected-output box and every
+ * parameter of the input form are the same control.
+ */
+export function AtomicValueField({
+  schema,
+  name,
+  draft,
+  onDraft,
+  locale,
+  disabled = false,
+  problem,
+  label,
+}: AtomicValueFieldProps) {
+  const description = displayDescription(schema, locale)
+  return (
+    <Field label={label ?? displayTitle(schema, name, locale)}>
+      {(id) => (
+        <div data-parameter={name} data-invalid={problem === undefined ? undefined : true}>
+          <AtomicControl
+            schema={schema}
+            name={name}
+            draft={draft}
+            onDraft={onDraft}
+            locale={locale}
+            disabled={disabled}
+            id={id}
+          />
+          {description === undefined ? null : (
+            <p {...stylex.props(styles.description)}>{description}</p>
+          )}
+          {problem === undefined ? null : (
+            <p {...stylex.props(styles.problem)} role="alert">
+              {problem}
+            </p>
+          )}
+        </div>
+      )}
+    </Field>
+  )
+}
+
 export function InputValueForm({
   schema,
   drafts,
@@ -112,32 +167,18 @@ export function InputValueForm({
       {inputOrder(schema).map((name) => {
         const property = schema.properties[name]
         if (property === undefined) return null
-        const description = displayDescription(property, locale)
         const problem = problems?.get(name)
         return (
-          <Field key={name} label={displayTitle(property, name, locale)}>
-            {(id) => (
-              <div data-parameter={name} data-invalid={problem === undefined ? undefined : true}>
-                <AtomicControl
-                  schema={property}
-                  name={name}
-                  draft={drafts[name] ?? ''}
-                  onDraft={(draft) => onDraft(name, draft)}
-                  locale={locale}
-                  disabled={disabled}
-                  id={id}
-                />
-                {description === undefined ? null : (
-                  <p {...stylex.props(styles.description)}>{description}</p>
-                )}
-                {problem === undefined ? null : (
-                  <p {...stylex.props(styles.problem)} role="alert">
-                    {problem}
-                  </p>
-                )}
-              </div>
-            )}
-          </Field>
+          <AtomicValueField
+            key={name}
+            schema={property}
+            name={name}
+            draft={drafts[name] ?? ''}
+            onDraft={(draft) => onDraft(name, draft)}
+            locale={locale}
+            disabled={disabled}
+            {...(problem === undefined ? {} : { problem })}
+          />
         )
       })}
     </div>

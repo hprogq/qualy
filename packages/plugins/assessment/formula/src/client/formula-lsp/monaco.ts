@@ -20,6 +20,7 @@ import {
   toMonacoHover,
   toMonacoMarker,
   toMonacoSignatureHelp,
+  toMonacoTextEdits,
 } from './conversions.ts'
 import {
   FORMULA_URI,
@@ -29,6 +30,7 @@ import {
   type LspHover,
   type LspServerCapabilities,
   type LspSignatureHelp,
+  type LspTextEdit,
 } from './protocol.ts'
 
 export const TYPESCRIPT_MARKERS = 'qualy-formula/typescript'
@@ -111,6 +113,29 @@ export const provideSignatureHelp = async (
   }
 }
 
+/** whole-document formatting through the SAME TS7 the diagnostics use */
+export const provideFormattingEdits = async (
+  deps: ProviderDeps,
+  model: monaco.editor.ITextModel,
+): Promise<monaco.languages.TextEdit[] | null> => {
+  const connection = deps.connection()
+  const document = deps.document()
+  if (connection === null || document === null || connection.state !== 'ready') return null
+  document.syncNow()
+  try {
+    const result = (await connection.request('textDocument/formatting', {
+      textDocument: { uri: FORMULA_URI },
+      options: {
+        tabSize: model.getOptions().tabSize,
+        insertSpaces: model.getOptions().insertSpaces,
+      },
+    })) as readonly LspTextEdit[] | null
+    return result === null ? null : toMonacoTextEdits(result)
+  } catch {
+    return null
+  }
+}
+
 export const registerFormulaProviders = (
   monacoApi: typeof monaco,
   deps: ProviderDeps,
@@ -133,6 +158,14 @@ export const registerFormulaProviders = (
     ],
     provideSignatureHelp: (_model, position) => provideSignatureHelp(deps, position),
   }),
+  ...(serverCapabilities.documentFormattingProvider !== undefined &&
+  serverCapabilities.documentFormattingProvider !== false
+    ? [
+        monacoApi.languages.registerDocumentFormattingEditProvider(FILTER, {
+          provideDocumentFormattingEdits: (model) => provideFormattingEdits(deps, model),
+        }),
+      ]
+    : []),
 ]
 
 export const applyMarkers = (

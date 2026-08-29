@@ -10886,3 +10886,52 @@ MonacoLspClient、浏览器无 Effect RPC。
 - **dev 运维事实**:SDK/编译器改动后 sandbox 容器必须重建(`pnpm sandbox:build &&
   pnpm sandbox:up`),否则容器内旧 profile 会把新 annotation 当 unknown-key 拒——
   已实测撞上一次;重建后真容器编译带全套 annotation 的公式通过(探针 compiled ok)。
+
+## Authoring loop 审计修复:snapshot、identity、freshness、formatting(2026-08-30)
+
+按复核清单十一项全部落地:
+
+- **P0 Run snapshot 一致性**:运行前经 `freezeForRun()` 冻结 {sourceTs, contract} 一体
+  快照,materialize/evaluate/结果标记全程只用它——schema 与 source 永远同一份代码,
+  运行期间继续打字只会让结果按 stale 显示,绝不追逐变化中的 buffer。
+- **P0 preview current/lastGood 拆分**:`useDraftPreview` 重构为判决(current:
+  loading/ready/refused,带 source)与便利(lastGood:最近编译成功对)两个概念——
+  表单渲染用 lastGood,运行与保存 tests 的 authority 只认 current ready 且 source
+  精确匹配;`ensureFresh` 对同源 refused 显式重试(503 不是代码属性);删除
+  `source === ''` 特判(清空代码应得到真实 refusal)。
+- **P0 结果与用例内容绑定**:RunOutcome 带 forSource + forCase(运行时用例指纹:
+  regression=[inputText,expected]、try=drafts 快照);改输入、改 expected、改代码任一
+  → 结果转 stale;**stale 的 actual 绝不能被采纳为预期值**(按钮随 stale 消失)。
+- **P0 测试行稳定 identity**:DraftTest 携 client-local key(uuid);React key、
+  rowDrafts/rowIssues/runResults、evaluation clientId 全部键控——复制/删除/运行中
+  编辑不再把状态串到邻行;晚到的结果按 key 落位,行已删即自然丢弃。门禁:删邻行后
+  幸存行保有自己的结果。
+- **P1 tests 保存 freshness gate**:`testsSaveable` = preview.current ready 且 source
+  精确匹配且全行(含 expected)合法;不满足时保存只带代码并 toast——客户端不再声称
+  「已按当前 contract 检查」;publish 的 dirty-save-first 同 gate。
+- **P1 clean save 业务 no-op**:saveEffect 变真 PATCH(只带变更字段),完全干净时
+  不发 HTTP,Save 按钮 !dirty 禁用——连按十次不再产生十个 revision 与十条审计。
+- **⌘S/Ctrl+S**:页面级 capture 捕获(焦点在 Monaco/名称/测试任意处都保存同一份
+  草稿),preventDefault 拦浏览器保存;绑保存草稿,不绑发布。
+- **P1 expected 类型化**:抽出 `AtomicValueField`,expected 用 outputSchema 渲染同款
+  控件,materialize + validateValue 判定(空串留给发布挡);行合法性含 expected。
+- **TS7 formatting**:F1 allowlist + session 记 request id→method,formatting 响应
+  严格校验为 TextEdit[] 后**整体重建**下发——newText 是作者自己的源码,永不过路径
+  扫描(公式合法地写 "/usr/share/doc");浏览器声明 formatting capability,Monaco
+  按服务端 documentFormattingProvider 注册 provider,请求前 syncNow。E2E:乱缩进
+  产生非空编辑、含路径字符串的响应无损到达(host+容器双形态)。实测记录:TS
+  formatter 只管缩进与空格,规整源返回 [] 是「无需修改」不是失败。
+- **capabilities 真接线**:providers 先按 fallback 注册,收到 initialize 答案后
+  dispose 重注册(trigger characters 与 formatting 都由真实 capability 驱动)。
+- **版本漂移降级**:bridge 对 allowlist 外的 REQUEST 回标准 JSON-RPC -32601 并继续
+  对话(旧沙箱配新浏览器不再拆整条连接);其余 refusal 语义不变。门禁:rename 请求
+  得 -32601 后 hover 照常。
+- **diagnostics 清理**:连接不可用时的编辑清掉双 owner 旧红线(旧代码的红线不在新
+  代码上老化)。
+- **杂项**:Monaco `alwaysConsumeMouseWheel: false`(编辑器滚到底后滚轮交还页面);
+  access log 识别被物化成 InterruptError 的中断(shutdown 时 upgrade handler 不再记
+  503 ERROR,按 client closed Debug);beforeunload 守未保存修改(SPA 内导航拦截需
+  data router,BrowserRouter 无 blocker seam,记为后续)。
+- **验收**:`pnpm typecheck` 零错零建议;`pnpm test` 1125 passed;`pnpm test:browser`
+  252 passed;容器重建后 external 形态 13/13(formatting + -32601 含内);dev 运维:
+  本轮再次实证 SDK/authoring 改动后必须 sandbox:build。

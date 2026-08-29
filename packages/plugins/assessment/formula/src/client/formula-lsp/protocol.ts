@@ -71,12 +71,18 @@ export interface LspSignatureHelp {
   readonly activeParameter?: number
 }
 
+export interface LspTextEdit {
+  readonly range: LspRange
+  readonly newText: string
+}
+
 export interface LspServerCapabilities {
   readonly completionProvider?: { readonly triggerCharacters?: readonly string[] }
   readonly signatureHelpProvider?: {
     readonly triggerCharacters?: readonly string[]
     readonly retriggerCharacters?: readonly string[]
   }
+  readonly documentFormattingProvider?: boolean | object
 }
 
 /** a full pull-diagnostics report; unchanged reports do not occur (no previousResultId is sent) */
@@ -112,5 +118,6 @@ export const CLIENT_CAPABILITIES = {
     },
     diagnostic: {},
     publishDiagnostics: { versionSupport: true },
+    formatting: {},
   },
 } as const
