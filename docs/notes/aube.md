@@ -59,7 +59,15 @@ manifest 声明过它;装配层的插件解析恰恰建立在「没声明就 res
 
 宽松回滚也救不回来:`pnpm install --no-frozen-lockfile` 能装上 Aube 写的 lock,但**不收敛**——
 与原 lock 差约 100 行,`supports-color` 作为 `debug` 的可选 peer 渗进整片 babel 图。
-(已排除是本地改动所致:把 patch 键改回原样重测,差异照旧。)真正的回滚路仍然是
+
+**这一条的归因后来被收窄了**(2026-08-29 实测)。当时写的是「已排除本地改动」,那只排除了 patch 键。
+更完整的对照是:pnpm 11.24.0 删掉 lock 从零解析当前 manifest,产出与已提交的 lock **逐字节相同**;
+但只要 root importer 的依赖集合发生变化(实测:往根上加一个 workspace link),同一个 pnpm 就会把
+`supports-color` 铺进半个 babel peer 上下文,103 行 diff。Aube 写的 lock 正是改了 importer 的依赖集合
+(加 `redis`/`react`/`unplugin`),所以 `supports-color` 是**那次改动经 pnpm 重解析的后果**,
+不是 Aube 自己的第二个缺陷。阻塞结论不变——Case A/B 仍然成立——但这条不该算在 Aube 头上。
+
+真正的回滚路仍然是
 `git checkout pnpm-lock.yaml`,那条永远有效——实测也确实用上了:spike 期间一次 `aube install`
 把 `pnpm-lock.yaml` 原地改写了。
 

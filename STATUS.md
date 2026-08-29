@@ -10027,3 +10027,44 @@ Audit / 领域历史 / 都不需要 的哪一格(见 CLAUDE.md「记录」节);�
 
 telemetry 剩下的两类事情——进 VPC 后的环境复验、TMP/Grafana 面板与告警——属于部署与运维,
 不是架构开发的 blocker,不因此把 Phase 6 继续挂着。
+
+## 四条基础设施线的对抗式审查与修复(2026-08-29)
+
+225 个 agent、16 个独立镜头扫四个子系统,每条发现交给两名立场对立的怀疑者(可达性 / 既有守卫),
+不确定即驳回;再由每个子系统的完整性批评者补一轮「谁都没看的是什么」。85 条候选,60 条挺过两名怀疑者,
+判决保留 16 条。**其中 9 条我逐条复核过,5 条是跑出来的。**
+
+已修(每条都带承重门禁,去掉修复即点名失败):
+
+| 缺陷                                                               | 位置                             | 门禁                                           |
+| ------------------------------------------------------------------ | -------------------------------- | ---------------------------------------------- |
+| 层构建失败 → 零字节退出                                            | apps/server/src/main.ts          | apps/server/tests/startup-refusal.test.ts      |
+| 角色资格变更不留审计                                               | rbac/server/roles.ts             | tools/tests/audit-actions.test.ts              |
+| Tailwind 退场留下的三个悬空自定义属性                              | toast/theme.css/ItemSettingsPage | tools/tests/semantic-tokens.test.ts(拓宽)      |
+| merge 丢掉一半的重载要求                                           | dev/watch.ts                     | apps/server/tests/watch-classification.test.ts |
+| 被信号杀死的子进程读成还活着                                       | dev/child.ts                     | apps/server/tests/child-liveness.test.ts       |
+| 监听计划只快照一次 / PORT 与子环境两处来源 / watcher 无 error 监听 | dev/host.ts、dev/watch.ts        | 同上                                           |
+| 客户端 trace id 撑爆 varchar(32) 导致回滚                          | api-kit/request.ts               | api-kit/tests/request.test.ts                  |
+| 游标时间戳段未校验 → 500 而非 400(六处)                            | api-kit/index.ts                 | api-kit/tests/cursor.test.ts                   |
+| DialogContent 的 className 是追加不是合并                          | ui/dialog.tsx                    | 浏览器套件                                     |
+| padding 简写压不住 longhand                                        | PhaseTimelineEditor              | 无(见下)                                       |
+| 每个 Select 丢 aria-expanded                                       | ui/select.tsx                    | form-controls.browser                          |
+| 对话框开着时的 toast 被 inert                                      | ui/toast.tsx                     | overlay.browser                                |
+| metric 的 url.scheme 是死常量                                      | api-kit/request.ts               | api-kit/tests/request.test.ts                  |
+
+**没修的一条,以及为什么**:审查报的「OTLP 客户端无 per-request 超时导致 export fiber 与 socket 无界累积」。
+上游确实没有超时并明说交给调用方,但**它声称的失效路径我复现不出来**,而且实测推翻了其中两条机制:
+导出的 interval 循环 `Fiber.await` 每次导出后才继续(OtlpExporter.ts:251-253),所以 interval 路径不可能堆积;
+而去掉候选修复后,尝试仍在持续发起,所以也不是「卡死不动」。三次构造判别性用例都无法区分修复前后。
+按仓库元规则(复杂度必须由已发生的问题证明),不做预防性建设,整块回退。
+
+**未成门禁的一类**:StyleX 的「简写压不住 longhand」与「className 追加而非合并」。两者要精确判定,
+都需要跨文件解析接收组件自己写了哪些属性——95 个 xstyle 载荷里 48 个用了简写,382 处传编译 className,
+一刀切的规则全是误报。两处实例已修,类未关,记在这里而不是假装关掉了。
+
+**顺带发现的测试隔离缺陷**:`apps/server/tests/supervisor.test.ts` 隔离了后端端口,却没隔离浏览器开发服务器的
+5173(`strictPort: true`)。**任何人开着 `pnpm dev` 时这条用例必红**,与被测代码无关。本轮就是这样:
+实测 `Port 5173 is already in use`。未修。
+
+**验收**:`pnpm typecheck` 零错;`pnpm test` **910 passed | 17 skipped**(唯一失败即上面那条 5173);
+`pnpm test:browser` **227 passed**;prettier 通过。
