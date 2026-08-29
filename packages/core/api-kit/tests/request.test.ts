@@ -213,6 +213,25 @@ describe('the request context on a live server', () => {
     expect(inherited.traceId).toBe('4bf92f3577b34da6a3ce929d0e0e4736')
   })
 
+  it('ignores an inbound trace id that is not one', async () => {
+    // b3 is the sharp case: unlike `traceparent`, its decoders check neither
+    // length nor charset, and the span adopts the parent id verbatim. Every
+    // sink storing this declares varchar(32), so a longer id used to reach a
+    // column too narrow for it - postgres raised 22001, and the defect took
+    // down the transaction of whatever operation was being recorded.
+    const overlong = (await (
+      await fetch(`${base}/context`, {
+        headers: {
+          'x-b3-traceid': 'aaaabbbbccccddddeeeeffff000011112222',
+          'x-b3-spanid': '00f067aa0ba902b7',
+        },
+      })
+    ).json()) as { traceId: string | null }
+    // whatever it answers, it is this process's own id and fits the column
+    expect(overlong.traceId).not.toBe('aaaabbbbccccddddeeeeffff000011112222')
+    if (overlong.traceId !== null) expect(overlong.traceId).toMatch(/^[0-9a-f]{32}$/)
+  })
+
   it('carries the session someone bound onto the same request', async () => {
     const body = (await (await fetch(`${base}/bound`)).json()) as { sessionId: string }
     expect(body.sessionId).toBe('session-under-test')

@@ -163,7 +163,7 @@ export const auditApiHandlers = HttpApiBuilder.group(local, 'audit', (handlers) 
         }:${filters.targetKind ?? ''}:${filters.targetId ?? ''}:${filters.from ?? ''}:${
           filters.to ?? ''
         }`
-        const key = readQueryCursor(query.cursor, fingerprint, ['text', 'uuid'])
+        const key = readQueryCursor(query.cursor, fingerprint, ['timestamp', 'uuid'])
         if (key === null) return yield* cursorUnusable()
 
         const found = yield* listEvents(principal.tenantId, filters, {

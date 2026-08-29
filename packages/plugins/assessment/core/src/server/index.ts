@@ -2238,7 +2238,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       as: Principal,
     ) {
       const fingerprint = `me-activity:${as.userId}:${batchId}:${page.perspective ?? 'all'}`
-      const key = readQueryCursor(page.cursor, fingerprint, ['text', 'text', 'uuid'])
+      const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'text', 'uuid'])
       if (key === null) return yield* cursorUnusable()
       const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
       const standing = yield* deskStandingOf(tenantId, batchId, as)
@@ -3483,7 +3483,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
       if (!batch) return yield* new BatchNotFound()
       yield* requireRosterReach(as, tenantId, batchId)
       const fingerprint = `imports:${batchId}`
-      const key = readQueryCursor(page.cursor, fingerprint, ['text', 'uuid'])
+      const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'uuid'])
       if (key === null) return yield* cursorUnusable()
       const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
       const found = yield* dieQuery(

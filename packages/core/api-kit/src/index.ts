@@ -86,10 +86,22 @@ export function encodeQueryCursor(
  * part naming a uuid column has to be checked HERE: passed through, it reaches
  * postgres as `id > 'x'`, which raises a cast error the query path turns into
  * a defect - a 500 for what is a malformed request.
+ *
+ * `timestamp` exists for exactly the same reason and was missing for a while,
+ * so six keyset queries declared their time column as `text` and then cast it
+ * to `::timestamptz` in the comparison. Editing that half of one's own cursor
+ * to any non-timestamp answered 500 where the handler two lines above already
+ * had a BadRequest ready for it.
  */
-export type CursorPart = 'text' | 'uuid'
+export type CursorPart = 'text' | 'uuid' | 'timestamp'
 
 const UUID_SHAPED = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Every value in a cursor was minted by `encodeQueryCursor` from a row, so
+// "what this can read" is the right bar rather than "everything postgres
+// would accept": a stricter check refuses tampering without refusing anything
+// this ever produced.
+const timestampShaped = (part: string) => !Number.isNaN(Date.parse(part))
 
 /**
  * A cursor read without deciding what an unusable one means.
@@ -114,11 +126,9 @@ export function readQueryCursor(
   const payload = parsed as { v?: unknown; q?: unknown; k?: unknown } | null
   if (!payload || payload.v !== 1 || payload.q !== queryFingerprint) return null
   if (!Array.isArray(payload.k) || payload.k.length !== shape.length) return null
-  if (
-    !payload.k.every(
-      (part, at) => typeof part === 'string' && (shape[at] !== 'uuid' || UUID_SHAPED.test(part)),
-    )
-  ) {
+  const holds = (part: string, as: CursorPart | undefined) =>
+    as === 'uuid' ? UUID_SHAPED.test(part) : as === 'timestamp' ? timestampShaped(part) : true
+  if (!payload.k.every((part, at) => typeof part === 'string' && holds(part, shape[at]))) {
     return null
   }
   return payload.k as string[]

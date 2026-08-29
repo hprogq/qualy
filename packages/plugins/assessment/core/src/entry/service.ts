@@ -1288,7 +1288,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
   const listMyEntries: EntryMethods['listMyEntries'] = Effect.fn('Assessment.listMyEntries')(
     function* (tenantId, batchId, page, as) {
       const fingerprint = `my-entries:${batchId}:${as.userId}`
-      const key = readQueryCursor(page.cursor, fingerprint, ['text', 'uuid'])
+      const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'uuid'])
       if (key === null) return yield* cursorUnusable()
       const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
       return yield* withDb(

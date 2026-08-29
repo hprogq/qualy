@@ -131,6 +131,24 @@ export const trustedProxies = (entries: readonly string[]): TrustedProxies => {
  * trusted proxy vouches for wins. A chain that never leaves the trusted set
  * is internal traffic and answers with its leftmost address.
  */
+/**
+ * A trace id worth recording, which is not the same as one worth tracing with.
+ *
+ * This value can come from the CLIENT. The w3c `traceparent` decoder validates
+ * what it accepts, but the b3 and x-b3 decoders check neither length nor
+ * charset, and the span adopts the parent id verbatim - so a request carrying
+ * `x-b3-traceid: <36 characters>` produced a 36-character id here.
+ *
+ * Every sink storing it declares `varchar(32)`, so that id reached a column
+ * two characters too narrow, postgres raised 22001, and the defect aborted the
+ * surrounding transaction: an otherwise successful sign-in answered 500 with
+ * its session rolled back, because of a header. Checked once at the boundary
+ * rather than clipped at each write, which is the same shape the client
+ * address beside it already has. `'noop'` is the disabled tracer's sentinel
+ * and fails this too, which is the answer it wanted anyway.
+ */
+const traceIdOf = (id: string): string | undefined => (/^[0-9a-f]{32}$/i.test(id) ? id : undefined)
+
 export const clientAddressOf = (
   remoteAddress: string | undefined,
   forwardedFor: string | undefined,
@@ -298,7 +316,7 @@ export const requestContext = (options?: {
         // not an id worth recording
         traceId: Option.match(span, {
           onNone: () => undefined,
-          onSome: (parent) => (parent.traceId === 'noop' ? undefined : parent.traceId),
+          onSome: (parent) => traceIdOf(parent.traceId),
         }),
         get sessionId() {
           return sessionId

@@ -37,6 +37,31 @@ describe('the pagination cursor', () => {
     ).toEqual(['x', ID])
   })
 
+  it('refuses a time part that postgres would refuse to cast', () => {
+    // The same sharp case as uuid, and it was missing: six keyset queries
+    // declared their time column `text` and then compared it as
+    // `${key}::timestamptz`, so editing that half of one's own cursor answered
+    // 500 where the handler had a BadRequest ready two lines above.
+    const at = '2026-08-29T04:33:00.057Z'
+    const cursor = encodeQueryCursor('audit::::::', [at, ID])
+    expect(readQueryCursor(cursor, 'audit::::::', ['timestamp', 'uuid'])).toEqual([at, ID])
+    expect(
+      readQueryCursor(encode({ v: 1, q: 'audit::::::', k: ['zzz', ID] }), 'audit::::::', [
+        'timestamp',
+        'uuid',
+      ]),
+    ).toBeNull()
+    // and a text part is still free, so the same batch of six kept its middle
+    // column unconstrained
+    expect(
+      readQueryCursor(encode({ v: 1, q: 'a', k: [at, 'zzz', ID] }), 'a', [
+        'timestamp',
+        'text',
+        'uuid',
+      ]),
+    ).toEqual([at, 'zzz', ID])
+  })
+
   it('refuses what it cannot read at all', () => {
     for (const bad of [
       'not-base64!!',

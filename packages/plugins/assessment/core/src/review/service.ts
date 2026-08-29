@@ -791,7 +791,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const listReviewInbox: ReviewMethods['listReviewInbox'] = Effect.fn('Assessment.listReviewInbox')(
     function* (tenantId, page, as) {
       const fingerprint = `review-inbox:${as.userId}`
-      const key = readQueryCursor(page.cursor, fingerprint, ['text', 'uuid'])
+      const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'uuid'])
       if (key === null) return yield* cursorUnusable()
       const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
       const withWork = yield* dieQuery(withDb(activeReviewBatches(tenantId)))
@@ -868,7 +868,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     'Assessment.listAwaitingSupplements',
   )(function* (tenantId, page, as) {
     const fingerprint = `review-awaiting:${page.batchId}:${as.userId}`
-    const key = readQueryCursor(page.cursor, fingerprint, ['text', 'uuid'])
+    const key = readQueryCursor(page.cursor, fingerprint, ['timestamp', 'uuid'])
     if (key === null) return yield* cursorUnusable()
     const limit = pageSize(page.limit, DEFAULT_PAGE_SIZE)
     const rows = yield* dieQuery(
