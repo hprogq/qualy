@@ -36,6 +36,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/audit/archive',
       defaultMessage: 'Archive scoring formula',
     },
+    'audit.restore': {
+      id: 'assessment-formula/audit/restore',
+      defaultMessage: 'Restore scoring formula',
+    },
     navigation: {
       id: 'assessment-formula/navigation/formulas',
       defaultMessage: 'Scoring formulas',
@@ -232,6 +236,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/reason/enum',
       defaultMessage: 'not one of: {constraint}',
     },
+    reasonPattern: {
+      id: 'assessment-formula/reason/pattern',
+      defaultMessage: 'does not match the required format ({constraint})',
+    },
     reasonKind: {
       id: 'assessment-formula/reason/kind',
       defaultMessage: 'not a valid {kind}',
@@ -284,6 +292,19 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/versions-empty',
       defaultMessage: 'Nothing published yet.',
     },
+    remoteMovedTitle: {
+      id: 'assessment-formula/editor/remote-moved',
+      defaultMessage: 'The draft changed on the server',
+    },
+    remoteMovedHint: {
+      id: 'assessment-formula/editor/remote-moved-hint',
+      defaultMessage:
+        'Someone else saved this draft while you were editing. Your text is untouched; discard it to load theirs.',
+    },
+    discardLocal: {
+      id: 'assessment-formula/editor/discard-local',
+      defaultMessage: 'Discard my edits and reload',
+    },
     loadFailed: {
       id: 'assessment-formula/editor/load-failed',
       defaultMessage: 'The formula could not be loaded.',
@@ -325,6 +346,14 @@ const i18n = definePluginMessages({
     ASSESSMENT_FORMULA_CONTRACT_INVALID: {
       id: 'assessment-formula/error/contract-invalid',
       defaultMessage: 'The input and output schemas must stay within the supported kinds.',
+    },
+    ASSESSMENT_FORMULA_BUNDLE_FAILED: {
+      id: 'assessment-formula/error/bundle-failed',
+      defaultMessage: 'The source could not be packaged. Review the packager message below.',
+    },
+    ASSESSMENT_FORMULA_EXECUTION_LIMIT_EXCEEDED: {
+      id: 'assessment-formula/error/execution-limit',
+      defaultMessage: 'Compiling or extracting the contract took more than the allowed resources.',
     },
     ASSESSMENT_FORMULA_TEST_FAILED: {
       id: 'assessment-formula/error/test-failed',

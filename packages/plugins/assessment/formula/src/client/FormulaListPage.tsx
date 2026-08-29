@@ -52,8 +52,11 @@ function NewFormulaDialog({
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
 
-  const tree = useQuery({ ...query.org.getTree.queryOptions({ query: {} }), enabled: open })
-  const nodes = tree.data?.nodes ?? []
+  const options = useQuery({
+    ...query.assessmentFormula.listFormulaOwnerOptions.queryOptions({}),
+    enabled: open,
+  })
+  const nodes = options.data?.nodes ?? []
 
   const [name, setName] = useState('')
   const [ownerNodeId, setOwnerNodeId] = useState('')

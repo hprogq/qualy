@@ -38,19 +38,30 @@ const subpath = (packageName: string, exportName: string): string => {
   return path.posix.normalize(target.replace(/^\.\//, ''))
 }
 
-const WRAPPER = `import definition from 'qualy:formula'
+// Runs FIRST in the bundle - a module's dependencies execute before its
+// body, and the entry imports this before the user's module - so these are
+// the real intrinsics captured ahead of any user top-level code. The
+// sandbox freezes them too; this is the artifact's own layer of the same
+// defence.
+const PRELUDE = `export const jsonParse = JSON.parse
+export const jsonStringify = JSON.stringify
+`
+
+const WRAPPER = `import { jsonParse, jsonStringify } from 'qualy:prelude'
+import definition from 'qualy:formula'
 import { decodeInput, encodeOutput, formulaContext, isFormulaFailure } from '@qualy/formula/runtime'
 
-globalThis.__qualyContract = () => ({ input: definition.input, output: definition.output })
+globalThis.__qualyContract = () =>
+  jsonStringify({ input: definition.input, output: definition.output })
 
 globalThis.__qualyInvoke = (inputJson) => {
   try {
-    const decoded = decodeInput(definition.input, JSON.parse(inputJson))
+    const decoded = decodeInput(definition.input, jsonParse(inputJson))
     const value = definition.run(decoded, formulaContext)
-    return JSON.stringify({ ok: true, amount: encodeOutput(definition.output, value) })
+    return jsonStringify({ ok: true, amount: encodeOutput(definition.output, value) })
   } catch (error) {
     if (isFormulaFailure(error)) {
-      return JSON.stringify({ ok: false, failure: { message: error.message } })
+      return jsonStringify({ ok: false, failure: { message: error.message } })
     }
     throw error
   }
@@ -95,7 +106,19 @@ export const bundleFormula = async (source: string): Promise<BundledFormula> => 
         path: 'formula.ts',
         namespace: 'qualy-user',
       }))
+      builder.onResolve({ filter: /^qualy:prelude$/ }, () => ({
+        path: 'prelude',
+        namespace: 'qualy-prelude',
+      }))
       builder.onResolve({ filter: /.*/ }, (args) => {
+        if (args.namespace === 'qualy-prelude') {
+          refusals.push({ specifier: args.path, importer: 'prelude' })
+          return {
+            path: args.path,
+            namespace: 'qualy-refused',
+            errors: [{ text: 'the prelude imports nothing' }],
+          }
+        }
         if (args.namespace === 'qualy-entry' || args.namespace === 'qualy-user') {
           if (args.path === '@qualy/formula')
             return { path: sdkPath('formula', subpath('formula', '.')), namespace: 'qualy-sdk' }
@@ -139,6 +162,10 @@ export const bundleFormula = async (source: string): Promise<BundledFormula> => 
 
       builder.onLoad({ filter: /.*/, namespace: 'qualy-entry' }, () => ({
         contents: WRAPPER,
+        loader: 'ts',
+      }))
+      builder.onLoad({ filter: /.*/, namespace: 'qualy-prelude' }, () => ({
+        contents: PRELUDE,
         loader: 'ts',
       }))
       builder.onLoad({ filter: /.*/, namespace: 'qualy-user' }, () => ({

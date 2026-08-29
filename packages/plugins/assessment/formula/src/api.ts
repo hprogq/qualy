@@ -11,7 +11,9 @@ import {
   trimmedName,
 } from '@qualy/api-kit/schema'
 import {
+  FormulaBundleFailed,
   FormulaContractInvalid,
+  FormulaExecutionLimitExceeded,
   FormulaDraftConflict,
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
@@ -78,6 +80,18 @@ const versionDetail = Schema.Struct({
 
 export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
   .add(
+    // where this principal may CREATE a formula: the nodes their manage
+    // permission actually covers, not the whole visible org tree
+    HttpApiEndpoint.get('listFormulaOwnerOptions', '/assessment/formula-owner-options', {
+      success: Schema.Struct({
+        nodes: Schema.Array(
+          Schema.Struct({ id: Schema.String, name: Schema.String, depth: Schema.Number }),
+        ),
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.get('listFormulaFunctions', '/assessment/formula-functions', {
       query: Schema.Struct({ ...pageQuery }),
       success: pageOf(functionView),
@@ -93,7 +107,7 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         draftSourceTs: Schema.optional(sourceText),
       }),
       success: Schema.Struct({ function: functionDetail }),
-      error: [BadRequest, AccessDenied, FormulaOwnerNodeInvalid],
+      error: [BadRequest, AccessDenied, FormulaOwnerNodeInvalid, FormulaSourceTooLarge],
     }).middleware(Authenticated),
   )
   .add(
@@ -156,6 +170,8 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
           FormulaSourceTooLarge,
           FormulaSourceRefused,
           FormulaTypecheckFailed,
+          FormulaBundleFailed,
+          FormulaExecutionLimitExceeded,
           FormulaContractInvalid,
           FormulaTestFailed,
           FormulaCompileUnavailable,

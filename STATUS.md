@@ -10292,3 +10292,73 @@ value-schema 新增 `constraintOf(schema, reason)`(从 schema 读回被触犯规
 类型错点名六种类型名。
 
 **验收**:`pnpm typecheck` 零错;全仓 **1026 passed | 17 skipped**(catalog 完整性含新词表)。
+
+## 4a.1 收口:三轮对抗审查的修复批(2026-08-29)
+
+三轮外部审查(共四十余项,四项定为 blocker)全部处置完毕,底座不动、边界补齐。
+
+**四扇 P0 门**:
+
+一、**tsc 之前证明模块闭包**。此前「只能 import @qualy/formula」由 esbuild resolver 事后执行,
+宿主 TS7 已先按用户源码做过 resolution(相对/绝对路径、type-only import 都是宿主文件系统的
+类型信息 oracle)。现在双围栏:`moduleSpecifiers` 词法器覆盖 import/export-from、动态与类型
+位置 `import()`、`import = require()`,发布在**起编译器之前**按名拒绝;临时 workspace 重构为
+**合成 manifest(exports 仅 ".")+ value-schema 嵌套在 SDK 内**,`./runtime`/`./staging`/
+value-schema 从公式处一律不可解析(四连负例钉死)。
+
+二、**guest 不能再污染可信面**。沙箱 BOOTSTRAP 在任何 guest 字节前冻结 intrinsics
+(JSON/Math/Object/原型链…并 pin 全局绑定);宿主改用 **handle 调用**(getProp + callFunction,
+参数经引擎句柄构造),废除 `__qualyArguments` eval trampoline;返回合同收紧为**单条字符串**、
+guest 内先测长再跨 WASM 边界;异常只做**有界提取**(name/message 各 256,不解除限额,读不出
+即 retire)。artifact 侧同深防御:prelude 模块先于用户代码捕获 JSON.parse/stringify,SDK 捕获
+Math.max/isSafeInteger;污染五连对抗测试证明计分不动。附带修:冻结 Error.prototype 后
+FormulaFailure 的 name 赋值改 defineProperty。
+
+三、**ReDoS 关门:pattern 切到 re2js**。`pattern` 保留标准 keyword,但语义定为 Qualy Regex
+Profile v1(RE2 兼容、线性匹配、无 flags、backreference/lookaround 配置期即拒),前后端同一
+实现;Ajv 经 `code.regExp` 换用同引擎——实测踩到上游未文档化的契约:**Ajv 按引擎结果的
+`toString()` 做 codegen scope 去重**,普通对象全是 `[object Object]`,首个编译实例静默顶替
+全部后续 pattern(meta-schema 的模式替用户模式作答);修法是给实例带唯一 toString,测试双
+pattern 交叉钉死。pattern 编译校验拆到 `@qualy/value-schema/regex`(patternIssues),root 恢复
+零第三方、re2js 不进公式 artifact;灾难性输入 2000 字符线性完成 <200ms 有测试。
+
+四、**审计原子性**。create/updateDraft/setStatus 的变更与 `audit.record` 同事务(audit 契约:
+一起提交或一起不提交);新增 `assessment.formula.restore` 动作,恢复归档也可回答;create 对
+owner node 取 FOR SHARE 锁堵删除竞态。
+
+**发布语义**:幂等键改为 **publishFingerprint**(source+examples+编译器身份+esbuild+ABI+
+runtime hash+sandbox/profile/regex 版本),同 fingerprint 重发布返回已存在版本,double-click/
+重试不再铸相同内容的新版本;draftRevision 回归纯编辑 CAS。版本行冻结
+value_schema_profile_version / regex_profile_version / sandbox_abi_version 三个解释环境版本
+(迁移 `20260829145426_formula-version-identity.sql`;该文件写成幂等——generate 落盘瞬间
+dev supervisor 已按改名前的文件名把 DDL 应用进了 dev 库,教训:迁移名要在 generate 后立刻定)。
+publish 短事务在锁行后**复跑 canAt**(编译耗时内的撤权不再能铸成正式版本)。
+
+**输出合同**:`Schema.scoreAmount()`(缺省界随 maxScale 拼写,numeric(12,4) 量级),发布要求
+`output ⊆ ScoreAmount`(assignmentPlan 证明,拒 `not-a-score-amount`)——「发布成功但永远
+不可绑定」的版本从此铸不出来。
+
+**语言预算(Profile v1 定义)**:参数 ≤64、choice ≤256 项(id ≤128、label ≤255、拒空 id)、
+参数名 ≤64、text 界 ≤10000、maxScale ≤18、pattern ≤1KiB 且 programSize ≤2000、canonical
+合同 ≤64KiB、artifact ≤1MiB(与 256KiB source 分账)、contract 传输 128KiB。`__proto__` 参数名
+配置期拒 + decodeInput 改 defineProperty 双保险。语义体进一步归一:choice 序、minLength 0、
+integer 安全界的复述不再移动 hash。validateValue 只收 **Normalized** brand(冻结前提进签名)。
+
+**错误分类**:典型作者错误全部 4xx——SourceRefused(新 reason:suppression/any;
+`@ts-ignore` 系与整词 `any` 硬拒)、TypecheckFailed(块级诊断 + truncated 预算)、
+BundleFailed(esbuild 文本)、ExecutionLimitExceeded(typecheck/contract 相)、ContractInvalid
+(含 contract-too-large 与 guest 构造器异常 detail);示例内的资源耗尽落**该行** defect;503
+只剩真基础设施故障。tsc 收紧 15s + maxBuffer 4MiB + 编译队列深度 8。
+
+**其余**:list 真 keyset 分页(row-value 比较)+ 列投影(列表不拉 draft 源码,详情不拉全部
+版本的 artifact);owner picker 换本插件 `/assessment/formula-owner-options`(manage scope 下推,
+org 契约退出前端包);编辑器远端更新不再覆盖本地未保存修改(横条 + 显式放弃);dependsOn 补
+ui-registry 与 assessment;updateDraft 的归档 TOCTOU(UPDATE 带 `archived_at is null`,零行重读
+区分两种拒绝);空 patch 不再 bump revision;Decimal encoder 拒畸形 scale;pattern 拒绝的 UI
+文案点名格式本身;sandbox ready timer clear+unref、limits 正数/上界校验、`SANDBOX_ABI_VERSION`;
+date 历法改纯算术(修 0000-0099 的 Date.UTC 偏移);testReport 实体类型改数组。
+
+**验收**:`pnpm typecheck` 零错;`pnpm test` **1035 passed | 17 skipped**;`pnpm test:browser`
+**227 passed**;`pnpm build` 成功;prettier 通过。4b 前置(tsc 边界、intrinsics、ReDoS、审计)
+全部关门;4b 首件仍是 server-side LSP spike(bridge 自管进程、URI 全映射、禁用全局的
+diagnostics/completion)。

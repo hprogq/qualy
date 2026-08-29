@@ -32,8 +32,17 @@ export const FormulaFunctionArchived = AuditAction.define({
   details: Schema.Struct({}),
 })
 
+export const FormulaFunctionRestored = AuditAction.define({
+  code: 'assessment.formula.restore',
+  target: 'assessment.formula',
+  version: 1,
+  name: message('assessment-formula/audit/restore', 'Restore scoring formula'),
+  details: Schema.Struct({}),
+})
+
 export const formulaActions = [
   FormulaFunctionCreated,
   FormulaDraftReplaced,
   FormulaFunctionArchived,
+  FormulaFunctionRestored,
 ] as const

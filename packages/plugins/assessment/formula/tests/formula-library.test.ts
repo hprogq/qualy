@@ -139,7 +139,7 @@ export default defineFormula({
   input: Schema.input({
     value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
   }),
-  output: Schema.decimal({ maxScale: 2 }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
   run: (input) => input.value,
 })
 `

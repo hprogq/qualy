@@ -75,7 +75,7 @@ export class FormulaSourceTooLarge extends Schema.TaggedError<FormulaSourceTooLa
 export class FormulaSourceRefused extends Schema.TaggedError<FormulaSourceRefused>()(
   'ASSESSMENT_FORMULA_SOURCE_REFUSED',
   {
-    reason: Schema.Literals(['triple-slash', 'import']),
+    reason: Schema.Literals(['triple-slash', 'import', 'suppression', 'any']),
     specifier: Schema.optional(Schema.String),
   },
   { httpApiStatus: 422, identifier: 'AssessmentFormulaSourceRefused' },
@@ -83,13 +83,32 @@ export class FormulaSourceRefused extends Schema.TaggedError<FormulaSourceRefuse
 
 export class FormulaTypecheckFailed extends Schema.TaggedError<FormulaTypecheckFailed>()(
   'ASSESSMENT_FORMULA_TYPECHECK_FAILED',
-  { diagnostics: Schema.Array(diagnostic) },
+  { diagnostics: Schema.Array(diagnostic), truncated: Schema.Boolean },
   { httpApiStatus: 422, identifier: 'AssessmentFormulaTypecheckFailed' },
+) {}
+
+export class FormulaBundleFailed extends Schema.TaggedError<FormulaBundleFailed>()(
+  'ASSESSMENT_FORMULA_BUNDLE_FAILED',
+  { message: Schema.String },
+  { httpApiStatus: 422, identifier: 'AssessmentFormulaBundleFailed' },
+) {}
+
+export class FormulaExecutionLimitExceeded extends Schema.TaggedError<FormulaExecutionLimitExceeded>()(
+  'ASSESSMENT_FORMULA_EXECUTION_LIMIT_EXCEEDED',
+  {
+    phase: Schema.Literals(['typecheck', 'contract']),
+    verdict: Schema.String,
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentFormulaExecutionLimitExceeded' },
 ) {}
 
 export class FormulaContractInvalid extends Schema.TaggedError<FormulaContractInvalid>()(
   'ASSESSMENT_FORMULA_CONTRACT_INVALID',
-  { issues: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })) },
+  {
+    issues: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
+    /** the guest's own words when extraction itself threw - content, not copy */
+    detail: Schema.optional(Schema.String),
+  },
   { httpApiStatus: 422, identifier: 'AssessmentFormulaContractInvalid' },
 ) {}
 

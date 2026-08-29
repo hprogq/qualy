@@ -58,6 +58,7 @@ export const FormulaFunction = defineEntity({
   ],
 })
 
+// testReport rows are the structured report array, not a record
 export const FormulaVersion = defineEntity({
   name: 'FormulaVersion',
   tableName: 'assessment_formula_versions',
@@ -81,8 +82,19 @@ export const FormulaVersion = defineEntity({
     // content hash of the SDK runtime bundled into the artifact
     formulaRuntimeSha256: p.string().length(64),
     quickjsEngineVersion: p.string().length(63),
+    // the value-schema language, the regex dialect and the sandbox calling
+    // convention this version was proven under; execution must check them
+    // before replaying history in a newer world
+    valueSchemaProfileVersion: p.integer().default(1),
+    regexProfileVersion: p.integer().default(1),
+    sandboxAbiVersion: p.integer().default(1),
+    // what publication is idempotent over: the same source, examples and
+    // toolchain republished answer with the version that already exists.
+    // Nullable because rows published before the fingerprint existed cannot
+    // be given one retroactively.
+    publishFingerprint: p.string().length(64).nullable(),
     tests: p.json<readonly Record<string, unknown>[]>(),
-    testReport: p.json<Record<string, unknown>>(),
+    testReport: p.json<readonly Record<string, unknown>[]>(),
     publishedBy: p.uuid(),
     publishedAt: p.datetime().defaultRaw('now()'),
   },
@@ -96,6 +108,11 @@ export const FormulaVersion = defineEntity({
       name: 'uq_assessment_formula_versions_tenant_id_id',
       expression:
         'create unique index uq_assessment_formula_versions_tenant_id_id on assessment_formula_versions (tenant_id, id)',
+    },
+    {
+      name: 'uq_assessment_formula_versions_fingerprint',
+      expression:
+        'create unique index uq_assessment_formula_versions_fingerprint on assessment_formula_versions (tenant_id, function_id, publish_fingerprint)',
     },
   ],
 })

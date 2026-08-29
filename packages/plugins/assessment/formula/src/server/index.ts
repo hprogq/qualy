@@ -3,22 +3,26 @@ import { Context, Effect, Layer, Semaphore } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { sql } from 'kysely'
 import { Api } from '@qualy/api-kit/local'
-import { BadRequest } from '@qualy/api-kit/schema'
+import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
+import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
-import { Sandbox } from '@qualy/plugin-sandbox/service'
-import { FORMULA_ABI_VERSION } from '@qualy/formula'
+import { SANDBOX_ABI_VERSION, Sandbox } from '@qualy/plugin-sandbox/service'
+import { FORMULA_ABI_VERSION, SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
 import {
   TRIPLE_SLASH,
   checkFormulaWorkspace,
   dropWorkspace,
+  moduleSpecifiers,
   parseDiagnostics,
   stageFormulaWorkspace,
 } from '@qualy/formula/staging'
 import {
+  VALUE_SCHEMA_PROFILE_VERSION,
+  assignmentPlan,
   canonicalDecimal,
   canonicalizeAtomicSchema,
   canonicalizeInputSchema,
@@ -32,20 +36,26 @@ import {
   type AtomicSchema,
   type DecimalSchema,
   type InputSchema,
+  type NormalizedAtomicSchema,
+  type NormalizedInputSchema,
 } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
+import { REGEX_PROFILE_VERSION, patternIssues } from '@qualy/value-schema/regex'
 import {
   FormulaDraftReplaced,
   FormulaFunctionArchived as FormulaFunctionArchivedAction,
   FormulaFunctionCreated,
+  FormulaFunctionRestored,
 } from '../actions.ts'
 import { formulaApiGroup } from '../api.ts'
 import { FormulaBundleRefused, bundleFormula } from './bundler.ts'
 import { db } from './db.ts'
 import {
+  FormulaBundleFailed,
   FormulaCompileUnavailable,
   FormulaContractInvalid,
   FormulaDraftConflict,
+  FormulaExecutionLimitExceeded,
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
   FormulaOwnerNodeInvalid,
@@ -58,7 +68,28 @@ import {
 import { esbuildVersion, tscEntry, typescriptVersion } from './toolchain.ts'
 
 const MANAGE = 'assessment.formula.manage'
+
+/** what an author may SAVE - the formula's own text */
 const SOURCE_LIMIT = 262_144
+/** what a compiled artifact may weigh: user source plus the trusted wrapper
+ * and the bundled SDK; deliberately a separate, larger wall than the source
+ * limit so a legal source can never produce an unshippable artifact */
+const MAX_COMPILED_ARTIFACT_BYTES = 1_048_576
+/** the sandbox transport for __qualyContract, above the largest legal
+ * contract so a real one always arrives whole */
+const MAX_CONTRACT_TRANSPORT_BYTES = 131_072
+/** the canonical bytes of a legal contract; part of the v1 profile budget */
+const MAX_CANONICAL_CONTRACT_BYTES = 65_536
+/** compiles queue behind one permit; past this depth the service is busy */
+const MAX_PENDING_COMPILES = 8
+
+const LIST_FINGERPRINT = 'assessment-formula-functions'
+
+const SUPPRESSION = /@ts-(?:ignore|nocheck|expect-error)\b/
+// word-level on purpose: the formula language is tiny, and "strictly typed
+// at publication" stops being true the moment any `any` slips in - even the
+// word inside a string is refused, and the message says exactly that
+const ANY_WORD = /\bany\b/
 
 export interface FormulaTestInput {
   readonly name: string
@@ -165,8 +196,8 @@ const versionDetailDto = (row: VersionRow) => ({
 /** a compiled draft: everything a version row needs except its number */
 interface CompiledFormula {
   readonly artifact: string
-  readonly inputSchema: InputSchema
-  readonly outputSchema: DecimalSchema
+  readonly inputSchema: NormalizedInputSchema
+  readonly outputSchema: NormalizedAtomicSchema
   readonly sourceSha256: string
   readonly runtimeSha256: string
   readonly contractSha256: string
@@ -178,6 +209,8 @@ type CompileRefusal =
   | FormulaSourceTooLarge
   | FormulaSourceRefused
   | FormulaTypecheckFailed
+  | FormulaBundleFailed
+  | FormulaExecutionLimitExceeded
   | FormulaContractInvalid
   | FormulaTestFailed
   | FormulaCompileUnavailable
@@ -187,15 +220,21 @@ interface FormulaLibraryShape {
     tenantId: string,
     page: { cursor?: string; limit?: string },
     as: Principal,
-  ) => Effect.Effect<{
-    items: ReturnType<typeof functionDto>[]
-    nextCursor: string | null
-  }>
+  ) => Effect.Effect<
+    {
+      items: ReturnType<typeof functionDto>[]
+      nextCursor: string | null
+    },
+    BadRequest
+  >
   readonly createFunction: (
     tenantId: string,
     input: { ownerNodeId: string; name: string; description?: string; draftSourceTs?: string },
     as: Principal,
-  ) => Effect.Effect<ReturnType<typeof functionDetailDto>, AccessDenied | FormulaOwnerNodeInvalid>
+  ) => Effect.Effect<
+    ReturnType<typeof functionDetailDto>,
+    AccessDenied | FormulaOwnerNodeInvalid | FormulaSourceTooLarge
+  >
   readonly getFunction: (
     tenantId: string,
     functionId: string,
@@ -246,6 +285,10 @@ interface FormulaLibraryShape {
     ReturnType<typeof versionDetailDto>,
     FormulaFunctionNotFound | FormulaVersionNotFound
   >
+  readonly listOwnerOptions: (
+    tenantId: string,
+    as: Principal,
+  ) => Effect.Effect<{ nodes: { id: string; name: string; depth: number }[] }>
 }
 
 export class FormulaLibrary extends Context.Service<FormulaLibrary, FormulaLibraryShape>()(
@@ -258,7 +301,7 @@ export default defineFormula({
   input: Schema.input({
     value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
   }),
-  output: Schema.decimal({ maxScale: 2 }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
   run: (input) => input.value,
 })
 `
@@ -317,8 +360,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const runTests = (
     artifact: string,
     artifactHash: string,
-    inputSchema: InputSchema,
-    outputSchema: DecimalSchema,
+    inputSchema: NormalizedInputSchema,
+    outputSchema: NormalizedAtomicSchema,
     tests: readonly FormulaTestInput[],
   ): Effect.Effect<readonly TestReportRow[], FormulaCompileUnavailable> =>
     Effect.gen(function* () {
@@ -361,12 +404,25 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             artifactHash,
             entrypoint: '__qualyInvoke',
             arguments: [JSON.stringify(test.input)],
+            limits: { artifactBytes: MAX_COMPILED_ARTIFACT_BYTES },
           })
           .pipe(
             Effect.map((value) => ({ kind: 'answered', value }) as const),
-            Effect.catchTag('SandboxEvalFailed', (failure) =>
-              Effect.succeed({ kind: 'defect', message: failure.message } as const),
-            ),
+            // an example that exhausts the engine is that EXAMPLE failing,
+            // reported on its row - never the whole publish dressed up as an
+            // infrastructure outage
+            Effect.catchTags({
+              SandboxEvalFailed: (failure) =>
+                Effect.succeed({ kind: 'defect', message: failure.message } as const),
+              SandboxTimeout: () =>
+                Effect.succeed({ kind: 'defect', message: 'execution interrupted' } as const),
+              SandboxMemoryExceeded: () =>
+                Effect.succeed({ kind: 'defect', message: 'execution out of memory' } as const),
+              SandboxStackExceeded: () =>
+                Effect.succeed({ kind: 'defect', message: 'execution stack overflow' } as const),
+              SandboxOutputTooLarge: () =>
+                Effect.succeed({ kind: 'defect', message: 'the answer was too large' } as const),
+            }),
             Effect.mapError(() => new FormulaCompileUnavailable()),
           )
         if (outcome.kind === 'defect') {
@@ -393,125 +449,250 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       return report
     })
 
+  // publish bursts queue behind the single compile permit; past a bounded
+  // depth the service says busy instead of hoarding child processes
+  let pendingCompiles = 0
+
+  const refuseSource = (source: string): CompileRefusal | undefined => {
+    if (Buffer.byteLength(source, 'utf8') > SOURCE_LIMIT)
+      return new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
+    if (TRIPLE_SLASH.test(source)) return new FormulaSourceRefused({ reason: 'triple-slash' })
+    const suppression = SUPPRESSION.exec(source)
+    if (suppression !== null)
+      return new FormulaSourceRefused({ reason: 'suppression', specifier: suppression[0] })
+    if (ANY_WORD.test(source)) return new FormulaSourceRefused({ reason: 'any' })
+    // the closure fence runs BEFORE the compiler: tsc resolves whatever the
+    // source names even though it executes nothing, and an unchecked
+    // specifier is a read of the host filesystem
+    const trespass = moduleSpecifiers(source).find((specifier) => specifier !== '@qualy/formula')
+    if (trespass !== undefined)
+      return new FormulaSourceRefused({ reason: 'import', specifier: trespass })
+    return undefined
+  }
+
+  const extractContract = (
+    artifact: string,
+    artifactHash: string,
+  ): Effect.Effect<{ input?: unknown; output?: unknown }, CompileRefusal> =>
+    sandbox
+      .invoke({
+        artifact,
+        artifactHash,
+        entrypoint: '__qualyContract',
+        arguments: [],
+        limits: {
+          artifactBytes: MAX_COMPILED_ARTIFACT_BYTES,
+          outputBytes: MAX_CONTRACT_TRANSPORT_BYTES,
+        },
+      })
+      .pipe(
+        Effect.map((text) => JSON.parse(text) as { input?: unknown; output?: unknown }),
+        Effect.catchTags({
+          // the guest's own failure to hand a contract out is the author's
+          // problem, classified as such - never a 503
+          SandboxEvalFailed: (failure) =>
+            Effect.fail(
+              new FormulaContractInvalid({
+                issues: [{ path: '', reason: 'contract-error' }],
+                detail: `${failure.name}: ${failure.message}`,
+              }),
+            ),
+          SandboxOutputTooLarge: () =>
+            Effect.fail(
+              new FormulaContractInvalid({ issues: [{ path: '', reason: 'contract-too-large' }] }),
+            ),
+          SandboxTimeout: (failure) =>
+            Effect.fail(
+              new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: failure.phase }),
+            ),
+          SandboxMemoryExceeded: () =>
+            Effect.fail(
+              new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: 'memory' }),
+            ),
+          SandboxStackExceeded: () =>
+            Effect.fail(new FormulaExecutionLimitExceeded({ phase: 'contract', verdict: 'stack' })),
+        }),
+        Effect.mapError((failure) =>
+          failure instanceof FormulaContractInvalid ||
+          failure instanceof FormulaExecutionLimitExceeded
+            ? failure
+            : new FormulaCompileUnavailable(),
+        ),
+      )
+
   const compile = (
     source: string,
     tests: readonly FormulaTestInput[],
   ): Effect.Effect<CompiledFormula, CompileRefusal> =>
-    compiles.withPermits(1)(
-      Effect.gen(function* () {
-        if (Buffer.byteLength(source, 'utf8') > SOURCE_LIMIT)
-          return yield* Effect.fail(new FormulaSourceTooLarge({ limit: SOURCE_LIMIT }))
-        if (TRIPLE_SLASH.test(source))
-          return yield* Effect.fail(new FormulaSourceRefused({ reason: 'triple-slash' }))
-
-        const checked = yield* Effect.tryPromise({
-          try: async () => {
-            const root = stageFormulaWorkspace(source)
-            try {
-              return await checkFormulaWorkspace(root, tscEntry)
-            } finally {
-              dropWorkspace(root)
+    Effect.suspend(() => {
+      const refused = refuseSource(source)
+      if (refused !== undefined) return Effect.fail(refused)
+      if (pendingCompiles >= MAX_PENDING_COMPILES)
+        return Effect.fail(new FormulaCompileUnavailable())
+      pendingCompiles += 1
+      return compiles
+        .withPermits(1)(
+          Effect.gen(function* () {
+            const checked = yield* Effect.tryPromise({
+              try: async () => {
+                const root = stageFormulaWorkspace(source)
+                try {
+                  return await checkFormulaWorkspace(root, tscEntry)
+                } finally {
+                  dropWorkspace(root)
+                }
+              },
+              catch: () => new FormulaCompileUnavailable(),
+            })
+            if (checked.timedOut)
+              return yield* Effect.fail(
+                new FormulaExecutionLimitExceeded({ phase: 'typecheck', verdict: 'wall-clock' }),
+              )
+            if (checked.code !== 0) {
+              const parsed = parseDiagnostics(checked.output)
+              return yield* Effect.fail(
+                new FormulaTypecheckFailed({
+                  diagnostics: parsed.diagnostics,
+                  truncated: parsed.truncated,
+                }),
+              )
             }
-          },
-          catch: () => new FormulaCompileUnavailable(),
-        })
-        if (checked.code !== 0)
-          return yield* Effect.fail(
-            new FormulaTypecheckFailed({ diagnostics: parseDiagnostics(checked.output) }),
-          )
 
-        const bundled = yield* Effect.tryPromise({
-          try: () => bundleFormula(source),
-          catch: (failure) =>
-            failure instanceof FormulaBundleRefused
-              ? new FormulaSourceRefused({
-                  reason: 'import',
-                  specifier: failure.refusals[0]?.specifier ?? 'unknown',
-                })
-              : new FormulaCompileUnavailable(),
-        })
+            const bundled = yield* Effect.tryPromise({
+              try: () => bundleFormula(source),
+              catch: (failure) =>
+                failure instanceof FormulaBundleRefused
+                  ? new FormulaSourceRefused({
+                      reason: 'import',
+                      specifier: failure.refusals[0]?.specifier ?? 'unknown',
+                    })
+                  : new FormulaBundleFailed({
+                      message: (failure instanceof Error ? failure.message : String(failure)).slice(
+                        0,
+                        2000,
+                      ),
+                    }),
+            })
+            const artifactBytes = Buffer.byteLength(bundled.artifact, 'utf8')
+            if (artifactBytes > MAX_COMPILED_ARTIFACT_BYTES)
+              return yield* Effect.fail(
+                new FormulaBundleFailed({
+                  message: `the compiled artifact is ${artifactBytes} bytes; the ceiling is ${MAX_COMPILED_ARTIFACT_BYTES}`,
+                }),
+              )
 
-        const artifactHash = sha256(bundled.artifact)
-        const rawContract = yield* sandbox
-          .invoke({
-            artifact: bundled.artifact,
-            artifactHash,
-            entrypoint: '__qualyContract',
-            arguments: [],
-          })
-          .pipe(Effect.mapError(() => new FormulaCompileUnavailable()))
+            const artifactHash = sha256(bundled.artifact)
+            const contract = yield* extractContract(bundled.artifact, artifactHash)
 
-        const contract =
-          typeof rawContract === 'object' && rawContract !== null
-            ? (rawContract as { input?: unknown; output?: unknown })
-            : {}
-        const issues = [
-          ...validateInputProfile(contract.input).map((issue) => ({
-            path: issue.path === '' ? 'input' : `input.${issue.path}`,
-            reason: issue.reason,
-          })),
-          ...validateAtomicProfile(contract.output).map((issue) => ({
-            path: issue.path === '' ? 'output' : `output.${issue.path}`,
-            reason: issue.reason,
-          })),
-        ]
-        if (issues.length === 0 && kindOf(contract.output as AtomicSchema) !== 'decimal')
-          issues.push({ path: 'output', reason: 'not-a-decimal' })
-        if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
+            const issues = [
+              ...[
+                ...validateInputProfile(contract.input),
+                ...patternIssues(contract.input as InputSchema),
+              ].map((issue) => ({
+                path: issue.path === '' ? 'input' : `input.${issue.path}`,
+                reason: issue.reason,
+              })),
+              ...validateAtomicProfile(contract.output).map((issue) => ({
+                path: issue.path === '' ? 'output' : `output.${issue.path}`,
+                reason: issue.reason,
+              })),
+            ]
+            if (issues.length === 0 && kindOf(contract.output as AtomicSchema) !== 'decimal')
+              issues.push({ path: 'output', reason: 'not-a-decimal' })
+            if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
 
-        const inputSchema = normalizeInputSchema(contract.input as InputSchema)
-        const outputSchema = normalizeAtomicSchema(contract.output as AtomicSchema) as DecimalSchema
+            const inputSchema = normalizeInputSchema(contract.input as InputSchema)
+            const outputSchema = normalizeAtomicSchema(contract.output as AtomicSchema)
 
-        const report = yield* runTests(
-          bundled.artifact,
-          artifactHash,
-          inputSchema,
-          outputSchema,
-          tests,
+            // a scoring formula's answer must fit what the scorer can carry:
+            // the platform amount is numeric(12,4), so an unbounded or wider
+            // output is publishable nowhere and refused here by proof
+            const intoScore = assignmentPlan(
+              outputSchema,
+              normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
+            )
+            if (intoScore.kind !== 'direct')
+              issues.push({ path: 'output', reason: 'not-a-score-amount' })
+
+            const canonicalInput = canonicalizeInputSchema(inputSchema)
+            const canonicalOutput = canonicalizeAtomicSchema(outputSchema)
+            if (
+              Buffer.byteLength(canonicalInput, 'utf8') +
+                Buffer.byteLength(canonicalOutput, 'utf8') >
+              MAX_CANONICAL_CONTRACT_BYTES
+            )
+              issues.push({ path: '', reason: 'contract-too-large' })
+            if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
+
+            const report = yield* runTests(
+              bundled.artifact,
+              artifactHash,
+              inputSchema,
+              outputSchema,
+              tests,
+            )
+            if (tests.length === 0 || report.some((row) => !row.passed))
+              return yield* Effect.fail(new FormulaTestFailed({ report }))
+
+            const runtimeDigest = createHash('sha256')
+            for (const name of [...bundled.sdkFiles.keys()].sort()) {
+              runtimeDigest.update(name, 'utf8')
+              runtimeDigest.update(' ', 'utf8')
+              runtimeDigest.update(bundled.sdkFiles.get(name)!, 'utf8')
+            }
+
+            return {
+              artifact: bundled.artifact,
+              inputSchema,
+              outputSchema,
+              sourceSha256: sha256(source),
+              runtimeSha256: artifactHash,
+              contractSha256: sha256(`${canonicalInput}|${canonicalOutput}`),
+              formulaRuntimeSha256: runtimeDigest.digest('hex'),
+              report,
+            } satisfies CompiledFormula
+          }),
         )
-        if (tests.length === 0 || report.some((row) => !row.passed))
-          return yield* Effect.fail(new FormulaTestFailed({ report }))
-
-        const runtimeDigest = createHash('sha256')
-        for (const name of [...bundled.sdkFiles.keys()].sort()) {
-          runtimeDigest.update(name, 'utf8')
-          runtimeDigest.update(' ', 'utf8')
-          runtimeDigest.update(bundled.sdkFiles.get(name)!, 'utf8')
-        }
-
-        return {
-          artifact: bundled.artifact,
-          inputSchema,
-          outputSchema,
-          sourceSha256: sha256(source),
-          runtimeSha256: artifactHash,
-          contractSha256: sha256(
-            `${canonicalizeInputSchema(inputSchema)}|${canonicalizeAtomicSchema(outputSchema)}`,
+        .pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              pendingCompiles -= 1
+            }),
           ),
-          formulaRuntimeSha256: runtimeDigest.digest('hex'),
-          report,
-        } satisfies CompiledFormula
-      }),
-    )
+        )
+    })
 
   const listFunctions = Effect.fn('FormulaLibrary.listFunctions')(function* (
     tenantId: string,
-    _page: { cursor?: string; limit?: string },
+    page: { cursor?: string; limit?: string },
     as: Principal,
   ) {
     const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
     if (!scope.tenantWide && scope.anchors.length === 0)
       return { items: [], nextCursor: null as string | null }
+    const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
+    const cursor = readQueryCursor(page.cursor, LIST_FINGERPRINT, ['timestamp', 'uuid'])
+    if (cursor === null) return yield* Effect.fail(cursorUnusable())
     const rows = yield* db
-      .query((k) =>
-        k
+      .query((k) => {
+        let query = k
           .selectFrom('FormulaFunction')
           .innerJoin('OrgNode', (join) =>
             join
               .onRef('OrgNode.tenantId', '=', 'FormulaFunction.tenantId')
               .onRef('OrgNode.id', '=', 'FormulaFunction.ownerNodeId'),
           )
-          .selectAll('FormulaFunction')
+          // projection on purpose: the list never needs the draft source or
+          // the examples, and a row may carry a quarter megabyte of each
+          .select([
+            'FormulaFunction.id',
+            'FormulaFunction.name',
+            'FormulaFunction.description',
+            'FormulaFunction.ownerNodeId',
+            'FormulaFunction.draftRevision',
+            'FormulaFunction.archivedAt',
+            'FormulaFunction.updatedAt',
+          ])
           .select(latestNoSubquery.as('latestVersionNo'))
           .where('FormulaFunction.tenantId', '=', tenantId)
           .where(
@@ -521,15 +702,30 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
               path: sql.ref('org_nodes.path') as never,
             }),
           )
+        if (cursor !== undefined) {
+          // row-value keyset comparison is the postgres-specific idiom the
+          // repo allows as a minimal sql fragment
+          query = query.where(
+            sql<boolean>`(assessment_formula_functions.updated_at, assessment_formula_functions.id)
+              < (${sql.raw(`timestamptz '${new Date(Number(cursor[0])).toISOString()}'`)}, ${cursor[1]}::uuid)`,
+          )
+        }
+        return query
           .orderBy('FormulaFunction.updatedAt', 'desc')
           .orderBy('FormulaFunction.id', 'desc')
-          .execute(),
-      )
+          .limit(size + 1)
+          .execute()
+      })
       .pipe(Effect.orDie)
-    return {
-      items: (rows as unknown as FunctionRow[]).map(functionDto),
-      nextCursor: null as string | null,
-    }
+    const sliced = (rows as unknown as FunctionRow[]).slice(0, size)
+    const nextCursor =
+      rows.length > size
+        ? encodeQueryCursor(LIST_FINGERPRINT, [
+            String(new Date(sliced[sliced.length - 1]!.updatedAt).getTime()),
+            sliced[sliced.length - 1]!.id,
+          ])
+        : null
+    return { items: sliced.map(functionDto), nextCursor }
   })
 
   const createFunction = Effect.fn('FormulaLibrary.createFunction')(function* (
@@ -540,41 +736,59 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const allowed = yield* rbac.canAt(as, MANAGE, input.ownerNodeId)
     if (!allowed)
       return yield* Effect.fail(new AccessDenied({ reason: 'cannot manage scoring formulas here' }))
-    const node = yield* db
-      .query((k) =>
-        k
-          .selectFrom('OrgNode')
-          .select('id')
-          .where('tenantId', '=', tenantId)
-          .where('id', '=', input.ownerNodeId)
-          .executeTakeFirst(),
-      )
-      .pipe(Effect.orDie)
-    if (node === undefined) return yield* Effect.fail(new FormulaOwnerNodeInvalid())
-    const created = yield* db
-      .query((k) =>
-        k
-          .insertInto('FormulaFunction')
-          .values({
+    // the byte gate is a service invariant, identical at create, update and
+    // compile - the api's character-length check is not a byte check
+    const seed = input.draftSourceTs ?? DEFAULT_SOURCE
+    if (Buffer.byteLength(seed, 'utf8') > SOURCE_LIMIT)
+      return yield* Effect.fail(new FormulaSourceTooLarge({ limit: SOURCE_LIMIT }))
+    const created = yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          // there is deliberately no owner foreign key, so the existence
+          // check and the insert must not race a node deletion: the shared
+          // lock keeps the row alive until this commits
+          const node = yield* db
+            .query((k) =>
+              k
+                .selectFrom('OrgNode')
+                .select('id')
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', input.ownerNodeId)
+                .forShare()
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (node === undefined) return yield* Effect.fail(new FormulaOwnerNodeInvalid())
+          const row = yield* db
+            .query((k) =>
+              k
+                .insertInto('FormulaFunction')
+                .values({
+                  tenantId,
+                  ownerNodeId: input.ownerNodeId,
+                  name: input.name,
+                  description: input.description ?? null,
+                  draftSourceTs: seed,
+                  draftTests: sql`${JSON.stringify([])}::jsonb`,
+                  createdBy: as.userId,
+                  updatedBy: as.userId,
+                })
+                .returning('id')
+                .executeTakeFirstOrThrow(),
+            )
+            .pipe(Effect.orDie)
+          // in the transaction on purpose: an auditable write commits with
+          // its audit event or not at all (the audit contract's invariant)
+          yield* audit.record(FormulaFunctionCreated, {
             tenantId,
-            ownerNodeId: input.ownerNodeId,
-            name: input.name,
-            description: input.description ?? null,
-            draftSourceTs: input.draftSourceTs ?? DEFAULT_SOURCE,
-            draftTests: sql`${JSON.stringify([])}::jsonb`,
-            createdBy: as.userId,
-            updatedBy: as.userId,
+            actor: actorOf(as),
+            target: { id: row.id as string, label: input.name },
+            details: { ownerNodeId: input.ownerNodeId },
           })
-          .returning('id')
-          .executeTakeFirstOrThrow(),
-      )
-      .pipe(Effect.orDie)
-    yield* audit.record(FormulaFunctionCreated, {
-      tenantId,
-      actor: actorOf(as),
-      target: { id: created.id as string, label: input.name },
-      details: { ownerNodeId: input.ownerNodeId },
-    })
+          return row
+        }),
+      ),
+    )
     const row = yield* foundRow(tenantId, created.id as string).pipe(Effect.orDie)
     return functionDetailDto(row)
   })
@@ -585,11 +799,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     as: Principal,
   ) {
     const row = yield* managedRow(tenantId, functionId, as)
+    // summaries only: every published row also carries the full artifact and
+    // sources, which belong to getVersion, not to opening the editor
     const versions = yield* db
       .query((k) =>
         k
           .selectFrom('FormulaVersion')
-          .selectAll()
+          .select(['versionNo', 'contractSha256', 'runtimeSha256', 'publishedBy', 'publishedAt'])
           .where('tenantId', '=', tenantId)
           .where('functionId', '=', functionId)
           .orderBy('versionNo', 'desc')
@@ -621,37 +837,71 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       Buffer.byteLength(patch.draftSourceTs, 'utf8') > SOURCE_LIMIT
     )
       return yield* Effect.fail(new FormulaSourceTooLarge({ limit: SOURCE_LIMIT }))
-    const updated = yield* db
-      .query((k) =>
-        k
-          .updateTable('FormulaFunction')
-          .set({
-            ...(patch.name === undefined ? {} : { name: patch.name }),
-            ...(patch.description === undefined ? {} : { description: patch.description }),
-            ...(patch.draftSourceTs === undefined ? {} : { draftSourceTs: patch.draftSourceTs }),
-            ...(patch.draftTests === undefined
-              ? {}
-              : { draftTests: sql`${JSON.stringify(patch.draftTests)}::jsonb` }),
-            draftRevision: sql`draft_revision + 1`,
-            updatedBy: as.userId,
-            updatedAt: sql`now()`,
+    // a patch that names no field changes nothing: no revision bump, no
+    // audit event to explain later
+    if (
+      patch.name === undefined &&
+      patch.description === undefined &&
+      patch.draftSourceTs === undefined &&
+      patch.draftTests === undefined
+    )
+      return functionDetailDto(row)
+    yield* withDb(
+      transaction(
+        Effect.gen(function* () {
+          const updated = yield* db
+            .query((k) =>
+              k
+                .updateTable('FormulaFunction')
+                .set({
+                  ...(patch.name === undefined ? {} : { name: patch.name }),
+                  ...(patch.description === undefined ? {} : { description: patch.description }),
+                  ...(patch.draftSourceTs === undefined
+                    ? {}
+                    : { draftSourceTs: patch.draftSourceTs }),
+                  ...(patch.draftTests === undefined
+                    ? {}
+                    : { draftTests: sql`${JSON.stringify(patch.draftTests)}::jsonb` }),
+                  draftRevision: sql`draft_revision + 1`,
+                  updatedBy: as.userId,
+                  updatedAt: sql`now()`,
+                })
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', functionId)
+                .where('draftRevision', '=', patch.expectedDraftRevision)
+                // the archive check rides IN the update: the read above ran
+                // before this transaction, and a concurrent archive between
+                // the two must not see its frozen draft edited
+                .where('archivedAt', 'is', null)
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (Number(updated.numUpdatedRows ?? 0) === 0)
+            return yield* Effect.fail(new FormulaDraftConflict({ draftRevision: -1 }))
+          // with the mutation, or not at all: the audit contract's invariant
+          yield* audit.record(FormulaDraftReplaced, {
+            tenantId,
+            actor: actorOf(as),
+            target: { id: functionId, label: patch.name ?? row.name },
+            details: { draftRevision: patch.expectedDraftRevision + 1 },
           })
-          .where('tenantId', '=', tenantId)
-          .where('id', '=', functionId)
-          .where('draftRevision', '=', patch.expectedDraftRevision)
-          .executeTakeFirst(),
-      )
-      .pipe(Effect.orDie)
-    if (Number(updated.numUpdatedRows ?? 0) === 0) {
-      const current = yield* foundRow(tenantId, functionId)
-      return yield* Effect.fail(new FormulaDraftConflict({ draftRevision: current.draftRevision }))
-    }
-    yield* audit.record(FormulaDraftReplaced, {
-      tenantId,
-      actor: actorOf(as),
-      target: { id: functionId, label: patch.name ?? row.name },
-      details: { draftRevision: patch.expectedDraftRevision + 1 },
-    })
+        }),
+      ),
+    ).pipe(
+      // zero rows updated means EITHER a stale revision or a concurrent
+      // archive; the reread tells the caller which refusal is theirs
+      Effect.catchTag('ASSESSMENT_FORMULA_DRAFT_CONFLICT', () =>
+        foundRow(tenantId, functionId).pipe(
+          Effect.flatMap((current) =>
+            Effect.fail(
+              current.archivedAt !== null
+                ? new FormulaFunctionArchived()
+                : new FormulaDraftConflict({ draftRevision: current.draftRevision }),
+            ),
+          ),
+        ),
+      ),
+    )
     const fresh = yield* foundRow(tenantId, functionId)
     return functionDetailDto(fresh)
   })
@@ -665,27 +915,35 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const row = yield* managedRow(tenantId, functionId, as)
     const willArchive = status === 'archived'
     if ((row.archivedAt !== null) !== willArchive) {
-      yield* db
-        .query((k) =>
-          k
-            .updateTable('FormulaFunction')
-            .set({
-              archivedAt: willArchive ? sql`now()` : null,
-              updatedBy: as.userId,
-              updatedAt: sql`now()`,
-            })
-            .where('tenantId', '=', tenantId)
-            .where('id', '=', functionId)
-            .execute(),
-        )
-        .pipe(Effect.orDie)
-      if (willArchive)
-        yield* audit.record(FormulaFunctionArchivedAction, {
-          tenantId,
-          actor: actorOf(as),
-          target: { id: functionId, label: row.name },
-          details: {},
-        })
+      yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            yield* db
+              .query((k) =>
+                k
+                  .updateTable('FormulaFunction')
+                  .set({
+                    archivedAt: willArchive ? sql`now()` : null,
+                    updatedBy: as.userId,
+                    updatedAt: sql`now()`,
+                  })
+                  .where('tenantId', '=', tenantId)
+                  .where('id', '=', functionId)
+                  .execute(),
+              )
+              .pipe(Effect.orDie)
+            yield* audit.record(
+              willArchive ? FormulaFunctionArchivedAction : FormulaFunctionRestored,
+              {
+                tenantId,
+                actor: actorOf(as),
+                target: { id: functionId, label: row.name },
+                details: {},
+              },
+            )
+          }),
+        ),
+      )
     }
     const fresh = yield* foundRow(tenantId, functionId)
     return functionDetailDto(fresh)
@@ -709,6 +967,26 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       catch: () => new FormulaCompileUnavailable(),
     })
 
+    // what publication is idempotent over: the executable identity - source,
+    // examples and the whole toolchain. A double click or a retried request
+    // answers with the version that already exists; a toolchain upgrade
+    // changes the fingerprint and may legitimately mint a new version.
+    // draftRevision stays what it is: the EDITING concurrency token.
+    const fingerprint = sha256(
+      [
+        compiled.sourceSha256,
+        sha256(JSON.stringify(row.draftTests)),
+        compilerVersion,
+        esbuildVersion,
+        String(FORMULA_ABI_VERSION),
+        compiled.formulaRuntimeSha256,
+        String(SANDBOX_ABI_VERSION),
+        String(VALUE_SCHEMA_PROFILE_VERSION),
+        String(REGEX_PROFILE_VERSION),
+        sandbox.engine,
+      ].join('|'),
+    )
+
     const inserted = yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -716,7 +994,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             .query((k) =>
               k
                 .selectFrom('FormulaFunction')
-                .select(['draftRevision', 'archivedAt'])
+                .select(['draftRevision', 'archivedAt', 'ownerNodeId'])
                 .where('tenantId', '=', tenantId)
                 .where('id', '=', functionId)
                 .forUpdate()
@@ -724,6 +1002,12 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             )
             .pipe(Effect.orDie)
           if (locked === undefined) return yield* Effect.fail(new FormulaFunctionNotFound())
+          // the compile took real time; the authority that opened this call
+          // may have been revoked meanwhile, and what is being minted is an
+          // immutable official record - re-ask before committing (a second
+          // pool connection is fine here: one row lock, pool size above one)
+          const stillAllowed = yield* rbac.canAt(as, MANAGE, locked.ownerNodeId as string)
+          if (!stillAllowed) return yield* Effect.fail(new FormulaFunctionNotFound())
           if (locked.archivedAt !== null) return yield* Effect.fail(new FormulaFunctionArchived())
           // the compile ran on a snapshot; a draft that moved meanwhile would
           // freeze bytes nobody asked to publish
@@ -731,6 +1015,18 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             return yield* Effect.fail(
               new FormulaDraftConflict({ draftRevision: locked.draftRevision as number }),
             )
+          const existing = yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaVersion')
+                .selectAll()
+                .where('tenantId', '=', tenantId)
+                .where('functionId', '=', functionId)
+                .where('publishFingerprint', '=', fingerprint)
+                .executeTakeFirst(),
+            )
+            .pipe(Effect.orDie)
+          if (existing !== undefined) return existing
           const top = yield* db
             .query((k) =>
               k
@@ -761,6 +1057,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                   formulaAbiVersion: FORMULA_ABI_VERSION,
                   formulaRuntimeSha256: compiled.formulaRuntimeSha256,
                   quickjsEngineVersion: sandbox.engine,
+                  valueSchemaProfileVersion: VALUE_SCHEMA_PROFILE_VERSION,
+                  regexProfileVersion: REGEX_PROFILE_VERSION,
+                  sandboxAbiVersion: SANDBOX_ABI_VERSION,
+                  publishFingerprint: fingerprint,
                   tests: sql`${JSON.stringify(row.draftTests)}::jsonb`,
                   testReport: sql`${JSON.stringify(compiled.report)}::jsonb`,
                   publishedBy: as.userId,
@@ -773,6 +1073,33 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       ),
     )
     return versionDetailDto(inserted as unknown as VersionRow)
+  })
+
+  const listOwnerOptions = Effect.fn('FormulaLibrary.listOwnerOptions')(function* (
+    tenantId: string,
+    as: Principal,
+  ) {
+    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
+    if (!scope.tenantWide && scope.anchors.length === 0)
+      return { nodes: [] as { id: string; name: string; depth: number }[] }
+    const rows = yield* db
+      .query((k) =>
+        k
+          .selectFrom('OrgNode')
+          .select(['id', 'name', 'depth'])
+          .where('tenantId', '=', tenantId)
+          .where(
+            scopeCoverage(scope, {
+              id: sql.ref('org_nodes.id') as never,
+              tenantId: sql.ref('org_nodes.tenant_id') as never,
+              path: sql.ref('org_nodes.path') as never,
+            }),
+          )
+          .orderBy(sql`path`)
+          .execute(),
+      )
+      .pipe(Effect.orDie)
+    return { nodes: rows as { id: string; name: string; depth: number }[] }
   })
 
   const getVersion = Effect.fn('FormulaLibrary.getVersion')(function* (
@@ -811,6 +1138,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(publish(tenantId, functionId, expected, as)),
     getVersion: (tenantId, functionId, versionNo, as) =>
       withDb(getVersion(tenantId, functionId, versionNo, as)),
+    listOwnerOptions: (tenantId, as) => withDb(listOwnerOptions(tenantId, as)),
   }
   return service
 })
@@ -821,6 +1149,14 @@ const local = Api.local(formulaApiGroup)
 
 export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula', (handlers) =>
   handlers
+    .handle(
+      'listFormulaOwnerOptions',
+      Effect.fn('assessmentFormula.ownerOptions.handler')(function* () {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        return yield* library.listOwnerOptions(principal.tenantId, principal)
+      }),
+    )
     .handle(
       'listFormulaFunctions',
       Effect.fn('assessmentFormula.list.handler')(function* ({ query }) {

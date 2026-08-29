@@ -25,7 +25,7 @@ export default defineFormula({
     teamStep: Schema.decimal({ maxScale: 4 }),
     floor: Schema.decimal({ maxScale: 4 }),
   }),
-  output: Schema.decimal({ maxScale: 4 }),
+  output: Schema.scoreAmount({ maxScale: 4 }),
   run(input, q) {
     if (input.ordinal > 100) q.fail('ordinal is out of policy')
     const base =
@@ -87,7 +87,9 @@ const invoke = async (artifact: string, entrypoint: string, args: readonly unkno
 describe('a bundled artifact in the real sandbox', () => {
   it('hands out a profile-legal contract and scores exactly', async () => {
     const { artifact } = await bundleFormula(COMPETITION)
-    const contract = (await invoke(artifact, '__qualyContract', [])) as {
+    // the wrapper stringifies the contract itself, with intrinsics captured
+    // before any user code ran - one bounded string is all that crosses
+    const contract = JSON.parse(await invoke(artifact, '__qualyContract', [])) as {
       input: unknown
       output: unknown
     }

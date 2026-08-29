@@ -101,20 +101,46 @@ export default function FormulaEditorPage() {
   const [failure, setFailure] = useState<string | null>(null)
   const [findings, setFindings] = useState<PublishFindings>({})
 
-  // the draft the editor holds follows whatever revision the server answers
-  // with; a save or a publish refreshing the query re-seeds it
+  const [baseRevision, setBaseRevision] = useState<number | null>(null)
+  const [remoteMoved, setRemoteMoved] = useState(false)
+
+  const seededTests = (loaded: NonNullable<typeof fn>) =>
+    loaded.draftTests.map((test) => ({
+      name: test.name,
+      inputText: JSON.stringify(test.input),
+      expected: test.expected,
+    }))
+
+  // the editor follows the server draft ONLY while it holds nothing of its
+  // own: a refetch that arrives over unsaved edits (another admin saved)
+  // must not overwrite them - it raises the banner and leaves the text alone
   useEffect(() => {
+    if (fn === undefined) return
+    const holdsEdits =
+      baseRevision !== null &&
+      (name.trim() !== fn.name ||
+        source !== fn.draftSourceTs ||
+        JSON.stringify(tests) !== JSON.stringify(seededTests(fn)))
+    if (baseRevision !== null && fn.draftRevision !== baseRevision && holdsEdits) {
+      setRemoteMoved(true)
+      return
+    }
+    setName(fn.name)
+    setSource(fn.draftSourceTs)
+    setTests(seededTests(fn))
+    setBaseRevision(fn.draftRevision)
+    setRemoteMoved(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fn?.id, fn?.draftRevision])
+
+  const discardLocal = () => {
     if (fn === undefined) return
     setName(fn.name)
     setSource(fn.draftSourceTs)
-    setTests(
-      fn.draftTests.map((test) => ({
-        name: test.name,
-        inputText: JSON.stringify(test.input),
-        expected: test.expected,
-      })),
-    )
-  }, [fn?.id, fn?.draftRevision])
+    setTests(seededTests(fn))
+    setBaseRevision(fn.draftRevision)
+    setRemoteMoved(false)
+  }
 
   type ParsedTests =
     | { readonly tests: { name: string; input: unknown; expected: string }[] }
@@ -158,7 +184,7 @@ export default function FormulaEditorPage() {
       api.assessmentFormula.updateFormulaDraft({
         params: { functionId },
         payload: {
-          expectedDraftRevision: fn!.draftRevision,
+          expectedDraftRevision: baseRevision ?? fn!.draftRevision,
           name: name.trim() === '' ? fn!.name : name.trim(),
           draftSourceTs: source,
           draftTests: collected,
@@ -193,7 +219,7 @@ export default function FormulaEditorPage() {
     // publishing compiles the draft the SERVER holds, so unsaved edits are
     // saved first - otherwise the button quietly proves yesterday's bytes
     mutationFn: async () => {
-      let revision = fn!.draftRevision
+      let revision = baseRevision ?? fn!.draftRevision
       if (dirty()) {
         const parsed = parsedTests()
         if ('invalidLabel' in parsed)
@@ -280,8 +306,9 @@ export default function FormulaEditorPage() {
         return format(m.reasonEnum, { constraint })
       case 'type':
       case 'format':
-      case 'pattern':
         return format(m.reasonKind, { kind: kindName(problem.constraint) })
+      case 'pattern':
+        return format(m.reasonPattern, { constraint })
       case 'required':
         return format(m.reasonMissing)
       case 'additionalProperties':
@@ -347,6 +374,15 @@ export default function FormulaEditorPage() {
       />
 
       {failure === null ? null : <p role="alert">{failure}</p>}
+
+      {remoteMoved ? (
+        <Panel title={format(m.remoteMovedTitle)}>
+          <p {...stylex.props(styles.hint)}>{format(m.remoteMovedHint)}</p>
+          <Button variant="outline" onClick={discardLocal}>
+            {format(m.discardLocal)}
+          </Button>
+        </Panel>
+      ) : null}
 
       <Panel title={format(m.sourceLabel)}>
         <Field label={format(m.nameLabel)}>

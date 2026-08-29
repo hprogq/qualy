@@ -6,7 +6,7 @@ const IDENTITY = `import { Schema, defineFormula } from '@qualy/formula'
 
 export default defineFormula({
   input: Schema.input({ value: Schema.decimal({ minimum: '1.00', maximum: '6.00', maxScale: 2 }) }),
-  output: Schema.decimal({ maxScale: 2 }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
   run: (input) => input.value,
 })
 `
