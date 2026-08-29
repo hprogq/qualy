@@ -482,7 +482,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           issues.push({ field: ref.field, reason: 'duplicate-attachment' })
         }
       }
-      if (issues.length > 0) return yield* Effect.fail(new EntryPayloadInvalid({ issues }))
+      if (issues.length > 0) return yield* new EntryPayloadInvalid({ issues })
 
       // serialize across batches before reading anything: batch locks do not
       // cover two rounds citing one file at the same moment
@@ -537,7 +537,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         }
         toBind.push({ attachmentId: ref.attachmentId, ownerUserId: attachment.ownerUserId })
       }
-      if (issues.length > 0) return yield* Effect.fail(new EntryPayloadInvalid({ issues }))
+      if (issues.length > 0) return yield* new EntryPayloadInvalid({ issues })
       for (const target of toBind) {
         const bound = yield* Effect.result(
           storage.bind({
@@ -547,9 +547,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           }),
         )
         if (Result.isFailure(bound)) {
-          return yield* Effect.fail(
-            new EntryPayloadInvalid({ issues: [{ field: '', reason: 'attachment-unavailable' }] }),
-          )
+          return yield* new EntryPayloadInvalid({
+            issues: [{ field: '', reason: 'attachment-unavailable' }],
+          })
         }
       }
     })

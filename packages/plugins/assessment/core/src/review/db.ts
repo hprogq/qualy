@@ -1062,9 +1062,8 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
     )
 
 /** the tenants with open rounds at all, so the patrol visits nothing empty */
-export const tenantsWithOpenRounds = () =>
-  db
-    .query((k) =>
+export const tenantsWithOpenRounds = db
+  .query((k) =>
       k
         .selectFrom('ReviewInstance')
         .select(['tenantId'])

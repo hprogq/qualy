@@ -381,15 +381,15 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
       withDb(fn(...args))
 
   const defaultTenant = Effect.fn('Auth.signIn.tenant')(function* () {
-    return yield* activeTenantBySlug(config.defaultTenantSlug).pipe(Effect.orDie)
-  })
+    return yield* activeTenantBySlug(config.defaultTenantSlug)
+  }, Effect.orDie)
 
   const loadUser = Effect.fn('Auth.signIn.loadUser')(function* (tenantId: string, userId: string) {
-    const row = yield* signedInUser(tenantId, userId).pipe(Effect.orDie)
+    const row = yield* signedInUser(tenantId, userId)
     if (!row) return undefined
-    const lineage = yield* lineageOf(tenantId, row.orgNodePath).pipe(Effect.orDie)
+    const lineage = yield* lineageOf(tenantId, row.orgNodePath)
     return toSignedInUser(row, lineage)
-  })
+  }, Effect.orDie)
 
   // maxAge is a Duration, not seconds: a bare number is read as MILLISECONDS,
   // so 604800 serialized as `Max-Age=604` and every session died after ten

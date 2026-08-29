@@ -418,7 +418,7 @@ export const make = Effect.fn('Rbac.grants.make')(function* (
   ) {
     const authority = authorityFor(actor)
     if (target.kind === 'tenant') {
-      const codes = yield* authority.tenantWide()
+      const codes = yield* authority.tenantWide
       if (!codes.has('iam.tenant-grant.manage')) {
         return yield* new AccessDenied({ reason: 'not allowed to administer tenant-wide grants' })
       }

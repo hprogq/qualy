@@ -621,10 +621,10 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
 
   const project = (tenantId: string, roleId?: string) =>
     Effect.gen(function* () {
-      if (roleId === undefined) return yield* rolesOfTenant(tenantId).pipe(Effect.orDie)
-      const one = yield* oneRoleProjected(tenantId, roleId).pipe(Effect.orDie)
+      if (roleId === undefined) return yield* rolesOfTenant(tenantId)
+      const one = yield* oneRoleProjected(tenantId, roleId)
       return one ? [one] : []
-    })
+    }).pipe(Effect.orDie)
 
   return {
     /** the roles of a tenant, with what each one carries */
@@ -659,10 +659,10 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
      */
     options: Effect.fn('Rbac.roles.options')(function* (tenantId: string) {
       return {
-        userTypes: yield* userTypeOptions(tenantId).pipe(Effect.orDie),
-        orgTypes: yield* orgTypeOptions(tenantId).pipe(Effect.orDie),
+        userTypes: yield* userTypeOptions(tenantId),
+        orgTypes: yield* orgTypeOptions(tenantId),
       }
-    }),
+    }, Effect.orDie),
 
     create: Effect.fn('Rbac.roles.create')(function* (
       tenantId: string,

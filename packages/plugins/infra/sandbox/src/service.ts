@@ -117,11 +117,9 @@ const transportDeadline = (
       )
       if (settled === undefined) {
         yield* abandon
-        return yield* Effect.fail(
-          new SandboxUnavailable({
-            reason: 'the runtime did not answer within the transport deadline',
-          }),
-        )
+        return yield* new SandboxUnavailable({
+          reason: 'the runtime did not answer within the transport deadline',
+        })
       }
       return yield* settled
     }).pipe(Effect.onInterrupt(() => abandon))

@@ -1895,7 +1895,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           issues.push({ field: ref.field, reason: 'duplicate-attachment' })
         }
       }
-      if (issues.length > 0) return yield* Effect.fail(new EntryPayloadInvalid({ issues }))
+      if (issues.length > 0) return yield* new EntryPayloadInvalid({ issues })
       yield* lockAttachments(
         input.tenantId,
         input.refs.map((ref) => ref.attachmentId),
@@ -1928,7 +1928,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         }
         toBind.push({ attachmentId: ref.attachmentId, ownerUserId: attachment.ownerUserId })
       }
-      if (issues.length > 0) return yield* Effect.fail(new EntryPayloadInvalid({ issues }))
+      if (issues.length > 0) return yield* new EntryPayloadInvalid({ issues })
       for (const target of toBind) {
         const bound = yield* Effect.result(
           deps.storage.bind({
@@ -1938,9 +1938,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           }),
         )
         if (Result.isFailure(bound)) {
-          return yield* Effect.fail(
-            new EntryPayloadInvalid({ issues: [{ field: '', reason: 'attachment-unavailable' }] }),
-          )
+          return yield* new EntryPayloadInvalid({
+            issues: [{ field: '', reason: 'attachment-unavailable' }],
+          })
         }
       }
     })

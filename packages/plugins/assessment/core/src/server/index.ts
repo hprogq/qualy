@@ -3695,7 +3695,7 @@ export const make = Effect.fn('Assessment.make')(function* () {
      * the same thing - each write is conditional on the state it read.
      */
     patrolReviewRounds: Effect.gen(function* () {
-      const tenants = yield* dieQuery(withDb(tenantsWithOpenRounds()))
+      const tenants = yield* dieQuery(withDb(tenantsWithOpenRounds))
       let blocked = 0
       let released = 0
       for (const tenantId of tenants) {

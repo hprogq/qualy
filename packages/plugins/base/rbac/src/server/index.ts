@@ -224,10 +224,9 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
 
   /** what the guards ask about an actor, answered from this layer's own reads */
   const authorityFor = (actor: Principal): Authority => ({
-    tenantWide: () =>
-      effectiveRows(actor, undefined).pipe(
-        Effect.map((held) => new Set(held.map(({ definition }) => definition.code))),
-      ),
+    tenantWide: effectiveRows(actor, undefined).pipe(
+      Effect.map((held) => new Set(held.map(({ definition }) => definition.code))),
+    ),
     reachAt: (orgNodeId: string) => reachAt(actor, orgNodeId),
     activeCodes: () => [...catalog.keys()],
     catalog: () => catalog,
@@ -360,12 +359,12 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
     }),
 
     getRolePermissions: Effect.fn('Rbac.getRolePermissions')(function* (tenantId, roleId) {
-      const mode = yield* bound(() => rolePermissionMode(tenantId, roleId))().pipe(Effect.orDie)
+      const mode = yield* bound(() => rolePermissionMode(tenantId, roleId))()
       // the administrator carries whatever the catalog serves, by definition
       if (mode?.mode === 'all-active') return [...catalog.keys()]
-      const codes = yield* bound(() => rolePermissionCodes(tenantId, roleId))().pipe(Effect.orDie)
+      const codes = yield* bound(() => rolePermissionCodes(tenantId, roleId))()
       return codes.filter((code) => definitionOf(code) !== undefined).sort()
-    }),
+    }, Effect.orDie),
 
     createScopedAssignment: Effect.fn('Rbac.createScopedAssignment')(function* (input) {
       // The whole grant path, under the same tenant lock as every other
@@ -387,12 +386,11 @@ export const make = Effect.fn('Rbac.make')(function* (declared: readonly ActiveP
         // one code across the port, with the refusal kept as its reason: the
         // caller is a resource, and the vocabulary belongs to the role's
         // owner - but a log that says only "denied" explains nothing
-        Effect.catch((error) =>
-          Effect.fail(
+        Effect.mapError(
+          (error) =>
             new AccessDenied({
               reason: `scoped grant refused: ${(error as { _tag?: string })._tag ?? 'unknown'}`,
             }),
-          ),
         ),
       )
     }),

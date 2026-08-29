@@ -141,7 +141,7 @@ export const bridgeSocket = (
       .pipe(
         // any socket-side ending (client close, network error) lands here;
         // the scope's finalizers do the rest
-        Effect.catch(() => Effect.void),
+        Effect.ignore,
       )
   })
 

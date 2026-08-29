@@ -119,9 +119,12 @@ const paper = (route: string) =>
         // loads: the rows exist for a moment before the paper is on screen,
         // and anything that only looks for the paper once misses it
         getMyResult: () =>
-          Effect.flatMap(Effect.sleep(60), () =>
-            Effect.succeed({ mode: 'provisional', total: '0.00', groups: [], lines: [] }),
-          ),
+          Effect.map(Effect.sleep(60), () => ({
+            mode: 'provisional',
+            total: '0.00',
+            groups: [],
+            lines: [],
+          })),
         getEntryHistory: () => Effect.succeed({ revisions: [], events: [], rounds: [] }),
       },
     } as never),

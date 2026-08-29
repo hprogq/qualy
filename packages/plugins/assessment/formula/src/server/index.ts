@@ -542,7 +542,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       ]
       if (issues.length === 0 && kindOf(contract.output as AtomicSchema) !== 'decimal')
         issues.push({ path: 'output', reason: 'not-a-decimal' })
-      if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
+      if (issues.length > 0) return yield* new FormulaContractInvalid({ issues })
 
       const inputSchema = normalizeInputSchema(contract.input as InputSchema)
       const outputSchema = normalizeAtomicSchema(contract.output as AtomicSchema)
@@ -560,7 +560,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         MAX_CANONICAL_CONTRACT_BYTES
       )
         issues.push({ path: '', reason: 'contract-too-large' })
-      if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
+      if (issues.length > 0) return yield* new FormulaContractInvalid({ issues })
 
       const report = yield* runTests(
         compiled.artifact,
@@ -570,7 +570,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         tests,
       )
       if (tests.length === 0 || report.some((row) => !row.passed))
-        return yield* Effect.fail(new FormulaTestFailed({ report }))
+        return yield* new FormulaTestFailed({ report })
 
       return {
         artifact: compiled.artifact,
@@ -599,7 +599,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       return { items: [], nextCursor: null as string | null }
     const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
     const cursor = readQueryCursor(page.cursor, LIST_FINGERPRINT, ['timestamp', 'uuid'])
-    if (cursor === null) return yield* Effect.fail(cursorUnusable())
+    if (cursor === null) return yield* cursorUnusable()
     const rows = yield* db
       .query((k) => {
         let query = k
@@ -662,12 +662,12 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   ) {
     const allowed = yield* rbac.canAt(as, MANAGE, input.ownerNodeId)
     if (!allowed)
-      return yield* Effect.fail(new AccessDenied({ reason: 'cannot manage scoring formulas here' }))
+      return yield* new AccessDenied({ reason: 'cannot manage scoring formulas here' })
     // the byte gate is a service invariant, identical at create, update and
     // compile - the api's character-length check is not a byte check
     const seed = input.draftSourceTs ?? DEFAULT_SOURCE
     if (Buffer.byteLength(seed, 'utf8') > SOURCE_LIMIT)
-      return yield* Effect.fail(new FormulaSourceTooLarge({ limit: SOURCE_LIMIT }))
+      return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
     const created = yield* withDb(
       transaction(
         Effect.gen(function* () {
@@ -685,7 +685,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                 .executeTakeFirst(),
             )
             .pipe(Effect.orDie)
-          if (node === undefined) return yield* Effect.fail(new FormulaOwnerNodeInvalid())
+          if (node === undefined) return yield* new FormulaOwnerNodeInvalid()
           const row = yield* db
             .query((k) =>
               k
@@ -758,12 +758,12 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     as: Principal,
   ) {
     const row = yield* managedRow(tenantId, functionId, as)
-    if (row.archivedAt !== null) return yield* Effect.fail(new FormulaFunctionArchived())
+    if (row.archivedAt !== null) return yield* new FormulaFunctionArchived()
     if (
       patch.draftSourceTs !== undefined &&
       Buffer.byteLength(patch.draftSourceTs, 'utf8') > SOURCE_LIMIT
     )
-      return yield* Effect.fail(new FormulaSourceTooLarge({ limit: SOURCE_LIMIT }))
+      return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
     // a patch that names no field changes nothing: no revision bump, no
     // audit event to explain later
     if (
@@ -804,7 +804,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             )
             .pipe(Effect.orDie)
           if (Number(updated.numUpdatedRows ?? 0) === 0)
-            return yield* Effect.fail(new FormulaDraftConflict({ draftRevision: -1 }))
+            return yield* new FormulaDraftConflict({ draftRevision: -1 })
           // with the mutation, or not at all: the audit contract's invariant
           yield* audit.record(FormulaDraftReplaced, {
             tenantId,
@@ -883,9 +883,9 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     as: Principal,
   ) {
     const row = yield* managedRow(tenantId, functionId, as)
-    if (row.archivedAt !== null) return yield* Effect.fail(new FormulaFunctionArchived())
+    if (row.archivedAt !== null) return yield* new FormulaFunctionArchived()
     if (row.draftRevision !== expectedDraftRevision)
-      return yield* Effect.fail(new FormulaDraftConflict({ draftRevision: row.draftRevision }))
+      return yield* new FormulaDraftConflict({ draftRevision: row.draftRevision })
 
     // the long work runs outside any transaction, on the draft as read;
     // the toolchain identities come back WITH the artifact, from whichever
@@ -939,20 +939,20 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                 .executeTakeFirst(),
             )
             .pipe(Effect.orDie)
-          if (locked === undefined) return yield* Effect.fail(new FormulaFunctionNotFound())
+          if (locked === undefined) return yield* new FormulaFunctionNotFound()
           // the compile took real time; the authority that opened this call
           // may have been revoked meanwhile, and what is being minted is an
           // immutable official record - re-ask before committing (a second
           // pool connection is fine here: one row lock, pool size above one)
           const stillAllowed = yield* rbac.canAt(as, MANAGE, locked.ownerNodeId as string)
-          if (!stillAllowed) return yield* Effect.fail(new FormulaFunctionNotFound())
-          if (locked.archivedAt !== null) return yield* Effect.fail(new FormulaFunctionArchived())
+          if (!stillAllowed) return yield* new FormulaFunctionNotFound()
+          if (locked.archivedAt !== null) return yield* new FormulaFunctionArchived()
           // the compile ran on a snapshot; a draft that moved meanwhile would
           // freeze bytes nobody asked to publish
           if (locked.draftRevision !== expectedDraftRevision)
-            return yield* Effect.fail(
-              new FormulaDraftConflict({ draftRevision: locked.draftRevision as number }),
-            )
+            return yield* new FormulaDraftConflict({
+              draftRevision: locked.draftRevision as number,
+            })
           const existing = yield* db
             .query((k) =>
               k
@@ -1062,7 +1062,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           .executeTakeFirst(),
       )
       .pipe(Effect.orDie)
-    if (version === undefined) return yield* Effect.fail(new FormulaVersionNotFound())
+    if (version === undefined) return yield* new FormulaVersionNotFound()
     return versionDetailDto(version as unknown as VersionRow)
   })
 
@@ -1195,9 +1195,9 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         const principal = yield* CurrentUser
         const parsed = Number(params.versionNo)
         if (!Number.isSafeInteger(parsed) || parsed < 1)
-          return yield* Effect.fail(
-            new BadRequest({ message: 'the version number must be a positive integer' }),
-          )
+          return yield* new BadRequest({
+            message: 'the version number must be a positive integer',
+          })
         return {
           version: yield* library.getVersion(
             principal.tenantId,
@@ -1251,18 +1251,15 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         // still be a status code instead of an instantly-closed socket
         const language = yield* FormulaLanguage
         const session = yield* language.open(draft.draftSourceTs).pipe(
-          Effect.catchTag('FormulaLanguageBusy', () =>
-            Effect.succeed(HttpServerResponse.empty({ status: 429 })),
-          ),
-          Effect.catchTag('FormulaLanguageUnavailable', () =>
-            Effect.succeed(HttpServerResponse.empty({ status: 503 })),
-          ),
+          Effect.catchTags({
+            FormulaLanguageBusy: () => Effect.succeed(HttpServerResponse.empty({ status: 429 })),
+            FormulaLanguageUnavailable: () =>
+              Effect.succeed(HttpServerResponse.empty({ status: 503 })),
+          }),
         )
         if (HttpServerResponse.isHttpServerResponse(session)) return session
 
-        const socket = yield* request.upgrade.pipe(
-          Effect.catch(() => Effect.succeed(null)),
-        )
+        const socket = yield* request.upgrade.pipe(Effect.orElseSucceed(() => null))
         if (socket === null) return HttpServerResponse.empty({ status: 400 })
 
         yield* bridgeSocket(socket, session)

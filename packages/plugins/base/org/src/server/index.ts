@@ -523,7 +523,7 @@ export const make = Effect.fn('Org.make')(function* () {
     withDb(
       transaction(
         Effect.gen(function* () {
-          yield* readSnapshot()
+          yield* readSnapshot
           return yield* body()
         }),
       ),

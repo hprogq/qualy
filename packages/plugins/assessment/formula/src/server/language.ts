@@ -88,14 +88,14 @@ export const formulaLanguageLayer = (options?: {
       const open = (source: string) =>
         Effect.gen(function* () {
           const opened = yield* client.OpenLsp({ initialSource: source }).pipe(
-            Effect.catchTag('LspBusy', () => Effect.fail(new FormulaLanguageBusy())),
-            Effect.catchTag('LspSourceTooLarge', () =>
+            Effect.catchTags({
+              LspBusy: () => Effect.fail(new FormulaLanguageBusy()),
               // the source came from the persisted draft, which is already
-              // held to the same ceiling; reaching this is an outage-grade
+              // held to the same ceiling; reaching it is an outage-grade
               // inconsistency, not a caller mistake
-              Effect.fail(new FormulaLanguageUnavailable()),
-            ),
-            Effect.catchTag('RpcClientError', () => Effect.fail(new FormulaLanguageUnavailable())),
+              LspSourceTooLarge: () => Effect.fail(new FormulaLanguageUnavailable()),
+              RpcClientError: () => Effect.fail(new FormulaLanguageUnavailable()),
+            }),
             tameTransport(unavailable),
           )
           yield* Effect.addFinalizer(() =>

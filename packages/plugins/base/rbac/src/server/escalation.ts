@@ -34,7 +34,7 @@ export const ESCALATE = 'iam.role.escalate'
 /** what the guards need to know about the actor, however it is answered */
 export interface Authority {
   /** codes the actor holds tenant-wide, which is what a definition is measured against */
-  readonly tenantWide: () => Effect.Effect<ReadonlySet<string>>
+  readonly tenantWide: Effect.Effect<ReadonlySet<string>>
   /** the strongest reach the actor has for each code at one node */
   readonly reachAt: (orgNodeId: string) => Effect.Effect<ReadonlyMap<string, Reach>>
   /** every code the catalog currently serves */
@@ -56,7 +56,7 @@ export const assertMayDefineRole = Effect.fn('Rbac.assertMayDefineRole')(functio
   codes: readonly string[],
 ) {
   if (codes.length === 0) return
-  const held = yield* authority.tenantWide()
+  const held = yield* authority.tenantWide
   const beyond = [...new Set(codes)].filter((code) => !held.has(code))
   if (beyond.length === 0) return
   if (held.has(ESCALATE)) return
@@ -100,7 +100,7 @@ export const assertNoSelfEscalation = Effect.fn('Rbac.assertNoSelfEscalation')(f
   const gained = role.gainsAppointments ? ['appointment-authority'] : []
 
   if (target.kind === 'tenant') {
-    const held = yield* authority.tenantWide()
+    const held = yield* authority.tenantWide
     // an all-active role carries every active capability, so only someone who
     // already holds every active capability gains nothing by taking it
     const required = (role.allActive ? authority.activeCodes() : role.codes).filter(

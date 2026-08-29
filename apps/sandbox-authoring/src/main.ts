@@ -96,20 +96,18 @@ const compile = (source: string): Effect.Effect<CompiledWire, AuthoringCompileEr
           const outcome = yield* Effect.promise(() => compileFormula(source))
           switch (outcome.kind) {
             case 'source-too-large':
-              return yield* Effect.fail(new CompileSourceTooLarge({ limit: outcome.limit }))
+              return yield* new CompileSourceTooLarge({ limit: outcome.limit })
             case 'source-refused':
-              return yield* Effect.fail(new CompileSourceRefused({ findings: outcome.findings }))
+              return yield* new CompileSourceRefused({ findings: outcome.findings })
             case 'typecheck-timeout':
-              return yield* Effect.fail(new CompileTypecheckTimeout())
+              return yield* new CompileTypecheckTimeout()
             case 'typecheck-failed':
-              return yield* Effect.fail(
-                new CompileTypecheckFailed({
-                  diagnostics: outcome.diagnostics,
-                  truncated: outcome.truncated,
-                }),
-              )
+              return yield* new CompileTypecheckFailed({
+                diagnostics: outcome.diagnostics,
+                truncated: outcome.truncated,
+              })
             case 'bundle-failed':
-              return yield* Effect.fail(new CompileBundleFailed({ message: outcome.message }))
+              return yield* new CompileBundleFailed({ message: outcome.message })
             case 'compiled':
               return {
                 artifact: outcome.artifact,

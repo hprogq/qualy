@@ -356,8 +356,9 @@ export const deleteNode = (tenantId: string, nodeId: string) =>
  * transaction's first statement, which is why it is a statement rather than an
  * option.
  */
-export const readSnapshot = () =>
-  db.query((k) => sql`set transaction isolation level repeatable read, read only`.execute(k))
+export const readSnapshot = db.query((k) =>
+  sql`set transaction isolation level repeatable read, read only`.execute(k),
+)
 
 /**
  * A new node, with its path written atomically with the row.

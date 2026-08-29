@@ -146,9 +146,11 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
       .pipe(
         // absent, refused and backend trouble all read the same from
         // outside: nothing here for this reader
-        Effect.catchTag('STORAGE_ATTACHMENT_NOT_FOUND', () => new AttachmentUnavailable()),
-        Effect.catchTag('STORAGE_BACKEND_UNAVAILABLE', (error) => Effect.die(error)),
-        Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+        Effect.catchTags({
+          STORAGE_ATTACHMENT_NOT_FOUND: () => new AttachmentUnavailable(),
+          STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+          QueryFailed: (error) => Effect.die(error),
+        }),
       )
   })
 
@@ -186,8 +188,10 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
         size: input.size,
       })
       .pipe(
-        Effect.catchTag('STORAGE_UPLOAD_REFUSED', (refused) => refuse(refused.reason)),
-        Effect.catchTag('STORAGE_BACKEND_UNAVAILABLE', (error) => Effect.die(error)),
+        Effect.catchTags({
+          STORAGE_UPLOAD_REFUSED: (refused) => refuse(refused.reason),
+          STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+        }),
       )
   })
 
@@ -198,9 +202,11 @@ export const makeAttachmentMethods = (deps: AttachmentDeps): AttachmentMethods =
       .completeUpload({ tenantId, ownerUserId: as.userId, reservationId })
       .pipe(
         Effect.map(metaView),
-        Effect.catchTag('STORAGE_RESERVATION_NOT_FOUND', () => new AttachmentUnavailable()),
-        Effect.catchTag('STORAGE_RESERVATION_INVALID', (refused) => refuse(refused.reason)),
-        Effect.catchTag('STORAGE_BACKEND_UNAVAILABLE', (error) => Effect.die(error)),
+        Effect.catchTags({
+          STORAGE_RESERVATION_NOT_FOUND: () => new AttachmentUnavailable(),
+          STORAGE_RESERVATION_INVALID: (refused) => refuse(refused.reason),
+          STORAGE_BACKEND_UNAVAILABLE: (error) => Effect.die(error),
+        }),
       )
   })
 

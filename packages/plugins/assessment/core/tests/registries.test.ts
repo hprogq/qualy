@@ -37,18 +37,14 @@ const compileOf = (provider: unknown) => (provider as ProvideExtension).compile
 /** compiles contributions the way the assembler would, and reads the result */
 const itemCatalogOf = (contributions: readonly Contributed<ItemTypeDriver>[]) =>
   Effect.runSync(
-    Effect.gen(function* () {
-      return yield* ItemTypeCatalog
-    }).pipe(
+    ItemTypeCatalog.pipe(
       Effect.provide(compileOf(ItemTypes.provider)(contributions) as Layer.Layer<ItemTypeCatalog>),
     ),
   )
 
 const scoringCatalogOf = (contributions: readonly Contributed<ScoringDriver>[]) =>
   Effect.runSync(
-    Effect.gen(function* () {
-      return yield* ScoringCatalog
-    }).pipe(
+    ScoringCatalog.pipe(
       Effect.provide(compileOf(Scoring.provider)(contributions) as Layer.Layer<ScoringCatalog>),
     ),
   )
