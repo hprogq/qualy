@@ -79,6 +79,10 @@ interface Session {
   closing: boolean
 }
 
+/** json syntax is not shape: a frame must be a non-null, non-array object */
+export const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
 const POLICY_SOURCE = 'qualy-formula'
 
 const policyDiagnostics = (text: string): readonly unknown[] => {
@@ -180,12 +184,20 @@ export const makeLspManager = (): LspManager => {
   }
 
   const onServerFrame = (session: Session, body: string): void => {
-    let message: Record<string, unknown>
+    let parsed: unknown
     try {
-      message = JSON.parse(body) as Record<string, unknown>
+      parsed = JSON.parse(body)
     } catch {
       return
     }
+    // a trusted toolchain still gets the same structural door: a primitive
+    // frame from a broken server closes the session instead of throwing in
+    // a bare stdout callback and taking the whole authoring process down
+    if (!isJsonRecord(parsed)) {
+      void closeSession(session)
+      return
+    }
+    const message = parsed
     // the server's own requests are answered HERE - the client never sees
     // them and cannot double-answer; measured: TS7 stalls without a reply
     if (message['id'] !== undefined && typeof message['method'] === 'string') {
@@ -235,13 +247,23 @@ export const makeLspManager = (): LspManager => {
         child.once('exit', settle)
       })
     child.kill('SIGTERM')
-    if (!(await gone(1_000))) {
+    let confirmedDead = await gone(1_000)
+    if (!confirmedDead) {
       child.kill('SIGKILL')
-      await gone(3_000)
+      confirmedDead = await gone(3_000)
     }
     dropLspWorkspace(session.workspace)
     Queue.endUnsafe(session.outbound)
-    releasePermit()
+    if (confirmedDead) {
+      releasePermit()
+    } else {
+      // fail closed: a slot backed by a process we cannot confirm dead is
+      // poisoned, and capacity stays reduced until the service restarts -
+      // better one lost seat than an unkillable pile behind a "limit of 8"
+      console.error(
+        `lsp session ${session.id}: process refused to die after SIGKILL; permit withheld`,
+      )
+    }
   }
 
   const open: LspManager['open'] = (initialSource) =>
@@ -285,12 +307,17 @@ export const makeLspManager = (): LspManager => {
       sessions.set(id, session)
       const parser = new FrameParser()
       child.stdout?.on('data', (chunk: Buffer) => {
-        const bodies = parser.push(chunk)
-        if (bodies === null) {
+        try {
+          const bodies = parser.push(chunk)
+          if (bodies === null) {
+            void closeSession(session)
+            return
+          }
+          for (const body of bodies) onServerFrame(session, body)
+        } catch {
+          // nothing thrown in a stdout callback may reach the process
           void closeSession(session)
-          return
         }
-        for (const body of bodies) onServerFrame(session, body)
       })
       child.once('exit', () => {
         void closeSession(session)
@@ -307,12 +334,16 @@ export const makeLspManager = (): LspManager => {
         return Effect.fail(new LspFrameTooLarge({ bytes, limit: LSP_FRAME_LIMIT }))
       if (request.sequence <= session.lastClientSequence)
         return Effect.fail(new LspSequenceRejected({ lastAccepted: session.lastClientSequence }))
-      let message: Record<string, unknown>
+      let decoded: unknown
       try {
-        message = JSON.parse(request.jsonRpc) as Record<string, unknown>
+        decoded = JSON.parse(request.jsonRpc)
       } catch {
         return Effect.fail(new LspMalformedFrame())
       }
+      // JSON.parse proves syntax, not shape: null, arrays and primitives
+      // are legal JSON and must die typed, never as a property-read defect
+      if (!isJsonRecord(decoded)) return Effect.fail(new LspMalformedFrame())
+      const message = decoded
       const method = message['method']
       if (typeof method !== 'string')
         return Effect.fail(new LspMethodRefused({ method: '<response>' }))
@@ -322,7 +353,9 @@ export const makeLspManager = (): LspManager => {
       // A formula saying "https://example.com" is code, not capability -
       // only the metadata the server would treat as filesystem access is
       // validated and rewritten here.
-      const params = (message['params'] ?? {}) as Record<string, unknown>
+      const rawParams = message['params'] ?? {}
+      if (!isJsonRecord(rawParams)) return Effect.fail(new LspMalformedFrame())
+      const params = rawParams
 
       if (method === 'initialize') {
         // the service owns the workspace: whatever rootUri/rootPath/
@@ -334,7 +367,8 @@ export const makeLspManager = (): LspManager => {
           workspaceFolders: null,
         }
       } else if (params['textDocument'] !== undefined) {
-        const textDocument = params['textDocument'] as Record<string, unknown>
+        const textDocument = params['textDocument']
+        if (!isJsonRecord(textDocument)) return Effect.fail(new LspMalformedFrame())
         const uri = textDocument['uri']
         if (typeof uri !== 'string') return Effect.fail(new LspMalformedFrame())
         const resolved = session.boundary.inboundUri(uri)
@@ -343,7 +377,8 @@ export const makeLspManager = (): LspManager => {
       }
 
       if (method === 'textDocument/didOpen') {
-        const textDocument = params['textDocument'] as Record<string, unknown>
+        const textDocument = params['textDocument']
+        if (!isJsonRecord(textDocument)) return Effect.fail(new LspMalformedFrame())
         const text = textDocument['text']
         if (
           typeof text !== 'string' ||

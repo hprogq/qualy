@@ -4,6 +4,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { makeUriBoundary, rewriteStrings } from '../src/lsp/uris.ts'
+import { isJsonRecord } from '../src/lsp/manager.ts'
 
 // The boundary in isolation: what may come in as URI metadata, what may
 // leave in any position, and what sinks a message whole.
@@ -64,5 +65,17 @@ describe('outbound sweep', () => {
       result: { items: [{ label: 'ok', documentation: 'https://example.com' }] },
     }
     expect(rewriteStrings(clean, boundary.outbound)).toEqual(clean)
+  })
+})
+
+describe('the structural door', () => {
+  it('admits real frames and turns primitives away', () => {
+    expect(
+      isJsonRecord(JSON.parse('{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}')),
+    ).toBe(true)
+    expect(isJsonRecord(JSON.parse('{"jsonrpc":"2.0","method":"initialized"}'))).toBe(true)
+    for (const body of ['null', '[]', '"x"', '1', 'true']) {
+      expect(isJsonRecord(JSON.parse(body)), body).toBe(false)
+    }
   })
 })

@@ -549,6 +549,42 @@ describe.sequential('the hostile author', () => {
     }
   }, 60_000)
 
+  it('answers malformed json-rpc with a typed refusal, never a defect', async () => {
+    const session = await openSession('export default 1')
+    try {
+      const malformed = [
+        'null',
+        '[]',
+        '"x"',
+        '1',
+        'true',
+        JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'textDocument/didOpen',
+          params: { textDocument: null },
+        }),
+        JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'textDocument/completion',
+          params: { textDocument: null },
+        }),
+        JSON.stringify({ jsonrpc: '2.0', method: 'initialize', params: [] }),
+      ]
+      for (const jsonRpc of malformed) {
+        const outcome = await session.raw(session.nextSequence(), jsonRpc)
+        expect(Exit.isFailure(outcome), jsonRpc).toBe(true)
+        if (Exit.isFailure(outcome)) {
+          // a typed FAILURE, not a defect: the cause names the wire error
+          expect(String(outcome.cause), jsonRpc).toContain('LspMalformedFrame')
+        }
+      }
+      // and the session survived every one of them
+      await session.request('initialize', { processId: null, rootUri: null, capabilities: {} })
+    } finally {
+      await session.close()
+    }
+  }, 60_000)
+
   it('refuses oversized frames, replayed and reordered sequences, forged sessions', async () => {
     const session = await openSession(FIXTURE)
     try {
