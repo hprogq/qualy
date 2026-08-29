@@ -18,7 +18,10 @@ export class FormulaFailure extends Error {
 
   constructor(message: string) {
     super(message)
-    this.name = 'FormulaFailure'
+    // defineProperty, not assignment: under the sandbox's intrinsic lockdown
+    // Error.prototype is frozen, and a strict-mode assignment through a
+    // read-only inherited property throws instead of shadowing it
+    Object.defineProperty(this, 'name', { value: 'FormulaFailure', configurable: true })
   }
 }
 

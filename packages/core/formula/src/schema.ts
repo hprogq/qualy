@@ -106,12 +106,48 @@ const boolean = (): BooleanSchema => normalizeAtomicSchema({ type: 'boolean' }) 
 const date = (): DateSchema =>
   normalizeAtomicSchema({ type: 'string', format: 'date' }) as DateSchema
 
+/**
+ * What the assessment scorer can actually carry: the platform's amount is a
+ * 1e-4 fixed-point number inside numeric(12,4), so a formula that is going
+ * to score MUST answer inside these walls. `Schema.decimal()` alone is
+ * unbounded and therefore not publishable as a score - this is the output
+ * contract publication checks against, and the constructor formulas reach
+ * for.
+ */
+const scoreAmount = (bounds?: {
+  readonly maxScale?: number
+  readonly minimum?: string
+  readonly maximum?: string
+}): DecimalSchema => {
+  const maxScale = bounds?.maxScale ?? 4
+  // numeric(12,4)'s widest magnitude, spelled at the declared scale so the
+  // bound itself never outruns the precision it bounds
+  const edge = maxScale === 0 ? '99999999' : `99999999.${'9'.repeat(Math.min(maxScale, 4))}`
+  return decimal({
+    maxScale,
+    minimum: bounds?.minimum ?? `-${edge}`,
+    maximum: bounds?.maximum ?? edge,
+  })
+}
+
 const input = <const P extends Record<string, AtomicSchema>>(properties: P): InputOf<P> =>
   normalizeInputSchema({
     type: 'object',
     properties,
     required: Object.keys(properties),
     additionalProperties: false,
-  }) as InputOf<P>
+  }) as unknown as InputOf<P>
 
-export const Schema = Object.freeze({ text, integer, decimal, choice, boolean, date, input })
+export const Schema = Object.freeze({
+  text,
+  integer,
+  decimal,
+  scoreAmount,
+  choice,
+  boolean,
+  date,
+  input,
+})
+
+/** the widest output a publishable scoring formula may declare */
+export const SCORE_AMOUNT_SCHEMA: DecimalSchema = scoreAmount()

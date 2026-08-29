@@ -10,6 +10,7 @@ export type { DecimalArithmetic, FormulaContext } from './context.ts'
 export type { Decimal } from './decimal.ts'
 export { defineFormula, type FormulaDefinition, type FormulaOutputSchema } from './define.ts'
 export {
+  SCORE_AMOUNT_SCHEMA,
   Schema,
   type ChoiceOf,
   type DateString,

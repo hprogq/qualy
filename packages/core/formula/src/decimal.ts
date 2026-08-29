@@ -24,6 +24,12 @@ interface Parts {
   readonly scale: number
 }
 
+// captured before any user module body can run (an importer's dependencies
+// execute first), and doubly safe under the sandbox's intrinsic lockdown -
+// defence in depth for the two globals the arithmetic consults
+const mathMax = Math.max
+const isSafeInteger = Number.isSafeInteger
+
 const make = (coefficient: bigint, scale: number): Decimal =>
   Object.freeze({ coefficient, scale }) as unknown as Decimal
 
@@ -32,7 +38,7 @@ const parts = (value: Decimal): Parts => value as unknown as Parts
 const aligned = (a: Decimal, b: Decimal): readonly [bigint, bigint, number] => {
   const left = parts(a)
   const right = parts(b)
-  const scale = Math.max(left.scale, right.scale)
+  const scale = mathMax(left.scale, right.scale)
   return [
     left.coefficient * 10n ** BigInt(scale - left.scale),
     right.coefficient * 10n ** BigInt(scale - right.scale),
@@ -48,7 +54,7 @@ export const decimalFromString = (value: string): Decimal | null => {
 export const decimalToString = (value: Decimal): string => renderDecimal(parts(value))
 
 const wholeNumber = (value: number, what: string): bigint => {
-  if (!Number.isSafeInteger(value)) throw new FormulaFailure(`${what}: not a safe integer`)
+  if (!isSafeInteger(value)) throw new FormulaFailure(`${what}: not a safe integer`)
   return BigInt(value)
 }
 
@@ -94,7 +100,7 @@ export const negate = (a: Decimal): Decimal => {
 
 /** re-scale explicitly; narrowing rounds half away from zero, the ledger's rule */
 export const quantize = (a: Decimal, scale: number): Decimal => {
-  if (!Number.isSafeInteger(scale) || scale < 0) throw new FormulaFailure('quantize: not a scale')
+  if (!isSafeInteger(scale) || scale < 0) throw new FormulaFailure('quantize: not a scale')
   const value = parts(a)
   if (scale >= value.scale)
     return make(value.coefficient * 10n ** BigInt(scale - value.scale), scale)

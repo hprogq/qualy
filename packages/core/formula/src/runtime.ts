@@ -25,22 +25,33 @@ export const decodeInput = (
   const decoded: Record<string, unknown> = {}
   for (const [name, property] of Object.entries(schema.properties)) {
     const given = value[name]
-    if (kindOf(property) === 'decimal') {
-      const parsed = decimalFromString(given as string)
-      if (parsed === null) throw new Error(`decode: ${name} is not a decimal`)
-      decoded[name] = parsed
-    } else {
-      decoded[name] = given
-    }
+    const decoded_value =
+      kindOf(property) === 'decimal' ? decimalFromString(given as string) : given
+    if (decoded_value === null && kindOf(property) === 'decimal')
+      throw new Error(`decode: ${name} is not a decimal`)
+    // defineProperty, not assignment: the profile already refuses __proto__
+    // as a parameter name, and this keeps even a slipped-through name from
+    // mutating the prototype instead of defining a field
+    Object.defineProperty(decoded, name, {
+      value: decoded_value,
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    })
   }
   return Object.freeze(decoded)
 }
 
-const isDecimalValue = (value: unknown): value is Decimal =>
-  typeof value === 'object' &&
-  value !== null &&
-  typeof (value as { coefficient?: unknown }).coefficient === 'bigint' &&
-  typeof (value as { scale?: unknown }).scale === 'number'
+const isDecimalValue = (value: unknown): value is Decimal => {
+  if (typeof value !== 'object' || value === null) return false
+  const shaped = value as { coefficient?: unknown; scale?: unknown }
+  return (
+    typeof shaped.coefficient === 'bigint' &&
+    typeof shaped.scale === 'number' &&
+    Number.isSafeInteger(shaped.scale) &&
+    shaped.scale >= 0
+  )
+}
 
 /** the body's return value → the canonical JSON string the host validates */
 export const encodeOutput = (_schema: DecimalSchema, value: unknown): string => {
