@@ -39,6 +39,7 @@ import {
 } from '@qualy/sandbox-rpc'
 import { createHash } from 'node:crypto'
 import { authoringBuildId } from './identity.ts'
+import { makeLspManager } from './lsp/manager.ts'
 
 const socketPath =
   process.env.QUALY_SANDBOX_AUTHORING_SOCKET ?? '.qualy/run/sandbox/authoring/authoring.sock'
@@ -134,21 +135,44 @@ const compile = (source: string): Effect.Effect<CompiledWire, AuthoringCompileEr
       )
   })
 
-const handlers = FormulaAuthoringRpcs.toLayer({
-  GetAuthoringCapabilities: () =>
-    Effect.promise(async () => ({
-      rpcApiVersion: RPC_API_VERSION,
-      sourcePolicyVersion: FORMULA_SOURCE_POLICY_VERSION,
-      sourcePolicyParserVersion: sourcePolicyParserVersion(),
-      typescriptVersion: await typescriptVersion(),
-      esbuildVersion,
-      formulaAbiVersion: FORMULA_ABI_VERSION,
-      formulaRuntimeSha256: await formulaRuntimeSha256(),
-      authoringBuildId: authoringBuildId(),
-      maxSourceBytes: SOURCE_LIMIT,
-    })),
-  CompileFormula: (request: { readonly source: string }) => compile(request.source),
-})
+const handlers = FormulaAuthoringRpcs.toLayer(
+  Effect.gen(function* () {
+    const lsp = makeLspManager()
+    yield* Effect.addFinalizer(() => Effect.promise(() => lsp.closeAll()))
+    // the idle/absolute reaper: one fiber, owned by this layer's scope
+    const sweepEvery = Number(process.env.QUALY_LSP_SWEEP_MS ?? '') || 15_000
+    yield* Effect.promise(() => lsp.sweepOnce()).pipe(
+      Effect.delay(sweepEvery),
+      Effect.forever,
+      Effect.interruptible,
+      Effect.forkScoped,
+    )
+    return {
+      GetAuthoringCapabilities: () =>
+        Effect.promise(async () => ({
+          rpcApiVersion: RPC_API_VERSION,
+          activeLspSessions: lsp.activeSessions(),
+          sourcePolicyVersion: FORMULA_SOURCE_POLICY_VERSION,
+          sourcePolicyParserVersion: sourcePolicyParserVersion(),
+          typescriptVersion: await typescriptVersion(),
+          esbuildVersion,
+          formulaAbiVersion: FORMULA_ABI_VERSION,
+          formulaRuntimeSha256: await formulaRuntimeSha256(),
+          authoringBuildId: authoringBuildId(),
+          maxSourceBytes: SOURCE_LIMIT,
+        })),
+      CompileFormula: (request: { readonly source: string }) => compile(request.source),
+      OpenLsp: (request: { readonly initialSource: string }) => lsp.open(request.initialSource),
+      SendLsp: (request: {
+        readonly sessionId: string
+        readonly sequence: number
+        readonly jsonRpc: string
+      }) => lsp.send(request),
+      LspEvents: (request: { readonly sessionId: string }) => lsp.events(request.sessionId),
+      CloseLsp: (request: { readonly sessionId: string }) => lsp.close(request.sessionId),
+    }
+  }),
+)
 
 const socketServerLayer = Layer.effect(
   SocketServer.SocketServer,

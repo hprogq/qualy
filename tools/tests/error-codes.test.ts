@@ -98,6 +98,7 @@ const NOT_A_WIRE_CODE = [
   // plugin adapter maps them back to host-internal errors, never to HTTP
   'packages/core/sandbox-rpc/src/errors.ts',
   'packages/core/sandbox-rpc/src/authoring.ts',
+  'packages/core/sandbox-rpc/src/lsp.ts',
   'apps/server/src/health.ts',
   'packages/plugins/infra/database/src/server/notifications.ts',
 ]

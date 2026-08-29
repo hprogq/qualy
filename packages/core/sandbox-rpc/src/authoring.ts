@@ -7,6 +7,7 @@
 
 import { Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/unstable/rpc'
+import { lspRpcs } from './lsp.ts'
 
 /** one formula source's byte ceiling, reported by capabilities */
 export const SOURCE_LIMIT = 256 * 1024
@@ -16,6 +17,8 @@ export const MAX_COMPILED_ARTIFACT_BYTES = 1024 * 1024
 
 export const AuthoringCapabilities = Schema.Struct({
   rpcApiVersion: Schema.Number,
+  /** live LSP sessions right now; lets black-box suites assert cleanup */
+  activeLspSessions: Schema.Number,
   sourcePolicyVersion: Schema.Number,
   sourcePolicyParserVersion: Schema.String,
   typescriptVersion: Schema.String,
@@ -106,4 +109,5 @@ export const FormulaAuthoringRpcs = RpcGroup.make(
     success: CompiledFormulaWire,
     error: Schema.Union(compileErrors),
   }),
+  ...lspRpcs,
 )

@@ -36,7 +36,9 @@ const here = createRequire(import.meta.url)
 export const formulaPackageRoot = path.dirname(here.resolve('@qualy/formula/package.json'))
 export const valueSchemaPackageRoot = path.dirname(here.resolve('@qualy/value-schema/package.json'))
 
-const FORMULA_TSCONFIG = {
+/** the one compiler surface a formula is checked against; the LSP workspace
+ * shares it verbatim so editing and publication can never disagree */
+export const FORMULA_TSCONFIG = {
   compilerOptions: {
     target: 'ES2020',
     module: 'ESNext',

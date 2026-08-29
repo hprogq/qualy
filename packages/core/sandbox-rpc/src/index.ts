@@ -41,3 +41,17 @@ export {
   compileErrors,
   type AuthoringCompileError,
 } from './authoring.ts'
+export {
+  LSP_FRAME_LIMIT,
+  LSP_SESSION_LIMITS,
+  LspBusy,
+  LspEvent,
+  LspFrameTooLarge,
+  LspMalformedFrame,
+  LspMethodRefused,
+  LspSequenceRejected,
+  LspSessionNotFound,
+  LspSourceTooLarge,
+  LspUriRefused,
+  type LspSendError,
+} from './lsp.ts'

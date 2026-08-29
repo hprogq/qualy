@@ -7,7 +7,13 @@ import { sourcePolicy, sourcePolicyParserVersion } from '../src/source-policy.ts
 
 const refusalsOf = (source: string) => {
   const verdict = sourcePolicy(source)
-  return verdict.kind === 'refused' ? verdict.findings : []
+  if (verdict.kind !== 'refused') return []
+  // positions ride along for editors; these assertions compare substance
+  return verdict.findings.map(({ line, column, ...finding }) => {
+    expect(line).toBeGreaterThan(0)
+    expect(column).toBeGreaterThan(0)
+    return finding
+  })
 }
 
 describe('the source policy', () => {

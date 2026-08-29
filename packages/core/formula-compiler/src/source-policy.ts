@@ -33,6 +33,9 @@ export type PolicyReason = 'import' | 'any' | 'suppression' | 'triple-slash'
 export interface PolicyFinding {
   readonly reason: PolicyReason
   readonly specifier?: string
+  /** 1-based, where the finding anchors; editors surface it, wires may not */
+  readonly line?: number
+  readonly column?: number
 }
 
 export type PolicyVerdict =
@@ -85,22 +88,33 @@ export const sourcePolicy = (source: string): PolicyVerdict => {
   }
 
   const findings: PolicyFinding[] = []
+  const at = (node: ts.Node): { line: number; column: number } => {
+    const position = file.getLineAndCharacterOfPosition(node.getStart(file))
+    return { line: position.line + 1, column: position.character + 1 }
+  }
 
-  if (
-    file.referencedFiles.length > 0 ||
-    file.typeReferenceDirectives.length > 0 ||
-    file.libReferenceDirectives.length > 0 ||
-    file.amdDependencies.length > 0
-  )
-    findings.push({ reason: 'triple-slash' })
+  const directive =
+    file.referencedFiles[0] ?? file.typeReferenceDirectives[0] ?? file.libReferenceDirectives[0]
+  if (directive !== undefined || file.amdDependencies.length > 0) {
+    const position = file.getLineAndCharacterOfPosition(directive?.pos ?? 0)
+    findings.push({
+      reason: 'triple-slash',
+      line: position.line + 1,
+      column: position.character + 1,
+    })
+  }
 
   const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node)) {
       const specifier = specifierOf(node.moduleSpecifier)
-      if (specifier !== SDK) findings.push({ reason: 'import', specifier })
+      if (specifier !== SDK) findings.push({ reason: 'import', specifier, ...at(node) })
     } else if (ts.isExportDeclaration(node)) {
       if (node.moduleSpecifier !== undefined)
-        findings.push({ reason: 'import', specifier: specifierOf(node.moduleSpecifier) })
+        findings.push({
+          reason: 'import',
+          specifier: specifierOf(node.moduleSpecifier),
+          ...at(node),
+        })
     } else if (ts.isImportEqualsDeclaration(node)) {
       // refused even for the sdk: one import shape is enough surface
       const reference = node.moduleReference
@@ -109,6 +123,7 @@ export const sourcePolicy = (source: string): PolicyVerdict => {
         specifier: ts.isExternalModuleReference(reference)
           ? specifierOf(reference.expression)
           : reference.getText(file),
+        ...at(node),
       })
     } else if (node.kind === ts.SyntaxKind.ImportType) {
       const argument = (node as ts.ImportTypeNode).argument
@@ -117,15 +132,17 @@ export const sourcePolicy = (source: string): PolicyVerdict => {
         specifier: ts.isLiteralTypeNode(argument)
           ? specifierOf(argument.literal)
           : '<dynamic specifier>',
+        ...at(node),
       })
     } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
       const argument = node.arguments[0]
       findings.push({
         reason: 'import',
         specifier: argument !== undefined ? specifierOf(argument) : '<dynamic specifier>',
+        ...at(node),
       })
     } else if (node.kind === ts.SyntaxKind.AnyKeyword) {
-      findings.push({ reason: 'any' })
+      findings.push({ reason: 'any', ...at(node) })
     }
     ts.forEachChild(node, visit)
   }
@@ -151,6 +168,8 @@ export const sourcePolicy = (source: string): PolicyVerdict => {
       findings.push({
         reason: 'suppression',
         specifier: SUPPRESSION.exec(scanner.getTokenText())![0],
+        line: file.getLineAndCharacterOfPosition(scanner.getTokenStart()).line + 1,
+        column: file.getLineAndCharacterOfPosition(scanner.getTokenStart()).character + 1,
       })
       break
     }

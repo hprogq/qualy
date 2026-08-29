@@ -10642,3 +10642,53 @@ typescriptVersion 字符串(容器=原生 7.0.2,host dev=7.0.2+effect-tsgo——
 **验收**:`pnpm typecheck` 零错;`pnpm test` **1078 passed | 17 skipped**;
 `pnpm test:browser` **227 passed**;生产 smoke 全 ok;sandbox gate/smoke PASS。
 **E 完成,STOP——等复核后进 F(server-side LSP spike → bridge → Monaco)。**
+
+## F1:server-side LSP spike 落地(2026-08-30)
+
+authoring 协议加四个能力(sandbox-rpc/src/lsp.ts,登记 NOT_A_WIRE_CODE):OpenLsp(
+initialSource→随机 sessionId)、SendLsp(sessionId+严格递增 sequence+jsonRpc ≤1MiB)、
+LspEvents(server stream,bounded Queue 1024,溢出=消费者已死=关会话)、CloseLsp。
+capabilities 加 activeLspSessions 供黑盒清理断言。限额冻结:全局 8 会话、idle 5min、
+absolute 30min、帧 1MiB、源 ≤ SOURCE_LIMIT(idle/absolute/sweep 有 env 校准口,仅测试)。
+
+**每会话五件套**:随机 ID、复制式 workspace(lsp-workspace.ts——formula/value-schema 的
+src 逐字节 COPY,无任何指向仓库的 symlink;tsconfig 与 compile staging 共享同一
+FORMULA_TSCONFIG 导出)、一个真实 TS7 `tsc --lsp -stdio` 子进程(同一 toolchain,
+capabilities.typescriptVersion 即它)、bounded outbound queue、一条命。生命周期是硬边界:
+Close/idle/absolute/events 订阅者断开/服务关停/子进程自死,全部收敛到幂等 closeSession
+(礼节性 shutdown+exit → SIGTERM → 1s → SIGKILL → 删 workspace → Queue.endUnsafe);
+reader 是纯 Node 回调不占 fiber,唯一长命 fiber 是 manager scope 里的 sweeper——A–E 的
+结构化并发教训没有回锅。
+
+**方法白名单**:initialize/initialized、didOpen/didChange(仅全文,增量拒)/didClose、
+completion/hover/signatureHelp/definition/documentSymbol、shutdown/exit,外加
+**textDocument/diagnostic**——实测 TS7 是 pull-diagnostics(initialize 声明
+diagnosticProvider、push 通道恒空),不加它就没有类型错误,依指令附测试与理由入表。
+workspace/executeCommand、applyEdit、一切未知方法与 client response 帧拒。**server→client
+的请求由 service 自答**(实测:registerCapability 不答,TS7 整个停摆)。
+
+**URI 全虚拟化**:qualy-formula:///formula.ts 与 qualy-formula-sdk:///… 双向重写;三个
+实测出来的坑都进了实现与注释——file URL 把 @ 编码成 %40(按 DECODED pathname 匹配)、
+completion item 的 data 带**裸绝对路径**(补 path 形态 qualy-formula:/… 双向重写,否则
+leak 兜底把整条 completion 丢掉)、macOS 的 /var→/private/var symlink 让 TS 回答 realpath
+(workspace root 出生即 realpathSync,否则 definition 全灭)。出站消息重写后仍含真实
+路径即整条丢弃;入站 file://、/etc/passwd、/proc/self/environ、sdk 路径穿越(../)全拒。
+
+**Qualy 双声诊断**:didOpen/didChange 后对最新全文重跑 TS6 source policy,以
+publishDiagnostics(source='qualy-formula',code=formula/<reason>)推送;policy findings
+借此补上 line/column(publish wire 不变,triple-slash 也定位到指令首)。
+
+**E2E(真 TS7,拒 mock)**:completion 在 `input.` 出 value;hover 见 FormulaDefinition;
+signatureHelp 见 `mulInteger(a: Decimal, by: number)`;documentSymbol 有形;definition 落在
+qualy-formula-sdk:/// 且响应零 file://;pull diagnostics 出真 TS2322;didChange 塞
+`import fs`+`any` 后 Qualy 诊断给 formula/import 与 formula/any。对抗:URI 三连拒、
+方法三连拒、>1MiB 帧、sequence 重放/乱序、伪造 sessionId(Send 与 Events)、全局 8 上限、
+LSP 自杀(pid 差分杀真进程,会话消失)、idle 收割(独立短 idle 实例——教训:紧 idle 窗口
+会误杀慢 completion 的主套件)、订阅者断开即会话终、显式 Close 后进程数回基线、
+workspace 目录归零。**容器 parity**:重建 hardened authoring 镜像后 external 模式 9/9,
+语义(completion/hover/双声诊断/URI 虚拟化)与 host 逐项一致;typescriptVersion 发行差异
+照旧保留。
+
+**验收**:`pnpm typecheck` 零错;`pnpm test` **1087 passed | 17 skipped**(+9);
+`pnpm test:browser` **227 passed**(本轮未动 browser,基线不变);lsp 套件 host 4s /
+容器 0.7s 双绿。**F1 完成,STOP——等复核后再谈 F2 authenticated WebSocket bridge。**
