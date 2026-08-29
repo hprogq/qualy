@@ -10553,3 +10553,28 @@ issue #62「Support for bind mounting Unix sockets」是**至今开放的 featur
 容器形态;Linux(生产/CI)的 bind-mount UDS 是原生能力,不受影响。A~D 四个阶段已全部
 完成并各自提交(49247346 / 9ee324bb / 8d4874c0 / 321a7f6b),remote publish parity 在
 host 进程形态下全绿——安全边界的代码与测试全部就位,受阻的只是 macOS 上的容器包装。
+
+## E 闸门补测:Docker Desktop capability probe(2026-08-30)
+
+用户装好 Docker Desktop 4.88.1(Engine 29.7.2,linuxkit 7.0.12/arm64,context
+`desktop-linux`,全程显式 --context,不碰 OrbStack daemon)。独立于仓库代码的最小
+node:net AF_UNIX reproducer(node:24-alpine + /tmp 短路径 bind 目录,真实
+connect/write/read/close,PING/PONG):
+
+| 方向                              | 结果                                     |
+| --------------------------------- | ---------------------------------------- |
+| A:container listen → host connect | **FAIL `ECONNREFUSED`**                  |
+| B:host listen → container connect | **FAIL `ENOTSUP`(connect 直接不支持)**   |
+| hardened 两组                     | N/A(前提「四组最小权限成功」未满足,未跑) |
+| 真实 Effect RPC probe             | N/A(同上未跑)                            |
+
+结论:Docker Desktop 当前配置与 OrbStack 行为一致——**双向都不通**。取证到关键变量:
+settings-store.json 显示 `UseVirtualizationFrameworkVirtioFS = True`(VirtioFS 生效;
+gRPC FUSE 开关为残留)。AF_UNIX-over-bind-mount 的能力属于**文件共享实现**维度:
+历史上 osxfs/gRPC FUSE 支持 UDS 转发,VirtioFS 不支持。未按禁令做任何 fallback,
+未擅自改动 Docker Desktop 全局文件共享设置(影响用户全部容器的 IO 性能,须用户决定)。
+
+裁决沿用并推广:E 的实现不写死 provider 品牌,「host↔container bind-mounted AF_UNIX
+PING/PONG 双向 roundtrip」本身作为 provider capability gate(脚本化,任何 provider/
+配置先过 gate 再谈容器形态)。可能的下一步(待用户裁决):Docker Desktop Settings →
+General 关闭 VirtioFS 换 gRPC FUSE 后重跑本 probe。
