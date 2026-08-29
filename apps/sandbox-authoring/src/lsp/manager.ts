@@ -16,6 +16,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process'
+import prettier from 'prettier'
 import { randomBytes } from 'node:crypto'
 import { Cause, Effect, Queue, type Scope } from 'effect'
 import {
@@ -78,8 +79,6 @@ interface Session {
   lastActivity: number
   lastClientSequence: number
   outSequence: number
-  /** client request id -> method, so a response is judged by what it answers */
-  readonly requestedMethods: Map<number | string, string>
   text: string
   /** the client's own document version, echoed on policy pushes (LSP 3.15) */
   documentVersion: number
@@ -194,39 +193,50 @@ export const makeLspManager = (): LspManager => {
     )
   }
 
-  interface FormattingEdit {
-    readonly range: {
-      readonly start: { readonly line: number; readonly character: number }
-      readonly end: { readonly line: number; readonly character: number }
-    }
-    readonly newText: string
-  }
+  // the formatter is deliberately the REPOSITORY's own style, frozen: a
+  // formula reads like every example in the docs, and running format twice
+  // changes nothing
+  const FORMAT_STYLE = {
+    parser: 'typescript',
+    semi: false,
+    singleQuote: true,
+    printWidth: 100,
+  } as const
 
-  const editPosition = (value: unknown): { line: number; character: number } | null => {
-    if (!isJsonRecord(value)) return null
-    const line = value['line']
-    const character = value['character']
-    if (typeof line !== 'number' || !Number.isInteger(line) || line < 0) return null
-    if (typeof character !== 'number' || !Number.isInteger(character) || character < 0) return null
-    return { line, character }
-  }
-
-  /** strictly TextEdit[] (or null); anything else sinks the response */
-  const formattingEdits = (result: unknown): readonly FormattingEdit[] | null => {
-    if (result === null) return []
-    if (!Array.isArray(result)) return null
-    const edits: FormattingEdit[] = []
-    for (const entry of result) {
-      if (!isJsonRecord(entry)) return null
-      const range = entry['range']
-      const newText = entry['newText']
-      if (!isJsonRecord(range) || typeof newText !== 'string') return null
-      const start = editPosition(range['start'])
-      const end = editPosition(range['end'])
-      if (start === null || end === null) return null
-      edits.push({ range: { start, end }, newText })
-    }
-    return edits
+  const formatSession = (session: Session, requestId: number | string, text: string): void => {
+    void prettier
+      .format(text, FORMAT_STYLE)
+      .then((formatted) => {
+        if (session.closing) return
+        const edits =
+          formatted === text
+            ? []
+            : [
+                {
+                  range: {
+                    start: { line: 0, character: 0 },
+                    end: { line: text.split('\n').length, character: 0 },
+                  },
+                  newText: formatted,
+                },
+              ]
+        const frame = JSON.stringify({ jsonrpc: '2.0', id: requestId, result: edits })
+        if (Buffer.byteLength(frame, 'utf8') > LSP_FRAME_LIMIT) return
+        pushEvent(session, frame)
+      })
+      .catch(() => {
+        // a syntactically broken document cannot be formatted; the person
+        // already sees the diagnostics, the request just answers empty-handed
+        if (session.closing) return
+        pushEvent(
+          session,
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: requestId,
+            error: { code: -32603, message: 'the document cannot be formatted' },
+          }),
+        )
+      })
   }
 
   const onServerFrame = (session: Session, body: string): void => {
@@ -247,33 +257,16 @@ export const makeLspManager = (): LspManager => {
     // the server's own requests are answered HERE - the client never sees
     // them and cannot double-answer; measured: TS7 stalls without a reply
     if (message['id'] !== undefined && typeof message['method'] === 'string') {
-      session.child.stdin?.write(
-        encodeFrame(JSON.stringify({ jsonrpc: '2.0', id: message['id'], result: null })),
-      )
+      try {
+        session.child.stdin?.write(
+          encodeFrame(JSON.stringify({ jsonrpc: '2.0', id: message['id'], result: null })),
+        )
+      } catch {
+        // a dead stdin is the exit handler's business, not this callback's
+      }
       return
     }
     if (message['method'] === 'window/logMessage') return
-    // a RESPONSE is judged by the request it answers. Formatting edits ARE
-    // the person's own source text rearranged - a formula legally says
-    // "/usr/share/doc" - so the deep path sanitizer must not eat them; the
-    // shape is verified strictly and the response rebuilt from scratch so
-    // nothing but ranges and text can ride along.
-    const responseId = message['id']
-    if (
-      (typeof responseId === 'number' || typeof responseId === 'string') &&
-      message['method'] === undefined
-    ) {
-      const answered = session.requestedMethods.get(responseId)
-      if (answered !== undefined) session.requestedMethods.delete(responseId)
-      if (answered === 'textDocument/formatting') {
-        const edits = formattingEdits(message['result'])
-        if (edits === null) return
-        const rebuilt = JSON.stringify({ jsonrpc: '2.0', id: responseId, result: edits })
-        if (Buffer.byteLength(rebuilt, 'utf8') > LSP_FRAME_LIMIT) return
-        pushEvent(session, rebuilt)
-        return
-      }
-    }
     // diagnostics are PULL-only for the type voice: the policy voice owns
     // textDocument/publishDiagnostics, and letting the server's (measured:
     // always absent on TS7, but not contractual) empty pushes through would
@@ -360,6 +353,12 @@ export const makeLspManager = (): LspManager => {
         cwd: workspace.root,
         stdio: ['pipe', 'pipe', 'ignore'],
       })
+      // a write racing the server's death lands EPIPE on this stream, and a
+      // stream with no error listener turns that into an uncaught 'error'
+      // that takes the WHOLE authoring process down (measured on ci, where
+      // the kill-the-server case wins that race). The session's own exit
+      // handling is the real cleanup; the stream error is just noise.
+      child.stdin?.on('error', () => {})
       const outbound = yield* Queue.bounded<OutboundEvent, Cause.Done>(
         LSP_SESSION_LIMITS.outboundQueue,
       )
@@ -374,7 +373,6 @@ export const makeLspManager = (): LspManager => {
         lastClientSequence: 0,
         outSequence: 0,
         text: initialSource,
-        requestedMethods: new Map(),
         documentVersion: 0,
         closing: false,
       }
@@ -491,16 +489,24 @@ export const makeLspManager = (): LspManager => {
 
       session.lastClientSequence = request.sequence
       session.lastActivity = Date.now()
-      const requestId = message['id']
-      if (typeof requestId === 'number' || typeof requestId === 'string') {
-        session.requestedMethods.set(requestId, method)
-        // a client that never reads answers must not grow this map forever
-        if (session.requestedMethods.size > 256) {
-          const oldest = session.requestedMethods.keys().next().value
-          if (oldest !== undefined) session.requestedMethods.delete(oldest)
-        }
+
+      // formatting is answered HERE, by prettier over the synced document -
+      // the language server's formatter only fixes whitespace it already
+      // agrees with, and the product wants a normal form. The edits are the
+      // person's own source rearranged: pushed opaque, never path-scanned.
+      if (method === 'textDocument/formatting') {
+        const requestId = message['id']
+        if (typeof requestId !== 'number' && typeof requestId !== 'string')
+          return Effect.fail(new LspMalformedFrame())
+        formatSession(session, requestId, session.text)
+        return Effect.void
       }
-      session.child.stdin?.write(encodeFrame(JSON.stringify(message)))
+
+      try {
+        session.child.stdin?.write(encodeFrame(JSON.stringify(message)))
+      } catch {
+        // the server died under us; its exit handler closes the session
+      }
       if (method === 'textDocument/didOpen' || method === 'textDocument/didChange')
         pushPolicy(session)
       return Effect.void
