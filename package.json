@@ -59,6 +59,11 @@
     "vendor:update": "node tools/repo/vendor-sync.ts update",
     "vendor:restore": "node tools/repo/vendor-sync.ts restore",
     "vendor:check": "node tools/repo/vendor-sync.ts check",
-    "start": "node --env-file-if-exists=.env apps/server/src/run.ts production"
+    "start": "node --env-file-if-exists=.env apps/server/src/run.ts production",
+    "sandbox:gate": "node tools/quality/sandbox-uds-gate.ts",
+    "sandbox:build": "docker compose --profile sandbox build",
+    "sandbox:up": "node tools/quality/sandbox-uds-gate.ts && docker compose --profile sandbox up -d sandbox-runtime sandbox-authoring",
+    "sandbox:down": "docker compose --profile sandbox down sandbox-runtime sandbox-authoring",
+    "sandbox:smoke": "node tools/quality/sandbox-smoke.ts"
   }
 }

@@ -1,0 +1,17 @@
+# the sandbox images build from workspace SOURCE; everything heavy or
+# host-only stays out of the context
+node_modules
+**/node_modules
+.git
+repos
+legacy
+data
+.qualy
+apps/web/.qualy
+**/client-dist
+db/data
+*.log
+.env
+.env.*
+.mcp.json
+docs

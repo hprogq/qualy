@@ -134,6 +134,55 @@ services:
       retries: 12
       start_period: 30s
 
+  # The sandbox pair: untrusted-code execution and compilation, each behind
+  # one unix socket on a dedicated bind directory (the host server only ever
+  # connects; the socket files belong to the apps). Hardened per the
+  # isolation spec: no network, read-only root, no capabilities, non-root.
+  # `pnpm sandbox:up` runs the provider capability gate first - a provider
+  # that cannot carry AF_UNIX over a bind mount refuses here, it never
+  # degrades to TCP.
+  sandbox-runtime:
+    profiles: [sandbox]
+    build:
+      context: .
+      dockerfile: apps/sandbox-runtime/Dockerfile
+    image: qualy-sandbox-runtime
+    init: true
+    network_mode: none
+    read_only: true
+    user: '1000:1000'
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    mem_limit: 256m
+    cpus: 1
+    volumes:
+      - ./.qualy/run/sandbox/runtime:/run/qualy-sandbox/runtime
+
+  sandbox-authoring:
+    profiles: [sandbox]
+    build:
+      context: .
+      dockerfile: apps/sandbox-authoring/Dockerfile
+    image: qualy-sandbox-authoring
+    init: true
+    network_mode: none
+    read_only: true
+    user: '1000:1000'
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+    mem_limit: 512m
+    cpus: 2
+    volumes:
+      - ./.qualy/run/sandbox/authoring:/run/qualy-sandbox/authoring
+
 volumes:
   pg_data: {}
   pg_backups: {}

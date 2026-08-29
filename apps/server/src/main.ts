@@ -40,6 +40,30 @@ const logs = loggingLayer(logging)
 mark('manifest read')
 reportBootTiming((line) => logLine(logging, 'Info', line))
 
+// the sandbox processes are their own lifecycle (`pnpm sandbox:up`), and an
+// absent socket is an outage at USE time, never a boot failure or a local
+// fallback - but development deserves one plain sentence up front
+if (mode === 'development') {
+  const { existsSync } = await import('node:fs')
+  for (const [label, at] of [
+    [
+      'runtime',
+      process.env.QUALY_SANDBOX_RUNTIME_SOCKET ?? '.qualy/run/sandbox/runtime/runtime.sock',
+    ],
+    [
+      'authoring',
+      process.env.QUALY_SANDBOX_AUTHORING_SOCKET ?? '.qualy/run/sandbox/authoring/authoring.sock',
+    ],
+  ] as const) {
+    if (!existsSync(at))
+      logLine(
+        logging,
+        'Warn',
+        `sandbox ${label} socket not found at ${at}; formula publishing will answer 503 until \`pnpm sandbox:up\``,
+      )
+  }
+}
+
 /**
  * A boot refusal, said once in the log's own voice, then exit.
  *

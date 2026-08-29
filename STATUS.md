@@ -10578,3 +10578,67 @@ gRPC FUSE 开关为残留)。AF_UNIX-over-bind-mount 的能力属于**文件共�
 PING/PONG 双向 roundtrip」本身作为 provider capability gate(脚本化,任何 provider/
 配置先过 gate 再谈容器形态)。可能的下一步(待用户裁决):Docker Desktop Settings →
 General 关闭 VirtioFS 换 gRPC FUSE 后重跑本 probe。
+
+## E 闸门通过:Docker VMM 组合具备完整 UDS 语义(2026-08-30)
+
+Docker Desktop 4.88.1 的系列 capability probe 结论(全部真实 PING/PONG,不看 inode):
+
+| 组合                                                                                     | mount 实现                      | container→host                                  | host→container    |
+| ---------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------- | ----------------- |
+| OrbStack                                                                                 | virtiofs(自研共享)              | FAIL ECONNREFUSED                               | FAIL ECONNREFUSED |
+| AVF + VirtioFS(/tmp 与 $HOME 一致)                                                       | `type virtiofs`                 | FAIL ENOTSUP                                    | FAIL ECONNREFUSED |
+| AVF + 单 socket 文件 mount                                                               | overlay(专用 socket forwarding) | PASS(仅 host-listen 方向,且要求 mount 时已存在) | —                 |
+| **Docker VMM(libkrun)+ 目录 bind**                                                       | `type virtiofs`(libkrun 实现)   | **PASS**                                        | **PASS**          |
+| **Docker VMM + hardened**(network none/read-only/uid1000/cap-drop ALL/no-new-privileges) | 同上                            | **PASS**                                        | **PASS**          |
+
+设置取证:`UseLibkrun = True`、`UseVirtualizationFramework = False`(用户 GUI 切换);
+SynchronizedDirectories 为空(未被 Synchronized File Shares 覆盖)。**真实 Effect RPC probe
+通过**:hardened 容器内直接跑 apps/sandbox-runtime(仓库 read-only mount,strip-types),
+host 经现有 remote adapter 完成 capabilities(版本断言、engine、runtimeBuildId)、
+invoke(QuickJS 求值 `{"answer":42}`)与 soft-timeout 错误通道往返。gRPC FUSE 组合(D)
+无需再测。E 恢复施工;capability 属实现维度而非品牌,gate 按裁决脚本化、不写死 provider。
+
+## 进程隔离 E:容器形态落地,全链验收(2026-08-30)
+
+**capability gate 脚本化**(tools/quality/sandbox-uds-gate.ts,`pnpm sandbox:gate`,并作为
+`sandbox:up` 的前置):真实双向 AF_UNIX PING/PONG,不看 inode;失败即停,提示切换
+Docker VMM,永不降级 TCP。写它时踩出一个自阻塞教训:方向 2 的 server 在 gate 进程内,
+同步 execFileSync(docker run)会冻住事件循环让自己超时——client 容器必须异步 spawn。
+
+**镜像**(apps/*/Dockerfile,node:24-alpine 多段):实测出 node 的硬限制
+`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`(node_modules 下的 TS 一律不 strip),
+pnpm deploy 的物化布局(isolated 与 hoisted 都是 symlink 壳/旁路结构)绕不过去;定案为
+**host 同构树**:builder 里正常 workspace install(--prod --filter,--ignore-scripts 跳过
+root 的 effect-tsgo prepare)后按白名单修剪(tools/quality/prune-image-tree.mjs,§14 的
+最小面),runner 原样接收——node_modules symlink 指向 /app/packages 真实源,与宿主同形。
+runtime 镜像只含 engine+rpc;authoring 含 compiler/formula/value-schema + linux 版
+tsc/esbuild/TS6。
+
+**compose**(profile: sandbox)§30/31 全项:network_mode none、read_only、init、
+user 1000、cap_drop ALL、no-new-privileges、pids 64/128、tmpfs /tmp(noexec,nosuid,nodev,
+32m/256m)、mem 256m/512m、cpus 1/2;bind 各自的 .qualy/run/sandbox/<role>(host 路径与
+dev 默认 socket 一致,`pnpm sandbox:up` 后 `pnpm dev` 零配置直连)。scripts:
+sandbox:gate/build/up/down/smoke;**up/down 显式点名两个服务**——教训:`--profile` 不排除
+无 profile 服务,曾把 postgres 也在 Desktop 侧带起(即刻停删,误建的空 volume 已清,
+OrbStack 侧数据未受影响)。dev 启动提示:开发模式 boot 时探测两个 socket,缺失打一行
+Warn 指向 `pnpm sandbox:up`(不 fallback)。.env.example 记两个 socket 键。
+
+**§50 security smoke**(tools/quality/sandbox-smoke.ts)全 PASS:非 root、CapEff 全零、
+rootfs 只读、网络不可达(断言改成真实连接尝试——kernel 自带的 down 隧道桩 gre0/tunl0
+曾让接口清单误报)、看不到 docker.sock/仓库/.env/host home/sentinel/SSH、互看不到对方
+socket、各自 socket 在位。**§47 dependency gate**(tools/tests/sandbox-isolation.test.ts):
+formula 插件无编译器、sandbox 插件无引擎、@qualy/app 生产闭包禁列 quickjs/esbuild/
+typescript/typescript6/engine/compiler/两个 app,3/3 绿。
+
+**benchmark 与跨 OS determinism**:容器 UDS invoke P50 1.24ms / P95 2.06ms(in-process
+基线 0.23ms,+1ms 级 RPC 开销,发布路径无感);容器 compile 冷 106ms / 热 63ms;
+**alpine/linux 容器编译的 identity artifact sha 与迁移前 macOS golden 逐字节一致**
+(5e3f6637…)——确定性跨 OS 成立。**parity 双形态绿**:自 spawn(host 进程)与
+QUALY_SANDBOX_PARITY_EXTERNAL=1(真容器)同套断言;唯一记录在案的差异是
+typescriptVersion 字符串(容器=原生 7.0.2,host dev=7.0.2+effect-tsgo——有意的发行区别,
+公式 tsconfig 无 LS,artifact hash 相等证语义一致;fingerprint 因此只在同发行内互认,
+生产编译只有容器一个来源,无实际影响)。
+
+**验收**:`pnpm typecheck` 零错;`pnpm test` **1078 passed | 17 skipped**;
+`pnpm test:browser` **227 passed**;生产 smoke 全 ok;sandbox gate/smoke PASS。
+**E 完成,STOP——等复核后进 F(server-side LSP spike → bridge → Monaco)。**
