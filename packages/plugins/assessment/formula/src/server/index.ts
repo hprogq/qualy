@@ -135,6 +135,22 @@ export interface TestReportRow {
   readonly defect?: string
 }
 
+/** one case sent to the evaluator; expected is a regression check, not a requirement */
+export interface EvaluationCaseInput {
+  readonly input: unknown
+  readonly expected?: string
+}
+
+/** one case's outcome: passed only exists where an expectation existed */
+export interface EvaluatedCase {
+  readonly passed?: boolean
+  readonly expected?: string
+  readonly actual?: string
+  readonly problems?: readonly TestProblem[]
+  readonly refusal?: string
+  readonly defect?: string
+}
+
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 
 const iso = (value: Date | string): string =>
@@ -181,6 +197,22 @@ const versionDetailDto = (row: VersionRow) => ({
 })
 
 /** a compiled draft: everything a version row needs except its number */
+/** everything a source compiles to, before any example runs */
+interface PreparedFormula {
+  readonly artifact: string
+  readonly inputSchema: NormalizedInputSchema
+  readonly outputSchema: NormalizedAtomicSchema
+  readonly sourceSha256: string
+  readonly runtimeSha256: string
+  readonly contractSha256: string
+  readonly formulaRuntimeSha256: string
+  readonly typescriptVersion: string
+  readonly esbuildVersion: string
+  readonly sourcePolicyVersion: number
+  readonly sourcePolicyParserVersion: string
+  readonly authoringBuildId: string
+}
+
 interface CompiledFormula {
   readonly artifact: string
   readonly inputSchema: NormalizedInputSchema
@@ -207,7 +239,33 @@ type CompileRefusal =
   | FormulaTestFailed
   | FormulaCompileUnavailable
 
+/** what a draft source compiles to, for screens: identity + contract */
+export interface DraftPreview {
+  readonly sourceSha256: string
+  readonly contractSha256: string
+  readonly inputSchema: NormalizedInputSchema
+  readonly outputSchema: NormalizedAtomicSchema
+}
+
+type DraftRefusal = Exclude<CompileRefusal, FormulaTestFailed>
+
 interface FormulaLibraryShape {
+  readonly previewDraft: (
+    tenantId: string,
+    functionId: string,
+    sourceTs: string,
+    as: Principal,
+  ) => Effect.Effect<DraftPreview, FormulaFunctionNotFound | DraftRefusal>
+  readonly evaluateDraft: (
+    tenantId: string,
+    functionId: string,
+    sourceTs: string,
+    cases: readonly EvaluationCaseInput[],
+    as: Principal,
+  ) => Effect.Effect<
+    DraftPreview & { readonly results: readonly EvaluatedCase[] },
+    FormulaFunctionNotFound | DraftRefusal
+  >
   readonly managedDraft: (
     tenantId: string,
     functionId: string,
@@ -358,21 +416,61 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       Effect.map((row) => ({ draftSourceTs: row.draftSourceTs })),
     )
 
-  const runTests = (
-    artifact: string,
-    artifactHash: string,
-    inputSchema: NormalizedInputSchema,
-    outputSchema: NormalizedAtomicSchema,
-    tests: readonly FormulaTestInput[],
-  ): Effect.Effect<readonly TestReportRow[], FormulaCompileUnavailable> =>
+  const previewOf = (prepared: PreparedFormula): DraftPreview => ({
+    sourceSha256: prepared.sourceSha256,
+    contractSha256: prepared.contractSha256,
+    inputSchema: prepared.inputSchema,
+    outputSchema: prepared.outputSchema,
+  })
+
+  // preview and try-runs speak about the CURRENT editor buffer, never the
+  // persisted draft: they are side-effect-free authoring tools, gated by
+  // the same manage semantics as every write, publishable by nothing
+  const previewDraft = Effect.fn('FormulaLibrary.previewDraft')(function* (
+    tenantId: string,
+    functionId: string,
+    sourceTs: string,
+    as: Principal,
+  ) {
+    yield* managedRow(tenantId, functionId, as)
+    const prepared = yield* dropTestFailure(prepare(sourceTs))
+    return previewOf(prepared)
+  })
+
+  const evaluateDraft = Effect.fn('FormulaLibrary.evaluateDraft')(function* (
+    tenantId: string,
+    functionId: string,
+    sourceTs: string,
+    cases: readonly EvaluationCaseInput[],
+    as: Principal,
+  ) {
+    yield* managedRow(tenantId, functionId, as)
+    const prepared = yield* dropTestFailure(prepare(sourceTs))
+    const results = yield* evaluateCases(prepared, cases)
+    return { ...previewOf(prepared), results }
+  })
+
+  // ONE evaluator for every way a formula runs before publication: the
+  // ad-hoc try-run (no expectation), a single regression test, the whole
+  // suite, and the publish gate - same validation, same sandbox, same
+  // canonicalization, so no second execution semantics can drift into being
+  const evaluateCases = (
+    prepared: PreparedFormula,
+    cases: readonly EvaluationCaseInput[],
+  ): Effect.Effect<readonly EvaluatedCase[], FormulaCompileUnavailable> =>
     Effect.gen(function* () {
-      const report: TestReportRow[] = []
-      for (const test of tests) {
+      const { artifact, runtimeSha256: artifactHash, inputSchema, outputSchema } = prepared
+      const report: EvaluatedCase[] = []
+      for (const test of cases) {
         // the row always carries what was expected, in the canonical spelling
         // the comparison uses; a lexically broken expectation shows as typed
-        const expected = canonicalDecimal(test.expected) ?? test.expected
+        const expected =
+          test.expected === undefined
+            ? undefined
+            : (canonicalDecimal(test.expected) ?? test.expected)
         const inputIssues = validateValue(inputSchema, test.input)
-        const expectedIssues = validateValue(outputSchema, test.expected)
+        const expectedIssues =
+          test.expected === undefined ? [] : validateValue(outputSchema, test.expected)
         if (inputIssues.length > 0 || expectedIssues.length > 0) {
           const problems: TestProblem[] = [
             ...inputIssues.map((issue) => {
@@ -396,7 +494,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
               }
             }),
           ]
-          report.push({ name: test.name, passed: false, expected, problems })
+          report.push({
+            ...(expected === undefined ? {} : { passed: false, expected }),
+            problems,
+          })
           continue
         }
         const outcome = yield* sandbox
@@ -433,7 +534,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             Effect.mapError(() => new FormulaCompileUnavailable()),
           )
         if (outcome.kind === 'defect') {
-          report.push({ name: test.name, passed: false, expected, defect: outcome.message })
+          report.push({
+            ...(expected === undefined ? {} : { passed: false, expected }),
+            defect: outcome.message,
+          })
           continue
         }
         const envelope = JSON.parse(outcome.value as string) as {
@@ -443,15 +547,16 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         }
         if (!envelope.ok) {
           report.push({
-            name: test.name,
-            passed: false,
-            expected,
+            ...(expected === undefined ? {} : { passed: false, expected }),
             refusal: envelope.failure?.message ?? '',
           })
           continue
         }
         const actual = canonicalDecimal(envelope.amount ?? '') ?? envelope.amount ?? ''
-        report.push({ name: test.name, passed: actual === expected, expected, actual })
+        report.push({
+          actual,
+          ...(expected === undefined ? {} : { passed: actual === expected, expected }),
+        })
       }
       return report
     })
@@ -510,10 +615,21 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         ),
       )
 
-  const compile = (
-    source: string,
-    tests: readonly FormulaTestInput[],
-  ): Effect.Effect<CompiledFormula, CompileRefusal> =>
+  // prepare's error union is CompileRefusal for reuse; the draft tools can
+  // never see a test failure out of it, and the narrowing keeps that a type
+  const dropTestFailure = <A>(
+    effect: Effect.Effect<A, CompileRefusal>,
+  ): Effect.Effect<A, DraftRefusal> =>
+    effect.pipe(
+      Effect.catchTag('ASSESSMENT_FORMULA_TEST_FAILED', () =>
+        Effect.die(new Error('prepare raised a test failure')),
+      ),
+    )
+
+  // source -> everything but the examples: the artifact, the proven
+  // contract and every identity hash. Preview, try-runs and publication all
+  // start HERE, so there is exactly one interpretation of a formula source.
+  const prepare = (source: string): Effect.Effect<PreparedFormula, CompileRefusal> =>
     Effect.gen(function* () {
       // the compiler lives behind the authoring service (a separate process
       // in production); refusals come back already dressed as wire errors.
@@ -562,16 +678,6 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         issues.push({ path: '', reason: 'contract-too-large' })
       if (issues.length > 0) return yield* new FormulaContractInvalid({ issues })
 
-      const report = yield* runTests(
-        compiled.artifact,
-        compiled.runtimeSha256,
-        inputSchema,
-        outputSchema,
-        tests,
-      )
-      if (tests.length === 0 || report.some((row) => !row.passed))
-        return yield* new FormulaTestFailed({ report })
-
       return {
         artifact: compiled.artifact,
         inputSchema,
@@ -585,8 +691,30 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         sourcePolicyVersion: compiled.sourcePolicyVersion,
         sourcePolicyParserVersion: compiled.sourcePolicyParserVersion,
         authoringBuildId: compiled.authoringBuildId,
-        report,
-      } satisfies CompiledFormula
+      } satisfies PreparedFormula
+    })
+
+  const compile = (
+    source: string,
+    tests: readonly FormulaTestInput[],
+  ): Effect.Effect<CompiledFormula, CompileRefusal> =>
+    Effect.gen(function* () {
+      const prepared = yield* prepare(source)
+      const evaluated = yield* evaluateCases(prepared, tests)
+      // the publish gate: every named example, an expectation on each, all
+      // of them passing - the evaluator itself never requires any of that
+      const report: TestReportRow[] = evaluated.map((row, index) => ({
+        name: tests[index]!.name,
+        passed: row.passed ?? false,
+        expected: row.expected ?? tests[index]!.expected,
+        ...(row.actual === undefined ? {} : { actual: row.actual }),
+        ...(row.problems === undefined ? {} : { problems: row.problems }),
+        ...(row.refusal === undefined ? {} : { refusal: row.refusal }),
+        ...(row.defect === undefined ? {} : { defect: row.defect }),
+      }))
+      if (tests.length === 0 || report.some((row) => !row.passed))
+        return yield* new FormulaTestFailed({ report })
+      return { ...prepared, report } satisfies CompiledFormula
     })
 
   const listFunctions = Effect.fn('FormulaLibrary.listFunctions')(function* (
@@ -1069,6 +1197,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   // every method runs with the database provided once, here: the bodies
   // above stay plain Orm-requiring effects, and nothing leaks the requirement
   const service: FormulaLibraryShape = {
+    previewDraft: (tenantId, functionId, sourceTs, as) =>
+      withDb(previewDraft(tenantId, functionId, sourceTs, as)),
+    evaluateDraft: (tenantId, functionId, sourceTs, cases, as) =>
+      withDb(evaluateDraft(tenantId, functionId, sourceTs, cases, as)),
     managedDraft: (tenantId, functionId, as) => withDb(managedDraft(tenantId, functionId, as)),
     listFunctions: (tenantId, page, as) => withDb(listFunctions(tenantId, page, as)),
     createFunction: (tenantId, input, as) => withDb(createFunction(tenantId, input, as)),
@@ -1205,6 +1337,46 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
             parsed,
             principal,
           ),
+        }
+      }),
+    )
+    .handle(
+      'previewFormulaDraft',
+      Effect.fn('assessmentFormula.previewDraft.handler')(function* ({ params, payload }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        return yield* library.previewDraft(
+          principal.tenantId,
+          params.functionId,
+          payload.sourceTs,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'evaluateFormulaDraft',
+      Effect.fn('assessmentFormula.evaluateDraft.handler')(function* ({ params, payload }) {
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        const evaluated = yield* library.evaluateDraft(
+          principal.tenantId,
+          params.functionId,
+          payload.sourceTs,
+          payload.cases.map((one) => ({
+            input: one.input,
+            ...(one.expected === undefined ? {} : { expected: one.expected }),
+          })),
+          principal,
+        )
+        return {
+          sourceSha256: evaluated.sourceSha256,
+          contractSha256: evaluated.contractSha256,
+          inputSchema: evaluated.inputSchema,
+          outputSchema: evaluated.outputSchema,
+          cases: evaluated.results.map((row, index) => ({
+            clientId: payload.cases[index]!.clientId,
+            ...row,
+          })),
         }
       }),
     )

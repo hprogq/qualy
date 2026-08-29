@@ -63,6 +63,31 @@ const versionView = Schema.Struct({
   publishedAt: Schema.String,
 })
 
+/** one case for the draft evaluator; the client id is an echo, not identity */
+const evaluationCase = Schema.Struct({
+  clientId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  input: Schema.Unknown,
+  expected: Schema.optional(Schema.String.check(Schema.isMaxLength(63))),
+})
+
+const evaluatedCase = Schema.Struct({
+  clientId: Schema.String,
+  passed: Schema.optional(Schema.Boolean),
+  expected: Schema.optional(Schema.String),
+  actual: Schema.optional(Schema.String),
+  problems: Schema.optional(Schema.Unknown),
+  refusal: Schema.optional(Schema.String),
+  defect: Schema.optional(Schema.String),
+})
+
+/** the draft contract identity a screen keys its freshness on */
+const draftPreview = Schema.Struct({
+  sourceSha256: Schema.String,
+  contractSha256: Schema.String,
+  inputSchema: Schema.Unknown,
+  outputSchema: Schema.Unknown,
+})
+
 const versionDetail = Schema.Struct({
   ...versionView.fields,
   sourceTs: Schema.String,
@@ -109,6 +134,61 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       success: Schema.Struct({ function: functionDetail }),
       error: [BadRequest, AccessDenied, FormulaOwnerNodeInvalid, FormulaSourceTooLarge],
     }).middleware(Authenticated),
+  )
+  .add(
+    // what the CURRENT editor buffer compiles to: contract + identities,
+    // for the typed test form - a side-effect-free authoring tool
+    HttpApiEndpoint.post(
+      'previewFormulaDraft',
+      '/assessment/formula-functions/:functionId/draft/preview',
+      {
+        params: Schema.Struct({ functionId: id }),
+        payload: Schema.Struct({ sourceTs: sourceText }),
+        success: draftPreview,
+        error: [
+          FormulaFunctionNotFound,
+          FormulaSourceTooLarge,
+          FormulaSourceRefused,
+          FormulaTypecheckFailed,
+          FormulaBundleFailed,
+          FormulaExecutionLimitExceeded,
+          FormulaContractInvalid,
+          FormulaCompileUnavailable,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // run cases against the CURRENT editor buffer: the try-run (no
+    // expectation), one regression test or the whole suite - one evaluator,
+    // the same one publication uses, results ephemeral by design
+    HttpApiEndpoint.post(
+      'evaluateFormulaDraft',
+      '/assessment/formula-functions/:functionId/draft/evaluation',
+      {
+        params: Schema.Struct({ functionId: id }),
+        payload: Schema.Struct({
+          sourceTs: sourceText,
+          cases: Schema.Array(evaluationCase).check(Schema.isMaxLength(50)),
+        }),
+        success: Schema.Struct({
+          ...draftPreview.fields,
+          cases: Schema.Array(evaluatedCase),
+        }),
+        error: [
+          FormulaFunctionNotFound,
+          FormulaSourceTooLarge,
+          FormulaSourceRefused,
+          FormulaTypecheckFailed,
+          FormulaBundleFailed,
+          FormulaExecutionLimitExceeded,
+          FormulaContractInvalid,
+          FormulaCompileUnavailable,
+          AccessDenied,
+        ],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     // the language-service websocket: the response IS an upgraded

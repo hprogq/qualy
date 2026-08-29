@@ -301,6 +301,87 @@ describe.runIf(postgresAvailable)('the formula api over http', () => {
     ).toMatchObject({ versionNo: 1, testReport: [{ name: 'three', passed: true }] })
   }, 120_000)
 
+  it('previews and evaluates the current buffer without touching the draft', async () => {
+    const created = await call('POST', '/api/assessment/formula-functions', {
+      ownerNodeId: await rootNode(),
+      name: 'Draft tools',
+    })
+    expect(created.status, inspect(created.body)).toBe(200)
+    const id = (created.body as { function: { id: string } }).function.id
+
+    const ANNOTATED = `import { Schema, defineFormula } from '@qualy/formula'
+
+export default defineFormula({
+  input: Schema.input({
+    level: Schema.choice({ national: '国家级', provincial: '省级' }, { title: '赛事级别' }),
+    base: Schema.decimal({ maxScale: 2, minimum: '0', maximum: '10', title: '基础分' }),
+  }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
+  run: (input, q) => (input.level === 'national' ? q.decimal.mulInteger(input.base, 2) : input.base),
+})
+`
+    // the preview speaks about the SENT buffer, not the persisted draft
+    const preview = await call('POST', `/api/assessment/formula-functions/${id}/draft/preview`, {
+      sourceTs: ANNOTATED,
+    })
+    expect(preview.status, inspect(preview.body)).toBe(200)
+    const previewBody = preview.body as {
+      sourceSha256: string
+      contractSha256: string
+      inputSchema: {
+        properties: Record<string, { title?: string }>
+        'x-qualy-order'?: readonly string[]
+      }
+    }
+    expect(previewBody.sourceSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(previewBody.inputSchema['x-qualy-order']).toEqual(['level', 'base'])
+    expect(previewBody.inputSchema.properties['level']?.title).toBe('赛事级别')
+
+    // and the draft on the server is untouched by any of this
+    const read = await call('GET', `/api/assessment/formula-functions/${id}`)
+    expect((read.body as { function: { draftRevision: number } }).function.draftRevision).toBe(1)
+
+    // one evaluator, three moods: a try-run without expectation, a passing
+    // regression, a failing one - plus an input the contract refuses
+    const evaluated = await call(
+      'POST',
+      `/api/assessment/formula-functions/${id}/draft/evaluation`,
+      {
+        sourceTs: ANNOTATED,
+        cases: [
+          { clientId: 'try', input: { level: 'national', base: '3.00' } },
+          { clientId: 'pass', input: { level: 'provincial', base: '2.50' }, expected: '2.5' },
+          { clientId: 'fail', input: { level: 'national', base: '2.00' }, expected: '2' },
+          { clientId: 'bad', input: { level: 'municipal', base: '1.00' }, expected: '1' },
+        ],
+      },
+    )
+    expect(evaluated.status, inspect(evaluated.body)).toBe(200)
+    const body = evaluated.body as {
+      contractSha256: string
+      cases: readonly {
+        clientId: string
+        passed?: boolean
+        actual?: string
+        problems?: readonly { at: string; parameter?: string }[]
+      }[]
+    }
+    expect(body.contractSha256).toBe(previewBody.contractSha256)
+    const byId = new Map(body.cases.map((row) => [row.clientId, row]))
+    expect(byId.get('try')).toEqual({ clientId: 'try', actual: '6' })
+    expect(byId.get('pass')).toMatchObject({ passed: true, actual: '2.5' })
+    expect(byId.get('fail')).toMatchObject({ passed: false, actual: '4', expected: '2' })
+    expect(byId.get('bad')?.passed).toBe(false)
+    expect(byId.get('bad')?.problems?.[0]).toMatchObject({ at: 'input', parameter: 'level' })
+
+    // a source the compiler refuses answers with the author's diagnostics
+    const refused = await call('POST', `/api/assessment/formula-functions/${id}/draft/preview`, {
+      sourceTs: `${ANNOTATED}\nconst broken: number = 'text'\n`,
+    })
+    expect(refused.status, inspect(refused.body)).toBe(422)
+    expect(JSON.stringify(refused.body)).toContain('TYPECHECK')
+  }, 120_000)
+
   it('pages the function list with a keyset cursor: no repeats, no gaps', async () => {
     const owner = await rootNode()
     for (let index = 0; index < 12; index += 1) {
