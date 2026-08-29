@@ -961,6 +961,21 @@ export const make = Effect.fn('Rbac.roles.make')(function* (
           const stranded = yield* grantsStrandedByEligibility(tenantId, role.id)
           if (stranded > 0) return yield* new GrantStranded({ grantCount: stranded })
           yield* bumpRole(tenantId, role.id)
+          // The write above is a replace, and rbac keeps no history table, so
+          // the previous sets are gone the moment it commits. Without this the
+          // one decision about WHO may hold an office would be the only role
+          // change nothing could answer for afterwards.
+          yield* audit.record(RoleEligibilityUpdated, {
+            tenantId,
+            actor: actorOf(actor),
+            target: { id: role.id, label: role.name },
+            details: {
+              holderMode: holders.mode,
+              anchorMode: anchors === null ? null : anchors.mode,
+              userTypeCount: userTypeIds.length,
+              orgTypeCount: orgTypeIds.length,
+            },
+          })
           return role.version + 1
         }),
       )
