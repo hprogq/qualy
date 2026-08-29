@@ -10883,3 +10883,6 @@ MonacoLspClient、浏览器无 Effect RPC。
 - **留待后续**(蓝图明确后置):integer→decimal 的显式转换按钮(reconciliation
   目前按 validateValue 保留/标记);x-qualy-i18n 的编辑器 UI;ValueForm 提升为共享包
   等 Recognition 接入时做。
+- **dev 运维事实**:SDK/编译器改动后 sandbox 容器必须重建(`pnpm sandbox:build &&
+  pnpm sandbox:up`),否则容器内旧 profile 会把新 annotation 当 unknown-key 拒——
+  已实测撞上一次;重建后真容器编译带全套 annotation 的公式通过(探针 compiled ok)。
