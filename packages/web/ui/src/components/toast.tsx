@@ -27,9 +27,9 @@ export function Toaster() {
       // here and read as a banner rather than a remark
       style={
         {
-          '--normal-bg': 'var(--popover)',
-          '--normal-text': 'var(--popover-foreground)',
-          '--normal-border': 'var(--border)',
+          '--normal-bg': 'var(--q-surface-elevated)',
+          '--normal-text': 'var(--q-foreground)',
+          '--normal-border': 'var(--q-border)',
         } as CSSProperties
       }
       toastOptions={{ duration: 4000 }}

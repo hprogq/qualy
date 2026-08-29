@@ -307,7 +307,7 @@
   [data-slot='dropdown-menu-checkbox-item'][data-hovered] *,
   [data-slot='dropdown-menu-radio-item'][data-hovered] *,
   [data-slot='dropdown-menu-sub-trigger'][data-hovered] * {
-    color: var(--accent-foreground);
+    color: var(--q-surface-muted-foreground);
   }
 
   /* an ornament the caller hands an alert dialog: the icon inside it is

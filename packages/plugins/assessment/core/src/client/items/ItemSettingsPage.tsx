@@ -176,6 +176,14 @@ const styles = stylex.create({
     borderRadius: '9999px',
     backgroundColor: tokens.background,
   },
+  // Four steps of one hue, not four unrelated colours: the segments are shares
+  // of a single paper's cap, and what a reader compares is their lengths. The
+  // previous four `var(--chart-N)` were declared by the utility sheet this
+  // product retired, so every segment had been painting transparent.
+  segment0: { backgroundColor: tokens.primary },
+  segment1: { backgroundColor: `color-mix(in oklab, ${tokens.primary} 76%, ${tokens.surface})` },
+  segment2: { backgroundColor: `color-mix(in oklab, ${tokens.primary} 52%, ${tokens.surface})` },
+  segment3: { backgroundColor: `color-mix(in oklab, ${tokens.primary} 30%, ${tokens.surface})` },
   overNote: {
     fontSize: 12,
     fontWeight: 500,
@@ -186,6 +194,9 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
   },
 })
+
+/** the ramp, in order, so a segment picks its step by position */
+const segments = [styles.segment0, styles.segment1, styles.segment2, styles.segment3] as const
 
 /** a counter, so two things composed in one session never share a handle */
 let composed = 0
@@ -842,9 +853,9 @@ function PaperSummary({
           {roots.map((group, index) => (
             <div
               key={group.id}
+              {...stylex.props(segments[index % segments.length]!)}
               style={{
                 width: `${Math.min(100, (unitsOf(group.cap ?? 0) / Math.max(held, total)) * 100)}%`,
-                background: `var(--chart-${(index % 4) + 2})`,
               }}
             />
           ))}
