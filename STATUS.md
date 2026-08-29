@@ -10105,3 +10105,31 @@ deep-freeze、scoped worker pool、esbuild 虚拟 namespace 确定性、FORMULA_
 **第一批范围**:阶段 0(本条)→ `@qualy/value-schema` → `@qualy/formula` + TS7 spike(硬闸门)→
 `@qualy/plugin-sandbox`(硬闸门)→ `@qualy/plugin-assessment-formula` 4a;完成后停,不进入
 Recognition/assessment 表改造,不做 4b。下一步:阶段一建 `packages/core/value-schema`。
+
+## 严格类型计分之一:@qualy/value-schema(2026-08-29)
+
+`packages/core/value-schema` 落地,全系统唯一的数据类型协议:JSON Schema 2020-12 受限子集,
+六种 atomic(text/integer/decimal/choice/boolean/date)+ 扁平 input object,小到包含关系可以
+完整证明。三个入口职责分明:根入口纯逻辑、浏览器可直接消费(profile 校验、decimal 语义、
+assignability 证明器、canonical 字节、命名 converter);`./validate` 是 Ajv 完整实例校验
+(strict、零 coerce、零 default、零 removal,`qualy-decimal` format + `x-qualy-maxScale/minimum/
+maximum` 自定义 keyword);`./hash` 是 node:crypto 的 semanticHash。根入口的 import 闭包不含
+Node builtin 与前两者,测试钉死。
+
+**Decimal 三层语义冻结**:lexical `-?(0|[1-9]\d*)(\.\d+)?`(禁 exponent/前导零/`+`/空小数部,
+允许尾零);semantic 按 `{coefficient: bigint, scale}` 通分比较(`-0`=`0`,全程无浮点);
+canonical 最短形式(去尾零、负零归一 `"0"`),存储/wire/hash 一律 canonical;display 补齐归 UI,
+不在本包。`x-qualy-maxScale` 语义 = 语义小数位上限(尾零不计)。keyword 分层:词法失败只有
+format 发言,语义 keyword 弃权。
+
+**assignmentPlan 保守证明**:同型包含(integer 区间、decimal bigint 通分且 scale 只许收窄、
+choice 子集、text 长度嵌套 + pattern 仅逐字相同可证)+ 唯一跨型 `integer-to-decimal@1`——
+且必须证明完整整数域通分后落进 target 界(裁决:不得仅按 kind 判断);其余一律
+`incompatible` 带码。annotation(`x-qualy-enumLabels`)不进语义体:改标签不动 semanticHash,
+键序与界拼写(`"0.00"` vs `"0"`)也不动,测试逐条钉住。
+
+catalog 新增 `ajv: 8.20.0`(带注释;无 build script,安装零阻)。
+
+**验收**:`pnpm typecheck` 零错(根工程一处 cast 报错已改为类型化构造);包内 55 例全过;
+全仓 `pnpm test` **966 passed | 17 skipped**;prettier 通过。下一步:`@qualy/formula` SDK +
+TS7 spike(硬闸门)。
