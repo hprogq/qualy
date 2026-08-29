@@ -221,12 +221,26 @@ function SelectTrigger({
   const invalid = ariaInvalid === true || ariaInvalid === 'true'
   const sx = stylex.props(triggerStyles.base, xstyle)
   return (
-    <Combobox.Target>
+    // `aria-expanded` is stated HERE rather than on the button, because the
+    // widget clones its child with a config that always carries that key -
+    // valued undefined unless `withExpandedAttribute` is set - and
+    // `cloneElement` writes undefined straight over whatever the child said.
+    // So the attribute was absent in both states and every select in the
+    // product shipped `role="combobox"` with no expanded state to hear.
+    //
+    // Its own `withExpandedAttribute` is not the answer either: the value it
+    // computes is `listId && dropdownOpened`, and `listId` is a ref rather
+    // than state, so with `keepMounted={false}` the options register their id
+    // without re-rendering the target and the attribute stays false while the
+    // list is open. Measured - that is what the case below caught first.
+    //
+    // A prop given to Target lands in the rest it spreads AFTER the config,
+    // so this one wins, and `opened` is the state the product already keeps.
+    <Combobox.Target aria-expanded={opened}>
       <MInputBase
         component="button"
         type="button"
         role="combobox"
-        aria-expanded={opened}
         pointer
         data-slot="select-trigger"
         data-size={size}

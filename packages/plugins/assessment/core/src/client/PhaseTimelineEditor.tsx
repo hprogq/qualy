@@ -140,7 +140,13 @@ const styles = stylex.create({
     position: 'relative',
     height: 0,
     borderBottomWidth: 0,
-    padding: 0,
+    // longhands, because the cell writes its padding as longhands: a `padding`
+    // shorthand here is a different property key, so both survive and the
+    // shorthand does not win. The seam would keep the cell's 12px and render
+    // as a blank band where its own height says zero.
+    paddingBlock: 0,
+    paddingInlineStart: 0,
+    paddingInlineEnd: 0,
   },
   seamStrip: {
     position: 'absolute',
@@ -183,7 +189,9 @@ const styles = stylex.create({
     height: 12,
   },
   addCell: {
-    padding: 8,
+    paddingBlock: 8,
+    paddingInlineStart: 8,
+    paddingInlineEnd: 8,
   },
   wideGhost: {
     width: '100%',

@@ -237,6 +237,33 @@ describe('the input family types at one size', () => {
   // <button> underneath and another is an <input>. One token carries the
   // family's type - 14px here, 16px under a finger, where iOS Safari would
   // otherwise zoom the page at a focused field - and the density (a 36px
+  // A select tells a reader whether its list is open, or it is not a select as
+  // far as assistive technology is concerned. This shipped broken and could
+  // not be seen: the trigger set `aria-expanded` itself, and the widget's
+  // clone config carried the same key valued undefined, which `cloneElement`
+  // wrote over the top of it. So the attribute was absent in BOTH states,
+  // `getByRole('combobox', { expanded })` could never match, and every
+  // assertion anyone had written about a select went through its label
+  // instead.
+  it('says whether its list is open', async () => {
+    mount(
+      <Select>
+        <SelectTrigger aria-label="picked">
+          <SelectValue placeholder="pick" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="a">a</SelectItem>
+        </SelectContent>
+      </Select>,
+    )
+    const shut = page.getByRole('combobox', { name: 'picked', expanded: false })
+    await expect.element(shut).toBeInTheDocument()
+    await shut.click()
+    await expect
+      .element(page.getByRole('combobox', { name: 'picked', expanded: true }))
+      .toBeInTheDocument()
+  })
+
   // field, its padding) is a separate decision that does not move with it.
   it('every control shows its value at one size and keeps its own height', async () => {
     function Harness() {

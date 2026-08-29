@@ -214,6 +214,7 @@ function DialogClose({
 
 function DialogContent({
   className,
+  xstyle,
   children,
   showCloseButton = true,
   size = '32rem',
@@ -234,6 +235,19 @@ function DialogContent({
    */
   size?: string | number
   restfulFocus?: boolean
+  /**
+   * The caller's own styles for the panel, merged rather than appended.
+   *
+   * A compiled class handed through `className` is CONCATENATED with this
+   * component's, and two classes setting one property are decided by the
+   * order the stylesheet happens to be in - not by who asked last. A caller
+   * asking for `display: flex` lost to the panel's own `display: grid`, and
+   * the flex sizing it had written for its child then did nothing, which is
+   * how a document lightbox ended up with an iframe collapsed to its
+   * intrinsic height inside an 85vh panel. Through this seat StyleX merges by
+   * property and the caller wins.
+   */
+  xstyle?: stylex.StyleXStyles
 }) {
   const { open, setOpen, descriptionId, hasDescription } = useDialog()
   // Compensation, not preference: the library hard-codes aria-describedby
@@ -286,7 +300,7 @@ function DialogContent({
         // The slot takes a string, which these compiled styles are - they
         // carry no dynamic value, so nothing is left in an inline style.
         classNames={{
-          content: clsx(stylex.props(styles.content, styles.entrance).className, className),
+          content: clsx(stylex.props(styles.content, styles.entrance, xstyle).className, className),
         }}
         {...props}
       >

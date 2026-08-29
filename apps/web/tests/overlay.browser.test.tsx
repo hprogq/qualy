@@ -7,6 +7,7 @@ import { Button } from '@qualy/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { UiProvider } from '@qualy/ui/provider'
+import { Toaster, toast } from '@qualy/ui/toast'
 import '../src/app.css'
 
 // The overlay contract of docs/ui-platform-migration.md §11, pinned before
@@ -239,5 +240,44 @@ describe('the side panel', () => {
     await expect.poll(bodyAlive, { timeout: 5000 }).toBe(true)
     await page.getByRole('button', { name: 'target' }).click()
     expect(page.getByTestId('hits').element().textContent).toBe('1')
+  })
+})
+
+// A dialog that stays open on failure has one way left to say the write did
+// not happen, and several of them use exactly that: `toast.error(...)` with
+// the dialog still up. The toaster used to render into the application root,
+// which is page, and while a modal is up every body child that is not a
+// portal is made inert and aria-hidden - so the toast painted on screen
+// inside a hidden subtree and was announced to nobody.
+function ToastHarness() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Toaster />
+      <Button onClick={() => setOpen(true)}>open</Button>
+      <FormDialog
+        open={open}
+        title="settings"
+        onClose={() => setOpen(false)}
+        // the dialog deliberately stays open: the toast is the only report
+        footer={<Button onClick={() => toast.error('that did not work')}>save</Button>}
+      >
+        <p>body</p>
+      </FormDialog>
+    </>
+  )
+}
+
+describe('a toast raised while a dialog is open', () => {
+  it('stays in the accessibility tree', async () => {
+    mount(<ToastHarness />)
+    await page.getByRole('button', { name: 'open' }).click()
+    await page.getByRole('button', { name: 'save' }).click()
+
+    const shown = page.getByText('that did not work')
+    await expect.element(shown).toBeVisible()
+    // the fact, not the copy: no hidden ancestor between it and the document
+    expect(shown.element().closest('[aria-hidden="true"]')).toBeNull()
+    expect(shown.element().closest('[inert]')).toBeNull()
   })
 })

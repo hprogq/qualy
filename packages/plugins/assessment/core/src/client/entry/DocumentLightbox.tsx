@@ -90,7 +90,7 @@ export function DocumentLightbox({
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent size="64rem" className={stylex.props(styles.panel).className}>
+      <DialogContent size="64rem" xstyle={styles.panel}>
         <DialogHeader>
           <DialogTitle {...stylex.props(styles.name)}>{name}</DialogTitle>
         </DialogHeader>

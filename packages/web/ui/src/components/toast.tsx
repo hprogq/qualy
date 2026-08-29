@@ -1,5 +1,6 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { Toaster as Sonner, toast } from 'sonner'
+import { Portal } from './portal.tsx'
 
 // What just happened, said where the eye already is.
 //
@@ -16,24 +17,45 @@ import { Toaster as Sonner, toast } from 'sonner'
 // characters of the line it is meant to help you read.
 
 export function Toaster() {
+  // Into a portal container of its own, not into the page.
+  //
+  // While a modal is up every body child WITHOUT `data-portal` is made inert
+  // and aria-hidden, and the toaster rendered wherever it was mounted - inside
+  // the application root, which is page. So a toast raised while a dialog
+  // stayed open painted on screen inside a hidden subtree and was announced to
+  // nobody. That is not a corner: several dialogs deliberately stay open on
+  // failure and use `toast.error(formatError(...))` as their ONLY way of
+  // saying the write did not happen.
+  const [into, setInto] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const host = document.createElement('div')
+    host.setAttribute('data-portal', '')
+    host.setAttribute('data-slot', 'toaster')
+    document.body.append(host)
+    setInto(host)
+    return () => host.remove()
+  }, [])
+
   return (
-    <Sonner
-      position="top-center"
-      // the viewer's theme is on the document already, and sonner's own
-      // theme prop would fight it
-      theme="system"
-      // sonner's own surface, told to use this application's: without it the
-      // library paints its own greens and reds, which belong to no palette
-      // here and read as a banner rather than a remark
-      style={
-        {
-          '--normal-bg': 'var(--q-surface-elevated)',
-          '--normal-text': 'var(--q-foreground)',
-          '--normal-border': 'var(--q-border)',
-        } as CSSProperties
-      }
-      toastOptions={{ duration: 4000 }}
-    />
+    <Portal into={into}>
+      <Sonner
+        position="top-center"
+        // the viewer's theme is on the document already, and sonner's own
+        // theme prop would fight it
+        theme="system"
+        // sonner's own surface, told to use this application's: without it the
+        // library paints its own greens and reds, which belong to no palette
+        // here and read as a banner rather than a remark
+        style={
+          {
+            '--normal-bg': 'var(--q-surface-elevated)',
+            '--normal-text': 'var(--q-foreground)',
+            '--normal-border': 'var(--q-border)',
+          } as CSSProperties
+        }
+        toastOptions={{ duration: 4000 }}
+      />
+    </Portal>
   )
 }
 
