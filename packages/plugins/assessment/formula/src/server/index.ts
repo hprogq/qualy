@@ -12,14 +12,7 @@ import { scopeCoverage, type Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import { SANDBOX_ABI_VERSION, Sandbox } from '@qualy/plugin-sandbox/service'
 import { FORMULA_ABI_VERSION, SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
-import {
-  TRIPLE_SLASH,
-  checkFormulaWorkspace,
-  dropWorkspace,
-  moduleSpecifiers,
-  parseDiagnostics,
-  stageFormulaWorkspace,
-} from '@qualy/formula/staging'
+import { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT, compileFormula } from '@qualy/formula-compiler'
 import {
   VALUE_SCHEMA_PROFILE_VERSION,
   assignmentPlan,
@@ -48,7 +41,6 @@ import {
   FormulaFunctionRestored,
 } from '../actions.ts'
 import { formulaApiGroup } from '../api.ts'
-import { FormulaBundleRefused, bundleFormula } from './bundler.ts'
 import { db } from './db.ts'
 import {
   FormulaBundleFailed,
@@ -65,16 +57,10 @@ import {
   FormulaTypecheckFailed,
   FormulaVersionNotFound,
 } from './errors.ts'
-import { esbuildVersion, tscEntry, typescriptVersion } from './toolchain.ts'
 
 const MANAGE = 'assessment.formula.manage'
 
 /** what an author may SAVE - the formula's own text */
-const SOURCE_LIMIT = 262_144
-/** what a compiled artifact may weigh: user source plus the trusted wrapper
- * and the bundled SDK; deliberately a separate, larger wall than the source
- * limit so a legal source can never produce an unshippable artifact */
-const MAX_COMPILED_ARTIFACT_BYTES = 1_048_576
 /** the sandbox transport for __qualyContract, above the largest legal
  * contract so a real one always arrives whole */
 const MAX_CONTRACT_TRANSPORT_BYTES = 131_072
@@ -85,11 +71,9 @@ const MAX_PENDING_COMPILES = 8
 
 const LIST_FINGERPRINT = 'assessment-formula-functions'
 
-const SUPPRESSION = /@ts-(?:ignore|nocheck|expect-error)\b/
 // word-level on purpose: the formula language is tiny, and "strictly typed
 // at publication" stops being true the moment any `any` slips in - even the
 // word inside a string is refused, and the message says exactly that
-const ANY_WORD = /\bany\b/
 
 export interface FormulaTestInput {
   readonly name: string
@@ -202,6 +186,8 @@ interface CompiledFormula {
   readonly runtimeSha256: string
   readonly contractSha256: string
   readonly formulaRuntimeSha256: string
+  readonly typescriptVersion: string
+  readonly esbuildVersion: string
   readonly report: readonly TestReportRow[]
 }
 
@@ -453,23 +439,6 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   // depth the service says busy instead of hoarding child processes
   let pendingCompiles = 0
 
-  const refuseSource = (source: string): CompileRefusal | undefined => {
-    if (Buffer.byteLength(source, 'utf8') > SOURCE_LIMIT)
-      return new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
-    if (TRIPLE_SLASH.test(source)) return new FormulaSourceRefused({ reason: 'triple-slash' })
-    const suppression = SUPPRESSION.exec(source)
-    if (suppression !== null)
-      return new FormulaSourceRefused({ reason: 'suppression', specifier: suppression[0] })
-    if (ANY_WORD.test(source)) return new FormulaSourceRefused({ reason: 'any' })
-    // the closure fence runs BEFORE the compiler: tsc resolves whatever the
-    // source names even though it executes nothing, and an unchecked
-    // specifier is a read of the host filesystem
-    const trespass = moduleSpecifiers(source).find((specifier) => specifier !== '@qualy/formula')
-    if (trespass !== undefined)
-      return new FormulaSourceRefused({ reason: 'import', specifier: trespass })
-    return undefined
-  }
-
   const extractContract = (
     artifact: string,
     artifactHash: string,
@@ -525,64 +494,47 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     tests: readonly FormulaTestInput[],
   ): Effect.Effect<CompiledFormula, CompileRefusal> =>
     Effect.suspend(() => {
-      const refused = refuseSource(source)
-      if (refused !== undefined) return Effect.fail(refused)
       if (pendingCompiles >= MAX_PENDING_COMPILES)
         return Effect.fail(new FormulaCompileUnavailable())
       pendingCompiles += 1
       return compiles
         .withPermits(1)(
           Effect.gen(function* () {
-            const checked = yield* Effect.tryPromise({
-              try: async () => {
-                const root = stageFormulaWorkspace(source)
-                try {
-                  return await checkFormulaWorkspace(root, tscEntry)
-                } finally {
-                  dropWorkspace(root)
-                }
-              },
+            // source policy, TS7, esbuild and the artifact identities all
+            // live behind the compiler package; this side maps its plain
+            // outcome onto the wire errors and owns everything AFTER the
+            // artifact exists - contract extraction, the score proof, the
+            // examples - on the runtime sandbox
+            const outcome = yield* Effect.tryPromise({
+              try: () => compileFormula(source),
               catch: () => new FormulaCompileUnavailable(),
             })
-            if (checked.timedOut)
+            if (outcome.kind === 'source-too-large')
+              return yield* Effect.fail(new FormulaSourceTooLarge({ limit: outcome.limit }))
+            if (outcome.kind === 'source-refused') {
+              const finding = outcome.findings[0]!
               return yield* Effect.fail(
-                new FormulaExecutionLimitExceeded({ phase: 'typecheck', verdict: 'wall-clock' }),
-              )
-            if (checked.code !== 0) {
-              const parsed = parseDiagnostics(checked.output)
-              return yield* Effect.fail(
-                new FormulaTypecheckFailed({
-                  diagnostics: parsed.diagnostics,
-                  truncated: parsed.truncated,
+                new FormulaSourceRefused({
+                  reason: finding.reason,
+                  ...(finding.specifier === undefined ? {} : { specifier: finding.specifier }),
                 }),
               )
             }
-
-            const bundled = yield* Effect.tryPromise({
-              try: () => bundleFormula(source),
-              catch: (failure) =>
-                failure instanceof FormulaBundleRefused
-                  ? new FormulaSourceRefused({
-                      reason: 'import',
-                      specifier: failure.refusals[0]?.specifier ?? 'unknown',
-                    })
-                  : new FormulaBundleFailed({
-                      message: (failure instanceof Error ? failure.message : String(failure)).slice(
-                        0,
-                        2000,
-                      ),
-                    }),
-            })
-            const artifactBytes = Buffer.byteLength(bundled.artifact, 'utf8')
-            if (artifactBytes > MAX_COMPILED_ARTIFACT_BYTES)
+            if (outcome.kind === 'typecheck-timeout')
               return yield* Effect.fail(
-                new FormulaBundleFailed({
-                  message: `the compiled artifact is ${artifactBytes} bytes; the ceiling is ${MAX_COMPILED_ARTIFACT_BYTES}`,
+                new FormulaExecutionLimitExceeded({ phase: 'typecheck', verdict: 'wall-clock' }),
+              )
+            if (outcome.kind === 'typecheck-failed')
+              return yield* Effect.fail(
+                new FormulaTypecheckFailed({
+                  diagnostics: outcome.diagnostics,
+                  truncated: outcome.truncated,
                 }),
               )
+            if (outcome.kind === 'bundle-failed')
+              return yield* Effect.fail(new FormulaBundleFailed({ message: outcome.message }))
 
-            const artifactHash = sha256(bundled.artifact)
-            const contract = yield* extractContract(bundled.artifact, artifactHash)
+            const contract = yield* extractContract(outcome.artifact, outcome.runtimeSha256)
 
             // patterns are only worth checking on a structurally sound
             // input, and patternIssues itself is fail-closed on any shape:
@@ -629,8 +581,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
 
             const report = yield* runTests(
-              bundled.artifact,
-              artifactHash,
+              outcome.artifact,
+              outcome.runtimeSha256,
               inputSchema,
               outputSchema,
               tests,
@@ -638,21 +590,16 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             if (tests.length === 0 || report.some((row) => !row.passed))
               return yield* Effect.fail(new FormulaTestFailed({ report }))
 
-            const runtimeDigest = createHash('sha256')
-            for (const name of [...bundled.sdkFiles.keys()].sort()) {
-              runtimeDigest.update(name, 'utf8')
-              runtimeDigest.update(' ', 'utf8')
-              runtimeDigest.update(bundled.sdkFiles.get(name)!, 'utf8')
-            }
-
             return {
-              artifact: bundled.artifact,
+              artifact: outcome.artifact,
               inputSchema,
               outputSchema,
-              sourceSha256: sha256(source),
-              runtimeSha256: artifactHash,
+              sourceSha256: outcome.sourceSha256,
+              runtimeSha256: outcome.runtimeSha256,
               contractSha256: sha256(`${canonicalInput}|${canonicalOutput}`),
-              formulaRuntimeSha256: runtimeDigest.digest('hex'),
+              formulaRuntimeSha256: outcome.formulaRuntimeSha256,
+              typescriptVersion: outcome.typescriptVersion,
+              esbuildVersion: outcome.esbuildVersion,
               report,
             } satisfies CompiledFormula
           }),
@@ -964,12 +911,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     if (row.draftRevision !== expectedDraftRevision)
       return yield* Effect.fail(new FormulaDraftConflict({ draftRevision: row.draftRevision }))
 
-    // the long work runs outside any transaction, on the draft as read
+    // the long work runs outside any transaction, on the draft as read;
+    // the toolchain identities come back WITH the artifact, from whichever
+    // compiler process actually produced it
     const compiled = yield* compile(row.draftSourceTs, row.draftTests)
-    const compilerVersion = yield* Effect.tryPromise({
-      try: () => typescriptVersion(),
-      catch: () => new FormulaCompileUnavailable(),
-    })
 
     // what publication is idempotent over: the executable identity - source,
     // examples and the whole toolchain. A double click or a retried request
@@ -985,8 +930,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       [
         compiled.sourceSha256,
         sha256(JSON.stringify(row.draftTests)),
-        compilerVersion,
-        esbuildVersion,
+        compiled.typescriptVersion,
+        compiled.esbuildVersion,
         String(FORMULA_ABI_VERSION),
         compiled.formulaRuntimeSha256,
         // the full-artifact hash covers what the sdkFiles digest cannot: the
@@ -1065,8 +1010,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                   sourceSha256: compiled.sourceSha256,
                   runtimeSha256: compiled.runtimeSha256,
                   contractSha256: compiled.contractSha256,
-                  typescriptVersion: compilerVersion,
-                  esbuildVersion,
+                  typescriptVersion: compiled.typescriptVersion,
+                  esbuildVersion: compiled.esbuildVersion,
                   formulaAbiVersion: FORMULA_ABI_VERSION,
                   formulaRuntimeSha256: compiled.formulaRuntimeSha256,
                   quickjsEngineVersion: engine,

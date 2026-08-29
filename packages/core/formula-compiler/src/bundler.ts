@@ -19,7 +19,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { build, type Plugin as EsbuildPlugin } from 'esbuild'
-import { formulaPackageRoot, valueSchemaPackageRoot } from '@qualy/formula/staging'
+import { formulaPackageRoot, valueSchemaPackageRoot } from './staging.ts'
 
 const packageRoots: Record<string, string> = {
   formula: formulaPackageRoot,

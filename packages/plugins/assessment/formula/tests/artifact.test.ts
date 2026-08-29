@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Sandbox } from '@qualy/plugin-sandbox/service'
 import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { validateAtomicProfile, validateInputProfile } from '@qualy/value-schema'
-import { bundleFormula } from '../src/server/bundler.ts'
+import { bundleFormula } from '@qualy/formula-compiler'
 
 // The whole compiled surface, end to end: a bundled artifact runs inside the
 // real sandbox, hands its frozen contract out through __qualyContract, and

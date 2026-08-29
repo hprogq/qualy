@@ -1,0 +1,19 @@
+{
+  "name": "@qualy/formula-compiler",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@qualy/formula": "workspace:*",
+    "@qualy/value-schema": "workspace:*",
+    "esbuild": "catalog:",
+    "typescript": "catalog:",
+    "typescript6": "npm:typescript@6.0.3"
+  }
+}

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { FormulaBundleRefused, bundleFormula } from '../src/server/bundler.ts'
+import { FormulaBundleRefused, bundleFormula } from '../src/bundler.ts'
 
 const IDENTITY = `import { Schema, defineFormula } from '@qualy/formula'
 

@@ -19,6 +19,7 @@
     "@qualy/api-kit": "workspace:*",
     "@qualy/audit-contract": "workspace:*",
     "@qualy/formula": "workspace:*",
+    "@qualy/formula-compiler": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
@@ -36,9 +37,7 @@
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
-    "esbuild": "catalog:",
-    "kysely": "catalog:",
-    "typescript": "catalog:"
+    "kysely": "catalog:"
   },
   "devDependencies": {
     "@qualy/plugin-audit": "workspace:*",

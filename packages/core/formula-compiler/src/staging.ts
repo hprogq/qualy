@@ -8,15 +8,14 @@
  * names even though it executes nothing — an unchecked specifier is a read
  * of the host filesystem and a type-information oracle:
  *
- * 1. `moduleSpecifiers` (lexer.ts: the pinned TS7 scanner's token stream
- *    in union with raw-byte patterns) reports every syntax that can trigger
- *    module resolution; publication refuses anything but `@qualy/formula`
- *    before the compiler is ever spawned.
+ * 1. `sourcePolicy` (source-policy.ts: a real TS6 AST, parsed in memory
+ *    with nothing resolvable) refuses every syntax that can trigger module
+ *    resolution before the compiler is ever spawned.
  * 2. The staged workspace itself resolves almost nothing: `@qualy/formula`
  *    is a SYNTHETIC package exporting only ".", its `@qualy/value-schema`
  *    dependency nests INSIDE it, and the workspace root holds nothing else —
  *    so `./runtime`, `./staging` and the value-schema package are not even
- *    resolvable from a formula, whatever slips past a lexer.
+ *    resolvable from a formula, whatever slips past the policy.
  *
  * The workspace lives under the OS temp root, never inside the repository,
  * so nothing resolves by walking up into a monorepo, and the compiler
@@ -30,12 +29,11 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 const here = createRequire(import.meta.url)
 
-/** this package's root, and its one dependency's, resolved from here */
-export const formulaPackageRoot = fileURLToPath(new URL('..', import.meta.url))
+/** the sdk package's root, and its one dependency's, resolved as installed */
+export const formulaPackageRoot = path.dirname(here.resolve('@qualy/formula/package.json'))
 export const valueSchemaPackageRoot = path.dirname(here.resolve('@qualy/value-schema/package.json'))
 
 const FORMULA_TSCONFIG = {
@@ -68,10 +66,6 @@ const SYNTHETIC_MANIFEST = JSON.stringify(
   null,
   2,
 )
-
-export const TRIPLE_SLASH = /^\s*\/\/\/\s*<reference\b/m
-
-export { DYNAMIC_SPECIFIER, moduleSpecifiers, REGEX_LITERAL, UNTERMINATED_TEXT } from './lexer.ts'
 
 export const stageFormulaWorkspace = (source: string): string => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-formula-'))

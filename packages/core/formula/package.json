@@ -8,11 +8,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json",
-    "./runtime": "./src/runtime.ts",
-    "./staging": "./src/staging.ts"
+    "./runtime": "./src/runtime.ts"
   },
   "dependencies": {
-    "@qualy/value-schema": "workspace:*",
-    "typescript": "catalog:"
+    "@qualy/value-schema": "workspace:*"
   }
 }

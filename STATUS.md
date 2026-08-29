@@ -10470,3 +10470,33 @@ Fiber.await + interruptUnsafe 撒手),slam-the-door 对端从 20s hung 变 9ms t
 
 **验收**:sandbox 20/20、engine 33/33、formula 13/13、error-codes 门禁绿、
 `pnpm typecheck` 零错。
+
+## 进程隔离 C:编译器自成一包,fence 站上真 AST(2026-08-30)
+
+**@qualy/formula-compiler**(packages/core/formula-compiler)收编 staging(OS-temp workspace/
+synthetic manifest/tsc 驱动/诊断解析)、bundler(虚拟 namespace/WRAPPER/PRELUDE)、toolchain
+(tscEntry/版本身份),对外一个 `compileFormula(source): Promise<CompileOutcome>` 纯库
+(零 effect,宿主自管并发与错误穿衣)。**迁移硬闸门**:迁移前在 main 生成两个 fixture 的
+artifact sha 快照(identity 18982B / all-kinds 19427B),迁移后逐字节相同,golden 测试
+永久钉住且注明「不许重生成」。
+
+**source policy 迁真 AST**(规范 §11,用户裁决 TS6.0.3):`typescript6`(npm alias,
+仅 compiler 依赖)纯内存 createSourceFile + forEachChild,零 project/resolution/子进程;
+TS6 只答「这是什么语法」,类型正确性仍归 workspace TS7。规则:ImportDeclaration 仅
+`@qualy/formula`;export-from 拒;**import= 与 ImportType 一律拒(对 SDK 也拒,§12)**;
+动态 import 拒(字符串参报 specifier,其余 `<dynamic specifier>`);AnyKeyword 按语法拒
+(**字符串/注释里的 any/import 文本不再误伤——迁 AST 的主因,§13,行为放宽有测试钉**);
+suppression 只在注释 range 里找(scanner trivia 一遍);triple-slash 精确到编译器真会
+honor 的文件头位置(referencedFiles/typeReference/libReference/amdDependencies——
+旧全文正则连中部注释都拒,属过度保守,已修正);**语法不净先拒**:TS6 parseDiagnostics
+非空即转行列诊断走 TypecheckFailed(fence 不从猜测的恢复树上推理,作者体验反而更好)。
+token-era 的正则字面量禁令随歧义一起消失(真 parser 无此歧义)。
+
+`@qualy/formula` 回归**纯 SDK**:./staging 出口与 typescript 依赖删除;插件 formula 的
+esbuild/typescript 依赖除名(§47 的一半此刻已成立),compile 段变成 outcome→wire 映射,
+publish 的工具链身份改用**编译方随 artifact 报回的**(typescriptVersion/esbuildVersion),
+为 D 的远程 authoring 铺平。wire 语义零变化(reason 集不变,SOURCE_REFUSED 携 specifier)。
+
+测试:compiler 26(policy 12 + golden 3 + bundler 3 + workspace 7 + lsp 1)、
+formula 插件全套 44 含新 E2E(`import fs from 'node:fs'` 走完整发布 →
+SOURCE_REFUSED{import, node:fs})。`pnpm typecheck` 零错。

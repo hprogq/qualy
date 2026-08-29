@@ -251,6 +251,20 @@ describe.runIf(postgresAvailable)('the formula library', () => {
             library.publish(f.t, created.id, wrongAnswer.draftRevision, as),
           )
 
+          const smuggling = yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: wrongAnswer.draftRevision,
+              draftSourceTs: `import fs from 'node:fs'\n${IDENTITY}`,
+              draftTests: [{ name: 'three', input: { value: '3.00' }, expected: '3' }],
+            },
+            as,
+          )
+          const smuggled = yield* Effect.flip(
+            library.publish(f.t, created.id, smuggling.draftRevision, as),
+          )
+
           const stale = yield* Effect.flip(
             library.updateDraft(
               f.t,
@@ -259,7 +273,7 @@ describe.runIf(postgresAvailable)('the formula library', () => {
               as,
             ),
           )
-          return { untested, misTyped, failing, stale }
+          return { untested, misTyped, failing, smuggled, stale }
         }),
       ),
     )
@@ -268,6 +282,8 @@ describe.runIf(postgresAvailable)('the formula library', () => {
     expect(
       (outcome.misTyped as { diagnostics: readonly { code: string }[] }).diagnostics.length,
     ).toBeGreaterThan(0)
+    expect(outcome.smuggled._tag).toBe('ASSESSMENT_FORMULA_SOURCE_REFUSED')
+    expect(outcome.smuggled).toMatchObject({ reason: 'import', specifier: 'node:fs' })
     expect(outcome.failing._tag).toBe('ASSESSMENT_FORMULA_TEST_FAILED')
     expect(
       (outcome.failing as { report: readonly { passed: boolean; actual?: string }[] }).report,
