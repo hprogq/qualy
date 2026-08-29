@@ -39,6 +39,8 @@ import { formulaActions } from '../src/actions.ts'
 import { entities } from '../src/db/entities.ts'
 import { formulaApiGroup } from '../src/api.ts'
 import { formulaApiHandlers, layer as formulaLayer } from '../src/server/index.ts'
+import { formulaLanguageLayer } from '../src/server/language.ts'
+import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 
 // The layer the service suite cannot see: the HttpApi wire itself. Every
 // request here is the byte-for-byte shape the browser client sends - method,
@@ -133,11 +135,16 @@ beforeAll(async () => {
     AuthConfig,
     AuthConfig.of({ defaultTenantSlug: 'fx-http', sessionTtlSeconds: 3600, secureCookies: false }),
   )
-  const library = formulaLayer.pipe(
-    Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
-    Layer.provide(formulaAuthoringLocalLayer),
-    Layer.provideMerge(services),
-  )
+  const library = Layer.mergeAll(
+    formulaLayer.pipe(
+      Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
+      Layer.provide(formulaAuthoringLocalLayer),
+    ),
+    // the lsp endpoint's services: the language layer dials its socket
+    // lazily, so an assembly that never opens a session never connects
+    formulaLanguageLayer(),
+    formulaLspQuotaLayer,
+  ).pipe(Layer.provideMerge(services))
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(
       Layer.provide(

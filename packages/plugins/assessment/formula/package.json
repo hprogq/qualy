@@ -46,7 +46,9 @@
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/sandbox-authoring": "workspace:*",
     "@qualy/sandbox-runtime": "workspace:*",
-    "@types/react": "catalog:"
+    "@types/react": "catalog:",
+    "@types/ws": "^8.18.1",
+    "ws": "8.21.3"
   },
   "peerDependencies": {
     "react": "catalog:"

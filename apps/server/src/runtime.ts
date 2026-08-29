@@ -172,7 +172,19 @@ export async function makeApplication(
         // the request context
         middleware: (httpApp) =>
           withRequestContext(accessLog(logging.access)(httpMetrics(routeSpanNames(httpApp)))),
-      }).pipe(Layer.provide(NodeHttpServer.layer(() => instance, { port: config.port })))
+      }).pipe(
+        Layer.provide(
+          NodeHttpServer.layer(() => instance, {
+            port: config.port,
+            // the host's absolute websocket ceiling, above every protocol
+            // limit an application endpoint enforces for itself (the formula
+            // language bridge holds its own 1MiB); deflate stays off - LSP
+            // frames are small and a compression context per editor is not
+            // worth the memory
+            websocket: { maxPayload: 2 * 1024 * 1024, perMessageDeflate: false },
+          }),
+        ),
+      )
     }),
   ).pipe(Layer.provideMerge(nodeServerLayer), Layer.provide(ServerConfig.layer))
 

@@ -111,6 +111,15 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
     }).middleware(Authenticated),
   )
   .add(
+    // the language-service websocket: the response IS an upgraded
+    // connection, so the handler is raw - authentication and authorization
+    // still belong to this endpoint like any other
+    HttpApiEndpoint.get('formulaLsp', '/assessment/formula-functions/:functionId/lsp', {
+      params: Schema.Struct({ functionId: id }),
+      error: [FormulaFunctionNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.get('getFormulaFunction', '/assessment/formula-functions/:functionId', {
       params: Schema.Struct({ functionId: id }),
       success: Schema.Struct({

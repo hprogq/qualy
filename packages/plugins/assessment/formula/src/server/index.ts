@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { Context, Effect, Layer } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { sql } from 'kysely'
 import { Api } from '@qualy/api-kit/local'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
@@ -42,6 +43,8 @@ import {
   FormulaFunctionRestored,
 } from '../actions.ts'
 import { formulaApiGroup } from '../api.ts'
+import { FormulaLanguage } from './language.ts'
+import { FormulaLspQuota, bridgeSocket } from './lsp-bridge.ts'
 import { db } from './db.ts'
 import {
   FormulaBundleFailed,
@@ -205,6 +208,11 @@ type CompileRefusal =
   | FormulaCompileUnavailable
 
 interface FormulaLibraryShape {
+  readonly managedDraft: (
+    tenantId: string,
+    functionId: string,
+    as: Principal,
+  ) => Effect.Effect<{ readonly draftSourceTs: string }, FormulaFunctionNotFound>
   readonly listFunctions: (
     tenantId: string,
     page: { cursor?: string; limit?: string },
@@ -341,6 +349,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           allowed ? Effect.void : Effect.fail(new FormulaFunctionNotFound()),
         ),
       ),
+    )
+
+  // the language bridge's whole database need: the same visibility and
+  // manage gate every write uses, projected down to the draft source
+  const managedDraft = (tenantId: string, functionId: string, as: Principal) =>
+    managedRow(tenantId, functionId, as).pipe(
+      Effect.map((row) => ({ draftSourceTs: row.draftSourceTs })),
     )
 
   const runTests = (
@@ -1054,6 +1069,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   // every method runs with the database provided once, here: the bodies
   // above stay plain Orm-requiring effects, and nothing leaks the requirement
   const service: FormulaLibraryShape = {
+    managedDraft: (tenantId, functionId, as) => withDb(managedDraft(tenantId, functionId, as)),
     listFunctions: (tenantId, page, as) => withDb(listFunctions(tenantId, page, as)),
     createFunction: (tenantId, input, as) => withDb(createFunction(tenantId, input, as)),
     getFunction: (tenantId, functionId, as) => withDb(getFunction(tenantId, functionId, as)),
@@ -1190,6 +1206,67 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
             principal,
           ),
         }
+      }),
+    )
+    .handleRaw(
+      'formulaLsp',
+      Effect.fn('assessmentFormula.lsp.handler')(function* ({ params }) {
+        const request = yield* HttpServerRequest.HttpServerRequest
+
+        // a browser-initiated WebSocket carries the ambient qualy_session
+        // cookie regardless of the initiating page, so the ORIGIN header is
+        // the whole cross-site defense: absent, non-http(s) or pointing at a
+        // different host means someone else's page is speaking
+        const origin = request.headers['origin']
+        const host = request.headers['host']
+        const sameOrigin = (() => {
+          if (origin === undefined || host === undefined) return false
+          try {
+            const parsed = new URL(origin)
+            return (
+              (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+              parsed.host === host
+            )
+          } catch {
+            return false
+          }
+        })()
+        if (!sameOrigin) return HttpServerResponse.empty({ status: 403 })
+
+        const principal = yield* CurrentUser
+        const library = yield* FormulaLibrary
+        const draft = yield* library.managedDraft(
+          principal.tenantId,
+          params.functionId,
+          principal,
+        )
+
+        // one live language server per person, tenant-scoped; a second
+        // browser is refused rather than the first one torn down
+        const quota = yield* FormulaLspQuota
+        const admitted = yield* quota.acquire(`${principal.tenantId}:${principal.userId}`)
+        if (!admitted) return HttpServerResponse.empty({ status: 429 })
+
+        // open BEFORE upgrading: while this is still plain http, refusal can
+        // still be a status code instead of an instantly-closed socket
+        const language = yield* FormulaLanguage
+        const session = yield* language.open(draft.draftSourceTs).pipe(
+          Effect.catchTag('FormulaLanguageBusy', () =>
+            Effect.succeed(HttpServerResponse.empty({ status: 429 })),
+          ),
+          Effect.catchTag('FormulaLanguageUnavailable', () =>
+            Effect.succeed(HttpServerResponse.empty({ status: 503 })),
+          ),
+        )
+        if (HttpServerResponse.isHttpServerResponse(session)) return session
+
+        const socket = yield* request.upgrade.pipe(
+          Effect.catch(() => Effect.succeed(null)),
+        )
+        if (socket === null) return HttpServerResponse.empty({ status: 400 })
+
+        yield* bridgeSocket(socket, session)
+        return HttpServerResponse.empty()
       }),
     ),
 )

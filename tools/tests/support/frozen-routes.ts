@@ -62,6 +62,7 @@ export const FROZEN_ROUTES = [
   'GET /assessment/formula-functions',
   'POST /assessment/formula-functions',
   'GET /assessment/formula-functions/{functionId}',
+  'GET /assessment/formula-functions/{functionId}/lsp',
   'PATCH /assessment/formula-functions/{functionId}',
   'PUT /assessment/formula-functions/{functionId}/status',
   'POST /assessment/formula-functions/{functionId}/versions',

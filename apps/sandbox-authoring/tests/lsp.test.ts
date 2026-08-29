@@ -27,14 +27,30 @@ const socketPath = external
 const mainOf = (): string =>
   path.join(path.dirname(new URL('.', import.meta.url).pathname), 'src', 'main.ts')
 
-const lspProcessCount = (): number => {
-  const out = execFileSync('ps', ['-ax', '-o', 'command'], { encoding: 'utf8' })
-  // bin/tsc is a js launcher that execs the NATIVE binary; the real process
-  // path goes through the platform package (measured)
-  return out
-    .split('\n')
-    .filter((line) => line.includes('@typescript+typescript-') && line.includes('--lsp')).length
+// ATTRIBUTED to this suite's authoring process by parent pid: parallel
+// suites (lsp-smoke, the bridge suite) legitimately run language servers of
+// their own, so a machine-wide count proves nothing and a machine-wide kill
+// hits a neighbour. bin/tsc is a js launcher that execs the NATIVE binary;
+// the real process path goes through the platform package (measured).
+const ownedLspPids = (): Set<number> => {
+  if (child?.pid === undefined) return new Set()
+  const out = execFileSync('ps', ['-ax', '-o', 'pid=,ppid=,command='], { encoding: 'utf8' })
+  return new Set(
+    out
+      .split('\n')
+      .map((line) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line))
+      .filter(
+        (match): match is RegExpExecArray =>
+          match !== null &&
+          Number(match[2]) === child?.pid &&
+          match[3]!.includes('@typescript+typescript-') &&
+          match[3]!.includes('--lsp'),
+      )
+      .map((match) => Number(match[1])),
+  )
 }
+
+const lspProcessCount = (): number => ownedLspPids().size
 
 const lspWorkspaceCount = (): number =>
   fs.readdirSync(os.tmpdir()).filter((entry) => entry.startsWith('qualy-lsp-')).length
@@ -626,18 +642,12 @@ describe.sequential('the hostile author', () => {
 
   it('survives its language server dying underneath it', async () => {
     if (external) return // the container hides pids from the host
-    const pidsOf = (): Set<number> =>
-      new Set(
-        execFileSync('ps', ['-ax', '-o', 'pid,command'], { encoding: 'utf8' })
-          .split('\n')
-          .filter((line) => line.includes('@typescript+typescript-') && line.includes('--lsp'))
-          .map((line) => Number(line.trim().split(/\s+/)[0])),
-      )
+    const pidsOf = ownedLspPids
     const before = pidsOf()
     const session = await openSession(FIXTURE)
     await initialize(session, FIXTURE)
-    // the set DIFFERENCE, not the newest row: parallel suites (lsp-smoke)
-    // spawn their own servers and ps orders nothing
+    // the set DIFFERENCE, not the newest row: our authoring may hold other
+    // live sessions and ps orders nothing
     const born = [...pidsOf()].filter((pid) => !before.has(pid))
     expect(born.length).toBeGreaterThan(0)
     process.kill(born[0]!, 'SIGKILL')
@@ -662,12 +672,8 @@ describe.sequential('the hostile author', () => {
       expect(openedIds.length).toBe(8)
       expect(refused).toBe(8)
       if (!external) {
-        const live = execFileSync('ps', ['-ax', '-o', 'command'], { encoding: 'utf8' })
-          .split('\n')
-          .filter(
-            (line) => line.includes('@typescript+typescript-') && line.includes('--lsp'),
-          ).length
-        expect(live).toBeLessThanOrEqual(8 + 1) // +1 tolerates a parallel suite's server
+        // counted against OUR authoring process only, so the ceiling is exact
+        expect(lspProcessCount()).toBeLessThanOrEqual(8)
       }
       const overflow = await Effect.runPromiseExit(
         client.OpenLsp({ initialSource: 'export default 1' }),
@@ -686,13 +692,7 @@ describe.sequential('the hostile author', () => {
   it('returns from close only once the process is dead and the workspace gone', async () => {
     if (external) return // pids and tmp directories are the container's own
     const workspacesBefore = lspWorkspaceCount()
-    const pidsOf = (): Set<number> =>
-      new Set(
-        execFileSync('ps', ['-ax', '-o', 'pid,command'], { encoding: 'utf8' })
-          .split('\n')
-          .filter((line) => line.includes('@typescript+typescript-') && line.includes('--lsp'))
-          .map((line) => Number(line.trim().split(/\s+/)[0])),
-      )
+    const pidsOf = ownedLspPids
     const before = pidsOf()
     const session = await openSession(FIXTURE)
     await initialize(session, FIXTURE)

@@ -10724,3 +10724,69 @@ workspace 圈定的是语言服务器可导航的 project 面,OS 边界仍是 au
 **验收**:host 18/18(uris 5 + lsp 13);hardened 容器 parity **13/13**(重建镜像);
 `pnpm typecheck` 零错;`pnpm test` 1096 passed | 17 skipped;`pnpm test:browser` 227
 (基线不变)。**F2 仍 HOLD,等复核。**
+
+## F1.1.1:结构守卫与 fail-closed 名额(2026-08-30)
+
+F1.1 复核通过后的最后收口(commit e8e9ea43):
+
+- **SendLsp 的 JSON 结构门**:`isJsonRecord` 导出并站在六条路径上——`null`/`[]`/`"x"`/
+  `1`/`true` 与 `{params:{textDocument:null}}` 全部走 typed LspMalformedFrame,不再有
+  任何一种畸形帧能变成 defect 打穿 authoring 进程(lsp.test 六样例黑盒钉死,session
+  在拒绝后仍存活)。
+- **server frame 同一扇门**:tsc 回来的帧过同一结构守卫,畸形 server frame 关 session
+  而不是在裸 stdout 回调里 throw(整个回调 try/catch 兜底)。
+- **SIGKILL 后未确认死亡 = 名额不归还**:closeSession 的 SIGKILL 后再等 3s,exit 仍未
+  发生则 permit 不释放并记录 poisoned slot——宁可少一个名额,不把「可能还活着的 tsc」
+  当成空位(Close 本身不阻塞,fail-closed 只作用于 permit)。
+
+## CI 时限修复(2026-08-30)
+
+两轮 CI 失败全是 2 核冷 runner 时限(commits b51a9e5f、54b436aa):期待完成的 probe
+一律 {soft 5s, hard 10s}(25ms soft 是评分设计值,不是测试等待值);发布路径
+extractContract/runTests 使用 publication-sized deadlines(2s/10s);tsc 墙钟 15s→30s;
+remote parity 串行避免双发布打满 2 核。push 后 `gh run watch` 确认全绿。
+
+## F2:Effect 原生 WebSocket 语言桥(2026-08-30)
+
+浏览器到 authoring sandbox 的 LSP 通路,整条走 rc.111 内建设施,零新依赖、零新端口、
+零 ticket:
+
+- **端点**:`GET /assessment/formula-functions/:functionId/lsp`(frozen-routes +1),
+  `.middleware(Authenticated)` 与所有端点同链;handleRaw 内 `yield* request.upgrade`
+  (vendored NodeHttpServer.ts:255-290:upgrade socket 是 request scope 的
+  acquireRelease,handler fiber 归属 server scope——生命周期天然单源)。同源 WebSocket
+  自带 HttpOnly qualy_session,无 ticket、无 query secret、无自写 cookie parser。
+- **Origin gate**(Cross-Site WebSocket Hijacking):Origin 缺失拒、仅 http:/https:、
+  `new URL(origin).host === Host`,不符 403;匿名/坏 cookie 401;无权限与不存在同为
+  404(复用 managedRow 语义,新窄方法 `FormulaLibrary.managedDraft` 只投影
+  draftSourceTs)。
+- **FormulaLanguage service**(server/language.ts):FormulaAuthoring 的 sibling,
+  内部持 sandbox sessionId 与严格递增 sequence,route 与浏览器永不见二者;transport
+  收口抽为 server/transport.ts 的 `tameTransport` 与 authoring 共用。
+- **桥**(server/lsp-bridge.ts):浏览器 wire = 纯 LSP json-rpc 文本帧。inbound 走
+  bounded(64) serial queue——runRaw 回调保持同步路径(vendored Socket.ts:606+:
+  返回 Effect 会进无序 FiberSet,同步返回才保序),单 consumer 按到达序 SendLsp;
+  outbound 单 writer(Stream.runForEach)。close codes:binary→1003、>1MiB→1009、
+  policy refusal→1008(reason 稳定短词)、queue 洪泛→1013、authoring 死→1011、
+  正常→1000。整桥一个 Scope:任一侧死亡收口到同一 finalization(CloseLsp+quota 释放
+  +ws.close 全是 scope finalizer)。
+- **配额**:per-user 一席(key=`tenantId:userId`),Layer-owned Ref(formulaLspQuotaLayer),
+  第二连接 429 不踢旧;连接内不做 auth/RBAC 轮询。
+- **宿主围栏**:NodeHttpServer websocket options `{maxPayload: 2MiB,
+  perMessageDeflate: false}`(应用层 1MiB 之上的绝对上限;官方测试证 options 转发);
+  Vite proxy 抽为可测的 `dev/proxy.ts`,api 前缀 `ws: true`、/health 不升级,
+  dev-proxy.test 冻结该形状。
+- **验收**(lsp-bridge.test.ts,真 PG + 真 HTTP + 真 authoring 进程,ws@8.21.3 仅
+  devDep 与 platform-node-shared 精确同版):host **12/12**——真 cookie handshake、
+  completion(`Schema.` 处含 decimal)、hover、TS pull diagnostics(干净空/类型错非空)、
+  policy push diagnostics(禁 import 即报)、20 连发 burst 全响应零 SequenceRejected、
+  同人第二连接 429、1003/1009/1008 逐一触发、**terminate 后 activeLspSessions 快速
+  归零且席位可复用**(第 18 条 request-scope 实测门禁,通过)、SIGKILL authoring →
+  客户端 1011 + 席位释放(503 而非 429)+ 重启后同地址恢复、backend shutdown 终结
+  所有会话。容器形态(`QUALY_SANDBOX_PARITY_EXTERNAL=1`,真容器 authoring)**11/11**
+  (kill 例按设计跳过);容器 publish parity 1/1。
+- **顺手修一处并行脆弱**:lsp.test 的进程计数与 kill 目标改为按 ppid 归属到本套件的
+  authoring 进程——bridge 套件并行起自己的语言服务器后,全机 ps 计数会误报超限、
+  差分 kill 可能误杀邻居;归属后 ceiling 断言收紧回恰好 ≤8。
+- **验收**:`pnpm typecheck` 零错;`pnpm test` 1113 passed | 17 skipped(166 文件);
+  `pnpm test:browser` 227 passed(基线不变)。

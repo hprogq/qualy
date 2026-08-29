@@ -11,6 +11,8 @@ import { formulaActions } from './actions.ts'
 import { formulaApiGroup } from './api.ts'
 import { formulaApiHandlers, layer as libraryLayer } from './server/index.ts'
 import { formulaAuthoringLayer } from './server/authoring.ts'
+import { formulaLanguageLayer } from './server/language.ts'
+import { formulaLspQuotaLayer } from './server/lsp-bridge.ts'
 import { Layer } from 'effect'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 
@@ -40,7 +42,13 @@ const plugin = Plugin.define(
   }),
   Access.permissions('assessment-formula', permissions),
   Audit.actions('assessment-formula', formulaActions),
-  Plugin.layer(libraryLayer.pipe(Layer.provide(formulaAuthoringLayer()))),
+  Plugin.layer(
+    Layer.mergeAll(
+      libraryLayer.pipe(Layer.provide(formulaAuthoringLayer())),
+      formulaLanguageLayer(),
+      formulaLspQuotaLayer,
+    ),
+  ),
   Api.group(formulaApiGroup, formulaApiHandlers),
   Ui.page({
     id: 'assessment-formula/list',
