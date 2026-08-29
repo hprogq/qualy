@@ -281,13 +281,36 @@ const acceptServices = async (services: Map<string, Child>) => {
  * frequent and re-walking every plugin tree is not free.
  */
 let watching = ''
+
+/**
+ * Start watching, and do not return until it really is.
+ *
+ * `chokidar.watch` returns before its first walk has finished, and with
+ * `ignoreInitial` a file saved DURING that walk is read as something that was
+ * already there - so the save is dropped and nothing says so. Announcing
+ * "watching for changes" the moment the call returned made that window a lie:
+ * on a cold tree it is seconds, and every save inside it is one the developer
+ * makes and the supervisor ignores.
+ *
+ * Measured: a file written in the same tick the watcher was created produces
+ * no event at all, while the same write after `ready` produces one.
+ */
+const beginWatching = async (): Promise<FSWatcher> => {
+  const next = watch(plan(), saw, (message) => say(message, 'Warn'))
+  await new Promise<void>((resolve) => next.once('ready', () => resolve()))
+  watching = watchTargets(plan()).join('|')
+  return next
+}
+
 const resyncWatcher = async (): Promise<void> => {
   if (watcher === null) return
-  const next = watchTargets(plan()).join('|')
-  if (next === watching) return
-  watching = next
-  await watcher.close()
-  watcher = watch(plan(), saw, (message) => say(message, 'Warn'))
+  if (watchTargets(plan()).join('|') === watching) return
+  // the new one is watching before the old one stops, because the direction
+  // that costs is a save nobody saw; a save both of them see is one merged
+  // change in a queue that already merges
+  const previous = watcher
+  watcher = await beginWatching()
+  await previous.close()
 }
 
 /** a backend and, if asked, the services its own topology declares */
@@ -475,6 +498,5 @@ const saw = (action: Action | 'restart-host', files: readonly string[]) => {
 }
 
 await stageWorld('session')
-watching = watchTargets(plan()).join('|')
-watcher = watch(plan(), saw, (message) => say(message, 'Warn'))
+watcher = await beginWatching()
 say('watching for changes')

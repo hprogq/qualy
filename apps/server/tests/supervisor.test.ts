@@ -77,6 +77,10 @@ beforeAll(() => {
     path.join(webRoot, 'vite.config.ts'),
     `export default { server: { port: ${String(webPort)} } }\n`,
   )
+  // so the config is read as the ESM it is written in; without a package.json
+  // the nearest one decides, and vite warned that a future major will load it
+  // natively and fail rather than warn
+  fs.writeFileSync(path.join(webRoot, 'package.json'), '{ "type": "module" }\n')
 
   triggerRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-supervisor-plugin-'))
   fs.mkdirSync(path.join(triggerRoot, 'src/server'), { recursive: true })

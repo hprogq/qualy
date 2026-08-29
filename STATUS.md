@@ -10076,5 +10076,12 @@ telemetry 剩下的两类事情——进 VPC 后的环境复验、TMP/Grafana �
 (临时包 + 链进宿主 node_modules,而 node_modules 从不被监听,所以这条链对所有 watcher 都不可见)。
 被测的东西仍然全是真的:supervisor、watcher、staging 协议、Vite 自己的生命周期。
 
+**这次隔离修完,CI 又逼出一个真实缺陷**:supervisor 在 `chokidar.watch()` 一返回就宣布「watching for changes」,
+而那时**首轮扫描还没结束**;配上 `ignoreInitial`,扫描期内的保存会被当成「本来就在那儿」而**静默丢弃**。
+本机扫描 48ms 看不出来,Linux 冷树上那个窗口是秒级——CI 的写入正好落在里面,于是那次重载永远没来。
+实测证据:与创建 watcher 同一 tick 写文件 → 事件**从未出现**;`ready` 之后同样的写入 → 正常出现。
+现在只有 watcher 真的就绪才宣布,`resyncWatcher` 同样等就绪(且先起新的再关旧的——代价方向是漏掉保存,
+不是重复保存)。这不只是测试问题:开发者在启动窗口里的保存本来就会被吞掉,而且什么都不说。
+
 **验收**:`pnpm typecheck` 零错;`pnpm test` **910 passed | 17 skipped**(唯一失败即上面那条 5173);
 `pnpm test:browser` **227 passed**;prettier 通过。
