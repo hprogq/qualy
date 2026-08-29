@@ -53,13 +53,13 @@ describe('the worker pool', () => {
     )
     if (!Result.isFailure(outcome)) throw new Error('expected the watchdog')
     expect(outcome.failure).toMatchObject({ _tag: 'SandboxTimeout', phase: 'hard' })
-    const healed = await run(invocation('globalThis.ok = () => 1', 'ok'))
-    expect(Result.isSuccess(healed) && healed.success).toBe(1)
+    const healed = await run(invocation('globalThis.ok = () => "alive"', 'ok'))
+    expect(Result.isSuccess(healed) && healed.success).toBe('alive')
   }, 30_000)
 
   it('queues beyond the pool size and completes everything', async () => {
     const artifact =
-      'globalThis.spinFor = (ms) => { let n = 0; for (let i = 0; i < 2_000_000; i++) n += i; return n > 0 }'
+      'globalThis.spinFor = () => { let n = 0; for (let i = 0; i < 2_000_000; i++) n += i; return n > 0 ? "spun" : "idle" }'
     const results = await Promise.all(
       Array.from({ length: 6 }, () =>
         run({
@@ -72,7 +72,7 @@ describe('the worker pool', () => {
       ),
     )
     for (const outcome of results) {
-      expect(Result.isSuccess(outcome) && outcome.success).toBe(true)
+      expect(Result.isSuccess(outcome) && outcome.success).toBe('spun')
     }
   }, 30_000)
 
@@ -83,14 +83,14 @@ describe('the worker pool', () => {
     )
     const first = await Effect.runPromise(
       Effect.flatMap(Sandbox, (sandbox) =>
-        Effect.result(sandbox.invoke(invocation('globalThis.ok = () => 1', 'ok'))),
+        Effect.result(sandbox.invoke(invocation('globalThis.ok = () => "one"', 'ok'))),
       ).pipe(Effect.provide(ownContext)),
     )
     expect(Result.isSuccess(first)).toBe(true)
     await Effect.runPromise(Scope.close(ownScope as Scope.Closeable, Exit.void))
     const afterClose = await Effect.runPromise(
       Effect.flatMap(Sandbox, (sandbox) =>
-        Effect.result(sandbox.invoke(invocation('globalThis.ok = () => 1', 'ok'))),
+        Effect.result(sandbox.invoke(invocation('globalThis.ok = () => "one"', 'ok'))),
       ).pipe(Effect.provide(ownContext)),
     )
     if (!Result.isFailure(afterClose)) throw new Error('expected a refusal after close')

@@ -33,6 +33,14 @@ import {
   type SandboxLimits,
 } from './protocol.ts'
 
+/**
+ * The sandbox ABI: how an artifact is entered (a global identifier called
+ * with json-shaped arguments through engine handles) and how it answers
+ * (a single string, length-checked in the guest). Frozen into published
+ * formula versions; bump only when this calling convention changes.
+ */
+export const SANDBOX_ABI_VERSION = 1
+
 export interface SandboxInvocation {
   /** the complete, self-contained program; nothing else will be resolvable */
   readonly artifact: string
@@ -47,7 +55,7 @@ export interface SandboxInvocation {
 export class Sandbox extends Context.Service<
   Sandbox,
   {
-    readonly invoke: (invocation: SandboxInvocation) => Effect.Effect<JsonValue, SandboxError>
+    readonly invoke: (invocation: SandboxInvocation) => Effect.Effect<string, SandboxError>
     /** the engine's identity, for callers that freeze toolchains into records */
     readonly engine: string
   }
@@ -75,10 +83,10 @@ const refuseOversize = (
   return undefined
 }
 
-const settled = (response: InvokeResponse): Effect.Effect<JsonValue, SandboxError> => {
+const settled = (response: InvokeResponse): Effect.Effect<string, SandboxError> => {
   switch (response.verdict) {
     case 'completed':
-      return Effect.succeed(response.value ?? null)
+      return Effect.succeed(response.value ?? '')
     case 'interrupted':
       return Effect.fail(new SandboxTimeout({ phase: 'soft' }))
     case 'out-of-memory':
@@ -95,6 +103,28 @@ const settled = (response: InvokeResponse): Effect.Effect<JsonValue, SandboxErro
         }),
       )
   }
+}
+
+const LIMIT_CEILINGS: SandboxLimits = Object.freeze({
+  softDeadlineMs: 60_000,
+  hardDeadlineMs: 300_000,
+  memoryBytes: 512 * 1024 * 1024,
+  stackBytes: 8 * 1024 * 1024,
+  artifactBytes: 8 * 1024 * 1024,
+  inputBytes: 8 * 1024 * 1024,
+  outputBytes: 8 * 1024 * 1024,
+})
+
+const limitIssue = (limits: SandboxLimits): string | undefined => {
+  for (const key of Object.keys(LIMIT_CEILINGS) as (keyof SandboxLimits)[]) {
+    const value = limits[key]
+    if (!Number.isSafeInteger(value) || value <= 0) return `${key} must be a positive integer`
+    if (value > LIMIT_CEILINGS[key]) return `${key} exceeds ${LIMIT_CEILINGS[key]}`
+  }
+  // soft above hard is legal on purpose: the two gates are independent, and
+  // a caller may trust only the host watchdog by pushing the engine's own
+  // interrupt out of reach
+  return undefined
 }
 
 const lost = (problem: PoolProblem): SandboxError =>
@@ -116,8 +146,12 @@ export const sandboxLayer = (options?: {
         ),
         (acquired) => Effect.promise(() => acquired.shutdown()),
       )
-      const invoke = (invocation: SandboxInvocation): Effect.Effect<JsonValue, SandboxError> => {
+      const invoke = (invocation: SandboxInvocation): Effect.Effect<string, SandboxError> => {
         const limits: SandboxLimits = { ...DEFAULT_LIMITS, ...invocation.limits }
+        // an infra service keeps its own invariants: a caller passing a
+        // nonsensical limit is a defect in the caller, not a soft failure
+        const wrong = limitIssue(limits)
+        if (wrong !== undefined) return Effect.die(new Error(`sandbox limits: ${wrong}`))
         if (!ENTRYPOINT.test(invocation.entrypoint))
           return Effect.fail(
             new SandboxEvalFailed({

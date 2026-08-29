@@ -97,18 +97,22 @@ export class WorkerPool {
 
   async #settle(slot: Slot, pending: Pending): Promise<void> {
     let watchdog: NodeJS.Timeout | undefined
+    let readyTimer: NodeJS.Timeout | undefined
     try {
       // a worker that never reports ready (a broken wasm load that hangs
-      // rather than throwing) must not wedge the queue forever
+      // rather than throwing) must not wedge the queue forever - and once it
+      // IS ready, the timer must not keep the process alive either
       await Promise.race([
         slot.ready,
-        new Promise<never>((_, reject) =>
-          setTimeout(
+        new Promise<never>((_, reject) => {
+          readyTimer = setTimeout(
             () => reject({ kind: 'worker-lost', reason: 'the worker never became ready' }),
             15_000,
-          ),
-        ),
+          )
+          readyTimer.unref()
+        }),
       ])
+      if (readyTimer !== undefined) clearTimeout(readyTimer)
       const response = await new Promise<InvokeResponse>((resolve, reject) => {
         const onMessage = (message: WorkerMessage) => {
           if ('id' in message && message.id === pending.request.id) {

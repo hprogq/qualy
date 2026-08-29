@@ -54,7 +54,9 @@ export type WorkerVerdict =
 export interface InvokeResponse {
   readonly id: number
   readonly verdict: WorkerVerdict
-  readonly value?: JsonValue
+  /** the entrypoint's answer - the contract is a string, length-checked
+   * inside the guest before it ever crosses the WASM boundary */
+  readonly value?: string
   readonly problem?: { readonly name: string; readonly message: string }
   /** the engine exhausted a resource and this worker must be replaced */
   readonly retire?: true

@@ -190,6 +190,36 @@ for (const variant of variants) {
       })
     })
 
+    it('keeps the intrinsics the trusted wrapper relies on, whatever the guest does', async () => {
+      // a formula's top-level code runs BEFORE the wrapper uses JSON, Math or
+      // Object; without the bootstrap lockdown each of these lines would swap
+      // the function the trusted side is about to call
+      const value = await valueOf(
+        invocation(
+          `try { JSON.parse = () => { throw new Error('poisoned') } } catch {}
+           try { JSON.stringify = () => '"poisoned"' } catch {}
+           try { Math.max = () => 0 } catch {}
+           try { Number.isSafeInteger = () => false } catch {}
+           try { Object.freeze = (x) => x } catch {}
+           try { String.prototype.padStart = () => 'poisoned' } catch {}
+           globalThis.score = (input) => JSON.stringify({ n: JSON.parse(input).n * 2, m: Math.max(1, 5) })`,
+          'score',
+          ['{"n":21}'],
+        ),
+      )
+      expect(JSON.parse(value as string)).toEqual({ n: 42, m: 5 })
+    })
+
+    it('refuses a non-string answer: the contract is one bounded string', async () => {
+      const failure = await failureOf(invocation('globalThis.f = () => ({ big: true })', 'f'))
+      expect(failure).toMatchObject({
+        _tag: 'SandboxEvalFailed',
+        message: 'the entrypoint must return a string',
+      })
+      const numeric = await failureOf(invocation('globalThis.g = () => 42', 'g'))
+      expect(numeric._tag).toBe('SandboxEvalFailed')
+    })
+
     it('refuses a non-identifier entrypoint outright', async () => {
       const failure = await failureOf(invocation('globalThis.f = () => 1', 'f(); spin'))
       expect(failure._tag).toBe('SandboxEvalFailed')
