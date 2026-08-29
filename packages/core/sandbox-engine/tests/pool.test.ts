@@ -42,7 +42,12 @@ describe('the worker pool', () => {
       (problem: PoolProblem) => problem,
     )
     expect(wedged).toEqual({ kind: 'hard-timeout', reason: 'watchdog' })
-    const healed = await run(pool, 'globalThis.ok = () => "alive"', 'ok')
+    // generous limits: this probe proves RECOVERY, and a cold ci runner
+    // can miss a 25ms soft deadline on a trivial eval
+    const healed = await run(pool, 'globalThis.ok = () => "alive"', 'ok', {
+      softDeadlineMs: 5_000,
+      hardDeadlineMs: 10_000,
+    })
     expect(healed.verdict).toBe('completed')
     expect(healed.value).toBe('alive')
   }, 30_000)

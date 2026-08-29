@@ -52,7 +52,14 @@ const failureOf = async (request: SandboxInvocation): Promise<SandboxError> => {
 
 describe('the sandbox service', () => {
   it('answers through the engine and reports its identity', async () => {
-    const outcome = await run(invocation('globalThis.ok = () => "alive"', 'ok'))
+    const outcome = await run(
+      // generous limits on purpose: this proves the wiring, not the 25ms
+      // default's adequacy, and ci runners are slow and cold
+      invocation('globalThis.ok = () => "alive"', 'ok', {
+        softDeadlineMs: 5_000,
+        hardDeadlineMs: 10_000,
+      }),
+    )
     expect(Result.isSuccess(outcome) && outcome.success).toBe('alive')
     const engine = await Effect.runPromise(
       Effect.flatMap(Sandbox, (sandbox) => sandbox.engine).pipe(Effect.provide(context)),

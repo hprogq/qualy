@@ -110,14 +110,26 @@ describe('local/remote parity', () => {
         'globalThis.ok = (input) => JSON.stringify({ doubled: JSON.parse(input).n * 2 })',
         'ok',
         ['{"n":21}'],
+        // cases that expect the engine to FINISH get generous limits: the
+        // parity claim is about answers, not a cold ci runner's clock
+        { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 },
       ),
     ],
     [
       'a thrown evaluation',
-      invocation('globalThis.f = () => { throw new RangeError("policy says no") }', 'f'),
+      invocation('globalThis.f = () => { throw new RangeError("policy says no") }', 'f', [], {
+        softDeadlineMs: 5_000,
+        hardDeadlineMs: 10_000,
+      }),
     ],
     ['a soft timeout', invocation('globalThis.spin = () => { for (;;) {} }', 'spin')],
-    ['an oversized result', invocation("globalThis.wide = () => 'x'.repeat(100000)", 'wide')],
+    [
+      'an oversized result',
+      invocation("globalThis.wide = () => 'x'.repeat(100000)", 'wide', [], {
+        softDeadlineMs: 5_000,
+        hardDeadlineMs: 10_000,
+      }),
+    ],
     [
       'a mismatched artifact hash',
       {
@@ -172,6 +184,7 @@ describe('the transport frame budget', () => {
       artifactHash: hash(ok),
       entrypoint: 'ok',
       arguments: [],
+      limits: { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 },
     })
     expect(Result.isSuccess(after) && after.success).toBe('alive')
   }, 30_000)
@@ -322,6 +335,7 @@ describe('a hostile or absent peer', () => {
                   artifactHash: hash(ok),
                   entrypoint: 'ok',
                   arguments: [],
+                  limits: { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 },
                 }),
               ),
             ).pipe(Effect.provide(context)),
