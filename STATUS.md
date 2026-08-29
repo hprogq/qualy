@@ -10533,3 +10533,23 @@ engine、ABI、testReport)、**publishFingerprint 逐字节相等**、import 拒
 
 **验收**:parity 绿;formula+sandbox 31/31;tools/tests 全部 31 文件 185 例绿;
 `pnpm typecheck` 零错。
+
+## 进程隔离 E:OrbStack UDS 闸门失败,停工待裁决(2026-08-30)
+
+按裁决,E 的第一件事是 host↔container 的 bind-mount UDS spike。**实测失败,双向都不通**:
+
+1. 容器(node:24-alpine)在 bind 目录里 listen,socket 文件节点在 host 侧可见
+   (srwxrwxrwx),容器内自连 roundtrip 正常——server 与挂载本身都没问题;
+2. **host → container connect:ECONNREFUSED**;
+3. **container → host(host 侧 listen 同一 bind 目录):ECONNREFUSED**;
+4. 顺带实测出 macOS 的 UDS 路径 104 字节上限(超长路径 connect EINVAL)——
+   `.qualy/run/...` 布局 60 字节,安全。
+
+根因:OrbStack 的文件共享同步文件节点,但不桥接 socket 的连接语义;上游
+issue #62「Support for bind mounting Unix sockets」是**至今开放的 feature request**,
+#1185 另记录 1.6.0 起连 socket 文件挂载都报错。不是配置错误,是平台能力缺失。
+
+按裁决未做任何降级(不改 TCP、不给容器开 network),停工。影响面:仅 macOS 开发机的
+容器形态;Linux(生产/CI)的 bind-mount UDS 是原生能力,不受影响。A~D 四个阶段已全部
+完成并各自提交(49247346 / 9ee324bb / 8d4874c0 / 321a7f6b),remote publish parity 在
+host 进程形态下全绿——安全边界的代码与测试全部就位,受阻的只是 macOS 上的容器包装。
