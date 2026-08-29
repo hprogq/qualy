@@ -10805,3 +10805,45 @@ remote parity 串行避免双发布打满 2 核。push 后 `gh run watch` 确认
   4 条 redundantOrDie 等),exit code 实测不受影响(`pnpm typecheck` 仍 0),
   effect-diagnostics 门禁 2/2;政策段落已同步 docs/agents/effect-source-policy.md。
 - **CI**:actions/cache@v4(Node 20 目标,runner 已强制告警)→ @v6(当前线)。
+
+## F3:Monaco 基础集成(2026-08-30)
+
+Formula 编辑器从 `<textarea>` 换成 Monaco 0.56.0(精确 pin),浏览器 LSP 面自写薄适配,
+零新框架:不用 monaco-languageclient、不用 @codingame/monaco-vscode-api、不用 alpha 的
+MonacoLspClient、浏览器无 Effect RPC。
+
+- **Monaco 装载**(client/monaco-setup.ts,实证 0.56 exports):`monaco-editor/editor`
+  (公共 API)+ `features/register.all`(纯编辑器行为,实测零 languages 引用)+
+  `languages/definitions/typescript/register`(仅 tokenizer);worker 只给 editor
+  worker,`MonacoEnvironment.getWorker` 对 typescript/javascript label **抛错**——
+  第二编译器围栏在运行时也守。
+- **薄适配四层**(client/formula-lsp/):connection(原生 WebSocket + JSON-RPC id map、
+  10s 超时、断线全拒、generation 隔代、0.5s→10s capped 退避 + jitter、dispose 后永不
+  重连、不发 $/cancelRequest);document(唯一 model=qualy-formula:///formula.ts、
+  full-text didChange 150ms debounce、诊断 pull 350ms debounce、**provider 请求前
+  syncNow() flush**——F2 的有序队列保证 server 先见 change 再见请求;handshake =
+  initialize(真实 capabilities:utf-16、snippet、versionSupport,不吹牛)→
+  initialized → **didOpen(当前 buffer,重连后覆盖服务端旧 draft)**→ 首次 pull);
+  conversions(全部 0-based↔1-based 集中一处,hover/文档 Markdown 一律
+  isTrusted:false + supportHtml:false);monaco(providers 按 {language, scheme}
+  过滤,不截获他插件的 TS model;**双 marker owner**:qualy-formula/typescript
+  只由 pull 更新、qualy-formula/policy 只由 push 更新,双向 stale 防护按版本拒绝)。
+- **页面**:FormulaCodeEditor 经 React.lazy 独立 chunk;semi-controlled(普通
+  rerender 不 setValue,只有 discard/clean reseed 才替换 buffer,undo/光标保留);
+  archived → readOnly;连接状态只说 connecting/ready/unavailable(浏览器拿不到
+  pre-upgrade HTTP 状态,不伪造);LSP 不可用不禁用编辑/保存/发布;chunk 下载期
+  Suspense fallback 有 Spinner + 文案。languageUrl 经 `HttpApiClient.urlBuilder`
+  从契约派生(vendored HttpApiClient.ts:648),无手拼路径。
+- **门禁**:browser-graph 新增 monaco describe——页面 eager 图零 monaco、懒 chunk
+  必须有、`languages/features/typescript` 与 ts.worker 全图为零;生产 build 实测:
+  boot chunk 零 monaco 引用,FormulaCodeEditor 2,631KB(gzip 675KB)+ editor.worker
+  300KB + css 全部独立 lazy,产物无 ts.worker 文件。
+- **测试**:browser +16(conversions 坐标/emoji/snippet/untrusted;scripted wire 上
+  的 handshake 序、**completion 前 flush 最新文本**、双 marker 共存、双向 stale 拒绝、
+  重连带未保存 buffer、malformed 帧断连重连、dispose 全拒;组件级 semi-controlled、
+  readOnly、不可用仍可编辑、mount→unmount→mount 零残留——lifecycle 用例独立文件隔离,
+  同 iframe 下与后续用例有未定位的单向串扰);真实 TS7 完整链由 F2 的 lsp-bridge
+  12 例(node,真 PG+HTTP+authoring)背书,browser 侧以同一 LSP 协议对 Monaco 集成
+  层作证,两段合成整链。
+- **验收**:`pnpm typecheck` 零错零建议;`pnpm test` 1114 passed;`pnpm test:browser`
+  243 passed(36 文件,三连绿);生产 build + 拓扑断言如上。

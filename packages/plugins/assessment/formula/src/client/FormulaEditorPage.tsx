@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -8,23 +8,30 @@ import { Input } from '@qualy/ui/input'
 import { Badge } from '@qualy/ui/badge'
 import { toast } from '@qualy/ui/toast'
 import { Field, PageHeader, Panel } from '@qualy/ui/admin'
+import { Spinner } from '@qualy/ui/spinner'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
+
+// Monaco rides its own chunk: the list page, the app shell and even this
+// page's first paint stay free of it - the editor arrives when the source
+// panel does
+const FormulaCodeEditor = lazy(() => import('./FormulaCodeEditor.tsx'))
 
 const styles = stylex.create({
   page: { display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.5rem' },
   source: {
     width: '100%',
-    minHeight: '22rem',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '0.8125rem',
-    lineHeight: 1.55,
-    padding: '0.75rem',
+    minHeight: '26rem',
     borderRadius: '0.5rem',
     border: '1px solid var(--q-border)',
     background: 'var(--q-surface)',
-    color: 'var(--q-foreground)',
-    resize: 'vertical',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    color: 'var(--q-surface-muted-foreground)',
+    fontSize: '0.8125rem',
   },
   actions: { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' },
   testGrid: { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' },
@@ -422,14 +429,22 @@ export default function FormulaEditorPage() {
             />
           )}
         </Field>
-        <textarea
-          {...stylex.props(styles.source)}
-          value={source}
-          onChange={(event) => setSource(event.target.value)}
-          disabled={archived}
-          spellCheck={false}
-          aria-label={format(m.sourceLabel)}
-        />
+        <Suspense
+          fallback={
+            <div {...stylex.props(styles.source)} role="status">
+              <Spinner aria-label={format(m.editorLoading)} />
+              <span>{format(m.editorLoading)}</span>
+            </div>
+          }
+        >
+          <FormulaCodeEditor
+            functionId={functionId}
+            value={source}
+            onChange={setSource}
+            readOnly={archived}
+            ariaLabel={format(m.sourceLabel)}
+          />
+        </Suspense>
       </Panel>
 
       <Panel title={format(m.testsTitle)} description={format(m.testsHint)}>

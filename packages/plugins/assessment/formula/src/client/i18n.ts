@@ -112,6 +112,22 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/source',
       defaultMessage: 'Formula source',
     },
+    editorLoading: {
+      id: 'assessment-formula/editor/loading',
+      defaultMessage: 'Loading the editor…',
+    },
+    lspConnecting: {
+      id: 'assessment-formula/editor/lsp-connecting',
+      defaultMessage: 'Connecting to language assistance…',
+    },
+    lspReady: {
+      id: 'assessment-formula/editor/lsp-ready',
+      defaultMessage: 'Language assistance ready',
+    },
+    lspUnavailable: {
+      id: 'assessment-formula/editor/lsp-unavailable',
+      defaultMessage: 'Language assistance is unavailable. Editing and saving still work.',
+    },
     testsTitle: {
       id: 'assessment-formula/editor/tests',
       defaultMessage: 'Examples',

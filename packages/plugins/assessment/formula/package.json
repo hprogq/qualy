@@ -12,6 +12,13 @@
     "./permissions": "./src/permissions.ts",
     "./api": "./src/api.ts",
     "./client/api": "./src/client/api.ts",
+    "./client/FormulaCodeEditor": "./src/client/FormulaCodeEditor.tsx",
+    "./client/monaco-setup": "./src/client/monaco-setup.ts",
+    "./client/formula-lsp/connection": "./src/client/formula-lsp/connection.ts",
+    "./client/formula-lsp/document": "./src/client/formula-lsp/document.ts",
+    "./client/formula-lsp/monaco": "./src/client/formula-lsp/monaco.ts",
+    "./client/formula-lsp/conversions": "./src/client/formula-lsp/conversions.ts",
+    "./client/formula-lsp/protocol": "./src/client/formula-lsp/protocol.ts",
     "./package.json": "./package.json",
     "./testkit": "./src/testkit.ts"
   },
@@ -39,7 +46,8 @@
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
-    "kysely": "catalog:"
+    "kysely": "catalog:",
+    "monaco-editor": "0.56.0"
   },
   "devDependencies": {
     "@qualy/formula-compiler": "workspace:*",

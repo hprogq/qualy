@@ -198,3 +198,51 @@ async function bundle(entry: string, externals?: string[]): Promise<Rollup.Outpu
     .flatMap((one) => ('output' in one ? one.output : []))
     .filter((chunk): chunk is Rollup.OutputChunk => chunk.type === 'chunk')
 }
+
+/**
+ * Where Monaco may live: behind the formula editor's dynamic import, and
+ * nowhere on the page's eager path. And which Monaco: the editor with the
+ * TypeScript language DEFINITION (tokenizer) only - the built-in TypeScript
+ * language service (languages/features/typescript, ts.worker) would stand
+ * up a second compiler beside the sandbox TS7 and answer the same
+ * keystrokes twice, differently.
+ */
+describe('where monaco may live', () => {
+  const editorPage = 'packages/plugins/assessment/formula/src/client/FormulaEditorPage.tsx'
+
+  it('keeps monaco off the formula page until the editor chunk loads', async () => {
+    const chunks = await bundle(editorPage)
+    const byFile = new Map(chunks.map((chunk) => [chunk.fileName, chunk]))
+    const eager = new Set<string>()
+    const walk = (chunk: Rollup.OutputChunk | undefined) => {
+      if (chunk === undefined || eager.has(chunk.fileName)) return
+      eager.add(chunk.fileName)
+      for (const next of chunk.imports) walk(byFile.get(next))
+    }
+    for (const chunk of chunks) if (chunk.isEntry) walk(chunk)
+
+    const eagerMonaco = [...eager].flatMap((file) =>
+      Object.keys(byFile.get(file)?.modules ?? {}).filter((id) => id.includes('monaco-editor')),
+    )
+    expect(
+      eagerMonaco,
+      'monaco reached the formula page statically; the editor must stay behind its lazy import',
+    ).toEqual([])
+
+    // somewhere in the WHOLE graph monaco must exist (the lazy chunk), or
+    // this probe is asserting about a page that no longer uses it
+    const anywhere = chunks.flatMap((chunk) =>
+      Object.keys(chunk.modules).filter((id) => id.includes('monaco-editor')),
+    )
+    expect(anywhere.length).toBeGreaterThan(0)
+
+    // the second-compiler fence, on the full graph including lazy chunks
+    const forbidden = anywhere.filter(
+      (id) => id.includes('languages/features/typescript') || id.includes('ts.worker'),
+    )
+    expect(
+      forbidden,
+      'monaco built-in TypeScript language service joined the graph; the only semantic engine is TS7 over the bridge',
+    ).toEqual([])
+  }, 240_000)
+})
