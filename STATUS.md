@@ -10935,3 +10935,22 @@ MonacoLspClient、浏览器无 Effect RPC。
 - **验收**:`pnpm typecheck` 零错零建议;`pnpm test` 1125 passed;`pnpm test:browser`
   252 passed;容器重建后 external 形态 13/13(formatting + -32601 含内);dev 运维:
   本轮再次实证 SDK/authoring 改动后必须 sandbox:build。
+
+## CI 偶发根因:死管道 EPIPE 打穿 authoring(2026-08-30)
+
+a53c7f50 与 7f4df941 两次 CI 红,同一模式:`write EPIPE` 后 authoring 进程死亡,
+lsp.test 后续用例全部 SocketOpenError。根因:写入刚被 SIGKILL 的 tsc 的 stdin 时,
+流上没有 error listener,EPIPE 成为 uncaught 'error' 事件击穿整个 authoring 进程——
+kill-the-server 用例与 CI 冷机时序放大竞速窗口(本地从未复现,docs-only 提交也能红
+即为证)。修复:spawn 后给 child.stdin 挂 error 吞噬器,send 转发与 auto-ack 两条
+写路径再加 try/catch——死管道回归「由 exit 处理收尾的局部事实」。
+
+## 公式格式化换 Prettier 规范形(2026-08-30)
+
+实测裁决:TS formatter 只修它同意的空白(长行不折、幂等性依赖输入换行),产品要的
+是规范形。`textDocument/formatting` 改由 authoring 进程内 Prettier 回答(catalog 同
+版 3.9.6,风格冻结为仓库自己的 { semi: false, singleQuote: true, printWidth: 100 }),
+不再经过语言服务器;请求 id→method 关联与 TextEdit 校验机制随之拆除(响应由我们
+构造,天然 opaque)。无变化返回 [],语法碎源答 -32603。E2E 重写为真实诉求:超宽
+参数对象一行一属性、路径样字符串原样保留、规范形自身幂等(再格式化 = []);host 与
+真容器双形态通过。浏览器与 F2 wire 零改动。

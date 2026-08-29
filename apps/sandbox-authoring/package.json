@@ -9,6 +9,7 @@
     "@qualy/formula": "workspace:*",
     "@qualy/formula-compiler": "workspace:*",
     "@qualy/sandbox-rpc": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "prettier": "catalog:"
   }
 }

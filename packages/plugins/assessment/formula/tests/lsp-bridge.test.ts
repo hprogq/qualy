@@ -512,40 +512,51 @@ describe.runIf(postgresAvailable).sequential('the formula language bridge', () =
     }
   }, 120_000)
 
-  it('formats the document through TS7, path-looking strings included', async () => {
+  it('formats to the repository normal form: long lines break, once', async () => {
     const client = await handshake()
     try {
       await openDocument(client)
-      // ragged indentation plus a string that LOOKS like a filesystem path:
-      // the formatter's edits are the person's own source rearranged, and
-      // the response must arrive despite the path sanitizer on other routes
-      const ragged = `import { Schema, defineFormula } from '@qualy/formula'\nconst docs = "/usr/share/doc"\nexport default defineFormula({\n      input: Schema.input({ value: Schema.decimal() }),\n  output: Schema.scoreAmount(),\n        run: (input) => input.value,\n})\n`
-      client.send({
-        jsonrpc: '2.0',
-        method: 'textDocument/didChange',
-        params: {
-          textDocument: { uri: 'qualy-formula:///formula.ts', version: 12 },
-          contentChanges: [{ text: ragged }],
-        },
-      })
-      await client.wait(
-        (message) => message.method === 'textDocument/publishDiagnostics',
-        'the policy voice after the ragged didChange',
-      )
-      client.send({
-        jsonrpc: '2.0',
-        id: 41,
-        method: 'textDocument/formatting',
-        params: {
-          textDocument: { uri: 'qualy-formula:///formula.ts' },
-          options: { tabSize: 2, insertSpaces: true },
-        },
-      })
-      const formatted = await client.wait((message) => message.id === 41, 'formatting edits')
-      const edits = formatted.result as readonly { range: unknown; newText: unknown }[]
-      expect(Array.isArray(edits)).toBe(true)
-      expect(edits.length).toBeGreaterThan(0)
-      for (const edit of edits) expect(typeof edit.newText).toBe('string')
+      // the real complaint that ruled this: a wide options object on one
+      // line must come back one property per line - and a string that LOOKS
+      // like a filesystem path is the person's own source, never eaten
+      const wide = `import { Schema, defineFormula } from '@qualy/formula'\nconst docs = "/usr/share/doc"\nexport default defineFormula({\n  input: Schema.input({\n    value: Schema.decimal({ minimum: '0.00', maximum: '1.00', maxScale: 2, title: 'Score Input', description: "An entry's score.", i18n: { 'zh-CN': { title: '分值输入' } } }),\n  }),\n  output: Schema.scoreAmount({ maxScale: 2 }),\n  run: (input) => input.value,\n})\n`
+      const format = async (text: string, id: number) => {
+        client.send({
+          jsonrpc: '2.0',
+          method: 'textDocument/didChange',
+          params: {
+            textDocument: { uri: 'qualy-formula:///formula.ts', version: id },
+            contentChanges: [{ text }],
+          },
+        })
+        await client.wait(
+          (message) => message.method === 'textDocument/publishDiagnostics',
+          `the policy voice after didChange ${id}`,
+        )
+        client.send({
+          jsonrpc: '2.0',
+          id,
+          method: 'textDocument/formatting',
+          params: {
+            textDocument: { uri: 'qualy-formula:///formula.ts' },
+            options: { tabSize: 2, insertSpaces: true },
+          },
+        })
+        const answer = await client.wait((message) => message.id === id, `formatting ${id}`)
+        return answer.result as readonly { range: unknown; newText: string }[]
+      }
+
+      const edits = await format(wide, 41)
+      expect(edits.length).toBe(1)
+      const formatted = edits[0]!.newText
+      // one property per line, the path string intact, single quotes
+      expect(formatted).toContain("minimum: '0.00',\n")
+      expect(formatted).toContain('/usr/share/doc')
+      expect(formatted).toContain("title: 'Score Input'")
+      expect(formatted.split('\n').length).toBeGreaterThan(wide.split('\n').length)
+
+      // idempotent: the normal form has no further opinion about itself
+      expect(await format(formatted, 42)).toEqual([])
     } finally {
       client.socket.close(1000)
       await client.closed

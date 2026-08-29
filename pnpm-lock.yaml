@@ -291,6 +291,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
+      prettier:
+        specifier: 'catalog:'
+        version: 3.9.6
 
   apps/sandbox-runtime:
     dependencies:
