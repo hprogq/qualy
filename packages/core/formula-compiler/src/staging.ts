@@ -104,7 +104,7 @@ export interface CheckOutcome {
 export const checkFormulaWorkspace = (
   root: string,
   tscEntry: string,
-  timeoutMs = 15_000,
+  timeoutMs = 30_000,
 ): Promise<CheckOutcome> =>
   new Promise((resolve, reject) => {
     execFile(

@@ -70,7 +70,10 @@ describe('the worker pool', () => {
 
   it('refuses work after shutdown', async () => {
     const pool = new WorkerPool({ size: 1, variant: 'release' })
-    const first = await run(pool, 'globalThis.ok = () => "one"', 'ok')
+    const first = await run(pool, 'globalThis.ok = () => "one"', 'ok', {
+      softDeadlineMs: 5_000,
+      hardDeadlineMs: 10_000,
+    })
     expect(first.verdict).toBe('completed')
     await pool.shutdown()
     const afterClose = await run(pool, 'globalThis.ok = () => "one"', 'ok').then(

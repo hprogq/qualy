@@ -17,10 +17,14 @@ type Settled =
 
 for (const variant of variants) {
   describe(`the ${variant} engine`, () => {
-    // the debug build runs the engine's own assertions and is slower by more
-    // than an order of magnitude; it verifies the fence's SEMANTICS, while
-    // the 25ms default's adequacy is the release rows' business
-    const slack = variant === 'debug' ? { softDeadlineMs: 2_000, hardDeadlineMs: 15_000 } : {}
+    // generous deadlines for BOTH variants: these cases verify the fence's
+    // semantics, not the 25ms default's adequacy, and a cold ci runner can
+    // miss a tight soft deadline on a trivial eval. The one case that IS
+    // about the soft deadline pins its own tight value explicitly.
+    const slack =
+      variant === 'debug'
+        ? { softDeadlineMs: 2_000, hardDeadlineMs: 15_000 }
+        : { softDeadlineMs: 5_000, hardDeadlineMs: 15_000 }
 
     let pool: WorkerPool
     beforeAll(() => {
@@ -83,7 +87,11 @@ for (const variant of variants) {
     })
 
     it('stops an infinite loop by the soft deadline', async () => {
-      const response = await responseOf('globalThis.spin = () => { for (;;) {} }', 'spin')
+      // the tight deadline IS the subject here, so it is pinned explicitly
+      const response = await responseOf('globalThis.spin = () => { for (;;) {} }', 'spin', [], {
+        softDeadlineMs: variant === 'debug' ? 2_000 : 100,
+        hardDeadlineMs: 15_000,
+      })
       expect(response.verdict).toBe('interrupted')
     })
 

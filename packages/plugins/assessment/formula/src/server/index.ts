@@ -390,7 +390,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             artifactHash,
             entrypoint: '__qualyInvoke',
             arguments: [JSON.stringify(test.input)],
-            limits: { artifactBytes: MAX_COMPILED_ARTIFACT_BYTES },
+            limits: {
+              artifactBytes: MAX_COMPILED_ARTIFACT_BYTES,
+              // same reasoning as the contract extraction: each example
+              // re-evaluates the artifact from cold on the publish path
+              softDeadlineMs: 2_000,
+              hardDeadlineMs: 10_000,
+            },
           })
           .pipe(
             Effect.map((value) => ({ kind: 'answered', value }) as const),
@@ -448,6 +454,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         limits: {
           artifactBytes: MAX_COMPILED_ARTIFACT_BYTES,
           outputBytes: MAX_CONTRACT_TRANSPORT_BYTES,
+          // publication-sized deadlines: extracting a contract cold-loads
+          // the whole artifact, and this path is a publish, not a score
+          softDeadlineMs: 2_000,
+          hardDeadlineMs: 10_000,
         },
       })
       .pipe(

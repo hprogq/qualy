@@ -152,10 +152,11 @@ describe.runIf(postgresAvailable)('publication through the real sandbox processe
     )
 
   it('produces the identical version identity, local and remote', async () => {
-    const [local, remote] = await Promise.all([
-      publishWith('local', 'fx-parity-local'),
-      publishWith('remote', 'fx-parity-remote'),
-    ])
+    // sequential on purpose: the parity claim is about identical answers,
+    // and two full publications in parallel drown a two-core ci runner in
+    // compilers until wall clocks fire
+    const local = await publishWith('local', 'fx-parity-local')
+    const remote = await publishWith('remote', 'fx-parity-remote')
     const localValue = Exit.match(local, {
       onFailure: (cause) => {
         throw new Error(`local publish failed: ${String(cause)}`)
