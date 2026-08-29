@@ -90,8 +90,11 @@ TypeScript 7 是一个原生可执行文件,不再有可以打补丁的 JS `tsc`
 故意写错的 fixture,诊断没出现就失败并告诉你跑 `pnpm exec effect-tsgo patch --typescript`
 (已实测:未打补丁的原生 tsc 对同一个 fixture 一言不发)。
 
-suggestion 级诊断不进 tsc 输出(`tsconfig.base.json` 里 `includeSuggestionsInTsc: false`):
-它们是编辑器里的建议,不是门禁的判定,50 条建议刷屏会把真正的错误埋掉。
+suggestion 级诊断**显示但不判**(`includeSuggestionsInTsc: true` +
+`ignoreEffectSuggestionsInTscExitCode: true`):`pnpm typecheck` 的 exit code 只看
+error,建议只是顺带可见,鼓励顺手清零。`schemaNumber` 整条关掉
+(`diagnosticSeverity`):288 处 Schema.Number 全报「考虑 Schema.Finite」是同一句话
+的重复轰炸,本仓库的数值边界另有 value-schema 纪律。
 
 需要**故意**违反某条诊断时(例如负面类型断言),用 `// @effect-diagnostics-next-line <rule>:off`
 就近关掉并写清楚为什么,不要整体关。两个实测出来的坑:**规则名不带 `effect/` 前缀**

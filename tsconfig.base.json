@@ -13,7 +13,11 @@
     "plugins": [
       {
         "name": "@effect/language-service",
-        "includeSuggestionsInTsc": false
+        "includeSuggestionsInTsc": true,
+        "ignoreEffectSuggestionsInTscExitCode": true,
+        "diagnosticSeverity": {
+          "schemaNumber": "off"
+        }
       }
     ]
   }

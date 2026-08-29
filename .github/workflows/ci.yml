@@ -109,7 +109,7 @@ jobs:
       - name: resolve playwright version
         id: playwright
         run: echo "version=$(node -e "console.log(require('playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.playwright.outputs.version }}

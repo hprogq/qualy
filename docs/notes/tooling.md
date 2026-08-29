@@ -101,3 +101,30 @@ CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。�
 瓶颈从来不是并行度——是**单个最慢文件**决定墙钟(现在是 assembly.test.ts 的 7.2s)。
 浏览器套件那边 `browser.isolate=false` 与 `browser.fileParallelism` 都不动分毫,
 剩下的 12s 基本是 Chromium 启动与四个文件各自经 Vite 加载整张模块图。
+
+## workspace 依赖环:确有其事,判为不修(2026-08-30)
+
+pnpm 安装时警告两组 cyclic workspace dependencies。实查(Tarjan SCC,全仓两张图):
+
+- **dependencies + devDependencies 图**:两个强连通分量——{assessment, assessment-evidence}
+  与 {audit, auth, auth-local, org, rbac, ui-registry, web-runtime}。
+- **纯 dependencies(生产)图**:一个分量 {auth, org, ui-registry, web-runtime},
+  即 pnpm 没说全——生产图本身就有环,不只是测试装配的 dev 边。
+
+逐边核对,**全部是活边且各有领域理由**:auth ↔ org(站位不变量判定单源在 auth 的
+placementLegal、org 改类型前要问 usersBlockingOrgType;反向是 auth 的实体闭包并入
+org 的 Tenant——CLAUDE.md 明文的跨插件取表方式);auth ↔ ui-registry(manifest 是按
+principal 的授权投影,要 session-contract;auth 用 Ui.page 声明页面);web-runtime ↔
+ui-registry(统一 API runtime 拉 manifest 契约;页面组件用 useApi)。这是「双核心
+互相纠缠」的架构形状,不是失误。
+
+**为什么不修**:本仓库的运行模型里这个环没有可观察代价——workspace 是符号链接,
+不需要安装拓扑序;所有包零 build/prepare 脚本(strip-types 直跑),pnpm 警告所指的
+「生命周期脚本顺序不定」落在空集上;模块级(叶子子路径互指)并不构成运行时 TDZ 环,
+从未炸过;typecheck 是逐工程 tsc --noEmit,无 project-references 拓扑要求。断环需要
+把 session-contract 从 auth 挪进独立契约包一类的手术,而没有任何已发生的问题为它背书
+——按数据层冻结规则的元规则,不做预防性建设。
+
+**触发条件**(出现任一即必须先断环再做那件事):①引入 per-package 增量构建编排
+(turbo/nx/project references build);②把任一 workspace 包发布到 npm;③生产源码
+真实出现循环 import 的 TDZ 报错。

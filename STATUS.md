@@ -10790,3 +10790,18 @@ remote parity 串行避免双发布打满 2 核。push 后 `gh run watch` 确认
   差分 kill 可能误杀邻居;归属后 ceiling 断言收紧回恰好 ≤8。
 - **验收**:`pnpm typecheck` 零错;`pnpm test` 1113 passed | 17 skipped(166 文件);
   `pnpm test:browser` 227 passed(基线不变)。
+
+## 工具链三笔:依赖环裁决、suggestion 可见化、CI action 升级(2026-08-30)
+
+- **workspace 依赖环**:pnpm 警告确有其事,且生产图本身就有一个强连通分量
+  {auth, org, ui-registry, web-runtime}(pnpm 只报了含 dev 边的两组)。逐边核对全是
+  活边、各有领域理由(站位不变量单源、manifest 授权投影、实体闭包互引、useApi),
+  在符号链接 + 零 build 脚本 + 逐工程 tsc 的运行模型下无可观察代价——判为不修,
+  触发条件(增量构建编排/发布 npm/真实 TDZ 报错)记入 docs/notes/tooling.md。
+- **Effect suggestion 进 tsc 但不判**:`includeSuggestionsInTsc: true` +
+  `ignoreEffectSuggestionsInTscExitCode: true`;`schemaNumber` 经 `diagnosticSeverity`
+  整条关闭(288 处 Schema.Number 的同句重复,数值边界另有 value-schema 纪律)。
+  现存 49 条建议可见(31 条 unnecessaryFailYieldableError、5 条 multipleCatchTag、
+  4 条 redundantOrDie 等),exit code 实测不受影响(`pnpm typecheck` 仍 0),
+  effect-diagnostics 门禁 2/2;政策段落已同步 docs/agents/effect-source-policy.md。
+- **CI**:actions/cache@v4(Node 20 目标,runner 已强制告警)→ @v6(当前线)。
