@@ -68,6 +68,17 @@ export const VENDORED: readonly VendoredSource[] = [
     // is pinned to documents itself in docs/docs, which stays.
     supersededPaths: ['docs/versioned_docs', 'docs/versioned_sidebars'],
   },
+  // The scoring sandbox engine. Its runtime/context lifecycle, interrupt and
+  // memory semantics gate what untrusted formulas can do, so the sandbox is
+  // written against this tree's sources and tests, not against memory of the
+  // README.
+  {
+    name: 'quickjs-emscripten',
+    repository: 'https://github.com/justjake/quickjs-emscripten.git',
+    packageName: 'quickjs-emscripten-core',
+    tagFor: (version) => `v${version}`,
+    versionFile: 'packages/quickjs-emscripten-core/package.json',
+  },
 ]
 
 export const REPOS = 'repos'

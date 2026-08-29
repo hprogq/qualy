@@ -11,6 +11,12 @@
       "tag": "effect@4.0.0-rc.111",
       "commit": "648f566dd259898e7697c7fcb796183ccbc474ab",
       "contentSha256": "4c7d853d08eec3793544a0f517f466d980973ab9482c7de7631b532280877722"
+    },
+    "quickjs-emscripten-core": {
+      "packageVersion": "0.32.0",
+      "tag": "v0.32.0",
+      "commit": "df4efb9ef2cb25c417ecb57986da462d11b244ed",
+      "contentSha256": "9c360f63f274b158b89066ab00f31f0c4aaf8f865d4ca1526566afa97f4384ae"
     }
   }
 }

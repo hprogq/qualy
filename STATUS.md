@@ -10163,3 +10163,42 @@ allowImportingTsExtensions 直吃 .ts 源),子进程跑 workspace 的 `tsc -p`(a
 
 **验收**:`pnpm typecheck` 零错;`pnpm test` **982 passed | 17 skipped**(新增 16 例);
 prettier 通过。下一步:`@qualy/plugin-sandbox`(QuickJS,硬闸门)。
+
+## 严格类型计分之三:@qualy/plugin-sandbox(2026-08-29)
+
+`packages/plugins/infra/sandbox` 落地并注册进装配。业务盲执行设施:`Sandbox` 服务
+(Context.Service + Plugin.layer,与 ui-registry 同型)只认 `invoke({artifact, artifactHash,
+entrypoint, arguments, limits})`,artifact 先过大小与 sha-256 复核;worker_threads 池是
+layer 构建 scope 里的唯一 scoped resource(仓库首个 worker 用例,消息协议 plain-data 仿
+dev-service 纪律),worker 惰性 spawn(boot 零成本)、每次 invocation 全新
+runtime+context(限额、引擎层去 Date、软封 eval/Function/Math.random)、双层超时
+(引擎 interrupt + 宿主 watchdog terminate 补位)。quickjs 三件套 0.32.0 进 catalog 一个
+block,上游收进 vendor(`repos/quickjs-emscripten`,v0.32.0 df4efb9e),实现依据引其源:
+interrupt 契约 runtime.ts:28/210,dump 前解限的先例 quickjs.test.ts:958/996。
+
+**闸门通过,且双 variant 套件立了三功**(全是 release 下静默、debug 下现形的事实):
+
+一、**资源耗尽后的引擎不可信,处置是废弃整个 worker**。栈溢出/OOM 后引擎内部 refcount
+残留,`JS_FreeRuntime` 在 debug 断言 abort(泄漏清单直指栈帧),release 则把泄漏静默留在
+worker 共享的 WASM 堆里。现在这类 verdict 标记 `retire`,不 dispose、由池 terminate 重生
+——WASM 实例连同泄漏一起消失。
+
+二、**深递归能打穿 WASM 物理栈,宿主侧抛 RangeError**(debug 下 QuickJS 逻辑栈检查来不及
+触发),此后引擎状态已烂。execute 捕获宿主侧异常、按 message 分类并强制 retire;verdict
+分类不再只认 InternalError(上游 pin 了 bellard 栈溢出是 SyntaxError,quickjs.test.ts:999)。
+
+三、**debug build 的 sanitizer 分配器绕过 setMemoryLimit**,内存炸弹一路吃到 2GiB WASM
+硬顶才被 sanitizer 拦下——生产恒 release 的又一硬理由;debug 组对内存用例断言「被拦下 +
+池自愈」,精确 verdict 归 release 组。
+
+另有一处设计修正:蓝图 §11.4 设想的「关 Eval」不能做在引擎层——`intrinsics.Eval: false`
+连 `evalCode` 一起废掉(它就是引擎的 eval 编译器);威胁模型里 eval 也非逃逸面(代码困在
+WASM、无外部输入源),故引擎层只关 Date,eval/Function 软封为 undefined。
+
+**基线**(release,单 worker):ready 39ms(wasm 加载一次);单次 invoke(全新
+runtime+context+eval+dispose)P50 0.23ms / P95 0.44ms / max 8.7ms —— §11.2 的
+「每次新建是否成为瓶颈」就此了案:不复用。
+
+**验收**:`pnpm typecheck` 零错;sandbox 套件 29 例全过(escape/determinism 双 variant ×13
++ 池行为 3:watchdog 换活、超池排队、scope 关停后拒绝);全仓 `pnpm test`
+**1012 passed | 17 skipped**;prettier 通过。下一步:`@qualy/plugin-assessment-formula` 4a。

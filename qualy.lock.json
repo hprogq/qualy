@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:730c2646979147e485b845476fcd305c6b6f716dac2d3c2715996779b9da1373",
-  "resolutionHash": "sha256:eedfe29727c3a4b9b657eca71d8b78eea2d55c32d58987838cefa93ad5979ee6",
+  "manifestHash": "sha256:a95afb5a0a17d9266f26edff02d6bb8d67a09369bcc76f9643e9cf897d4953a2",
+  "resolutionHash": "sha256:2b007684a2d84d614e9cabd6ed866ef3beb904a424a810e99811b94b25beb40f",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -204,6 +204,10 @@
         }
       }
     },
+    "@qualy/plugin-sandbox": {
+      "version": "0.0.0",
+      "state": "active"
+    },
     "@qualy/plugin-storage": {
       "version": "0.0.0",
       "state": "active",
@@ -274,6 +278,7 @@
       "@qualy/plugin-org",
       "@qualy/plugin-ping",
       "@qualy/plugin-rbac",
+      "@qualy/plugin-sandbox",
       "@qualy/plugin-storage",
       "@qualy/plugin-storage-local",
       "@qualy/plugin-ui-registry",

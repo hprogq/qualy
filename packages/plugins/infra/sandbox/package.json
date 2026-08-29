@@ -1,0 +1,22 @@
+{
+  "name": "@qualy/plugin-sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json",
+    "./service": "./src/service.ts"
+  },
+  "dependencies": {
+    "@jitl/quickjs-wasmfile-release-sync": "catalog:",
+    "@qualy/plugin-kit": "workspace:*",
+    "effect": "catalog:",
+    "quickjs-emscripten-core": "catalog:"
+  },
+  "devDependencies": {
+    "@jitl/quickjs-wasmfile-debug-sync": "catalog:"
+  }
+}

@@ -15,6 +15,12 @@ catalogs:
     '@electric-sql/pglite':
       specifier: 0.5.4
       version: 0.5.4
+    '@jitl/quickjs-wasmfile-debug-sync':
+      specifier: 0.32.0
+      version: 0.32.0
+    '@jitl/quickjs-wasmfile-release-sync':
+      specifier: 0.32.0
+      version: 0.32.0
     '@lingui/core':
       specifier: 6.6.0
       version: 6.6.0
@@ -111,6 +117,9 @@ catalogs:
     qcloud-cos-sts:
       specifier: 3.1.3
       version: 3.1.3
+    quickjs-emscripten-core:
+      specifier: 0.32.0
+      version: 0.32.0
     react:
       specifier: 19.2.8
       version: 19.2.8
@@ -309,6 +318,9 @@ importers:
       '@qualy/plugin-rbac':
         specifier: workspace:*
         version: link:../../packages/plugins/base/rbac
+      '@qualy/plugin-sandbox':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/sandbox
       '@qualy/plugin-storage':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/storage
@@ -1165,6 +1177,25 @@ importers:
         specifier: 'catalog:'
         version: 8.20.0
 
+  packages/plugins/infra/sandbox:
+    dependencies:
+      '@jitl/quickjs-wasmfile-release-sync':
+        specifier: 'catalog:'
+        version: 0.32.0
+      '@qualy/plugin-kit':
+        specifier: workspace:*
+        version: link:../../../core/plugin-kit
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
+      quickjs-emscripten-core:
+        specifier: 'catalog:'
+        version: 0.32.0
+    devDependencies:
+      '@jitl/quickjs-wasmfile-debug-sync':
+        specifier: 'catalog:'
+        version: 0.32.0
+
   packages/plugins/infra/storage:
     dependencies:
       '@mikro-orm/core':
@@ -1759,6 +1790,15 @@ packages:
   '@jest/types@29.6.3':
     resolution: {integrity: sha512-u3UPsIilWKOM3F9CXtrG8LEJmNxwoCQC/XVj4IKYXvvpx7QIi/Kg1LI5uDmDpKlac62NUtX7eLjRh+jVZcLOzw==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
+
+  '@jitl/quickjs-ffi-types@0.32.0':
+    resolution: {integrity: sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg==}
+
+  '@jitl/quickjs-wasmfile-debug-sync@0.32.0':
+    resolution: {integrity: sha512-LeYWrPGC1uNCTBWvibo3ZLJj0CSVNYUXvJpXMCmuQ5Sap2cCACc3uvGvYV4homHHBAzfw5akoTqMMS4YFRtw+Q==}
+
+  '@jitl/quickjs-wasmfile-release-sync@0.32.0':
+    resolution: {integrity: sha512-BKNDI/TPBfGlLNGYpLrhcDGXmIk4xHm4MRAisOBnOzpXVn9HZWsfmMAc9WMBrAHjvvds6HOikKeaOBKdPdpVrg==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -3045,6 +3085,9 @@ packages:
   querystringify@2.2.0:
     resolution: {integrity: sha512-FIqgj2EUvTa7R50u0rGsyTftzjYmv/a3hO345bZNrqabNqjtgiDMgmo4mkUjd+nzU5oF3dClKqFIPUKybUyqoQ==}
 
+  quickjs-emscripten-core@0.32.0:
+    resolution: {integrity: sha512-QFnPfjFey8EqknSrSxe1hZrf1/8z7/6s1QzGOmKo6++02r7QRRX7ZoyNaZh7JuVjWsVW87KnQrbZqnHkOAzUyg==}
+
   react-dom@19.2.8:
     resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
     peerDependencies:
@@ -3784,6 +3827,16 @@ snapshots:
       '@types/node': 24.13.3
       '@types/yargs': 17.0.35
       chalk: 4.1.2
+
+  '@jitl/quickjs-ffi-types@0.32.0': {}
+
+  '@jitl/quickjs-wasmfile-debug-sync@0.32.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
+
+  '@jitl/quickjs-wasmfile-release-sync@0.32.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -4915,6 +4968,10 @@ snapshots:
       side-channel: 1.1.1
 
   querystringify@2.2.0: {}
+
+  quickjs-emscripten-core@0.32.0:
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
 
   react-dom@19.2.8(react@19.2.8):
     dependencies:
