@@ -92,6 +92,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/list/version-column',
       defaultMessage: 'Published',
     },
+    loadMore: {
+      id: 'assessment-formula/list/load-more',
+      defaultMessage: 'Load more',
+    },
     versionNone: {
       id: 'assessment-formula/list/version-none',
       defaultMessage: 'Draft only',

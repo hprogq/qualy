@@ -17,6 +17,12 @@
       "tag": "v0.32.0",
       "commit": "df4efb9ef2cb25c417ecb57986da462d11b244ed",
       "contentSha256": "9c360f63f274b158b89066ab00f31f0c4aaf8f865d4ca1526566afa97f4384ae"
+    },
+    "re2js": {
+      "packageVersion": "2.8.6",
+      "tag": "2.8.6",
+      "commit": "79a85e0ffbb479be0c4d3aa83e51fd67446eee65",
+      "contentSha256": "351d89377de2d3e6bfa1dccb29448dc017213d09b761aab55d7c6a3bfbf6bb18"
     }
   }
 }

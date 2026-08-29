@@ -12,6 +12,7 @@
     "./staging": "./src/staging.ts"
   },
   "dependencies": {
-    "@qualy/value-schema": "workspace:*"
+    "@qualy/value-schema": "workspace:*",
+    "typescript": "catalog:"
   }
 }

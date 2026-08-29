@@ -26,22 +26,22 @@
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-sandbox": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/value-schema": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
+    "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
     "esbuild": "catalog:",
     "kysely": "catalog:",
-    "typescript": "catalog:",
-    "@stylexjs/stylex": "catalog:"
+    "typescript": "catalog:"
   },
   "devDependencies": {
     "@qualy/plugin-audit": "workspace:*",
-    "@qualy/plugin-ui-registry": "workspace:*",
     "@types/react": "catalog:"
   },
   "peerDependencies": {

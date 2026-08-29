@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -148,15 +148,28 @@ function NewFormulaDialog({
 }
 
 export default function FormulaListPage() {
+  const api = useApi(formulaApi)
+  const runApi = useRunApi()
   const query = useApiQuery(formulaApi)
   const { format } = useI18n()
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
 
-  const functions = useQuery(
-    query.assessmentFormula.listFormulaFunctions.queryOptions({ query: {} }),
+  const functions = useInfiniteQuery({
+    queryKey: [...query.assessmentFormula.listFormulaFunctions.key({ query: {} }), 'infinite'],
+    queryFn: ({ pageParam }) =>
+      runApi(
+        api.assessmentFormula.listFormulaFunctions({
+          query: pageParam !== undefined ? { cursor: pageParam } : {},
+        }),
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+  })
+  const items = useMemo(
+    () => functions.data?.pages.flatMap((page) => page.items) ?? [],
+    [functions.data],
   )
-  const items = functions.data?.items ?? []
 
   const openEditor = (functionId: string) =>
     navigate('assessment-formula/editor', { params: { functionId } })
@@ -210,6 +223,16 @@ export default function FormulaListPage() {
             </tbody>
           </table>
         )}
+        {functions.hasNextPage ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={functions.isFetchingNextPage}
+            onClick={() => void functions.fetchNextPage()}
+          >
+            {format(m.loadMore)}
+          </Button>
+        ) : null}
       </Panel>
       <NewFormulaDialog
         open={creating}

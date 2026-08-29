@@ -275,6 +275,52 @@ describe.runIf(postgresAvailable)('the formula library', () => {
     expect(outcome.stale._tag).toBe('ASSESSMENT_FORMULA_DRAFT_CONFLICT')
   }, 120_000)
 
+  it('answers a forged contract with a refusal, never a host-side defect', async () => {
+    // the type system is not a trust boundary: an assertion can hand the
+    // extractor input: undefined, and every validator on the host must
+    // fail closed into a 422 instead of throwing
+    const forged = `import { Schema, defineFormula } from '@qualy/formula'
+
+const definition = defineFormula({
+  input: Schema.input({}),
+  output: Schema.scoreAmount({ maxScale: 2 }),
+  run: (_input, q) => q.decimal.fromInteger(0),
+})
+
+export default { ...definition, input: undefined } as unknown as typeof definition
+`
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fx-forged')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(
+            f.t,
+            { ownerNodeId: f.collegeA, name: 'Forged' },
+            as,
+          )
+          const drafted = yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: created.draftRevision,
+              draftSourceTs: forged,
+              draftTests: [{ name: 'zero', input: {}, expected: '0' }],
+            },
+            as,
+          )
+          return yield* Effect.flip(library.publish(f.t, created.id, drafted.draftRevision, as))
+        }),
+      ),
+    )
+    expect(outcome._tag).toBe('ASSESSMENT_FORMULA_CONTRACT_INVALID')
+    expect((outcome as { issues: readonly { path: string; reason: string }[] }).issues).toEqual([
+      { path: 'input', reason: 'not-an-object' },
+    ])
+  }, 120_000)
+
   it('keeps unauthorized readers outside: empty lists, unknown functions', async () => {
     const outcome = ok(
       await run(

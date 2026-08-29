@@ -584,11 +584,15 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             const artifactHash = sha256(bundled.artifact)
             const contract = yield* extractContract(bundled.artifact, artifactHash)
 
+            // patterns are only worth checking on a structurally sound
+            // input, and patternIssues itself is fail-closed on any shape:
+            // a contract forged past the type system (input: undefined)
+            // must end as a 422, never as a host-side throw
+            const inputShapeIssues = validateInputProfile(contract.input)
+            const inputPatternIssues =
+              inputShapeIssues.length === 0 ? patternIssues(contract.input) : []
             const issues = [
-              ...[
-                ...validateInputProfile(contract.input),
-                ...patternIssues(contract.input as InputSchema),
-              ].map((issue) => ({
+              ...[...inputShapeIssues, ...inputPatternIssues].map((issue) => ({
                 path: issue.path === '' ? 'input' : `input.${issue.path}`,
                 reason: issue.reason,
               })),
@@ -707,7 +711,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           // repo allows as a minimal sql fragment
           query = query.where(
             sql<boolean>`(assessment_formula_functions.updated_at, assessment_formula_functions.id)
-              < (${sql.raw(`timestamptz '${new Date(Number(cursor[0])).toISOString()}'`)}, ${cursor[1]}::uuid)`,
+              < (${cursor[0]}::timestamptz, ${cursor[1]}::uuid)`,
           )
         }
         return query
@@ -721,7 +725,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const nextCursor =
       rows.length > size
         ? encodeQueryCursor(LIST_FINGERPRINT, [
-            String(new Date(sliced[sliced.length - 1]!.updatedAt).getTime()),
+            iso(sliced[sliced.length - 1]!.updatedAt),
             sliced[sliced.length - 1]!.id,
           ])
         : null
@@ -980,6 +984,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         esbuildVersion,
         String(FORMULA_ABI_VERSION),
         compiled.formulaRuntimeSha256,
+        // the full-artifact hash covers what the sdkFiles digest cannot: the
+        // trusted WRAPPER and PRELUDE strings live in bundler.ts, so an
+        // edit to the entry protocol alone still changes the fingerprint
+        compiled.runtimeSha256,
         String(SANDBOX_ABI_VERSION),
         String(VALUE_SCHEMA_PROFILE_VERSION),
         String(REGEX_PROFILE_VERSION),

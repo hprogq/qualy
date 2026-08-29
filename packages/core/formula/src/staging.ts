@@ -8,10 +8,10 @@
  * names even though it executes nothing — an unchecked specifier is a read
  * of the host filesystem and a type-information oracle:
  *
- * 1. `moduleSpecifiers` lexes every syntax that can trigger module
- *    resolution (import/export-from, dynamic and type-position `import()`,
- *    `import = require()`); publication refuses anything but
- *    `@qualy/formula` before the compiler is ever spawned.
+ * 1. `moduleSpecifiers` (lexer.ts: the pinned TS7 scanner's token stream
+ *    in union with raw-byte patterns) reports every syntax that can trigger
+ *    module resolution; publication refuses anything but `@qualy/formula`
+ *    before the compiler is ever spawned.
  * 2. The staged workspace itself resolves almost nothing: `@qualy/formula`
  *    is a SYNTHETIC package exporting only ".", its `@qualy/value-schema`
  *    dependency nests INSIDE it, and the workspace root holds nothing else —
@@ -71,23 +71,7 @@ const SYNTHETIC_MANIFEST = JSON.stringify(
 
 export const TRIPLE_SLASH = /^\s*\/\/\/\s*<reference\b/m
 
-// every syntax that makes the compiler resolve a module; matched over the
-// raw source, comments and strings included - a refusal here is conservative
-// on purpose, and names the specifier so the author can rewrite
-const SPECIFIER_SYNTAX = [
-  /\bfrom\s*['"]([^'"\n]*)['"]/g,
-  /\bimport\s*\(\s*['"]([^'"\n]*)['"]/g,
-  /\bimport\s+[A-Za-z_$][\w$]*\s*=\s*require\s*\(\s*['"]([^'"\n]*)['"]/g,
-  /\bimport\s*['"]([^'"\n]*)['"]/g,
-] as const
-
-/** every module specifier the source could make a resolver look at */
-export const moduleSpecifiers = (source: string): readonly string[] => {
-  const found: string[] = []
-  for (const syntax of SPECIFIER_SYNTAX)
-    for (const match of source.matchAll(syntax)) found.push(match[1]!)
-  return found
-}
+export { DYNAMIC_SPECIFIER, moduleSpecifiers, REGEX_LITERAL, UNTERMINATED_TEXT } from './lexer.ts'
 
 export const stageFormulaWorkspace = (source: string): string => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-formula-'))

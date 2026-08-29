@@ -21,6 +21,7 @@ export default {
   'assessment-formula/status/active': '在用',
   'assessment-formula/status/archived': '已归档',
   'assessment-formula/list/version-column': '已发布',
+  'assessment-formula/list/load-more': '加载更多',
   'assessment-formula/list/version-none': '仅草稿',
   'assessment-formula/version/number': 'v{number}',
   'assessment-formula/list/updated-column': '更新时间',

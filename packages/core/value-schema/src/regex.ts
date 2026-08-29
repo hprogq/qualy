@@ -16,7 +16,7 @@
  */
 
 import { RE2JS } from 're2js'
-import type { AtomicSchema, InputSchema, ProfileIssue } from './profile.ts'
+import type { ProfileIssue } from './profile.ts'
 
 export const REGEX_PROFILE_VERSION = 1
 
@@ -83,14 +83,18 @@ export const compilePattern = (source: string): CompiledPattern => {
  * schema (publication, binding screens) runs this beside the structural
  * check; a guest never needs to.
  */
-export const patternIssues = (
-  schema: AtomicSchema | InputSchema,
-  path = '',
-): readonly ProfileIssue[] => {
-  if ('properties' in schema)
-    return Object.entries(schema.properties).flatMap(([name, property]) =>
+export const patternIssues = (schema: unknown, path = ''): readonly ProfileIssue[] => {
+  // fail-closed on any shape: a malformed value can only yield issues, never
+  // a host-side throw - the structural verdict itself belongs to
+  // validateProfile, so a non-object simply has no patterns to check
+  if (typeof schema !== 'object' || schema === null) return []
+  if ('properties' in schema) {
+    const properties = (schema as { properties?: unknown }).properties
+    if (typeof properties !== 'object' || properties === null) return []
+    return Object.entries(properties).flatMap(([name, property]) =>
       patternIssues(property, `properties.${name}`),
     )
+  }
   const pattern = (schema as { pattern?: unknown }).pattern
   if (pattern === undefined || typeof pattern !== 'string') return []
   const compiled = compilePattern(pattern)

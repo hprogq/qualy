@@ -291,6 +291,37 @@ describe.runIf(postgresAvailable)('the formula api over http', () => {
       (published.body as { version: { versionNo: number; testReport: unknown } }).version,
     ).toMatchObject({ versionNo: 1, testReport: [{ name: 'three', passed: true }] })
   }, 120_000)
+
+  it('pages the function list with a keyset cursor: no repeats, no gaps', async () => {
+    const owner = await rootNode()
+    for (let index = 0; index < 12; index += 1) {
+      const created = await call('POST', '/api/assessment/formula-functions', {
+        ownerNodeId: owner,
+        name: `Paged ${String(index).padStart(2, '0')}`,
+      })
+      expect(created.status, inspect(created.body)).toBe(200)
+    }
+    const seen: string[] = []
+    let cursor: string | undefined
+    for (let hops = 0; ; hops += 1) {
+      expect(hops).toBeLessThan(10)
+      const query =
+        cursor === undefined ? 'limit=5' : `limit=5&cursor=${encodeURIComponent(cursor)}`
+      const page = await call('GET', `/api/assessment/formula-functions?${query}`)
+      expect(page.status, inspect(page.body)).toBe(200)
+      const body = page.body as {
+        items: readonly { id: string }[]
+        nextCursor: string | null
+      }
+      seen.push(...body.items.map((row) => row.id))
+      if (body.nextCursor === null) break
+      // a non-null cursor promises a full page behind it
+      expect(body.items.length).toBe(5)
+      cursor = body.nextCursor
+    }
+    expect(new Set(seen).size).toBe(seen.length)
+    expect(seen.length).toBeGreaterThanOrEqual(12)
+  }, 120_000)
 })
 
 const rootNode = async () => {

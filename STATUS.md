@@ -10370,3 +10370,46 @@ diagnostics/completion)。
 无界输出直接给改法(「改用 Schema.scoreAmount(),或给 Schema.decimal 写明上下界…」),
 pattern 三种拒绝、结构过大、guest 构造器异常(detail 原文附于表下)各有其词,未知 reason
 落通用兜底。`pnpm typecheck` 零错、catalogs 与 formula 套件定向通过。
+
+## 4a.1.1 收尾:审计复核后的六处关门(2026-08-30)
+
+用户按 f8576679 逐 commit 复核后留下 3 P0 + 3 P1,全部修入;修完批准进 4b。
+
+**P0 关门**:①`patternIssues` 改收 `unknown` 且 fail-closed(非 object 直接空,`'properties' in`
+不再对 undefined 抛 TypeError),publish 侧只在结构合法后跑 pattern 检查;攻击测试钉死
+`export default { ...definition, input: undefined } as unknown as ...` → 422 CONTRACT_INVALID
+(`input | not-an-object`),不再打穿成 defect。②regex lexer 退场:`moduleSpecifiers` 重写为
+**TS7 官方 scanner 的 token 流**(`typescript/unstable/ast`,createScanner 签名在 7 里去掉了
+languageVersion,EndOfFileToken 改名 EndOfFile——第一版死循环即源于此)+ 原字节模式并联兜底;
+`import type X = require()`、模板 specifier、类型位 import()、注释内嵌 specifier 全部有测试;
+call 位非字符串一律 `<dynamic specifier>` 拒;**正则字面量不属于公式语言**(slash 歧义唯一来源,
+非除法机位 tryScan 重扫,扫出即拒);unterminated 字符串/模板即拒。完备性论证:TS/ES 语法里
+specifier 必经 `import`/`require`/`from` 字面关键字,token 层错位骗不过字节层,两层 union 后
+漏报面为空。③QuickJS BOOTSTRAP 在冻结**之前**沿四种函数原型链(普通/generator/async/
+async-generator)把 `constructor` 全部 defineProperty 成 undefined 再冻结——
+`(() => {}).constructor` 这条经典绕道断头;对抗测试逐种探测 direct/proto-walk/Reflect 三路线
+加 `({}).constructor.constructor` 与 class 形态,全部 undefined。
+
+**P1 修正**:④keyset cursor 两端协议根本不一致(writer 写毫秒串、reader 按 Date.parse 校验,
+第二页从未走通)——统一 ISO 文本、查询参数化 `::timestamptz`(去 sql.raw);前端列表页改
+useInfiniteQuery + 「加载更多」;HTTP 门禁:12 条 limit=5 逐页走 cursor,断言无重复无遗漏。
+⑤publishFingerprint 补 `compiled.runtimeSha256`(完整 artifact hash):WRAPPER/PRELUDE 只活在
+bundler.ts 字符串里,sdkFiles digest 盖不住它们,信任侧入口协议单独变更时指纹现在会动。
+⑥dependsOn 真补上(上轮 STATUS 声称补了、代码没动):descriptor 加 assessment 与 ui-registry,
+ui-registry 从 devDeps 移 deps;resolve 后 lock 无字节变化(两者本就在更早层)。
+
+**顺手**:re2js 2.8.6 进 vendor-sync(tag 形态是裸版本号)——它已是计分合同解释器,升级语义
+必须能从 repos/ 读到所运行版本的源码与测试;`pnpm vendor:check` 4 trees 一致。
+
+**登记不阻塞 4b 的三项**(阶段五/七前处理):normalize 系列只证结构、pattern 合法性另跑,
+复用方需要「host-validated」brand 或统一 factory 以免误信 normalize 已做全量校验;sandbox
+boundedProblem 目前先取全串再 slice,应先读 guest 长度超限即 truncated 标记;Formula 测试
+输入仍是 Sandbox 默认 64KiB transport,text 无 maxLength 时存在「合同合法但 transport 拒」,
+阶段七接 scorer 前定 MAX_FORMULA_INPUT_BYTES 且 SandboxInputTooLarge 不得落成 503。
+
+**验收**:`pnpm typecheck` 零错;`pnpm test` **1050 passed | 17 skipped**(+15:lexer 11、
+constructor 探测 ×2、forged 合同、分页门禁);`pnpm test:browser` **227 passed**;
+`pnpm vendor:check` 4 trees 一致。
+4b 首件:server-side LSP spike(authenticated WS → 隔离 session → `tsc --lsp -stdio` →
+completion/hover/diagnostics → socket close 杀进程;LSP workspace 用只含 author-facing SDK 的
+复制树,浏览器 URI 固定映射虚拟 formula.ts,一切真实路径拒绝或重写),Monaco 之后再来。

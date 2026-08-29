@@ -79,6 +79,17 @@ export const VENDORED: readonly VendoredSource[] = [
     tagFor: (version) => `v${version}`,
     versionFile: 'packages/quickjs-emscripten-core/package.json',
   },
+  // The pattern engine behind the value-schema profile's `pattern` keyword.
+  // It interprets a frozen part of the scoring contract, so a dialect or
+  // semantics question is answered from this tree's sources and tests - the
+  // same discipline as the sandbox engine above.
+  {
+    name: 're2js',
+    repository: 'https://github.com/le0pard/re2js.git',
+    packageName: 're2js',
+    tagFor: (version) => version,
+    versionFile: 'package.json',
+  },
 ]
 
 export const REPOS = 'repos'

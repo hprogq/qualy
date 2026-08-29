@@ -576,6 +576,9 @@ importers:
       '@qualy/value-schema':
         specifier: workspace:*
         version: link:../value-schema
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
 
   packages/core/plugin-kit:
     dependencies:
@@ -730,6 +733,9 @@ importers:
       '@qualy/plugin-sandbox':
         specifier: workspace:*
         version: link:../../infra/sandbox
+      '@qualy/plugin-ui-registry':
+        specifier: workspace:*
+        version: link:../../infra/ui-registry
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac
@@ -773,9 +779,6 @@ importers:
       '@qualy/plugin-audit':
         specifier: workspace:*
         version: link:../../base/audit
-      '@qualy/plugin-ui-registry':
-        specifier: workspace:*
-        version: link:../../infra/ui-registry
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18

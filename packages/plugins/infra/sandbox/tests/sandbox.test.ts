@@ -210,6 +210,57 @@ for (const variant of variants) {
       expect(JSON.parse(value as string)).toEqual({ n: 42, m: 5 })
     })
 
+    it('severs every route to the Function constructor: no dynamic code', async () => {
+      // deleting the global name is not enough - (() => {}).constructor
+      // reaches the original constructor unless the prototype chain is cut.
+      // Each function kind carries its own constructor (GeneratorFunction,
+      // AsyncFunction...), so each is probed in its own artifact; an engine
+      // without the syntax refuses the eval, which is safer still.
+      const probes: readonly (readonly [string, string])[] = [
+        ['arrow', '(() => {})'],
+        ['function', '(function () {})'],
+        ['generator', '(function* () {})'],
+        ['async', '(async () => {})'],
+        ['async-generator', '(async function* () {})'],
+      ]
+      for (const [kind, maker] of probes) {
+        const outcome = await run(
+          invocation(
+            `globalThis.grab = () => {
+               const target = ${maker};
+               const direct = target.constructor;
+               const walked = Object.getPrototypeOf(target).constructor;
+               const reflected = Reflect.getPrototypeOf(target).constructor;
+               const casing = [direct, walked, reflected].map((route) => typeof route);
+               return JSON.stringify({ casing });
+             }`,
+            'grab',
+          ),
+        )
+        if (Result.isFailure(outcome)) {
+          expect(outcome.failure._tag, kind).toBe('SandboxEvalFailed')
+          continue
+        }
+        expect(JSON.parse(outcome.success as string), kind).toEqual({
+          casing: ['undefined', 'undefined', 'undefined'],
+        })
+      }
+      // and the classic indirect spelling on top
+      const indirect = await valueOf(
+        invocation(
+          `globalThis.grab = () => JSON.stringify({
+             viaObject: typeof ({}).constructor.constructor,
+             viaClass: typeof (class {}).constructor,
+           })`,
+          'grab',
+        ),
+      )
+      expect(JSON.parse(indirect as string)).toEqual({
+        viaObject: 'undefined',
+        viaClass: 'undefined',
+      })
+    })
+
     it('refuses a non-string answer: the contract is one bounded string', async () => {
       const failure = await failureOf(invocation('globalThis.f = () => ({ big: true })', 'f'))
       expect(failure).toMatchObject({

@@ -21,12 +21,14 @@ const plugin = Plugin.define(
   '@qualy/plugin-assessment-formula',
   {
     dependsOn: [
+      '@qualy/plugin-assessment',
       '@qualy/plugin-audit',
       '@qualy/plugin-auth',
       '@qualy/plugin-database',
       '@qualy/plugin-org',
       '@qualy/plugin-rbac',
       '@qualy/plugin-sandbox',
+      '@qualy/plugin-ui-registry',
     ],
   },
   Db.entities(entities, {

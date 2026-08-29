@@ -61,7 +61,28 @@ const BOOTSTRAP = `(() => {
     'SyntaxError', 'EvalError', 'ReferenceError', 'Map', 'Set', 'WeakMap',
     'WeakSet', 'Proxy', 'Reflect', 'RegExp',
   ]) lock(name);
-  Object.freeze(Function.prototype);
+  // formulas have no dynamic code generation: deleting the global names is
+  // not enough, because (() => {}).constructor still reaches the original
+  // Function constructor (and the generator/async variants reach theirs).
+  // Sever 'constructor' on every function prototype chain BEFORE freezing -
+  // a frozen prototype cannot be repaired afterwards.
+  const makers = [
+    function () {},
+    function* () {},
+    async function () {},
+    async function* () {},
+  ];
+  for (const maker of makers) {
+    let proto = Object.getPrototypeOf(maker);
+    while (proto !== null && proto !== Object.prototype) {
+      if (Object.getOwnPropertyDescriptor(proto, 'constructor'))
+        Object.defineProperty(proto, 'constructor', {
+          value: undefined, writable: false, configurable: false, enumerable: false,
+        });
+      Object.freeze(proto);
+      proto = Object.getPrototypeOf(proto);
+    }
+  }
   for (const name of ['eval', 'Function']) {
     Object.defineProperty(globalThis, name, {
       value: undefined, writable: false, configurable: false, enumerable: false,
