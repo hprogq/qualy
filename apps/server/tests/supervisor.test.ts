@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { postgresAvailable } from '@qualy/plugin-database/testkit'
@@ -21,8 +22,24 @@ import { postgresAvailable } from '@qualy/plugin-database/testkit'
 //
 // It runs the actual `pnpm dev` supervisor, so the watcher's roots, the
 // manifest precedence and the staging are all exercised as they ship.
+//
+// Everything it drives is its own. It used to borrow two things from the
+// working tree and both were wrong. The browser half ran the real
+// `apps/web`, whose vite config names one port and whose dev service sets
+// `strictPort`, so the whole case failed for anybody with `pnpm dev` open -
+// not sometimes, but by construction. And the backend reload was triggered by
+// touching a real source file, which is a genuine save as far as any OTHER
+// watcher is concerned: a development session running beside the suite would
+// reload because a test wanted it to.
+//
+// So the web application here is a temporary directory holding the two files
+// the dev service asks for, on a port nobody else uses, and the backend
+// reload is triggered through a plugin this suite installs for itself. What
+// stays real is everything under test: the supervisor, the watcher, the
+// staging protocol and Vite's own lifecycle.
 
 const port = 3203
+const webPort = 5273
 const origin = `http://127.0.0.1:${String(port)}`
 const repoRoot = path.resolve(import.meta.dirname, '../../..')
 const host = path.join(repoRoot, 'apps/server/src/dev/host.ts')
@@ -30,19 +47,75 @@ const host = path.join(repoRoot, 'apps/server/src/dev/host.ts')
 const manifest = path.join(repoRoot, 'qualy.supervisor-test.yml')
 const lock = path.join(repoRoot, 'qualy.supervisor-test.lock.json')
 
+// The plugin this suite installs so it has a backend source file of its own
+// to save. It contributes nothing - an id and no features - because what is
+// being exercised is the watcher's answer to a save under a plugin root, not
+// anything the plugin does. Its package is a temporary directory, linked into
+// the host's node_modules the way any installed plugin is; node_modules is
+// never watched, so the link itself is invisible to every watcher including
+// the one under test.
+const triggerId = '@qualy/plugin-supervisor-test-trigger'
+const linkedAt = path.join(repoRoot, 'apps/server/node_modules', ...triggerId.split('/'))
+
 let intact = ''
+let manifestText = ''
+let webRoot = ''
+let triggerRoot = ''
 let supervisor: ChildProcess | null = null
 let detached = false
 let output = ''
 
+/** the file whose modification time asks for a backend-only reload */
+const triggerFile = () => path.join(triggerRoot, 'src/server/marker.ts')
+
 beforeAll(() => {
+  webRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-supervisor-web-'))
+  // the two files the web dev service checks for, and a port of this
+  // suite's own so a running `pnpm dev` is neither disturbed nor in the way
+  fs.writeFileSync(path.join(webRoot, 'index.html'), '<!doctype html>\n<title>test</title>\n')
+  fs.writeFileSync(
+    path.join(webRoot, 'vite.config.ts'),
+    `export default { server: { port: ${String(webPort)} } }\n`,
+  )
+
+  triggerRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-supervisor-plugin-'))
+  fs.mkdirSync(path.join(triggerRoot, 'src/server'), { recursive: true })
+  fs.writeFileSync(
+    path.join(triggerRoot, 'package.json'),
+    `${JSON.stringify(
+      {
+        name: triggerId,
+        version: '0.0.0',
+        private: true,
+        type: 'module',
+        exports: { '.': './index.js', './package.json': './package.json' },
+      },
+      null,
+      2,
+    )}\n`,
+  )
+  fs.writeFileSync(
+    path.join(triggerRoot, 'index.js'),
+    `export default { _tag: 'Plugin', id: ${JSON.stringify(triggerId)}, dependsOn: [], features: [] }\n`,
+  )
+  fs.writeFileSync(triggerFile(), 'export const marker = 1\n')
+  fs.mkdirSync(path.dirname(linkedAt), { recursive: true })
+  fs.rmSync(linkedAt, { force: true, recursive: true })
+  fs.symlinkSync(triggerRoot, linkedAt, 'dir')
+
   intact = fs.readFileSync(path.join(repoRoot, 'qualy.yml'), 'utf8')
-  fs.writeFileSync(manifest, intact)
+  manifestText = intact
+    .replace(
+      "'@qualy/plugin-web': {}",
+      `'@qualy/plugin-web':\n    config: { sourceRoot: ${JSON.stringify(webRoot)} }`,
+    )
+    .concat(`  '${triggerId}': {}\n`)
+  fs.writeFileSync(manifest, manifestText)
   fs.copyFileSync(path.join(repoRoot, 'qualy.lock.json'), lock)
 })
 
 afterEach(async () => {
-  fs.writeFileSync(manifest, intact)
+  fs.writeFileSync(manifest, manifestText)
   if (supervisor !== null && supervisor.exitCode === null) {
     // a detached child is its own group, and killing only its leader would
     // leave the backend and the dev server behind
@@ -57,6 +130,9 @@ afterEach(async () => {
 
 afterAll(() => {
   for (const file of [manifest, lock]) fs.rmSync(file, { force: true })
+  fs.rmSync(linkedAt, { force: true })
+  for (const dir of [webRoot, triggerRoot])
+    if (dir !== '') fs.rmSync(dir, { recursive: true, force: true })
 })
 
 const start = (options: { ownGroup?: boolean } = {}) => {
@@ -111,7 +187,7 @@ describe.runIf(postgresAvailable)('the development supervisor', () => {
 
     // a plugin that is not installed: the candidate fails while resolving the
     // assembly, which is the band before anything is acquired
-    fs.writeFileSync(manifest, `${intact}\n  '@qualy/plugin-does-not-exist': {}\n`)
+    fs.writeFileSync(manifest, `${manifestText}\n  '@qualy/plugin-does-not-exist': {}\n`)
     await until(() => output.includes('reload failed'))
     expect(output).toContain(`keeping backend#${first}`)
     // the point: it never stopped answering
@@ -119,7 +195,7 @@ describe.runIf(postgresAvailable)('the development supervisor', () => {
     expect(serving()).toEqual([first])
 
     // and it recovers on the next save, without anything else being touched
-    fs.writeFileSync(manifest, intact)
+    fs.writeFileSync(manifest, manifestText)
     await until(() => serving().length === 2)
     await until(async () => (await answers()) === 200)
     expect(serving()[1]).not.toBe(first)
@@ -133,11 +209,10 @@ describe.runIf(postgresAvailable)('the development supervisor', () => {
     const started = () => [...output.matchAll(/web development server on/g)].length
     expect(started()).toBe(1)
 
-    // A backend file, touched rather than rewritten. Its content is what
-    // other suites in this run are compiling; its modification time is what
-    // the watcher reads, and only one of those is shared.
-    const now = new Date()
-    fs.utimesSync(path.join(repoRoot, 'apps/server/src/health.ts'), now, now)
+    // A save under this suite's own plugin, in the half the watcher reads as
+    // the backend. Nothing else on the machine watches it, so no development
+    // session running beside this one reloads because a test asked for it.
+    fs.writeFileSync(triggerFile(), `export const marker = ${String(Date.now())}\n`)
     await until(() => serving().length === 2)
     await until(async () => (await answers()) === 200)
     expect(started()).toBe(1)

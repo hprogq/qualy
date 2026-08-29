@@ -10053,18 +10053,28 @@ telemetry 剩下的两类事情——进 VPC 后的环境复验、TMP/Grafana �
 | metric 的 url.scheme 是死常量                                      | api-kit/request.ts               | api-kit/tests/request.test.ts                  |
 
 **没修的一条,以及为什么**:审查报的「OTLP 客户端无 per-request 超时导致 export fiber 与 socket 无界累积」。
-上游确实没有超时并明说交给调用方,但**它声称的失效路径我复现不出来**,而且实测推翻了其中两条机制:
-导出的 interval 循环 `Fiber.await` 每次导出后才继续(OtlpExporter.ts:251-253),所以 interval 路径不可能堆积;
-而去掉候选修复后,尝试仍在持续发起,所以也不是「卡死不动」。三次构造判别性用例都无法区分修复前后。
-按仓库元规则(复杂度必须由已发生的问题证明),不做预防性建设,整块回退。
+
+这是一次**裁决,不是对未来的保证**。上游确实没有 per-request 超时并明说交给调用方,这一点属实;
+但该审查项所描述的**无界累积 / 卡死机制无法复现**,而且其中一条前提被实测推翻:导出的 interval 循环
+在 `Fiber.await` 每次导出之后才继续(OtlpExporter.ts:251-253),所以 interval 路径**不可能并发堆积**;
+去掉候选修复后尝试仍在持续发起,所以也不是「卡死不动」。三次构造判别性用例都无法区分修复前后。
+按仓库元规则(复杂度必须由已发生的问题证明),不引入自有 timeout。**出现可复现的 stalled export 之后再处理。**
+顺带更正一处:上游确实读 `OTEL_EXPORTER_OTLP_TIMEOUT`,但把它映射成**关停 flush** 的界,不是单次请求的界。
 
 **未成门禁的一类**:StyleX 的「简写压不住 longhand」与「className 追加而非合并」。两者要精确判定,
 都需要跨文件解析接收组件自己写了哪些属性——95 个 xstyle 载荷里 48 个用了简写,382 处传编译 className,
 一刀切的规则全是误报。两处实例已修,类未关,记在这里而不是假装关掉了。
 
-**顺带发现的测试隔离缺陷**:`apps/server/tests/supervisor.test.ts` 隔离了后端端口,却没隔离浏览器开发服务器的
-5173(`strictPort: true`)。**任何人开着 `pnpm dev` 时这条用例必红**,与被测代码无关。本轮就是这样:
-实测 `Port 5173 is already in use`。未修。
+**顺带发现的测试隔离缺陷,已修**:`apps/server/tests/supervisor.test.ts` 从工作树借了两样东西,两样都错。
+它隔离了后端端口,却让浏览器那半跑真实的 `apps/web`——固定端口加 `strictPort: true`,于是**任何人开着
+`pnpm dev` 时这条用例必红**,不是偶发而是结构必然(实测 `Port 5173 is already in use`)。它还靠 `utimesSync`
+真实的 `apps/server/src/health.ts` 来制造 backend 事件,而那对任何**别的** watcher 都是一次真实保存:
+旁边跑着的开发会话会因为一个测试想要而重载。
+
+现在整个世界归测试所有:浏览器那半是一个临时目录,只放 dev service 要检查的两个文件,用自己的端口
+(经 manifest 的 `sourceRoot`,不污染生产配置);backend 事件由本套件自己安装的一个空插件提供
+(临时包 + 链进宿主 node_modules,而 node_modules 从不被监听,所以这条链对所有 watcher 都不可见)。
+被测的东西仍然全是真的:supervisor、watcher、staging 协议、Vite 自己的生命周期。
 
 **验收**:`pnpm typecheck` 零错;`pnpm test` **910 passed | 17 skipped**(唯一失败即上面那条 5173);
 `pnpm test:browser` **227 passed**;prettier 通过。
