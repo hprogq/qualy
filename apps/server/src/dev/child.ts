@@ -21,6 +21,20 @@ export interface Child {
   /** what the log calls it: `backend#3`, `dev:@qualy/plugin-web:web#1` */
   readonly name: string
   readonly process: ChildProcess
+  /**
+   * Latched from the child's own `exit` event, because `exitCode` cannot
+   * answer this.
+   *
+   * A child killed by a SIGNAL keeps `exitCode === null` forever - the signal
+   * is reported on `signalCode` instead - so every `exitCode !== null` test
+   * reads a signal-killed child as still running. A terminal delivers Ctrl+C
+   * to the whole foreground group, so that is not a corner: it is what every
+   * interrupt during a reload looks like. Measured: `exited()` on such a child
+   * registers a listener for an event that already fired and never settles,
+   * which is a supervisor that waits out its whole kill deadline and then
+   * waits forever.
+   */
+  gone: boolean
 }
 
 let generation = 0
@@ -31,7 +45,11 @@ const start = (label: string, entry: string, argv: readonly string[], env: NodeJ
   // an EventEmitter that emits `error` with nobody listening throws, and a
   // channel torn down mid-write is the one thing children reliably do
   process.on('error', () => {})
-  return { name: `${label}#${String(generation)}`, process }
+  const child: Child = { name: `${label}#${String(generation)}`, process, gone: false }
+  process.once('exit', () => {
+    child.gone = true
+  })
+  return child
 }
 
 export const forkBackend = (env: NodeJS.ProcessEnv): Child =>
@@ -73,13 +91,13 @@ export const send = (child: Child, message: HostMessage): void => {
 
 export const exited = (child: Child): Promise<number | null> =>
   new Promise((resolve) => {
-    if (child.process.exitCode !== null) return resolve(child.process.exitCode)
+    if (child.gone) return resolve(child.process.exitCode)
     child.process.once('exit', (code) => resolve(code))
   })
 
 /** ask it to stop, and wait; whatever is left after the deadline is killed */
 export const stop = async (child: Child, within: number): Promise<void> => {
-  if (child.process.exitCode !== null) return
+  if (child.gone) return
   send(child, { protocol: PROTOCOL, type: 'shutdown' })
   const deadline = new Promise<'late'>((resolve) =>
     setTimeout(() => resolve('late'), within).unref(),
@@ -145,7 +163,7 @@ export const serviceReady = (child: Child): Promise<void> =>
 export const listening = async (origin: string, child: Child, within: number): Promise<boolean> => {
   const end = Date.now() + within
   while (Date.now() < end) {
-    if (child.process.exitCode !== null) return false
+    if (child.gone) return false
     try {
       const response = await fetch(`${origin}/health/live`, { signal: AbortSignal.timeout(1_000) })
       if (response.status === 200) return true

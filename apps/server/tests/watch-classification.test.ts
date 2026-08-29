@@ -92,6 +92,21 @@ describe('a batch of saves', () => {
     expect(merge({ service: 'a' }, { service: 'a' })).toEqual({ service: 'a' })
     expect(merge({ service: 'a' }, { service: 'b' })).toBe('session')
   })
+
+  it('drops neither half when a backend and a service are saved together', () => {
+    // Neither subsumes the other and the type cannot say "both", so the batch
+    // escalates. It used to keep whichever arrived first and throw the other
+    // away - and in one of the two orders the thing thrown away was the
+    // BACKEND, which leaves a process serving code that is no longer on disk
+    // with nothing said about it. A branch switch touches both at once.
+    expect(merge('backend', { service: 'a' })).toBe('session')
+    expect(merge({ service: 'a' }, 'backend')).toBe('session')
+  })
+
+  it('leaves a repeated demand alone', () => {
+    expect(merge('backend', 'backend')).toBe('backend')
+    expect(merge('session', 'session')).toBe('session')
+  })
 })
 
 describe('what is watched', () => {

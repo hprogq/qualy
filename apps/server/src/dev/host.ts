@@ -22,7 +22,7 @@ import {
   type Child,
   type Prepared,
 } from './child.ts'
-import { merge, watch, type Action, type WatchPlan } from './watch.ts'
+import { merge, watch, watchTargets, type Action, type WatchPlan } from './watch.ts'
 
 // The process `pnpm dev` is (docs/runtime-redesign.md §45, §46).
 //
@@ -81,8 +81,18 @@ const childEnv = (manifest: string): NodeJS.ProcessEnv => {
   }
 }
 
-const port = Number(process.env.PORT ?? 3000)
-const origin = `http://127.0.0.1:${String(port)}`
+/**
+ * Where the backend answers, read from the SAME environment the children get.
+ *
+ * It used to come from `process.env` alone while the children were handed
+ * `.env` merged underneath it. A PORT declared only in `.env` - which is the
+ * normal way to declare it - therefore reached the child and not the
+ * supervisor: the child bound one port and the supervisor probed 3000, so its
+ * health poll could never succeed and every candidate was reported as having
+ * failed to come up.
+ */
+const portOf = (from: NodeJS.ProcessEnv) => Number(from.PORT ?? 3000)
+const originOf = (from: NodeJS.ProcessEnv) => `http://127.0.0.1:${String(portOf(from))}`
 
 const portTaken = (at: number) =>
   new Promise<boolean>((resolve) => {
@@ -123,7 +133,12 @@ let stopping = false
 let watcher: FSWatcher | null = null
 
 const manifest = manifestPath()
-const env = childEnv(manifest)
+// Re-read when a world is staged rather than once at startup: `.env` is
+// watched, a change to it asks for a session, and a session that rebuilt
+// everything while still handing out the values read minutes ago would apply
+// nothing - the one edit the reload exists for.
+let env = childEnv(manifest)
+let origin = originOf(env)
 
 const plan = (): WatchPlan => ({
   bootstrap: [
@@ -250,8 +265,35 @@ const acceptServices = async (services: Map<string, Child>) => {
   }
 }
 
+/**
+ * Point the watcher at the plugins this assembly actually has.
+ *
+ * The plan was built once, at startup, from whatever the first world adopted -
+ * and it holds `active.roots` by reference, which a session replaces rather
+ * than mutates. So a plugin added to the manifest afterwards was watched
+ * nowhere, and worse, `classify` could not find an owner for its files and
+ * answered `null`: edits to a brand new plugin's server code produced no
+ * event at all. The costly case is a first boot that FAILED, where nothing was
+ * adopted, so no plugin root was watched and the developer's fix for the error
+ * on screen did nothing.
+ *
+ * Rebuilt only when the targets really move, since a reload is otherwise
+ * frequent and re-walking every plugin tree is not free.
+ */
+let watching = ''
+const resyncWatcher = async (): Promise<void> => {
+  if (watcher === null) return
+  const next = watchTargets(plan()).join('|')
+  if (next === watching) return
+  watching = next
+  await watcher.close()
+  watcher = watch(plan(), saw, (message) => say(message, 'Warn'))
+}
+
 /** a backend and, if asked, the services its own topology declares */
 const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
+  env = childEnv(manifest)
+  origin = originOf(env)
   const backend = watchExit(forkBackend(env))
   candidate = { backend, services: new Map(), committed: false }
   let prepared: Prepared
@@ -308,6 +350,7 @@ const stageWorld = async (kind: 'backend' | 'session'): Promise<void> => {
     await acceptServices(candidate.services)
   }
   candidate = null
+  await resyncWatcher()
   say(`${backend.name} is serving`)
 }
 
@@ -411,15 +454,15 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 // ---------------------------------------------------------------------------
 // the first world
 
-if (await portTaken(port)) {
-  say(`port ${String(port)} is already in use; stop what is on it or set PORT`, 'Error')
+const first = portOf(env)
+if (await portTaken(first)) {
+  say(`port ${String(first)} is already in use; stop what is on it or set PORT`, 'Error')
   process.exit(1)
 }
 
 say(`assembly ${manifest}`)
-await stageWorld('session')
 
-watcher = watch(plan(), (action, files) => {
+const saw = (action: Action | 'restart-host', files: readonly string[]) => {
   if (action === 'restart-host') {
     say('the supervisor itself changed; restart pnpm dev to pick it up', 'Warn')
     return
@@ -429,5 +472,9 @@ watcher = watch(plan(), (action, files) => {
     `${path.relative(repoRoot, files[0] ?? '')}${files.length > 1 ? ` (+${String(files.length - 1)})` : ''} -> ${what}`,
   )
   post({ kind: 'change', action })
-})
+}
+
+await stageWorld('session')
+watching = watchTargets(plan()).join('|')
+watcher = watch(plan(), saw, (message) => say(message, 'Warn'))
 say('watching for changes')

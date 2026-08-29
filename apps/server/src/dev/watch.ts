@@ -22,7 +22,12 @@ import type { PluginRoot } from './protocol.ts'
 /** what a batch of saved files asks for, in the order they override */
 export type Action = 'backend' | { readonly service: string } | 'session'
 
-const rank = (action: Action): number => (action === 'backend' ? 1 : action === 'session' ? 2 : 1)
+const rank = (action: Action): number => (action === 'session' ? 2 : 1)
+
+const same = (a: Action, b: Action): boolean =>
+  typeof a === 'object' || typeof b === 'object'
+    ? typeof a === 'object' && typeof b === 'object' && a.service === b.service
+    : a === b
 
 /** the higher of two demands: a session subsumes everything smaller */
 export const merge = (a: Action | null, b: Action | null): Action | null => {
@@ -30,9 +35,17 @@ export const merge = (a: Action | null, b: Action | null): Action | null => {
   if (b === null) return a
   if (rank(b) > rank(a)) return b
   if (rank(a) > rank(b)) return a
-  // same rank and both specific: two different services in one batch is a
-  // pair of independent restarts, which this V1 answers with a session
-  return typeof a === 'object' && typeof b === 'object' && a.service !== b.service ? 'session' : a
+  // Same rank and not the same demand. A backend replacement and a service
+  // replacement do not subsume one another, and neither does one service
+  // replace another, so there is no answer here that keeps both - and this
+  // type has no way to say "both". It escalates, which is the cautious
+  // direction this file's header asks for.
+  //
+  // It used to return `a`, and that silently dropped whichever demand arrived
+  // second. Measured: `merge({service}, 'backend')` returned the service and
+  // threw the backend away, which is the expensive direction exactly - a
+  // backend left serving code that is no longer on disk, with nothing said.
+  return same(a, b) ? a : 'session'
 }
 
 export interface WatchPlan {
@@ -151,8 +164,16 @@ export const watchTargets = (plan: WatchPlan): readonly string[] => [
 export const watch = (
   plan: WatchPlan,
   onBatch: (action: Action | 'restart-host', files: readonly string[]) => void,
+  onError: (message: string) => void = () => {},
 ): FSWatcher => {
   const watcher = chokidar.watch([...watchTargets(plan)], { ignored, ignoreInitial: true })
+  // An EventEmitter that emits `error` with nobody listening throws, and this
+  // one has real reasons to: a watched directory removed under it, a platform
+  // descriptor limit, a permission change. Without this, any of them ends the
+  // whole development session with a raw stack from a file watcher.
+  watcher.on('error', (error: unknown) =>
+    onError(`watching files failed: ${error instanceof Error ? error.message : String(error)}`),
+  )
   let pending: Action | 'restart-host' | null = null
   let files: string[] = []
   let timer: NodeJS.Timeout | null = null
