@@ -12,14 +12,15 @@
     "./permissions": "./src/permissions.ts",
     "./api": "./src/api.ts",
     "./client/api": "./src/client/api.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./testkit": "./src/testkit.ts"
   },
   "dependencies": {
+    "@effect/platform-node": "catalog:",
     "@mikro-orm/core": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "@qualy/audit-contract": "workspace:*",
     "@qualy/formula": "workspace:*",
-    "@qualy/formula-compiler": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
@@ -29,6 +30,7 @@
     "@qualy/plugin-sandbox": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/sandbox-rpc": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/value-schema": "workspace:*",
@@ -40,7 +42,10 @@
     "kysely": "catalog:"
   },
   "devDependencies": {
+    "@qualy/formula-compiler": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",
+    "@qualy/sandbox-authoring": "workspace:*",
+    "@qualy/sandbox-runtime": "workspace:*",
     "@types/react": "catalog:"
   },
   "peerDependencies": {

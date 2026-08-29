@@ -274,6 +274,24 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core/plugin-kit
 
+  apps/sandbox-authoring:
+    dependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
+      '@qualy/formula':
+        specifier: workspace:*
+        version: link:../../packages/core/formula
+      '@qualy/formula-compiler':
+        specifier: workspace:*
+        version: link:../../packages/core/formula-compiler
+      '@qualy/sandbox-rpc':
+        specifier: workspace:*
+        version: link:../../packages/core/sandbox-rpc
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
+
   apps/sandbox-runtime:
     dependencies:
       '@effect/platform-node':
@@ -597,6 +615,9 @@ importers:
       '@qualy/formula':
         specifier: workspace:*
         version: link:../formula
+      '@qualy/sandbox-rpc':
+        specifier: workspace:*
+        version: link:../sandbox-rpc
       '@qualy/value-schema':
         specifier: workspace:*
         version: link:../value-schema
@@ -752,6 +773,9 @@ importers:
 
   packages/plugins/assessment/formula:
     dependencies:
+      '@effect/platform-node':
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
       '@mikro-orm/core':
         specifier: 'catalog:'
         version: 7.1.13
@@ -764,9 +788,6 @@ importers:
       '@qualy/formula':
         specifier: workspace:*
         version: link:../../../core/formula
-      '@qualy/formula-compiler':
-        specifier: workspace:*
-        version: link:../../../core/formula-compiler
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../contracts/i18n
@@ -794,6 +815,9 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../../contracts/rbac
+      '@qualy/sandbox-rpc':
+        specifier: workspace:*
+        version: link:../../../core/sandbox-rpc
       '@qualy/ui':
         specifier: workspace:*
         version: link:../../../web/ui
@@ -825,9 +849,18 @@ importers:
         specifier: 'catalog:'
         version: 19.2.8
     devDependencies:
+      '@qualy/formula-compiler':
+        specifier: workspace:*
+        version: link:../../../core/formula-compiler
       '@qualy/plugin-audit':
         specifier: workspace:*
         version: link:../../base/audit
+      '@qualy/sandbox-authoring':
+        specifier: workspace:*
+        version: link:../../../../apps/sandbox-authoring
+      '@qualy/sandbox-runtime':
+        specifier: workspace:*
+        version: link:../../../../apps/sandbox-runtime
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18

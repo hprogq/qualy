@@ -64,6 +64,8 @@ export class Sandbox extends Context.Service<
     readonly invoke: (invocation: SandboxInvocation) => Effect.Effect<string, SandboxError>
     /** the engine's identity, for callers that freeze toolchains into records */
     readonly engine: Effect.Effect<string, SandboxError>
+    /** the serving implementation's digest; provenance only, never compat */
+    readonly runtimeBuildId: Effect.Effect<string, SandboxError>
   }
 >()('@qualy/plugin-sandbox/Sandbox') {}
 
@@ -266,7 +268,11 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
           (call) => transportDeadline(call, limits.hardDeadlineMs + TRANSPORT_GRACE_MS),
         )
       }
-      return { invoke, engine: Effect.map(capabilities, (c) => c.quickjsEngineVersion) }
+      return {
+        invoke,
+        engine: Effect.map(capabilities, (c) => c.quickjsEngineVersion),
+        runtimeBuildId: Effect.map(capabilities, (c) => c.runtimeBuildId),
+      }
     }),
   ).pipe(
     Layer.provide(RpcClient.layerProtocolSocket()),

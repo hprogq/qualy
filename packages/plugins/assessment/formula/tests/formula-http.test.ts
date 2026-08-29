@@ -33,6 +33,7 @@ import { sessionCookieName, layer as sessionLayer } from '@qualy/plugin-auth/ser
 import { AuthConfig } from '../../../base/auth/src/server/auth-config.ts'
 import { hashSessionToken } from '../../../base/auth/src/session.ts'
 import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
+import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
 import { permissions as formulaPermissions } from '../src/permissions.ts'
 import { formulaActions } from '../src/actions.ts'
 import { entities } from '../src/db/entities.ts'
@@ -134,6 +135,7 @@ beforeAll(async () => {
   )
   const library = formulaLayer.pipe(
     Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
+    Layer.provide(formulaAuthoringLocalLayer),
     Layer.provideMerge(services),
   )
   const application = HttpRouter.serve(

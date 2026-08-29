@@ -293,6 +293,11 @@ describe('test layering', () => {
     // was relying on. Running belongs at the boundaries: the process entry,
     // the CLI, the browser's one runtime, and tests.
     const RUNS_EFFECTS = [
+      // deliberate detached-fiber seams: a transport deadline must not inherit
+      // an uninterruptible write's fate, so the call runs outside the tree
+      'packages/plugins/infra/sandbox/src/service.ts',
+      'packages/plugins/assessment/formula/src/server/authoring.ts',
+
       // the process entry, and it runs exactly two: codegen with the
       // application's own logger, and the application itself
       'apps/server/src/main.ts',

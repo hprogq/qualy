@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { Context, Effect, Layer, Semaphore } from 'effect'
+import { Context, Effect, Layer } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { sql } from 'kysely'
 import { Api } from '@qualy/api-kit/local'
@@ -12,7 +12,8 @@ import { scopeCoverage, type Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import { SANDBOX_ABI_VERSION, Sandbox } from '@qualy/plugin-sandbox/service'
 import { FORMULA_ABI_VERSION, SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
-import { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT, compileFormula } from '@qualy/formula-compiler'
+import { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT } from '@qualy/sandbox-rpc'
+import { FormulaAuthoring } from './authoring.ts'
 import {
   VALUE_SCHEMA_PROFILE_VERSION,
   assignmentPlan,
@@ -67,7 +68,6 @@ const MAX_CONTRACT_TRANSPORT_BYTES = 131_072
 /** the canonical bytes of a legal contract; part of the v1 profile budget */
 const MAX_CANONICAL_CONTRACT_BYTES = 65_536
 /** compiles queue behind one permit; past this depth the service is busy */
-const MAX_PENDING_COMPILES = 8
 
 const LIST_FINGERPRINT = 'assessment-formula-functions'
 
@@ -188,6 +188,9 @@ interface CompiledFormula {
   readonly formulaRuntimeSha256: string
   readonly typescriptVersion: string
   readonly esbuildVersion: string
+  readonly sourcePolicyVersion: number
+  readonly sourcePolicyParserVersion: string
+  readonly authoringBuildId: string
   readonly report: readonly TestReportRow[]
 }
 
@@ -297,10 +300,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const rbac = yield* Rbac
   const audit = yield* Audit
   const sandbox = yield* Sandbox
-
-  // one compile at a time: tsc and esbuild are whole child processes, and a
-  // publish burst must queue rather than multiply them
-  const compiles = Semaphore.makeUnsafe(1)
+  const authoring = yield* FormulaAuthoring
 
   const actorOf = (as: Principal) => ({ kind: 'user', userId: as.userId }) as const
 
@@ -435,10 +435,6 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       return report
     })
 
-  // publish bursts queue behind the single compile permit; past a bounded
-  // depth the service says busy instead of hoarding child processes
-  let pendingCompiles = 0
-
   const extractContract = (
     artifact: string,
     artifactHash: string,
@@ -493,124 +489,79 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     source: string,
     tests: readonly FormulaTestInput[],
   ): Effect.Effect<CompiledFormula, CompileRefusal> =>
-    Effect.suspend(() => {
-      if (pendingCompiles >= MAX_PENDING_COMPILES)
-        return Effect.fail(new FormulaCompileUnavailable())
-      pendingCompiles += 1
-      return compiles
-        .withPermits(1)(
-          Effect.gen(function* () {
-            // source policy, TS7, esbuild and the artifact identities all
-            // live behind the compiler package; this side maps its plain
-            // outcome onto the wire errors and owns everything AFTER the
-            // artifact exists - contract extraction, the score proof, the
-            // examples - on the runtime sandbox
-            const outcome = yield* Effect.tryPromise({
-              try: () => compileFormula(source),
-              catch: () => new FormulaCompileUnavailable(),
-            })
-            if (outcome.kind === 'source-too-large')
-              return yield* Effect.fail(new FormulaSourceTooLarge({ limit: outcome.limit }))
-            if (outcome.kind === 'source-refused') {
-              const finding = outcome.findings[0]!
-              return yield* Effect.fail(
-                new FormulaSourceRefused({
-                  reason: finding.reason,
-                  ...(finding.specifier === undefined ? {} : { specifier: finding.specifier }),
-                }),
-              )
-            }
-            if (outcome.kind === 'typecheck-timeout')
-              return yield* Effect.fail(
-                new FormulaExecutionLimitExceeded({ phase: 'typecheck', verdict: 'wall-clock' }),
-              )
-            if (outcome.kind === 'typecheck-failed')
-              return yield* Effect.fail(
-                new FormulaTypecheckFailed({
-                  diagnostics: outcome.diagnostics,
-                  truncated: outcome.truncated,
-                }),
-              )
-            if (outcome.kind === 'bundle-failed')
-              return yield* Effect.fail(new FormulaBundleFailed({ message: outcome.message }))
+    Effect.gen(function* () {
+      // the compiler lives behind the authoring service (a separate process
+      // in production); refusals come back already dressed as wire errors.
+      // Everything AFTER the artifact exists stays here: contract
+      // extraction, the score proof and the examples, on the runtime
+      // sandbox, followed by the host-side validation of it all.
+      const compiled = yield* authoring.compile(source)
 
-            const contract = yield* extractContract(outcome.artifact, outcome.runtimeSha256)
+      const contract = yield* extractContract(compiled.artifact, compiled.runtimeSha256)
 
-            // patterns are only worth checking on a structurally sound
-            // input, and patternIssues itself is fail-closed on any shape:
-            // a contract forged past the type system (input: undefined)
-            // must end as a 422, never as a host-side throw
-            const inputShapeIssues = validateInputProfile(contract.input)
-            const inputPatternIssues =
-              inputShapeIssues.length === 0 ? patternIssues(contract.input) : []
-            const issues = [
-              ...[...inputShapeIssues, ...inputPatternIssues].map((issue) => ({
-                path: issue.path === '' ? 'input' : `input.${issue.path}`,
-                reason: issue.reason,
-              })),
-              ...validateAtomicProfile(contract.output).map((issue) => ({
-                path: issue.path === '' ? 'output' : `output.${issue.path}`,
-                reason: issue.reason,
-              })),
-            ]
-            if (issues.length === 0 && kindOf(contract.output as AtomicSchema) !== 'decimal')
-              issues.push({ path: 'output', reason: 'not-a-decimal' })
-            if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
+      // patterns are only worth checking on a structurally sound
+      // input, and patternIssues itself is fail-closed on any shape:
+      // a contract forged past the type system (input: undefined)
+      // must end as a 422, never as a host-side throw
+      const inputShapeIssues = validateInputProfile(contract.input)
+      const inputPatternIssues = inputShapeIssues.length === 0 ? patternIssues(contract.input) : []
+      const issues = [
+        ...[...inputShapeIssues, ...inputPatternIssues].map((issue) => ({
+          path: issue.path === '' ? 'input' : `input.${issue.path}`,
+          reason: issue.reason,
+        })),
+        ...validateAtomicProfile(contract.output).map((issue) => ({
+          path: issue.path === '' ? 'output' : `output.${issue.path}`,
+          reason: issue.reason,
+        })),
+      ]
+      if (issues.length === 0 && kindOf(contract.output as AtomicSchema) !== 'decimal')
+        issues.push({ path: 'output', reason: 'not-a-decimal' })
+      if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
 
-            const inputSchema = normalizeInputSchema(contract.input as InputSchema)
-            const outputSchema = normalizeAtomicSchema(contract.output as AtomicSchema)
+      const inputSchema = normalizeInputSchema(contract.input as InputSchema)
+      const outputSchema = normalizeAtomicSchema(contract.output as AtomicSchema)
 
-            // a scoring formula's answer must fit what the scorer can carry:
-            // the platform amount is numeric(12,4), so an unbounded or wider
-            // output is publishable nowhere and refused here by proof
-            const intoScore = assignmentPlan(
-              outputSchema,
-              normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
-            )
-            if (intoScore.kind !== 'direct')
-              issues.push({ path: 'output', reason: 'not-a-score-amount' })
+      // a scoring formula's answer must fit what the scorer can carry:
+      // the platform amount is numeric(12,4), so an unbounded or wider
+      // output is publishable nowhere and refused here by proof
+      const intoScore = assignmentPlan(outputSchema, normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA))
+      if (intoScore.kind !== 'direct') issues.push({ path: 'output', reason: 'not-a-score-amount' })
 
-            const canonicalInput = canonicalizeInputSchema(inputSchema)
-            const canonicalOutput = canonicalizeAtomicSchema(outputSchema)
-            if (
-              Buffer.byteLength(canonicalInput, 'utf8') +
-                Buffer.byteLength(canonicalOutput, 'utf8') >
-              MAX_CANONICAL_CONTRACT_BYTES
-            )
-              issues.push({ path: '', reason: 'contract-too-large' })
-            if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
+      const canonicalInput = canonicalizeInputSchema(inputSchema)
+      const canonicalOutput = canonicalizeAtomicSchema(outputSchema)
+      if (
+        Buffer.byteLength(canonicalInput, 'utf8') + Buffer.byteLength(canonicalOutput, 'utf8') >
+        MAX_CANONICAL_CONTRACT_BYTES
+      )
+        issues.push({ path: '', reason: 'contract-too-large' })
+      if (issues.length > 0) return yield* Effect.fail(new FormulaContractInvalid({ issues }))
 
-            const report = yield* runTests(
-              outcome.artifact,
-              outcome.runtimeSha256,
-              inputSchema,
-              outputSchema,
-              tests,
-            )
-            if (tests.length === 0 || report.some((row) => !row.passed))
-              return yield* Effect.fail(new FormulaTestFailed({ report }))
+      const report = yield* runTests(
+        compiled.artifact,
+        compiled.runtimeSha256,
+        inputSchema,
+        outputSchema,
+        tests,
+      )
+      if (tests.length === 0 || report.some((row) => !row.passed))
+        return yield* Effect.fail(new FormulaTestFailed({ report }))
 
-            return {
-              artifact: outcome.artifact,
-              inputSchema,
-              outputSchema,
-              sourceSha256: outcome.sourceSha256,
-              runtimeSha256: outcome.runtimeSha256,
-              contractSha256: sha256(`${canonicalInput}|${canonicalOutput}`),
-              formulaRuntimeSha256: outcome.formulaRuntimeSha256,
-              typescriptVersion: outcome.typescriptVersion,
-              esbuildVersion: outcome.esbuildVersion,
-              report,
-            } satisfies CompiledFormula
-          }),
-        )
-        .pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              pendingCompiles -= 1
-            }),
-          ),
-        )
+      return {
+        artifact: compiled.artifact,
+        inputSchema,
+        outputSchema,
+        sourceSha256: compiled.sourceSha256,
+        runtimeSha256: compiled.runtimeSha256,
+        contractSha256: sha256(`${canonicalInput}|${canonicalOutput}`),
+        formulaRuntimeSha256: compiled.formulaRuntimeSha256,
+        typescriptVersion: compiled.typescriptVersion,
+        esbuildVersion: compiled.esbuildVersion,
+        sourcePolicyVersion: compiled.sourcePolicyVersion,
+        sourcePolicyParserVersion: compiled.sourcePolicyParserVersion,
+        authoringBuildId: compiled.authoringBuildId,
+        report,
+      } satisfies CompiledFormula
     })
 
   const listFunctions = Effect.fn('FormulaLibrary.listFunctions')(function* (
@@ -926,12 +877,16 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const engine = yield* sandbox.engine.pipe(
       Effect.mapError(() => new FormulaCompileUnavailable()),
     )
+    const sandboxRuntimeBuildId = yield* sandbox.runtimeBuildId.pipe(
+      Effect.mapError(() => new FormulaCompileUnavailable()),
+    )
     const fingerprint = sha256(
       [
         compiled.sourceSha256,
         sha256(JSON.stringify(row.draftTests)),
         compiled.typescriptVersion,
         compiled.esbuildVersion,
+        String(compiled.sourcePolicyVersion),
         String(FORMULA_ABI_VERSION),
         compiled.formulaRuntimeSha256,
         // the full-artifact hash covers what the sdkFiles digest cannot: the
@@ -1012,6 +967,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                   contractSha256: compiled.contractSha256,
                   typescriptVersion: compiled.typescriptVersion,
                   esbuildVersion: compiled.esbuildVersion,
+                  sourcePolicyVersion: compiled.sourcePolicyVersion,
+                  sourcePolicyParserVersion: compiled.sourcePolicyParserVersion,
+                  authoringBuildId: compiled.authoringBuildId,
+                  sandboxRuntimeBuildId,
                   formulaAbiVersion: FORMULA_ABI_VERSION,
                   formulaRuntimeSha256: compiled.formulaRuntimeSha256,
                   quickjsEngineVersion: engine,

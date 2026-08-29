@@ -12,6 +12,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT } from '@qualy/sandbox-rpc'
 import { bundleFormula, FormulaBundleRefused } from './bundler.ts'
 import { sourcePolicy, type PolicyFinding } from './source-policy.ts'
 import {
@@ -23,8 +24,7 @@ import {
 } from './staging.ts'
 import { esbuildVersion, tscEntry, typescriptVersion } from './toolchain.ts'
 
-export const SOURCE_LIMIT = 256 * 1024
-export const MAX_COMPILED_ARTIFACT_BYTES = 1024 * 1024
+export { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT }
 
 export interface CompiledFormula {
   readonly kind: 'compiled'

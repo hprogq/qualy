@@ -26,3 +26,18 @@ export {
   type SandboxLimits,
 } from './protocol.ts'
 export { RuntimeCapabilities, RuntimeSandboxRpcs } from './runtime.ts'
+export {
+  AuthoringCapabilities,
+  CompileBundleFailed,
+  CompileBusy,
+  CompileSourceRefused,
+  CompileSourceTooLarge,
+  CompileTypecheckFailed,
+  CompileTypecheckTimeout,
+  CompiledFormulaWire,
+  FormulaAuthoringRpcs,
+  MAX_COMPILED_ARTIFACT_BYTES,
+  SOURCE_LIMIT,
+  compileErrors,
+  type AuthoringCompileError,
+} from './authoring.ts'

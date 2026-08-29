@@ -10500,3 +10500,36 @@ publish 的工具链身份改用**编译方随 artifact 报回的**(typescriptVe
 测试:compiler 26(policy 12 + golden 3 + bundler 3 + workspace 7 + lsp 1)、
 formula 插件全套 44 含新 E2E(`import fs from 'node:fs'` 走完整发布 →
 SOURCE_REFUSED{import, node:fs})。`pnpm typecheck` 零错。
+
+## 进程隔离 D:编译走 authoring sandbox 服务(2026-08-30)
+
+sandbox-rpc 补上 authoring 半:`FormulaAuthoringRpcs`(GetAuthoringCapabilities +
+CompileFormula,payload 只有 {source}——tenant/draft/tests 不过界,§19)、Schema 化编译
+错误集(SourceTooLarge/SourceRefused{findings}/TypecheckFailed{诊断+truncated}/
+TypecheckTimeout/BundleFailed/Busy,登记 NOT_A_WIRE_CODE);SOURCE_LIMIT 与
+MAX_COMPILED_ARTIFACT_BYTES 的单源迁入 rpc 合同包(capabilities 正要报它们),
+formula-compiler 反向引用。**apps/sandbox-authoring**:单编译 permit + 深度 8 的有界
+队列(治理从插件整体迁出)、authoringBuildId(compiler+app 源码 digest)、
+capabilities 的 sdk runtime hash 来自一次真实 probe bundle。
+
+插件侧新增 **FormulaAuthoring** service(§22):production = RPC client(错误映射回
+既有 wire 错误、SocketError defect 驯化、90s transport deadline 同款 detached fiber);
+测试实现走 `./testkit`(同一 compileFormula、同一映射、authoringBuildId='in-process-test')。
+compile 段瘦成「authoring.compile → contract/score/examples/host 校验」,esbuild/
+typescript/formula-compiler 全部退出插件生产依赖(§47 的编译半已成立)。Sandbox
+service 面加 `runtimeBuildId`(remote 取 capabilities、local 取 engine 包)。
+
+FormulaVersion 增 4 个 provenance 列(source_policy_version/parser_version/
+authoring_build_id/sandbox_runtime_build_id,既有行 default 'unrecorded',只作审计
+不作 replay 判据,§25);fingerprint 加入 sourcePolicyVersion(§26);迁移
+`20260829182230_formula-version-provenance.sql` 生成后立即命名并幂等化(监督者
+教训照办)。
+
+**remote publish parity**(D 验收):起两个真沙箱进程 + 真 PG,完整发布走
+authoring(编译)→ runtime(合同+示例)→ host(校验+事务);断言与 local 装配的
+版本身份逐字段相等(source/runtime/contract/formulaRuntime 四 hash、双工具链版本、
+engine、ABI、testReport)、**publishFingerprint 逐字节相等**、import 拒绝连 specifier
+一致。formula 测试 harness 抽 `tests/support/stack.ts` 共享。
+
+**验收**:parity 绿;formula+sandbox 31/31;tools/tests 全部 31 文件 185 例绿;
+`pnpm typecheck` 零错。

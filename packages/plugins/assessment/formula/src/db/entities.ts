@@ -88,6 +88,14 @@ export const FormulaVersion = defineEntity({
     valueSchemaProfileVersion: p.integer().default(1),
     regexProfileVersion: p.integer().default(1),
     sandboxAbiVersion: p.integer().default(1),
+    // where this version actually came from - the source-language policy it
+    // passed, the parser that decided it, and WHICH compiler/runtime builds
+    // served the publication. Provenance for audits, never a compat gate:
+    // rows minted before process isolation carry 'unrecorded'.
+    sourcePolicyVersion: p.integer().default(1),
+    sourcePolicyParserVersion: p.string().length(63).default('unrecorded'),
+    authoringBuildId: p.string().length(64).default('unrecorded'),
+    sandboxRuntimeBuildId: p.string().length(64).default('unrecorded'),
     // what publication is idempotent over: the same source, examples and
     // toolchain republished answer with the version that already exists.
     // Nullable because rows published before the fingerprint existed cannot

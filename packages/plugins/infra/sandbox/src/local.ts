@@ -10,6 +10,7 @@
 import { Effect, Layer } from 'effect'
 import {
   engineIdentity,
+  runtimeBuildId,
   WorkerPool,
   type InvokeResponse,
   type PoolProblem,
@@ -106,6 +107,10 @@ export const sandboxLocalLayer = (options?: {
           catch: (problem) => lost(problem as PoolProblem),
         }).pipe(Effect.flatMap(settled))
       }
-      return { invoke, engine: Effect.succeed(engineIdentity()) }
+      return {
+        invoke,
+        engine: Effect.succeed(engineIdentity()),
+        runtimeBuildId: Effect.sync(() => runtimeBuildId()),
+      }
     }),
   )

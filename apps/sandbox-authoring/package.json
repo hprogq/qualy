@@ -1,0 +1,14 @@
+{
+  "name": "@qualy/sandbox-authoring",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@qualy/formula": "workspace:*",
+    "@qualy/formula-compiler": "workspace:*",
+    "@qualy/sandbox-rpc": "workspace:*",
+    "effect": "catalog:"
+  }
+}

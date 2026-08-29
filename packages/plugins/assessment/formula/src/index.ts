@@ -9,7 +9,9 @@ import { message } from '@qualy/i18n-contract'
 import { permissions } from './permissions.ts'
 import { formulaActions } from './actions.ts'
 import { formulaApiGroup } from './api.ts'
-import { formulaApiHandlers, layer as serviceLayer } from './server/index.ts'
+import { formulaApiHandlers, layer as libraryLayer } from './server/index.ts'
+import { formulaAuthoringLayer } from './server/authoring.ts'
+import { Layer } from 'effect'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 
 // The formula library: typed scoring functions written by administrators,
@@ -38,7 +40,7 @@ const plugin = Plugin.define(
   }),
   Access.permissions('assessment-formula', permissions),
   Audit.actions('assessment-formula', formulaActions),
-  Plugin.layer(serviceLayer),
+  Plugin.layer(libraryLayer.pipe(Layer.provide(formulaAuthoringLayer()))),
   Api.group(formulaApiGroup, formulaApiHandlers),
   Ui.page({
     id: 'assessment-formula/list',
