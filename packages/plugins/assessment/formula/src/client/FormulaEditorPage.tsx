@@ -54,11 +54,22 @@ interface PublishFindings {
   readonly report?: readonly {
     name: string
     passed: boolean
+    expected: string
     actual?: string
-    failure?: string
+    problems?: readonly {
+      at: 'input' | 'expected'
+      parameter?: string
+      reason: string
+      constraint?: string
+    }[]
+    refusal?: string
+    defect?: string
   }[]
   readonly issues?: readonly { path: string; reason: string }[]
 }
+
+type ReportRow = NonNullable<PublishFindings['report']>[number]
+type ReportProblem = NonNullable<ReportRow['problems']>[number]
 
 /** the structured data a refused publish carries, whichever refusal it was */
 const findingsOf = (error: unknown): PublishFindings => {
@@ -231,6 +242,72 @@ export default function FormulaEditorPage() {
     onError: (error: unknown) => setFailure(formatError(error)),
   })
 
+  const kindName = (kind: string | undefined): string => {
+    switch (kind) {
+      case 'text':
+        return format(m.kindText)
+      case 'integer':
+        return format(m.kindInteger)
+      case 'decimal':
+        return format(m.kindDecimal)
+      case 'choice':
+        return format(m.kindChoice)
+      case 'boolean':
+        return format(m.kindBoolean)
+      case 'date':
+        return format(m.kindDate)
+      default:
+        return kind ?? ''
+    }
+  }
+
+  const reasonText = (problem: ReportProblem): string => {
+    const constraint = problem.constraint ?? ''
+    switch (problem.reason) {
+      case 'x-qualy-maximum':
+      case 'maximum':
+        return format(m.reasonOverMax, { constraint })
+      case 'x-qualy-minimum':
+      case 'minimum':
+        return format(m.reasonUnderMin, { constraint })
+      case 'x-qualy-maxScale':
+        return format(m.reasonScale, { constraint })
+      case 'maxLength':
+        return format(m.reasonTooLong, { constraint })
+      case 'minLength':
+        return format(m.reasonTooShort, { constraint })
+      case 'enum':
+        return format(m.reasonEnum, { constraint })
+      case 'type':
+      case 'format':
+      case 'pattern':
+        return format(m.reasonKind, { kind: kindName(problem.constraint) })
+      case 'required':
+        return format(m.reasonMissing)
+      case 'additionalProperties':
+        return format(m.reasonExtra)
+      default:
+        return format(m.reasonOther, { reason: problem.reason })
+    }
+  }
+
+  const reportNotes = (row: ReportRow): string => {
+    if (row.problems !== undefined && row.problems.length > 0)
+      return row.problems
+        .map((problem) =>
+          problem.at === 'input'
+            ? format(m.problemInput, {
+                parameter: problem.parameter ?? '',
+                detail: reasonText(problem),
+              })
+            : format(m.problemExpected, { detail: reasonText(problem) }),
+        )
+        .join('; ')
+    if (row.refusal !== undefined) return format(m.refusalPrefix, { message: row.refusal })
+    if (row.defect !== undefined) return format(m.defectPrefix, { message: row.defect })
+    return row.passed ? '' : format(m.reportMismatch)
+  }
+
   if (detail.isError) {
     return (
       <div {...stylex.props(styles.page)}>
@@ -390,6 +467,15 @@ export default function FormulaEditorPage() {
       {findings.report === undefined || findings.report.length === 0 ? null : (
         <Panel title={format(m.reportTitle)}>
           <table {...stylex.props(styles.reportTable)} data-testid="formula-test-report">
+            <thead>
+              <tr>
+                <th {...stylex.props(styles.reportCell)}>{format(m.testName)}</th>
+                <th {...stylex.props(styles.reportCell)}>{format(m.reportOutcome)}</th>
+                <th {...stylex.props(styles.reportCell)}>{format(m.testExpected)}</th>
+                <th {...stylex.props(styles.reportCell)}>{format(m.reportActualColumn)}</th>
+                <th {...stylex.props(styles.reportCell)}>{format(m.reportDetail)}</th>
+              </tr>
+            </thead>
             <tbody>
               {findings.report.map((row, index) => (
                 <tr key={index} data-passed={row.passed}>
@@ -397,11 +483,9 @@ export default function FormulaEditorPage() {
                   <td {...stylex.props(styles.reportCell)}>
                     {format(row.passed ? m.reportPassed : m.reportFailed)}
                   </td>
-                  <td {...stylex.props(styles.reportCell, styles.mono)}>
-                    {row.actual !== undefined
-                      ? format(m.reportActual, { amount: row.actual })
-                      : (row.failure ?? '')}
-                  </td>
+                  <td {...stylex.props(styles.reportCell, styles.mono)}>{row.expected}</td>
+                  <td {...stylex.props(styles.reportCell, styles.mono)}>{row.actual ?? '—'}</td>
+                  <td {...stylex.props(styles.reportCell)}>{reportNotes(row)}</td>
                 </tr>
               ))}
             </tbody>

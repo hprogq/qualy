@@ -10277,3 +10277,18 @@ JSON,键名和字符串都要带双引号。`),输入框 placeholder 直接展�
 服务端、schema、客户端管线全部无罪,`Api.local` 自带 `/api` 前缀。
 
 **验收**:`pnpm typecheck` 零错;formula 套件 11 例全过;全仓 **1026 passed | 17 skipped**。
+
+## 公式示例报告:从校验器行话到人话(2026-08-29)
+
+用户验收第二击:示例未通过时报告给出 `failure: "/value x-qualy-maximum"` ——校验器的
+keyword 原样漏到了人眼前。重做报告结构:每行固定携带**期望**(canonical 拼写)与**实际**
+(公式算出的分值,成功行也给),未通过的原因结构化为三类——`problems`(哪个参数、哪条
+规则、规则自身的值,如上限 10.00;reason 保持机器键由前端翻译,constraint 是内容)、
+`refusal`(公式作者自己的 q.fail 文案,原样)、`defect`(运行崩溃的引擎文本)。
+value-schema 新增 `constraintOf(schema, reason)`(从 schema 读回被触犯规则的值,纯逻辑、
+浏览器可用)与 `parameterSchemaAt`;validate 的 required/additionalProperties issue 现在把
+缺失/多余的属性名并进 path,屏幕能点名参数。前端报告表升为 名称/结论/期望/实际/说明 五列,
+说明列按 reason 词表译成人话(「参数 value:超过上限 10.00」),choice 列出可选值,
+类型错点名六种类型名。
+
+**验收**:`pnpm typecheck` 零错;全仓 **1026 passed | 17 skipped**(catalog 完整性含新词表)。

@@ -95,10 +95,17 @@ const validatorFor = (schema: AtomicSchema | InputSchema): ValidateFunction => {
   return validator
 }
 
-const asIssue = (error: ErrorObject): ValueIssue => ({
-  path: error.instancePath,
-  reason: error.keyword,
-})
+const asIssue = (error: ErrorObject): ValueIssue => {
+  // a missing or stray property reports at the object, but the property is
+  // what a screen has to point at - lift it into the path
+  const named =
+    (error.params as { missingProperty?: string; additionalProperty?: string } | undefined) ?? {}
+  const property = named.missingProperty ?? named.additionalProperty
+  return {
+    path: property === undefined ? error.instancePath : `${error.instancePath}/${property}`,
+    reason: error.keyword,
+  }
+}
 
 /** judge one value against a profile schema; empty means the value is admitted */
 export const validateValue = (

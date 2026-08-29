@@ -12,12 +12,28 @@ const diagnostic = Schema.Struct({
   message: Schema.String,
 })
 
+// One example's outcome, structured for a screen: the expectation and the
+// answer side by side, and when a value never reached the formula, WHICH
+// parameter refused and what the rule's own value was - the reason stays a
+// machine key the client translates, the constraint is content.
+const testProblem = Schema.Struct({
+  at: Schema.Literals(['input', 'expected']),
+  parameter: Schema.optional(Schema.String),
+  reason: Schema.String,
+  constraint: Schema.optional(Schema.String),
+})
+
 const testRow = Schema.Struct({
   name: Schema.String,
   passed: Schema.Boolean,
-  /** what came back when it did not pass: an amount, a refusal or a defect */
+  expected: Schema.String,
+  /** the amount the formula answered with, when it ran to an answer */
   actual: Schema.optional(Schema.String),
-  failure: Schema.optional(Schema.String),
+  problems: Schema.optional(Schema.Array(testProblem)),
+  /** the formula's own q.fail wording, verbatim - the author wrote it */
+  refusal: Schema.optional(Schema.String),
+  /** an unexpected crash while running, as the engine reported it */
+  defect: Schema.optional(Schema.String),
 })
 
 export class FormulaFunctionNotFound extends Schema.TaggedError<FormulaFunctionNotFound>()(

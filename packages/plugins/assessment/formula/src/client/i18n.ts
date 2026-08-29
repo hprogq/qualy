@@ -176,9 +176,101 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/report/failed',
       defaultMessage: 'Failed',
     },
-    reportActual: {
-      id: 'assessment-formula/report/actual',
-      defaultMessage: 'Got {amount}',
+    reportOutcome: {
+      id: 'assessment-formula/report/outcome',
+      defaultMessage: 'Outcome',
+    },
+    reportActualColumn: {
+      id: 'assessment-formula/report/actual-column',
+      defaultMessage: 'Actual',
+    },
+    reportDetail: {
+      id: 'assessment-formula/report/detail',
+      defaultMessage: 'Notes',
+    },
+    reportMismatch: {
+      id: 'assessment-formula/report/mismatch',
+      defaultMessage: 'The answer differs from the expectation.',
+    },
+    problemInput: {
+      id: 'assessment-formula/report/problem-input',
+      defaultMessage: 'Parameter {parameter}: {detail}',
+    },
+    problemExpected: {
+      id: 'assessment-formula/report/problem-expected',
+      defaultMessage: 'Expected amount: {detail}',
+    },
+    refusalPrefix: {
+      id: 'assessment-formula/report/refusal',
+      defaultMessage: 'Refused by the formula: {message}',
+    },
+    defectPrefix: {
+      id: 'assessment-formula/report/defect',
+      defaultMessage: 'Crashed while running: {message}',
+    },
+    reasonOverMax: {
+      id: 'assessment-formula/reason/over-max',
+      defaultMessage: 'above the limit of {constraint}',
+    },
+    reasonUnderMin: {
+      id: 'assessment-formula/reason/under-min',
+      defaultMessage: 'below the minimum of {constraint}',
+    },
+    reasonScale: {
+      id: 'assessment-formula/reason/scale',
+      defaultMessage: 'more than {constraint} decimal places',
+    },
+    reasonTooLong: {
+      id: 'assessment-formula/reason/too-long',
+      defaultMessage: 'longer than {constraint} characters',
+    },
+    reasonTooShort: {
+      id: 'assessment-formula/reason/too-short',
+      defaultMessage: 'shorter than {constraint} characters',
+    },
+    reasonEnum: {
+      id: 'assessment-formula/reason/enum',
+      defaultMessage: 'not one of: {constraint}',
+    },
+    reasonKind: {
+      id: 'assessment-formula/reason/kind',
+      defaultMessage: 'not a valid {kind}',
+    },
+    reasonMissing: {
+      id: 'assessment-formula/reason/missing',
+      defaultMessage: 'missing',
+    },
+    reasonExtra: {
+      id: 'assessment-formula/reason/extra',
+      defaultMessage: 'not a parameter of this formula',
+    },
+    reasonOther: {
+      id: 'assessment-formula/reason/other',
+      defaultMessage: 'does not satisfy the contract ({reason})',
+    },
+    kindText: {
+      id: 'assessment-formula/kind/text',
+      defaultMessage: 'text',
+    },
+    kindInteger: {
+      id: 'assessment-formula/kind/integer',
+      defaultMessage: 'integer',
+    },
+    kindDecimal: {
+      id: 'assessment-formula/kind/decimal',
+      defaultMessage: 'decimal',
+    },
+    kindChoice: {
+      id: 'assessment-formula/kind/choice',
+      defaultMessage: 'choice',
+    },
+    kindBoolean: {
+      id: 'assessment-formula/kind/boolean',
+      defaultMessage: 'boolean',
+    },
+    kindDate: {
+      id: 'assessment-formula/kind/date',
+      defaultMessage: 'date',
     },
     contractIssuesTitle: {
       id: 'assessment-formula/report/contract',

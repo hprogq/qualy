@@ -22,9 +22,11 @@ import {
   canonicalDecimal,
   canonicalizeAtomicSchema,
   canonicalizeInputSchema,
+  constraintOf,
   kindOf,
   normalizeAtomicSchema,
   normalizeInputSchema,
+  parameterSchemaAt,
   validateAtomicProfile,
   validateInputProfile,
   type AtomicSchema,
@@ -98,11 +100,21 @@ interface VersionRow {
   publishedAt: Date
 }
 
+export interface TestProblem {
+  readonly at: 'input' | 'expected'
+  readonly parameter?: string
+  readonly reason: string
+  readonly constraint?: string
+}
+
 export interface TestReportRow {
   readonly name: string
   readonly passed: boolean
+  readonly expected: string
   readonly actual?: string
-  readonly failure?: string
+  readonly problems?: readonly TestProblem[]
+  readonly refusal?: string
+  readonly defect?: string
 }
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
@@ -312,16 +324,35 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     Effect.gen(function* () {
       const report: TestReportRow[] = []
       for (const test of tests) {
+        // the row always carries what was expected, in the canonical spelling
+        // the comparison uses; a lexically broken expectation shows as typed
+        const expected = canonicalDecimal(test.expected) ?? test.expected
         const inputIssues = validateValue(inputSchema, test.input)
         const expectedIssues = validateValue(outputSchema, test.expected)
         if (inputIssues.length > 0 || expectedIssues.length > 0) {
-          report.push({
-            name: test.name,
-            passed: false,
-            failure: [...inputIssues, ...expectedIssues]
-              .map((issue) => `${issue.path === '' ? '(value)' : issue.path} ${issue.reason}`)
-              .join('; '),
-          })
+          const problems: TestProblem[] = [
+            ...inputIssues.map((issue) => {
+              const parameter = issue.path.startsWith('/') ? issue.path.slice(1) : undefined
+              const at =
+                parameter === undefined ? undefined : parameterSchemaAt(inputSchema, issue.path)
+              const constraint = at === undefined ? undefined : constraintOf(at, issue.reason)
+              return {
+                at: 'input' as const,
+                ...(parameter === undefined ? {} : { parameter }),
+                reason: issue.reason,
+                ...(constraint === undefined ? {} : { constraint }),
+              }
+            }),
+            ...expectedIssues.map((issue) => {
+              const constraint = constraintOf(outputSchema, issue.reason)
+              return {
+                at: 'expected' as const,
+                reason: issue.reason,
+                ...(constraint === undefined ? {} : { constraint }),
+              }
+            }),
+          ]
+          report.push({ name: test.name, passed: false, expected, problems })
           continue
         }
         const outcome = yield* sandbox
@@ -339,7 +370,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             Effect.mapError(() => new FormulaCompileUnavailable()),
           )
         if (outcome.kind === 'defect') {
-          report.push({ name: test.name, passed: false, failure: outcome.message })
+          report.push({ name: test.name, passed: false, expected, defect: outcome.message })
           continue
         }
         const envelope = JSON.parse(outcome.value as string) as {
@@ -351,17 +382,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           report.push({
             name: test.name,
             passed: false,
-            failure: envelope.failure?.message ?? 'refused',
+            expected,
+            refusal: envelope.failure?.message ?? '',
           })
           continue
         }
-        const actual = canonicalDecimal(envelope.amount ?? '')
-        const expected = canonicalDecimal(test.expected)
-        report.push(
-          actual !== null && actual === expected
-            ? { name: test.name, passed: true }
-            : { name: test.name, passed: false, actual: envelope.amount ?? '' },
-        )
+        const actual = canonicalDecimal(envelope.amount ?? '') ?? envelope.amount ?? ''
+        report.push({ name: test.name, passed: actual === expected, expected, actual })
       }
       return report
     })

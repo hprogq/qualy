@@ -197,7 +197,9 @@ describe.runIf(postgresAvailable)('the formula library', () => {
     expect(outcome.version.typescriptVersion).toContain('7.')
     expect(outcome.version.esbuildVersion).toMatch(/^\d+\./)
     expect(outcome.version.quickjsEngineVersion).toContain('quickjs')
-    expect(outcome.version.testReport).toEqual([{ name: 'three', passed: true }])
+    expect(outcome.version.testReport).toEqual([
+      { name: 'three', passed: true, expected: '3', actual: '3' },
+    ])
     expect(outcome.detail.versions.map((row) => row.versionNo)).toEqual([1])
     expect(outcome.listed.items.map((row) => row.latestVersionNo)).toEqual([1])
   }, 120_000)
@@ -269,7 +271,7 @@ describe.runIf(postgresAvailable)('the formula library', () => {
     expect(outcome.failing._tag).toBe('ASSESSMENT_FORMULA_TEST_FAILED')
     expect(
       (outcome.failing as { report: readonly { passed: boolean; actual?: string }[] }).report,
-    ).toEqual([{ name: 'three', passed: false, actual: '3' }])
+    ).toEqual([{ name: 'three', passed: false, expected: '4', actual: '3' }])
     expect(outcome.stale._tag).toBe('ASSESSMENT_FORMULA_DRAFT_CONFLICT')
   }, 120_000)
 
