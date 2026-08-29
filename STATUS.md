@@ -10847,3 +10847,39 @@ MonacoLspClient、浏览器无 Effect RPC。
   层作证,两段合成整链。
 - **验收**:`pnpm typecheck` 零错零建议;`pnpm test` 1114 passed;`pnpm test:browser`
   243 passed(36 文件,三连绿);生产 build + 拓扑断言如上。
+
+## Formula authoring loop:preview、ValueForm、试运行(2026-08-30)
+
+按审计蓝图十条施工完毕,Formula 第一次闭环成完整 authoring loop(写代码 → TS7 即时
+提示 → 严格 contract → 类型安全输入表单 → 试运行 → 回归测试 → 发布):
+
+- **value-schema annotation layer(profile v2,commit 26b41f23)**:title/description/
+  x-qualy-i18n 落在任意 atomic、x-qualy-order 落在 input;全部是校验过形状的
+  annotation,semantic body/assignmentPlan/contractSha256 一律剥离(改词永不动
+  hash,测试钉死);SDK 构造器长出 words 参数,Schema.input 自动记书写序;display
+  helpers 走 locale→默认→标识符回退;golden 随 SDK 演进同笔重生成并改写其规则注释。
+- **服务端拆分(commit b7a35bcc)**:compile = prepare(source→artifact+contract+
+  identities)+ evaluateCases(expected optional)+ publish gate 重组——试运行、
+  单测、全套与发布共享唯一执行语义。两个 authenticated 端点:draft/preview(当前
+  buffer → contract + sourceSha256/contractSha256)与 draft/evaluation(≤50 cases,
+  clientId 回显);无副作用、不触碰持久化 draft;formula-http 端到端 5 例
+  (annotation 进 contract、四种评估形态、坏源 422、draft 不动)。
+- **前端**:
+  - `value-form/`(业务无关,Recognition 可复用):draft→materialize→validateValue
+    三段;六 kind 控件(choice 用 enumLabels、annotation label、authored order);
+    materializeField 拒 "1."/"3.5"-as-integer、canonical 化 decimal。
+  - `useDraftPreview`:900ms idle + latest coalescing(单飞、旧答案不覆新源);
+    refusal 保留上一个好 contract(打字打坏代码不拆表单)。**实修一个 StrictMode
+    ref 陷阱**:disposed ref 在 double-mount 后不复位导致 settle 永丢、界面永远
+    「正在解析输入结构…」(用户实测撞上;mount 时复位修复)。
+  - 编辑器页:试运行面板(typed form → 运行 → actual/refusal/defect;保存为用例、
+    将 actual 设为预期值——绝不自动)、用例行表单化(inputText 仍是存储真源,表单是
+    编辑视图;contract 变化 re-derive,合法存值原样保留,非法行标记修复、不静默删);
+    运行结果 ephemeral 且按「运行时的 buffer」判 stale;**source/tests dirty 分离**
+    ——用例暂时坏时保存只带代码(toast 说明),发布门不变。
+  - i18n 全量 zh/en 新文案;JSON 编辑作为 contract 不可用时的回退保留。
+- **验收**:`pnpm typecheck` 零错零建议;`pnpm test` 1123 passed(170 文件);
+  `pnpm test:browser` 250 passed(38 文件,含 value-form 5、编辑器整合 2)。
+- **留待后续**(蓝图明确后置):integer→decimal 的显式转换按钮(reconciliation
+  目前按 validateValue 保留/标记);x-qualy-i18n 的编辑器 UI;ValueForm 提升为共享包
+  等 Recognition 接入时做。

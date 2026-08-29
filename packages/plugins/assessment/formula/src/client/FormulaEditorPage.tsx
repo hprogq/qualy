@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { useApi, useApiQuery, usePageRouteParams, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
@@ -9,8 +9,17 @@ import { Badge } from '@qualy/ui/badge'
 import { toast } from '@qualy/ui/toast'
 import { Field, PageHeader, Panel } from '@qualy/ui/admin'
 import { Spinner } from '@qualy/ui/spinner'
+import { constraintOf, parameterSchemaAt, type AtomicSchema } from '@qualy/value-schema'
+import { validateValue } from '@qualy/value-schema/validate'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
+import { useDraftPreview, type DraftContract } from './use-draft-preview.ts'
+import { InputValueForm } from './value-form/InputValueForm.tsx'
+import {
+  draftsFromStored,
+  materializeInput,
+  type FieldDraft,
+} from './value-form/model.ts'
 
 // Monaco rides its own chunk: the list page, the app shell and even this
 // page's first paint stay free of it - the editor arrives when the source
@@ -34,8 +43,22 @@ const styles = stylex.create({
     fontSize: '0.8125rem',
   },
   actions: { display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' },
-  testGrid: { display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' },
-  testRow: { display: 'grid', gridTemplateColumns: '1fr 2fr 1fr auto', gap: '0.5rem' },
+  testGrid: { display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.75rem' },
+  testRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr auto',
+    gap: '0.5rem',
+    alignItems: 'center',
+  },
+  testCase: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    padding: '0.75rem',
+    border: '1px solid var(--q-border)',
+    borderRadius: '0.5rem',
+  },
+  problemLine: { fontSize: '0.75rem', color: 'var(--q-danger, #b91c1c)', margin: 0 },
   reportTable: { width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' },
   reportCell: { padding: '0.375rem 0.5rem', borderTop: '1px solid var(--q-border)' },
   mono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
@@ -97,7 +120,7 @@ export default function FormulaEditorPage() {
   const run = useRunApi()
   const query = useApiQuery(formulaApi)
   const queryClient = useQueryClient()
-  const { format, formatError } = useI18n()
+  const { format, formatError, locale } = useI18n()
 
   const detail = useQuery(
     query.assessmentFormula.getFormulaFunction.queryOptions({ params: { functionId } }),
@@ -113,6 +136,213 @@ export default function FormulaEditorPage() {
 
   const [baseRevision, setBaseRevision] = useState<number | null>(null)
   const [remoteMoved, setRemoteMoved] = useState(false)
+
+  // ---- the draft contract: what the CURRENT buffer compiles to ---------
+  const fetchPreview = useCallback(
+    (sourceTs: string) =>
+      run(
+        api.assessmentFormula.previewFormulaDraft({
+          params: { functionId },
+          payload: { sourceTs },
+        }),
+      ) as Promise<DraftContract>,
+    [api, run, functionId],
+  )
+  const preview = useDraftPreview(
+    fn === undefined || source === '' ? null : source,
+    fetchPreview,
+    formatError,
+  )
+  const contract = preview.contract
+
+  // per-row form drafts; the row's inputText stays the stored truth and
+  // the drafts are the editing view over it. A changed contract identity
+  // re-derives every view (legal stored values survive verbatim).
+  const [rowDrafts, setRowDrafts] = useState<Record<number, Record<string, FieldDraft>>>({})
+  const [rowIssues, setRowIssues] = useState<Record<number, ReadonlyMap<string, string>>>({})
+  const [tryDrafts, setTryDrafts] = useState<Record<string, FieldDraft>>({})
+  const [tryIssues, setTryIssues] = useState<ReadonlyMap<string, string> | undefined>(undefined)
+  interface RunOutcome {
+    readonly passed?: boolean
+    readonly actual?: string
+    readonly refusal?: string
+    readonly defect?: string
+    readonly problems?: unknown
+    /** the buffer this ran against; anything else on screen means stale */
+    readonly forSource: string
+  }
+  const [runResults, setRunResults] = useState<Record<number, RunOutcome>>({})
+  const [tryResult, setTryResult] = useState<RunOutcome | null>(null)
+  const [running, setRunning] = useState(false)
+  useEffect(() => {
+    setRowDrafts({})
+    setRowIssues({})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contract?.contractSha256])
+
+  const fieldIssueText = (schema: AtomicSchema | undefined, reason: string): string => {
+    switch (reason) {
+      case 'required':
+        return format(m.fieldRequired)
+      case 'not-an-integer':
+        return format(m.fieldNotInteger)
+      case 'not-a-decimal':
+        return format(m.fieldNotDecimal)
+      default: {
+        const constraint = schema === undefined ? undefined : constraintOf(schema, reason)
+        return reasonText({ at: 'input', reason, ...(constraint === undefined ? {} : { constraint }) })
+      }
+    }
+  }
+
+  const translateIssues = (
+    schema: DraftContract['inputSchema'],
+    issues: ReadonlyMap<string, string>,
+  ): ReadonlyMap<string, string> =>
+    new Map(
+      [...issues].map(([field, reason]) => [
+        field,
+        fieldIssueText(
+          field === '' ? undefined : parameterSchemaAt(schema, `/${field}`),
+          reason,
+        ),
+      ]),
+    )
+
+  const storedInput = (index: number): unknown => {
+    try {
+      return JSON.parse(tests[index]?.inputText === '' ? '{}' : (tests[index]?.inputText ?? '{}'))
+    } catch {
+      return undefined
+    }
+  }
+
+  /** the row's editing view: live drafts, or the stored value redrawn */
+  const draftsOfRow = (index: number): Record<string, FieldDraft> =>
+    rowDrafts[index] ??
+    (contract === null ? {} : draftsFromStored(contract.inputSchema, storedInput(index)))
+
+  const editRow = (index: number, name: string, draft: FieldDraft) => {
+    if (contract === null) return
+    const next = { ...draftsOfRow(index), [name]: draft }
+    setRowDrafts((previous) => ({ ...previous, [index]: next }))
+    const materialized = materializeInput(contract.inputSchema, next)
+    if (materialized.value !== null) {
+      setTests(
+        tests.map((one, at) =>
+          at === index ? { ...one, inputText: JSON.stringify(materialized.value) } : one,
+        ),
+      )
+      setRowIssues((previous) => {
+        const { [index]: _dropped, ...rest } = previous
+        return rest
+      })
+      return
+    }
+    setRowIssues((previous) => ({
+      ...previous,
+      [index]: translateIssues(contract.inputSchema, materialized.issues),
+    }))
+  }
+
+  /** whether a row's STORED input satisfies the current contract */
+  const rowLegal = (index: number): boolean => {
+    if (contract === null) return true
+    const stored = storedInput(index)
+    if (stored === undefined) return false
+    return validateValue(contract.inputSchema, stored).length === 0
+  }
+
+  const evaluate = async (
+    cases: readonly { clientId: string; input: unknown; expected?: string }[],
+  ) => {
+    const outcome = (await run(
+      api.assessmentFormula.evaluateFormulaDraft({
+        params: { functionId },
+        payload: { sourceTs: source, cases },
+      }),
+    )) as {
+      cases: readonly {
+        clientId: string
+        passed?: boolean
+        actual?: string
+        refusal?: string
+        defect?: string
+        problems?: unknown
+      }[]
+    }
+    return outcome.cases
+  }
+
+  const runRows = async (indices: readonly number[]) => {
+    setRunning(true)
+    setFailure(null)
+    try {
+      const fresh = await preview.ensureFresh()
+      if (fresh.contract === null) return
+      const runnable = indices.filter((index) => storedInput(index) !== undefined)
+      if (runnable.length === 0) return
+      const answers = await evaluate(
+        runnable.map((index) => ({
+          clientId: String(index),
+          input: storedInput(index),
+          expected: tests[index]!.expected,
+        })),
+      )
+      const bySource = source
+      setRunResults((previous) => {
+        const next = { ...previous }
+        for (const answer of answers)
+          next[Number(answer.clientId)] = { ...answer, forSource: bySource }
+        return next
+      })
+    } catch (error) {
+      setFailure(formatError(error))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const runTry = async () => {
+    setRunning(true)
+    setFailure(null)
+    setTryIssues(undefined)
+    try {
+      const fresh = await preview.ensureFresh()
+      if (fresh.contract === null) return
+      const materialized = materializeInput(fresh.contract.inputSchema, tryDrafts)
+      if (materialized.value === null) {
+        setTryIssues(translateIssues(fresh.contract.inputSchema, materialized.issues))
+        return
+      }
+      const answers = await evaluate([{ clientId: 'try', input: materialized.value }])
+      setTryResult({ ...answers[0]!, forSource: source })
+    } catch (error) {
+      setFailure(formatError(error))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const saveTryAsCase = (expected: string) => {
+    if (contract === null) return
+    const materialized = materializeInput(contract.inputSchema, tryDrafts)
+    if (materialized.value === null) {
+      setTryIssues(translateIssues(contract.inputSchema, materialized.issues))
+      return
+    }
+    setTests([
+      ...tests,
+      { name: '', inputText: JSON.stringify(materialized.value), expected },
+    ])
+  }
+
+  const loadIntoTry = (index: number) => {
+    if (contract === null) return
+    setTryDrafts(draftsFromStored(contract.inputSchema, storedInput(index)))
+    setTryIssues(undefined)
+    setTryResult(null)
+  }
 
   const seededTests = (loaded: NonNullable<typeof fn>) =>
     loaded.draftTests.map((test) => ({
@@ -174,22 +404,20 @@ export default function FormulaEditorPage() {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: query.assessmentFormula.key() })
 
-  // whether the editor holds anything the server has not seen yet
-  const dirty = (): boolean =>
+  // the two dirts, apart on purpose: big code edits may leave cases
+  // temporarily broken, and that must never hold the CODE hostage
+  const sourceDirty = (): boolean =>
+    fn === undefined ? false : name.trim() !== fn.name || source !== fn.draftSourceTs
+  const testsDirty = (): boolean =>
     fn === undefined
       ? false
-      : name.trim() !== fn.name ||
-        source !== fn.draftSourceTs ||
-        JSON.stringify(tests) !==
-          JSON.stringify(
-            fn.draftTests.map((test) => ({
-              name: test.name,
-              inputText: JSON.stringify(test.input),
-              expected: test.expected,
-            })),
-          )
+      : JSON.stringify(tests) !== JSON.stringify(seededTests(fn))
+  const dirty = (): boolean => sourceDirty() || testsDirty()
 
-  const saveEffect = (collected: { name: string; input: unknown; expected: string }[]) =>
+  /** every row's stored input parses and satisfies the current contract */
+  const allRowsLegal = (): boolean => tests.every((_one, index) => rowLegal(index))
+
+  const saveEffect = (collected: { name: string; input: unknown; expected: string }[] | null) =>
     run(
       api.assessmentFormula.updateFormulaDraft({
         params: { functionId },
@@ -197,13 +425,14 @@ export default function FormulaEditorPage() {
           expectedDraftRevision: baseRevision ?? fn!.draftRevision,
           name: name.trim() === '' ? fn!.name : name.trim(),
           draftSourceTs: source,
-          draftTests: collected,
+          ...(collected === null ? {} : { draftTests: collected }),
         },
       }),
     )
 
   const save = useMutation({
-    mutationFn: saveEffect,
+    mutationFn: (collected: { name: string; input: unknown; expected: string }[] | null) =>
+      saveEffect(collected),
     onMutate: () => setFailure(null),
     onSuccess: async () => {
       toast.success(format(m.saved))
@@ -217,12 +446,18 @@ export default function FormulaEditorPage() {
   // api-failure copy (measured: it read as "something went wrong" with no
   // request ever sent, which explained nothing)
   const saveDraft = () => {
+    if (testsDirty() && !allRowsLegal()) {
+      // the code saves; the cases wait for their fixes
+      toast.info(format(m.testsHeldBack))
+      save.mutate(null)
+      return
+    }
     const parsed = parsedTests()
     if ('invalidLabel' in parsed) {
       setFailure(format(m.testInputInvalid, { label: parsed.invalidLabel }))
       return
     }
-    save.mutate(parsed.tests)
+    save.mutate(testsDirty() ? parsed.tests : null)
   }
 
   const publish = useMutation({
@@ -447,66 +682,210 @@ export default function FormulaEditorPage() {
         </Suspense>
       </Panel>
 
+      <Panel title={format(m.tryTitle)} description={format(m.tryHint)}>
+        <p
+          {...stylex.props(styles.hint)}
+          data-testid="formula-structure"
+          data-state={
+            preview.status === 'refused'
+              ? 'refused'
+              : contract === null
+                ? 'loading'
+                : preview.forSource === source
+                  ? 'synced'
+                  : 'stale'
+          }
+        >
+          {preview.status === 'refused'
+            ? format(m.structureRefused)
+            : contract === null
+              ? format(m.structureLoading)
+              : preview.forSource === source
+                ? format(m.structureSynced)
+                : format(m.structureStale)}
+        </p>
+        {contract === null ? null : (
+          <>
+            <InputValueForm
+              schema={contract.inputSchema}
+              drafts={tryDrafts}
+              onDraft={(name_, draft) => setTryDrafts({ ...tryDrafts, [name_]: draft })}
+              locale={locale}
+              disabled={archived || running}
+              problems={tryIssues}
+              scope="try"
+            />
+            <div {...stylex.props(styles.actions)}>
+              <Button disabled={archived || running} onClick={() => void runTry()}>
+                {format(running ? m.running : m.run)}
+              </Button>
+              <Button variant="outline" disabled={archived || running} onClick={() => saveTryAsCase('')}>
+                {format(m.trySave)}
+              </Button>
+              {tryResult?.actual === undefined ? null : (
+                <Button
+                  variant="outline"
+                  disabled={archived || running}
+                  onClick={() => saveTryAsCase(tryResult.actual!)}
+                >
+                  {format(m.adoptActual, { value: tryResult.actual })}
+                </Button>
+              )}
+            </div>
+            {tryResult === null ? null : (
+              <p
+                data-testid="formula-try-result"
+                data-stale={tryResult.forSource === source ? undefined : true}
+              >
+                {tryResult.forSource !== source
+                  ? format(m.resultStale)
+                  : tryResult.actual !== undefined
+                    ? format(m.resultActual, { value: tryResult.actual })
+                    : tryResult.refusal !== undefined
+                      ? format(m.refusalPrefix, { message: tryResult.refusal })
+                      : tryResult.defect !== undefined
+                        ? format(m.defectPrefix, { message: tryResult.defect })
+                        : format(m.testInputInvalid, { label: format(m.tryTitle) })}
+              </p>
+            )}
+          </>
+        )}
+      </Panel>
+
       <Panel title={format(m.testsTitle)} description={format(m.testsHint)}>
         <div {...stylex.props(styles.testGrid)}>
-          {tests.map((test, index) => (
-            <div key={index} {...stylex.props(styles.testRow)}>
-              <Input
-                aria-label={format(m.testName)}
-                placeholder={format(m.testName)}
-                value={test.name}
-                disabled={archived}
-                onChange={(event) =>
-                  setTests(
-                    tests.map((one, at) =>
-                      at === index ? { ...one, name: event.target.value } : one,
-                    ),
-                  )
-                }
-              />
-              <Input
-                aria-label={format(m.testInput)}
-                placeholder={'{"value": "2.34"}'}
-                value={test.inputText}
-                disabled={archived}
-                onChange={(event) =>
-                  setTests(
-                    tests.map((one, at) =>
-                      at === index ? { ...one, inputText: event.target.value } : one,
-                    ),
-                  )
-                }
-              />
-              <Input
-                aria-label={format(m.testExpected)}
-                placeholder={format(m.testExpected)}
-                value={test.expected}
-                disabled={archived}
-                onChange={(event) =>
-                  setTests(
-                    tests.map((one, at) =>
-                      at === index ? { ...one, expected: event.target.value } : one,
-                    ),
-                  )
-                }
-              />
-              <Button
-                variant="ghost"
-                disabled={archived}
-                onClick={() => setTests(tests.filter((_, at) => at !== index))}
+          {tests.map((test, index) => {
+            const outcome = runResults[index]
+            const stale = outcome !== undefined && outcome.forSource !== source
+            const legal = rowLegal(index)
+            return (
+              <div
+                key={index}
+                {...stylex.props(styles.testCase)}
+                data-testid="formula-test-case"
+                data-legal={legal}
               >
-                {format(m.removeTest)}
-              </Button>
-            </div>
-          ))}
+                <div {...stylex.props(styles.testRow)}>
+                  <Input
+                    aria-label={format(m.testName)}
+                    placeholder={format(m.testName)}
+                    value={test.name}
+                    disabled={archived}
+                    onChange={(event) =>
+                      setTests(
+                        tests.map((one, at) =>
+                          at === index ? { ...one, name: event.target.value } : one,
+                        ),
+                      )
+                    }
+                  />
+                  <Input
+                    aria-label={format(m.testExpected)}
+                    placeholder={format(m.expectedLabel)}
+                    value={test.expected}
+                    disabled={archived}
+                    onChange={(event) =>
+                      setTests(
+                        tests.map((one, at) =>
+                          at === index ? { ...one, expected: event.target.value } : one,
+                        ),
+                      )
+                    }
+                  />
+                  <div {...stylex.props(styles.actions)}>
+                    <Button
+                      variant="outline"
+                      disabled={archived || running}
+                      onClick={() => void runRows([index])}
+                    >
+                      {format(m.run)}
+                    </Button>
+                    <Button variant="ghost" disabled={archived} onClick={() => loadIntoTry(index)}>
+                      {format(m.loadIntoTry)}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={archived}
+                      onClick={() => setTests([...tests, { ...test }])}
+                    >
+                      {format(m.copyTest)}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={archived}
+                      onClick={() => setTests(tests.filter((_, at) => at !== index))}
+                    >
+                      {format(m.removeTest)}
+                    </Button>
+                  </div>
+                </div>
+                {contract === null ? (
+                  <Input
+                    aria-label={format(m.testInput)}
+                    placeholder={'{"value": "2.34"}'}
+                    value={test.inputText}
+                    disabled={archived}
+                    onChange={(event) =>
+                      setTests(
+                        tests.map((one, at) =>
+                          at === index ? { ...one, inputText: event.target.value } : one,
+                        ),
+                      )
+                    }
+                  />
+                ) : (
+                  <InputValueForm
+                    schema={contract.inputSchema}
+                    drafts={draftsOfRow(index)}
+                    onDraft={(name_, draft) => editRow(index, name_, draft)}
+                    locale={locale}
+                    disabled={archived}
+                    problems={rowIssues[index]}
+                    scope={`case-${index}`}
+                  />
+                )}
+                {legal ? null : (
+                  <p {...stylex.props(styles.problemLine)} role="alert">
+                    {format(m.testRowInvalid)}
+                  </p>
+                )}
+                {outcome === undefined ? null : (
+                  <p
+                    data-testid="formula-case-result"
+                    data-passed={stale ? undefined : outcome.passed}
+                    data-stale={stale ? true : undefined}
+                  >
+                    {stale
+                      ? format(m.resultStale)
+                      : outcome.passed === true
+                        ? format(m.resultPassed)
+                        : outcome.refusal !== undefined
+                          ? format(m.refusalPrefix, { message: outcome.refusal })
+                          : outcome.defect !== undefined
+                            ? format(m.defectPrefix, { message: outcome.defect })
+                            : format(m.resultFailed, { actual: outcome.actual ?? '—' })}
+                  </p>
+                )}
+              </div>
+            )
+          })}
         </div>
-        <Button
-          variant="outline"
-          disabled={archived}
-          onClick={() => setTests([...tests, { name: '', inputText: '{}', expected: '' }])}
-        >
-          {format(m.addTest)}
-        </Button>
+        <div {...stylex.props(styles.actions)}>
+          <Button
+            variant="outline"
+            disabled={archived}
+            onClick={() => setTests([...tests, { name: '', inputText: '{}', expected: '' }])}
+          >
+            {format(m.addTest)}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={archived || running || tests.length === 0}
+            onClick={() => void runRows(tests.map((_one, index) => index))}
+          >
+            {format(running ? m.running : m.runAll)}
+          </Button>
+        </div>
       </Panel>
 
       {findings.diagnostics === undefined || findings.diagnostics.length === 0 ? null : (

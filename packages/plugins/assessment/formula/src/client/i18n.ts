@@ -116,6 +116,98 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/loading',
       defaultMessage: 'Loading the editor…',
     },
+    structureSynced: {
+      id: 'assessment-formula/editor/structure-synced',
+      defaultMessage: 'Input structure is in sync',
+    },
+    structureLoading: {
+      id: 'assessment-formula/editor/structure-loading',
+      defaultMessage: 'Reading the input structure…',
+    },
+    structureStale: {
+      id: 'assessment-formula/editor/structure-stale',
+      defaultMessage: 'Code changed; structure updates shortly',
+    },
+    structureRefused: {
+      id: 'assessment-formula/editor/structure-refused',
+      defaultMessage: 'The code does not compile yet, so test inputs stay as JSON',
+    },
+    tryTitle: {
+      id: 'assessment-formula/editor/try-title',
+      defaultMessage: 'Try it',
+    },
+    tryHint: {
+      id: 'assessment-formula/editor/try-hint',
+      defaultMessage: 'Run the current code once; save the case if it is worth keeping.',
+    },
+    run: {
+      id: 'assessment-formula/editor/run',
+      defaultMessage: 'Run',
+    },
+    runAll: {
+      id: 'assessment-formula/editor/run-all',
+      defaultMessage: 'Run all',
+    },
+    running: {
+      id: 'assessment-formula/editor/running',
+      defaultMessage: 'Running…',
+    },
+    trySave: {
+      id: 'assessment-formula/editor/try-save',
+      defaultMessage: 'Save as test case',
+    },
+    adoptActual: {
+      id: 'assessment-formula/editor/adopt-actual',
+      defaultMessage: 'Use {value} as expected',
+    },
+    loadIntoTry: {
+      id: 'assessment-formula/editor/load-into-try',
+      defaultMessage: 'Load into try-run',
+    },
+    copyTest: {
+      id: 'assessment-formula/editor/copy-test',
+      defaultMessage: 'Duplicate',
+    },
+    resultActual: {
+      id: 'assessment-formula/editor/result-actual',
+      defaultMessage: 'Result: {value}',
+    },
+    resultStale: {
+      id: 'assessment-formula/editor/result-stale',
+      defaultMessage: 'Not yet run against the current code',
+    },
+    resultPassed: {
+      id: 'assessment-formula/editor/result-passed',
+      defaultMessage: 'Passed',
+    },
+    resultFailed: {
+      id: 'assessment-formula/editor/result-failed',
+      defaultMessage: 'Failed: got {actual}',
+    },
+    fieldRequired: {
+      id: 'assessment-formula/editor/field-required',
+      defaultMessage: 'Required',
+    },
+    fieldNotInteger: {
+      id: 'assessment-formula/editor/field-not-integer',
+      defaultMessage: 'Enter a whole number',
+    },
+    fieldNotDecimal: {
+      id: 'assessment-formula/editor/field-not-decimal',
+      defaultMessage: 'Enter a number',
+    },
+    testRowInvalid: {
+      id: 'assessment-formula/editor/test-row-invalid',
+      defaultMessage: 'This case no longer fits the input structure; fix it before saving tests',
+    },
+    testsHeldBack: {
+      id: 'assessment-formula/editor/tests-held-back',
+      defaultMessage: 'Some cases need fixing; this save keeps the code only',
+    },
+    expectedLabel: {
+      id: 'assessment-formula/editor/expected-label',
+      defaultMessage: 'Expected',
+    },
     lspConnecting: {
       id: 'assessment-formula/editor/lsp-connecting',
       defaultMessage: 'Connecting to language assistance…',

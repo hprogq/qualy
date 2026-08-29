@@ -20,7 +20,10 @@
     "./client/formula-lsp/conversions": "./src/client/formula-lsp/conversions.ts",
     "./client/formula-lsp/protocol": "./src/client/formula-lsp/protocol.ts",
     "./package.json": "./package.json",
-    "./testkit": "./src/testkit.ts"
+    "./testkit": "./src/testkit.ts",
+    "./client/value-form/model": "./src/client/value-form/model.ts",
+    "./client/value-form/InputValueForm": "./src/client/value-form/InputValueForm.tsx",
+    "./client/use-draft-preview": "./src/client/use-draft-preview.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
