@@ -68,6 +68,15 @@ export default {
   'assessment-formula/kind/choice': '选项',
   'assessment-formula/kind/boolean': '布尔值',
   'assessment-formula/kind/date': '日期',
+  'assessment-formula/contract/not-score-amount':
+    '输出要能作为计分分值使用：改用 Schema.scoreAmount()，或给 Schema.decimal 写明上下界（幅度不超过 ±99999999.9999，小数位不超过 4）。',
+  'assessment-formula/contract/not-decimal': '输出必须是 decimal。',
+  'assessment-formula/contract/too-large': '参数结构过大，请减少参数或选项数量。',
+  'assessment-formula/contract/error': '加载公式时有参数定义被拒绝，详情见下方。',
+  'assessment-formula/contract/pattern-invalid':
+    'pattern 不在受支持的正则子集内（不支持反向引用与环视）。',
+  'assessment-formula/contract/pattern-too-large': 'pattern 过长。',
+  'assessment-formula/contract/pattern-too-complex': 'pattern 过于复杂。',
   'assessment-formula/report/contract': '参数检查',
   'assessment-formula/editor/versions': '已发布版本',
   'assessment-formula/editor/versions-empty': '还没有发布过版本。',

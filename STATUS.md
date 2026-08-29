@@ -10362,3 +10362,11 @@ date 历法改纯算术(修 0000-0099 的 Date.UTC 偏移);testReport 实体类�
 **227 passed**;`pnpm build` 成功;prettier 通过。4b 前置(tsc 边界、intrinsics、ReDoS、审计)
 全部关门;4b 首件仍是 server-side LSP spike(bridge 自管进程、URI 全映射、禁用全局的
 diagnostics/completion)。
+
+## 参数检查面板配上人话(2026-08-29)
+
+用户撞上 ScoreAmount 输出合同时,「参数检查」面板给的是 `output | not-a-score-amount` ——
+示例报告有词表而 contract issues 没有,又一处机器码漏到人眼前。面板现在逐条翻译,最常撞的
+无界输出直接给改法(「改用 Schema.scoreAmount(),或给 Schema.decimal 写明上下界…」),
+pattern 三种拒绝、结构过大、guest 构造器异常(detail 原文附于表下)各有其词,未知 reason
+落通用兜底。`pnpm typecheck` 零错、catalogs 与 formula 套件定向通过。

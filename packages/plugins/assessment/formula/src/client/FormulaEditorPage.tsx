@@ -66,6 +66,8 @@ interface PublishFindings {
     defect?: string
   }[]
   readonly issues?: readonly { path: string; reason: string }[]
+  /** the guest's own words when contract extraction itself threw */
+  readonly detail?: string
 }
 
 type ReportRow = NonNullable<PublishFindings['report']>[number]
@@ -78,6 +80,7 @@ const findingsOf = (error: unknown): PublishFindings => {
     ...(carried.diagnostics === undefined ? {} : { diagnostics: carried.diagnostics }),
     ...(carried.report === undefined ? {} : { report: carried.report }),
     ...(carried.issues === undefined ? {} : { issues: carried.issues }),
+    ...(carried.detail === undefined ? {} : { detail: carried.detail }),
   }
 }
 
@@ -318,6 +321,30 @@ export default function FormulaEditorPage() {
     }
   }
 
+  // the contract table speaks the author's language, not the validator's:
+  // every reason a publish can realistically raise here gets its own words,
+  // and the most common one - an unbounded output - says exactly what to type
+  const contractReasonText = (reason: string): string => {
+    switch (reason) {
+      case 'not-a-score-amount':
+        return format(m.contractNotScoreAmount)
+      case 'not-a-decimal':
+        return format(m.contractNotDecimal)
+      case 'contract-too-large':
+        return format(m.contractTooLarge)
+      case 'contract-error':
+        return format(m.contractError)
+      case 'pattern-invalid':
+        return format(m.contractPatternInvalid)
+      case 'pattern-too-large':
+        return format(m.contractPatternTooLarge)
+      case 'pattern-too-complex':
+        return format(m.contractPatternTooComplex)
+      default:
+        return format(m.reasonOther, { reason })
+    }
+  }
+
   const reportNotes = (row: ReportRow): string => {
     if (row.problems !== undefined && row.problems.length > 0)
       return row.problems
@@ -490,13 +517,16 @@ export default function FormulaEditorPage() {
           <table {...stylex.props(styles.reportTable)} data-testid="formula-contract-issues">
             <tbody>
               {findings.issues.map((row, index) => (
-                <tr key={index}>
+                <tr key={index} data-reason={row.reason}>
                   <td {...stylex.props(styles.reportCell, styles.mono)}>{row.path}</td>
-                  <td {...stylex.props(styles.reportCell)}>{row.reason}</td>
+                  <td {...stylex.props(styles.reportCell)}>{contractReasonText(row.reason)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {findings.detail === undefined ? null : (
+            <p {...stylex.props(styles.hint, styles.mono)}>{findings.detail}</p>
+          )}
         </Panel>
       )}
 

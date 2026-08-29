@@ -280,6 +280,36 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/kind/date',
       defaultMessage: 'date',
     },
+    contractNotScoreAmount: {
+      id: 'assessment-formula/contract/not-score-amount',
+      defaultMessage:
+        'The output must fit the scoring range: use Schema.scoreAmount(), or give Schema.decimal explicit minimum/maximum bounds (within ±99999999.9999, at most 4 decimal places).',
+    },
+    contractNotDecimal: {
+      id: 'assessment-formula/contract/not-decimal',
+      defaultMessage: 'The output must be a decimal.',
+    },
+    contractTooLarge: {
+      id: 'assessment-formula/contract/too-large',
+      defaultMessage: 'The parameter structure is too large; reduce parameters or choices.',
+    },
+    contractError: {
+      id: 'assessment-formula/contract/error',
+      defaultMessage: 'A schema was rejected while loading the formula; details below.',
+    },
+    contractPatternInvalid: {
+      id: 'assessment-formula/contract/pattern-invalid',
+      defaultMessage:
+        'The pattern is outside the supported regex subset (no backreferences or look-around).',
+    },
+    contractPatternTooLarge: {
+      id: 'assessment-formula/contract/pattern-too-large',
+      defaultMessage: 'The pattern is too long.',
+    },
+    contractPatternTooComplex: {
+      id: 'assessment-formula/contract/pattern-too-complex',
+      defaultMessage: 'The pattern is too complex.',
+    },
     contractIssuesTitle: {
       id: 'assessment-formula/report/contract',
       defaultMessage: 'Contract findings',
