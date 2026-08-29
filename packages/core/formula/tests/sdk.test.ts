@@ -159,3 +159,38 @@ describe('the authoring surface', () => {
     expect(isFormulaFailure(null)).toBe(false)
   })
 })
+
+describe('the words a schema carries', () => {
+  it('flows annotations through every constructor without touching semantics', () => {
+    const level = Schema.choice(
+      { national: '国家级', provincial: '省级' },
+      {
+        title: '赛事级别',
+        description: '按最终认定的赛事级别选择',
+        i18n: { 'en-US': { title: 'Competition level', enumLabels: { national: 'National' } } },
+      },
+    )
+    expect(level.title).toBe('赛事级别')
+    expect(level['x-qualy-enumLabels']).toEqual({ national: '国家级', provincial: '省级' })
+    expect(level['x-qualy-i18n']?.['en-US']?.title).toBe('Competition level')
+
+    const ordinal = Schema.integer({ minimum: 1, title: '奖项序位' })
+    expect(ordinal.title).toBe('奖项序位')
+    expect(ordinal.minimum).toBe(1)
+
+    const base = Schema.scoreAmount({ maxScale: 2, title: '基础分' })
+    expect(base.title).toBe('基础分')
+    expect(base['x-qualy-maxScale']).toBe(2)
+  })
+
+  it('records the authored parameter order while the body sorts', () => {
+    const contract = Schema.input({
+      level: Schema.choice({ a: 'A' }),
+      ordinal: Schema.integer({ minimum: 1 }),
+      base: Schema.decimal({ maxScale: 2 }),
+    })
+    expect(contract['x-qualy-order']).toEqual(['level', 'ordinal', 'base'])
+    // the semantic property map is sorted; the order annotation is the truth
+    expect(Object.keys(contract.properties)).toEqual(['base', 'level', 'ordinal'])
+  })
+})

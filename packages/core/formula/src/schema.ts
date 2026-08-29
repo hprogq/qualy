@@ -16,9 +16,27 @@ import {
   type DecimalSchema,
   type InputSchema,
   type IntegerSchema,
+  type SchemaI18nEntry,
   type TextSchema,
 } from '@qualy/value-schema'
 import type { Decimal } from './decimal.ts'
+
+/**
+ * The words a parameter carries for people: a default title/description and
+ * optional translations. Pure annotation - never part of what values the
+ * contract admits, never part of a contract hash.
+ */
+export interface Annotations {
+  readonly title?: string
+  readonly description?: string
+  readonly i18n?: Readonly<Record<string, SchemaI18nEntry>>
+}
+
+const annotated = (words?: Annotations): Record<string, unknown> => ({
+  ...(words?.title === undefined ? {} : { title: words.title }),
+  ...(words?.description === undefined ? {} : { description: words.description }),
+  ...(words?.i18n === undefined ? {} : { 'x-qualy-i18n': words.i18n }),
+})
 
 declare const DateType: unique symbol
 
@@ -50,37 +68,45 @@ export type StaticInput<S extends InputSchema> = S extends { readonly properties
   ? { readonly [K in keyof P]: Static<P[K]> }
   : never
 
-const text = (bounds?: {
-  readonly minLength?: number
-  readonly maxLength?: number
-  readonly pattern?: string
-}): TextSchema => {
+const text = (
+  bounds?: {
+    readonly minLength?: number
+    readonly maxLength?: number
+    readonly pattern?: string
+  } & Annotations,
+): TextSchema => {
   const { minLength, maxLength, pattern } = bounds ?? {}
   return normalizeAtomicSchema({
     type: 'string',
     ...(minLength === undefined ? {} : { minLength }),
     ...(maxLength === undefined ? {} : { maxLength }),
     ...(pattern === undefined ? {} : { pattern }),
-  }) as TextSchema
+    ...annotated(bounds),
+  } as TextSchema) as TextSchema
 }
 
 // an integer schema always carries explicit bounds: JSON parsing loses
 // precision past the safe range, so "unbounded" spells the safe range out
-const integer = (bounds?: {
-  readonly minimum?: number
-  readonly maximum?: number
-}): IntegerSchema =>
+const integer = (
+  bounds?: {
+    readonly minimum?: number
+    readonly maximum?: number
+  } & Annotations,
+): IntegerSchema =>
   normalizeAtomicSchema({
     type: 'integer',
     minimum: bounds?.minimum ?? Number.MIN_SAFE_INTEGER,
     maximum: bounds?.maximum ?? Number.MAX_SAFE_INTEGER,
-  }) as IntegerSchema
+    ...annotated(bounds),
+  } as IntegerSchema) as IntegerSchema
 
-const decimal = (bounds?: {
-  readonly maxScale?: number
-  readonly minimum?: string
-  readonly maximum?: string
-}): DecimalSchema => {
+const decimal = (
+  bounds?: {
+    readonly maxScale?: number
+    readonly minimum?: string
+    readonly maximum?: string
+  } & Annotations,
+): DecimalSchema => {
   const { maxScale, minimum, maximum } = bounds ?? {}
   return normalizeAtomicSchema({
     type: 'string',
@@ -89,22 +115,30 @@ const decimal = (bounds?: {
     'x-qualy-maxScale': maxScale ?? 4,
     ...(minimum === undefined ? {} : { 'x-qualy-minimum': minimum }),
     ...(maximum === undefined ? {} : { 'x-qualy-maximum': maximum }),
-  }) as DecimalSchema
+    ...annotated(bounds),
+  } as DecimalSchema) as DecimalSchema
 }
 
 const choice = <const Options extends Record<string, string>>(
   options: Options,
+  words?: Annotations,
 ): ChoiceOf<keyof Options & string> =>
   normalizeAtomicSchema({
     type: 'string',
     enum: Object.keys(options),
     'x-qualy-enumLabels': options,
-  }) as ChoiceOf<keyof Options & string>
+    ...annotated(words),
+  } as ChoiceSchema) as ChoiceOf<keyof Options & string>
 
-const boolean = (): BooleanSchema => normalizeAtomicSchema({ type: 'boolean' }) as BooleanSchema
+const boolean = (words?: Annotations): BooleanSchema =>
+  normalizeAtomicSchema({ type: 'boolean', ...annotated(words) } as BooleanSchema) as BooleanSchema
 
-const date = (): DateSchema =>
-  normalizeAtomicSchema({ type: 'string', format: 'date' }) as DateSchema
+const date = (words?: Annotations): DateSchema =>
+  normalizeAtomicSchema({
+    type: 'string',
+    format: 'date',
+    ...annotated(words),
+  } as DateSchema) as DateSchema
 
 /**
  * What the assessment scorer can actually carry: the platform's amount is a
@@ -114,11 +148,13 @@ const date = (): DateSchema =>
  * contract publication checks against, and the constructor formulas reach
  * for.
  */
-const scoreAmount = (bounds?: {
-  readonly maxScale?: number
-  readonly minimum?: string
-  readonly maximum?: string
-}): DecimalSchema => {
+const scoreAmount = (
+  bounds?: {
+    readonly maxScale?: number
+    readonly minimum?: string
+    readonly maximum?: string
+  } & Annotations,
+): DecimalSchema => {
   const maxScale = bounds?.maxScale ?? 4
   // numeric(12,4)'s widest magnitude, spelled at the declared scale so the
   // bound itself never outruns the precision it bounds
@@ -127,6 +163,9 @@ const scoreAmount = (bounds?: {
     maxScale,
     minimum: bounds?.minimum ?? `-${edge}`,
     maximum: bounds?.maximum ?? edge,
+    ...(bounds?.title === undefined ? {} : { title: bounds.title }),
+    ...(bounds?.description === undefined ? {} : { description: bounds.description }),
+    ...(bounds?.i18n === undefined ? {} : { i18n: bounds.i18n }),
   })
 }
 
@@ -136,6 +175,8 @@ const input = <const P extends Record<string, AtomicSchema>>(properties: P): Inp
     properties,
     required: Object.keys(properties),
     additionalProperties: false,
+    // the authored order IS the display order; the semantic body sorts
+    'x-qualy-order': Object.keys(properties),
   }) as unknown as InputOf<P>
 
 export const Schema = Object.freeze({

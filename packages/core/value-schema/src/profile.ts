@@ -5,9 +5,12 @@
  * satisfy B?) stays provable — see assignment.ts. Anything outside the
  * profile is rejected here, not interpreted loosely later.
  *
- * `x-qualy-enumLabels` is an annotation: it names choices for people and is
- * excluded from the semantic body, so relabeling never changes a contract
- * hash (canonical.ts).
+ * Annotations name things for people and are excluded from the semantic
+ * body, so relabeling never changes a contract hash (canonical.ts). v2 makes
+ * that a layer rather than one carve-out: `title`, `description` and
+ * `x-qualy-i18n` may sit on any atomic schema, `x-qualy-order` on the input
+ * object, and `x-qualy-enumLabels` stays the choice labels - none of them
+ * participate in validation, assignability or hashing.
  */
 
 import { canonicalDecimal, compareDecimal, fractionalDigits, parseDecimal } from './decimal.ts'
@@ -16,7 +19,7 @@ import { canonicalDecimal, compareDecimal, fractionalDigits, parseDecimal } from
  * The profile's own version: the number a frozen contract records so a later
  * change to what this language admits cannot silently reinterpret it.
  */
-export const VALUE_SCHEMA_PROFILE_VERSION = 1
+export const VALUE_SCHEMA_PROFILE_VERSION = 2
 
 /**
  * The language's hard ceilings - a definition, not a UI nicety. Everything a
@@ -33,28 +36,51 @@ export const PROFILE_LIMITS = Object.freeze({
   choiceLabelLength: 255,
   textLengthBound: 10_000,
   decimalMaxScale: 18,
+  annotationTitleLength: 255,
+  annotationDescriptionLength: 2_000,
+  annotationLocales: 8,
 })
 
 export const ENUM_LABELS = 'x-qualy-enumLabels'
+export const I18N = 'x-qualy-i18n'
+export const INPUT_ORDER = 'x-qualy-order'
 export const DECIMAL_FORMAT = 'qualy-decimal'
 export const MAX_SCALE = 'x-qualy-maxScale'
 export const DECIMAL_MINIMUM = 'x-qualy-minimum'
 export const DECIMAL_MAXIMUM = 'x-qualy-maximum'
 
-export interface TextSchema {
+/** one locale's worth of people-facing words for a schema */
+export interface SchemaI18nEntry {
+  readonly title?: string
+  readonly description?: string
+  /** choice only: per-value labels in this locale */
+  readonly enumLabels?: Readonly<Record<string, string>>
+}
+
+/**
+ * The people-facing layer any schema may carry. Validation, assignability
+ * and hashing never read these; screens do.
+ */
+export interface SchemaAnnotations {
+  readonly title?: string
+  readonly description?: string
+  readonly [I18N]?: Readonly<Record<string, SchemaI18nEntry>>
+}
+
+export interface TextSchema extends SchemaAnnotations {
   readonly type: 'string'
   readonly minLength?: number
   readonly maxLength?: number
   readonly pattern?: string
 }
 
-export interface IntegerSchema {
+export interface IntegerSchema extends SchemaAnnotations {
   readonly type: 'integer'
   readonly minimum: number
   readonly maximum: number
 }
 
-export interface DecimalSchema {
+export interface DecimalSchema extends SchemaAnnotations {
   readonly type: 'string'
   readonly format: typeof DECIMAL_FORMAT
   readonly [MAX_SCALE]: number
@@ -62,17 +88,17 @@ export interface DecimalSchema {
   readonly [DECIMAL_MAXIMUM]?: string
 }
 
-export interface ChoiceSchema {
+export interface ChoiceSchema extends SchemaAnnotations {
   readonly type: 'string'
   readonly enum: readonly string[]
   readonly [ENUM_LABELS]?: Readonly<Record<string, string>>
 }
 
-export interface BooleanSchema {
+export interface BooleanSchema extends SchemaAnnotations {
   readonly type: 'boolean'
 }
 
-export interface DateSchema {
+export interface DateSchema extends SchemaAnnotations {
   readonly type: 'string'
   readonly format: 'date'
 }
@@ -85,6 +111,8 @@ export interface InputSchema {
   readonly properties: Readonly<Record<string, AtomicSchema>>
   readonly required: readonly string[]
   readonly additionalProperties: false
+  /** the display order of the parameters; validation reads the keys, screens read this */
+  readonly [INPUT_ORDER]?: readonly string[]
 }
 
 export type AtomicKind = 'text' | 'integer' | 'decimal' | 'choice' | 'boolean' | 'date'
@@ -129,10 +157,89 @@ export const isDateString = (value: string): boolean => {
   return day <= days
 }
 
+const ANNOTATION_KEYS = ['title', 'description', I18N] as const
+
 const onlyKeys = (value: Record<string, unknown>, allowed: readonly string[], path: string) =>
   Object.keys(value)
-    .filter((key) => !allowed.includes(key))
+    .filter((key) => !allowed.includes(key) && !ANNOTATION_KEYS.includes(key as never))
     .map((key) => issue(path === '' ? key : `${path}.${key}`, 'unknown-key'))
+
+// BCP-47 in ordinary spelling; wide enough for zh-CN and en, narrow enough
+// to refuse arbitrary prose as a locale key
+const LOCALE_KEY = /^[a-zA-Z]{2,8}(-[a-zA-Z0-9]{1,8})*$/
+
+const wordIssues = (
+  value: unknown,
+  path: string,
+  key: 'title' | 'description',
+): readonly ProfileIssue[] => {
+  if (value === undefined) return []
+  const limit =
+    key === 'title' ? PROFILE_LIMITS.annotationTitleLength : PROFILE_LIMITS.annotationDescriptionLength
+  if (typeof value !== 'string') return [issue(`${path}.${key}`, 'annotation-not-a-string')]
+  if (value.length > limit) return [issue(`${path}.${key}`, 'annotation-too-long')]
+  return []
+}
+
+/**
+ * The annotation layer's own shape: strings within limits, locales that
+ * look like locales, and i18n enumLabels only where there are choices to
+ * label - and only for values the enum actually has.
+ */
+const annotationIssues = (
+  value: Record<string, unknown>,
+  path: string,
+  choices: readonly string[] | null,
+): readonly ProfileIssue[] => {
+  const found: ProfileIssue[] = []
+  found.push(...wordIssues(value['title'], path, 'title'))
+  found.push(...wordIssues(value['description'], path, 'description'))
+  const i18n = value[I18N]
+  if (i18n === undefined) return found
+  if (!isRecord(i18n)) {
+    found.push(issue(`${path}.${I18N}`, 'not-an-object'))
+    return found
+  }
+  const locales = Object.keys(i18n)
+  if (locales.length > PROFILE_LIMITS.annotationLocales)
+    found.push(issue(`${path}.${I18N}`, 'too-many-locales'))
+  for (const locale of locales) {
+    const localePath = `${path}.${I18N}.${locale}`
+    if (!LOCALE_KEY.test(locale)) {
+      found.push(issue(localePath, 'locale-invalid'))
+      continue
+    }
+    const entry = i18n[locale]
+    if (!isRecord(entry)) {
+      found.push(issue(localePath, 'not-an-object'))
+      continue
+    }
+    for (const key of Object.keys(entry))
+      if (key !== 'title' && key !== 'description' && key !== 'enumLabels')
+        found.push(issue(`${localePath}.${key}`, 'unknown-key'))
+    found.push(...wordIssues(entry['title'], localePath, 'title'))
+    found.push(...wordIssues(entry['description'], localePath, 'description'))
+    const labels = entry['enumLabels']
+    if (labels === undefined) continue
+    if (choices === null) {
+      found.push(issue(`${localePath}.enumLabels`, 'labels-without-choices'))
+      continue
+    }
+    if (!isRecord(labels)) {
+      found.push(issue(`${localePath}.enumLabels`, 'not-an-object'))
+      continue
+    }
+    for (const [choice, label] of Object.entries(labels)) {
+      if (!choices.includes(choice))
+        found.push(issue(`${localePath}.enumLabels.${choice}`, 'label-orphan'))
+      if (typeof label !== 'string')
+        found.push(issue(`${localePath}.enumLabels.${choice}`, 'label-not-a-string'))
+      else if (label.length > PROFILE_LIMITS.choiceLabelLength)
+        found.push(issue(`${localePath}.enumLabels.${choice}`, 'label-too-long'))
+    }
+  }
+  return found
+}
 
 const PARAMETER_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/
 
@@ -143,9 +250,13 @@ const FORBIDDEN_PARAMETER = '__proto__'
 const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => {
   if (!isRecord(value)) return [issue(path, 'not-an-object')]
   const type = value['type']
-  if (type === 'boolean') return onlyKeys(value, ['type'], path)
+  if (type === 'boolean')
+    return [...onlyKeys(value, ['type'], path), ...annotationIssues(value, path, null)]
   if (type === 'integer') {
-    const found = onlyKeys(value, ['type', 'minimum', 'maximum'], path)
+    const found = [
+      ...onlyKeys(value, ['type', 'minimum', 'maximum'], path),
+      ...annotationIssues(value, path, null),
+    ]
     // every integer carries explicit safe bounds: JSON parsing already loses
     // precision past them, so an unbounded integer schema is not a real domain
     for (const key of ['minimum', 'maximum'] as const) {
@@ -171,6 +282,15 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
   if ('enum' in value) {
     const found = onlyKeys(value, ['type', 'enum', ENUM_LABELS], path)
     const choices = value['enum']
+    found.push(
+      ...annotationIssues(
+        value,
+        path,
+        Array.isArray(choices) && choices.every((choice) => typeof choice === 'string')
+          ? (choices as string[])
+          : [],
+      ),
+    )
     if (!Array.isArray(choices) || choices.length === 0) {
       found.push(issue(`${path}.enum`, 'choice-empty'))
       return found
@@ -207,13 +327,13 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
   }
 
   const format = value['format']
-  if (format === 'date') return onlyKeys(value, ['type', 'format'], path)
+  if (format === 'date')
+    return [...onlyKeys(value, ['type', 'format'], path), ...annotationIssues(value, path, null)]
   if (format === DECIMAL_FORMAT) {
-    const found = onlyKeys(
-      value,
-      ['type', 'format', MAX_SCALE, DECIMAL_MINIMUM, DECIMAL_MAXIMUM],
-      path,
-    )
+    const found = [
+      ...onlyKeys(value, ['type', 'format', MAX_SCALE, DECIMAL_MINIMUM, DECIMAL_MAXIMUM], path),
+      ...annotationIssues(value, path, null),
+    ]
     const maxScale = value[MAX_SCALE]
     if (
       typeof maxScale !== 'number' ||
@@ -246,7 +366,10 @@ const atomicIssues = (value: unknown, path: string): readonly ProfileIssue[] => 
   }
   if (format !== undefined) return [issue(`${path}.format`, 'unknown-kind')]
 
-  const found = onlyKeys(value, ['type', 'minLength', 'maxLength', 'pattern'], path)
+  const found = [
+    ...onlyKeys(value, ['type', 'minLength', 'maxLength', 'pattern'], path),
+    ...annotationIssues(value, path, null),
+  ]
   for (const key of ['minLength', 'maxLength'] as const) {
     const bound = value[key]
     if (bound === undefined) continue
@@ -279,7 +402,10 @@ export const validateAtomicProfile = (value: unknown): readonly ProfileIssue[] =
 /** structural validity of a flat input schema; empty means legal */
 export const validateInputProfile = (value: unknown): readonly ProfileIssue[] => {
   if (!isRecord(value)) return [issue('', 'not-an-object')]
-  const found = onlyKeys(value, ['type', 'properties', 'required', 'additionalProperties'], '')
+  const found = [
+    ...onlyKeys(value, ['type', 'properties', 'required', 'additionalProperties', INPUT_ORDER], ''),
+    ...annotationIssues(value, '', null),
+  ]
   if (value['type'] !== 'object') found.push(issue('type', 'unknown-kind'))
   if (value['additionalProperties'] !== false)
     found.push(issue('additionalProperties', 'additional-properties-not-false'))
@@ -307,6 +433,19 @@ export const validateInputProfile = (value: unknown): readonly ProfileIssue[] =>
     !names.every((name) => required.includes(name))
   )
     found.push(issue('required', 'required-mismatch'))
+  const order = value[INPUT_ORDER]
+  if (order !== undefined) {
+    // a display order names every parameter exactly once, or it is not an
+    // order of THESE parameters
+    if (
+      !Array.isArray(order) ||
+      order.length !== names.length ||
+      !order.every((name) => typeof name === 'string') ||
+      new Set(order).size !== order.length ||
+      !names.every((name) => order.includes(name))
+    )
+      found.push(issue(INPUT_ORDER, 'order-not-a-permutation'))
+  }
   return found
 }
 
@@ -336,6 +475,33 @@ export type NormalizedInputSchema = InputSchema & { readonly [NormalizedMark]: '
  * what downstream caches (the ajv validator's WeakMap) rely on: a normalized
  * schema never mutates, so compiling it once is sound.
  */
+/** byte-stable spelling of the annotation layer: nested records sorted */
+const normalizedAnnotations = (schema: SchemaAnnotations): Record<string, unknown> => {
+  const i18n = schema[I18N]
+  return {
+    ...(schema.title === undefined ? {} : { title: schema.title }),
+    ...(schema.description === undefined ? {} : { description: schema.description }),
+    ...(i18n === undefined
+      ? {}
+      : {
+          [I18N]: sorted(
+            Object.fromEntries(
+              Object.entries(i18n).map(([locale, entry]) => [
+                locale,
+                sorted({
+                  ...(entry.title === undefined ? {} : { title: entry.title }),
+                  ...(entry.description === undefined ? {} : { description: entry.description }),
+                  ...(entry.enumLabels === undefined
+                    ? {}
+                    : { enumLabels: sorted({ ...entry.enumLabels }) }),
+                }),
+              ]),
+            ),
+          ),
+        }),
+  }
+}
+
 export const normalizeAtomicSchema = (schema: AtomicSchema): NormalizedAtomicSchema => {
   const wrong = validateAtomicProfile(schema)
   if (wrong.length > 0)
@@ -347,6 +513,7 @@ export const normalizeAtomicSchema = (schema: AtomicSchema): NormalizedAtomicSch
     const maximum = decimal[DECIMAL_MAXIMUM]
     const normalized: DecimalSchema = {
       ...decimal,
+      ...normalizedAnnotations(decimal),
       ...(minimum === undefined ? {} : { [DECIMAL_MINIMUM]: canonicalDecimal(minimum)! }),
       ...(maximum === undefined ? {} : { [DECIMAL_MAXIMUM]: canonicalDecimal(maximum)! }),
     }
@@ -358,12 +525,15 @@ export const normalizeAtomicSchema = (schema: AtomicSchema): NormalizedAtomicSch
     return deepFreeze(
       sorted({
         ...choice,
+        ...normalizedAnnotations(choice),
         enum: [...choice.enum],
         ...(labels === undefined ? {} : { [ENUM_LABELS]: sorted({ ...labels }) }),
       }),
     ) as unknown as NormalizedAtomicSchema
   }
-  return deepFreeze(sorted({ ...schema })) as NormalizedAtomicSchema
+  return deepFreeze(
+    sorted({ ...schema, ...normalizedAnnotations(schema) }),
+  ) as NormalizedAtomicSchema
 }
 
 export const normalizeInputSchema = (schema: InputSchema): NormalizedInputSchema => {
@@ -371,6 +541,7 @@ export const normalizeInputSchema = (schema: InputSchema): NormalizedInputSchema
   if (wrong.length > 0)
     throw new TypeError(`not a profile input: ${wrong[0]!.path} ${wrong[0]!.reason}`)
   const names = Object.keys(schema.properties).sort()
+  const order = schema[INPUT_ORDER]
   return deepFreeze({
     type: 'object',
     properties: Object.fromEntries(
@@ -378,5 +549,8 @@ export const normalizeInputSchema = (schema: InputSchema): NormalizedInputSchema
     ),
     required: names,
     additionalProperties: false,
+    // the semantic body sorts; what people see keeps the authored order
+    ...(order === undefined ? {} : { [INPUT_ORDER]: [...order] }),
+    ...normalizedAnnotations(schema as SchemaAnnotations),
   }) as unknown as NormalizedInputSchema
 }

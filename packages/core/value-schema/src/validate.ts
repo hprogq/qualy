@@ -22,6 +22,8 @@ import {
   DECIMAL_MAXIMUM,
   DECIMAL_MINIMUM,
   ENUM_LABELS,
+  I18N,
+  INPUT_ORDER,
   MAX_SCALE,
   isDateString,
   type NormalizedAtomicSchema,
@@ -103,6 +105,8 @@ const build = (): Ajv2020 => {
   ajv.addKeyword(decimalKeyword(DECIMAL_MAXIMUM, (edge, value) => compareDecimal(value, edge) <= 0))
   // names for people; admits nothing, forbids nothing, hashed by nobody
   ajv.addKeyword({ keyword: ENUM_LABELS, schemaType: 'object' })
+  ajv.addKeyword({ keyword: I18N, schemaType: 'object' })
+  ajv.addKeyword({ keyword: INPUT_ORDER, schemaType: 'array' })
   return ajv
 }
 

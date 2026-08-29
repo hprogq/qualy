@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest'
 import { bundleFormula } from '../src/bundler.ts'
 import { compileFormula } from '../src/compile.ts'
 
-// The migration gate ruled in the isolation plan: same source, same
-// toolchain - the artifact must be byte-identical to what the in-plugin
-// compiler produced before the extraction. These hashes were generated on
-// main BEFORE the code moved; a mismatch is a stop-work signal, never a
-// reason to regenerate the file.
+// The reproducibility anchor: same source, same toolchain - byte-identical
+// artifact. Born as the extraction migration gate (hashes generated on main
+// BEFORE the compiler moved packages); the toolchain has since legitimately
+// evolved (the sdk gained its annotation layer), so the rule is now: an
+// UNEXPLAINED mismatch is a stop-work signal, and the file is regenerated
+// only in the same commit that deliberately changes the sdk or toolchain,
+// with the reason recorded in STATUS.
 
 const golden = JSON.parse(
   fs.readFileSync(new URL('./support/golden-artifacts.json', import.meta.url), 'utf8'),

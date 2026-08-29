@@ -14,6 +14,7 @@ import {
   DECIMAL_MAXIMUM,
   DECIMAL_MINIMUM,
   ENUM_LABELS,
+  I18N,
   kindOf,
   type AtomicSchema,
   type DecimalSchema,
@@ -34,22 +35,31 @@ const ordered = (value: Record<string, unknown>): Record<string, unknown> =>
  * stored schema keeps its authored shape - option order stays meaningful
  * for screens - only the semantic identity is order-free.
  */
+/** the whole people-facing layer, gone: words never move a hash */
+const withoutAnnotations = (schema: AtomicSchema): Record<string, unknown> => {
+  const body: Record<string, unknown> = { ...schema }
+  delete body['title']
+  delete body['description']
+  delete body[I18N]
+  return body
+}
+
 export const semanticBodyOfAtomic = (schema: AtomicSchema): Record<string, unknown> => {
   const kind = kindOf(schema)
   if (kind === 'integer') {
-    const body: Record<string, unknown> = { ...schema }
+    const body = withoutAnnotations(schema)
     if (body['minimum'] === Number.MIN_SAFE_INTEGER) delete body['minimum']
     if (body['maximum'] === Number.MAX_SAFE_INTEGER) delete body['maximum']
     return ordered(body)
   }
   if (kind === 'text') {
-    const body: Record<string, unknown> = { ...schema }
+    const body = withoutAnnotations(schema)
     if (body['minLength'] === 0) delete body['minLength']
     return ordered(body)
   }
   if (kind === 'decimal') {
     const decimal = schema as DecimalSchema
-    const body: Record<string, unknown> = { ...decimal }
+    const body = withoutAnnotations(schema)
     for (const key of [DECIMAL_MINIMUM, DECIMAL_MAXIMUM] as const) {
       const bound = decimal[key]
       if (bound !== undefined) body[key] = canonicalDecimal(bound)
@@ -57,12 +67,12 @@ export const semanticBodyOfAtomic = (schema: AtomicSchema): Record<string, unkno
     return ordered(body)
   }
   if (kind === 'choice') {
-    const body: Record<string, unknown> = { ...schema }
+    const body = withoutAnnotations(schema)
     delete body[ENUM_LABELS]
     body['enum'] = [...(schema as { enum: readonly string[] }).enum].sort()
     return ordered(body)
   }
-  return ordered({ ...schema })
+  return ordered(withoutAnnotations(schema))
 }
 
 export const semanticBodyOfInput = (schema: InputSchema): Record<string, unknown> => {
