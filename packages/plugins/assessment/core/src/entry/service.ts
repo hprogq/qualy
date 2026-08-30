@@ -853,6 +853,15 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             })
             if (!decision.allowed) return yield* refuse('create', decision.reason)
             if (administrative) {
+              // A record is one person writing a fact about another, and it
+              // is approved the moment it is written - no reviewer ever sees
+              // it. Both halves of that depend on the two people being two
+              // people: a registrar who also sits on the roster must not be
+              // able to hand themselves points nobody looked at. The screen
+              // not offering them is a courtesy; this is the rule.
+              if (participant.userId === as.userId) {
+                return yield* refuse('create', 'self-record-refused')
+              }
               const reaches = yield* staffReachesParticipant({
                 tenantId,
                 batchId: item.batchId,

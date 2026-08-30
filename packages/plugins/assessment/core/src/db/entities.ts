@@ -993,6 +993,15 @@ export const EntryRevision = defineEntity({
       name: 'chk_entry_revisions_source',
       expression: `source IN ('self', 'proxy', 'record', 'import', 'system')`,
     },
+    {
+      // a record is one person writing a fact about another; a filing about
+      // yourself is every OTHER source's normal case
+      // two arms, no IN-list: the schema generator mangles IN inside a
+      // check expression (see the engineering notes), and the migration
+      // spells it the same way so the two lineages stay byte-comparable
+      name: 'chk_entry_revisions_record_two_people',
+      expression: `(source <> 'record' AND source <> 'import') OR actor_id <> subject_id`,
+    },
   ],
   indexes: [
     {
@@ -1228,8 +1237,7 @@ export const ReviewInstance = defineEntity({
       name: 'chk_review_instances_appealed_one',
       // an appeal contests exactly one thing - a round, or a determination
       // made without one - and nothing else carries a target at all
-      expression: `(origin = 'appeal' AND ((appealed_instance_id IS NULL) <> (appealed_recognition_id IS NULL)))
-        OR (origin <> 'appeal' AND appealed_instance_id IS NULL AND appealed_recognition_id IS NULL)`,
+      expression: `(origin = 'appeal' AND ((appealed_instance_id IS NULL) <> (appealed_recognition_id IS NULL))) OR (origin <> 'appeal' AND appealed_instance_id IS NULL AND appealed_recognition_id IS NULL)`,
     },
     {
       name: 'chk_review_instances_origin',
@@ -1817,7 +1825,7 @@ export const compositeForeignKeys = [
   `alter table review_instances add constraint fk_review_instances_supersedes
      foreign key (tenant_id, supersedes_instance_id) references review_instances (tenant_id, id) on delete set null (supersedes_instance_id)`,
   `alter table review_instances add constraint fk_review_instances_appealed
-     foreign key (tenant_id, entry_id, appealed_instance_id) references review_instances (tenant_id, entry_id, id) on delete set null (appealed_instance_id)`,
+     foreign key (tenant_id, entry_id, appealed_instance_id) references review_instances (tenant_id, entry_id, id) on delete restrict`,
   `alter table review_events add constraint fk_review_events_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
   `alter table review_panels add constraint fk_review_panels_instance

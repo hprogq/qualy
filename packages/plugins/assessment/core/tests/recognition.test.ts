@@ -1,4 +1,5 @@
 import { Effect, Exit } from 'effect'
+import { inspect } from 'node:util'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
@@ -921,6 +922,60 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.moved.appealed_recognition_id).not.toBeNull()
     const latest = result.rows[result.rows.length - 1]!
     expect(latest.values).toEqual({ 'rec-level': 'provincial' })
+  })
+
+  it('refuses a registrar recording against themselves, twice over', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-self-record')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const item = yield* recordItem(f, g.batch.id)
+          // the registrar is on the roster too: same student type, standing
+          // under the batch's own import rule
+          const mine = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from batch_participants
+              where batch_id = ${g.batch.id} and user_id = ${f.recorder}`),
+          )
+          const refused = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              { itemId: item.id, participantId: mine.id, payload: {}, note: '给自己记一笔' },
+              f.principal(f.recorder),
+            ),
+          )
+          // and the table says the same thing to writers the service never
+          // sees: a migration, an import, a path that forgets. A real record
+          // first, as the template the smuggled row rides on.
+          const real = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {}, note: '正常登记' },
+            f.principal(f.recorder),
+          )
+          const smuggled = yield* Effect.exit(
+            runSql(sql`
+              insert into entry_revisions
+                (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload,
+                 actor_id, subject_id, source)
+              select e.tenant_id, e.id, e.item_id, r.item_revision_id, 99, '{}',
+                     ${f.recorder}, ${f.recorder}, 'record'
+              from entries e
+              join entry_revisions r on r.id = e.current_revision_id
+              where e.id = ${real.id}`),
+          )
+          return { refused, smuggled }
+        }),
+      ),
+    )
+
+    // approved on sight and nobody reviews it: both halves of a record
+    // depend on the two people being two people
+    expect(refusalOf(result.refused)?.reason).toBe('self-record-refused')
+    expect(Exit.isFailure(result.smuggled)).toBe(true)
+    expect(inspect(result.smuggled, { depth: 8 })).toContain('chk_entry_revisions_record_two_people')
   })
 
   it('determines an administrative record without inventing a review', async () => {

@@ -28,6 +28,7 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'item-type-not-installed': m.refuseItemUnconfigured,
   'review-level-missing': m.refuseReviewLevelMissing,
   'basis-required': m.refuseBasisRequired,
+  'self-record-refused': m.refuseSelfRecord,
   'not-participant': m.refuseNotParticipant,
   'permission-not-held': m.refuseNoPermission,
   'not-reviewer': m.refuseNotReviewer,

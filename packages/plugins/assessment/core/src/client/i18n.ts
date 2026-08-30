@@ -678,6 +678,10 @@ const i18n = definePluginMessages({
       defaultMessage:
         'The configured review level does not exist in your organization path, so the entry cannot be submitted. Contact a batch administrator.',
     },
+    refuseSelfRecord: {
+      id: 'assessment/entry/refuse-self-record',
+      defaultMessage: 'A record about yourself has to be entered by somebody else',
+    },
     refuseBasisRequired: {
       id: 'assessment/entry/refuse-basis-required',
       defaultMessage: 'A basis is required for a staff-recorded entry.',

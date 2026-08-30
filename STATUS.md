@@ -11285,4 +11285,25 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 纠错闭环(列出已登记、作废带理由)是 Phase 6 的产品项,不是数据安全问题:服务端边界
 已闭合,API 可直接调用。
 
-**留给 Phase 6 其余**:Evidence 的 integer/decimal/choice 生产字段与真实动态表单。
+### 自我行政登记关门(2026-08-30,第九轮复审)
+
+- **P0:登记人可以给自己记分**。行政分支只证明了 record 权限与组织覆盖,没有拒绝
+  `participant.userId === as.userId`——一个同时在册、又持登记权的人可以给自己写下
+  立即生效、无人复核的加分或扣分。设计验收本来就要求行政记录 actor ≠ subject。
+  三层关门:①service 在授权之前拒绝(`self-record-refused`,文案入词表:
+  「与本人有关的记录需由其他工作人员登记」);②`entry_revisions` 加条件 CHECK
+  `chk_entry_revisions_record_two_people`(source 为 record/import 时 actor ≠ subject,
+  学生自己的 filing 正是其余 source 的常态,不受限)——对迁移、导入与将来忘记检查的
+  写路径兜底,开发库实查零违反行后落地;③回归用例:登记人在册、给自己登记必须
+  `self-record-refused`,裸 SQL 走私必须撞 CHECK。差分:去掉 service 拒绝,请求变成
+  CHECK 打出的 defect——两层各司其职。前端下拉未过滤本人(客户端没有现成的当前用户
+  hook,为体验优化引跨插件耦合不值),选错会得到明确拒绝语;记为体验项。
+- **P2:appeal 的 FK 语义自相矛盾**。`SET NULL` 遇上「恰好一个目标」的 CHECK,删除
+  被申诉轮永远完不成——只是把外键拒绝换成中途的 CHECK 拒绝。改 `RESTRICT`,把本意
+  说出来(fix-forward `20260830210000`,与上条 CHECK 同一条迁移)。
+- **P2:`isJsonValue` 无循环保护**。transforming codec 产出循环普通对象会递归到
+  `RangeError` 而不是 `*-config-not-json`。补 `WeakSet`:环不是 JSON,答案是「不是」,
+  不是栈溢出。
+
+**留给 Phase 6 其余**:Evidence 的 integer/decimal/choice 生产字段与真实动态表单;
+RecordPage 的本人过滤与纠错闭环入口(见上一节记账)。

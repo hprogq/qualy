@@ -238,16 +238,18 @@ const decode = <A>(schema: Schema.Codec<A>, value: unknown) =>
  * because stringify erases the key or writes null - either way the stored
  * plan is not the proven one.
  */
-const isJsonValue = (value: unknown): boolean => {
+const isJsonValue = (value: unknown, walking = new WeakSet<object>()): boolean => {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
   if (typeof value === 'number') return Number.isFinite(value)
-  if (Array.isArray(value)) return value.every(isJsonValue)
-  if (typeof value === 'object') {
-    const proto = Object.getPrototypeOf(value)
-    if (proto !== Object.prototype && proto !== null) return false
-    return Object.values(value as Record<string, unknown>).every(isJsonValue)
-  }
-  return false
+  if (typeof value !== 'object') return false
+  // a cycle is not JSON either, and the answer has to be "no" rather than a
+  // stack overflow on the way to saying so
+  if (walking.has(value)) return false
+  walking.add(value)
+  if (Array.isArray(value)) return value.every((one) => isJsonValue(one, walking))
+  const proto = Object.getPrototypeOf(value)
+  if (proto !== Object.prototype && proto !== null) return false
+  return Object.values(value as Record<string, unknown>).every((one) => isJsonValue(one, walking))
 }
 
 /**
