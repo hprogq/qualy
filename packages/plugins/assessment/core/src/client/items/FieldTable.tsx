@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { CheckIcon, ChevronDownIcon, GripVerticalIcon, PlusIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, GripVerticalIcon, PlusIcon, XIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -56,7 +56,7 @@ export type FieldDraft = FieldDraftBase &
   )
 
 /** the same field wearing another type: identity kept, settings reset */
-export const retypeDraft = (field: FieldDraft, type: FieldDraft['type']): FieldDraft => {
+const retypeDraft = (field: FieldDraft, type: FieldDraft['type']): FieldDraft => {
   const base = { id: field.id, key: field.key, label: field.label, required: field.required }
   switch (type) {
     case 'text':
@@ -259,6 +259,14 @@ const styles = stylex.create({
   },
   onBackground: {
     backgroundColor: tokens.background,
+  },
+  optionsBox: { display: 'flex', flexDirection: 'column', gap: 8 },
+  optionsHead: { margin: 0, fontSize: 12, color: 'var(--q-surface-muted-foreground)' },
+  optionRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr auto',
+    gap: 8,
+    alignItems: 'center',
   },
   span2: {
     gridColumn: {
@@ -704,6 +712,82 @@ function FieldSettings({
         </Field>
       )}
 
+      {field.type === 'integer' && (
+        <>
+          <Field label={format(m.itemsFieldMinValue)}>
+            {(id) => (
+              <Input
+                id={id}
+                type="number"
+                className={stylex.props(styles.onBackground).className}
+                value={field.min}
+                onChange={(event) => onChange({ ...field, min: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={format(m.itemsFieldMaxValue)}>
+            {(id) => (
+              <Input
+                id={id}
+                type="number"
+                className={stylex.props(styles.onBackground).className}
+                value={field.max}
+                onChange={(event) => onChange({ ...field, max: event.target.value })}
+              />
+            )}
+          </Field>
+        </>
+      )}
+
+      {field.type === 'decimal' && (
+        <>
+          <Field label={format(m.itemsFieldMaxScale)}>
+            {(id) => (
+              <Input
+                id={id}
+                type="number"
+                min={0}
+                max={18}
+                className={stylex.props(styles.onBackground).className}
+                value={field.maxScale}
+                onChange={(event) => onChange({ ...field, maxScale: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={format(m.itemsFieldMinValue)}>
+            {(id) => (
+              <Input
+                id={id}
+                inputMode="decimal"
+                className={stylex.props(styles.onBackground).className}
+                value={field.min}
+                onChange={(event) => onChange({ ...field, min: event.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={format(m.itemsFieldMaxValue)}>
+            {(id) => (
+              <Input
+                id={id}
+                inputMode="decimal"
+                className={stylex.props(styles.onBackground).className}
+                value={field.max}
+                onChange={(event) => onChange({ ...field, max: event.target.value })}
+              />
+            )}
+          </Field>
+        </>
+      )}
+
+      {field.type === 'choice' && (
+        <div {...stylex.props(styles.span2)}>
+          <OptionsEditor
+            options={field.options}
+            onChange={(options) => onChange({ ...field, options })}
+          />
+        </div>
+      )}
+
       {field.type === 'date' && (
         <>
           <Field label={format(m.itemsFieldMinDate)}>
@@ -811,6 +895,75 @@ function FieldSettings({
  * The stored value never changes shape: it is the same list of tokens
  * either way, and what is shown here is derived back out of it.
  */
+/**
+ * A choice field's options: the stable value payloads will carry, and the
+ * words people see. Values are the identity - renaming a label rewords the
+ * screen, editing a value redefines the answer - which is why both columns
+ * are shown instead of deriving one from the other.
+ */
+function OptionsEditor({
+  options,
+  onChange,
+}: {
+  options: ChoiceOptionDraft[]
+  onChange: (next: ChoiceOptionDraft[]) => void
+}) {
+  const { format } = useI18n()
+  return (
+    <div {...stylex.props(styles.optionsBox)} data-testid="choice-options">
+      <p {...stylex.props(styles.optionsHead)}>{format(m.itemsChoiceOptions)}</p>
+      {options.map((option, index) => (
+        // options have no identity of their own; position is the row
+        // eslint-disable-next-line react/no-array-index-key
+        <div key={index} {...stylex.props(styles.optionRow)}>
+          <Input
+            aria-label={format(m.itemsChoiceValue)}
+            placeholder={format(m.itemsChoiceValue)}
+            className={stylex.props(styles.onBackground).className}
+            value={option.value}
+            onChange={(event) =>
+              onChange(
+                options.map((one, at) =>
+                  at === index ? { ...one, value: event.target.value } : one,
+                ),
+              )
+            }
+          />
+          <Input
+            aria-label={format(m.itemsChoiceLabel)}
+            placeholder={format(m.itemsChoiceLabel)}
+            className={stylex.props(styles.onBackground).className}
+            value={option.label}
+            onChange={(event) =>
+              onChange(
+                options.map((one, at) =>
+                  at === index ? { ...one, label: event.target.value } : one,
+                ),
+              )
+            }
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={format(m.itemsChoiceRemove)}
+            disabled={options.length <= 1}
+            onClick={() => onChange(options.filter((_, at) => at !== index))}
+          >
+            <XIcon aria-hidden size={14} />
+          </Button>
+        </div>
+      ))}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onChange([...options, { value: '', label: '' }])}
+      >
+        {format(m.itemsChoiceAdd)}
+      </Button>
+    </div>
+  )
+}
+
 function AcceptPicker({ accept, onChange }: { accept: string; onChange: (next: string) => void }) {
   const { format } = useI18n()
   const stored = accept
