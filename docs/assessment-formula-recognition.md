@@ -2322,10 +2322,15 @@ ItemRevision.scoring_plan
 integer
 decimal
 choice
-text enhancements
 ```
 
 并生成 bindable JSON Schema。
+
+> **text enhancements（minLength/pattern）已延期**（2026-08-31 Phase 6 审计裁决）：
+> @qualy/value-schema 已具备 text 长度与 pattern 能力（含 §双方 pattern 保守判定），
+> 但 Evidence 管理端暂无真实业务需要这两项配置，不为匹配施工清单给管理员增加
+> 无人使用的选项。触发条件：真实题目需要对 text 字段做格式约束时，在 Evidence
+> config 开放 `minLength`/`pattern` 并接入 `fieldSchema`，无架构阻碍。
 
 真正实现管理端：
 

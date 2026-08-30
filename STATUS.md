@@ -11454,8 +11454,8 @@ explicit Recognition → EntryRecognition → test-only typed calculator` 全链
 
 - `PUT /assessment/batches/{id}/phases` 的 phaseSpec 注释宣称「命名 id 的 spec 上 absent
   field 保留存量」,实测 **absent 的 permissionProfile 被 diff 成清空**,对 ended phase
-  触发 `ended-phase-name-only` 整单拒绝;显式回显现值即可通过。疑似 plan 写入的
-  absent-keeps 未覆盖 profile 字段,待复核(独立于 Phase 6,未修)。
+  触发 `ended-phase-name-only` 整单拒绝;显式回显现值即可通过。(后续审计已定位根因于
+  HTTP 边界 parseSpec 并修复,见下文「Phase 6 审计收口」。)
 
 ### 用户最终门禁清单逐项核对
 
@@ -11481,3 +11481,64 @@ explicit Recognition → EntryRecognition → test-only typed calculator` 全链
 **Phase 6 终态验收(本机逐条实跑)**:`pnpm typecheck` 零错(全部工程 + 组件引用检查);
 `pnpm test` 174 文件 1213 passed | 17 skipped;`pnpm test:browser` 41 文件 267 passed;
 `pnpm build` 通过(staged 96 文件)。dev 冒烟见上节实录。
+
+## Phase 6 审计收口:wire absent 修复 + text enhancements 延期(2026-08-31)
+
+用户整体审计(核对 main@04f3a0e9 与 CI run 33319179072)裁决:**Phase 6 功能闭环、回归
+门禁、CI 全部 PASS**;一处文档漂移(text enhancements);**Phase 7 授权但 formula@1
+注册被阻塞在新增的 Phase 7.0(service-backed calculator topology)之后**。本笔按指令
+只做两处修补,不进 Phase 7。
+
+### 1. phaseSpec absent 清空:根因在 HTTP 边界,已修
+
+冒烟疑点的完整定位(真机重放复现 → 逐层排除):service 层三条路径(`specOver` /
+`fieldEditsOf` / `scopeRefusals`)全部正确 preserve——用户核对的结论无误;真正的洞在
+**server/index.ts 的 `parseSpec`**:wire → PhaseSpecInput 的映射把 absent 的
+description/entryNote/permissionProfile 填成显式空值(`?? ''` / `?? []`),而同函数内
+itemScope/participantScope 是正确的条件展开。于是 specOver 的 absent-keeps 语义在
+HTTP 层永远收不到 absent:name-only 投影一律变成「显式清空」——ended phase 被
+`ended-phase-name-only` 整单拒(冒烟撞见的症状,refusal 无 index 字段即指纹:来自
+fieldEditsOf 的 set-profile 而非 scopeRefusals),**活 phase 更糟:静默清空**。既有
+absent-keeps 测试(keep-allowance)直接调 service 传 PhaseSpecInput,绕过了 parseSpec,
+所以漏网。
+
+修复:`parseSpec` 三字段改条件展开(absent 穿透);`NewPhaseSpec` 三字段本就 optional,
+模板路径有 `specToEngine` 的 `?? ''`/`?? []` 兜底,createTemplate/updateTemplate 行为
+不变。承重测试三条(phase-plan-writes.test.ts,**wire→service 全链**:specs 经
+parseSpec 再进 replacePlan):①parseSpec 不为省略字段发明空值、显式空保留;②ended
+phase 非空 profile + name-only 回显 → 写入成功且门保持;③显式 `[]` 对活 phase 仍是
+清空、ended phase 显式改 profile 仍拒(规则未松)。**差分已做**:临时还原旧填充,三条
+全红。真机重放:昨日失败的 absent 请求现 200,五个 phase 的 profile 全部原样。
+
+**数据恢复**:核对留存的冒烟前快照发现,修复前冒烟期间的「成功」写入(回显 profile
+但未回显 description 的请求)经旧缺陷把测试批次 5 个 phase 的 description 清空
+(stage-1「测试」、stage-7 长文本、stage-8「测试测试」、stage-9「这是一个测试阶段」、
+stage-10「哈哈哈」)。已用快照原值经修复后的 API 全部回写并逐条核对(restore 200,
+5/5 恢复)。entryNote 原值全空无损失;真实批次从未被 PUT 过 plan,未受影响。
+
+### 2. text enhancements 延期(文档漂移收口)
+
+按用户裁决取第二种:docs/assessment-formula-recognition.md 第六阶段清单移除
+`text enhancements` 并原地标注延期——@qualy/value-schema 已具备 minLength/pattern
+能力,Evidence 管理端暂无真实业务需要,触发条件=真实题目需要 text 格式约束时开放
+config 并接入 `fieldSchema`,无架构阻碍。Phase 6 的口径以此为准修正:
+integer/decimal/choice 交付,text enhancements 明确延期而非遗漏。
+
+### 记账:用户裁决的 Phase 7 结构(未开工)
+
+```text
+7.0 service-backed calculator topology   REQUIRED FIRST
+    (spike 数个最小方案再裁决;不得 service locator、不得 Formula→Core 反向依赖;
+      承重测试=合成 service-backed calculator 经真实 Assessment 装配 →
+      compileScoringPlan → evaluateEntry 拿到 amount,删 provider 门禁必红)
+7.1 formula@1 driver → 7.2 FormulaVersion→contract → 7.3 authoring UI
+ → 7.4 QuickJS evaluation → 7.5 provenance(functionVersionId/functionArtifactHash
+   进 Breakdown,Phase 7 completion gate)→ 7.6 真实竞赛 E2E
+formula@1 注册在 7.0 通过前 BLOCKED。
+```
+
+关键背景(审计发现):`ScoringDeclarations` 目前是 prepare 相、`Scoring.provider` 产
+`Layer.succeed(ScoringCatalog, ...)`,而 `Assessment.serviceLayer` 构建时就消费
+`ScoringCatalog`——不能简单把扩展点改到 afterServices(服务图建成前 Assessment 就
+拿不到 catalog)。可能的形态是「prepare 期声明 + service/runtime 期绑定」或拆
+definition/runtime 两个 catalog,7.0 先 spike 再裁决。
