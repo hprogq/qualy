@@ -11682,3 +11682,79 @@ set('')。承重(差分红/绿):reviewer-only boolean 无 seed 时 approve 按�
   version API 暴露完整 provenance 字段供审计页。
 - 用户声明本轮未查完:Entry.currentRecognitionId 复合 FK 一致性、supersedes 链 DB
   约束、FormulaVersion→ScoringPlan runtime-store 自校验——不得当作「已无其他问题」。
+
+## 第四轮审计整改:panel 席位、config profile、supplement 双修、boot 深读(2026-08-31)
+
+用户第四轮审计(基线 d053dc89)列 12 项 + 1 项未查完。按其优先级修「现在应挡住」两项
+与「Phase 6/基础设施收口」三项,其余记账。每项承重 + 摘除差分红/绿。
+
+### 1. `fix(assessment): a ballot spends the seat`(第 1 项)
+
+`seatedOrSeatable` 的「自己的 live seat」分支补上 **unvoted** 条件:投过票的
+assignment 不再构成行动资格。定位中的关键事实:**normal route 的 `quorum: all` 被
+policy 编译器拒绝(`policy-quorum-all-normal`)**——用户序列的前提(normal-route
+panel)在当前可配置空间不可达,escalation panel 已由 `independentAt` 排除投票者;
+本修复是席位层的第二把锁(纵深),对旧数据或未来放开 normal sitting 提前闭合,并修正
+了 seatedOrSeatable 注释里「independentAt 已挡投票者」的错误自述。承重两条:
+①escalation sitting 端到端——投票成员的再 approve / escalate 全拒、inbox 空、panel
+仍 open、未投成员照常终局;②SQL 手植 policy 拒绝配置的 normal-route panel(占位者已
+投)→ inbox 立即消失——摘席位检查即红(independence 在 normal route 帮不上忙,单靠
+席位锁)。
+
+### 2. `fix(evidence): accepted configuration implies profile-legal schemas`(第 2 项)
+
+evidenceConfig 的 filter 末尾加**统一 proof**:每个非 attachment 字段的
+`fieldSchema(field)` 逐一过 `validateAtomicProfile` + `normalizeAtomicSchema` try——
+配置被接受 ⇒ 它将来交给 decode/绑定的每份 schema 今天就 profile 合法。unsafe
+integer bound(9007199254740992)、text maxLength 超 profile 上界等整族在配置门拒绝,
+不再等学生提交时在可信进程里 TypeError。承重:unsafe 上/下界拒、safe 边界值放行、
+text 100001 拒 / 500 放行;摘 proof 即红。
+
+### 3. `fix(assessment): reread the supplement under the lock`(第 3 项)
+
+`answerSupplement` 照 decideReview 模式改写:锁前只定位与 admission,**lockBatch 后
+重读 request + instance,一切状态判断以重读为准**。两 tab 同答同一 request 时,输家
+现在得到 `request-not-open` 的 refusal,而不是撞 response 唯一索引变成 defect。承重:
+真并发双答(Effect.all concurrency 2)→ 恰一成功 + 一 typed Fail、零 Die;摘重读
+(改判 stale 读)差分三连全红——race 命中稳定。
+
+### 4. `fix(assessment): read supplement requirements fail-closed`(第 4 项)
+
+`requirementsOf` 从「读不懂就丢」改为 fail-closed:任何元素不可读 ⇒ 整份合同 null。
+写侧(answerSupplement)对 null 合同拒 `requirements-unreadable`(新 refusal 句 +
+zh-CN),请求保持 open 留给能读懂它的 build;展示面(getEntry 视图、asks 标签)以
+`?? []` 显示所能。承重:SQL 植入未来 kind(choice)→ 空答被拒、request 仍 open——
+修前缩水集合让空答通过并把请求关成 answered(差分红)。requirementsVersion 的正式
+版本化留待首个新 kind 引入时(记账)。
+
+### 5. `feat(assessment): boot proves every frozen plan readable`(第 5 项)
+
+`auditStoredPlanDrivers` 升级为 **`auditStoredPlans`**:分页扫描全部 non-null
+scoring_plan,逐个过 `readScoringPlan`(shape、planHash、profile、converter 词汇的
+唯一 canonical reader),失败即 `ASSESSMENT_STORED_SCORING_PLAN_UNREADABLE` 拒
+ready 并点名 revision 与 reason;decode 成功后再查 calculator/aggregator ref 在当前
+catalog(driver audit 合并于此,`StoredScoringDriverMissing` 改单条点名)。承重
+(migration-upgrade 重写):sweep 产真 plan → 毒化 ref + 重算一致 hash → 拒 driver
+missing;hash 打坏 → 拒 unreadable;还原 → ready。
+
+### 第四轮其余记账(未动工)
+
+- **Phase 7 开始前**:⑥FormulaVersion 的 UUID 暴露给 bind read model,冻结
+  `formula@1 config = {versionId}`(functionId+versionNo 只作 locator);⑦Evidence
+  retype 保留 stable id 与 server「type 变即非同一字段」的 identity 定义冲突——需正式
+  裁决(retype mint 新 id,或反向修改 server 语义),Phase 7 绑定上线前必决;
+  ⑧same-ref calculator compile-contract boot proof(currentDriver.compile(frozenConfig)
+  → 同 config/contractHash/schema,发现 foo@1 语义被悄改;evaluate 算法漂移仍归
+  @version 纪律 + 承重回归)。
+- **schema hardening**:⑨ReviewInstance supersedes 补 same-entry 复合 FK(recursive
+  withdrawStandingsOf 沿链聚合,脏行会跨 Entry 影响);⑩frozen policy/recognition
+  revision 补 same-item 证明;⑪ReviewVote 的 assignment/panel/voter 复合绑定;
+  ⑫Phase scopes 补 same-batch FK(replacePlan 已在 API 层挡住,实体总纲的例外)。
+- **未查完项已代查排除**:ScoreGroup cap/floor 的写入 schema(putScoreGroups spec)
+  是 `decimalAmount = /^-?\d{1,8}(?:\.\d{1,4})?$/`——词法与量级都有 proof,
+  `scaledAmount` 收不到非法词法;裸 `Schema.NullOr(Schema.String)` 只出现在读 view
+  (scoreGroupView 输出),不是输入面。与 Evidence unsafe integer 不同族,不成立。
+
+**验收(本机逐条实跑)**:`pnpm typecheck` 零错;`pnpm test` 1227 passed | 17 skipped
+(1244,首跑五个无关文件 hook 超时属环境抖动,单跑与重跑全绿);`pnpm test:browser`
+271 passed;`pnpm build` 通过。
