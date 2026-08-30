@@ -74,6 +74,18 @@ describe('the runtime boundary', () => {
     expect(Object.isFrozen(decoded)).toBe(true)
   })
 
+  it('reads input parameters as own keys, never off the prototype', () => {
+    // `constructor` is a legal parameter name, and a JSON.parse product has
+    // a prototype: a host-validated input always carries the key, but the
+    // defense-in-depth read must still never hand Object.prototype's
+    // members to a formula body
+    const spoken = Schema.input({ constructor: Schema.integer({ minimum: 0 }) })
+    const decoded = decodeInput(spoken, JSON.parse('{"constructor": 3}'))
+    expect(decoded['constructor']).toBe(3)
+    const missing = decodeInput(spoken, JSON.parse('{}'))
+    expect(Object.getOwnPropertyDescriptor(missing, 'constructor')?.value).toBeUndefined()
+  })
+
   it('encodes only a decimal, canonically', () => {
     expect(encodeOutput(Schema.decimal(), dec('0.90'))).toBe('0.9')
     expect(() => encodeOutput(Schema.decimal(), true)).toThrowError(/did not return a decimal/)

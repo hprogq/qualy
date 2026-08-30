@@ -18,13 +18,20 @@ export { FormulaFailure, isFormulaFailure } from './failure.ts'
 export { decimalFromString, decimalToString }
 
 /** JSON input (already host-validated) → the typed values the body receives */
+// captured hasOwnProperty, es5-spelled: this module is copied into every
+// compiled artifact, whose workspace lib predates Object.hasOwn
+const hasOwn = Object.prototype.hasOwnProperty
+
 export const decodeInput = (
   schema: InputSchema,
   value: Readonly<Record<string, JsonValue>>,
 ): Readonly<Record<string, unknown>> => {
   const decoded: Record<string, unknown> = {}
   for (const [name, property] of Object.entries(schema.properties)) {
-    const given = value[name]
+    // own keys only: the host validated presence, but a parameter may be
+    // called `constructor` and this JSON.parse product has a prototype -
+    // defense in depth against handing Object.prototype's members to a body
+    const given = hasOwn.call(value, name) ? value[name] : undefined
     const decoded_value =
       kindOf(property) === 'decimal' ? decimalFromString(given as string) : given
     if (decoded_value === null && kindOf(property) === 'decimal')
