@@ -107,6 +107,7 @@ export const scoringRuntimeProvider = Plugin.provideExtension(ScoringRuntimes, {
           itemTypes,
           definitions,
           compile: catalog.compile,
+          verify: catalog.verify,
         }
         yield* assembled.register({
           name: 'assessment/scoring-plans',

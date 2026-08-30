@@ -4,12 +4,13 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Schema } from 'effect'
 import { inspect } from 'node:util'
 import { transaction } from '@qualy/plugin-database/server'
 import { builtinAggregators, builtinCalculators } from '../src/scoring/builtins.ts'
 import { testDefinitions, testRuntime } from './support/catalogs.ts'
 import { auditStoredPlans, sweepScoringPlans } from '../src/scoring/backfill.ts'
+import { CalculatorRuntimeError, type CalculatorRegistration } from '../src/plugin.ts'
 import { semanticPlanBody } from '../src/scoring/plan.ts'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 
@@ -926,7 +927,7 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
             sweepScoringPlans({
               itemTypes: new Map(),
               definitions: testDefinitions([...builtinCalculators], builtinAggregators),
-              compile: testRuntime([...builtinCalculators]).compile,
+              ...testRuntime([...builtinCalculators]),
             }).pipe(
               Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
               (effect) => transaction(effect),
@@ -1017,7 +1018,7 @@ describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
       const catalogs = {
         itemTypes: new Map(),
         definitions: testDefinitions([...builtinCalculators], builtinAggregators),
-        compile: testRuntime([...builtinCalculators]).compile,
+        ...testRuntime([...builtinCalculators]),
       }
       const provided = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
         Effect.runPromiseExit(
@@ -1077,6 +1078,50 @@ describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
       expect(inspect(corrupted, { depth: 8 })).toContain(
         'ASSESSMENT_STORED_SCORING_PLAN_UNREADABLE',
       )
+
+      // A driver may be installed and the plan perfectly readable, and the
+      // frozen runtime fact behind it still gone - the verify gate is the
+      // one that notices, and it must say which revision and which
+      // calculator, without ever contacting an execution process.
+      const verifyRefusing: CalculatorRegistration = {
+        kind: 'calculator',
+        ref: 'verify-test@1',
+        configSchema: Schema.Struct({}),
+        bind: Effect.succeed({
+          ref: 'verify-test@1',
+          compile: () => Effect.die(new Error('compile is not part of this audit')),
+          verify: () => Effect.fail(new CalculatorRuntimeError('the frozen runtime fact is gone')),
+          prepare: () => Effect.die(new Error('prepare is not part of this audit')),
+        }),
+      }
+      const refused = {
+        ...body,
+        calculator: { ...(body['calculator'] as Record<string, unknown>), ref: 'verify-test@1' },
+      }
+      await db.query(
+        `update assessment_item_revisions set scoring_plan = $2::jsonb where id = $1`,
+        [
+          revision,
+          JSON.stringify({
+            ...refused,
+            planHash: hashCanonicalJson(semanticPlanBody(refused as never)),
+          }),
+        ],
+      )
+      const installed = [...builtinCalculators, verifyRefusing]
+      const unverifiable = await provided(
+        auditStoredPlans({
+          itemTypes: new Map(),
+          definitions: testDefinitions(installed, builtinAggregators),
+          ...testRuntime(installed),
+        }),
+      )
+      expect(Exit.isFailure(unverifiable)).toBe(true)
+      const spoken = inspect(unverifiable, { depth: 8 })
+      expect(spoken).toContain('ASSESSMENT_STORED_SCORING_RUNTIME_INVALID')
+      expect(spoken).toContain('verify-test@1')
+      expect(spoken).toContain(revision)
+      expect(spoken).toContain('the frozen runtime fact is gone')
 
       // restoring the true plan clears the gate
       await db.query(

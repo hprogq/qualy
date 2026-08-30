@@ -19,11 +19,14 @@ import { sql } from 'kysely'
 import type {
   AggregatorDriver,
   BatchContext,
+  CalculatorCompileContext,
   CalculatorContractError,
   CalculatorDefinition,
+  CalculatorHostContext,
+  CalculatorRuntimeError,
   CompiledCalculator,
-  CalculatorCompileContext,
   ItemTypeDriver,
+  RuntimeRef,
 } from '../plugin.ts'
 import { compileScoringPlan, readScoringPlan, recognitionSourceOf } from './plan.ts'
 import { db } from '../server/db.ts'
@@ -77,6 +80,15 @@ export class StoredScoringDriverMissing extends Data.TaggedError(
 }
 
 /** a stored plan this build cannot read; found at boot, never on a results page */
+/** a stored plan whose frozen runtime fact its calculator can no longer verify */
+export class StoredScoringRuntimeInvalid extends Data.TaggedError(
+  'ASSESSMENT_STORED_SCORING_RUNTIME_INVALID',
+)<{
+  readonly revisionId: string
+  readonly calculatorRef: string
+  readonly reason: string
+}> {}
+
 export class StoredScoringPlanUnreadable extends Data.TaggedError(
   'ASSESSMENT_STORED_SCORING_PLAN_UNREADABLE',
 )<{
@@ -100,6 +112,19 @@ export interface BackfillDeps {
     config: unknown,
     context: CalculatorCompileContext,
   ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
+  /**
+   * The runtime catalog's verify: does the frozen runtime fact behind a
+   * stored plan still hold - the immutable row exists, its hashes match,
+   * its profile is one this build interprets. It never contacts an
+   * execution process: starting an API server must not require a sandbox
+   * to be online (that is request-time availability, not readiness).
+   */
+  readonly verify: (
+    ref: string,
+    config: unknown,
+    runtimeRef: RuntimeRef | undefined,
+    context: CalculatorHostContext,
+  ) => Effect.Effect<void, CalculatorRuntimeError>
 }
 
 /** how many rows one pass reads at a time */
@@ -195,6 +220,8 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
 
 interface StoredPlanRow {
   readonly id: string
+  readonly tenantId: string
+  readonly batchId: string
   readonly scoringPlan: unknown
 }
 
@@ -216,8 +243,12 @@ export const auditStoredPlans = (deps: BackfillDeps) =>
     for (;;) {
       const found = yield* db.query((k) =>
         sql<StoredPlanRow>`
-          select r.id as "id", r.scoring_plan as "scoringPlan"
+          select r.id as "id",
+                 i.tenant_id as "tenantId",
+                 i.batch_id as "batchId",
+                 r.scoring_plan as "scoringPlan"
           from assessment_item_revisions r
+          join assessment_items i on i.tenant_id = r.tenant_id and i.id = r.item_id
           where r.scoring_plan is not null
             and (${after}::uuid is null or r.id > ${after}::uuid)
           order by r.id
@@ -250,6 +281,25 @@ export const auditStoredPlans = (deps: BackfillDeps) =>
             revisionId: row.id,
           })
         }
+        // and the runtime fact itself: a version-1 plan froze none, so its
+        // calculator is handed `undefined` and fixed@1 verifies trivially -
+        // but a calculator whose facts live elsewhere re-proves them here,
+        // before the port opens, never on a results page
+        yield* deps
+          .verify(plan.calculator.ref, plan.calculator.config, undefined, {
+            tenantId: row.tenantId,
+            batchId: row.batchId,
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new StoredScoringRuntimeInvalid({
+                  revisionId: row.id,
+                  calculatorRef: plan.calculator.ref,
+                  reason: error.reason,
+                }),
+            ),
+          )
       }
       if (rows.length < BATCH) break
       after = rows[rows.length - 1]!.id
