@@ -858,7 +858,9 @@ function Ask({ supplement, subject }: { supplement: Supplement; subject: string 
       ? m.supplementStatusAnswered
       : supplement.status === 'cancelled'
         ? m.entryTrailAskCancelled
-        : m.entryTrailAskWaiting
+        : supplement.status === 'superseded'
+          ? m.entryTrailAskSuperseded
+          : m.entryTrailAskWaiting
   return (
     <>
       <Line

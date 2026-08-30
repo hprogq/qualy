@@ -2531,6 +2531,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/trail-ask-cancelled',
       defaultMessage: 'Material request withdrawn',
     },
+    entryTrailAskSuperseded: {
+      id: 'assessment/entry/trail-ask-superseded',
+      defaultMessage: 'No longer applicable',
+    },
     entryTrailAskWaiting: {
       id: 'assessment/entry/trail-ask-waiting',
       defaultMessage: 'Awaiting your additional material',

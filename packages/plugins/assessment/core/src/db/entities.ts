@@ -1580,7 +1580,7 @@ export const ReviewSupplementRequest = defineEntity({
   checks: [
     {
       name: 'chk_review_supplement_requests_status',
-      expression: `status IN ('open', 'answered', 'cancelled')`,
+      expression: `status IN ('open', 'answered', 'cancelled', 'superseded')`,
     },
     { name: 'chk_review_supplement_requests_no_positive', expression: 'request_no >= 1' },
     {
@@ -1591,7 +1591,7 @@ export const ReviewSupplementRequest = defineEntity({
     // as full arms for the same reason the item void shape is
     {
       name: 'chk_review_supplement_requests_lifecycle_shape',
-      expression: `(status = 'open' AND answered_at IS NULL AND cancelled_at IS NULL AND cancelled_by IS NULL) OR (status = 'answered' AND answered_at IS NOT NULL AND cancelled_at IS NULL AND cancelled_by IS NULL) OR (status = 'cancelled' AND cancelled_at IS NOT NULL AND cancelled_by IS NOT NULL AND answered_at IS NULL)`,
+      expression: `(status = 'open' AND answered_at IS NULL AND cancelled_at IS NULL AND cancelled_by IS NULL) OR (status = 'answered' AND answered_at IS NOT NULL AND cancelled_at IS NULL AND cancelled_by IS NULL) OR (status = 'cancelled' AND cancelled_at IS NOT NULL AND cancelled_by IS NOT NULL AND answered_at IS NULL) OR (status = 'superseded' AND cancelled_at IS NOT NULL AND cancelled_by IS NULL AND answered_at IS NULL)`,
     },
   ],
   indexes: [

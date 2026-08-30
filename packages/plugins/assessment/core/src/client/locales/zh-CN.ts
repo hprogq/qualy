@@ -619,6 +619,7 @@ export default {
   'assessment/entry/trail-answer-kept':
     '本次补充将单独保存，不会修改第 {no} 版申报内容，审核人可同时查看。',
   'assessment/entry/trail-ask-cancelled': '补充要求已撤回',
+  'assessment/entry/trail-ask-superseded': '已失效',
   'assessment/entry/trail-ask-waiting': '待你补充材料',
   'assessment/entry/trail-reason': '事由：{value}',
   'assessment/entry/trail-round': '第 {no} 轮审核',

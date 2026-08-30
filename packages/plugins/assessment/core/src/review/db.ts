@@ -1453,8 +1453,9 @@ export const requirementsOf = (value: unknown): readonly SupplementRequirement[]
 export interface SupplementRow {
   id: string
   requestNo: number
-  status: 'open' | 'answered' | 'cancelled'
+  status: 'open' | 'answered' | 'cancelled' | 'superseded'
   instructions: string
+  /** what this build can read of the ask; the write path refuses the rest */
   requirements: readonly SupplementRequirement[]
   requestedBy: string
   requestedByName: string | null
@@ -1563,7 +1564,7 @@ export interface SupplementRequestRow {
   id: string
   reviewInstanceId: string
   requestNo: number
-  status: 'open' | 'answered' | 'cancelled'
+  status: 'open' | 'answered' | 'cancelled' | 'superseded'
   instructions: string
   /** null when this build cannot read the stored contract; answering refuses */
   requirements: readonly SupplementRequirement[] | null

@@ -733,9 +733,13 @@ export const advanceReviewInstance = (input: {
  * index that admits one open round per entry counts all three. Ending only
  * `active` rounds left every blocked one unendable: the person who filed it
  * could not withdraw it, and nobody could be appointed to release it either,
- * so the claim was stuck for good. A cancelled round's open supplement
- * request needs no sweeping: answering requires the round to still be
- * waiting, so the ask dies with the round by definition.
+ * so the claim was stuck for good. An open supplement request dies with
+ * its round - answering already required the round to still be waiting -
+ * but "dies" has to be WRITTEN: the row is history, and a row still
+ * reading `open` shows a live ask on a round that no longer exists.
+ * `superseded` on purpose, distinct from `cancelled`: the reviewer taking
+ * their ask back and the round being ended over the asker's head are
+ * different facts to an auditor.
  */
 export const cancelReviewInstance = (input: {
   tenantId: string
@@ -762,6 +766,13 @@ export const cancelReviewInstance = (input: {
           where p.tenant_id = ${input.tenantId}
             and p.review_instance_id = closed.id
             and p.state = 'open'
+        ), asked as (
+          update review_supplement_requests r
+          set status = 'superseded', cancelled_at = now()
+          from closed
+          where r.tenant_id = ${input.tenantId}
+            and r.review_instance_id = closed.id
+            and r.status = 'open'
         )
         select id from closed
       `.execute(k),

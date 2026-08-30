@@ -604,6 +604,72 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.queue.items.find((one) => one.itemTitle === '健康打卡')).toBeUndefined()
   })
 
+  it('writes the ask dead when its round ends over the asker\u2019s head', async () => {
+    // A round with an open ask can be ended from outside - withdrawn,
+    // rerouted, superseded by a configuration change. Answering already
+    // required a waiting round, so nobody was stuck; but the ROW still
+    // read `open`, and history showed a live ask on a round that no longer
+    // exists. The ask's death is written now, as its own word: superseded,
+    // distinct from a reviewer taking their ask back.
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-supplement-superseded')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.requestSupplement(
+            f.t,
+            sent.currentReviewInstanceId!,
+            {
+              instructions: '请补充说明。',
+              requirements: [{ label: '情况说明', kind: 'text', required: true }],
+            },
+            reviewer,
+          )
+          const mine = yield* assessment.getEntry(f.t, entry.id, s1)
+          // the person who filed gives the claim up: the round ends from
+          // outside the ask, which was never answered
+          yield* assessment.setEntryStatus(f.t, entry.id, 'voided', s1)
+          const row = one<{ status: string; cancelledAt: string | null }>(
+            yield* runSql(sql`
+              select status, cancelled_at as "cancelledAt"
+              from review_supplement_requests
+              where id = ${mine.supplement!.requestId}`),
+          )
+          const answered = yield* Effect.exit(
+            assessment.answerSupplement(
+              f.t,
+              mine.supplement!.requestId,
+              { payload: { f1: '来晚了。' } },
+              s1,
+            ),
+          )
+          const trail = yield* assessment.getEntryHistory(f.t, entry.id, s1)
+          return {
+            row,
+            answered: refusalOf(answered),
+            trailStatus: trail.rounds[0]!.supplements[0]!.status,
+          }
+        }),
+      ),
+    )
+
+    expect(result.row.status).toBe('superseded')
+    expect(result.row.cancelledAt).not.toBeNull()
+    expect(result.answered?.reason).toBe('request-not-open')
+    // and history tells the truth: no live ask on a dead round
+    expect(result.trailStatus).toBe('superseded')
+  })
+
   it('refuses to answer an ask it cannot read, instead of closing around it', async () => {
     // A newer build can store a requirement kind this one has never heard
     // of. "I do not understand this ask" must never be read as "this ask

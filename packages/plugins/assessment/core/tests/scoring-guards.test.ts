@@ -204,6 +204,21 @@ describe('what a stored plan must be before it runs', () => {
   })
 })
 
+describe('what the account refuses to total', () => {
+  it('names a rootless loop instead of reading zero', () => {
+    // the api cannot produce this shape (self-parent, cycles and multiple
+    // roots are all refused); hand-broken rows must still be an error, not
+    // a quiet zero - a loop with no root never enters the root walk at all
+    const loop = [
+      { id: 'a', parentGroupId: 'b', name: 'a', cap: null, floor: null, sortOrder: 0 },
+      { id: 'b', parentGroupId: 'a', name: 'b', cap: null, floor: null, sortOrder: 1 },
+    ]
+    expect(() =>
+      calcParticipant({ aggregators: new Map() }, { groups: loop, items: [], entries: [] }),
+    ).toThrowError(/unreachable/)
+  })
+})
+
 describe('how an aggregator answer reaches the account', () => {
   const item = {
     id: 'i',

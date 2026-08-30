@@ -266,12 +266,14 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
   // answer - and it cannot reach here through the api, which refuses one.
   // Thrown rather than refused: it means the rows themselves are wrong.
   const walking = new Set<string>()
+  const reached = new Set<string>()
 
   const walk = (group: ScoreInputGroup, depth: number): bigint => {
     if (walking.has(group.id)) {
       throw new Error(`score groups form a cycle at ${group.id}`)
     }
     walking.add(group.id)
+    reached.add(group.id)
     let itemsTotal = 0n
     for (const item of items) {
       if (item.scoreGroupId !== group.id) continue
@@ -425,6 +427,13 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
 
   for (const root of (childrenOf.get(null) ?? []).sort(byGroup)) {
     total += walk(root, 0)
+  }
+  // a closed loop with no root never enters the walk at all: the account
+  // would silently read zero instead of naming the broken rows. The api
+  // cannot produce that shape; hand-broken rows must still be an error.
+  if (reached.size !== groups.length) {
+    const missing = groups.find((group) => !reached.has(group.id))
+    throw new Error(`score groups unreachable from any root, e.g. ${missing?.id ?? '?'}`)
   }
 
   return { total: formatAmount(total), groups: groupViews, lines }
