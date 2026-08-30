@@ -247,6 +247,13 @@ export const fieldSchema = (field: EvidenceField): AtomicSchema | null => {
     case 'text':
       return {
         type: 'string',
+        // decode refuses a required text whose trimmed answer is empty, so
+        // the effective value domain already excludes ''. Saying so here is
+        // what keeps a binding proof honest - a schema that stayed silent
+        // would refuse a perfectly safe assignment to a nonempty target as
+        // widening. This states the EXISTING required semantics; authored
+        // minLength/pattern stay closed until a real question needs them.
+        ...(field.required === true ? { minLength: 1 } : {}),
         ...(field.maxLength === undefined ? {} : { maxLength: field.maxLength }),
         title: field.label,
       }

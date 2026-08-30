@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Effect, Exit, Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { evidenceDriver, evidenceConfig } from '../src/driver.ts'
+import { assignmentPlan, normalizeAtomicSchema } from '@qualy/value-schema'
 import type { ItemPayloadInvalid } from '@qualy/plugin-assessment/plugin'
 
 // The evidence driver on its own: what an administrator may configure, what
@@ -393,6 +394,30 @@ describe('the typed fields', () => {
       'x-qualy-enumLabels': { national: '国家级', provincial: '省部级' },
     })
     expect(offered.some((field) => field.fieldId === 'proof')).toBe(false)
+  })
+
+  it('states the required-text domain it already enforces, and proves it binds', () => {
+    // decode refuses a required text whose trimmed answer is empty, so the
+    // schema handed to binding proofs must say minLength 1 - or a safe
+    // assignment to a nonempty recognition is refused as widening
+    const wording = {
+      fields: [
+        { key: 'basis', type: 'text', label: '依据', required: true, maxLength: 64 },
+        { key: 'note', type: 'text', label: '备注', maxLength: 64 },
+      ],
+    }
+    const offered = evidenceDriver.bindableFields!(wording, batch)
+    const basis = offered.find((field) => field.fieldId === 'basis')!
+    const note = offered.find((field) => field.fieldId === 'note')!
+    expect(basis.schema).toMatchObject({ type: 'string', minLength: 1 })
+    expect('minLength' in note.schema).toBe(false)
+    // a required text may seed a recognition that itself refuses emptiness
+    const nonempty = normalizeAtomicSchema({ type: 'string', minLength: 1, maxLength: 64 })
+    expect(assignmentPlan(normalizeAtomicSchema(basis.schema), nonempty)).toEqual({
+      kind: 'direct',
+    })
+    // an optional text still holds '' in its domain, and is refused there
+    expect(assignmentPlan(normalizeAtomicSchema(note.schema), nonempty).kind).toBe('incompatible')
   })
 
   it('drops a value whose field changed type, like every other retype', async () => {
