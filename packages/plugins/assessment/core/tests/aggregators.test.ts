@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { calcParticipant } from '../src/scoring/calc.ts'
-import { builtinScoringDrivers, max1, scaledAmount, topNSum1 } from '../src/scoring/builtins.ts'
+import { builtinAggregators, max1, scaledAmount, topNSum1 } from '../src/scoring/builtins.ts'
 
 // The folding rules, held to their one obligation: every approved line is
 // explained. "Only the highest office counts" is terms.md's own sentence,
@@ -8,9 +8,7 @@ import { builtinScoringDrivers, max1, scaledAmount, topNSum1 } from '../src/scor
 // line, why not.
 
 const catalogs = {
-  aggregators: new Map(
-    builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
-  ),
+  aggregators: new Map(builtinAggregators.map((d) => [d.ref, d])),
 }
 
 const officer = (aggregator: { ref: string; config: unknown }) => ({
@@ -30,9 +28,33 @@ const officer = (aggregator: { ref: string; config: unknown }) => ({
   entries: [
     // three posts, two of them worth the same: the class monitor, filed
     // first, is the stable pick among equals
-    { id: 'e1', itemId: 'i', standing: 'counted' as const, recognitionId: 'rec-e1', revisionId: 'r1', amount: scaledAmount('2.00'), createdAt: 1 },
-    { id: 'e2', itemId: 'i', standing: 'counted' as const, recognitionId: 'rec-e2', revisionId: 'r2', amount: scaledAmount('2.00'), createdAt: 2 },
-    { id: 'e3', itemId: 'i', standing: 'counted' as const, recognitionId: 'rec-e3', revisionId: 'r3', amount: scaledAmount('2.00'), createdAt: 3 },
+    {
+      id: 'e1',
+      itemId: 'i',
+      standing: 'counted' as const,
+      recognitionId: 'rec-e1',
+      revisionId: 'r1',
+      amount: scaledAmount('2.00'),
+      createdAt: 1,
+    },
+    {
+      id: 'e2',
+      itemId: 'i',
+      standing: 'counted' as const,
+      recognitionId: 'rec-e2',
+      revisionId: 'r2',
+      amount: scaledAmount('2.00'),
+      createdAt: 2,
+    },
+    {
+      id: 'e3',
+      itemId: 'i',
+      standing: 'counted' as const,
+      recognitionId: 'rec-e3',
+      revisionId: 'r3',
+      amount: scaledAmount('2.00'),
+      createdAt: 3,
+    },
   ],
 })
 

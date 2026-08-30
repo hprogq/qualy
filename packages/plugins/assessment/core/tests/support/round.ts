@@ -33,7 +33,8 @@ import { entities as storageEntities } from '@qualy/plugin-storage/db'
 import { entities } from '../../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../../src/permissions.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../../src/server/index.ts'
-import { catalogLayers, storageForTest } from './catalogs.ts'
+import { catalogLayers, scoringRuntimeLayer, storageForTest } from './catalogs.ts'
+import { ScoringRuntimeCatalog } from '../../src/plugin.ts'
 
 // The round every policy suite stands in: two colleges, two classes, a
 // student and their neighbours, a reviewer holding the review role at
@@ -78,6 +79,15 @@ const stack = (url: string) => {
     { catalog },
   )
   const storage = storageForTest(backend).pipe(Layer.provide(services))
+  // the runtime bindings, exactly as the host wires them: over the running
+  // services and the prepared catalogs, registering the scoring boot hook
+  // into the same registry (the barrier that RUNS hooks is the host's, and
+  // these suites do not boot one)
+  const runtimeCatalog = scoringRuntimeLayer.pipe(
+    Layer.provide(services),
+    Layer.provide(catalogLayers),
+    Layer.provide(assembledLayer),
+  ) as Layer.Layer<ScoringRuntimeCatalog>
   return serviceLayer.pipe(
     Layer.provideMerge(storage),
     Layer.provideMerge(services),
@@ -85,12 +95,17 @@ const stack = (url: string) => {
     // the boot-hook registry the service writes its backfill into; the
     // barrier that RUNS hooks is the host's, and these suites do not boot one
     Layer.provide(assembledLayer),
+    Layer.provideMerge(runtimeCatalog),
   )
 }
 
 export const run = <A, E>(
   url: string,
-  effect: Effect.Effect<A, E, Assessment | Storage | Rbac | Orm | DatabaseNotifications>,
+  effect: Effect.Effect<
+    A,
+    E,
+    Assessment | Storage | Rbac | Orm | DatabaseNotifications | ScoringRuntimeCatalog
+  >,
 ) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 export const ok = <A, E>(exit: Exit.Exit<A, E>): A => {

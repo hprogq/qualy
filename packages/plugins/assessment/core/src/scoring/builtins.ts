@@ -20,8 +20,7 @@ import type {
   AggregationResult,
   AggregatorDriver,
   CalculatorContract,
-  CalculatorDriver,
-  ScoringDriver,
+  CalculatorRegistration,
 } from '../plugin.ts'
 
 // The two pieces of arithmetic every deployment starts with, declared here
@@ -151,20 +150,30 @@ const fixedContract: CalculatorContract = (() => {
   return { inputSchema, outputSchema, contractHash: contractHashOf({ inputSchema, outputSchema }) }
 })()
 
-export const fixed1: CalculatorDriver = {
+export const fixed1: CalculatorRegistration = {
   kind: 'calculator',
   ref: 'fixed@1',
   configSchema: Schema.Struct({ value: decimalString }),
-  compile: (config) => {
-    const written = (config as { value?: unknown }).value
-    // the compiler validated the shape first; this is the calculator saying
-    // what it will execute, and "3.00" and "3.0" are one amount to it
-    const canonical = typeof written === 'string' ? canonicalDecimal(written) : null
-    return canonical === null
-      ? Effect.fail(new CalculatorContractError('value is not a decimal amount'))
-      : Effect.succeed({ ...fixedContract, config: { value: canonical } })
-  },
-  evaluate: (config) => Effect.succeed((config as { value: string }).value),
+  // nothing to acquire: the whole binding is pure arithmetic, so bind
+  // succeeds immediately, verify has no runtime fact to prove, and prepare
+  // closes over the already-canonical amount
+  bind: Effect.succeed({
+    ref: 'fixed@1',
+    compile: (config) => {
+      const written = (config as { value?: unknown }).value
+      // the compiler validated the shape first; this is the calculator saying
+      // what it will execute, and "3.00" and "3.0" are one amount to it
+      const canonical = typeof written === 'string' ? canonicalDecimal(written) : null
+      return canonical === null
+        ? Effect.fail(new CalculatorContractError('value is not a decimal amount'))
+        : Effect.succeed({ ...fixedContract, config: { value: canonical } })
+    },
+    verify: () => Effect.void,
+    prepare: (config) =>
+      Effect.succeed({
+        evaluate: () => Effect.succeed((config as { value: string }).value),
+      }),
+  }),
 }
 
 /**
@@ -232,4 +241,5 @@ export const topNSum1: AggregatorDriver = {
   aggregate: (config, entries) => pick(entries, (config as { n: number }).n),
 }
 
-export const builtinScoringDrivers = [fixed1, sum1, max1, topNSum1] as const
+export const builtinCalculators = [fixed1] as const
+export const builtinAggregators = [sum1, max1, topNSum1] as const

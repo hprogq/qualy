@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { calcParticipant } from '../src/scoring/calc.ts'
-import { builtinScoringDrivers, scaledAmount } from '../src/scoring/builtins.ts'
+import { builtinAggregators, scaledAmount } from '../src/scoring/builtins.ts'
 
 // What the ledger answers today, written down before the arithmetic moves.
 //
@@ -13,9 +13,7 @@ import { builtinScoringDrivers, scaledAmount } from '../src/scoring/builtins.ts'
 // that does or does not reach the account.
 
 const catalogs = {
-  aggregators: new Map(
-    builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
-  ),
+  aggregators: new Map(builtinAggregators.map((d) => [d.ref, d])),
 }
 
 // The amounts arrive evaluated now; these fixtures name what fixed@1 would
@@ -109,7 +107,10 @@ const account = (fixture: {
             recognitionId: `rec-${one.id}`,
             amount: worth.get(one.itemId) ?? 0n,
           }
-        : { ...base, standing: status === 'rejected' ? ('refused' as const) : ('unscored' as const) }
+        : {
+            ...base,
+            standing: status === 'rejected' ? ('refused' as const) : ('unscored' as const),
+          }
     }),
   })
 }
@@ -122,19 +123,22 @@ describe('what the ledger answers, frozen', () => {
     for (const [aggregator, total, shape] of [
       [{ ref: 'sum@1', config: {} }, '6.00', ['entry', 'entry', 'entry']],
       [{ ref: 'max@1', config: {} }, '2.00', ['entry', 'entry-not-counted', 'entry-not-counted']],
-      [
-        { ref: 'top-n-sum@1', config: { n: 2 } },
-        '4.00',
-        ['entry', 'entry', 'entry-not-counted'],
-      ],
+      [{ ref: 'top-n-sum@1', config: { n: 2 } }, '4.00', ['entry', 'entry', 'entry-not-counted']],
     ] as const) {
       const result = account({
         groups: [group('g')],
         items: [{ id: 'i', worth: '2.00', aggregator }],
-        entries: [{ id: 'e1', itemId: 'i' }, { id: 'e2', itemId: 'i', createdAt: 2 }, { id: 'e3', itemId: 'i', createdAt: 3 }],
+        entries: [
+          { id: 'e1', itemId: 'i' },
+          { id: 'e2', itemId: 'i', createdAt: 2 },
+          { id: 'e3', itemId: 'i', createdAt: 3 },
+        ],
       })
       expect(result.total, aggregator.ref).toBe(total)
-      expect(result.lines.map((line) => line.kind), aggregator.ref).toEqual(shape)
+      expect(
+        result.lines.map((line) => line.kind),
+        aggregator.ref,
+      ).toEqual(shape)
     }
   })
 
@@ -175,7 +179,10 @@ describe('what the ledger answers, frozen', () => {
         { id: 'big', worth: '5.00', scoreGroupId: 'root' },
         { id: 'minus', worth: '-2.00', scoreGroupId: 'child' },
       ],
-      entries: [{ id: 'e1', itemId: 'big' }, { id: 'e2', itemId: 'minus' }],
+      entries: [
+        { id: 'e1', itemId: 'big' },
+        { id: 'e2', itemId: 'minus' },
+      ],
     })
     expect(lines(result)).toEqual([
       ['entry:e1', 'entry', '5.00'],
@@ -185,7 +192,14 @@ describe('what the ledger answers, frozen', () => {
     ])
     expect(result.total).toBe('3.00')
     expect(
-      result.groups.map((one) => [one.groupId, one.depth, one.itemsTotal, one.childrenTotal, one.raw, one.final]),
+      result.groups.map((one) => [
+        one.groupId,
+        one.depth,
+        one.itemsTotal,
+        one.childrenTotal,
+        one.raw,
+        one.final,
+      ]),
     ).toEqual([
       ['child', 1, '-2.00', '0.00', '-2.00', '0.00'],
       ['root', 0, '5.00', '0.00', '5.00', '3.00'],
@@ -197,7 +211,10 @@ describe('what the ledger answers, frozen', () => {
       groups: [group('g')],
       items: [{ id: 'i', worth: '2.00', aggregator: { ref: 'max@1', config: {} } }],
       // the later filing is listed first: order comes from createdAt, not input
-      entries: [{ id: 'late', itemId: 'i', createdAt: 9 }, { id: 'early', itemId: 'i', createdAt: 1 }],
+      entries: [
+        { id: 'late', itemId: 'i', createdAt: 9 },
+        { id: 'early', itemId: 'i', createdAt: 1 },
+      ],
     })
     expect(lines(result)).toEqual([
       ['entry:early', 'entry', '2.00'],
@@ -249,7 +266,10 @@ describe('what the ledger answers, frozen', () => {
   it('counts a derived question with no entries at all', () => {
     const result = account({
       groups: [group('g')],
-      items: [{ id: 'base', worth: '1.00' }, { id: 'bonus', worth: '0.50', derived: true, sortOrder: 1 }],
+      items: [
+        { id: 'base', worth: '1.00' },
+        { id: 'bonus', worth: '0.50', derived: true, sortOrder: 1 },
+      ],
       entries: [{ id: 'e1', itemId: 'base' }],
     })
     expect(lines(result)).toEqual([
@@ -262,8 +282,14 @@ describe('what the ledger answers, frozen', () => {
   it('keeps provenance on every line that has one', () => {
     const result = account({
       groups: [group('g')],
-      items: [{ id: 'i', worth: '2.00' }, { id: 'd', worth: '1.00', derived: true, sortOrder: 1 }],
-      entries: [{ id: 'e1', itemId: 'i' }, { id: 'no', itemId: 'i', status: 'rejected', createdAt: 2 }],
+      items: [
+        { id: 'i', worth: '2.00' },
+        { id: 'd', worth: '1.00', derived: true, sortOrder: 1 },
+      ],
+      entries: [
+        { id: 'e1', itemId: 'i' },
+        { id: 'no', itemId: 'i', status: 'rejected', createdAt: 2 },
+      ],
     })
     // the determination joins the trail without disturbing what was there:
     // a line still names its claim, its filing and its arithmetic

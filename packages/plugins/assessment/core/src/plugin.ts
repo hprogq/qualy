@@ -1,6 +1,10 @@
 import { Context, Layer } from 'effect'
 import type { Effect, Schema } from 'effect'
-import type { AtomicSchema, NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
+import type {
+  AtomicSchema,
+  NormalizedAtomicSchema,
+  NormalizedInputSchema,
+} from '@qualy/value-schema'
 import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
 
 // This domain's two faces in the descriptor model: what a plugin writes to
@@ -139,6 +143,41 @@ export class ItemTypeCatalog extends Context.Service<
   ReadonlyMap<string, ItemTypeDriver>
 >()('@qualy/plugin-assessment/ItemTypeCatalog') {}
 
+/**
+ * The immutable runtime fact a compiled calculator executes, by exact
+ * identity. Core carries it opaquely - kind, id and content hash - and the
+ * calculator that minted it is the only party that interprets it. fixed@1
+ * has none; a stored-program calculator names its published program here.
+ * A version-1 plan never stores one: persisting it is a plan-language
+ * change and belongs to the next plan version.
+ */
+export interface RuntimeRef {
+  readonly kind: string
+  readonly id: string
+  readonly sha256: string
+}
+
+/**
+ * What the host tells a calculator about where it is working - and nothing
+ * else. Both values come from the host's own row reads or session, never
+ * from a stored configuration; a calculator resolving tenant-owned facts
+ * must scope by this tenant, so a leaked UUID alone can never cross one.
+ */
+export interface CalculatorHostContext {
+  readonly tenantId: string
+  readonly batchId: string
+}
+
+export interface CalculatorCompileContext extends CalculatorHostContext {
+  /**
+   * The runtime identity the item's previous plan froze, if any. A compile
+   * that keeps it is a continuation of an existing binding; one that names
+   * a different identity is a NEW binding and may be held to stricter
+   * eligibility by the calculator.
+   */
+  readonly previousRuntimeRef?: RuntimeRef
+}
+
 export interface CalculatorContract {
   /** the typed input this calculator needs, under this configuration */
   readonly inputSchema: NormalizedInputSchema
@@ -161,6 +200,8 @@ export interface CompiledCalculator extends CalculatorContract {
    * arithmetic to anybody reading hashes.
    */
   readonly config: unknown
+  /** the exact runtime fact this compilation is bound to, when there is one */
+  readonly runtimeRef?: RuntimeRef
 }
 
 /** the calculator could not say what it needs, under this configuration */
@@ -183,18 +224,67 @@ export class CalculatorEvaluationError extends Error {
   }
 }
 
+/** the frozen runtime fact behind a plan cannot be verified or prepared */
+export class CalculatorRuntimeError extends Error {
+  readonly _tag = 'ASSESSMENT_CALCULATOR_RUNTIME_ERROR'
+  readonly reason: string
+  constructor(reason: string) {
+    super(`calculator runtime unavailable: ${reason}`)
+    this.reason = reason
+  }
+}
+
+/** one already-bound calculator, prepared for one plan: evaluate many times */
+export interface PreparedCalculator {
+  /** the amount, as an exact decimal string, for one already-validated input */
+  readonly evaluate: (
+    input: Record<string, unknown>,
+  ) => Effect.Effect<string, CalculatorEvaluationError>
+}
+
 /**
- * A calculator states its input contract, then evaluates an input built to
- * that contract - it never reads an entry, a payload or a database.
+ * A calculator with its services already captured, closed over by `bind`.
  *
- * `R` is a type parameter rather than a promise of `never`: the built-in
- * arithmetic needs nothing, but a calculator backed by a stored function has
- * to reach a library and a sandbox. The seam for that already exists and is
- * proven by the kernel suite ("a contribution whose behaviour needs a running
- * service"): a driver whose methods require services is contributed to an
- * `afterServices` channel, whose provider compiles ABOVE the service graph
- * and discharges the requirement there. What must never appear instead is a
- * module-global handle filled in after the fact.
+ * Every method here is `R = never` on purpose: the one seam where a
+ * calculator acquires services is its registration's `bind`, and what bind
+ * returns must be finished with acquiring. A `prepare` that could still
+ * demand services would merely move the old `CalculatorDriver<R>` problem
+ * one interface later.
+ *
+ * `compile` freezes a stored configuration once, when a question is saved -
+ * never per entry. `verify` re-proves a frozen plan's runtime fact at boot
+ * without contacting any execution process. `prepare` resolves what one
+ * plan needs to evaluate - once per plan per request - and hands back the
+ * closure that runs per entry.
+ */
+export interface BoundCalculator {
+  readonly ref: string
+  readonly compile: (
+    config: unknown,
+    context: CalculatorCompileContext,
+  ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
+  readonly verify: (
+    config: unknown,
+    runtimeRef: RuntimeRef | undefined,
+    context: CalculatorHostContext,
+  ) => Effect.Effect<void, CalculatorRuntimeError>
+  readonly prepare: (
+    config: unknown,
+    runtimeRef: RuntimeRef | undefined,
+    context: CalculatorHostContext,
+  ) => Effect.Effect<PreparedCalculator, CalculatorRuntimeError>
+}
+
+/**
+ * One calculator, registered once, contributed to two channels by
+ * `Scoring.calculator`: its declaration (ref and config schema, a prepare
+ * value) and its runtime binding.
+ *
+ * `R` lives here and nowhere else. The built-in arithmetic needs nothing;
+ * a calculator backed by a stored function reaches its library and sandbox
+ * inside `bind`, whose layer builds in the runtime phase - above the
+ * complete service graph, wired by the composition root, never through a
+ * module global filled in after the fact.
  *
  * The reference format is `name@version` because the promise is replay: a
  * frozen run cites the exact arithmetic it used, and a change that would
@@ -202,27 +292,19 @@ export class CalculatorEvaluationError extends Error {
  * cross this boundary as exact decimal strings and become 1e-4 integers on
  * the host's side; floats never appear.
  */
-export interface CalculatorDriver<R = never> {
+export interface CalculatorRegistration<R = never> {
   readonly kind: 'calculator'
   readonly ref: string
   /** validates the config an item revision stores under this reference */
   readonly configSchema: Schema.Top
-  /**
-   * Compiles a stored configuration: what typed input it needs, what it
-   * answers with, and the canonical form it will execute in.
-   *
-   * Called once when a question is saved, never per entry. `evaluate` is
-   * then handed the compiled config, so the two can never disagree about
-   * what the configuration meant.
-   */
-  readonly compile: (
-    config: unknown,
-  ) => Effect.Effect<CompiledCalculator, CalculatorContractError, R>
-  /** the amount, as an exact decimal string, for one already-validated input */
-  readonly evaluate: (
-    config: unknown,
-    input: Record<string, unknown>,
-  ) => Effect.Effect<string, CalculatorEvaluationError, R>
+  readonly bind: Effect.Effect<BoundCalculator, never, R>
+}
+
+/** the prepare-phase face of a calculator: what exists, what it stores */
+export interface CalculatorDefinition {
+  readonly kind: 'calculator'
+  readonly ref: string
+  readonly configSchema: Schema.Top
 }
 
 export interface AggregatorDriver {
@@ -264,21 +346,69 @@ export interface AggregationResult {
   readonly entries: readonly AggregatedEntry[]
 }
 
-export type ScoringDriver = CalculatorDriver | AggregatorDriver
+/**
+ * What the prepare phase knows about scoring: calculator declarations and
+ * whole aggregators. An aggregator IS its definition - a pure fold with no
+ * services to acquire - which is why it has no runtime half and takes no
+ * part in the runtime channel's completeness rule.
+ */
+export type ScoringDefinition = CalculatorDefinition | AggregatorDriver
 
-/** every scoring driver this assembly's plugins declare, in plugin order */
-export const ScoringDeclarations = ExtensionPoint.make<ScoringDriver>(
-  '@qualy/plugin-assessment/scoring-drivers',
+/** every scoring definition this assembly's plugins declare, in plugin order */
+export const ScoringDefinitions = ExtensionPoint.make<ScoringDefinition>(
+  '@qualy/plugin-assessment/scoring-definitions',
   { phase: 'prepare' },
 )
 
-export class ScoringCatalog extends Context.Service<
-  ScoringCatalog,
+/**
+ * Every calculator's runtime registration, bound in the runtime phase.
+ *
+ * The `R` each registration's `bind` carries is erased at the contribution -
+ * the provider's layer carries the real requirements, and the composition
+ * root discharges them with the running services. That is the one declared
+ * erasure of this model, re-proven by the boot.
+ */
+export const ScoringRuntimes = ExtensionPoint.make<CalculatorRegistration<any>>(
+  '@qualy/plugin-assessment/scoring-runtimes',
+  { phase: 'runtime' },
+)
+
+export class ScoringDefinitionCatalog extends Context.Service<
+  ScoringDefinitionCatalog,
   {
-    readonly calculators: ReadonlyMap<string, ScoringDriver>
-    readonly aggregators: ReadonlyMap<string, ScoringDriver>
+    readonly calculators: ReadonlyMap<string, CalculatorDefinition>
+    readonly aggregators: ReadonlyMap<string, AggregatorDriver>
   }
->()('@qualy/plugin-assessment/ScoringCatalog') {}
+>()('@qualy/plugin-assessment/ScoringDefinitionCatalog') {}
+
+/**
+ * The bound calculators, addressed by ref. An unknown ref is a defect, not
+ * an error: configurations were proven against the installed catalog when
+ * saved, and the boot audit refuses to serve with a stored plan whose
+ * driver is gone - a miss here means the assembly itself is broken.
+ */
+export class ScoringRuntimeCatalog extends Context.Service<
+  ScoringRuntimeCatalog,
+  {
+    readonly compile: (
+      ref: string,
+      config: unknown,
+      context: CalculatorCompileContext,
+    ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
+    readonly verify: (
+      ref: string,
+      config: unknown,
+      runtimeRef: RuntimeRef | undefined,
+      context: CalculatorHostContext,
+    ) => Effect.Effect<void, CalculatorRuntimeError>
+    readonly prepare: (
+      ref: string,
+      config: unknown,
+      runtimeRef: RuntimeRef | undefined,
+      context: CalculatorHostContext,
+    ) => Effect.Effect<PreparedCalculator, CalculatorRuntimeError>
+  }
+>()('@qualy/plugin-assessment/ScoringRuntimeCatalog') {}
 
 const REF_FORMAT = /^[a-z0-9]+(?:-[a-z0-9]+)*@[1-9]\d*$/
 
@@ -320,35 +450,62 @@ export const ItemTypes = {
   }),
 }
 
+const refuseRefFormat = (ref: string) => {
+  if (!REF_FORMAT.test(ref)) {
+    // refused at declaration, where the plugin author is, rather than at
+    // resolve where only the assembler is
+    throw new Error(`scoring ref "${ref}" is not in name@version form (like "fixed@1")`)
+  }
+}
+
 export const Scoring = {
-  /** declares a calculator or aggregator this plugin's arithmetic will honor */
-  driver: (driver: ScoringDriver): PluginFeature => {
-    if (!REF_FORMAT.test(driver.ref)) {
-      // refused at declaration, where the plugin author is, rather than at
-      // resolve where only the assembler is
-      throw new Error(`scoring ref "${driver.ref}" is not in name@version form (like "fixed@1")`)
+  /**
+   * One calculator, two contributions: its definition for the prepare
+   * catalog and its registration for the runtime channel. The pair is
+   * returned as a tuple the caller spreads explicitly -
+   * `Plugin.define(..., ...Scoring.calculator(fixed1), ...)` - because
+   * `Plugin.define` deliberately does not flatten nested feature arrays.
+   */
+  calculator: <R>(
+    registration: CalculatorRegistration<R>,
+  ): readonly [PluginFeature, PluginFeature] => {
+    refuseRefFormat(registration.ref)
+    const definition: CalculatorDefinition = {
+      kind: 'calculator',
+      ref: registration.ref,
+      configSchema: registration.configSchema,
     }
-    return Plugin.contribute(ScoringDeclarations, driver)
+    return [
+      Plugin.contribute(ScoringDefinitions, definition),
+      Plugin.contribute(ScoringRuntimes, registration as CalculatorRegistration<any>),
+    ] as const
   },
 
-  provider: Plugin.provideExtension(ScoringDeclarations, {
+  /** declares an aggregator: a pure fold, whole in its definition */
+  aggregator: (driver: AggregatorDriver): PluginFeature => {
+    refuseRefFormat(driver.ref)
+    return Plugin.contribute(ScoringDefinitions, driver)
+  },
+
+  definitionProvider: Plugin.provideExtension(ScoringDefinitions, {
     compile: (contributions) => {
-      const calculators = new Map<string, ScoringDriver>()
-      const aggregators = new Map<string, ScoringDriver>()
+      const calculators = new Map<string, CalculatorDefinition>()
+      const aggregators = new Map<string, AggregatorDriver>()
       const owners = new Map<string, string>()
       for (const contribution of contributions) {
-        const driver = contribution.value
-        const key = `${driver.kind}:${driver.ref}`
+        const definition = contribution.value
+        const key = `${definition.kind}:${definition.ref}`
         const existing = owners.get(key)
         if (existing !== undefined) {
           throw new Error(
-            `two plugins provide the ${driver.kind} "${driver.ref}": ${existing} and ${contribution.pluginId}`,
+            `two plugins provide the ${definition.kind} "${definition.ref}": ${existing} and ${contribution.pluginId}`,
           )
         }
         owners.set(key, contribution.pluginId)
-        ;(driver.kind === 'calculator' ? calculators : aggregators).set(driver.ref, driver)
+        if (definition.kind === 'calculator') calculators.set(definition.ref, definition)
+        else aggregators.set(definition.ref, definition)
       }
-      return Layer.succeed(ScoringCatalog, { calculators, aggregators })
+      return Layer.succeed(ScoringDefinitionCatalog, { calculators, aggregators })
     },
   }),
 }

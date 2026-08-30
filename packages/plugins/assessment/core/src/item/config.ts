@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../entry/summary.ts'
-import type { ItemTypeDriver, ScoringDriver } from '../plugin.ts'
+import type { AggregatorDriver, CalculatorDefinition, ItemTypeDriver } from '../plugin.ts'
 import { validateReviewPolicy, type PolicyIssue } from './policy.ts'
 
 // One saved configuration, checked against everything it cites.
@@ -28,8 +28,8 @@ const scoringShape = Schema.Struct({
 
 export interface Catalogs {
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
-  readonly calculators: ReadonlyMap<string, ScoringDriver>
-  readonly aggregators: ReadonlyMap<string, ScoringDriver>
+  readonly calculators: ReadonlyMap<string, CalculatorDefinition>
+  readonly aggregators: ReadonlyMap<string, AggregatorDriver>
 }
 
 const decodeIssues = (path: string, reason: string, schema: Schema.Top, value: unknown) =>

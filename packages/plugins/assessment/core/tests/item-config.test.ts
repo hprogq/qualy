@@ -30,7 +30,8 @@ import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
-import { catalogLayers, storageForTest } from './support/catalogs.ts'
+import { catalogLayers, scoringRuntimeLayer, storageForTest } from './support/catalogs.ts'
+import { ScoringRuntimeCatalog } from '../src/plugin.ts'
 
 // The configuration gauntlet, end to end: a question is created with its
 // first revision, every later save appends the next one, and a save that
@@ -71,6 +72,11 @@ const stack = (url: string) => {
     ),
     { catalog },
   )
+  const runtimeCatalog = scoringRuntimeLayer.pipe(
+    Layer.provide(services),
+    Layer.provide(catalogLayers),
+    Layer.provide(assembledLayer),
+  ) as Layer.Layer<ScoringRuntimeCatalog>
   return serviceLayer.pipe(
     Layer.provideMerge(services),
     Layer.provide(catalogLayers),
@@ -79,11 +85,14 @@ const stack = (url: string) => {
     Layer.provide(storageForTest().pipe(Layer.provide(services))),
     // the boot-hook registry the service registers its backfill into
     Layer.provide(assembledLayer),
+    Layer.provideMerge(runtimeCatalog),
   )
 }
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, Assessment | Rbac | Orm>) =>
-  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+const run = <A, E>(
+  url: string,
+  effect: Effect.Effect<A, E, Assessment | Rbac | Orm | ScoringRuntimeCatalog>,
+) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value

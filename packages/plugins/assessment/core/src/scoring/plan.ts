@@ -31,7 +31,16 @@ import {
 import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { validateValue } from '@qualy/value-schema/validate'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
-import type { BatchContext, ItemTypeDriver, ScoringDriver } from '../plugin.ts'
+import type {
+  AggregatorDriver,
+  BatchContext,
+  CalculatorCompileContext,
+  CalculatorContractError,
+  CalculatorDefinition,
+  CalculatorHostContext,
+  CompiledCalculator,
+  ItemTypeDriver,
+} from '../plugin.ts'
 
 /** how one calculator parameter gets its value at scoring time */
 export type ParameterBinding =
@@ -214,8 +223,23 @@ export const recognitionSourceOf = (input: {
         : 'review'
 
 export interface CompileInputs {
-  readonly calculators: ReadonlyMap<string, ScoringDriver>
-  readonly aggregators: ReadonlyMap<string, ScoringDriver>
+  readonly definitions: {
+    readonly calculators: ReadonlyMap<string, CalculatorDefinition>
+    readonly aggregators: ReadonlyMap<string, AggregatorDriver>
+  }
+  /**
+   * The runtime catalog's compile, handed in as a closed function: this
+   * module proves configurations, it does not hold services. What the
+   * calculator freezes - contract, canonical config, runtime identity -
+   * comes back through here.
+   */
+  readonly compile: (
+    ref: string,
+    config: unknown,
+    context: CalculatorCompileContext,
+  ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
+  /** where this compilation is happening, from the host's own reads */
+  readonly host: CalculatorHostContext
   readonly itemType: ItemTypeDriver | undefined
   readonly formConfig: unknown
   readonly scoringConfig: unknown
@@ -326,14 +350,14 @@ export const compileScoringPlan = (
     const authoring = parsed.value
     const issues: PlanIssue[] = []
 
-    const calculator = inputs.calculators.get(authoring.calculator.ref)
-    if (calculator === undefined || calculator.kind !== 'calculator') {
+    const calculator = inputs.definitions.calculators.get(authoring.calculator.ref)
+    if (calculator === undefined) {
       return {
         issues: [{ path: 'scoringConfig.calculator.ref', reason: 'calculator-not-installed' }],
       }
     }
-    const aggregator = inputs.aggregators.get(authoring.aggregator.ref)
-    if (aggregator === undefined || aggregator.kind !== 'aggregator') {
+    const aggregator = inputs.definitions.aggregators.get(authoring.aggregator.ref)
+    if (aggregator === undefined) {
       issues.push({ path: 'scoringConfig.aggregator.ref', reason: 'aggregator-not-installed' })
     }
 
@@ -376,7 +400,9 @@ export const compileScoringPlan = (
       }
     }
 
-    const compiled = yield* calculator.compile(calculatorConfig.value).pipe(Effect.option)
+    const compiled = yield* inputs
+      .compile(authoring.calculator.ref, calculatorConfig.value, inputs.host)
+      .pipe(Effect.option)
     if (compiled._tag === 'None') {
       return {
         issues: [

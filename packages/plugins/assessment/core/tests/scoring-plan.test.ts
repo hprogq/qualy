@@ -5,17 +5,16 @@ import {
   normalizeInputSchema,
   INTEGER_TO_DECIMAL,
 } from '@qualy/value-schema'
-import { builtinScoringDrivers, fixed1 } from '../src/scoring/builtins.ts'
+import { builtinAggregators, fixed1 } from '../src/scoring/builtins.ts'
+import { testDefinitions, testHost, testRuntime } from './support/catalogs.ts'
 import { compileScoringPlan } from '../src/scoring/plan.ts'
 import type { RecognitionSource } from '../src/scoring/plan.ts'
 import type { AtomicSchema } from '@qualy/value-schema'
 import type {
   BatchContext,
-
   CalculatorContract,
-  CalculatorDriver,
+  CalculatorRegistration,
   ItemTypeDriver,
-  ScoringDriver,
 } from '../src/plugin.ts'
 
 // Compiling a question's arithmetic: what the calculator needs, proven
@@ -54,40 +53,48 @@ const contractOf = (properties: Record<string, AtomicSchema>): CalculatorContrac
 }
 
 /** a calculator with real parameters, so bindings have something to prove */
-const graded: CalculatorDriver = {
+const graded: CalculatorRegistration = {
   kind: 'calculator',
   ref: 'graded-test@1',
   configSchema: Schema.Struct({}),
-  compile: (config) =>
-    Effect.succeed({
-      config,
-      ...contractOf({
-        level: { type: 'string', enum: ['national', 'provincial'] },
-        ordinal: { type: 'integer', minimum: 1, maximum: 10 },
-        base: decimal(2),
+  bind: Effect.succeed({
+    ref: 'graded-test@1',
+    compile: (config) =>
+      Effect.succeed({
+        config,
+        ...contractOf({
+          level: { type: 'string', enum: ['national', 'provincial'] },
+          ordinal: { type: 'integer', minimum: 1, maximum: 10 },
+          base: decimal(2),
+        }),
       }),
-    }),
-  evaluate: () => Effect.succeed('1.00'),
+    verify: () => Effect.void,
+    prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('1.00') }),
+  }),
 }
 
 /** one whose answer no score can carry: proof of the output gate */
-const overflowing: CalculatorDriver = {
+const overflowing: CalculatorRegistration = {
   kind: 'calculator',
   ref: 'overflowing-test@1',
   configSchema: Schema.Struct({}),
-  compile: (config) =>
-    Effect.succeed({
-      config,
-      inputSchema: normalizeInputSchema({
-        type: 'object',
-        properties: {},
-        required: [],
-        additionalProperties: false,
+  bind: Effect.succeed({
+    ref: 'overflowing-test@1',
+    compile: (config) =>
+      Effect.succeed({
+        config,
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        }),
+        outputSchema: normalizeAtomicSchema(decimal(9)),
+        contractHash: 'test:overflowing',
       }),
-      outputSchema: normalizeAtomicSchema(decimal(9)),
-      contractHash: 'test:overflowing',
-    }),
-  evaluate: () => Effect.succeed('1.00'),
+    verify: () => Effect.void,
+    prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('1.00') }),
+  }),
 }
 
 const fields: Record<string, AtomicSchema> = {
@@ -120,14 +127,9 @@ const itemType: ItemTypeDriver = {
 
 const batch: BatchContext = { materialRange: { start: '2026-01-01', end: '2026-12-31' } }
 
-const calculators = new Map<string, ScoringDriver>([
-  [fixed1.ref, fixed1],
-  [graded.ref, graded],
-  [overflowing.ref, overflowing],
-])
-const aggregators = new Map<string, ScoringDriver>(
-  builtinScoringDrivers.filter((driver) => driver.kind === 'aggregator').map((d) => [d.ref, d]),
-)
+const registrations = [fixed1, graded, overflowing]
+const definitions = testDefinitions(registrations, builtinAggregators)
+const runtime = testRuntime(registrations)
 
 const compile = (
   scoringConfig: unknown,
@@ -135,8 +137,9 @@ const compile = (
 ) =>
   Effect.runPromise(
     compileScoringPlan({
-      calculators,
-      aggregators,
+      definitions,
+      compile: runtime.compile,
+      host: testHost,
       itemType,
       formConfig: {},
       scoringConfig,
@@ -205,10 +208,17 @@ describe('binding a calculator that has parameters', () => {
     if (!('plan' in outcome)) throw new Error('expected a plan')
     expect(outcome.plan.parameters).toEqual({
       level: { kind: 'recognition', recognitionId: 'rec-level', assignment: { kind: 'direct' } },
-      ordinal: { kind: 'recognition', recognitionId: 'rec-ordinal', assignment: { kind: 'direct' } },
+      ordinal: {
+        kind: 'recognition',
+        recognitionId: 'rec-ordinal',
+        assignment: { kind: 'direct' },
+      },
       base: { kind: 'constant', value: '3.00' },
     })
-    expect(Object.keys(outcome.plan.recognitionSchemas).sort()).toEqual(['rec-level', 'rec-ordinal'])
+    expect(Object.keys(outcome.plan.recognitionSchemas).sort()).toEqual([
+      'rec-level',
+      'rec-ordinal',
+    ])
     expect(outcome.plan.defaultBindings).toEqual({
       'rec-level': {
         fieldId: 'claimed-level',
@@ -290,7 +300,9 @@ describe('binding a calculator that has parameters', () => {
         bindings: { ...gradedConfig().bindings, base: { kind: 'constant', value: 'three' } },
       }),
     )
-    expect(reasons(outcome).some((reason) => reason.startsWith('scoringConfig.bindings.base:constant-'))).toBe(true)
+    expect(
+      reasons(outcome).some((reason) => reason.startsWith('scoringConfig.bindings.base:constant-')),
+    ).toBe(true)
   })
 
   it('refuses a default field whose values the recognition would not admit', async () => {
@@ -408,7 +420,9 @@ describe('what a question may not be saved as', () => {
     // and so is an administrative one: the member of staff recording the
     // fact is its author, which is the whole point of a field the student
     // never claims
-    expect(reasons(await compile(unattainable, { recognitionSource: 'administrative' }))).toEqual([])
+    expect(reasons(await compile(unattainable, { recognitionSource: 'administrative' }))).toEqual(
+      [],
+    )
     // nobody files a derived question, so nothing about it can be determined
     expect(reasons(await compile(unattainable, { recognitionSource: 'none' }))).toContain(
       'scoringConfig.recognitions:recognition-without-determiner',

@@ -3,11 +3,12 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { evidenceDriver } from '@qualy/plugin-assessment-evidence/driver'
 import { validateItemConfig } from '../src/item/config.ts'
-import { builtinScoringDrivers } from '../src/scoring/builtins.ts'
+import { builtinAggregators, builtinCalculators } from '../src/scoring/builtins.ts'
+import { testDefinitions, testHost, testRuntime } from './support/catalogs.ts'
 import { compileScoringPlan } from '../src/scoring/plan.ts'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
-import type { CalculatorDriver } from '../src/plugin.ts'
+import type { CalculatorRegistration } from '../src/plugin.ts'
 import { Schema } from 'effect'
 
 // The first two real items the product ships, run through the same
@@ -17,16 +18,7 @@ import { Schema } from 'effect'
 
 const catalogs = {
   itemTypes: new Map([[evidenceDriver.id, evidenceDriver]]),
-  calculators: new Map(
-    builtinScoringDrivers
-      .filter((driver) => driver.kind === 'calculator')
-      .map((driver) => [driver.ref, driver]),
-  ),
-  aggregators: new Map(
-    builtinScoringDrivers
-      .filter((driver) => driver.kind === 'aggregator')
-      .map((driver) => [driver.ref, driver]),
-  ),
+  ...testDefinitions([...builtinCalculators], builtinAggregators),
 }
 
 describe('the first two real configurations', () => {
@@ -122,35 +114,38 @@ describe('the first two real configurations', () => {
 
 describe('the real driver feeding the real compiler', () => {
   /** a calculator asking for a decimal and a choice, so both proofs run */
-  const typedTest: CalculatorDriver = {
+  const typedTest: CalculatorRegistration = {
     kind: 'calculator',
     ref: 'typed-test@1',
     configSchema: Schema.Struct({}),
-    compile: (config) =>
-      Effect.succeed({
-        config,
-        inputSchema: normalizeInputSchema({
-          type: 'object',
-          properties: {
-            hours: { type: 'string', format: 'qualy-decimal', 'x-qualy-maxScale': 2 },
-            level: { type: 'string', enum: ['national', 'provincial'] },
-          },
-          required: ['hours', 'level'],
-          additionalProperties: false,
+    bind: Effect.succeed({
+      ref: 'typed-test@1',
+      compile: (config) =>
+        Effect.succeed({
+          config,
+          inputSchema: normalizeInputSchema({
+            type: 'object',
+            properties: {
+              hours: { type: 'string', format: 'qualy-decimal', 'x-qualy-maxScale': 2 },
+              level: { type: 'string', enum: ['national', 'provincial'] },
+            },
+            required: ['hours', 'level'],
+            additionalProperties: false,
+          }),
+          outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
+          contractHash: 'test:typed',
         }),
-        outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
-        contractHash: 'test:typed',
-      }),
-    evaluate: () => Effect.succeed('1.00'),
+      verify: () => Effect.void,
+      prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('1.00') }),
+    }),
   }
 
   const compile = (formConfig: unknown, scoringConfig: unknown, source: 'review' | 'automatic') =>
     Effect.runPromise(
       compileScoringPlan({
-        calculators: new Map([[typedTest.ref, typedTest]]),
-        aggregators: new Map(
-          builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
-        ),
+        definitions: testDefinitions([typedTest], builtinAggregators),
+        compile: testRuntime([typedTest]).compile,
+        host: testHost,
         itemType: evidenceDriver,
         formConfig,
         scoringConfig,
@@ -229,4 +224,3 @@ describe('the real driver feeding the real compiler', () => {
     )
   })
 })
-

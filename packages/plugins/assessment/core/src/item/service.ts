@@ -3,7 +3,7 @@ import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/
 import type { Principal } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import type { EpochMillis } from '../phase/engine/types.ts'
-import type { ItemTypeDriver } from '../plugin.ts'
+import { ScoringRuntimeCatalog, type ItemTypeDriver } from '../plugin.ts'
 import {
   ItemActionRefused,
   BatchNotFound,
@@ -18,7 +18,12 @@ import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
-import { carriesInto, compileScoringPlan, readScoringPlan, recognitionSourceOf } from '../scoring/plan.ts'
+import {
+  carriesInto,
+  compileScoringPlan,
+  readScoringPlan,
+  recognitionSourceOf,
+} from '../scoring/plan.ts'
 import { judgeRecognition, recognitionFormFields } from '../scoring/recognition.ts'
 import { policyModeOf } from '../review/chain.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
@@ -209,7 +214,7 @@ export interface ItemMethods {
     batchId: string,
     input: CreateItemInput,
     as: Principal,
-  ) => Effect.Effect<ItemView, CreateItemError>
+  ) => Effect.Effect<ItemView, CreateItemError, ScoringRuntimeCatalog>
   readonly getRecognitionContract: (
     tenantId: string,
     itemId: string,
@@ -225,7 +230,7 @@ export interface ItemMethods {
     itemId: string,
     input: UpdateItemInput,
     as: Principal,
-  ) => Effect.Effect<ItemView, UpdateItemError>
+  ) => Effect.Effect<ItemView, UpdateItemError, ScoringRuntimeCatalog>
   readonly deleteItem: (
     tenantId: string,
     itemId: string,
@@ -457,9 +462,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       // until somebody opened a results page. The determinations a sitting
       // has already frozen count too: they are what an open round would
       // settle on if it concluded.
+      const runtime = yield* ScoringRuntimeCatalog
       const nextPlan = yield* compileScoringPlan({
-        calculators: deps.catalogs.calculators,
-        aggregators: deps.catalogs.aggregators,
+        definitions: { calculators: catalogs.calculators, aggregators: catalogs.aggregators },
+        compile: runtime.compile,
+        host: { tenantId: input.tenantId, batchId: input.item.batchId },
         itemType: driver,
         formConfig: input.config.formConfig,
         scoringConfig: input.config.scoringConfig,
@@ -814,9 +821,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       // the arithmetic is compiled once, here, and frozen onto the revision:
       // what an entry gets scored by is then a stored fact rather than a
       // decision the scorer re-derives every time it opens the account
+      const runtime = yield* ScoringRuntimeCatalog
       const compiled = yield* compileScoringPlan({
-        calculators: deps.catalogs.calculators,
-        aggregators: deps.catalogs.aggregators,
+        definitions: { calculators: catalogs.calculators, aggregators: catalogs.aggregators },
+        compile: runtime.compile,
+        host: { tenantId: input.tenantId, batchId: input.item.batchId },
         itemType: deps.catalogs.itemTypes.get(input.item.itemType),
         formConfig: input.config.formConfig,
         scoringConfig: input.config.scoringConfig,

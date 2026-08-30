@@ -4,7 +4,7 @@ import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema
 import { validateValue } from '@qualy/value-schema/validate'
 import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { calcParticipant } from '../src/scoring/calc.ts'
-import { builtinScoringDrivers, fixed1, scaledAmount } from '../src/scoring/builtins.ts'
+import { builtinAggregators, fixed1, scaledAmount } from '../src/scoring/builtins.ts'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import {
   carriesInto,
@@ -12,7 +12,7 @@ import {
   readScoringPlan,
   semanticPlanBody,
 } from '../src/scoring/plan.ts'
-import { gradedTest } from './support/catalogs.ts'
+import { gradedTest, testDefinitions, testHost, testRuntime } from './support/catalogs.ts'
 import {
   canonicalRecognition,
   contradicted,
@@ -21,7 +21,7 @@ import {
   sameRecognition,
   seedFromEvidence,
 } from '../src/scoring/recognition.ts'
-import type { AggregatorDriver, BatchContext, CalculatorDriver } from '../src/plugin.ts'
+import type { AggregatorDriver, BatchContext, CalculatorRegistration } from '../src/plugin.ts'
 
 // What the scoring layer refuses.
 //
@@ -33,15 +33,15 @@ import type { AggregatorDriver, BatchContext, CalculatorDriver } from '../src/pl
 
 const batch: BatchContext = { materialRange: { start: '2026-03-01', end: '2026-09-01' } }
 
+const builtins = testDefinitions([fixed1], builtinAggregators)
+const builtinRuntime = testRuntime([fixed1])
+
 const compile = (scoringConfig: unknown) =>
   Effect.runPromise(
     compileScoringPlan({
-      calculators: new Map(
-        builtinScoringDrivers.filter((d) => d.kind === 'calculator').map((d) => [d.ref, d]),
-      ),
-      aggregators: new Map(
-        builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
-      ),
+      definitions: builtins,
+      compile: builtinRuntime.compile,
+      host: testHost,
       itemType: undefined,
       formConfig: {},
       scoringConfig,
@@ -88,9 +88,11 @@ describe('what a fixed amount may be spelled as', () => {
     // because that is checked after the answer comes back
     return Effect.runPromise(
       Effect.gen(function* () {
+        const bound = yield* fixed1.bind
         for (const value of ['3', '3.0', '3.00', '-1.5', '0', '0.0001']) {
-          const compiled = yield* fixed1.compile({ value })
-          const answer = yield* fixed1.evaluate(compiled.config, {})
+          const compiled = yield* bound.compile({ value }, testHost)
+          const prepared = yield* bound.prepare(compiled.config, undefined, testHost)
+          const answer = yield* prepared.evaluate({})
           expect(validateValue(compiled.outputSchema, answer), value).toEqual([])
         }
       }),
@@ -325,23 +327,27 @@ describe('how an aggregator answer reaches the account', () => {
 })
 
 describe('what a configuration key may be', () => {
-  const graded: CalculatorDriver = {
+  const graded: CalculatorRegistration = {
     kind: 'calculator',
     ref: 'proto-test@1',
     configSchema: Schema.Struct({}),
-    compile: (config) =>
-      Effect.succeed({
-        config,
-        inputSchema: normalizeInputSchema({
-          type: 'object',
-          properties: { level: { type: 'string', enum: ['a', 'b'] } },
-          required: ['level'],
-          additionalProperties: false,
+    bind: Effect.succeed({
+      ref: 'proto-test@1',
+      compile: (config) =>
+        Effect.succeed({
+          config,
+          inputSchema: normalizeInputSchema({
+            type: 'object',
+            properties: { level: { type: 'string', enum: ['a', 'b'] } },
+            required: ['level'],
+            additionalProperties: false,
+          }),
+          outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
+          contractHash: 'test:proto',
         }),
-        outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
-        contractHash: 'test:proto',
-      }),
-    evaluate: () => Effect.succeed('1.00'),
+      verify: () => Effect.void,
+      prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('1.00') }),
+    }),
   }
 
   it('treats a prototype name as a name, not as JavaScript', async () => {
@@ -352,10 +358,9 @@ describe('what a configuration key may be', () => {
     for (const hostile of ['__proto__', 'constructor', 'toString']) {
       const outcome = await Effect.runPromise(
         compileScoringPlan({
-          calculators: new Map([[graded.ref, graded]]),
-          aggregators: new Map(
-            builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
-          ),
+          definitions: testDefinitions([graded], builtinAggregators),
+          compile: testRuntime([graded]).compile,
+          host: testHost,
           itemType: undefined,
           formConfig: {},
           scoringConfig: {
@@ -430,10 +435,9 @@ describe('where a recognition default reads from', () => {
   const plannedWith = async (over: Partial<Parameters<typeof compileScoringPlan>[0]>) => {
     const outcome = await Effect.runPromise(
       compileScoringPlan({
-        calculators: new Map([[gradedTest.ref, gradedTest]]),
-        aggregators: new Map(
-          builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
-        ),
+        definitions: testDefinitions([gradedTest], builtinAggregators),
+        compile: testRuntime([gradedTest]).compile,
+        host: testHost,
         itemType: {
           id: 'evidence',
           configSchema: Schema.Struct({}),

@@ -7,7 +7,8 @@ import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrato
 import { Effect, Exit } from 'effect'
 import { inspect } from 'node:util'
 import { transaction } from '@qualy/plugin-database/server'
-import { builtinScoringDrivers } from '../src/scoring/builtins.ts'
+import { builtinAggregators, builtinCalculators } from '../src/scoring/builtins.ts'
+import { testDefinitions, testRuntime } from './support/catalogs.ts'
 import { auditStoredPlans, sweepScoringPlans } from '../src/scoring/backfill.ts'
 import { semanticPlanBody } from '../src/scoring/plan.ts'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
@@ -924,16 +925,8 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
           Effect.provide(
             sweepScoringPlans({
               itemTypes: new Map(),
-              calculators: new Map(
-                builtinScoringDrivers
-                  .filter((driver) => driver.kind === 'calculator')
-                  .map((driver) => [driver.ref, driver]),
-              ),
-              aggregators: new Map(
-                builtinScoringDrivers
-                  .filter((driver) => driver.kind === 'aggregator')
-                  .map((driver) => [driver.ref, driver]),
-              ),
+              definitions: testDefinitions([...builtinCalculators], builtinAggregators),
+              compile: testRuntime([...builtinCalculators]).compile,
             }).pipe(
               Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
               (effect) => transaction(effect),
@@ -1023,16 +1016,8 @@ describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
       )
       const catalogs = {
         itemTypes: new Map(),
-        calculators: new Map(
-          builtinScoringDrivers
-            .filter((driver) => driver.kind === 'calculator')
-            .map((driver) => [driver.ref, driver]),
-        ),
-        aggregators: new Map(
-          builtinScoringDrivers
-            .filter((driver) => driver.kind === 'aggregator')
-            .map((driver) => [driver.ref, driver]),
-        ),
+        definitions: testDefinitions([...builtinCalculators], builtinAggregators),
+        compile: testRuntime([...builtinCalculators]).compile,
       }
       const provided = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
         Effect.runPromiseExit(

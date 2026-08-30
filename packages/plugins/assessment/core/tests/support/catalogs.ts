@@ -4,15 +4,23 @@ import { registryLayer } from '@qualy/plugin-storage/server/registry'
 import { serviceLayer as storageOnlyLayer } from '@qualy/plugin-storage/server/service'
 import { backendLayer, memoryBackend, type MemoryBackend } from '@qualy/plugin-storage/testkit'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import type { Contributed, ProvideExtension } from '@qualy/plugin-kit'
 import {
   ItemPayloadInvalid,
   ItemTypeCatalog,
-  ScoringCatalog,
-  type CalculatorDriver,
+  Scoring,
+  type AggregatorDriver,
+  type CalculatorCompileContext,
+  type CalculatorHostContext,
+  type CalculatorRegistration,
   type ItemTypeDriver,
+  type RuntimeRef,
+  type ScoringDefinition,
+  type ScoringDefinitionCatalog,
 } from '../../src/plugin.ts'
 import type { AtomicSchema } from '@qualy/value-schema'
-import { builtinScoringDrivers } from '../../src/scoring/builtins.ts'
+import { builtinAggregators, builtinCalculators } from '../../src/scoring/builtins.ts'
+import { scoringRuntimeProvider } from '../../src/scoring/runtime-provider.ts'
 import { constantDriver } from '../../src/item/constant.ts'
 import { declarationDriver } from '../../src/item/declaration.ts'
 
@@ -97,89 +105,76 @@ export const testItemType: ItemTypeDriver = {
  * empty object. This one pays a national award more than a provincial one,
  * which makes the difference visible in a number.
  */
-export const gradedTest: CalculatorDriver = {
+const testAmount = normalizeAtomicSchema({
+  type: 'string',
+  format: 'qualy-decimal',
+  'x-qualy-maxScale': 2,
+  'x-qualy-minimum': '-99999999.99',
+  'x-qualy-maximum': '99999999.99',
+})
+
+/** a service-free registration: bind succeeds at once, prepare closes over nothing */
+const testCalculator = (spec: {
+  readonly ref: string
+  readonly contractHash: string
+  readonly properties: Record<string, unknown>
+  readonly required: readonly string[]
+}): CalculatorRegistration => ({
   kind: 'calculator',
-  ref: 'graded-test@1',
+  ref: spec.ref,
   configSchema: Schema.Struct({}),
-  compile: (config) =>
-    Effect.succeed({
-      config,
-      inputSchema: normalizeInputSchema({
-        type: 'object',
-        properties: { level: LEVEL },
-        required: ['level'],
-        additionalProperties: false,
+  bind: Effect.succeed({
+    ref: spec.ref,
+    compile: (config) =>
+      Effect.succeed({
+        config,
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: spec.properties as never,
+          required: [...spec.required],
+          additionalProperties: false,
+        }),
+        outputSchema: testAmount,
+        contractHash: spec.contractHash,
       }),
-      outputSchema: normalizeAtomicSchema({
-        type: 'string',
-        format: 'qualy-decimal',
-        'x-qualy-maxScale': 2,
-        'x-qualy-minimum': '-99999999.99',
-        'x-qualy-maximum': '99999999.99',
+    verify: () => Effect.void,
+    prepare: () =>
+      Effect.succeed({
+        evaluate: (input: Record<string, unknown>) =>
+          Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
       }),
-      contractHash: 'test:graded',
-    }),
-  evaluate: (_config, input) => Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
-}
+  }),
+})
+
+export const gradedTest: CalculatorRegistration = testCalculator({
+  ref: 'graded-test@1',
+  contractHash: 'test:graded',
+  properties: { level: LEVEL },
+  required: ['level'],
+})
 
 /**
  * A calculator with two facts: one the filing seeds, one only a reviewer can
  * make. That is the shape that tells "filling in" apart from "changing".
  */
-export const twoFactTest: CalculatorDriver = {
-  kind: 'calculator',
+export const twoFactTest: CalculatorRegistration = testCalculator({
   ref: 'two-fact-test@1',
-  configSchema: Schema.Struct({}),
-  compile: (config) =>
-    Effect.succeed({
-      config,
-      inputSchema: normalizeInputSchema({
-        type: 'object',
-        properties: { level: LEVEL, ordinal: { type: 'integer', minimum: 1, maximum: 10 } },
-        required: ['level', 'ordinal'],
-        additionalProperties: false,
-      }),
-      outputSchema: normalizeAtomicSchema({
-        type: 'string',
-        format: 'qualy-decimal',
-        'x-qualy-maxScale': 2,
-        'x-qualy-minimum': '-99999999.99',
-        'x-qualy-maximum': '99999999.99',
-      }),
-      contractHash: 'test:two-fact',
-    }),
-  evaluate: (_config, input) => Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
-}
+  contractHash: 'test:two-fact',
+  properties: { level: LEVEL, ordinal: { type: 'integer', minimum: 1, maximum: 10 } },
+  required: ['level', 'ordinal'],
+})
 
 /**
  * The two facts again, with a tighter window on the ordinal. Swapping a
  * question between this and twoFactTest is how a suite narrows or widens a
  * typed determination without touching anything else.
  */
-export const narrowFactTest: CalculatorDriver = {
-  kind: 'calculator',
+export const narrowFactTest: CalculatorRegistration = testCalculator({
   ref: 'narrow-fact-test@1',
-  configSchema: Schema.Struct({}),
-  compile: (config) =>
-    Effect.succeed({
-      config,
-      inputSchema: normalizeInputSchema({
-        type: 'object',
-        properties: { level: LEVEL, ordinal: { type: 'integer', minimum: 1, maximum: 5 } },
-        required: ['level', 'ordinal'],
-        additionalProperties: false,
-      }),
-      outputSchema: normalizeAtomicSchema({
-        type: 'string',
-        format: 'qualy-decimal',
-        'x-qualy-maxScale': 2,
-        'x-qualy-minimum': '-99999999.99',
-        'x-qualy-maximum': '99999999.99',
-      }),
-      contractHash: 'test:narrow-fact',
-    }),
-  evaluate: (_config, input) => Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
-}
+  contractHash: 'test:narrow-fact',
+  properties: { level: LEVEL, ordinal: { type: 'integer', minimum: 1, maximum: 5 } },
+  required: ['level', 'ordinal'],
+})
 
 export const twoFactScoring = {
   calculator: { ref: twoFactTest.ref, config: {} },
@@ -217,6 +212,92 @@ export const storageForTest = (backend: MemoryBackend = memoryBackend()) =>
     ),
   )
 
+/** every calculator registration a suite installs, builtin plus the tests' */
+export const scoringRegistrations: readonly CalculatorRegistration[] = [
+  ...builtinCalculators,
+  gradedTest,
+  twoFactTest,
+  narrowFactTest,
+]
+
+const contributed = <T>(values: readonly T[]): readonly Contributed<T>[] =>
+  values.map((value) => ({ pluginId: '@qualy/plugin-assessment-tests', value }))
+
+const definitions: readonly ScoringDefinition[] = [
+  ...scoringRegistrations.map(({ kind, ref, configSchema }): ScoringDefinition => ({
+    kind,
+    ref,
+    configSchema,
+  })),
+  ...builtinAggregators,
+]
+
+// Both catalogs come off the PRODUCTION providers, so what a suite installs
+// is shaped by the same compile - and refused by the same rules - as what
+// the host assembles. The runtime layer carries the provider's own boot-hook
+// registration; these suites register it and never run a barrier.
+// the provider hands back an erased AnyLayer; the narrowing here is the
+// suites' one cast, same as the composition root's
+const definitionLayer = (Scoring.definitionProvider as unknown as ProvideExtension).compile(
+  contributed(definitions),
+) as Layer.Layer<ScoringDefinitionCatalog>
+
+export const scoringRuntimeLayer = (scoringRuntimeProvider as unknown as ProvideExtension).compile(
+  contributed(scoringRegistrations),
+)
+
+/**
+ * The compile face of a set of registrations, bound at the test boundary.
+ *
+ * Suites that call `compileScoringPlan` directly (no assembly, no layers)
+ * still have to speak the runtime catalog's language; running `bind` here -
+ * a test boundary, where Effect.run* is allowed - gives them the same
+ * closed calculators the provider would have bound.
+ */
+export const testRuntime = (registrations: readonly CalculatorRegistration[]) => {
+  const bound = new Map(registrations.map((one) => [one.ref, Effect.runSync(one.bind)]))
+  const demand = (ref: string) => {
+    const calculator = bound.get(ref)
+    if (calculator === undefined) {
+      throw new Error(`scoring calculator "${ref}" is not installed in this suite`)
+    }
+    return calculator
+  }
+  return {
+    compile: (ref: string, config: unknown, context: CalculatorCompileContext) =>
+      demand(ref).compile(config, context),
+    verify: (
+      ref: string,
+      config: unknown,
+      runtimeRef: RuntimeRef | undefined,
+      context: CalculatorHostContext,
+    ) => demand(ref).verify(config, runtimeRef, context),
+    prepare: (
+      ref: string,
+      config: unknown,
+      runtimeRef: RuntimeRef | undefined,
+      context: CalculatorHostContext,
+    ) => demand(ref).prepare(config, runtimeRef, context),
+  }
+}
+
+/** the prepare-phase view of the same registrations, plus the aggregators */
+export const testDefinitions = (
+  registrations: readonly CalculatorRegistration[],
+  aggregators: readonly AggregatorDriver[],
+) => ({
+  calculators: new Map(
+    registrations.map((one) => [
+      one.ref,
+      { kind: 'calculator' as const, ref: one.ref, configSchema: one.configSchema },
+    ]),
+  ),
+  aggregators: new Map(aggregators.map((one) => [one.ref, one])),
+})
+
+/** a compile-time host context for suites that never touch rows */
+export const testHost = { tenantId: 'tenant-under-test', batchId: 'batch-under-test' }
+
 export const catalogLayers = Layer.mergeAll(
   // the granted kind is core's own; the suites exercise it as shipped
   Layer.succeed(
@@ -227,19 +308,5 @@ export const catalogLayers = Layer.mergeAll(
       [declarationDriver.id, declarationDriver],
     ]),
   ),
-  Layer.succeed(ScoringCatalog, {
-    calculators: new Map([
-      ...builtinScoringDrivers
-        .filter((driver) => driver.kind === 'calculator')
-        .map((driver) => [driver.ref, driver] as const),
-      [gradedTest.ref, gradedTest] as const,
-      [twoFactTest.ref, twoFactTest] as const,
-      [narrowFactTest.ref, narrowFactTest] as const,
-    ]),
-    aggregators: new Map(
-      builtinScoringDrivers
-        .filter((driver) => driver.kind === 'aggregator')
-        .map((driver) => [driver.ref, driver]),
-    ),
-  }),
+  definitionLayer,
 )

@@ -1,6 +1,10 @@
 import { Effect } from 'effect'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
-import type { ScoringDriver } from '../plugin.ts'
+import {
+  ScoringRuntimeCatalog,
+  type CalculatorRuntimeError,
+  type PreparedCalculator,
+} from '../plugin.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
 import { BatchNotFound, ParticipantNotFound } from '../server/errors.ts'
@@ -32,11 +36,22 @@ export interface MyResultView extends Breakdown {
 }
 
 export interface ScoringMethods {
+  /**
+   * Carries the runtime catalog as an explicit requirement: the Assessment
+   * service is built in the services phase, below the runtime bindings, so
+   * a method that evaluates acquires the catalog when it RUNS - above the
+   * runtime phase, where the composition root discharges it. Never through
+   * a captured field, never through a late-bound global.
+   */
   readonly getMyResult: (
     tenantId: string,
     batchId: string,
     as: Principal,
-  ) => Effect.Effect<MyResultView, BatchNotFound | ParticipantNotFound | AccessDenied>
+  ) => Effect.Effect<
+    MyResultView,
+    BatchNotFound | ParticipantNotFound | AccessDenied,
+    ScoringRuntimeCatalog
+  >
 }
 
 export interface ScoringDeps {
@@ -49,7 +64,6 @@ export interface ScoringDeps {
   ) => Effect.Effect<void, AccessDenied>
   readonly itemTypes: ReadonlyMap<string, { readonly interaction: string }>
   readonly catalogs: {
-    readonly calculators: ReadonlyMap<string, ScoringDriver>
     readonly aggregators: ReadonlyMap<string, { readonly kind: string }>
   }
 }
@@ -144,7 +158,6 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
    * quietly scoring the round at zero.
    */
 
-
   /**
    * Every approved entry's amount, then the ledger's own input.
    *
@@ -152,28 +165,34 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
    * input against the item's own plan - so there is one evaluation path, not
    * a special case that drifts.
    */
-  const evaluateInput = (collected: {
-    readonly groups: ScoreInput['groups']
-    readonly items: readonly {
+  const evaluateInput = (
+    preparedFor: (item: {
       readonly id: string
-      readonly title: string
-      readonly scoreGroupId: string
-      readonly sortOrder: number
-      readonly status: string
-      readonly createdAt: number
       readonly plan: ScoringPlan
-      readonly derived: boolean
-    }[]
-    readonly entries: readonly {
-      readonly id: string
-      readonly itemId: string
-      readonly status: string
-      readonly revisionId: string | null
-      readonly recognitionId: string | null
-      readonly recognition: Record<string, unknown>
-      readonly createdAt: number
-    }[]
-  }) =>
+    }) => Effect.Effect<PreparedCalculator, CalculatorRuntimeError>,
+    collected: {
+      readonly groups: ScoreInput['groups']
+      readonly items: readonly {
+        readonly id: string
+        readonly title: string
+        readonly scoreGroupId: string
+        readonly sortOrder: number
+        readonly status: string
+        readonly createdAt: number
+        readonly plan: ScoringPlan
+        readonly derived: boolean
+      }[]
+      readonly entries: readonly {
+        readonly id: string
+        readonly itemId: string
+        readonly status: string
+        readonly revisionId: string | null
+        readonly recognitionId: string | null
+        readonly recognition: Record<string, unknown>
+        readonly createdAt: number
+      }[]
+    },
+  ) =>
     Effect.gen(function* () {
       const plans = new Map(collected.items.map((item) => [item.id, item]))
       const items: ScoreInputItem[] = []
@@ -195,7 +214,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           continue
         }
         if (item.derived) {
-          const granted = yield* evaluateEntry(deps.catalogs.calculators, {
+          const granted = yield* evaluateEntry(yield* preparedFor(item), {
             entryId: `derived:${item.id}`,
             entryRevisionId: null,
             itemId: item.id,
@@ -247,7 +266,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           // calculator ever sees of this claim
           recognition: entry.recognition,
         }
-        const evaluated = yield* evaluateEntry(deps.catalogs.calculators, fact)
+        const evaluated = yield* evaluateEntry(yield* preparedFor(item), fact)
         entries.push({
           ...common,
           standing: 'counted',
@@ -260,6 +279,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
 
   const getMyResult: ScoringMethods['getMyResult'] = Effect.fn('Assessment.getMyResult')(
     function* (tenantId, batchId, as) {
+      const runtime = yield* ScoringRuntimeCatalog
       return yield* withDb(
         Effect.gen(function* () {
           const batch = yield* oneBatch(tenantId, batchId)
@@ -273,13 +293,34 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           const participant = yield* participantRowByUser(tenantId, batchId, as.userId)
           if (participant === null) return yield* new ParticipantNotFound()
           const collected = yield* collectParticipantScoreInput(tenantId, batchId, participant.id)
+          // One prepared calculator per item, resolved lazily and only on
+          // the paths that actually run arithmetic: an inactive question, or
+          // an active one with nothing approved, prepares nothing - a
+          // question whose runtime fact cannot be prepared must not be able
+          // to take down a page it never contributes to. The cache is
+          // request-local; the loop below is sequential, so a plain map is
+          // the whole synchronization story.
+          const prepared = new Map<string, PreparedCalculator>()
+          const preparedFor = (item: { readonly id: string; readonly plan: ScoringPlan }) =>
+            Effect.gen(function* () {
+              const hit = prepared.get(item.id)
+              if (hit !== undefined) return hit
+              const built = yield* runtime.prepare(
+                item.plan.calculator.ref,
+                item.plan.calculator.config,
+                undefined,
+                { tenantId, batchId },
+              )
+              prepared.set(item.id, built)
+              return built
+            })
           // An evaluation that fails is not a state a reader can be in: the
           // configuration was proven against its calculator's contract when
           // it was saved, and the input was assembled from that same frozen
           // plan. Reaching here means the plan and the installed arithmetic
           // disagree, which is an assembly fault - it dies naming the item
           // rather than quietly scoring that question at zero.
-          const input = yield* evaluateInput(collected).pipe(Effect.orDie)
+          const input = yield* evaluateInput(preparedFor, collected).pipe(Effect.orDie)
           return { mode: 'provisional' as const, ...calcParticipant(deps.catalogs, input) }
         }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
       )

@@ -22,7 +22,8 @@ import { compositeForeignKeys, entities } from './db/entities.ts'
 import { ItemTypes, Scoring } from './plugin.ts'
 import { constantDriver } from './item/constant.ts'
 import { declarationDriver } from './item/declaration.ts'
-import { builtinScoringDrivers } from './scoring/builtins.ts'
+import { builtinAggregators, builtinCalculators } from './scoring/builtins.ts'
+import { scoringRuntimeProvider } from './scoring/runtime-provider.ts'
 import { permissions } from './permissions.ts'
 import { assessmentApiGroup } from './api.ts'
 import { AssessmentLive } from './live/service.ts'
@@ -64,8 +65,10 @@ const plugin = Plugin.define(
   // the one kind of question core itself asks: granted, not filed
   ItemTypes.driver(constantDriver),
   ItemTypes.driver(declarationDriver),
-  Scoring.provider,
-  ...builtinScoringDrivers.map((driver) => Scoring.driver(driver)),
+  Scoring.definitionProvider,
+  scoringRuntimeProvider,
+  ...builtinCalculators.flatMap((calculator) => [...Scoring.calculator(calculator)]),
+  ...builtinAggregators.map((aggregator) => Scoring.aggregator(aggregator)),
   Access.permissions('assessment', permissions),
   Audit.actions('assessment', assessmentActions),
   Ui.i18n('./client/i18n.ts'),

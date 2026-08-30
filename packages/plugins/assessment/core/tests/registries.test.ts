@@ -5,11 +5,13 @@ import {
   ItemTypeCatalog,
   ItemTypes,
   Scoring,
-  ScoringCatalog,
+  ScoringDefinitionCatalog,
+  type CalculatorRegistration,
   type ItemTypeDriver,
-  type ScoringDriver,
+  type ScoringDefinition,
 } from '../src/plugin.ts'
-import { builtinScoringDrivers, fixed1, sum1 } from '../src/scoring/builtins.ts'
+import { bindScoringRuntimes } from '../src/scoring/runtime-provider.ts'
+import { builtinAggregators, builtinCalculators, fixed1, sum1 } from '../src/scoring/builtins.ts'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import type { CalculatorContract } from '../src/plugin.ts'
 
@@ -60,12 +62,18 @@ const itemCatalogOf = (contributions: readonly Contributed<ItemTypeDriver>[]) =>
     ),
   )
 
-const scoringCatalogOf = (contributions: readonly Contributed<ScoringDriver>[]) =>
-  Effect.runSync(
-    ScoringCatalog.pipe(
-      Effect.provide(compileOf(Scoring.provider)(contributions) as Layer.Layer<ScoringCatalog>),
-    ),
-  )
+const definitionLayerOf = (contributions: readonly Contributed<ScoringDefinition>[]) =>
+  compileOf(Scoring.definitionProvider)(contributions) as Layer.Layer<ScoringDefinitionCatalog>
+
+const scoringCatalogOf = (contributions: readonly Contributed<ScoringDefinition>[]) =>
+  Effect.runSync(ScoringDefinitionCatalog.pipe(Effect.provide(definitionLayerOf(contributions))))
+
+/** the definition half Scoring.calculator would derive from a registration */
+const definitionOf = (registration: CalculatorRegistration): ScoringDefinition => ({
+  kind: 'calculator',
+  ref: registration.ref,
+  configSchema: registration.configSchema,
+})
 
 describe('the item-type registry', () => {
   it('compiles declared drivers into a catalog', () => {
@@ -102,9 +110,12 @@ describe('the item-type registry', () => {
 describe('the scoring registry', () => {
   it('files calculators and aggregators apart, under their refs', () => {
     const catalog = scoringCatalogOf(
-      builtinScoringDrivers.map((value) => ({ pluginId: '@qualy/plugin-assessment', value })),
+      [...builtinCalculators.map(definitionOf), ...builtinAggregators].map((value) => ({
+        pluginId: '@qualy/plugin-assessment',
+        value,
+      })),
     )
-    expect(catalog.calculators.get('fixed@1')).toBe(fixed1)
+    expect(catalog.calculators.get('fixed@1')?.configSchema).toBe(fixed1.configSchema)
     expect(catalog.aggregators.get('sum@1')).toBe(sum1)
     // a calculator ref does not answer for an aggregator, or the reverse
     expect(catalog.calculators.has('sum@1')).toBe(false)
@@ -112,17 +123,10 @@ describe('the scoring registry', () => {
   })
 
   it('refuses a second owner for one ref, but allows the same ref across kinds', () => {
-    const rival: ScoringDriver = {
-      kind: 'calculator',
-      ref: 'fixed@1',
-      configSchema: Schema.Struct({}),
-      compile: (config) => Effect.succeed({ ...emptyContract, config }),
-      evaluate: () => Effect.succeed('0'),
-    }
     expect(() =>
-      compileOf(Scoring.provider)([
-        { pluginId: '@qualy/plugin-assessment', value: fixed1 },
-        { pluginId: '@qualy/plugin-rival', value: rival },
+      compileOf(Scoring.definitionProvider)([
+        { pluginId: '@qualy/plugin-assessment', value: definitionOf(fixed1) },
+        { pluginId: '@qualy/plugin-rival', value: definitionOf(fixed1) },
       ]),
     ).toThrow(/two plugins provide the calculator "fixed@1"/)
 
@@ -131,13 +135,7 @@ describe('the scoring registry', () => {
     const catalog = scoringCatalogOf([
       {
         pluginId: '@qualy/a',
-        value: {
-          kind: 'calculator',
-          ref: 'x@1',
-          configSchema: Schema.Struct({}),
-          compile: (config) => Effect.succeed({ ...emptyContract, config }),
-      evaluate: () => Effect.succeed('0'),
-        },
+        value: { kind: 'calculator', ref: 'x@1', configSchema: Schema.Struct({}) },
       },
       {
         pluginId: '@qualy/b',
@@ -156,15 +154,103 @@ describe('the scoring registry', () => {
   it('refuses a ref that is not name@version', () => {
     for (const ref of ['fixed', 'fixed@0', 'fixed@1.2', 'Fixed@1', 'fixed@v1', '@1']) {
       expect(() =>
-        Scoring.driver({
+        Scoring.calculator({
           kind: 'calculator',
           ref,
           configSchema: Schema.Struct({}),
-          compile: (config) => Effect.succeed({ ...emptyContract, config }),
-      evaluate: () => Effect.succeed('0'),
+          bind: Effect.succeed({
+            ref,
+            compile: (config) => Effect.succeed({ ...emptyContract, config }),
+            verify: () => Effect.void,
+            prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('0') }),
+          }),
+        }),
+      ).toThrow(/name@version/)
+      expect(() =>
+        Scoring.aggregator({
+          kind: 'aggregator',
+          ref,
+          configSchema: Schema.Struct({}),
+          aggregate: () => ({ total: 0n, entries: [] }),
         }),
       ).toThrow(/name@version/)
     }
+  })
+})
+
+describe('the runtime channel and the definitions, one story', () => {
+  // The completeness gate is a calculator-only equality: a declared
+  // calculator with no runtime cannot execute anything, and a runtime nobody
+  // declared cannot be configured - both are a broken assembly, refused with
+  // the refs named. Aggregators deliberately sit outside the equality: an
+  // aggregator IS its definition, whole, with no runtime half.
+  const registration = (ref: string): CalculatorRegistration => ({
+    kind: 'calculator',
+    ref,
+    configSchema: Schema.Struct({}),
+    bind: Effect.succeed({
+      ref,
+      compile: (config) => Effect.succeed({ ...emptyContract, config }),
+      verify: () => Effect.void,
+      prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('0') }),
+    }),
+  })
+
+  const boundOver = (
+    definitions: readonly ScoringDefinition[],
+    registrations: readonly CalculatorRegistration[],
+  ) =>
+    Effect.runSyncExit(
+      bindScoringRuntimes(
+        registrations.map((value) => ({ pluginId: '@qualy/plugin-under-test', value })),
+      ).pipe(
+        Effect.provide(
+          definitionLayerOf(
+            definitions.map((value) => ({ pluginId: '@qualy/plugin-under-test', value })),
+          ),
+        ),
+        // the registrations' erased R, closed by the test the way the
+        // composition root closes the provider's layer
+      ) as unknown as Effect.Effect<unknown, unknown>,
+    )
+
+  it('refuses a declared calculator with no runtime registration', () => {
+    const outcome = boundOver([definitionOf(registration('lonely@1'))], [])
+    expect(Exit.isFailure(outcome)).toBe(true)
+    expect(String(outcome)).toMatch(/"lonely@1" is declared but has no runtime registration/)
+  })
+
+  it('refuses a runtime registration nobody declared', () => {
+    const outcome = boundOver([], [registration('stray@1')])
+    expect(Exit.isFailure(outcome)).toBe(true)
+    expect(String(outcome)).toMatch(/"stray@1" is registered but never declared/)
+  })
+
+  it('accepts an aggregator with no runtime half', () => {
+    const outcome = boundOver(
+      [definitionOf(registration('paired@1')), sum1],
+      [registration('paired@1')],
+    )
+    expect(Exit.isSuccess(outcome)).toBe(true)
+  })
+
+  it('refuses two registrations for one ref, and a bind that renames itself', () => {
+    const doubled = boundOver(
+      [definitionOf(registration('twice@1'))],
+      [registration('twice@1'), registration('twice@1')],
+    )
+    expect(String(doubled)).toMatch(/two plugins register the calculator runtime "twice@1"/)
+
+    const renamed = boundOver(
+      [definitionOf(registration('spoken@1'))],
+      [
+        {
+          ...registration('spoken@1'),
+          bind: Effect.runSync(Effect.succeed(registration('other@1').bind)),
+        },
+      ],
+    )
+    expect(String(renamed)).toMatch(/registered as "spoken@1" bound itself as "other@1"/)
   })
 })
 

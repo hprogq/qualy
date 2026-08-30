@@ -17,7 +17,7 @@
 import { Data, Effect } from 'effect'
 import { validateValue } from '@qualy/value-schema/validate'
 import { integerToDecimal, INTEGER_TO_DECIMAL, type AssignmentPlan } from '@qualy/value-schema'
-import type { CalculatorDriver, ScoringDriver } from '../plugin.ts'
+import type { PreparedCalculator } from '../plugin.ts'
 import type { ScoringPlan } from './plan.ts'
 import { scaledAmount } from './builtins.ts'
 
@@ -86,22 +86,13 @@ const inputFor = (plan: ScoringPlan, recognition: Readonly<Record<string, unknow
   return input
 }
 
-const resolveCalculator = (
-  calculators: ReadonlyMap<string, ScoringDriver>,
-  ref: string,
-): CalculatorDriver => {
-  const driver = calculators.get(ref)
-  if (driver === undefined || driver.kind !== 'calculator') {
-    // an assembly fault, not a data state: configurations are validated
-    // against the installed catalog when saved
-    throw new Error(`scoring calculator "${ref}" is not installed in this assembly`)
-  }
-  return driver
-}
-
 /**
  * One entry's amount: build the input, prove it against the frozen contract,
  * ask the calculator, prove the answer, scale it.
+ *
+ * The calculator arrives already prepared - resolved and closed over what
+ * its plan needs, once, by the caller - so this function runs per entry
+ * without paying any per-entry resolution.
  *
  * Both proofs are the host's, on both sides of an untrusted boundary. The
  * input was assembled from facts this process stored, so a failure there is
@@ -109,12 +100,11 @@ const resolveCalculator = (
  * output arrives from arithmetic that may live in another process entirely.
  */
 export const evaluateEntry = (
-  calculators: ReadonlyMap<string, ScoringDriver>,
+  calculator: PreparedCalculator,
   fact: EvaluationFact,
 ): Effect.Effect<EvaluatedEntry, ScoringEvaluationFailed> =>
   Effect.gen(function* () {
     const plan = fact.plan
-    const calculator = resolveCalculator(calculators, plan.calculator.ref)
     const input = inputFor(plan, fact.recognition)
     const wrong = validateValue(plan.inputSchema, input)
     if (wrong.length > 0) {
@@ -124,10 +114,12 @@ export const evaluateEntry = (
       })
     }
     const answer = yield* calculator
-      .evaluate(plan.calculator.config, input)
-      .pipe(Effect.mapError(
-        (failure) => new ScoringEvaluationFailed({ itemId: fact.itemId, reason: failure.reason }),
-      ))
+      .evaluate(input)
+      .pipe(
+        Effect.mapError(
+          (failure) => new ScoringEvaluationFailed({ itemId: fact.itemId, reason: failure.reason }),
+        ),
+      )
     const outputWrong = validateValue(plan.outputSchema, answer)
     if (outputWrong.length > 0) {
       return yield* new ScoringEvaluationFailed({

@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment, type PhaseSpecInput } from '../src/server/index.ts'
+import { ScoringRuntimeCatalog } from '../src/plugin.ts'
 import { errorOf, GATED, ok, one, run, seed, type Seeded } from './support/round.ts'
 
 // The one scorer, fed through the real flow: entries filed, reviewed and
@@ -268,6 +269,121 @@ describe.runIf(postgresAvailable)('the provisional account', () => {
     // never on the roster, no authority: the round itself is not theirs to
     // see, which is a wider refusal than "not a participant"
     expect(errorOf<{ _tag: string }>(result.notInRound)?._tag).toBe('ACCESS_DENIED')
+  })
+
+  it('prepares once per question in the arithmetic, and never outside it', async () => {
+    // The lazy seam: a calculator is prepared when - and only when - some
+    // amount is actually about to be computed under its plan. An inactive
+    // question, or an active one with nothing approved, must not be able to
+    // reach a runtime fact at all, or a question that contributes nothing
+    // could take down an account it never touches. And within one reading,
+    // one question is prepared once, however many entries it counts.
+    const calls: string[] = []
+    const counting = ScoringRuntimeCatalog.of({
+      compile: () => {
+        throw new Error('compile is not part of reading an account')
+      },
+      verify: () => {
+        throw new Error('verify is not part of reading an account')
+      },
+      prepare: (ref) =>
+        Effect.sync(() => {
+          calls.push(ref)
+          return { evaluate: () => Effect.succeed('1.00') }
+        }),
+    })
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('sc-prepare-once')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* scoringBatch(f, { groups: [{ name: '文体' }], items: [] })
+          const ask = (over: {
+            itemType: 'evidence' | 'constant'
+            title: string
+            maxEntries: number | null
+            entrySource: 'student' | 'administrative'
+          }) =>
+            assessment.createItem(
+              f.t,
+              g.batch.id,
+              {
+                itemType: over.itemType,
+                title: over.title,
+                scoreGroupId: g.groupIds[0]!,
+                maxEntries: over.maxEntries,
+                config: {
+                  entrySource: over.entrySource,
+                  formConfig: over.itemType === 'evidence' ? { files: {} } : {},
+                  scoringConfig: {
+                    calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+                    aggregator: { ref: 'sum@1', config: {} },
+                  },
+                  reviewPolicy: { mode: 'none' },
+                },
+              },
+              admin,
+            )
+          const activate = (itemId: string) =>
+            assessment.setItemStatus(f.t, itemId, { status: 'active' }, admin)
+          // a question with two approved records for one student
+          const twice = yield* ask({
+            itemType: 'evidence',
+            title: '两笔通过',
+            maxEntries: null,
+            entrySource: 'administrative',
+          })
+          yield* activate(twice.id)
+          // an active question nobody filed under
+          const empty = yield* ask({
+            itemType: 'evidence',
+            title: '无人申报',
+            maxEntries: 1,
+            entrySource: 'student',
+          })
+          yield* activate(empty.id)
+          // a derived question: granted to the roster, computed with no entry
+          const granted = yield* ask({
+            itemType: 'constant',
+            title: '基础分',
+            maxEntries: null,
+            entrySource: 'administrative',
+          })
+          yield* activate(granted.id)
+          // and one still composed as a draft: not part of the account at all
+          yield* ask({
+            itemType: 'evidence',
+            title: '未发布',
+            maxEntries: 1,
+            entrySource: 'administrative',
+          })
+          const recorder = f.principal(f.recorder)
+          yield* assessment.createEntry(
+            f.t,
+            { itemId: twice.id, participantId: g.p1, payload: {}, note: '第一笔' },
+            recorder,
+          )
+          yield* assessment.createEntry(
+            f.t,
+            { itemId: twice.id, participantId: g.p1, payload: {}, note: '第二笔' },
+            recorder,
+          )
+          // the reading itself runs against the counting catalog: everything
+          // above compiled through the real one
+          return yield* assessment
+            .getMyResult(f.t, g.batch.id, f.principal(f.s1))
+            .pipe(Effect.provideService(ScoringRuntimeCatalog, counting))
+        }),
+      ),
+    )
+    // two questions are in the arithmetic - the one with approved records
+    // (once, though it counts two entries) and the granted one; the empty
+    // and the draft questions never reached a runtime fact
+    expect(calls).toHaveLength(2)
+    // and the amounts really came from the prepared closures, not the configs
+    expect(result.total).toBe('3.00')
   })
 
   it('holds a group to its cap and lifts one to its floor, as visible adjustments', async () => {

@@ -1,4 +1,4 @@
-import type { AggregatedEntry, AggregatorDriver, CalculatorDriver } from '../plugin.ts'
+import type { AggregatedEntry, AggregatorDriver } from '../plugin.ts'
 import { formatAmount, quantizeAmount, scaledAmount } from './builtins.ts'
 
 // The one scorer (§8.1). Everything that shows a number - the provisional

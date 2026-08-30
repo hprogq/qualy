@@ -16,7 +16,15 @@
 
 import { Data, Effect } from 'effect'
 import { sql } from 'kysely'
-import type { BatchContext, ItemTypeDriver, ScoringDriver } from '../plugin.ts'
+import type {
+  AggregatorDriver,
+  BatchContext,
+  CalculatorContractError,
+  CalculatorDefinition,
+  CompiledCalculator,
+  CalculatorCompileContext,
+  ItemTypeDriver,
+} from '../plugin.ts'
 import { compileScoringPlan, readScoringPlan, recognitionSourceOf } from './plan.ts'
 import { db } from '../server/db.ts'
 import { policyModeOf } from '../review/chain.ts'
@@ -32,6 +40,8 @@ const parseRange = (text: string) => {
 
 interface PendingRevision {
   readonly id: string
+  readonly tenantId: string
+  readonly batchId: string
   readonly itemType: string
   readonly entrySource: 'student' | 'administrative'
   readonly formConfig: unknown
@@ -80,8 +90,16 @@ export class StoredScoringPlanUnreadable extends Data.TaggedError(
 
 export interface BackfillDeps {
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
-  readonly calculators: ReadonlyMap<string, ScoringDriver>
-  readonly aggregators: ReadonlyMap<string, ScoringDriver>
+  readonly definitions: {
+    readonly calculators: ReadonlyMap<string, CalculatorDefinition>
+    readonly aggregators: ReadonlyMap<string, AggregatorDriver>
+  }
+  /** the runtime catalog's compile, closed over its bound calculators */
+  readonly compile: (
+    ref: string,
+    config: unknown,
+    context: CalculatorCompileContext,
+  ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
 }
 
 /** how many rows one pass reads at a time */
@@ -117,6 +135,8 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
       const found = yield* db.query((k) =>
         sql<PendingRevision>`
           select r.id as "id",
+                 i.tenant_id as "tenantId",
+                 i.batch_id as "batchId",
                  i.item_type as "itemType",
                  r.entry_source as "entrySource",
                  r.form_config as "formConfig",
@@ -136,8 +156,11 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
       for (const revision of pending) {
         const batch: BatchContext = { materialRange: parseRange(revision.materialRange) }
         const outcome = yield* compileScoringPlan({
-          calculators: deps.calculators,
-          aggregators: deps.aggregators,
+          definitions: deps.definitions,
+          compile: deps.compile,
+          // the trusted host context, from the row itself - never from the
+          // stored configuration being compiled
+          host: { tenantId: revision.tenantId, batchId: revision.batchId },
           itemType: deps.itemTypes.get(revision.itemType),
           formConfig: revision.formConfig,
           scoringConfig: revision.scoringConfig,
@@ -213,14 +236,14 @@ export const auditStoredPlans = (deps: BackfillDeps) =>
               }),
           ),
         )
-        if (!deps.calculators.has(plan.calculator.ref)) {
+        if (!deps.definitions.calculators.has(plan.calculator.ref)) {
           return yield* new StoredScoringDriverMissing({
             kind: 'calculator',
             ref: plan.calculator.ref,
             revisionId: row.id,
           })
         }
-        if (!deps.aggregators.has(plan.aggregator.ref)) {
+        if (!deps.definitions.aggregators.has(plan.aggregator.ref)) {
           return yield* new StoredScoringDriverMissing({
             kind: 'aggregator',
             ref: plan.aggregator.ref,

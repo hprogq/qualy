@@ -139,10 +139,13 @@ describe('the line between evaluating and accounting', () => {
     // formula library may exist as code; the moment its calculator ref
     // enters this channel it is a shipped scoring driver, and that is a
     // Phase 7 decision, not a side effect.
-    const refs = contributions('@qualy/plugin-assessment/scoring-drivers').map(
-      (driver) => (driver as { ref: string }).ref,
-    )
-    expect(refs.length).toBeGreaterThan(0)
+    // both scoring channels: a formula ref in either the declarations or
+    // the runtime registrations is a shipped driver
+    const definitions = contributions('@qualy/plugin-assessment/scoring-definitions')
+    const runtimes = contributions('@qualy/plugin-assessment/scoring-runtimes')
+    const refs = [...definitions, ...runtimes].map((driver) => (driver as { ref: string }).ref)
+    expect(definitions.length).toBeGreaterThan(0)
+    expect(runtimes.length).toBeGreaterThan(0)
     expect(refs.filter((ref) => ref.startsWith('formula@'))).toEqual([])
   })
 
