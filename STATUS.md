@@ -11542,3 +11542,85 @@ formula@1 注册在 7.0 通过前 BLOCKED。
 `ScoringCatalog`——不能简单把扩展点改到 afterServices(服务图建成前 Assessment 就
 拿不到 catalog)。可能的形态是「prepare 期声明 + service/runtime 期绑定」或拆
 definition/runtime 两个 catalog,7.0 先 spike 再裁决。
+
+## Phase 7 入场前整改:三站修复(2026-08-31)
+
+用户第二轮整体审计(基于 main@5e5c2a55)列九项;按其收紧的入场顺序,本批修完**前三站**
+(不依赖 service-driver seam 的全部协议矛盾),error taxonomy 与 q.fail admissibility
+按序留在 seam 之后,`formula@1.evaluate()` 未动。三笔提交,每站差分验证。
+
+### 站 1 `fix(formula): tell refusals from defects and record the artifact's abi`
+
+- **FormulaFailure 只归 `q.fail`**(审计第 2 项):decimal runtime 的 SDK 误用
+  (`mulInteger`/`fromInteger` 非 safe integer、`quantize` 非法 scale)改抛捕获引用的
+  `RangeError`——wrapper 的 rethrow 路径把它送成 defect,业务拒绝与写错公式在 sandbox
+  外恒可区分。sdk 测试改口径:误用必须 `isFormulaFailure === false`。
+- **`q.fail` message 上限**(第 9 项):`FORMULA_FAILURE_MESSAGE_LIMIT = 2048` code
+  units,在构造器截断(创建处裁决);host 读 envelope 时再截一次,防伪造 marker 绕过。
+  承重:10 万字符 refusal 落地恰 2048,仍是 refusal 不是 SandboxOutputTooLarge。
+- **authoring output validation**(第 3 项):`evaluateCases` 对 QuickJS 实际输出在
+  canonical 后跑 `validateValue(outputSchema)`,违约进 `problems: [{at:'output',
+  reason, constraint}]`(TestProblem/wire/浏览器渲染/i18n 同笔加 'output' 位);差分:摘
+  除该验证,「contract 允 5.00、公式答 7」被当正常 actual → 测试红。复刻正式 evaluator
+  的边界:QuickJS → canonical → validateValue → compare。
+- **ABI provenance**(第 4 项):`prepare` 收到 sidecar 的 `CompiledFormulaWire` 先验
+  `formulaAbiVersion` 是本 host 支持的版本(不合 → logError + 503,滚动升级中的
+  new-host/old-sidecar 拒绝配对);`PreparedFormula/CompiledFormula` 携带 artifact 实际
+  ABI,publishFingerprint 与 FormulaVersion 落盘均改用它。承重:包一层 abi+1 的
+  FormulaAuthoring stub → previewDraft 得 `ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE`。
+
+- **golden artifacts 再生**(独立笔 `test(formula): regenerate golden artifacts for
+  the refusal split`):SDK 的蓄意变更移动了 artifact 字节(identity 24579→24761)与
+  runtimeSha256,按 golden 测试自身的规则再生并在此记录原因——refusal/defect 分型 +
+  message cap 进入了每个 artifact 内嵌的 SDK 拷贝。
+
+### 站 2 `fix(sandbox): prove the answering runtime on every invocation`
+
+审计第 5 项,按「invoke 与 runtime generation 建立证明关系」的建议落地,弃 TTL:
+
+- 协议:`Invoke` payload 明示 `rpcApiVersion/sandboxAbiVersion`,runtime 侧先于一切
+  校验,不合发新 wire error `SandboxProtocolMismatch`(host 译成 SandboxUnavailable,
+  reason 点名两侧代际);response 携带 `engineVersion/runtimeBuildId/runtimeInstanceId`
+  (instanceId 每进程启动 randomUUID)。`RuntimeCapabilities` 同步加 instanceId。
+- host `Sandbox` 接口收缩为 `{invoke}`:`invoke` 返回 `SandboxAnswer = {output,
+  runtime}`;**删除 `engine`/`runtimeBuildId` 访问器与永久缓存的 capabilities gate**——
+  换代判定移到 runtime 侧逐请求执行,缓存的上一实例结论不再存在。local testkit 同构
+  (每 Layer 一个 instanceId)。
+- formula publish 的 provenance 改从**答案本身**收集:`extractContract` 与
+  `evaluateCases` 各自返回 answering runtime;一轮 evaluation 内实例切换、或合同与
+  例题由不同实例证明 → logWarning + 503(拒绝 publish,留给重试)。
+  `quickjs_engine_version`/`sandbox_runtime_build_id` 落盘值 = 真正执行了这次发布全部
+  工作的实例。
+- 承重(remote.test):kill 真 runtime 进程→同 socket 起新进程→治愈后的 invoke 响应
+  `instanceId` 必不同于第一实例(缓存旧 identity 的世界无法通过);local/remote parity
+  与 formula 双装配 publish parity 全绿。
+
+### 站 3 `fix(assessment): read stored plans fail-closed and gate boot on their drivers`
+
+- **deep reader**(第 7 项):persisted `assignmentShape` 的 converter 从
+  `Schema.String` 收窄为 `Schema.Literal(INTEGER_TO_DECIMAL)`——本 build 的 converter
+  词汇表是封闭的,陌生 converter 在读取处拒绝,不再走到求值时以 null 装配失败;
+  `inputSchema/outputSchema/recognitionSchemas` 在 decode 后逐一过本 build 的
+  `validateInputProfile`/`validateAtomicProfile`——hash 只证「字节没变」,profile 验证
+  才证「这个 build 会解释这份 schema」。`semanticPlanBody` 导出,测试得以伪造
+  hash 一致的 body:陌生 converter 与 profile 外 schema(integer 无显式界)两条,
+  摘除修复即双红——修前这些 plan 会被成功读回。
+- **stored-plan assembly gate**(第 6 项):新 boot 屏障 `auditStoredPlanDrivers`
+  (backfill.ts),Assembled hook 里紧随 sweep:聚合**全部** 已存 plan(不只 current
+  revision——frozen 审核合同让旧 revision 长期可判)的 calculator/aggregator refs 对
+  当前 catalog 差集,缺失即 `ASSESSMENT_STORED_SCORING_DRIVER_MISSING` 拒 ready,
+  点名 driver 与示例 revision。承重(migration-upgrade):植入 ref=formula@1 的
+  stored plan → fixed-only catalog 拒且点名;改回 fixed@1 → 通过。
+
+### 未做(按用户顺序表留在 seam 之后)
+
+- calculator error taxonomy(deterministic refusal / unavailable / defect / limit /
+  integrity 分型)与 `q.fail` admissibility(approval 前证明可算、切版本时真实
+  evaluation impact、optimistic two-phase);evaluateEntry 对缺 driver 的 throw 保持
+  (boot gate 已把该形态挡在 ready 前,运行中语义归 taxonomy 站)。
+- `formula@1` 注册仍为零(scoring-ledger 门禁持续断言 production declarations 无
+  formula@*)。
+
+**验收(本机逐条实跑)**:`pnpm typecheck` 零错;`pnpm test` 1222 passed | 17 skipped
+(1239);`pnpm test:browser` 267 passed;`pnpm build` 通过;formula-remote 双装配
+publish parity、sandbox remote 重连套件、migration-upgrade 全绿。
