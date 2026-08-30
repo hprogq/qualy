@@ -16,10 +16,13 @@
 
 import { Data, Effect, Schema } from 'effect'
 import {
+  INTEGER_TO_DECIMAL,
   assignmentPlan,
   canonicalizeAtomicSchema,
   canonicalizeInputSchema,
   normalizeAtomicSchema,
+  validateAtomicProfile,
+  validateInputProfile,
   type AssignmentPlan,
   type AtomicSchema,
   type NormalizedAtomicSchema,
@@ -94,9 +97,12 @@ export interface ScoringPlan {
 // a shape here, so a plan that decodes is a plan that runs. The schemas
 // themselves stay Unknown - they were normalized when the plan was compiled,
 // the hash covers their bytes, and the validator consumes them as data.
+// the converter vocabulary is CLOSED per build: a stored plan naming one
+// this build does not implement must be refused at the read, not carried
+// to a null lookup that fails as the student's input
 const assignmentShape = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('direct') }),
-  Schema.Struct({ kind: Schema.Literal('convert'), converter: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal('convert'), converter: Schema.Literal(INTEGER_TO_DECIMAL) }),
 ])
 
 const persistedPlanShape = Schema.Struct({
@@ -225,9 +231,18 @@ export interface CompileInputs {
  * hash exactly where it was. What must move it is anything that changes what
  * the plan computes or admits.
  */
-const semanticPlanBody = (plan: Omit<ScoringPlan, 'planHash'>) => ({
+/**
+ * The bytes a plan's identity is a hash of. Exported so suites can forge
+ * hash-consistent bodies and prove the reader judges content, not just
+ * integrity.
+ */
+export const semanticPlanBody = (plan: Omit<ScoringPlan, 'planHash'>) => ({
   version: plan.version,
-  calculator: { ref: plan.calculator.ref, config: plan.calculator.config, contractHash: plan.calculator.contractHash },
+  calculator: {
+    ref: plan.calculator.ref,
+    config: plan.calculator.config,
+    contractHash: plan.calculator.contractHash,
+  },
   parameters: plan.parameters,
   recognitionSchemas: Object.fromEntries(
     Object.entries(plan.recognitionSchemas).map(([id, schema]) => [
@@ -291,19 +306,20 @@ const own = <T>(record: Record<string, T> | undefined, key: string): T | undefin
  */
 export const compileScoringPlan = (
   inputs: CompileInputs,
-): Effect.Effect<
-  { readonly plan: ScoringPlan } | { readonly issues: readonly PlanIssue[] }
-> =>
+): Effect.Effect<{ readonly plan: ScoringPlan } | { readonly issues: readonly PlanIssue[] }> =>
   Effect.gen(function* () {
-    const parsed = yield* decode(authoringShape as unknown as Schema.Codec<{
-      calculator: { ref: string; config: unknown }
-      aggregator: { ref: string; config: unknown }
-      recognitions?: Record<string, { label?: string; defaultFromFieldId?: string | null }>
-      bindings?: Record<
-        string,
-        { kind: 'constant'; value: unknown } | { kind: 'recognition'; recognitionId: string }
-      >
-    }>, inputs.scoringConfig)
+    const parsed = yield* decode(
+      authoringShape as unknown as Schema.Codec<{
+        calculator: { ref: string; config: unknown }
+        aggregator: { ref: string; config: unknown }
+        recognitions?: Record<string, { label?: string; defaultFromFieldId?: string | null }>
+        bindings?: Record<
+          string,
+          { kind: 'constant'; value: unknown } | { kind: 'recognition'; recognitionId: string }
+        >
+      }>,
+      inputs.scoringConfig,
+    )
     if (parsed._tag === 'None') {
       return { issues: [{ path: 'scoringConfig', reason: 'scoring-config-shape' }] }
     }
@@ -312,7 +328,9 @@ export const compileScoringPlan = (
 
     const calculator = inputs.calculators.get(authoring.calculator.ref)
     if (calculator === undefined || calculator.kind !== 'calculator') {
-      return { issues: [{ path: 'scoringConfig.calculator.ref', reason: 'calculator-not-installed' }] }
+      return {
+        issues: [{ path: 'scoringConfig.calculator.ref', reason: 'calculator-not-installed' }],
+      }
     }
     const aggregator = inputs.aggregators.get(authoring.aggregator.ref)
     if (aggregator === undefined || aggregator.kind !== 'aggregator') {
@@ -336,7 +354,10 @@ export const compileScoringPlan = (
     )
     if (calculatorConfig._tag === 'None') {
       return {
-        issues: [...issues, { path: 'scoringConfig.calculator.config', reason: 'calculator-config-invalid' }],
+        issues: [
+          ...issues,
+          { path: 'scoringConfig.calculator.config', reason: 'calculator-config-invalid' },
+        ],
       }
     }
     let aggregatorConfig: unknown = authoring.aggregator.config
@@ -346,7 +367,10 @@ export const compileScoringPlan = (
         authoring.aggregator.config,
       )
       if (decoded._tag === 'None') {
-        issues.push({ path: 'scoringConfig.aggregator.config', reason: 'aggregator-config-invalid' })
+        issues.push({
+          path: 'scoringConfig.aggregator.config',
+          reason: 'aggregator-config-invalid',
+        })
       } else {
         aggregatorConfig = decoded.value
       }
@@ -355,14 +379,20 @@ export const compileScoringPlan = (
     const compiled = yield* calculator.compile(calculatorConfig.value).pipe(Effect.option)
     if (compiled._tag === 'None') {
       return {
-        issues: [...issues, { path: 'scoringConfig.calculator.config', reason: 'calculator-contract-unavailable' }],
+        issues: [
+          ...issues,
+          { path: 'scoringConfig.calculator.config', reason: 'calculator-contract-unavailable' },
+        ],
       }
     }
     const { inputSchema, outputSchema, contractHash, config: executionConfig } = compiled.value
     // what goes into the plan must come back out of the column identical
     if (!isJsonValue(executionConfig)) {
       return {
-        issues: [...issues, { path: 'scoringConfig.calculator.config', reason: 'calculator-config-not-json' }],
+        issues: [
+          ...issues,
+          { path: 'scoringConfig.calculator.config', reason: 'calculator-config-not-json' },
+        ],
       }
     }
     if (!isJsonValue(aggregatorConfig)) {
@@ -394,8 +424,7 @@ export const compileScoringPlan = (
     const defaultBindings: Record<
       string,
       { fieldId: string; payloadKey: string; assignment: AssignmentPlan }
-    > =
-      Object.create(null)
+    > = Object.create(null)
 
     const bindable = new Map<string, { payloadKey: string; schema: AtomicSchema; always: boolean }>(
       (inputs.itemType?.bindableFields?.(inputs.formConfig, inputs.batch) ?? []).map((field) => [
@@ -459,7 +488,11 @@ export const compileScoringPlan = (
         })
         continue
       }
-      parameters[parameter] = { kind: 'recognition', recognitionId: binding.recognitionId, assignment }
+      parameters[parameter] = {
+        kind: 'recognition',
+        recognitionId: binding.recognitionId,
+        assignment,
+      }
       recognitionSchemas[binding.recognitionId] = recognitionSchema
 
       const fieldId = declared.defaultFromFieldId ?? null
@@ -528,7 +561,10 @@ export const compileScoringPlan = (
       // and read as a parameter the contract declares, so the binding would
       // be silently ignored rather than refused
       if (!Object.hasOwn(inputSchema.properties, parameter)) {
-        issues.push({ path: `scoringConfig.bindings.${parameter}`, reason: 'binding-unknown-parameter' })
+        issues.push({
+          path: `scoringConfig.bindings.${parameter}`,
+          reason: 'binding-unknown-parameter',
+        })
       }
     }
 
@@ -611,6 +647,22 @@ export const readScoringPlan = (revision: {
       return yield* new ScoringPlanUnreadable({
         revisionId: revision.id,
         reason: `version ${String(plan.version)}, and this build executes ${SCORING_PLAN_VERSION}`,
+      })
+    }
+    // The schemas are data to the hash but a LANGUAGE to the evaluator: a
+    // newer build can store a hash-consistent plan whose schemas use a
+    // profile feature this build has never heard of, and ajv would judge
+    // values by silently ignoring it. Rolling deployments are exactly when
+    // that happens, so the read is where it stops.
+    const foreign = [
+      ...validateInputProfile(plan.inputSchema),
+      ...validateAtomicProfile(plan.outputSchema),
+      ...Object.values(plan.recognitionSchemas).flatMap((schema) => validateAtomicProfile(schema)),
+    ]
+    if (foreign.length > 0) {
+      return yield* new ScoringPlanUnreadable({
+        revisionId: revision.id,
+        reason: `a stored schema is outside this build's value profile: ${foreign[0]!.reason}`,
       })
     }
     const { planHash, ...body } = plan

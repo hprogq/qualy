@@ -5,7 +5,13 @@ import { validateValue } from '@qualy/value-schema/validate'
 import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { calcParticipant } from '../src/scoring/calc.ts'
 import { builtinScoringDrivers, fixed1, scaledAmount } from '../src/scoring/builtins.ts'
-import { carriesInto, compileScoringPlan, readScoringPlan } from '../src/scoring/plan.ts'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
+import {
+  carriesInto,
+  compileScoringPlan,
+  readScoringPlan,
+  semanticPlanBody,
+} from '../src/scoring/plan.ts'
 import { gradedTest } from './support/catalogs.ts'
 import {
   canonicalRecognition,
@@ -123,6 +129,72 @@ describe('what a stored plan must be before it runs', () => {
     }
     tampered.calculator.config.value = '9999'
     expect(Exit.isFailure(await read(tampered))).toBe(true)
+  })
+
+  it("refuses a converter outside this build's vocabulary, at the read", async () => {
+    // integrity is not the question - the forged hash below is CORRECT for
+    // its body. A newer build can legitimately store a converter this one
+    // does not implement, and carrying it to a null lookup would fail as
+    // the student's input at scoring time; the reader is where it stops.
+    const plan = await planOf()
+    const { planHash: _dropped, ...body } = JSON.parse(JSON.stringify(plan)) as typeof plan
+    const withForeignConverter = {
+      ...body,
+      parameters: {
+        level: {
+          kind: 'recognition',
+          recognitionId: 'rec-level',
+          assignment: { kind: 'convert', converter: 'string-to-decimal@9' },
+        },
+      },
+    }
+    const forged = {
+      ...withForeignConverter,
+      planHash: hashCanonicalJson(semanticPlanBody(withForeignConverter as never)),
+    }
+    expect(Exit.isFailure(await read(forged))).toBe(true)
+
+    // and the one converter this build implements still reads back
+    const withKnownConverter = {
+      ...body,
+      parameters: {
+        level: {
+          kind: 'recognition',
+          recognitionId: 'rec-level',
+          assignment: { kind: 'convert', converter: 'integer-to-decimal@1' },
+        },
+      },
+    }
+    const legal = {
+      ...withKnownConverter,
+      planHash: hashCanonicalJson(semanticPlanBody(withKnownConverter as never)),
+    }
+    expect(Exit.isSuccess(await read(legal))).toBe(true)
+  })
+
+  it("refuses a schema outside this build's value profile, at the read", async () => {
+    // same shape of forgery: hash-consistent, structurally sound, but the
+    // input schema speaks a profile feature this build has never heard of -
+    // ajv would judge values while silently ignoring it
+    const plan = await planOf()
+    const { planHash: _dropped, ...body } = JSON.parse(JSON.stringify(plan)) as typeof plan
+    // an integer with no explicit bounds: canonicalizes fine, but the
+    // profile of THIS build requires stated safe bounds and refuses it
+    const withForeignSchema = {
+      ...body,
+      inputSchema: {
+        type: 'object',
+        properties: { a: { type: 'integer', minimum: 0 } },
+        required: ['a'],
+        additionalProperties: false,
+      },
+    }
+    const forged = {
+      ...withForeignSchema,
+      planHash: hashCanonicalJson(semanticPlanBody(withForeignSchema as never)),
+    }
+    const outcome = await read(forged)
+    expect(Exit.isFailure(outcome)).toBe(true)
   })
 
   it('refuses a shape that is not a plan, and a missing one', async () => {

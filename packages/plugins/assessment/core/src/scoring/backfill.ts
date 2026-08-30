@@ -53,6 +53,22 @@ export class ScoringPlanBackfillFailed extends Data.TaggedError(
   }
 }
 
+/** a stored plan depends on a driver this assembly no longer provides */
+export class StoredScoringDriverMissing extends Data.TaggedError(
+  'ASSESSMENT_STORED_SCORING_DRIVER_MISSING',
+)<{
+  readonly missing: readonly { kind: string; ref: string; revisionId: string }[]
+}> {
+  override get message() {
+    return this.missing
+      .map(
+        (entry) =>
+          `stored plans depend on ${entry.kind} "${entry.ref}" which this assembly does not provide (e.g. item revision ${entry.revisionId})`,
+      )
+      .join('; ')
+  }
+}
+
 export interface BackfillDeps {
   readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
   readonly calculators: ReadonlyMap<string, ScoringDriver>
@@ -142,5 +158,52 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
     }
     if (compiled > 0) {
       yield* Effect.logInfo(`scoring plans compiled for ${compiled} item revision(s)`)
+    }
+  })
+
+interface StoredRef {
+  readonly ref: string
+  readonly revisionId: string
+}
+
+/**
+ * Whether every driver the STORED plans name is one this assembly provides.
+ *
+ * The backfill above only meets revisions without a plan; a revision whose
+ * plan already exists is never recompiled, so unplugging the plugin that
+ * provided its calculator would pass boot silently and fail on the first
+ * results page. Frozen review contracts keep old revisions judgeable long
+ * after a question moves on, so every stored plan counts, not just the
+ * current ones. Refusing ready is the honest answer: it names what to
+ * reinstall - or which questions to retire - before anybody is served.
+ */
+export const auditStoredPlanDrivers = (deps: BackfillDeps) =>
+  Effect.gen(function* () {
+    const storedRefs = (path: string) =>
+      Effect.map(
+        db.query((k) =>
+          sql<StoredRef>`
+            select r.scoring_plan->${sql.raw(`'${path}'`)}->>'ref' as "ref",
+                   min(r.id::text) as "revisionId"
+            from assessment_item_revisions r
+            where r.scoring_plan is not null
+            group by 1
+          `.execute(k),
+        ),
+        (result) => result.rows,
+      )
+    const missing: { kind: string; ref: string; revisionId: string }[] = []
+    for (const row of yield* storedRefs('calculator')) {
+      if (!deps.calculators.has(row.ref)) {
+        missing.push({ kind: 'calculator', ref: row.ref, revisionId: row.revisionId })
+      }
+    }
+    for (const row of yield* storedRefs('aggregator')) {
+      if (!deps.aggregators.has(row.ref)) {
+        missing.push({ kind: 'aggregator', ref: row.ref, revisionId: row.revisionId })
+      }
+    }
+    if (missing.length > 0) {
+      return yield* new StoredScoringDriverMissing({ missing })
     }
   })

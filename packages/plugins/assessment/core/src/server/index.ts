@@ -7,7 +7,7 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
-import { sweepScoringPlans } from '../scoring/backfill.ts'
+import { auditStoredPlanDrivers, sweepScoringPlans } from '../scoring/backfill.ts'
 import { AssessmentLive } from '../live/service.ts'
 import { announce, type AssessmentLiveEvent } from '../live/events.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
@@ -3968,7 +3968,18 @@ export const serviceLayer: Layer.Layer<
             itemTypes,
             calculators: scoring.calculators,
             aggregators: scoring.aggregators,
-          }),
+          }).pipe(
+            // and then the plans that already existed: a driver they name
+            // that this assembly no longer provides refuses ready here,
+            // never on a student's results page
+            Effect.andThen(
+              auditStoredPlanDrivers({
+                itemTypes,
+                calculators: scoring.calculators,
+                aggregators: scoring.aggregators,
+              }),
+            ),
+          ),
         ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
       ),
     })

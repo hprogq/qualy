@@ -8,7 +8,7 @@ import { Effect, Exit } from 'effect'
 import { inspect } from 'node:util'
 import { transaction } from '@qualy/plugin-database/server'
 import { builtinScoringDrivers } from '../src/scoring/builtins.ts'
-import { sweepScoringPlans } from '../src/scoring/backfill.ts'
+import { auditStoredPlanDrivers, sweepScoringPlans } from '../src/scoring/backfill.ts'
 
 // The scope migration carries a data step - every batch's single scope node
 // moves into batch_scope_nodes before the columns drop - and replaying the
@@ -910,10 +910,9 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
 
       const planOf = async (id: string) =>
         (
-          await db.row<{ scoring_plan: { calculator?: { ref: string }; planHash?: string } | null }>(
-            `select scoring_plan from assessment_item_revisions where id = $1`,
-            [id],
-          )
+          await db.row<{
+            scoring_plan: { calculator?: { ref: string }; planHash?: string } | null
+          }>(`select scoring_plan from assessment_item_revisions where id = $1`, [id])
         ).scoring_plan
       // the migration alone only makes room
       expect(await planOf(revision)).toBeNull()
@@ -961,6 +960,106 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
       // running it again changes nothing: it only ever fills a null
       expect(Exit.isSuccess(await sweep())).toBe(true)
       expect((await planOf(revision))?.planHash).toBe(compiled?.planHash)
+    } finally {
+      await db.dispose()
+    }
+  }, 240_000)
+})
+
+describe.runIf(postgresAvailable)('the stored-plan driver gate', () => {
+  it('refuses ready while a stored plan names a driver nobody provides', async () => {
+    const db = await createTestContext('plan-driver-gate')
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('gate', 'Gate') returning id`,
+      )
+      const orgType = await one(
+        `insert into org_types (tenant_id, name) values ($1, 'Class') returning id`,
+        [tenant],
+      )
+      const node = await one(
+        `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+         values ($1, $2, 'Class', 'gate', 0) returning id`,
+        [tenant, orgType],
+      )
+      const userType = await one(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'student', 'Student', 'unrestricted') returning id`,
+        [tenant],
+      )
+      const user = await one(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, 'Li Si', $2, $3) returning id`,
+        [tenant, userType, node],
+      )
+      const batch = await one(
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, 'Gate rounds', daterange('2026-03-01', '2026-09-01')) returning id`,
+        [tenant],
+      )
+      const group = await one(
+        `insert into score_groups (tenant_id, batch_id, name) values ($1, $2, '学业') returning id`,
+        [tenant, batch],
+      )
+      const item = await one(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id, status)
+         values ($1, $2, 'evidence', '竞赛', $3, 'active') returning id`,
+        [tenant, batch, group],
+      )
+      // a frozen plan whose calculator arrives from a removable plugin; the
+      // gate reads only the refs, so the body can stay minimal
+      const revision = await one(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by, scoring_plan)
+         values ($1, $2, 1, 'student', '{}',
+                 '{"calculator":{"ref":"formula@1","config":{}},"aggregator":{"ref":"sum@1","config":{}}}',
+                 '{}', '{}', $3,
+                 '{"calculator":{"ref":"formula@1","config":{}},"aggregator":{"ref":"sum@1","config":{}}}') returning id`,
+        [tenant, item, user],
+      )
+
+      const audit = () =>
+        Effect.runPromiseExit(
+          Effect.provide(
+            auditStoredPlanDrivers({
+              itemTypes: new Map(),
+              calculators: new Map(
+                builtinScoringDrivers
+                  .filter((driver) => driver.kind === 'calculator')
+                  .map((driver) => [driver.ref, driver]),
+              ),
+              aggregators: new Map(
+                builtinScoringDrivers
+                  .filter((driver) => driver.kind === 'aggregator')
+                  .map((driver) => [driver.ref, driver]),
+              ),
+            }).pipe(
+              Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+              (effect) => transaction(effect),
+            ),
+            db.services,
+          ),
+        )
+
+      // the assembly no longer ships formula@1: ready is refused, and the
+      // refusal names the driver and a revision that depends on it
+      const refused = await audit()
+      expect(Exit.isFailure(refused)).toBe(true)
+      const said = inspect(refused, { depth: 8 })
+      expect(said).toContain('ASSESSMENT_STORED_SCORING_DRIVER_MISSING')
+      expect(said).toContain('formula@1')
+      expect(said).toContain(revision)
+
+      // reinstalling the driver - or retiring the question - clears the gate
+      await db.query(
+        `update assessment_item_revisions
+         set scoring_plan = '{"calculator":{"ref":"fixed@1","config":{"value":"3"}},"aggregator":{"ref":"sum@1","config":{}}}'
+         where id = $1`,
+        [revision],
+      )
+      expect(Exit.isSuccess(await audit())).toBe(true)
     } finally {
       await db.dispose()
     }
@@ -1106,7 +1205,17 @@ describe.runIf(postgresAvailable)('the recognition-history migration', () => {
             values, source, review_instance_id, review_event_id, created_by, created_at)
          values ($1, $2, $3, $4, $5, $6, '{}', 'review', $7, $8, $9, '2026-05-02T09:00:00Z')
          returning id`,
-        [tenant, batch, switched.entry, switched.filing, item, revision, may2.instance, may2.event, user],
+        [
+          tenant,
+          batch,
+          switched.entry,
+          switched.filing,
+          item,
+          revision,
+          may2.instance,
+          may2.event,
+          user,
+        ],
       )
       await db.query(
         `update entries set status = 'approved', current_recognition_id = $1 where id = $2`,
@@ -1428,4 +1537,3 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
     }
   })
 })
-
