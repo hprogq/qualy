@@ -15,6 +15,8 @@ export const RuntimeCapabilities = Schema.Struct({
   quickjsEngineVersion: Schema.String,
   /** digest of the engine implementation actually serving; provenance only */
   runtimeBuildId: Schema.String,
+  /** minted at process start; distinguishes one serving instance from the next */
+  runtimeInstanceId: Schema.String,
   maxArtifactBytes: Schema.Number,
   maxArgumentsBytes: Schema.Number,
   maxOutputBytes: Schema.Number,
@@ -33,8 +35,19 @@ export const RuntimeSandboxRpcs = RpcGroup.make(
       entrypoint: Schema.String,
       argumentsJson: Schema.String,
       limits: SandboxLimitsSchema,
+      // the protocol this request was compiled against: the runtime refuses
+      // what it does not speak, so a swapped process can never half-answer
+      rpcApiVersion: Schema.Number,
+      sandboxAbiVersion: Schema.Number,
     },
-    success: Schema.Struct({ output: Schema.String }),
+    // who actually answered, alongside the answer: provenance read anywhere
+    // else can name a process that no longer exists
+    success: Schema.Struct({
+      output: Schema.String,
+      engineVersion: Schema.String,
+      runtimeBuildId: Schema.String,
+      runtimeInstanceId: Schema.String,
+    }),
     error: Schema.Union(invokeErrors),
   }),
 )

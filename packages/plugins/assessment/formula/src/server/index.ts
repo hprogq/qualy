@@ -11,7 +11,11 @@ import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/serv
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
-import { SANDBOX_ABI_VERSION, Sandbox } from '@qualy/plugin-sandbox/service'
+import {
+  SANDBOX_ABI_VERSION,
+  Sandbox,
+  type SandboxRuntimeIdentity,
+} from '@qualy/plugin-sandbox/service'
 import {
   FORMULA_ABI_VERSION,
   FORMULA_FAILURE_MESSAGE_LIMIT,
@@ -209,6 +213,8 @@ interface PreparedFormula {
   readonly sourceSha256: string
   readonly runtimeSha256: string
   readonly contractSha256: string
+  /** the runtime instance that proved the contract; answers carry it */
+  readonly sandboxRuntime: SandboxRuntimeIdentity
   /** the ABI the artifact actually speaks, as the sidecar reported it */
   readonly formulaAbiVersion: number
   readonly formulaRuntimeSha256: string
@@ -226,6 +232,7 @@ interface CompiledFormula {
   readonly sourceSha256: string
   readonly runtimeSha256: string
   readonly contractSha256: string
+  readonly sandboxRuntime: SandboxRuntimeIdentity
   readonly formulaAbiVersion: number
   readonly formulaRuntimeSha256: string
   readonly typescriptVersion: string
@@ -453,8 +460,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   ) {
     yield* managedRow(tenantId, functionId, as)
     const prepared = yield* dropTestFailure(prepare(sourceTs))
-    const results = yield* evaluateCases(prepared, cases)
-    return { ...previewOf(prepared), results }
+    const evaluated = yield* evaluateCases(prepared, cases)
+    return { ...previewOf(prepared), results: evaluated.results }
   })
 
   // ONE evaluator for every way a formula runs before publication: the
@@ -464,10 +471,16 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   const evaluateCases = (
     prepared: PreparedFormula,
     cases: readonly EvaluationCaseInput[],
-  ): Effect.Effect<readonly EvaluatedCase[], FormulaCompileUnavailable> =>
+  ): Effect.Effect<
+    { readonly results: readonly EvaluatedCase[]; readonly runtime: SandboxRuntimeIdentity | null },
+    FormulaCompileUnavailable
+  > =>
     Effect.gen(function* () {
       const { artifact, runtimeSha256: artifactHash, inputSchema, outputSchema } = prepared
       const report: EvaluatedCase[] = []
+      // the identity of whoever answered; one round must be answered by one
+      // process, or its provenance names an instance that ran only part of it
+      let runtime: SandboxRuntimeIdentity | null = null
       for (const test of cases) {
         // the row always carries what was expected, in the canonical spelling
         // the comparison uses; a lexically broken expectation shows as typed
@@ -522,7 +535,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             },
           })
           .pipe(
-            Effect.map((value) => ({ kind: 'answered', value }) as const),
+            Effect.map((answer) => ({ kind: 'answered', answer }) as const),
             // an example that exhausts the engine is that EXAMPLE failing,
             // reported on its row - never the whole publish dressed up as an
             // infrastructure outage
@@ -547,7 +560,16 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           })
           continue
         }
-        const envelope = JSON.parse(outcome.value as string) as {
+        if (runtime !== null && runtime.instanceId !== outcome.answer.runtime.instanceId) {
+          // the serving process changed mid-round: whatever a mixed round
+          // would prove, it is not one artifact judged by one runtime
+          yield* Effect.logWarning(
+            `sandbox runtime changed mid-evaluation: ${runtime.instanceId} -> ${outcome.answer.runtime.instanceId}`,
+          )
+          return yield* new FormulaCompileUnavailable()
+        }
+        runtime = outcome.answer.runtime
+        const envelope = JSON.parse(outcome.answer.output) as {
           ok: boolean
           amount?: string
           failure?: { message: string }
@@ -586,13 +608,19 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           ...(expected === undefined ? {} : { passed: actual === expected, expected }),
         })
       }
-      return report
+      return { results: report, runtime }
     })
 
   const extractContract = (
     artifact: string,
     artifactHash: string,
-  ): Effect.Effect<{ input?: unknown; output?: unknown }, CompileRefusal> =>
+  ): Effect.Effect<
+    {
+      readonly contract: { input?: unknown; output?: unknown }
+      readonly runtime: SandboxRuntimeIdentity
+    },
+    CompileRefusal
+  > =>
     sandbox
       .invoke({
         artifact,
@@ -609,7 +637,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         },
       })
       .pipe(
-        Effect.map((text) => JSON.parse(text) as { input?: unknown; output?: unknown }),
+        Effect.map((answer) => ({
+          contract: JSON.parse(answer.output) as { input?: unknown; output?: unknown },
+          runtime: answer.runtime,
+        })),
         Effect.catchTags({
           // the guest's own failure to hand a contract out is the author's
           // problem, classified as such - never a 503
@@ -677,7 +708,8 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         return yield* new FormulaCompileUnavailable()
       }
 
-      const contract = yield* extractContract(compiled.artifact, compiled.runtimeSha256)
+      const extracted = yield* extractContract(compiled.artifact, compiled.runtimeSha256)
+      const contract = extracted.contract
 
       // patterns are only worth checking on a structurally sound
       // input, and patternIssues itself is fail-closed on any shape:
@@ -724,6 +756,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         sourceSha256: compiled.sourceSha256,
         runtimeSha256: compiled.runtimeSha256,
         contractSha256: sha256(`${canonicalInput}|${canonicalOutput}`),
+        sandboxRuntime: extracted.runtime,
         formulaAbiVersion: compiled.formulaAbiVersion,
         formulaRuntimeSha256: compiled.formulaRuntimeSha256,
         typescriptVersion: compiled.typescriptVersion,
@@ -741,9 +774,20 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     Effect.gen(function* () {
       const prepared = yield* prepare(source)
       const evaluated = yield* evaluateCases(prepared, tests)
+      if (
+        evaluated.runtime !== null &&
+        evaluated.runtime.instanceId !== prepared.sandboxRuntime.instanceId
+      ) {
+        // contract proven by one runtime instance, examples by another:
+        // whichever identity a version row recorded would be part fiction
+        yield* Effect.logWarning(
+          `sandbox runtime changed between contract and examples: ${prepared.sandboxRuntime.instanceId} -> ${evaluated.runtime.instanceId}`,
+        )
+        return yield* new FormulaCompileUnavailable()
+      }
       // the publish gate: every named example, an expectation on each, all
       // of them passing - the evaluator itself never requires any of that
-      const report: TestReportRow[] = evaluated.map((row, index) => ({
+      const report: TestReportRow[] = evaluated.results.map((row, index) => ({
         name: tests[index]!.name,
         passed: row.passed ?? false,
         expected: row.expected ?? tests[index]!.expected,
@@ -1064,14 +1108,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     // answers with the version that already exists; a toolchain upgrade
     // changes the fingerprint and may legitimately mint a new version.
     // draftRevision stays what it is: the EDITING concurrency token.
-    // The engine identity now comes from the runtime sandbox itself; not
-    // reaching it is the same outage as not reaching the compiler.
-    const engine = yield* sandbox.engine.pipe(
-      Effect.mapError(() => new FormulaCompileUnavailable()),
-    )
-    const sandboxRuntimeBuildId = yield* sandbox.runtimeBuildId.pipe(
-      Effect.mapError(() => new FormulaCompileUnavailable()),
-    )
+    // The engine identity is what the answers themselves carried: reading
+    // it anywhere else could name a process that served none of this work.
+    const engine = compiled.sandboxRuntime.engineVersion
+    const sandboxRuntimeBuildId = compiled.sandboxRuntime.runtimeBuildId
     const fingerprint = sha256(
       [
         compiled.sourceSha256,

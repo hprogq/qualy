@@ -56,7 +56,24 @@ export class SandboxWorkerLost extends Schema.TaggedError<SandboxWorkerLost>()(
   { reason: Schema.String },
 ) {}
 
+/**
+ * The caller and this runtime do not speak the same protocol. Every invoke
+ * names the versions it was compiled against, so a rolling upgrade that
+ * swaps the runtime under a live socket is refused per request - never
+ * half-understood.
+ */
+export class SandboxProtocolMismatch extends Schema.TaggedError<SandboxProtocolMismatch>()(
+  'SandboxProtocolMismatch',
+  {
+    callerRpcApiVersion: Schema.Number,
+    callerSandboxAbiVersion: Schema.Number,
+    runtimeRpcApiVersion: Schema.Number,
+    runtimeSandboxAbiVersion: Schema.Number,
+  },
+) {}
+
 export const invokeErrors = [
+  SandboxProtocolMismatch,
   SandboxTimeout,
   SandboxMemoryExceeded,
   SandboxStackExceeded,
@@ -70,6 +87,7 @@ export const invokeErrors = [
 ] as const
 
 export type RuntimeSandboxError =
+  | SandboxProtocolMismatch
   | SandboxTimeout
   | SandboxMemoryExceeded
   | SandboxStackExceeded

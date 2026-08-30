@@ -14,6 +14,8 @@ import {
   type WorkerPool,
 } from '@qualy/sandbox-engine'
 import {
+  RPC_API_VERSION,
+  SANDBOX_ABI_VERSION,
   SANDBOX_RPC_ENVELOPE_BUDGET,
   SandboxArtifactMismatch,
   SandboxArtifactTooLarge,
@@ -22,6 +24,7 @@ import {
   SandboxLimitsRefused,
   SandboxMemoryExceeded,
   SandboxOutputTooLarge,
+  SandboxProtocolMismatch,
   SandboxStackExceeded,
   SandboxTimeout,
   SandboxWorkerLost,
@@ -37,6 +40,8 @@ export interface WireInvoke {
   readonly entrypoint: string
   readonly argumentsJson: string
   readonly limits: SandboxLimits
+  readonly rpcApiVersion: number
+  readonly sandboxAbiVersion: number
 }
 
 const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
@@ -82,6 +87,20 @@ export const invoke = (
   pool: WorkerPool,
   request: WireInvoke,
 ): Effect.Effect<{ output: string }, RuntimeSandboxError> => {
+  // before anything else is believed: a caller from another protocol
+  // generation gets a refusal that names both sides, never a half-answer
+  if (
+    request.rpcApiVersion !== RPC_API_VERSION ||
+    request.sandboxAbiVersion !== SANDBOX_ABI_VERSION
+  )
+    return Effect.fail(
+      new SandboxProtocolMismatch({
+        callerRpcApiVersion: request.rpcApiVersion,
+        callerSandboxAbiVersion: request.sandboxAbiVersion,
+        runtimeRpcApiVersion: RPC_API_VERSION,
+        runtimeSandboxAbiVersion: SANDBOX_ABI_VERSION,
+      }),
+    )
   const wrong = limitIssue(request.limits)
   if (wrong !== undefined) return Effect.fail(new SandboxLimitsRefused({ issue: wrong }))
   if (!ENGINE_ENTRYPOINT.test(request.entrypoint))

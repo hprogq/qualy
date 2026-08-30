@@ -8,6 +8,7 @@ export {
   SandboxOutputTooLarge,
   SandboxStackExceeded,
   SandboxTimeout,
+  SandboxProtocolMismatch,
   SandboxWorkerLost,
   invokeErrors,
   type RuntimeSandboxError,

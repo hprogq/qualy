@@ -85,7 +85,7 @@ const invoke = async (artifact: string, entrypoint: string, args: readonly unkno
     ).pipe(Effect.provide(context)),
   )
   if (!Result.isSuccess(outcome)) throw new Error(`sandbox refused: ${JSON.stringify(outcome)}`)
-  return outcome.success
+  return outcome.success.output
 }
 
 describe('a bundled artifact in the real sandbox', () => {
@@ -100,18 +100,17 @@ describe('a bundled artifact in the real sandbox', () => {
     expect(validateInputProfile(contract.input)).toEqual([])
     expect(validateAtomicProfile(contract.output)).toEqual([])
 
-    const answer = JSON.parse(
-      (await invoke(artifact, '__qualyInvoke', [JSON.stringify(INPUT)])) as string,
-    ) as { ok: boolean; amount?: string }
+    const answer = JSON.parse(await invoke(artifact, '__qualyInvoke', [JSON.stringify(INPUT)])) as {
+      ok: boolean
+      amount?: string
+    }
     expect(answer).toEqual({ ok: true, amount: '0.9' })
   })
 
   it('carries q.fail out as an envelope, not a defect', async () => {
     const { artifact } = await bundleFormula(COMPETITION)
     const answer = JSON.parse(
-      (await invoke(artifact, '__qualyInvoke', [
-        JSON.stringify({ ...INPUT, ordinal: 101 }),
-      ])) as string,
+      await invoke(artifact, '__qualyInvoke', [JSON.stringify({ ...INPUT, ordinal: 101 })]),
     ) as { ok: boolean; failure?: { message: string } }
     expect(answer).toEqual({ ok: false, failure: { message: 'ordinal is out of policy' } })
   })

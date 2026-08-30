@@ -13,6 +13,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { Effect, Layer } from 'effect'
 import { NodeRuntime, NodeSocketServer } from '@effect/platform-node'
 import { SocketServer } from 'effect/unstable/socket'
@@ -43,20 +44,30 @@ const handlers = RuntimeSandboxRpcs.toLayer(
       Effect.sync(() => new WorkerPool({ size: poolSize, variant: 'release' })),
       (acquired) => Effect.promise(() => acquired.shutdown()),
     )
+    // minted once per process: the identity every answer carries, so a
+    // caller can tell this serving instance from the one before it
+    const runtimeInstanceId = randomUUID()
     const capabilities = {
       rpcApiVersion: RPC_API_VERSION,
       sandboxAbiVersion: SANDBOX_ABI_VERSION,
       quickjsEngineVersion: engineIdentity(),
       runtimeBuildId: runtimeBuildId(),
+      runtimeInstanceId,
       maxArtifactBytes: LIMIT_CEILINGS.artifactBytes,
       maxArgumentsBytes: LIMIT_CEILINGS.inputBytes,
       maxOutputBytes: LIMIT_CEILINGS.outputBytes,
       defaultSoftDeadlineMs: DEFAULT_LIMITS.softDeadlineMs,
       defaultHardDeadlineMs: DEFAULT_LIMITS.hardDeadlineMs,
     }
+    const identity = {
+      engineVersion: capabilities.quickjsEngineVersion,
+      runtimeBuildId: capabilities.runtimeBuildId,
+      runtimeInstanceId,
+    }
     return {
       GetRuntimeCapabilities: () => Effect.succeed(capabilities),
-      Invoke: (request: Parameters<typeof invoke>[1]) => invoke(pool, request),
+      Invoke: (request: Parameters<typeof invoke>[1]) =>
+        Effect.map(invoke(pool, request), (answer) => ({ ...answer, ...identity })),
     }
   }),
 )

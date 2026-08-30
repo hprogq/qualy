@@ -7,6 +7,7 @@
  * production source cannot import it (the testkit gate holds that).
  */
 
+import { randomUUID } from 'node:crypto'
 import { Effect, Layer } from 'effect'
 import {
   engineIdentity,
@@ -26,7 +27,13 @@ import {
   SandboxWorkerLost,
   type SandboxError,
 } from './errors.ts'
-import { refuseOversize, sha256, Sandbox, type SandboxInvocation } from './service.ts'
+import {
+  refuseOversize,
+  sha256,
+  Sandbox,
+  type SandboxAnswer,
+  type SandboxInvocation,
+} from './service.ts'
 
 const settled = (response: InvokeResponse): Effect.Effect<string, SandboxError> => {
   switch (response.verdict) {
@@ -69,7 +76,15 @@ export const sandboxLocalLayer = (options?: {
         ),
         (acquired) => Effect.promise(() => acquired.shutdown()),
       )
-      const invoke = (invocation: SandboxInvocation): Effect.Effect<string, SandboxError> => {
+      // one identity per layer build, the way one runtime process has one
+      const runtime = {
+        engineVersion: engineIdentity(),
+        runtimeBuildId: runtimeBuildId(),
+        instanceId: randomUUID(),
+      }
+      const invoke = (
+        invocation: SandboxInvocation,
+      ): Effect.Effect<SandboxAnswer, SandboxError> => {
         const limits: SandboxLimits = { ...DEFAULT_LIMITS, ...invocation.limits }
         // an infra service keeps its own invariants: a caller passing a
         // nonsensical limit is a defect in the caller, not a soft failure
@@ -105,12 +120,11 @@ export const sandboxLocalLayer = (options?: {
               limits.hardDeadlineMs,
             ),
           catch: (problem) => lost(problem as PoolProblem),
-        }).pipe(Effect.flatMap(settled))
+        }).pipe(
+          Effect.flatMap(settled),
+          Effect.map((output): SandboxAnswer => ({ output, runtime })),
+        )
       }
-      return {
-        invoke,
-        engine: Effect.succeed(engineIdentity()),
-        runtimeBuildId: Effect.sync(() => runtimeBuildId()),
-      }
+      return { invoke }
     }),
   )

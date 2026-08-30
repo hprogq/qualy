@@ -21,7 +21,6 @@ import {
   DEFAULT_LIMITS,
   ENTRYPOINT,
   RPC_API_VERSION,
-  RuntimeCapabilities,
   RuntimeSandboxRpcs,
   SANDBOX_ABI_VERSION,
   SANDBOX_RPC_ENVELOPE_BUDGET,
@@ -58,14 +57,27 @@ export interface SandboxInvocation {
   readonly limits?: Partial<SandboxLimits>
 }
 
+/** who actually executed this call; provenance from the answer itself */
+export interface SandboxRuntimeIdentity {
+  readonly engineVersion: string
+  readonly runtimeBuildId: string
+  readonly instanceId: string
+}
+
+export interface SandboxAnswer {
+  readonly output: string
+  readonly runtime: SandboxRuntimeIdentity
+}
+
+/**
+ * There is deliberately no cached "engine identity" accessor: a socket peer
+ * can be restarted and replaced at any moment, so the only identity worth
+ * recording is the one each answer carries with it.
+ */
 export class Sandbox extends Context.Service<
   Sandbox,
   {
-    readonly invoke: (invocation: SandboxInvocation) => Effect.Effect<string, SandboxError>
-    /** the engine's identity, for callers that freeze toolchains into records */
-    readonly engine: Effect.Effect<string, SandboxError>
-    /** the serving implementation's digest; provenance only, never compat */
-    readonly runtimeBuildId: Effect.Effect<string, SandboxError>
+    readonly invoke: (invocation: SandboxInvocation) => Effect.Effect<SandboxAnswer, SandboxError>
   }
 >()('@qualy/plugin-sandbox/Sandbox') {}
 
@@ -98,9 +110,9 @@ export const runtimeSocketPath = (): string =>
   process.env.QUALY_SANDBOX_RUNTIME_SOCKET ?? '.qualy/run/sandbox/runtime/runtime.sock'
 
 const transportDeadline = (
-  call: Effect.Effect<string, SandboxError>,
+  call: Effect.Effect<SandboxAnswer, SandboxError>,
   deadlineMs: number,
-): Effect.Effect<string, SandboxError> =>
+): Effect.Effect<SandboxAnswer, SandboxError> =>
   Effect.withFiber((parent) => {
     // a DETACHED fiber on purpose: a child would be awaited by its parent on
     // completion, and this call can be stuck in a write that waits
@@ -127,6 +139,14 @@ const transportDeadline = (
 
 const fromWire = (failure: RuntimeSandboxError): Effect.Effect<never, SandboxError> => {
   switch (failure._tag) {
+    case 'SandboxProtocolMismatch':
+      // for the caller this is the runtime being unusable, an outage; the
+      // reason still names both generations for the operator reading logs
+      return Effect.fail(
+        new SandboxUnavailable({
+          reason: `protocol mismatch: runtime speaks rpc ${failure.runtimeRpcApiVersion} / abi ${failure.runtimeSandboxAbiVersion}, this host speaks rpc ${failure.callerRpcApiVersion} / abi ${failure.callerSandboxAbiVersion}`,
+        }),
+      )
     case 'SandboxTimeout':
       return Effect.fail(new SandboxTimeout({ phase: failure.phase }))
     case 'SandboxMemoryExceeded':
@@ -162,35 +182,14 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
     Effect.gen(function* () {
       const client = yield* RpcClient.make(RuntimeSandboxRpcs)
 
-      // capabilities are fetched lazily and once: boot must not depend on the
-      // sandbox being up (its absence is an outage at USE time), and the
-      // protocol versions are asserted before anything else is believed
-      let known: typeof RuntimeCapabilities.Type | undefined
-      const capabilities: Effect.Effect<typeof RuntimeCapabilities.Type, SandboxError> =
-        Effect.suspend(() => {
-          if (known !== undefined) return Effect.succeed(known)
-          return client.GetRuntimeCapabilities().pipe(
-            Effect.mapError(
-              (failure) =>
-                new SandboxUnavailable({ reason: `runtime unreachable: ${failure.reason._tag}` }),
-            ),
-            Effect.flatMap((reported) => {
-              if (
-                reported.rpcApiVersion !== RPC_API_VERSION ||
-                reported.sandboxAbiVersion !== SANDBOX_ABI_VERSION
-              )
-                return Effect.fail(
-                  new SandboxUnavailable({
-                    reason: `protocol mismatch: runtime speaks rpc ${reported.rpcApiVersion} / abi ${reported.sandboxAbiVersion}, this host speaks rpc ${RPC_API_VERSION} / abi ${SANDBOX_ABI_VERSION}`,
-                  }),
-                )
-              known = reported
-              return Effect.succeed(reported)
-            }),
-          )
-        })
+      // no cached capabilities gate: every request names the protocol it was
+      // compiled against and the RUNTIME refuses what it does not speak, so
+      // a process swapped under the socket is judged per call - a cached
+      // verdict about a previous instance proves nothing about this one
 
-      const invoke = (invocation: SandboxInvocation): Effect.Effect<string, SandboxError> => {
+      const invoke = (
+        invocation: SandboxInvocation,
+      ): Effect.Effect<SandboxAnswer, SandboxError> => {
         const limits: SandboxLimits = { ...DEFAULT_LIMITS, ...invocation.limits }
         // an infra service keeps its own invariants: a caller passing a
         // nonsensical limit is a defect in the caller, not a soft failure
@@ -216,6 +215,8 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
           entrypoint: invocation.entrypoint,
           argumentsJson: JSON.stringify(invocation.arguments),
           limits,
+          rpcApiVersion: RPC_API_VERSION,
+          sandboxAbiVersion: SANDBOX_ABI_VERSION,
         }
         // the size gates above measure content bytes; a hostile escaping
         // density (control characters json-escape at 6x) could still blow
@@ -231,7 +232,14 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
             }),
           )
         return client.Invoke(request).pipe(
-          Effect.map((answer) => answer.output),
+          Effect.map((answer): SandboxAnswer => ({
+            output: answer.output,
+            runtime: {
+              engineVersion: answer.engineVersion,
+              runtimeBuildId: answer.runtimeBuildId,
+              instanceId: answer.runtimeInstanceId,
+            },
+          })),
           Effect.catchTag('RpcClientError', (failure) =>
             Effect.fail(
               new SandboxUnavailable({ reason: `runtime unreachable: ${failure.reason._tag}` }),
@@ -266,11 +274,7 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
           (call) => transportDeadline(call, limits.hardDeadlineMs + TRANSPORT_GRACE_MS),
         )
       }
-      return {
-        invoke,
-        engine: Effect.map(capabilities, (c) => c.quickjsEngineVersion),
-        runtimeBuildId: Effect.map(capabilities, (c) => c.runtimeBuildId),
-      }
+      return { invoke }
     }),
   ).pipe(
     Layer.provide(RpcClient.layerProtocolSocket()),

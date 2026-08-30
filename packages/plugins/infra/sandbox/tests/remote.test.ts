@@ -7,7 +7,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { Effect, Exit, Layer, Result, Scope, type Context } from 'effect'
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest'
-import { Sandbox, sandboxLayer, type SandboxInvocation } from '../src/service.ts'
+import {
+  Sandbox,
+  sandboxLayer,
+  type SandboxAnswer,
+  type SandboxInvocation,
+} from '../src/service.ts'
 import { sandboxLocalLayer } from '../src/local.ts'
 import type { SandboxError } from '../src/errors.ts'
 
@@ -83,10 +88,11 @@ const runWith = (context: Context.Context<Sandbox>, invocation: SandboxInvocatio
     ),
   )
 
-/** the comparable face of an outcome: success value, or failure tag + data */
-const shapeOf = (outcome: Result.Result<string, SandboxError>): unknown =>
+/** the comparable face of an outcome: the answer's output, or failure tag + data
+ * (identity is deliberately not compared: two adapters are two instances) */
+const shapeOf = (outcome: Result.Result<SandboxAnswer, SandboxError>): unknown =>
   Result.isSuccess(outcome)
-    ? { ok: outcome.success }
+    ? { ok: outcome.success.output }
     : { ...outcome.failure, _tag: outcome.failure._tag }
 
 describe('local/remote parity', () => {
@@ -153,13 +159,14 @@ describe('local/remote parity', () => {
     }, 30_000)
   }
 
-  it('reports the same engine identity on both sides', async () => {
-    const engineOf = (context: Context.Context<Sandbox>) =>
-      Effect.runPromise(
-        Effect.flatMap(Sandbox, (sandbox) => sandbox.engine).pipe(Effect.provide(context)),
-      )
-    expect(await engineOf(remote)).toBe(await engineOf(local))
-  })
+  it('reports the same engine identity on both sides, from the answer itself', async () => {
+    const ok = 'globalThis.ok = () => "alive"'
+    const request = invocation(ok, 'ok', [], { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 })
+    const [ours, theirs] = await Promise.all([runWith(local, request), runWith(remote, request)])
+    if (!Result.isSuccess(ours) || !Result.isSuccess(theirs)) throw new Error('expected answers')
+    expect(theirs.success.runtime.engineVersion).toBe(ours.success.runtime.engineVersion)
+    expect(theirs.success.runtime.runtimeBuildId).toMatch(/^[0-9a-f]{64}$/)
+  }, 30_000)
 })
 
 describe('the transport frame budget', () => {
@@ -186,7 +193,7 @@ describe('the transport frame budget', () => {
       arguments: [],
       limits: { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 },
     })
-    expect(Result.isSuccess(after) && after.success).toBe('alive')
+    expect(Result.isSuccess(after) && after.success.output).toBe('alive')
   }, 30_000)
 
   it('refuses a pathological response instead of blowing the frame', async () => {
@@ -230,7 +237,9 @@ describe('a hostile or absent peer', () => {
       Effect.race(Effect.sleep(timeoutMs).pipe(Effect.andThen(Effect.sync(() => 'hung' as const)))),
     )
 
-  const expectTypedRefusal = (outcome: Result.Result<string, SandboxError> | 'hung'): void => {
+  const expectTypedRefusal = (
+    outcome: Result.Result<SandboxAnswer, SandboxError> | 'hung',
+  ): void => {
     expect(outcome).not.toBe('hung')
     if (outcome === 'hung') return
     expect(Result.isFailure(outcome)).toBe(true)
@@ -297,6 +306,24 @@ describe('a hostile or absent peer', () => {
       const context = await Effect.runPromise(
         Layer.buildWithScope(sandboxLayer({ socketPath: ownSocket }), ownScope),
       )
+      // remember who is serving now: the healed answer must NOT carry this
+      const ok0 = 'globalThis.ok = () => "alive"'
+      const before = await Effect.runPromise(
+        Effect.flatMap(Sandbox, (sandbox) =>
+          Effect.result(
+            sandbox.invoke({
+              artifact: ok0,
+              artifactHash: hash(ok0),
+              entrypoint: 'ok',
+              arguments: [],
+              limits: { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 },
+            }),
+          ),
+        ).pipe(Effect.provide(context)),
+      )
+      if (!Result.isSuccess(before)) throw new Error('expected the first runtime to answer')
+      const firstInstance = before.success.runtime.instanceId
+
       const spin = 'globalThis.spin = () => { for (;;) {} }'
       const inFlight = Effect.runPromise(
         Effect.flatMap(Sandbox, (sandbox) =>
@@ -325,7 +352,7 @@ describe('a hostile or absent peer', () => {
         await waitForSocket(ownSocket, second)
         const ok = 'globalThis.ok = () => "alive"'
         const deadline = Date.now() + 20_000
-        let healed: Result.Result<string, SandboxError> | undefined
+        let healed: Result.Result<SandboxAnswer, SandboxError> | undefined
         for (;;) {
           healed = await Effect.runPromise(
             Effect.flatMap(Sandbox, (sandbox) =>
@@ -343,7 +370,12 @@ describe('a hostile or absent peer', () => {
           if (Result.isSuccess(healed) || Date.now() > deadline) break
           await new Promise((resolve) => setTimeout(resolve, 250))
         }
-        expect(Result.isSuccess(healed!) && healed!.success).toBe('alive')
+        if (!Result.isSuccess(healed!)) throw new Error('expected the reconnect to heal')
+        expect(healed.success.output).toBe('alive')
+        // the identity is the NEW process's: a cached claim about the first
+        // instance would be provenance for a runtime that no longer exists
+        expect(healed.success.runtime.instanceId).not.toBe(firstInstance)
+        expect(healed.success.runtime.engineVersion.length).toBeGreaterThan(0)
       } finally {
         second.kill('SIGKILL')
       }

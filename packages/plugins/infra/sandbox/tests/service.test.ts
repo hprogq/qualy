@@ -60,11 +60,13 @@ describe('the sandbox service', () => {
         hardDeadlineMs: 10_000,
       }),
     )
-    expect(Result.isSuccess(outcome) && outcome.success).toBe('alive')
-    const engine = await Effect.runPromise(
-      Effect.flatMap(Sandbox, (sandbox) => sandbox.engine).pipe(Effect.provide(context)),
-    )
-    expect(engine).toMatch(/^@jitl\/quickjs-wasmfile-release-sync@/)
+    if (!Result.isSuccess(outcome)) throw new Error('expected an answer')
+    expect(outcome.success.output).toBe('alive')
+    // provenance rides the answer itself: the identity of the process that
+    // actually executed this call, not a cached claim about a previous one
+    expect(outcome.success.runtime.engineVersion).toMatch(/^@jitl\/quickjs-wasmfile-release-sync@/)
+    expect(outcome.success.runtime.runtimeBuildId).toMatch(/^[0-9a-f]{64}$/)
+    expect(outcome.success.runtime.instanceId.length).toBeGreaterThan(0)
   })
 
   it('refuses an artifact whose hash does not match', async () => {
