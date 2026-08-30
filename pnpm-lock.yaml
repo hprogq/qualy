@@ -782,6 +782,9 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
+      '@qualy/value-schema':
+        specifier: workspace:*
+        version: link:../../../core/value-schema
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111

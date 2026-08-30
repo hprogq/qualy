@@ -1,5 +1,14 @@
 import { Effect, Result, Schema } from 'effect'
 import {
+  canonicalDecimal,
+  compareDecimal,
+  fractionalDigits,
+  normalizeAtomicSchema,
+  parseDecimal,
+  type AtomicSchema,
+} from '@qualy/value-schema'
+import { validateValue } from '@qualy/value-schema/validate'
+import {
   ItemPayloadInvalid,
   type AttachmentRef,
   type BatchContext,
@@ -71,6 +80,56 @@ const dateField = Schema.Struct({
   max: Schema.optional(isoDate),
 })
 
+const integerField = Schema.Struct({
+  id: Schema.optional(fieldId),
+  key: fieldKey,
+  type: Schema.Literal('integer'),
+  label,
+  required: Schema.optional(Schema.Boolean),
+  min: Schema.optional(Schema.Number.check(Schema.isInt())),
+  max: Schema.optional(Schema.Number.check(Schema.isInt())),
+})
+
+/** a decimal bound as text, judged by the value layer's own grammar */
+const decimalBound = Schema.String.check(
+  Schema.makeFilter(
+    (value: string) => parseDecimal(value) !== null || 'must be a decimal amount',
+  ),
+)
+
+const decimalField = Schema.Struct({
+  id: Schema.optional(fieldId),
+  key: fieldKey,
+  type: Schema.Literal('decimal'),
+  label,
+  required: Schema.optional(Schema.Boolean),
+  // explicit rather than defaulted: the config is the record of what the
+  // administrator decided, and the value profile caps the scale at 18
+  maxScale: Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(18),
+  ),
+  min: Schema.optional(decimalBound),
+  max: Schema.optional(decimalBound),
+})
+
+const choiceOption = Schema.Struct({
+  /** the semantic stable value payloads carry; never the words on screen */
+  value: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+  /** the words on screen; renaming one never touches stored payloads */
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
+})
+
+const choiceField = Schema.Struct({
+  id: Schema.optional(fieldId),
+  key: fieldKey,
+  type: Schema.Literal('choice'),
+  label,
+  required: Schema.optional(Schema.Boolean),
+  options: Schema.Array(choiceOption),
+})
+
 const attachmentField = Schema.Struct({
   id: Schema.optional(fieldId),
   key: fieldKey,
@@ -84,7 +143,7 @@ const attachmentField = Schema.Struct({
   accept: Schema.optional(Schema.Array(Schema.String)),
 })
 
-const field = Schema.Union([textField, dateField, attachmentField])
+const field = Schema.Union([textField, dateField, integerField, decimalField, choiceField, attachmentField])
 export type EvidenceField = typeof field.Type
 
 /**
@@ -110,6 +169,29 @@ export const evidenceConfig = Schema.Struct({
         if (entry.type === 'date' && entry.min !== undefined && entry.max !== undefined) {
           if (entry.min > entry.max) return 'a date field’s min must not exceed its max'
         }
+        if (entry.type === 'integer' && entry.min !== undefined && entry.max !== undefined) {
+          if (entry.min > entry.max) return 'an integer field’s min must not exceed its max'
+        }
+        if (entry.type === 'decimal') {
+          for (const bound of [entry.min, entry.max]) {
+            if (bound === undefined) continue
+            const parts = parseDecimal(bound)
+            if (parts !== null && fractionalDigits(parts) > entry.maxScale)
+              return 'a decimal bound must fit the field’s own scale'
+          }
+          if (entry.min !== undefined && entry.max !== undefined) {
+            const low = parseDecimal(entry.min)
+            const high = parseDecimal(entry.max)
+            if (low !== null && high !== null && compareDecimal(low, high) > 0)
+              return 'a decimal field’s min must not exceed its max'
+          }
+        }
+        if (entry.type === 'choice') {
+          if (entry.options.length === 0) return 'a choice field needs at least one option'
+          if (entry.options.length > 256) return 'a choice field takes at most 256 options'
+          const values = new Set(entry.options.map((option) => option.value))
+          if (values.size !== entry.options.length) return 'choice values must be distinct'
+        }
       }
       return undefined
     }),
@@ -118,6 +200,92 @@ export const evidenceConfig = Schema.Struct({
 export type EvidenceConfig = typeof evidenceConfig.Type
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * One field's type as a value schema - the single truth the same field is
+ * decoded, bound and seeded by.
+ *
+ * A field that answers here is judged by the value layer's validator; a
+ * scoring parameter that binds it is proven against exactly this schema; a
+ * recognition seeded from it converts by exactly this schema. Attachments
+ * answer null: files are references with their own rules, not values.
+ *
+ * Dates keep their bounds out of the schema on purpose - the profile's date
+ * has no bound keywords, and a date's real bounds also depend on the
+ * batch's material range, which no per-field schema can carry - so the
+ * driver's own decode keeps judging them.
+ */
+export const fieldSchema = (field: EvidenceField): AtomicSchema | null => {
+  switch (field.type) {
+    case 'text':
+      return {
+        type: 'string',
+        ...(field.maxLength === undefined ? {} : { maxLength: field.maxLength }),
+        title: field.label,
+      }
+    case 'integer':
+      // the profile demands explicit safe bounds; an unbounded field means
+      // "anything JSON can carry without losing precision"
+      return {
+        type: 'integer',
+        minimum: field.min ?? Number.MIN_SAFE_INTEGER,
+        maximum: field.max ?? Number.MAX_SAFE_INTEGER,
+        title: field.label,
+      }
+    case 'decimal':
+      return {
+        type: 'string',
+        format: 'qualy-decimal',
+        'x-qualy-maxScale': field.maxScale,
+        ...(field.min === undefined ? {} : { 'x-qualy-minimum': field.min }),
+        ...(field.max === undefined ? {} : { 'x-qualy-maximum': field.max }),
+        title: field.label,
+      }
+    case 'choice':
+      return {
+        type: 'string',
+        enum: field.options.map((option) => option.value),
+        // the words ride the annotation layer, where renaming them never
+        // touches what the values mean
+        'x-qualy-enumLabels': Object.fromEntries(
+          field.options.map((option) => [option.value, option.label]),
+        ),
+        title: field.label,
+      }
+    case 'date':
+      return { type: 'string', format: 'date', title: field.label }
+    case 'attachment':
+      return null
+  }
+}
+
+/**
+ * Whether every filing of this field is guaranteed to carry a value.
+ *
+ * The schema says what a value looks like when it is there; this says it is
+ * always there. Today the only guarantee is `required` - a required field
+ * refuses absence and, for text, refuses the empty string. The day a field
+ * grows a server-side default or a condition, this is the one place that
+ * learns about it, because automatic recognition leans on this answer.
+ */
+export const fieldGuaranteesValue = (field: EvidenceField): boolean => field.required === true
+
+/** the validator's keyword vocabulary, said in this driver's own reasons */
+const reasonOf = (fieldType: string, keyword: string): string => {
+  if (keyword === 'type') {
+    return fieldType === 'integer'
+      ? 'not-an-integer'
+      : fieldType === 'decimal'
+        ? 'not-a-decimal'
+        : 'not-a-choice'
+  }
+  if (keyword === 'format') return 'not-a-decimal'
+  if (keyword === 'enum') return 'not-a-choice'
+  if (keyword === 'x-qualy-maxScale') return 'too-precise'
+  if (keyword === 'minimum' || keyword === 'maximum') return 'out-of-range'
+  if (keyword === 'x-qualy-minimum' || keyword === 'x-qualy-maximum') return 'out-of-range'
+  return keyword
+}
 
 type Issue = { field: string; reason: string }
 
@@ -209,6 +377,25 @@ const decode = (
             break
           }
           decoded[entry.key] = value
+          break
+        }
+        case 'integer':
+        case 'decimal':
+        case 'choice': {
+          // one schema, one judge: the same shape a scoring binding proves
+          // against is what the payload answers to. No coercion - an
+          // integer arrives as a number or not at all, because "3" the
+          // string is a different claim about what was filed.
+          const schema = fieldSchema(entry)!
+          const wrong = validateValue(normalizeAtomicSchema(schema), value)
+          if (wrong.length > 0) {
+            issues.push({ field: entry.key, reason: reasonOf(entry.type, wrong[0]!.reason) })
+            break
+          }
+          // the canonical spelling is the stored fact: "03.2500" and "3.25"
+          // are one amount, and the revision keeps the one way of writing it
+          decoded[entry.key] =
+            entry.type === 'decimal' ? canonicalDecimal(value as string) : value
           break
         }
         case 'attachment': {
@@ -342,6 +529,31 @@ const configIssues = (
   return issues
 }
 
+/**
+ * What a scoring parameter may bind to: every typed field, as the identity
+ * that survives revisions, the payload address this revision actually uses,
+ * the one schema, and whether a filing is guaranteed to carry it.
+ * Attachments never appear - a file is not a value.
+ */
+const bindableFields = (config: unknown): ReturnType<
+  NonNullable<ItemTypeDriver['bindableFields']>
+> => {
+  const form = decodeConfig(config)
+  if (form === null) return []
+  return form.fields.flatMap((entry) => {
+    const schema = fieldSchema(entry)
+    if (schema === null) return []
+    return [
+      {
+        fieldId: fieldIdentity(entry),
+        payloadKey: entry.key,
+        schema,
+        always: fieldGuaranteesValue(entry),
+      },
+    ]
+  })
+}
+
 export const evidenceDriver: ItemTypeDriver = {
   id: 'evidence',
   configSchema: evidenceConfig,
@@ -349,6 +561,7 @@ export const evidenceDriver: ItemTypeDriver = {
   decodePayload: decode,
   projectPayload: project,
   attachmentRefs,
+  bindableFields,
   interaction: 'entry',
   scoring: { calculator: 'fixed@1', aggregator: 'sum@1' },
 }

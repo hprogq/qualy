@@ -13,6 +13,7 @@
   "dependencies": {
     "@qualy/plugin-assessment": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/value-schema": "workspace:*",
     "effect": "catalog:"
   }
 }

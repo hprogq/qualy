@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Result, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { evidenceDriver } from '../src/driver.ts'
+import { evidenceDriver, evidenceConfig } from '../src/driver.ts'
+import type { ItemPayloadInvalid } from '@qualy/plugin-assessment/plugin'
 
 // The evidence driver on its own: what an administrator may configure, what
 // a student's payload must satisfy, and which attachments a payload cites.
@@ -229,3 +230,175 @@ describe('an answer read against the next version of the form', () => {
     expect(Exit.isSuccess(decode(clashing, {}))).toBe(false)
   })
 })
+
+describe('the typed fields', () => {
+  const typedConfig = {
+    fields: [
+      { id: 'placing', key: 'placing-slot', type: 'integer', label: '获奖序位', required: true, min: 1, max: 10 },
+      { key: 'hours', type: 'decimal', label: '时长', maxScale: 2, min: '0', max: '100' },
+      {
+        id: 'level',
+        key: 'level',
+        type: 'choice',
+        label: '赛事级别',
+        required: true,
+        options: [
+          { value: 'national', label: '国家级' },
+          { value: 'provincial', label: '省部级' },
+        ],
+      },
+      { key: 'issued-on', type: 'date', label: '签发日期', required: true },
+      { key: 'proof', type: 'attachment', label: '证明材料', maxCount: 2 },
+    ],
+  }
+
+  it('refuses configurations the kinds cannot mean', () => {
+    const refused = (fields: unknown[]) =>
+      Result.isFailure(Schema.decodeUnknownResult(evidenceConfig)({ fields }))
+    // an integer whose floor is above its ceiling
+    expect(
+      refused([{ key: 'n', type: 'integer', label: 'N', min: 5, max: 1 }]),
+    ).toBe(true)
+    // a decimal bound more precise than the field's own scale
+    expect(
+      refused([{ key: 'd', type: 'decimal', label: 'D', maxScale: 1, min: '0.25' }]),
+    ).toBe(true)
+    // a decimal with no scale at all: the config records what was decided
+    expect(refused([{ key: 'd', type: 'decimal', label: 'D' }])).toBe(true)
+    // choices that are not choices
+    expect(refused([{ key: 'c', type: 'choice', label: 'C', options: [] }])).toBe(true)
+    expect(
+      refused([
+        {
+          key: 'c',
+          type: 'choice',
+          label: 'C',
+          options: [
+            { value: 'a', label: 'A' },
+            { value: 'a', label: 'B' },
+          ],
+        },
+      ]),
+    ).toBe(true)
+  })
+
+  it('judges typed values by the one schema, with no coercion', async () => {
+    const attempt = (payload: Record<string, unknown>) =>
+      Effect.runPromiseExit(evidenceDriver.decodePayload(typedConfig, payload, batch))
+    const good = await attempt({
+      'placing-slot': 2,
+      hours: '3.50',
+      level: 'provincial',
+      'issued-on': '2026-05-01',
+    })
+    expect(Exit.isSuccess(good)).toBe(true)
+    if (Exit.isSuccess(good)) {
+      const decoded = good.value as Record<string, unknown>
+      // the integer is a number; the decimal is stored in its one canonical
+      // spelling; the choice is the stable value, never the words
+      expect(decoded['placing-slot']).toBe(2)
+      expect(decoded['hours']).toBe('3.5')
+      expect(decoded['level']).toBe('provincial')
+    }
+
+    const reasonsOf = (exit: Exit.Exit<unknown, ItemPayloadInvalid>) => {
+      if (!Exit.isFailure(exit)) return []
+      const failed = (exit.cause as { reasons?: readonly { error?: unknown }[] }).reasons ?? []
+      const error = failed.map((one) => one.error).find((one) => one !== undefined) as
+        | ItemPayloadInvalid
+        | undefined
+      return (error?.issues ?? []).map((issue: { field: string; reason: string }) => `${issue.field}:${issue.reason}`)
+    }
+    // "2" the string is a different claim from 2 the number
+    expect(
+      reasonsOf(
+        await attempt({ 'placing-slot': '2', level: 'national', 'issued-on': '2026-05-01' }),
+      ),
+    ).toContain('placing-slot:not-an-integer')
+    expect(
+      reasonsOf(
+        await attempt({ 'placing-slot': 99, level: 'national', 'issued-on': '2026-05-01' }),
+      ),
+    ).toContain('placing-slot:out-of-range')
+    expect(
+      reasonsOf(
+        await attempt({
+          'placing-slot': 1,
+          hours: '1.234',
+          level: 'national',
+          'issued-on': '2026-05-01',
+        }),
+      ),
+    ).toContain('hours:too-precise')
+    expect(
+      reasonsOf(
+        await attempt({
+          'placing-slot': 1,
+          hours: 'abc',
+          level: 'national',
+          'issued-on': '2026-05-01',
+        }),
+      ),
+    ).toContain('hours:not-a-decimal')
+    // the lexical grammar has no leading zeros: "03.25" is not a spelling
+    // of anything, the same rule the platform amount already enforces
+    expect(
+      reasonsOf(
+        await attempt({
+          'placing-slot': 1,
+          hours: '03.25',
+          level: 'national',
+          'issued-on': '2026-05-01',
+        }),
+      ),
+    ).toContain('hours:not-a-decimal')
+    expect(
+      reasonsOf(
+        await attempt({ 'placing-slot': 1, level: 'city', 'issued-on': '2026-05-01' }),
+      ),
+    ).toContain('level:not-a-choice')
+  })
+
+  it('offers every typed field for binding, and never a file', () => {
+    const offered = evidenceDriver.bindableFields!(typedConfig, batch)
+    expect(offered.map((field) => field.fieldId)).toEqual([
+      'placing',
+      'hours',
+      'level',
+      'issued-on',
+    ])
+    // identity and address are different answers, and the plan needs both:
+    // this field kept its id while its key names the payload slot
+    const placing = offered.find((field) => field.fieldId === 'placing')!
+    expect(placing.payloadKey).toBe('placing-slot')
+    expect(placing.schema).toMatchObject({ type: 'integer', minimum: 1, maximum: 10 })
+    expect(placing.always).toBe(true)
+    // an optional field promises nothing about presence
+    const hours = offered.find((field) => field.fieldId === 'hours')!
+    expect(hours.always).toBe(false)
+    expect(hours.schema).toMatchObject({
+      type: 'string',
+      format: 'qualy-decimal',
+      'x-qualy-maxScale': 2,
+    })
+    // the choice carries its business words on the annotation layer
+    const level = offered.find((field) => field.fieldId === 'level')!
+    expect(level.schema).toMatchObject({
+      enum: ['national', 'provincial'],
+      'x-qualy-enumLabels': { national: '国家级', provincial: '省部级' },
+    })
+    expect(offered.some((field) => field.fieldId === 'proof')).toBe(false)
+  })
+
+  it('drops a value whose field changed type, like every other retype', async () => {
+    const before = {
+      fields: [{ id: 'n', key: 'n', type: 'text', label: 'N' }],
+    }
+    const after = {
+      fields: [{ id: 'n', key: 'n', type: 'integer', label: 'N', min: 0, max: 10 }],
+    }
+    const carried = evidenceDriver.projectPayload!(before, after, { n: '3' })
+    expect(carried).toEqual({})
+  })
+})
+

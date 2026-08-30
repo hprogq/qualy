@@ -4,6 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { evidenceDriver } from '@qualy/plugin-assessment-evidence/driver'
 import { validateItemConfig } from '../src/item/config.ts'
 import { builtinScoringDrivers } from '../src/scoring/builtins.ts'
+import { compileScoringPlan } from '../src/scoring/plan.ts'
+import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
+import type { CalculatorDriver } from '../src/plugin.ts'
+import { Schema } from 'effect'
 
 // The first two real items the product ships, run through the same
 // validation the configuration api runs - so "the design's examples are
@@ -114,3 +119,114 @@ describe('the first two real configurations', () => {
     expect(decoded).toEqual({ 'discharge-certificate': [attachment] })
   })
 })
+
+describe('the real driver feeding the real compiler', () => {
+  /** a calculator asking for a decimal and a choice, so both proofs run */
+  const typedTest: CalculatorDriver = {
+    kind: 'calculator',
+    ref: 'typed-test@1',
+    configSchema: Schema.Struct({}),
+    compile: (config) =>
+      Effect.succeed({
+        config,
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: {
+            hours: { type: 'string', format: 'qualy-decimal', 'x-qualy-maxScale': 2 },
+            level: { type: 'string', enum: ['national', 'provincial'] },
+          },
+          required: ['hours', 'level'],
+          additionalProperties: false,
+        }),
+        outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
+        contractHash: 'test:typed',
+      }),
+    evaluate: () => Effect.succeed('1.00'),
+  }
+
+  const compile = (formConfig: unknown, scoringConfig: unknown, source: 'review' | 'automatic') =>
+    Effect.runPromise(
+      compileScoringPlan({
+        calculators: new Map([[typedTest.ref, typedTest]]),
+        aggregators: new Map(
+          builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
+        ),
+        itemType: evidenceDriver,
+        formConfig,
+        scoringConfig,
+        batch: { materialRange: { start: '2026-03-01', end: '2026-09-01' } },
+        recognitionSource: source,
+      }),
+    )
+
+  it('proves an evidence integer into a decimal recognition through the named converter', async () => {
+    const outcome = await compile(
+      {
+        fields: [
+          {
+            id: 'won-hours',
+            key: 'won-hours-slot',
+            type: 'integer',
+            label: '时长',
+            required: true,
+            min: 0,
+            max: 100,
+          },
+        ],
+      },
+      {
+        calculator: { ref: typedTest.ref, config: {} },
+        aggregator: { ref: 'sum@1', config: {} },
+        recognitions: { 'rec-hours': { defaultFromFieldId: 'won-hours' } },
+        bindings: {
+          hours: { kind: 'recognition', recognitionId: 'rec-hours' },
+          level: { kind: 'constant', value: 'national' },
+        },
+      },
+      'review',
+    )
+    expect('plan' in outcome).toBe(true)
+    if (!('plan' in outcome)) return
+    // the widening is recorded by name at compile time, never inferred at
+    // evaluation - and the frozen address is the payload key, not the id
+    expect(outcome.plan.defaultBindings['rec-hours']).toEqual({
+      fieldId: 'won-hours',
+      payloadKey: 'won-hours-slot',
+      assignment: { kind: 'convert', converter: 'integer-to-decimal@1' },
+    })
+  })
+
+  it('refuses to let an automatic question lean on a field a filing may omit', async () => {
+    const outcome = await compile(
+      {
+        fields: [
+          {
+            key: 'level',
+            type: 'choice',
+            label: '级别',
+            options: [
+              { value: 'national', label: '国家级' },
+              { value: 'provincial', label: '省部级' },
+            ],
+          },
+        ],
+      },
+      {
+        calculator: { ref: typedTest.ref, config: {} },
+        aggregator: { ref: 'sum@1', config: {} },
+        recognitions: { 'rec-level': { defaultFromFieldId: 'level' } },
+        bindings: {
+          level: { kind: 'recognition', recognitionId: 'rec-level' },
+          hours: { kind: 'constant', value: '1' },
+        },
+      },
+      'automatic',
+    )
+    expect('issues' in outcome).toBe(true)
+    if (!('issues' in outcome)) return
+    expect(outcome.issues.map((issue) => `${issue.path}:${issue.reason}`)).toContain(
+      'scoringConfig.recognitions.rec-level:default-field-not-guaranteed',
+    )
+  })
+})
+
