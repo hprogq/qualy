@@ -30,6 +30,7 @@ import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import {
   Assessment,
+  parseSpec,
   serviceLayer,
   type PhaseSpecInput,
   type PlanPhase,
@@ -396,5 +397,128 @@ describe.runIf(postgresAvailable).concurrent('plan writes', () => {
     expect(after.map((row) => row.phaseKey)).toEqual(['entry', 'supplement', 'review', 'archive'])
     expect(after[1]!.entryNote).toBe('waiting on the college')
     expect(scoped).toEqual([only])
+  })
+
+  // What a field the caller never sent means, measured at the HTTP boundary.
+  //
+  // specOver reads an omitted field as "leave what is stored", and the
+  // service-level tests above prove it does. But the wire mapping used to
+  // fill description, entryNote and permissionProfile with their empty
+  // values, so no HTTP caller could ever actually omit them: a name-only
+  // projection arrived as an explicit clear - refused outright on an ended
+  // stage, and silently emptying the door of a live one.
+
+  it('does not invent empty values for what a projection omitted', async () => {
+    const bare = await Effect.runPromise(parseSpec({ phaseKey: 'entry', displayName: 'Entry' }))
+    expect('description' in bare).toBe(false)
+    expect('entryNote' in bare).toBe(false)
+    expect('permissionProfile' in bare).toBe(false)
+    expect('itemScope' in bare).toBe(false)
+
+    // clearing stays possible, by sending the empty value
+    const cleared = await Effect.runPromise(
+      parseSpec({
+        phaseKey: 'entry',
+        displayName: 'Entry',
+        description: '',
+        entryNote: '',
+        permissionProfile: [],
+      }),
+    )
+    expect(cleared.description).toBe('')
+    expect(cleared.entryNote).toBe('')
+    expect(cleared.permissionProfile).toEqual([])
+  })
+
+  it('accepts a name-only projection over an ended stage and keeps its door', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('wire-name-only')
+        const assessment = yield* Assessment
+        const batch = yield* newBatch(f.tenant, 'Wire', f.root, f.studentType, f.principal)
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.create'] }),
+              phase({ phaseKey: 'review' }),
+            ],
+          },
+          f.principal,
+        )
+        let plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[1]!.id }, f.principal)
+        plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+
+        // the exact request the smoke run sent: id, key and name, nothing else
+        const specs = yield* Effect.forEach(plan, (row) =>
+          parseSpec({ id: row.id, phaseKey: row.phaseKey, displayName: row.displayName }),
+        )
+        yield* assessment.replacePlan(f.tenant, batch.id, { specs }, f.principal)
+        return (yield* assessment.getPlan(f.tenant, batch.id, f.principal))[0]!.permissionProfile
+      }),
+    )
+    // the ended stage was named, not edited: the write lands and the door stands
+    expect(ok(exit)).toEqual(['assessment.entry.create'])
+  })
+
+  it('still reads an explicit empty as a clear, and still holds ended stages still', async () => {
+    const exit = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('wire-explicit')
+        const assessment = yield* Assessment
+        const batch = yield* newBatch(f.tenant, 'Explicit', f.root, f.studentType, f.principal)
+        yield* assessment.replacePlan(
+          f.tenant,
+          batch.id,
+          {
+            specs: [
+              phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.create'] }),
+              phase({ phaseKey: 'review', permissionProfile: ['assessment.review.process'] }),
+            ],
+          },
+          f.principal,
+        )
+        let plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[0]!.id }, f.principal)
+        yield* assessment.advancePhase(f.tenant, batch.id, { to: plan[1]!.id }, f.principal)
+        plan = yield* assessment.getPlan(f.tenant, batch.id, f.principal)
+
+        // an explicit empty on the live stage is a decision, and it lands
+        const clearing = yield* Effect.forEach(plan, (row) =>
+          parseSpec({
+            id: row.id,
+            phaseKey: row.phaseKey,
+            displayName: row.displayName,
+            ...(row.id === plan[1]!.id ? { permissionProfile: [] } : {}),
+          }),
+        )
+        yield* assessment.replacePlan(f.tenant, batch.id, { specs: clearing }, f.principal)
+        const doors = (yield* assessment.getPlan(f.tenant, batch.id, f.principal)).map(
+          (row) => row.permissionProfile,
+        )
+
+        // an explicit change to an ended stage is still refused
+        const editing = yield* Effect.forEach(plan, (row) =>
+          parseSpec({
+            id: row.id,
+            phaseKey: row.phaseKey,
+            displayName: row.displayName,
+            ...(row.id === plan[0]!.id ? { permissionProfile: ['assessment.entry.record'] } : {}),
+          }),
+        )
+        const refused = yield* Effect.exit(
+          assessment.replacePlan(f.tenant, batch.id, { specs: editing }, f.principal),
+        )
+        return { doors, refused: refusalsIn(refused) }
+      }),
+    )
+    const { doors, refused } = ok(exit)
+    expect(doors).toEqual([['assessment.entry.create'], []])
+    expect(refused).toEqual(['ended-phase-name-only'])
   })
 })

@@ -994,7 +994,7 @@ export class Assessment extends Context.Service<
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
     readonly getItem: ItemMethods['getItem']
-  readonly getRecognitionContract: ItemMethods['getRecognitionContract']
+    readonly getRecognitionContract: ItemMethods['getRecognitionContract']
     readonly updateItem: ItemMethods['updateItem']
     readonly deleteItem: ItemMethods['deleteItem']
     readonly setItemStatus: ItemMethods['setItemStatus']
@@ -4238,15 +4238,22 @@ interface WirePhaseSpec {
   readonly participantScope?: readonly string[]
 }
 
-const parseSpec = (spec: WirePhaseSpec) =>
+// Absent survives this boundary. specOver reads an omitted field as "leave
+// what is stored", and a caller can only omit what this mapping does not
+// invent: filling description/entryNote/permissionProfile with their empty
+// values here silently turned every name-only projection into an explicit
+// clear - refused on an ended phase, worse on a live one.
+export const parseSpec = (spec: WirePhaseSpec) =>
   Effect.gen(function* () {
     const parsed: PhaseSpecInput = {
       ...(spec.id !== undefined ? { id: spec.id } : {}),
       phaseKey: spec.phaseKey,
       displayName: spec.displayName,
-      description: spec.description ?? '',
-      entryNote: spec.entryNote ?? '',
-      permissionProfile: spec.permissionProfile ?? [],
+      ...(spec.description !== undefined ? { description: spec.description } : {}),
+      ...(spec.entryNote !== undefined ? { entryNote: spec.entryNote } : {}),
+      ...(spec.permissionProfile !== undefined
+        ? { permissionProfile: spec.permissionProfile }
+        : {}),
       ...(spec.itemScope !== undefined ? { itemScope: spec.itemScope } : {}),
       ...(spec.participantScope !== undefined ? { participantScope: spec.participantScope } : {}),
     }
