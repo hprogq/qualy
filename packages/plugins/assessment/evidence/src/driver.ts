@@ -5,6 +5,7 @@ import {
   fractionalDigits,
   normalizeAtomicSchema,
   parseDecimal,
+  validateAtomicProfile,
   type AtomicSchema,
 } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
@@ -92,9 +93,7 @@ const integerField = Schema.Struct({
 
 /** a decimal bound as text, judged by the value layer's own grammar */
 const decimalBound = Schema.String.check(
-  Schema.makeFilter(
-    (value: string) => parseDecimal(value) !== null || 'must be a decimal amount',
-  ),
+  Schema.makeFilter((value: string) => parseDecimal(value) !== null || 'must be a decimal amount'),
 )
 
 const decimalField = Schema.Struct({
@@ -143,7 +142,14 @@ const attachmentField = Schema.Struct({
   accept: Schema.optional(Schema.Array(Schema.String)),
 })
 
-const field = Schema.Union([textField, dateField, integerField, decimalField, choiceField, attachmentField])
+const field = Schema.Union([
+  textField,
+  dateField,
+  integerField,
+  decimalField,
+  choiceField,
+  attachmentField,
+])
 export type EvidenceField = typeof field.Type
 
 /**
@@ -191,6 +197,27 @@ export const evidenceConfig = Schema.Struct({
           if (entry.options.length > 256) return 'a choice field takes at most 256 options'
           const values = new Set(entry.options.map((option) => option.value))
           if (values.size !== entry.options.length) return 'choice values must be distinct'
+        }
+      }
+      // The one proof that closes the whole family: every schema this
+      // configuration will ever hand out - to the payload decoder, to the
+      // scoring binder - must be legal under the value profile TODAY, or an
+      // accepted configuration detonates later inside the trusted process
+      // (an unsafe integer bound, an over-long text cap) as a defect
+      // instead of this refusal. Field-by-field rules above give better
+      // words; this guarantees there is no gap between them and what
+      // normalizeAtomicSchema will actually accept.
+      for (const entry of fields) {
+        const schema = fieldSchema(entry)
+        if (schema === null) continue
+        const outside = validateAtomicProfile(schema)
+        if (outside.length > 0) {
+          return `field "${entry.key}" falls outside the value profile: ${outside[0]!.reason}`
+        }
+        try {
+          normalizeAtomicSchema(schema)
+        } catch {
+          return `field "${entry.key}" falls outside the value profile`
         }
       }
       return undefined
@@ -394,8 +421,7 @@ const decode = (
           }
           // the canonical spelling is the stored fact: "03.2500" and "3.25"
           // are one amount, and the revision keeps the one way of writing it
-          decoded[entry.key] =
-            entry.type === 'decimal' ? canonicalDecimal(value as string) : value
+          decoded[entry.key] = entry.type === 'decimal' ? canonicalDecimal(value as string) : value
           break
         }
         case 'attachment': {
@@ -535,9 +561,9 @@ const configIssues = (
  * the one schema, and whether a filing is guaranteed to carry it.
  * Attachments never appear - a file is not a value.
  */
-const bindableFields = (config: unknown): ReturnType<
-  NonNullable<ItemTypeDriver['bindableFields']>
-> => {
+const bindableFields = (
+  config: unknown,
+): ReturnType<NonNullable<ItemTypeDriver['bindableFields']>> => {
   const form = decodeConfig(config)
   if (form === null) return []
   return form.fields.flatMap((entry) => {

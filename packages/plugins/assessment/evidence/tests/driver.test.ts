@@ -234,7 +234,15 @@ describe('an answer read against the next version of the form', () => {
 describe('the typed fields', () => {
   const typedConfig = {
     fields: [
-      { id: 'placing', key: 'placing-slot', type: 'integer', label: '获奖序位', required: true, min: 1, max: 10 },
+      {
+        id: 'placing',
+        key: 'placing-slot',
+        type: 'integer',
+        label: '获奖序位',
+        required: true,
+        min: 1,
+        max: 10,
+      },
       { key: 'hours', type: 'decimal', label: '时长', maxScale: 2, min: '0', max: '100' },
       {
         id: 'level',
@@ -256,13 +264,11 @@ describe('the typed fields', () => {
     const refused = (fields: unknown[]) =>
       Result.isFailure(Schema.decodeUnknownResult(evidenceConfig)({ fields }))
     // an integer whose floor is above its ceiling
-    expect(
-      refused([{ key: 'n', type: 'integer', label: 'N', min: 5, max: 1 }]),
-    ).toBe(true)
+    expect(refused([{ key: 'n', type: 'integer', label: 'N', min: 5, max: 1 }])).toBe(true)
     // a decimal bound more precise than the field's own scale
-    expect(
-      refused([{ key: 'd', type: 'decimal', label: 'D', maxScale: 1, min: '0.25' }]),
-    ).toBe(true)
+    expect(refused([{ key: 'd', type: 'decimal', label: 'D', maxScale: 1, min: '0.25' }])).toBe(
+      true,
+    )
     // a decimal with no scale at all: the config records what was decided
     expect(refused([{ key: 'd', type: 'decimal', label: 'D' }])).toBe(true)
     // choices that are not choices
@@ -305,9 +311,10 @@ describe('the typed fields', () => {
       if (!Exit.isFailure(exit)) return []
       const failed = (exit.cause as { reasons?: readonly { error?: unknown }[] }).reasons ?? []
       const error = failed.map((one) => one.error).find((one) => one !== undefined) as
-        | ItemPayloadInvalid
-        | undefined
-      return (error?.issues ?? []).map((issue: { field: string; reason: string }) => `${issue.field}:${issue.reason}`)
+        ItemPayloadInvalid | undefined
+      return (error?.issues ?? []).map(
+        (issue: { field: string; reason: string }) => `${issue.field}:${issue.reason}`,
+      )
     }
     // "2" the string is a different claim from 2 the number
     expect(
@@ -353,9 +360,7 @@ describe('the typed fields', () => {
       ),
     ).toContain('hours:not-a-decimal')
     expect(
-      reasonsOf(
-        await attempt({ 'placing-slot': 1, level: 'city', 'issued-on': '2026-05-01' }),
-      ),
+      reasonsOf(await attempt({ 'placing-slot': 1, level: 'city', 'issued-on': '2026-05-01' })),
     ).toContain('level:not-a-choice')
   })
 
@@ -402,3 +407,26 @@ describe('the typed fields', () => {
   })
 })
 
+describe('accepted configuration implies profile-legal schemas', () => {
+  const refused = (fields: unknown[]) =>
+    Result.isFailure(Schema.decodeUnknownResult(evidenceConfig)({ fields }))
+
+  it('refuses what would later detonate inside the trusted process', () => {
+    // an unsafe integer bound passes Number.isInteger but not the value
+    // profile: accepted, it would throw out of normalizeAtomicSchema the
+    // first time a student's payload is decoded - a server defect where a
+    // configuration refusal belongs
+    expect(
+      refused([{ key: 'n', type: 'integer', label: 'N', min: 0, max: 9007199254740992 }]),
+    ).toBe(true)
+    // the same trap from below
+    expect(refused([{ key: 'n', type: 'integer', label: 'N', min: -9007199254740992 }])).toBe(true)
+    // and the safe sibling stands, so the gate is the profile, not the kind
+    expect(
+      refused([{ key: 'n', type: 'integer', label: 'N', min: 0, max: 9007199254740991 }]),
+    ).toBe(false)
+    // a text cap beyond the profile's own length bound is the same family
+    expect(refused([{ key: 't', type: 'text', label: 'T', maxLength: 100001 }])).toBe(true)
+    expect(refused([{ key: 't', type: 'text', label: 'T', maxLength: 500 }])).toBe(false)
+  })
+})
