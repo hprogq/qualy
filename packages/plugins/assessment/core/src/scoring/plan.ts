@@ -107,6 +107,43 @@ const authoringShape = Schema.Struct({
   ),
 })
 
+/**
+ * Who, if anyone, can determine a recognised fact for this question.
+ *
+ * The compiler needs this to answer one question honestly: can a recognition
+ * with no evidence default ever be filled in? A reviewer can be asked for
+ * one, and so can the member of staff recording an administrative fact - the
+ * whole point of a reviewer-only field is that the student never claims it.
+ * Nobody can be asked on a question that answers to nobody, and a derived
+ * question has no filing and no determiner at all.
+ */
+export type RecognitionSource =
+  /** a reviewer determines it while judging the claim */
+  | 'review'
+  /** the member of staff recording the fact determines it as they record */
+  | 'administrative'
+  /** the submission is the decision: whatever cannot be seeded is unfillable */
+  | 'automatic'
+  /** nobody files and nobody judges: a recognised fact has no author */
+  | 'none'
+
+/**
+ * Who determines this question's recognised facts, from how it is filed and
+ * how it is judged. Derived questions come first: nobody files them at all.
+ */
+export const recognitionSourceOf = (input: {
+  readonly interaction: 'entry' | 'task' | 'derived' | undefined
+  readonly entrySource: 'student' | 'administrative'
+  readonly reviewMode: 'none' | 'workflow'
+}): RecognitionSource =>
+  input.interaction === 'derived'
+    ? 'none'
+    : input.entrySource === 'administrative'
+      ? 'administrative'
+      : input.reviewMode === 'none'
+        ? 'automatic'
+        : 'review'
+
 export interface CompileInputs {
   readonly calculators: ReadonlyMap<string, ScoringDriver>
   readonly aggregators: ReadonlyMap<string, ScoringDriver>
@@ -114,8 +151,7 @@ export interface CompileInputs {
   readonly formConfig: unknown
   readonly scoringConfig: unknown
   readonly batch: BatchContext
-  /** whether a reviewer will ever be asked: 'none' means nobody can be */
-  readonly reviewMode: 'none' | 'reviewed'
+  readonly recognitionSource: RecognitionSource
 }
 
 /**
@@ -200,6 +236,11 @@ export const compileScoringPlan = (
 
     const recognitions = authoring.recognitions ?? {}
     const bindings = authoring.bindings ?? {}
+    // a derived question is granted to everyone on the roster: nobody files
+    // it, nobody judges it, and there is no determination to be made
+    if (inputs.recognitionSource === 'none' && Object.keys(recognitions).length > 0) {
+      issues.push({ path: 'scoringConfig.recognitions', reason: 'recognition-without-determiner' })
+    }
     const parameters: Record<string, ParameterBinding> = {}
     const recognitionSchemas: Record<string, NormalizedAtomicSchema> = {}
     const defaultBindings: Record<string, { fieldId: string; assignment: AssignmentPlan }> = {}
@@ -234,6 +275,19 @@ export const compileScoringPlan = (
         issues.push({ path: `scoringConfig.bindings.${parameter}`, reason: 'recognition-unknown' })
         continue
       }
+      // One determination answers one parameter. Two parameters reading the
+      // same recognition would each prove their own type against it and the
+      // last one written would decide what reviewers are actually validated
+      // against - a plan that contradicts the proof that produced it. If a
+      // question ever genuinely needs one fact in two places, that wants a
+      // common schema proven into both, not a silent overwrite.
+      if (recognitionSchemas[binding.recognitionId] !== undefined) {
+        issues.push({
+          path: `scoringConfig.bindings.${parameter}`,
+          reason: 'recognition-reused',
+        })
+        continue
+      }
       // the recognition's own type IS the parameter's, until the language
       // grows refinements: a question may narrow what a reviewer may
       // determine, never widen it past what the arithmetic accepts
@@ -251,10 +305,12 @@ export const compileScoringPlan = (
 
       const fieldId = declared.defaultFromFieldId ?? null
       if (fieldId === null) {
-        // nobody seeds it: a reviewer determines it from nothing but the
-        // material - legitimate, and the only way a fact a student never
-        // claims can still be scored
-        if (inputs.reviewMode === 'none') {
+        // nobody seeds it, so somebody has to be able to determine it from
+        // the material itself. A reviewer can; so can the member of staff
+        // recording an administrative fact. On a question that answers to
+        // nobody, or one nobody files at all, this recognition could never
+        // be filled in and the item would fail to score every time.
+        if (inputs.recognitionSource === 'none' || inputs.recognitionSource === 'automatic') {
           issues.push({
             path: `scoringConfig.recognitions.${binding.recognitionId}`,
             reason: 'recognition-unattainable',

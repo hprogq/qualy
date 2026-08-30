@@ -11037,3 +11037,32 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 **未做(Phase 6/7)**:formula@1 注册、Evidence 的 integer/decimal/choice 生产字段、真实
 竞赛题、Recognition 动态表单 UI(现 `{}` 不渲染,ApproveDialog 视觉未动)、reopen 实现
 (origin 枚举与权限码仍是空钩子)、scoring_plan 的 NOT NULL 收紧。
+
+### 5.1 边界收口(本笔)
+
+按 `44b619b6` 的实际代码复审,关掉五处在 fixed 空认定世界里看不出、但真实认定一进来就会
+出错的缺口。每条都带能在缺修复时变红的门禁。
+
+- **boot sweep 真的在事务里,且编译失败就不放行启动**:`pg_advisory_xact_lock` 是事务级,
+  原先在自动提交连接上取,锁当场释放,两个实例可同时刷同一批;现在整个 sweep 包进
+  `transaction`。编译不出计划的 revision 从「记一条 warning 继续」改为
+  `ScoringPlanBackfillFailed` 中止启动——一个带着「一评分就必失败的题目」起来的服务,
+  比拒绝启动的服务更糟。顺带消掉 `LIMIT 200` 的死循环可能:每轮要么全部编译要么整体失败。
+- **上诉与重排轮继承已有的认定**:seed 链补第三级「该申报当前有效的认定」——
+  已冻结的 panel proposal → 本轮最近一次通过 → **当前 EntryRecognition** →
+  Evidence 默认值。原先只查当前 instance,于是上诉轮会重新读学生的原始申报:
+  下级把「国家级」改判「省级」,上诉一维持就悄悄改回国家级。门禁用 test-only 的
+  `graded-test@1`(国家级 10.00、省级 4.00)钉住 appeal 与 reroute 两条路径;去掉修复
+  即红。空认定的 fixed@1 测不出这条,因为两种答案都是 `{}`。
+- **一个认定不得同时充当两个参数**:两个参数都会各自验证自己的类型,最后写入的那个决定
+  reviewer 实际被校验成什么;compiler 直接拒(`recognition-reused`)。
+- **compiler 按「谁来判定」分四种可达性**:新 `recognitionSource`(review / administrative /
+  automatic / none)。无默认值的认定,在有人判定时(reviewer 或经办人)合法,在
+  自动通过与派生题上不可达即拒;派生题声明认定一律拒(`recognition-without-determiner`)。
+  原先只按 reviewMode 二分,自动通过的题会带着永远填不上的认定过审。
+- **ledger 的 approved 行 `recognitionId: string`**:类型层不再允许「通过了但没有认定」,
+  与数据库的 `chk_entries_approved_has_recognition` 是同一不变量的两端;service 侧遇到
+  空指针直接抛,不再静默算分。
+
+**验收**:`pnpm typecheck` 零错零建议;`pnpm test` 1158 passed / 17 skipped;
+`pnpm test:browser` 252;`pnpm build` 通过。

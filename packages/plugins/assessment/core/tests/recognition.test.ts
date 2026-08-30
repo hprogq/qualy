@@ -3,6 +3,7 @@ import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
+import { gradedScoring } from './support/catalogs.ts'
 import { errorOf, GATED, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
 
 const REVIEW_OPEN = [...GATED, 'assessment.review.process', 'assessment.review.escalate']
@@ -253,6 +254,204 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(older).toEqual(result.first[0])
     expect(newer!.supersedesId).toBe(older!.id)
     expect(result.pointer).toBe(newer!.id)
+  })
+
+  // Where the next reviewer starts from.
+  //
+  // A round that re-read the student's claim would quietly undo every
+  // correction made below it: the whole reason a claim reaches an appeal is
+  // that somebody disagreed with what it was recognised as. These two use a
+  // question whose score actually depends on the determination - national
+  // pays 10.00, provincial pays 4.00 - because with the empty determination
+  // production has today, "carried forward" and "read off the filing again"
+  // are the same object and neither test would fail.
+
+  const at = (f: Seeded, id: string) => ({
+    id,
+    selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+    quorum: { type: 'any' },
+  })
+
+  const graded = (f: Seeded) =>
+    runningBatch(f, {
+      profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+      scoring: gradedScoring,
+      stages: [at(f, 'class')],
+      // an appeal needs somewhere to be heard
+      escalation: [at(f, 'dept')],
+    })
+
+  /** the claim as filed: the student says it was a national award */
+  const claimed = (f: Seeded, g: { item: { id: string } }, participantId: string) =>
+    Effect.gen(function* () {
+      const assessment = yield* Assessment
+      const as = f.principal(f.s1)
+      const entry = yield* assessment.createEntry(
+        f.t,
+        { itemId: g.item.id, participantId, payload: { 'claimed-level': 'national' } },
+        as,
+      )
+      const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
+      return { entryId: entry.id, instanceId: sent.currentReviewInstanceId! }
+    })
+
+  it('opens an appeal on the determination it contests, not on the claim', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-appeal')
+          const assessment = yield* Assessment
+          const g = yield* graded(f)
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          // the first reviewer corrects the level down
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'checked',
+              recognition: {
+                values: { 'rec-level': 'provincial' },
+                reason: '证书落款为省级主办单位',
+              },
+            },
+            f.principal(f.reviewer),
+          )
+          const appealed = yield* assessment.appealReview(
+            f.t,
+            instanceId,
+            { reason: '主办单位为全国学会' },
+            f.principal(f.s1),
+          )
+          // the appeal reviewer agrees with the file as it stands and says
+          // nothing about the level
+          yield* assessment.decideReview(
+            f.t,
+            appealed.id,
+            { decision: 'approve', comment: 'upheld' },
+            f.principal(f.reviewer),
+          )
+          return { rows: yield* recognitionsOf(entryId), pointer: yield* pointerOf(entryId) }
+        }),
+      ),
+    )
+
+    expect(result.rows).toHaveLength(2)
+    const [corrected, upheld] = result.rows
+    expect(corrected!.values).toEqual({ 'rec-level': 'provincial' })
+    // the appeal upheld the correction it was opened against; re-reading the
+    // filing would have handed back 'national' and silently overturned it
+    expect(upheld!.values).toEqual({ 'rec-level': 'provincial' })
+    expect(upheld!.supersedesId).toBe(corrected!.id)
+    expect(result.pointer).toBe(upheld!.id)
+  })
+
+  it('carries a determination across a round the administrator re-routed', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-reroute')
+          const assessment = yield* Assessment
+          const g = yield* graded(f)
+          const admin = f.principal(f.admin)
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'checked',
+              recognition: {
+                values: { 'rec-level': 'provincial' },
+                reason: '证书落款为省级主办单位',
+              },
+            },
+            f.principal(f.reviewer),
+          )
+          // the office sends it back, the student refiles the same claim,
+          // and the administrator moves the open round onto a renamed ladder
+          yield* assessment.interveneOnEntry(
+            f.t,
+            entryId,
+            { kind: 'return-for-revision', reason: '请补交原件' },
+            admin,
+          )
+          yield* assessment.appendEntryRevision(
+            f.t,
+            entryId,
+            { payload: { 'claimed-level': 'national' } },
+            f.principal(f.s1),
+          )
+          yield* assessment.setEntryStatus(f.t, entryId, 'in_review', f.principal(f.s1))
+          const swapped = {
+            entrySource: 'student' as const,
+            formConfig: { files: {} },
+            scoringConfig: gradedScoring,
+            reviewPolicy: {
+              normal: {
+                stages: [
+                  {
+                    id: 'class-2',
+                    selector: {
+                      kind: 'roleAt',
+                      nodeTypeId: f.classType,
+                      roleIds: [f.reviewRole],
+                    },
+                    quorum: { type: 'any' },
+                  },
+                ],
+              },
+              escalation: { stages: [at(f, 'dept')] },
+            },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.t, g.item.id, { config: swapped }, admin),
+          )
+          const report = errorOf<{ impactToken: string }>(asked)!
+          yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: swapped,
+              reason: '改环节名',
+              effects: {
+                impactToken: report.impactToken,
+                review: {
+                  open: 'reroute-all',
+                  missingCurrentStage: 'refuse',
+                  landing: 'route-start',
+                },
+              },
+            },
+            admin,
+          )
+          const rerouted = one<{ id: string; origin: string }>(
+            yield* runSql(sql`
+              select id, origin from review_instances
+              where entry_id = ${entryId} and state = 'active'`),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            rerouted.id,
+            { decision: 'approve', comment: 'original seen' },
+            f.principal(f.reviewer),
+          )
+          return {
+            origin: rerouted.origin,
+            rows: yield* recognitionsOf(entryId),
+          }
+        }),
+      ),
+    )
+
+    expect(result.origin).toBe('reroute')
+    expect(result.rows).toHaveLength(2)
+    // the refiled claim says 'national' again and the new round starts on a
+    // new chain, but what the question stands recognised as was decided by a
+    // person and does not reset because a stage was renamed
+    expect(result.rows[1]!.values).toEqual({ 'rec-level': 'provincial' })
   })
 
   it('determines an administrative record without inventing a review', async () => {

@@ -60,8 +60,15 @@ export type ScoreInputEntry =
       readonly status: 'approved'
       /** what this entry contributes, scaled by 1e4, from the evaluator */
       readonly amount: bigint
-      /** the determination it was evaluated against, for the line's trail */
-      readonly recognitionId: string | null
+      /**
+       * The determination it was evaluated against.
+       *
+       * Not optional and not nullable: the entries table refuses an approved
+       * claim without one, and this says the same fact where a caller can be
+       * held to it. A collection that finds an approved row with no
+       * determination has found a broken invariant, not a missing field.
+       */
+      readonly recognitionId: string
     })
   | (ScoreInputEntryBase & {
       readonly status: 'draft' | 'in_review' | 'needs_revision' | 'rejected' | 'voided'
@@ -284,7 +291,7 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
           provenance: {
             entryId: entry.id,
             ...(entry.revisionId !== null ? { entryRevisionId: entry.revisionId } : {}),
-            ...(entry.status === 'approved' && entry.recognitionId !== null
+            ...(entry.status === 'approved'
               ? { entryRecognitionId: entry.recognitionId }
               : {}),
             calculatorRef: item.calculatorRef,

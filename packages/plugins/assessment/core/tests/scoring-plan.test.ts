@@ -7,9 +7,11 @@ import {
 } from '@qualy/value-schema'
 import { builtinScoringDrivers, fixed1 } from '../src/scoring/builtins.ts'
 import { compileScoringPlan } from '../src/scoring/plan.ts'
+import type { RecognitionSource } from '../src/scoring/plan.ts'
 import type { AtomicSchema } from '@qualy/value-schema'
 import type {
   BatchContext,
+
   CalculatorContract,
   CalculatorDriver,
   ItemTypeDriver,
@@ -115,7 +117,10 @@ const aggregators = new Map<string, ScoringDriver>(
   builtinScoringDrivers.filter((driver) => driver.kind === 'aggregator').map((d) => [d.ref, d]),
 )
 
-const compile = (scoringConfig: unknown, over: Partial<{ reviewMode: 'none' | 'reviewed' }> = {}) =>
+const compile = (
+  scoringConfig: unknown,
+  over: Partial<{ recognitionSource: RecognitionSource }> = {},
+) =>
   Effect.runPromise(
     compileScoringPlan({
       calculators,
@@ -124,7 +129,7 @@ const compile = (scoringConfig: unknown, over: Partial<{ reviewMode: 'none' | 'r
       formConfig: {},
       scoringConfig,
       batch,
-      reviewMode: over.reviewMode ?? 'reviewed',
+      recognitionSource: over.recognitionSource ?? 'review',
     }),
   )
 
@@ -215,6 +220,22 @@ describe('binding a calculator that has parameters', () => {
       }),
     )
     expect(reasons(extra)).toContain('scoringConfig.bindings.nobody:binding-unknown-parameter')
+  })
+
+  it('refuses one determination standing in for two parameters', async () => {
+    // both would prove their own type against it and the last one written
+    // would decide what reviewers are actually validated against
+    const outcome = await compile(
+      gradedConfig({
+        recognitions: { 'rec-shared': { defaultFromFieldId: null } },
+        bindings: {
+          level: { kind: 'recognition', recognitionId: 'rec-shared' },
+          ordinal: { kind: 'recognition', recognitionId: 'rec-shared' },
+          base: { kind: 'constant', value: '3.00' },
+        },
+      }),
+    )
+    expect(reasons(outcome)).toContain('scoringConfig.bindings.ordinal:recognition-reused')
   })
 
   it('refuses a constant the parameter would not admit', async () => {
@@ -330,11 +351,20 @@ describe('what a question may not be saved as', () => {
         base: { kind: 'constant', value: '3.00' },
       },
     }
-    // a question nobody reviews has nobody to determine it: refused
-    expect(reasons(await compile(unattainable, { reviewMode: 'none' }))).toContain(
+    // a question that answers to nobody has nobody to determine it: the
+    // submission is the decision, so an unseeded fact could never be filled
+    expect(reasons(await compile(unattainable, { recognitionSource: 'automatic' }))).toContain(
       'scoringConfig.recognitions.rec-ordinal:recognition-unattainable',
     )
     // a reviewed question is exactly how a reviewer-only fact is configured
     expect(reasons(await compile(unattainable))).toEqual([])
+    // and so is an administrative one: the member of staff recording the
+    // fact is its author, which is the whole point of a field the student
+    // never claims
+    expect(reasons(await compile(unattainable, { recognitionSource: 'administrative' }))).toEqual([])
+    // nobody files a derived question, so nothing about it can be determined
+    expect(reasons(await compile(unattainable, { recognitionSource: 'none' }))).toContain(
+      'scoringConfig.recognitions:recognition-without-determiner',
+    )
   })
 })

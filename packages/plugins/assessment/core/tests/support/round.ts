@@ -255,6 +255,8 @@ export const runningBatch = (
     profile?: readonly string[]
     stages?: readonly unknown[]
     escalation?: readonly unknown[]
+    /** a question whose score depends on what a reviewer determines */
+    scoring?: unknown
   },
 ) =>
   Effect.gen(function* () {
@@ -308,7 +310,7 @@ export const runningBatch = (
         config: {
           entrySource: 'student',
           formConfig: { files: {} },
-          scoringConfig: {
+          scoringConfig: over?.scoring ?? {
             calculator: { ref: 'fixed@1', config: { value: '3.00' } },
             aggregator: { ref: 'sum@1', config: {} },
           },

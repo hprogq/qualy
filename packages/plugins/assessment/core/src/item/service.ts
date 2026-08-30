@@ -18,7 +18,7 @@ import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
-import { compileScoringPlan } from '../scoring/plan.ts'
+import { compileScoringPlan, recognitionSourceOf } from '../scoring/plan.ts'
 import { policyModeOf } from '../review/chain.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
@@ -717,7 +717,11 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         formConfig: input.config.formConfig,
         scoringConfig: input.config.scoringConfig,
         batch: { materialRange: input.materialRange },
-        reviewMode: policyModeOf(input.config.reviewPolicy) === 'none' ? 'none' : 'reviewed',
+        recognitionSource: recognitionSourceOf({
+          interaction: deps.catalogs.itemTypes.get(input.item.itemType)?.interaction,
+          entrySource: input.config.entrySource,
+          reviewMode: policyModeOf(input.config.reviewPolicy),
+        }),
       })
       if ('issues' in compiled) return yield* new ItemConfigInvalid({ issues: compiled.issues })
 

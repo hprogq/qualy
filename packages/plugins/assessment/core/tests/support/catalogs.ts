@@ -3,12 +3,15 @@ import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
 import { registryLayer } from '@qualy/plugin-storage/server/registry'
 import { serviceLayer as storageOnlyLayer } from '@qualy/plugin-storage/server/service'
 import { backendLayer, memoryBackend, type MemoryBackend } from '@qualy/plugin-storage/testkit'
+import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import {
   ItemPayloadInvalid,
   ItemTypeCatalog,
   ScoringCatalog,
+  type CalculatorDriver,
   type ItemTypeDriver,
 } from '../../src/plugin.ts'
+import type { AtomicSchema } from '@qualy/value-schema'
 import { builtinScoringDrivers } from '../../src/scoring/builtins.ts'
 import { constantDriver } from '../../src/item/constant.ts'
 import { declarationDriver } from '../../src/item/declaration.ts'
@@ -21,6 +24,8 @@ import { declarationDriver } from '../../src/item/declaration.ts'
 // its config names required keys, its decode refuses a payload missing one.
 // That is exactly enough to watch the compatibility trial refuse a config
 // change that would strand live entries.
+
+const LEVEL: AtomicSchema = { type: 'string', enum: ['national', 'provincial'] }
 
 export const testItemType: ItemTypeDriver = {
   id: 'evidence',
@@ -70,8 +75,56 @@ export const testItemType: ItemTypeDriver = {
       ...(rules?.maxFileBytes !== undefined ? { maxFileBytes: rules.maxFileBytes } : {}),
     }))
   },
+  // what a reviewer's determination may be seeded from: the level the
+  // student claimed. Evidence will offer its own fields; this one stands in
+  // for the shape of that answer.
+  bindableFields: () => [
+    { fieldId: 'claimed-level', schema: LEVEL },
+  ],
   interaction: 'entry',
   scoring: { calculator: 'fixed@1', aggregator: 'sum@1' },
+}
+
+/**
+ * A calculator whose answer depends on something a reviewer decides.
+ *
+ * Production has one calculator that reads nothing, so a suite built only on
+ * fixed@1 cannot tell "the determination was carried forward" from "the
+ * determination was re-read off the student's claim" - both look like the
+ * empty object. This one pays a national award more than a provincial one,
+ * which makes the difference visible in a number.
+ */
+export const gradedTest: CalculatorDriver = {
+  kind: 'calculator',
+  ref: 'graded-test@1',
+  configSchema: Schema.Struct({}),
+  contract: () =>
+    Effect.succeed({
+      inputSchema: normalizeInputSchema({
+        type: 'object',
+        properties: { level: LEVEL },
+        required: ['level'],
+        additionalProperties: false,
+      }),
+      outputSchema: normalizeAtomicSchema({
+        type: 'string',
+        format: 'qualy-decimal',
+        'x-qualy-maxScale': 2,
+        'x-qualy-minimum': '-99999999.99',
+        'x-qualy-maximum': '99999999.99',
+      }),
+      contractHash: 'test:graded',
+    }),
+  evaluate: (_config, input) =>
+    Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
+}
+
+/** the scoring configuration that puts a determination in front of a score */
+export const gradedScoring = {
+  calculator: { ref: gradedTest.ref, config: {} },
+  aggregator: { ref: 'sum@1', config: {} },
+  recognitions: { 'rec-level': { defaultFromFieldId: 'claimed-level' } },
+  bindings: { level: { kind: 'recognition' as const, recognitionId: 'rec-level' } },
 }
 
 /**
@@ -99,11 +152,12 @@ export const catalogLayers = Layer.mergeAll(
     ]),
   ),
   Layer.succeed(ScoringCatalog, {
-    calculators: new Map(
-      builtinScoringDrivers
+    calculators: new Map([
+      ...builtinScoringDrivers
         .filter((driver) => driver.kind === 'calculator')
-        .map((driver) => [driver.ref, driver]),
-    ),
+        .map((driver) => [driver.ref, driver] as const),
+      [gradedTest.ref, gradedTest] as const,
+    ]),
     aggregators: new Map(
       builtinScoringDrivers
         .filter((driver) => driver.kind === 'aggregator')

@@ -180,6 +180,15 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           })
           continue
         }
+        // the table refuses an approved claim without a determination, so
+        // one here is a broken invariant rather than a value to fall back
+        // from - scoring it as if it had been recognised as nothing would
+        // hide exactly the row somebody needs to find
+        if (entry.recognitionId === null) {
+          throw new Error(
+            `entry ${entry.id} is approved with no recognition; the claim and what it was recognised as have come apart`,
+          )
+        }
         const fact: EvaluationFact = {
           entryId: entry.id,
           entryRevisionId: entry.revisionId,

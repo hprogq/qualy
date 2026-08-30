@@ -14,10 +14,10 @@
  * revision whose plan has not been compiled yet.
  */
 
-import { Effect } from 'effect'
+import { Data, Effect } from 'effect'
 import { sql } from 'kysely'
 import type { BatchContext, ItemTypeDriver, ScoringDriver } from '../plugin.ts'
-import { compileScoringPlan } from './plan.ts'
+import { compileScoringPlan, recognitionSourceOf } from './plan.ts'
 import { db } from '../server/db.ts'
 import { policyModeOf } from '../review/chain.ts'
 
@@ -33,11 +33,24 @@ const parseRange = (text: string) => {
 interface PendingRevision {
   readonly id: string
   readonly itemType: string
+  readonly entrySource: 'student' | 'administrative'
   readonly formConfig: unknown
   readonly scoringConfig: unknown
   readonly reviewPolicy: unknown
   /** the daterange as postgres prints it: [start,end) */
   readonly materialRange: string
+}
+
+/** an already-stored question whose arithmetic no longer compiles */
+export class ScoringPlanBackfillFailed extends Data.TaggedError(
+  'ASSESSMENT_SCORING_PLAN_BACKFILL_FAILED',
+)<{
+  readonly revisionId: string
+  readonly issues: readonly string[]
+}> {
+  override get message() {
+    return `item revision ${this.revisionId} has no compilable scoring plan: ${this.issues.join(', ')}`
+  }
 }
 
 export interface BackfillDeps {
@@ -46,18 +59,24 @@ export interface BackfillDeps {
   readonly aggregators: ReadonlyMap<string, ScoringDriver>
 }
 
-/** how many rows one pass compiles before yielding the connection */
+/** how many rows one pass reads at a time */
 const BATCH = 200
 
 /**
  * Compile every revision still missing a plan. Idempotent by construction:
  * the query only ever finds rows without one.
  *
- * A revision whose configuration no longer compiles is left alone and named
- * in the log rather than stopping the boot - it is already stored, already
- * being scored by the old path's reading of it, and a deployment that cannot
- * start is worse than one item nobody can rescore until an administrator
- * saves it again.
+ * A revision whose configuration no longer compiles STOPS THE BOOT. This is
+ * upgrade debt, not user input: the whole reason the work runs at the
+ * barrier is that a started server means every stored question can be
+ * scored, and an assembly that serves requests while holding an item
+ * revision guaranteed to fail on sight is worse than one that refuses to
+ * start and says which revision to fix.
+ *
+ * Must be called inside a transaction: the advisory lock below is
+ * transaction-scoped, so without one it would be released the instant its
+ * own statement finished and two booting processes would compile the same
+ * rows against each other.
  */
 export const sweepScoringPlans = (deps: BackfillDeps) =>
   Effect.gen(function* () {
@@ -69,12 +88,12 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
       ),
     )
     let compiled = 0
-    let refused = 0
     for (;;) {
       const found = yield* db.query((k) =>
         sql<PendingRevision>`
           select r.id as "id",
                  i.item_type as "itemType",
+                 r.entry_source as "entrySource",
                  r.form_config as "formConfig",
                  r.scoring_config as "scoringConfig",
                  r.review_policy as "reviewPolicy",
@@ -98,19 +117,17 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
           formConfig: revision.formConfig,
           scoringConfig: revision.scoringConfig,
           batch,
-          reviewMode: policyModeOf(revision.reviewPolicy) === 'none' ? 'none' : 'reviewed',
+          recognitionSource: recognitionSourceOf({
+            interaction: deps.itemTypes.get(revision.itemType)?.interaction,
+            entrySource: revision.entrySource,
+            reviewMode: policyModeOf(revision.reviewPolicy),
+          }),
         })
         if ('issues' in outcome) {
-          refused += 1
-          yield* Effect.logWarning(
-            `item revision ${revision.id} has no compilable scoring plan: ${outcome.issues
-              .map((issue) => `${issue.path} ${issue.reason}`)
-              .join(', ')}`,
-          )
-          // marked as attempted with an explicitly empty plan would be a
-          // lie; instead it stays null and the next boot tries again after
-          // somebody fixes the configuration
-          continue
+          return yield* new ScoringPlanBackfillFailed({
+            revisionId: revision.id,
+            issues: outcome.issues.map((issue) => `${issue.path} ${issue.reason}`),
+          })
         }
         yield* db.query((k) =>
           sql`update assessment_item_revisions
@@ -119,11 +136,11 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
         )
         compiled += 1
       }
+      // every row this pass found was compiled - a refusal returns above -
+      // so the next read starts from what is genuinely left
       if (pending.length < BATCH) break
     }
-    if (compiled > 0 || refused > 0) {
-      yield* Effect.logInfo(
-        `scoring plans compiled for ${compiled} item revision(s)${refused > 0 ? `, ${refused} refused` : ''}`,
-      )
+    if (compiled > 0) {
+      yield* Effect.logInfo(`scoring plans compiled for ${compiled} item revision(s)`)
     }
   })

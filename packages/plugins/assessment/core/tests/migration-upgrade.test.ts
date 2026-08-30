@@ -4,7 +4,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
-import { Effect } from 'effect'
+import { Effect, Exit } from 'effect'
+import { inspect } from 'node:util'
+import { transaction } from '@qualy/plugin-database/server'
 import { builtinScoringDrivers } from '../src/scoring/builtins.ts'
 import { sweepScoringPlans } from '../src/scoring/backfill.ts'
 
@@ -893,7 +895,8 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
                  '{}', '{}', $3) returning id`,
         [tenant, item, user],
       )
-      // and one whose arithmetic no longer exists: it must not stop a boot
+      // and one whose arithmetic no longer exists: the sweep must refuse
+      // rather than leave a question that fails on sight
       const broken = await one(
         `insert into assessment_item_revisions
            (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
@@ -916,7 +919,7 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
       expect(await planOf(revision)).toBeNull()
 
       const sweep = () =>
-        Effect.runPromise(
+        Effect.runPromiseExit(
           Effect.provide(
             sweepScoringPlans({
               itemTypes: new Map(),
@@ -930,21 +933,33 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
                   .filter((driver) => driver.kind === 'aggregator')
                   .map((driver) => [driver.ref, driver]),
               ),
-            }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+            }).pipe(
+              Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
+              (effect) => transaction(effect),
+            ),
             db.services,
           ),
         )
-      await sweep()
 
+      // a question whose arithmetic no longer exists stops the sweep, and
+      // with it the boot: a server that started while holding an item
+      // revision guaranteed to fail on sight is worse than one that refuses
+      const refused = await sweep()
+      expect(Exit.isFailure(refused)).toBe(true)
+      expect(inspect(refused, { depth: 6 })).toContain('ASSESSMENT_SCORING_PLAN_BACKFILL_FAILED')
+      expect(inspect(refused, { depth: 6 })).toContain('calculator-not-installed')
+      // and it rolled back: nothing half-compiled was left behind
+      expect(await planOf(revision)).toBeNull()
+
+      // once the unusable revision is gone, the sweep completes
+      await db.query(`delete from assessment_item_revisions where id = $1`, [broken])
+      expect(Exit.isSuccess(await sweep())).toBe(true)
       const compiled = await planOf(revision)
       expect(compiled?.calculator?.ref).toBe('fixed@1')
       expect(compiled?.planHash).toMatch(/^[0-9a-f]{64}$/)
-      // a configuration nobody can compile is left alone and reported, not
-      // written as an empty plan that would score the question at nothing
-      expect(await planOf(broken)).toBeNull()
 
       // running it again changes nothing: it only ever fills a null
-      await sweep()
+      expect(Exit.isSuccess(await sweep())).toBe(true)
       expect((await planOf(revision))?.planHash).toBe(compiled?.planHash)
     } finally {
       await db.dispose()

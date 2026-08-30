@@ -991,12 +991,26 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   /**
    * What a reviewer is shown before they determine anything.
    *
-   * The first word of a round seeds from the filing, through the defaults
-   * the plan recorded. Every later word inherits what the previous approval
-   * determined - a correction made downstairs must not be undone by
-   * re-reading the student's original claim upstairs. A panel that has
-   * already frozen a proposal is seeded from that, so a second ballot is
-   * cast on the same text as the first.
+   * Four sources, in the order of who most recently had an opinion:
+   *
+   *   the sitting's frozen proposal - a second ballot votes on the text the
+   *   first one was cast on, never on a fresh reading;
+   *
+   *   this round's last approval - a stage inherits what the stage below
+   *   determined, so a correction is not undone by climbing;
+   *
+   *   what the claim currently stands recognised as - an appeal opens on the
+   *   determination it contests, and a re-routed round on the determination
+   *   the old round left, because "the reviewer downstairs said provincial"
+   *   does not stop being true when a new round begins;
+   *
+   *   and only then the filing itself, through the defaults the plan
+   *   recorded - which is the right answer exactly once, for the first
+   *   person to look at a claim nobody has judged yet.
+   *
+   * Reading only this round would quietly re-seed every appeal from the
+   * student's original claim, which is the one thing every stage above was
+   * correcting.
    */
   const recognitionSeed = (
     tenantId: string,
@@ -1009,6 +1023,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       if (locked !== null) return locked
       const said = yield* lastRecognitionOf(tenantId, instanceId)
       if (said !== null) return said
+      const standing = yield* currentRecognitionOf(tenantId, row.entryId)
+      if (standing !== null) return standing.values
       const filing = yield* revisionPayloadOf(tenantId, row.revisionId)
       return seedFromEvidence(plan, filing)
     })

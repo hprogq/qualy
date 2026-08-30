@@ -3951,12 +3951,18 @@ export const serviceLayer: Layer.Layer<
     const assembled = yield* Assembled
     yield* assembled.register({
       name: 'assessment/scoring-plans',
+      // in a transaction because the sweep's advisory lock is
+      // transaction-scoped: without one it would be released the moment its
+      // own statement finished, and two booting processes would compile the
+      // same rows against each other
       run: withDb(
-        sweepScoringPlans({
-          itemTypes,
-          calculators: scoring.calculators,
-          aggregators: scoring.aggregators,
-        }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+        transaction(
+          sweepScoringPlans({
+            itemTypes,
+            calculators: scoring.calculators,
+            aggregators: scoring.aggregators,
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
       ),
     })
     return service
