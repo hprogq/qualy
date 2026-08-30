@@ -67,6 +67,16 @@ const numberOn = (schema: AtomicSchema, key: string): string | undefined => {
   return typeof value === 'number' ? String(value) : undefined
 }
 
+// captured hasOwnProperty, es5-spelled: this module compiles into the formula
+// staged workspace, whose lib predates Object.hasOwn (same rule as display.ts)
+const hasOwn = Object.prototype.hasOwnProperty
+
 /** the schema behind one flat-input issue path ('/value' → properties.value) */
-export const parameterSchemaAt = (schema: InputSchema, path: string): AtomicSchema | undefined =>
-  path.startsWith('/') ? schema.properties[path.slice(1)] : undefined
+export const parameterSchemaAt = (schema: InputSchema, path: string): AtomicSchema | undefined => {
+  if (!path.startsWith('/')) return undefined
+  // an issue path is derived from data, and a parameter may legally be
+  // called `constructor`: own properties only, or a miss would hand back
+  // Object.prototype's members as schemas
+  const name = path.slice(1)
+  return hasOwn.call(schema.properties, name) ? schema.properties[name] : undefined
+}

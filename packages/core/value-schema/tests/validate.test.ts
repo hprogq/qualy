@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { parameterSchemaAt } from '../src/diagnose.ts'
 import {
   normalizeAtomicSchema,
   normalizeInputSchema,
@@ -65,6 +66,46 @@ describe('instance validation', () => {
     const issues = validateValue(shape, { level: 'c', when: '2026-02-29' })
     expect(issues).toContainEqual({ path: '/level', reason: 'enum' })
     expect(issues).toContainEqual({ path: '/when', reason: 'format' })
+  })
+})
+
+describe('prototype names as parameters, judged fail-closed', () => {
+  // A parameter may legally be called `constructor` or `toString` (only
+  // `__proto__` is refused by the profile). Ajv's required check reads
+  // through the prototype - `({}).constructor` is not undefined - but the
+  // type check then meets a function and refuses it, so a missing value
+  // NEVER passes. This suite pins that end-to-end behaviour: if an ajv
+  // upgrade or option change ever lets a prototype member through as a
+  // value, this goes red before any caller does.
+  const contract = (name: string) =>
+    normalizeInputSchema({
+      type: 'object',
+      properties: { [name]: { type: 'integer', minimum: 0, maximum: 9 } },
+      required: [name],
+      additionalProperties: false,
+    })
+
+  it('refuses an empty object however the required name spells', () => {
+    for (const name of ['constructor', 'toString', 'valueOf']) {
+      expect(validateValue(contract(name), {}), name).not.toEqual([])
+    }
+  })
+
+  it('accepts an own value, on a plain and a null-prototype carrier alike', () => {
+    for (const name of ['constructor', 'toString', 'valueOf']) {
+      expect(validateValue(contract(name), { [name]: 3 }), name).toEqual([])
+      const bare = Object.assign(Object.create(null), { [name]: 3 })
+      expect(validateValue(contract(name), bare), name).toEqual([])
+    }
+  })
+
+  it('answers an issue path with an own parameter schema or nothing', () => {
+    // the diagnosis face reads the same record: a path derived from data
+    // must never hand back Object.prototype's members as schemas
+    const spoken = contract('constructor')
+    expect(parameterSchemaAt(spoken, '/constructor')).toBe(spoken.properties['constructor'])
+    expect(parameterSchemaAt(contract('level'), '/constructor')).toBeUndefined()
+    expect(parameterSchemaAt(contract('level'), '/toString')).toBeUndefined()
   })
 })
 
