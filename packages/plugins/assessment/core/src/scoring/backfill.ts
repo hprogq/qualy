@@ -17,7 +17,7 @@
 import { Data, Effect } from 'effect'
 import { sql } from 'kysely'
 import type { BatchContext, ItemTypeDriver, ScoringDriver } from '../plugin.ts'
-import { compileScoringPlan, recognitionSourceOf } from './plan.ts'
+import { compileScoringPlan, readScoringPlan, recognitionSourceOf } from './plan.ts'
 import { db } from '../server/db.ts'
 import { policyModeOf } from '../review/chain.ts'
 
@@ -57,15 +57,24 @@ export class ScoringPlanBackfillFailed extends Data.TaggedError(
 export class StoredScoringDriverMissing extends Data.TaggedError(
   'ASSESSMENT_STORED_SCORING_DRIVER_MISSING',
 )<{
-  readonly missing: readonly { kind: string; ref: string; revisionId: string }[]
+  readonly kind: string
+  readonly ref: string
+  readonly revisionId: string
 }> {
   override get message() {
-    return this.missing
-      .map(
-        (entry) =>
-          `stored plans depend on ${entry.kind} "${entry.ref}" which this assembly does not provide (e.g. item revision ${entry.revisionId})`,
-      )
-      .join('; ')
+    return `item revision ${this.revisionId} depends on ${this.kind} "${this.ref}" which this assembly does not provide`
+  }
+}
+
+/** a stored plan this build cannot read; found at boot, never on a results page */
+export class StoredScoringPlanUnreadable extends Data.TaggedError(
+  'ASSESSMENT_STORED_SCORING_PLAN_UNREADABLE',
+)<{
+  readonly revisionId: string
+  readonly reason: string
+}> {
+  override get message() {
+    return `item revision ${this.revisionId} holds a scoring plan this build cannot read: ${this.reason}`
   }
 }
 
@@ -161,49 +170,65 @@ export const sweepScoringPlans = (deps: BackfillDeps) =>
     }
   })
 
-interface StoredRef {
-  readonly ref: string
-  readonly revisionId: string
+interface StoredPlanRow {
+  readonly id: string
+  readonly scoringPlan: unknown
 }
 
 /**
- * Whether every driver the STORED plans name is one this assembly provides.
+ * Whether every frozen plan is one THIS build can actually execute.
  *
  * The backfill above only meets revisions without a plan; a revision whose
- * plan already exists is never recompiled, so unplugging the plugin that
- * provided its calculator would pass boot silently and fail on the first
- * results page. Frozen review contracts keep old revisions judgeable long
- * after a question moves on, so every stored plan counts, not just the
- * current ones. Refusing ready is the honest answer: it names what to
- * reinstall - or which questions to retire - before anybody is served.
+ * plan already exists is never recompiled, so ready has to prove the rest:
+ * that each stored plan passes the one canonical reader (shape, hash,
+ * profile, converter vocabulary) and names drivers this assembly provides.
+ * Frozen review contracts keep old revisions judgeable long after a
+ * question moves on, so every stored plan counts, not just the current
+ * ones. Refusing ready is the honest answer: it names the revision to fix
+ * - or the plugin to reinstall - before anybody is served a defect.
  */
-export const auditStoredPlanDrivers = (deps: BackfillDeps) =>
+export const auditStoredPlans = (deps: BackfillDeps) =>
   Effect.gen(function* () {
-    const storedRefs = (path: string) =>
-      Effect.map(
-        db.query((k) =>
-          sql<StoredRef>`
-            select r.scoring_plan->${sql.raw(`'${path}'`)}->>'ref' as "ref",
-                   min(r.id::text) as "revisionId"
-            from assessment_item_revisions r
-            where r.scoring_plan is not null
-            group by 1
-          `.execute(k),
-        ),
-        (result) => result.rows,
+    let after: string | null = null
+    for (;;) {
+      const found = yield* db.query((k) =>
+        sql<StoredPlanRow>`
+          select r.id as "id", r.scoring_plan as "scoringPlan"
+          from assessment_item_revisions r
+          where r.scoring_plan is not null
+            and (${after}::uuid is null or r.id > ${after}::uuid)
+          order by r.id
+          limit ${BATCH}
+        `.execute(k),
       )
-    const missing: { kind: string; ref: string; revisionId: string }[] = []
-    for (const row of yield* storedRefs('calculator')) {
-      if (!deps.calculators.has(row.ref)) {
-        missing.push({ kind: 'calculator', ref: row.ref, revisionId: row.revisionId })
+      const rows = found.rows
+      if (rows.length === 0) break
+      for (const row of rows) {
+        const plan = yield* readScoringPlan({ id: row.id, scoringPlan: row.scoringPlan }).pipe(
+          Effect.mapError(
+            (unreadable) =>
+              new StoredScoringPlanUnreadable({
+                revisionId: row.id,
+                reason: unreadable.reason,
+              }),
+          ),
+        )
+        if (!deps.calculators.has(plan.calculator.ref)) {
+          return yield* new StoredScoringDriverMissing({
+            kind: 'calculator',
+            ref: plan.calculator.ref,
+            revisionId: row.id,
+          })
+        }
+        if (!deps.aggregators.has(plan.aggregator.ref)) {
+          return yield* new StoredScoringDriverMissing({
+            kind: 'aggregator',
+            ref: plan.aggregator.ref,
+            revisionId: row.id,
+          })
+        }
       }
-    }
-    for (const row of yield* storedRefs('aggregator')) {
-      if (!deps.aggregators.has(row.ref)) {
-        missing.push({ kind: 'aggregator', ref: row.ref, revisionId: row.revisionId })
-      }
-    }
-    if (missing.length > 0) {
-      return yield* new StoredScoringDriverMissing({ missing })
+      if (rows.length < BATCH) break
+      after = rows[rows.length - 1]!.id
     }
   })

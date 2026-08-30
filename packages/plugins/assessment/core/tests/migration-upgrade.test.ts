@@ -8,7 +8,9 @@ import { Effect, Exit } from 'effect'
 import { inspect } from 'node:util'
 import { transaction } from '@qualy/plugin-database/server'
 import { builtinScoringDrivers } from '../src/scoring/builtins.ts'
-import { auditStoredPlanDrivers, sweepScoringPlans } from '../src/scoring/backfill.ts'
+import { auditStoredPlans, sweepScoringPlans } from '../src/scoring/backfill.ts'
+import { semanticPlanBody } from '../src/scoring/plan.ts'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
 
 // The scope migration carries a data step - every batch's single scope node
 // moves into batch_scope_nodes before the columns drop - and replaying the
@@ -966,8 +968,8 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
   }, 240_000)
 })
 
-describe.runIf(postgresAvailable)('the stored-plan driver gate', () => {
-  it('refuses ready while a stored plan names a driver nobody provides', async () => {
+describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
+  it('refuses ready while any frozen plan is unreadable or names an absent driver', async () => {
     const db = await createTestContext('plan-driver-gate')
     try {
       const one = async (sql: string, values: unknown[] = []) =>
@@ -1008,56 +1010,93 @@ describe.runIf(postgresAvailable)('the stored-plan driver gate', () => {
          values ($1, $2, 'evidence', '竞赛', $3, 'active') returning id`,
         [tenant, batch, group],
       )
-      // a frozen plan whose calculator arrives from a removable plugin; the
-      // gate reads only the refs, so the body can stay minimal
+      // start from a REAL plan: the sweep compiles it through the shipped
+      // compiler, so the deep reader passes and what remains under test is
+      // exactly the gate in question
       const revision = await one(
         `insert into assessment_item_revisions
-           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by, scoring_plan)
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
          values ($1, $2, 1, 'student', '{}',
-                 '{"calculator":{"ref":"formula@1","config":{}},"aggregator":{"ref":"sum@1","config":{}}}',
-                 '{}', '{}', $3,
-                 '{"calculator":{"ref":"formula@1","config":{}},"aggregator":{"ref":"sum@1","config":{}}}') returning id`,
+                 '{"calculator":{"ref":"fixed@1","config":{"value":"3"}},"aggregator":{"ref":"sum@1","config":{}}}',
+                 '{}', '{}', $3) returning id`,
         [tenant, item, user],
       )
-
-      const audit = () =>
+      const catalogs = {
+        itemTypes: new Map(),
+        calculators: new Map(
+          builtinScoringDrivers
+            .filter((driver) => driver.kind === 'calculator')
+            .map((driver) => [driver.ref, driver]),
+        ),
+        aggregators: new Map(
+          builtinScoringDrivers
+            .filter((driver) => driver.kind === 'aggregator')
+            .map((driver) => [driver.ref, driver]),
+        ),
+      }
+      const provided = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
         Effect.runPromiseExit(
           Effect.provide(
-            auditStoredPlanDrivers({
-              itemTypes: new Map(),
-              calculators: new Map(
-                builtinScoringDrivers
-                  .filter((driver) => driver.kind === 'calculator')
-                  .map((driver) => [driver.ref, driver]),
-              ),
-              aggregators: new Map(
-                builtinScoringDrivers
-                  .filter((driver) => driver.kind === 'aggregator')
-                  .map((driver) => [driver.ref, driver]),
-              ),
-            }).pipe(
-              Effect.catchTag('QueryFailed', (error) => Effect.die(error)),
-              (effect) => transaction(effect),
-            ),
+            effect.pipe(
+              Effect.catchTag('QueryFailed' as never, (error) => Effect.die(error)),
+              (one) => transaction(one as never),
+            ) as never,
             db.services,
           ),
         )
+      expect(Exit.isSuccess(await provided(sweepScoringPlans(catalogs)))).toBe(true)
+      const audit = () => provided(auditStoredPlans(catalogs))
+      expect(Exit.isSuccess(await audit())).toBe(true)
 
-      // the assembly no longer ships formula@1: ready is refused, and the
-      // refusal names the driver and a revision that depends on it
-      const refused = await audit()
-      expect(Exit.isFailure(refused)).toBe(true)
-      const said = inspect(refused, { depth: 8 })
+      const stored = (
+        await db.row<{ scoring_plan: Record<string, unknown> }>(
+          `select scoring_plan from assessment_item_revisions where id = $1`,
+          [revision],
+        )
+      ).scoring_plan
+      // poison only the driver name and restate the hash the poisoned body
+      // would carry: the deep reader passes, the driver gate must refuse
+      const { planHash: _oldHash, ...body } = stored as { planHash: string } & Record<
+        string,
+        unknown
+      >
+      const poisoned = {
+        ...body,
+        calculator: { ...(body['calculator'] as Record<string, unknown>), ref: 'formula@1' },
+      }
+      await db.query(
+        `update assessment_item_revisions set scoring_plan = $2::jsonb where id = $1`,
+        [
+          revision,
+          JSON.stringify({
+            ...poisoned,
+            planHash: hashCanonicalJson(semanticPlanBody(poisoned as never)),
+          }),
+        ],
+      )
+      const missing = await audit()
+      expect(Exit.isFailure(missing)).toBe(true)
+      const said = inspect(missing, { depth: 8 })
       expect(said).toContain('ASSESSMENT_STORED_SCORING_DRIVER_MISSING')
       expect(said).toContain('formula@1')
       expect(said).toContain(revision)
 
-      // reinstalling the driver - or retiring the question - clears the gate
+      // a plan whose body and identity have come apart is refused as
+      // unreadable, whatever drivers it names
       await db.query(
-        `update assessment_item_revisions
-         set scoring_plan = '{"calculator":{"ref":"fixed@1","config":{"value":"3"}},"aggregator":{"ref":"sum@1","config":{}}}'
-         where id = $1`,
-        [revision],
+        `update assessment_item_revisions set scoring_plan = $2::jsonb where id = $1`,
+        [revision, JSON.stringify({ ...stored, planHash: 'f'.repeat(64) })],
+      )
+      const corrupted = await audit()
+      expect(Exit.isFailure(corrupted)).toBe(true)
+      expect(inspect(corrupted, { depth: 8 })).toContain(
+        'ASSESSMENT_STORED_SCORING_PLAN_UNREADABLE',
+      )
+
+      // restoring the true plan clears the gate
+      await db.query(
+        `update assessment_item_revisions set scoring_plan = $2::jsonb where id = $1`,
+        [revision, JSON.stringify(stored)],
       )
       expect(Exit.isSuccess(await audit())).toBe(true)
     } finally {
