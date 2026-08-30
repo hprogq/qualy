@@ -13,7 +13,7 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
-import { fieldsOf } from './model.ts'
+import { displayValueOf, fieldsOf } from './model.ts'
 import { ownReviewEventMessage, reviewEventMessage } from '../review/events.ts'
 
 // The whole account of one claim, read the way records are read: newest
@@ -1012,8 +1012,14 @@ function FiledFields({
     // a field somebody filled and then cleared is part of what they filed:
     // the row stands and says it is empty, rather than reading as a field
     // that was never there
-    if (typeof value === 'string') {
-      rows.push({ key: field.key, label: field.label, value: { kind: 'text', text: value } })
+    if (typeof value === 'string' || typeof value === 'number') {
+      rows.push({
+        key: field.key,
+        label: field.label,
+        // through the field's own words: a number prints, a choice reads as
+        // the administrator's label rather than the stable value
+        value: { kind: 'text', text: displayValueOf(field, value) },
+      })
     }
   }
   for (const key of Object.keys(record)) {

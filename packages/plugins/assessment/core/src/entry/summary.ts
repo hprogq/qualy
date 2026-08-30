@@ -19,6 +19,7 @@ interface FormField {
   readonly key?: string
   readonly label?: string
   readonly type?: string
+  readonly options?: readonly { readonly value?: string; readonly label?: string }[]
 }
 
 /** a field's identity across item revisions: its id, or its founding key */
@@ -27,11 +28,16 @@ const identityOf = (field: FormField): string | null =>
 
 const valueOf = (payload: Record<string, unknown>, field: FormField): string => {
   const value = field.key === undefined ? undefined : payload[field.key]
-  return typeof value === 'string'
-    ? value.trim()
-    : typeof value === 'number' || typeof value === 'boolean'
-      ? String(value)
-      : ''
+  if (typeof value === 'string') {
+    // a choice stores its stable value; the summary owes the reader the
+    // words the administrator wrote for it
+    if (field.type === 'choice' && Array.isArray(field.options)) {
+      const chosen = field.options.find((option) => option.value === value)
+      if (chosen !== undefined && typeof chosen.label === 'string') return chosen.label
+    }
+    return value.trim()
+  }
+  return typeof value === 'number' || typeof value === 'boolean' ? String(value) : ''
 }
 
 export const SUMMARY_FIELDS_MOST = 3

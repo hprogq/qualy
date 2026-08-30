@@ -7,18 +7,20 @@ import { Field, FormDialog, RequiredMark } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Input } from '@qualy/ui/input'
+import { NativeSelect } from '@qualy/ui/native-select'
 import { Kbd, KbdGroup } from '@qualy/ui/kbd'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Textarea } from '@qualy/ui/textarea'
 import { Chip, ChipGroup } from '@qualy/ui/chip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
-import { fieldsOf } from '../entry/model.ts'
+import { displayValueOf, fieldsOf } from '../entry/model.ts'
+import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
 import { SlideKey } from './touch.tsx'
 import { useFinePointer } from './pointer.ts'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
-import type { AtomicSchema } from '@qualy/value-schema'
+import { parseDecimal, type AtomicSchema } from '@qualy/value-schema'
 import { changedSeedKeys, recognitionProblemText } from './recognition.ts'
 import type { ReviewDto } from './model.ts'
 
@@ -699,10 +701,17 @@ export function RejectDialog({
     return () => document.removeEventListener('keydown', down)
   }, [fine, fields.length])
 
+  // a typo in a suggestion must hold the door, never file as text where a
+  // number belongs - and an all-empty grid stays "keep everything"
+  const suggestionsInvalid =
+    suggesting &&
+    fields.some((field) => suggestionDraftInvalid(field, suggested[field.key] ?? ''))
   const confirm = () => {
-    if (!ready) return
+    if (!ready || suggestionsInvalid) return
     const changes = Object.fromEntries(
-      Object.entries(suggested).filter(([, value]) => value.trim() !== ''),
+      fields
+        .filter((field) => (suggested[field.key] ?? '').trim() !== '')
+        .map((field) => [field.key, materializeSuggestion(field, suggested[field.key]!)]),
     )
     onConfirm({
       ...(reason === '' ? {} : { reason }),
@@ -762,7 +771,7 @@ export function RejectDialog({
             <Kbd>Esc</Kbd>
           </Button>
           <Button
-            disabled={!ready}
+            disabled={!ready || suggestionsInvalid}
             className={stylex.props(styles.rejectSolid, ready && styles.rejectLift).className}
             onClick={confirm}
           >
@@ -833,25 +842,19 @@ export function RejectDialog({
                 <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestField)}</span>
                 <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestTheirs)}</span>
                 <span {...stylex.props(styles.quietNote)}>{format(m.reviewSuggestMine)}</span>
-                {fields.map((field, index) => {
-                  const original =
-                    typeof filed[field.key] === 'string' ? (filed[field.key] as string) : ''
-                  const mine = suggested[field.key] ?? ''
-                  return (
-                    <FieldRow
-                      key={field.key}
-                      slot={index + 1}
-                      label={field.label}
-                      original={original}
-                      value={mine}
-                      type={field.type === 'date' ? 'date' : 'text'}
-                      keepLabel={format(m.reviewSuggestKeep)}
-                      onChange={(next) =>
-                        setSuggested((current) => ({ ...current, [field.key]: next }))
-                      }
-                    />
-                  )
-                })}
+                {fields.map((field, index) => (
+                  <FieldRow
+                    key={field.key}
+                    slot={index + 1}
+                    field={field}
+                    original={displayValueOf(field, filed[field.key])}
+                    value={suggested[field.key] ?? ''}
+                    keepLabel={format(m.reviewSuggestKeep)}
+                    onChange={(next) =>
+                      setSuggested((current) => ({ ...current, [field.key]: next }))
+                    }
+                  />
+                ))}
                 <p {...stylex.props(styles.quietNote, styles.gridFoot)}>
                   {format(m.reviewSuggestHint)}
                 </p>
@@ -869,24 +872,39 @@ export function RejectDialog({
  * The box starts empty - empty is "keep theirs" - and a box that has been
  * written in stops looking like the empty ones around it.
  */
+/** whether a typed suggestion draft could ever file as this field's value */
+const suggestionDraftInvalid = (field: EvidenceFieldSpec, draft: string): boolean => {
+  const trimmed = draft.trim()
+  if (trimmed === '') return false
+  if (field.type === 'integer')
+    return !/^-?\d+$/.test(trimmed) || !Number.isSafeInteger(Number(trimmed))
+  if (field.type === 'decimal') return parseDecimal(trimmed) === null
+  return false
+}
+
+/** the value a suggestion actually files: numbers as numbers */
+const materializeSuggestion = (field: EvidenceFieldSpec, draft: string): unknown => {
+  const trimmed = draft.trim()
+  return field.type === 'integer' ? Number(trimmed) : trimmed
+}
+
 function FieldRow({
   slot,
-  label,
+  field,
   original,
   value,
-  type,
   keepLabel,
   onChange,
 }: {
   slot: number
-  label: string
+  field: EvidenceFieldSpec
   original: string
   value: string
-  type: 'text' | 'date'
   keepLabel: string
   onChange: (next: string) => void
 }) {
   const changed = value.trim() !== ''
+  const invalid = suggestionDraftInvalid(field, value)
   return (
     <>
       <span {...stylex.props(styles.rowName)}>
@@ -896,22 +914,46 @@ function FieldRow({
             <Kbd>{slot}</Kbd>
           </KbdGroup>
         )}
-        {label}
+        {field.label}
       </span>
       <span {...stylex.props(styles.rowTheirs, changed && styles.rowStruck)}>
         {original || '—'}
       </span>
-      <Input
-        type={type}
-        data-suggest-slot={slot}
-        className={
-          stylex.props(styles.suggestInput, changed ? styles.suggestChanged : styles.suggestIdle)
-            .className
-        }
-        value={value}
-        placeholder={keepLabel}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      {field.type === 'choice' ? (
+        <NativeSelect
+          data-suggest-slot={slot}
+          className={
+            stylex.props(styles.suggestInput, changed ? styles.suggestChanged : styles.suggestIdle)
+              .className
+          }
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {/* '' keeps theirs, like an untouched text box */}
+          <option value="">{keepLabel}</option>
+          {(field.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </NativeSelect>
+      ) : (
+        <Input
+          type={field.type === 'date' ? 'date' : 'text'}
+          inputMode={
+            field.type === 'integer' ? 'numeric' : field.type === 'decimal' ? 'decimal' : undefined
+          }
+          aria-invalid={invalid ? true : undefined}
+          data-suggest-slot={slot}
+          className={
+            stylex.props(styles.suggestInput, changed ? styles.suggestChanged : styles.suggestIdle)
+              .className
+          }
+          value={value}
+          placeholder={keepLabel}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
     </>
   )
 }

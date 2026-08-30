@@ -134,6 +134,27 @@ export const fieldsOf = (
     ? ((formConfig as { fields: unknown[] }).fields as never)
     : []
 
+/**
+ * One field's raw payload value as the words a reader should see.
+ *
+ * Numbers print as numbers, a choice prints the administrator's label for
+ * its stable value, arrays (attachments) are not for this helper, and
+ * anything unreadable prints as nothing - the same rules the entry summary
+ * applies, said once for the screens that read payloads directly.
+ */
+export const displayValueOf = (
+  field: import('./EvidenceForm.tsx').EvidenceFieldSpec,
+  raw: unknown,
+): string => {
+  if (typeof raw === 'number') return String(raw)
+  if (typeof raw !== 'string') return ''
+  if (field.type === 'choice') {
+    const chosen = (field.options ?? []).find((option) => option.value === raw)
+    if (chosen !== undefined) return chosen.label
+  }
+  return raw
+}
+
 /** the url the api serves bytes at, for stores without their own door */
 export const attachmentContentUrl = (attachmentId: string) =>
   `/api/assessment/attachments/${attachmentId}/content`

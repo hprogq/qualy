@@ -4,7 +4,7 @@ import type { ApiResult } from '@qualy/web-runtime/api'
 import { useI18n } from '@qualy/web-i18n'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
-import { fieldsOf } from '../entry/model.ts'
+import { displayValueOf, fieldsOf } from '../entry/model.ts'
 
 // What the review screens agree on: the queue row, the three ways it is
 // laid out, and the run - the ordered slice of the queue a reviewer walks
@@ -264,7 +264,13 @@ export function useEntryHistory(entryId: string, enabled: boolean) {
  * the resubmission was the new photograph.
  */
 export const valueOf = (raw: unknown): string =>
-  typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map(String).join(',') : ''
+  typeof raw === 'string'
+    ? raw
+    : typeof raw === 'number'
+      ? String(raw)
+      : Array.isArray(raw)
+        ? raw.map(String).join(',')
+        : ''
 
 /** the attachments an answer cites, in the order they were filed */
 export const idsOf = (raw: unknown): readonly string[] =>
@@ -281,7 +287,8 @@ export const valuesOf = (
     return {
       key: field.key,
       label: field.label,
-      value: valueOf(raw),
+      // through the field's own words: a choice reads as its label
+      value: displayValueOf(field, raw) || valueOf(raw),
       ids: field.type === 'attachment' ? idsOf(raw) : [],
     }
   })

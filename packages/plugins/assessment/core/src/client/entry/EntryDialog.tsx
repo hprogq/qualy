@@ -246,8 +246,15 @@ const ISSUE_SENTENCES: Record<string, MessageDescriptor> = {
   required: m.entryIssueRequired,
   'out-of-range': m.entryIssueOutOfRange,
   'not-a-date': m.entryIssueNotADate,
+  'not-an-integer': m.entryIssueNotAnInteger,
+  'not-a-decimal': m.entryIssueNotADecimal,
+  'too-precise': m.entryIssueTooPrecise,
+  'not-a-choice': m.entryIssueNotAChoice,
+  'not-text': m.entryIssueNotText,
   'too-long': m.entryIssueTooLong,
   'too-many': m.entryIssueTooMany,
+  'too-many-attachments': m.entryIssueTooMany,
+  'not-attachments': m.entryIssueFileMissing,
   'attachment-too-large': m.entryIssueFileTooLarge,
   'attachment-type': m.entryIssueFileType,
   'attachment-not-found': m.entryIssueFileMissing,
@@ -301,6 +308,8 @@ export function EntryDialog({
   const [payload, setPayload] = useState<EvidencePayload>(
     () => (entry?.currentRevision?.payload as EvidencePayload | null) ?? {},
   )
+  // a half-typed number must hold the doors shut, not submit as omitted
+  const [evidenceValid, setEvidenceValid] = useState(true)
   const [note, setNote] = useState(entry?.currentRevision?.note ?? '')
   const [problem, setProblem] = useState<string | null>(null)
   // handing it on waits on an answer; keeping a draft does not
@@ -467,7 +476,7 @@ export function EntryDialog({
               would file an answer under rules its author has not seen */}
           <Button
             variant="outline"
-            disabled={save.isPending || stale}
+            disabled={save.isPending || stale || !evidenceValid}
             onClick={() => save.mutate(false)}
           >
             {format(m.entrySaveDraft)}
@@ -495,7 +504,7 @@ export function EntryDialog({
           ) : (
             <Button
               data-testid="save-and-submit"
-              disabled={save.isPending || stale}
+              disabled={save.isPending || stale || !evidenceValid}
               onClick={() => setAsking(true)}
             >
               {format(m.entrySaveAndSubmit)}
@@ -539,6 +548,7 @@ export function EntryDialog({
       <div {...stylex.props(styles.body)}>
         <div {...stylex.props(styles.form)}>
           <EvidenceForm
+            onValidityChange={setEvidenceValid}
             fields={fields}
             value={payload}
             onChange={setPayload}

@@ -325,13 +325,13 @@ const itemRow = (
 export const carryPayload = (
   from: ItemDto,
   to: ItemDto,
-  payload: Record<string, string | readonly string[]>,
-): Record<string, string | readonly string[]> => {
+  payload: Record<string, string | number | readonly string[]>,
+): Record<string, string | number | readonly string[]> => {
   const was = fieldsOf(from.currentRevision?.formConfig)
   const now = fieldsOf(to.currentRevision?.formConfig)
   const identity = (field: { id?: string; key: string }) => field.id ?? field.key
   const held = new Map(was.map((field) => [identity(field), field] as const))
-  const carried: Record<string, string | readonly string[]> = {}
+  const carried: Record<string, string | number | readonly string[]> = {}
   for (const field of now) {
     const before = held.get(identity(field))
     if (before === undefined || before.type !== field.type) continue

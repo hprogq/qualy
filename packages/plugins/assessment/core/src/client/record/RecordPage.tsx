@@ -64,6 +64,7 @@ function Recorder({
   const [payload, setPayload] = useState<EvidencePayload>({})
   const [basis, setBasis] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
+  const [evidenceValid, setEvidenceValid] = useState(true)
 
   const administrative = ((items.data?.items ?? []) as readonly ItemDto[]).filter(
     (item) => item.status === 'active' && item.currentRevision?.entrySource === 'administrative',
@@ -150,6 +151,7 @@ function Recorder({
           </Field>
           {item !== null && (
             <EvidenceForm
+              onValidityChange={setEvidenceValid}
               fields={fieldsOf(item.currentRevision?.formConfig)}
               value={payload}
               onChange={setPayload}
@@ -171,7 +173,11 @@ function Recorder({
           <div {...stylex.props(styles.foot)}>
             <Button
               disabled={
-                record.isPending || itemId === '' || participantId === '' || basis.trim() === ''
+                record.isPending ||
+                itemId === '' ||
+                participantId === '' ||
+                basis.trim() === '' ||
+                !evidenceValid
               }
               onClick={() => record.mutate()}
             >

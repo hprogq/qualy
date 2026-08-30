@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { DownloadIcon, FileTextIcon, UploadIcon, XIcon } from 'lucide-react'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
+import { parseDecimal } from '@qualy/value-schema'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Button } from '@qualy/ui/button'
+import { NativeSelect } from '@qualy/ui/native-select'
 import { Field } from '@qualy/ui/admin'
 import { Dropzone, FileTile, type Accept, type FileRejection } from '@qualy/ui/dropzone'
 import { Input } from '@qualy/ui/input'
@@ -78,19 +80,22 @@ export interface EvidenceFieldSpec {
   /** what this field is called across versions of the form; older forms have none */
   readonly id?: string
   readonly key: string
-  readonly type: 'text' | 'date' | 'attachment'
+  readonly type: 'text' | 'date' | 'integer' | 'decimal' | 'choice' | 'attachment'
   readonly label: string
   readonly required?: boolean
   readonly maxLength?: number
-  readonly min?: string
-  readonly max?: string
+  /** integer bounds arrive as numbers; date and decimal bounds as strings */
+  readonly min?: string | number
+  readonly max?: string | number
+  readonly maxScale?: number
+  readonly options?: readonly { readonly value: string; readonly label: string }[]
   readonly maxCount?: number
   /** the largest one file may be; the round's own rule, in bytes */
   readonly maxFileBytes?: number
   readonly accept?: readonly string[]
 }
 
-export type EvidencePayload = Record<string, string | readonly string[]>
+export type EvidencePayload = Record<string, string | number | readonly string[]>
 
 /** why a file was not added, said about that file */
 const REFUSALS = {
@@ -121,6 +126,16 @@ const acceptOf = (list: readonly string[] | undefined): Accept | undefined => {
   return accept
 }
 
+/**
+ * A number mid-edit: "", "-", "1." are legitimate keyboards-worth of state
+ * that no payload may carry. The draft lives here; only a lexically whole
+ * value is written through, and a draft that will not materialize keeps its
+ * key OUT of the payload while reporting the form invalid - because for an
+ * optional field, "invalid" quietly read as "omitted" is how a typo submits
+ * as an empty answer.
+ */
+const INTEGER_DRAFT = /^-?\d+$/
+
 export function EvidenceForm({
   fields,
   value,
@@ -130,6 +145,7 @@ export function EvidenceForm({
   materialRange,
   knownFiles = {},
   disabled = false,
+  onValidityChange,
 }: {
   fields: readonly EvidenceFieldSpec[]
   value: EvidencePayload
@@ -140,6 +156,8 @@ export function EvidenceForm({
   materialRange?: { start: string; end: string } | undefined
   knownFiles?: KnownFiles
   disabled?: boolean
+  /** false while any draft cannot materialize; submit gates listen here */
+  onValidityChange?: (valid: boolean) => void
 }) {
   const { format } = useI18n()
   const [uploaded, setUploaded] = useState<Record<string, UploadedFile>>({})
@@ -154,8 +172,76 @@ export function EvidenceForm({
     files: readonly { name: string; reason: FileRejection['reason'] }[]
   } | null>(null)
 
-  const setField = (key: string, next: string | readonly string[]) =>
+  const setField = (key: string, next: string | number | readonly string[]) =>
     onChange({ ...value, [key]: next })
+  const dropField = (key: string) => {
+    const { [key]: gone, ...rest } = value
+    void gone
+    onChange(rest)
+  }
+
+  // numeric drafts, per field: what is typed, not yet what is filed
+  const [numberDrafts, setNumberDrafts] = useState<Record<string, string>>({})
+  const draftInvalid = (field: EvidenceFieldSpec, draft: string): boolean => {
+    const trimmed = draft.trim()
+    if (trimmed === '') return false
+    if (field.type === 'integer')
+      return !INTEGER_DRAFT.test(trimmed) || !Number.isSafeInteger(Number(trimmed))
+    return parseDecimal(trimmed) === null
+  }
+  const invalidDrafts = fields.filter((field) => {
+    if (field.type !== 'integer' && field.type !== 'decimal') return false
+    const draft = numberDrafts[field.key]
+    return draft !== undefined && draftInvalid(field, draft)
+  })
+  const valid = invalidDrafts.length === 0
+  const reportedValid = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (reportedValid.current === valid) return
+    reportedValid.current = valid
+    onValidityChange?.(valid)
+  }, [valid, onValidityChange])
+
+  const numberField = (field: EvidenceFieldSpec) => {
+    const stored = value[field.key]
+    const draft =
+      numberDrafts[field.key] ?? (stored === undefined ? '' : String(stored as string | number))
+    const invalid = draftInvalid(field, draft)
+    return (
+      <Field
+        key={field.key}
+        label={field.label}
+        required={field.required === true}
+        hint={invalid ? format(m.entryNumberUnreadable) : undefined}
+      >
+        {(id) => (
+          <Input
+            id={id}
+            value={draft}
+            disabled={disabled}
+            inputMode={field.type === 'integer' ? 'numeric' : 'decimal'}
+            aria-invalid={invalid ? true : undefined}
+            onChange={(event) => {
+              const next = event.target.value
+              setNumberDrafts((current) => ({ ...current, [field.key]: next }))
+              const trimmed = next.trim()
+              if (trimmed === '') {
+                dropField(field.key)
+                return
+              }
+              if (draftInvalid(field, next)) {
+                // the key leaves the payload but the form says why: a typo
+                // must block the submit, never read as "left blank"
+                dropField(field.key)
+                return
+              }
+              setField(field.key, field.type === 'integer' ? Number(trimmed) : trimmed)
+            }}
+          />
+        )}
+      </Field>
+    )
+  }
 
   return (
     <div {...stylex.props(styles.form)}>
@@ -207,6 +293,38 @@ export function EvidenceForm({
                   disabled={disabled}
                   onChange={(event) => setField(field.key, event.target.value)}
                 />
+              )}
+            </Field>
+          )
+        }
+
+        if (field.type === 'integer' || field.type === 'decimal') {
+          return numberField(field)
+        }
+
+        if (field.type === 'choice') {
+          const chosen = typeof value[field.key] === 'string' ? (value[field.key] as string) : ''
+          return (
+            <Field key={field.key} label={field.label} required={field.required === true}>
+              {(id) => (
+                <NativeSelect
+                  id={id}
+                  value={chosen}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    // '' is "unanswered": the key leaves the payload rather
+                    // than filing an empty string as a chosen value
+                    if (event.target.value === '') dropField(field.key)
+                    else setField(field.key, event.target.value)
+                  }}
+                >
+                  <option value="" />
+                  {(field.options ?? []).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </NativeSelect>
               )}
             </Field>
           )

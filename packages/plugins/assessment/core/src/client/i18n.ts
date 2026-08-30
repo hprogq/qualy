@@ -1246,6 +1246,34 @@ const i18n = definePluginMessages({
     itemsFieldType: { id: 'assessment/items/field-type', defaultMessage: 'Type' },
     itemsTypeText: { id: 'assessment/items/type-text', defaultMessage: 'Text' },
     itemsTypeDate: { id: 'assessment/items/type-date', defaultMessage: 'Date' },
+    entryIssueNotAnInteger: {
+      id: 'assessment/entry/issue-not-an-integer',
+      defaultMessage: 'Enter a whole number',
+    },
+    entryIssueNotADecimal: {
+      id: 'assessment/entry/issue-not-a-decimal',
+      defaultMessage: 'Enter an amount like 3.5',
+    },
+    entryIssueTooPrecise: {
+      id: 'assessment/entry/issue-too-precise',
+      defaultMessage: 'Too many decimal places for this field',
+    },
+    entryIssueNotAChoice: {
+      id: 'assessment/entry/issue-not-a-choice',
+      defaultMessage: 'Pick one of the listed options',
+    },
+    entryIssueNotText: {
+      id: 'assessment/entry/issue-not-text',
+      defaultMessage: 'Enter text here',
+    },
+    entryNumberUnreadable: {
+      id: 'assessment/entry/number-unreadable',
+      defaultMessage: 'Finish the number before submitting',
+    },
+    entryChoiceUnset: {
+      id: 'assessment/entry/choice-unset',
+      defaultMessage: 'Pick an option',
+    },
     itemsTypeInteger: {
       id: 'assessment/items/type-integer',
       defaultMessage: 'Number',
@@ -1265,6 +1293,38 @@ const i18n = definePluginMessages({
     itemsLimitChoices: {
       id: 'assessment/items/limit-choices',
       defaultMessage: '{count, plural, other {# options}}',
+    },
+    itemsFieldMinValue: {
+      id: 'assessment/items/field-min-value',
+      defaultMessage: 'Minimum',
+    },
+    itemsFieldMaxValue: {
+      id: 'assessment/items/field-max-value',
+      defaultMessage: 'Maximum',
+    },
+    itemsFieldMaxScale: {
+      id: 'assessment/items/field-max-scale',
+      defaultMessage: 'Decimal places',
+    },
+    itemsChoiceOptions: {
+      id: 'assessment/items/choice-options',
+      defaultMessage: 'Options',
+    },
+    itemsChoiceValue: {
+      id: 'assessment/items/choice-value',
+      defaultMessage: 'Stored value',
+    },
+    itemsChoiceLabel: {
+      id: 'assessment/items/choice-label',
+      defaultMessage: 'Shown as',
+    },
+    itemsChoiceAdd: {
+      id: 'assessment/items/choice-add',
+      defaultMessage: 'Add an option',
+    },
+    itemsChoiceRemove: {
+      id: 'assessment/items/choice-remove',
+      defaultMessage: 'Remove this option',
     },
     itemsTypeAttachment: { id: 'assessment/items/type-attachment', defaultMessage: 'File' },
     itemsFieldRequired: { id: 'assessment/items/field-required', defaultMessage: 'Required' },

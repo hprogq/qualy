@@ -84,13 +84,27 @@ const review = (over: Record<string, unknown> = {}) => ({
   completedAt: null,
   revision: {
     revisionNo: 1,
-    payload: { name: '中国机器人大赛' },
+    payload: { name: '中国机器人大赛', 'claimed-level': 'provincial', 'claimed-placing': 2 },
     note: null,
     attachments: [],
   },
   form: {
     itemType: 'evidence',
-    formConfig: { fields: [{ key: 'name', type: 'text', label: '竞赛名称' }] },
+    formConfig: {
+      fields: [
+        { key: 'name', type: 'text', label: '竞赛名称' },
+        {
+          key: 'claimed-level',
+          type: 'choice',
+          label: '申报级别',
+          options: [
+            { value: 'national', label: '国家级' },
+            { value: 'provincial', label: '省部级' },
+          ],
+        },
+        { key: 'claimed-placing', type: 'integer', label: '申报序位', min: 1, max: 10 },
+      ],
+    },
   },
   chain: {
     route: 'normal' as const,
@@ -353,5 +367,41 @@ describe('approving with a determination', () => {
     } finally {
       window.matchMedia = real
     }
+  })
+
+  it("reads typed evidence in the reviewer's words, and suggests in kind", async () => {
+    const decided = stagedDecide()
+    open(review({ recognitionForm: null }), { decideReview: decided as never })
+    await expect.element(page.getByText('中国机器人大赛').first()).toBeVisible()
+    await page.getByRole('button', { name: /退回/ }).click()
+    await expect.element(page.getByRole('dialog')).toBeVisible()
+    await page.getByLabelText('审核意见').fill('序位与证书不符')
+    const { userEvent } = await import('vitest/browser')
+    // open the suggestion grid and correct the integer
+    await page.getByRole('checkbox', { name: /修改建议/ }).click()
+    await vi.waitFor(() => {
+      if (document.querySelector('[data-suggest-slot="3"]') === null)
+        throw new Error('grid not open yet')
+    })
+    // "theirs" prints the choice's words and the number itself - not a
+    // blank where the value would not coerce to a string
+    const dialogText = (page.getByRole('dialog').element() as HTMLElement).textContent ?? ''
+    expect(dialogText).toContain('省部级')
+    expect(dialogText).toContain('2')
+    const slot = document.querySelector('[data-suggest-slot="3"]') as HTMLInputElement
+    // a typo holds the door
+    await userEvent.fill(slot, '3x')
+    await expect
+      .element(page.getByRole('dialog').getByRole('button', { name: /确认退回/ }))
+      .toBeDisabled()
+    await userEvent.fill(slot, '3')
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: /确认退回/ })
+      .click()
+    await vi.waitFor(() => expect(decided).toHaveBeenCalled(), { timeout: 8_000 })
+    const payload = decidedPayload(decided)
+    // the suggestion files as the field's own kind: a number, not its text
+    expect(payload['suggestedPayload']).toMatchObject({ 'claimed-placing': 3 })
   })
 })

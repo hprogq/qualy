@@ -100,6 +100,7 @@ export function SupplementAnswerDialog({
     },
   })
 
+  const [evidenceValid, setEvidenceValid] = useState(true)
   const ready = supplement.requirements.every((asked) => {
     if (!asked.required) return true
     const value = payload[asked.key]
@@ -118,7 +119,7 @@ export function SupplementAnswerDialog({
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
-          <Button disabled={send.isPending || !ready} onClick={() => send.mutate()}>
+          <Button disabled={send.isPending || !ready || !evidenceValid} onClick={() => send.mutate()}>
             {format(m.entrySubmit)}
           </Button>
         </div>
@@ -127,6 +128,7 @@ export function SupplementAnswerDialog({
       <div {...stylex.props(styles.body)}>
         <p {...stylex.props(styles.instructions)}>{supplement.instructions}</p>
         <EvidenceForm
+          onValidityChange={setEvidenceValid}
           fields={fields}
           value={payload}
           onChange={setPayload}

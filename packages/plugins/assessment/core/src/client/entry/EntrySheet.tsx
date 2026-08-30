@@ -22,7 +22,7 @@ import { entryRefusalReason } from './refusals.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { EntryTrail } from './EntryHistory.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
-import { fieldsOf, type ActionAvailability, type EntryDto, type ItemDto } from './model.ts'
+import { displayValueOf, fieldsOf, type ActionAvailability, type EntryDto, type ItemDto } from './model.ts'
 
 // One claim, in full, in a drawer over the list it came from.
 //
@@ -372,14 +372,15 @@ function SuggestedChanges({
   return (
     <div {...stylex.props(styles.suggested)} data-testid="suggested-changes">
       <p {...stylex.props(styles.quietNote)}>{format(m.entrySuggestedTitle)}</p>
-      {rows.map((field) => (
-        <p key={field.key} {...stylex.props(styles.suggestedLine)}>
-          <span {...stylex.props(styles.suggestedLabel)}>{field.label}</span>
-          <span {...stylex.props(styles.anywhere)}>
-            {String(record[field.key] ?? '') === '' ? '—' : String(record[field.key] ?? '')}
-          </span>
-        </p>
-      ))}
+      {rows.map((field) => {
+        const said = displayValueOf(field, record[field.key])
+        return (
+          <p key={field.key} {...stylex.props(styles.suggestedLine)}>
+            <span {...stylex.props(styles.suggestedLabel)}>{field.label}</span>
+            <span {...stylex.props(styles.anywhere)}>{said === '' ? '—' : said}</span>
+          </p>
+        )
+      })}
     </div>
   )
 }
