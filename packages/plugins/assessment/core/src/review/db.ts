@@ -384,6 +384,8 @@ export interface ReviewInstanceDetailRow {
   roundNo: number
   entryId: string
   revisionId: string
+  /** the recognition contract this round determines under, frozen when it opened */
+  recognitionRevisionId: string
   currentNodeId: string
   currentRoleIds: readonly string[]
   createdAt: number
@@ -503,6 +505,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           'ri.roundNo',
           'ri.entryId',
           'ri.revisionId',
+          'ri.recognitionRevisionId',
           'ri.currentNodeId',
           'ri.currentRoleIds',
           'e.batchId',
@@ -545,6 +548,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               roundNo: row.roundNo,
               entryId: row.entryId,
               revisionId: row.revisionId,
+              recognitionRevisionId: row.recognitionRevisionId,
               currentNodeId: row.currentNodeId,
               currentRoleIds: row.currentRoleIds,
               createdAt: msOf(row.createdMs),
@@ -2246,13 +2250,15 @@ export const insertVote = (input: {
   decision: 'approve' | 'reject'
   reason: string | null
   comment: string | null
+  /** which determination this ballot was cast on; the sitting's frozen one */
+  recognitionHash?: string | null
 }) =>
   db.query((k) =>
     sql`
       insert into review_votes
-        (tenant_id, panel_id, assignment_id, voter_user_id, decision, reason, comment)
+        (tenant_id, panel_id, assignment_id, voter_user_id, decision, reason, comment, recognition_hash)
       values (${input.tenantId}, ${input.panelId}, ${input.assignmentId}, ${input.voterUserId},
-              ${input.decision}, ${input.reason}, ${input.comment})
+              ${input.decision}, ${input.reason}, ${input.comment}, ${input.recognitionHash ?? null})
     `.execute(k),
   )
 
@@ -2389,4 +2395,118 @@ export const resolvedPanelOpinions = (tenantId: string, instanceId: string) =>
         }
         return byStage as ReadonlyMap<string, readonly PanelVoteRow[]>
       }),
+    )
+
+/**
+ * The last determination this round made, if any word in it has.
+ *
+ * How a later stage inherits what an earlier one decided: the reviewer above
+ * opens on what the reviewer below determined, not on the student's original
+ * claim, so a correction survives the climb.
+ */
+export const lastRecognitionOf = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewEvent')
+        .select(['recognitionPayload'])
+        .where('tenantId', '=', tenantId)
+        .where('reviewInstanceId', '=', instanceId)
+        .where('recognitionPayload', 'is not', null)
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : ((row as { recognitionPayload: Record<string, unknown> }).recognitionPayload ?? null),
+      ),
+    )
+
+/** the determination an open sitting has already frozen, if it has */
+export const lockedProposalOf = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewPanel')
+        .select(['recognitionPayload'])
+        .where('tenantId', '=', tenantId)
+        .where('reviewInstanceId', '=', instanceId)
+        .where('state', '=', 'open')
+        .where('recognitionLockedAt', 'is not', null)
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : ((row as { recognitionPayload: Record<string, unknown> }).recognitionPayload ?? null),
+      ),
+    )
+
+/** one filing's evidence, for seeding a first determination from it */
+export const revisionPayloadOf = (tenantId: string, revisionId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('EntryRevision')
+        .select(['payload'])
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', revisionId)
+        .executeTakeFirst(),
+    )
+    .pipe(Effect.map((row) => (row === undefined ? {} : (row as { payload: unknown }).payload)))
+
+/**
+ * Freeze what a sitting is voting on, if nobody has yet.
+ *
+ * The first ballot decides the text: three reviewers approving three
+ * different determinations is not a decision anybody could act on. Written
+ * with the lock condition in the statement, so two ballots racing produce
+ * one frozen proposal rather than two.
+ */
+export const lockPanelRecognition = (input: {
+  tenantId: string
+  panelId: string
+  values: Record<string, unknown>
+  hash: string
+}) =>
+  db.query((k) =>
+    k
+      .updateTable('ReviewPanel')
+      .set({
+        recognitionPayload: sql`${JSON.stringify(input.values)}::jsonb`,
+        recognitionHash: input.hash,
+        recognitionLockedAt: sql`now()`,
+      })
+      .where('tenantId', '=', input.tenantId)
+      .where('id', '=', input.panelId)
+      .where('recognitionLockedAt', 'is', null)
+      .execute(),
+  )
+
+/** what an open sitting has frozen, read inside the transaction that votes */
+export const panelRecognitionOf = (tenantId: string, panelId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewPanel')
+        .select(['recognitionPayload', 'recognitionHash'])
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', panelId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined || (row as { recognitionHash: string | null }).recognitionHash === null
+          ? null
+          : {
+              values: ((row as { recognitionPayload: Record<string, unknown> }).recognitionPayload ??
+                {}) as Record<string, unknown>,
+              hash: String((row as { recognitionHash: string }).recognitionHash),
+            },
+      ),
     )

@@ -5269,6 +5269,16 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             ...(payload.suggestedPayload !== undefined
               ? { suggestedPayload: payload.suggestedPayload }
               : {}),
+            ...(payload.recognition !== undefined
+              ? {
+                  recognition: {
+                    values: payload.recognition.values,
+                    ...(payload.recognition.reason !== undefined
+                      ? { reason: payload.recognition.reason }
+                      : {}),
+                  },
+                }
+              : {}),
           },
           principal,
         )

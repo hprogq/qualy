@@ -349,6 +349,14 @@ export const setEntryState = (input: {
   to: EntryStatus
   currentRevisionId?: string
   currentReviewInstanceId?: string | null
+  /**
+   * What the claim now stands recognised as.
+   *
+   * Set in the SAME statement as the status, never after it: an approved
+   * entry without a determination is a state the table refuses, so a second
+   * statement would be a moment the database is right to reject.
+   */
+  currentRecognitionId?: string
 }) =>
   db
     .query((k) =>
@@ -362,6 +370,9 @@ export const setEntryState = (input: {
             : {}),
           ...(input.currentReviewInstanceId !== undefined
             ? { currentReviewInstanceId: input.currentReviewInstanceId }
+            : {}),
+          ...(input.currentRecognitionId !== undefined
+            ? { currentRecognitionId: input.currentRecognitionId }
             : {}),
         })
         .where('tenantId', '=', input.tenantId)
@@ -618,6 +629,15 @@ export const insertReviewInstance = (input: {
   /** where this round may be ended; frozen when it opens (§32.63) */
   /** which version of the question's review policy this round walks */
   policyRevisionId: string
+  /**
+   * And which version of its recognition contract it determines under.
+   *
+   * The same revision as the policy today. It is its own column because the
+   * two answer different questions - by what procedure, and against what
+   * contract - and a round frozen against one must not silently start
+   * determining against another.
+   */
+  recognitionRevisionId: string
   /** both routes, resolved and frozen for the whole round */
   effectivePolicy: unknown
   route: 'normal' | 'escalation'
@@ -635,13 +655,13 @@ export const insertReviewInstance = (input: {
         insert into review_instances
           (tenant_id, entry_id, revision_id, round_no, origin, initiator,
            supersedes_instance_id, appealed_instance_id,
-           policy_revision_id, effective_chain,
+           policy_revision_id, recognition_revision_id, effective_chain,
            current_route, current_stage_id, state, blocked_reason,
            current_role_ids, current_node_id, current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
                 ${input.origin ?? 'initial'}, ${input.initiator ?? 'participant'},
                 ${input.supersedesInstanceId ?? null}, ${input.appealedInstanceId ?? null},
-                ${input.policyRevisionId},
+                ${input.policyRevisionId}, ${input.recognitionRevisionId},
                 ${jsonb(input.effectivePolicy)},
                 ${input.route}, ${input.stageId}, ${input.state},
                 ${input.state === 'blocked' ? (input.blockedReason ?? 'no-assignee') : null},
@@ -783,25 +803,40 @@ export const insertReviewEvent = (input: {
   reason?: string | null
   comment?: string | null
   suggestedPayload?: unknown
+  /** what this word determined, when it determined anything */
+  recognitionPayload?: unknown
+  recognitionReason?: string | null
+  recognitionHash?: string | null
 }) =>
-  db.query((k) =>
-    k
-      .insertInto('ReviewEvent')
-      .values({
-        tenantId: input.tenantId,
-        reviewInstanceId: input.reviewInstanceId,
-        kind: input.kind,
-        actorId: input.actorId,
-        route: input.route ?? null,
-        stageId: input.stageId ?? null,
-        reason: input.reason ?? null,
-        comment: input.comment ?? null,
-        ...(input.suggestedPayload !== undefined
-          ? { suggestedPayload: jsonb(input.suggestedPayload) }
-          : {}),
-      } as never)
-      .execute(),
-  )
+  db
+    .query((k) =>
+      k
+        .insertInto('ReviewEvent')
+        .values({
+          tenantId: input.tenantId,
+          reviewInstanceId: input.reviewInstanceId,
+          kind: input.kind,
+          actorId: input.actorId,
+          route: input.route ?? null,
+          stageId: input.stageId ?? null,
+          reason: input.reason ?? null,
+          comment: input.comment ?? null,
+          ...(input.suggestedPayload !== undefined
+            ? { suggestedPayload: jsonb(input.suggestedPayload) }
+            : {}),
+          ...(input.recognitionPayload !== undefined
+            ? {
+                recognitionPayload: jsonb(input.recognitionPayload),
+                recognitionReason: input.recognitionReason ?? null,
+                recognitionHash: input.recognitionHash ?? null,
+              }
+            : {}),
+        } as never)
+        // the id, because a determination cites the word that made it
+        .returning(['id'])
+        .executeTakeFirstOrThrow(),
+    )
+    .pipe(Effect.map((row) => String((row as { id: string }).id)))
 
 /** the open work a void sweeps: entries of this item still in someone's hands */
 export const openEntriesOfItem = (tenantId: string, itemId: string) =>

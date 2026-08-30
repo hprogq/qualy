@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:b121dabb4728c925631e2a71c979240f9c0585304d4627a37c398980ac34dd71",
-  "resolutionHash": "sha256:56f15ef733202293525275a6fe8f3032e2aa02ff0b9d03e7e4a2f443ff3895cd",
+  "resolutionHash": "sha256:da9ae89d33c2af6afa20a192d147959235e688f4f00236e5af83c5ee7237be27",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -23,6 +23,7 @@
             "BatchPhase",
             "Entry",
             "EntryEvent",
+            "EntryRecognition",
             "EntryRevision",
             "EntryRevisionAttachment",
             "PhaseEvent",

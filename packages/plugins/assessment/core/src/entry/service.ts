@@ -1,4 +1,24 @@
 import { Effect, Result } from 'effect'
+import { insertRecognition, currentRecognitionOf } from '../scoring/recognition-db.ts'
+import { seedFromEvidence } from '../scoring/recognition.ts'
+import type { ScoringPlan } from '../scoring/plan.ts'
+
+/**
+ * The compiled arithmetic a revision carries.
+ *
+ * Every revision saved since plans existed has one, and the assembly
+ * compiles the older ones at its barrier before the port opens. Reaching a
+ * null here is an operational fault - it dies naming the revision instead of
+ * writing a determination against a contract nobody knows.
+ */
+const planOf = (revision: { readonly id: string; readonly scoringPlan: unknown }): ScoringPlan => {
+  if (revision.scoringPlan === null || typeof revision.scoringPlan !== 'object') {
+    throw new Error(
+      `item revision ${revision.id} has no compiled scoring plan; the assembly's boot backfill has not run`,
+    )
+  }
+  return revision.scoringPlan as ScoringPlan
+}
 import { boundedCounter } from '@qualy/telemetry/metrics'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
@@ -802,13 +822,17 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             if (driver === undefined) return yield* refuse('create', 'item-type-not-installed')
             const decoded = yield* decodePayload(driver, revision, input.payload, materialRange)
 
+            // An administrative record is approved the moment it is filed,
+            // but it becomes approved in the statement below rather than in
+            // this one: the row has to have a determination before it can
+            // call itself approved, and the determination needs the row.
             const entryId = yield* insertEntry({
               tenantId,
               batchId: item.batchId,
               itemId: item.id,
               participantId: participant.id,
               source: administrative ? 'record' : 'self',
-              status: administrative ? 'approved' : 'draft',
+              status: 'draft',
             })
             const revisionId = yield* insertEntryRevision({
               tenantId,
@@ -829,12 +853,29 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               revisionId,
               refs.map((ref, position) => ({ attachmentId: ref.attachmentId, position })),
             )
+            // what the office determined by recording this. Today's questions
+            // ask for nothing, so it is the empty determination - the same
+            // fact a reviewer's approval writes, from a different door
+            const recognitionId = administrative
+              ? yield* insertRecognition({
+                  tenantId,
+                  batchId: item.batchId,
+                  entryId,
+                  entryRevisionId: revisionId,
+                  itemId: item.id,
+                  itemRevisionId: revision.id,
+                  values: seedFromEvidence(planOf(revision), decoded),
+                  source: 'record',
+                  createdBy: as.userId,
+                })
+              : undefined
             yield* setEntryState({
               tenantId,
               entryId,
-              from: [administrative ? 'approved' : 'draft'],
+              from: ['draft'],
               to: administrative ? 'approved' : 'draft',
               currentRevisionId: revisionId,
+              ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
             })
             yield* announce(tenantId, item.batchId, [
               { kind: 'entries-changed', subjectUserId: participant.userId },
@@ -1063,11 +1104,29 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               // in the entry's own record, and no round ever exists - so
               // there is nothing to withdraw and nothing to appeal.
               if (policyModeOf(live.reviewPolicy) === 'none') {
+                // determined by the rule itself, against the configuration
+                // in force now - the same one that decided there is nobody
+                // to ask. A previous determination, if this claim was
+                // approved before, is superseded rather than edited.
+                const standing = yield* currentRecognitionOf(tenantId, entryId)
+                const recognitionId = yield* insertRecognition({
+                  tenantId,
+                  batchId: entry.batchId,
+                  entryId,
+                  entryRevisionId: current!.id,
+                  itemId: entry.itemId,
+                  itemRevisionId: live.id,
+                  values: seedFromEvidence(planOf(live), carried),
+                  source: 'system',
+                  createdBy: as.userId,
+                  ...(standing === null ? {} : { supersedesId: standing.id }),
+                })
                 const settled = yield* setEntryState({
                   tenantId,
                   entryId,
                   from: ['draft', 'rejected'],
                   to: 'approved',
+                  currentRecognitionId: recognitionId,
                 })
                 if (!settled) return yield* refuse(action, 'entry-not-submittable')
                 yield* insertEntryEvent({
@@ -1126,6 +1185,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 revisionId: entry.currentRevisionId,
                 roundNo,
                 policyRevisionId: live.id,
+                // the same revision today, said twice on purpose: procedure and
+                // recognition contract are separate facts about this round
+                recognitionRevisionId: live.id,
                 effectivePolicy: policy,
                 // an ordinary submission: it walks the ordinary route, and
                 // whoever it reaches may end it (§32.63)

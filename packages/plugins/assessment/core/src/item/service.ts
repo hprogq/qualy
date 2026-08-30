@@ -636,6 +636,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           initiator: 'staff',
           supersedesInstanceId: round.id,
           policyRevisionId: input.newRevisionId,
+          recognitionRevisionId: input.newRevisionId,
           effectivePolicy: resolved,
           route: landing.route,
           stageId: landing.id,

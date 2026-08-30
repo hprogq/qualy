@@ -601,11 +601,11 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
           // through the api: createEntry refuses it above, and setItemStatus
           // has no way back to draft. The scorer's own guard is written for
           // rows that got there anyway, so it is reached the only way it can
-          // be reached - by writing them.
+          // be reached - by writing them, in the shape the table admits.
           const planted = one<{ id: string }>(
             yield* runSql(sql`
               insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
-              values (${f.t}, ${g.batch.id}, ${composed.id}, ${g.p1}, 'self', 'approved')
+              values (${f.t}, ${g.batch.id}, ${composed.id}, ${g.p1}, 'self', 'draft')
               returning id`),
           ).id
           const revision = one<{ id: string }>(
@@ -615,8 +615,20 @@ describe.runIf(postgresAvailable)('the item lifecycle and the files it leaves', 
                       '{}', ${f.s1}, ${f.s1}, 'self')
               returning id`),
           ).id
+          const recognition = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into entry_recognitions
+                (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id, values, source)
+              values (${f.t}, ${g.batch.id}, ${planted}, ${revision}, ${composed.id},
+                      ${composed.currentRevision!.id}, '{}'::jsonb, 'system')
+              returning id`),
+          ).id
           yield* runSql(
-            sql`update entries set current_revision_id = ${revision} where id = ${planted}`,
+            sql`update entries
+                set current_revision_id = ${revision},
+                    current_recognition_id = ${recognition},
+                    status = 'approved'
+                where id = ${planted}`,
           )
           const withPlanted = yield* assessment.getMyResult(f.t, g.batch.id, s1)
           // and the same row once the question is asked, so that the silence

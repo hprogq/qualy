@@ -843,6 +843,10 @@ export const Entry = defineEntity({
     currentRevisionId: p.uuid().nullable(),
     // the latest round, while one is open; history stays on the instances
     currentReviewInstanceId: p.uuid().nullable(),
+    // what the institution currently recognises this claim as. An approved
+    // entry has one; a reopened or overturned one keeps the last, because
+    // "what was decided" does not stop being true while it is reconsidered
+    currentRecognitionId: p.uuid().nullable(),
     status: p.string().length(16).defaultRaw(`'draft'`),
     // how the claim came to exist - self-filed, proxied, recorded by staff -
     // always derived by the server, never accepted from a client
@@ -863,6 +867,14 @@ export const Entry = defineEntity({
     {
       name: 'chk_entries_attention',
       expression: `participant_seen_revision >= 0 AND participant_attention_revision >= participant_seen_revision`,
+    },
+    // an approved claim has been recognised as something, even if that
+    // something is the empty recognition a fixed question needs. The reverse
+    // is deliberately NOT stated: a reopened or rejected entry keeps its
+    // last determination as history, and the scorer ignores it by status
+    {
+      name: 'chk_entries_approved_has_recognition',
+      expression: `status <> 'approved' OR current_recognition_id IS NOT NULL`,
     },
     {
       name: 'chk_entries_status',
@@ -885,6 +897,12 @@ export const Entry = defineEntity({
     // the target of the revision item-binding key: a revision names its entry
     // together with that entry's item, and this is what makes the pair
     // checkable
+    // the target of "this row belongs to that round's entry" references
+    {
+      name: 'uq_entries_tenant_batch_id',
+      expression:
+        'create unique index uq_entries_tenant_batch_id on entries (tenant_id, batch_id, id)',
+    },
     {
       name: 'uq_entries_tenant_id_item',
       expression:
@@ -997,6 +1015,81 @@ export const EntryRevision = defineEntity({
 })
 
 /**
+ * What the institution decided, each time it decided it.
+ *
+ * Not a corrected filing: the student's evidence stays exactly as they wrote
+ * it, forever, and this is the separate fact of what review made of it. The
+ * two are different questions - "what was claimed" and "what was
+ * recognised" - and a system that answers both with one row can never
+ * explain a downgrade.
+ *
+ * Append-only, like every other decision here. A second determination
+ * supersedes the first by pointing at it; nothing ever updates a row of this
+ * table, which is what lets an appeal be explained as "provincial, then
+ * national" rather than as a value that changed.
+ *
+ * `values` is keyed by recognition id, never by a calculator's parameter
+ * name: parameter names belong to one version of one function, and these
+ * facts outlive both.
+ */
+export const EntryRecognition = defineEntity({
+  name: 'EntryRecognition',
+  tableName: 'entry_recognitions',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('entry_recognitions_tenant_id_tenants_id_fkey'),
+    batchId: p.uuid(),
+    entryId: p.uuid(),
+    /** the filing this determination was made against */
+    entryRevisionId: p.uuid(),
+    itemId: p.uuid(),
+    /** the configuration whose recognition contract this was determined under */
+    itemRevisionId: p.uuid(),
+    values: p.json<Record<string, unknown>>(),
+    /** where the determination came from; scoring never asks */
+    source: p.string().length(16),
+    reviewInstanceId: p.uuid().nullable(),
+    reviewEventId: p.uuid().nullable(),
+    /** the determination this one replaces, if it replaced one */
+    supersedesId: p.uuid().nullable(),
+    createdBy: p.uuid().nullable(),
+    createdAt: p.datetime().defaultRaw('now()'),
+  },
+  checks: [
+    {
+      name: 'chk_entry_recognitions_source',
+      expression: `source IN ('review', 'record', 'import', 'system')`,
+    },
+    // a determination made by review names the round and the word that made
+    // it; one made any other way names neither, rather than half a story
+    {
+      name: 'chk_entry_recognitions_review_shape',
+      expression: `(source <> 'review' AND review_instance_id IS NULL AND review_event_id IS NULL)
+        OR (source = 'review' AND review_instance_id IS NOT NULL AND review_event_id IS NOT NULL)`,
+    },
+  ],
+  indexes: [
+    {
+      name: 'uq_entry_recognitions_tenant_id_id',
+      expression:
+        'create unique index uq_entry_recognitions_tenant_id_id on entry_recognitions (tenant_id, id)',
+    },
+    // the target of "this determination belongs to that entry" references,
+    // which is what stops an entry pointing at another entry's recognition
+    {
+      name: 'uq_entry_recognitions_tenant_entry_id',
+      expression:
+        'create unique index uq_entry_recognitions_tenant_entry_id on entry_recognitions (tenant_id, entry_id, id)',
+    },
+    {
+      name: 'idx_entry_recognitions_tenant_entry_created',
+      expression:
+        'create index idx_entry_recognitions_tenant_entry_created on entry_recognitions (tenant_id, entry_id, created_at)',
+    },
+  ],
+})
+
+/**
  * Which attachments a revision cites, as rows rather than an array column.
  *
  * The payload still names attachment ids field by field; this table is what
@@ -1066,6 +1159,11 @@ export const ReviewInstance = defineEntity({
      * refile (§32.62).
      */
     policyRevisionId: p.uuid(),
+    // and which version of the recognition contract it determines under.
+    // The same revision as the policy today, and a separate fact anyway:
+    // what a round asks a reviewer to determine and what procedure it walks
+    // are two things that will not always move together
+    recognitionRevisionId: p.uuid(),
     /** the round this one replaced, when a policy change opened it */
     supersedesInstanceId: p.uuid().nullable(),
     /** the decision being contested, when this round is an appeal against one */
@@ -1206,6 +1304,12 @@ export const ReviewEvent = defineEntity({
     reason: p.string().length(100).nullable(),
     comment: p.text().nullable(),
     suggestedPayload: p.json<Record<string, unknown>>().nullable(),
+    // what this word determined, when it determined anything: an approval
+    // carries the complete recognition, a refusal or a referral carries
+    // none, and the reason is required only when the determination changed
+    recognitionPayload: p.json<Record<string, unknown>>().nullable(),
+    recognitionReason: p.text().nullable(),
+    recognitionHash: p.string().length(64).nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
   },
   checks: [{ name: 'chk_review_events_kind_format', expression: `kind ~ ${CODE}` }],
@@ -1214,6 +1318,12 @@ export const ReviewEvent = defineEntity({
       name: 'idx_review_events_tenant_instance_created',
       expression:
         'create index idx_review_events_tenant_instance_created on review_events (tenant_id, review_instance_id, created_at)',
+    },
+    // the target of "this word was spoken in that round" references
+    {
+      name: 'uq_review_events_tenant_instance_id',
+      expression:
+        'create unique index uq_review_events_tenant_instance_id on review_events (tenant_id, review_instance_id, id)',
     },
   ],
 })
@@ -1243,6 +1353,12 @@ export const ReviewPanel = defineEntity({
     state: p.string().length(16).defaultRaw(`'open'`),
     /** what the completed sitting amounted to; null until it resolves */
     resolution: p.string().length(16).nullable(),
+    // the one determination this sitting is voting on. Frozen by the first
+    // ballot: three reviewers approving three different recognitions is not
+    // a decision anybody could act on, so the panel votes on one text
+    recognitionPayload: p.json<Record<string, unknown>>().nullable(),
+    recognitionHash: p.string().length(64).nullable(),
+    recognitionLockedAt: p.datetime().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
     closedAt: p.datetime().nullable(),
   },
@@ -1353,6 +1469,8 @@ export const ReviewVote = defineEntity({
     assignmentId: p.uuid(),
     voterUserId: p.uuid(),
     decision: p.string().length(16),
+    /** which determination this ballot was cast on; null on votes cast before there were any */
+    recognitionHash: p.string().length(64).nullable(),
     /** the configured label the voter picked, copied verbatim */
     reason: p.string().length(100).nullable(),
     comment: p.text().nullable(),
@@ -1600,6 +1718,30 @@ export const compositeForeignKeys = [
      foreign key (tenant_id, batch_id, participant_id) references batch_participants (tenant_id, batch_id, id) on delete restrict`,
   `alter table entries add constraint fk_entries_current_revision
      foreign key (tenant_id, id, current_revision_id) references entry_revisions (tenant_id, entry_id, id) on delete set null (current_revision_id)`,
+  // A determination belongs to one entry, in one round, about one question -
+  // and every one of those is held by a composite key rather than a bare
+  // uuid, so no row can cite another entry's filing or another round's word.
+  `alter table entry_recognitions add constraint fk_entry_recognitions_entry
+    foreign key (tenant_id, batch_id, entry_id) references entries (tenant_id, batch_id, id) on delete cascade`,
+  `alter table entry_recognitions add constraint fk_entry_recognitions_entry_revision
+    foreign key (tenant_id, entry_id, entry_revision_id) references entry_revisions (tenant_id, entry_id, id) on delete cascade`,
+  `alter table entry_recognitions add constraint fk_entry_recognitions_entry_item
+    foreign key (tenant_id, entry_id, item_id) references entries (tenant_id, id, item_id) on delete cascade`,
+  `alter table entry_recognitions add constraint fk_entry_recognitions_item_revision
+    foreign key (tenant_id, item_id, item_revision_id) references assessment_item_revisions (tenant_id, item_id, id) on delete restrict`,
+  // superseding, and the round it was said in: nulled rather than blocked,
+  // because losing the link is not a reason to refuse deleting a round
+  `alter table entry_recognitions add constraint fk_entry_recognitions_supersedes
+    foreign key (tenant_id, entry_id, supersedes_id) references entry_recognitions (tenant_id, entry_id, id) on delete set null (supersedes_id)`,
+  `alter table entry_recognitions add constraint fk_entry_recognitions_review_instance
+    foreign key (tenant_id, entry_id, review_instance_id) references review_instances (tenant_id, entry_id, id) on delete set null (review_instance_id)`,
+  `alter table entry_recognitions add constraint fk_entry_recognitions_review_event
+    foreign key (tenant_id, review_instance_id, review_event_id) references review_events (tenant_id, review_instance_id, id) on delete set null (review_event_id)`,
+  // the pointer, held to this entry's own determinations
+  `alter table entries add constraint fk_entries_current_recognition
+    foreign key (tenant_id, id, current_recognition_id) references entry_recognitions (tenant_id, entry_id, id) on delete set null (current_recognition_id)`,
+  `alter table review_instances add constraint fk_review_instances_recognition_revision
+    foreign key (tenant_id, recognition_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
   `alter table entries add constraint fk_entries_current_review_instance
      foreign key (tenant_id, id, current_review_instance_id) references review_instances (tenant_id, entry_id, id) on delete set null (current_review_instance_id)`,
   `alter table entry_revisions add constraint fk_entry_revisions_entry
@@ -1675,6 +1817,7 @@ export const entities = [
   AssessmentItemRevision,
   Entry,
   EntryEvent,
+  EntryRecognition,
   EntryRevision,
   EntryRevisionAttachment,
   ReviewInstance,

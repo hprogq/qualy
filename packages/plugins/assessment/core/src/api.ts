@@ -1001,6 +1001,16 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         reason: Schema.optional(trimmedName(100)),
         comment: Schema.optional(boundedText(2000)),
         suggestedPayload: Schema.optional(configJson),
+        // what this approval determines, for questions that ask anything.
+        // Absent is the normal case today: no installed calculator asks for
+        // a recognised fact, so the server determines the empty one itself
+        recognition: Schema.optional(
+          Schema.Struct({
+            values: configJson,
+            /** why the determination CHANGED; required only when it did */
+            reason: Schema.optional(boundedText(2000)),
+          }),
+        ),
       }),
       success: Schema.Struct({ review: reviewDetailView }),
       error: [

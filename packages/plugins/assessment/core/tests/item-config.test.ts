@@ -560,7 +560,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const entry = one<{ id: string }>(
             yield* runSql(sql`
               insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
-              values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, 'self', 'approved')
+              values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, 'self', 'draft')
               returning id`),
           ).id
           const revision = one<{ id: string }>(
@@ -570,8 +570,22 @@ describe.runIf(postgresAvailable)('item configuration', () => {
                       '{"certificate":"yes"}', ${f.student}, ${f.student}, 'self')
               returning id`),
           ).id
+          // approved the way the service approves: a determination first,
+          // then one statement that carries both the pointer and the status
+          const recognition = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into entry_recognitions
+                (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id, values, source)
+              values (${f.tenant}, ${batch.id}, ${entry}, ${revision}, ${item.id},
+                      ${item.currentRevision!.id}, '{}'::jsonb, 'system')
+              returning id`),
+          ).id
           yield* runSql(
-            sql`update entries set current_revision_id = ${revision} where id = ${entry}`,
+            sql`update entries
+                set current_revision_id = ${revision},
+                    current_recognition_id = ${recognition},
+                    status = 'approved'
+                where id = ${entry}`,
           )
           const loosened = yield* assessment.updateItem(
             f.tenant,
@@ -1075,7 +1089,7 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           const entry = one<{ id: string }>(
             yield* runSql(sql`
               insert into entries (tenant_id, batch_id, item_id, participant_id, source, status)
-              values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, 'self', 'approved')
+              values (${f.tenant}, ${batch.id}, ${item.id}, ${participant}, 'self', 'draft')
               returning id`),
           ).id
           const revision = one<{ id: string }>(
@@ -1085,8 +1099,22 @@ describe.runIf(postgresAvailable)('item configuration', () => {
                       '{}', ${f.student}, ${f.student}, 'self')
               returning id`),
           ).id
+          // approved the way the service approves: a determination first,
+          // then one statement that carries both the pointer and the status
+          const recognition = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into entry_recognitions
+                (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id, values, source)
+              values (${f.tenant}, ${batch.id}, ${entry}, ${revision}, ${item.id},
+                      ${item.currentRevision!.id}, '{}'::jsonb, 'system')
+              returning id`),
+          ).id
           yield* runSql(
-            sql`update entries set current_revision_id = ${revision} where id = ${entry}`,
+            sql`update entries
+                set current_revision_id = ${revision},
+                    current_recognition_id = ${recognition},
+                    status = 'approved'
+                where id = ${entry}`,
           )
 
           // the item's own window dies before any payload does: a form that

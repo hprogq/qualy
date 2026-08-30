@@ -1,4 +1,28 @@
 import { Effect, Result } from 'effect'
+import type { ScoringPlan } from '../scoring/plan.ts'
+
+/**
+ * The compiled arithmetic a revision carries, for the contract a round
+ * determines under. Reaching a null is an operational fault, not a data
+ * state - it dies naming the revision rather than judging a determination
+ * against a contract nobody has.
+ */
+const planOf = (revision: { readonly id: string; readonly scoringPlan: unknown }): ScoringPlan => {
+  if (revision.scoringPlan === null || typeof revision.scoringPlan !== 'object') {
+    throw new Error(
+      `item revision ${revision.id} has no compiled scoring plan; the assembly's boot backfill has not run`,
+    )
+  }
+  return revision.scoringPlan as ScoringPlan
+}
+import {
+  judgeRecognition,
+  recognitionHash,
+  sameRecognition,
+  seedFromEvidence,
+  type RecognitionValues,
+} from '../scoring/recognition.ts'
+import { currentRecognitionOf, insertRecognition } from '../scoring/recognition-db.ts'
 import { boundedCounter } from '@qualy/telemetry/metrics'
 import { projectEntrySummary } from '../entry/summary.ts'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
@@ -94,6 +118,11 @@ import {
   type ReviewInstanceDetailRow,
   type SupplementRequirement,
   type SupplementRow,
+  lastRecognitionOf,
+  lockedProposalOf,
+  lockPanelRecognition,
+  panelRecognitionOf,
+  revisionPayloadOf,
 } from './db.ts'
 
 // The single review stage, worked: a queue that is answered rather than
@@ -344,6 +373,18 @@ export interface ReviewDecisionInput {
   readonly reason?: string
   readonly comment?: string
   readonly suggestedPayload?: unknown
+  /**
+   * What this approval determines, when the question asks for anything.
+   *
+   * Optional on the wire and absent for every question that asks nothing -
+   * the server determines those from the seed rather than making a client
+   * post an empty object. `reason` here is why the determination CHANGED,
+   * which is a different question from why a claim was refused.
+   */
+  readonly recognition?: {
+    readonly values: unknown
+    readonly reason?: string
+  }
 }
 
 /** one ask this reviewer's step is waiting on somebody else for */
@@ -947,6 +988,31 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     )
   })
 
+  /**
+   * What a reviewer is shown before they determine anything.
+   *
+   * The first word of a round seeds from the filing, through the defaults
+   * the plan recorded. Every later word inherits what the previous approval
+   * determined - a correction made downstairs must not be undone by
+   * re-reading the student's original claim upstairs. A panel that has
+   * already frozen a proposal is seeded from that, so a second ballot is
+   * cast on the same text as the first.
+   */
+  const recognitionSeed = (
+    tenantId: string,
+    instanceId: string,
+    plan: ScoringPlan,
+    row: { readonly entryId: string; readonly revisionId: string },
+  ) =>
+    Effect.gen(function* () {
+      const locked = yield* lockedProposalOf(tenantId, instanceId)
+      if (locked !== null) return locked
+      const said = yield* lastRecognitionOf(tenantId, instanceId)
+      if (said !== null) return said
+      const filing = yield* revisionPayloadOf(tenantId, row.revisionId)
+      return seedFromEvidence(plan, filing)
+    })
+
   const decideReview: ReviewMethods['decideReview'] = Effect.fn('Assessment.decideReview')(
     function* (tenantId, instanceId, input, as) {
       const action = input.decision
@@ -1070,6 +1136,52 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               suggestion = yield* decodeSuggestion(tenantId, row, input.suggestedPayload)
             }
 
+            // What this round determines under, and what it is standing on
+            // now. The contract is the one frozen when the round opened -
+            // not today's - so an administrator saving the question
+            // mid-round cannot change what a reviewer is being asked.
+            const contract = yield* revisionOf(tenantId, row.recognitionRevisionId)
+            if (contract === null) return yield* refuse(action, 'chain-unreadable')
+            const plan = planOf(contract)
+            const seed = yield* recognitionSeed(tenantId, instanceId, plan, row)
+
+            // a refusal or a referral determines nothing: "I cannot tell"
+            // is a legitimate thing for a reviewer to say, and forcing a
+            // determination out of it would put words in their mouth
+            if (action !== 'approve' && input.recognition !== undefined) {
+              return yield* new EntryPayloadInvalid({
+                issues: [{ field: 'recognition', reason: 'not-allowed' }],
+              })
+            }
+            let determined: RecognitionValues | undefined
+            let determinedHash: string | undefined
+            let determinedReason: string | null = null
+            if (action === 'approve') {
+              const candidate =
+                input.recognition === undefined ? seed : (input.recognition.values as RecognitionValues)
+              const wrong = judgeRecognition(plan.recognitionSchemas, candidate)
+              if (wrong.length > 0) {
+                return yield* new EntryPayloadInvalid({
+                  issues: wrong.map((issue) => ({
+                    field: issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
+                    reason: issue.reason,
+                  })),
+                })
+              }
+              // changing what the previous stage determined is a decision of
+              // its own, and one the next reader is owed an explanation for
+              const changed = !sameRecognition(candidate, seed)
+              const given = input.recognition?.reason?.trim() ?? ''
+              if (changed && given === '') {
+                return yield* new EntryPayloadInvalid({
+                  issues: [{ field: 'recognition.reason', reason: 'required' }],
+                })
+              }
+              determined = candidate
+              determinedHash = recognitionHash(candidate)
+              determinedReason = given === '' ? null : given
+            }
+
             const say = (kind: string) =>
               insertReviewEvent({
                 tenantId,
@@ -1083,9 +1195,23 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 reason: reason === '' ? null : reason,
                 comment: comment === '' ? null : comment,
                 ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
+                ...(determined === undefined
+                  ? {}
+                  : {
+                      recognitionPayload: determined,
+                      recognitionReason: determinedReason,
+                      recognitionHash: determinedHash ?? null,
+                    }),
               })
             /** the round's own word, spoken by no one: a sitting concluding */
-            const sayFrom = (kind: string, actorId: string | null) =>
+            const sayFrom = (
+              kind: string,
+              actorId: string | null,
+              snapshot?: {
+                readonly recognitionPayload: RecognitionValues
+                readonly recognitionHash: string
+              },
+            ) =>
               insertReviewEvent({
                 tenantId,
                 reviewInstanceId: instanceId,
@@ -1093,6 +1219,42 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 actorId,
                 route: here.route,
                 stageId: here.id,
+                ...(snapshot === undefined
+                  ? {}
+                  : {
+                      recognitionPayload: snapshot.recognitionPayload,
+                      recognitionHash: snapshot.recognitionHash,
+                      recognitionReason: null,
+                    }),
+              })
+
+            /**
+             * The determination this round settles on, written down.
+             *
+             * Appended, never edited: if this claim already stood recognised
+             * as something, the new determination supersedes that one by
+             * pointing at it, so an appeal reads as "provincial, then
+             * national" rather than as a value whose history is gone. The
+             * pointer moves in the same statement that moves the status,
+             * because an approved claim without a determination is a row the
+             * table refuses.
+             */
+            const settle = (values: RecognitionValues, eventId: string) =>
+              Effect.gen(function* () {
+                const standing = yield* currentRecognitionOf(tenantId, row.entryId)
+                return yield* insertRecognition({
+                  tenantId,
+                  batchId: row.batchId,
+                  entryId: row.entryId,
+                  entryRevisionId: row.revisionId,
+                  itemId: row.itemId,
+                  itemRevisionId: row.recognitionRevisionId,
+                  values,
+                  source: 'review',
+                  reviewInstanceId: instanceId,
+                  reviewEventId: eventId,
+                  ...(standing === null ? {} : { supersedesId: standing.id }),
+                })
               })
 
             /**
@@ -1251,6 +1413,40 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   ? { assignmentId: own.assignmentId }
                   : yield* claimPanelSeat({ tenantId, panelId: panel.id, userId: as.userId })
               if (taken === null) return yield* new ReviewConflict()
+
+              // The determination this sitting is voting on, frozen by its
+              // first ballot - approval or refusal alike, because "I refuse
+              // THIS recognition" is only answerable if everyone was looking
+              // at the same one. After that every ballot carries the same
+              // hash, and a reviewer who tried to vote on different words is
+              // refused rather than quietly merged.
+              const frozen = yield* panelRecognitionOf(tenantId, panel.id)
+              if (frozen === null) {
+                const opening = determined ?? seed
+                const wrong = judgeRecognition(plan.recognitionSchemas, opening)
+                if (wrong.length > 0) {
+                  return yield* new EntryPayloadInvalid({
+                    issues: wrong.map((issue) => ({
+                      field:
+                        issue.recognitionId === ''
+                          ? 'recognition'
+                          : `recognition.${issue.recognitionId}`,
+                      reason: issue.reason,
+                    })),
+                  })
+                }
+                yield* lockPanelRecognition({
+                  tenantId,
+                  panelId: panel.id,
+                  values: opening as Record<string, unknown>,
+                  hash: recognitionHash(opening),
+                })
+              } else if (determined !== undefined && recognitionHash(determined) !== frozen.hash) {
+                return yield* new EntryPayloadInvalid({
+                  issues: [{ field: 'recognition', reason: 'panel-recognition-locked' }],
+                })
+              }
+              const sitting = (yield* panelRecognitionOf(tenantId, panel.id))!
               yield* insertVote({
                 tenantId,
                 panelId: panel.id,
@@ -1259,6 +1455,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 decision: action,
                 reason: reason === '' ? null : reason,
                 comment: comment === '' ? null : comment,
+                recognitionHash: sitting.hash,
               })
               const votes = yield* votesOfPanel(tenantId, panel.id)
               if (votes.length >= panel.seatCount) {
@@ -1281,12 +1478,19 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     outcome: 'approved',
                   })
                   if (!won) return yield* new ReviewConflict()
-                  yield* sayFrom('approved', null)
+                  // the sitting's own word, and the determination it voted
+                  // on: the frozen proposal, not this last ballot's opinion
+                  const eventId = yield* sayFrom('approved', null, {
+                    recognitionPayload: sitting.values,
+                    recognitionHash: sitting.hash,
+                  })
+                  const recognitionId = yield* settle(sitting.values, eventId)
                   yield* setEntryState({
                     tenantId,
                     entryId: row.entryId,
                     from: ['in_review'],
                     to: 'approved',
+                    currentRecognitionId: recognitionId,
                   })
                   yield* bumpParticipantAttention(tenantId, row.entryId)
                 } else if (ends) {
@@ -1333,12 +1537,15 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 outcome: action === 'approve' ? 'approved' : 'rejected',
               })
               if (!won) return yield* new ReviewConflict()
-              yield* say(action === 'approve' ? 'approved' : 'rejected')
+              const eventId = yield* say(action === 'approve' ? 'approved' : 'rejected')
+              const recognitionId =
+                determined === undefined ? undefined : yield* settle(determined, eventId)
               yield* setEntryState({
                 tenantId,
                 entryId: row.entryId,
                 from: ['in_review'],
                 to: action === 'approve' ? 'approved' : 'rejected',
+                ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
               })
               // the verdict is the owner's news, not the stage handovers
               // on the way to it (§32.72)
@@ -1603,6 +1810,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               initiator: 'participant',
               appealedInstanceId: instanceId,
               policyRevisionId: live.id,
+          recognitionRevisionId: live.id,
               effectivePolicy: policy,
               route: 'escalation',
               stageId: landing.stage.id,
