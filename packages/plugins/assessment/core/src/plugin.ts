@@ -94,7 +94,18 @@ export interface ItemTypeDriver {
     config: unknown,
     batch: BatchContext,
   ) => readonly {
+    /** the field's identity across revisions of the form */
     readonly fieldId: string
+    /**
+     * Where this revision's payloads keep the field's answer.
+     *
+     * Identity and address are different questions - a field keeps its id
+     * while its key stays pinned to the slot old payloads already use - and
+     * nothing here promises the two are ever equal. The plan freezes the
+     * address, because seeding reads payloads; compatibility reasons about
+     * the identity.
+     */
+    readonly payloadKey: string
     readonly schema: AtomicSchema
     /**
      * Whether every filing of this question is guaranteed to carry it.

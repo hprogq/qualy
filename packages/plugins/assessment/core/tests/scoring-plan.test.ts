@@ -109,6 +109,8 @@ const itemType: ItemTypeDriver = {
     // rest are always written
     Object.entries(fields).map(([fieldId, schema]) => ({
       fieldId,
+      // the address is not the identity, and the plan must freeze the address
+      payloadKey: `${fieldId}-slot`,
       schema,
       always: fieldId !== 'optional-ordinal',
     })),
@@ -208,8 +210,18 @@ describe('binding a calculator that has parameters', () => {
     })
     expect(Object.keys(outcome.plan.recognitionSchemas).sort()).toEqual(['rec-level', 'rec-ordinal'])
     expect(outcome.plan.defaultBindings).toEqual({
-      'rec-level': { fieldId: 'claimed-level', assignment: { kind: 'direct' } },
-      'rec-ordinal': { fieldId: 'claimed-ordinal', assignment: { kind: 'direct' } },
+      'rec-level': {
+        fieldId: 'claimed-level',
+        // the identity names the field; the ADDRESS is what seeding reads,
+        // and the two are deliberately different in this catalog
+        payloadKey: 'claimed-level-slot',
+        assignment: { kind: 'direct' },
+      },
+      'rec-ordinal': {
+        fieldId: 'claimed-ordinal',
+        payloadKey: 'claimed-ordinal-slot',
+        assignment: { kind: 'direct' },
+      },
     })
   })
 
@@ -341,6 +353,7 @@ describe('binding a calculator that has parameters', () => {
     // conversion is legal, named, and stored - never re-decided at scoring
     expect(outcome.plan.defaultBindings['rec-base']).toEqual({
       fieldId: 'claimed-count',
+      payloadKey: 'claimed-count-slot',
       assignment: { kind: 'convert', converter: INTEGER_TO_DECIMAL },
     })
   })

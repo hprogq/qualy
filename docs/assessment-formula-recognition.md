@@ -1216,11 +1216,17 @@ review_policy
 display_config
 ```
 
-建议新增：
+新增（实际实现）：
 
 ```text
-scoring_plan jsonb NOT NULL
+scoring_plan jsonb NULL
 ```
+
+nullable 是升级窗口的设计而非疏漏：老 revision 由 boot sweep（Assembled barrier，事务级
+advisory lock，编译失败即拒绝启动）补齐，读取侧 `readScoringPlan` 做 fail-closed 深校验
+（版本恰为 1、结构深 decode、重算 semantic hash 比对）。等所有部署环境都跑过一次 boot
+sweep 之后，再用一条独立迁移 `SET NOT NULL` 收口——在那之前收紧会让「升级过但没启动过」
+的库 deploy 失败，因为迁移自身没有 driver catalog、编译不出计划。
 
 `scoring_config` 是管理员真正编辑的配置。
 
@@ -1634,20 +1640,25 @@ recognition_locked_at    timestamptz nullable
 
 Proposal 每次修改都同时写一个 ReviewEvent，panel row 只是当前 projection。
 
-第一张 vote 落库的事务里：
+建立提案与对提案投票是两个动作（实际实现）：
 
 ```text
-lock panel
-确认 recognition proposal 完整合法
+reject ballot
+→ 不要求 Recognition，也不冻结任何 proposal
+  （拒绝什么也不认定；否则 seed 不完整时第一位审核人连"不通过"都投不出去）
 
-if recognition_locked_at IS NULL:
-    freeze recognition_payload/hash
+first APPROVING ballot 落库的事务里：
+    lock panel
+    确认 recognition proposal 完整合法
+    freeze recognition_payload / hash / reason
     recognition_locked_at = now()
 
-写 vote
+later approving ballot
+→ 必须引用同一 recognition hash，不符即拒
 ```
 
-第一票后禁止修改 proposal。
+首张赞成票后禁止修改 proposal；轮次只能在全票赞成时以冻结提案落认定，安全性不因
+reject 免检而让步。
 
 建议 `review_votes` 再增加：
 
@@ -2225,8 +2236,8 @@ terminal approve creates Recognition atomically
 reopen creates superseding Recognition
 record directly creates Recognition
 
-panel votes same recognition hash
-first vote locks proposal
+panel approving votes same recognition hash
+first approving vote locks proposal; reject determines nothing
 
 fixed old result identical
 formula result exact

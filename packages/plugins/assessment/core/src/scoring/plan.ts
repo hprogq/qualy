@@ -60,7 +60,22 @@ export interface ScoringPlan {
   readonly recognitionSchemas: Readonly<Record<string, NormalizedAtomicSchema>>
   /** which evidence field seeds a recognition, and how it converts */
   readonly defaultBindings: Readonly<
-    Record<string, { readonly fieldId: string; readonly assignment: AssignmentPlan }>
+    Record<
+      string,
+      {
+        /** the field's identity, for reasoning about compatibility */
+        readonly fieldId: string
+        /**
+         * The frozen payload address the seed reads from.
+         *
+         * Absent only on plans compiled before the two were told apart;
+         * readers fall back to the fieldId, which is what those plans
+         * meant. Every new compile writes it.
+         */
+        readonly payloadKey?: string
+        readonly assignment: AssignmentPlan
+      }
+    >
   >
   readonly aggregator: { readonly ref: string; readonly config: unknown }
   /** the calculator's own input contract, for validating an assembled input */
@@ -105,7 +120,11 @@ const persistedPlanShape = Schema.Struct({
   recognitionSchemas: Schema.Record(Schema.String, Schema.Unknown),
   defaultBindings: Schema.Record(
     Schema.String,
-    Schema.Struct({ fieldId: Schema.String, assignment: assignmentShape }),
+    Schema.Struct({
+      fieldId: Schema.String,
+      payloadKey: Schema.optional(Schema.String),
+      assignment: assignmentShape,
+    }),
   ),
   aggregator: Schema.Struct({ ref: Schema.String, config: Schema.Unknown }),
   inputSchema: Schema.Unknown,
@@ -372,13 +391,16 @@ export const compileScoringPlan = (
     // question worth asking about one.
     const parameters: Record<string, ParameterBinding> = Object.create(null)
     const recognitionSchemas: Record<string, NormalizedAtomicSchema> = Object.create(null)
-    const defaultBindings: Record<string, { fieldId: string; assignment: AssignmentPlan }> =
+    const defaultBindings: Record<
+      string,
+      { fieldId: string; payloadKey: string; assignment: AssignmentPlan }
+    > =
       Object.create(null)
 
-    const bindable = new Map<string, { schema: AtomicSchema; always: boolean }>(
+    const bindable = new Map<string, { payloadKey: string; schema: AtomicSchema; always: boolean }>(
       (inputs.itemType?.bindableFields?.(inputs.formConfig, inputs.batch) ?? []).map((field) => [
         field.fieldId,
-        { schema: field.schema, always: field.always },
+        { payloadKey: field.payloadKey, schema: field.schema, always: field.always },
       ]),
     )
 
@@ -421,7 +443,14 @@ export const compileScoringPlan = (
       // the recognition's own type IS the parameter's, until the language
       // grows refinements: a question may narrow what a reviewer may
       // determine, never widen it past what the arithmetic accepts
-      const recognitionSchema = normalizeAtomicSchema(schema)
+      // The label an administrator gave the recognition rides in as the
+      // schema's own title annotation - the annotation layer exists exactly
+      // so presentation never needs a second protocol, and the semantic
+      // body strips it, so renaming a recognition moves no hash.
+      const recognitionSchema = normalizeAtomicSchema({
+        ...schema,
+        ...(declared.label === undefined ? {} : { title: declared.label }),
+      })
       const assignment = assignmentPlan(recognitionSchema, normalizeAtomicSchema(schema))
       if (assignment.kind === 'incompatible') {
         issues.push({
@@ -475,7 +504,12 @@ export const compileScoringPlan = (
         })
         continue
       }
-      defaultBindings[binding.recognitionId] = { fieldId, assignment: seeding }
+      defaultBindings[binding.recognitionId] = {
+        fieldId,
+        // the frozen ADDRESS, not the identity: seeding reads payloads
+        payloadKey: evidence.payloadKey,
+        assignment: seeding,
+      }
     }
 
     // a recognition nobody's parameter reads is a field reviewers would be

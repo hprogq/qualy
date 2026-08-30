@@ -116,7 +116,12 @@ export const seedFromEvidence = (plan: ScoringPlan, payload: unknown): Recogniti
   // name like `__proto__` is a key rather than an assignment nobody sees
   const seed: Record<string, unknown> = Object.create(null)
   for (const [recognitionId, binding] of Object.entries(plan.defaultBindings)) {
-    const value = Object.hasOwn(evidence, binding.fieldId) ? evidence[binding.fieldId] : undefined
+    // The payload address, not the identity. A field keeps its id across
+    // revisions while its key stays pinned to the slot payloads use; plans
+    // compiled before the two were told apart froze only the id, and for
+    // them the id IS the address - that is what the fallback preserves.
+    const slot = binding.payloadKey ?? binding.fieldId
+    const value = Object.hasOwn(evidence, slot) ? evidence[slot] : undefined
     if (value === undefined) continue
     seed[recognitionId] =
       binding.assignment.kind === 'direct'

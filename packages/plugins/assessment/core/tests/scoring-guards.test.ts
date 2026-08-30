@@ -6,12 +6,14 @@ import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { calcParticipant } from '../src/scoring/calc.ts'
 import { builtinScoringDrivers, fixed1, scaledAmount } from '../src/scoring/builtins.ts'
 import { compileScoringPlan, readScoringPlan } from '../src/scoring/plan.ts'
+import { gradedTest } from './support/catalogs.ts'
 import {
   canonicalRecognition,
   contradicted,
   judgeRecognition,
   recognitionHash,
   sameRecognition,
+  seedFromEvidence,
 } from '../src/scoring/recognition.ts'
 import type { AggregatorDriver, BatchContext, CalculatorDriver } from '../src/plugin.ts'
 
@@ -331,6 +333,102 @@ describe('what makes two determinations the same one', () => {
     const filled = { 'rec-level': 'a', 'rec-score': '3' }
     expect(contradicted(seed, filled)).toEqual([])
     expect(contradicted(seed, { 'rec-level': 'b', 'rec-score': '3' })).toEqual(['rec-level'])
+  })
+})
+
+describe('where a recognition default reads from', () => {
+  const plannedWith = async (over: Partial<Parameters<typeof compileScoringPlan>[0]>) => {
+    const outcome = await Effect.runPromise(
+      compileScoringPlan({
+        calculators: new Map([[gradedTest.ref, gradedTest]]),
+        aggregators: new Map(
+          builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
+        ),
+        itemType: {
+          id: 'evidence',
+          configSchema: Schema.Struct({}),
+          decodePayload: (_config, payload) => Effect.succeed(payload),
+          attachmentRefs: () => [],
+          // identity and address deliberately apart: the field kept its id
+          // while its key moved, which is exactly what production forms do
+          bindableFields: () => [
+            {
+              fieldId: 'claimed-level',
+              payloadKey: 'claimed-level-slot',
+              schema: { type: 'string', enum: ['national', 'provincial'] },
+              always: true,
+            },
+          ],
+          interaction: 'entry',
+          scoring: { calculator: gradedTest.ref, aggregator: 'sum@1' },
+        },
+        formConfig: {},
+        scoringConfig: {
+          calculator: { ref: gradedTest.ref, config: {} },
+          aggregator: { ref: 'sum@1', config: {} },
+          recognitions: { 'rec-level': { defaultFromFieldId: 'claimed-level' } },
+          bindings: { level: { kind: 'recognition', recognitionId: 'rec-level' } },
+        },
+        batch,
+        recognitionSource: 'review',
+        ...over,
+      }),
+    )
+    if (!('plan' in outcome)) throw new Error('fixture: the plan did not compile')
+    return outcome.plan
+  }
+
+  it('seeds from the payload address, never from the identity', async () => {
+    const plan = await plannedWith({})
+    // the answer sits where this revision's key says it does
+    expect(seedFromEvidence(plan, { 'claimed-level-slot': 'provincial' })).toEqual({
+      'rec-level': 'provincial',
+    })
+    // a value filed under the IDENTITY is a value nowhere: the identity is
+    // how revisions recognise each other, not where payloads keep answers
+    expect(seedFromEvidence(plan, { 'claimed-level': 'provincial' })).toEqual({})
+  })
+
+  it('still reads plans frozen before the two were told apart', async () => {
+    const plan = await plannedWith({})
+    // an old plan froze only the fieldId, and for it the id WAS the address
+    const legacy = {
+      ...plan,
+      defaultBindings: Object.fromEntries(
+        Object.entries(plan.defaultBindings).map(([id, binding]) => [
+          id,
+          { fieldId: binding.fieldId, assignment: binding.assignment },
+        ]),
+      ),
+    } as typeof plan
+    expect(seedFromEvidence(legacy, { 'claimed-level': 'provincial' })).toEqual({
+      'rec-level': 'provincial',
+    })
+  })
+
+  it('freezes the recognition label as the schema title, off the hash', async () => {
+    const named = await plannedWith({
+      scoringConfig: {
+        calculator: { ref: gradedTest.ref, config: {} },
+        aggregator: { ref: 'sum@1', config: {} },
+        recognitions: { 'rec-level': { label: '认定赛事级别', defaultFromFieldId: 'claimed-level' } },
+        bindings: { level: { kind: 'recognition', recognitionId: 'rec-level' } },
+      },
+    })
+    const renamed = await plannedWith({
+      scoringConfig: {
+        calculator: { ref: gradedTest.ref, config: {} },
+        aggregator: { ref: 'sum@1', config: {} },
+        recognitions: { 'rec-level': { label: '认定竞赛级别', defaultFromFieldId: 'claimed-level' } },
+        bindings: { level: { kind: 'recognition', recognitionId: 'rec-level' } },
+      },
+    })
+    // the label is presentation, carried by the annotation layer the
+    // semantic body strips: what reviewers are asked never changes because
+    // the question was reworded
+    expect(named.recognitionSchemas['rec-level']!.title).toBe('认定赛事级别')
+    expect(renamed.recognitionSchemas['rec-level']!.title).toBe('认定竞赛级别')
+    expect(named.planHash).toBe(renamed.planHash)
   })
 })
 

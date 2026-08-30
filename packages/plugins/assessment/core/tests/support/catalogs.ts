@@ -78,7 +78,12 @@ export const testItemType: ItemTypeDriver = {
   // what a reviewer's determination may be seeded from: the level the
   // student claimed. Evidence will offer its own fields; this one stands in
   // for the shape of that answer.
-  bindableFields: () => [{ fieldId: 'claimed-level', schema: LEVEL, always: true }],
+  // identity and address deliberately differ: the suites must prove the
+  // seed reads the ADDRESS, because production forms rename keys while ids
+  // stay put
+  bindableFields: () => [
+    { fieldId: 'claimed-level', payloadKey: 'claimed-level-slot', schema: LEVEL, always: true },
+  ],
   interaction: 'entry',
   scoring: { calculator: 'fixed@1', aggregator: 'sum@1' },
 }
