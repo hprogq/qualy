@@ -11624,3 +11624,61 @@ definition/runtime 两个 catalog,7.0 先 spike 再裁决。
 **验收(本机逐条实跑)**:`pnpm typecheck` 零错;`pnpm test` 1222 passed | 17 skipped
 (1239);`pnpm test:browser` 267 passed;`pnpm build` 通过;formula-remote 双装配
 publish parity、sandbox remote 重连套件、migration-upgrade 全绿。
+
+## 浏览器 correctness 双修 + 第三轮审计记账(2026-08-31)
+
+用户第三轮审计(基线 5e5c2a55)列 13 项 + 2 项 hardening。按其裁定「立刻插到 Phase 6
+封板前面」的两个现存 blocker(fixed@1 世界即可造成错误事实落库)本批修复,其余全部
+记账留 Phase 7 关口。
+
+### 1. `fix(web): give the value form an unanswered state`(审计第 3 项)
+
+FieldDraft 引入 presence:**缺键 = 未回答**,与「恰好是 false / 空串的回答」永不混同。
+`draftFromValue` 对无 stored 值返回 undefined(不再 ''/false)、`draftsFromFields` 不为
+缺失值造键、`materializeField(undefined)` 恒 empty(boolean 也不例外)、
+`materializeFields` 不再 `?? ''`。UI:boolean 三态——未回答渲染平台原生
+indeterminate,只有人的点击产生明确的是/否;text 初始无 draft 显示空,onChange 才
+set('')。承重(差分红/绿):reviewer-only boolean 无 seed 时 approve 按钮 **disabled**,
+明确点击(含明确的否)才放行,payload 携带 `{rec-verified:false}` 是按出来的事实——
+修前 unchecked 静默提交 false,违背「认定必须由人明确确认」的 Phase 5/6 不变量。
+
+### 2. `fix(assessment): reset every sheet on its full session identity`(第 1、2 项)
+
+- **RecordPage**:表单收进 keyed `RecordSheet`,session =
+  `itemRevisionId : participantId : attempt`(attempt 在每次成功登记后自增)。切题、
+  切登记对象、登记成功三者任一都整卷重挂:evidence payload、basis、recognition
+  drafts、dirty 集与 EvidenceForm 局部 state 一起清零——给 A 填一半切到 B 再也不可能
+  把 A 的材料与认定登到 B 名下;登记成功后同人同题也是全新一张。承重(差分):钉死
+  key 后「切人清卷」红。
+- **EvidenceForm** 加 required `session` prop:组件自持的 numberDrafts/上传残留在
+  session 变化的当次渲染即清(sanctioned derived-state reset),父级只重置 payload 不再
+  足以留下「屏幕显示 5、payload 里没有」的第二层 stale draft。三个消费面显式声明:
+  EntryDialog=`asked.currentRevision.id`、SupplementAnswerDialog=`requestId`、
+  RecordSheet=整卷 session。承重(差分):adopt「查看最新要求」后同 key integer→decimal
+  的字段不再残显旧键入——修前 payload 已弃值而屏幕仍显示。
+
+### 第三轮其余记账(未动工,Phase 7 关口/顺延)
+
+- **P0(Phase 7 前置)**:④trusted wrapper 两个 global entrypoint 可被用户源码
+  non-configurable accessor 预占——prelude 需先捕获可信 defineProperty 并以
+  non-writable reserved slots 安装入口,抢占即 load 失败,配 hostile-artifact 承重;
+  ⑤input contract 可声明 wire 上界无限的合法值(text 无 maxLength、decimal 无界)而
+  sandbox input budget 64KiB——publish/binding compile 需证 assembled input 最坏编码
+  ≤ evaluation budget;⑥contract 本身同题:64 参数 × 8 locale × 2000 字符 description
+  ≈ 1MiB > `__qualyContract` 的 128KiB 经验值——需 `maxContractWireBytes(profile) ≤
+  transport budget` 的正式 gate。
+- **P1**:⑦owner node 物理删除后历史公式的三种 read model(management / bind
+  catalog / historical replay)分家,后两者不得依赖 owner node 仍存在;⑧batch-scoped
+  bind catalog(manage 权限 ≠ 绑定选择权,RuntimeStore 不得借用户权限 API);
+  ⑨constant binding 过 canonicalizeValue 后入 plan(现 "3.0"/"3.00" 假 planHash 漂移);
+  ⑩planHash 之外另立更窄的 evaluation identity 与 determination/default identity,
+  ChangeImpact 补 scoring 维度(裁决修正:整 planHash 不可用作「成绩受影响」判据);
+  ⑪derived scoring 的 participant-wide impact(按 Entry 计数会失真,首次 derived 上线
+  前的结构 gate);⑫`applyAssignment(assignment, value)` 唯一解释器进 @qualy/
+  value-schema(现 seedFromEvidence 手写 String、evaluator 与 RecordPage 各一份);
+  ⑬required text 的 effective bindable schema 应表达 minLength:1(driver 已实施而
+  类型证明不知,保守拒掉安全绑定)。
+- **hardening 记账**:FormulaVersion 的数据库级 immutability(现只靠没有 API);
+  version API 暴露完整 provenance 字段供审计页。
+- 用户声明本轮未查完:Entry.currentRecognitionId 复合 FK 一致性、supersedes 链 DB
+  约束、FormulaVersion→ScoringPlan runtime-store 自校验——不得当作「已无其他问题」。
