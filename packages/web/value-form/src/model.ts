@@ -4,8 +4,15 @@
  * admits - so the form keeps a DRAFT per field and only materialization
  * produces a wire value, which then faces validateValue as the one judge.
  *
- * Kind by kind:
- *   text     draft string        -> string
+ * PRESENCE is part of the model: an absent key means the person has not
+ * answered, which is never the same thing as an answer that happens to be
+ * "" or false. A determination has to be MADE - a boolean nobody touched
+ * must not materialize as an explicit false, and an untouched text field
+ * must not materialize as an explicit empty string. Only an onDraft from
+ * the person sets a key; materializing an absent one is 'empty'.
+ *
+ * Kind by kind, once set:
+ *   text     draft string        -> string ('' is a legal answer)
  *   integer  draft string        -> safe integer number
  *   decimal  draft string        -> canonical decimal string
  *   choice   draft string ('' = unchosen) -> stable id
@@ -57,18 +64,24 @@ export type FieldOutcome =
 const INTEGER_SYNTAX = /^-?\d+$/
 
 /** a stored wire value, redrawn as an editable draft; lossless for legal
- * values, string-rendered for everything else so nothing silently drops */
-export const draftFromValue = (schema: AtomicSchema, value: unknown): FieldDraft => {
+ * values, string-rendered for everything else so nothing silently drops.
+ * No stored value means no draft - absence survives the round trip */
+export const draftFromValue = (schema: AtomicSchema, value: unknown): FieldDraft | undefined => {
+  if (value === undefined || value === null) return undefined
   const kind = kindOf(schema)
   if (kind === 'boolean') return value === true
-  if (value === undefined || value === null) return ''
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   return JSON.stringify(value)
 }
 
 /** one field: draft -> wire value, or the reason it cannot be one yet */
-export const materializeField = (schema: AtomicSchema, draft: FieldDraft): FieldOutcome => {
+export const materializeField = (
+  schema: AtomicSchema,
+  draft: FieldDraft | undefined,
+): FieldOutcome => {
+  // nobody answered: not false, not "", just not answered
+  if (draft === undefined) return { kind: 'empty' }
   const kind = kindOf(schema)
   if (kind === 'boolean') return { kind: 'value', value: draft === true || draft === 'true' }
   const text = typeof draft === 'string' ? draft : String(draft)
@@ -110,7 +123,7 @@ export const materializeFields = (
   const issues = new Map<string, string>()
   const value: Record<string, unknown> = {}
   for (const field of fields) {
-    const outcome = materializeField(field.schema, drafts[field.id] ?? '')
+    const outcome = materializeField(field.schema, drafts[field.id])
     if (outcome.kind === 'empty') {
       issues.set(field.id, 'required')
       continue
@@ -156,7 +169,10 @@ export const draftsFromFields = (
       ? (stored as Record<string, unknown>)
       : {}
   return Object.fromEntries(
-    fields.map((field) => [field.id, draftFromValue(field.schema, record[field.id])]),
+    fields.flatMap((field) => {
+      const draft = draftFromValue(field.schema, record[field.id])
+      return draft === undefined ? [] : [[field.id, draft]]
+    }),
   )
 }
 

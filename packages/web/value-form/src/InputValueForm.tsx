@@ -64,7 +64,7 @@ const AtomicControl = ({
 }: {
   schema: AtomicSchema
   name: string
-  draft: FieldDraft
+  draft: FieldDraft | undefined
   onDraft: (draft: FieldDraft) => void
   locale: string
   disabled: boolean
@@ -72,10 +72,12 @@ const AtomicControl = ({
 }) => {
   const kind = kindOf(schema)
   if (kind === 'boolean')
+    // three states on purpose: unanswered renders as the platform's mixed
+    // mark, and only a person's click turns it into an explicit yes or no
     return (
       <Checkbox
         id={id}
-        checked={draft === true}
+        checked={draft === undefined ? 'indeterminate' : draft === true}
         disabled={disabled}
         onCheckedChange={(checked) => onDraft(checked === true)}
       />
@@ -101,7 +103,7 @@ const AtomicControl = ({
   return (
     <Input
       id={id}
-      value={typeof draft === 'string' ? draft : String(draft)}
+      value={typeof draft === 'string' ? draft : draft === undefined ? '' : String(draft)}
       disabled={disabled}
       inputMode={kind === 'integer' ? 'numeric' : kind === 'decimal' ? 'decimal' : undefined}
       type={kind === 'date' ? 'date' : 'text'}
@@ -113,7 +115,7 @@ const AtomicControl = ({
 export interface AtomicValueFieldProps {
   readonly schema: AtomicSchema
   readonly name: string
-  readonly draft: FieldDraft
+  readonly draft: FieldDraft | undefined
   readonly onDraft: (draft: FieldDraft) => void
   readonly locale: string
   readonly disabled?: boolean
@@ -190,7 +192,7 @@ export function ValueFieldsForm({
             key={field.id}
             schema={field.schema}
             name={field.id}
-            draft={drafts[field.id] ?? ''}
+            draft={drafts[field.id]}
             onDraft={(draft) => onDraft(field.id, draft)}
             locale={locale}
             disabled={disabled}

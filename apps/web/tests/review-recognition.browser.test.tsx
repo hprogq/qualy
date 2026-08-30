@@ -153,7 +153,14 @@ const open = (fixture: ReturnType<typeof review>, stubs: Record<string, unknown>
       {
         path: '/assessment/batches/:batchId/reviews/:instanceId',
         element: (
-          <div style={{ display: 'flex', height: '100dvh', flexDirection: 'column', overflow: 'hidden' }}>
+          <div
+            style={{
+              display: 'flex',
+              height: '100dvh',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
             <ReviewInstancePage />
           </div>
         ),
@@ -174,9 +181,7 @@ const decidedPayload = (decided: ReturnType<typeof vi.fn>) => {
 }
 
 const stagedDecide = () =>
-  vi.fn(() =>
-    Effect.succeed({ review: review({ state: 'completed', outcome: 'approved' }) }),
-  )
+  vi.fn(() => Effect.succeed({ review: review({ state: 'completed', outcome: 'approved' }) }))
 
 const confirmAndWait = async (decided: ReturnType<typeof vi.fn>) => {
   await page.getByRole('dialog').getByRole('button', { name: /^通过/ }).click()
@@ -235,9 +240,7 @@ describe('approving with a determination', () => {
     const hours = form.querySelector('[data-parameter="rec-hours"] input') as HTMLInputElement
     await userEvent.fill(hours, '3.50')
     // same number as the seed? no - 3.5 differs from 2, so a reason is owed
-    await expect
-      .element(page.getByRole('dialog').getByText('认定调整说明'))
-      .toBeVisible()
+    await expect.element(page.getByRole('dialog').getByText('认定调整说明')).toBeVisible()
     await userEvent.fill(
       page.getByRole('dialog').getByLabelText('认定调整说明').element() as HTMLInputElement,
       '按打卡记录核定',
@@ -318,6 +321,39 @@ describe('approving with a determination', () => {
     await confirmAndWait(decided)
     expect(decidedPayload(decided)['recognition']).toEqual({
       values: { 'rec-level': 'provincial', 'rec-ordinal': 3, 'rec-hours': '1.5' },
+    })
+  })
+
+  it('never invents a boolean nobody confirmed', async () => {
+    // a determination is MADE: with no seed, an untouched yes/no field is
+    // unanswered - not an implicit false the approval quietly files
+    const decided = stagedDecide()
+    const fixture = review()
+    open(
+      {
+        ...fixture,
+        recognitionForm: {
+          fields: [{ id: 'rec-verified', schema: { type: 'boolean', title: '已核验获奖证书' } }],
+          seed: {},
+          locked: null,
+        },
+      } as never,
+      { decideReview: decided as never },
+    )
+    await openApprove()
+    const approve = page.getByRole('dialog').getByRole('button', { name: /^通过/ })
+    // unanswered blocks the approval outright
+    await expect.element(approve).toBeDisabled()
+    // an explicit answer opens it - and an explicit NO is an answer too
+    const box = page.getByRole('dialog').getByRole('checkbox', { name: '已核验获奖证书' })
+    await box.click()
+    await expect.element(approve).toBeEnabled()
+    await box.click()
+    await expect.element(approve).toBeEnabled()
+    await confirmAndWait(decided)
+    const payload = decidedPayload(decided)
+    expect((payload['recognition'] as { values: Record<string, unknown> }).values).toEqual({
+      'rec-verified': false,
     })
   })
 

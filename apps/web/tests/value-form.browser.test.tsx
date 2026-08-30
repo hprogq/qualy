@@ -84,7 +84,12 @@ describe('draft to wire value', () => {
     })
     expect(good.value).toEqual({ level: 'national', ordinal: 2, base: '4', awarded: true })
 
-    const missing = materializeInput(contract, { level: '', ordinal: '2', base: '4', awarded: false })
+    const missing = materializeInput(contract, {
+      level: '',
+      ordinal: '2',
+      base: '4',
+      awarded: false,
+    })
     expect(missing.value).toBeNull()
     expect(missing.issues.get('level')).toBe('required')
 
@@ -108,7 +113,8 @@ describe('draft to wire value', () => {
     expect(drafts).toEqual({ level: 'provincial', ordinal: '2', base: '4.5', awarded: true })
     // a value from an older, differently-typed contract still renders
     expect(draftFromValue(contract.properties['base']!, 3)).toBe('3')
-    expect(draftFromValue(contract.properties['level']!, undefined)).toBe('')
+    // and NO stored value stays no draft: absence is part of the model
+    expect(draftFromValue(contract.properties['level']!, undefined)).toBeUndefined()
   })
 })
 
