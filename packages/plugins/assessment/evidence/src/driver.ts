@@ -587,10 +587,40 @@ const bindableFields = (
   })
 }
 
+/**
+ * A field that keeps its identity while changing its type is refused. The
+ * browser mints a fresh identity on retype and the projection drops values
+ * across a type change - but neither is a gate: identity is what ties
+ * historical evidence to recognition bindings, and one identity meaning two
+ * value domains across revisions would quietly retype every frozen binding
+ * that names it. A retype is a new field: mint a new id.
+ */
+const transition = (
+  previous: unknown,
+  next: unknown,
+): readonly { readonly path: string; readonly reason: string }[] => {
+  const from = decodeConfig(previous)
+  const to = decodeConfig(next)
+  if (from === null || to === null) return []
+  const was = new Map(from.fields.map((one) => [fieldIdentity(one), one.type as string]))
+  const issues: { path: string; reason: string }[] = []
+  for (const entry of to.fields) {
+    const before = was.get(fieldIdentity(entry))
+    if (before !== undefined && before !== entry.type) {
+      issues.push({
+        path: `formConfig.fields.${entry.key}`,
+        reason: 'field-type-change-requires-new-id',
+      })
+    }
+  }
+  return issues
+}
+
 export const evidenceDriver: ItemTypeDriver = {
   id: 'evidence',
   configSchema: evidenceConfig,
   configIssues,
+  transitionIssues: transition,
   decodePayload: decode,
   projectPayload: project,
   attachmentRefs,

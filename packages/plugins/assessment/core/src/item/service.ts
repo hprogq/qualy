@@ -417,6 +417,17 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             .map((issue) => ({ path: issue.path, reason: issue.reason })),
         )
       }
+      // the browser mints a fresh identity on retype; this is the server
+      // holding the same rule against whoever speaks the api directly
+      if (input.current !== null && driver?.transitionIssues !== undefined) {
+        issues.push(
+          ...driver
+            .transitionIssues(input.current.formConfig, input.config.formConfig, {
+              materialRange: input.materialRange,
+            })
+            .map((issue) => ({ path: issue.path, reason: issue.reason })),
+        )
+      }
       return issues
     })
 

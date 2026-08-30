@@ -38,6 +38,9 @@ const LEVEL: AtomicSchema = { type: 'string', enum: ['national', 'provincial'] }
 export const testItemType: ItemTypeDriver = {
   id: 'evidence',
   configSchema: Schema.Struct({
+    // a declared kind marker: the suites' stand-in for a field's type, so
+    // the transition channel has something to hold constant
+    kind: Schema.optional(Schema.String),
     required: Schema.optional(Schema.Array(Schema.String)),
     // a stand-in for evidence's date windows: the config claims it needs
     // days from this date on, and the range sweep must notice when the
@@ -56,6 +59,17 @@ export const testItemType: ItemTypeDriver = {
     const from = (config as { validFrom?: string }).validFrom
     return from !== undefined && from >= batch.materialRange.end
       ? [{ path: 'formConfig.validFrom', reason: 'date-window-empty' }]
+      : []
+  },
+  // the mini form of the real drivers' rule - an identity may not change
+  // its value domain across revisions; the suites use it to prove core
+  // hands every update's transition to the driver
+  transitionIssues: (previous, next) => {
+    const kindOf = (config: unknown) => (config as { kind?: string } | null | undefined)?.kind
+    const before = kindOf(previous)
+    const after = kindOf(next)
+    return before !== undefined && after !== undefined && before !== after
+      ? [{ path: 'formConfig.kind', reason: 'kind-change-requires-new-field' }]
       : []
   },
   decodePayload: (config, payload) =>

@@ -71,6 +71,18 @@ export interface ItemTypeDriver {
     config: unknown,
     batch: BatchContext,
   ) => readonly { readonly path: string; readonly reason: string }[]
+  /**
+   * Issues only a TRANSITION can have: the candidate judged beside the
+   * previous revision's configuration. A field identity is what ties
+   * historical answers to recognition bindings across revisions, so a rule
+   * like "the same identity may not change its value domain" needs both
+   * sides in hand - the schema sees one revision at a time.
+   */
+  readonly transitionIssues?: (
+    previous: unknown,
+    next: unknown,
+    batch: BatchContext,
+  ) => readonly { readonly path: string; readonly reason: string }[]
   readonly decodePayload: (
     config: unknown,
     payload: unknown,

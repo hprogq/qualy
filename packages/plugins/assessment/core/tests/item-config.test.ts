@@ -285,6 +285,55 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(result.listed.capabilities.canManage).toBe(true)
   })
 
+  it('holds the driver transition rule on the server, not only in the browser', async () => {
+    // the browser mints a fresh identity on retype; whoever speaks the api
+    // directly meets the same refusal, judged by the driver with both
+    // revisions in hand
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-transition')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const created = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: '时长认定',
+              scoreGroupId: groupId,
+              maxEntries: 1,
+              config: studentConfig({ formConfig: { kind: 'integer' } }),
+            },
+            f.principal,
+          )
+          const retyped = yield* Effect.exit(
+            assessment.updateItem(
+              f.tenant,
+              created.id,
+              { config: studentConfig({ formConfig: { kind: 'decimal' } }), reason: '换类型' },
+              f.principal,
+            ),
+          )
+          const kept = yield* assessment.updateItem(
+            f.tenant,
+            created.id,
+            {
+              config: studentConfig({ formConfig: { kind: 'integer', required: [] } }),
+              reason: '同类型的正常修改',
+            },
+            f.principal,
+          )
+          return { retyped, kept }
+        }),
+      ),
+    )
+    expect(Exit.isFailure(result.retyped)).toBe(true)
+    expect(inspect(result.retyped, { depth: 8 })).toContain('kind-change-requires-new-field')
+    expect(result.kept.currentRevision?.revisionNo).toBe(2)
+  })
+
   it('compiles a candidate configuration exactly once per save', async () => {
     // With a service-backed calculator, a second compilation is a second
     // read of runtime facts - two moments that may disagree about what was

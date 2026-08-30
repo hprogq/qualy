@@ -420,6 +420,34 @@ describe('the typed fields', () => {
     expect(assignmentPlan(normalizeAtomicSchema(note.schema), nonempty).kind).toBe('incompatible')
   })
 
+  it('refuses a field that keeps its identity while changing its type', () => {
+    // the browser mints a fresh id on retype; the server holds the same
+    // rule against whoever speaks the api directly - identity is what ties
+    // historical evidence to recognition bindings
+    const before = {
+      fields: [{ id: 'stable', key: 'hours', type: 'integer', label: '时长', min: 0, max: 99 }],
+    }
+    const retyped = {
+      fields: [{ id: 'stable', key: 'hours', type: 'decimal', label: '时长', maxScale: 2 }],
+    }
+    expect(evidenceDriver.transitionIssues!(before, retyped, batch)).toEqual([
+      { path: 'formConfig.fields.hours', reason: 'field-type-change-requires-new-id' },
+    ])
+    // a minted identity IS a new field, whatever slot it lands on
+    const minted = {
+      fields: [{ id: 'stable-2', key: 'hours-2', type: 'decimal', label: '时长', maxScale: 2 }],
+    }
+    expect(evidenceDriver.transitionIssues!(before, minted, batch)).toEqual([])
+    // and a brand-new field beside the old one transitions nothing
+    const grown = {
+      fields: [
+        { id: 'stable', key: 'hours', type: 'integer', label: '时长', min: 0, max: 99 },
+        { key: 'note', type: 'text', label: '备注' },
+      ],
+    }
+    expect(evidenceDriver.transitionIssues!(before, grown, batch)).toEqual([])
+  })
+
   it('drops a value whose field changed type, like every other retype', async () => {
     const before = {
       fields: [{ id: 'n', key: 'n', type: 'text', label: 'N' }],
