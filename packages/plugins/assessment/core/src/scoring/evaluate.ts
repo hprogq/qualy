@@ -16,7 +16,7 @@
 
 import { Data, Effect } from 'effect'
 import { validateValue } from '@qualy/value-schema/validate'
-import { integerToDecimal, INTEGER_TO_DECIMAL, type AssignmentPlan } from '@qualy/value-schema'
+import { applyAssignment } from '@qualy/value-schema'
 import type { PreparedCalculator } from '../plugin.ts'
 import type { ScoringPlan } from './plan.ts'
 import { scaledAmount } from './builtins.ts'
@@ -50,16 +50,6 @@ export class ScoringEvaluationFailed extends Data.TaggedError(
   readonly reason: string
 }> {}
 
-const converted = (assignment: AssignmentPlan, value: unknown): unknown => {
-  if (assignment.kind === 'direct') return value
-  if (assignment.kind === 'convert' && assignment.converter === INTEGER_TO_DECIMAL) {
-    return typeof value === 'number' ? integerToDecimal(value) : null
-  }
-  // an incompatible assignment cannot be in a compiled plan: the compiler
-  // refuses the item revision before it is ever stored
-  return null
-}
-
 /**
  * The calculator's input for one entry, assembled from the plan alone.
  *
@@ -76,7 +66,7 @@ const inputFor = (plan: ScoringPlan, recognition: Readonly<Record<string, unknow
     input[parameter] =
       binding.kind === 'constant'
         ? binding.value
-        : converted(
+        : applyAssignment(
             binding.assignment,
             Object.hasOwn(recognition, binding.recognitionId)
               ? recognition[binding.recognitionId]

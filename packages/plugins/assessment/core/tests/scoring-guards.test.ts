@@ -483,6 +483,29 @@ describe('where a recognition default reads from', () => {
     expect(seedFromEvidence(plan, { 'claimed-level': 'provincial' })).toEqual({})
   })
 
+  it('does not seed what the named converter cannot carry', async () => {
+    // decodePayload never lets a fraction into an integer field; stored
+    // data may still hold one. The seed goes through the one interpreter,
+    // whose guard refuses it - rather than String() rendering "3.5" into a
+    // recognition no schema would accept.
+    const plan = await plannedWith({})
+    const converting = {
+      ...plan,
+      defaultBindings: {
+        'rec-level': {
+          fieldId: 'claimed-hours',
+          payloadKey: 'claimed-hours-slot',
+          assignment: { kind: 'convert' as const, converter: 'integer-to-decimal@1' as const },
+        },
+      },
+    } as typeof plan
+    expect(seedFromEvidence(converting, { 'claimed-hours-slot': 7 })).toEqual({
+      'rec-level': '7',
+    })
+    expect(seedFromEvidence(converting, { 'claimed-hours-slot': 3.5 })).toEqual({})
+    expect(seedFromEvidence(converting, { 'claimed-hours-slot': 2 ** 53 })).toEqual({})
+  })
+
   it('still reads plans frozen before the two were told apart', async () => {
     const plan = await plannedWith({})
     // an old plan froze only the fieldId, and for it the id WAS the address

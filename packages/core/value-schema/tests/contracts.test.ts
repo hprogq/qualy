@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { canonicalizeAtomicSchema, canonicalizeInputSchema } from '../src/canonical.ts'
-import { integerToDecimal } from '../src/convert.ts'
+import { applyAssignment, integerToDecimal } from '../src/convert.ts'
 import {
   isDateString,
   normalizeAtomicSchema,
@@ -290,6 +290,24 @@ describe('the named converter', () => {
     expect(integerToDecimal(0)).toBe('0')
     expect(integerToDecimal(2 ** 53)).toBeNull()
     expect(integerToDecimal(3.5)).toBeNull()
+  })
+})
+
+describe('the one assignment interpreter', () => {
+  it('carries direct values verbatim and converted values through the guard', () => {
+    expect(applyAssignment({ kind: 'direct' }, 'provincial')).toBe('provincial')
+    expect(applyAssignment({ kind: 'direct' }, 7)).toBe(7)
+    expect(applyAssignment({ kind: 'convert', converter: 'integer-to-decimal@1' }, 7)).toBe('7')
+  })
+
+  it('answers null for whatever cannot be carried, never a rendering', () => {
+    const convert = { kind: 'convert', converter: 'integer-to-decimal@1' } as const
+    // a fractional or unsafe number out of stored data is refused by the
+    // converter's own guard - String(3.5) would be a value no schema admits
+    expect(applyAssignment(convert, 3.5)).toBeNull()
+    expect(applyAssignment(convert, 2 ** 53)).toBeNull()
+    expect(applyAssignment(convert, 'seven')).toBeNull()
+    expect(applyAssignment({ kind: 'incompatible', code: 'kind-mismatch' }, 7)).toBeNull()
   })
 })
 

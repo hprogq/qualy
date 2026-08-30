@@ -5,7 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
 import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
-import { integerToDecimal, type AtomicSchema } from '@qualy/value-schema'
+import { applyAssignment, type AtomicSchema } from '@qualy/value-schema'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection, Feedback, Field } from '@qualy/ui/admin'
@@ -170,7 +170,8 @@ interface RecognitionWire {
     readonly recognitionId: string
     readonly payloadKey: string
     readonly assignment:
-      { readonly kind: 'direct' } | { readonly kind: 'convert'; readonly converter: string }
+      | { readonly kind: 'direct' }
+      | { readonly kind: 'convert'; readonly converter: 'integer-to-decimal@1' }
   }[]
 }
 
@@ -223,13 +224,10 @@ function RecordSheet({
     for (const one of wire.defaults) {
       const raw = payload[one.payloadKey]
       if (raw === undefined) continue
-      if (one.assignment.kind === 'direct') said[one.recognitionId] = raw
-      else if (typeof raw === 'number') {
-        // the one named conversion the platform has; the client reuses it
-        // rather than inventing a second String(value)
-        const converted = integerToDecimal(raw)
-        if (converted !== null) said[one.recognitionId] = converted
-      }
+      // the one interpreter of a compiled assignment, shared with the
+      // server's seeding and scoring - the client never invents a second one
+      const carried = applyAssignment(one.assignment, raw)
+      if (carried !== null && carried !== undefined) said[one.recognitionId] = carried
     }
     return said
   }, [wire, payload])

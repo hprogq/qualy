@@ -15,7 +15,7 @@
  */
 
 import { canonicalizeValues } from '@qualy/value-schema/values'
-import { inputOrder } from '@qualy/value-schema'
+import { applyAssignment, inputOrder } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
 import { hashCanonicalJson, canonicalJson } from '@qualy/value-schema/hash'
 import type { NormalizedAtomicSchema } from '@qualy/value-schema'
@@ -159,13 +159,12 @@ export const seedFromEvidence = (plan: ScoringPlan, payload: unknown): Recogniti
     const slot = binding.payloadKey ?? binding.fieldId
     const value = Object.hasOwn(evidence, slot) ? evidence[slot] : undefined
     if (value === undefined) continue
-    seed[recognitionId] =
-      binding.assignment.kind === 'direct'
-        ? value
-        : binding.assignment.kind === 'convert' && typeof value === 'number'
-          ? String(value)
-          : undefined
-    if (seed[recognitionId] === undefined) delete seed[recognitionId]
+    // through the one interpreter: what a plan's converter refuses (a
+    // fractional or unsafe number out of stored data) is not seeded, never
+    // rendered into a string no schema would accept
+    const carried = applyAssignment(binding.assignment, value)
+    if (carried === null || carried === undefined) continue
+    seed[recognitionId] = carried
   }
   return seed
 }
