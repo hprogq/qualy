@@ -604,6 +604,53 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.queue.items.find((one) => one.itemTitle === '健康打卡')).toBeUndefined()
   })
 
+  it('stores offered reasons canonical, so every offer can actually be used', async () => {
+    // Decision time trims the submitted reason and matches by inclusion, so
+    // an offer stored padded - or blank - is an action nobody could ever
+    // complete. The offer is canonicalized where it is stored: trimmed,
+    // blank-free, deduplicated AFTER trimming.
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-canonical-reasons')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const saved = yield* assessment.updateBatch(
+            f.t,
+            g.batch.id,
+            {
+              reviewReasons: {
+                reject: [' 证据不足 ', '证据不足', '  ', '材料过期'],
+                escalate: [],
+              },
+            },
+            f.principal(f.admin),
+          )
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          // the canonical label is offered, and the offer can be taken up
+          const decided = yield* assessment.decideReview(
+            f.t,
+            sent.currentReviewInstanceId!,
+            { decision: 'reject', reason: '证据不足', comment: '按证据不足退回' },
+            reviewer,
+          )
+          return { stored: saved.reviewReasons, outcome: decided.outcome }
+        }),
+      ),
+    )
+
+    expect(result.stored.reject).toEqual(['证据不足', '材料过期'])
+    expect(result.outcome).toBe('rejected')
+  })
+
   it('writes the ask dead when its round ends over the asker\u2019s head', async () => {
     // A round with an open ask can be ended from outside - withdrawn,
     // rerouted, superseded by a configuration change. Answering already

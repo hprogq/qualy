@@ -105,9 +105,16 @@ const actionAvailability = Schema.Struct({
   reason: Schema.NullOr(Schema.String),
 })
 
+// Offered labels are matched against a TRIMMED submission at decision
+// time, so the offer itself is canonical at the wire: trimmed, non-blank,
+// bounded - a whitespace-only label would make its action impossible to
+// ever carry out
+const reviewReasonList = Schema.Array(trimmedName(100)).check(
+  Schema.makeFilter((list: readonly string[]) => list.length <= 50 || 'at most 50 reasons'),
+)
 const reviewReasons = Schema.Struct({
-  reject: Schema.Array(Schema.String),
-  escalate: Schema.Array(Schema.String),
+  reject: reviewReasonList,
+  escalate: reviewReasonList,
 })
 
 const batchStatus = Schema.Literals(['draft', 'active', 'archived'])

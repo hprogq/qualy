@@ -2355,12 +2355,20 @@ export const make = Effect.fn('Assessment.make')(function* () {
             }
             // the lists are offer, not history: events copied the label they
             // used, so editing these never rewrites anything already said
+            // the service holds the same line as the wire: labels are
+            // stored canonical (trimmed, non-blank, deduplicated AFTER
+            // trimming), because a decision's reason arrives trimmed and is
+            // matched by inclusion - a padded or blank stored label is an
+            // action nobody could ever complete
+            const canonicalReasons = (list: readonly string[]) => [
+              ...new Set(list.map((label) => label.trim()).filter((label) => label !== '')),
+            ]
             const reasonLists =
               input.reviewReasons === undefined
                 ? undefined
                 : {
-                    reject: [...new Set(input.reviewReasons.reject)],
-                    escalate: [...new Set(input.reviewReasons.escalate)],
+                    reject: canonicalReasons(input.reviewReasons.reject),
+                    escalate: canonicalReasons(input.reviewReasons.escalate),
                   }
             if (reasonLists !== undefined) {
               const current = readReviewReasons(before.reviewReasons)
