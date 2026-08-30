@@ -19,6 +19,8 @@ const WITH_ACTOR: Record<string, MessageDescriptor> = {
   'recommend-approve': m.eventRecommendApprove,
   'recommend-reject': m.eventRecommendReject,
   'cancelled-by-submitter': m.eventWithdrawn,
+  // the office withdrew the record this round was contesting
+  'cancelled-by-staff': m.eventCancelledByStaff,
   'returned-for-revision': m.eventReturnedForRevision,
   'revision-required': m.eventReturnedForRevision,
   appealed: m.eventAppealed,

@@ -269,6 +269,7 @@ export interface EntryRoundView {
   readonly origin: string
   readonly supersedesInstanceId: string | null
   readonly appealedInstanceId: string | null
+  readonly appealedRecognitionId: string | null
   readonly submittedAt: number
   readonly completedAt: number | null
   readonly events: readonly {
@@ -1632,6 +1633,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               origin: round.origin,
               supersedesInstanceId: round.supersedesInstanceId,
               appealedInstanceId: round.appealedInstanceId,
+              appealedRecognitionId: round.appealedRecognitionId,
               submittedAt: round.createdAt,
               completedAt: round.completedAt,
               events: (events.get(round.id) ?? []).map((event) => ({
@@ -1709,11 +1711,35 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             if (entry.status === 'voided') {
               return yield* refuse('abandon', 'entry-not-abandonable')
             }
+            // The same lifecycle discipline as its owner walking away: a
+            // live round - an appeal against this record - closes first, and
+            // its sitting dissolves with it. Left open, the withdrawn fact
+            // would go on sitting in reviewers' queues, still accepting
+            // decisions about a claim that no longer counts.
+            if (entry.status === 'in_review') {
+              if (entry.currentReviewInstanceId === null) {
+                return yield* refuse('abandon', 'entry-not-abandonable')
+              }
+              const closed = yield* cancelReviewInstance({
+                tenantId,
+                instanceId: entry.currentReviewInstanceId,
+                outcome: 'cancelled',
+              })
+              if (!closed) return yield* refuse('abandon', 'entry-not-abandonable')
+              yield* insertReviewEvent({
+                tenantId,
+                reviewInstanceId: entry.currentReviewInstanceId,
+                kind: 'cancelled-by-staff',
+                actorId: as.userId,
+                comment: reason,
+              })
+            }
             const gone = yield* setEntryState({
               tenantId,
               entryId,
               from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
               to: 'voided',
+              ...(entry.status === 'in_review' ? { currentReviewInstanceId: null } : {}),
             })
             if (!gone) return yield* refuse('abandon', 'entry-not-abandonable')
             yield* insertEntryEvent({
@@ -1726,6 +1752,9 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             yield* announce(tenantId, entry.batchId, [
               { kind: 'entries-changed', subjectUserId: participant.userId },
               { kind: 'result-changed', subjectUserId: participant.userId },
+              // the queues too: a round just left them
+              { kind: 'review-inbox-changed' },
+              { kind: 'review-instance-changed' },
             ])
             const gone_ = (yield* entryOf(tenantId, entryId))!
             return view(gone_, yield* revisionView(tenantId, gone_.currentRevisionId), as, participant)

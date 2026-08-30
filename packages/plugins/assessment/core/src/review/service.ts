@@ -18,7 +18,11 @@ import {
   type RecognitionValues,
 } from '../scoring/recognition.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
-import { currentRecognitionOf, insertRecognition } from '../scoring/recognition-db.ts'
+import {
+  currentRecognitionOf,
+  insertRecognition,
+  recognitionById,
+} from '../scoring/recognition-db.ts'
 import { boundedCounter } from '@qualy/telemetry/metrics'
 import { projectEntrySummary } from '../entry/summary.ts'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
@@ -1036,6 +1040,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       readonly recognitionRevisionId: string
       readonly origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
       readonly appealedInstanceId: string | null
+      readonly appealedRecognitionId: string | null
       readonly supersedesInstanceId: string | null
     },
   ) =>
@@ -1079,8 +1084,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     tenantId: string,
     row: {
       readonly entryId: string
+      readonly revisionId: string
       readonly origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
       readonly appealedInstanceId: string | null
+      readonly appealedRecognitionId: string | null
       readonly supersedesInstanceId: string | null
     },
   ): Effect.Effect<RecognitionValues | null, QueryFailed, Orm> =>
@@ -1090,18 +1097,11 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         const standing = yield* currentRecognitionOf(tenantId, row.entryId)
         return standing === null ? null : standing.values
       }
-      if (row.origin === 'appeal') {
-        if (row.appealedInstanceId === null) return null
-        const contested = yield* recognitionOfInstance(tenantId, row.appealedInstanceId)
-        if (contested !== null) return contested
-        // a round that was appealed but left no determination of its own -
-        // history from before determinations were recorded - falls back to
-        // what the claim stands recognised as, which is what that round
-        // decided if it decided anything
-        const standing = yield* currentRecognitionOf(tenantId, row.entryId)
-        return standing === null ? null : standing.values
-      }
-      // reroute: back through however many times the round was moved
+      // A moved round first asks the rounds it replaced: a re-route may
+      // have interrupted a ladder mid-climb, and a correction a stage below
+      // had already made is the most recent word - more recent than whatever
+      // the round originally opened on. This holds for a re-routed appeal
+      // exactly as for a re-routed first look.
       let previous = row.supersedesInstanceId
       const walked = new Set<string>()
       while (previous !== null && !walked.has(previous)) {
@@ -1110,6 +1110,31 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
         if (said !== null) return said
         const older = yield* instanceLineageOf(tenantId, previous)
         previous = older === null ? null : older.supersedesInstanceId
+      }
+      if (row.origin === 'appeal') {
+        // The round wrote down what it is contesting; the seed follows that
+        // pointer and nothing else. An appeal against a determination made
+        // without a round - an administrative record - names the
+        // determination itself, and inheriting anything other than exactly
+        // it would let "approve as it stands" quietly stand for something
+        // the office never wrote.
+        if (row.appealedRecognitionId !== null) {
+          const named = yield* recognitionById(tenantId, row.entryId, row.appealedRecognitionId)
+          return named === null ? null : named.values
+        }
+        if (row.appealedInstanceId === null) return null
+        const contested = yield* recognitionOfInstance(tenantId, row.appealedInstanceId)
+        if (contested !== null) return contested
+        // The contested round determined nothing - it was a rejection. If
+        // the claim still stands on a determination made about THIS filing,
+        // that is the word being revisited; a determination made about an
+        // older filing is about material this round is not looking at, and
+        // reading it here would write the old material's conclusion onto
+        // the new. Then the seed falls through to the filing itself.
+        const standing = yield* currentRecognitionOf(tenantId, row.entryId)
+        return standing !== null && standing.entryRevisionId === row.revisionId
+          ? standing.values
+          : null
       }
       return null
     })
@@ -1258,13 +1283,14 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             let determinedHash: string | undefined
             let determinedReason: string | null = null
             if (action === 'approve') {
-              const candidate = canonicalRecognition(
-                plan.recognitionSchemas,
-                input.recognition === undefined
-                  ? seed
-                  : (input.recognition.values as RecognitionValues),
-              )
-              const wrong = judgeRecognition(plan.recognitionSchemas, candidate)
+              // Judged raw, canonicalized after. The wire hands over an
+              // unknown - the judge is what earns it the right to be treated
+              // as a determination at all, and canonicalizing first would
+              // hand `null` and friends to code that assumes an object,
+              // turning a malformed request into a defect instead of the
+              // refusal already written for it.
+              const offered: unknown = input.recognition === undefined ? seed : input.recognition.values
+              const wrong = judgeRecognition(plan.recognitionSchemas, offered)
               if (wrong.length > 0) {
                 return yield* new EntryPayloadInvalid({
                   issues: wrong.map((issue) => ({
@@ -1273,6 +1299,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   })),
                 })
               }
+              const candidate = canonicalRecognition(
+                plan.recognitionSchemas,
+                offered as RecognitionValues,
+              )
               // Contradicting what was already determined is a decision of
               // its own, and one the next reader is owed an explanation for.
               // Filling in a fact that had none is not: a reviewer-only

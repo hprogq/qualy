@@ -912,6 +912,10 @@ const i18n = definePluginMessages({
       id: 'assessment/event/recommend-reject',
       defaultMessage: '{who} recommended returning the submission',
     },
+    eventCancelledByStaff: {
+      id: 'assessment/event/cancelled-by-staff',
+      defaultMessage: '{who} withdrew the recorded entry',
+    },
     eventWithdrawn: {
       id: 'assessment/event/withdrawn',
       defaultMessage: '{who} withdrew the entry',

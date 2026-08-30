@@ -697,8 +697,15 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           // called itself an ordinary re-route made a contested verdict
           // withdrawable, which would wash it back to a draft.
           origin: round.origin === 'appeal' ? 'appeal' : 'reroute',
+          // and what it was contesting travels with it - whichever pointer
+          // it held. An appeal against an administrative determination that
+          // lost this on a re-route would quietly re-seed from the filing,
+          // which is the exact thing the pointer exists to prevent.
           ...(round.appealedInstanceId !== null
             ? { appealedInstanceId: round.appealedInstanceId }
+            : {}),
+          ...(round.appealedRecognitionId !== null
+            ? { appealedRecognitionId: round.appealedRecognitionId }
             : {}),
           initiator: 'staff',
           supersedesInstanceId: round.id,

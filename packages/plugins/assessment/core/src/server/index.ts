@@ -5066,6 +5066,7 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
             origin: round.origin,
             supersedesInstanceId: round.supersedesInstanceId,
             appealedInstanceId: round.appealedInstanceId,
+            appealedRecognitionId: round.appealedRecognitionId,
             submittedAt: new Date(round.submittedAt).toISOString(),
             completedAt:
               round.completedAt === null ? null : new Date(round.completedAt).toISOString(),

@@ -33,7 +33,7 @@ const submitted = (f: Seeded, g: { item: { id: string } }, participantId: string
   })
 
 /** a question the office records against, published and ready */
-const recordItem = (f: Seeded, batchId: string) =>
+const recordItem = (f: Seeded, batchId: string, over?: { scoring?: unknown }) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
     const admin = f.principal(f.admin)
@@ -49,7 +49,7 @@ const recordItem = (f: Seeded, batchId: string) =>
         config: {
           entrySource: 'administrative',
           formConfig: {},
-          scoringConfig: {
+          scoringConfig: over?.scoring ?? {
             calculator: { ref: 'fixed@1', config: { value: '-1.00' } },
             aggregator: { ref: 'sum@1', config: {} },
           },
@@ -596,6 +596,331 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     ).toEqual([{ field: 'recognition.reason', reason: 'required' }])
     expect(result.rows).toHaveLength(1)
     expect(result.rows[0]!.values).toEqual({ 'rec-level': 'provincial', 'rec-ordinal': 2 })
+  })
+
+  it('hands an appeal exactly what the office determined, and nothing else', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-appeal-record')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+          })
+          const item = yield* recordItem(f, g.batch.id, { scoring: gradedScoring })
+          // the filing claims national; the office, who is the author of the
+          // determination, writes it down as provincial
+          const entry = yield* assessment.createEntry(
+            f.t,
+            {
+              itemId: item.id,
+              participantId: g.p1,
+              payload: { 'claimed-level': 'national' },
+              note: '登记表第 14 页',
+              recognition: { values: { 'rec-level': 'provincial' } },
+            },
+            f.principal(f.recorder),
+          )
+          yield* assessment.appealEntry(
+            f.t,
+            entry.id,
+            { reason: '主办单位为全国学会' },
+            f.principal(f.s1),
+          )
+          // the appeal reviewer upholds it without saying anything: whatever
+          // they were shown is what gets recorded
+          const round = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from review_instances where entry_id = ${entry.id} and state = 'active'`,
+            ),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            round.id,
+            { decision: 'approve', comment: 'upheld' },
+            f.principal(f.reviewer),
+          )
+          return { rows: yield* recognitionsOf(entry.id) }
+        }),
+      ),
+    )
+
+    expect(result.rows).toHaveLength(2)
+    // upholding inherits the determination under appeal - the one the round
+    // wrote down as contested - not the filing's own claim. Re-reading the
+    // material would hand back 'national' and quietly overturn the office.
+    expect(result.rows[0]!.values).toEqual({ 'rec-level': 'provincial' })
+    expect(result.rows[1]!.values).toEqual({ 'rec-level': 'provincial' })
+    expect(result.rows[1]!.source).toBe('review')
+  })
+
+  it('does not carry an old filing\'s determination onto new material through an appeal', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-appeal-refiled')
+          const assessment = yield* Assessment
+          const g = yield* graded(f)
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          // the first filing is determined provincial and approved
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'checked',
+              recognition: {
+                values: { 'rec-level': 'provincial' },
+                reason: '证书落款为省级主办单位',
+              },
+            },
+            f.principal(f.reviewer),
+          )
+          // sent back; new material filed and rejected without determining
+          yield* assessment.interveneOnEntry(
+            f.t,
+            entryId,
+            { kind: 'return-for-revision', reason: '请补交原件' },
+            f.principal(f.admin),
+          )
+          yield* assessment.appendEntryRevision(
+            f.t,
+            entryId,
+            { payload: { 'claimed-level': 'national' } },
+            f.principal(f.s1),
+          )
+          yield* assessment.setEntryStatus(f.t, entryId, 'in_review', f.principal(f.s1))
+          const second = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from review_instances where entry_id = ${entryId} and state = 'active'`,
+            ),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            second.id,
+            { decision: 'reject', comment: '仍有疑问' },
+            f.principal(f.reviewer),
+          )
+          // the student contests the rejection of the NEW material
+          const appealed = yield* assessment.appealEntry(
+            f.t,
+            entryId,
+            { reason: '原件已附上' },
+            f.principal(f.s1),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            appealed.id,
+            { decision: 'approve', comment: 'the original checks out' },
+            f.principal(f.reviewer),
+          )
+          return { rows: yield* recognitionsOf(entryId) }
+        }),
+      ),
+    )
+
+    // The contested rejection determined nothing, and the determination the
+    // claim still points at was made about the OLD filing. Inheriting it
+    // would write the old material's conclusion onto the new; the seed falls
+    // through to the new filing instead.
+    const latest = result.rows[result.rows.length - 1]!
+    expect(latest.values).toEqual({ 'rec-level': 'national' })
+  })
+
+  it('closes the appeal a withdrawn record was carrying', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-void-round')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+          })
+          const item = yield* recordItem(f, g.batch.id)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {}, note: '违纪记录' },
+            f.principal(f.recorder),
+          )
+          const appealed = yield* assessment.appealEntry(
+            f.t,
+            entry.id,
+            { reason: '当天我在校外实习' },
+            f.principal(f.s1),
+          )
+          // the office withdraws the record while the appeal is open
+          const voided = yield* assessment.interveneOnEntry(
+            f.t,
+            entry.id,
+            { kind: 'void', reason: '经复核，记录有误' },
+            f.principal(f.admin),
+          )
+          // and the round closed with it: a reviewer arriving late finds a
+          // concluded round, not a live queue item about a withdrawn fact
+          const decided = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              appealed.id,
+              { decision: 'approve', comment: 'too late' },
+              f.principal(f.reviewer),
+            ),
+          )
+          return {
+            status: voided.status,
+            round: one<{ state: string; outcome: string | null }>(
+              yield* runSql(
+                sql`select state, outcome from review_instances where id = ${appealed.id}`,
+              ),
+            ),
+            pointer: one<{ current: string | null }>(
+              yield* runSql(
+                sql`select current_review_instance_id as current from entries where id = ${entry.id}`,
+              ),
+            ).current,
+            decided,
+          }
+        }),
+      ),
+    )
+
+    expect(result.status).toBe('voided')
+    expect(result.round).toEqual({ state: 'completed', outcome: 'cancelled' })
+    expect(result.pointer).toBeNull()
+    expect(Exit.isFailure(result.decided)).toBe(true)
+  })
+
+  it('refuses a determination that is not an object, in words', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-not-object')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
+          const offered = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'approve', comment: 'ok', recognition: { values: null } },
+              f.principal(f.reviewer),
+            ),
+          )
+          return { offered }
+        }),
+      ),
+    )
+
+    // the wire hands over an unknown; a malformed one is a request to refuse
+    // in the vocabulary already written for it, never a defect
+    expect(Exit.isFailure(result.offered)).toBe(true)
+    expect(
+      errorOf<{ issues: readonly { reason: string }[] }>(result.offered)?.issues?.[0]?.reason,
+    ).toBe('not-an-object')
+  })
+
+  it('keeps what an appeal contests across a re-route', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-appeal-rerouted')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+          })
+          const item = yield* recordItem(f, g.batch.id, { scoring: gradedScoring })
+          const entry = yield* assessment.createEntry(
+            f.t,
+            {
+              itemId: item.id,
+              participantId: g.p1,
+              payload: { 'claimed-level': 'national' },
+              note: '登记表第 14 页',
+              recognition: { values: { 'rec-level': 'provincial' } },
+            },
+            f.principal(f.recorder),
+          )
+          yield* assessment.appealEntry(
+            f.t,
+            entry.id,
+            { reason: '主办单位为全国学会' },
+            f.principal(f.s1),
+          )
+          // the administrator renames the appeal step, which moves the open
+          // appeal onto a new chain
+          const renamed = {
+            entrySource: 'administrative' as const,
+            formConfig: {},
+            scoringConfig: gradedScoring,
+            reviewPolicy: {
+              normal: {
+                stages: [
+                  {
+                    id: 's1',
+                    selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                    quorum: { type: 'any' },
+                  },
+                ],
+              },
+              escalation: {
+                stages: [
+                  {
+                    id: 'appeal-2',
+                    selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                    quorum: { type: 'any' },
+                  },
+                ],
+              },
+            },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.t, item.id, { config: renamed, reason: '改环节名' }, admin),
+          )
+          const report = errorOf<{ impactToken: string }>(asked)!
+          yield* assessment.updateItem(
+            f.t,
+            item.id,
+            {
+              config: renamed,
+              reason: '改环节名',
+              effects: {
+                impactToken: report.impactToken,
+                review: {
+                  open: 'reroute-all',
+                  missingCurrentStage: 'refuse',
+                  landing: 'route-start',
+                },
+              },
+            },
+            admin,
+          )
+          const moved = one<{ id: string; appealed_recognition_id: string | null }>(
+            yield* runSql(sql`
+              select id, appealed_recognition_id from review_instances
+              where entry_id = ${entry.id} and state = 'active'`),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            moved.id,
+            { decision: 'approve', comment: 'upheld' },
+            f.principal(f.reviewer),
+          )
+          return { moved, rows: yield* recognitionsOf(entry.id) }
+        }),
+      ),
+    )
+
+    // the pointer travelled with the round, and upholding on the new chain
+    // still inherits the office's determination rather than the filing's
+    // claim
+    expect(result.moved.appealed_recognition_id).not.toBeNull()
+    const latest = result.rows[result.rows.length - 1]!
+    expect(latest.values).toEqual({ 'rec-level': 'provincial' })
   })
 
   it('determines an administrative record without inventing a review', async () => {

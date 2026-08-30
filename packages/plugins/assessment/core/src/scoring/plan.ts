@@ -255,19 +255,36 @@ export const compileScoringPlan = (
     // that whoever called it already did. Saving a question does validate
     // them first; the boot sweep calls straight in here, and "both paths
     // rest on the same proof" has to be true of this function alone.
-    if ((yield* decode(calculator.configSchema as Schema.Codec<unknown>, authoring.calculator.config))._tag === 'None') {
+    //
+    // And what the decoder PRODUCES is what runs. A codec is allowed to
+    // transform - fill a default, drop a stray key, normalize a spelling -
+    // so handing the driver the raw value after checking the decoded one
+    // would execute a configuration nobody proved. The built-in schemas
+    // happen to be identity codecs today; the contract must not depend on
+    // that staying true.
+    const calculatorConfig = yield* decode(
+      calculator.configSchema as Schema.Codec<unknown>,
+      authoring.calculator.config,
+    )
+    if (calculatorConfig._tag === 'None') {
       return {
         issues: [...issues, { path: 'scoringConfig.calculator.config', reason: 'calculator-config-invalid' }],
       }
     }
-    if (
-      aggregator !== undefined &&
-      (yield* decode(aggregator.configSchema as Schema.Codec<unknown>, authoring.aggregator.config))._tag === 'None'
-    ) {
-      issues.push({ path: 'scoringConfig.aggregator.config', reason: 'aggregator-config-invalid' })
+    let aggregatorConfig: unknown = authoring.aggregator.config
+    if (aggregator !== undefined) {
+      const decoded = yield* decode(
+        aggregator.configSchema as Schema.Codec<unknown>,
+        authoring.aggregator.config,
+      )
+      if (decoded._tag === 'None') {
+        issues.push({ path: 'scoringConfig.aggregator.config', reason: 'aggregator-config-invalid' })
+      } else {
+        aggregatorConfig = decoded.value
+      }
     }
 
-    const compiled = yield* calculator.compile(authoring.calculator.config).pipe(Effect.option)
+    const compiled = yield* calculator.compile(calculatorConfig.value).pipe(Effect.option)
     if (compiled._tag === 'None') {
       return {
         issues: [...issues, { path: 'scoringConfig.calculator.config', reason: 'calculator-contract-unavailable' }],
@@ -434,7 +451,9 @@ export const compileScoringPlan = (
       parameters,
       recognitionSchemas,
       defaultBindings,
-      aggregator: { ref: authoring.aggregator.ref, config: authoring.aggregator.config },
+      // the decoded form, for the same reason as the calculator's: the plan
+      // stores what will execute, and what will execute is what was proven
+      aggregator: { ref: authoring.aggregator.ref, config: aggregatorConfig },
       inputSchema,
       outputSchema,
     }
@@ -503,7 +522,20 @@ export const readScoringPlan = (revision: {
       })
     }
     const { planHash, ...body } = plan
-    if (hashCanonicalJson(semanticPlanBody(body)) !== planHash) {
+    // The shape check above is structural, not deep: the nested schemas are
+    // whatever was stored. Rehashing walks them, so a plan whose insides are
+    // mangled - a null where an input schema belongs - would throw out of
+    // the walk. That is still "this build cannot read it", and it still
+    // deserves the refusal that names the revision, not a bare TypeError.
+    const rehashed = yield* Effect.try({
+      try: () => hashCanonicalJson(semanticPlanBody(body)),
+      catch: () =>
+        new ScoringPlanUnreadable({
+          revisionId: revision.id,
+          reason: 'not a plan this build can read',
+        }),
+    })
+    if (rehashed !== planHash) {
       return yield* new ScoringPlanUnreadable({
         revisionId: revision.id,
         reason: 'the plan and the hash it was stored with disagree',

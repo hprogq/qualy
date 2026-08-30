@@ -57,6 +57,8 @@ export interface RecognitionRow {
   readonly id: string
   readonly values: Record<string, unknown>
   readonly supersedesId: string | null
+  /** the filing this determination judged: what keeps a seed on its own material */
+  readonly entryRevisionId: string
 }
 
 /** the determination an entry currently stands on, if it has one */
@@ -70,7 +72,7 @@ export const currentRecognitionOf = (tenantId: string, entryId: string) =>
             .onRef('e.tenantId', '=', 'r.tenantId')
             .onRef('e.currentRecognitionId', '=', 'r.id'),
         )
-        .select(['r.id', 'r.values', 'r.supersedesId'])
+        .select(['r.id', 'r.values', 'r.supersedesId', 'r.entryRevisionId'])
         .where('r.tenantId', '=', tenantId)
         .where('r.entryId', '=', entryId)
         .executeTakeFirst(),
@@ -86,6 +88,40 @@ export const currentRecognitionOf = (tenantId: string, entryId: string) =>
                 unknown
               >,
               supersedesId: (row as { supersedesId: string | null }).supersedesId ?? null,
+              entryRevisionId: String((row as { entryRevisionId: string }).entryRevisionId),
+            } satisfies RecognitionRow),
+      ),
+    )
+
+/**
+ * One determination by its own id: what an appeal that names one inherits.
+ *
+ * Scoped to the entry so a pointer cannot reach across claims, exactly like
+ * the foreign key that stores it.
+ */
+export const recognitionById = (tenantId: string, entryId: string, recognitionId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('EntryRecognition')
+        .select(['id', 'values', 'supersedesId', 'entryRevisionId'])
+        .where('tenantId', '=', tenantId)
+        .where('entryId', '=', entryId)
+        .where('id', '=', recognitionId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? null
+          : ({
+              id: String((row as { id: string }).id),
+              values: ((row as { values: Record<string, unknown> }).values ?? {}) as Record<
+                string,
+                unknown
+              >,
+              supersedesId: (row as { supersedesId: string | null }).supersedesId ?? null,
+              entryRevisionId: String((row as { entryRevisionId: string }).entryRevisionId),
             } satisfies RecognitionRow),
       ),
     )

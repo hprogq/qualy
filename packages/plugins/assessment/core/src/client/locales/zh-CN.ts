@@ -136,6 +136,7 @@ export default {
   'assessment/event/comment': '{who} 添加了审核意见',
   'assessment/event/recommend-approve': '{who} 建议通过',
   'assessment/event/recommend-reject': '{who} 建议退回',
+  'assessment/event/cancelled-by-staff': '{who} 作废了这条记录',
   'assessment/event/withdrawn': '{who} 撤回了申报',
   'assessment/event/no-reviewer': '当前审核环节暂无审核人',
   'assessment/event/reviewer-found': '已找到审核人，审核继续',

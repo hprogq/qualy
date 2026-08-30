@@ -696,6 +696,8 @@ export interface OpenRoundRow {
   /** how this round began, so a replacement can begin the same way */
   origin: string
   appealedInstanceId: string | null
+  /** the determination contested, where the appeal named one instead of a round */
+  appealedRecognitionId: string | null
   /** who wrote the filing under review: the other half of self-review */
   actorId: string
   /** the routes the round froze, for asking what stood before its step */
@@ -730,6 +732,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           'ri.currentStageId',
           'ri.origin',
           'ri.appealedInstanceId',
+          'ri.appealedRecognitionId',
           'ri.effectiveChain',
           'ri.recognitionRevisionId',
           'e.participantId',
@@ -754,6 +757,8 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           origin: String(row.origin),
           appealedInstanceId:
             row.appealedInstanceId == null ? null : String(row.appealedInstanceId),
+          appealedRecognitionId:
+            row.appealedRecognitionId == null ? null : String(row.appealedRecognitionId),
           actorId: String(row.actorId),
           effectiveChain: row.effectiveChain,
           recognitionRevisionId: String(row.recognitionRevisionId),

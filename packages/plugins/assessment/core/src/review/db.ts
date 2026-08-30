@@ -390,6 +390,8 @@ export interface ReviewInstanceDetailRow {
   origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
   /** the decision being contested, when this round is an appeal */
   appealedInstanceId: string | null
+  /** or the determination it contests, when no round produced that one */
+  appealedRecognitionId: string | null
   /** the round this one replaced, when a policy change opened it */
   supersedesInstanceId: string | null
   currentNodeId: string
@@ -517,6 +519,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           // the claim last happened to be recognised as
           'ri.origin',
           'ri.appealedInstanceId',
+          'ri.appealedRecognitionId',
           'ri.supersedesInstanceId',
           'ri.currentNodeId',
           'ri.currentRoleIds',
@@ -563,6 +566,7 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               recognitionRevisionId: row.recognitionRevisionId,
               origin: row.origin as ReviewInstanceDetailRow['origin'],
               appealedInstanceId: row.appealedInstanceId,
+              appealedRecognitionId: row.appealedRecognitionId,
               supersedesInstanceId: row.supersedesInstanceId,
               currentNodeId: row.currentNodeId,
               currentRoleIds: row.currentRoleIds,

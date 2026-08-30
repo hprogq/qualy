@@ -36,6 +36,12 @@ export const canonicalizeValues = (
   schemas: Readonly<Record<string, AtomicSchema>>,
   values: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> => {
+  // canonicalizing is not validating: something that is not an object of
+  // values has no canonical form, and it is the validator's job to refuse
+  // it - never this function's job to throw on it
+  if (typeof values !== 'object' || values === null || Array.isArray(values)) {
+    return values as unknown as Record<string, unknown>
+  }
   const out: Record<string, unknown> = Object.create(null)
   for (const key of Object.keys(values)) {
     const schema = Object.hasOwn(schemas, key) ? schemas[key] : undefined

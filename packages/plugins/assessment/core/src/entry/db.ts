@@ -994,6 +994,8 @@ export interface EntryRoundRow {
   origin: string
   supersedesInstanceId: string | null
   appealedInstanceId: string | null
+  /** the determination contested, where the appeal named one instead of a round */
+  appealedRecognitionId: string | null
   createdAt: number
   completedAt: number | null
 }
@@ -1013,6 +1015,7 @@ export const roundsOfEntry = (tenantId: string, entryId: string) =>
           'origin',
           'supersedesInstanceId',
           'appealedInstanceId',
+          'appealedRecognitionId',
         ])
         .select([epoch('created_at').as('createdMs'), epoch('completed_at').as('completedMs')])
         .where('tenantId', '=', tenantId)
@@ -1031,6 +1034,7 @@ export const roundsOfEntry = (tenantId: string, entryId: string) =>
           origin: row.origin as string,
           supersedesInstanceId: row.supersedesInstanceId,
           appealedInstanceId: row.appealedInstanceId,
+          appealedRecognitionId: row.appealedRecognitionId,
           createdAt: msOf(row.createdMs),
           completedAt: row.completedMs == null ? null : msOf(row.completedMs),
         })),

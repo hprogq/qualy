@@ -1289,6 +1289,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
             origin: Schema.String,
             supersedesInstanceId: Schema.NullOr(Schema.String),
             appealedInstanceId: Schema.NullOr(Schema.String),
+            /** the determination contested, where no round produced it */
+            appealedRecognitionId: Schema.NullOr(Schema.String),
             submittedAt: Schema.String,
             completedAt: Schema.NullOr(Schema.String),
             events: Schema.Array(

@@ -11222,4 +11222,37 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 门禁:学生作废行政记录被拒且按钮不出现、同一条记录可申诉且轮次记下 `appealed_recognition_id`、
 行政作废要理由且认定保留。去掉 source 检查即红。
 
+### 申诉继承与生命周期收口(2026-08-30,第七轮复审 + 自查)
+
+上一笔把「在争什么」写进了轮次,这一笔让 seed 真的去读它。五条(1 P0 + 3 P1 + 1 P2)
+加自查发现的一条 P0 同型:
+
+- **P0:申诉没有继承它明确指向的认定**。`revisitedRecognition` 只读 `appealedInstanceId`,
+  行政申诉写了 `appealedRecognitionId` 却没人消费,seed 回落 Evidence 默认——审核人
+  「维持原判」会静默把经办人写的认定换成学生的申报。另一条路径:旧材料批准过 → 退回 →
+  新材料被拒 → 申诉,被拒轮没有认定,无条件回落 entry 的 current recognition 会把**旧材料
+  的结论写到新材料上**。修复:精确指针优先(`recognitionById`,按 entry 域内读);被拒轮
+  回落仅限**同一 filing revision**(`RecognitionRow` 补 `entryRevisionId`),跨材料一律落回
+  filing 本身。历史 API(rounds 投影三层)补 `appealedRecognitionId`,审计链看得见这根指针。
+- **自查发现的同型**:appeal 轮被 reroute 时,`appealedInstanceId` 随行而
+  `appealedRecognitionId` 不随行——行政申诉一被改环节名就退化回 Evidence seed。补携带
+  (`OpenRoundRow` + propagate)。同时把 lineage 顺序修正:**被替换轮里环节已做的更正
+  优先于申诉打开时的原指针**——re-route 打断的是爬到一半的梯子,下级刚改过的词比
+  开轮时的旧认定更近。supersedes 链的回溯从 reroute 专属提到所有 origin 之前。
+- **P1:行政作废没有关轮**。照参与者 abandon 的同一纪律:`cancelReviewInstance`(一条语句
+  连 panel 一起解散)+ `cancelled-by-staff` 事件(带理由,文案入 events 词表)+ 同一条
+  UPDATE 清 `currentReviewInstanceId` + 队列广播。作废后的申诉不再躺在审核队列里继续收决定。
+- **P1:非法认定绕过 400**。`recognition.values` 是 wire 上的 unknown,先 canonicalize 会让
+  `null` 在 `Object.keys` 上炸成 defect。改为先 `judgeRecognition(raw)` 后 canonicalize
+  (行政侧本来就是这个顺序);`canonicalizeValues` 加卫语句——canonicalize 不是 validate,
+  拒绝是 validator 的事,它自己永远不抛。
+- **P1:decoder 的产出被丢弃**。codec 可以转换(填默认、剥杂键、归一拼写),验 decoded、
+  跑 raw 等于执行了一份没人证明过的配置。现在 calculator 拿 decoded 值进 `compile`,
+  plan 存 decoded 的 aggregator config。内建 schema 今天恰好是恒等 codec,契约不依赖这一点。
+- **P2:深层 malformed 的 plan 抛裸 TypeError**。重算 hash 的遍历包进 `Effect.try`,
+  映射为带 revisionId 的 `ScoringPlanUnreadable`。
+
+门禁六条(行政申诉继承、跨 filing 不继承、reroute 携带、void 关轮、not-an-object、
+首次填写),继承两条做了差分验证:去掉精确指针读取或去掉 revision 限制,各自立刻红。
+
 **留给 Phase 6 其余**:Evidence 的 integer/decimal/choice 生产字段与真实动态表单。
