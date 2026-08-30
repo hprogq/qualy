@@ -10954,3 +10954,18 @@ kill-the-server 用例与 CI 冷机时序放大竞速窗口(本地从未复现,d
 构造,天然 opaque)。无变化返回 [],语法碎源答 -32603。E2E 重写为真实诉求:超宽
 参数对象一行一属性、路径样字符串原样保留、规范形自身幂等(再格式化 = []);host 与
 真容器双形态通过。浏览器与 F2 wire 零改动。
+
+## 本地 Docker provider 收敛到 Docker Desktop(2026-08-30)
+
+按迁移规程执行完毕:qualy 全部本地容器现居 desktop-linux(postgres、postgres-test、
+otel-collector、otel-lgtm、sandbox-runtime、sandbox-authoring),OrbStack 的四个
+qualy 容器已停止但**未删除**,`qualy_pg_data` 旧卷保留为回滚源(等确认后清理)。
+开发数据经 pg_dump -Fc(287K)logical 迁移,restore --exit-on-error 零告警;全 56
+表 row-count 对照一致(唯一 n_live_tup 估算差异经精确 count(*) 仲裁为两边相同),
+50 条 migrations 账本一致,extensions(ltree/plpgsql)一致,目标 PG 18.6 兼容源
+18.4,pgvector 可建。postgres-test/otel 按设计不迁数据、原地重建。验收:pnpm test
+1125 passed(新 test 库)、sandbox gate/smoke PASS、otel 四端点健康、dev 对迁移库
+ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 provider-neutral
+(裸 docker compose),不改代码——本机默认 context 已固定 desktop-linux,且端口互斥
+天然防误启(OrbStack 再起 qualy-postgres 会撞 5432 直接失败);sandbox UDS 能力门禁
+原样保留。dump 留存于 .qualy/run/migrate/(gitignored)。
