@@ -11,6 +11,7 @@
     "./plugin": "./src/plugin.ts",
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
+    "./server/configuration-access": "./src/server/configuration-access.ts",
     "./api": "./src/api.ts",
     "./client/api": "./src/client/api.ts",
     "./package.json": "./package.json"

@@ -1,5 +1,8 @@
 import { Context, Layer } from 'effect'
 import type { Effect, Schema } from 'effect'
+import type { Principal } from '@qualy/rbac-contract'
+import type { AccessDenied } from '@qualy/rbac-contract/effect'
+import type { BatchNotFound } from './server/errors.ts'
 import type {
   AtomicSchema,
   NormalizedAtomicSchema,
@@ -384,6 +387,35 @@ export const ScoringRuntimes = ExtensionPoint.make<CalculatorRegistration<any>>(
   '@qualy/plugin-assessment/scoring-runtimes',
   { phase: 'runtime' },
 )
+
+/**
+ * The narrow face assessment offers other plugins about one round's
+ * administration - and nothing else.
+ *
+ * Two questions, deliberately apart. `requireManage` is the ACTOR gate:
+ * whether this principal administers this batch, by the same frozen-anchors
+ * + live-roster predicate the batch list projects as `manageable`. `boundary`
+ * is a FACT: whether the batch exists and which frozen units it is
+ * administered from - no actor involved, because a consumer deciding
+ * eligibility (may this formula anchor NEW configuration here?) is not
+ * authenticating anybody; its caller already did. An unknown batch answers
+ * BatchNotFound from both; a real batch with no anchors answers an empty
+ * boundary, which is a different fact and never collapses into not-found.
+ */
+export class AssessmentConfigurationAccess extends Context.Service<
+  AssessmentConfigurationAccess,
+  {
+    readonly requireManage: (
+      tenantId: string,
+      batchId: string,
+      as: Principal,
+    ) => Effect.Effect<void, BatchNotFound | AccessDenied>
+    readonly boundary: (
+      tenantId: string,
+      batchId: string,
+    ) => Effect.Effect<{ readonly managementAnchors: readonly string[] }, BatchNotFound>
+  }
+>()('@qualy/plugin-assessment/ConfigurationAccess') {}
 
 export class ScoringDefinitionCatalog extends Context.Service<
   ScoringDefinitionCatalog,

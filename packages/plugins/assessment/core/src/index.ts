@@ -27,6 +27,7 @@ import { scoringRuntimeProvider } from './scoring/runtime-provider.ts'
 import { permissions } from './permissions.ts'
 import { assessmentApiGroup } from './api.ts'
 import { AssessmentLive } from './live/service.ts'
+import { configurationAccessLayer } from './server/configuration-access.ts'
 import { schedulerLayer } from './phase/scheduler.ts'
 import { assessmentApiHandlers, serviceLayer } from './server/index.ts'
 
@@ -404,6 +405,12 @@ const plugin = Plugin.define(
   }),
   Api.group(assessmentApiGroup, assessmentApiHandlers),
   Plugin.layer(serviceLayer),
+  // The narrow face other plugins consume about a round's administration.
+  // An opaque layer like every service here: a consumer's opaque layer may
+  // depend only on layers the descriptor `dependsOn` topology guarantees
+  // are built below it, which is exactly how the formula plugin already
+  // consumes rbac and the database - and how it will consume this.
+  Plugin.layer(configurationAccessLayer),
   // the live bus: one LISTEN session fanned out to the open connections;
   // handlers reach it through the service graph like any other service
   Plugin.layer(AssessmentLive.layer),

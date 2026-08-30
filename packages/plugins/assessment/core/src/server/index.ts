@@ -7,6 +7,7 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import { BATCH_MANAGE, rosterReachOf } from './configuration-access.ts'
 import { AssessmentLive } from '../live/service.ts'
 import { announce, type AssessmentLiveEvent } from '../live/events.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
@@ -384,7 +385,7 @@ const specToEngine = (spec: PhaseSpecInput): NewPhaseSpec => ({
   permissionProfile: spec.permissionProfile ?? [],
 })
 
-const MANAGE = 'assessment.batch.manage'
+const MANAGE = BATCH_MANAGE
 const FORCE_ADVANCE = 'assessment.batch.force-advance'
 
 const RANGE = /^\[(\d{4}-\d{2}-\d{2}),(\d{4}-\d{2}-\d{2})\)$/
@@ -1596,38 +1597,10 @@ export const make = Effect.fn('Assessment.make')(function* () {
     if (!visible) return yield* new AccessDenied({ reason: 'cannot see this batch' })
   })
 
-  /**
-   * Managing a round means managing where it is run from and everybody in it.
-   *
-   * Both, never one or the other. The roster alone leaves a round with nobody
-   * in it belonging to nobody, and "nobody's" used to mean "anybody holding
-   * the permission somewhere" - which is how an administrator of one college
-   * could take over another college's empty draft. The frozen anchors say
-   * whose round it is; the roster says who is in it today.
-   *
-   * Asked as the one predicate the list already projects as `manageable`,
-   * rather than re-decided here from the anchors as bare node ids. Both
-   * halves used to be handed to rbac as ids, which resolves them against the
-   * live tree, while the list matches a participant's frozen anchor_path; org
-   * rewrites the live paths when a unit is relocated and nothing resyncs a
-   * frozen one, so a single move made the two disagree about the same running
-   * round. A control the list offers has to be one this guard accepts.
-   */
-  const requireRosterReach = (as: Principal, tenantId: string, batchId: string) =>
-    Effect.gen(function* () {
-      const held = yield* rbac.listAuthorizedScope(as, MANAGE)
-      const reach = yield* dieQuery(withDb(batchWithinReach(tenantId, batchId, held)))
-      // No boundary, nobody on the list, or no such batch at all: nothing here
-      // says whose round this is. It can happen to a round upgraded from
-      // before the boundary existed whose units have since been deleted, so it
-      // needs a way back - but "holds the permission somewhere" is exactly the
-      // answer that let one college pick up another's empty draft. Only
-      // authority over the whole tenant is wide enough to be nobody's in
-      // particular, and the callers that care answer BatchNotFound themselves.
-      if (!(reach ?? held.tenantWide)) {
-        return yield* new AccessDenied({ reason: 'cannot manage assessment batches' })
-      }
-    })
+  // the one roster-reach predicate, shared with the configuration-access
+  // face other plugins consume - two spellings of "who manages this round"
+  // is exactly the drift that made the halves disagree once already
+  const requireRosterReach = rosterReachOf(rbac, withDb)
 
   /** administering who may work on a batch is administering the batch */
   const requireBatchAdministration = (tenantId: string, batchId: string, as: Principal) =>
