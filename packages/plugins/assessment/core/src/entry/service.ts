@@ -895,6 +895,19 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 issues: [{ field: 'recognition', reason: 'not-allowed' }],
               })
             }
+            // and where the door does carry one, it has to actually carry
+            // it: a record is approved the moment it is written, so a
+            // request that omits a non-empty determination would have the
+            // defaults recorded as the officer's words unseen
+            if (
+              administrative &&
+              input.recognition === undefined &&
+              Object.keys(plan.recognitionSchemas).length > 0
+            ) {
+              return yield* new EntryPayloadInvalid({
+                issues: [{ field: 'recognition', reason: 'required' }],
+              })
+            }
 
             // An administrative record is approved the moment it is filed,
             // but it becomes approved in the statement below rather than in
@@ -941,11 +954,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   entryRevisionId: revisionId,
                   itemId: item.id,
                   itemRevisionId: revision.id,
+                  // the same rule as a reviewer's approval: the defaults
+                  // pre-fill the form, they do not stand in for the officer
+                  // confirming them. Only the contract that asks for nothing
+                  // is answered by omission.
                   values: yield* provenRecognition(
                     plan,
-                    input.recognition === undefined
-                      ? seedFromEvidence(plan, decoded)
-                      : input.recognition.values,
+                    input.recognition === undefined ? {} : input.recognition.values,
                   ),
                   source: 'record',
                   createdBy: as.userId,

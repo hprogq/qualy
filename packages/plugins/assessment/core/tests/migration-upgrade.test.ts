@@ -1322,7 +1322,10 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
            returning id`,
           [tenant, batch, climbed, climbedFiling, item, revision, instance, eventId, user, at],
         )
-      // as the history backfill left it: one per approved event
+      // as the history backfill left it: one per approved event - and the
+      // POINTER on the surplus one, which is the branch the repair's own
+      // comment promises to survive. An approved claim's pointer may never
+      // pass through NULL on the way to the kept row.
       const surplus = await stack(stageWord, '2026-05-02T09:00:00Z')
       const kept = await stack(finalWord, '2026-05-03T09:00:00Z')
       await db.query(`update entry_recognitions set supersedes_id = $1 where id = $2`, [
@@ -1331,7 +1334,7 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
       ])
       await db.query(
         `update entries set status = 'approved', current_recognition_id = $1 where id = $2`,
-        [kept, climbed],
+        [surplus, climbed],
       )
 
       // and a claim the rule approved twice: sent back in between, and only

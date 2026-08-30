@@ -346,12 +346,17 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             { reason: '主办单位为全国学会' },
             f.principal(f.s1),
           )
-          // the appeal reviewer agrees with the file as it stands and says
-          // nothing about the level
+          // the appeal reviewer confirms exactly what they were shown - no
+          // reason given, so if the seed were the filing's claim instead of
+          // the correction, this would be a contradiction and refused
           yield* assessment.decideReview(
             f.t,
             appealed.id,
-            { decision: 'approve', comment: 'upheld' },
+            {
+              decision: 'approve',
+              comment: 'upheld',
+              recognition: { values: { 'rec-level': 'provincial' } },
+            },
             f.principal(f.reviewer),
           )
           return { rows: yield* recognitionsOf(entryId), pointer: yield* pointerOf(entryId) }
@@ -418,12 +423,17 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               sql`select origin from review_instances where id = ${again.currentReviewInstanceId!}`,
             ),
           )
-          // the reviewer looks at the new material and says nothing about
-          // the level: whatever they are handed is what gets recorded
+          // the reviewer confirms the new material's own claim, reasonless:
+          // were the seed still the old determination, this would read as a
+          // contradiction and be refused
           yield* assessment.decideReview(
             f.t,
             again.currentReviewInstanceId!,
-            { decision: 'approve', comment: 'certificate seen' },
+            {
+              decision: 'approve',
+              comment: 'certificate seen',
+              recognition: { values: { 'rec-level': 'national' } },
+            },
             f.principal(f.reviewer),
           )
           return { origin: round.origin, rows: yield* recognitionsOf(entryId) }
@@ -506,18 +516,27 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               select id, origin from review_instances
               where entry_id = ${entryId} and state = 'active'`),
           )
-          // the round starts over on the new chain; both steps approve
-          // without saying anything about the level
+          // the round starts over on the new chain; both steps confirm the
+          // inherited correction, reasonless - a wrong seed would make this
+          // a contradiction and refuse it
           yield* assessment.decideReview(
             f.t,
             rerouted.id,
-            { decision: 'approve', comment: 'first step' },
+            {
+              decision: 'approve',
+              comment: 'first step',
+              recognition: { values: { 'rec-level': 'provincial' } },
+            },
             f.principal(f.reviewer),
           )
           yield* assessment.decideReview(
             f.t,
             rerouted.id,
-            { decision: 'approve', comment: 'second step' },
+            {
+              decision: 'approve',
+              comment: 'second step',
+              recognition: { values: { 'rec-level': 'provincial' } },
+            },
             f.principal(f.reviewer),
           )
           return { origin: rerouted.origin, rows: yield* recognitionsOf(entryId) }
@@ -629,8 +648,9 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             { reason: '主办单位为全国学会' },
             f.principal(f.s1),
           )
-          // the appeal reviewer upholds it without saying anything: whatever
-          // they were shown is what gets recorded
+          // the appeal reviewer confirms what they were shown, reasonless:
+          // if the seed were the filing's claim rather than the office's
+          // word, this would be a contradiction and refused
           const round = one<{ id: string }>(
             yield* runSql(
               sql`select id from review_instances where entry_id = ${entry.id} and state = 'active'`,
@@ -639,7 +659,11 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           yield* assessment.decideReview(
             f.t,
             round.id,
-            { decision: 'approve', comment: 'upheld' },
+            {
+              decision: 'approve',
+              comment: 'upheld',
+              recognition: { values: { 'rec-level': 'provincial' } },
+            },
             f.principal(f.reviewer),
           )
           return { rows: yield* recognitionsOf(entry.id) }
@@ -714,7 +738,11 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           yield* assessment.decideReview(
             f.t,
             appealed.id,
-            { decision: 'approve', comment: 'the original checks out' },
+            {
+              decision: 'approve',
+              comment: 'the original checks out',
+              recognition: { values: { 'rec-level': 'national' } },
+            },
             f.principal(f.reviewer),
           )
           return { rows: yield* recognitionsOf(entryId) }
@@ -908,7 +936,11 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           yield* assessment.decideReview(
             f.t,
             moved.id,
-            { decision: 'approve', comment: 'upheld' },
+            {
+              decision: 'approve',
+              comment: 'upheld',
+              recognition: { values: { 'rec-level': 'provincial' } },
+            },
             f.principal(f.reviewer),
           )
           return { moved, rows: yield* recognitionsOf(entry.id) }
@@ -1038,6 +1070,55 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.after.status).toBe('approved')
     expect(result.after.recognition).not.toBeNull()
     expect(result.status).toBe('voided')
+  })
+
+  it('never assumes a determination nobody submitted', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-implicit')
+          const assessment = yield* Assessment
+          const g = yield* graded(f)
+          const { instanceId } = yield* claimed(f, g, g.p1)
+          // "approve" alone, against a contract that asks for something: an
+          // old client or a screen that failed to render the form must not
+          // have the defaults recorded as this reviewer's words
+          const bare = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              { decision: 'approve', comment: 'looks fine' },
+              f.principal(f.reviewer),
+            ),
+          )
+          // and the same at the registrar's door, where approval is
+          // immediate
+          const item = yield* recordItem(f, g.batch.id, { scoring: gradedScoring })
+          const bareRecord = yield* Effect.exit(
+            assessment.createEntry(
+              f.t,
+              {
+                itemId: item.id,
+                participantId: g.p1,
+                payload: { 'claimed-level': 'national' },
+                note: '登记表第 14 页',
+              },
+              f.principal(f.recorder),
+            ),
+          )
+          return { bare, bareRecord }
+        }),
+      ),
+    )
+
+    // the two doors are refused in the same words
+    for (const refusal of [result.bare, result.bareRecord] as Exit.Exit<unknown, unknown>[]) {
+      expect(Exit.isFailure(refusal)).toBe(true)
+      expect(
+        errorOf<{ issues: readonly { field: string; reason: string }[] }>(refusal)?.issues,
+      ).toEqual([{ field: 'recognition', reason: 'required' }])
+    }
   })
 
   it('determines an administrative record without inventing a review', async () => {

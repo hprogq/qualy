@@ -11316,5 +11316,24 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
   覆盖范围内的另一登记人照常可撤。差分:去掉检查,本人作废成功、后续正当撤销撞上
   已 voided——测试当场红。
 
+### 认定必须显式确认(2026-08-30,第十一轮复审)
+
+- **P0:非空认定可被隐式确认**。审核 approve 与行政登记两个门,在请求省略 `recognition`
+  时都拿 seed 顶上——Phase 6 一旦有真实认定字段,旧客户端、漏渲染的表单或裸 API 调用
+  只发一句 approve,系统就把 Evidence 默认值或上一轮认定,记成这位审核人**明确说过的话**,
+  署他的名,进成绩。改为:**只有空合同可以由省略作答**(`{}` 是它的完整答案,不是任何人的
+  猜测);非空合同省略即拒(`recognition: required`),两门同规则,默认值只做预填。
+  seed 的职责收缩为预填 + 「是否推翻了别人的认定」的基线——继承门禁全部改为
+  **显式确认、不带理由**:seed 若算错,确认就构成 contradiction、被要求理由而红,
+  门禁效力实证保留(破坏继承逻辑,`rec-appeal-record` 当场红在 `recognition.reason:
+  required` 上)。新增正面门禁:两门省略均拒。
+- **P1:修复迁移在「指针落在多余认定上」的分支会撞 CHECK**。`current_recognition_id`
+  先置 NULL 再重指,而 approved 行的指针不许经过 NULL——迁移会死在自己承诺处理的分支上。
+  改为一步踏到该申报保留的最后一条认定(终局认定必然幸存,永远有处可踏);升级测试的
+  旧库形态改为指针压在 surplus 上,差分:恢复 NULL 版当场
+  `chk_entries_approved_has_recognition`。该迁移仍只应用过开发库,且开发库无此形态,
+  终态不变,与前两次同一裁决口径。
+
 **留给 Phase 6 其余**:Evidence 的 integer/decimal/choice 生产字段与真实动态表单;
-RecordPage 的本人过滤与纠错闭环入口(见前文记账)。
+RecordPage 的本人过滤与纠错闭环入口(见前文记账);审核前端的认定确认交互
+(ApproveDialog 目前只在空合同世界工作,非空合同将被服务端要求显式提交)。

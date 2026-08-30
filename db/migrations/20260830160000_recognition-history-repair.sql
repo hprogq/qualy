@@ -46,8 +46,22 @@ where ri.state = 'completed'
     limit 1
   );
 
+-- moved, never parked: an approved entry's pointer may not pass through
+-- NULL - the table refuses that state - so it steps straight onto the last
+-- determination this claim keeps. The terminal word's determination always
+-- survives (only non-terminal ones are surplus), so there is always
+-- somewhere to step.
 update entries e
-set current_recognition_id = null
+set current_recognition_id = (
+  select r.id
+  from entry_recognitions r
+  where r.tenant_id = e.tenant_id and r.entry_id = e.id
+    and not exists (
+      select 1 from repair_surplus s where s.tenant_id = r.tenant_id and s.id = r.id
+    )
+  order by r.created_at desc, r.id desc
+  limit 1
+)
 where exists (
   select 1 from repair_surplus s
   where s.tenant_id = e.tenant_id and s.id = e.current_recognition_id

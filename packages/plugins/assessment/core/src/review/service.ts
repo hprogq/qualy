@@ -1283,13 +1283,31 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             let determinedHash: string | undefined
             let determinedReason: string | null = null
             if (action === 'approve') {
+              // A determination is made, never assumed. The seed is what
+              // the reviewer was SHOWN - a pre-fill and the baseline for
+              // "did they change anything" - and a request that says only
+              // "approve" has not confirmed it: an old client or a screen
+              // that failed to render the form would otherwise have the
+              // system record the filing's defaults as words this reviewer
+              // never said, against their name, into the score. Only a
+              // contract that asks for nothing may be answered by omission,
+              // because {} is its complete answer rather than anybody's
+              // guess.
+              if (
+                input.recognition === undefined &&
+                Object.keys(plan.recognitionSchemas).length > 0
+              ) {
+                return yield* new EntryPayloadInvalid({
+                  issues: [{ field: 'recognition', reason: 'required' }],
+                })
+              }
               // Judged raw, canonicalized after. The wire hands over an
               // unknown - the judge is what earns it the right to be treated
               // as a determination at all, and canonicalizing first would
               // hand `null` and friends to code that assumes an object,
               // turning a malformed request into a defect instead of the
               // refusal already written for it.
-              const offered: unknown = input.recognition === undefined ? seed : input.recognition.values
+              const offered: unknown = input.recognition === undefined ? {} : input.recognition.values
               const wrong = judgeRecognition(plan.recognitionSchemas, offered)
               if (wrong.length > 0) {
                 return yield* new EntryPayloadInvalid({
