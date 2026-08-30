@@ -66,6 +66,7 @@ const report = (next: { formConfig: unknown; reviewPolicy: unknown }) =>
         participantId: 'p-1',
         origin: 'submit',
         appealedInstanceId: null,
+        recognitionRevisionId: 'rev-1',
         actorId: 'p-1',
         state: 'active',
         route: 'normal',

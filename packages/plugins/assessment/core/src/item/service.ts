@@ -18,7 +18,7 @@ import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
-import { compileScoringPlan, recognitionSourceOf } from '../scoring/plan.ts'
+import { carriesInto, compileScoringPlan, readScoringPlan, recognitionSourceOf } from '../scoring/plan.ts'
 import { judgeRecognition } from '../scoring/recognition.ts'
 import { policyModeOf } from '../review/chain.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
@@ -452,6 +452,32 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           if (stranded.includes(proposal.entryId)) continue
           if (judgeRecognition(nextPlan.plan.recognitionSchemas, proposal.values).length > 0) {
             stranded.push(proposal.entryId)
+          }
+        }
+        // And the rounds still open, which have determined nothing yet.
+        //
+        // A round judges by the contract it opened with, whatever the
+        // question says today - that is what keeps a reviewer from being
+        // asked something different halfway through. So the determination
+        // it settles on tomorrow is one THAT contract admits, and if the new
+        // plan cannot read every such determination, the round is walking
+        // toward a claim that will be approved and unscorable.
+        const contracts = new Map<string, string[]>()
+        for (const round of rounds) {
+          const under = contracts.get(round.recognitionRevisionId)
+          if (under === undefined) contracts.set(round.recognitionRevisionId, [round.entryId])
+          else under.push(round.entryId)
+        }
+        for (const [revisionId, entryIds] of contracts) {
+          const frozen = yield* revisionOf(input.tenantId, revisionId)
+          if (frozen === null) continue
+          const under = yield* readScoringPlan(frozen).pipe(Effect.option)
+          const carries =
+            under._tag === 'Some' &&
+            carriesInto(under.value.recognitionSchemas, nextPlan.plan.recognitionSchemas)
+          if (carries) continue
+          for (const entryId of entryIds) {
+            if (!stranded.includes(entryId)) stranded.push(entryId)
           }
         }
       }

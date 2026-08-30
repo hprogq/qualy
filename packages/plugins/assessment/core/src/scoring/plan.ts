@@ -511,3 +511,33 @@ export const readScoringPlan = (revision: {
     }
     return plan
   })
+
+/**
+ * Whether every determination one contract can produce is one the other
+ * would accept.
+ *
+ * Not "do these two plans look alike" - the question is about VALUES. A
+ * round that opened yesterday judges by yesterday's contract and settles
+ * under it; scoring then reads the question's current plan. So the honest
+ * test is: could this round determine something the current plan cannot
+ * read? It could, unless every recognition it may fill is one the new plan
+ * also names, admitting at least everything the old one did.
+ *
+ * A recognition the new plan adds is just as fatal as one it removes: the
+ * old contract will never fill it, and the determination reaches scoring
+ * incomplete.
+ */
+export const carriesInto = (
+  before: Readonly<Record<string, NormalizedAtomicSchema>>,
+  after: Readonly<Record<string, NormalizedAtomicSchema>>,
+): boolean => {
+  const names = Object.keys(before)
+  if (names.length !== Object.keys(after).length) return false
+  return names.every((name) => {
+    if (!Object.hasOwn(after, name)) return false
+    // direct, not convert: nothing converts a stored determination on the
+    // way into the arithmetic, so a value that would need converting is a
+    // value this plan cannot read
+    return assignmentPlan(before[name]!, after[name]!).kind === 'direct'
+  })
+}

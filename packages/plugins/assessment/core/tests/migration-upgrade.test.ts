@@ -1335,7 +1335,13 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
       )
 
       // and a claim the rule approved twice: sent back in between, and only
-      // the later of the two recovered
+      // the later of the two recovered.
+      //
+      // The row the repair inserts lands BETWEEN two that are already
+      // chained, which is the shape that makes re-chaining order-dependent:
+      // the later determination has to let go of its link before the
+      // recovered one can take it. A single set-based UPDATE would succeed
+      // or fail here depending on physical order alone.
       const twice = await entryOf('draft')
       const firstFiling = await filingOf(twice, '2026-04-11T09:00:00Z')
       for (const at of ['2026-06-01T09:00:00Z', '2026-07-01T09:00:00Z']) {
@@ -1346,12 +1352,22 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
         )
       }
       const secondFiling = await filingOf(twice, '2026-06-15T09:00:00Z')
-      const latest = await one(
+      // an older determination the claim already stood on, and the later
+      // one chained onto it: the recovered June approval belongs between
+      const oldest = await one(
         `insert into entry_recognitions
            (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id,
             values, source, created_by, created_at)
-         values ($1, $2, $3, $4, $5, $6, '{}', 'system', $7, '2026-07-01T09:00:00Z') returning id`,
-        [tenant, batch, twice, secondFiling, item, revision, user],
+         values ($1, $2, $3, $4, $5, $6, '{}', 'system', $7, '2026-05-20T09:00:00Z') returning id`,
+        [tenant, batch, twice, firstFiling, item, revision, user],
+      )
+      const latest = await one(
+        `insert into entry_recognitions
+           (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id,
+            values, source, supersedes_id, created_by, created_at)
+         values ($1, $2, $3, $4, $5, $6, '{}', 'system', $7, $8, '2026-07-01T09:00:00Z')
+         returning id`,
+        [tenant, batch, twice, secondFiling, item, revision, oldest, user],
       )
       await db.query(
         `update entries set status = 'approved', current_recognition_id = $1 where id = $2`,
@@ -1394,11 +1410,15 @@ describe.runIf(postgresAvailable)('the recognition-history repair', () => {
       // and both automatic approvals are on the record, in order, each
       // naming the filing that was current when it happened
       const twiceRows = await rowsOf(twice)
-      expect(twiceRows).toHaveLength(2)
-      expect(twiceRows.map((each) => each.source)).toEqual(['system', 'system'])
-      expect(twiceRows[0]!.entry_revision_id).toBe(firstFiling)
-      expect(twiceRows[1]!.id).toBe(latest)
-      expect(twiceRows[1]!.supersedes_id).toBe(twiceRows[0]!.id)
+      expect(twiceRows).toHaveLength(3)
+      expect(twiceRows.map((each) => each.source)).toEqual(['system', 'system', 'system'])
+      // the recovered June approval took its place in the middle, and the
+      // line runs through it rather than around it
+      expect(twiceRows[0]!.id).toBe(oldest)
+      expect(twiceRows[1]!.entry_revision_id).toBe(firstFiling)
+      expect(twiceRows[2]!.id).toBe(latest)
+      expect(twiceRows[1]!.supersedes_id).toBe(oldest)
+      expect(twiceRows[2]!.supersedes_id).toBe(twiceRows[1]!.id)
       expect(await pointerOf(twice)).toBe(latest)
     } finally {
       await db.dispose()

@@ -700,6 +700,14 @@ export interface OpenRoundRow {
   actorId: string
   /** the routes the round froze, for asking what stood before its step */
   effectiveChain: unknown
+  /**
+   * The contract this round determines under, frozen when it opened.
+   *
+   * A round judges by the contract it began with, and scoring reads the
+   * question's current one - so a configuration change has to answer for
+   * what these rounds are still allowed to produce.
+   */
+  recognitionRevisionId: string
 }
 
 export const openRoundsOfItem = (tenantId: string, itemId: string) =>
@@ -723,6 +731,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
           'ri.origin',
           'ri.appealedInstanceId',
           'ri.effectiveChain',
+          'ri.recognitionRevisionId',
           'e.participantId',
           'er.actorId',
         ])
@@ -747,6 +756,7 @@ export const openRoundsOfItem = (tenantId: string, itemId: string) =>
             row.appealedInstanceId == null ? null : String(row.appealedInstanceId),
           actorId: String(row.actorId),
           effectiveChain: row.effectiveChain,
+          recognitionRevisionId: String(row.recognitionRevisionId),
         })),
       ),
     )

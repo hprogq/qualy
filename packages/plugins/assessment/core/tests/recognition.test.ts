@@ -685,4 +685,89 @@ describe.runIf(postgresAvailable)('recognitions', () => {
       },
     ])
   })
+
+  it('refuses to leave an open round determining under a contract nobody can read', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-open-round')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* graded(f)
+          // a round is open and has determined nothing yet
+          const { entryId } = yield* claimed(f, g, g.p1)
+          const renamed = {
+            entrySource: 'student' as const,
+            formConfig: { files: {} },
+            scoringConfig: {
+              ...gradedScoring,
+              recognitions: { 'rec-grade': { defaultFromFieldId: 'claimed-level' } },
+              bindings: { level: { kind: 'recognition' as const, recognitionId: 'rec-grade' } },
+            },
+            reviewPolicy: {
+              normal: { stages: [at(f, 'class')] },
+              escalation: { stages: [at(f, 'dept')] },
+            },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(
+              f.t,
+              g.item.id,
+              { config: renamed, reason: '换一个认定名' },
+              admin,
+            ),
+          )
+          return {
+            entryId,
+            refused: errorOf<{ issues: readonly { path: string; reason: string }[] }>(asked)!,
+          }
+        }),
+      ),
+    )
+
+    // the round judges by the contract it opened with, and would settle on a
+    // determination the new plan cannot read - so the save stops rather than
+    // letting that round walk toward an unscorable approval
+    expect(result.refused.issues).toEqual([
+      {
+        path: `scoringConfig.recognitions:${result.entryId}`,
+        reason: 'strands-existing-recognition',
+      },
+    ])
+  })
+
+  it('lets a change through that every open round could still satisfy', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-open-ok')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* graded(f)
+          yield* claimed(f, g, g.p1)
+          // the same determinations, a different amount: nothing a round
+          // could produce becomes unreadable, so there is nothing to refuse
+          const repriced = {
+            entrySource: 'student' as const,
+            formConfig: { files: {} },
+            scoringConfig: gradedScoring,
+            reviewPolicy: {
+              normal: { stages: [at(f, 'class'), at(f, 'dept')] },
+              escalation: { stages: [at(f, 'dept')] },
+            },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(f.t, g.item.id, { config: repriced, reason: '加一级' }, admin),
+          )
+          // a policy change still asks what to do with the open round; what
+          // it must not do is refuse the save over the determinations
+          return errorOf<{ issues?: readonly { reason: string }[] }>(asked)
+        }),
+      ),
+    )
+
+    expect(result?.issues).toBeUndefined()
+  })
 })

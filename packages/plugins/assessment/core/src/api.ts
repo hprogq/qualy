@@ -1363,16 +1363,6 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
         expectedItemRevisionId: Schema.optional(id),
         payload: configJson,
         note: Schema.optional(boundedText(500)),
-        /**
-         * What the office determines by recording this.
-         *
-         * Only for an administrative record, which is approved the moment it
-         * is written: the member of staff filing it is its author, so they
-         * are the one who says what it is recognised as. Absent means "the
-         * defaults the plan seeds from the material", which is the whole
-         * answer for a question that asks nothing.
-         */
-        recognition: Schema.optional(Schema.Struct({ values: configJson })),
       }),
       success: Schema.Struct({ entry: entryView }),
       error: [

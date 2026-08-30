@@ -5097,6 +5097,11 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
               ? { expectedItemRevisionId: payload.expectedItemRevisionId }
               : {}),
             ...(payload.note !== undefined ? { note: payload.note } : {}),
+            ...(payload.recognition !== undefined ? { recognition: payload.recognition } : {}),
+            // what the member of staff filing this determined by filing it:
+            // dropping it here would quietly store the plan's defaults under
+            // their name, and a complete set of defaults would make that
+            // succeed rather than fail
           },
           principal,
         )

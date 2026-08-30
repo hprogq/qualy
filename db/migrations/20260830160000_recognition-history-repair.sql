@@ -110,17 +110,32 @@ where ee.kind = 'auto-approved'
 
 -- 3. The trail is one line again, in the order things happened, and each
 -- claim points at the end of its own.
-with chained as (
-  select id,
-         tenant_id,
-         lag(id) over (partition by tenant_id, entry_id order by created_at, id) as previous
-  from entry_recognitions
-)
+--
+-- Two statements, because "one determination has at most one successor" is a
+-- plain unique index and a single UPDATE checks it row by row. Inserting a
+-- determination between two that were already chained means one link has to
+-- be released before the other can be taken, and nothing about a set-based
+-- UPDATE says which row it reaches first: the same statement succeeds or
+-- fails depending on physical order. So every link that is about to move is
+-- let go first, and only then is the chain laid down.
+create temporary table repair_chain on commit drop as
+select id,
+       tenant_id,
+       lag(id) over (partition by tenant_id, entry_id order by created_at, id) as previous
+from entry_recognitions;
+
 update entry_recognitions r
-set supersedes_id = chained.previous
-from chained
-where chained.id = r.id and chained.tenant_id = r.tenant_id
-  and r.supersedes_id is distinct from chained.previous;
+set supersedes_id = null
+from repair_chain c
+where c.id = r.id and c.tenant_id = r.tenant_id
+  and r.supersedes_id is distinct from c.previous;
+
+update entry_recognitions r
+set supersedes_id = c.previous
+from repair_chain c
+where c.id = r.id and c.tenant_id = r.tenant_id
+  and c.previous is not null
+  and r.supersedes_id is null;
 
 update entries e
 set current_recognition_id = (
