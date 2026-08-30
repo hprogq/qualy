@@ -386,6 +386,12 @@ export interface ReviewInstanceDetailRow {
   revisionId: string
   /** the recognition contract this round determines under, frozen when it opened */
   recognitionRevisionId: string
+  /** why this round exists, which decides what it inherits */
+  origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
+  /** the decision being contested, when this round is an appeal */
+  appealedInstanceId: string | null
+  /** the round this one replaced, when a policy change opened it */
+  supersedesInstanceId: string | null
   currentNodeId: string
   currentRoleIds: readonly string[]
   createdAt: number
@@ -506,6 +512,12 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
           'ri.entryId',
           'ri.revisionId',
           'ri.recognitionRevisionId',
+          // why this round exists, and what it stands on: a determination is
+          // inherited from the round being revisited, never from whatever
+          // the claim last happened to be recognised as
+          'ri.origin',
+          'ri.appealedInstanceId',
+          'ri.supersedesInstanceId',
           'ri.currentNodeId',
           'ri.currentRoleIds',
           'e.batchId',
@@ -549,6 +561,9 @@ export const instanceOf = (tenantId: string, instanceId: string) =>
               entryId: row.entryId,
               revisionId: row.revisionId,
               recognitionRevisionId: row.recognitionRevisionId,
+              origin: row.origin as ReviewInstanceDetailRow['origin'],
+              appealedInstanceId: row.appealedInstanceId,
+              supersedesInstanceId: row.supersedesInstanceId,
               currentNodeId: row.currentNodeId,
               currentRoleIds: row.currentRoleIds,
               createdAt: msOf(row.createdMs),
@@ -2425,6 +2440,53 @@ export const lastRecognitionOf = (tenantId: string, instanceId: string) =>
       ),
     )
 
+/** how one round came to exist, for walking a chain of re-routes */
+export const instanceLineageOf = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewInstance')
+        .select(['supersedesInstanceId', 'appealedInstanceId', 'origin'])
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', instanceId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map(
+        (row) =>
+          (row ?? null) as {
+            supersedesInstanceId: string | null
+            appealedInstanceId: string | null
+            origin: string
+          } | null,
+      ),
+    )
+
+/**
+ * What one round determined, as the fact it wrote.
+ *
+ * The round's own determination, not the claim's current one: an appeal
+ * inherits the decision it contests even if something later moved the
+ * claim's pointer elsewhere.
+ */
+export const recognitionOfInstance = (tenantId: string, instanceId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('EntryRecognition')
+        .select(['values'])
+        .where('tenantId', '=', tenantId)
+        .where('reviewInstanceId', '=', instanceId)
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined ? null : ((row as { values: Record<string, unknown> }).values ?? null),
+      ),
+    )
+
 /** the determination an open sitting has already frozen, if it has */
 export const lockedProposalOf = (tenantId: string, instanceId: string) =>
   db
@@ -2473,6 +2535,8 @@ export const lockPanelRecognition = (input: {
   panelId: string
   values: Record<string, unknown>
   hash: string
+  /** why it differs from what the sitting inherited, when it does */
+  reason: string | null
 }) =>
   db.query((k) =>
     k
@@ -2480,6 +2544,7 @@ export const lockPanelRecognition = (input: {
       .set({
         recognitionPayload: sql`${JSON.stringify(input.values)}::jsonb`,
         recognitionHash: input.hash,
+        recognitionReason: input.reason,
         recognitionLockedAt: sql`now()`,
       })
       .where('tenantId', '=', input.tenantId)
@@ -2494,7 +2559,7 @@ export const panelRecognitionOf = (tenantId: string, panelId: string) =>
     .query((k) =>
       k
         .selectFrom('ReviewPanel')
-        .select(['recognitionPayload', 'recognitionHash'])
+        .select(['recognitionPayload', 'recognitionHash', 'recognitionReason'])
         .where('tenantId', '=', tenantId)
         .where('id', '=', panelId)
         .executeTakeFirst(),
@@ -2507,6 +2572,10 @@ export const panelRecognitionOf = (tenantId: string, panelId: string) =>
               values: ((row as { recognitionPayload: Record<string, unknown> }).recognitionPayload ??
                 {}) as Record<string, unknown>,
               hash: String((row as { recognitionHash: string }).recognitionHash),
+              // the sitting's own explanation, carried to the word that ends
+              // the round: "why provincial rather than national" is the part
+              // of a determination a later reader actually needs
+              reason: (row as { recognitionReason: string | null }).recognitionReason,
             },
       ),
     )

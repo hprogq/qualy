@@ -1,13 +1,20 @@
 import { Effect } from 'effect'
-import type { Orm } from '@qualy/plugin-database/server'
+import { transaction, type Orm } from '@qualy/plugin-database/server'
 import type { ScoringDriver } from '../plugin.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
 import { BatchNotFound, ParticipantNotFound } from '../server/errors.ts'
 import { oneBatch } from '../server/db.ts'
-import { groupsOf, itemsOf, revisionsOf } from '../item/db.ts'
-import { calcParticipant, type Breakdown, type ScoreInput, type ScoreInputEntry } from './calc.ts'
+import { groupsOf, itemsOf, revisionsByIdOf } from '../item/db.ts'
+import {
+  calcParticipant,
+  type Breakdown,
+  type ScoreInput,
+  type ScoreInputEntry,
+  type ScoreInputItem,
+} from './calc.ts'
 import { evaluateEntry, type EvaluationFact } from './evaluate.ts'
+import { readScoringPlan } from './plan.ts'
 import type { ScoringPlan } from './plan.ts'
 import { participantEntries, participantRowByUser } from './db.ts'
 
@@ -50,45 +57,83 @@ export interface ScoringDeps {
 export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
   const { withDb } = deps
 
+  /**
+   * Every fact one participant's account is built from, as of one moment.
+   *
+   * Four statements, one snapshot. The default isolation would let each of
+   * them see its own instant, so an administrator saving a question between
+   * the second and the third produces a page assembled out of the old
+   * grouping and the new arithmetic - a state the database never held. A
+   * provisional total is allowed to be different a second later; it is not
+   * allowed to be internally torn.
+   *
+   * The transaction ends before anything is evaluated: a calculator may run
+   * for a while, and holding a connection open across it would put arbitrary
+   * arithmetic inside a database transaction's lifetime.
+   */
   const collectParticipantScoreInput = (tenantId: string, batchId: string, participantId: string) =>
-    Effect.gen(function* () {
-      const groups = yield* groupsOf(tenantId, batchId)
-      const items = yield* itemsOf(tenantId, batchId)
-      const revisions = yield* revisionsOf(
-        tenantId,
-        items.map((item) => item.id),
-      )
-      const entries = yield* participantEntries(tenantId, batchId, participantId)
-      return {
-        groups: groups.map((group) => ({
-          id: group.id,
-          parentGroupId: group.parentGroupId,
-          name: group.name,
-          cap: group.cap,
-          floor: group.floor,
-          sortOrder: group.sortOrder,
-        })),
-        items: items.flatMap((item) => {
-          const revision = revisions.get(item.id)
-          // an item that was never configured has no arithmetic and can have
-          // no entries; it simply is not part of the account
-          if (revision === undefined) return []
-          return [
-            {
+    transaction(
+      Effect.gen(function* () {
+        const groups = yield* groupsOf(tenantId, batchId)
+        const items = yield* itemsOf(tenantId, batchId)
+        // by the exact revisions those items name, not by chasing the
+        // pointer again: re-reading it is what let the plan come from a
+        // later moment than the question it belongs to
+        const revisions = yield* revisionsByIdOf(
+          tenantId,
+          items.flatMap((item) =>
+            item.currentRevisionId === null ? [] : [item.currentRevisionId],
+          ),
+        )
+        const entries = yield* participantEntries(tenantId, batchId, participantId)
+        return { groups, items, revisions, entries }
+      }),
+      { isolation: 'repeatable read', readOnly: true },
+    ).pipe(
+      Effect.flatMap(({ groups, items, revisions, entries }) =>
+        Effect.gen(function* () {
+          const configured: {
+            id: string
+            title: string
+            scoreGroupId: string
+            sortOrder: number
+            status: string
+            createdAt: number
+            plan: ScoringPlan
+            derived: boolean
+          }[] = []
+          for (const item of items) {
+            // an item that was never configured has no arithmetic and can
+            // have no entries; it simply is not part of the account
+            const revision =
+              item.currentRevisionId === null ? undefined : revisions.get(item.currentRevisionId)
+            if (revision === undefined) continue
+            configured.push({
               id: item.id,
               title: item.title,
               scoreGroupId: item.scoreGroupId,
               sortOrder: item.sortOrder,
               status: item.status,
               createdAt: item.createdAt,
-              plan: planOf(revision),
+              plan: yield* Effect.orDie(readScoringPlan(revision)),
               derived: deps.itemTypes.get(item.itemType)?.interaction === 'derived',
-            },
-          ]
+            })
+          }
+          return {
+            groups: groups.map((group) => ({
+              id: group.id,
+              parentGroupId: group.parentGroupId,
+              name: group.name,
+              cap: group.cap,
+              floor: group.floor,
+              sortOrder: group.sortOrder,
+            })),
+            items: configured,
+            entries,
+          }
         }),
-        entries,
-      }
-    })
+      ),
+    )
 
   /**
    * The plan an item revision was saved with.
@@ -98,14 +143,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
    * state, so it dies pointing at the work that fixes it rather than
    * quietly scoring the round at zero.
    */
-  const planOf = (revision: { readonly id: string; readonly scoringPlan: unknown }): ScoringPlan => {
-    if (revision.scoringPlan === null || typeof revision.scoringPlan !== 'object') {
-      throw new Error(
-        `item revision ${revision.id} has no compiled scoring plan; the assembly's boot backfill has not run`,
-      )
-    }
-    return revision.scoringPlan as ScoringPlan
-  }
+
 
   /**
    * Every approved entry's amount, then the ledger's own input.
@@ -138,45 +176,56 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
   }) =>
     Effect.gen(function* () {
       const plans = new Map(collected.items.map((item) => [item.id, item]))
-      const items: ScoreInput['items'][number][] = []
+      const items: ScoreInputItem[] = []
       for (const item of collected.items) {
-        // a question nobody can score by is not evaluated: a draft or voided
-        // question never reaches the arithmetic, and its own plan is never
-        // read (the ledger prints what it must from the item alone)
-        const scorable = item.status === 'active'
-        const derivedAmount =
-          scorable && item.derived
-            ? (yield* evaluateEntry(deps.catalogs.calculators, {
-                entryId: `derived:${item.id}`,
-                entryRevisionId: null,
-                itemId: item.id,
-                plan: item.plan,
-                recognition: {},
-              })).amount
-            : undefined
-        items.push({
+        const common = {
           id: item.id,
           title: item.title,
           scoreGroupId: item.scoreGroupId,
           sortOrder: item.sortOrder,
-          status: item.status,
           createdAt: item.createdAt,
           calculatorRef: item.plan.calculator.ref,
           aggregator: item.plan.aggregator,
-          ...(item.derived ? { derived: true } : {}),
-          ...(derivedAmount === undefined ? {} : { derivedAmount }),
-        })
+        }
+        // a question nobody can score by is not evaluated: a draft or voided
+        // question never reaches the arithmetic, and its own plan is never
+        // read (the ledger prints what it must from the item alone)
+        if (item.status !== 'active') {
+          items.push({ ...common, standing: item.status === 'draft' ? 'unpublished' : 'withdrawn' })
+          continue
+        }
+        if (item.derived) {
+          const granted = yield* evaluateEntry(deps.catalogs.calculators, {
+            entryId: `derived:${item.id}`,
+            entryRevisionId: null,
+            itemId: item.id,
+            plan: item.plan,
+            recognition: {},
+          })
+          items.push({ ...common, standing: 'granted', derivedAmount: granted.amount })
+          continue
+        }
+        items.push({ ...common, standing: 'scored' })
       }
       const entries: ScoreInputEntry[] = []
       for (const entry of collected.entries) {
         const item = plans.get(entry.itemId)
+        const common = {
+          id: entry.id,
+          itemId: entry.itemId,
+          revisionId: entry.revisionId,
+          createdAt: entry.createdAt,
+        }
         if (entry.status !== 'approved' || item === undefined || item.status !== 'active') {
+          // A refusal is in the account at zero; everything else - filed and
+          // undecided, walked away from, or approved under a question that
+          // is no longer scored - has no line and no amount. Said as one of
+          // the ledger's own three standings rather than by narrowing a
+          // lifecycle column, so "approved with no amount" is not a shape
+          // this loop can produce at all.
           entries.push({
-            id: entry.id,
-            itemId: entry.itemId,
-            status: entry.status as Exclude<ScoreInputEntry['status'], 'approved'>,
-            revisionId: entry.revisionId,
-            createdAt: entry.createdAt,
+            ...common,
+            standing: entry.status === 'rejected' ? 'refused' : 'unscored',
           })
           continue
         }
@@ -200,12 +249,9 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
         }
         const evaluated = yield* evaluateEntry(deps.catalogs.calculators, fact)
         entries.push({
-          id: entry.id,
-          itemId: entry.itemId,
-          status: 'approved',
-          revisionId: entry.revisionId,
+          ...common,
+          standing: 'counted',
           recognitionId: entry.recognitionId,
-          createdAt: entry.createdAt,
           amount: evaluated.amount,
         })
       }

@@ -1,8 +1,21 @@
 import { Effect, Schema } from 'effect'
-import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import {
+  canonicalDecimal,
+  compareDecimal,
+  fractionalDigits,
+  isDecimalString,
+  normalizeAtomicSchema,
+  normalizeInputSchema,
+  parseDecimal,
+} from '@qualy/value-schema'
+import {
+  SCORE_AMOUNT_BOUND,
+  SCORE_AMOUNT_MAX_SCALE,
+  SCORE_AMOUNT_SCHEMA,
+} from '@qualy/value-schema/score'
 import { canonicalizeAtomicSchema, canonicalizeInputSchema } from '@qualy/value-schema'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
-import { SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
+import { CalculatorContractError } from '../plugin.ts'
 import type {
   AggregationResult,
   AggregatorDriver,
@@ -23,16 +36,32 @@ import type {
 // student.
 
 /**
- * A signed amount as text, up to four decimal places.
+ * A signed amount as text, spelled the way the platform spells amounts.
  *
- * Four because the engine's fixed point is 1e-4; the display quantum (two
- * places) is a rule about lines, not about configuration.
+ * Four decimal places because the engine's fixed point is 1e-4; the display
+ * quantum (two places) is a rule about lines, not about configuration. The
+ * grammar is the value layer's own - which rejects a leading zero. Accepting
+ * `"03.00"` here would let a question be saved whose only possible answer
+ * the frozen output schema then refuses, and the failure would surface on a
+ * student's results page rather than on the form that caused it.
  */
 export const decimalString = Schema.String.check(
-  Schema.makeFilter((value: string) => /^-?\d{1,8}(?:\.\d{1,4})?$/.test(value), {
-    identifier: 'DecimalString',
-    description: 'a decimal amount as a string, like "3.00"',
-  }),
+  Schema.makeFilter(
+    (value: string) => {
+      const parts = parseDecimal(value)
+      return (
+        parts !== null &&
+        isDecimalString(value) &&
+        fractionalDigits(parts) <= SCORE_AMOUNT_MAX_SCALE &&
+        compareDecimal(parts, parseDecimal(`-${SCORE_AMOUNT_BOUND}`)!) >= 0 &&
+        compareDecimal(parts, parseDecimal(SCORE_AMOUNT_BOUND)!) <= 0
+      )
+    },
+    {
+      identifier: 'DecimalString',
+      description: 'a decimal amount as a string, like "3.00"',
+    },
+  ),
 )
 
 /**
@@ -126,7 +155,15 @@ export const fixed1: CalculatorDriver = {
   kind: 'calculator',
   ref: 'fixed@1',
   configSchema: Schema.Struct({ value: decimalString }),
-  contract: () => Effect.succeed(fixedContract),
+  compile: (config) => {
+    const written = (config as { value?: unknown }).value
+    // the compiler validated the shape first; this is the calculator saying
+    // what it will execute, and "3.00" and "3.0" are one amount to it
+    const canonical = typeof written === 'string' ? canonicalDecimal(written) : null
+    return canonical === null
+      ? Effect.fail(new CalculatorContractError('value is not a decimal amount'))
+      : Effect.succeed({ ...fixedContract, config: { value: canonical } })
+  },
   evaluate: (config) => Effect.succeed((config as { value: string }).value),
 }
 

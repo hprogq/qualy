@@ -116,7 +116,7 @@ describe('the scoring registry', () => {
       kind: 'calculator',
       ref: 'fixed@1',
       configSchema: Schema.Struct({}),
-      contract: () => Effect.succeed(emptyContract),
+      compile: (config) => Effect.succeed({ ...emptyContract, config }),
       evaluate: () => Effect.succeed('0'),
     }
     expect(() =>
@@ -135,7 +135,7 @@ describe('the scoring registry', () => {
           kind: 'calculator',
           ref: 'x@1',
           configSchema: Schema.Struct({}),
-          contract: () => Effect.succeed(emptyContract),
+          compile: (config) => Effect.succeed({ ...emptyContract, config }),
       evaluate: () => Effect.succeed('0'),
         },
       },
@@ -160,7 +160,7 @@ describe('the scoring registry', () => {
           kind: 'calculator',
           ref,
           configSchema: Schema.Struct({}),
-          contract: () => Effect.succeed(emptyContract),
+          compile: (config) => Effect.succeed({ ...emptyContract, config }),
       evaluate: () => Effect.succeed('0'),
         }),
       ).toThrow(/name@version/)

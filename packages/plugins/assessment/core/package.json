@@ -19,7 +19,6 @@
     "@mikro-orm/core": "catalog:",
     "@qualy/api-kit": "workspace:*",
     "@qualy/audit-contract": "workspace:*",
-    "@qualy/formula": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",

@@ -21,18 +21,18 @@ const officer = (aggregator: { ref: string; config: unknown }) => ({
       title: '学生干部任职',
       scoreGroupId: 'g',
       sortOrder: 0,
-      status: 'active',
       createdAt: 1,
       calculatorRef: 'fixed@1',
       aggregator,
+      standing: 'scored' as const,
     },
   ],
   entries: [
     // three posts, two of them worth the same: the class monitor, filed
     // first, is the stable pick among equals
-    { id: 'e1', itemId: 'i', status: 'approved' as const, recognitionId: 'rec-e1', revisionId: 'r1', amount: scaledAmount('2.00'), createdAt: 1 },
-    { id: 'e2', itemId: 'i', status: 'approved' as const, recognitionId: 'rec-e2', revisionId: 'r2', amount: scaledAmount('2.00'), createdAt: 2 },
-    { id: 'e3', itemId: 'i', status: 'approved' as const, recognitionId: 'rec-e3', revisionId: 'r3', amount: scaledAmount('2.00'), createdAt: 3 },
+    { id: 'e1', itemId: 'i', standing: 'counted' as const, recognitionId: 'rec-e1', revisionId: 'r1', amount: scaledAmount('2.00'), createdAt: 1 },
+    { id: 'e2', itemId: 'i', standing: 'counted' as const, recognitionId: 'rec-e2', revisionId: 'r2', amount: scaledAmount('2.00'), createdAt: 2 },
+    { id: 'e3', itemId: 'i', standing: 'counted' as const, recognitionId: 'rec-e3', revisionId: 'r3', amount: scaledAmount('2.00'), createdAt: 3 },
   ],
 })
 
@@ -116,16 +116,16 @@ const finer = (spec: {
       title: '志愿服务',
       scoreGroupId: 'g',
       sortOrder: 0,
-      status: 'active',
       createdAt: 1,
       calculatorRef: 'fixed@1',
       aggregator: { ref: 'sum@1', config: {} },
+      standing: 'scored' as const,
     },
   ],
   entries: Array.from({ length: spec.count }, (_, index) => ({
     id: `e${index + 1}`,
     itemId: 'i',
-    status: 'approved' as const,
+    standing: 'counted' as const,
     recognitionId: `rec-e${index + 1}`,
     revisionId: `r${index + 1}`,
     // what fixed@1 answers for this configuration, evaluated upstream

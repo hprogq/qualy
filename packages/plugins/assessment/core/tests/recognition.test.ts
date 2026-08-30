@@ -347,6 +347,76 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.pointer).toBe(upheld!.id)
   })
 
+  it('reads the new material when a claim is refiled, not the old determination', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-refiled')
+          const assessment = yield* Assessment
+          const g = yield* graded(f)
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          // the first reviewer determines it provincial, against the first
+          // filing, which claimed national
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'checked',
+              recognition: {
+                values: { 'rec-level': 'provincial' },
+                reason: '证书落款为省级主办单位',
+              },
+            },
+            f.principal(f.reviewer),
+          )
+          // the office sends it back; the student files the national
+          // certificate they were missing and submits again
+          yield* assessment.interveneOnEntry(
+            f.t,
+            entryId,
+            { kind: 'return-for-revision', reason: '请补交主办单位证明' },
+            f.principal(f.admin),
+          )
+          yield* assessment.appendEntryRevision(
+            f.t,
+            entryId,
+            { payload: { 'claimed-level': 'national' } },
+            f.principal(f.s1),
+          )
+          const again = yield* assessment.setEntryStatus(
+            f.t,
+            entryId,
+            'in_review',
+            f.principal(f.s1),
+          )
+          const round = one<{ origin: string }>(
+            yield* runSql(
+              sql`select origin from review_instances where id = ${again.currentReviewInstanceId!}`,
+            ),
+          )
+          // the reviewer looks at the new material and says nothing about
+          // the level: whatever they are handed is what gets recorded
+          yield* assessment.decideReview(
+            f.t,
+            again.currentReviewInstanceId!,
+            { decision: 'approve', comment: 'certificate seen' },
+            f.principal(f.reviewer),
+          )
+          return { origin: round.origin, rows: yield* recognitionsOf(entryId) }
+        }),
+      ),
+    )
+
+    expect(result.origin).toBe('initial')
+    expect(result.rows).toHaveLength(2)
+    // a first look at a new filing is a first look: it starts from the
+    // material, not from a determination made about material that has since
+    // been replaced
+    expect(result.rows[1]!.values).toEqual({ 'rec-level': 'national' })
+  })
+
   it('carries a determination across a round the administrator re-routed', async () => {
     const result = ok(
       await run(
@@ -354,8 +424,15 @@ describe.runIf(postgresAvailable)('recognitions', () => {
         Effect.gen(function* () {
           const f = yield* seed('rec-reroute')
           const assessment = yield* Assessment
-          const g = yield* graded(f)
           const admin = f.principal(f.admin)
+          // two steps, so the first reviewer's word does not end the round:
+          // the round is still open, holding a determination, when the
+          // administrator moves it
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+            scoring: gradedScoring,
+            stages: [at(f, 'n1'), at(f, 'n2')],
+          })
           const { entryId, instanceId } = yield* claimed(f, g, g.p1)
           yield* assessment.decideReview(
             f.t,
@@ -370,40 +447,15 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             },
             f.principal(f.reviewer),
           )
-          // the office sends it back, the student refiles the same claim,
-          // and the administrator moves the open round onto a renamed ladder
-          yield* assessment.interveneOnEntry(
-            f.t,
-            entryId,
-            { kind: 'return-for-revision', reason: '请补交原件' },
-            admin,
-          )
-          yield* assessment.appendEntryRevision(
-            f.t,
-            entryId,
-            { payload: { 'claimed-level': 'national' } },
-            f.principal(f.s1),
-          )
-          yield* assessment.setEntryStatus(f.t, entryId, 'in_review', f.principal(f.s1))
+          // the administrator renames the second step, which moves every
+          // open round onto the new chain
           const swapped = {
             entrySource: 'student' as const,
             formConfig: { files: {} },
             scoringConfig: gradedScoring,
             reviewPolicy: {
-              normal: {
-                stages: [
-                  {
-                    id: 'class-2',
-                    selector: {
-                      kind: 'roleAt',
-                      nodeTypeId: f.classType,
-                      roleIds: [f.reviewRole],
-                    },
-                    quorum: { type: 'any' },
-                  },
-                ],
-              },
-              escalation: { stages: [at(f, 'dept')] },
+              normal: { stages: [at(f, 'n1'), at(f, 'n2-renamed')] },
+              escalation: { stages: [] },
             },
           }
           const asked = yield* Effect.exit(
@@ -432,26 +484,31 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               select id, origin from review_instances
               where entry_id = ${entryId} and state = 'active'`),
           )
+          // the round starts over on the new chain; both steps approve
+          // without saying anything about the level
           yield* assessment.decideReview(
             f.t,
             rerouted.id,
-            { decision: 'approve', comment: 'original seen' },
+            { decision: 'approve', comment: 'first step' },
             f.principal(f.reviewer),
           )
-          return {
-            origin: rerouted.origin,
-            rows: yield* recognitionsOf(entryId),
-          }
+          yield* assessment.decideReview(
+            f.t,
+            rerouted.id,
+            { decision: 'approve', comment: 'second step' },
+            f.principal(f.reviewer),
+          )
+          return { origin: rerouted.origin, rows: yield* recognitionsOf(entryId) }
         }),
       ),
     )
 
     expect(result.origin).toBe('reroute')
-    expect(result.rows).toHaveLength(2)
-    // the refiled claim says 'national' again and the new round starts on a
-    // new chain, but what the question stands recognised as was decided by a
-    // person and does not reset because a stage was renamed
-    expect(result.rows[1]!.values).toEqual({ 'rec-level': 'provincial' })
+    expect(result.rows).toHaveLength(1)
+    // the student's filing says national and the round restarted on a new
+    // chain, but a reviewer had already determined provincial in the round
+    // this one replaced - renaming a step is not a reason to unmake that
+    expect(result.rows[0]!.values).toEqual({ 'rec-level': 'provincial' })
   })
 
   it('determines an administrative record without inventing a review', async () => {

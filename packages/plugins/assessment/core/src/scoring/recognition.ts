@@ -41,7 +41,7 @@ export const judgeRecognition = (
   const values = candidate as Record<string, unknown>
   const issues: RecognitionIssue[] = []
   for (const [recognitionId, schema] of Object.entries(schemas)) {
-    if (!(recognitionId in values)) {
+    if (!Object.hasOwn(values, recognitionId)) {
       issues.push({ recognitionId, reason: 'missing' })
       continue
     }
@@ -49,7 +49,7 @@ export const judgeRecognition = (
     if (wrong.length > 0) issues.push({ recognitionId, reason: wrong[0]!.reason })
   }
   for (const recognitionId of Object.keys(values)) {
-    if (schemas[recognitionId] === undefined) {
+    if (!Object.hasOwn(schemas, recognitionId)) {
       issues.push({ recognitionId, reason: 'unknown' })
     }
   }
@@ -77,9 +77,11 @@ export const seedFromEvidence = (plan: ScoringPlan, payload: unknown): Recogniti
     typeof payload === 'object' && payload !== null && !Array.isArray(payload)
       ? (payload as Record<string, unknown>)
       : {}
-  const seed: Record<string, unknown> = {}
+  // keyed by recognition ids out of a stored plan: a null prototype so a
+  // name like `__proto__` is a key rather than an assignment nobody sees
+  const seed: Record<string, unknown> = Object.create(null)
   for (const [recognitionId, binding] of Object.entries(plan.defaultBindings)) {
-    const value = evidence[binding.fieldId]
+    const value = Object.hasOwn(evidence, binding.fieldId) ? evidence[binding.fieldId] : undefined
     if (value === undefined) continue
     seed[recognitionId] =
       binding.assignment.kind === 'direct'

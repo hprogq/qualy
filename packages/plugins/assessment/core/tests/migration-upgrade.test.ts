@@ -966,3 +966,226 @@ describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', ()
     }
   }, 240_000)
 })
+
+describe.runIf(postgresAvailable)('the recognition-history migration', () => {
+  const HISTORY = '20260830140000_recognition-history.sql'
+
+  it('recovers every approval, names the one in force, and chains them', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, HISTORY))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-recognition-history-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file < HISTORY) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('recognition-history', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('hist', 'Hist') returning id`,
+      )
+      const orgType = await one(
+        `insert into org_types (tenant_id, name) values ($1, 'Class') returning id`,
+        [tenant],
+      )
+      const node = await one(
+        `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+         values ($1, $2, 'Class', 'hist', 0) returning id`,
+        [tenant, orgType],
+      )
+      const userType = await one(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'student', 'Student', 'unrestricted') returning id`,
+        [tenant],
+      )
+      const user = await one(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, 'Zhang San', $2, $3) returning id`,
+        [tenant, userType, node],
+      )
+      const batch = await one(
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, 'Old rounds', daterange('2026-03-01', '2026-09-01')) returning id`,
+        [tenant],
+      )
+      const participant = await one(
+        `insert into batch_participants
+           (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage,
+            user_type_id, status)
+         values ($1, $2, $3, $4, 'hist', '{}', $5, 'active') returning id`,
+        [tenant, batch, user, node, userType],
+      )
+      const group = await one(
+        `insert into score_groups (tenant_id, batch_id, name) values ($1, $2, '文体') returning id`,
+        [tenant, batch],
+      )
+      const item = await one(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id, status)
+         values ($1, $2, 'evidence', '献血', $3, 'active') returning id`,
+        [tenant, batch, group],
+      )
+      const revision = await one(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by, scoring_plan)
+         values ($1, $2, 1, 'student', '{}',
+                 '{"calculator":{"ref":"fixed@1","config":{"value":"3"}},"aggregator":{"ref":"sum@1","config":{}}}',
+                 '{}', '{}', $3, '{}') returning id`,
+        [tenant, item, user],
+      )
+      await db.query(`update assessment_items set current_revision_id = $1 where id = $2`, [
+        revision,
+        item,
+      ])
+      // the question was written before any of this happened: an automatic
+      // approval names the revision in force at that moment, and a revision
+      // stamped today is in force for nothing in the past
+      await db.query(
+        `update assessment_item_revisions set created_at = '2026-04-01T09:00:00Z' where id = $1`,
+        [revision],
+      )
+
+      const entryOf = async (status: string) => {
+        const entry = await one(
+          `insert into entries (tenant_id, batch_id, item_id, participant_id, status, source)
+           values ($1, $2, $3, $4, $5, 'self') returning id`,
+          [tenant, batch, item, participant, status],
+        )
+        const filing = await one(
+          `insert into entry_revisions
+             (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source)
+           values ($1, $2, $3, $4, 1, '{}', $5, $5, 'self') returning id`,
+          [tenant, entry, item, revision, user],
+        )
+        await db.query(`update entries set current_revision_id = $1 where id = $2`, [filing, entry])
+        return { entry, filing }
+      }
+
+      const round = async (entry: string, filing: string, at: string) => {
+        const instance = await one(
+          `insert into review_instances
+             (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id,
+              recognition_revision_id, effective_chain, current_stage_id, state, outcome,
+              current_node_id, current_node_path, current_role_ids, created_at, completed_at)
+           values ($1, $2, $3, 1, 'initial', 'participant', $4, $4, '{}', 's1', 'completed', 'approved',
+                   $5, 'hist', '{}', $6::timestamptz, $6::timestamptz) returning id`,
+          [tenant, entry, filing, revision, node, at],
+        )
+        const event = await one(
+          `insert into review_events
+             (tenant_id, review_instance_id, kind, actor_id, route, stage_id, created_at)
+           values ($1, $2, 'approved', $3, 'normal', 's1', $4::timestamptz) returning id`,
+          [tenant, instance, user, at],
+        )
+        return { instance, event }
+      }
+
+      // a claim approved in May, appealed since, and open again today: the
+      // approval is in its history and nothing recorded what it determined
+      const contested = await entryOf('in_review')
+      const may = await round(contested.entry, contested.filing, '2026-05-01T09:00:00Z')
+
+      // and one approved by a reviewer, sent back, and then approved again
+      // by the rule after the question stopped needing review: the standing
+      // decision is the automatic one, not the older round's word
+      const switched = await entryOf('draft')
+      const may2 = await round(switched.entry, switched.filing, '2026-05-02T09:00:00Z')
+      await db.query(
+        `insert into entry_events (tenant_id, entry_id, kind, actor_id, created_at)
+         values ($1, $2, 'auto-approved', $3, '2026-07-01T09:00:00Z')`,
+        [tenant, switched.entry, user],
+      )
+      // as the first backfill left it: one determination, attributed to the
+      // round rather than to the rule that actually approved it
+      const misattributed = await one(
+        `insert into entry_recognitions
+           (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id,
+            values, source, review_instance_id, review_event_id, created_by, created_at)
+         values ($1, $2, $3, $4, $5, $6, '{}', 'review', $7, $8, $9, '2026-05-02T09:00:00Z')
+         returning id`,
+        [tenant, batch, switched.entry, switched.filing, item, revision, may2.instance, may2.event, user],
+      )
+      await db.query(
+        `update entries set status = 'approved', current_recognition_id = $1 where id = $2`,
+        [misattributed, switched.entry],
+      )
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const rowsOf = async (entry: string) =>
+        (
+          await db.query<{
+            id: string
+            source: string
+            review_event_id: string | null
+            supersedes_id: string | null
+          }>(
+            `select id, source, review_event_id, supersedes_id from entry_recognitions
+             where entry_id = $1 order by created_at`,
+            [entry],
+          )
+        ).rows
+
+      // the round that was appealed left a determination behind, even
+      // though the claim does not stand approved today
+      const contestedRows = await rowsOf(contested.entry)
+      expect(contestedRows).toHaveLength(1)
+      expect(contestedRows[0]!.source).toBe('review')
+      expect(contestedRows[0]!.review_event_id).toBe(may.event)
+      // and the claim points at it: a determination in the past is not
+      // erased by the claim being looked at again, the scorer just reads
+      // the status rather than the pointer
+      const pointer = await db.row<{ current_recognition_id: string | null }>(
+        `select current_recognition_id from entries where id = $1`,
+        [contested.entry],
+      )
+      expect(pointer.current_recognition_id).toBe(contestedRows[0]!.id)
+
+      // the misattributed row now names the rule that actually approved it,
+      // and the reviewer's earlier word gets a determination of its own
+      const switchedRows = await rowsOf(switched.entry)
+      expect(switchedRows).toHaveLength(2)
+      expect(switchedRows.map((each) => each.source)).toEqual(['review', 'system'])
+      expect(switchedRows[1]!.id).toBe(misattributed)
+      expect(switchedRows[1]!.review_event_id).toBeNull()
+      expect(switchedRows[1]!.supersedes_id).toBe(switchedRows[0]!.id)
+      const standing = await db.row<{ current_recognition_id: string }>(
+        `select current_recognition_id from entries where id = $1`,
+        [switched.entry],
+      )
+      expect(standing.current_recognition_id).toBe(misattributed)
+
+      // one word cannot be the origin of two determinations, and the trail
+      // cannot fork
+      await expect(
+        db.query(
+          `insert into entry_recognitions
+             (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id,
+              values, source, review_instance_id, review_event_id)
+           values ($1, $2, $3, $4, $5, $6, '{}', 'review', $7, $8)`,
+          [
+            tenant,
+            batch,
+            contested.entry,
+            contested.filing,
+            item,
+            revision,
+            may.instance,
+            may.event,
+          ],
+        ),
+      ).rejects.toThrow()
+
+      // and the word a determination cites cannot be deleted out from under
+      // it: the shape check says it names one, so nulling it would refuse
+      await expect(
+        db.query(`delete from review_events where id = $1`, [may.event]),
+      ).rejects.toThrow()
+    } finally {
+      await db.dispose()
+    }
+  })
+})

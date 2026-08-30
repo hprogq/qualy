@@ -1,6 +1,7 @@
 import { Effect, Result } from 'effect'
 import { insertRecognition, currentRecognitionOf } from '../scoring/recognition-db.ts'
 import { seedFromEvidence } from '../scoring/recognition.ts'
+import { readScoringPlan } from '../scoring/plan.ts'
 import type { ScoringPlan } from '../scoring/plan.ts'
 
 /**
@@ -11,14 +12,7 @@ import type { ScoringPlan } from '../scoring/plan.ts'
  * null here is an operational fault - it dies naming the revision instead of
  * writing a determination against a contract nobody knows.
  */
-const planOf = (revision: { readonly id: string; readonly scoringPlan: unknown }): ScoringPlan => {
-  if (revision.scoringPlan === null || typeof revision.scoringPlan !== 'object') {
-    throw new Error(
-      `item revision ${revision.id} has no compiled scoring plan; the assembly's boot backfill has not run`,
-    )
-  }
-  return revision.scoringPlan as ScoringPlan
-}
+
 import { boundedCounter } from '@qualy/telemetry/metrics'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
@@ -864,7 +858,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   entryRevisionId: revisionId,
                   itemId: item.id,
                   itemRevisionId: revision.id,
-                  values: seedFromEvidence(planOf(revision), decoded),
+                  values: seedFromEvidence(yield* Effect.orDie(readScoringPlan(revision)), decoded),
                   source: 'record',
                   createdBy: as.userId,
                 })
@@ -1116,7 +1110,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   entryRevisionId: current!.id,
                   itemId: entry.itemId,
                   itemRevisionId: live.id,
-                  values: seedFromEvidence(planOf(live), carried),
+                  values: seedFromEvidence(yield* Effect.orDie(readScoringPlan(live)), carried),
                   source: 'system',
                   createdBy: as.userId,
                   ...(standing === null ? {} : { supersedesId: standing.id }),
@@ -1127,6 +1121,11 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   from: ['draft', 'rejected'],
                   to: 'approved',
                   currentRecognitionId: recognitionId,
+                  // A claim that was refused, and is now approved by a rule
+                  // instead, no longer stands on that refusal. Leaving the
+                  // old round attached would keep offering an appeal against
+                  // a decision this approval has already replaced.
+                  currentReviewInstanceId: null,
                 })
                 if (!settled) return yield* refuse(action, 'entry-not-submittable')
                 yield* insertEntryEvent({

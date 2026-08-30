@@ -149,7 +149,25 @@ const operationAttributes = (exit: Exit.Exit<unknown, QueryFailed>): Record<stri
   }
 }
 
-export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | Orm> =>
+export interface TransactionOptions {
+  /**
+   * Ask for a consistent view instead of PostgreSQL's default.
+   *
+   * `repeatable read` is what a reader wants when it assembles one answer
+   * out of several statements: under the default, each statement sees its
+   * own moment, so a report can be built from a combination of rows that
+   * never existed together. Only honoured by the transaction that actually
+   * begins - an effect joining an open one runs at that one's isolation.
+   */
+  readonly isolation?: 'repeatable read' | 'serializable'
+  /** declares the intent, and lets PostgreSQL refuse a write that slips in */
+  readonly readOnly?: boolean
+}
+
+export const transaction = <A, E, R>(
+  body: Effect.Effect<A, E, R>,
+  options?: TransactionOptions,
+): Effect.Effect<A, E, R | Orm> =>
   Effect.gen(function* () {
     const open = yield* Effect.serviceOption(TransactionManager)
     // joining is not opening: the span belongs to the transaction that
@@ -158,9 +176,21 @@ export const transaction = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effec
 
     const orm = yield* Orm
     const em = orm.em.fork()
+    // the mode has to be set before the transaction reads anything, which is
+    // why it is spelled here and not by the caller's first query
+    const mode = [
+      ...(options?.isolation === undefined ? [] : [`isolation level ${options.isolation}`]),
+      ...(options?.readOnly === true ? ['read only'] : []),
+    ].join(', ')
     return yield* Effect.acquireUseRelease(
       Effect.promise(() => em.begin()),
-      () => body.pipe(Effect.provideService(TransactionManager, em)),
+      () =>
+        (mode === ''
+          ? body
+          : Effect.promise(() => em.execute(`set transaction ${mode}`)).pipe(
+              Effect.andThen(body),
+            )
+        ).pipe(Effect.provideService(TransactionManager, em)),
       (_, exit) =>
         Exit.isSuccess(exit)
           ? Effect.promise(() => em.commit())

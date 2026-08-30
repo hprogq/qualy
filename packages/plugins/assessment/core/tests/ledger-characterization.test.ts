@@ -72,19 +72,25 @@ const account = (fixture: {
   const worth = new Map(fixture.items.map((item) => [item.id, scaledAmount(item.worth)]))
   return calcParticipant(catalogs, {
     groups: fixture.groups,
-    items: fixture.items.map((item) => ({
-      id: item.id,
-      title: item.id,
-      scoreGroupId: item.scoreGroupId ?? 'g',
-      sortOrder: item.sortOrder ?? 0,
-      status: item.status ?? 'active',
-      createdAt: 1,
-      calculatorRef: 'fixed@1',
-      aggregator: item.aggregator ?? { ref: 'sum@1', config: {} },
-      ...(item.derived === true
-        ? { derived: true as const, derivedAmount: worth.get(item.id)! }
-        : {}),
-    })),
+    items: fixture.items.map((item) => {
+      const common = {
+        id: item.id,
+        title: item.id,
+        scoreGroupId: item.scoreGroupId ?? 'g',
+        sortOrder: item.sortOrder ?? 0,
+        createdAt: 1,
+        calculatorRef: 'fixed@1',
+        aggregator: item.aggregator ?? { ref: 'sum@1', config: {} },
+      }
+      const status = item.status ?? 'active'
+      return status === 'draft'
+        ? { ...common, standing: 'unpublished' as const }
+        : status !== 'active'
+          ? { ...common, standing: 'withdrawn' as const }
+          : item.derived === true
+            ? { ...common, standing: 'granted' as const, derivedAmount: worth.get(item.id)! }
+            : { ...common, standing: 'scored' as const }
+    }),
     entries: (fixture.entries ?? []).map((one) => {
       const base = {
         id: one.id,
@@ -93,17 +99,17 @@ const account = (fixture: {
         createdAt: one.createdAt ?? 1,
       }
       const status = one.status ?? 'approved'
-      return status === 'approved'
+      const item = fixture.items.find((each) => each.id === one.itemId)
+      // the collection only evaluates an approved claim under a live
+      // question; anything else reaches the ledger with no amount at all
+      return status === 'approved' && (item?.status ?? 'active') === 'active'
         ? {
             ...base,
-            status: 'approved' as const,
+            standing: 'counted' as const,
             recognitionId: `rec-${one.id}`,
             amount: worth.get(one.itemId) ?? 0n,
           }
-        : {
-            ...base,
-            status: status as 'draft' | 'in_review' | 'needs_revision' | 'rejected' | 'voided',
-          }
+        : { ...base, standing: status === 'rejected' ? ('refused' as const) : ('unscored' as const) }
     }),
   })
 }

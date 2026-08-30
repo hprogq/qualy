@@ -124,6 +124,21 @@ export interface CalculatorContract {
   readonly contractHash: string
 }
 
+export interface CompiledCalculator extends CalculatorContract {
+  /**
+   * The configuration as this calculator will actually execute it.
+   *
+   * The host cannot know what any calculator's configuration means, so it
+   * cannot tell that `"3.0"` and `"3.00"` are one amount and `{a,b}` and
+   * `{b,a}` are one rule. The calculator can, and says so here once, at
+   * compile time. The plan stores THIS; the item revision keeps what the
+   * administrator wrote. That is what makes a plan's identity semantic:
+   * re-saving a question spelled differently must not look like a different
+   * arithmetic to anybody reading hashes.
+   */
+  readonly config: unknown
+}
+
 /** the calculator could not say what it needs, under this configuration */
 export class CalculatorContractError extends Error {
   readonly _tag = 'ASSESSMENT_CALCULATOR_CONTRACT_ERROR'
@@ -168,10 +183,17 @@ export interface CalculatorDriver<R = never> {
   readonly ref: string
   /** validates the config an item revision stores under this reference */
   readonly configSchema: Schema.Top
-  /** what typed input this configuration needs, and what it answers with */
-  readonly contract: (
+  /**
+   * Compiles a stored configuration: what typed input it needs, what it
+   * answers with, and the canonical form it will execute in.
+   *
+   * Called once when a question is saved, never per entry. `evaluate` is
+   * then handed the compiled config, so the two can never disagree about
+   * what the configuration meant.
+   */
+  readonly compile: (
     config: unknown,
-  ) => Effect.Effect<CalculatorContract, CalculatorContractError, R>
+  ) => Effect.Effect<CompiledCalculator, CalculatorContractError, R>
   /** the amount, as an exact decimal string, for one already-validated input */
   readonly evaluate: (
     config: unknown,
@@ -196,16 +218,26 @@ export interface AggregatorDriver {
   ) => AggregationResult
 }
 
+export interface AggregatedEntry {
+  readonly entryId: string
+  readonly included: boolean
+  /** what this entry contributed - 0n when it did not count */
+  readonly effectiveAmount: bigint
+  /** why it did not count, for the line that explains it */
+  readonly reason?: 'not-selected'
+}
+
 export interface AggregationResult {
   readonly total: bigint
-  readonly entries: readonly {
-    readonly entryId: string
-    readonly included: boolean
-    /** what this entry contributed - 0n when it did not count */
-    readonly effectiveAmount: bigint
-    /** why it did not count, for the line that explains it */
-    readonly reason?: 'not-selected'
-  }[]
+  /**
+   * One decision per entry it was given, each naming its own.
+   *
+   * The ledger matches these by `entryId`, so an aggregator is free to
+   * return them in whatever order suits its own algorithm - and an answer
+   * that drops, repeats or invents an entry is refused rather than mapped
+   * onto whichever claim happened to sit at that index.
+   */
+  readonly entries: readonly AggregatedEntry[]
 }
 
 export type ScoringDriver = CalculatorDriver | AggregatorDriver

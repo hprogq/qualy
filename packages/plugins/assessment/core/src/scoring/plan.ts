@@ -14,7 +14,7 @@
  * @qualy/value-schema, which is the only type language this system has.
  */
 
-import { Effect, Schema } from 'effect'
+import { Data, Effect, Schema } from 'effect'
 import {
   assignmentPlan,
   canonicalizeAtomicSchema,
@@ -25,9 +25,9 @@ import {
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
+import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { validateValue } from '@qualy/value-schema/validate'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
-import { SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
 import type { BatchContext, ItemTypeDriver, ScoringDriver } from '../plugin.ts'
 
 /** how one calculator parameter gets its value at scoring time */
@@ -68,6 +68,28 @@ export interface ScoringPlan {
   readonly outputSchema: NormalizedAtomicSchema
   readonly planHash: string
 }
+
+/**
+ * A stored plan's shape, as this build will execute it.
+ *
+ * Structural only: the schemas inside were normalized when the plan was
+ * compiled and are re-proven by the hash rather than re-parsed here.
+ */
+const persistedPlanShape = Schema.Struct({
+  version: Schema.Number,
+  calculator: Schema.Struct({
+    ref: Schema.String,
+    config: Schema.Unknown,
+    contractHash: Schema.String,
+  }),
+  parameters: Schema.Record(Schema.String, Schema.Unknown),
+  recognitionSchemas: Schema.Record(Schema.String, Schema.Unknown),
+  defaultBindings: Schema.Record(Schema.String, Schema.Unknown),
+  aggregator: Schema.Struct({ ref: Schema.String, config: Schema.Unknown }),
+  inputSchema: Schema.Unknown,
+  outputSchema: Schema.Unknown,
+  planHash: Schema.String,
+})
 
 /** what a compile refuses, in the same shape item configuration issues take */
 export interface PlanIssue {
@@ -182,6 +204,16 @@ const decode = <A>(schema: Schema.Codec<A>, value: unknown) =>
   Effect.option(Schema.decodeUnknownEffect(schema)(value))
 
 /**
+ * A lookup that only ever finds what somebody actually wrote.
+ *
+ * Configuration keys are chosen by administrators, and plain property access
+ * answers `constructor` and `toString` from the prototype - so a recognition
+ * named `constructor` would read as declared without anybody declaring it.
+ */
+const own = <T>(record: Record<string, T> | undefined, key: string): T | undefined =>
+  record !== undefined && Object.hasOwn(record, key) ? record[key] : undefined
+
+/**
  * Compile one item revision's scoring configuration, or say why not.
  *
  * The order is the order of proof: what the calculator needs, then that its
@@ -219,13 +251,29 @@ export const compileScoringPlan = (
       issues.push({ path: 'scoringConfig.aggregator.ref', reason: 'aggregator-not-installed' })
     }
 
-    const contract = yield* calculator.contract(authoring.calculator.config).pipe(Effect.option)
-    if (contract._tag === 'None') {
+    // The compiler proves the driver configs itself rather than trusting
+    // that whoever called it already did. Saving a question does validate
+    // them first; the boot sweep calls straight in here, and "both paths
+    // rest on the same proof" has to be true of this function alone.
+    if ((yield* decode(calculator.configSchema as Schema.Codec<unknown>, authoring.calculator.config))._tag === 'None') {
+      return {
+        issues: [...issues, { path: 'scoringConfig.calculator.config', reason: 'calculator-config-invalid' }],
+      }
+    }
+    if (
+      aggregator !== undefined &&
+      (yield* decode(aggregator.configSchema as Schema.Codec<unknown>, authoring.aggregator.config))._tag === 'None'
+    ) {
+      issues.push({ path: 'scoringConfig.aggregator.config', reason: 'aggregator-config-invalid' })
+    }
+
+    const compiled = yield* calculator.compile(authoring.calculator.config).pipe(Effect.option)
+    if (compiled._tag === 'None') {
       return {
         issues: [...issues, { path: 'scoringConfig.calculator.config', reason: 'calculator-contract-unavailable' }],
       }
     }
-    const { inputSchema, outputSchema, contractHash } = contract.value
+    const { inputSchema, outputSchema, contractHash, config: executionConfig } = compiled.value
 
     // an item's amount has to be carryable by the platform's own amount, or
     // this question can never contribute a score to anybody
@@ -241,9 +289,16 @@ export const compileScoringPlan = (
     if (inputs.recognitionSource === 'none' && Object.keys(recognitions).length > 0) {
       issues.push({ path: 'scoringConfig.recognitions', reason: 'recognition-without-determiner' })
     }
-    const parameters: Record<string, ParameterBinding> = {}
-    const recognitionSchemas: Record<string, NormalizedAtomicSchema> = {}
-    const defaultBindings: Record<string, { fieldId: string; assignment: AssignmentPlan }> = {}
+    // Every map below is keyed by strings out of a stored configuration.
+    // A plain object literal would hand `__proto__` and `constructor` to JS
+    // prototype semantics - assignment that does not create an own property,
+    // and lookups that find something nobody wrote. A null-prototype object
+    // has no such keys to reach, and `Object.hasOwn` is the only membership
+    // question worth asking about one.
+    const parameters: Record<string, ParameterBinding> = Object.create(null)
+    const recognitionSchemas: Record<string, NormalizedAtomicSchema> = Object.create(null)
+    const defaultBindings: Record<string, { fieldId: string; assignment: AssignmentPlan }> =
+      Object.create(null)
 
     const bindable = new Map<string, AtomicSchema>(
       (inputs.itemType?.bindableFields?.(inputs.formConfig, inputs.batch) ?? []).map((field) => [
@@ -253,7 +308,7 @@ export const compileScoringPlan = (
     )
 
     for (const [parameter, schema] of Object.entries(inputSchema.properties)) {
-      const binding = bindings[parameter]
+      const binding = own(bindings, parameter)
       if (binding === undefined) {
         issues.push({ path: `scoringConfig.bindings.${parameter}`, reason: 'binding-missing' })
         continue
@@ -270,7 +325,7 @@ export const compileScoringPlan = (
         parameters[parameter] = { kind: 'constant', value: binding.value }
         continue
       }
-      const declared = recognitions[binding.recognitionId]
+      const declared = own(recognitions, binding.recognitionId)
       if (declared === undefined) {
         issues.push({ path: `scoringConfig.bindings.${parameter}`, reason: 'recognition-unknown' })
         continue
@@ -281,7 +336,7 @@ export const compileScoringPlan = (
       // against - a plan that contradicts the proof that produced it. If a
       // question ever genuinely needs one fact in two places, that wants a
       // common schema proven into both, not a silent overwrite.
-      if (recognitionSchemas[binding.recognitionId] !== undefined) {
+      if (Object.hasOwn(recognitionSchemas, binding.recognitionId)) {
         issues.push({
           path: `scoringConfig.bindings.${parameter}`,
           reason: 'recognition-reused',
@@ -340,7 +395,7 @@ export const compileScoringPlan = (
     // a recognition nobody's parameter reads is a field reviewers would be
     // asked to determine for nothing
     for (const recognitionId of Object.keys(recognitions)) {
-      if (recognitionSchemas[recognitionId] === undefined) {
+      if (!Object.hasOwn(recognitionSchemas, recognitionId)) {
         issues.push({
           path: `scoringConfig.recognitions.${recognitionId}`,
           reason: 'recognition-unbound',
@@ -357,7 +412,10 @@ export const compileScoringPlan = (
 
     const body: Omit<ScoringPlan, 'planHash'> = {
       version: 1,
-      calculator: { ref: authoring.calculator.ref, config: authoring.calculator.config, contractHash },
+      // what the calculator will execute, not what the administrator typed:
+      // the item revision keeps the authored spelling, the plan keeps the
+      // meaning, and two spellings of one rule share a planHash
+      calculator: { ref: authoring.calculator.ref, config: executionConfig, contractHash },
       parameters,
       recognitionSchemas,
       defaultBindings,
@@ -366,4 +424,75 @@ export const compileScoringPlan = (
       outputSchema,
     }
     return { plan: { ...body, planHash: hashCanonicalJson(semanticPlanBody(body)) } }
+  })
+
+/** the only plan version this build knows how to execute */
+export const SCORING_PLAN_VERSION = 1
+
+export class ScoringPlanUnreadable extends Data.TaggedError('ASSESSMENT_SCORING_PLAN_UNREADABLE')<{
+  readonly revisionId: string
+  readonly reason: string
+}> {
+  override get message() {
+    return `scoring plan of item revision ${this.revisionId} cannot be executed: ${this.reason}`
+  }
+}
+
+/**
+ * The one way a stored plan becomes an executable one.
+ *
+ * A plan is a frozen promise, and reading it back with a cast is trusting
+ * that nothing has ever written this column but this build. That is exactly
+ * what stops being true during a rolling deployment: a newer server compiles
+ * a plan in a shape this one does not know, and a cast would run it anyway -
+ * silently, against a student's score. So the version is checked, the body
+ * is checked against the hash it was stored with, and anything else is a
+ * refusal naming the revision.
+ *
+ * Rehashing is not paranoia about the database: it is what makes `planHash`
+ * a fact rather than a decorative column, and it is the same function that
+ * produced it, so a mismatch means the body and its identity have come
+ * apart - which is a thing to stop on, never to score through.
+ *
+ * Callers turn this into a defect rather than surfacing it: nothing a
+ * student or a reviewer did produced it, and there is no answer they could
+ * give that would help. It reaches an operator, naming the revision.
+ */
+export const readScoringPlan = (revision: {
+  readonly id: string
+  readonly scoringPlan: unknown
+}): Effect.Effect<ScoringPlan, ScoringPlanUnreadable> =>
+  Effect.gen(function* () {
+    const stored = revision.scoringPlan
+    if (stored === null || typeof stored !== 'object' || Array.isArray(stored)) {
+      return yield* new ScoringPlanUnreadable({
+        revisionId: revision.id,
+        reason: 'no compiled plan; the assembly boot backfill has not run',
+      })
+    }
+    const decoded = yield* decode(
+      persistedPlanShape as unknown as Schema.Codec<ScoringPlan>,
+      stored,
+    )
+    if (decoded._tag === 'None') {
+      return yield* new ScoringPlanUnreadable({
+        revisionId: revision.id,
+        reason: 'not a plan this build can read',
+      })
+    }
+    const plan = decoded.value
+    if (plan.version !== SCORING_PLAN_VERSION) {
+      return yield* new ScoringPlanUnreadable({
+        revisionId: revision.id,
+        reason: `version ${String(plan.version)}, and this build executes ${SCORING_PLAN_VERSION}`,
+      })
+    }
+    const { planHash, ...body } = plan
+    if (hashCanonicalJson(semanticPlanBody(body)) !== planHash) {
+      return yield* new ScoringPlanUnreadable({
+        revisionId: revision.id,
+        reason: 'the plan and the hash it was stored with disagree',
+      })
+    }
+    return plan
   })

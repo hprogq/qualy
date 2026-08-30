@@ -1,0 +1,278 @@
+import { Effect, Exit, Schema } from 'effect'
+import { describe, expect, it } from 'vitest'
+import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
+import { calcParticipant } from '../src/scoring/calc.ts'
+import { builtinScoringDrivers, fixed1, scaledAmount } from '../src/scoring/builtins.ts'
+import { compileScoringPlan, readScoringPlan } from '../src/scoring/plan.ts'
+import { judgeRecognition } from '../src/scoring/recognition.ts'
+import type { AggregatorDriver, BatchContext, CalculatorDriver } from '../src/plugin.ts'
+
+// What the scoring layer refuses.
+//
+// Each of these is a way a wrong answer could have reached a student's page
+// looking like a right one: a saved amount the frozen output schema would
+// later reject, an aggregator whose decisions land on the wrong claims, a
+// stored plan from a build that is not this one, a configuration key that is
+// a JavaScript prototype rather than a name.
+
+const batch: BatchContext = { materialRange: { start: '2026-03-01', end: '2026-09-01' } }
+
+const compile = (scoringConfig: unknown) =>
+  Effect.runPromise(
+    compileScoringPlan({
+      calculators: new Map(
+        builtinScoringDrivers.filter((d) => d.kind === 'calculator').map((d) => [d.ref, d]),
+      ),
+      aggregators: new Map(
+        builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
+      ),
+      itemType: undefined,
+      formConfig: {},
+      scoringConfig,
+      batch,
+      recognitionSource: 'review',
+    }),
+  )
+
+const fixedConfig = (value: string) => ({
+  calculator: { ref: 'fixed@1', config: { value } },
+  aggregator: { ref: 'sum@1', config: {} },
+})
+
+describe('what a fixed amount may be spelled as', () => {
+  it('refuses a spelling its own answer would fail on', async () => {
+    // the platform amount's grammar has no leading zeros, and the frozen
+    // output schema is checked after the calculator answers - so accepting
+    // "03.00" here would save a question that fails on a results page
+    for (const wrong of ['03.00', '0001', '-00.50', '3.', '+3', '1e3', '99999999.99999']) {
+      const outcome = await compile(fixedConfig(wrong))
+      expect('issues' in outcome, wrong).toBe(true)
+    }
+  })
+
+  it('accepts the spellings the platform amount admits, and executes one of them', async () => {
+    for (const right of ['3', '3.0', '3.00', '-1.5', '0', '0.0001']) {
+      const outcome = await compile(fixedConfig(right))
+      expect('plan' in outcome, right).toBe(true)
+    }
+    // and two spellings of one amount are one plan: the calculator says what
+    // it will execute, so a re-save spelled differently is not a new
+    // arithmetic to anybody reading hashes
+    const [a, b] = await Promise.all([compile(fixedConfig('3.0')), compile(fixedConfig('3.00'))])
+    expect('plan' in a && 'plan' in b).toBe(true)
+    if ('plan' in a && 'plan' in b) {
+      expect(a.plan.planHash).toBe(b.plan.planHash)
+      expect(a.plan.calculator.config).toEqual({ value: '3' })
+    }
+  })
+
+  it('answers inside the platform amount for every accepted config', async () => {
+    const answer = await Effect.runPromise(fixed1.evaluate({ value: '3' }, {}))
+    expect(answer).toBe('3')
+    expect(normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA)['x-qualy-maxScale']).toBe(4)
+  })
+})
+
+describe('what a stored plan must be before it runs', () => {
+  const planOf = async () => {
+    const outcome = await compile(fixedConfig('3'))
+    if (!('plan' in outcome)) throw new Error('fixture: the plan did not compile')
+    return outcome.plan
+  }
+
+  const read = (scoringPlan: unknown) =>
+    Effect.runPromiseExit(readScoringPlan({ id: 'rev-1', scoringPlan }))
+
+  it('reads back a plan this build wrote', async () => {
+    const plan = await planOf()
+    const back = await read(JSON.parse(JSON.stringify(plan)))
+    expect(Exit.isSuccess(back)).toBe(true)
+  })
+
+  it('refuses a version it does not execute', async () => {
+    // a newer server writing a shape this one does not know must stop it,
+    // not have it scored through during a rolling deployment
+    const plan = await planOf()
+    const back = await read({ ...JSON.parse(JSON.stringify(plan)), version: 77 })
+    expect(Exit.isFailure(back)).toBe(true)
+  })
+
+  it('refuses a body that disagrees with the hash it was stored with', async () => {
+    const plan = await planOf()
+    const tampered = JSON.parse(JSON.stringify(plan)) as {
+      calculator: { config: { value: string } }
+    }
+    tampered.calculator.config.value = '9999'
+    expect(Exit.isFailure(await read(tampered))).toBe(true)
+  })
+
+  it('refuses a shape that is not a plan, and a missing one', async () => {
+    expect(Exit.isFailure(await read({ version: 1, parameters: 'oops' }))).toBe(true)
+    expect(Exit.isFailure(await read(null))).toBe(true)
+    expect(Exit.isFailure(await read([1, 2, 3]))).toBe(true)
+  })
+})
+
+describe('how an aggregator answer reaches the account', () => {
+  const item = {
+    id: 'i',
+    title: 'i',
+    scoreGroupId: 'g',
+    sortOrder: 0,
+    createdAt: 1,
+    calculatorRef: 'fixed@1',
+    standing: 'scored' as const,
+  }
+  const entries = [
+    {
+      id: 'a',
+      itemId: 'i',
+      revisionId: 'r-a',
+      createdAt: 1,
+      standing: 'counted' as const,
+      recognitionId: 'rec-a',
+      amount: scaledAmount('1.00'),
+    },
+    {
+      id: 'b',
+      itemId: 'i',
+      revisionId: 'r-b',
+      createdAt: 2,
+      standing: 'counted' as const,
+      recognitionId: 'rec-b',
+      amount: scaledAmount('3.00'),
+    },
+  ]
+
+  const account = (aggregate: AggregatorDriver['aggregate']) =>
+    calcParticipant(
+      {
+        aggregators: new Map<string, AggregatorDriver>([
+          ['test@1', { kind: 'aggregator', ref: 'test@1', configSchema: Schema.Struct({}), aggregate }],
+        ]),
+      },
+      {
+        groups: [{ id: 'g', parentGroupId: null, name: 'g', cap: null, floor: null, sortOrder: 0 }],
+        items: [{ ...item, aggregator: { ref: 'test@1', config: {} } }],
+        entries,
+      },
+    )
+
+  it('matches every decision to the claim it names, whatever order they arrive in', () => {
+    // an aggregator is free to sort its own output - "the highest first" is
+    // a natural way to write one - and the account must still explain each
+    // claim with the decision made about that claim
+    const result = account((_config, given) => ({
+      total: 0n,
+      entries: [...given]
+        .sort((one, two) => (two.amount > one.amount ? 1 : -1))
+        .map((one, index) => ({
+          entryId: one.entryId,
+          included: index === 0,
+          effectiveAmount: index === 0 ? one.amount : 0n,
+          ...(index === 0 ? {} : { reason: 'not-selected' as const }),
+        })),
+    }))
+    expect(result.lines.map((line) => [line.lineId, line.kind, line.value])).toEqual([
+      ['entry:a', 'entry-not-counted', '0.00'],
+      ['entry:b', 'entry', '3.00'],
+    ])
+  })
+
+  it('refuses an answer that drops, repeats or invents a claim', () => {
+    const dropped = () =>
+      account((_config, given) => ({
+        total: 0n,
+        entries: given.slice(0, 1).map((one) => ({
+          entryId: one.entryId,
+          included: true,
+          effectiveAmount: one.amount,
+        })),
+      }))
+    expect(dropped).toThrow(/answered for 1 entries of 2/)
+
+    const repeated = () =>
+      account((_config, given) => ({
+        total: 0n,
+        entries: given.map(() => ({
+          entryId: 'a',
+          included: true,
+          effectiveAmount: 0n,
+        })),
+      }))
+    expect(repeated).toThrow(/answered twice for entry a/)
+
+    const invented = () =>
+      account((_config, given) => ({
+        total: 0n,
+        entries: given.map((one, index) => ({
+          entryId: index === 0 ? 'someone-else' : one.entryId,
+          included: true,
+          effectiveAmount: 0n,
+        })),
+      }))
+    expect(invented).toThrow(/did not answer for entry a/)
+  })
+})
+
+describe('what a configuration key may be', () => {
+  const graded: CalculatorDriver = {
+    kind: 'calculator',
+    ref: 'proto-test@1',
+    configSchema: Schema.Struct({}),
+    compile: (config) =>
+      Effect.succeed({
+        config,
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: { level: { type: 'string', enum: ['a', 'b'] } },
+          required: ['level'],
+          additionalProperties: false,
+        }),
+        outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
+        contractHash: 'test:proto',
+      }),
+    evaluate: () => Effect.succeed('1.00'),
+  }
+
+  it('treats a prototype name as a name, not as JavaScript', async () => {
+    // scoringConfig is persisted configuration written by administrators: a
+    // recognition called `__proto__` or `constructor` must be a key like any
+    // other, never an assignment nobody can see or a lookup that finds
+    // something nobody wrote
+    for (const hostile of ['__proto__', 'constructor', 'toString']) {
+      const outcome = await Effect.runPromise(
+        compileScoringPlan({
+          calculators: new Map([[graded.ref, graded]]),
+          aggregators: new Map(
+            builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
+          ),
+          itemType: undefined,
+          formConfig: {},
+          scoringConfig: {
+            calculator: { ref: graded.ref, config: {} },
+            aggregator: { ref: 'sum@1', config: {} },
+            recognitions: { [hostile]: { defaultFromFieldId: null } },
+            bindings: { level: { kind: 'recognition', recognitionId: hostile } },
+          },
+          batch,
+          recognitionSource: 'review',
+        }),
+      )
+      expect('plan' in outcome, hostile).toBe(true)
+      if (!('plan' in outcome)) continue
+      // it is a real key of the frozen contract, and judging reads it as one
+      expect(Object.keys(outcome.plan.recognitionSchemas)).toEqual([hostile])
+      expect(judgeRecognition(outcome.plan.recognitionSchemas, {})).toEqual([
+        { recognitionId: hostile, reason: 'missing' },
+      ])
+      expect(judgeRecognition(outcome.plan.recognitionSchemas, { [hostile]: 'a' })).toEqual([])
+      // and an empty determination does not accidentally satisfy it by
+      // finding a prototype member of the candidate object
+      expect(judgeRecognition(outcome.plan.recognitionSchemas, Object.create(null))).toEqual([
+        { recognitionId: hostile, reason: 'missing' },
+      ])
+    }
+  })
+})

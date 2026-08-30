@@ -7,14 +7,7 @@ import type { ScoringPlan } from '../scoring/plan.ts'
  * state - it dies naming the revision rather than judging a determination
  * against a contract nobody has.
  */
-const planOf = (revision: { readonly id: string; readonly scoringPlan: unknown }): ScoringPlan => {
-  if (revision.scoringPlan === null || typeof revision.scoringPlan !== 'object') {
-    throw new Error(
-      `item revision ${revision.id} has no compiled scoring plan; the assembly's boot backfill has not run`,
-    )
-  }
-  return revision.scoringPlan as ScoringPlan
-}
+
 import {
   judgeRecognition,
   recognitionHash,
@@ -22,6 +15,7 @@ import {
   seedFromEvidence,
   type RecognitionValues,
 } from '../scoring/recognition.ts'
+import { readScoringPlan } from '../scoring/plan.ts'
 import { currentRecognitionOf, insertRecognition } from '../scoring/recognition-db.ts'
 import { boundedCounter } from '@qualy/telemetry/metrics'
 import { projectEntrySummary } from '../entry/summary.ts'
@@ -118,8 +112,10 @@ import {
   type ReviewInstanceDetailRow,
   type SupplementRequirement,
   type SupplementRow,
+  instanceLineageOf,
   lastRecognitionOf,
   lockedProposalOf,
+  recognitionOfInstance,
   lockPanelRecognition,
   panelRecognitionOf,
   revisionPayloadOf,
@@ -991,7 +987,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   /**
    * What a reviewer is shown before they determine anything.
    *
-   * Four sources, in the order of who most recently had an opinion:
+   * The question is never "what was this claim last recognised as" - it is
+   * "what is this round revisiting". A round that revisits a decision starts
+   * from that decision; a round that is looking at a filing for the first
+   * time starts from the filing.
    *
    *   the sitting's frozen proposal - a second ballot votes on the text the
    *   first one was cast on, never on a fresh reading;
@@ -999,34 +998,91 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
    *   this round's last approval - a stage inherits what the stage below
    *   determined, so a correction is not undone by climbing;
    *
-   *   what the claim currently stands recognised as - an appeal opens on the
-   *   determination it contests, and a re-routed round on the determination
-   *   the old round left, because "the reviewer downstairs said provincial"
-   *   does not stop being true when a new round begins;
+   *   then, and only for a round that exists to revisit something: the
+   *   determination it is revisiting. An appeal opens on the decision it
+   *   contests, a re-routed round on what the round it replaced had already
+   *   determined, a reopened one on what the claim stands recognised as;
    *
-   *   and only then the filing itself, through the defaults the plan
-   *   recorded - which is the right answer exactly once, for the first
-   *   person to look at a claim nobody has judged yet.
+   *   and otherwise the filing itself, through the defaults the plan
+   *   recorded.
    *
-   * Reading only this round would quietly re-seed every appeal from the
-   * student's original claim, which is the one thing every stage above was
-   * correcting.
+   * The last two are the whole point of reading `origin`. Inheriting from
+   * the claim's standing determination unconditionally would be just as
+   * wrong in the other direction: a student sent away to fix their evidence
+   * files new material and resubmits, and the first person to read the new
+   * material would be handed the level determined from the old.
    */
   const recognitionSeed = (
     tenantId: string,
     instanceId: string,
     plan: ScoringPlan,
-    row: { readonly entryId: string; readonly revisionId: string },
+    row: {
+      readonly entryId: string
+      readonly revisionId: string
+      readonly origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
+      readonly appealedInstanceId: string | null
+      readonly supersedesInstanceId: string | null
+    },
   ) =>
     Effect.gen(function* () {
       const locked = yield* lockedProposalOf(tenantId, instanceId)
       if (locked !== null) return locked
       const said = yield* lastRecognitionOf(tenantId, instanceId)
       if (said !== null) return said
-      const standing = yield* currentRecognitionOf(tenantId, row.entryId)
-      if (standing !== null) return standing.values
+      const revisited = yield* revisitedRecognition(tenantId, row)
+      if (revisited !== null) return revisited
       const filing = yield* revisionPayloadOf(tenantId, row.revisionId)
       return seedFromEvidence(plan, filing)
+    })
+
+  /**
+   * The determination this round exists to revisit, if it exists to revisit
+   * one at all.
+   *
+   * An appeal names the round it contests. A re-route names the round it
+   * replaced, and walks back through a chain of them - an administrator may
+   * move an open round more than once - to whatever the last of them
+   * determined. A reopen has no round of its own to point at, so it takes
+   * the claim's standing determination, which is exactly what reopening
+   * means. A first look at a filing revisits nothing.
+   */
+  const revisitedRecognition = (
+    tenantId: string,
+    row: {
+      readonly entryId: string
+      readonly origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
+      readonly appealedInstanceId: string | null
+      readonly supersedesInstanceId: string | null
+    },
+  ): Effect.Effect<RecognitionValues | null, QueryFailed, Orm> =>
+    Effect.gen(function* () {
+      if (row.origin === 'initial') return null
+      if (row.origin === 'reopen') {
+        const standing = yield* currentRecognitionOf(tenantId, row.entryId)
+        return standing === null ? null : standing.values
+      }
+      if (row.origin === 'appeal') {
+        if (row.appealedInstanceId === null) return null
+        const contested = yield* recognitionOfInstance(tenantId, row.appealedInstanceId)
+        if (contested !== null) return contested
+        // a round that was appealed but left no determination of its own -
+        // history from before determinations were recorded - falls back to
+        // what the claim stands recognised as, which is what that round
+        // decided if it decided anything
+        const standing = yield* currentRecognitionOf(tenantId, row.entryId)
+        return standing === null ? null : standing.values
+      }
+      // reroute: back through however many times the round was moved
+      let previous = row.supersedesInstanceId
+      const walked = new Set<string>()
+      while (previous !== null && !walked.has(previous)) {
+        walked.add(previous)
+        const said = yield* lastRecognitionOf(tenantId, previous)
+        if (said !== null) return said
+        const older = yield* instanceLineageOf(tenantId, previous)
+        previous = older === null ? null : older.supersedesInstanceId
+      }
+      return null
     })
 
   const decideReview: ReviewMethods['decideReview'] = Effect.fn('Assessment.decideReview')(
@@ -1158,7 +1214,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             // mid-round cannot change what a reviewer is being asked.
             const contract = yield* revisionOf(tenantId, row.recognitionRevisionId)
             if (contract === null) return yield* refuse(action, 'chain-unreadable')
-            const plan = planOf(contract)
+            const plan = yield* Effect.orDie(readScoringPlan(contract))
             const seed = yield* recognitionSeed(tenantId, instanceId, plan, row)
 
             // a refusal or a referral determines nothing: "I cannot tell"
@@ -1226,6 +1282,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               snapshot?: {
                 readonly recognitionPayload: RecognitionValues
                 readonly recognitionHash: string
+                /** the sitting's own explanation for its proposal, if it gave one */
+                readonly recognitionReason: string | null
               },
             ) =>
               insertReviewEvent({
@@ -1240,7 +1298,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   : {
                       recognitionPayload: snapshot.recognitionPayload,
                       recognitionHash: snapshot.recognitionHash,
-                      recognitionReason: null,
+                      recognitionReason: snapshot.recognitionReason,
                     }),
               })
 
@@ -1456,6 +1514,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   panelId: panel.id,
                   values: opening as Record<string, unknown>,
                   hash: recognitionHash(opening),
+                  // frozen with its explanation: the round ends on this
+                  // text, so "why it differs from what we inherited" has to
+                  // travel with it or it is lost when the sitting resolves
+                  reason: determinedReason,
                 })
               } else if (determined !== undefined && recognitionHash(determined) !== frozen.hash) {
                 return yield* new EntryPayloadInvalid({
@@ -1499,6 +1561,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   const eventId = yield* sayFrom('approved', null, {
                     recognitionPayload: sitting.values,
                     recognitionHash: sitting.hash,
+                    recognitionReason: sitting.reason,
                   })
                   const recognitionId = yield* settle(sitting.values, eventId)
                   yield* setEntryState({

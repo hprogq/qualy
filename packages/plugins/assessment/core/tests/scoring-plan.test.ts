@@ -58,14 +58,15 @@ const graded: CalculatorDriver = {
   kind: 'calculator',
   ref: 'graded-test@1',
   configSchema: Schema.Struct({}),
-  contract: () =>
-    Effect.succeed(
-      contractOf({
+  compile: (config) =>
+    Effect.succeed({
+      config,
+      ...contractOf({
         level: { type: 'string', enum: ['national', 'provincial'] },
         ordinal: { type: 'integer', minimum: 1, maximum: 10 },
         base: decimal(2),
       }),
-    ),
+    }),
   evaluate: () => Effect.succeed('1.00'),
 }
 
@@ -74,8 +75,9 @@ const overflowing: CalculatorDriver = {
   kind: 'calculator',
   ref: 'overflowing-test@1',
   configSchema: Schema.Struct({}),
-  contract: () =>
+  compile: (config) =>
     Effect.succeed({
+      config,
       inputSchema: normalizeInputSchema({
         type: 'object',
         properties: {},
@@ -164,7 +166,10 @@ describe('a fixed question', () => {
     expect(outcome.plan.parameters).toEqual({})
     expect(outcome.plan.recognitionSchemas).toEqual({})
     expect(outcome.plan.defaultBindings).toEqual({})
-    expect(outcome.plan.calculator).toMatchObject({ ref: 'fixed@1', config: { value: '3.00' } })
+    // the plan carries the amount as the calculator will execute it, not as
+    // the administrator spelled it: "3.00" and "3.0" are one arithmetic and
+    // must not read as two different plans
+    expect(outcome.plan.calculator).toMatchObject({ ref: 'fixed@1', config: { value: '3' } })
     expect(outcome.plan.aggregator).toEqual({ ref: 'sum@1', config: {} })
     expect(outcome.plan.planHash).toMatch(/^[0-9a-f]{64}$/)
   })

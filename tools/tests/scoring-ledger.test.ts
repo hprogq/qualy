@@ -64,9 +64,30 @@ describe('the line between evaluating and accounting', () => {
       '@qualy/plugin-assessment-formula',
       '@qualy/sandbox-engine',
       '@qualy/formula-compiler',
+      // the author SDK too, not only the plugin around it: what a score may
+      // be is the platform's rule and lives in the value layer, so core
+      // depending on the formula library to learn it points the arrow the
+      // wrong way round - the formula plugin depends on assessment, never
+      // the other way
+      '@qualy/formula',
       'quickjs-emscripten',
     ]) {
       expect(deps, banned).not.toContain(banned)
     }
+  })
+
+  it('gives the platform amount one meaning, spelled in two places', async () => {
+    // The author SDK builds it with its own builder because a formula's
+    // artifact bundles that module and must not carry a constant only hosts
+    // read; the value layer declares it because assessment must not depend
+    // on a formula library to learn what a score is. Two spellings, and
+    // this is what stops them becoming two rules.
+    // by path: this gate belongs to the repository, which declares neither
+    // package as a dependency of its own
+    const [sdk, platform] = await Promise.all([
+      import('../../packages/core/formula/src/schema.ts'),
+      import('../../packages/core/value-schema/src/score.ts'),
+    ])
+    expect(sdk.SCORE_AMOUNT_SCHEMA).toEqual(platform.SCORE_AMOUNT_SCHEMA)
   })
 })

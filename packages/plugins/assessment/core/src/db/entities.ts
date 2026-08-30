@@ -1060,6 +1060,12 @@ export const EntryRecognition = defineEntity({
       name: 'chk_entry_recognitions_source',
       expression: `source IN ('review', 'record', 'import', 'system')`,
     },
+    {
+      // an object of recognised facts, never a list or a bare number that
+      // would later read as one
+      name: 'chk_entry_recognitions_values_object',
+      expression: `jsonb_typeof(values) = 'object'`,
+    },
     // a determination made by review names the round and the word that made
     // it; one made any other way names neither, rather than half a story
     {
@@ -1080,6 +1086,20 @@ export const EntryRecognition = defineEntity({
       name: 'uq_entry_recognitions_tenant_entry_id',
       expression:
         'create unique index uq_entry_recognitions_tenant_entry_id on entry_recognitions (tenant_id, entry_id, id)',
+    },
+    {
+      // one word, one determination: the same approval cannot be the origin
+      // of two formal recognitions
+      name: 'uq_entry_recognitions_review_event',
+      expression:
+        'create unique index uq_entry_recognitions_review_event on entry_recognitions (tenant_id, review_event_id) where review_event_id is not null',
+    },
+    {
+      // and the trail is a line, not a tree: one determination has at most
+      // one successor
+      name: 'uq_entry_recognitions_supersedes',
+      expression:
+        'create unique index uq_entry_recognitions_supersedes on entry_recognitions (tenant_id, supersedes_id) where supersedes_id is not null',
     },
     {
       name: 'idx_entry_recognitions_tenant_entry_created',
@@ -1358,6 +1378,12 @@ export const ReviewPanel = defineEntity({
     // a decision anybody could act on, so the panel votes on one text
     recognitionPayload: p.json<Record<string, unknown>>().nullable(),
     recognitionHash: p.string().length(64).nullable(),
+    // why the frozen proposal differs from what the sitting inherited. Kept
+    // beside the proposal rather than on a ballot: the sitting votes on one
+    // text and one explanation, and the word that ends the round carries
+    // both. Without it a panel's correction reaches the record as a changed
+    // determination nobody explained.
+    recognitionReason: p.text().nullable(),
     recognitionLockedAt: p.datetime().nullable(),
     createdAt: p.datetime().defaultRaw('now()'),
     closedAt: p.datetime().nullable(),
@@ -1729,14 +1755,19 @@ export const compositeForeignKeys = [
     foreign key (tenant_id, entry_id, item_id) references entries (tenant_id, id, item_id) on delete cascade`,
   `alter table entry_recognitions add constraint fk_entry_recognitions_item_revision
     foreign key (tenant_id, item_id, item_revision_id) references assessment_item_revisions (tenant_id, item_id, id) on delete restrict`,
-  // superseding, and the round it was said in: nulled rather than blocked,
-  // because losing the link is not a reason to refuse deleting a round
+  // superseding is nulled rather than blocked: losing the link back is not
+  // a reason to refuse deleting an older determination
   `alter table entry_recognitions add constraint fk_entry_recognitions_supersedes
     foreign key (tenant_id, entry_id, supersedes_id) references entry_recognitions (tenant_id, entry_id, id) on delete set null (supersedes_id)`,
+  // The round and the word are pinned, not nulled. The shape check already
+  // says a review determination names both, so nulling them would make the
+  // delete fail on the check instead - two constraints asking for opposite
+  // things. Provenance is what this row is for; a whole batch or tenant
+  // going away still takes the chain with it through their own cascades.
   `alter table entry_recognitions add constraint fk_entry_recognitions_review_instance
-    foreign key (tenant_id, entry_id, review_instance_id) references review_instances (tenant_id, entry_id, id) on delete set null (review_instance_id)`,
+    foreign key (tenant_id, entry_id, review_instance_id) references review_instances (tenant_id, entry_id, id) on delete restrict`,
   `alter table entry_recognitions add constraint fk_entry_recognitions_review_event
-    foreign key (tenant_id, review_instance_id, review_event_id) references review_events (tenant_id, review_instance_id, id) on delete set null (review_event_id)`,
+    foreign key (tenant_id, review_instance_id, review_event_id) references review_events (tenant_id, review_instance_id, id) on delete restrict`,
   // the pointer, held to this entry's own determinations
   `alter table entries add constraint fk_entries_current_recognition
     foreign key (tenant_id, id, current_recognition_id) references entry_recognitions (tenant_id, entry_id, id) on delete set null (current_recognition_id)`,

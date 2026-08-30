@@ -11066,3 +11066,61 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 
 **验收**:`pnpm typecheck` 零错零建议;`pnpm test` 1158 passed / 17 skipped;
 `pnpm test:browser` 252;`pnpm build` 通过。
+
+### 5.2 边界收口第二轮(本笔)
+
+第二、三轮横向复审(迁移历史 / 并发一致性 / 数据库约束 / persisted plan)的结果。分两类:
+上一轮遗留的现有缺陷,以及 5.1 修复本身暴露出的新问题。
+
+**继承链按「这一轮为什么存在」判定,不再按「上次被认定成什么」**。5.1 让 seed 无条件回落到
+`Entry.currentRecognition`,治好了上诉却治坏了普通重报:学生被退回、补交新材料、重新提交,
+新一轮的第一位审核人会拿到针对旧材料做出的认定。现在读 `origin`——同轮上一环节 →
+上诉轮取被申诉轮的认定 → 重排轮沿 supersedes 链回溯被替换轮的认定 → reopen 取当前有效认定 →
+其余(initial)一律回到本次填报的证据。三条路径各有门禁,去掉判定即红。
+
+**其余按审计逐条**:
+
+- `fixed@1` 的配置文法接受 `03.00`,而冻结的输出 schema 按 qualy-decimal 拒绝——存得下、
+  算不出,报错落在成绩页。文法改为直接用值层的 decimal 语义与 score amount 边界。
+- 自动通过(`mode:'none'`)覆盖一次拒绝后,`current_review_instance_id` 仍指向旧轮,
+  于是一个已被覆盖的拒绝重新获得可申诉资格。与状态同一条 UPDATE 清空。
+- **聚合器的答案按 `entryId` 归位,不再按数组下标**。契约本来就是逐条署名的;按位置读,
+  一个自己排序过输出的聚合器会把决定发给别的申报——总分可能还对,每一行的出处全错。
+  纯 ledger 内校验严格双射(数量、重复、外来 id),不成立即抛。
+- **ledger 的类型不再靠 `as` 与 `?? 0n` 维持**。`ScoreInputEntry` 按 counted/refused/unscored
+  三态、`ScoreInputItem` 按 scored/granted/unpublished/withdrawn 四态判别;「通过但没有金额」
+  与「派生题没有金额」在类型层不可构造,不再是一个静默的 0.00。
+- **planHash 变成真正的语义身份**:calculator 在 compile 时同时给出 canonical 执行配置
+  (`fixed@1` 把 `3.00` 归一为 `3`),plan 存执行形、题目版本存管理员写的原文。核心不为
+  decimal 开特例——它不可能懂每种 calculator 的配置语义,所以由 driver 自己说。
+- **persisted plan 有了唯一的 fail-closed 读法**:`readScoringPlan` 校验结构、版本恰为 1、
+  并用同一个函数重算 planHash 比对。滚动升级期旧进程读到新版本计划会当场拒绝,而不是
+  按 v1 的理解照跑;不可读是运维故障,调用方 `orDie`,不混进业务错误通道。
+- **assessment core 不再依赖 `@qualy/formula`**:score amount 移到 `@qualy/value-schema/score`。
+  刻意走子路径不进 barrel——沙箱只解析包根,任何进 barrel 的模块都会落进每一份公式产物
+  (实测 +383 字节/产物)。SDK 侧仍用自己的 builder 拼同一个 schema,两处相等由门禁钉住;
+  架构门禁的禁用清单补上 `@qualy/formula`,不再是文字比实际严。
+- **配置键不再踩 JS 原型**:compiler 的三张表改 `Object.create(null)`,读取与存在性判定
+  一律 `Object.hasOwn`;`__proto__` / `constructor` / `toString` 当普通名字处理,有门禁。
+- **compiler 自己校验 driver 配置**,不再依赖调用方碰巧先验过——boot sweep 是直接调进来的,
+  「两条路径同一份证明」必须对这个函数单独成立。
+- **panel 的认定理由不再丢失**:冻结提案时连同 reason 一起冻结,全票通过写终局事件时带出。
+  否则「为什么从国家级改判省级」在 panel 路径上永久消失。
+- **成绩读取是一个一致快照**:四条 SQL 进 `repeatable read, read only` 事务,且按已读到的
+  确切 revision id 取计划,不再重新追 current 指针——原先可以读出「旧分组 + 新分值」这种
+  数据库从未存在过的组合。事务在求值之前结束:计算器可能跑很久,不该占着连接。
+  数据层因此新增 `transaction(effect, {isolation, readOnly})`(触发事由即此)。
+- **迁移 fix-forward**(`20260830140000`,不改已应用的那条):
+  ①provenance 按「最后生效的那次批准」判定,而不是「历史上有没有审核批准过」;
+  ②补全历史批准的认定——原先只为「当前 approved」建行,一条五月批准、六月申诉、今天仍在
+  审的申报在事件里有批准、在认定表里什么都没有;现在按时间成链,指针指向最后一条
+  (状态不是 approved 不代表指针必须为空,scorer 按状态计不计分);
+  ③迁移时已开庭的 panel 补上冻结提案与每张已投票的 hash;
+  ④review 来源的 FK 由 `SET NULL` 改 `RESTRICT`——它与 shape check 互相矛盾,删除会先撞
+  check 而不是任一方的本意;⑤补 `(tenant, review_event_id)` 与 `(tenant, supersedes_id)`
+  唯一索引(一句批准一条认定,认定链是线不是树)与 `values` 的 jsonb object check。
+  升级测试建旧库形态跑迁移逐条断言。
+
+**留给 Phase 6**(审计已明确不提前做):行政记录真正填写认定、首次填写不算「修改」、
+panel 的 proposal 与 determination 分离、schema-aware 的值 canonicalization(`3.0` 与 `3.00`
+的认定 hash)、review seed 用 projected evidence、行政记录的 abandon/appeal 归属。

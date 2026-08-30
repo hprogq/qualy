@@ -352,6 +352,39 @@ export const revisionOf = (tenantId: string, revisionId: string) =>
     )
     .pipe(Effect.map((row) => (row ? toRevision(row as Record<string, unknown>) : null)))
 
+/**
+ * Revisions by their own ids.
+ *
+ * For a reader that has already read which revision each question names:
+ * chasing the pointer a second time answers from a later moment than the
+ * question came from, which is how a report ends up mixing two of them.
+ */
+export const revisionsByIdOf = (tenantId: string, revisionIds: readonly string[]) =>
+  revisionIds.length === 0
+    ? Effect.succeed(new Map<string, ItemRevisionRow>())
+    : db
+        .query((k) =>
+          k
+            .selectFrom('AssessmentItemRevision')
+            .select(revisionColumns)
+            .select(['itemId'])
+            .select([epoch('created_at').as('createdMs')])
+            .where('tenantId', '=', tenantId)
+            .where('id', 'in', [...revisionIds])
+            .execute(),
+        )
+        .pipe(
+          Effect.map(
+            (rows) =>
+              new Map(
+                rows.map((row) => [
+                  String((row as Record<string, unknown>)['id']),
+                  toRevision(row as Record<string, unknown>),
+                ]),
+              ),
+          ),
+        )
+
 export const revisionsOf = (tenantId: string, itemIds: readonly string[]) =>
   itemIds.length === 0
     ? Effect.succeed(new Map<string, ItemRevisionRow>())

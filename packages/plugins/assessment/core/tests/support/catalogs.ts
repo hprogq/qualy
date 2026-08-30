@@ -98,8 +98,9 @@ export const gradedTest: CalculatorDriver = {
   kind: 'calculator',
   ref: 'graded-test@1',
   configSchema: Schema.Struct({}),
-  contract: () =>
+  compile: (config) =>
     Effect.succeed({
+      config,
       inputSchema: normalizeInputSchema({
         type: 'object',
         properties: { level: LEVEL },

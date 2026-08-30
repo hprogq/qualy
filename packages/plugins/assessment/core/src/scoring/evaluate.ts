@@ -68,12 +68,20 @@ const converted = (assignment: AssignmentPlan, value: unknown): unknown => {
  * converter the plan recorded.
  */
 const inputFor = (plan: ScoringPlan, recognition: Readonly<Record<string, unknown>>) => {
-  const input: Record<string, unknown> = {}
+  // parameter names come from a calculator contract and recognition ids from
+  // a stored plan: a null prototype so neither can reach `constructor` or
+  // assign through `__proto__` on the way into the arithmetic
+  const input: Record<string, unknown> = Object.create(null)
   for (const [parameter, binding] of Object.entries(plan.parameters)) {
     input[parameter] =
       binding.kind === 'constant'
         ? binding.value
-        : converted(binding.assignment, recognition[binding.recognitionId])
+        : converted(
+            binding.assignment,
+            Object.hasOwn(recognition, binding.recognitionId)
+              ? recognition[binding.recognitionId]
+              : undefined,
+          )
   }
   return input
 }

@@ -1,4 +1,4 @@
-import type { AggregatorDriver, CalculatorDriver } from '../plugin.ts'
+import type { AggregatedEntry, AggregatorDriver, CalculatorDriver } from '../plugin.ts'
 import { formatAmount, quantizeAmount, scaledAmount } from './builtins.ts'
 
 // The one scorer (§8.1). Everything that shows a number - the provisional
@@ -21,21 +21,46 @@ export interface ScoreInputGroup {
   readonly sortOrder: number
 }
 
-export interface ScoreInputItem {
+interface ScoreInputItemBase {
   readonly id: string
   readonly title: string
   readonly scoreGroupId: string
   readonly sortOrder: number
-  readonly status: string
   readonly createdAt: number
   /** which arithmetic answered, for the line's provenance - never called here */
   readonly calculatorRef: string
   readonly aggregator: { readonly ref: string; readonly config: unknown }
-  /** nobody files anything: the amount is the round's own rule (§32.65) */
-  readonly derived?: boolean
-  /** a derived question's amount, evaluated upstream like every other */
-  readonly derivedAmount?: bigint
 }
+
+/**
+ * One question, as the account sees it.
+ *
+ * The three arms are what the account does with it, not what its lifecycle
+ * column says. A question being scored is handed the amounts it needs and
+ * cannot be constructed without them - a derived question with no evaluated
+ * amount is not a zero, it is a collection that lost one, and the difference
+ * has to be visible before a student's total quietly drops.
+ */
+export type ScoreInputItem = ScoreInputItemBase &
+  (
+    | {
+        /** published, and scored from the entries filed against it */
+        readonly standing: 'scored'
+      }
+    | {
+        /** published, granted to everyone on the roster: nobody files it */
+        readonly standing: 'granted'
+        readonly derivedAmount: bigint
+      }
+    | {
+        /** never published: absent from the account entirely */
+        readonly standing: 'unpublished'
+      }
+    | {
+        /** withdrawn from scoring: stated at zero where there is history */
+        readonly standing: 'withdrawn'
+      }
+  )
 
 interface ScoreInputEntryBase {
   readonly id: string
@@ -57,7 +82,8 @@ interface ScoreInputEntryBase {
  */
 export type ScoreInputEntry =
   | (ScoreInputEntryBase & {
-      readonly status: 'approved'
+      /** approved, under a question still scored: it arrives with an amount */
+      readonly standing: 'counted'
       /** what this entry contributes, scaled by 1e4, from the evaluator */
       readonly amount: bigint
       /**
@@ -71,7 +97,15 @@ export type ScoreInputEntry =
       readonly recognitionId: string
     })
   | (ScoreInputEntryBase & {
-      readonly status: 'draft' | 'in_review' | 'needs_revision' | 'rejected' | 'voided'
+      /** formally submitted and formally refused: in the account, at zero */
+      readonly standing: 'refused'
+    })
+  | (ScoreInputEntryBase & {
+      /**
+       * Filed but undecided, walked away from, or approved under a question
+       * that is no longer scored. No line, and no amount to have lost.
+       */
+      readonly standing: 'unscored'
     })
 
 /** the effective facts one participant is scored from, amounts already evaluated */
@@ -156,6 +190,41 @@ const resolve = <T extends { kind: string }>(
   return driver
 }
 
+/**
+ * Match an aggregator's decisions back to the claims they were made about.
+ *
+ * The contract is one decision per entry, named by `entryId`, so anything
+ * else is a broken aggregator rather than a shape to interpret: a missing
+ * claim would vanish from the account, a repeated one would be counted
+ * twice, and an unknown one has no claim to belong to. Thrown, not logged -
+ * a participant's total computed from decisions nobody can attribute is not
+ * a total worth printing.
+ */
+const bijection = <T extends { entry: { id: string } }>(
+  itemId: string,
+  approved: readonly T[],
+  said: readonly AggregatedEntry[],
+): readonly (T & { said: AggregatedEntry })[] => {
+  const wrong = (why: string): never => {
+    throw new Error(`scoring aggregator for item ${itemId} ${why}`)
+  }
+  if (said.length !== approved.length) {
+    wrong(`answered for ${said.length} entries of ${approved.length}`)
+  }
+  const decisions = new Map<string, AggregatedEntry>()
+  for (const one of said) {
+    if (decisions.has(one.entryId)) wrong(`answered twice for entry ${one.entryId}`)
+    decisions.set(one.entryId, one)
+  }
+  return approved.map((row) => {
+    const decision = decisions.get(row.entry.id)
+    // cardinality matched and the ids are unique, so a missing one here is
+    // an id the aggregator invented
+    if (decision === undefined) wrong(`did not answer for entry ${row.entry.id}`)
+    return { ...row, said: decision! }
+  })
+}
+
 export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): Breakdown => {
   const groups = [...input.groups].sort(byGroup)
   const items = [...input.items].sort(byItem)
@@ -209,8 +278,8 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
       const entries = entriesByItem.get(item.id) ?? []
       // a question never published was never asked: it is absent from the
       // account entirely, not present at zero
-      if (item.status === 'draft') continue
-      if (item.status !== 'active') {
+      if (item.standing === 'unpublished') continue
+      if (item.standing === 'withdrawn') {
         // the question was withdrawn from scoring; whoever has history on
         // it sees that stated rather than silently missing
         if (entries.length > 0) {
@@ -226,8 +295,8 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
       }
       // a derived question grants its amount to everybody on the roster:
       // there is nothing to file, nothing to review, and the line says so
-      if (item.derived === true) {
-        const amount = quantizeAmount(item.derivedAmount ?? 0n)
+      if (item.standing === 'granted') {
+        const amount = quantizeAmount(item.derivedAmount)
         lines.push({
           lineId: `derived:${item.id}`,
           kind: 'derived',
@@ -244,11 +313,11 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
         'aggregator',
         item.aggregator.ref,
       )
-      const approved: { entry: ScoreInputEntry; amount: bigint }[] = []
+      const approved: { entry: ScoreInputEntry; amount: bigint; recognitionId: string }[] = []
       for (const entry of entries) {
-        if (entry.status === 'approved') {
-          approved.push({ entry, amount: entry.amount })
-        } else if (entry.status === 'rejected') {
+        if (entry.standing === 'counted') {
+          approved.push({ entry, amount: entry.amount, recognitionId: entry.recognitionId })
+        } else if (entry.standing === 'refused') {
           // it was formally submitted and formally refused: the refusal is
           // part of the account, at zero, rather than an absence
           lines.push({
@@ -279,21 +348,25 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
       // lines of 0.335 read as three times 0.34 above a subtotal of 1.02.
       // Adding the fold's own total instead would print a subtotal nobody
       // can reach by adding the lines above it.
-      for (const [index, said] of folded.entries.entries()) {
-        const { entry } = approved[index]!
-        const amount = quantizeAmount(said.effectiveAmount)
+      // An aggregator answers per entry and says so: every line below is
+      // matched by the id the aggregator returned, never by where it sat in
+      // the array. A rule that sorts its own output - "the highest office
+      // first" is a natural way to write one - would otherwise have its
+      // decisions handed to the wrong claims, and the total would still add
+      // up while every line's provenance was a lie.
+      const said = bijection(item.id, approved, folded.entries)
+      for (const { entry, recognitionId, said: decision } of said) {
+        const amount = quantizeAmount(decision.effectiveAmount)
         lines.push({
           lineId: `entry:${entry.id}`,
-          kind: said.included ? 'entry' : 'entry-not-counted',
+          kind: decision.included ? 'entry' : 'entry-not-counted',
           label: item.title,
           value: formatAmount(amount),
           itemId: item.id,
           provenance: {
             entryId: entry.id,
             ...(entry.revisionId !== null ? { entryRevisionId: entry.revisionId } : {}),
-            ...(entry.status === 'approved'
-              ? { entryRecognitionId: entry.recognitionId }
-              : {}),
+            entryRecognitionId: recognitionId,
             calculatorRef: item.calculatorRef,
           },
         })
