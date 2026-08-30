@@ -23,6 +23,8 @@ import {
   compileScoringPlan,
   readScoringPlan,
   recognitionSourceOf,
+  type PlanIssue,
+  type ScoringPlan,
 } from '../scoring/plan.ts'
 import { judgeRecognition, recognitionFormFields } from '../scoring/recognition.ts'
 import { policyModeOf } from '../review/chain.ts'
@@ -426,12 +428,46 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
    * being offered to the new one, so a deletion or a reordering is the no-op
    * it actually is; only what still fails is work this change would strand.
    */
+  /**
+   * The candidate configuration's plan, compiled exactly once per save.
+   *
+   * With a service-backed calculator, compiling is reading runtime facts;
+   * doing it twice in one save is reading them at two moments that may
+   * disagree about what was frozen. The impact trial and the appended
+   * revision are both fed THIS result.
+   */
+  const compiledCandidate = (input: {
+    tenantId: string
+    item: ItemRow
+    materialRange: MaterialRange
+    config: ItemConfigInput
+  }) =>
+    Effect.gen(function* () {
+      const runtime = yield* ScoringRuntimeCatalog
+      return yield* compileScoringPlan({
+        definitions: { calculators: catalogs.calculators, aggregators: catalogs.aggregators },
+        compile: runtime.compile,
+        host: { tenantId: input.tenantId, batchId: input.item.batchId },
+        itemType: deps.catalogs.itemTypes.get(input.item.itemType),
+        formConfig: input.config.formConfig,
+        scoringConfig: input.config.scoringConfig,
+        batch: { materialRange: input.materialRange },
+        recognitionSource: recognitionSourceOf({
+          interaction: deps.catalogs.itemTypes.get(input.item.itemType)?.interaction,
+          entrySource: input.config.entrySource,
+          reviewMode: policyModeOf(input.config.reviewPolicy),
+        }),
+      })
+    })
+
   const impactUnder = (input: {
     tenantId: string
     item: ItemRow
     current: ItemRevisionRow | null
     materialRange: MaterialRange
     config: ItemConfigInput
+    /** the one compilation of this save, shared with appendRevision */
+    nextPlan: { readonly plan: ScoringPlan } | { readonly issues: readonly PlanIssue[] }
   }) =>
     Effect.gen(function* () {
       const driver = catalogs.itemTypes.get(input.item.itemType) as ItemTypeDriver | undefined
@@ -462,21 +498,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
       // until somebody opened a results page. The determinations a sitting
       // has already frozen count too: they are what an open round would
       // settle on if it concluded.
-      const runtime = yield* ScoringRuntimeCatalog
-      const nextPlan = yield* compileScoringPlan({
-        definitions: { calculators: catalogs.calculators, aggregators: catalogs.aggregators },
-        compile: runtime.compile,
-        host: { tenantId: input.tenantId, batchId: input.item.batchId },
-        itemType: driver,
-        formConfig: input.config.formConfig,
-        scoringConfig: input.config.scoringConfig,
-        batch: { materialRange: input.materialRange },
-        recognitionSource: recognitionSourceOf({
-          interaction: driver?.interaction,
-          entrySource: input.config.entrySource,
-          reviewMode: policyModeOf(input.config.reviewPolicy),
-        }),
-      })
+      const nextPlan = input.nextPlan
       const stranded: string[] = []
       if ('plan' in nextPlan) {
         for (const row of live) {
@@ -804,6 +826,8 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     current: ItemRevisionRow | null
     materialRange: MaterialRange
     config: ItemConfigInput
+    /** the one compilation of this save; never recompiled here */
+    compiled: { readonly plan: ScoringPlan } | { readonly issues: readonly PlanIssue[] }
     actorId: string
     reason: string | null
   }) =>
@@ -818,24 +842,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         return { revisionId: input.current.id, changed: false as const }
       }
 
-      // the arithmetic is compiled once, here, and frozen onto the revision:
-      // what an entry gets scored by is then a stored fact rather than a
-      // decision the scorer re-derives every time it opens the account
-      const runtime = yield* ScoringRuntimeCatalog
-      const compiled = yield* compileScoringPlan({
-        definitions: { calculators: catalogs.calculators, aggregators: catalogs.aggregators },
-        compile: runtime.compile,
-        host: { tenantId: input.tenantId, batchId: input.item.batchId },
-        itemType: deps.catalogs.itemTypes.get(input.item.itemType),
-        formConfig: input.config.formConfig,
-        scoringConfig: input.config.scoringConfig,
-        batch: { materialRange: input.materialRange },
-        recognitionSource: recognitionSourceOf({
-          interaction: deps.catalogs.itemTypes.get(input.item.itemType)?.interaction,
-          entrySource: input.config.entrySource,
-          reviewMode: policyModeOf(input.config.reviewPolicy),
-        }),
-      })
+      // the arithmetic was compiled once, by the caller, and is frozen onto
+      // the revision here: what an entry gets scored by is then a stored
+      // fact rather than a decision the scorer re-derives per reading
+      const compiled = input.compiled
       if ('issues' in compiled) return yield* new ItemConfigInvalid({ issues: compiled.issues })
 
       const revisionNo = yield* nextRevisionNo(input.tenantId, input.item.id)
@@ -924,12 +934,19 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               sortOrder: input.sortOrder ?? 0,
             })
             const item = (yield* itemOf(tenantId, itemId))!
+            const materialRange = deps.parseRange(String(batch!.materialRange))
             const appended = yield* appendRevision({
               tenantId,
               item,
               current: null,
-              materialRange: deps.parseRange(String(batch!.materialRange)),
+              materialRange,
               config: input.config,
+              compiled: yield* compiledCandidate({
+                tenantId,
+                item,
+                materialRange,
+                config: input.config,
+              }),
               actorId: as.userId,
               reason: null,
             })
@@ -1127,12 +1144,14 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               const batch = yield* oneBatch(tenantId, item.batchId)
               const materialRange = deps.parseRange(String(batch!.materialRange))
               const config = input.config
+              const nextPlan = yield* compiledCandidate({ tenantId, item, materialRange, config })
               const counted = yield* impactUnder({
                 tenantId,
                 item,
                 current,
                 materialRange,
                 config,
+                nextPlan,
               })
               // A determination somebody already made is not something a
               // dialog can offer to handle. Scoring reads the question's
@@ -1170,6 +1189,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 current,
                 materialRange,
                 config,
+                compiled: nextPlan,
                 actorId: as.userId,
                 reason: input.reason ?? null,
               })

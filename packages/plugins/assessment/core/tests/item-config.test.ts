@@ -30,7 +30,13 @@ import type { Orm } from '@qualy/plugin-database/server'
 import { entities } from '../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
-import { catalogLayers, scoringRuntimeLayer, storageForTest } from './support/catalogs.ts'
+import {
+  catalogLayers,
+  scoringRuntimeLayer,
+  storageForTest,
+  testRuntime,
+} from './support/catalogs.ts'
+import { builtinCalculators } from '../src/scoring/builtins.ts'
 import { ScoringRuntimeCatalog } from '../src/plugin.ts'
 
 // The configuration gauntlet, end to end: a question is created with its
@@ -277,6 +283,67 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(first.form_config).toEqual({ required: ['certificate'] })
     expect(result.listed.items).toHaveLength(1)
     expect(result.listed.capabilities.canManage).toBe(true)
+  })
+
+  it('compiles a candidate configuration exactly once per save', async () => {
+    // With a service-backed calculator, a second compilation is a second
+    // read of runtime facts - two moments that may disagree about what was
+    // frozen. The candidate is compiled once; the impact trial and the
+    // appended revision are both fed THAT plan.
+    const calls: string[] = []
+    const real = testRuntime([...builtinCalculators])
+    const counting = ScoringRuntimeCatalog.of({
+      compile: (ref, config, context) => {
+        calls.push(ref)
+        return real.compile(ref, config, context)
+      },
+      verify: real.verify,
+      prepare: real.prepare,
+    })
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-compile-once')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const created = yield* assessment
+            .createItem(
+              f.tenant,
+              batch.id,
+              {
+                itemType: 'evidence',
+                title: '志愿服务',
+                scoreGroupId: groupId,
+                maxEntries: 1,
+                config: studentConfig(),
+              },
+              f.principal,
+            )
+            .pipe(Effect.provideService(ScoringRuntimeCatalog, counting))
+          const afterCreate = calls.length
+          yield* assessment
+            .updateItem(
+              f.tenant,
+              created.id,
+              {
+                config: studentConfig({
+                  scoringConfig: {
+                    calculator: { ref: 'fixed@1', config: { value: '4.00' } },
+                    aggregator: { ref: 'sum@1', config: {} },
+                  },
+                }),
+                reason: '调整分值',
+              },
+              f.principal,
+            )
+            .pipe(Effect.provideService(ScoringRuntimeCatalog, counting))
+          return { afterCreate, total: calls.length }
+        }),
+      ),
+    )
+    expect(result.afterCreate).toBe(1)
+    expect(result.total - result.afterCreate).toBe(1)
   })
 
   it('refuses a configuration citing machinery nobody installed', async () => {
