@@ -17,9 +17,21 @@ export const RuntimeCapabilities = Schema.Struct({
   runtimeBuildId: Schema.String,
   /** minted at process start; distinguishes one serving instance from the next */
   runtimeInstanceId: Schema.String,
+  /** raw resource ceilings: the most a limits object may ask the engine for */
   maxArtifactBytes: Schema.Number,
   maxArgumentsBytes: Schema.Number,
   maxOutputBytes: Schema.Number,
+  /**
+   * Transport ceilings: one NDJSON frame, and what a message body may
+   * encode to inside it. The raw resource maxima above are NOT a promise
+   * that a payload of that size is transportable - actual admissibility is
+   * the authoritative encoded-envelope gate both roles run, because a
+   * request is artifact + arguments + hashes + limits + envelope and
+   * escaping density is the payload's own affair. Optional on the wire so
+   * a newer reader stays able to decode an older runtime's answer.
+   */
+  maxFrameBytes: Schema.optional(Schema.Number),
+  maxEnvelopeBytes: Schema.optional(Schema.Number),
   defaultSoftDeadlineMs: Schema.Number,
   defaultHardDeadlineMs: Schema.Number,
 })

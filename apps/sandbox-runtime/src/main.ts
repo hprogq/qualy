@@ -28,6 +28,7 @@ import {
   SANDBOX_RPC_MAX_FRAME_BYTES,
 } from '@qualy/sandbox-rpc'
 import { invoke } from './invoke.ts'
+import { runtimeCapabilities } from './capabilities.ts'
 
 const socketPath =
   process.env.QUALY_SANDBOX_RUNTIME_SOCKET ?? '.qualy/run/sandbox/runtime/runtime.sock'
@@ -47,18 +48,7 @@ const handlers = RuntimeSandboxRpcs.toLayer(
     // minted once per process: the identity every answer carries, so a
     // caller can tell this serving instance from the one before it
     const runtimeInstanceId = randomUUID()
-    const capabilities = {
-      rpcApiVersion: RPC_API_VERSION,
-      sandboxAbiVersion: SANDBOX_ABI_VERSION,
-      quickjsEngineVersion: engineIdentity(),
-      runtimeBuildId: runtimeBuildId(),
-      runtimeInstanceId,
-      maxArtifactBytes: LIMIT_CEILINGS.artifactBytes,
-      maxArgumentsBytes: LIMIT_CEILINGS.inputBytes,
-      maxOutputBytes: LIMIT_CEILINGS.outputBytes,
-      defaultSoftDeadlineMs: DEFAULT_LIMITS.softDeadlineMs,
-      defaultHardDeadlineMs: DEFAULT_LIMITS.hardDeadlineMs,
-    }
+    const capabilities = runtimeCapabilities(runtimeInstanceId)
     const identity = {
       engineVersion: capabilities.quickjsEngineVersion,
       runtimeBuildId: capabilities.runtimeBuildId,
