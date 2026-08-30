@@ -178,6 +178,8 @@ export interface ItemRevisionRow {
   entrySource: 'student' | 'administrative'
   formConfig: unknown
   scoringConfig: unknown
+  /** the compiled execution plan; null on revisions saved before it existed */
+  scoringPlan: unknown
   reviewPolicy: unknown
   displayConfig: unknown
   createdBy: string
@@ -316,6 +318,7 @@ const revisionColumns = [
   'entrySource',
   'formConfig',
   'scoringConfig',
+  'scoringPlan',
   'reviewPolicy',
   'displayConfig',
   'createdBy',
@@ -328,6 +331,7 @@ const toRevision = (row: Record<string, unknown>): ItemRevisionRow => ({
   entrySource: String(row['entrySource']) as ItemRevisionRow['entrySource'],
   formConfig: row['formConfig'],
   scoringConfig: row['scoringConfig'],
+  scoringPlan: row['scoringPlan'] ?? null,
   reviewPolicy: row['reviewPolicy'],
   displayConfig: row['displayConfig'],
   createdBy: String(row['createdBy']),
@@ -388,6 +392,7 @@ export const insertItemRevision = (input: {
   entrySource: 'student' | 'administrative'
   formConfig: unknown
   scoringConfig: unknown
+  scoringPlan: unknown
   reviewPolicy: unknown
   displayConfig: unknown
   createdBy: string
@@ -404,6 +409,7 @@ export const insertItemRevision = (input: {
           entrySource: input.entrySource,
           formConfig: jsonb(input.formConfig),
           scoringConfig: jsonb(input.scoringConfig),
+          scoringPlan: jsonb(input.scoringPlan),
           reviewPolicy: jsonb(input.reviewPolicy),
           displayConfig: jsonb(input.displayConfig),
           createdBy: input.createdBy,

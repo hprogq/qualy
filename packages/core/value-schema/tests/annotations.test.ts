@@ -169,3 +169,15 @@ describe('how a screen reads the words', () => {
     ).toEqual(['a'])
   })
 })
+
+describe('the canonical json primitive', () => {
+  it('is blind to key order and faithful to array order', async () => {
+    const { hashCanonicalJson, canonicalJson } = await import('@qualy/value-schema/hash')
+    expect(canonicalJson({ b: 1, a: { d: 2, c: 3 } })).toBe('{"a":{"c":3,"d":2},"b":1}')
+    expect(hashCanonicalJson({ b: 1, a: 2 })).toBe(hashCanonicalJson({ a: 2, b: 1 }))
+    expect(hashCanonicalJson([1, 2])).not.toBe(hashCanonicalJson([2, 1]))
+    expect(hashCanonicalJson({ a: undefined, b: 1 })).toBe(hashCanonicalJson({ b: 1 }))
+    expect(hashCanonicalJson(null)).toBe(hashCanonicalJson(null))
+    expect(hashCanonicalJson('x')).not.toBe(hashCanonicalJson(['x']))
+  })
+})

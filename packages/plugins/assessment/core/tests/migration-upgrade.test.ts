@@ -4,6 +4,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrator'
+import { Effect } from 'effect'
+import { builtinScoringDrivers } from '../src/scoring/builtins.ts'
+import { sweepScoringPlans } from '../src/scoring/backfill.ts'
 
 // The scope migration carries a data step - every batch's single scope node
 // moves into batch_scope_nodes before the columns drop - and replaying the
@@ -825,4 +828,126 @@ describe.runIf(postgresAvailable)('the drop-bind-permissions migration', () => {
       await db.dispose()
     }
   })
+})
+
+describe.runIf(postgresAvailable)('the scoring-plan column and its backfill', () => {
+  const PLAN = '20260830100000_item-scoring-plan.sql'
+
+  it('adds the column empty and fills it through the one compiler', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, PLAN))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-plan-upgrade-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file < PLAN) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('plan-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('plans', 'Plans') returning id`,
+      )
+      const orgType = await one(
+        `insert into org_types (tenant_id, name) values ($1, 'Class') returning id`,
+        [tenant],
+      )
+      const node = await one(
+        `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+         values ($1, $2, 'Class', 'plans', 0) returning id`,
+        [tenant, orgType],
+      )
+      const userType = await one(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'student', 'Student', 'unrestricted') returning id`,
+        [tenant],
+      )
+      const user = await one(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, 'Zhang San', $2, $3) returning id`,
+        [tenant, userType, node],
+      )
+      const batch = await one(
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, 'Old rounds', daterange('2026-03-01', '2026-09-01')) returning id`,
+        [tenant],
+      )
+      const group = await one(
+        `insert into score_groups (tenant_id, batch_id, name) values ($1, $2, '文体') returning id`,
+        [tenant, batch],
+      )
+      const item = await one(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id, status)
+         values ($1, $2, 'evidence', '献血', $3, 'active') returning id`,
+        [tenant, batch, group],
+      )
+      // a question saved the way every question was saved before plans
+      const revision = await one(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
+         values ($1, $2, 1, 'student', '{}',
+                 '{"calculator":{"ref":"fixed@1","config":{"value":"3.00"}},"aggregator":{"ref":"sum@1","config":{}}}',
+                 '{}', '{}', $3) returning id`,
+        [tenant, item, user],
+      )
+      // and one whose arithmetic no longer exists: it must not stop a boot
+      const broken = await one(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by)
+         values ($1, $2, 2, 'student', '{}',
+                 '{"calculator":{"ref":"vanished@1","config":{}},"aggregator":{"ref":"sum@1","config":{}}}',
+                 '{}', '{}', $3) returning id`,
+        [tenant, item, user],
+      )
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const planOf = async (id: string) =>
+        (
+          await db.row<{ scoring_plan: { calculator?: { ref: string }; planHash?: string } | null }>(
+            `select scoring_plan from assessment_item_revisions where id = $1`,
+            [id],
+          )
+        ).scoring_plan
+      // the migration alone only makes room
+      expect(await planOf(revision)).toBeNull()
+
+      const sweep = () =>
+        Effect.runPromise(
+          Effect.provide(
+            sweepScoringPlans({
+              itemTypes: new Map(),
+              calculators: new Map(
+                builtinScoringDrivers
+                  .filter((driver) => driver.kind === 'calculator')
+                  .map((driver) => [driver.ref, driver]),
+              ),
+              aggregators: new Map(
+                builtinScoringDrivers
+                  .filter((driver) => driver.kind === 'aggregator')
+                  .map((driver) => [driver.ref, driver]),
+              ),
+            }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+            db.services,
+          ),
+        )
+      await sweep()
+
+      const compiled = await planOf(revision)
+      expect(compiled?.calculator?.ref).toBe('fixed@1')
+      expect(compiled?.planHash).toMatch(/^[0-9a-f]{64}$/)
+      // a configuration nobody can compile is left alone and reported, not
+      // written as an empty plan that would score the question at nothing
+      expect(await planOf(broken)).toBeNull()
+
+      // running it again changes nothing: it only ever fills a null
+      await sweep()
+      expect((await planOf(revision))?.planHash).toBe(compiled?.planHash)
+    } finally {
+      await db.dispose()
+    }
+  }, 240_000)
 })

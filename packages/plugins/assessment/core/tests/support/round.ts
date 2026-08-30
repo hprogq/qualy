@@ -9,6 +9,7 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
+import { assembledLayer } from '@qualy/api-kit/assembled'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
@@ -81,6 +82,9 @@ const stack = (url: string) => {
     Layer.provideMerge(storage),
     Layer.provideMerge(services),
     Layer.provide(catalogLayers),
+    // the boot-hook registry the service writes its backfill into; the
+    // barrier that RUNS hooks is the host's, and these suites do not boot one
+    Layer.provide(assembledLayer),
   )
 }
 

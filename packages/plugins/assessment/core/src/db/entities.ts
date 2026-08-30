@@ -780,6 +780,13 @@ export const AssessmentItemRevision = defineEntity({
     entrySource: p.string().length(31),
     formConfig: p.json<Record<string, unknown>>(),
     scoringConfig: p.json<Record<string, unknown>>(),
+    // The compiled execution plan for this revision's arithmetic: server
+    // generated, never submitted, and never rewritten once written - what an
+    // entry was scored by has to be a fact, not a re-derivation. Nullable
+    // only for revisions that predate it, which the assembly's boot backfill
+    // compiles through the one compiler; the column tightens when every
+    // deployment has run it.
+    scoringPlan: p.json<Record<string, unknown>>().nullable(),
     reviewPolicy: p.json<Record<string, unknown>>(),
     displayConfig: p.json<Record<string, unknown>>(),
     createdBy: p.uuid(),

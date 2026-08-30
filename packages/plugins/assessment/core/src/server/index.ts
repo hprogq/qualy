@@ -2,10 +2,12 @@ import { Clock, Context, Effect, Layer, Result, Stream } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpServerResponse } from 'effect/unstable/http'
 import { Api } from '@qualy/api-kit/plugin'
+import { Assembled } from '@qualy/api-kit/assembled'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
+import { sweepScoringPlans } from '../scoring/backfill.ts'
 import { AssessmentLive } from '../live/service.ts'
 import { announce, type AssessmentLiveEvent } from '../live/events.ts'
 import { translateConstraints } from '@qualy/plugin-database/server/constraints'
@@ -3933,8 +3935,33 @@ export const make = Effect.fn('Assessment.make')(function* () {
 export const serviceLayer: Layer.Layer<
   Assessment,
   never,
-  Orm | Rbac | Audit | ItemTypeCatalog | ScoringCatalog | Storage
-> = Layer.effect(Assessment, make())
+  Orm | Rbac | Audit | ItemTypeCatalog | ScoringCatalog | Storage | Assembled
+> = Layer.effect(
+  Assessment,
+  Effect.gen(function* () {
+    const service = yield* make()
+    // Revisions written before item plans existed are compiled at the
+    // barrier, through the same compiler a save uses - before the port
+    // opens, so no request meets a revision whose arithmetic has not been
+    // compiled yet. It only ever fills a null: an existing plan is what some
+    // score was explained by.
+    const itemTypes = yield* ItemTypeCatalog
+    const scoring = yield* ScoringCatalog
+    const withDb = yield* withDatabase
+    const assembled = yield* Assembled
+    yield* assembled.register({
+      name: 'assessment/scoring-plans',
+      run: withDb(
+        sweepScoringPlans({
+          itemTypes,
+          calculators: scoring.calculators,
+          aggregators: scoring.aggregators,
+        }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+      ),
+    })
+    return service
+  }),
+)
 
 // --- api ---
 

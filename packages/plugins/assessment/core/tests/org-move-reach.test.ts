@@ -8,6 +8,7 @@ import {
   postgresAvailable,
   runSql,
 } from '@qualy/plugin-database/testkit'
+import { assembledLayer } from '@qualy/api-kit/assembled'
 import { uiLayer } from '@qualy/plugin-ui-registry/server/registry'
 import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
@@ -78,6 +79,8 @@ const stack = (url: string) => {
     Layer.provideMerge(services),
     Layer.provide(catalogLayers),
     Layer.provide(storageForTest().pipe(Layer.provide(services))),
+    // the boot-hook registry the service registers its backfill into
+    Layer.provide(assembledLayer),
   )
 }
 

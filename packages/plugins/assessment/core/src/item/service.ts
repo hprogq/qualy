@@ -18,6 +18,8 @@ import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
+import { compileScoringPlan } from '../scoring/plan.ts'
+import { policyModeOf } from '../review/chain.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
   cancelReviewInstance,
@@ -704,6 +706,20 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         return { revisionId: input.current.id, changed: false as const }
       }
 
+      // the arithmetic is compiled once, here, and frozen onto the revision:
+      // what an entry gets scored by is then a stored fact rather than a
+      // decision the scorer re-derives every time it opens the account
+      const compiled = yield* compileScoringPlan({
+        calculators: deps.catalogs.calculators,
+        aggregators: deps.catalogs.aggregators,
+        itemType: deps.catalogs.itemTypes.get(input.item.itemType),
+        formConfig: input.config.formConfig,
+        scoringConfig: input.config.scoringConfig,
+        batch: { materialRange: input.materialRange },
+        reviewMode: policyModeOf(input.config.reviewPolicy) === 'none' ? 'none' : 'reviewed',
+      })
+      if ('issues' in compiled) return yield* new ItemConfigInvalid({ issues: compiled.issues })
+
       const revisionNo = yield* nextRevisionNo(input.tenantId, input.item.id)
       const revisionId = yield* insertItemRevision({
         tenantId: input.tenantId,
@@ -712,6 +728,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         entrySource: input.config.entrySource,
         formConfig: input.config.formConfig,
         scoringConfig: input.config.scoringConfig,
+        scoringPlan: compiled.plan,
         reviewPolicy: input.config.reviewPolicy,
         displayConfig: input.config.displayConfig ?? {},
         createdBy: input.actorId,

@@ -1,5 +1,6 @@
 import { Context, Layer } from 'effect'
 import type { Effect, Schema } from 'effect'
+import type { AtomicSchema, NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
 
 // This domain's two faces in the descriptor model: what a plugin writes to
@@ -83,6 +84,16 @@ export interface ItemTypeDriver {
    */
   readonly projectPayload?: (fromConfig: unknown, toConfig: unknown, payload: unknown) => unknown
   readonly attachmentRefs: (config: unknown, payload: unknown) => readonly AttachmentRef[]
+  /**
+   * The fields of this question a scoring parameter may be bound to, as
+   * schemas - core learns `fieldId` and a shape, never what an evidence text
+   * field or a choice field is. A driver without one offers no bindable
+   * field, which is every driver in this phase.
+   */
+  readonly bindableFields?: (
+    config: unknown,
+    batch: BatchContext,
+  ) => readonly { readonly fieldId: string; readonly schema: AtomicSchema }[]
   /** who acts: students filing, staff working a task, or nobody (derived) */
   readonly interaction: 'entry' | 'task' | 'derived'
   /** the scoring references this kind of question defaults to */
@@ -104,24 +115,68 @@ export class ItemTypeCatalog extends Context.Service<
   ReadonlyMap<string, ItemTypeDriver>
 >()('@qualy/plugin-assessment/ItemTypeCatalog') {}
 
+export interface CalculatorContract {
+  /** the typed input this calculator needs, under this configuration */
+  readonly inputSchema: NormalizedInputSchema
+  /** what it answers with; a scoring item's must fit the platform amount */
+  readonly outputSchema: NormalizedAtomicSchema
+  /** the two schemas' semantic identity - annotations never move it */
+  readonly contractHash: string
+}
+
+/** the calculator could not say what it needs, under this configuration */
+export class CalculatorContractError extends Error {
+  readonly _tag = 'ASSESSMENT_CALCULATOR_CONTRACT_ERROR'
+  readonly reason: string
+  constructor(reason: string) {
+    super(`calculator contract unavailable: ${reason}`)
+    this.reason = reason
+  }
+}
+
+/** the calculator refused, or failed, on an input the host had already proven */
+export class CalculatorEvaluationError extends Error {
+  readonly _tag = 'ASSESSMENT_CALCULATOR_EVALUATION_ERROR'
+  readonly reason: string
+  constructor(reason: string) {
+    super(`calculator evaluation failed: ${reason}`)
+    this.reason = reason
+  }
+}
+
 /**
- * A named, versioned piece of scoring arithmetic.
+ * A calculator states its input contract, then evaluates an input built to
+ * that contract - it never reads an entry, a payload or a database.
+ *
+ * `R` is a type parameter rather than a promise of `never`: the built-in
+ * arithmetic needs nothing, but a calculator backed by a stored function has
+ * to reach a library and a sandbox. The seam for that already exists and is
+ * proven by the kernel suite ("a contribution whose behaviour needs a running
+ * service"): a driver whose methods require services is contributed to an
+ * `afterServices` channel, whose provider compiles ABOVE the service graph
+ * and discharges the requirement there. What must never appear instead is a
+ * module-global handle filled in after the fact.
  *
  * The reference format is `name@version` because the promise is replay: a
  * frozen run cites the exact arithmetic it used, and a change that would
- * alter any result is a new version beside the old one, not an edit.
- *
- * The arithmetic is pure and exact: amounts are integers scaled by 1e4,
- * never floats, and a driver computes the same answer for the same input
- * forever - a frozen run must be replayable to the digit.
+ * alter any result is a new version beside the old one, not an edit. Amounts
+ * cross this boundary as exact decimal strings and become 1e-4 integers on
+ * the host's side; floats never appear.
  */
-export interface CalculatorDriver {
+export interface CalculatorDriver<R = never> {
   readonly kind: 'calculator'
   readonly ref: string
   /** validates the config an item revision stores under this reference */
   readonly configSchema: Schema.Top
-  /** what one approved entry contributes, scaled by 1e4 */
-  readonly amountOf: (config: unknown, fact: { readonly payload: unknown }) => bigint
+  /** what typed input this configuration needs, and what it answers with */
+  readonly contract: (
+    config: unknown,
+  ) => Effect.Effect<CalculatorContract, CalculatorContractError, R>
+  /** the amount, as an exact decimal string, for one already-validated input */
+  readonly evaluate: (
+    config: unknown,
+    input: Record<string, unknown>,
+  ) => Effect.Effect<string, CalculatorEvaluationError, R>
 }
 
 export interface AggregatorDriver {

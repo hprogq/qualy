@@ -28,22 +28,44 @@ export interface ScoreInputItem {
   readonly sortOrder: number
   readonly status: string
   readonly createdAt: number
-  readonly calculator: { readonly ref: string; readonly config: unknown }
+  /** which arithmetic answered, for the line's provenance - never called here */
+  readonly calculatorRef: string
   readonly aggregator: { readonly ref: string; readonly config: unknown }
   /** nobody files anything: the amount is the round's own rule (§32.65) */
   readonly derived?: boolean
+  /** a derived question's amount, evaluated upstream like every other */
+  readonly derivedAmount?: bigint
 }
 
-export interface ScoreInputEntry {
+interface ScoreInputEntryBase {
   readonly id: string
   readonly itemId: string
-  readonly status: string
   readonly revisionId: string | null
-  readonly payload: unknown
   readonly createdAt: number
 }
 
-/** the effective facts one participant is scored from (§32.57: in M2, approved payloads verbatim) */
+/**
+ * One entry as the ledger sees it - and an approved one arrives with its
+ * amount already computed.
+ *
+ * Two things are said by this shape rather than by convention. The ledger no
+ * longer reads a payload at all: what an entry is worth was decided upstream,
+ * against recognized facts and a frozen plan, so evidence cannot reach the
+ * arithmetic by accident. And "approved but never evaluated" is not a state
+ * anybody can construct - the same invariant the entries table states with
+ * "an approved entry has a current recognition", said again in the types.
+ */
+export type ScoreInputEntry =
+  | (ScoreInputEntryBase & {
+      readonly status: 'approved'
+      /** what this entry contributes, scaled by 1e4, from the evaluator */
+      readonly amount: bigint
+    })
+  | (ScoreInputEntryBase & {
+      readonly status: 'draft' | 'in_review' | 'needs_revision' | 'rejected' | 'voided'
+    })
+
+/** the effective facts one participant is scored from, amounts already evaluated */
 export interface ScoreInput {
   readonly groups: readonly ScoreInputGroup[]
   readonly items: readonly ScoreInputItem[]
@@ -94,8 +116,8 @@ export interface Breakdown {
   readonly lines: readonly BreakdownLine[]
 }
 
+/** what the ledger still resolves by name: how an item's amounts fold */
 export interface ScoringCatalogs {
-  readonly calculators: ReadonlyMap<string, { readonly kind: string }>
   readonly aggregators: ReadonlyMap<string, { readonly kind: string }>
 }
 
@@ -191,24 +213,17 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
         }
         continue
       }
-      const calculator = resolve(
-        catalogs.calculators as ReadonlyMap<string, CalculatorDriver>,
-        'calculator',
-        item.calculator.ref,
-      )
       // a derived question grants its amount to everybody on the roster:
       // there is nothing to file, nothing to review, and the line says so
       if (item.derived === true) {
-        const amount = quantizeAmount(
-          calculator.amountOf(item.calculator.config, { payload: null }),
-        )
+        const amount = quantizeAmount(item.derivedAmount ?? 0n)
         lines.push({
           lineId: `derived:${item.id}`,
           kind: 'derived',
           label: item.title,
           value: formatAmount(amount),
           itemId: item.id,
-          provenance: { calculatorRef: item.calculator.ref },
+          provenance: { calculatorRef: item.calculatorRef },
         })
         itemsTotal += amount
         continue
@@ -221,10 +236,7 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
       const approved: { entry: ScoreInputEntry; amount: bigint }[] = []
       for (const entry of entries) {
         if (entry.status === 'approved') {
-          approved.push({
-            entry,
-            amount: calculator.amountOf(item.calculator.config, { payload: entry.payload }),
-          })
+          approved.push({ entry, amount: entry.amount })
         } else if (entry.status === 'rejected') {
           // it was formally submitted and formally refused: the refusal is
           // part of the account, at zero, rather than an absence
@@ -268,7 +280,7 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
           provenance: {
             entryId: entry.id,
             ...(entry.revisionId !== null ? { entryRevisionId: entry.revisionId } : {}),
-            calculatorRef: item.calculator.ref,
+            calculatorRef: item.calculatorRef,
           },
         })
         itemsTotal += amount

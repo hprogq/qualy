@@ -1,0 +1,137 @@
+/**
+ * What each approved entry is worth, decided before the ledger opens.
+ *
+ * This is the effectful half of scoring, and the only half that may be: it
+ * resolves a calculator, builds the typed input its contract asks for, and
+ * asks it for an amount. The ledger below stays a pure function of amounts,
+ * which is what keeps "the same frozen facts give the byte-identical
+ * breakdown" true whatever a calculator has to reach for.
+ *
+ * The input is assembled from a FROZEN plan, never inferred here: every
+ * parameter was bound and proven assignable when the item revision was
+ * saved, and a converter that has to run was recorded by name then. Guessing
+ * a binding at scoring time would move the type proof to the worst possible
+ * moment - in front of a student, in the middle of a total.
+ */
+
+import { Data, Effect } from 'effect'
+import { validateValue } from '@qualy/value-schema/validate'
+import { integerToDecimal, INTEGER_TO_DECIMAL, type AssignmentPlan } from '@qualy/value-schema'
+import type { CalculatorDriver, ScoringDriver } from '../plugin.ts'
+import type { ScoringPlan } from './plan.ts'
+import { scaledAmount } from './builtins.ts'
+
+/** what one approved entry is worth, and everything that decided it */
+export interface EvaluatedEntry {
+  readonly entryId: string
+  readonly entryRevisionId: string | null
+  readonly itemId: string
+  /** scaled by 1e4, exact */
+  readonly amount: bigint
+  readonly calculatorRef: string
+}
+
+/** the scoring facts one evaluation needs about an entry */
+export interface EvaluationFact {
+  readonly entryId: string
+  readonly entryRevisionId: string | null
+  readonly itemId: string
+  /** the item revision's frozen plan; the arithmetic this entry is scored by */
+  readonly plan: ScoringPlan
+  /** the recognized values, keyed by recognition id; empty until a plan has any */
+  readonly recognition: Readonly<Record<string, unknown>>
+}
+
+/** a calculator answered something the host had already proven impossible */
+export class ScoringEvaluationFailed extends Data.TaggedError(
+  'ASSESSMENT_SCORING_EVALUATION_FAILED',
+)<{
+  readonly itemId: string
+  readonly reason: string
+}> {}
+
+const converted = (assignment: AssignmentPlan, value: unknown): unknown => {
+  if (assignment.kind === 'direct') return value
+  if (assignment.kind === 'convert' && assignment.converter === INTEGER_TO_DECIMAL) {
+    return typeof value === 'number' ? integerToDecimal(value) : null
+  }
+  // an incompatible assignment cannot be in a compiled plan: the compiler
+  // refuses the item revision before it is ever stored
+  return null
+}
+
+/**
+ * The calculator's input for one entry, assembled from the plan alone.
+ *
+ * Constants come from the plan verbatim; recognized values come from the
+ * entry's recognition under the recognition id the plan named, through the
+ * converter the plan recorded.
+ */
+const inputFor = (plan: ScoringPlan, recognition: Readonly<Record<string, unknown>>) => {
+  const input: Record<string, unknown> = {}
+  for (const [parameter, binding] of Object.entries(plan.parameters)) {
+    input[parameter] =
+      binding.kind === 'constant'
+        ? binding.value
+        : converted(binding.assignment, recognition[binding.recognitionId])
+  }
+  return input
+}
+
+const resolveCalculator = (
+  calculators: ReadonlyMap<string, ScoringDriver>,
+  ref: string,
+): CalculatorDriver => {
+  const driver = calculators.get(ref)
+  if (driver === undefined || driver.kind !== 'calculator') {
+    // an assembly fault, not a data state: configurations are validated
+    // against the installed catalog when saved
+    throw new Error(`scoring calculator "${ref}" is not installed in this assembly`)
+  }
+  return driver
+}
+
+/**
+ * One entry's amount: build the input, prove it against the frozen contract,
+ * ask the calculator, prove the answer, scale it.
+ *
+ * Both proofs are the host's, on both sides of an untrusted boundary. The
+ * input was assembled from facts this process stored, so a failure there is
+ * a defect in this file or a plan that no longer matches its calculator; the
+ * output arrives from arithmetic that may live in another process entirely.
+ */
+export const evaluateEntry = (
+  calculators: ReadonlyMap<string, ScoringDriver>,
+  fact: EvaluationFact,
+): Effect.Effect<EvaluatedEntry, ScoringEvaluationFailed> =>
+  Effect.gen(function* () {
+    const plan = fact.plan
+    const calculator = resolveCalculator(calculators, plan.calculator.ref)
+    const input = inputFor(plan, fact.recognition)
+    const wrong = validateValue(plan.inputSchema, input)
+    if (wrong.length > 0) {
+      return yield* new ScoringEvaluationFailed({
+        itemId: fact.itemId,
+        reason: `input ${wrong[0]!.path} ${wrong[0]!.reason}`,
+      })
+    }
+    const answer = yield* calculator
+      .evaluate(plan.calculator.config, input)
+      .pipe(Effect.mapError(
+        (failure) => new ScoringEvaluationFailed({ itemId: fact.itemId, reason: failure.reason }),
+      ))
+    const outputWrong = validateValue(plan.outputSchema, answer)
+    if (outputWrong.length > 0) {
+      return yield* new ScoringEvaluationFailed({
+        itemId: fact.itemId,
+        reason: `output ${outputWrong[0]!.reason}`,
+      })
+    }
+    return {
+      entryId: fact.entryId,
+      entryRevisionId: fact.entryRevisionId,
+      itemId: fact.itemId,
+      amount: scaledAmount(answer),
+      calculatorRef: plan.calculator.ref,
+    }
+  })

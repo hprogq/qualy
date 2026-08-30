@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { calcParticipant } from '../src/scoring/calc.ts'
-import { builtinScoringDrivers, max1, topNSum1 } from '../src/scoring/builtins.ts'
+import { builtinScoringDrivers, max1, scaledAmount, topNSum1 } from '../src/scoring/builtins.ts'
 
 // The folding rules, held to their one obligation: every approved line is
 // explained. "Only the highest office counts" is terms.md's own sentence,
@@ -8,9 +8,6 @@ import { builtinScoringDrivers, max1, topNSum1 } from '../src/scoring/builtins.t
 // line, why not.
 
 const catalogs = {
-  calculators: new Map(
-    builtinScoringDrivers.filter((d) => d.kind === 'calculator').map((d) => [d.ref, d]),
-  ),
   aggregators: new Map(
     builtinScoringDrivers.filter((d) => d.kind === 'aggregator').map((d) => [d.ref, d]),
   ),
@@ -26,16 +23,16 @@ const officer = (aggregator: { ref: string; config: unknown }) => ({
       sortOrder: 0,
       status: 'active',
       createdAt: 1,
-      calculator: { ref: 'fixed@1', config: { value: '2.00' } },
+      calculatorRef: 'fixed@1',
       aggregator,
     },
   ],
   entries: [
     // three posts, two of them worth the same: the class monitor, filed
     // first, is the stable pick among equals
-    { id: 'e1', itemId: 'i', status: 'approved', revisionId: 'r1', payload: {}, createdAt: 1 },
-    { id: 'e2', itemId: 'i', status: 'approved', revisionId: 'r2', payload: {}, createdAt: 2 },
-    { id: 'e3', itemId: 'i', status: 'approved', revisionId: 'r3', payload: {}, createdAt: 3 },
+    { id: 'e1', itemId: 'i', status: 'approved' as const, revisionId: 'r1', amount: scaledAmount('2.00'), createdAt: 1 },
+    { id: 'e2', itemId: 'i', status: 'approved' as const, revisionId: 'r2', amount: scaledAmount('2.00'), createdAt: 2 },
+    { id: 'e3', itemId: 'i', status: 'approved' as const, revisionId: 'r3', amount: scaledAmount('2.00'), createdAt: 3 },
   ],
 })
 
@@ -121,16 +118,17 @@ const finer = (spec: {
       sortOrder: 0,
       status: 'active',
       createdAt: 1,
-      calculator: { ref: 'fixed@1', config: { value: spec.value } },
+      calculatorRef: 'fixed@1',
       aggregator: { ref: 'sum@1', config: {} },
     },
   ],
   entries: Array.from({ length: spec.count }, (_, index) => ({
     id: `e${index + 1}`,
     itemId: 'i',
-    status: 'approved',
+    status: 'approved' as const,
     revisionId: `r${index + 1}`,
-    payload: {},
+    // what fixed@1 answers for this configuration, evaluated upstream
+    amount: scaledAmount(spec.value),
     createdAt: index + 1,
   })),
 })

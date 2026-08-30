@@ -130,3 +130,76 @@ describe('contributor identity', () => {
     expect(seen).toEqual([{ pluginId: '@fake/speaker', value: 'hello' }])
   })
 })
+
+describe('a contribution whose behaviour needs a running service', () => {
+  // The seam a scoring driver backed by a live service depends on: a
+  // calculator that must read a table or reach a sandbox cannot be a
+  // prepare-phase value (that layer may require nothing by type), and
+  // capturing the service in a module global would be exactly the late
+  // binding this kernel exists to make unnecessary. The answer is the
+  // afterServices phase - its provider compiles ABOVE the service graph, so
+  // the requirement is discharged there, with the real service, while the
+  // contributed value stays a plain description.
+  class Library extends Context.Service<Library, { readonly lookup: (id: string) => string }>()(
+    'kernel-test/Library',
+  ) {}
+
+  interface RuntimeDriver {
+    readonly ref: string
+    readonly evaluate: (config: unknown) => Effect.Effect<string, never, Library>
+  }
+
+  it('closes the requirement in the phase built above the services', async () => {
+    const point = ExtensionPoint.make<RuntimeDriver>('kernel-test/runtime-drivers', {
+      phase: 'afterServices',
+    })
+    class Catalog extends Context.Service<
+      Catalog,
+      { readonly evaluate: (ref: string, config: unknown) => Effect.Effect<string> }
+    >()('kernel-test/RuntimeCatalog') {}
+
+    const owner = Plugin.define(
+      '@fake/catalog-owner',
+      Plugin.provideExtension(point, {
+        compile: (contributions) =>
+          Layer.effect(
+            Catalog,
+            Effect.map(Library, (library) => {
+              const byRef = new Map(contributions.map((one) => [one.value.ref, one.value]))
+              return Catalog.of({
+                evaluate: (ref, config) =>
+                  byRef.get(ref)?.evaluate(config).pipe(Effect.provideService(Library, library)) ??
+                  Effect.succeed('missing'),
+              })
+            }),
+          ),
+      }),
+    )
+    const provider = Plugin.define(
+      '@fake/library',
+      Plugin.service(Library, {
+        requires: [],
+        layer: Layer.succeed(Library, Library.of({ lookup: (id) => `row:${id}` })),
+      }),
+    )
+    const contributor = Plugin.define(
+      '@fake/driver',
+      Plugin.contribute(point, {
+        ref: 'needs-a-service@1',
+        evaluate: (config) => Effect.map(Library, (library) => library.lookup(String(config))),
+      } satisfies RuntimeDriver),
+    )
+
+    const { services, above } = assemble([owner, provider, contributor])
+    const answer = await Effect.runPromise(
+      Effect.flatMap(Catalog, (catalog) => catalog.evaluate('needs-a-service@1', 'v7')).pipe(
+        Effect.provide(
+          (above as Layer.Layer<Catalog, never, never>).pipe(
+            Layer.provide(services as Layer.Layer<Library>),
+          ),
+        ),
+      ),
+    )
+    expect(answer).toBe('row:v7')
+  })
+})

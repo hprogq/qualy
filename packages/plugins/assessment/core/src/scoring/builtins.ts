@@ -1,7 +1,12 @@
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
+import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import { canonicalizeAtomicSchema, canonicalizeInputSchema } from '@qualy/value-schema'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
+import { SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
 import type {
   AggregationResult,
   AggregatorDriver,
+  CalculatorContract,
   CalculatorDriver,
   ScoringDriver,
 } from '../plugin.ts'
@@ -83,11 +88,46 @@ export const quantizeAmount = (value: bigint): bigint => {
 }
 
 /** approved entry = this amount, exactly as configured */
+/**
+ * The identity of a contract: the two schemas' semantic bodies, and nothing
+ * else. Deliberately NOT `hashCanonicalJson(schemas)` - the canonical forms
+ * strip annotations, so renaming a parameter's label leaves every frozen
+ * plan that cites this contract exactly where it was.
+ */
+export const contractHashOf = (contract: {
+  readonly inputSchema: Parameters<typeof canonicalizeInputSchema>[0]
+  readonly outputSchema: Parameters<typeof canonicalizeAtomicSchema>[0]
+}): string =>
+  hashCanonicalJson([
+    canonicalizeInputSchema(contract.inputSchema),
+    canonicalizeAtomicSchema(contract.outputSchema),
+  ])
+
+/**
+ * The whole of `fixed@1`: it needs nothing about the entry to answer.
+ *
+ * Its input contract is the empty object, which is what makes a fixed item's
+ * recognition the empty recognition - there is no fact a reviewer could be
+ * asked to determine. The answer is the configured amount, verbatim: the
+ * exact decimal string an administrator typed, never a float on the way.
+ */
+const fixedContract: CalculatorContract = (() => {
+  const inputSchema = normalizeInputSchema({
+    type: 'object',
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  })
+  const outputSchema = normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA)
+  return { inputSchema, outputSchema, contractHash: contractHashOf({ inputSchema, outputSchema }) }
+})()
+
 export const fixed1: CalculatorDriver = {
   kind: 'calculator',
   ref: 'fixed@1',
   configSchema: Schema.Struct({ value: decimalString }),
-  amountOf: (config) => scaledAmount((config as { value: string }).value),
+  contract: () => Effect.succeed(fixedContract),
+  evaluate: (config) => Effect.succeed((config as { value: string }).value),
 }
 
 /**

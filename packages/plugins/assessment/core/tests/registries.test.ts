@@ -10,6 +10,24 @@ import {
   type ScoringDriver,
 } from '../src/plugin.ts'
 import { builtinScoringDrivers, fixed1, sum1 } from '../src/scoring/builtins.ts'
+import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import type { CalculatorContract } from '../src/plugin.ts'
+
+/** the smallest legal contract: needs nothing, answers a decimal */
+const emptyContract: CalculatorContract = {
+  inputSchema: normalizeInputSchema({
+    type: 'object',
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  }),
+  outputSchema: normalizeAtomicSchema({
+    type: 'string',
+    format: 'qualy-decimal',
+    'x-qualy-maxScale': 4,
+  }),
+  contractHash: 'test-contract',
+}
 
 // The two channels other plugins extend assessment through, compiled the way
 // the assembler compiles them.
@@ -98,7 +116,8 @@ describe('the scoring registry', () => {
       kind: 'calculator',
       ref: 'fixed@1',
       configSchema: Schema.Struct({}),
-      amountOf: () => 0n,
+      contract: () => Effect.succeed(emptyContract),
+      evaluate: () => Effect.succeed('0'),
     }
     expect(() =>
       compileOf(Scoring.provider)([
@@ -116,7 +135,8 @@ describe('the scoring registry', () => {
           kind: 'calculator',
           ref: 'x@1',
           configSchema: Schema.Struct({}),
-          amountOf: () => 0n,
+          contract: () => Effect.succeed(emptyContract),
+      evaluate: () => Effect.succeed('0'),
         },
       },
       {
@@ -140,7 +160,8 @@ describe('the scoring registry', () => {
           kind: 'calculator',
           ref,
           configSchema: Schema.Struct({}),
-          amountOf: () => 0n,
+          contract: () => Effect.succeed(emptyContract),
+      evaluate: () => Effect.succeed('0'),
         }),
       ).toThrow(/name@version/)
     }

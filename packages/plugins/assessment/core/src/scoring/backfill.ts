@@ -1,0 +1,129 @@
+/**
+ * Compiling the plans of revisions that predate plans.
+ *
+ * Every item revision saved from now on carries its compiled arithmetic;
+ * the ones written before the column existed carry null. They are filled in
+ * here, through the same compiler a save uses - the alternative was a SQL
+ * translation of canonicalisation and hashing, which is a second
+ * implementation of the very identity a plan exists to freeze.
+ *
+ * Two rules keep this from becoming a migration engine. It only ever fills
+ * in a NULL: a plan already written is the arithmetic some score was
+ * explained by, and rewriting it would silently restate history. And it runs
+ * at the assembled barrier, before the port opens, so no request can meet a
+ * revision whose plan has not been compiled yet.
+ */
+
+import { Effect } from 'effect'
+import { sql } from 'kysely'
+import type { BatchContext, ItemTypeDriver, ScoringDriver } from '../plugin.ts'
+import { compileScoringPlan } from './plan.ts'
+import { db } from '../server/db.ts'
+import { policyModeOf } from '../review/chain.ts'
+
+const RANGE = /^\[(\d{4}-\d{2}-\d{2}),(\d{4}-\d{2}-\d{2})\)$/
+
+/** the daterange as postgres prints it, back into its two dates */
+const parseRange = (text: string) => {
+  const match = RANGE.exec(text)
+  if (!match) throw new Error(`unreadable material range: ${text}`)
+  return { start: match[1]!, end: match[2]! }
+}
+
+interface PendingRevision {
+  readonly id: string
+  readonly itemType: string
+  readonly formConfig: unknown
+  readonly scoringConfig: unknown
+  readonly reviewPolicy: unknown
+  /** the daterange as postgres prints it: [start,end) */
+  readonly materialRange: string
+}
+
+export interface BackfillDeps {
+  readonly itemTypes: ReadonlyMap<string, ItemTypeDriver>
+  readonly calculators: ReadonlyMap<string, ScoringDriver>
+  readonly aggregators: ReadonlyMap<string, ScoringDriver>
+}
+
+/** how many rows one pass compiles before yielding the connection */
+const BATCH = 200
+
+/**
+ * Compile every revision still missing a plan. Idempotent by construction:
+ * the query only ever finds rows without one.
+ *
+ * A revision whose configuration no longer compiles is left alone and named
+ * in the log rather than stopping the boot - it is already stored, already
+ * being scored by the old path's reading of it, and a deployment that cannot
+ * start is worse than one item nobody can rescore until an administrator
+ * saves it again.
+ */
+export const sweepScoringPlans = (deps: BackfillDeps) =>
+  Effect.gen(function* () {
+    // one process at a time across the deployment; a second one finds
+    // nothing left to do rather than fighting for the same rows
+    yield* db.query((k) =>
+      sql`select pg_advisory_xact_lock(('x' || substr(md5('assessment:scoring-plan-backfill'), 1, 16))::bit(64)::bigint)`.execute(
+        k,
+      ),
+    )
+    let compiled = 0
+    let refused = 0
+    for (;;) {
+      const found = yield* db.query((k) =>
+        sql<PendingRevision>`
+          select r.id as "id",
+                 i.item_type as "itemType",
+                 r.form_config as "formConfig",
+                 r.scoring_config as "scoringConfig",
+                 r.review_policy as "reviewPolicy",
+                 b.material_range::text as "materialRange"
+          from assessment_item_revisions r
+          join assessment_items i on i.tenant_id = r.tenant_id and i.id = r.item_id
+          join assessment_batches b on b.tenant_id = i.tenant_id and b.id = i.batch_id
+          where r.scoring_plan is null
+          order by r.id
+          limit ${BATCH}
+        `.execute(k),
+      )
+      const pending = found.rows
+      if (pending.length === 0) break
+      for (const revision of pending) {
+        const batch: BatchContext = { materialRange: parseRange(revision.materialRange) }
+        const outcome = yield* compileScoringPlan({
+          calculators: deps.calculators,
+          aggregators: deps.aggregators,
+          itemType: deps.itemTypes.get(revision.itemType),
+          formConfig: revision.formConfig,
+          scoringConfig: revision.scoringConfig,
+          batch,
+          reviewMode: policyModeOf(revision.reviewPolicy) === 'none' ? 'none' : 'reviewed',
+        })
+        if ('issues' in outcome) {
+          refused += 1
+          yield* Effect.logWarning(
+            `item revision ${revision.id} has no compilable scoring plan: ${outcome.issues
+              .map((issue) => `${issue.path} ${issue.reason}`)
+              .join(', ')}`,
+          )
+          // marked as attempted with an explicitly empty plan would be a
+          // lie; instead it stays null and the next boot tries again after
+          // somebody fixes the configuration
+          continue
+        }
+        yield* db.query((k) =>
+          sql`update assessment_item_revisions
+              set scoring_plan = ${sql.val(JSON.stringify(outcome.plan))}::jsonb
+              where id = ${revision.id} and scoring_plan is null`.execute(k),
+        )
+        compiled += 1
+      }
+      if (pending.length < BATCH) break
+    }
+    if (compiled > 0 || refused > 0) {
+      yield* Effect.logInfo(
+        `scoring plans compiled for ${compiled} item revision(s)${refused > 0 ? `, ${refused} refused` : ''}`,
+      )
+    }
+  })
