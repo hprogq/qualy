@@ -11758,3 +11758,62 @@ missing;hash 打坏 → 拒 unreadable;还原 → ready。
 **验收(本机逐条实跑)**:`pnpm typecheck` 零错;`pnpm test` 1227 passed | 17 skipped
 (1244,首跑五个无关文件 hook 超时属环境抖动,单跑与重跑全绿);`pnpm test:browser`
 271 passed;`pnpm build` 通过。
+
+## Phase 6 封板批次:第五轮审计对齐与收尾(2026-08-31)
+
+用户第五轮审计(基线 d053dc89)先于上一批推送(6ce86918..6075a2a4)——其「3 簇 / 5 条
+承重门禁」封板要求与已落地工作的映射:
+
+- **Evidence profile proof** = `300d11df`(统一 proof:accepted config ⇒ 每个可绑定
+  字段 validateAtomicProfile(fieldSchema(field)) === [];unsafe integer 上下界、text
+  超界承重)✓ 已落。
+- **Supplement race** = `1f47097e`(锁后重读;并发承重恰一成功 + typed 拒 + 零
+  defect,与其要求的断言形状一致)✓ 已落;**persisted requirement fail-closed** 同笔
+  (未知 kind → null → 写侧拒、request 保持 open)✓ 已落。
+- **Frozen plan deep boot audit** = `6d9abc78`(auditStoredPlans:全部 non-null plan
+  逐个过 readScoringPlan + driver refs;corrupted plan 阻 ready 承重)✓ 已落。
+- **Panel 撤回**:用户撤回其 P0/P1 判断(与上一批定位一致——normal route 拒
+  `quorum:'all'`,序列前提不可达);其建议保留的 P2 defensive invariant
+  (seatedOrSeatable 自身表达 live AND unvoted)= `6ce86918` ✓ 已落。
+
+### 本批新修(第五轮新增项)
+
+- **round 终结时 ask 写死**(`fix(assessment)` 本批):`cancelReviewInstance` 的 CTE
+  加第三笔写——open supplement request → `status='superseded'`(独立于 cancelled:
+  审核人收回自己的 ask 与 round 在提问者头上被终结,对审计是两个事实)、
+  cancelled_at=now()。状态贯通:DB CHECK 扩四值 + lifecycle shape 加第四臂
+  (superseded 无 actor:cancelled_by IS NULL)= 迁移
+  `20260831110000_supplement-superseded.sql`(已应用开发库,generate no-op,测试从
+  空库重放验证);wire Literals、SupplementRow/RequestRow 类型、EntryHistory 的 Ask
+  徽章(「已失效」)与 i18n 同笔。承重:abandon 终结带开放 ask 的 round → 行读
+  superseded、答它拒 request-not-open、历史面 status='superseded'——不再有「死轮上的
+  活 ask」。
+- **ledger 根不可达门禁**(用户点名的廉价 P2):`calcParticipant` 的根遍历后断言
+  `reached.size === groups.length`——手工破坏出的无根闭环点名报错,不再安静得零。
+  正常账零变(characterization 逐字面量回归绿)。承重:双行互指无根 → throw
+  /unreachable/。
+
+### 阶段判定(按用户裁决)
+
+> **Phase 6 — Typed Evidence + Recognition: DONE**
+> **Phase 7 — Formula Calculator: AUTHORIZED**
+
+封板三簇 + 五条承重全部落地并绿;后续再发现的 composite FK、bad-data 防御、prototype
+hardening 一律记 Phase 7 前置/hardening backlog,不再阻塞阶段推进(用户裁决原文)。
+
+### 第五轮新增记账(Phase 7 前置,未动工)
+
+- **FormulaVersion 永久性落进数据库**(第一份 formula scoring plan 落库前):
+  `FormulaVersion → FormulaFunction` 的 FK 现为 ON DELETE CASCADE,与「versions are
+  never updated or deleted」自述矛盾——改 RESTRICT/NO ACTION,FormulaFunction 只
+  archive 不 delete,承重「published version 不因 parent 删除而消失」;同批把
+  FormulaVersion UUID 暴露进 bind read model(execution identity = versionId,
+  functionId+versionNo 只作 locator)。
+- **ValueForm opaque id 的原型防御**:`value[field.id] = ...` 经普通对象赋值,
+  `__proto__` 键会触发 setter——正式裁决 Recognition ID = server-minted UUID,同时
+  ValueForm 内部换 null-prototype/own-key 写入(低成本防御)。
+- 7.0 清单重申:scoring definition/runtime 双 catalog spike(不得把现 prepare 相的
+  ScoringDeclarations 整体改 afterServices——Assessment service 构造期就消费
+  ScoringCatalog)、sandbox reserved globals、wire-budget 两 gate、
+  `applyAssignment` 唯一解释器、Evidence retype identity 裁决与 required text
+  effective schema。
