@@ -209,6 +209,73 @@ describe('recording with a determination', () => {
     expect(recognition().value).toBe('national')
   })
 
+  it('carries a prototype-named recognition like any other id', async () => {
+    // a recognition id is an opaque wire string, and `__proto__` is a legal
+    // one: the seed follows the material into it and it rides the filing as
+    // an own key - never as a mutation of some object's prototype
+    const created = vi.fn((request: { payload: Record<string, unknown> }) =>
+      Effect.fail({
+        _tag: 'ASSESSMENT_ENTRY_ACTION_REFUSED',
+        action: 'create',
+        reason: 'x',
+        request,
+      }),
+    )
+    open({
+      createEntry: created as never,
+      getRecognitionContract: (() =>
+        Effect.succeed({
+          contract: {
+            itemRevisionId: REVISION_A,
+            fields: [
+              {
+                id: '__proto__',
+                schema: {
+                  type: 'string',
+                  enum: ['national', 'provincial'],
+                  'x-qualy-enumLabels': { national: '国家级', provincial: '省部级' },
+                  title: '认定赛事级别',
+                },
+              },
+            ],
+            defaults: [
+              {
+                recognitionId: '__proto__',
+                payloadKey: 'claimed-level-slot',
+                assignment: { kind: 'direct' as const },
+              },
+            ],
+          },
+        })) as never,
+    })
+    await waitForItems()
+    await chooseItem('竞赛获奖登记')
+    const { userEvent } = await import('vitest/browser')
+    const selects = () => document.querySelectorAll('select')
+    await userEvent.selectOptions(selects()[1]!, '周予安')
+    await vi.waitFor(() => {
+      if (document.querySelector('[data-testid="record-recognition"]') === null)
+        throw new Error('no recognition section yet')
+    })
+    await userEvent.selectOptions(page.getByLabelText('申报级别').element(), '国家级')
+    const recognition = () =>
+      document.querySelector('[data-testid="record-recognition"] select') as HTMLSelectElement
+    await vi.waitFor(() => {
+      if (recognition().value !== 'national') throw new Error('seed not followed yet')
+    })
+    await userEvent.fill(page.getByLabelText('认定依据').element(), '校运会秩序册第 3 页')
+    await userEvent.click(page.getByRole('button', { name: '登记' }).element())
+    await vi.waitFor(() => {
+      if (created.mock.calls.length === 0) throw new Error('not submitted yet')
+    })
+    const sent = created.mock.calls[0]![0]!.payload as {
+      recognition?: { values?: Record<string, unknown> }
+    }
+    const values = sent.recognition?.values ?? {}
+    expect(Object.hasOwn(values, '__proto__')).toBe(true)
+    expect(Object.getOwnPropertyDescriptor(values, '__proto__')?.value).toBe('national')
+  })
+
   it('starts a clean sheet on another person', async () => {
     // half a record written about one student must never be filable
     // against the next one picked from the roster

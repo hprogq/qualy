@@ -220,9 +220,12 @@ function RecordSheet({
   const [dirty, setDirty] = useState<ReadonlySet<string>>(new Set())
   const seed = useMemo(() => {
     if (wire === null) return {}
-    const said: Record<string, unknown> = {}
+    // recognition ids are opaque wire strings - `__proto__` is a legal one -
+    // so the seed is built without a prototype and the payload is read as
+    // own keys
+    const said: Record<string, unknown> = Object.create(null)
     for (const one of wire.defaults) {
-      const raw = payload[one.payloadKey]
+      const raw = Object.hasOwn(payload, one.payloadKey) ? payload[one.payloadKey] : undefined
       if (raw === undefined) continue
       // the one interpreter of a compiled assignment, shared with the
       // server's seeding and scoring - the client never invents a second one
@@ -235,9 +238,10 @@ function RecordSheet({
     // refresh what the registrar has not touched; keep what they have
     setRecognitionDrafts((current) => {
       const refreshed = draftsFromFields(fields, seed)
-      const next: Record<string, FieldDraft> = {}
+      const next: Record<string, FieldDraft> = Object.create(null)
       for (const field of fields) {
-        const kept = dirty.has(field.id) ? current[field.id] : refreshed[field.id]
+        const source = dirty.has(field.id) ? current : refreshed
+        const kept = Object.hasOwn(source, field.id) ? source[field.id] : undefined
         if (kept !== undefined) next[field.id] = kept
       }
       return next
