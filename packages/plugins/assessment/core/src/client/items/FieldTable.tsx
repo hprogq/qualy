@@ -21,7 +21,7 @@ import { acceptOf, FILE_KINDS, kindsOf, unwritableTokens } from '../file-kinds.t
 // accept. A line opens onto its own settings, one at a time, because eight
 // controls unfolded eight times is not a form anybody can read.
 
-export interface FieldDraft {
+interface FieldDraftBase {
   /**
    * What this field is called across revisions. Minted with the key and
    * never changed; a field written before identities existed carries its
@@ -29,15 +29,49 @@ export interface FieldDraft {
    */
   id: string
   key: string
-  type: 'text' | 'date' | 'attachment'
   label: string
   required: boolean
-  maxLength: string
-  min: string
-  max: string
-  maxCount: string
-  maxSizeMb: string
-  accept: string
+}
+
+/** one editable option of a choice field; both halves are the author's */
+export interface ChoiceOptionDraft {
+  value: string
+  label: string
+}
+
+/**
+ * One field as the editor holds it, split by kind: each type carries only
+ * the settings that mean something for it, so a field never drags five
+ * other kinds' blank strings around, and a missing branch in any consumer
+ * is a compile error instead of a silent fall-through.
+ */
+export type FieldDraft = FieldDraftBase &
+  (
+    | { type: 'text'; maxLength: string }
+    | { type: 'date'; min: string; max: string }
+    | { type: 'integer'; min: string; max: string }
+    | { type: 'decimal'; maxScale: string; min: string; max: string }
+    | { type: 'choice'; options: ChoiceOptionDraft[] }
+    | { type: 'attachment'; maxCount: string; maxSizeMb: string; accept: string }
+  )
+
+/** the same field wearing another type: identity kept, settings reset */
+export const retypeDraft = (field: FieldDraft, type: FieldDraft['type']): FieldDraft => {
+  const base = { id: field.id, key: field.key, label: field.label, required: field.required }
+  switch (type) {
+    case 'text':
+      return { ...base, type, maxLength: '' }
+    case 'date':
+      return { ...base, type, min: '', max: '' }
+    case 'integer':
+      return { ...base, type, min: '', max: '' }
+    case 'decimal':
+      return { ...base, type, maxScale: '2', min: '', max: '' }
+    case 'choice':
+      return { ...base, type, options: [{ value: '', label: '' }] }
+    case 'attachment':
+      return { ...base, type, maxCount: '1', maxSizeMb: '', accept: '' }
+  }
 }
 
 const sm = '@media (min-width: 640px)'
@@ -405,6 +439,9 @@ const liftGhost = (event: React.DragEvent<HTMLElement>) => {
 const FIELD_TYPE_LABEL = {
   text: m.itemsTypeText,
   date: m.itemsTypeDate,
+  integer: m.itemsTypeInteger,
+  decimal: m.itemsTypeDecimal,
+  choice: m.itemsTypeChoice,
   attachment: m.itemsTypeAttachment,
 } as const
 
@@ -424,7 +461,7 @@ export function FieldList({
   /** which line is open; only one is, so the list keeps its shape */
   openKey: string | null
   onOpen: (key: string | null) => void
-  onChange: (key: string, next: Partial<FieldDraft>) => void
+  onChange: (key: string, next: FieldDraft) => void
   onReorder: (orderedKeys: readonly string[]) => void
   onRemove: (key: string) => void
   onAdd: () => void
@@ -456,21 +493,35 @@ export function FieldList({
    * do.
    */
   const limitOf = (field: FieldDraft): string => {
-    if (field.type === 'date') {
-      const from = field.min.trim()
-      const until = field.max.trim()
-      if (from === '' && until === '') return ''
-      return format(m.itemsLimitDates, {
-        from: from === '' ? materialRange.start : from,
-        until: until === '' ? lastDay(materialRange.end) : until,
-      })
+    switch (field.type) {
+      case 'date': {
+        const from = field.min.trim()
+        const until = field.max.trim()
+        if (from === '' && until === '') return ''
+        return format(m.itemsLimitDates, {
+          from: from === '' ? materialRange.start : from,
+          until: until === '' ? lastDay(materialRange.end) : until,
+        })
+      }
+      case 'attachment':
+        return format(m.itemsLimitFiles, { count: Number(field.maxCount) || 1 })
+      case 'text':
+        return field.maxLength.trim() === ''
+          ? ''
+          : format(m.itemsLimitMaxLength, { count: Number(field.maxLength) })
+      case 'integer':
+      case 'decimal': {
+        const from = field.min.trim()
+        const until = field.max.trim()
+        if (from === '' && until === '') return ''
+        return format(m.itemsLimitRange, {
+          from: from === '' ? '−∞' : from,
+          until: until === '' ? '+∞' : until,
+        })
+      }
+      case 'choice':
+        return format(m.itemsLimitChoices, { count: field.options.length })
     }
-    if (field.type === 'attachment') {
-      return format(m.itemsLimitFiles, { count: Number(field.maxCount) || 1 })
-    }
-    return field.maxLength.trim() === ''
-      ? ''
-      : format(m.itemsLimitMaxLength, { count: Number(field.maxLength) })
   }
 
   return (
@@ -602,7 +653,7 @@ function FieldSettings({
 }: {
   field: FieldDraft
   materialRange: { start: string; end: string }
-  onChange: (next: Partial<FieldDraft>) => void
+  onChange: (next: FieldDraft) => void
   onRemove: () => void
 }) {
   const { format } = useI18n()
@@ -615,7 +666,7 @@ function FieldSettings({
             autoFocus
             className={stylex.props(styles.onBackground).className}
             value={field.label}
-            onChange={(event) => onChange({ label: event.target.value })}
+            onChange={(event) => onChange({ ...field, label: event.target.value })}
           />
         )}
       </Field>
@@ -627,10 +678,13 @@ function FieldSettings({
             value={field.type}
             options={[
               { value: 'text', label: format(m.itemsTypeText) },
+              { value: 'integer', label: format(m.itemsTypeInteger) },
+              { value: 'decimal', label: format(m.itemsTypeDecimal) },
+              { value: 'choice', label: format(m.itemsTypeChoice) },
               { value: 'date', label: format(m.itemsTypeDate) },
               { value: 'attachment', label: format(m.itemsTypeAttachment) },
             ]}
-            onChange={(next) => onChange({ type: next as FieldDraft['type'] })}
+            onChange={(next) => onChange(retypeDraft(field, next as FieldDraft['type']))}
           />
         )}
       </Field>
@@ -644,7 +698,7 @@ function FieldSettings({
               min={1}
               className={stylex.props(styles.onBackground).className}
               value={field.maxLength}
-              onChange={(event) => onChange({ maxLength: event.target.value })}
+              onChange={(event) => onChange({ ...field, maxLength: event.target.value })}
             />
           )}
         </Field>
@@ -661,7 +715,7 @@ function FieldSettings({
                 value={field.min}
                 min={materialRange.start}
                 max={lastDay(materialRange.end)}
-                onChange={(event) => onChange({ min: event.target.value })}
+                onChange={(event) => onChange({ ...field, min: event.target.value })}
               />
             )}
           </Field>
@@ -674,7 +728,7 @@ function FieldSettings({
                 value={field.max}
                 min={materialRange.start}
                 max={lastDay(materialRange.end)}
-                onChange={(event) => onChange({ max: event.target.value })}
+                onChange={(event) => onChange({ ...field, max: event.target.value })}
               />
             )}
           </Field>
@@ -700,7 +754,7 @@ function FieldSettings({
                 min={1}
                 className={stylex.props(styles.onBackground).className}
                 value={field.maxCount}
-                onChange={(event) => onChange({ maxCount: event.target.value })}
+                onChange={(event) => onChange({ ...field, maxCount: event.target.value })}
               />
             )}
           </Field>
@@ -712,12 +766,12 @@ function FieldSettings({
                 min={1}
                 className={stylex.props(styles.onBackground).className}
                 value={field.maxSizeMb}
-                onChange={(event) => onChange({ maxSizeMb: event.target.value })}
+                onChange={(event) => onChange({ ...field, maxSizeMb: event.target.value })}
               />
             )}
           </Field>
           <div {...stylex.props(styles.span2)}>
-            <AcceptPicker accept={field.accept} onChange={(accept) => onChange({ accept })} />
+            <AcceptPicker accept={field.accept} onChange={(accept) => onChange({ ...field, accept })} />
           </div>
         </>
       )}
@@ -726,7 +780,7 @@ function FieldSettings({
         <label {...stylex.props(styles.checkLabel)}>
           <Checkbox
             checked={field.required}
-            onCheckedChange={(next) => onChange({ required: next === true })}
+            onCheckedChange={(next) => onChange({ ...field, required: next === true })}
           />
           {format(m.itemsFieldRequired)}
         </label>

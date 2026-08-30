@@ -1246,6 +1246,26 @@ const i18n = definePluginMessages({
     itemsFieldType: { id: 'assessment/items/field-type', defaultMessage: 'Type' },
     itemsTypeText: { id: 'assessment/items/type-text', defaultMessage: 'Text' },
     itemsTypeDate: { id: 'assessment/items/type-date', defaultMessage: 'Date' },
+    itemsTypeInteger: {
+      id: 'assessment/items/type-integer',
+      defaultMessage: 'Number',
+    },
+    itemsTypeDecimal: {
+      id: 'assessment/items/type-decimal',
+      defaultMessage: 'Amount',
+    },
+    itemsTypeChoice: {
+      id: 'assessment/items/type-choice',
+      defaultMessage: 'Choice',
+    },
+    itemsLimitRange: {
+      id: 'assessment/items/limit-range',
+      defaultMessage: '{from} to {until}',
+    },
+    itemsLimitChoices: {
+      id: 'assessment/items/limit-choices',
+      defaultMessage: '{count, plural, other {# options}}',
+    },
     itemsTypeAttachment: { id: 'assessment/items/type-attachment', defaultMessage: 'File' },
     itemsFieldRequired: { id: 'assessment/items/field-required', defaultMessage: 'Required' },
     itemsFieldMaxLength: {

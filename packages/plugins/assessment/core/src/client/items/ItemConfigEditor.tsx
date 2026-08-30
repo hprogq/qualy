@@ -1066,6 +1066,9 @@ function SummaryPicker({
 const SUMMARY_TYPE_LABEL = {
   text: m.itemsTypeText,
   date: m.itemsTypeDate,
+  integer: m.itemsTypeInteger,
+  decimal: m.itemsTypeDecimal,
+  choice: m.itemsTypeChoice,
   attachment: m.itemsTypeAttachment,
 } as const
 
@@ -1078,11 +1081,6 @@ const blankField = (key: string): FieldDraft => ({
   label: '',
   required: false,
   maxLength: '',
-  min: '',
-  max: '',
-  maxCount: '1',
-  maxSizeMb: '',
-  accept: '',
 })
 
 /**
@@ -1162,24 +1160,71 @@ const draftOf = (
   } | null
   const fields = Array.isArray((config?.formConfig as { fields?: unknown[] })?.fields)
     ? ((config!.formConfig as { fields: Record<string, unknown>[] }).fields.map(
-        (field): FieldDraft => ({
+        (field): FieldDraft => {
           // a form saved before identities existed is not rewritten to gain
           // them: its key is its identity, which is what it always was
-          id: String(field['id'] ?? field['key'] ?? ''),
-          key: String(field['key'] ?? ''),
-          type: (field['type'] as FieldDraft['type']) ?? 'text',
-          label: String(field['label'] ?? ''),
-          required: field['required'] === true,
-          maxLength: field['maxLength'] === undefined ? '' : String(field['maxLength']),
-          min: String(field['min'] ?? ''),
-          max: String(field['max'] ?? ''),
-          maxCount: field['maxCount'] === undefined ? '1' : String(field['maxCount']),
-          maxSizeMb:
-            field['maxFileBytes'] === undefined
-              ? ''
-              : String(Math.round(Number(field['maxFileBytes']) / (1024 * 1024))),
-          accept: Array.isArray(field['accept']) ? (field['accept'] as string[]).join(', ') : '',
-        }),
+          const base = {
+            id: String(field['id'] ?? field['key'] ?? ''),
+            key: String(field['key'] ?? ''),
+            label: String(field['label'] ?? ''),
+            required: field['required'] === true,
+          }
+          const type = (field['type'] as FieldDraft['type']) ?? 'text'
+          switch (type) {
+            case 'date':
+              return {
+                ...base,
+                type,
+                min: String(field['min'] ?? ''),
+                max: String(field['max'] ?? ''),
+              }
+            case 'integer':
+              return {
+                ...base,
+                type,
+                min: field['min'] === undefined ? '' : String(field['min']),
+                max: field['max'] === undefined ? '' : String(field['max']),
+              }
+            case 'decimal':
+              return {
+                ...base,
+                type,
+                maxScale: field['maxScale'] === undefined ? '2' : String(field['maxScale']),
+                min: String(field['min'] ?? ''),
+                max: String(field['max'] ?? ''),
+              }
+            case 'choice':
+              return {
+                ...base,
+                type,
+                options: Array.isArray(field['options'])
+                  ? (field['options'] as Record<string, unknown>[]).map((option) => ({
+                      value: String(option['value'] ?? ''),
+                      label: String(option['label'] ?? ''),
+                    }))
+                  : [],
+              }
+            case 'attachment':
+              return {
+                ...base,
+                type,
+                maxCount: field['maxCount'] === undefined ? '1' : String(field['maxCount']),
+                maxSizeMb:
+                  field['maxFileBytes'] === undefined
+                    ? ''
+                    : String(Math.round(Number(field['maxFileBytes']) / (1024 * 1024))),
+                accept: Array.isArray(field['accept'])
+                  ? (field['accept'] as string[]).join(', ')
+                  : '',
+              }
+            default:
+              return {
+                ...base,
+                type: 'text',
+                maxLength: field['maxLength'] === undefined ? '' : String(field['maxLength']),
+              }
+          }
+        },
       ) ?? [])
     : []
   const scoring = config?.scoringConfig as
@@ -1381,19 +1426,49 @@ const displayConfigOf = (draft: Draft, withSummary: boolean) => {
 const evidenceConfigOf = (draft: Draft) => ({
   entrySource: draft.entrySource,
   formConfig: {
-    fields: draft.fields.map((field) => ({
-      id: field.id.trim() === '' ? field.key.trim() : field.id.trim(),
-      key: field.key.trim(),
-      type: field.type,
-      label: field.label.trim(),
-      ...(field.required ? { required: true } : {}),
-      ...(field.type === 'text' && field.maxLength.trim() !== ''
-        ? { maxLength: Number(field.maxLength) }
-        : {}),
-      ...(field.type === 'date' && field.min.trim() !== '' ? { min: field.min.trim() } : {}),
-      ...(field.type === 'date' && field.max.trim() !== '' ? { max: field.max.trim() } : {}),
-      ...(field.type === 'attachment'
-        ? {
+    fields: draft.fields.map((field) => {
+      const base = {
+        id: field.id.trim() === '' ? field.key.trim() : field.id.trim(),
+        key: field.key.trim(),
+        type: field.type,
+        label: field.label.trim(),
+        ...(field.required ? { required: true } : {}),
+      }
+      switch (field.type) {
+        case 'text':
+          return {
+            ...base,
+            ...(field.maxLength.trim() !== '' ? { maxLength: Number(field.maxLength) } : {}),
+          }
+        case 'date':
+          return {
+            ...base,
+            ...(field.min.trim() !== '' ? { min: field.min.trim() } : {}),
+            ...(field.max.trim() !== '' ? { max: field.max.trim() } : {}),
+          }
+        case 'integer':
+          return {
+            ...base,
+            ...(field.min.trim() !== '' ? { min: Number(field.min) } : {}),
+            ...(field.max.trim() !== '' ? { max: Number(field.max) } : {}),
+          }
+        case 'decimal':
+          return {
+            ...base,
+            maxScale: Number(field.maxScale) >= 0 ? Number(field.maxScale) : 2,
+            ...(field.min.trim() !== '' ? { min: field.min.trim() } : {}),
+            ...(field.max.trim() !== '' ? { max: field.max.trim() } : {}),
+          }
+        case 'choice':
+          return {
+            ...base,
+            options: field.options
+              .map((option) => ({ value: option.value.trim(), label: option.label.trim() }))
+              .filter((option) => option.value !== '' || option.label !== ''),
+          }
+        case 'attachment':
+          return {
+            ...base,
             maxCount: Number(field.maxCount) > 0 ? Number(field.maxCount) : 1,
             ...(field.maxSizeMb.trim() !== ''
               ? { maxFileBytes: Number(field.maxSizeMb) * 1024 * 1024 }
@@ -1407,8 +1482,8 @@ const evidenceConfigOf = (draft: Draft) => ({
                 }
               : {}),
           }
-        : {}),
-    })),
+      }
+    }),
   },
   scoringConfig: {
     calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
@@ -1540,15 +1615,15 @@ export function ItemConfigEditor({
    * into it. Everything else about a field - its label, its bounds, whether
    * it is required - is an edit of the same question.
    */
-  const patchField = (key: string, next: Partial<FieldDraft>) => {
+  const patchField = (key: string, next: FieldDraft) => {
     const standing = draft.fields.find((one) => one.key === key)
-    const retyped = standing !== undefined && next.type !== undefined && next.type !== standing.type
+    const retyped = standing !== undefined && next.type !== standing.type
     const minted = retyped ? nextKey() : null
     setDraft((previous) => ({
       ...previous,
       fields: previous.fields.map((field) =>
         field.key === key
-          ? { ...field, ...next, ...(minted === null ? {} : { id: minted, key: minted }) }
+          ? { ...next, ...(minted === null ? {} : { id: minted, key: minted }) }
           : field,
       ),
     }))
