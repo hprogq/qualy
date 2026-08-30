@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { CheckIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import { useI18n } from '@qualy/web-i18n'
@@ -16,6 +16,10 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { fieldsOf } from '../entry/model.ts'
 import { SlideKey } from './touch.tsx'
 import { useFinePointer } from './pointer.ts'
+import { ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
+import { draftsFromFields, materializeFields, type FieldDraft } from '@qualy/web-value-form/model'
+import type { AtomicSchema } from '@qualy/value-schema'
+import { changedSeedKeys, recognitionProblemText } from './recognition.ts'
 import type { ReviewDto } from './model.ts'
 
 // The two decisions that carry a word: sending back, and escalating. Each
@@ -300,11 +304,23 @@ const styles = stylex.create({
   },
 })
 
+const recognitionStyles = stylex.create({
+  sectionLabel: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 600,
+    color: 'var(--q-surface-muted-foreground)',
+  },
+  quietNote: { margin: 0, fontSize: 12, color: 'var(--q-surface-muted-foreground)' },
+})
+
 /** what both dialogs hand back: exactly the decision endpoint's payload */
 export interface WordedDecision {
   reason?: string
   comment: string
   suggestedPayload?: unknown
+  /** the determination this approval makes, where the contract asks for one */
+  recognition?: { values: Record<string, unknown>; reason?: string }
 }
 
 /**
@@ -444,24 +460,113 @@ export function ApproveDialog({
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
-  const { format } = useI18n()
+  const { format, locale } = useI18n()
   const fine = useFinePointer()
   const [comment, setComment] = useState('')
-  const confirm = () => onConfirm({ comment: comment.trim() })
+
+  // The determination, where the frozen contract asks for one. The wire
+  // hands the fields as opaque ids with their frozen schemas; a sitting
+  // that has already settled on a text shows it read-only, and approving
+  // confirms that text verbatim. The mount key upstairs remakes this state
+  // whenever the review or the locked text changes, so one claim's drafts
+  // never leak into the next.
+  // `?? null` guards fixtures and callers built before the field existed
+  const form = review.recognitionForm ?? null
+  const fields = useMemo(
+    () =>
+      form === null
+        ? []
+        : form.fields.map((field) => ({ id: field.id, schema: field.schema as AtomicSchema })),
+    [form],
+  )
+  const seed = (form?.seed ?? {}) as Record<string, unknown>
+  const locked = form?.locked ?? null
+  const [drafts, setDrafts] = useState<Record<string, FieldDraft>>(() =>
+    draftsFromFields(fields, (locked?.values ?? seed) as Record<string, unknown>),
+  )
+  const [determinationReason, setDeterminationReason] = useState('')
+  const materialized = useMemo(() => materializeFields(fields, drafts), [fields, drafts])
+  const changed =
+    form !== null &&
+    locked === null &&
+    materialized.value !== null &&
+    changedSeedKeys(seed, materialized.value).length > 0
+  // emptiness disables quietly; only a value that is wrong gets a sentence
+  const problems = useMemo(() => {
+    const said = new Map<string, string>()
+    for (const [id, reason] of materialized.issues) {
+      if (reason === 'required') continue
+      const schema = fields.find((field) => field.id === id)?.schema
+      said.set(id, recognitionProblemText(format, schema, reason))
+    }
+    return said
+  }, [materialized, fields, format])
+
+  const ready =
+    form === null ||
+    locked !== null ||
+    (materialized.value !== null && (!changed || determinationReason.trim() !== ''))
+
+  const confirm = () => {
+    if (!ready) return
+    const recognition =
+      form === null
+        ? undefined
+        : locked !== null
+          ? { values: locked.values as Record<string, unknown> }
+          : {
+              values: materialized.value!,
+              ...(changed ? { reason: determinationReason.trim() } : {}),
+            }
+    onConfirm({
+      comment: comment.trim(),
+      ...(recognition === undefined ? {} : { recognition }),
+    })
+  }
 
   const body = (
-    <Field label={format(m.reviewComment)} hint={fine ? format(m.reviewApproveHint) : undefined}>
-      {(id) => (
-        <Textarea
-          id={id}
-          value={comment}
-          rows={3}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus={fine}
-          onChange={(event) => setComment(event.target.value)}
-        />
+    <>
+      {form !== null && (
+        <div {...stylex.props(styles.panel)} data-testid="recognition-form">
+          <p {...stylex.props(recognitionStyles.sectionLabel)}>{format(m.recognitionSection)}</p>
+          {locked !== null && (
+            <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.recognitionLockedNote)}</p>
+          )}
+          <ValueFieldsForm
+            fields={fields}
+            drafts={drafts}
+            onDraft={(id, draft) => setDrafts((current) => ({ ...current, [id]: draft }))}
+            locale={locale}
+            disabled={locked !== null}
+            problems={problems}
+            scope="recognition"
+          />
+          {changed && (
+            <Field label={format(m.recognitionReasonLabel)}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={determinationReason}
+                  onChange={(event) => setDeterminationReason(event.target.value)}
+                />
+              )}
+            </Field>
+          )}
+        </div>
       )}
-    </Field>
+      <Field label={format(m.reviewComment)} hint={fine ? format(m.reviewApproveHint) : undefined}>
+        {(id) => (
+          <Textarea
+            id={id}
+            value={comment}
+            rows={3}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus={fine && form === null}
+            onChange={(event) => setComment(event.target.value)}
+          />
+        )}
+      </Field>
+    </>
   )
 
   if (!fine) {
@@ -472,7 +577,7 @@ export function ApproveDialog({
         hint={format(m.reviewApproveSheetHint)}
         slideLabel={format(m.reviewSlideApprove)}
         waiting={format(m.reviewSheetFillFirst)}
-        ready
+        ready={ready}
         onClose={onClose}
         onConfirm={confirm}
       >
@@ -499,6 +604,7 @@ export function ApproveDialog({
           </Button>
           <Button
             className={stylex.props(styles.approveSolid, styles.approveLift).className}
+            disabled={!ready}
             onClick={confirm}
           >
             {format(m.reviewApprove)}
@@ -649,7 +755,7 @@ export function RejectDialog({
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footerRow)}>
-          <p {...stylex.props(styles.quietNote)}>{format(m.reviewRejectFoot)}</p>
+          <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.reviewRejectFoot)}</p>
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
@@ -887,7 +993,7 @@ export function EscalateDialog({
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footerRow)}>
-          <p {...stylex.props(styles.quietNote)}>{format(m.reviewEscalateFoot)}</p>
+          <p {...stylex.props(recognitionStyles.quietNote)}>{format(m.reviewEscalateFoot)}</p>
           <span {...stylex.props(styles.spacer)} />
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}

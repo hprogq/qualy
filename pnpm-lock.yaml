@@ -739,6 +739,9 @@ importers:
       '@qualy/web-runtime':
         specifier: workspace:*
         version: link:../../../web/runtime
+      '@qualy/web-value-form':
+        specifier: workspace:*
+        version: link:../../../web/value-form
       '@stylexjs/stylex':
         specifier: 'catalog:'
         version: 0.19.0

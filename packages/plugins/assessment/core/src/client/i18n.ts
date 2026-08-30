@@ -1635,6 +1635,66 @@ const i18n = definePluginMessages({
       id: 'assessment/review/blocked-unavailable',
       defaultMessage: 'Not available here',
     },
+    recognitionSection: {
+      id: 'assessment/review/recognition-section',
+      defaultMessage: 'Determination',
+    },
+    recognitionLockedNote: {
+      id: 'assessment/review/recognition-locked-note',
+      defaultMessage: 'The sitting has settled on this determination; approving confirms it as written',
+    },
+    recognitionReasonLabel: {
+      id: 'assessment/review/recognition-reason-label',
+      defaultMessage: 'Why the determination changed',
+    },
+    recognitionFieldRequired: {
+      id: 'assessment/review/recognition-field-required',
+      defaultMessage: 'Fill this in before approving',
+    },
+    recognitionNotInteger: {
+      id: 'assessment/review/recognition-not-integer',
+      defaultMessage: 'Enter a whole number',
+    },
+    recognitionNotDecimal: {
+      id: 'assessment/review/recognition-not-decimal',
+      defaultMessage: 'Enter an amount like 3.5',
+    },
+    recognitionOverMax: {
+      id: 'assessment/review/recognition-over-max',
+      defaultMessage: 'At most {constraint}',
+    },
+    recognitionUnderMin: {
+      id: 'assessment/review/recognition-under-min',
+      defaultMessage: 'At least {constraint}',
+    },
+    recognitionScale: {
+      id: 'assessment/review/recognition-scale',
+      defaultMessage: 'At most {constraint} decimal places',
+    },
+    recognitionTooLong: {
+      id: 'assessment/review/recognition-too-long',
+      defaultMessage: 'At most {constraint} characters',
+    },
+    recognitionTooShort: {
+      id: 'assessment/review/recognition-too-short',
+      defaultMessage: 'At least {constraint} characters',
+    },
+    recognitionEnum: {
+      id: 'assessment/review/recognition-enum',
+      defaultMessage: 'Pick one of the listed options',
+    },
+    recognitionKind: {
+      id: 'assessment/review/recognition-kind',
+      defaultMessage: 'This is not the kind of value the field takes',
+    },
+    recognitionPattern: {
+      id: 'assessment/review/recognition-pattern',
+      defaultMessage: 'This does not match the required format',
+    },
+    recognitionOther: {
+      id: 'assessment/review/recognition-other',
+      defaultMessage: 'The value does not satisfy the field ({reason})',
+    },
     reviewApproveTitle: {
       id: 'assessment/review/approve-title',
       defaultMessage: 'Approve {name}’s submission',

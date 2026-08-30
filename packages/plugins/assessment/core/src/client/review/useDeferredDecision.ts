@@ -36,6 +36,8 @@ export type StagedDecision =
         readonly reason?: string
         readonly comment?: string
         readonly suggestedPayload?: unknown
+        /** the determination staged with an approval; the beacon carries it too */
+        readonly recognition?: { readonly values: Record<string, unknown>; readonly reason?: string }
       }
       /** what the pill says while the window is open */
       readonly participantName: string

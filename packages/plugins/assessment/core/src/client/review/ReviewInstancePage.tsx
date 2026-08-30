@@ -968,6 +968,7 @@ function Workbench({ batch }: { batch: BatchDto }) {
         ...(worded?.suggestedPayload !== undefined
           ? { suggestedPayload: worded.suggestedPayload }
           : {}),
+        ...(worded?.recognition !== undefined ? { recognition: worded.recognition } : {}),
       },
     }
     stageAndAdvance(staged, decision, review.itemTitle, review.participantName)
@@ -1416,6 +1417,9 @@ function Workbench({ batch }: { batch: BatchDto }) {
 
         {lingeringDialog === 'approve' && review !== undefined && (
           <ApproveDialog
+            // remade whenever the claim or the sitting's frozen text moves:
+            // drafts belong to one determination, never to the next
+            key={`${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}`}
             open={dialog === 'approve'}
             review={review}
             caution={caution(unseen())}
