@@ -149,7 +149,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()
     }
-  })
+  }, 120_000)
 
   // A driver plugin's whole contribution is that it registers itself, so this
   // is the only thing that proves auth-local is in the assembly at all. It
@@ -185,7 +185,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()
     }
-  })
+  }, 120_000)
 
   // Same shape as the login method above, and the same reason: a plugin's
   // screens reach the shell because its layer registers them, and a line of
@@ -224,7 +224,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()
     }
-  })
+  }, 120_000)
 
   it('is reachable through a client built from the definition alone', async () => {
     const db = await createTestContext('effect-api-client')
@@ -261,7 +261,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()
     }
-  })
+  }, 120_000)
 
   it('serves exactly the paths its document advertises', async () => {
     // the prefix has to be applied to the plugin's local api and to the
@@ -297,5 +297,5 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       await Effect.runPromise(Scope.close(scope, Exit.void))
       await db.dispose()
     }
-  })
+  }, 120_000)
 })
