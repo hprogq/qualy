@@ -11964,9 +11964,15 @@ undefined`),但 type 关随即遇函数而拒——端到端 fail-closed,无需�
   期间禁一切前台任务**,立为执行纪律。
 - CI 盯守曾以 `--limit 1` 取 run id 撞时序竞态盯错 run(报绿实红,由用户发现);改为按
   headSha 过滤后消除。
-- 终笔(docs-only)CI 又红一次:`web-survives-backend` 的 backend-replacement 用例打满
-  自身 300s 预算——同代码前一 run 绿,`gh run rerun --failed` 即绿,判 runner 资源型
-  flaky,未改代码;该用例已是显式 300s,若再犯归其 owner 域调查而非继续加预算。
+- `web-survives-backend` 的 backend-replacement 用例在 CI 两红(300s 打满;成功轮同测试
+  仅 7s;本地 30 连跑零复现)。先误判为 runner 资源型 flaky 并 rerun 两次——用户指出
+  7s vs 300s 是卡死不是资源,复核成立:测试里唯一无超时的 await 是 `stopBackend` 裸等
+  子进程 exit,而 **IPC/supervisor 停止路径没有信号路径那个 30s force-exit watchdog**
+  ——任一 unbounded finalizer 偶发挂起,进程永不退出,supervisor(与测试)被吊死。修复
+  `fix(server)`:deadline 改在 `requestShutdown`(一切停止路径的汇合点)armed,信号仍
+  128+signo、通道路径超时 exit 1 并点名日志;再犯时 40s 内红得有现场,不再 300s 静默。
+  挂在哪个 finalizer 的偶发根因未定位(CI 时序特有,本地不可复现),该修复把下一次
+  发生变成可诊断事件;dev 监督者域的进一步调查留待复发取证。
 
 ### 终态验收(逐条实跑)
 
