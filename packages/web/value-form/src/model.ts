@@ -51,7 +51,9 @@ export interface ValueFieldSpec {
 /** an input contract's parameters as fields, in the authored order */
 export const fieldsOfInput = (schema: NormalizedInputSchema): readonly ValueFieldSpec[] =>
   inputOrder(schema).flatMap((name) => {
-    const property = schema.properties[name]
+    // own properties only: a parameter may legally be called `constructor`,
+    // and a miss must not hand back Object.prototype's members as schemas
+    const property = Object.hasOwn(schema.properties, name) ? schema.properties[name] : undefined
     return property === undefined ? [] : [{ id: name, schema: property }]
   })
 
@@ -121,9 +123,14 @@ export const materializeFields = (
   drafts: Readonly<Record<string, FieldDraft>>,
 ): MaterializedInput => {
   const issues = new Map<string, string>()
-  const value: Record<string, unknown> = {}
+  // ids are caller-addressed - a recognition id may spell `__proto__` - so
+  // the answer is built without a prototype and drafts are read as own keys
+  const value: Record<string, unknown> = Object.create(null)
   for (const field of fields) {
-    const outcome = materializeField(field.schema, drafts[field.id])
+    const outcome = materializeField(
+      field.schema,
+      Object.hasOwn(drafts, field.id) ? drafts[field.id] : undefined,
+    )
     if (outcome.kind === 'empty') {
       issues.set(field.id, 'required')
       continue
@@ -170,7 +177,10 @@ export const draftsFromFields = (
       : {}
   return Object.fromEntries(
     fields.flatMap((field) => {
-      const draft = draftFromValue(field.schema, record[field.id])
+      const draft = draftFromValue(
+        field.schema,
+        Object.hasOwn(record, field.id) ? record[field.id] : undefined,
+      )
       return draft === undefined ? [] : [[field.id, draft]]
     }),
   )

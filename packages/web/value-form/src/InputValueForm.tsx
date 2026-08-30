@@ -192,7 +192,7 @@ export function ValueFieldsForm({
             key={field.id}
             schema={field.schema}
             name={field.id}
-            draft={drafts[field.id]}
+            draft={Object.hasOwn(drafts, field.id) ? drafts[field.id] : undefined}
             onDraft={(draft) => onDraft(field.id, draft)}
             locale={locale}
             disabled={disabled}

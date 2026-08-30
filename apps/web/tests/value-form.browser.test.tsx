@@ -184,6 +184,26 @@ describe('the generated form', () => {
     expect(field.textContent).toContain('请输入整数')
   })
 
+  it('treats prototype names as ids like any other', () => {
+    // `__proto__`, `constructor`, `toString` are legal opaque ids. The
+    // model reads drafts and stored values as own keys and builds its
+    // answer without a prototype, so a missing value is `required` - never
+    // quietly filled from Object.prototype - and an answered `__proto__`
+    // is a key of the wire value, not a mutation of its prototype.
+    for (const hostile of ['__proto__', 'constructor', 'toString']) {
+      const fields = [{ id: hostile, schema: { type: 'integer', minimum: 0, maximum: 9 } as const }]
+      expect(draftsFromFields(fields, {}), hostile).toEqual({})
+      const empty = materializeFields(fields, {})
+      expect(empty.value, hostile).toBeNull()
+      expect(empty.issues.get(hostile), hostile).toBe('required')
+      const done = materializeFields(fields, Object.fromEntries([[hostile, '3']]))
+      expect(done.value, hostile).not.toBeNull()
+      expect(Object.hasOwn(done.value!, hostile), hostile).toBe(true)
+      expect((done.value as Record<string, unknown>)[hostile], hostile).toBe(3)
+      expect(Object.getPrototypeOf(done.value), hostile).toBeNull()
+    }
+  })
+
   it('treats field ids as opaque identities, not identifiers', async () => {
     // a recognition contract addresses values by stable ids - hyphens,
     // uuid-looking strings, anything - and the fields form must never
