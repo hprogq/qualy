@@ -19,6 +19,7 @@ import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
 import { compileScoringPlan, recognitionSourceOf } from '../scoring/plan.ts'
+import { judgeRecognition } from '../scoring/recognition.ts'
 import { policyModeOf } from '../review/chain.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
@@ -62,6 +63,7 @@ import {
   itemHasEntries,
   itemOf,
   itemsOf,
+  frozenProposalsOfItem,
   liveEntryPayloads,
   nextRevisionNo,
   openRoundsOfItem,
@@ -415,9 +417,48 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
           if (Result.isFailure(decoded)) refusals.push({ entryId: row.entryId, status: row.status })
         }
       }
+
+      // What the new arithmetic would make of what is already recognised.
+      //
+      // Scoring reads the question's CURRENT plan against a determination
+      // made under an older one, so an administrator renaming a recognition,
+      // narrowing its type or dropping it entirely would leave every
+      // approved claim approved and unscorable - and nothing would say so
+      // until somebody opened a results page. The determinations a sitting
+      // has already frozen count too: they are what an open round would
+      // settle on if it concluded.
+      const nextPlan = yield* compileScoringPlan({
+        calculators: deps.catalogs.calculators,
+        aggregators: deps.catalogs.aggregators,
+        itemType: driver,
+        formConfig: input.config.formConfig,
+        scoringConfig: input.config.scoringConfig,
+        batch: { materialRange: input.materialRange },
+        recognitionSource: recognitionSourceOf({
+          interaction: driver?.interaction,
+          entrySource: input.config.entrySource,
+          reviewMode: policyModeOf(input.config.reviewPolicy),
+        }),
+      })
+      const stranded: string[] = []
+      if ('plan' in nextPlan) {
+        for (const row of live) {
+          if (row.recognition === null) continue
+          if (judgeRecognition(nextPlan.plan.recognitionSchemas, row.recognition).length > 0) {
+            stranded.push(row.entryId)
+          }
+        }
+        for (const proposal of yield* frozenProposalsOfItem(input.tenantId, input.item.id)) {
+          if (stranded.includes(proposal.entryId)) continue
+          if (judgeRecognition(nextPlan.plan.recognitionSchemas, proposal.values).length > 0) {
+            stranded.push(proposal.entryId)
+          }
+        }
+      }
       return {
         live,
         rounds,
+        stranded: stranded as readonly string[],
         incompatible: refusals as readonly Incompatible[],
         impact: impactOf({
           currentRevisionId: input.current?.id ?? null,
@@ -981,6 +1022,21 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 materialRange,
                 config,
               })
+              // A determination somebody already made is not something a
+              // dialog can offer to handle. Scoring reads the question's
+              // CURRENT plan, so a configuration the standing determinations
+              // do not fit leaves those claims approved and unscorable -
+              // and there is no remedy a student or a reviewer could carry
+              // out. It is refused at the save, which is the only moment
+              // anybody is looking (§35).
+              if (counted.stranded.length > 0) {
+                return yield* new ItemConfigInvalid({
+                  issues: counted.stranded.map((entryId) => ({
+                    path: `scoringConfig.recognitions:${entryId}`,
+                    reason: 'strands-existing-recognition',
+                  })),
+                })
+              }
               // A save that would disturb work under way comes back with what
               // it would disturb rather than going ahead or refusing. The
               // whole transaction rolls back, so nothing was half done while

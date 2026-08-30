@@ -1189,3 +1189,220 @@ describe.runIf(postgresAvailable)('the recognition-history migration', () => {
     }
   })
 })
+
+describe.runIf(postgresAvailable)('the recognition-history repair', () => {
+  const REPAIR = '20260830160000_recognition-history-repair.sql'
+
+  it('leaves one determination per decision, and one for every decision', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, REPAIR))).toBe(true)
+    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-recognition-repair-'))
+    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+      if (file.endsWith('.sql') && file < REPAIR) {
+        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
+      }
+    }
+    const db = await createTestContext('recognition-repair', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const one = async (sql: string, values: unknown[] = []) =>
+        (await db.row<{ id: string }>(sql, values)).id
+      const tenant = await one(
+        `insert into tenants (slug, name) values ('rep', 'Rep') returning id`,
+      )
+      const orgType = await one(
+        `insert into org_types (tenant_id, name) values ($1, 'Class') returning id`,
+        [tenant],
+      )
+      const node = await one(
+        `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+         values ($1, $2, 'Class', 'rep', 0) returning id`,
+        [tenant, orgType],
+      )
+      const userType = await one(
+        `insert into user_types (tenant_id, code, name, placement_mode)
+         values ($1, 'student', 'Student', 'unrestricted') returning id`,
+        [tenant],
+      )
+      const user = await one(
+        `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+         values ($1, 'Zhang San', $2, $3) returning id`,
+        [tenant, userType, node],
+      )
+      const batch = await one(
+        `insert into assessment_batches (tenant_id, name, material_range)
+         values ($1, 'Old rounds', daterange('2026-03-01', '2026-09-01')) returning id`,
+        [tenant],
+      )
+      const participant = await one(
+        `insert into batch_participants
+           (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage,
+            user_type_id, status)
+         values ($1, $2, $3, $4, 'rep', '{}', $5, 'active') returning id`,
+        [tenant, batch, user, node, userType],
+      )
+      const group = await one(
+        `insert into score_groups (tenant_id, batch_id, name) values ($1, $2, '文体') returning id`,
+        [tenant, batch],
+      )
+      const item = await one(
+        `insert into assessment_items (tenant_id, batch_id, item_type, title, score_group_id, status)
+         values ($1, $2, 'evidence', '献血', $3, 'active') returning id`,
+        [tenant, batch, group],
+      )
+      const revision = await one(
+        `insert into assessment_item_revisions
+           (tenant_id, item_id, revision_no, entry_source, form_config, scoring_config, review_policy, display_config, created_by, scoring_plan)
+         values ($1, $2, 1, 'student', '{}',
+                 '{"calculator":{"ref":"fixed@1","config":{"value":"3"}},"aggregator":{"ref":"sum@1","config":{}}}',
+                 '{}', '{}', $3, '{}') returning id`,
+        [tenant, item, user],
+      )
+      await db.query(`update assessment_items set current_revision_id = $1 where id = $2`, [
+        revision,
+        item,
+      ])
+      await db.query(
+        `update assessment_item_revisions set created_at = '2026-04-01T09:00:00Z' where id = $1`,
+        [revision],
+      )
+
+      const filingOf = async (entry: string, at: string) => {
+        const filing = await one(
+          `insert into entry_revisions
+             (tenant_id, entry_id, item_id, item_revision_id, revision_no, payload, actor_id, subject_id, source, created_at)
+           values ($1, $2, $3, $4, (select coalesce(max(revision_no), 0) + 1 from entry_revisions
+                                    where tenant_id = $1 and entry_id = $2),
+                   '{}', $5, $5, 'self', $6::timestamptz) returning id`,
+          [tenant, entry, item, revision, user, at],
+        )
+        await db.query(`update entries set current_revision_id = $1 where id = $2`, [filing, entry])
+        return filing
+      }
+      const entryOf = async (status: string) =>
+        await one(
+          `insert into entries (tenant_id, batch_id, item_id, participant_id, status, source)
+           values ($1, $2, $3, $4, $5, 'self') returning id`,
+          [tenant, batch, item, participant, status],
+        )
+
+      // A round up a two-step ladder: the class confirms, the department
+      // ends it. Both wrote an approved event; only the second is a
+      // determination, and the first backfill made two.
+      const climbed = await entryOf('draft')
+      const climbedFiling = await filingOf(climbed, '2026-04-10T09:00:00Z')
+      const instance = await one(
+        `insert into review_instances
+           (tenant_id, entry_id, revision_id, round_no, origin, initiator, policy_revision_id,
+            recognition_revision_id, effective_chain, current_stage_id, state, outcome,
+            current_node_id, current_node_path, current_role_ids, created_at, completed_at)
+         values ($1, $2, $3, 1, 'initial', 'participant', $4, $4, '{}', 'dept', 'completed', 'approved',
+                 $5, 'rep', '{}', '2026-05-01T09:00:00Z', '2026-05-03T09:00:00Z') returning id`,
+        [tenant, climbed, climbedFiling, revision, node],
+      )
+      const stageWord = await one(
+        `insert into review_events
+           (tenant_id, review_instance_id, kind, actor_id, route, stage_id, created_at)
+         values ($1, $2, 'approved', $3, 'normal', 'class', '2026-05-02T09:00:00Z') returning id`,
+        [tenant, instance, user],
+      )
+      const finalWord = await one(
+        `insert into review_events
+           (tenant_id, review_instance_id, kind, actor_id, route, stage_id, created_at)
+         values ($1, $2, 'approved', $3, 'normal', 'dept', '2026-05-03T09:00:00Z') returning id`,
+        [tenant, instance, user],
+      )
+      const stack = async (eventId: string, at: string) =>
+        await one(
+          `insert into entry_recognitions
+             (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id,
+              values, source, review_instance_id, review_event_id, created_by, created_at)
+           values ($1, $2, $3, $4, $5, $6, '{}', 'review', $7, $8, $9, $10::timestamptz)
+           returning id`,
+          [tenant, batch, climbed, climbedFiling, item, revision, instance, eventId, user, at],
+        )
+      // as the history backfill left it: one per approved event
+      const surplus = await stack(stageWord, '2026-05-02T09:00:00Z')
+      const kept = await stack(finalWord, '2026-05-03T09:00:00Z')
+      await db.query(`update entry_recognitions set supersedes_id = $1 where id = $2`, [
+        surplus,
+        kept,
+      ])
+      await db.query(
+        `update entries set status = 'approved', current_recognition_id = $1 where id = $2`,
+        [kept, climbed],
+      )
+
+      // and a claim the rule approved twice: sent back in between, and only
+      // the later of the two recovered
+      const twice = await entryOf('draft')
+      const firstFiling = await filingOf(twice, '2026-04-11T09:00:00Z')
+      for (const at of ['2026-06-01T09:00:00Z', '2026-07-01T09:00:00Z']) {
+        await db.query(
+          `insert into entry_events (tenant_id, entry_id, kind, actor_id, created_at)
+           values ($1, $2, 'auto-approved', $3, $4::timestamptz)`,
+          [tenant, twice, user, at],
+        )
+      }
+      const secondFiling = await filingOf(twice, '2026-06-15T09:00:00Z')
+      const latest = await one(
+        `insert into entry_recognitions
+           (tenant_id, batch_id, entry_id, entry_revision_id, item_id, item_revision_id,
+            values, source, created_by, created_at)
+         values ($1, $2, $3, $4, $5, $6, '{}', 'system', $7, '2026-07-01T09:00:00Z') returning id`,
+        [tenant, batch, twice, secondFiling, item, revision, user],
+      )
+      await db.query(
+        `update entries set status = 'approved', current_recognition_id = $1 where id = $2`,
+        [latest, twice],
+      )
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      const rowsOf = async (entry: string) =>
+        (
+          await db.query<{
+            id: string
+            source: string
+            review_event_id: string | null
+            supersedes_id: string | null
+            entry_revision_id: string
+          }>(
+            `select id, source, review_event_id, supersedes_id, entry_revision_id
+             from entry_recognitions where entry_id = $1 order by created_at`,
+            [entry],
+          )
+        ).rows
+      const pointerOf = async (entry: string) =>
+        (
+          await db.row<{ current_recognition_id: string | null }>(
+            `select current_recognition_id from entries where id = $1`,
+            [entry],
+          )
+        ).current_recognition_id
+
+      // the stage's confirmation is a step on the way, not a determination:
+      // the round produced one, the same as it would today
+      const climbedRows = await rowsOf(climbed)
+      expect(climbedRows).toHaveLength(1)
+      expect(climbedRows[0]!.id).toBe(kept)
+      expect(climbedRows[0]!.review_event_id).toBe(finalWord)
+      expect(climbedRows[0]!.supersedes_id).toBeNull()
+      expect(await pointerOf(climbed)).toBe(kept)
+
+      // and both automatic approvals are on the record, in order, each
+      // naming the filing that was current when it happened
+      const twiceRows = await rowsOf(twice)
+      expect(twiceRows).toHaveLength(2)
+      expect(twiceRows.map((each) => each.source)).toEqual(['system', 'system'])
+      expect(twiceRows[0]!.entry_revision_id).toBe(firstFiling)
+      expect(twiceRows[1]!.id).toBe(latest)
+      expect(twiceRows[1]!.supersedes_id).toBe(twiceRows[0]!.id)
+      expect(await pointerOf(twice)).toBe(latest)
+    } finally {
+      await db.dispose()
+    }
+  })
+})
+

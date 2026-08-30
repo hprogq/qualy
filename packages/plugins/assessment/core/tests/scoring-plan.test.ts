@@ -95,6 +95,8 @@ const fields: Record<string, AtomicSchema> = {
   'claimed-ordinal': { type: 'integer', minimum: 1, maximum: 10 },
   'wide-ordinal': { type: 'integer', minimum: 0, maximum: 99 },
   'claimed-count': { type: 'integer', minimum: 0, maximum: 9 },
+  // the same shape as 'claimed-ordinal', except a filing may leave it out
+  'optional-ordinal': { type: 'integer', minimum: 1, maximum: 10 },
 }
 
 const itemType: ItemTypeDriver = {
@@ -103,7 +105,13 @@ const itemType: ItemTypeDriver = {
   decodePayload: (_config, payload) => Effect.succeed(payload),
   attachmentRefs: () => [],
   bindableFields: () =>
-    Object.entries(fields).map(([fieldId, schema]) => ({ fieldId, schema })),
+    // 'optional-ordinal' stands for a field a filing may leave out; the
+    // rest are always written
+    Object.entries(fields).map(([fieldId, schema]) => ({
+      fieldId,
+      schema,
+      always: fieldId !== 'optional-ordinal',
+    })),
   interaction: 'entry',
   scoring: { calculator: 'fixed@1', aggregator: 'sum@1' },
 }
@@ -225,6 +233,27 @@ describe('binding a calculator that has parameters', () => {
       }),
     )
     expect(reasons(extra)).toContain('scoringConfig.bindings.nobody:binding-unknown-parameter')
+  })
+
+  it('refuses seeding a self-approving question from a field that may be absent', async () => {
+    // nobody is asked afterwards, so a default is the whole determination:
+    // taking it from a field a filing may leave out produces a claim that
+    // is approved and cannot be scored
+    const config = gradedConfig({
+      recognitions: { 'rec-ordinal': { defaultFromFieldId: 'optional-ordinal' } },
+      bindings: {
+        ordinal: { kind: 'recognition', recognitionId: 'rec-ordinal' },
+        level: { kind: 'constant', value: 'national' },
+        base: { kind: 'constant', value: '3.00' },
+      },
+    })
+    expect(reasons(await compile(config, { recognitionSource: 'automatic' }))).toContain(
+      'scoringConfig.recognitions.rec-ordinal:default-field-not-guaranteed',
+    )
+    // where somebody will be asked, a default is only a starting point and
+    // an absent field is nothing to refuse over
+    expect(reasons(await compile(config))).toEqual([])
+    expect(reasons(await compile(config, { recognitionSource: 'administrative' }))).toEqual([])
   })
 
   it('refuses one determination standing in for two parameters', async () => {

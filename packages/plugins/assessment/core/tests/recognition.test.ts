@@ -3,7 +3,7 @@ import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
-import { gradedScoring } from './support/catalogs.ts'
+import { gradedScoring, twoFactScoring } from './support/catalogs.ts'
 import { errorOf, GATED, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
 
 const REVIEW_OPEN = [...GATED, 'assessment.review.process', 'assessment.review.escalate']
@@ -511,6 +511,72 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.rows[0]!.values).toEqual({ 'rec-level': 'provincial' })
   })
 
+  it('asks for a reason only when a reviewer contradicts, not when they fill in', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-first-fill')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: REVIEW_OPEN,
+            // two determinations: one the filing seeds, one only a reviewer
+            // can make
+            scoring: twoFactScoring,
+            stages: [at(f, 'n1'), at(f, 'n2')],
+          })
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          // the first reviewer writes the fact nobody had determined, and
+          // leaves the seeded one alone: that is doing the job, not changing
+          // somebody's mind, so no explanation is owed
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'first look',
+              recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 2 } },
+            },
+            f.principal(f.reviewer),
+          )
+          // the second one contradicts it, and is asked why
+          const bare = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              {
+                decision: 'approve',
+                comment: 'second look',
+                recognition: { values: { 'rec-level': 'provincial', 'rec-ordinal': 2 } },
+              },
+              f.principal(f.reviewer),
+            ),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'second look',
+              recognition: {
+                values: { 'rec-level': 'provincial', 'rec-ordinal': 2 },
+                reason: '主办单位是省级学会',
+              },
+            },
+            f.principal(f.reviewer),
+          )
+          return { bare, rows: yield* recognitionsOf(entryId) }
+        }),
+      ),
+    )
+
+    expect(
+      errorOf<{ issues: readonly { field: string; reason: string }[] }>(result.bare)?.issues,
+    ).toEqual([{ field: 'recognition.reason', reason: 'required' }])
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]!.values).toEqual({ 'rec-level': 'provincial', 'rec-ordinal': 2 })
+  })
+
   it('determines an administrative record without inventing a review', async () => {
     const result = ok(
       await run(
@@ -551,5 +617,72 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.rows[0]!.reviewInstanceId).toBeNull()
     expect(result.rounds).toBe('0')
     expect(result.pointer).toBe(result.rows[0]!.id)
+  })
+
+  it('refuses to strand a determination somebody already made', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-compat')
+          const assessment = yield* Assessment
+          const admin = f.principal(f.admin)
+          const g = yield* graded(f)
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'checked',
+              recognition: {
+                values: { 'rec-level': 'provincial' },
+                reason: '证书落款为省级主办单位',
+              },
+            },
+            f.principal(f.reviewer),
+          )
+          // the administrator renames the determination the claim stands on.
+          // Scoring reads today's plan, so the approved claim would be
+          // approved and unscorable - and nothing would say so until
+          // somebody opened a results page
+          const renamed = {
+            entrySource: 'student' as const,
+            formConfig: { files: {} },
+            scoringConfig: {
+              ...gradedScoring,
+              recognitions: { 'rec-grade': { defaultFromFieldId: 'claimed-level' } },
+              bindings: { level: { kind: 'recognition' as const, recognitionId: 'rec-grade' } },
+            },
+            reviewPolicy: {
+              normal: { stages: [at(f, 'class')] },
+              escalation: { stages: [at(f, 'dept')] },
+            },
+          }
+          const asked = yield* Effect.exit(
+            assessment.updateItem(
+              f.t,
+              g.item.id,
+              { config: renamed, reason: '换一个认定名' },
+              admin,
+            ),
+          )
+          return {
+            entryId,
+            refused: errorOf<{ issues: readonly { path: string; reason: string }[] }>(asked)!,
+          }
+        }),
+      ),
+    )
+
+    // the save stops and names the claim it would strand: there is no
+    // remedy a student or a reviewer could carry out, so it is not a
+    // decision to offer - it is a configuration that cannot be saved
+    expect(result.refused.issues).toEqual([
+      {
+        path: `scoringConfig.recognitions:${result.entryId}`,
+        reason: 'strands-existing-recognition',
+      },
+    ])
   })
 })

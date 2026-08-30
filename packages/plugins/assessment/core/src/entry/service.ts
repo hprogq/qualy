@@ -1,6 +1,10 @@
 import { Effect, Result } from 'effect'
 import { insertRecognition, currentRecognitionOf } from '../scoring/recognition-db.ts'
-import { seedFromEvidence } from '../scoring/recognition.ts'
+import {
+  canonicalRecognition,
+  judgeRecognition,
+  seedFromEvidence,
+} from '../scoring/recognition.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
 import type { ScoringPlan } from '../scoring/plan.ts'
 
@@ -172,6 +176,39 @@ export interface EntryView {
   }
 }
 
+/**
+ * What a claim is recognised as, proven before it counts as approved.
+ *
+ * Every door that produces an approved claim goes through here: a reviewer's
+ * word, a member of staff recording one, and the rule that approves a
+ * question nobody reviews. The database guarantees an approved claim HAS a
+ * determination and that it is an object; only this says it is the complete
+ * and exact determination the frozen contract asked for. Without it a claim
+ * reaches the account with a field missing, and the failure surfaces on a
+ * student's results page rather than at the door that let it in.
+ */
+const provenRecognition = (
+  plan: ScoringPlan,
+  candidate: unknown,
+): Effect.Effect<Record<string, unknown>, EntryPayloadInvalid> => {
+  const wrong = judgeRecognition(plan.recognitionSchemas, candidate)
+  return wrong.length === 0
+    ? Effect.succeed(
+        // stored the one way the contract says it means: a value written
+        // "3.0" and read back "3.00" would make every later comparison a
+        // fact about who typed it
+        canonicalRecognition(plan.recognitionSchemas, candidate as Record<string, unknown>),
+      )
+    : Effect.fail(
+        new EntryPayloadInvalid({
+          issues: wrong.map((issue) => ({
+            field: issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
+            reason: issue.reason,
+          })),
+        }),
+      )
+}
+
 export interface CreateEntryInput {
   readonly itemId: string
   readonly participantId: string
@@ -179,6 +216,8 @@ export interface CreateEntryInput {
   readonly expectedItemRevisionId?: string
   readonly payload: unknown
   readonly note?: string
+  /** what the office determines by recording it; administrative only */
+  readonly recognition?: { readonly values: unknown }
 }
 
 export type CreateEntryError =
@@ -815,6 +854,14 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             const driver = driverOf(item)
             if (driver === undefined) return yield* refuse('create', 'item-type-not-installed')
             const decoded = yield* decodePayload(driver, revision, input.payload, materialRange)
+            const plan = yield* Effect.orDie(readScoringPlan(revision))
+            // a determination is a thing only an approving door may carry:
+            // a student filing a claim does not get to say what it is worth
+            if (!administrative && input.recognition !== undefined) {
+              return yield* new EntryPayloadInvalid({
+                issues: [{ field: 'recognition', reason: 'not-allowed' }],
+              })
+            }
 
             // An administrative record is approved the moment it is filed,
             // but it becomes approved in the statement below rather than in
@@ -847,9 +894,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               revisionId,
               refs.map((ref, position) => ({ attachmentId: ref.attachmentId, position })),
             )
-            // what the office determined by recording this. Today's questions
-            // ask for nothing, so it is the empty determination - the same
-            // fact a reviewer's approval writes, from a different door
+            // What the office determined by recording this.
+            //
+            // The member of staff filing it is its author, so what they send
+            // is authoritative and the plan's defaults are only what the form
+            // was pre-filled with. Either way it is proven complete before
+            // the claim becomes approved.
             const recognitionId = administrative
               ? yield* insertRecognition({
                   tenantId,
@@ -858,7 +908,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   entryRevisionId: revisionId,
                   itemId: item.id,
                   itemRevisionId: revision.id,
-                  values: seedFromEvidence(yield* Effect.orDie(readScoringPlan(revision)), decoded),
+                  values: yield* provenRecognition(
+                    plan,
+                    input.recognition === undefined
+                      ? seedFromEvidence(plan, decoded)
+                      : input.recognition.values,
+                  ),
                   source: 'record',
                   createdBy: as.userId,
                 })
@@ -1103,6 +1158,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                 // to ask. A previous determination, if this claim was
                 // approved before, is superseded rather than edited.
                 const standing = yield* currentRecognitionOf(tenantId, entryId)
+                const livePlan = yield* Effect.orDie(readScoringPlan(live))
                 const recognitionId = yield* insertRecognition({
                   tenantId,
                   batchId: entry.batchId,
@@ -1110,7 +1166,22 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                   entryRevisionId: current!.id,
                   itemId: entry.itemId,
                   itemRevisionId: live.id,
-                  values: seedFromEvidence(yield* Effect.orDie(readScoringPlan(live)), carried),
+                  // nobody is going to be asked, so the defaults are the
+                  // whole determination - and if they do not add up to a
+                  // complete one, this claim cannot become approved at all.
+                  // The compiler refuses that configuration, so reaching it
+                  // means the question changed under an old plan.
+                  values: yield* provenRecognition(
+                    livePlan,
+                    seedFromEvidence(livePlan, carried),
+                  ).pipe(
+                    // nobody is misfiling anything: the question was
+                    // configured so that a claim nobody reviews cannot be
+                    // fully determined, which is a refusal about this round
+                    Effect.catchTag('ASSESSMENT_ENTRY_PAYLOAD_INVALID', () =>
+                      refuse(action, 'item-not-configured'),
+                    ),
+                  ),
                   source: 'system',
                   createdBy: as.userId,
                   ...(standing === null ? {} : { supersedesId: standing.id }),

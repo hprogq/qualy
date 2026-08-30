@@ -11,6 +11,8 @@ import type { ScoringPlan } from '../scoring/plan.ts'
 import {
   judgeRecognition,
   recognitionHash,
+  canonicalRecognition,
+  contradicted,
   sameRecognition,
   seedFromEvidence,
   type RecognitionValues,
@@ -1019,6 +1021,8 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     row: {
       readonly entryId: string
       readonly revisionId: string
+      readonly itemType: string
+      readonly recognitionRevisionId: string
       readonly origin: 'initial' | 'appeal' | 'reopen' | 'reroute'
       readonly appealedInstanceId: string | null
       readonly supersedesInstanceId: string | null
@@ -1031,8 +1035,22 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
       if (said !== null) return said
       const revisited = yield* revisitedRecognition(tenantId, row)
       if (revisited !== null) return revisited
+      // read the way this round reads it: the filing may have been written
+      // against an older form, and the round judges it under the current
+      // one, so the defaults come from the carried material rather than
+      // from the original answer to a question that has since changed
       const filing = yield* revisionPayloadOf(tenantId, row.revisionId)
-      return seedFromEvidence(plan, filing)
+      const driver = deps.itemTypes.get(row.itemType)
+      const written =
+        filing.itemRevisionId === null || driver?.projectPayload === undefined
+          ? null
+          : yield* revisionOf(tenantId, filing.itemRevisionId)
+      const judged = yield* revisionOf(tenantId, row.recognitionRevisionId)
+      const carried =
+        written === null || judged === null || driver?.projectPayload === undefined
+          ? filing.payload
+          : driver.projectPayload(written.formConfig, judged.formConfig, filing.payload)
+      return seedFromEvidence(plan, carried)
     })
 
   /**
@@ -1229,8 +1247,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             let determinedHash: string | undefined
             let determinedReason: string | null = null
             if (action === 'approve') {
-              const candidate =
-                input.recognition === undefined ? seed : (input.recognition.values as RecognitionValues)
+              const candidate = canonicalRecognition(
+                plan.recognitionSchemas,
+                input.recognition === undefined
+                  ? seed
+                  : (input.recognition.values as RecognitionValues),
+              )
               const wrong = judgeRecognition(plan.recognitionSchemas, candidate)
               if (wrong.length > 0) {
                 return yield* new EntryPayloadInvalid({
@@ -1240,9 +1262,13 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                   })),
                 })
               }
-              // changing what the previous stage determined is a decision of
-              // its own, and one the next reader is owed an explanation for
-              const changed = !sameRecognition(candidate, seed)
+              // Contradicting what was already determined is a decision of
+              // its own, and one the next reader is owed an explanation for.
+              // Filling in a fact that had none is not: a reviewer-only
+              // field reaches the first reader empty by design, and asking
+              // them to justify writing it would be asking them to justify
+              // doing their job.
+              const changed = contradicted(seed, candidate).length > 0
               const given = input.recognition?.reason?.trim() ?? ''
               if (changed && given === '') {
                 return yield* new EntryPayloadInvalid({
@@ -1489,42 +1515,55 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               if (taken === null) return yield* new ReviewConflict()
 
               // The determination this sitting is voting on, frozen by its
-              // first ballot - approval or refusal alike, because "I refuse
-              // THIS recognition" is only answerable if everyone was looking
-              // at the same one. After that every ballot carries the same
-              // hash, and a reviewer who tried to vote on different words is
-              // refused rather than quietly merged.
+              // Establishing what a sitting is voting on, and voting on it,
+              // are two acts.
+              //
+              // The first APPROVING ballot fixes the text: three reviewers
+              // approving three different determinations is not a decision
+              // anybody could act on, so every approval after it must be for
+              // the same words or be refused. A refusal fixes nothing and is
+              // held to nothing - "I cannot pass this" is answerable without
+              // anybody having determined anything, and a sitting whose
+              // first reviewer refuses would otherwise have to invent a
+              // complete determination before it could say no. It costs
+              // nothing in safety: the round can only end approved if every
+              // ballot approved, and every approving ballot carried the one
+              // frozen text.
               const frozen = yield* panelRecognitionOf(tenantId, panel.id)
-              if (frozen === null) {
-                const opening = determined ?? seed
-                const wrong = judgeRecognition(plan.recognitionSchemas, opening)
-                if (wrong.length > 0) {
+              let ballotHash = frozen === null ? null : frozen.hash
+              if (action === 'approve') {
+                if (frozen === null) {
+                  const opening = canonicalRecognition(plan.recognitionSchemas, determined ?? seed)
+                  const wrong = judgeRecognition(plan.recognitionSchemas, opening)
+                  if (wrong.length > 0) {
+                    return yield* new EntryPayloadInvalid({
+                      issues: wrong.map((issue) => ({
+                        field:
+                          issue.recognitionId === ''
+                            ? 'recognition'
+                            : `recognition.${issue.recognitionId}`,
+                        reason: issue.reason,
+                      })),
+                    })
+                  }
+                  yield* lockPanelRecognition({
+                    tenantId,
+                    panelId: panel.id,
+                    values: opening as Record<string, unknown>,
+                    hash: recognitionHash(opening),
+                    // frozen with its explanation: the round ends on this
+                    // text, so "why it differs from what we inherited" has
+                    // to travel with it or it is lost when the sitting
+                    // resolves
+                    reason: determinedReason,
+                  })
+                  ballotHash = recognitionHash(opening)
+                } else if (determined !== undefined && recognitionHash(determined) !== frozen.hash) {
                   return yield* new EntryPayloadInvalid({
-                    issues: wrong.map((issue) => ({
-                      field:
-                        issue.recognitionId === ''
-                          ? 'recognition'
-                          : `recognition.${issue.recognitionId}`,
-                      reason: issue.reason,
-                    })),
+                    issues: [{ field: 'recognition', reason: 'panel-recognition-locked' }],
                   })
                 }
-                yield* lockPanelRecognition({
-                  tenantId,
-                  panelId: panel.id,
-                  values: opening as Record<string, unknown>,
-                  hash: recognitionHash(opening),
-                  // frozen with its explanation: the round ends on this
-                  // text, so "why it differs from what we inherited" has to
-                  // travel with it or it is lost when the sitting resolves
-                  reason: determinedReason,
-                })
-              } else if (determined !== undefined && recognitionHash(determined) !== frozen.hash) {
-                return yield* new EntryPayloadInvalid({
-                  issues: [{ field: 'recognition', reason: 'panel-recognition-locked' }],
-                })
               }
-              const sitting = (yield* panelRecognitionOf(tenantId, panel.id))!
               yield* insertVote({
                 tenantId,
                 panelId: panel.id,
@@ -1533,7 +1572,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 decision: action,
                 reason: reason === '' ? null : reason,
                 comment: comment === '' ? null : comment,
-                recognitionHash: sitting.hash,
+                // what this ballot was cast on: the frozen text where one
+                // exists, and nothing where a refusal came before any
+                recognitionHash: ballotHash,
               })
               const votes = yield* votesOfPanel(tenantId, panel.id)
               if (votes.length >= panel.seatCount) {
@@ -1556,8 +1597,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     outcome: 'approved',
                   })
                   if (!won) return yield* new ReviewConflict()
-                  // the sitting's own word, and the determination it voted
-                  // on: the frozen proposal, not this last ballot's opinion
+                  // The sitting's own word, and the determination it voted
+                  // on: the frozen proposal, not this last ballot's opinion.
+                  // Unanimous approval means every ballot was an approval,
+                  // and the first of those fixed the text - so there is one.
+                  const sitting = yield* panelRecognitionOf(tenantId, panel.id)
+                  if (sitting === null) return yield* new ReviewConflict()
                   const eventId = yield* sayFrom('approved', null, {
                     recognitionPayload: sitting.values,
                     recognitionHash: sitting.hash,

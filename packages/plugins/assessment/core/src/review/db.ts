@@ -2509,18 +2509,35 @@ export const lockedProposalOf = (tenantId: string, instanceId: string) =>
       ),
     )
 
-/** one filing's evidence, for seeding a first determination from it */
+/**
+ * One filing's evidence, and the form it was written against.
+ *
+ * Both, because a determination seeded from it has to read the material the
+ * way the round reads it: a filing written under an older form is carried
+ * forward to the current one when it is submitted, and seeding from the raw
+ * older payload would answer a different question than the reviewer is
+ * looking at.
+ */
 export const revisionPayloadOf = (tenantId: string, revisionId: string) =>
   db
     .query((k) =>
       k
         .selectFrom('EntryRevision')
-        .select(['payload'])
+        .select(['payload', 'itemRevisionId'])
         .where('tenantId', '=', tenantId)
         .where('id', '=', revisionId)
         .executeTakeFirst(),
     )
-    .pipe(Effect.map((row) => (row === undefined ? {} : (row as { payload: unknown }).payload)))
+    .pipe(
+      Effect.map((row) =>
+        row === undefined
+          ? { payload: {} as unknown, itemRevisionId: null }
+          : {
+              payload: (row as { payload: unknown }).payload,
+              itemRevisionId: String((row as { itemRevisionId: string }).itemRevisionId),
+            },
+      ),
+    )
 
 /**
  * Freeze what a sitting is voting on, if nobody has yet.

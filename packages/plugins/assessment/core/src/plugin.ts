@@ -93,7 +93,20 @@ export interface ItemTypeDriver {
   readonly bindableFields?: (
     config: unknown,
     batch: BatchContext,
-  ) => readonly { readonly fieldId: string; readonly schema: AtomicSchema }[]
+  ) => readonly {
+    readonly fieldId: string
+    readonly schema: AtomicSchema
+    /**
+     * Whether every filing of this question is guaranteed to carry it.
+     *
+     * A schema says what the value looks like when it is there, which is a
+     * different question from whether it is always there. It matters where
+     * nobody will be asked afterwards: a question that approves itself has
+     * only its defaults, so seeding one from a field a student may leave
+     * blank produces a claim that is approved and cannot be scored.
+     */
+    readonly always: boolean
+  }[]
   /** who acts: students filing, staff working a task, or nobody (derived) */
   readonly interaction: 'entry' | 'task' | 'derived'
   /** the scoring references this kind of question defaults to */

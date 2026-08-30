@@ -637,7 +637,52 @@ export interface LiveEntryRow {
   payload: unknown
   itemRevisionId: string
   formConfig: unknown
+  /** what it currently stands recognised as, where it stands as anything */
+  recognitionId: string | null
+  recognition: Record<string, unknown> | null
 }
+
+/**
+ * The determinations open sittings have already frozen for this question.
+ *
+ * A configuration change has to answer for these the same way it answers for
+ * approved claims: they are what those rounds would settle on, and a plan
+ * that would not accept them turns a sitting mid-vote into one that cannot
+ * conclude.
+ */
+export const frozenProposalsOfItem = (tenantId: string, itemId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('ReviewPanel')
+        .innerJoin('ReviewInstance', (join) =>
+          join
+            .onRef('ReviewInstance.tenantId', '=', 'ReviewPanel.tenantId')
+            .onRef('ReviewInstance.id', '=', 'ReviewPanel.reviewInstanceId'),
+        )
+        .innerJoin('Entry', (join) =>
+          join
+            .onRef('Entry.tenantId', '=', 'ReviewInstance.tenantId')
+            .onRef('Entry.id', '=', 'ReviewInstance.entryId'),
+        )
+        .select(['ReviewInstance.entryId as entryId', 'ReviewPanel.recognitionPayload as values'])
+        .where('ReviewPanel.tenantId', '=', tenantId)
+        .where('Entry.itemId', '=', itemId)
+        .where('ReviewPanel.state', '=', 'open')
+        .where('ReviewPanel.recognitionLockedAt', 'is not', null)
+        .execute(),
+    )
+    .pipe(
+      Effect.map((rows) =>
+        rows.map((row) => {
+          const one = row as Record<string, unknown>
+          return {
+            entryId: String(one['entryId']),
+            values: (one['values'] ?? {}) as Record<string, unknown>,
+          }
+        }),
+      ),
+    )
 
 /** every round of this question still open, with where it is standing */
 export interface OpenRoundRow {
@@ -716,6 +761,11 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
             .onRef('EntryRevision.tenantId', '=', 'Entry.tenantId')
             .onRef('EntryRevision.id', '=', 'Entry.currentRevisionId'),
         )
+        .leftJoin('EntryRecognition', (join) =>
+          join
+            .onRef('EntryRecognition.tenantId', '=', 'Entry.tenantId')
+            .onRef('EntryRecognition.id', '=', 'Entry.currentRecognitionId'),
+        )
         .select([
           'Entry.id as entryId',
           'Entry.status as status',
@@ -723,6 +773,10 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
           'EntryRevision.id as entryRevisionId',
           'EntryRevision.payload as payload',
           'EntryRevision.itemRevisionId as itemRevisionId',
+          // what this claim already stands recognised as: a configuration
+          // change has to answer for it too, not only for the material
+          'EntryRecognition.id as recognitionId',
+          'EntryRecognition.values as recognitionValues',
         ])
         .where('Entry.tenantId', '=', tenantId)
         .where('Entry.itemId', '=', itemId)
@@ -761,6 +815,11 @@ export const liveEntryPayloads = (tenantId: string, itemId: string) =>
         payload: one['payload'],
         itemRevisionId,
         formConfig: forms.get(itemRevisionId) ?? null,
+        recognitionId: one['recognitionId'] === null ? null : String(one['recognitionId']),
+        recognition:
+          one['recognitionValues'] === null || one['recognitionValues'] === undefined
+            ? null
+            : (one['recognitionValues'] as Record<string, unknown>),
       }
     })
   })

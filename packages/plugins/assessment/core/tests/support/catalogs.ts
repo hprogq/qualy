@@ -78,9 +78,7 @@ export const testItemType: ItemTypeDriver = {
   // what a reviewer's determination may be seeded from: the level the
   // student claimed. Evidence will offer its own fields; this one stands in
   // for the shape of that answer.
-  bindableFields: () => [
-    { fieldId: 'claimed-level', schema: LEVEL },
-  ],
+  bindableFields: () => [{ fieldId: 'claimed-level', schema: LEVEL, always: true }],
   interaction: 'entry',
   scoring: { calculator: 'fixed@1', aggregator: 'sum@1' },
 }
@@ -118,6 +116,50 @@ export const gradedTest: CalculatorDriver = {
     }),
   evaluate: (_config, input) =>
     Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
+}
+
+/**
+ * A calculator with two facts: one the filing seeds, one only a reviewer can
+ * make. That is the shape that tells "filling in" apart from "changing".
+ */
+export const twoFactTest: CalculatorDriver = {
+  kind: 'calculator',
+  ref: 'two-fact-test@1',
+  configSchema: Schema.Struct({}),
+  compile: (config) =>
+    Effect.succeed({
+      config,
+      inputSchema: normalizeInputSchema({
+        type: 'object',
+        properties: { level: LEVEL, ordinal: { type: 'integer', minimum: 1, maximum: 10 } },
+        required: ['level', 'ordinal'],
+        additionalProperties: false,
+      }),
+      outputSchema: normalizeAtomicSchema({
+        type: 'string',
+        format: 'qualy-decimal',
+        'x-qualy-maxScale': 2,
+        'x-qualy-minimum': '-99999999.99',
+        'x-qualy-maximum': '99999999.99',
+      }),
+      contractHash: 'test:two-fact',
+    }),
+  evaluate: (_config, input) =>
+    Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
+}
+
+export const twoFactScoring = {
+  calculator: { ref: twoFactTest.ref, config: {} },
+  aggregator: { ref: 'sum@1', config: {} },
+  recognitions: {
+    'rec-level': { defaultFromFieldId: 'claimed-level' },
+    // no default: only a reviewer determines it
+    'rec-ordinal': { defaultFromFieldId: null },
+  },
+  bindings: {
+    level: { kind: 'recognition' as const, recognitionId: 'rec-level' },
+    ordinal: { kind: 'recognition' as const, recognitionId: 'rec-ordinal' },
+  },
 }
 
 /** the scoring configuration that puts a determination in front of a score */
@@ -158,6 +200,7 @@ export const catalogLayers = Layer.mergeAll(
         .filter((driver) => driver.kind === 'calculator')
         .map((driver) => [driver.ref, driver] as const),
       [gradedTest.ref, gradedTest] as const,
+      [twoFactTest.ref, twoFactTest] as const,
     ]),
     aggregators: new Map(
       builtinScoringDrivers

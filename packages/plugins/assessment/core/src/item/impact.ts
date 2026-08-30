@@ -103,8 +103,15 @@ export const impactTokenOf = (input: {
 }): string => {
   const lines = [
     `revision:${input.currentRevisionId ?? ''}`,
+    // the determination too, not only the filing: a claim re-judged while
+    // the dialog was open stands recognised as something else now, and a
+    // confirmation given against the old answer would be carried out against
+    // the new one
     ...[...input.live]
-      .map((row) => `entry:${row.entryId}:${row.status}:${row.entryRevisionId}`)
+      .map(
+        (row) =>
+          `entry:${row.entryId}:${row.status}:${row.entryRevisionId}:${row.recognitionId ?? ''}`,
+      )
       .sort(),
     ...[...input.rounds]
       .map((row) => `round:${row.id}:${row.state}:${row.route}:${row.stageId}`)

@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./package.json": "./package.json",
     "./score": "./src/score.ts",
+    "./values": "./src/values.ts",
     "./validate": "./src/validate.ts",
     "./hash": "./src/hash.ts",
     "./regex": "./src/regex.ts"

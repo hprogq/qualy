@@ -14,6 +14,7 @@
  * recognition" is voting on the same bytes.
  */
 
+import { canonicalizeValues } from '@qualy/value-schema/values'
 import { validateValue } from '@qualy/value-schema/validate'
 import { hashCanonicalJson, canonicalJson } from '@qualy/value-schema/hash'
 import type { NormalizedAtomicSchema } from '@qualy/value-schema'
@@ -56,12 +57,46 @@ export const judgeRecognition = (
   return issues
 }
 
-/** the identity of a determination; key order never changes it */
+/**
+ * A determination spelled the one way its contract says it means.
+ *
+ * Everything downstream - comparing, hashing, storing - goes through here
+ * first, so `"3.0"` and `"3.00"` are one determination rather than two that
+ * happen to score the same. Storing the canonical form matters as much as
+ * hashing it: a value written one way and read back another would make the
+ * hash a fact about the writer instead of about the determination.
+ */
+export const canonicalRecognition = (
+  schemas: Readonly<Record<string, NormalizedAtomicSchema>>,
+  values: RecognitionValues,
+): RecognitionValues => canonicalizeValues(schemas, values)
+
+/** the identity of a determination; key order and spelling never change it */
 export const recognitionHash = (values: RecognitionValues): string => hashCanonicalJson(values)
 
 /** whether two determinations say the same thing */
 export const sameRecognition = (a: RecognitionValues, b: RecognitionValues): boolean =>
   canonicalJson(a) === canonicalJson(b)
+
+/**
+ * Which determinations this reviewer changed, as opposed to made.
+ *
+ * Filling in a fact nobody had determined yet is the ordinary work of the
+ * first person to look at a claim - a reviewer-only field has no default by
+ * design, so the seed simply does not carry it. Contradicting a fact
+ * somebody already determined is a different act, and the only one that owes
+ * the next reader an explanation. Treating both as "changed" would demand a
+ * reason for doing the job.
+ */
+export const contradicted = (
+  seed: RecognitionValues,
+  candidate: RecognitionValues,
+): readonly string[] =>
+  Object.keys(seed).filter(
+    (recognitionId) =>
+      Object.hasOwn(candidate, recognitionId) &&
+      canonicalJson(candidate[recognitionId]) !== canonicalJson(seed[recognitionId]),
+  )
 
 /**
  * What a reviewer is shown before they have determined anything.

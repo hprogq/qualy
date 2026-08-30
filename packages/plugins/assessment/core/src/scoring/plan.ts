@@ -300,10 +300,10 @@ export const compileScoringPlan = (
     const defaultBindings: Record<string, { fieldId: string; assignment: AssignmentPlan }> =
       Object.create(null)
 
-    const bindable = new Map<string, AtomicSchema>(
+    const bindable = new Map<string, { schema: AtomicSchema; always: boolean }>(
       (inputs.itemType?.bindableFields?.(inputs.formConfig, inputs.batch) ?? []).map((field) => [
         field.fieldId,
-        field.schema,
+        { schema: field.schema, always: field.always },
       ]),
     )
 
@@ -381,7 +381,18 @@ export const compileScoringPlan = (
         })
         continue
       }
-      const seeding = assignmentPlan(evidence, recognitionSchema)
+      // A question that answers to nobody has only its defaults. Seeding one
+      // from a field a filing may not carry produces a claim that is
+      // approved and cannot be scored - and there is no later moment where
+      // anybody would be asked to fill it in.
+      if (inputs.recognitionSource === 'automatic' && !evidence.always) {
+        issues.push({
+          path: `scoringConfig.recognitions.${binding.recognitionId}`,
+          reason: 'default-field-not-guaranteed',
+        })
+        continue
+      }
+      const seeding = assignmentPlan(evidence.schema, recognitionSchema)
       if (seeding.kind === 'incompatible') {
         issues.push({
           path: `scoringConfig.recognitions.${binding.recognitionId}`,
@@ -403,7 +414,11 @@ export const compileScoringPlan = (
       }
     }
     for (const parameter of Object.keys(bindings)) {
-      if (inputSchema.properties[parameter] === undefined) {
+      // by own property, like every other lookup here: a binding named
+      // `constructor` would otherwise find something on Object's prototype
+      // and read as a parameter the contract declares, so the binding would
+      // be silently ignored rather than refused
+      if (!Object.hasOwn(inputSchema.properties, parameter)) {
         issues.push({ path: `scoringConfig.bindings.${parameter}`, reason: 'binding-unknown-parameter' })
       }
     }

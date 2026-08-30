@@ -54,6 +54,8 @@ const report = (next: { formConfig: unknown; reviewPolicy: unknown }) =>
         itemRevisionId: 'rev-1',
         payload: {},
         formConfig: FORM,
+        recognitionId: null,
+        recognition: null,
       },
     ],
     rounds: [

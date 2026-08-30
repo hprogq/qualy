@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
+import { twoFactScoring } from './support/catalogs.ts'
 import { GATED, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
 
 // The sitting (§32.66): an escalation middle step whose quorum is `all`.
@@ -32,7 +33,7 @@ const accept = (t: string, batchId: string, subjectId: string, assignmentId: str
  * role, one of whom walked the ordinary route and escalated - which is what
  * shrinks the sitting to the two who have not yet judged.
  */
-const panelWorld = (f: Seeded) =>
+const panelWorld = (f: Seeded, over?: { scoring?: unknown }) =>
   Effect.gen(function* () {
     const assessment = yield* Assessment
     const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
@@ -84,7 +85,7 @@ const panelWorld = (f: Seeded) =>
         config: {
           entrySource: 'student',
           formConfig: {},
-          scoringConfig: {
+          scoringConfig: over?.scoring ?? {
             calculator: { ref: 'fixed@1', config: { value: '1.00' } },
             aggregator: { ref: 'sum@1', config: {} },
           },
@@ -589,5 +590,70 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     // the earlier voter is asked again, and this time it settles
     expect(result.b2Again).toContain(result.settled.id)
     expect(result.settled.outcome).toBe('approved')
+  })
+
+  it('lets a sitting refuse without first inventing a determination', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('panel-refuse')
+          const assessment = yield* Assessment
+          // the question asks for a fact only a reviewer can determine, so
+          // what the sitting inherits is incomplete
+          const w = yield* panelWorld(f, { scoring: twoFactScoring })
+          const panel = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from review_panels where review_instance_id = ${w.instanceId} and state = 'open'`,
+            ),
+          )
+          // the first juror cannot pass it, and says so: a refusal
+          // determines nothing, so there is nothing to freeze and nothing
+          // for the seed's missing field to block
+          yield* assessment.decideReview(
+            f.t,
+            w.instanceId,
+            { decision: 'reject', comment: '材料不足以判定等级' },
+            f.principal(w.b2),
+          )
+          const afterRefusal = one<{ payload: unknown; locked_at: string | null }>(
+            yield* runSql(sql`
+              select recognition_payload as payload, recognition_locked_at as locked_at
+              from review_panels where id = ${panel.id}`),
+          )
+          // the second agrees, and the round ends refused with no
+          // determination anywhere
+          yield* assessment.decideReview(
+            f.t,
+            w.instanceId,
+            { decision: 'reject', comment: '同上' },
+            f.principal(w.b3),
+          )
+          return {
+            afterRefusal,
+            votes: (yield* runSql(sql`
+              select recognition_hash as hash from review_votes where panel_id = ${panel.id}`)) as {
+              rows: { hash: string | null }[]
+            },
+            recognitions: (yield* runSql(
+              sql`select id from entry_recognitions where entry_id = ${w.entryId}`,
+            )) as { rows: unknown[] },
+            resolution: one<{ resolution: string }>(
+              yield* runSql(sql`select resolution from review_panels where id = ${panel.id}`),
+            ).resolution,
+          }
+        }),
+      ),
+    )
+
+    // nothing was frozen: a refusal is answerable without anybody having
+    // determined anything
+    expect(result.afterRefusal.payload).toBeNull()
+    expect(result.afterRefusal.locked_at).toBeNull()
+    expect(result.votes.rows.map((row) => row.hash)).toEqual([null, null])
+    expect(result.recognitions.rows).toEqual([])
+    // a split sitting below the ladder's end hands the matter up rather than
+    // ending the round; either way it determined nothing
+    expect(result.resolution).toBe('escalated')
   })
 })

@@ -6,7 +6,13 @@ import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { calcParticipant } from '../src/scoring/calc.ts'
 import { builtinScoringDrivers, fixed1, scaledAmount } from '../src/scoring/builtins.ts'
 import { compileScoringPlan, readScoringPlan } from '../src/scoring/plan.ts'
-import { judgeRecognition } from '../src/scoring/recognition.ts'
+import {
+  canonicalRecognition,
+  contradicted,
+  judgeRecognition,
+  recognitionHash,
+  sameRecognition,
+} from '../src/scoring/recognition.ts'
 import type { AggregatorDriver, BatchContext, CalculatorDriver } from '../src/plugin.ts'
 
 // What the scoring layer refuses.
@@ -286,3 +292,45 @@ describe('what a configuration key may be', () => {
     }
   })
 })
+
+describe('what makes two determinations the same one', () => {
+  const schemas = {
+    'rec-score': normalizeAtomicSchema({
+      type: 'string',
+      format: 'qualy-decimal',
+      'x-qualy-maxScale': 4,
+    }),
+    'rec-level': normalizeAtomicSchema({ type: 'string', enum: ['a', 'b'] }),
+  }
+
+  it('reads one number written two ways as one determination', () => {
+    // a schema fixes what a value IS; text fixes only how somebody typed
+    // it. Without this, one reviewer's "3.0" and another's "3.00" are two
+    // proposals a sitting cannot reconcile, and a second stage writing the
+    // same number differently reads as a change that needs explaining
+    const a = canonicalRecognition(schemas, { 'rec-score': '3.0', 'rec-level': 'a' })
+    const b = canonicalRecognition(schemas, { 'rec-score': '3.00', 'rec-level': 'a' })
+    expect(recognitionHash(a)).toBe(recognitionHash(b))
+    expect(sameRecognition(a, b)).toBe(true)
+    expect(contradicted(a, b)).toEqual([])
+    // and it is the canonical spelling that gets stored, not whichever
+    // arrived first
+    expect(a).toEqual({ 'rec-score': '3', 'rec-level': 'a' })
+  })
+
+  it('still tells two different numbers apart', () => {
+    const a = canonicalRecognition(schemas, { 'rec-score': '3.0', 'rec-level': 'a' })
+    const b = canonicalRecognition(schemas, { 'rec-score': '3.01', 'rec-level': 'a' })
+    expect(recognitionHash(a)).not.toBe(recognitionHash(b))
+    expect(contradicted(a, b)).toEqual(['rec-score'])
+  })
+
+  it('counts filling in a blank as making a determination, not changing one', () => {
+    // the seed of a round whose question has a reviewer-only fact
+    const seed = { 'rec-level': 'a' }
+    const filled = { 'rec-level': 'a', 'rec-score': '3' }
+    expect(contradicted(seed, filled)).toEqual([])
+    expect(contradicted(seed, { 'rec-level': 'b', 'rec-score': '3' })).toEqual(['rec-level'])
+  })
+})
+
