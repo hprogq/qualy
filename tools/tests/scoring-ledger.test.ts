@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { currentResolution } from '@qualy/assembly/host'
+import { manifestPath } from '../lib/manifest.ts'
 
 // Where the arithmetic may reach, and where it may not.
 //
@@ -14,10 +16,22 @@ import { describe, expect, it } from 'vitest'
 
 const root = path.resolve(import.meta.dirname, '../..')
 
+// the production assembly, loaded the way the runtime loads it
+const resolution = await currentResolution(manifestPath())
+const contributions = (point: string): unknown[] =>
+  [...resolution.descriptors.values()].flatMap((descriptor) =>
+    descriptor.features.flatMap((feature) =>
+      feature._tag === 'Contribute' && feature.point.id === point ? [feature.value] : [],
+    ),
+  )
+
 const codeOnly = (source: string) =>
-  source
-    .split('\n')
-    .map((line) => line.replace(/\/\*.*?\*\//g, '').replace(/\/\/.*$/, '').replace(/^\s*\*.*$/, ''))
+  source.split('\n').map((line) =>
+    line
+      .replace(/\/\*.*?\*\//g, '')
+      .replace(/\/\/.*$/, '')
+      .replace(/^\s*\*.*$/, ''),
+  )
 
 const breaches = (
   files: readonly string[],
@@ -47,6 +61,7 @@ const manifestOf = (dir: string) =>
   JSON.parse(fs.readFileSync(path.join(root, dir, 'package.json'), 'utf8')) as {
     name: string
     dependencies?: Record<string, string>
+    peerDependencies?: Record<string, string>
   }
 
 describe('the line between evaluating and accounting', () => {
@@ -89,5 +104,77 @@ describe('the line between evaluating and accounting', () => {
       import('../../packages/core/value-schema/src/score.ts'),
     ])
     expect(sdk.SCORE_AMOUNT_SCHEMA).toEqual(platform.SCORE_AMOUNT_SCHEMA)
+  })
+
+  it('keeps the scoring domain blind to evidence field kinds', () => {
+    // Scoring consumes AtomicSchema, BindableField and AssignmentPlan; what
+    // an evidence text or choice field IS belongs to the driver. A type
+    // dispatch here would be the compiler learning a vocabulary it must
+    // never own. (The display chain's attachment knowledge is older debt
+    // and deliberately not this gate's business.)
+    const domain = [
+      'packages/plugins/assessment/core/src/scoring/plan.ts',
+      'packages/plugins/assessment/core/src/scoring/recognition.ts',
+      'packages/plugins/assessment/core/src/scoring/evaluate.ts',
+      'packages/plugins/assessment/core/src/scoring/calc.ts',
+      'packages/plugins/assessment/core/src/scoring/builtins.ts',
+      'packages/plugins/assessment/core/src/scoring/backfill.ts',
+    ]
+    const dispatch =
+      /(?:type\s*===?\s*|case\s+)['"](text|integer|decimal|choice|date|attachment)['"]/
+    const offences = domain.flatMap((path) => {
+      const source = fs.readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
+      return source
+        .split('\n')
+        .flatMap((line, at) =>
+          dispatch.test(line) && !line.trimStart().startsWith('//') ? [`${path}:${at + 1}`] : [],
+        )
+    })
+    expect(offences).toEqual([])
+  })
+
+  it('ships no formula calculator in the production declarations', async () => {
+    // From the assembled declarations, not a directory listing: what is
+    // registered is what runs, wherever its file happens to live. The
+    // formula library may exist as code; the moment its calculator ref
+    // enters this channel it is a shipped scoring driver, and that is a
+    // Phase 7 decision, not a side effect.
+    const refs = contributions('@qualy/plugin-assessment/scoring-drivers').map(
+      (driver) => (driver as { ref: string }).ref,
+    )
+    expect(refs.length).toBeGreaterThan(0)
+    expect(refs.filter((ref) => ref.startsWith('formula@'))).toEqual([])
+  })
+
+  it('keeps the shared value form exactly as light as it claims', () => {
+    const manifest = manifestOf('packages/web/value-form')
+    expect(Object.keys(manifest.dependencies ?? {}).sort()).toEqual([
+      '@qualy/ui',
+      '@qualy/value-schema',
+      '@stylexjs/stylex',
+    ])
+    expect(Object.keys(manifest.peerDependencies ?? {})).toEqual(['react'])
+  })
+
+  it('never offers a file for binding', () => {
+    // the plugin's own suite proves the same thing against its source; this
+    // copy runs against the assembled declarations, so a second item-type
+    // driver cannot arrive offering attachments to scoring unnoticed
+    const drivers = contributions('@qualy/plugin-assessment/item-types') as readonly {
+      id: string
+      bindableFields?: (config: unknown) => readonly { fieldId: string; schema: unknown }[]
+    }[]
+    expect(drivers.length).toBeGreaterThan(0)
+    for (const driver of drivers) {
+      if (driver.bindableFields === undefined) continue
+      const offered = driver.bindableFields({
+        fields: [
+          { key: 'note', type: 'text', label: 'N' },
+          { key: 'proof', type: 'attachment', label: 'P', maxCount: 1 },
+        ],
+      })
+      for (const field of offered) expect(field.schema).not.toBeNull()
+      expect(offered.map((field) => field.fieldId)).toEqual(['note'])
+    }
   })
 })

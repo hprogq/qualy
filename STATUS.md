@@ -11337,3 +11337,147 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 **留给 Phase 6 其余**:Evidence 的 integer/decimal/choice 生产字段与真实动态表单;
 RecordPage 的本人过滤与纠错闭环入口(见前文记账);审核前端的认定确认交互
 (ApproveDialog 目前只在空合同世界工作,非空合同将被服务端要求显式提交)。
+
+## Phase 6:Typed evidence + Recognition 表单闭环(2026-08-30)
+
+九笔提交打通 `Evidence field → BindableField → Recognition contract → Recognition form →
+explicit Recognition → EntryRecognition → test-only typed calculator` 全链;formula@1 与
+真实非空认定的生产链留给 Phase 7。每段独立提交、四件套 + CI 绿后进下一段(用户执行纪律)。
+
+### 逐阶段提交与关键裁决
+
+- **6.0 `c03c2e42` fix(assessment): freeze evidence payload locators for recognition defaults**
+  BindableField 加 `payloadKey`(fieldId=跨 revision 身份,payloadKey=本 revision payload
+  槽位,绝不承诺相等);plan 冻结两者(`persistedPlanShape` 里 `payloadKey?: string`,旧
+  plan 不重编译、hash 零漂移);`seedFromEvidence` 读 `payloadKey ?? fieldId`(fallback 即
+  旧 plan 兼容);Recognition label 冻结进 schema `title` annotation(不进 semantic hash,
+  改名不移 planHash);docs/assessment-formula-recognition.md 三处同步(scoring_plan NOT
+  NULL 现状、panel 首张 approve 票冻结)。差分:testItemType 造 id≠key(claimed-level /
+  claimed-level-slot),去掉 payloadKey 读取即红。
+- **6.1 `d31d2cd4` refactor(web): extract schema-driven value form**
+  新包 @qualy/web-value-form;底层下沉为 opaque field ids(裁决 2):`ValueFieldsForm
+  ({fields:[{id,schema}]})` + `materializeFields`/`draftsFromFields`,`InputValueForm` 变
+  InputSchema adapter,formula 消费面行为逐项不变;opaque id 门(带连字符/点的 id)钉住
+  「PARAMETER_NAME 不传染 Recognition ID」(裁决 1)。
+- **6.2 `287bb257` feat(assessment): expose the approval's recognition form**
+  `recognitionFormFields(plan)` 纯投影(顺序=inputOrder 逐参数首现,空合同 null,不经
+  normalizeInputSchema);`lockedProposalOf` 拓宽出 hash;assembleDetail 组装
+  `recognitionForm`(裁决 5 命名:「此刻执行 approve 需填的表单」,`!canDecide → null`
+  只表示无可操作表单,不冻结 Recognition 可见性语义);六端点共享 wire。
+- **6.3 `4678ac09` feat(assessment): collect explicit recognition on review approval**
+  ApproveDialog 装 ValueFieldsForm(key 重挂 `${review.id}:${locked?.hash ?? 'open'}`);
+  changed 判定镜像 contradicted(仅 seed 已有键被改才要 reason);locked → 只读 + 原样
+  发送;ready 门同源 desktop 按钮与 SlideKey;useDeferredDecision 的 beacon 自动携带
+  recognition。浏览器 9 例(review-recognition.browser.test.tsx)。
+- **6.4 `6922be2b` feat(evidence): add typed P0 fields and bindable contracts**
+  driver.ts 单文件扩 integer/decimal/choice(配置 Schema + filter);`fieldSchema(field)`
+  单真相源(integer 补 safe bounds、choice enum+x-qualy-enumLabels、attachment null);
+  decode 三新支走 `validateValue`,**无 coercion**,decimal 词法禁前导零、通过后
+  canonicalDecimal 入库;`bindableFields = {fieldId, payloadKey, schema, always}`,
+  attachment 跳过,`always = required===true`。schema compile 开销实测:惰性 ajv 首次
+  ~1ms/字段量级,未见热点,不建缓存(裁决 8)。
+- **6.5a `21c953eb` refactor(assessment): split the field editor draft by type**(行为零变)
+  FieldDraft 判别联合 + retypeDraft 工厂;全部分派点迁移。fixup `4db28a21`(fast-refresh
+  门禁:组件文件不导出非组件;教训——窄 stage 快速修复带上了半成品文件,CI 红两笔,此后
+  一律完整提交)。
+- **6.5b `67a76e33` feat(assessment): render typed evidence across browser surfaces**
+  EvidenceForm 三渲染支(per-field draft,词法合法才进 payload,integer 写 number、
+  decimal 写原串;非法删键留 draft + 行内提示);**表单级 validity 通道**(裁决 4):
+  `onValidityChange`,EntryDialog/RecordPage/SupplementAnswerDialog 三消费面提交门接入,
+  承重测试= optional decimal draft "1." → submit disabled(不得静默变 omitted);字段
+  编辑器三型设置组 + choice OptionsEditor;显示面 displayValueOf(choice value→label)
+  贯通 FilingColumn/EntryHistory/EntrySheet/summary;RejectDialog 建议值 typed
+  materialize(integer→number)。
+- **6.6 `30248ce1` feat(assessment): collect recognition for administrative records**
+  窄端点 `GET /assessment/items/{itemId}/recognition-contract`(鉴权=hasRecordAuthority,
+  assignment 是 typed union `{kind:'direct'}|{kind:'convert',converter:'integer-to-
+  decimal@1'}`,裁决 9,客户端复用 `integerToDecimal()`);RecordPage Recognition 区:
+  seed 跟随 + dirty Set 保护,**itemRevisionId 为 form session identity**(裁决 10,变化
+  即清 drafts/dirty),提交 materialize 后带 `recognition:{values}`,Evidence validity 与
+  Recognition materialize 双门禁。
+- **6.7(本笔)test(assessment): close Phase 6 typed-evidence gates** 见下。
+
+### 6.7 收口内容
+
+- **typed 兼容门三条**(recognition.test.ts,narrow-fact-test@1 = ordinal 1..5 版
+  twoFactTest):①认定 ordinal=9 → 换窄 calculator 保存拒 `strands-existing-recognition`
+  (逐值判定,非 schema 形状判定);②认定 ordinal=3(窗口内)→ 同一收窄放行(证明
+  strands 判的是「已认定的值」);③开放轮:narrow 建题 → 放宽到 1..10 保存放行 →
+  **旧轮 approve offered ordinal=8 仍按冻结合同拒 `recognition.rec-ordinal: maximum`**,
+  offered 4 通过且认定行 `itemRevisionId` = 开轮时 revision(≠ 题最新 revision)——
+  「一轮按它开轮时的合同判定」在 typed 世界的可观察断言。
+- **carriesInto 真值表**(scoring-guards.test.ts):同窗 true / integer 收窄 false /
+  choice 收值 false / 放宽 true / **enumLabels 改名 true(annotation 是呈现不是身份)** /
+  增删认定各 false。「label/enumLabels 改名放行且 planHash 不移」由此表 + 既有
+  「label→title 不移 hash」门 + annotation 不进 semantic bytes 三处合围,不再造服务级重复。
+- **架构门禁四条**(tools/tests/scoring-ledger.test.ts,与 effect-api-parity 同源:
+  `currentResolution(manifestPath())` 读生产装配):①scoring 域六文件(plan/recognition/
+  evaluate/calc/builtins/backfill)源码禁 Evidence field kind 字面分派(裁决 6 缩窄;
+  display 链的 attachment knowledge 记为既有债不修);②**formula@1 ∉ assembled
+  ScoringDeclarations**(从 resolution 描述器的扩展点贡献断言,不绑目录);③@qualy/
+  web-value-form deps 恰为 {value-schema, ui, stylex} + react peer;④assembled item-type
+  drivers 的 bindableFields 永不 offer attachment(插件级测试的 tools 级复刻)。
+- **回归**:ledger characterization(逐字面量)、migration-upgrade、differential、全量
+  node + browser 套件重跑(数字见验收)。
+
+### 真实 dev 冒烟(裁决 3 拆分版,全部实测输出)
+
+`pnpm dev` 起真实开发库装配:boot ready(`/health/ready` 200)、启动与全程日志零 ERROR
+(scoring plan sweep 对全部真实 plan fail-closed 读通过)。admin(.env 凭据)登录:
+
+- **既有世界不受扰**:8 道真实题(两批次,fixed@1)`recognition-contract` 全部 200
+  `{"contract":null}`。
+- **三型题建/激活/回读**(测试批次 019fe623):student 型「类型字段冒烟」`01a05335-adc0`
+  与 administrative 型「行政记录冒烟」`01a05336-96e2`,fields=[rank integer 1..100,
+  hours decimal maxScale 2, level choice national/provincial(含中文 label)],激活 200,
+  回读 config 逐字段正确,contract null(fixed 空合同)。
+- **typed decode 六连**(行政 record,payload 经真实 evidence driver):rank 999 →
+  `out-of-range`;rank "3"(字符串)→ `not-an-integer`(**无 coercion**);hours "1.234"
+  → `too-precise`;level "county" → `not-a-choice`;缺 rank → `required`;合法
+  {rank:3, hours:"12.50", level:"national"} → **entry `01a05339-b6f2` 即批 approved**。
+- **落库形态**:revision payload `{"rank":3,"hours":"12.5","level":"national"}`
+  (**"12.50" canonical 成 "12.5"**);entry_recognitions 一行 `{}`(fixed 空合同的完整
+  认定)、source=record、createdBy 非空;entries.current_recognition_id 指向它。
+- **前端壳**:Vite :5173 壳 200(react-refresh 注入正常),`/api/app/manifest` 经反代
+  200,23 页含 assessment 12 页(batch-record 在内)。
+- **现场复原**:为让 record 动作过 phase 门,临时给测试批次当前 phase 的
+  permissionProfile 补了 `assessment.entry.record`,冒烟后已还原为
+  `['assessment.entry.create']`(replacePlan 实测输出确认);两道冒烟题与一条行政记录
+  **留在测试批次**(标题即用途),供人工走查三型渲染。
+- **拆分说明**:demo student 凭据不在本机环境(QUALY_DEMO_PASSWORD 未设),学生本人
+  填报/审核页/record 页的浏览器交互由 41 文件 267 例浏览器套件承担(同一组件、同一
+  driver 形状);「fixed@1 成绩逐值不变」由 ledger characterization 逐字面量差分 +
+  migration-upgrade + differential 门禁承担,dev 侧走到 approved + 认定 + 指针为止。
+  非空认定的真实生产链(formula@1)按裁决属 Phase 7,未做。
+
+### 冒烟顺带发现(记账,不属 Phase 6)
+
+- `PUT /assessment/batches/{id}/phases` 的 phaseSpec 注释宣称「命名 id 的 spec 上 absent
+  field 保留存量」,实测 **absent 的 permissionProfile 被 diff 成清空**,对 ended phase
+  触发 `ended-phase-name-only` 整单拒绝;显式回显现值即可通过。疑似 plan 写入的
+  absent-keeps 未覆盖 profile 字段,待复核(独立于 Phase 6,未修)。
+
+### 用户最终门禁清单逐项核对
+
+- [x] 6.0 id≠key 的 evidence default 正确 seed(差分:去 payloadKey 读取红)
+- [x] 6.1 formula 浏览器测试逐项不变;ValueFieldsForm opaque id 门
+- [x] 6.2 fields 顺序=参数序;title=冻结 label;seed 三态;空合同 null;非审核人 null
+- [x] 6.3 空合同零变化;seed 预填;changed→reason;locked 只读原样发送;reject 无涉
+- [x] 6.4 config 拒非法;decode 无 coercion + canonical + 词法;bindableFields 形状
+      (payloadKey≠fieldId);always 真值表;attachment 缺席;convert/direct/拒绝矩阵
+- [x] 6.5 optional 非法 draft 禁提交(承重);三消费面同门;显示面 typed 贯通
+- [x] 6.6 contract 三态(空 null/typed defaults/鉴权拒);seed 跟随+dirty;切题清 state
+- [x] 6.7 兼容门三条 + carriesInto 真值表 + 架构门禁四条 + 回归 + 拆分版 dev 冒烟
+- [x] 全程未注册 formula@1、未引 QuickJS、未写竞赛逻辑;`fieldId === payloadKey` 未成协议
+
+### 剩余风险与未做(交 Phase 7 或触发条件)
+
+- scoring_plan NOT NULL 收紧:仍等全部环境 boot sweep 过一遍(触发条件未变)。
+- formula@1 注册与真实非空认定生产链、真实竞赛题、成绩页 provenance 展示:Phase 7。
+- interveneOnEntry(void/return)客户端入口、RecordPage 本人过滤:产品项记账未动。
+- display 链(EntrySheet/Paper 等)的 attachment knowledge:既有债,门禁明文豁免。
+- replacePlan absent-keeps 疑点(见上)。
+
+**Phase 6 终态验收(本机逐条实跑)**:`pnpm typecheck` 零错(全部工程 + 组件引用检查);
+`pnpm test` 174 文件 1213 passed | 17 skipped;`pnpm test:browser` 41 文件 267 passed;
+`pnpm build` 通过(staged 96 文件)。dev 冒烟见上节实录。

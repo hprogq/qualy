@@ -119,8 +119,7 @@ export const gradedTest: CalculatorDriver = {
       }),
       contractHash: 'test:graded',
     }),
-  evaluate: (_config, input) =>
-    Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
+  evaluate: (_config, input) => Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
 }
 
 /**
@@ -149,8 +148,37 @@ export const twoFactTest: CalculatorDriver = {
       }),
       contractHash: 'test:two-fact',
     }),
-  evaluate: (_config, input) =>
-    Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
+  evaluate: (_config, input) => Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
+}
+
+/**
+ * The two facts again, with a tighter window on the ordinal. Swapping a
+ * question between this and twoFactTest is how a suite narrows or widens a
+ * typed determination without touching anything else.
+ */
+export const narrowFactTest: CalculatorDriver = {
+  kind: 'calculator',
+  ref: 'narrow-fact-test@1',
+  configSchema: Schema.Struct({}),
+  compile: (config) =>
+    Effect.succeed({
+      config,
+      inputSchema: normalizeInputSchema({
+        type: 'object',
+        properties: { level: LEVEL, ordinal: { type: 'integer', minimum: 1, maximum: 5 } },
+        required: ['level', 'ordinal'],
+        additionalProperties: false,
+      }),
+      outputSchema: normalizeAtomicSchema({
+        type: 'string',
+        format: 'qualy-decimal',
+        'x-qualy-maxScale': 2,
+        'x-qualy-minimum': '-99999999.99',
+        'x-qualy-maximum': '99999999.99',
+      }),
+      contractHash: 'test:narrow-fact',
+    }),
+  evaluate: (_config, input) => Effect.succeed(input['level'] === 'national' ? '10.00' : '4.00'),
 }
 
 export const twoFactScoring = {
@@ -206,6 +234,7 @@ export const catalogLayers = Layer.mergeAll(
         .map((driver) => [driver.ref, driver] as const),
       [gradedTest.ref, gradedTest] as const,
       [twoFactTest.ref, twoFactTest] as const,
+      [narrowFactTest.ref, narrowFactTest] as const,
     ]),
     aggregators: new Map(
       builtinScoringDrivers

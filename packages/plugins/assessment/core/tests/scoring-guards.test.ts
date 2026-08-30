@@ -5,7 +5,7 @@ import { validateValue } from '@qualy/value-schema/validate'
 import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { calcParticipant } from '../src/scoring/calc.ts'
 import { builtinScoringDrivers, fixed1, scaledAmount } from '../src/scoring/builtins.ts'
-import { compileScoringPlan, readScoringPlan } from '../src/scoring/plan.ts'
+import { carriesInto, compileScoringPlan, readScoringPlan } from '../src/scoring/plan.ts'
 import { gradedTest } from './support/catalogs.ts'
 import {
   canonicalRecognition,
@@ -167,7 +167,10 @@ describe('how an aggregator answer reaches the account', () => {
     calcParticipant(
       {
         aggregators: new Map<string, AggregatorDriver>([
-          ['test@1', { kind: 'aggregator', ref: 'test@1', configSchema: Schema.Struct({}), aggregate }],
+          [
+            'test@1',
+            { kind: 'aggregator', ref: 'test@1', configSchema: Schema.Struct({}), aggregate },
+          ],
         ]),
       },
       {
@@ -411,7 +414,9 @@ describe('where a recognition default reads from', () => {
       scoringConfig: {
         calculator: { ref: gradedTest.ref, config: {} },
         aggregator: { ref: 'sum@1', config: {} },
-        recognitions: { 'rec-level': { label: '认定赛事级别', defaultFromFieldId: 'claimed-level' } },
+        recognitions: {
+          'rec-level': { label: '认定赛事级别', defaultFromFieldId: 'claimed-level' },
+        },
         bindings: { level: { kind: 'recognition', recognitionId: 'rec-level' } },
       },
     })
@@ -419,7 +424,9 @@ describe('where a recognition default reads from', () => {
       scoringConfig: {
         calculator: { ref: gradedTest.ref, config: {} },
         aggregator: { ref: 'sum@1', config: {} },
-        recognitions: { 'rec-level': { label: '认定竞赛级别', defaultFromFieldId: 'claimed-level' } },
+        recognitions: {
+          'rec-level': { label: '认定竞赛级别', defaultFromFieldId: 'claimed-level' },
+        },
         bindings: { level: { kind: 'recognition', recognitionId: 'rec-level' } },
       },
     })
@@ -432,3 +439,46 @@ describe('where a recognition default reads from', () => {
   })
 })
 
+describe('what an open round may still produce, under a new plan', () => {
+  const integer = (minimum: number, maximum: number) =>
+    normalizeAtomicSchema({ type: 'integer', minimum, maximum })
+  const choice = (...values: string[]) => normalizeAtomicSchema({ type: 'string', enum: values })
+
+  it('carries only where every possible determination stays readable', () => {
+    // same window: everything the old contract admits, the new one admits
+    expect(carriesInto({ a: integer(1, 100) }, { a: integer(1, 100) })).toBe(true)
+    // the round may determine 50; the new plan cannot read it
+    expect(carriesInto({ a: integer(1, 100) }, { a: integer(1, 10) })).toBe(false)
+    // a choice losing a value strands whoever was determined as it
+    expect(carriesInto({ a: choice('national', 'provincial') }, { a: choice('provincial') })).toBe(
+      false,
+    )
+    // widening never strands
+    expect(carriesInto({ a: choice('provincial') }, { a: choice('national', 'provincial') })).toBe(
+      true,
+    )
+    // renaming the words is presentation: the values are the identity
+    expect(
+      carriesInto(
+        {
+          a: normalizeAtomicSchema({
+            type: 'string',
+            enum: ['national'],
+            'x-qualy-enumLabels': { national: '国家级' },
+          }),
+        },
+        {
+          a: normalizeAtomicSchema({
+            type: 'string',
+            enum: ['national'],
+            'x-qualy-enumLabels': { national: '全国级' },
+          }),
+        },
+      ),
+    ).toBe(true)
+    // a recognition added is as fatal as one removed: the old contract will
+    // never fill it, and the determination reaches scoring incomplete
+    expect(carriesInto({ a: integer(1, 5) }, { a: integer(1, 5), b: integer(1, 5) })).toBe(false)
+    expect(carriesInto({ a: integer(1, 5), b: integer(1, 5) }, { a: integer(1, 5) })).toBe(false)
+  })
+})

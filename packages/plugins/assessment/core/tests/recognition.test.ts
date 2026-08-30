@@ -4,7 +4,7 @@ import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
-import { gradedScoring, twoFactScoring } from './support/catalogs.ts'
+import { gradedScoring, narrowFactTest, twoFactScoring } from './support/catalogs.ts'
 import {
   errorOf,
   GATED,
@@ -209,9 +209,9 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // "I cannot tell" is a legitimate thing to say; a refusal that carried a
     // determination would be putting words in the reviewer's mouth
     expect(Exit.isFailure(result.offered)).toBe(true)
-    expect(errorOf<{ issues: readonly { field: string; reason: string }[] }>(result.offered)?.issues).toEqual([
-      { field: 'recognition', reason: 'not-allowed' },
-    ])
+    expect(
+      errorOf<{ issues: readonly { field: string; reason: string }[] }>(result.offered)?.issues,
+    ).toEqual([{ field: 'recognition', reason: 'not-allowed' }])
     expect(result.rows).toEqual([])
     expect(result.pointer).toBeNull()
     expect(result.said.payload).toBeNull()
@@ -241,12 +241,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             { kind: 'return-for-revision', reason: 'the certificate is unreadable' },
             f.principal(f.admin),
           )
-          yield* assessment.appendEntryRevision(
-            f.t,
-            entryId,
-            { payload: {} },
-            f.principal(f.s1),
-          )
+          yield* assessment.appendEntryRevision(f.t, entryId, { payload: {} }, f.principal(f.s1))
           const again = yield* assessment.setEntryStatus(
             f.t,
             entryId,
@@ -680,7 +675,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.rows[1]!.source).toBe('review')
   })
 
-  it('does not carry an old filing\'s determination onto new material through an appeal', async () => {
+  it("does not carry an old filing's determination onto new material through an appeal", async () => {
     const result = ok(
       await run(
         db.url,
@@ -1007,7 +1002,9 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // depend on the two people being two people
     expect(refusalOf(result.refused)?.reason).toBe('self-record-refused')
     expect(Exit.isFailure(result.smuggled)).toBe(true)
-    expect(inspect(result.smuggled, { depth: 8 })).toContain('chk_entry_revisions_record_two_people')
+    expect(inspect(result.smuggled, { depth: 8 })).toContain(
+      'chk_entry_revisions_record_two_people',
+    )
   })
 
   it('keeps a deduction beyond the reach of its own subject, record power or not', async () => {
@@ -1281,6 +1278,200 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     ])
   })
 
+  // The same trials with a typed window instead of a renamed id: the
+  // narrowing gate must be a judgement about VALUES, not about the shape of
+  // the configuration change.
+
+  const narrowScoring = {
+    ...twoFactScoring,
+    calculator: { ref: narrowFactTest.ref, config: {} },
+  }
+  const policyOf = (f: Seeded) => ({
+    normal: { stages: [at(f, 'class')] },
+    escalation: { stages: [at(f, 'dept')] },
+  })
+  const twoFacted = (f: Seeded, scoring: unknown = twoFactScoring) =>
+    runningBatch(f, {
+      profile: [...REVIEW_OPEN, 'assessment.entry.appeal'],
+      scoring,
+      stages: [at(f, 'class')],
+      escalation: [at(f, 'dept')],
+    })
+
+  it('refuses to narrow a window a determination already sits outside', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-narrow')
+          const assessment = yield* Assessment
+          const g = yield* twoFacted(f)
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'checked',
+              recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 9 } },
+            },
+            f.principal(f.reviewer),
+          )
+          // ordinal 9 was determined; the narrow calculator reads 1..5
+          const asked = yield* Effect.exit(
+            assessment.updateItem(
+              f.t,
+              g.item.id,
+              {
+                config: {
+                  entrySource: 'student' as const,
+                  formConfig: { files: {} },
+                  scoringConfig: narrowScoring,
+                  reviewPolicy: policyOf(f),
+                },
+                reason: '收紧序位',
+              },
+              f.principal(f.admin),
+            ),
+          )
+          return {
+            entryId,
+            refused: errorOf<{ issues: readonly { path: string; reason: string }[] }>(asked)!,
+          }
+        }),
+      ),
+    )
+
+    expect(result.refused.issues).toEqual([
+      {
+        path: `scoringConfig.recognitions:${result.entryId}`,
+        reason: 'strands-existing-recognition',
+      },
+    ])
+  })
+
+  it('lets a narrowing through when every determination still fits', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-narrow-ok')
+          const assessment = yield* Assessment
+          const g = yield* twoFacted(f)
+          const { instanceId } = yield* claimed(f, g, g.p1)
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'checked',
+              recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 3 } },
+            },
+            f.principal(f.reviewer),
+          )
+          // ordinal 3 fits the narrow window; nothing is stranded, so the
+          // save must not be refused over the determinations
+          const asked = yield* Effect.exit(
+            assessment.updateItem(
+              f.t,
+              g.item.id,
+              {
+                config: {
+                  entrySource: 'student' as const,
+                  formConfig: { files: {} },
+                  scoringConfig: narrowScoring,
+                  reviewPolicy: policyOf(f),
+                },
+                reason: '收紧序位',
+              },
+              f.principal(f.admin),
+            ),
+          )
+          return errorOf<{ issues?: readonly { reason: string }[] }>(asked)
+        }),
+      ),
+    )
+
+    expect(result?.issues).toBeUndefined()
+  })
+
+  it('holds an open round to the window it opened with', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-frozen-window')
+          const assessment = yield* Assessment
+          const g = yield* twoFacted(f, narrowScoring)
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          const before = yield* Effect.map(
+            runSql(
+              sql`select current_revision_id as "id" from assessment_items where id = ${g.item.id}`,
+            ),
+            (rows) => one<{ id: string }>(rows).id,
+          )
+          // widening 1..5 to 1..10 strands nothing, so the save goes through
+          yield* assessment.updateItem(
+            f.t,
+            g.item.id,
+            {
+              config: {
+                entrySource: 'student' as const,
+                formConfig: { files: {} },
+                scoringConfig: twoFactScoring,
+                reviewPolicy: policyOf(f),
+              },
+              reason: '放宽序位',
+            },
+            f.principal(f.admin),
+          )
+          const after = yield* Effect.map(
+            runSql(
+              sql`select current_revision_id as "id" from assessment_items where id = ${g.item.id}`,
+            ),
+            (rows) => one<{ id: string }>(rows).id,
+          )
+          // the sitting round still judges by the contract it opened with:
+          // 8 is legal under the question as it reads today, and refused
+          const wide = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              instanceId,
+              {
+                decision: 'approve',
+                comment: 'checked',
+                recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 8 } },
+              },
+              f.principal(f.reviewer),
+            ),
+          )
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'checked',
+              recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 4 } },
+            },
+            f.principal(f.reviewer),
+          )
+          return {
+            before,
+            after,
+            wide: errorOf<{ issues: readonly { field: string; reason: string }[] }>(wide)!,
+            rows: yield* recognitionsOf(entryId),
+          }
+        }),
+      ),
+    )
+
+    expect(result.after).not.toBe(result.before)
+    expect(result.wide.issues).toEqual([{ field: 'recognition.rec-ordinal', reason: 'maximum' }])
+    // and what it settled on is recorded against the revision it judged by
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]!.itemRevisionId).toBe(result.before)
+  })
+
   it('lets a change through that every open round could still satisfy', async () => {
     const result = ok(
       await run(
@@ -1315,7 +1506,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result?.issues).toBeUndefined()
   })
 
-  it('keeps a recorded fact out of its subject\'s hands, and open to their argument', async () => {
+  it("keeps a recorded fact out of its subject's hands, and open to their argument", async () => {
     const result = ok(
       await run(
         db.url,
@@ -1338,13 +1529,10 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const abandoned = yield* Effect.exit(
             assessment.setEntryStatus(f.t, entry.id, 'voided', asSubject),
           )
-          const card = yield* Effect.map(
-            assessment.getEntry(f.t, entry.id, asSubject),
-            (view) => ({
-              abandon: view.capabilities.abandon.state,
-              appeal: view.capabilities.appeal.state,
-            }),
-          )
+          const card = yield* Effect.map(assessment.getEntry(f.t, entry.id, asSubject), (view) => ({
+            abandon: view.capabilities.abandon.state,
+            appeal: view.capabilities.appeal.state,
+          }))
           // but they can say they disagree with it, which is the whole point
           const appealed = yield* assessment.appealEntry(
             f.t,
@@ -1568,7 +1756,11 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           const assessment = yield* Assessment
           const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
           const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
-          const empty = yield* assessment.getReviewInstance(f.t, instanceId, f.principal(f.reviewer))
+          const empty = yield* assessment.getReviewInstance(
+            f.t,
+            instanceId,
+            f.principal(f.reviewer),
+          )
           return { empty }
         }),
       ),
@@ -1611,7 +1803,11 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // the pre-fill map: the payload address and the one named conversion,
     // never the calculator or its constants
     expect(contract.defaults).toEqual([
-      { recognitionId: 'rec-level', payloadKey: 'claimed-level-slot', assignment: { kind: 'direct' } },
+      {
+        recognitionId: 'rec-level',
+        payloadKey: 'claimed-level-slot',
+        assignment: { kind: 'direct' },
+      },
     ])
     expect(Object.keys(contract)).toEqual(['itemRevisionId', 'fields', 'defaults'])
     // a question that asks for nothing has no contract to hand over
