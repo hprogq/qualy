@@ -978,6 +978,68 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(inspect(result.smuggled, { depth: 8 })).toContain('chk_entry_revisions_record_two_people')
   })
 
+  it('keeps a deduction beyond the reach of its own subject, record power or not', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-self-void')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const item = yield* recordItem(f, g.batch.id)
+          // somebody else enters a deduction against the registrar, who is
+          // on the roster like anybody else
+          const mine = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from batch_participants
+              where batch_id = ${g.batch.id} and user_id = ${f.recorder}`),
+          )
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: mine.id, payload: {}, note: '违纪记录' },
+            f.principal(f.admin),
+          )
+          const standing = () =>
+            Effect.map(
+              runSql(sql`
+                select status, current_recognition_id as recognition
+                from entries where id = ${entry.id}`),
+              (raw) => one<{ status: string; recognition: string | null }>(raw),
+            )
+          const before = yield* standing()
+          // holding the record power does not put your own deduction in
+          // your hands: unmaking a record is the same power as making one,
+          // and both need the two people to be two people
+          const selfVoid = yield* Effect.exit(
+            assessment.interveneOnEntry(
+              f.t,
+              entry.id,
+              { kind: 'void', reason: '不服，先删了' },
+              f.principal(f.recorder),
+            ),
+          )
+          const after = yield* standing()
+          // another registrar whose authority covers them still can
+          const voided = yield* assessment.interveneOnEntry(
+            f.t,
+            entry.id,
+            { kind: 'void', reason: '经复核，记录有误' },
+            f.principal(f.admin),
+          )
+          return { selfVoid, before, after, status: voided.status }
+        }),
+      ),
+    )
+
+    expect(refusalOf(result.selfVoid)?.reason).toBe('self-record-refused')
+    // the refusal changed nothing: still approved, still the same
+    // determination, still counted
+    expect(result.after).toEqual(result.before)
+    expect(result.after.status).toBe('approved')
+    expect(result.after.recognition).not.toBeNull()
+    expect(result.status).toBe('voided')
+  })
+
   it('determines an administrative record without inventing a review', async () => {
     const result = ok(
       await run(

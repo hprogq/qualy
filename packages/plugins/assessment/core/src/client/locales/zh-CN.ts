@@ -59,7 +59,7 @@ export default {
   'assessment/entry/refuse-item-unconfigured': '项目尚未完成配置，请联系批次管理员。',
   'assessment/entry/refuse-review-level-missing':
     '项目设置的审核层级与你所属组织不匹配，暂时无法提交，请联系批次管理员。',
-  'assessment/entry/refuse-self-record': '与本人有关的记录需由其他工作人员登记',
+  'assessment/entry/refuse-self-record': '与本人有关的记录需由其他工作人员处理',
   'assessment/entry/refuse-basis-required': '登记时必须填写认定依据。',
   'assessment/entry/refuse-not-participant': '你不在本批次参评名单中。',
   'assessment/entry/refuse-no-permission': '你没有在本批次执行该操作的权限。',

@@ -1723,6 +1723,13 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               })
               .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
             if (!decision.allowed) return yield* refuse('abandon', decision.reason)
+            // the same two-people rule as making the record: unmaking one
+            // is the same power, so the subject of a deduction who happens
+            // to hold it must not be able to erase the deduction. Their way
+            // to disagree is the appeal, which somebody else decides.
+            if (participant.userId === as.userId) {
+              return yield* refuse('abandon', 'self-record-refused')
+            }
             const reaches = yield* staffReachesParticipant({
               tenantId,
               batchId: located.batchId,

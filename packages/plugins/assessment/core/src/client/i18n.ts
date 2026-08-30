@@ -680,7 +680,7 @@ const i18n = definePluginMessages({
     },
     refuseSelfRecord: {
       id: 'assessment/entry/refuse-self-record',
-      defaultMessage: 'A record about yourself has to be entered by somebody else',
+      defaultMessage: 'A record about yourself has to be handled by somebody else',
     },
     refuseBasisRequired: {
       id: 'assessment/entry/refuse-basis-required',
