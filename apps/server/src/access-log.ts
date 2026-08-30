@@ -85,17 +85,19 @@ export const accessLog =
         const [response, remainder] = HttpServerError.causeResponseStripped(exit.cause)
         // 499 IS the client-closed marker, whether or not the interrupt's
         // own reason still sits beside it in the cause. An interrupt that
-        // was already MATERIALIZED into an InterruptError (squash does this
-        // to interrupt-only causes on the way through the http layers - the
-        // websocket handler dies this way on shutdown) counts the same:
-        // hasInterruptsOnly cannot see it once it is an error value.
-        const squashedRemainder = Option.isSome(remainder)
-          ? (Cause.squash(remainder.value) as { name?: string })
-          : null
+        // was already MATERIALIZED into an InterruptError value somewhere in
+        // the http layers (the websocket handler dies this way on shutdown)
+        // counts the same: hasInterruptsOnly cannot see it once it is an
+        // error value, so every error the cause carries is inspected.
+        const materializedInterrupt = (cause: Cause.Cause<unknown>): boolean =>
+          Cause.prettyErrors(cause).some(
+            (error) => error.name === 'InterruptError' || error.name === 'InterruptCause',
+          )
         const interrupted =
           Cause.hasInterruptsOnly(exit.cause) ||
           response.status === 499 ||
-          (squashedRemainder instanceof Error && squashedRemainder.name === 'InterruptError')
+          materializedInterrupt(exit.cause) ||
+          (Option.isSome(remainder) && materializedInterrupt(remainder.value))
         const log =
           interrupted || (isEventStream(response) && response.status < 400)
             ? Effect.logDebug(line(interrupted ? 'client closed' : response.status))
