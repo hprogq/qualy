@@ -11817,3 +11817,40 @@ hardening 一律记 Phase 7 前置/hardening backlog,不再阻塞阶段推进(�
   ScoringCatalog)、sandbox reserved globals、wire-budget 两 gate、
   `applyAssignment` 唯一解释器、Evidence retype identity 裁决与 required text
   effective schema。
+
+## 第六轮审计:两 P1 即修,三 P2 记账(2026-08-31)
+
+用户第六轮扩查(基线 cd70db21):**零新增 P0,Phase 6 封板状态成立**。按其排序即修
+两 P1,其余记账。
+
+- **`fix(assessment)` reviewReasons canonical**(P1):wire 上 reject/escalate 元素改
+  `trimmedName(100)` + 列表 ≤50(空白串在 schema 即 400);service 双守
+  `canonicalReasons`(trim → 滤空 → trim 后去重)。决策端本就 trim 后按 includes 匹配,
+  存 canonical 后每条 offer 恒可用——修前经正式 API 存 `[" "]` 会让 reject 永不可能
+  完成,存 `[" 证据不足 "]` 会拒绝所有正确提交。承重:带空格/重复/空白混合列表 →
+  存 `['证据不足','材料过期']`,且 canonical label 真能 reject 成功;摘 canonical 差分红。
+  OpenAPI parity 全量深比较绿。
+- **`fix(web)` choiceLabel own-read**(P1,Phase 7 前置):@qualy/value-schema 的
+  display 读键链(locale entry、enumLabels 两层)全部换 `Object.hasOwn` own-read——
+  choice stable value 合法拼作 `toString`/`constructor`/`__proto__` 时,部分翻译的
+  locale record 不再命中原型继承(返回函数而非落到 default label)。承重:三键 × 
+  (locale 缺→default 胜 / locale own→locale 胜 / 全无→stable value)+ 恒 string +
+  locale 键同规;摘 own-read 差分红。**prototype-sensitive business keys closure**
+  (Formula SDK Schema.choice 的 Record 模型、ValueForm 内部写入等)记账为 Phase 7 前
+  统一动议,不零散修。
+
+**P2 记账**:①sandbox capabilities 宣称 8MiB 而 RPC envelope ~2MiB——协议自相矛盾但
+现无消费方;RuntimeStore/formula@1 做 capability negotiation 前拆分 engine/transport/
+effective ceilings(capabilities 暴露 effective);②`AssessmentBatch.currentPhaseId`
+补 same-batch 复合 FK + read query 补 batch 条件(投影非权威,phase gate 不信它,纯
+hardening);③`BatchParticipantEvent` 补 (tenant,batch,participant) 复合 FK(append-only
+审计事实,无读方决策)。②③并入下一笔 Assessment migration,不单独打断主线。
+
+**用户排除记录**(避免重查):Formula publish 并发(FOR UPDATE + fingerprint 幂等)、
+publish fingerprint 完整性、publish 无独立 AuditAction(version row 即历史,故意)、
+derived/constant 前端分支(无 production constant driver,不可达)。
+
+**验收**:typecheck 零错;`pnpm test`/`test:browser`/`build` 全绿(数字见下)。用户
+阶段判断维持:Phase 6 DONE / Phase 7 AUTHORIZED——「剩下的问题已退到边界
+canonicalization、协议自描述、数据库 defense-in-depth 层;这支持 Phase 6 是真正封板,
+而非因停止检查才看似封板」。
