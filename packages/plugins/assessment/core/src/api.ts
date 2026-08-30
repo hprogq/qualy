@@ -1552,6 +1552,37 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // What a registrar's screen needs to collect a determination: the
+    // frozen fields and the default map. Never the execution plan.
+    HttpApiEndpoint.get('getRecognitionContract', '/assessment/items/:itemId/recognition-contract', {
+      params: Schema.Struct({ itemId: id }),
+      success: Schema.Struct({
+        contract: Schema.NullOr(
+          Schema.Struct({
+            itemRevisionId: id,
+            /** opaque recognition ids with their frozen schemas, in display order */
+            fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
+            defaults: Schema.Array(
+              Schema.Struct({
+                recognitionId: Schema.String,
+                /** the payload address the pre-fill reads from */
+                payloadKey: Schema.String,
+                assignment: Schema.Union([
+                  Schema.Struct({ kind: Schema.Literal('direct') }),
+                  Schema.Struct({
+                    kind: Schema.Literal('convert'),
+                    converter: Schema.Literal('integer-to-decimal@1'),
+                  }),
+                ]),
+              }),
+            ),
+          }),
+        ),
+      }),
+      error: [ItemNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     HttpApiEndpoint.get('getItem', '/assessment/items/:itemId', {
       params: Schema.Struct({ itemId: id }),
       success: Schema.Struct({

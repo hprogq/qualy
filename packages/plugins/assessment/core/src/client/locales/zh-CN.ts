@@ -281,6 +281,7 @@ export default {
   'assessment/entry/issue-too-precise': '小数位超出该项允许的范围。',
   'assessment/entry/issue-not-a-choice': '请选择列出的选项之一。',
   'assessment/entry/issue-not-text': '该项需要填写文字。',
+  'assessment/record/recognition': '认定结果',
   'assessment/entry/number-unreadable': '请先把数字填写完整。',
   'assessment/entry/choice-unset': '请选择一项。',
   'assessment/items/type-integer': '数字',

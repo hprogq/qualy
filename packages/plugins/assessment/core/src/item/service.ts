@@ -1,7 +1,7 @@
 import { Effect, Result } from 'effect'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
-import type { AccessDenied } from '@qualy/rbac-contract/effect'
+import { AccessDenied } from '@qualy/rbac-contract/effect'
 import type { EpochMillis } from '../phase/engine/types.ts'
 import type { ItemTypeDriver } from '../plugin.ts'
 import {
@@ -19,7 +19,7 @@ import { announce } from '../live/events.ts'
 import { bumpParticipantAttention } from '../entry/db.ts'
 import { scaledAmount } from '../scoring/builtins.ts'
 import { carriesInto, compileScoringPlan, readScoringPlan, recognitionSourceOf } from '../scoring/plan.ts'
-import { judgeRecognition } from '../scoring/recognition.ts'
+import { judgeRecognition, recognitionFormFields } from '../scoring/recognition.ts'
 import { policyModeOf } from '../review/chain.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
@@ -210,6 +210,11 @@ export interface ItemMethods {
     input: CreateItemInput,
     as: Principal,
   ) => Effect.Effect<ItemView, CreateItemError>
+  readonly getRecognitionContract: (
+    tenantId: string,
+    itemId: string,
+    as: Principal,
+  ) => Effect.Effect<RecognitionContractView | null, ItemNotFound | AccessDenied>
   readonly getItem: (
     tenantId: string,
     itemId: string,
@@ -253,6 +258,25 @@ export interface ItemMethods {
 }
 
 /** what the item methods borrow from the service that owns authorization */
+/**
+ * What a registrar's screen needs to collect a determination: the frozen
+ * contract's fields, and how each default is derived from the material -
+ * the payload address it reads and the one named conversion it may apply.
+ * Never the calculator, the constants or anything else of the execution
+ * plan: the screen pre-fills a form, it does not score.
+ */
+export interface RecognitionContractView {
+  readonly itemRevisionId: string
+  readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
+  readonly defaults: readonly {
+    readonly recognitionId: string
+    readonly payloadKey: string
+    readonly assignment:
+      | { readonly kind: 'direct' }
+      | { readonly kind: 'convert'; readonly converter: 'integer-to-decimal@1' }
+  }[]
+}
+
 export interface ItemDeps {
   readonly withDb: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, Exclude<R, Orm>>
   readonly requireBatchVisible: (
@@ -274,6 +298,12 @@ export interface ItemDeps {
     reason: string | null,
   ) => Effect.Effect<void, QueryFailed, Orm>
   readonly parseRange: (text: string) => MaterialRange
+  /** whether this person holds the record authority inside the batch */
+  readonly hasRecordAuthority: (
+    tenantId: string,
+    batchId: string,
+    userId: string,
+  ) => Effect.Effect<boolean>
   readonly catalogs: Catalogs
 }
 
@@ -921,6 +951,46 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     },
   )
 
+  const getRecognitionContract: ItemMethods['getRecognitionContract'] = Effect.fn(
+    'Assessment.getRecognitionContract',
+  )(function* (tenantId, itemId, as) {
+    const found = yield* withDb(
+      itemOf(tenantId, itemId).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+    )
+    if (found === null) return yield* new ItemNotFound()
+    yield* deps.requireBatchVisible(tenantId, found.batchId, as)
+    // the same standing the record page itself requires: this is the form a
+    // registrar fills, and nobody else has business with the pre-fill map
+    if (!(yield* deps.hasRecordAuthority(tenantId, found.batchId, as.userId))) {
+      return yield* new AccessDenied({ reason: 'cannot record against this batch' })
+    }
+    if (found.currentRevisionId === null) return null
+    return yield* withDb(
+      Effect.gen(function* () {
+        const revision = yield* revisionOf(tenantId, found.currentRevisionId!)
+        if (revision === null) return null
+        const plan = yield* Effect.orDie(readScoringPlan(revision))
+        const fields = recognitionFormFields(plan)
+        if (fields === null) return null
+        return {
+          itemRevisionId: revision.id,
+          fields,
+          defaults: Object.entries(plan.defaultBindings).flatMap(([recognitionId, binding]) =>
+            binding.assignment.kind === 'incompatible'
+              ? []
+              : [
+                  {
+                    recognitionId,
+                    payloadKey: binding.payloadKey ?? binding.fieldId,
+                    assignment: binding.assignment,
+                  },
+                ],
+          ),
+        } satisfies RecognitionContractView
+      }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+    )
+  })
+
   const getItem: ItemMethods['getItem'] = Effect.fn('Assessment.getItem')(
     function* (tenantId, itemId, as) {
       const found = yield* withDb(
@@ -1551,6 +1621,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     listItems,
     createItem,
     getItem,
+    getRecognitionContract,
     updateItem,
     deleteItem,
     setItemStatus,

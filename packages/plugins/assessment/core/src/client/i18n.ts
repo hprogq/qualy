@@ -1266,6 +1266,10 @@ const i18n = definePluginMessages({
       id: 'assessment/entry/issue-not-text',
       defaultMessage: 'Enter text here',
     },
+    recordRecognition: {
+      id: 'assessment/record/recognition',
+      defaultMessage: 'Determination',
+    },
     entryNumberUnreadable: {
       id: 'assessment/entry/number-unreadable',
       defaultMessage: 'Finish the number before submitting',

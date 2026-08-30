@@ -1577,4 +1577,47 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     // must not invent one
     expect(result.empty.recognitionForm).toBeNull()
   })
+
+  it('hands the registrar the contract, its defaults, and nobody else', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-contract')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const typed = yield* recordItem(f, g.batch.id, { scoring: gradedScoring })
+          const plain = yield* recordItem(f, g.batch.id)
+          const contract = yield* assessment.getRecognitionContract(
+            f.t,
+            typed.id,
+            f.principal(f.recorder),
+          )
+          const empty = yield* assessment.getRecognitionContract(
+            f.t,
+            plain.id,
+            f.principal(f.recorder),
+          )
+          const stranger = yield* Effect.exit(
+            assessment.getRecognitionContract(f.t, typed.id, f.principal(f.s1)),
+          )
+          return { contract, empty, stranger }
+        }),
+      ),
+    )
+
+    const contract = result.contract!
+    expect(contract.fields.map((field) => field.id)).toEqual(['rec-level'])
+    // the pre-fill map: the payload address and the one named conversion,
+    // never the calculator or its constants
+    expect(contract.defaults).toEqual([
+      { recognitionId: 'rec-level', payloadKey: 'claimed-level-slot', assignment: { kind: 'direct' } },
+    ])
+    expect(Object.keys(contract)).toEqual(['itemRevisionId', 'fields', 'defaults'])
+    // a question that asks for nothing has no contract to hand over
+    expect(result.empty).toBeNull()
+    // and the pre-fill map is the registrar's: a student gets a refusal,
+    // not a map of how determinations are derived
+    expect(Exit.isFailure(result.stranger)).toBe(true)
+  })
 })

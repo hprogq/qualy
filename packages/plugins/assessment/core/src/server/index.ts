@@ -994,6 +994,7 @@ export class Assessment extends Context.Service<
     readonly listItems: ItemMethods['listItems']
     readonly createItem: ItemMethods['createItem']
     readonly getItem: ItemMethods['getItem']
+  readonly getRecognitionContract: ItemMethods['getRecognitionContract']
     readonly updateItem: ItemMethods['updateItem']
     readonly deleteItem: ItemMethods['deleteItem']
     readonly setItemStatus: ItemMethods['setItemStatus']
@@ -1976,6 +1977,11 @@ export const make = Effect.fn('Assessment.make')(function* () {
     requireRosterReach,
     recordConfigChange,
     parseRange,
+    // the same judgment the batch capabilities and the record page use
+    hasRecordAuthority: (tenantId, batchId, userId) =>
+      Effect.map(batchAuthority(tenantId, batchId, userId), (authority) =>
+        authority.has('assessment.entry.record'),
+      ),
     catalogs: {
       itemTypes,
       calculators: scoring.calculators,
@@ -5453,6 +5459,19 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           principal,
         )
         return { item: itemDto(item) }
+      }),
+    )
+    .handle(
+      'getRecognitionContract',
+      Effect.fn('assessment.getRecognitionContract.handler')(function* ({ params }) {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        const contract = yield* assessment.getRecognitionContract(
+          principal.tenantId,
+          params.itemId,
+          principal,
+        )
+        return { contract }
       }),
     )
     .handle(
