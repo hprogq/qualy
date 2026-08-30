@@ -17,7 +17,7 @@ const diagnostic = Schema.Struct({
 // parameter refused and what the rule's own value was - the reason stays a
 // machine key the client translates, the constraint is content.
 const testProblem = Schema.Struct({
-  at: Schema.Literals(['input', 'expected']),
+  at: Schema.Literals(['input', 'expected', 'output']),
   parameter: Schema.optional(Schema.String),
   reason: Schema.String,
   constraint: Schema.optional(Schema.String),

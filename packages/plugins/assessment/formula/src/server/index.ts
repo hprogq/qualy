@@ -12,7 +12,11 @@ import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { scopeCoverage, type Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import { SANDBOX_ABI_VERSION, Sandbox } from '@qualy/plugin-sandbox/service'
-import { FORMULA_ABI_VERSION, SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
+import {
+  FORMULA_ABI_VERSION,
+  FORMULA_FAILURE_MESSAGE_LIMIT,
+  SCORE_AMOUNT_SCHEMA,
+} from '@qualy/formula'
 import { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT } from '@qualy/sandbox-rpc'
 import { FormulaAuthoring } from './authoring.ts'
 import {
@@ -119,7 +123,7 @@ interface VersionRow {
 }
 
 export interface TestProblem {
-  readonly at: 'input' | 'expected'
+  readonly at: 'input' | 'expected' | 'output'
   readonly parameter?: string
   readonly reason: string
   readonly constraint?: string
@@ -205,6 +209,8 @@ interface PreparedFormula {
   readonly sourceSha256: string
   readonly runtimeSha256: string
   readonly contractSha256: string
+  /** the ABI the artifact actually speaks, as the sidecar reported it */
+  readonly formulaAbiVersion: number
   readonly formulaRuntimeSha256: string
   readonly typescriptVersion: string
   readonly esbuildVersion: string
@@ -220,6 +226,7 @@ interface CompiledFormula {
   readonly sourceSha256: string
   readonly runtimeSha256: string
   readonly contractSha256: string
+  readonly formulaAbiVersion: number
   readonly formulaRuntimeSha256: string
   readonly typescriptVersion: string
   readonly esbuildVersion: string
@@ -546,13 +553,34 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           failure?: { message: string }
         }
         if (!envelope.ok) {
+          // the SDK caps the message at creation; capping again here keeps a
+          // forged envelope from carrying an unbounded string to screens
           report.push({
             ...(expected === undefined ? {} : { passed: false, expected }),
-            refusal: envelope.failure?.message ?? '',
+            refusal: (envelope.failure?.message ?? '').slice(0, FORMULA_FAILURE_MESSAGE_LIMIT),
           })
           continue
         }
         const actual = canonicalDecimal(envelope.amount ?? '') ?? envelope.amount ?? ''
+        // the same boundary the official evaluator holds: what came back is
+        // judged against the formula's own output contract before anything
+        // compares or displays it - a violating answer is a broken contract,
+        // never a normal actual
+        const outputIssues = validateValue(outputSchema, actual)
+        if (outputIssues.length > 0) {
+          report.push({
+            ...(expected === undefined ? {} : { passed: false, expected }),
+            problems: outputIssues.map((issue) => {
+              const constraint = constraintOf(outputSchema, issue.reason)
+              return {
+                at: 'output' as const,
+                reason: issue.reason,
+                ...(constraint === undefined ? {} : { constraint }),
+              }
+            }),
+          })
+          continue
+        }
         report.push({
           actual,
           ...(expected === undefined ? {} : { passed: actual === expected, expected }),
@@ -638,6 +666,17 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       // sandbox, followed by the host-side validation of it all.
       const compiled = yield* authoring.compile(source)
 
+      // in a rolling upgrade the sidecar may still speak an older formula
+      // ABI; recording this host's constant for an artifact that sidecar
+      // built would falsify the version row and its fingerprint. Refuse the
+      // pairing outright - an operator outage, not an author mistake.
+      if (compiled.formulaAbiVersion !== FORMULA_ABI_VERSION) {
+        yield* Effect.logError(
+          `authoring sidecar produced formula abi ${compiled.formulaAbiVersion}, this host supports ${FORMULA_ABI_VERSION}`,
+        )
+        return yield* new FormulaCompileUnavailable()
+      }
+
       const contract = yield* extractContract(compiled.artifact, compiled.runtimeSha256)
 
       // patterns are only worth checking on a structurally sound
@@ -685,6 +724,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         sourceSha256: compiled.sourceSha256,
         runtimeSha256: compiled.runtimeSha256,
         contractSha256: sha256(`${canonicalInput}|${canonicalOutput}`),
+        formulaAbiVersion: compiled.formulaAbiVersion,
         formulaRuntimeSha256: compiled.formulaRuntimeSha256,
         typescriptVersion: compiled.typescriptVersion,
         esbuildVersion: compiled.esbuildVersion,
@@ -789,8 +829,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     as: Principal,
   ) {
     const allowed = yield* rbac.canAt(as, MANAGE, input.ownerNodeId)
-    if (!allowed)
-      return yield* new AccessDenied({ reason: 'cannot manage scoring formulas here' })
+    if (!allowed) return yield* new AccessDenied({ reason: 'cannot manage scoring formulas here' })
     // the byte gate is a service invariant, identical at create, update and
     // compile - the api's character-length check is not a byte check
     const seed = input.draftSourceTs ?? DEFAULT_SOURCE
@@ -1040,7 +1079,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         compiled.typescriptVersion,
         compiled.esbuildVersion,
         String(compiled.sourcePolicyVersion),
-        String(FORMULA_ABI_VERSION),
+        String(compiled.formulaAbiVersion),
         compiled.formulaRuntimeSha256,
         // the full-artifact hash covers what the sdkFiles digest cannot: the
         // trusted WRAPPER and PRELUDE strings live in bundler.ts, so an
@@ -1124,7 +1163,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
                   sourcePolicyParserVersion: compiled.sourcePolicyParserVersion,
                   authoringBuildId: compiled.authoringBuildId,
                   sandboxRuntimeBuildId,
-                  formulaAbiVersion: FORMULA_ABI_VERSION,
+                  formulaAbiVersion: compiled.formulaAbiVersion,
                   formulaRuntimeSha256: compiled.formulaRuntimeSha256,
                   quickjsEngineVersion: engine,
                   valueSchemaProfileVersion: VALUE_SCHEMA_PROFILE_VERSION,
@@ -1396,8 +1435,7 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           try {
             const parsed = new URL(origin)
             return (
-              (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
-              parsed.host === host
+              (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.host === host
             )
           } catch {
             return false
@@ -1407,11 +1445,7 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
 
         const principal = yield* CurrentUser
         const library = yield* FormulaLibrary
-        const draft = yield* library.managedDraft(
-          principal.tenantId,
-          params.functionId,
-          principal,
-        )
+        const draft = yield* library.managedDraft(principal.tenantId, params.functionId, principal)
 
         // one live language server per person, tenant-scoped; a second
         // browser is refused rather than the first one torn down

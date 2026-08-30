@@ -6,6 +6,7 @@
  */
 
 export { FORMULA_ABI_VERSION } from './abi.ts'
+export { FORMULA_FAILURE_MESSAGE_LIMIT } from './failure.ts'
 export type { DecimalArithmetic, FormulaContext } from './context.ts'
 export type { Decimal } from './decimal.ts'
 export { defineFormula, type FormulaDefinition, type FormulaOutputSchema } from './define.ts'

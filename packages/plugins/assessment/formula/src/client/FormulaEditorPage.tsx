@@ -82,8 +82,7 @@ const newTestKey = (): string =>
     : Math.random().toString(36).slice(2)
 
 /** the wire/compare projection: identity is local, never sent or compared */
-const bareTests = (tests: readonly DraftTest[]) =>
-  tests.map(({ key: _key, ...rest }) => rest)
+const bareTests = (tests: readonly DraftTest[]) => tests.map(({ key: _key, ...rest }) => rest)
 
 /** a refusal raised by this screen's own checks, worded here, never generic */
 class LocalFinding extends Error {}
@@ -101,7 +100,7 @@ interface PublishFindings {
     expected: string
     actual?: string
     problems?: readonly {
-      at: 'input' | 'expected'
+      at: 'input' | 'expected' | 'output'
       parameter?: string
       reason: string
       constraint?: string
@@ -207,7 +206,11 @@ export default function FormulaEditorPage() {
         return format(m.fieldNotDecimal)
       default: {
         const constraint = schema === undefined ? undefined : constraintOf(schema, reason)
-        return reasonText({ at: 'input', reason, ...(constraint === undefined ? {} : { constraint }) })
+        return reasonText({
+          at: 'input',
+          reason,
+          ...(constraint === undefined ? {} : { constraint }),
+        })
       }
     }
   }
@@ -219,10 +222,7 @@ export default function FormulaEditorPage() {
     new Map(
       [...issues].map(([field, reason]) => [
         field,
-        fieldIssueText(
-          field === '' ? undefined : parameterSchemaAt(schema, `/${field}`),
-          reason,
-        ),
+        fieldIssueText(field === '' ? undefined : parameterSchemaAt(schema, `/${field}`), reason),
       ]),
     )
 
@@ -238,8 +238,7 @@ export default function FormulaEditorPage() {
   }
 
   /** what a result answered: the exact case content at run time */
-  const caseFingerprint = (row: DraftTest): string =>
-    JSON.stringify([row.inputText, row.expected])
+  const caseFingerprint = (row: DraftTest): string => JSON.stringify([row.inputText, row.expected])
 
   /** the row's editing view: live drafts, or the stored value redrawn */
   const draftsOfRow = (row: DraftTest): Record<string, FieldDraft> =>
@@ -744,7 +743,9 @@ export default function FormulaEditorPage() {
                 parameter: problem.parameter ?? '',
                 detail: reasonText(problem),
               })
-            : format(m.problemExpected, { detail: reasonText(problem) }),
+            : problem.at === 'output'
+              ? format(m.problemOutput, { detail: reasonText(problem) })
+              : format(m.problemExpected, { detail: reasonText(problem) }),
         )
         .join('; ')
     if (row.refusal !== undefined) return format(m.refusalPrefix, { message: row.refusal })
@@ -868,7 +869,11 @@ export default function FormulaEditorPage() {
               <Button disabled={archived || running} onClick={() => void runTry()}>
                 {format(running ? m.running : m.run)}
               </Button>
-              <Button variant="outline" disabled={archived || running} onClick={() => saveTryAsCase('')}>
+              <Button
+                variant="outline"
+                disabled={archived || running}
+                onClick={() => saveTryAsCase('')}
+              >
                 {format(m.trySave)}
               </Button>
               {tryResult?.actual === undefined || tryStale(tryResult) ? null : (
@@ -1011,7 +1016,10 @@ export default function FormulaEditorPage() {
                       setTests(
                         tests.map((one) =>
                           one.key === test.key
-                            ? { ...one, expected: typeof draft === 'string' ? draft : String(draft) }
+                            ? {
+                                ...one,
+                                expected: typeof draft === 'string' ? draft : String(draft),
+                              }
                             : one,
                         ),
                       )

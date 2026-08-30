@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { Schema, defineFormula, FORMULA_ABI_VERSION } from '../src/index.ts'
+import {
+  Schema,
+  defineFormula,
+  FORMULA_ABI_VERSION,
+  FORMULA_FAILURE_MESSAGE_LIMIT,
+} from '../src/index.ts'
 import {
   decimalFromString,
   decimalToString,
@@ -38,14 +43,18 @@ describe('the decimal arithmetic', () => {
     expect(show(q.decimal.quantize(dec('2.3'), 4))).toBe('2.3')
   })
 
-  it('refuses non-integers where an integer is the contract', () => {
-    expect(() => q.decimal.mulInteger(dec('1'), 1.5)).toThrowError()
-    expect(() => q.decimal.fromInteger(2 ** 53)).toThrowError()
+  it('refuses non-integers where an integer is the contract, as a defect', () => {
+    // misusing the SDK is the formula being wrong, never a business refusal:
+    // these must NOT be FormulaFailure, or a coding mistake would surface to
+    // screens as a polite "this input does not score"
+    expect(() => q.decimal.mulInteger(dec('1'), 1.5)).toThrowError(RangeError)
+    expect(() => q.decimal.fromInteger(2 ** 53)).toThrowError(RangeError)
     try {
       q.decimal.quantize(dec('1'), -1)
       expect.unreachable()
     } catch (error) {
-      expect(isFormulaFailure(error)).toBe(true)
+      expect(error).toBeInstanceOf(RangeError)
+      expect(isFormulaFailure(error)).toBe(false)
     }
   })
 })
@@ -157,6 +166,18 @@ describe('the authoring surface', () => {
     }
     expect(isFormulaFailure(new Error('plain'))).toBe(false)
     expect(isFormulaFailure(null)).toBe(false)
+  })
+
+  it('caps the refusal message where it is created', () => {
+    // the message is destined for a screen and shares the sandbox output
+    // budget; an unbounded one would turn a refusal into an outage
+    try {
+      q.fail('x'.repeat(FORMULA_FAILURE_MESSAGE_LIMIT * 4))
+      expect.unreachable()
+    } catch (error) {
+      expect((error as Error).message.length).toBe(FORMULA_FAILURE_MESSAGE_LIMIT)
+      expect(isFormulaFailure(error)).toBe(true)
+    }
   })
 })
 

@@ -10,7 +10,6 @@
  */
 
 import { parseDecimal, renderDecimal } from '@qualy/value-schema'
-import { FormulaFailure } from './failure.ts'
 
 declare const DecimalType: unique symbol
 
@@ -26,9 +25,10 @@ interface Parts {
 
 // captured before any user module body can run (an importer's dependencies
 // execute first), and doubly safe under the sandbox's intrinsic lockdown -
-// defence in depth for the two globals the arithmetic consults
+// defence in depth for the globals the arithmetic consults
 const mathMax = Math.max
 const isSafeInteger = Number.isSafeInteger
+const rangeError = RangeError
 
 const make = (coefficient: bigint, scale: number): Decimal =>
   Object.freeze({ coefficient, scale }) as unknown as Decimal
@@ -53,8 +53,11 @@ export const decimalFromString = (value: string): Decimal | null => {
 
 export const decimalToString = (value: Decimal): string => renderDecimal(parts(value))
 
+// Misusing the SDK is a defect in the formula, never a business refusal:
+// a plain RangeError travels the wrapper's rethrow path and lands as the
+// formula failing, while FormulaFailure stays reserved for q.fail alone.
 const wholeNumber = (value: number, what: string): bigint => {
-  if (!isSafeInteger(value)) throw new FormulaFailure(`${what}: not a safe integer`)
+  if (!isSafeInteger(value)) throw new rangeError(`${what}: not a safe integer`)
   return BigInt(value)
 }
 
@@ -100,7 +103,7 @@ export const negate = (a: Decimal): Decimal => {
 
 /** re-scale explicitly; narrowing rounds half away from zero, the ledger's rule */
 export const quantize = (a: Decimal, scale: number): Decimal => {
-  if (!isSafeInteger(scale) || scale < 0) throw new FormulaFailure('quantize: not a scale')
+  if (!isSafeInteger(scale) || scale < 0) throw new rangeError('quantize: not a scale')
   const value = parts(a)
   if (scale >= value.scale)
     return make(value.coefficient * 10n ** BigInt(scale - value.scale), scale)

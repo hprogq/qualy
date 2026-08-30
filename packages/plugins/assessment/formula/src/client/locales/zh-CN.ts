@@ -77,6 +77,7 @@ export default {
   'assessment-formula/report/mismatch': '与期望不一致。',
   'assessment-formula/report/problem-input': '参数 {parameter}:{detail}',
   'assessment-formula/report/problem-expected': '期望分值:{detail}',
+  'assessment-formula/report/problem-output': '运行结果违反输出契约:{detail}',
   'assessment-formula/report/refusal': '公式拒绝:{message}',
   'assessment-formula/report/defect': '运行出错:{message}',
   'assessment-formula/reason/over-max': '超过上限 {constraint}',

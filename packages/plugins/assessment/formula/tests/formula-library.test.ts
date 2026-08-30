@@ -7,6 +7,7 @@ import type { Orm } from '@qualy/plugin-database/server'
 import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
 import type { Rbac } from '@qualy/rbac-contract/effect'
+import { FormulaAuthoring } from '../src/server/authoring.ts'
 import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
 
@@ -235,6 +236,120 @@ export default { ...definition, input: undefined } as unknown as typeof definiti
     expect((outcome as { issues: readonly { path: string; reason: string }[] }).issues).toEqual([
       { path: 'input', reason: 'not-an-object' },
     ])
+  }, 120_000)
+
+  it('judges what came back against the output contract, and types each failure', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fx-output-contract')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const created = yield* library.createFunction(
+            f.t,
+            { ownerNodeId: f.collegeA, name: '越界公式', description: '' },
+            as,
+          )
+          // the contract admits at most 5.00; the body answers 7 for a large
+          // enough input - schema-legal everywhere, broken only at runtime
+          const source = `import { Schema, defineFormula } from '@qualy/formula'
+
+export default defineFormula({
+  input: Schema.input({
+    ordinal: Schema.integer({ minimum: 1, maximum: 10 }),
+  }),
+  output: Schema.decimal({ minimum: '0.00', maximum: '5.00', maxScale: 2 }),
+  run: (input, q) => {
+    if (input.ordinal > 9) q.fail('x'.repeat(100000))
+    if (input.ordinal > 8) q.decimal.quantize(q.decimal.fromInteger(1), -1)
+    return q.decimal.fromInteger(input.ordinal)
+  },
+})
+`
+          const evaluated = yield* library.evaluateDraft(
+            f.t,
+            created.id,
+            source,
+            [
+              { input: { ordinal: 3 } },
+              { input: { ordinal: 7 } },
+              { input: { ordinal: 10 } },
+              { input: { ordinal: 9 } },
+            ],
+            as,
+          )
+          return evaluated.results
+        }),
+      ),
+    )
+    const [fine, violating, refused, misused] = outcome
+    // a legal answer flows through untouched
+    expect(fine!.actual).toBe('3')
+    // an answer past the contract is an output problem, never a normal actual
+    expect(violating!.actual).toBeUndefined()
+    expect(violating!.problems).toEqual([
+      { at: 'output', reason: 'x-qualy-maximum', constraint: '5' },
+    ])
+    // a business refusal arrives as one, its words capped at the source
+    expect(refused!.refusal).toHaveLength(2048)
+    expect(refused!.defect).toBeUndefined()
+    // misusing the SDK is the formula crashing, never a polite refusal
+    expect(misused!.defect).toBeDefined()
+    expect(misused!.refusal).toBeUndefined()
+  }, 120_000)
+
+  it('refuses an artifact whose formula abi this host does not speak', async () => {
+    const outcome = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const f = yield* seed('fx-abi-drift')
+        const library = yield* FormulaLibrary
+        const as = f.principal(f.admin)
+        const created = yield* library.createFunction(
+          f.t,
+          { ownerNodeId: f.collegeA, name: '旧编译器', description: '' },
+          as,
+        )
+        return yield* Effect.exit(library.previewDraft(f.t, created.id, IDENTITY, as))
+      }).pipe(
+        Effect.provide(
+          formulaLayer.pipe(
+            Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
+            // an authoring sidecar from before this host's ABI: the artifact
+            // it hands back is real, its identity is not one we may record
+            Layer.provide(
+              Layer.effect(
+                FormulaAuthoring,
+                Effect.gen(function* () {
+                  const real = yield* Effect.provide(
+                    FormulaAuthoring as Effect.Effect<
+                      typeof FormulaAuthoring.Service,
+                      never,
+                      FormulaAuthoring
+                    >,
+                    formulaAuthoringLocalLayer,
+                  )
+                  return {
+                    compile: (source: string) =>
+                      Effect.map(real.compile(source), (compiled) => ({
+                        ...compiled,
+                        formulaAbiVersion: compiled.formulaAbiVersion + 1,
+                      })),
+                  }
+                }),
+              ),
+            ),
+            Layer.provideMerge(servicesFor(db.url)),
+          ),
+        ),
+      ),
+    )
+    const preview = ok(outcome)
+    expect(Exit.isFailure(preview)).toBe(true)
+    if (Exit.isFailure(preview)) {
+      const failure = preview.cause as { reasons?: readonly { error?: { _tag?: string } }[] }
+      expect(failure.reasons?.[0]?.error?._tag).toBe('ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE')
+    }
   }, 120_000)
 
   it('keeps unauthorized readers outside: empty lists, unknown functions', async () => {

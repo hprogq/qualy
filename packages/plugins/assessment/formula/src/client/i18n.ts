@@ -316,6 +316,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/report/problem-expected',
       defaultMessage: 'Expected amount: {detail}',
     },
+    problemOutput: {
+      id: 'assessment-formula/report/problem-output',
+      defaultMessage: 'The answer breaks the output contract: {detail}',
+    },
     refusalPrefix: {
       id: 'assessment-formula/report/refusal',
       defaultMessage: 'Refused by the formula: {message}',
