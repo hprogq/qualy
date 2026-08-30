@@ -11964,6 +11964,9 @@ undefined`),但 type 关随即遇函数而拒——端到端 fail-closed,无需�
   期间禁一切前台任务**,立为执行纪律。
 - CI 盯守曾以 `--limit 1` 取 run id 撞时序竞态盯错 run(报绿实红,由用户发现);改为按
   headSha 过滤后消除。
+- 终笔(docs-only)CI 又红一次:`web-survives-backend` 的 backend-replacement 用例打满
+  自身 300s 预算——同代码前一 run 绿,`gh run rerun --failed` 即绿,判 runner 资源型
+  flaky,未改代码;该用例已是显式 300s,若再犯归其 owner 域调查而非继续加预算。
 
 ### 终态验收(逐条实跑)
 
