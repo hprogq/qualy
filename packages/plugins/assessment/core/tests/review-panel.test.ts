@@ -367,6 +367,185 @@ describe.runIf(postgresAvailable)('the sitting', () => {
     expect(result.b2Gone._tag).toBe('Failure')
   })
 
+  it('spends the seat with the ballot, wherever a sitting exists', async () => {
+    // On the escalation route independentAt already turns voters away; the
+    // seat itself refusing its voted occupant is the second lock on the
+    // same door. This exercises the composed behavior end to end: a voted
+    // member's second word - any second word - is refused, their queue is
+    // empty, and the sitting still concludes through those yet to vote.
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pn-spent-seat')
+          const assessment = yield* Assessment
+          const w = yield* panelWorld(f)
+          yield* assessment.decideReview(
+            f.t,
+            w.instanceId,
+            { decision: 'approve', comment: '材料充分' },
+            f.principal(w.b2),
+          )
+          const again = yield* Effect.exit(
+            assessment.decideReview(f.t, w.instanceId, { decision: 'approve' }, f.principal(w.b2)),
+          )
+          const pullUp = yield* Effect.exit(
+            assessment.decideReview(
+              f.t,
+              w.instanceId,
+              { decision: 'escalate', comment: '交上级' },
+              f.principal(w.b2),
+            ),
+          )
+          const queue = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: w.batchId },
+            f.principal(w.b2),
+          )
+          const panel = one<{ state: string }>(
+            yield* runSql(
+              sql`select state from review_panels where review_instance_id = ${w.instanceId}`,
+            ),
+          )
+          const settled = yield* assessment.decideReview(
+            f.t,
+            w.instanceId,
+            { decision: 'approve' },
+            f.principal(w.b3),
+          )
+          return { again, pullUp, queue: queue.items, panel, settled }
+        }),
+      ),
+    )
+
+    for (const attempt of [result.again, result.pullUp]) {
+      expect(attempt._tag).toBe('Failure')
+    }
+    expect(result.queue.map((row) => row.instanceId)).toEqual([])
+    // nothing the voter tried moved the sitting: had the escalate landed,
+    // this would already read resolved/escalated
+    expect(result.panel.state).toBe('open')
+    expect(result.settled.state).toBe('completed')
+    expect(result.settled.outcome).toBe('approved')
+  })
+
+  it('holds the seat lock even where independence would not', async () => {
+    // The policy compiler refuses quorum 'all' on the normal route
+    // (policy-quorum-all-normal), so a normal-route sitting cannot be
+    // configured today - and on the NORMAL route independentAt deliberately
+    // excludes nobody. Were such a panel ever to exist (older data, a
+    // future policy change), the seat check would be the ONLY thing between
+    // a voted member and escalating the sitting away. This plants exactly
+    // that shape and proves the seat alone refuses the voter.
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('pn-normal-seat')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const groups = yield* assessment.listScoreGroups(f.t, g.batch.id, f.principal(f.admin))
+          const item = yield* assessment.createItem(
+            f.t,
+            g.batch.id,
+            {
+              itemType: 'evidence',
+              title: '普通初审题',
+              scoreGroupId: groups.groups[0]!.id,
+              maxEntries: 1,
+              config: {
+                entrySource: 'student',
+                formConfig: {},
+                scoringConfig: {
+                  calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                },
+                reviewPolicy: {
+                  normal: {
+                    stages: [
+                      {
+                        id: 'n1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                  },
+                  escalation: {
+                    stages: [
+                      {
+                        id: 'e1',
+                        selector: {
+                          kind: 'roleAt',
+                          nodeTypeId: f.classType,
+                          roleIds: [f.reviewRole],
+                        },
+                        quorum: { type: 'any' },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+            f.principal(f.admin),
+          )
+          yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, f.principal(f.admin))
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const instanceId = sent.currentReviewInstanceId!
+
+          const reviewer = one<{ id: string }>(
+            yield* runSql(sql`select id from users where display_name = 'Reviewer'
+                              and tenant_id = ${f.t}`),
+          ).id
+          // the shape the compiler refuses to configure, planted directly:
+          // an open normal-route sitting whose occupant has already voted
+          const panelId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into review_panels (tenant_id, review_instance_id, route, stage_id, seat_count)
+              values (${f.t}, ${instanceId}, 'normal', 'n1', 2) returning id`),
+          ).id
+          const assignmentId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into review_panel_assignments (tenant_id, panel_id, seat_no, user_id)
+              values (${f.t}, ${panelId}, 1, ${reviewer}) returning id`),
+          ).id
+          const before = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id },
+            f.principal(f.reviewer),
+          )
+          yield* runSql(sql`
+            insert into review_votes (tenant_id, panel_id, assignment_id, voter_user_id, decision)
+            values (${f.t}, ${panelId}, ${assignmentId}, ${reviewer}, 'approve')`)
+          const after = yield* assessment.listReviewInbox(
+            f.t,
+            { batchId: g.batch.id },
+            f.principal(f.reviewer),
+          )
+          return {
+            before: before.items.map((row) => row.instanceId),
+            after: after.items.map((row) => row.instanceId),
+            instanceId,
+          }
+        }),
+      ),
+    )
+
+    // seated and unvoted: the round is theirs
+    expect(result.before).toEqual([result.instanceId])
+    // the ballot spends the seat, with no help from independence
+    expect(result.after).toEqual([])
+  })
+
   it('keeps a cast vote through its voter’s fall, refills only empty seats, and never widens', async () => {
     const result = ok(
       await run(

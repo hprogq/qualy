@@ -152,11 +152,17 @@ const independentAt = (r: RoundActorRefs) => sql<boolean>`(
 )`
 
 /**
- * A sitting panel admits its own unvoted members and lets a newcomer fill
- * an empty seat; it never widens. Composed after `independentAt`, which
- * already turns away everyone who voted, so the branches here only ask
- * about seats. No open panel means the stage is not a sitting at all (or
- * the sitting has not been constituted yet), and membership alone decides.
+ * A sitting panel admits its own UNVOTED members and lets a newcomer fill
+ * an empty seat; it never widens. The unvoted check lives here and cannot
+ * be delegated: `independentAt` only turns voters away on the escalation
+ * route (a normal route deliberately lets the same people sit again in a
+ * later round), and a voted seat never ends - so without it a member who
+ * had already cast their ballot kept mayActOn, kept the round in their
+ * queue, and could still escalate the whole sitting away. A ballot spends
+ * the seat: every further act belongs to the members still to vote, or to
+ * whoever legitimately fills an empty chair. No open panel means the stage
+ * is not a sitting at all (or the sitting has not been constituted yet),
+ * and membership alone decides.
  */
 const seatedOrSeatable = (r: {
   readonly tenantId: RawBuilder<unknown>
@@ -178,6 +184,10 @@ const seatedOrSeatable = (r: {
       and op.state = 'open'
       and pa.user_id = ${r.userId}
       and pa.ended_at is null
+      and not exists (
+        select 1 from review_votes sv
+        where sv.tenant_id = pa.tenant_id and sv.assignment_id = pa.id
+      )
   )
   or exists (
     select 1 from review_panels op
@@ -1087,14 +1097,14 @@ export const blockedGroups = (tenantId: string, batchId: string) =>
 /** the tenants with open rounds at all, so the patrol visits nothing empty */
 export const tenantsWithOpenRounds = db
   .query((k) =>
-      k
-        .selectFrom('ReviewInstance')
-        .select(['tenantId'])
-        .distinct()
-        .where('state', 'in', ['active', 'blocked'])
-        .execute(),
-    )
-    .pipe(Effect.map((rows) => rows.map((row) => row.tenantId)))
+    k
+      .selectFrom('ReviewInstance')
+      .select(['tenantId'])
+      .distinct()
+      .where('state', 'in', ['active', 'blocked'])
+      .execute(),
+  )
+  .pipe(Effect.map((rows) => rows.map((row) => row.tenantId)))
 
 /**
  * The people a stage's roles are on right now, by name, for an explanation.
@@ -2487,9 +2497,7 @@ export const appealContextOf = (tenantId: string, entryId: string) =>
           participantId: String(one['participantId']),
           revisionId: one['currentRevisionId'] === null ? null : String(one['currentRevisionId']),
           currentReviewInstanceId:
-            one['currentReviewInstanceId'] === null
-              ? null
-              : String(one['currentReviewInstanceId']),
+            one['currentReviewInstanceId'] === null ? null : String(one['currentReviewInstanceId']),
           currentRecognitionId:
             one['currentRecognitionId'] === null ? null : String(one['currentRecognitionId']),
           subjectUserId: String(one['subjectUserId']),
@@ -2664,8 +2672,8 @@ export const panelRecognitionOf = (tenantId: string, panelId: string) =>
         row === undefined || (row as { recognitionHash: string | null }).recognitionHash === null
           ? null
           : {
-              values: ((row as { recognitionPayload: Record<string, unknown> }).recognitionPayload ??
-                {}) as Record<string, unknown>,
+              values: ((row as { recognitionPayload: Record<string, unknown> })
+                .recognitionPayload ?? {}) as Record<string, unknown>,
               hash: String((row as { recognitionHash: string }).recognitionHash),
               // the sitting's own explanation, carried to the word that ends
               // the round: "why provincial rather than national" is the part
