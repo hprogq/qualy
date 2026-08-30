@@ -145,9 +145,40 @@ describe('how a screen reads the words', () => {
     expect(choiceLabel(choice, 'national', 'en-US')).toBe('National')
     expect(choiceLabel(choice, 'provincial', 'en-US')).toBe('省级')
     expect(choiceLabel(choice, 'provincial', 'zh-CN')).toBe('省级')
-    expect(
-      choiceLabel({ type: 'string', enum: ['raw'] }, 'raw', 'zh-CN'),
-    ).toBe('raw')
+    expect(choiceLabel({ type: 'string', enum: ['raw'] }, 'raw', 'zh-CN')).toBe('raw')
+  })
+
+  it('reads business keys as own properties, never off the prototype', () => {
+    // a choice's stable value may legally spell an Object.prototype name;
+    // a partial locale record must then FALL THROUGH, not hand back the
+    // inherited machinery - a function where a label belongs
+    for (const value of ['toString', 'constructor', '__proto__']) {
+      const spelled: ChoiceSchema = {
+        type: 'string',
+        enum: [value],
+        'x-qualy-enumLabels': Object.fromEntries([[value, '默认名称']]) as Record<string, string>,
+        'x-qualy-i18n': { 'zh-CN': { enumLabels: {} } },
+      }
+      // locale record exists but has no OWN entry: the default label wins
+      expect(choiceLabel(spelled, value, 'zh-CN')).toBe('默认名称')
+      // an own locale entry wins as usual
+      const translated: ChoiceSchema = {
+        ...spelled,
+        'x-qualy-i18n': {
+          'zh-CN': {
+            enumLabels: Object.fromEntries([[value, '本地名称']]) as Record<string, string>,
+          },
+        },
+      }
+      expect(choiceLabel(translated, value, 'zh-CN')).toBe('本地名称')
+      // nothing anywhere: the stable value itself, still a string
+      const bare: ChoiceSchema = { type: 'string', enum: [value] }
+      const answer = choiceLabel(bare, value, 'zh-CN')
+      expect(answer).toBe(value)
+      expect(typeof answer).toBe('string')
+    }
+    // and the locale key itself is read the same way
+    expect(choiceLabel({ type: 'string', enum: ['x'] }, 'x', 'constructor')).toBe('x')
   })
 
   it('renders parameters in the authored order, falling back to key order', () => {
