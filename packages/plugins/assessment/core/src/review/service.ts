@@ -13,6 +13,7 @@ import {
   recognitionHash,
   canonicalRecognition,
   contradicted,
+  recognitionFormFields,
   sameRecognition,
   seedFromEvidence,
   type RecognitionValues,
@@ -265,6 +266,19 @@ export interface ReviewDetailView {
   }[]
   /** what this round asked for beyond the filing, and what came back */
   readonly supplements: readonly ReviewSupplementView[]
+  /**
+   * The form this user fills or confirms if they approve now.
+   *
+   * Null means only "no form to act on here" - the contract is empty, the
+   * round is not theirs to decide, or it is decided. It says NOTHING about
+   * who may read a recognition; that is a product-permission question this
+   * field deliberately does not answer, and a future read model will.
+   */
+  readonly recognitionForm: {
+    readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
+    readonly seed: Readonly<Record<string, unknown>>
+    readonly locked: { readonly values: Readonly<Record<string, unknown>>; readonly hash: string } | null
+  } | null
   readonly capabilities: {
     readonly canDecide: boolean
     readonly canCancelSupplement: boolean
@@ -783,6 +797,12 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
           at: event.createdAt,
         })),
         supplements,
+        // Only computed for the person about to act: everyone else - the
+        // subject, a reader of a decided round - gets null, which both
+        // matches the field's meaning (a form to fill NOW) and keeps a
+        // sitting's frozen proposal and a lower stage's determination from
+        // travelling to people no rule has yet said may read them.
+        recognitionForm: view.canDecide ? yield* approvalRecognitionForm(tenantId, row) : null,
         capabilities: {
           canDecide: view.canDecide,
           canCancelSupplement: view.canCancelSupplement === true,
@@ -1002,6 +1022,25 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   })
 
   /**
+   * The approve dialog's form: the frozen contract's fields, what they are
+   * pre-filled with, and the sitting's locked text where one exists.
+   *
+   * Reads the same frozen revision the decision path judges under, so what
+   * the screen collects is exactly what decideReview will hold it to.
+   */
+  const approvalRecognitionForm = (tenantId: string, row: ReviewInstanceDetailRow) =>
+    Effect.gen(function* () {
+      const contract = yield* revisionOf(tenantId, row.recognitionRevisionId)
+      if (contract === null) return null
+      const plan = yield* Effect.orDie(readScoringPlan(contract))
+      const fields = recognitionFormFields(plan)
+      if (fields === null) return null
+      const seed = yield* recognitionSeed(tenantId, row.id, plan, row)
+      const locked = yield* lockedProposalOf(tenantId, row.id)
+      return { fields, seed, locked }
+    })
+
+  /**
    * What a reviewer is shown before they determine anything.
    *
    * The question is never "what was this claim last recognised as" - it is
@@ -1046,7 +1085,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   ) =>
     Effect.gen(function* () {
       const locked = yield* lockedProposalOf(tenantId, instanceId)
-      if (locked !== null) return locked
+      if (locked !== null) return locked.values
       const said = yield* lastRecognitionOf(tenantId, instanceId)
       if (said !== null) return said
       const revisited = yield* revisitedRecognition(tenantId, row)

@@ -787,6 +787,21 @@ const reviewDetailView = Schema.Struct({
   ),
   /** what this round asked for beyond the filing, and what came back */
   supplements: Schema.Array(reviewSupplementView),
+  /**
+   * The form this user fills or confirms if they approve now.
+   *
+   * Null only says there is no form to act on - the contract is empty, the
+   * round is not this reader's to decide, or it is decided. It is not a
+   * statement about who may read a recognition.
+   */
+  recognitionForm: Schema.NullOr(
+    Schema.Struct({
+      /** opaque recognition ids with their frozen schemas, in display order */
+      fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
+      seed: configJson,
+      locked: Schema.NullOr(Schema.Struct({ values: configJson, hash: Schema.String })),
+    }),
+  ),
   capabilities: Schema.Struct({
     canDecide: Schema.Boolean,
     canCancelSupplement: Schema.Boolean,

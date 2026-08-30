@@ -310,7 +310,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
       const as = f.principal(f.s1)
       const entry = yield* assessment.createEntry(
         f.t,
-        { itemId: g.item.id, participantId, payload: { 'claimed-level': 'national' } },
+        { itemId: g.item.id, participantId, payload: { 'claimed-level-slot': 'national' } },
         as,
       )
       const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', as)
@@ -409,7 +409,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           yield* assessment.appendEntryRevision(
             f.t,
             entryId,
-            { payload: { 'claimed-level': 'national' } },
+            { payload: { 'claimed-level-slot': 'national' } },
             f.principal(f.s1),
           )
           const again = yield* assessment.setEntryStatus(
@@ -636,7 +636,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             {
               itemId: item.id,
               participantId: g.p1,
-              payload: { 'claimed-level': 'national' },
+              payload: { 'claimed-level-slot': 'national' },
               note: '登记表第 14 页',
               recognition: { values: { 'rec-level': 'provincial' } },
             },
@@ -713,7 +713,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
           yield* assessment.appendEntryRevision(
             f.t,
             entryId,
-            { payload: { 'claimed-level': 'national' } },
+            { payload: { 'claimed-level-slot': 'national' } },
             f.principal(f.s1),
           )
           yield* assessment.setEntryStatus(f.t, entryId, 'in_review', f.principal(f.s1))
@@ -868,7 +868,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             {
               itemId: item.id,
               participantId: g.p1,
-              payload: { 'claimed-level': 'national' },
+              payload: { 'claimed-level-slot': 'national' },
               note: '登记表第 14 页',
               recognition: { values: { 'rec-level': 'provincial' } },
             },
@@ -1101,7 +1101,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
               {
                 itemId: item.id,
                 participantId: g.p1,
-                payload: { 'claimed-level': 'national' },
+                payload: { 'claimed-level-slot': 'national' },
                 note: '登记表第 14 页',
               },
               f.principal(f.recorder),
@@ -1504,5 +1504,77 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.status).toBe('voided')
     expect(result.rows).toHaveLength(1)
     expect(result.said.reason).toBe('经复核，记录有误')
+  })
+
+  it('hands the approver the form the frozen contract asks for, and nobody else', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-form')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: REVIEW_OPEN,
+            scoring: twoFactScoring,
+            stages: [at(f, 'n1'), at(f, 'n2')],
+          })
+          const { entryId, instanceId } = yield* claimed(f, g, g.p1)
+          const reviewer = f.principal(f.reviewer)
+          const first = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
+          // the first stage confirms the seeded fact and determines the
+          // reviewer-only one
+          yield* assessment.decideReview(
+            f.t,
+            instanceId,
+            {
+              decision: 'approve',
+              comment: 'first look',
+              recognition: { values: { 'rec-level': 'national', 'rec-ordinal': 2 } },
+            },
+            reviewer,
+          )
+          const second = yield* assessment.getReviewInstance(f.t, instanceId, reviewer)
+          const subject = yield* assessment.getReviewInstance(f.t, instanceId, f.principal(f.s1))
+          // and a question that asks for nothing offers no form
+          void entryId
+          return { first, second, subject }
+        }),
+      ),
+    )
+
+    const form = result.first.recognitionForm!
+    // the contract's fields, in the calculator's own parameter order, each
+    // carrying its frozen schema - ids are opaque identities with hyphens
+    expect(form.fields.map((field) => field.id)).toEqual(['rec-level', 'rec-ordinal'])
+    // the filing seeds what it can; the reviewer-only fact arrives blank
+    expect(form.seed).toEqual({ 'rec-level': 'national' })
+    expect(form.locked).toBeNull()
+    // the next stage inherits the whole determination as its seed
+    expect(result.second.recognitionForm!.seed).toEqual({
+      'rec-level': 'national',
+      'rec-ordinal': 2,
+    })
+    // the subject is not deciding anything: no form - which is a statement
+    // about acting, not about who may read a recognition
+    expect(result.subject.recognitionForm).toBeNull()
+  })
+
+  it('offers no form on an empty contract, and the frozen text to a sitting', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-form-empty')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const { instanceId } = yield* submitted(f, g, g.p1, f.s1)
+          const empty = yield* assessment.getReviewInstance(f.t, instanceId, f.principal(f.reviewer))
+          return { empty }
+        }),
+      ),
+    )
+    // fixed@1 asks for nothing: the approval needs no form and the screen
+    // must not invent one
+    expect(result.empty.recognitionForm).toBeNull()
   })
 })

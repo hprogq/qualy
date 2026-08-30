@@ -4084,6 +4084,7 @@ const reviewDto = (review: ReviewDetailView) => ({
     at: new Date(event.at).toISOString(),
   })),
   supplements: review.supplements.map(supplementDto),
+  recognitionForm: review.recognitionForm,
   capabilities: review.capabilities,
 })
 

@@ -2567,7 +2567,7 @@ export const lockedProposalOf = (tenantId: string, instanceId: string) =>
     .query((k) =>
       k
         .selectFrom('ReviewPanel')
-        .select(['recognitionPayload'])
+        .select(['recognitionPayload', 'recognitionHash'])
         .where('tenantId', '=', tenantId)
         .where('reviewInstanceId', '=', instanceId)
         .where('state', '=', 'open')
@@ -2577,9 +2577,13 @@ export const lockedProposalOf = (tenantId: string, instanceId: string) =>
     )
     .pipe(
       Effect.map((row) =>
-        row === undefined
+        row === undefined || (row as { recognitionHash: string | null }).recognitionHash === null
           ? null
-          : ((row as { recognitionPayload: Record<string, unknown> }).recognitionPayload ?? null),
+          : {
+              values: ((row as { recognitionPayload: Record<string, unknown> })
+                .recognitionPayload ?? {}) as Record<string, unknown>,
+              hash: String((row as { recognitionHash: string }).recognitionHash),
+            },
       ),
     )
 

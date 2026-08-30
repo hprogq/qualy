@@ -15,6 +15,7 @@
  */
 
 import { canonicalizeValues } from '@qualy/value-schema/values'
+import { inputOrder } from '@qualy/value-schema'
 import { validateValue } from '@qualy/value-schema/validate'
 import { hashCanonicalJson, canonicalJson } from '@qualy/value-schema/hash'
 import type { NormalizedAtomicSchema } from '@qualy/value-schema'
@@ -97,6 +98,41 @@ export const contradicted = (
       Object.hasOwn(candidate, recognitionId) &&
       canonicalJson(candidate[recognitionId]) !== canonicalJson(seed[recognitionId]),
   )
+
+/**
+ * The plan's recognition contract as form fields, in the order a reviewer
+ * should meet them.
+ *
+ * Null for the empty contract, so a screen never wonders whether an empty
+ * object is a form. Order comes from the calculator's own input order:
+ * walk the parameters as the arithmetic declares them and take each
+ * recognition the first time it appears - the question's shape decides the
+ * form's shape, not object-key luck. Ids stay exactly what they are:
+ * opaque stable identities, never identifiers.
+ */
+export const recognitionFormFields = (
+  plan: ScoringPlan,
+): readonly { readonly id: string; readonly schema: NormalizedAtomicSchema }[] | null => {
+  const order: string[] = []
+  const seen = new Set<string>()
+  const declared = inputOrder(plan.inputSchema)
+  for (const parameter of declared) {
+    const binding = Object.hasOwn(plan.parameters, parameter)
+      ? plan.parameters[parameter]
+      : undefined
+    if (binding === undefined || binding.kind !== 'recognition') continue
+    if (seen.has(binding.recognitionId)) continue
+    seen.add(binding.recognitionId)
+    order.push(binding.recognitionId)
+  }
+  if (order.length === 0) return null
+  return order.flatMap((id) => {
+    const schema = Object.hasOwn(plan.recognitionSchemas, id)
+      ? plan.recognitionSchemas[id]
+      : undefined
+    return schema === undefined ? [] : [{ id, schema }]
+  })
+}
 
 /**
  * What a reviewer is shown before they have determined anything.
