@@ -131,9 +131,15 @@ export async function makeApplication(
   resolution: Resolution,
   logging: LoggingSettings,
 ): Promise<Layer.Layer<never>> {
-  const { prepared, services, above, configs } = loadAssembly(resolution, {
+  const { prepared, services, runtime, above, configs } = loadAssembly(resolution, {
     host: [hostPlugin],
   })
+
+  // The runtime phase, fed exactly once: service-backed bindings build over
+  // the running services, and every consumer below - the boot barrier, the
+  // router - is handed THIS reference, so the one memoized build serves them
+  // all rather than each provide growing its own copy.
+  const runtimeGraph = runtime.pipe(Layer.provide(services), Layer.provide(prepared))
 
   const routes = Layer.mergeAll(
     // what the plugins put on the router: the api aggregate with its
@@ -150,7 +156,11 @@ export async function makeApplication(
   // the catalog its contributors declared - run once every layer is built,
   // and the server layer is built after them, so the port never accepts a
   // request against a half-assembled application.
-  const booted = assembledBarrier.pipe(Layer.provide(services), Layer.provide(prepared))
+  const booted = assembledBarrier.pipe(
+    Layer.provide(runtimeGraph),
+    Layer.provide(services),
+    Layer.provide(prepared),
+  )
 
   const server = Layer.unwrap(
     Effect.gen(function* () {
@@ -163,16 +173,19 @@ export async function makeApplication(
       // request context reads the span the request actually runs under; it
       // sits outside the access log so the log can name the request id
       const withRequestContext = requestContext({ trustedProxies: config.trustedProxies })
-      return HttpRouter.serve(routes.pipe(Layer.provide(services), Layer.provide(prepared)), {
-        // the upstream logger prints every response at Info and every failed
-        // exit's cause - interrupted requests included; ours speaks in levels
-        disableLogger: true,
-        // route templates land on the span innermost, so the access log,
-        // the RED histogram and the exported span all speak from inside
-        // the request context
-        middleware: (httpApp) =>
-          withRequestContext(accessLog(logging.access)(httpMetrics(routeSpanNames(httpApp)))),
-      }).pipe(
+      return HttpRouter.serve(
+        routes.pipe(Layer.provide(runtimeGraph), Layer.provide(services), Layer.provide(prepared)),
+        {
+          // the upstream logger prints every response at Info and every failed
+          // exit's cause - interrupted requests included; ours speaks in levels
+          disableLogger: true,
+          // route templates land on the span innermost, so the access log,
+          // the RED histogram and the exported span all speak from inside
+          // the request context
+          middleware: (httpApp) =>
+            withRequestContext(accessLog(logging.access)(httpMetrics(routeSpanNames(httpApp)))),
+        },
+      ).pipe(
         Layer.provide(
           NodeHttpServer.layer(() => instance, {
             port: config.port,

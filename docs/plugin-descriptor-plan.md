@@ -12,7 +12,9 @@
   运行时是拓扑排序的依据。取代 `qualy.runtime.dependsOn` 字符串。
 - **ExtensionPoint**:一个 owner 多个贡献者的装配通道,分相:
   `prepare`(任何 Layer 构建之前收集、编译成值:实体、权限目录、UI 页面、API 契约)/
-  `afterServices`(全部服务 Layer 之上闭合:API handlers、raw routes)/
+  `runtime`(全部服务之上、最终消费者之下:provider 的 layer 构建期获取运行服务,
+  产出 service-backed 绑定目录,组合根单引用喂给屏障与路由)/
+  `afterServices`(在一切之上闭合:API handlers、raw routes)/
   `boot`(现有 Assembled:镜像、预热)。核心只认协议,能力插件自定义扩展点与 Feature 构造器
   (`Db.entities`、`Ui.surfaces`、`Api.group`,未来 `Search.index`、`VueUi.page`)。
 - **Feature**:插件参与装配的单位(贡献 / 提供扩展点 / 提供服务 / boot hook)。
@@ -128,7 +130,8 @@ PermissionDeclarations)` 读声明,lock 记 `{owner, codes}`(评审 diff 直接�
 qualy.yml + lock → 动态 import 各插件 default 描述器
 → prepare:收集/编译目录(实体、权限、UI、API 契约、config schema)
 → Tag → provider 映射,按 requires 拓扑构建服务 Layers
-→ afterServices:在完整服务之上构建 handler Layers 与 raw routes
+→ runtime:在运行服务之上绑定 service-backed 目录(单引用,屏障与路由共用一次构建)
+→ afterServices:在一切之上构建 handler Layers 与 raw routes
 → boot hooks(Assembled 原样)
 → 绑端口
 ```

@@ -8,9 +8,9 @@ import type {
   ServiceFeature,
 } from './index.ts'
 
-// The phase assembler: from descriptors to the three layers a host serves
+// The phase assembler: from descriptors to the four layers a host serves
 // from - prepare catalogs before any service, services on the prepared
-// values, handlers above the complete graph.
+// values, runtime bindings over the running services, handlers above it all.
 //
 // One claim per channel: two providers for one extension point is a broken
 // assembly, refused with both plugins named - the same rule the CLI enforces
@@ -29,7 +29,15 @@ export interface Assembled {
   readonly prepared: AnyLayer
   /** every plugin's services, built on the prepared catalogs */
   readonly services: AnyLayer
-  /** afterServices compilations (http handlers), built above the services */
+  /**
+   * runtime compilations: service-backed bindings whose layers acquire
+   * running services while they build. The assembler hands this back unfed -
+   * the composition root provides services and prepared to ONE reference of
+   * it and shares that reference with every consumer, so the bindings build
+   * once for the boot barrier and the request path alike.
+   */
+  readonly runtime: AnyLayer
+  /** afterServices compilations (http handlers), built above everything */
   readonly above: AnyLayer
 }
 
@@ -151,9 +159,10 @@ export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {
   const serviceGraph = ordered
     .reduce<AnyLayer>((below, layer) => Layer.provideMerge(layer, below), Layer.empty)
     .pipe(Layer.provideMerge(prepared))
+  const runtime = merged(compiled('runtime'))
   const above = merged(compiled('afterServices'))
 
-  return { prepared, services: serviceGraph, above }
+  return { prepared, services: serviceGraph, runtime, above }
 }
 
 /**

@@ -5,7 +5,7 @@ import { Plugin, type AnyLayer, type PluginDescriptor } from '@qualy/plugin-kit'
 import { assemble, type Assembled } from '@qualy/plugin-kit/assemble'
 
 // The host's half of the descriptor model: from a verified resolution to the
-// three layers the composition root serves from.
+// four layers the composition root serves from.
 //
 // This file replaced a generated module. What the generator wrote as static
 // imports and a rendered composition, this does at boot: import each active

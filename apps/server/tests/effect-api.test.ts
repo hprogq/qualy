@@ -63,13 +63,22 @@ const assembled = await (async () => {
 })()
 
 const shell = (url: string) => {
-  const { prepared, services, above } = assembled
+  const { prepared, services, runtime, above } = assembled
   const routes = Layer.mergeAll(
     above,
     HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
   )
-  const booted = assembledBarrier.pipe(Layer.provide(services), Layer.provide(prepared))
-  return HttpRouter.serve(routes.pipe(Layer.provide(services), Layer.provide(prepared))).pipe(
+  // one reference, as the host wires it: the runtime bindings build once for
+  // the barrier and the router alike
+  const runtimeGraph = runtime.pipe(Layer.provide(services), Layer.provide(prepared))
+  const booted = assembledBarrier.pipe(
+    Layer.provide(runtimeGraph),
+    Layer.provide(services),
+    Layer.provide(prepared),
+  )
+  return HttpRouter.serve(
+    routes.pipe(Layer.provide(runtimeGraph), Layer.provide(services), Layer.provide(prepared)),
+  ).pipe(
     Layer.provide(booted),
     Layer.provide(services),
     Layer.provide(prepared),

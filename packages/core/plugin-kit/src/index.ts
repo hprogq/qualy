@@ -38,8 +38,13 @@ export type IdentifierOf<K> = K extends Context.Key<infer Identifier, any> ? Ide
  * `prepare` compiles before any service layer is built, so its result must be
  * a plain value every layer may depend on - entities, catalogs, contracts -
  * and its layer may require nothing, which `Plugin.provideExtension` enforces
- * at the provider's own compile. `afterServices` compiles above the complete
- * service graph, which is where http handlers must close: their middleware is
+ * at the provider's own compile. `runtime` compiles above the complete
+ * service graph and below its final consumers: the provider's layer may
+ * acquire running services while it builds, and what it outputs - a catalog
+ * of service-backed bindings - is a service the phases above consume. That is
+ * the seam for a driver backed by a live service; the wiring stays in the
+ * composition root, never in a module global. `afterServices` compiles above
+ * everything, which is where http handlers must close: their middleware is
  * implemented by other plugins, and upstream types make that a real
  * requirement rather than a phantom one.
  *
@@ -52,7 +57,7 @@ export type IdentifierOf<K> = K extends Context.Key<infer Identifier, any> ? Ide
  * with the Assembled barrier from inside a plugin's own layer. A phase the
  * assembler would not compile would swallow contributions silently.
  */
-export type ExtensionPhase = 'prepare' | 'afterServices' | 'external'
+export type ExtensionPhase = 'prepare' | 'runtime' | 'afterServices' | 'external'
 
 export interface ExtensionPoint<
   in out Contribution,
@@ -95,6 +100,10 @@ export const ExtensionPoint = {
       id: string,
       options: { readonly phase: 'prepare'; readonly capability?: string },
     ): ExtensionPoint<Contribution, 'prepare'>
+    <Contribution>(
+      id: string,
+      options: { readonly phase: 'runtime'; readonly capability?: string },
+    ): ExtensionPoint<Contribution, 'runtime'>
     <Contribution>(
       id: string,
       options: { readonly phase: 'afterServices'; readonly capability?: string },
@@ -260,7 +269,7 @@ export const Plugin = {
       },
     ): PluginFeature
     <Contribution>(
-      point: ExtensionPoint<Contribution, 'afterServices' | 'external'>,
+      point: ExtensionPoint<Contribution, 'runtime' | 'afterServices' | 'external'>,
       options: {
         readonly compile: (contributions: readonly Contributed<Contribution>[]) => AnyLayer
       },

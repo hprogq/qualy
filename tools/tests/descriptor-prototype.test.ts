@@ -94,7 +94,7 @@ describe('the descriptor prototype', () => {
       const port = 3199
       const scope = await Effect.runPromise(Scope.make())
       try {
-        const { prepared, services, above } = assemble([
+        const { prepared, services, runtime, above } = assemble([
           databasePlugin,
           uiPlugin,
           apiPlugin,
@@ -112,7 +112,12 @@ describe('the descriptor prototype', () => {
         // the same erased boundary the future host will own: one narrowing
         // of the assembled composition, everything inside fully typed
         const application = HttpRouter.serve(
-          above.pipe(Layer.provide(services), Layer.provide(prepared), Layer.provide(config)),
+          above.pipe(
+            Layer.provide(runtime.pipe(Layer.provide(services), Layer.provide(prepared))),
+            Layer.provide(services),
+            Layer.provide(prepared),
+            Layer.provide(config),
+          ),
         ).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port }))) as Layer.Layer<never>
         await Effect.runPromise(Layer.buildWithScope(application, scope))
 
