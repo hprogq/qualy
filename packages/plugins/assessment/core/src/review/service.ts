@@ -114,12 +114,14 @@ import {
   type ReviewInstanceDetailRow,
   type SupplementRequirement,
   type SupplementRow,
+  appealContextOf,
   instanceLineageOf,
   lastRecognitionOf,
   lockedProposalOf,
   recognitionOfInstance,
   lockPanelRecognition,
   panelRecognitionOf,
+  revisionAuthorOf,
   revisionPayloadOf,
 } from './db.ts'
 
@@ -428,9 +430,18 @@ export interface ReviewMethods {
     ReviewDetailView,
     ReviewNotFound | ReviewConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
   >
-  readonly appealReview: (
+  /**
+   * Contest the decision a claim currently stands on.
+   *
+   * By the claim, not by the round: what is being disputed is "the school
+   * says this is worth X", and that sentence is true whether a reviewer said
+   * it or a member of staff wrote it down. An administrative record has no
+   * round at all, and asking for one here is what left a student able to
+   * delete a penalty but not to argue with it.
+   */
+  readonly appealEntry: (
     tenantId: string,
-    instanceId: string,
+    entryId: string,
     input: { reason: string },
     as: Principal,
   ) => Effect.Effect<
@@ -1820,9 +1831,9 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
    * offered as two, because a screen that guesses which one somebody meant
    * gets it wrong for whoever was sure.
    */
-  const appealReview: ReviewMethods['appealReview'] = Effect.fn('Assessment.appealReview')(
-    function* (tenantId, instanceId, input, as) {
-      const located = yield* dieQuery(withDb(instanceOf(tenantId, instanceId)))
+  const appealEntry: ReviewMethods['appealEntry'] = Effect.fn('Assessment.appealEntry')(
+    function* (tenantId, entryId, input, as) {
+      const located = yield* dieQuery(withDb(appealContextOf(tenantId, entryId)))
       if (located === null) return yield* new ReviewNotFound()
       // only its subject appeals; to anybody else the round is not theirs to
       // have an opinion about, and a stranger learns nothing
@@ -1841,29 +1852,16 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             // Read under the lock, and nothing read before it is trusted:
             // an appeal is a state transition on the claim, and the claim
             // can have been decided again between the click and this line.
-            const row = yield* instanceOf(tenantId, instanceId)
+            const row = yield* appealContextOf(tenantId, entryId)
             if (row === null) return yield* new ReviewNotFound()
-            const entry = yield* entryOf(tenantId, row.entryId)
-            if (entry === null) return yield* new ReviewNotFound()
+            if (row.revisionId === null) return yield* refuse('appeal', 'nothing-to-appeal')
             // one open round per claim: whoever is already looking at it
             // finishes before anybody contests anything. Ahead of the
             // staleness test on purpose - a round in flight is the more
             // useful thing to be told about, and it is also why the
             // conclusion behind it is no longer the current one.
-            if (yield* hasOpenRound(tenantId, row.entryId)) {
+            if (yield* hasOpenRound(tenantId, entryId)) {
               return yield* refuse('appeal', 'review-already-open')
-            }
-            // An appeal contests the conclusion this claim stands on now,
-            // not every conclusion it has ever stood on. The trail explains
-            // how the claim got here; only the current pointers say what is
-            // still open to argument. Without this a rejection already
-            // superseded by a later approval could take the claim back off
-            // that approval, and reopen it against the older filing.
-            if (
-              entry.currentReviewInstanceId !== instanceId ||
-              entry.currentRevisionId !== row.revisionId
-            ) {
-              return yield* refuse('appeal', 'decision-superseded')
             }
             // The window, asked here and not at the door (§32.75): an appeal
             // is a transition on the claim, so what may be done to the claim
@@ -1877,19 +1875,46 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               })
               .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
             if (!decision.allowed) return yield* refuse('appeal', decision.reason)
-            // there has to be a decision to contest
-            if (
-              row.state !== 'completed' ||
-              (row.outcome !== 'approved' && row.outcome !== 'rejected')
-            ) {
+
+            // What is being contested: the round the claim stands on, or -
+            // for a fact recorded without one - the determination itself.
+            // A claim approved by the rule alone stands on neither: nobody
+            // formed an opinion there, the configuration did, and the way to
+            // change that is to change the question.
+            if (row.status !== 'approved' && row.status !== 'rejected') {
               return yield* refuse('appeal', 'nothing-to-appeal')
             }
+            const contested = yield* Effect.gen(function* () {
+              if (row.currentReviewInstanceId !== null) {
+                const standing = yield* instanceOf(tenantId, row.currentReviewInstanceId)
+                if (
+                  standing === null ||
+                  standing.state !== 'completed' ||
+                  (standing.outcome !== 'approved' && standing.outcome !== 'rejected') ||
+                  standing.revisionId !== row.revisionId
+                ) {
+                  return null
+                }
+                return { instanceId: standing.id, recognitionId: null }
+              }
+              // an administrative record, or one an import carried in
+              if (
+                (row.source === 'record' || row.source === 'import') &&
+                row.currentRecognitionId !== null
+              ) {
+                return { instanceId: null, recognitionId: row.currentRecognitionId }
+              }
+              return null
+            })
+            if (contested === null) return yield* refuse('appeal', 'nothing-to-appeal')
             const item = yield* itemOf(tenantId, row.itemId)
             if (item === null || item.currentRevisionId === null) {
               return yield* refuse('appeal', 'item-not-configured')
             }
             const live = yield* revisionOf(tenantId, item.currentRevisionId)
             if (live === null) return yield* refuse('appeal', 'item-not-configured')
+            const filing = yield* revisionAuthorOf(tenantId, row.revisionId)
+            if (filing === null) return yield* refuse('appeal', 'nothing-to-appeal')
             const participant = yield* participantOf(tenantId, row.batchId, row.participantId)
             if (participant === null || participant.status !== 'active') {
               return yield* refuse('appeal', 'participant-not-active')
@@ -1914,7 +1939,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               route: 'escalation',
               from: 0,
               subjectUserId: participant.userId,
-              actorId: row.actorId,
+              actorId: filing.actorId,
               conflictSkip: true,
             })
             if (landing === null || landing.stage.nodeId === null) {
@@ -1922,17 +1947,19 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             }
             const nodePath = yield* nodePathOf(tenantId, landing.stage.nodeId)
             if (nodePath === null) return yield* refuse('appeal', 'review-level-missing')
-            const roundNo = yield* nextRoundNo(tenantId, row.entryId)
+            const roundNo = yield* nextRoundNo(tenantId, entryId)
             const opened = yield* insertReviewInstance({
               tenantId,
-              entryId: row.entryId,
+              entryId,
               // the same filing: an appeal disputes the conclusion, not the
               // material, and changing the material is the other door
               revisionId: row.revisionId,
               roundNo,
               origin: 'appeal',
               initiator: 'participant',
-              appealedInstanceId: instanceId,
+              ...(contested.instanceId === null
+                ? { appealedRecognitionId: contested.recognitionId }
+                : { appealedInstanceId: contested.instanceId }),
               policyRevisionId: live.id,
           recognitionRevisionId: live.id,
               effectivePolicy: policy,
@@ -1985,7 +2012,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
             // an approval under appeal stops counting until the appeal ends
             const moved = yield* setEntryState({
               tenantId,
-              entryId: row.entryId,
+              entryId,
               from: ['approved', 'rejected'],
               to: 'in_review',
               currentReviewInstanceId: opened,
@@ -2462,7 +2489,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     listAwaitingSupplements,
     getReviewInstance,
     decideReview,
-    appealReview,
+    appealEntry,
     requestSupplement,
     cancelSupplement,
     answerSupplement,

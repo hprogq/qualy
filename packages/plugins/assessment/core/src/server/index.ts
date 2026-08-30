@@ -518,6 +518,7 @@ export type UserActivityKind =
   | 'entry-submitted'
   | 'entry-withdrawn'
   | 'entry-abandoned'
+  | 'entry-voided'
   | 'review-approved'
   | 'review-rejected'
   | 'review-escalated'
@@ -976,7 +977,7 @@ export class Assessment extends Context.Service<
     readonly listAwaitingSupplements: ReviewMethods['listAwaitingSupplements']
     readonly getReviewInstance: ReviewMethods['getReviewInstance']
     readonly decideReview: ReviewMethods['decideReview']
-    readonly appealReview: ReviewMethods['appealReview']
+    readonly appealEntry: ReviewMethods['appealEntry']
     /** the supplement exchange: ask, take back, answer (§32.65 ⑤) */
     readonly requestSupplement: ReviewMethods['requestSupplement']
     readonly cancelSupplement: ReviewMethods['cancelSupplement']
@@ -5365,13 +5366,13 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
       }),
     )
     .handle(
-      'appealReview',
-      Effect.fn('assessment.appealReview.handler')(function* ({ params, payload }) {
+      'appealEntry',
+      Effect.fn('assessment.appealEntry.handler')(function* ({ params, payload }) {
         const assessment = yield* Assessment
         const principal = yield* CurrentUser
-        const review = yield* assessment.appealReview(
+        const review = yield* assessment.appealEntry(
           principal.tenantId,
-          params.instanceId,
+          params.entryId,
           payload,
           principal,
         )

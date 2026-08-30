@@ -1929,10 +1929,10 @@ function Body({
           onSupplement={() => setAnswering(lingeringDetail.entry)}
         />
       )}
-      {lingeringAppeal?.currentReviewInstanceId != null && (
+      {lingeringAppeal != null && (
         <AppealDialog
           open={appealing !== null}
-          instanceId={lingeringAppeal.currentReviewInstanceId}
+          entryId={lingeringAppeal.id}
           onClose={() => setAppealing(null)}
           onDone={() => {
             setAppealing(null)

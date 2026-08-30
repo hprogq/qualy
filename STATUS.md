@@ -11195,6 +11195,31 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 
 **scoring_plan 的 NOT NULL** 仍未收紧,触发条件不变(见上一节)。
 
-**留给 Phase 6**:Evidence 的 integer/decimal/choice 生产字段与真实动态表单、
-行政记录的 abandon/appeal 归属(学生不该能放弃行政认定,而行政认定现在又无法被申诉——
-需要 `appealEntry(entryId)` 而不是 `appealReview(instanceId)`)。
+### Phase 6 第一项:行政记录的归属边界(2026-08-30)
+
+第六轮复审留下的唯一 P0,在开放真实认定值之前关掉。原状是一对反过来的权限:
+学生**能**把学院录进来的处分扣分作废(`abandon` 只看 participant,不看 `entry.source`,
+而作废后 scorer 立刻不计分),却**不能**对它提出异议(申诉入口要求存在 ReviewInstance,
+而行政记录从不产生轮次)。可以删除、不能申诉。
+
+- **学生只能放弃自己提出的主张**:`abandon` 限 `self`/`proxy`,能力投影与写入路径两处都说
+  同一句话(投影负责不画按钮,写入负责拒绝)。
+- **行政事实由行政侧收回**:`interveneOnEntry` 新增 `kind: 'void'`,限 record/import、必须带
+  理由,写 `voided-by-staff` 事件(活动流新增 `entry-voided` 文案)。认定原样保留——
+  作废说的是「这条事实不再适用」,不是「当初没有判过」。学生自己提出的主张不在此列:
+  管理员拿走它是另一种权力,没有人要求过。
+- **申诉改按申报开门**:`appealReview(instanceId)` → `appealEntry(entryId)`,
+  路径 `POST /assessment/entries/{entryId}/appeals`(frozen-routes 同笔更新)。
+  被申诉的可以是一轮,也可以是一次直接认定;`review_instances` 新增
+  `appealed_recognition_id`(与 `appealed_instance_id` 互斥的 CHECK + 复合外键),
+  于是「在争什么」是存下来的事实而不是推断。规则不变的部分:一次只能开一轮、
+  只有当事人能提、窗口在锁内判定。**自动通过的申报仍不可申诉**——那里没有人形成过意见,
+  是配置本身决定的,要改的是题目。
+- 副作用是一条不变量从**检查**变成了**结构**:按申报开门之后,「申诉一个已被超越的旧轮」
+  不可表达,`decision-superseded` 这条拒绝不再可达。两个原本钉它的测试改成钉新的真相
+  (申诉命中的是当前站着的那一轮),并发那条照旧。
+
+门禁:学生作废行政记录被拒且按钮不出现、同一条记录可申诉且轮次记下 `appealed_recognition_id`、
+行政作废要理由且认定保留。去掉 source 检查即红。
+
+**留给 Phase 6 其余**:Evidence 的 integer/decimal/choice 生产字段与真实动态表单。

@@ -3321,6 +3321,10 @@ const i18n = definePluginMessages({
       id: 'assessment/activity/entry-abandoned',
       defaultMessage: 'You abandoned the entry',
     },
+    'activity.entry-voided': {
+      id: 'assessment/activity/entry-voided',
+      defaultMessage: '{who} withdrew the recorded entry',
+    },
     'activity.review-approved': {
       id: 'assessment/activity/review-approved',
       defaultMessage: '{who} approved the entry',

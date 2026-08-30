@@ -150,9 +150,9 @@ describe.runIf(postgresAvailable)('where withdraw ends and abandon does not', ()
             { decision: 'reject', comment: 'not enough' },
             f.principal(f.reviewer),
           )
-          const appealed = yield* assessment.appealReview(
+          const appealed = yield* assessment.appealEntry(
             f.t,
-            submitted.currentReviewInstanceId!,
+            entry.id,
             { reason: 'the certificate is genuine' },
             s1,
           )

@@ -32,6 +32,8 @@ export interface EntryRow {
   participantId: string
   currentRevisionId: string | null
   currentReviewInstanceId: string | null
+  /** what it currently stands recognised as, which is what an appeal contests */
+  currentRecognitionId: string | null
   status: EntryStatus
   source: EntrySource
   createdAt: number
@@ -44,6 +46,7 @@ const entryColumns = [
   'participantId',
   'currentRevisionId',
   'currentReviewInstanceId',
+  'currentRecognitionId',
   'status',
   'source',
 ] as const
@@ -56,6 +59,8 @@ const toEntry = (row: Record<string, unknown>): EntryRow => ({
   currentRevisionId: row['currentRevisionId'] == null ? null : String(row['currentRevisionId']),
   currentReviewInstanceId:
     row['currentReviewInstanceId'] == null ? null : String(row['currentReviewInstanceId']),
+  currentRecognitionId:
+    row['currentRecognitionId'] == null ? null : String(row['currentRecognitionId']),
   status: String(row['status']) as EntryStatus,
   source: String(row['source']) as EntrySource,
   createdAt: msOf(row['createdMs']),
@@ -626,6 +631,8 @@ export const insertReviewInstance = (input: {
   supersedesInstanceId?: string | null
   /** the decision being contested, when this round is an appeal */
   appealedInstanceId?: string | null
+  /** or the determination it contests, when no round produced that one */
+  appealedRecognitionId?: string | null
   /** where this round may be ended; frozen when it opens (§32.63) */
   /** which version of the question's review policy this round walks */
   policyRevisionId: string
@@ -654,13 +661,14 @@ export const insertReviewInstance = (input: {
       sql<{ id: string }>`
         insert into review_instances
           (tenant_id, entry_id, revision_id, round_no, origin, initiator,
-           supersedes_instance_id, appealed_instance_id,
+           supersedes_instance_id, appealed_instance_id, appealed_recognition_id,
            policy_revision_id, recognition_revision_id, effective_chain,
            current_route, current_stage_id, state, blocked_reason,
            current_role_ids, current_node_id, current_node_path)
         values (${input.tenantId}, ${input.entryId}, ${input.revisionId}, ${input.roundNo},
                 ${input.origin ?? 'initial'}, ${input.initiator ?? 'participant'},
                 ${input.supersedesInstanceId ?? null}, ${input.appealedInstanceId ?? null},
+                ${input.appealedRecognitionId ?? null},
                 ${input.policyRevisionId}, ${input.recognitionRevisionId},
                 ${jsonb(input.effectivePolicy)},
                 ${input.route}, ${input.stageId}, ${input.state},
@@ -1346,6 +1354,7 @@ export const userActivityPage = (input: {
                  case ee.kind
                    when 'withdrawn-by-submitter' then 'entry-withdrawn'
                    when 'abandoned-by-submitter' then 'entry-abandoned'
+                   when 'voided-by-staff' then 'entry-voided'
                    when 'revision-required' then 'revision-required'
                    when 'auto-approved' then 'review-approved'
                  end,
@@ -1358,7 +1367,7 @@ export const userActivityPage = (input: {
           left join users u on u.tenant_id = ee.tenant_id and u.id = ee.actor_id
           where ee.tenant_id = ${input.tenantId}
             and ee.kind in ('withdrawn-by-submitter', 'abandoned-by-submitter',
-                            'revision-required', 'auto-approved')
+                            'voided-by-staff', 'revision-required', 'auto-approved')
 
           union all
           select ri.id, 'verdict', 'participant',

@@ -1381,9 +1381,9 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             { decision: 'reject', comment: '材料不足' },
             f.principal(f.reviewer),
           )
-          const appealed = yield* assessment.appealReview(
+          const appealed = yield* assessment.appealEntry(
             f.t,
-            sent.currentReviewInstanceId!,
+            entry.id,
             { reason: '证书原件已补交，请复核' },
             s1,
           )
@@ -1784,15 +1784,23 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
   // staleness test - so somebody contesting a conclusion their claim has
   // already outgrown would be told the window is shut rather than that they
   // are arguing with the wrong conclusion.
-  it('answers a stale appeal for what it is before it answers for the window', async () => {
+  it('contests the conclusion the claim stands on, not one it has outgrown', async () => {
     const result = ok(
       await run(
         db.url,
         Effect.gen(function* () {
           const f = yield* seed('rv-appeal-order')
           const assessment = yield* Assessment
-          // a window with no appealing in it, so the gate would refuse
-          const g = yield* runningBatch(f, { profile: NO_DOUBTS })
+          const g = yield* runningBatch(f, {
+            profile: [...NO_DOUBTS, 'assessment.entry.appeal'],
+            escalation: [
+              {
+                id: 'college',
+                selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                quorum: { type: 'any' },
+              },
+            ],
+          })
           const s1 = f.principal(f.s1)
           const reviewer = f.principal(f.reviewer)
           const entry = yield* assessment.createEntry(
@@ -1812,20 +1820,37 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           // longer the conclusion the claim stands on
           yield* assessment.appendEntryRevision(f.t, entry.id, { payload: {} }, s1)
           const secondSent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          const second = secondSent.currentReviewInstanceId!
           yield* assessment.decideReview(
             f.t,
-            secondSent.currentReviewInstanceId!,
+            second,
             { decision: 'approve', comment: '这次齐了' },
             reviewer,
           )
-          const outgrown = yield* Effect.exit(
-            assessment.appealReview(f.t, first, { reason: '不服第一轮' }, s1),
+          const appealed = yield* assessment.appealEntry(
+            f.t,
+            entry.id,
+            { reason: '不服' },
+            s1,
           )
-          return { outgrown }
+          return {
+            first,
+            second,
+            contested: one<{ appealed_instance_id: string | null }>(
+              yield* runSql(
+                sql`select appealed_instance_id from review_instances where id = ${appealed.id}`,
+              ),
+            ).appealed_instance_id,
+          }
         }),
       ),
     )
-    expect(refusalOf(result.outgrown)?.reason).toBe('decision-superseded')
+    // an appeal contests what the claim stands on now. Naming a round was
+    // the old door, and naming an outgrown one was a refusal it had to
+    // check for; the claim only ever has one standing decision, so there is
+    // nothing left to get wrong
+    expect(result.contested).toBe(result.second)
+    expect(result.contested).not.toBe(result.first)
   })
 
   // An appeal argues with the conclusion the claim stands on now. The trail
@@ -1834,7 +1859,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
   // otherwise a rejection already answered by a later approval could take
   // the claim back off that approval, and reopen it against the older
   // filing, on material the claim itself has moved past.
-  it('refuses an appeal against a conclusion the claim has outgrown', async () => {
+  it('contests one standing conclusion apiece, and only once at a time', async () => {
     const result = ok(
       await run(
         db.url,
@@ -1879,10 +1904,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             { decision: 'approve', comment: '这次齐了' },
             reviewer,
           )
-          const outgrown = yield* Effect.exit(
-            assessment.appealReview(f.t, first, { reason: '不服第一轮' }, s1),
-          )
-          const current = yield* assessment.appealReview(f.t, second, { reason: '仍有异议' }, s1)
+          const current = yield* assessment.appealEntry(f.t, one_.id, { reason: '仍有异议' }, s1)
 
           // the other claim keeps one filing throughout: rejected, and asked
           // again unchanged, which is the participant's right (§32.65). Both
@@ -1914,16 +1936,14 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
               select (select revision_id from review_instances where id = ${early})
                    = (select revision_id from review_instances where id = ${late}) as same`),
           ).same
-          const stale = yield* Effect.exit(
-            assessment.appealReview(f.t, early, { reason: '不服第一次' }, s2),
-          )
+
           // and that live conclusion contested twice at once: the batch lock
           // orders the two, so the claim takes exactly one transition and the
           // loser is told a round is already under way
           const together = yield* Effect.all(
             [
-              Effect.exit(assessment.appealReview(f.t, late, { reason: '请复核一次' }, s2)),
-              Effect.exit(assessment.appealReview(f.t, late, { reason: '请再复核一次' }, s2)),
+              Effect.exit(assessment.appealEntry(f.t, two.id, { reason: '请复核一次' }, s2)),
+              Effect.exit(assessment.appealEntry(f.t, two.id, { reason: '请再复核一次' }, s2)),
             ],
             { concurrency: 'unbounded' },
           )
@@ -1932,17 +1952,14 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             where origin = 'appeal' and entry_id in (${one_.id}, ${two.id})
             order by created_at, id`)
 
-          return { second, outgrown, sameFiling, late, stale, contested, together }
+          void current
+          return { first, second, sameFiling, late, contested, together }
         }),
       ),
     )
-    // the superseded rejection is refused in its own words, so a stale screen
-    // can say what happened rather than "this cannot be done right now"
-    expect(refusalOf(result.outgrown)?.reason).toBe('decision-superseded')
-    // and the same refusal where the two rounds judged one filing: it is the
-    // pointer that decides, not the material
+    // two rounds judged one filing, so only the pointer tells the two
+    // conclusions apart - and the appeal took the one the claim stands on
     expect(result.sameFiling).toBe(true)
-    expect(refusalOf(result.stale)?.reason).toBe('decision-superseded')
     // sent together, one opens the appeal and the other is refused
     expect(result.together.filter((exit) => Exit.isSuccess(exit))).toHaveLength(1)
     // and every appeal that was allowed contests the round its claim stands
@@ -2039,21 +2056,21 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
           )
           // somebody else's decision is not theirs to contest
           const stranger = yield* Effect.exit(
-            assessment.appealReview(f.t, first, { reason: '\u4e0d\u670d' }, f.principal(f.s2)),
+            assessment.appealEntry(f.t, entry.id, { reason: '\u4e0d\u670d' }, f.principal(f.s2)),
           )
           const wordless = yield* Effect.exit(
-            assessment.appealReview(f.t, first, { reason: '  ' }, s1),
+            assessment.appealEntry(f.t, entry.id, { reason: '  ' }, s1),
           )
-          const appealed = yield* assessment.appealReview(
+          const appealed = yield* assessment.appealEntry(
             f.t,
-            first,
+            entry.id,
             { reason: '\u8bc1\u4e66\u539f\u4ef6\u5df2\u8865\u4ea4\uff0c\u8bf7\u590d\u6838' },
             s1,
           )
           const second_ = appealed.id
           // one open round per claim: the same decision cannot be contested twice
           const again = yield* Effect.exit(
-            assessment.appealReview(f.t, first, { reason: '\u518d\u6765\u4e00\u6b21' }, s1),
+            assessment.appealEntry(f.t, entry.id, { reason: '\u518d\u6765\u4e00\u6b21' }, s1),
           )
           // The judge who rejected the first round is eligible for the appeal
           // on purpose (\u00a732.66): a fresh round means fresh standing, and the

@@ -245,7 +245,16 @@ export type EntryStatusError =
  * not (§32.62).
  */
 export interface InterveneInput {
-  readonly kind: 'return-for-revision'
+  /**
+   * `return-for-revision` hands a claim back to the person who filed it.
+   *
+   * `void` withdraws a fact nobody filed. A record or an import is not its
+   * subject's to give up - letting them would let a student delete a
+   * penalty - so the way one stops counting is a member of staff saying so,
+   * with a reason, which is what this is. Correcting one is voiding it and
+   * recording again.
+   */
+  readonly kind: 'return-for-revision' | 'void'
   readonly reason: string
 }
 
@@ -709,10 +718,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             : active && entry.status === 'in_review' && standing?.begun === true
               ? { state: 'blocked', reason: 'review-under-way' }
               : when(entry.status === 'in_review', gates?.withdraw),
-        // there has to be a decision to disagree with, and a round to name
+        // There has to be a decision to disagree with. A round is one; so is
+        // a determination the office wrote without a round, which is the
+        // only thing a student can say about a recorded penalty. A claim the
+        // rule approved by itself is neither - nobody formed an opinion
+        // there, the configuration did, and that is not a thing to appeal.
         appeal: when(
           (entry.status === 'approved' || entry.status === 'rejected') &&
-            entry.currentReviewInstanceId !== null,
+            (entry.currentReviewInstanceId !== null ||
+              ((entry.source === 'record' || entry.source === 'import') &&
+                entry.currentRecognitionId !== null)),
           gates?.appeal,
         ),
         // Giving a claim up is open across the whole life of the claim,
@@ -721,12 +736,20 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
         // plan closes it - typically at final publication - so a full
         // quota can be reworked while the term runs, and nothing moves
         // once results are settled.
+        //
+        // What a student may give up is what a student put forward. A
+        // penalty the office recorded, or a fact an import carried in, is
+        // not theirs to withdraw - it was never their claim, and letting
+        // them abandon it would be letting them delete a deduction. Undoing
+        // an administrative fact is an administrative act (see
+        // `interveneOnEntry`), and disagreeing with one is an appeal.
         abandon: when(
-          entry.status === 'draft' ||
-            entry.status === 'rejected' ||
-            entry.status === 'needs_revision' ||
-            entry.status === 'in_review' ||
-            entry.status === 'approved',
+          (entry.source === 'self' || entry.source === 'proxy') &&
+            (entry.status === 'draft' ||
+              entry.status === 'rejected' ||
+              entry.status === 'needs_revision' ||
+              entry.status === 'in_review' ||
+              entry.status === 'approved'),
           gates?.abandon,
         ),
       },
@@ -1082,6 +1105,16 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             // moved (§32.69)
             if (to === 'in_review') yield* sameQuestion(item, expectedItemRevisionId)
             if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
+            // the projection hides it; this is where it is refused. A fact
+            // the office recorded or an import carried in is not the
+            // subject's to withdraw, whatever the phase allows in general
+            if (
+              action === 'abandon' &&
+              entry.source !== 'self' &&
+              entry.source !== 'proxy'
+            ) {
+              return yield* refuse(action, 'entry-not-abandonable')
+            }
             if (participant.status !== 'active') {
               return yield* refuse(action, 'participant-not-active')
             }
@@ -1656,13 +1689,55 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           const loaded = yield* loadEntry(tenantId, entryId)
           if (loaded === null) return yield* new EntryNotFound()
           const { entry, participant } = loaded
+          const administrative = entry.source === 'record' || entry.source === 'import'
+
+          // Withdrawing a fact nobody filed.
+          //
+          // Its subject cannot abandon it - a student deleting a penalty is
+          // the thing that rule exists to stop - so somebody has to be able
+          // to, and it is whoever could have recorded it. The determination
+          // stays exactly as written: the office is not saying it never
+          // decided, it is saying the fact no longer applies, and the scorer
+          // stops counting it because the claim is no longer effective.
+          if (input.kind === 'void') {
+            if (!administrative) {
+              // a claim its owner filed is theirs to give up; an
+              // administrator taking it away is a different power and not
+              // one anybody has asked for
+              return yield* refuse('abandon', 'entry-not-abandonable')
+            }
+            if (entry.status === 'voided') {
+              return yield* refuse('abandon', 'entry-not-abandonable')
+            }
+            const gone = yield* setEntryState({
+              tenantId,
+              entryId,
+              from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
+              to: 'voided',
+            })
+            if (!gone) return yield* refuse('abandon', 'entry-not-abandonable')
+            yield* insertEntryEvent({
+              tenantId,
+              entryId,
+              kind: 'voided-by-staff',
+              actorId: as.userId,
+              reason,
+            })
+            yield* announce(tenantId, entry.batchId, [
+              { kind: 'entries-changed', subjectUserId: participant.userId },
+              { kind: 'result-changed', subjectUserId: participant.userId },
+            ])
+            const gone_ = (yield* entryOf(tenantId, entryId))!
+            return view(gone_, yield* revisionView(tenantId, gone_.currentRevisionId), as, participant)
+          }
+
           if (entry.status !== 'in_review' && entry.status !== 'approved') {
             return yield* refuse('return', 'entry-not-returnable')
           }
           // a recorded fact is not its subject's to rewrite, so handing it
           // back would leave it somewhere nobody can act: those are corrected
           // by voiding and recording again
-          if (entry.source === 'record' || entry.source === 'import') {
+          if (administrative) {
             return yield* refuse('return', 'entry-not-returnable')
           }
           if (entry.currentReviewInstanceId !== null) {

@@ -2440,6 +2440,76 @@ export const lastRecognitionOf = (tenantId: string, instanceId: string) =>
       ),
     )
 
+/**
+ * What a claim currently stands on, for deciding whether it can be appealed.
+ *
+ * Read by entry rather than by round: an administrative record has no round,
+ * and it is still a decision somebody may disagree with.
+ */
+export const appealContextOf = (tenantId: string, entryId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('Entry as e')
+        .innerJoin('BatchParticipant as bp', (join) =>
+          join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+        )
+        .select([
+          'e.id as entryId',
+          'e.batchId',
+          'e.itemId',
+          'e.status',
+          'e.source',
+          'e.participantId',
+          'e.currentRevisionId',
+          'e.currentReviewInstanceId',
+          'e.currentRecognitionId',
+          'bp.userId as subjectUserId',
+        ])
+        .where('e.tenantId', '=', tenantId)
+        .where('e.id', '=', entryId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) => {
+        if (row === undefined) return null
+        const one = row as Record<string, unknown>
+        return {
+          entryId: String(one['entryId']),
+          batchId: String(one['batchId']),
+          itemId: String(one['itemId']),
+          status: String(one['status']),
+          source: String(one['source']),
+          participantId: String(one['participantId']),
+          revisionId: one['currentRevisionId'] === null ? null : String(one['currentRevisionId']),
+          currentReviewInstanceId:
+            one['currentReviewInstanceId'] === null
+              ? null
+              : String(one['currentReviewInstanceId']),
+          currentRecognitionId:
+            one['currentRecognitionId'] === null ? null : String(one['currentRecognitionId']),
+          subjectUserId: String(one['subjectUserId']),
+        }
+      }),
+    )
+
+/** who wrote one filing: the other half of not reviewing your own work */
+export const revisionAuthorOf = (tenantId: string, revisionId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('EntryRevision')
+        .select(['actorId'])
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', revisionId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.map((row) =>
+        row === undefined ? null : { actorId: String((row as { actorId: string }).actorId) },
+      ),
+    )
+
 /** how one round came to exist, for walking a chain of re-routes */
 export const instanceLineageOf = (tenantId: string, instanceId: string) =>
   db

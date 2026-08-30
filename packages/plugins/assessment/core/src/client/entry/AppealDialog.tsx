@@ -34,14 +34,14 @@ const styles = stylex.create({
 
 export function AppealDialog({
   open,
-  instanceId,
+  entryId,
   onClose,
   onDone,
 }: {
   /** false while it animates shut; it keeps drawing what it was showing */
   open: boolean
-  /** the decision being contested, named rather than inferred */
-  instanceId: string
+  /** the claim whose standing decision is being contested */
+  entryId: string
   onClose: () => void
   onDone: () => void
 }) {
@@ -54,8 +54,8 @@ export function AppealDialog({
   const send = useMutation({
     mutationFn: () =>
       run(
-        api.assessment.appealReview({
-          params: { instanceId },
+        api.assessment.appealEntry({
+          params: { entryId },
           payload: { reason: reason.trim() },
         }),
       ),

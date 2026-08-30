@@ -1215,6 +1215,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
               'entry-submitted',
               'entry-withdrawn',
               'entry-abandoned',
+              'entry-voided',
               'review-approved',
               'review-rejected',
               'review-escalated',
@@ -1409,7 +1410,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.post('interveneOnEntry', '/assessment/entries/:entryId/interventions', {
       params: Schema.Struct({ entryId: id }),
       payload: Schema.Struct({
-        kind: Schema.Literals(['return-for-revision']),
+        kind: Schema.Literals(['return-for-revision', 'void']),
         /** what the person filing it has to act on; never optional */
         reason: boundedText(500),
       }),
@@ -1420,8 +1421,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // Contesting a decision, anchored on the decision itself. An entry can
     // carry several finished rounds, and "I disagree" has to say with what.
-    HttpApiEndpoint.post('appealReview', '/assessment/review/instances/:instanceId/appeals', {
-      params: Schema.Struct({ instanceId: id }),
+    // by the claim, not by the round: an administrative record has no round
+    // and is still a decision its subject may disagree with
+    HttpApiEndpoint.post('appealEntry', '/assessment/entries/:entryId/appeals', {
+      params: Schema.Struct({ entryId: id }),
       payload: Schema.Struct({ reason: boundedText(2000) }),
       success: Schema.Struct({ review: reviewDetailView }),
       error: [

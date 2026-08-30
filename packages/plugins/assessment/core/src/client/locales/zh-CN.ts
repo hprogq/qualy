@@ -875,6 +875,7 @@ export default {
   'assessment/activity/entry-submitted': '你提交了申报，发起审核',
   'assessment/activity/entry-withdrawn': '你撤回了申报',
   'assessment/activity/entry-abandoned': '你放弃了申报',
+  'assessment/activity/entry-voided': '{who} 作废了这条记录',
   'assessment/activity/review-approved': '{who} 通过了你的申报',
   'assessment/activity/review-rejected': '{who} 退回了你的申报',
   'assessment/activity/review-escalated': '审核已进入复核流程',

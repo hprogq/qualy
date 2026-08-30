@@ -1188,6 +1188,14 @@ export const ReviewInstance = defineEntity({
     supersedesInstanceId: p.uuid().nullable(),
     /** the decision being contested, when this round is an appeal against one */
     appealedInstanceId: p.uuid().nullable(),
+    /**
+     * The determination being contested, when no round produced it.
+     *
+     * An administrative record is approved as it is written, so there is no
+     * round to name - and a student who disagrees with a penalty has to be
+     * able to say so against the determination itself.
+     */
+    appealedRecognitionId: p.uuid().nullable(),
     // both routes, resolved once against this participant's frozen lineage
     // and frozen with the round. The column keeps its old name: what it
     // holds grew a second route, and renaming it would cost a rewrite of
@@ -1216,6 +1224,12 @@ export const ReviewInstance = defineEntity({
   },
   checks: [
     { name: 'chk_review_instances_round_positive', expression: 'round_no >= 1' },
+    {
+      name: 'chk_review_instances_appealed_one',
+      // a round is contested by naming the round; a determination made
+      // without one is contested by naming the determination
+      expression: 'appealed_instance_id IS NULL OR appealed_recognition_id IS NULL',
+    },
     {
       name: 'chk_review_instances_origin',
       // reroute: the same filing, walked again under a newer policy because
@@ -1771,6 +1785,8 @@ export const compositeForeignKeys = [
   // the pointer, held to this entry's own determinations
   `alter table entries add constraint fk_entries_current_recognition
     foreign key (tenant_id, id, current_recognition_id) references entry_recognitions (tenant_id, entry_id, id) on delete set null (current_recognition_id)`,
+  `alter table review_instances add constraint fk_review_instances_appealed_recognition
+    foreign key (tenant_id, entry_id, appealed_recognition_id) references entry_recognitions (tenant_id, entry_id, id) on delete restrict`,
   `alter table review_instances add constraint fk_review_instances_recognition_revision
     foreign key (tenant_id, recognition_revision_id) references assessment_item_revisions (tenant_id, id) on delete restrict`,
   `alter table entries add constraint fk_entries_current_review_instance

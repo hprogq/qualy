@@ -4,7 +4,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment } from '../src/server/index.ts'
 import { gradedScoring, twoFactScoring } from './support/catalogs.ts'
-import { errorOf, GATED, ok, one, run, runningBatch, seed, type Seeded } from './support/round.ts'
+import {
+  errorOf,
+  GATED,
+  ok,
+  one,
+  refusalOf,
+  run,
+  runningBatch,
+  seed,
+  type Seeded,
+} from './support/round.ts'
 
 const REVIEW_OPEN = [...GATED, 'assessment.review.process', 'assessment.review.escalate']
 
@@ -43,6 +53,9 @@ const recordItem = (f: Seeded, batchId: string) =>
             calculator: { ref: 'fixed@1', config: { value: '-1.00' } },
             aggregator: { ref: 'sum@1', config: {} },
           },
+          // an administrative record walks no route when it is written -
+          // it is approved as it is filed - and keeps one anyway, because
+          // that is where an appeal against it is heard
           reviewPolicy: {
             normal: {
               stages: [
@@ -53,7 +66,15 @@ const recordItem = (f: Seeded, batchId: string) =>
                 },
               ],
             },
-            escalation: { stages: [] },
+            escalation: {
+              stages: [
+                {
+                  id: 'appeal',
+                  selector: { kind: 'roleAt', nodeTypeId: f.classType, roleIds: [f.reviewRole] },
+                  quorum: { type: 'any' },
+                },
+              ],
+            },
           },
         },
       },
@@ -318,9 +339,9 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             },
             f.principal(f.reviewer),
           )
-          const appealed = yield* assessment.appealReview(
+          const appealed = yield* assessment.appealEntry(
             f.t,
-            instanceId,
+            entryId,
             { reason: '主办单位为全国学会' },
             f.principal(f.s1),
           )
@@ -769,5 +790,120 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     )
 
     expect(result?.issues).toBeUndefined()
+  })
+
+  it('keeps a recorded fact out of its subject\'s hands, and open to their argument', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-admin-boundary')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, {
+            profile: [...REVIEW_OPEN, 'assessment.entry.appeal', 'assessment.entry.abandon'],
+            stages: [at(f, 'class')],
+            escalation: [at(f, 'dept')],
+          })
+          const item = yield* recordItem(f, g.batch.id)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {}, note: '违纪记录' },
+            f.principal(f.recorder),
+          )
+          const asSubject = f.principal(f.s1)
+          // the student cannot make the office's deduction stop counting
+          const abandoned = yield* Effect.exit(
+            assessment.setEntryStatus(f.t, entry.id, 'voided', asSubject),
+          )
+          const card = yield* Effect.map(
+            assessment.getEntry(f.t, entry.id, asSubject),
+            (view) => ({
+              abandon: view.capabilities.abandon.state,
+              appeal: view.capabilities.appeal.state,
+            }),
+          )
+          // but they can say they disagree with it, which is the whole point
+          const appealed = yield* assessment.appealEntry(
+            f.t,
+            entry.id,
+            { reason: '当天我在校外实习' },
+            asSubject,
+          )
+          const round = one<{
+            origin: string
+            appealed_instance_id: string | null
+            appealed_recognition_id: string | null
+          }>(
+            yield* runSql(sql`
+              select origin, appealed_instance_id, appealed_recognition_id
+              from review_instances where id = ${appealed.id}`),
+          )
+          return {
+            abandoned,
+            card,
+            round,
+            recognitionId: yield* pointerOf(entry.id),
+            status: (yield* assessment.getEntry(f.t, entry.id, asSubject)).status,
+          }
+        }),
+      ),
+    )
+
+    // a penalty the office recorded is not the student's to delete
+    expect(refusalOf(result.abandoned)?.reason).toBe('entry-not-abandonable')
+    expect(result.card.abandon).toBe('hidden')
+    // and the appeal names the determination itself: there is no round that
+    // made it, which is exactly why the old door could not be opened here
+    expect(result.card.appeal).toBe('available')
+    expect(result.round.origin).toBe('appeal')
+    expect(result.round.appealed_instance_id).toBeNull()
+    expect(result.round.appealed_recognition_id).toBe(result.recognitionId)
+    expect(result.status).toBe('in_review')
+  })
+
+  it('lets the office withdraw what the office recorded, with a reason', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('rec-admin-void')
+          const assessment = yield* Assessment
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const item = yield* recordItem(f, g.batch.id)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p1, payload: {}, note: '违纪记录' },
+            f.principal(f.recorder),
+          )
+          const admin = f.principal(f.admin)
+          const wordless = yield* Effect.exit(
+            assessment.interveneOnEntry(f.t, entry.id, { kind: 'void', reason: '  ' }, admin),
+          )
+          const voided = yield* assessment.interveneOnEntry(
+            f.t,
+            entry.id,
+            { kind: 'void', reason: '经复核，记录有误' },
+            admin,
+          )
+          return {
+            wordless,
+            status: voided.status,
+            // the determination stays exactly as written: the office is not
+            // saying it never decided, only that the fact no longer applies
+            rows: yield* recognitionsOf(entry.id),
+            said: one<{ kind: string; reason: string | null }>(
+              yield* runSql(sql`
+                select kind, reason from entry_events
+                where entry_id = ${entry.id} and kind = 'voided-by-staff'`),
+            ),
+          }
+        }),
+      ),
+    )
+
+    expect(refusalOf(result.wordless)?.reason).toBe('reason-required')
+    expect(result.status).toBe('voided')
+    expect(result.rows).toHaveLength(1)
+    expect(result.said.reason).toBe('经复核，记录有误')
   })
 })
