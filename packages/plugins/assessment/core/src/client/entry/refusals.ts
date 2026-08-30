@@ -40,6 +40,7 @@ const SENTENCES: Record<string, MessageDescriptor> = {
   'entry-not-abandonable': m.refuseNotAbandonable,
   'supplement-already-open': m.refuseSupplementOpen,
   'request-not-open': m.refuseRequestClosed,
+  'requirements-unreadable': m.refuseSupplementUnreadable,
   'not-requester': m.refuseNotRequester,
   'awaiting-supplement': m.refuseAwaitingSupplement,
   'review-not-open': m.refuseReviewNotOpen,

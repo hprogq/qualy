@@ -1725,7 +1725,8 @@ const i18n = definePluginMessages({
     },
     recognitionLockedNote: {
       id: 'assessment/review/recognition-locked-note',
-      defaultMessage: 'The sitting has settled on this determination; approving confirms it as written',
+      defaultMessage:
+        'The sitting has settled on this determination; approving confirms it as written',
     },
     recognitionReasonLabel: {
       id: 'assessment/review/recognition-reason-label',
@@ -2588,6 +2589,11 @@ const i18n = definePluginMessages({
     refuseRequestClosed: {
       id: 'assessment/refuse/request-closed',
       defaultMessage: 'The material request has already been closed.',
+    },
+    refuseSupplementUnreadable: {
+      id: 'assessment/refuse/supplement-unreadable',
+      defaultMessage:
+        'This supplement request cannot be answered in this version. Contact an administrator.',
     },
     refuseAwaitingSupplement: {
       id: 'assessment/refuse/awaiting-supplement',

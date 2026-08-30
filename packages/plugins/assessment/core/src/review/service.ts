@@ -277,7 +277,10 @@ export interface ReviewDetailView {
   readonly recognitionForm: {
     readonly fields: readonly { readonly id: string; readonly schema: unknown }[]
     readonly seed: Readonly<Record<string, unknown>>
-    readonly locked: { readonly values: Readonly<Record<string, unknown>>; readonly hash: string } | null
+    readonly locked: {
+      readonly values: Readonly<Record<string, unknown>>
+      readonly hash: string
+    } | null
   } | null
   readonly capabilities: {
     readonly canDecide: boolean
@@ -1346,12 +1349,16 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
               // hand `null` and friends to code that assumes an object,
               // turning a malformed request into a defect instead of the
               // refusal already written for it.
-              const offered: unknown = input.recognition === undefined ? {} : input.recognition.values
+              const offered: unknown =
+                input.recognition === undefined ? {} : input.recognition.values
               const wrong = judgeRecognition(plan.recognitionSchemas, offered)
               if (wrong.length > 0) {
                 return yield* new EntryPayloadInvalid({
                   issues: wrong.map((issue) => ({
-                    field: issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
+                    field:
+                      issue.recognitionId === ''
+                        ? 'recognition'
+                        : `recognition.${issue.recognitionId}`,
                     reason: issue.reason,
                   })),
                 })
@@ -1656,7 +1663,10 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                     reason: determinedReason,
                   })
                   ballotHash = recognitionHash(opening)
-                } else if (determined !== undefined && recognitionHash(determined) !== frozen.hash) {
+                } else if (
+                  determined !== undefined &&
+                  recognitionHash(determined) !== frozen.hash
+                ) {
                   return yield* new EntryPayloadInvalid({
                     issues: [{ field: 'recognition', reason: 'panel-recognition-locked' }],
                   })
@@ -2048,7 +2058,7 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
                 ? { appealedRecognitionId: contested.recognitionId }
                 : { appealedInstanceId: contested.instanceId }),
               policyRevisionId: live.id,
-          recognitionRevisionId: live.id,
+              recognitionRevisionId: live.id,
               effectivePolicy: policy,
               route: 'escalation',
               stageId: landing.stage.id,
@@ -2404,32 +2414,50 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
     return yield* withDb(
       transaction(
         Effect.gen(function* () {
-          const request = yield* supplementRequestOf(tenantId, requestId)
-          if (request === null) return yield* new ReviewNotFound()
-          const row = yield* instanceOf(tenantId, request.reviewInstanceId)
-          if (row === null) return yield* new ReviewNotFound()
-          if (row.subjectUserId !== as.userId) {
+          // the first read only locates and admits; every judgement about
+          // STATE waits for the re-read under the lock
+          const found = yield* supplementRequestOf(tenantId, requestId)
+          if (found === null) return yield* new ReviewNotFound()
+          const first = yield* instanceOf(tenantId, found.reviewInstanceId)
+          if (first === null) return yield* new ReviewNotFound()
+          if (first.subjectUserId !== as.userId) {
             // same admission rule as appealing: an administrator is told the
             // act is not theirs, a stranger learns nothing
-            const admin = yield* deps.rosterReach(as, tenantId, row.batchId)
+            const admin = yield* deps.rosterReach(as, tenantId, first.batchId)
             if (!admin) return yield* new ReviewNotFound()
             return yield* refuse('supplement-answer', 'not-your-entry')
           }
-          const locked = yield* lockBatch(tenantId, row.batchId)
+          const locked = yield* lockBatch(tenantId, first.batchId)
           if (locked!.status === 'archived') return yield* new BatchReadOnly()
+          // Read it again, and judge from this one: between the first read
+          // and the lock another tab can have answered the same ask and
+          // committed. Judging from the stale copy sent the loser into the
+          // unique response index - a defect - where the answer is simply
+          // that the request is no longer open.
+          const request = yield* supplementRequestOf(tenantId, requestId)
+          const row =
+            request === null ? null : yield* instanceOf(tenantId, request.reviewInstanceId)
+          if (request === null || row === null) return yield* new ReviewNotFound()
           if (request.status !== 'open' || row.state !== 'awaiting_supplement') {
             return yield* refuse('supplement-answer', 'request-not-open')
+          }
+          // a contract this build cannot read is not a contract it may
+          // judge completeness against: answering fails closed rather than
+          // closing the request around asks it silently dropped
+          const asks = request.requirements
+          if (asks === null) {
+            return yield* refuse('supplement-answer', 'requirements-unreadable')
           }
           // the answer held to the ask: exactly the asked-for pieces
           const record = (input.payload ?? {}) as Record<string, unknown>
           const issues: { field: string; reason: string }[] = []
-          const known = new Set(request.requirements.map((asked) => asked.key))
+          const known = new Set(asks.map((asked) => asked.key))
           for (const key of Object.keys(record)) {
             if (!known.has(key)) issues.push({ field: key, reason: 'not-asked' })
           }
           const normalized: Record<string, string | readonly string[]> = {}
           const refs: { field: string; attachmentId: string }[] = []
-          for (const asked of request.requirements) {
+          for (const asked of asks) {
             const value = record[asked.key]
             if (asked.kind === 'text') {
               if (value !== undefined && typeof value !== 'string') {

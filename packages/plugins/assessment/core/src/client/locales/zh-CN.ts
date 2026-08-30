@@ -635,6 +635,7 @@ export default {
   'assessment/entry/supplement-sent': '补充材料已提交，审核继续。',
   'assessment/refuse/supplement-open': '已要求补充材料，请等待对方提交或先撤回请求。',
   'assessment/refuse/request-closed': '补充请求已结束。',
+  'assessment/refuse/supplement-unreadable': '当前版本无法处理该补充要求，请联系管理员。',
   'assessment/refuse/awaiting-supplement': '正在等待对方补充材料。',
   'assessment/refuse/review-not-open': '当前审核轮次无法操作。',
   'assessment/review/keys-title': '键盘快捷键',

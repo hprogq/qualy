@@ -604,6 +604,117 @@ describe.runIf(postgresAvailable)('the review workbench', () => {
     expect(result.queue.items.find((one) => one.itemTitle === '健康打卡')).toBeUndefined()
   })
 
+  it('refuses to answer an ask it cannot read, instead of closing around it', async () => {
+    // A newer build can store a requirement kind this one has never heard
+    // of. "I do not understand this ask" must never be read as "this ask
+    // does not exist": judged against the shrunken list, an empty answer
+    // would satisfy completeness and the request would close as answered
+    // around the very thing it asked for.
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-supplement-foreign')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.requestSupplement(
+            f.t,
+            sent.currentReviewInstanceId!,
+            {
+              instructions: '请补充说明。',
+              requirements: [{ label: '情况说明', kind: 'text', required: true }],
+            },
+            reviewer,
+          )
+          const mine = yield* assessment.getEntry(f.t, entry.id, s1)
+          // the future writes a kind this build does not speak
+          yield* runSql(sql`
+            update review_supplement_requests
+            set requirements = '[{"key":"f1","label":"选择","kind":"choice","required":true}]'::jsonb
+            where id = ${mine.supplement!.requestId}`)
+          const refused = yield* Effect.exit(
+            assessment.answerSupplement(f.t, mine.supplement!.requestId, { payload: {} }, s1),
+          )
+          const status = one<{ status: string }>(
+            yield* runSql(sql`
+              select status from review_supplement_requests
+              where id = ${mine.supplement!.requestId}`),
+          )
+          return { refused: refusalOf(refused), status }
+        }),
+      ),
+    )
+
+    expect(result.refused?.reason).toBe('requirements-unreadable')
+    // and the ask still stands, unclosed, for a build that can read it
+    expect(result.status.status).toBe('open')
+  })
+
+  it('answers a lost race with a refusal, never a defect', async () => {
+    // Two tabs answer the same ask. Both read the request while it is
+    // open; one lands first. The loser must be told the request is no
+    // longer open - the state it would have seen had it re-read under the
+    // lock - and must never be fed to the unique response index as a
+    // server defect.
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('wb-supplement-race')
+          const assessment = yield* Assessment
+          const reviewer = f.principal(f.reviewer)
+          const g = yield* runningBatch(f, { profile: REVIEW_OPEN })
+          const s1 = f.principal(f.s1)
+          const entry = yield* assessment.createEntry(
+            f.t,
+            { itemId: g.item.id, participantId: g.p1, payload: {} },
+            s1,
+          )
+          const sent = yield* assessment.setEntryStatus(f.t, entry.id, 'in_review', s1)
+          yield* assessment.requestSupplement(
+            f.t,
+            sent.currentReviewInstanceId!,
+            {
+              instructions: '请补充说明。',
+              requirements: [{ label: '情况说明', kind: 'text', required: true }],
+            },
+            reviewer,
+          )
+          const mine = yield* assessment.getEntry(f.t, entry.id, s1)
+          const answer = () =>
+            Effect.exit(
+              assessment.answerSupplement(
+                f.t,
+                mine.supplement!.requestId,
+                { payload: { f1: '同一份说明。' } },
+                s1,
+              ),
+            )
+          const [a, b] = yield* Effect.all([answer(), answer()], { concurrency: 2 })
+          return { a, b }
+        }),
+      ),
+    )
+
+    const outcomes = [result.a, result.b]
+    const wins = outcomes.filter((exit) => exit._tag === 'Success')
+    expect(wins).toHaveLength(1)
+    const lost = outcomes.find((exit) => exit._tag === 'Failure')!
+    // typed, named, harmless - and specifically NOT a die out of the
+    // unique index
+    const cause = lost._tag === 'Failure' ? (lost.cause as { failures?: readonly unknown[] }) : {}
+    const reasons = (cause as { reasons?: readonly { _tag: string }[] }).reasons ?? []
+    expect(reasons.map((one) => one._tag)).toEqual(['Fail'])
+  })
+
   it('pauses the round to ask for more, and the answer brings it back', async () => {
     const result = ok(
       await run(

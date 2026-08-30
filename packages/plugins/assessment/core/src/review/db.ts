@@ -1419,29 +1419,36 @@ export interface SupplementRequirement {
   required: boolean
 }
 
-/** the requirements list off the jsonb, defensively */
-export const requirementsOf = (value: unknown): readonly SupplementRequirement[] =>
-  Array.isArray(value)
-    ? value.flatMap((one): SupplementRequirement[] => {
-        const record = (one ?? {}) as Record<string, unknown>
-        const kind = record['kind']
-        if (
-          typeof record['key'] !== 'string' ||
-          typeof record['label'] !== 'string' ||
-          (kind !== 'text' && kind !== 'file')
-        ) {
-          return []
-        }
-        return [
-          {
-            key: record['key'],
-            label: record['label'],
-            kind,
-            required: record['required'] === true,
-          },
-        ]
-      })
-    : []
+/**
+ * The requirements list off the jsonb - FAIL-CLOSED. An element this build
+ * cannot read poisons the whole list: "I do not understand this ask" must
+ * never be read as "this ask does not exist", or a newer instance's
+ * requirement kind silently vanishes from an older one's completeness
+ * check and the request closes as answered around it. Readers show what
+ * they can; the answering write refuses outright.
+ */
+export const requirementsOf = (value: unknown): readonly SupplementRequirement[] | null => {
+  if (!Array.isArray(value)) return null
+  const readable: SupplementRequirement[] = []
+  for (const one of value) {
+    const record = (one ?? {}) as Record<string, unknown>
+    const kind = record['kind']
+    if (
+      typeof record['key'] !== 'string' ||
+      typeof record['label'] !== 'string' ||
+      (kind !== 'text' && kind !== 'file')
+    ) {
+      return null
+    }
+    readable.push({
+      key: record['key'],
+      label: record['label'],
+      kind,
+      required: record['required'] === true,
+    })
+  }
+  return readable
+}
 
 export interface SupplementRow {
   id: string
@@ -1523,7 +1530,7 @@ export const supplementsOfInstances = (tenantId: string, instanceIds: readonly s
         requestNo: row.requestNo,
         status: row.status as SupplementRow['status'],
         instructions: row.instructions,
-        requirements: requirementsOf(row.requirements),
+        requirements: requirementsOf(row.requirements) ?? [],
         requestedBy: row.requestedBy,
         requestedByName: row.requestedByName,
         requestedAt: msOf(row.requestedMs),
@@ -1558,7 +1565,8 @@ export interface SupplementRequestRow {
   requestNo: number
   status: 'open' | 'answered' | 'cancelled'
   instructions: string
-  requirements: readonly SupplementRequirement[]
+  /** null when this build cannot read the stored contract; answering refuses */
+  requirements: readonly SupplementRequirement[] | null
   requestedBy: string
 }
 
@@ -1952,7 +1960,7 @@ export const awaitingPage = (input: {
           participantName: row.participantName,
           businessNo: row.businessNo,
           itemTitle: row.itemTitle,
-          asks: requirementsOf(row.requirements).map((asked) => asked.label),
+          asks: (requirementsOf(row.requirements) ?? []).map((asked) => asked.label),
           requestedAt: msOf(row.requestedMs),
           requestedAtIso: row.requestedIso,
           answeredAt: row.answeredMs == null ? null : msOf(row.answeredMs),
@@ -2044,7 +2052,7 @@ export const openSupplementsOfEntries = (tenantId: string, entryIds: readonly st
               instanceId: row.instanceId,
               requestNo: row.requestNo,
               instructions: row.instructions,
-              requirements: requirementsOf(row.requirements),
+              requirements: requirementsOf(row.requirements) ?? [],
               requestedByName: row.requestedByName,
               requestedAt: msOf(row.requestedMs),
             })),
