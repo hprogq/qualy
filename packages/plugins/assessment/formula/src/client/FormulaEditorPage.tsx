@@ -150,6 +150,9 @@ export default function FormulaEditorPage() {
 
   const [baseRevision, setBaseRevision] = useState<number | null>(null)
   const [remoteMoved, setRemoteMoved] = useState(false)
+  // bumps exactly when the buffer must ADOPT `source` (discard local, a
+  // clean refetch); the editor never infers adoption from value changes
+  const [editorSeed, setEditorSeed] = useState(0)
 
   // ---- the draft contract: what the CURRENT buffer compiles to ---------
   const fetchPreview = useCallback(
@@ -451,6 +454,7 @@ export default function FormulaEditorPage() {
     setTests(seededTests(fn))
     setBaseRevision(fn.draftRevision)
     setRemoteMoved(false)
+    setEditorSeed((seed) => seed + 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fn?.id, fn?.draftRevision])
 
@@ -461,6 +465,7 @@ export default function FormulaEditorPage() {
     setTests(seededTests(fn))
     setBaseRevision(fn.draftRevision)
     setRemoteMoved(false)
+    setEditorSeed((seed) => seed + 1)
   }
 
   type ParsedTests =
@@ -819,6 +824,7 @@ export default function FormulaEditorPage() {
             functionId={functionId}
             value={source}
             onChange={setSource}
+            seed={editorSeed}
             readOnly={archived}
             ariaLabel={format(m.sourceLabel)}
           />

@@ -55,6 +55,16 @@ export interface FormulaCodeEditorProps {
   readonly functionId: string
   readonly value: string
   readonly onChange: (value: string) => void
+  /**
+   * The reseed signal: increment it and the buffer adopts `value`. An
+   * unchanged seed means the buffer is the authority - ordinary rerenders
+   * and value echoes NEVER touch it. Inferring a reseed from value diffs
+   * was a real bug: an IME composition emits several model changes per
+   * keystroke, React's echo lags the model, and the diff heuristic wrote a
+   * stale value back mid-composition - teleporting the cursor, breaking
+   * the composition and resetting the undo stack.
+   */
+  readonly seed: number
   readonly readOnly: boolean
   readonly ariaLabel: string
 }
@@ -73,7 +83,6 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
   const { format } = useI18n()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const modelRef = useRef<monaco.editor.ITextModel | null>(null)
-  const lastEmitted = useRef<string | null>(null)
   const onChangeRef = useRef(props.onChange)
   onChangeRef.current = props.onChange
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
@@ -140,10 +149,8 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
     connectionRef.current = connection
 
     const contentListener = model.onDidChangeContent(() => {
-      const value = model.getValue()
-      lastEmitted.current = value
       document.changed()
-      onChangeRef.current(value)
+      onChangeRef.current(model.getValue())
     })
 
     return () => {
@@ -164,15 +171,16 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.functionId])
 
-  // semi-controlled: an ordinary rerender leaves the buffer alone; only a
-  // real outside reseed (discard, clean refetch) replaces it
+  // the buffer follows `value` ONLY when the seed moves - an explicit
+  // adoption (discard local, clean refetch), never a diff guess
+  const valueRef = useRef(props.value)
+  valueRef.current = props.value
   useEffect(() => {
     const model = modelRef.current
     if (model === null) return
-    if (props.value === model.getValue()) return
-    if (props.value === lastEmitted.current) return
-    model.setValue(props.value)
-  }, [props.value])
+    if (valueRef.current === model.getValue()) return
+    model.setValue(valueRef.current)
+  }, [props.seed])
 
   useEffect(() => {
     const model = modelRef.current

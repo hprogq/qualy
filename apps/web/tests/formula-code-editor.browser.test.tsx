@@ -77,7 +77,7 @@ const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCod
   readOnly: false,
   ariaLabel: 'Formula source',
   ...extra,
-})
+}) as Parameters<typeof FormulaCodeEditor>[0]
 
 const mount = (element: React.ReactElement) =>
   render(
@@ -152,22 +152,24 @@ describe('the formula code editor', () => {
       expect(latest).toBe('typed by hand\n')
       const versionAfterTyping = model.getVersionId()
 
-      // React renders the SAME value back (the ordinary echo): no setValue
+      // ANY value change without a seed move leaves the buffer alone -
+      // even a stale echo racing an IME composition cannot rewrite it
       await screen.rerender(
         <StrictMode>
           <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-            <FormulaCodeEditor {...editorProps('typed by hand\n', { onChange })} />
+            <FormulaCodeEditor {...editorProps('a stale echo\n', { onChange })} />
           </I18nProvider>
         </StrictMode>,
       )
       await new Promise((resolve) => setTimeout(resolve, 10))
       expect(model.getVersionId()).toBe(versionAfterTyping)
+      expect(model.getValue()).toBe('typed by hand\n')
 
-      // a REAL outside reseed (discard local, clean refetch): the buffer follows
+      // the SEED moving is the one adoption signal (discard, clean refetch)
       await screen.rerender(
         <StrictMode>
           <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={null}>
-            <FormulaCodeEditor {...editorProps('the server draft\n', { onChange })} />
+            <FormulaCodeEditor {...editorProps('the server draft\n', { onChange, seed: 1 })} />
           </I18nProvider>
         </StrictMode>,
       )

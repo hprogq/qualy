@@ -74,10 +74,11 @@ const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCod
   functionId: 'f-1',
   value,
   onChange: () => {},
+  seed: 0,
   readOnly: false,
   ariaLabel: 'Formula source',
   ...extra,
-})
+}) as Parameters<typeof FormulaCodeEditor>[0]
 
 const mount = (element: React.ReactElement) =>
   render(
