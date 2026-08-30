@@ -60,6 +60,8 @@ export type ScoreInputEntry =
       readonly status: 'approved'
       /** what this entry contributes, scaled by 1e4, from the evaluator */
       readonly amount: bigint
+      /** the determination it was evaluated against, for the line's trail */
+      readonly recognitionId: string | null
     })
   | (ScoreInputEntryBase & {
       readonly status: 'draft' | 'in_review' | 'needs_revision' | 'rejected' | 'voided'
@@ -89,6 +91,8 @@ export interface BreakdownLine {
   readonly provenance?: {
     readonly entryId?: string
     readonly entryRevisionId?: string
+    /** which determination this line's amount was computed from */
+    readonly entryRecognitionId?: string
     readonly calculatorRef?: string
   }
 }
@@ -280,6 +284,9 @@ export const calcParticipant = (catalogs: ScoringCatalogs, input: ScoreInput): B
           provenance: {
             entryId: entry.id,
             ...(entry.revisionId !== null ? { entryRevisionId: entry.revisionId } : {}),
+            ...(entry.status === 'approved' && entry.recognitionId !== null
+              ? { entryRecognitionId: entry.recognitionId }
+              : {}),
             calculatorRef: item.calculatorRef,
           },
         })

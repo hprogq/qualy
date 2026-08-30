@@ -10969,3 +10969,71 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 (裸 docker compose),不改代码——本机默认 context 已固定 desktop-linux,且端口互斥
 天然防误启(OrbStack 再起 qualy-postgres 会撞 5432 直接失败);sandbox UDS 能力门禁
 原样保留。dump 留存于 .qualy/run/migrate/(gitignored)。
+
+## Phase 5:Recognition + typed scoring plan(2026-08-30)
+
+四层事实(Evidence → ReviewEvent 快照 → EntryRecognition → ScoringPlan → 求值 → 纯 ledger)
+在 assessment core 里建成,**fixed 世界的业务数值逐字面量不变**(差分门禁裁判)。
+
+### 5A calculator contract + scoring plan(2ae7b55d)
+
+- `CalculatorDriver` 换契约:`contract(config)→Effect<{inputSchema,outputSchema,contractHash}>` +
+  `evaluate(config,input)→Effect<decimal string>`;**R 是类型参数,不承诺 never**——
+  spike 已证「需要 Context.Service 的 driver 可经 afterServices 相正规装配」(provider 的
+  compile 在服务图之上 discharge requirement),固化为 tools/tests/assemble-kernel.test.ts
+  的门禁,Phase 7 的 formula@1 走这条缝,禁 module-global/late binding。
+- fixed@1 迁移:contract = 空 input + SCORE_AMOUNT_SCHEMA,evaluate → config.value;
+  scaledAmount/formatAmount/quantizeAmount 一字未动。
+- `scoring/plan.ts` 唯一 compiler:resolve → contract → output⊆SCORE_AMOUNT 证明 →
+  逐参数恰一 binding(constant validateValue;recognition assignmentPlan;default 证
+  Evidence⊆Recognition,converter 按名记录)→ planHash。规则:dangling recognition 拒;
+  **仅 mode:'none' 的不可构造 recognition 拒,administrative 允许无 default**(工作人员
+  即填写者)。ItemTypeDriver 加 `bindableFields` seam(本阶段无生产实现)。
+- 三种 hash 各守 canonical body(value-schema 新增通用 primitive `hashCanonicalJson`):
+  contractHash = canonicalize*(annotation 剥离);planHash = semanticPlanBody(改 title
+  不移 hash,测试钉);recognitionHash = canonical values。
+- `scoring_plan jsonb` 加列(nullable);**backfill = Assembled boot hook**(端口开放前
+  跑完,advisory lock,只填 NULL、**已存在的 plan 永不自动刷新**);NOT NULL 延后到全环境
+  boot 过一遍后的独立迁移(触发条件即此)。
+- ledger 拆分:`ScoreInputEntry` 改 discriminated union(approved 必带 amount,
+  「approved 但未求值」类型上不可构造),payload 从类型删除;新 `scoring/evaluate.ts`
+  按 recorded assignment 装 input → validateValue → evaluate → validate → scaledAmount;
+  `calcParticipant` 保持纯同步。**revision 选择保持 current(现状未动)**。
+
+### 5B EntryRecognition + 审核植入(19740d98)
+
+- 新表 entry_recognitions(append-only,supersedes 链)+ entries.current_recognition_id +
+  `chk_entries_approved_has_recognition`;全部关系用复合外键(entry/filing/item revision/
+  supersedes/round/event 各自 (tenant,…) 三键),source shape check 保证 review 源必带
+  轮与事件、其余必不带。review_instances 加 recognition_revision_id(NOT NULL,backfill =
+  policy_revision_id,FK 已证同表);review_events 加 payload/reason/hash;review_panels 加
+  proposal 三列;review_votes 加 hash。
+- 四条产出 approved 的路径全部植入,**状态与指针同一条 UPDATE**(CHECK 立即校验):单人
+  terminal、panel 全票、行政 record(先 draft→建认定→一条语句抬为 approved)、mode:'none'
+  自动通过。三处 insertReviewInstance 都写 recognition_revision_id(含 propagate 重排)。
+- seed 链:panel 已冻结 proposal → 本轮最近 approved 事件 → defaultBindings 从 Evidence;
+  改变继承的认定必须给 reason;reject/escalate 携认定被拒('not-allowed')。
+- **panel 锁 = 第一张 ballot(approve|reject)**:首票冻结 payload/hash/locked_at,之后每票
+  必带同一 hash,不符即拒;escalate 不是 ballot(解散不经锁)。
+- 历史 backfill:每条 approved 建 `{}` 认定;**provenance 只用可证事实**——review 轮用轮与
+  事件,record 用 filing 的 item revision,auto-approved 用「auto-approved 事件时刻的
+  current revision」(由 revision 只进不退证明唯一;推不出即 NOT NULL 当场拒绝迁移,不伪造)。
+  开发库实查:7 approved(1 record + 6 review + 0 auto),无 STOP 触发。
+
+### 5C 求值前置 + provenance + 门禁(本笔)
+
+- 采集单条 join 取 entry × currentRecognition(避免撕裂快照),认定值进 evaluator;
+  BreakdownLine.provenance + entryRecognitionId(wire 同步),一行成绩可回答
+  Entry→EntryRevision→EntryRecognition→calculatorRef→amount。
+- 架构门禁 tools/tests/scoring-ledger.test.ts:calc.ts 禁 import effect/sandbox/formula/db/
+  kysely 且禁出现 payload;assessment core 依赖闭包禁 sandbox/formula/engine/quickjs。
+- 差分门禁 tests/ledger-characterization.test.ts(8 例,先在旧代码上取字面量):sum/max/
+  top-n、负数、4dp 与行量化、嵌套组 cap/floor、ties、rejected/draft/voided、planted
+  approved under draft item、derived、provenance——重构后逐字面量全等。
+
+**验收**:`pnpm typecheck` 零错零建议;`pnpm test` 1155 passed;`pnpm test:browser` 252;
+`pnpm build` 通过;entity-parity(31 表逐对象)、schema、migration-upgrade 全绿。
+
+**未做(Phase 6/7)**:formula@1 注册、Evidence 的 integer/decimal/choice 生产字段、真实
+竞赛题、Recognition 动态表单 UI(现 `{}` 不渲染,ApproveDialog 视觉未动)、reopen 实现
+(origin 枚举与权限码仍是空钩子)、scoring_plan 的 NOT NULL 收紧。

@@ -30,9 +30,9 @@ const officer = (aggregator: { ref: string; config: unknown }) => ({
   entries: [
     // three posts, two of them worth the same: the class monitor, filed
     // first, is the stable pick among equals
-    { id: 'e1', itemId: 'i', status: 'approved' as const, revisionId: 'r1', amount: scaledAmount('2.00'), createdAt: 1 },
-    { id: 'e2', itemId: 'i', status: 'approved' as const, revisionId: 'r2', amount: scaledAmount('2.00'), createdAt: 2 },
-    { id: 'e3', itemId: 'i', status: 'approved' as const, revisionId: 'r3', amount: scaledAmount('2.00'), createdAt: 3 },
+    { id: 'e1', itemId: 'i', status: 'approved' as const, recognitionId: null, revisionId: 'r1', amount: scaledAmount('2.00'), createdAt: 1 },
+    { id: 'e2', itemId: 'i', status: 'approved' as const, recognitionId: null, revisionId: 'r2', amount: scaledAmount('2.00'), createdAt: 2 },
+    { id: 'e3', itemId: 'i', status: 'approved' as const, recognitionId: null, revisionId: 'r3', amount: scaledAmount('2.00'), createdAt: 3 },
   ],
 })
 
@@ -126,6 +126,7 @@ const finer = (spec: {
     id: `e${index + 1}`,
     itemId: 'i',
     status: 'approved' as const,
+    recognitionId: null,
     revisionId: `r${index + 1}`,
     // what fixed@1 answers for this configuration, evaluated upstream
     amount: scaledAmount(spec.value),

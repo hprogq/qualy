@@ -811,6 +811,8 @@ const breakdownLine = Schema.Struct({
     Schema.Struct({
       entryId: Schema.optional(Schema.String),
       entryRevisionId: Schema.optional(Schema.String),
+      /** which determination this line's amount was computed from */
+      entryRecognitionId: Schema.optional(Schema.String),
       calculatorRef: Schema.optional(Schema.String),
     }),
   ),

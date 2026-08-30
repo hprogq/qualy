@@ -94,7 +94,12 @@ const account = (fixture: {
       }
       const status = one.status ?? 'approved'
       return status === 'approved'
-        ? { ...base, status: 'approved' as const, amount: worth.get(one.itemId) ?? 0n }
+        ? {
+            ...base,
+            status: 'approved' as const,
+            recognitionId: `rec-${one.id}`,
+            amount: worth.get(one.itemId) ?? 0n,
+          }
         : {
             ...base,
             status: status as 'draft' | 'in_review' | 'needs_revision' | 'rejected' | 'voided',
@@ -254,9 +259,19 @@ describe('what the ledger answers, frozen', () => {
       items: [{ id: 'i', worth: '2.00' }, { id: 'd', worth: '1.00', derived: true, sortOrder: 1 }],
       entries: [{ id: 'e1', itemId: 'i' }, { id: 'no', itemId: 'i', status: 'rejected', createdAt: 2 }],
     })
+    // the determination joins the trail without disturbing what was there:
+    // a line still names its claim, its filing and its arithmetic
     expect(result.lines.map((line) => [line.lineId, line.provenance])).toEqual([
       ['entry:no', { entryId: 'no', entryRevisionId: 'r-no' }],
-      ['entry:e1', { entryId: 'e1', entryRevisionId: 'r-e1', calculatorRef: 'fixed@1' }],
+      [
+        'entry:e1',
+        {
+          entryId: 'e1',
+          entryRevisionId: 'r-e1',
+          entryRecognitionId: 'rec-e1',
+          calculatorRef: 'fixed@1',
+        },
+      ],
       ['derived:d', { calculatorRef: 'fixed@1' }],
     ])
   })

@@ -131,6 +131,8 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
       readonly itemId: string
       readonly status: string
       readonly revisionId: string | null
+      readonly recognitionId: string | null
+      readonly recognition: Record<string, unknown>
       readonly createdAt: number
     }[]
   }) =>
@@ -183,7 +185,9 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           entryRevisionId: entry.revisionId,
           itemId: entry.itemId,
           plan: item.plan,
-          recognition: {},
+          // what the institution determined, which is the only thing a
+          // calculator ever sees of this claim
+          recognition: entry.recognition,
         }
         const evaluated = yield* evaluateEntry(deps.catalogs.calculators, fact)
         entries.push({
@@ -191,6 +195,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           itemId: entry.itemId,
           status: 'approved',
           revisionId: entry.revisionId,
+          recognitionId: entry.recognitionId,
           createdAt: entry.createdAt,
           amount: evaluated.amount,
         })

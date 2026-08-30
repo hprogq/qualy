@@ -35,11 +35,13 @@ export interface ScoredEntryRow {
   itemId: string
   status: string
   revisionId: string | null
-  payload: unknown
+  /** the determination this claim stands on, when it stands on one */
+  recognitionId: string | null
+  recognition: Record<string, unknown>
   createdAt: number
 }
 
-/** every entry this participant holds in the batch, with the payload it stands on */
+/** every entry this participant holds, with the determination it stands on */
 export const participantEntries = (tenantId: string, batchId: string, participantId: string) =>
   db
     .query((k) =>
@@ -48,7 +50,22 @@ export const participantEntries = (tenantId: string, batchId: string, participan
         .leftJoin('EntryRevision as er', (join) =>
           join.onRef('er.tenantId', '=', 'e.tenantId').onRef('er.id', '=', 'e.currentRevisionId'),
         )
-        .select(['e.id', 'e.itemId', 'e.status', 'e.currentRevisionId as revisionId', 'er.payload'])
+        // the determination in the same read as the claim: two reads could
+        // see an approval land between them and score a claim against a
+        // recognition that was not the one it stood on
+        .leftJoin('EntryRecognition as rec', (join) =>
+          join
+            .onRef('rec.tenantId', '=', 'e.tenantId')
+            .onRef('rec.id', '=', 'e.currentRecognitionId'),
+        )
+        .select([
+          'e.id',
+          'e.itemId',
+          'e.status',
+          'e.currentRevisionId as revisionId',
+          'e.currentRecognitionId as recognitionId',
+          'rec.values as recognition',
+        ])
         .select([epoch('e.created_at').as('createdMs')])
         .where('e.tenantId', '=', tenantId)
         .where('e.batchId', '=', batchId)
@@ -62,7 +79,8 @@ export const participantEntries = (tenantId: string, batchId: string, participan
           itemId: row.itemId,
           status: row.status as string,
           revisionId: row.revisionId,
-          payload: row.payload ?? null,
+          recognitionId: row.recognitionId ?? null,
+          recognition: (row.recognition ?? {}) as Record<string, unknown>,
           createdAt: msOf(row.createdMs),
         })),
       ),
