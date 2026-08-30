@@ -548,6 +548,7 @@ export function EntryDialog({
       <div {...stylex.props(styles.body)}>
         <div {...stylex.props(styles.form)}>
           <EvidenceForm
+            session={asked.currentRevision?.id ?? asked.id}
             onValidityChange={setEvidenceValid}
             fields={fields}
             value={payload}

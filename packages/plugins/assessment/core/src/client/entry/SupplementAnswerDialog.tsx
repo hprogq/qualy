@@ -119,7 +119,10 @@ export function SupplementAnswerDialog({
           <Button variant="outline" onClick={onClose}>
             {format(commonMessages.cancel)}
           </Button>
-          <Button disabled={send.isPending || !ready || !evidenceValid} onClick={() => send.mutate()}>
+          <Button
+            disabled={send.isPending || !ready || !evidenceValid}
+            onClick={() => send.mutate()}
+          >
             {format(m.entrySubmit)}
           </Button>
         </div>
@@ -128,6 +131,7 @@ export function SupplementAnswerDialog({
       <div {...stylex.props(styles.body)}>
         <p {...stylex.props(styles.instructions)}>{supplement.instructions}</p>
         <EvidenceForm
+          session={supplement.requestId}
           onValidityChange={setEvidenceValid}
           fields={fields}
           value={payload}

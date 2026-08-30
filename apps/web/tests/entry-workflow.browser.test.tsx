@@ -567,6 +567,80 @@ describe('filing a claim', () => {
     expect(page.getByTestId('rules-changed').elements()).toHaveLength(0)
   })
 
+  it('drops the number mid-edit when the question moves under it', async () => {
+    // the payload reset alone is not enough: the evidence form keeps its
+    // own numeric drafts, and a stale one would keep rendering a number the
+    // payload no longer carries - shown as filled, filed as nothing
+    const moved = '99999999-9999-4999-8999-999999999998'
+    let changed = false
+    const conflict = () => {
+      changed = true
+      return Effect.fail(
+        Object.assign(new Error('ASSESSMENT_ITEM_REVISION_CONFLICT'), {
+          _tag: 'ASSESSMENT_ITEM_REVISION_CONFLICT',
+          itemId: ITEM_ID,
+          currentRevisionId: moved,
+        }),
+      )
+    }
+    const before = item({
+      currentRevision: {
+        ...item().currentRevision!,
+        formConfig: {
+          fields: [
+            { id: 'summary', key: 'summary', type: 'text', label: '事项说明', required: true },
+            { id: 'placing', key: 'placing', type: 'integer', label: '获奖名次', min: 1, max: 100 },
+          ],
+        },
+      },
+    })
+    // the same key asks for a different kind now: the carried payload drops
+    // the value, and the sheet must not keep showing the old keystrokes
+    const asked = item({
+      currentRevision: {
+        ...before.currentRevision!,
+        id: moved,
+        revisionNo: 2,
+        formConfig: {
+          fields: [
+            { id: 'summary', key: 'summary', type: 'text', label: '事项说明', required: true },
+            {
+              id: 'placing',
+              key: 'placing',
+              type: 'decimal',
+              label: '获奖名次',
+              maxScale: 2,
+            },
+          ],
+        },
+      },
+    })
+    screen(
+      {
+        listItems: () =>
+          Effect.succeed({ items: [changed ? asked : before], capabilities: { canManage: false } }),
+        createEntry: conflict as never,
+      },
+      `/assessment/batches/${BATCH_ID}/my-entries`,
+      [{ path: '/assessment/batches/:batchId/my-entries', element: <MyEntriesPage /> }],
+    )
+
+    await expect.element(page.getByRole('heading', { name: '退役复学' })).toBeVisible()
+    await clickVisible('file-claim')
+    await page.getByLabelText('事项说明').fill('2024 年入伍，2026 年退役复学')
+    await page.getByLabelText('获奖名次').fill('5')
+    await page.getByRole('button', { name: '存为草稿' }).click()
+    await expect.element(page.getByTestId('rules-changed')).toBeVisible()
+
+    await page.getByRole('button', { name: '查看最新要求' }).click()
+    // the text survives the move; the number the new field cannot carry
+    // does not linger on screen as if it were filed
+    await expect
+      .element(page.getByLabelText('事项说明'))
+      .toHaveValue('2024 年入伍，2026 年退役复学')
+    await expect.element(page.getByLabelText('获奖名次')).toHaveValue('')
+  })
+
   it('asks the server again on the refresh key', async () => {
     // the refresh key is a desk affordance; the phone flow refreshes live
     await page.viewport(1280, 800)

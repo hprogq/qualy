@@ -137,6 +137,7 @@ const acceptOf = (list: readonly string[] | undefined): Accept | undefined => {
 const INTEGER_DRAFT = /^-?\d+$/
 
 export function EvidenceForm({
+  session,
   fields,
   value,
   onChange,
@@ -147,6 +148,15 @@ export function EvidenceForm({
   disabled = false,
   onValidityChange,
 }: {
+  /**
+   * Whose sheet this is. The form holds local state the payload does not -
+   * numeric drafts, upload leftovers - and the caller's payload reset alone
+   * cannot clear it; a stale "5" would keep rendering over an empty payload
+   * and file on the next save. Any change here wipes every local trace, so
+   * the identity must name everything a sheet is about (at least the item
+   * revision, plus the subject where one form serves many people).
+   */
+  session: string
   fields: readonly EvidenceFieldSpec[]
   value: EvidencePayload
   onChange: (next: EvidencePayload) => void
@@ -182,6 +192,19 @@ export function EvidenceForm({
 
   // numeric drafts, per field: what is typed, not yet what is filed
   const [numberDrafts, setNumberDrafts] = useState<Record<string, string>>({})
+
+  // a new session wipes every local trace during this very render (the
+  // sanctioned derived-state reset): nothing typed for the previous item
+  // revision or the previous person may survive into this sheet
+  const lastSession = useRef(session)
+  if (lastSession.current !== session) {
+    lastSession.current = session
+    setNumberDrafts({})
+    setUploaded({})
+    setUploading(null)
+    setUploadError(null)
+    setTurnedAway(null)
+  }
   const draftInvalid = (field: EvidenceFieldSpec, draft: string): boolean => {
     const trimmed = draft.trim()
     if (trimmed === '') return false
