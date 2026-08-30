@@ -950,6 +950,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               currentRevisionId: revisionId,
               ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
             })
+            // a fact somebody else just added to their account is exactly
+            // what the unread marker exists for: the broadcast reaches whoever
+            // is looking, this reaches whoever is not
+            if (administrative) yield* bumpParticipantAttention(tenantId, entryId)
             yield* announce(tenantId, item.batchId, [
               { kind: 'entries-changed', subjectUserId: participant.userId },
               ...(administrative
@@ -1684,14 +1688,43 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
           if (located === null) return yield* new EntryNotFound()
           const locked = yield* lockBatch(tenantId, located.batchId)
           if (locked!.status === 'archived') return yield* new BatchReadOnly()
-          // re-asked on the locked connection, like every other write here
-          yield* deps.requireRosterReach(as, tenantId, located.batchId)
           const reason = input.reason.trim()
-          if (reason === '') return yield* refuse('return', 'reason-required')
+          if (reason === '') {
+            return yield* refuse(input.kind === 'void' ? 'abandon' : 'return', 'reason-required')
+          }
           const loaded = yield* loadEntry(tenantId, entryId)
           if (loaded === null) return yield* new EntryNotFound()
           const { entry, participant } = loaded
           const administrative = entry.source === 'record' || entry.source === 'import'
+
+          // Two interventions, two authorities - asked on the locked
+          // connection, like every other write here. Sending a claim back is
+          // running the round, which is the batch administrator's power.
+          // Withdrawing a recorded fact is unmaking a record, and the design
+          // gives that to whoever could have made it: the record authority,
+          // over this participant's frozen anchor. A batch administrator
+          // without it must not be able to unmake a deduction they could
+          // never have entered, and the registrar who could must not need
+          // the batch to be theirs.
+          if (input.kind === 'void') {
+            const decision = yield* deps
+              .authorize(as, 'assessment.entry.record', located.batchId, {
+                itemId: entry.itemId,
+                participantId: participant.id,
+              })
+              .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+            if (!decision.allowed) return yield* refuse('abandon', decision.reason)
+            const reaches = yield* staffReachesParticipant({
+              tenantId,
+              batchId: located.batchId,
+              userId: as.userId,
+              permissionCode: 'assessment.entry.record',
+              participant,
+            })
+            if (!reaches) return yield* refuse('abandon', 'participant-out-of-reach')
+          } else {
+            yield* deps.requireRosterReach(as, tenantId, located.batchId)
+          }
 
           // Withdrawing a fact nobody filed.
           //
@@ -1749,6 +1782,10 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               actorId: as.userId,
               reason,
             })
+            // their effective facts and their score just changed under them;
+            // the persistent marker is what an offline participant comes
+            // back to
+            yield* bumpParticipantAttention(tenantId, entryId)
             yield* announce(tenantId, entry.batchId, [
               { kind: 'entries-changed', subjectUserId: participant.userId },
               { kind: 'result-changed', subjectUserId: participant.userId },

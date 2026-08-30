@@ -75,6 +75,15 @@ export interface ScoringPlan {
  * Structural only: the schemas inside were normalized when the plan was
  * compiled and are re-proven by the hash rather than re-parsed here.
  */
+// the execution structure, deep: everything the evaluator dereferences has
+// a shape here, so a plan that decodes is a plan that runs. The schemas
+// themselves stay Unknown - they were normalized when the plan was compiled,
+// the hash covers their bytes, and the validator consumes them as data.
+const assignmentShape = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('direct') }),
+  Schema.Struct({ kind: Schema.Literal('convert'), converter: Schema.String }),
+])
+
 const persistedPlanShape = Schema.Struct({
   version: Schema.Number,
   calculator: Schema.Struct({
@@ -82,9 +91,22 @@ const persistedPlanShape = Schema.Struct({
     config: Schema.Unknown,
     contractHash: Schema.String,
   }),
-  parameters: Schema.Record(Schema.String, Schema.Unknown),
+  parameters: Schema.Record(
+    Schema.String,
+    Schema.Union([
+      Schema.Struct({ kind: Schema.Literal('constant'), value: Schema.Unknown }),
+      Schema.Struct({
+        kind: Schema.Literal('recognition'),
+        recognitionId: Schema.String,
+        assignment: assignmentShape,
+      }),
+    ]),
+  ),
   recognitionSchemas: Schema.Record(Schema.String, Schema.Unknown),
-  defaultBindings: Schema.Record(Schema.String, Schema.Unknown),
+  defaultBindings: Schema.Record(
+    Schema.String,
+    Schema.Struct({ fieldId: Schema.String, assignment: assignmentShape }),
+  ),
   aggregator: Schema.Struct({ ref: Schema.String, config: Schema.Unknown }),
   inputSchema: Schema.Unknown,
   outputSchema: Schema.Unknown,
@@ -204,6 +226,31 @@ const decode = <A>(schema: Schema.Codec<A>, value: unknown) =>
   Effect.option(Schema.decodeUnknownEffect(schema)(value))
 
 /**
+ * Whether a value survives the jsonb column and the hash unchanged.
+ *
+ * A decoder is allowed to produce anything - a Date, a Map, a BigInt - and
+ * the plan is stored as JSON and identified by a hash of JSON. A Date would
+ * hash as one thing in memory and come back as another; a Map would land as
+ * `{}` and the driver would execute a configuration nobody wrote; a BigInt
+ * would blow up the save. So the execution config is held to exactly what
+ * the column can say: finite numbers, strings, booleans, null, arrays, and
+ * plain objects, all the way down. `undefined` is refused in both positions
+ * because stringify erases the key or writes null - either way the stored
+ * plan is not the proven one.
+ */
+const isJsonValue = (value: unknown): boolean => {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  if (typeof value === 'object') {
+    const proto = Object.getPrototypeOf(value)
+    if (proto !== Object.prototype && proto !== null) return false
+    return Object.values(value as Record<string, unknown>).every(isJsonValue)
+  }
+  return false
+}
+
+/**
  * A lookup that only ever finds what somebody actually wrote.
  *
  * Configuration keys are chosen by administrators, and plain property access
@@ -291,6 +338,15 @@ export const compileScoringPlan = (
       }
     }
     const { inputSchema, outputSchema, contractHash, config: executionConfig } = compiled.value
+    // what goes into the plan must come back out of the column identical
+    if (!isJsonValue(executionConfig)) {
+      return {
+        issues: [...issues, { path: 'scoringConfig.calculator.config', reason: 'calculator-config-not-json' }],
+      }
+    }
+    if (!isJsonValue(aggregatorConfig)) {
+      issues.push({ path: 'scoringConfig.aggregator.config', reason: 'aggregator-config-not-json' })
+    }
 
     // an item's amount has to be carryable by the platform's own amount, or
     // this question can never contribute a score to anybody

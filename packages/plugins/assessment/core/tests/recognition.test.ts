@@ -1186,7 +1186,7 @@ describe.runIf(postgresAvailable)('recognitions', () => {
     expect(result.status).toBe('in_review')
   })
 
-  it('lets the office withdraw what the office recorded, with a reason', async () => {
+  it('lets the registrar withdraw what the registrar recorded, and nobody narrower or wider', async () => {
     const result = ok(
       await run(
         db.url,
@@ -1200,18 +1200,86 @@ describe.runIf(postgresAvailable)('recognitions', () => {
             { itemId: item.id, participantId: g.p1, payload: {}, note: '违纪记录' },
             f.principal(f.recorder),
           )
+          const attentionOf = () =>
+            Effect.map(
+              runSql(sql`
+                select participant_attention_revision as marked, participant_seen_revision as seen
+                from entries where id = ${entry.id}`),
+              (raw) => one<{ marked: number; seen: number }>(raw),
+            )
+          // an external fact just landed on the participant's account: the
+          // persistent marker is what an offline student comes back to
+          const afterRecord = yield* attentionOf()
+
+          // Somebody who runs the batch but was never given the power to
+          // record. Unmaking a deduction is the same power as making one,
+          // so the batch being theirs is not enough.
+          const managerOnly = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+              select ${f.t}, 'Manager', user_type_id, primary_org_node_id from users where id = ${f.admin}
+              returning id`),
+          ).id
+          const managerRole = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into roles (tenant_id, code, name, kind, status, anchor_mode)
+              values (${f.t}, 'batch-manager', 'Batch manager', 'org', 'active', 'allow-list')
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into role_permissions (tenant_id, role_id, permission_id)
+            select ${f.t}, ${managerRole}, p.id from permissions p
+            where p.code = 'assessment.batch.manage'`)
+          yield* runSql(sql`
+            insert into role_grants (tenant_id, user_id, role_id, org_node_id, coverage)
+            values (${f.t}, ${managerOnly}, ${managerRole}, ${f.root}, 'subtree')`)
+          const managed = yield* Effect.exit(
+            assessment.interveneOnEntry(
+              f.t,
+              entry.id,
+              { kind: 'void', reason: '看着不对' },
+              f.principal(managerOnly),
+            ),
+          )
+
+          // and a registrar whose accepted authority stops at college A
+          // cannot withdraw a record about somebody standing in college B
           const admin = f.principal(f.admin)
+          const outside = yield* assessment.createEntry(
+            f.t,
+            { itemId: item.id, participantId: g.p3, payload: {}, note: '另一学院的记录' },
+            admin,
+          )
+          const outOfReach = yield* Effect.exit(
+            assessment.interveneOnEntry(
+              f.t,
+              outside.id,
+              { kind: 'void', reason: '越界试一下' },
+              f.principal(f.recorder),
+            ),
+          )
+
           const wordless = yield* Effect.exit(
-            assessment.interveneOnEntry(f.t, entry.id, { kind: 'void', reason: '  ' }, admin),
+            assessment.interveneOnEntry(
+              f.t,
+              entry.id,
+              { kind: 'void', reason: '  ' },
+              f.principal(f.recorder),
+            ),
           )
           const voided = yield* assessment.interveneOnEntry(
             f.t,
             entry.id,
             { kind: 'void', reason: '经复核，记录有误' },
-            admin,
+            f.principal(f.recorder),
           )
+          const afterVoid = yield* attentionOf()
           return {
+            afterRecord,
+            managed,
+            outOfReach,
             wordless,
+            afterVoid,
             status: voided.status,
             // the determination stays exactly as written: the office is not
             // saying it never decided, only that the fact no longer applies
@@ -1226,6 +1294,14 @@ describe.runIf(postgresAvailable)('recognitions', () => {
       ),
     )
 
+    // the record itself raised the unread marker, and the withdrawal raised
+    // it again: both change the participant's effective facts
+    expect(result.afterRecord.marked).toBeGreaterThan(result.afterRecord.seen)
+    expect(result.afterVoid.marked).toBeGreaterThan(result.afterRecord.marked)
+    // running the batch is not the power to unmake a record
+    expect(refusalOf(result.managed)?.reason).toBe('permission-not-held')
+    // and holding the power somewhere is not holding it here
+    expect(refusalOf(result.outOfReach)?.reason).toBe('participant-out-of-reach')
     expect(refusalOf(result.wordless)?.reason).toBe('reason-required')
     expect(result.status).toBe('voided')
     expect(result.rows).toHaveLength(1)

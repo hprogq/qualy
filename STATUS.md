@@ -11255,4 +11255,34 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 门禁六条(行政申诉继承、跨 filing 不继承、reroute 携带、void 关轮、not-an-object、
 首次填写),继承两条做了差分验证:去掉精确指针读取或去掉 revision 限制,各自立刻红。
 
+### 行政作废的权限边界与四条硬化(2026-08-30,第八轮复审)
+
+- **P0:`void` 用错了权限**。原实现无条件走 `requireRosterReach`(基于
+  `assessment.batch.manage`),于是只会管批次的人能撤销自己无权登记的处分,而唯一该有
+  这个权力的登记人反而被拒——与设计「record 权限人 void + 新建」正好相反。授权移进
+  kind 分支:`return-for-revision` 保留 batch manage(那是在运转审核流程);`void` 用
+  `assessment.entry.record` + 与创建同一个 `staffReachesParticipant` 覆盖证明(撤销一条
+  记录与做出一条记录是同一种权力)。门禁三向:登记人能撤、仅 batch-manage 被拒
+  (`permission-not-held`)、锚点外被拒(`participant-out-of-reach`);差分验证——回退到
+  无条件 rosterReach,登记人当场被 `cannot manage assessment batches` 拒。
+- **P1:行政创建与作废没有持久化未读**。两处都只 `announce`(SSE),离线参与者回来看不到
+  红点。补 `bumpParticipantAttention` 同事务;门禁断言两次操作各自推进 attention revision。
+- **P1:执行配置没有 JSON 往返契约**。decoder/compile 的产出是 unknown,随后
+  `JSON.stringify` 进 jsonb——`Date` 在内存里按 `{}` 哈希、落库变字符串、读回 hash 漂移;
+  `Map` 静默落成 `{}`;`BigInt` 保存直接抛。compiler 新增 `isJsonValue`(有限数、字符串、
+  布尔、null、数组、纯对象,递归;undefined 双位置拒绝),calculator/aggregator 执行配置
+  不满足即 `*-config-not-json` 拒绝保存。内建驱动都是恒等 codec,契约不依赖这一点。
+- **P2:matching-hash 的畸形计划**。`persistedPlanShape` 的 `parameters`/`defaultBindings`
+  深 decode(constant/recognition 判别、assignment 的 direct/convert 判别),
+  `parameters:{x:null}` 这类同版本错误 writer 的产物现在在 `readScoringPlan` 就被拒,
+  不再走到 `binding.kind` 才炸。schema 本身仍是 Unknown——hash 盖其字节,validator 当数据用。
+- **P2:appeal 目标改为「恰好一个」**(迁移 `20260830200000`):
+  `origin='appeal'` 必须二指针恰取其一,其余 origin 二者全空;`appealed_instance_id` 的
+  FK 补 `entry_id` 绑定(跨申报的指针从结构上不可写)。开发库实查零违反行后收紧。
+
+**已知产品缺口(记账,Phase 6)**:`interveneOnEntry` 在客户端零消费——`void` 和
+`return-for-revision` 都没有前端入口,登记页(RecordPage)只有创建路径。工作人员的
+纠错闭环(列出已登记、作废带理由)是 Phase 6 的产品项,不是数据安全问题:服务端边界
+已闭合,API 可直接调用。
+
 **留给 Phase 6 其余**:Evidence 的 integer/decimal/choice 生产字段与真实动态表单。

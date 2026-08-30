@@ -1226,9 +1226,10 @@ export const ReviewInstance = defineEntity({
     { name: 'chk_review_instances_round_positive', expression: 'round_no >= 1' },
     {
       name: 'chk_review_instances_appealed_one',
-      // a round is contested by naming the round; a determination made
-      // without one is contested by naming the determination
-      expression: 'appealed_instance_id IS NULL OR appealed_recognition_id IS NULL',
+      // an appeal contests exactly one thing - a round, or a determination
+      // made without one - and nothing else carries a target at all
+      expression: `(origin = 'appeal' AND ((appealed_instance_id IS NULL) <> (appealed_recognition_id IS NULL)))
+        OR (origin <> 'appeal' AND appealed_instance_id IS NULL AND appealed_recognition_id IS NULL)`,
     },
     {
       name: 'chk_review_instances_origin',
@@ -1816,7 +1817,7 @@ export const compositeForeignKeys = [
   `alter table review_instances add constraint fk_review_instances_supersedes
      foreign key (tenant_id, supersedes_instance_id) references review_instances (tenant_id, id) on delete set null (supersedes_instance_id)`,
   `alter table review_instances add constraint fk_review_instances_appealed
-     foreign key (tenant_id, appealed_instance_id) references review_instances (tenant_id, id) on delete set null (appealed_instance_id)`,
+     foreign key (tenant_id, entry_id, appealed_instance_id) references review_instances (tenant_id, entry_id, id) on delete set null (appealed_instance_id)`,
   `alter table review_events add constraint fk_review_events_instance
      foreign key (tenant_id, review_instance_id) references review_instances (tenant_id, id) on delete cascade`,
   `alter table review_panels add constraint fk_review_panels_instance
