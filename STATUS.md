@@ -10773,7 +10773,7 @@ remote parity 串行避免双发布打满 2 核。push 后 `gh run watch` 确认
 - **配额**:per-user 一席(key=`tenantId:userId`),Layer-owned Ref(formulaLspQuotaLayer),
   第二连接 429 不踢旧;连接内不做 auth/RBAC 轮询。
 - **宿主围栏**:NodeHttpServer websocket options `{maxPayload: 2MiB,
-  perMessageDeflate: false}`(应用层 1MiB 之上的绝对上限;官方测试证 options 转发);
+perMessageDeflate: false}`(应用层 1MiB 之上的绝对上限;官方测试证 options 转发);
   Vite proxy 抽为可测的 `dev/proxy.ts`,api 前缀 `ws: true`、/health 不升级,
   dev-proxy.test 冻结该形状。
 - **验收**(lsp-bridge.test.ts,真 PG + 真 HTTP + 真 authoring 进程,ws@8.21.3 仅
@@ -10884,7 +10884,7 @@ MonacoLspClient、浏览器无 Effect RPC。
   目前按 validateValue 保留/标记);x-qualy-i18n 的编辑器 UI;ValueForm 提升为共享包
   等 Recognition 接入时做。
 - **dev 运维事实**:SDK/编译器改动后 sandbox 容器必须重建(`pnpm sandbox:build &&
-  pnpm sandbox:up`),否则容器内旧 profile 会把新 annotation 当 unknown-key 拒——
+pnpm sandbox:up`),否则容器内旧 profile 会把新 annotation 当 unknown-key 拒——
   已实测撞上一次;重建后真容器编译带全套 annotation 的公式通过(探针 compiled ok)。
 
 ## Authoring loop 审计修复:snapshot、identity、freshness、formatting(2026-08-30)
@@ -11136,6 +11136,7 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 **所有产生 approved 的门,状态改变前都必须证明认定完整**。数据库只保证「通过的申报有一个
 认定指针」和「values 是对象」,不保证它满足冻结的 schema;缺字段会一路走到 evaluator,
 在成绩接口上炸成内部错误。现在统一走一道 `provenRecognition`:
+
 - 行政登记真正接收认定值(`recognition.values`),经办人是作者,plan 的默认值只是预填;
   学生自己填报携带认定一律拒。
 - 自动通过用默认值构造完整认定,构造不出就拒绝提交(`item-not-configured`,是题目配置的
@@ -11151,6 +11152,7 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
 都没有可执行的补救。影响令牌同时纳入 `recognitionId`,对话框开着时认定变了,旧确认失效。
 
 **审核的 seed 与合议模型能承载 reviewer-only 字段了**:
+
 - 初始轮的 seed 走与提交同一条投影(旧表单→本轮判定所依的表单),不再直接读原始 payload。
 - **首次填写不是修改**:逐字段比对,只有推翻别人已经认定过的事实才要求写理由;
   一个 reviewer-only 字段第一次被填上,是在做本职工作,不欠解释。
@@ -11326,7 +11328,7 @@ ready/live/manifest 全 200 零 ERROR。**context 策略**:仓库脚本保持 pr
   seed 的职责收缩为预填 + 「是否推翻了别人的认定」的基线——继承门禁全部改为
   **显式确认、不带理由**:seed 若算错,确认就构成 contradiction、被要求理由而红,
   门禁效力实证保留(破坏继承逻辑,`rec-appeal-record` 当场红在 `recognition.reason:
-  required` 上)。新增正面门禁:两门省略均拒。
+required` 上)。新增正面门禁:两门省略均拒。
 - **P1:修复迁移在「指针落在多余认定上」的分支会撞 CHECK**。`current_recognition_id`
   先置 NULL 再重指,而 approved 行的指针不许经过 NULL——迁移会死在自己承诺处理的分支上。
   改为一步踏到该申报保留的最后一条认定(终局认定必然幸存,永远有处可踏);升级测试的
@@ -11356,7 +11358,7 @@ explicit Recognition → EntryRecognition → test-only typed calculator` 全链
   claimed-level-slot),去掉 payloadKey 读取即红。
 - **6.1 `d31d2cd4` refactor(web): extract schema-driven value form**
   新包 @qualy/web-value-form;底层下沉为 opaque field ids(裁决 2):`ValueFieldsForm
-  ({fields:[{id,schema}]})` + `materializeFields`/`draftsFromFields`,`InputValueForm` 变
+({fields:[{id,schema}]})` + `materializeFields`/`draftsFromFields`,`InputValueForm` 变
   InputSchema adapter,formula 消费面行为逐项不变;opaque id 门(带连字符/点的 id)钉住
   「PARAMETER_NAME 不传染 Recognition ID」(裁决 1)。
 - **6.2 `287bb257` feat(assessment): expose the approval's recognition form**
@@ -11391,7 +11393,7 @@ explicit Recognition → EntryRecognition → test-only typed calculator` 全链
 - **6.6 `30248ce1` feat(assessment): collect recognition for administrative records**
   窄端点 `GET /assessment/items/{itemId}/recognition-contract`(鉴权=hasRecordAuthority,
   assignment 是 typed union `{kind:'direct'}|{kind:'convert',converter:'integer-to-
-  decimal@1'}`,裁决 9,客户端复用 `integerToDecimal()`);RecordPage Recognition 区:
+decimal@1'}`,裁决 9,客户端复用 `integerToDecimal()`);RecordPage Recognition 区:
   seed 跟随 + dirty Set 保护,**itemRevisionId 为 form session identity**(裁决 10,变化
   即清 drafts/dirty),提交 materialize 后带 `recognition:{values}`,Evidence validity 与
   Recognition materialize 双门禁。
@@ -11524,7 +11526,7 @@ stage-10「哈哈哈」)。已用快照原值经修复后的 API 全部回写并
 config 并接入 `fieldSchema`,无架构阻碍。Phase 6 的口径以此为准修正:
 integer/decimal/choice 交付,text enhancements 明确延期而非遗漏。
 
-### 记账:用户裁决的 Phase 7 结构(未开工)
+### 记账:用户裁决的 Phase 7 结构(已被 docs/phase7-design.md 取代,见文末 Phase 7.0 段)
 
 ```text
 7.0 service-backed calculator topology   REQUIRED FIRST
@@ -11560,7 +11562,7 @@ definition/runtime 两个 catalog,7.0 先 spike 再裁决。
   承重:10 万字符 refusal 落地恰 2048,仍是 refusal 不是 SandboxOutputTooLarge。
 - **authoring output validation**(第 3 项):`evaluateCases` 对 QuickJS 实际输出在
   canonical 后跑 `validateValue(outputSchema)`,违约进 `problems: [{at:'output',
-  reason, constraint}]`(TestProblem/wire/浏览器渲染/i18n 同笔加 'output' 位);差分:摘
+reason, constraint}]`(TestProblem/wire/浏览器渲染/i18n 同笔加 'output' 位);差分:摘
   除该验证,「contract 允 5.00、公式答 7」被当正常 actual → 测试红。复刻正式 evaluator
   的边界:QuickJS → canonical → validateValue → compare。
 - **ABI provenance**(第 4 项):`prepare` 收到 sidecar 的 `CompiledFormulaWire` 先验
@@ -11570,7 +11572,7 @@ definition/runtime 两个 catalog,7.0 先 spike 再裁决。
   FormulaAuthoring stub → previewDraft 得 `ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE`。
 
 - **golden artifacts 再生**(独立笔 `test(formula): regenerate golden artifacts for
-  the refusal split`):SDK 的蓄意变更移动了 artifact 字节(identity 24579→24761)与
+the refusal split`):SDK 的蓄意变更移动了 artifact 字节(identity 24579→24761)与
   runtimeSha256,按 golden 测试自身的规则再生并在此记录原因——refusal/defect 分型 +
   message cap 进入了每个 artifact 内嵌的 SDK 拷贝。
 
@@ -11583,7 +11585,7 @@ definition/runtime 两个 catalog,7.0 先 spike 再裁决。
   reason 点名两侧代际);response 携带 `engineVersion/runtimeBuildId/runtimeInstanceId`
   (instanceId 每进程启动 randomUUID)。`RuntimeCapabilities` 同步加 instanceId。
 - host `Sandbox` 接口收缩为 `{invoke}`:`invoke` 返回 `SandboxAnswer = {output,
-  runtime}`;**删除 `engine`/`runtimeBuildId` 访问器与永久缓存的 capabilities gate**——
+runtime}`;**删除 `engine`/`runtimeBuildId` 访问器与永久缓存的 capabilities gate**——
   换代判定移到 runtime 侧逐请求执行,缓存的上一实例结论不再存在。local testkit 同构
   (每 Layer 一个 instanceId)。
 - formula publish 的 provenance 改从**答案本身**收集:`extractContract` 与
@@ -11666,7 +11668,7 @@ set('')。承重(差分红/绿):reviewer-only boolean 无 seed 时 approve 按�
   sandbox input budget 64KiB——publish/binding compile 需证 assembled input 最坏编码
   ≤ evaluation budget;⑥contract 本身同题:64 参数 × 8 locale × 2000 字符 description
   ≈ 1MiB > `__qualyContract` 的 128KiB 经验值——需 `maxContractWireBytes(profile) ≤
-  transport budget` 的正式 gate。
+transport budget` 的正式 gate。
 - **P1**:⑦owner node 物理删除后历史公式的三种 read model(management / bind
   catalog / historical replay)分家,后两者不得依赖 owner node 仍存在;⑧batch-scoped
   bind catalog(manage 权限 ≠ 绑定选择权,RuntimeStore 不得借用户权限 API);
@@ -11833,7 +11835,7 @@ hardening 一律记 Phase 7 前置/hardening backlog,不再阻塞阶段推进(�
 - **`fix(web)` choiceLabel own-read**(P1,Phase 7 前置):@qualy/value-schema 的
   display 读键链(locale entry、enumLabels 两层)全部换 `Object.hasOwn` own-read——
   choice stable value 合法拼作 `toString`/`constructor`/`__proto__` 时,部分翻译的
-  locale record 不再命中原型继承(返回函数而非落到 default label)。承重:三键 × 
+  locale record 不再命中原型继承(返回函数而非落到 default label)。承重:三键 ×
   (locale 缺→default 胜 / locale own→locale 胜 / 全无→stable value)+ 恒 string +
   locale 键同规;摘 own-read 差分红。**prototype-sensitive business keys closure**
   (Formula SDK Schema.choice 的 Record 模型、ValueForm 内部写入等)记账为 Phase 7 前
@@ -11854,3 +11856,127 @@ derived/constant 前端分支(无 production constant driver,不可达)。
 阶段判断维持:Phase 6 DONE / Phase 7 AUTHORIZED——「剩下的问题已退到边界
 canonicalization、协议自描述、数据库 defense-in-depth 层;这支持 Phase 6 是真正封板,
 而非因停止检查才看似封板」。
+
+## Phase 7.0:Service-backed Scoring Runtime(2026-08-31)
+
+依据 docs/phase7-design.md §5(编写基线 ffb2f3dd,执行时零漂移)。施工计划经用户两轮评审
+(第一轮 8 条修订、终审 4 条勘误)后 APPROVED;两份设计文档(phase7-design、
+sandbox-process-isolation)按用户裁决随首笔入库。本段取代上文「用户裁决的 Phase 7 结构」
+旧记账:阶段划分以设计文档的 7.0 Service-backed Scoring Runtime → 7.1 Immutable Formula
+Runtime & Binding Catalog → 7.2 Scoring Authoring/Plan V2 → 7.3 formula@1 → 7.4 Item
+Authoring UX → 7.5 Determination/Impact/Failure → 7.6 Production Rollout 为准。
+
+### 提交链(15 笔,全部独立验收、CI 绿)
+
+`12721846` docs 入库 → `a3b765eb` feat(plugin-kit) runtime 相 → `401b7134`
+refactor(assessment) definition/runtime 拆分 → `95a5c078` refactor(assessment)
+compile-once → `35bc0620` feat(assessment) runtime verifier 入 boot audit →
+`158c5d97` refactor(value-schema) applyAssignment → `e911f5c6` fix(evidence)
+required text minLength → `5ea37f78` fix(assessment) retype gate → `ecf5ada5`
+test(server) 建库套件 timeout(CI 红修复)→ `da208228` fix(value-schema) diagnose
+own-read + ajv gate → `000336c6` fix(web) value-form own-keys → `3712b60c`
+fix(assessment) RecordPage own-keys → `a6eb1130` fix(formula) decodeInput own-read
+(golden 再生)→ `5a3e5ef3` fix(sandbox) transport ceilings → `8dcee38c`
+test(assessment) §5.14 总承重。
+
+### 各笔要点(承重与摘除-复原差分均红/绿闭合)
+
+- **runtime 相(plugin-kit)**:`prepare → services → runtime → afterServices` 四相;
+  provider 的 `compile(contributions)` 仍是同步函数,服务在其返回 Layer 的 build Effect
+  内取得;组合根形成单一 `runtimeGraph = runtime.pipe(provide(services), provide(prepared))`
+  引用喂屏障与路由,build 计数门禁证只构建一次;§5.4 六条 kernel 门禁
+  (assemble-kernel 新四层拓扑 describe);既有 afterServices 测试的「scoring seam」教义
+  注释改为一般语义;CLAUDE.md / plugin-descriptor-plan / assembly.ts 措辞同步。差分:摘
+  `compiled('runtime')` 三门禁红。
+- **definition/runtime 拆分(assessment)**:`ScoringDefinitions`(prepare)+
+  `ScoringRuntimes`(runtime)双扩展点、双 catalog;`Scoring.calculator` 返回
+  `readonly [PluginFeature, PluginFeature]` 调用方显式展开(Plugin.define 不加展平);
+  **bind 是唯一 service acquisition seam**,`BoundCalculator.compile/verify/prepare` 与
+  `PreparedCalculator.evaluate` 全部 closed(R=never);runtime provider 在自身 Layer
+  build 内注册 `assessment/scoring-plans` boot hook(run 闭包直捕 catalog,绝不
+  self-yield);ref 一致性 = **calculator 维度等式**(aggregator 是纯定义、无 runtime 半,
+  sum@1 等不参与——registries 三条承重);`CompiledCalculator.runtimeRef?` 仅接口预留,
+  **V1 persisted plan 零变化**(semanticPlanBody/persistedPlanShape 未动,旧 hash 不移);
+  evaluate 走 **request-local lazy prepare**(active 路径才 prepare、每题恰一次——四场景
+  计数承重:inactive 0 / active 无 approved 0 / active N approved 1 / derived 1,摘惰性
+  改急切即红);Assessment 方法(createItem/updateItem/getMyResult)显式携带
+  `ScoringRuntimeCatalog` requirement,组合根 discharge;测试 fixture 改经生产 provider
+  compile;scoring-ledger 的 formula@* 门禁改盯双通道(definitions+runtimes 皆非空)。
+- **compile-once**:`compiledCandidate` 恰一次,impactUnder 与 appendRevision 均收
+  编译结果;计数承重 create=1、update=1,恢复 impactUnder 自行重编译即红。
+- **runtime verifier 入 boot audit**:audit 链 = readScoringPlan → definition ref
+  installed → `runtime.verify(config, undefined, {tenantId,batchId})`(ctx 取自行本身,
+  绝不取自 scoringConfig;verify 不触 Sandbox——启动 API server 不要求 sandbox 在线);
+  失败包 `ASSESSMENT_STORED_SCORING_RUNTIME_INVALID {revisionId, calculatorRef, reason}`;
+  承重:verify-refusing 植入拒 ready 且三项点名,摘 verify 调用红。sweep/audit 查询
+  扩列 tenant/batch(join 原有)。
+- **applyAssignment 唯一解释器(value-schema)**:direct 透传、named converter 过自身
+  护栏、其余 null(=不可携带);收编 evaluate/seed/RecordPage 三处;**顺带修真 bug**:
+  seed 原用裸 `String(value)` 绕过 safe-integer 护栏(3.5→"3.5"、1e21→"1e+21" 均非法
+  decimal),现 3.5/2^53 不再 seed;差分换回 String 红。生产源码 convert 分支清点:三个
+  解释器全收编,余两处为纯 wire 类型声明。
+- **required text minLength:1(evidence)**:仅表达 decode 既有的 trim-拒空语义
+  (authored minLength/pattern 保持关闭);修复 binding 误拒(required text → nonempty
+  recognition 原被 text-length-widens 拒);optional text 域含 '' 仍正确拒。差分摘
+  minLength 红。
+- **retype server gate(assessment/evidence)**:`ItemTypeDriver.transitionIssues?`
+  (previous, next, batch)钩子,issuesOf 在 update 时调用;evidence 实现「same field
+  identity + type 变 → `field-type-change-requires-new-id`」;**复用 ItemConfigInvalid
+  issue,零新顶层错误码**(error-codes 冻结表零变化;issues 渲染面既有裸 path:reason
+  形态,此为 API 直发防线,浏览器正常流经 mint 不触达);承重双层:evidence 单元
+  (retype 拒/mint 放/新增放)+ core 管道集成(testItemType 迷你 kind 规则经真实
+  updateItem);差分摘管道调用集成红、单元仍绿。
+- **prototype-sensitive keys closure(终审第 6 条升级为 gate,四笔)**:
+  ①diagnose `parameterSchemaAt` own-read(ES5 捕获——实证 diagnose.ts 也进 formula
+  staged workspace,`Object.hasOwn` 直接 TS2550 炸 3 个 formula 测试;values.ts 不在
+  编译闭包属例外);**ajv 实查结论**:required 检查确经原型穿过(`({}).constructor !==
+undefined`),但 type 关随即遇函数而拒——端到端 fail-closed,无需改 validate.ts,
+  bearing suite 钉死该行为(constructor/toString/valueOf × 空对象拒 / own 值收 /
+  null-prototype 收),ajv 升级若放行原型成员即先红;②value-form:drafts/stored own
+  读、materialized 答案 null-prototype(三恶意键 × required/answered/rendered 承重;
+  `__proto__` id 的答案是 own 键而非原型突变);③RecordPage:seed 与 draft 刷新
+  null-prototype + payload own 读(端到端承重:recognitionId 就是 `__proto__` 的登记,
+  seed 跟随、提交 values 携带 own 键);④formula runtime `decodeInput` own-read
+  (defense-in-depth;golden artifacts 依其自身规则同笔再生:identity 24845、all-kinds
+  25290——SDK 拷贝字节蓄意变更)。复查结论:FormulaEditorPage 参数名读全经 value-form、
+  行 key 是 randomUUID,无需改;Formula SDK `Schema.choice` 经 Object.keys/fromEntries
+  本就安全。
+- **sandbox transport ceilings(终审第 1 条定稿)**:保持 RPC v1 平铺拓扑与全部 raw
+  字段;**平铺追加** `maxFrameBytes`/`maxEnvelopeBytes`(wire 上 optional——Schema 对
+  缺失 required 字段必然 decode fail,滚动窗口内新读旧必须容缺),注释钉三层:raw =
+  资源上限 ≠ 可送尺寸、frame/envelope = 传输上限、实际可送性 = 双端既有 encoded-envelope
+  gate(零改动,limitIssue 亦零改动);capabilities 提为 `runtimeCapabilities()` 纯函数
+  供测;不建 negotiation(仍零消费方,归 7.3)。
+- **§5.14 总承重**:真 PG 植行(tenant/org/user/batch/item/revision)→ 生产双 provider
+  compile → bind 取 SyntheticService(Shelf)→ `sweepScoringPlans` 真实冻结(**bind 期
+  service 零调用**)→ `readScoringPlan` → `prepare` → `evaluateEntry` → amount =
+  service 的答案(7.50);**删 Shelf provider → build 拒且点名**(常驻承重)。清单逐项:
+  calcParticipant 纯(calc.ts 零改动 + ledger 纯度门禁)✓;core 无 Formula/Sandbox/
+  QuickJS import(依赖黑名单门禁)✓;无 module-global/service locator ✓;fixed@1
+  characterization 逐字面量不变 ✓;boot audit 走 runtime verifier ✓;formula@1 零注册 ✓。
+
+### 事故与处置
+
+- **CI 红一次**(5ea37f78):effect-api 五个 it 均 it 内建库,默认 30s 在负载下超时
+  (CI 一次 + 本地全量一次;单跑 1.4s)。处置 `ecf5ada5`:五个 it 显式 120s(照
+  migration-upgrade 先例),断言不涉时长,非行为回归。
+- 一轮四件套批被本人前台并行 vitest 污染(23 个建库超时),干净重跑全绿——**后台四件套
+  期间禁一切前台任务**,立为执行纪律。
+- CI 盯守曾以 `--limit 1` 取 run id 撞时序竞态盯错 run(报绿实红,由用户发现);改为按
+  headSha 过滤后消除。
+
+### 终态验收(逐条实跑)
+
+- `pnpm typecheck` 零错;`pnpm test` 1254 passed | 17 skipped(1271);
+  `pnpm test:browser` 273 passed;`pnpm build` 通过(staged 96 files)。
+- 本批新增承重 ~20 条,摘除-复原差分逐笔红/绿闭合(python 精确替换往返)。
+- CI:全链 success(唯一红见上,已修复并回绿)。
+
+### 7.1 前置记账(未动工)
+
+- FormulaVersion FK CASCADE→RESTRICT 迁移;**同一笔 generate 携带**两条 same-batch
+  复合 FK(`AssessmentBatch.currentPhaseId` 需先给 batch_phases 加
+  `(tenant_id, batch_id, id)` 唯一索引;`BatchParticipantEvent` 目标索引已在)。
+- FormulaRuntimeStore / runtime-compatibility / BindableFormulaCatalog /
+  AssessmentConfigurationAccess 窄能力,均见设计文档 §6。
+- `runtimeRef` 落盘、semanticPlanBodyV2 归 7.2;capability negotiation 归 7.3。
