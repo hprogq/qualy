@@ -5,7 +5,7 @@ import { readManifest } from '@qualy/assembly'
 import { telemetryLayer } from '@qualy/telemetry'
 import { logLine, loggingLayer, resolveLogging } from './logging.ts'
 import { mark, reportBootTiming } from './boot-timing.ts'
-import { requestShutdown, shutdownRequested } from './shutdown.ts'
+import { onShutdownRequested, requestShutdown, shutdownRequested } from './shutdown.ts'
 import { devTopology, pluginRoots } from './dev/topology.ts'
 import { supervisedPrepareFence } from './dev/fence.ts'
 import { verifyAssembly } from './verify-assembly.ts'
@@ -232,12 +232,31 @@ const launched = Layer.launch(application).pipe(
  * These listeners run BESIDE upstream's: the graceful path is untouched and
  * still the one that normally wins. The first signal starts a deadline longer
  * than the http drain (20s upstream) so a healthy shutdown is never truncated;
- * the second gives up immediately. Both exit 128+signo, the shell's way of
- * saying a signal ended this, which is honest for a shutdown that did not
+ * the second gives up immediately. A signal exits 128+signo, the shell's way
+ * of saying a signal ended this, which is honest for a shutdown that did not
  * complete - unlike the graceful exit 0 the teardown below reports.
+ *
+ * The deadline is armed at requestShutdown - the one point every stop path
+ * passes through - not in the signal handlers alone. A stop that arrives
+ * over the supervisor's channel meets the very same unbounded finalizers,
+ * and without the deadline it would leave a process that never exits and a
+ * supervisor (or a test) waiting on it forever; with it, the failure is a
+ * logged, prompt exit 1 that says which promise was broken.
  */
 const forceExitAfter = Number(process.env.QUALY_SHUTDOWN_TIMEOUT ?? 30) * 1000
 let stoppingSince: number | null = null
+// what a timed-out shutdown exits with: a signal's own code when a signal
+// asked, a plain failure when the supervisor's channel did
+let timedOutExitCode = 1
+onShutdownRequested(() => {
+  if (forceExitAfter > 0) {
+    // unref: this timer must never be the reason the process stays alive
+    setTimeout(() => {
+      logLine(logging, 'Error', `shutdown did not finish within ${forceExitAfter}ms, exiting`)
+      process.exit(timedOutExitCode)
+    }, forceExitAfter).unref()
+  }
+})
 for (const [signal, code] of [
   ['SIGINT', 130],
   ['SIGTERM', 143],
@@ -253,6 +272,7 @@ for (const [signal, code] of [
       process.exit(code)
     }
     stoppingSince = Date.now()
+    timedOutExitCode = code
     requestShutdown()
     // say so at once: the drain that follows can take a few seconds, and a
     // silent one is indistinguishable from a press that did not land
@@ -263,13 +283,6 @@ for (const [signal, code] of [
         ? 'shutting down; press Ctrl+C again to give up waiting'
         : `${signal}: shutting down`,
     )
-    if (forceExitAfter > 0) {
-      // unref: this timer must never be the reason the process stays alive
-      setTimeout(() => {
-        logLine(logging, 'Error', `shutdown did not finish within ${forceExitAfter}ms, exiting`)
-        process.exit(code)
-      }, forceExitAfter).unref()
-    }
   })
 }
 
