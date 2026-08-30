@@ -1,6 +1,7 @@
 import { Effect, Exit, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import { validateValue } from '@qualy/value-schema/validate'
 import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { calcParticipant } from '../src/scoring/calc.ts'
 import { builtinScoringDrivers, fixed1, scaledAmount } from '../src/scoring/builtins.ts'
@@ -67,10 +68,19 @@ describe('what a fixed amount may be spelled as', () => {
     }
   })
 
-  it('answers inside the platform amount for every accepted config', async () => {
-    const answer = await Effect.runPromise(fixed1.evaluate({ value: '3' }, {}))
-    expect(answer).toBe('3')
-    expect(normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA)['x-qualy-maxScale']).toBe(4)
+  it('answers inside its own frozen output schema, for every accepted config', () => {
+    // the invariant the leading-zero grammar broke: whatever a saved config
+    // makes this calculator answer has to pass the schema the plan froze,
+    // because that is checked after the answer comes back
+    return Effect.runPromise(
+      Effect.gen(function* () {
+        for (const value of ['3', '3.0', '3.00', '-1.5', '0', '0.0001']) {
+          const compiled = yield* fixed1.compile({ value })
+          const answer = yield* fixed1.evaluate(compiled.config, {})
+          expect(validateValue(compiled.outputSchema, answer), value).toEqual([])
+        }
+      }),
+    )
   })
 })
 
