@@ -28,6 +28,7 @@ const projects = [
   'packages/web/runtime',
   'packages/web/i18n',
   'packages/web/ui',
+  'packages/web/value-form',
   'apps/web',
   ...findClientProjects('packages'),
 ]

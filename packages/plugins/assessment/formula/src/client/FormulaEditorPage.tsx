@@ -14,13 +14,13 @@ import { validateValue } from '@qualy/value-schema/validate'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { useDraftPreview, type DraftContract } from './use-draft-preview.ts'
-import { AtomicValueField, InputValueForm } from './value-form/InputValueForm.tsx'
+import { AtomicValueField, InputValueForm } from '@qualy/web-value-form/InputValueForm'
 import {
   draftsFromStored,
   materializeField,
   materializeInput,
   type FieldDraft,
-} from './value-form/model.ts'
+} from '@qualy/web-value-form/model'
 
 // Monaco rides its own chunk: the list page, the app shell and even this
 // page's first paint stay free of it - the editor arrives when the source

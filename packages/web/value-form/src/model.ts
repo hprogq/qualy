@@ -18,7 +18,9 @@
 
 import {
   canonicalDecimal,
+  inputOrder,
   kindOf,
+  normalizeAtomicSchema,
   parseDecimal,
   type AtomicSchema,
   type NormalizedInputSchema,
@@ -26,6 +28,25 @@ import {
 import { validateValue as validate, type ValueIssue } from '@qualy/value-schema/validate'
 
 export type FieldDraft = string | boolean
+
+/**
+ * One field as this model sees it: an opaque stable id and the schema its
+ * value answers to. The id is NOT a value-schema parameter name - a
+ * recognition id, a column key, anything a caller uses to address a value
+ * is welcome here - which is what lets one form model serve contracts whose
+ * identities were never meant to be identifiers.
+ */
+export interface ValueFieldSpec {
+  readonly id: string
+  readonly schema: AtomicSchema
+}
+
+/** an input contract's parameters as fields, in the authored order */
+export const fieldsOfInput = (schema: NormalizedInputSchema): readonly ValueFieldSpec[] =>
+  inputOrder(schema).flatMap((name) => {
+    const property = schema.properties[name]
+    return property === undefined ? [] : [{ id: name, schema: property }]
+  })
 
 /** what one field's draft materializes to */
 export type FieldOutcome =
@@ -77,35 +98,45 @@ export interface MaterializedInput {
 }
 
 /**
- * The whole form: every field materialized, then the assembled object put
- * before validateValue - bounds, patterns and enums all judged by the same
- * validator the server uses.
+ * The whole form: every field materialized, then each value put before
+ * validateValue - bounds, patterns and enums all judged by the same
+ * validator the server uses. Every field is required: emptiness is an
+ * issue, because a contract's fields are its fields.
  */
-export const materializeInput = (
-  schema: NormalizedInputSchema,
+export const materializeFields = (
+  fields: readonly ValueFieldSpec[],
   drafts: Readonly<Record<string, FieldDraft>>,
 ): MaterializedInput => {
   const issues = new Map<string, string>()
   const value: Record<string, unknown> = {}
-  for (const [name, property] of Object.entries(schema.properties)) {
-    const outcome = materializeField(property, drafts[name] ?? '')
+  for (const field of fields) {
+    const outcome = materializeField(field.schema, drafts[field.id] ?? '')
     if (outcome.kind === 'empty') {
-      issues.set(name, 'required')
+      issues.set(field.id, 'required')
       continue
     }
     if (outcome.kind === 'invalid') {
-      issues.set(name, outcome.reason)
+      issues.set(field.id, outcome.reason)
       continue
     }
-    value[name] = outcome.value
-  }
-  if (issues.size > 0) return { value: null, issues }
-  for (const issue of validate(schema, value)) {
-    const field = issue.path.startsWith('/') ? issue.path.slice(1).split('/')[0]! : ''
-    if (!issues.has(field)) issues.set(field, issue.reason)
+    // the judge wants the canonical spelling of the schema; callers hand
+    // whatever spelling they hold, and normalizing a handful of form fields
+    // costs nothing
+    const wrong = validate(normalizeAtomicSchema(field.schema), outcome.value)
+    if (wrong.length > 0) {
+      issues.set(field.id, wrong[0]!.reason)
+      continue
+    }
+    value[field.id] = outcome.value
   }
   return issues.size > 0 ? { value: null, issues } : { value, issues }
 }
+
+/** the input-contract face of materializeFields, for callers with a schema */
+export const materializeInput = (
+  schema: NormalizedInputSchema,
+  drafts: Readonly<Record<string, FieldDraft>>,
+): MaterializedInput => materializeFields(fieldsOfInput(schema), drafts)
 
 /** which stored values survive a (possibly changed) contract untouched */
 export const reconcileStored = (
@@ -116,8 +147,8 @@ export const reconcileStored = (
   return { legal: issues.length === 0, issues }
 }
 
-export const draftsFromStored = (
-  schema: NormalizedInputSchema,
+export const draftsFromFields = (
+  fields: readonly ValueFieldSpec[],
   stored: unknown,
 ): Record<string, FieldDraft> => {
   const record =
@@ -125,9 +156,12 @@ export const draftsFromStored = (
       ? (stored as Record<string, unknown>)
       : {}
   return Object.fromEntries(
-    Object.entries(schema.properties).map(([name, property]) => [
-      name,
-      draftFromValue(property, record[name]),
-    ]),
+    fields.map((field) => [field.id, draftFromValue(field.schema, record[field.id])]),
   )
 }
+
+/** the input-contract face of draftsFromFields */
+export const draftsFromStored = (
+  schema: NormalizedInputSchema,
+  stored: unknown,
+): Record<string, FieldDraft> => draftsFromFields(fieldsOfInput(schema), stored)

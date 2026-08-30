@@ -21,8 +21,6 @@
     "./client/formula-lsp/protocol": "./src/client/formula-lsp/protocol.ts",
     "./package.json": "./package.json",
     "./testkit": "./src/testkit.ts",
-    "./client/value-form/model": "./src/client/value-form/model.ts",
-    "./client/value-form/InputValueForm": "./src/client/value-form/InputValueForm.tsx",
     "./client/use-draft-preview": "./src/client/use-draft-preview.ts"
   },
   "dependencies": {
@@ -44,6 +42,7 @@
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/value-schema": "workspace:*",
+    "@qualy/web-value-form": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",

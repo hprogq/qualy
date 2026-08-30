@@ -24,6 +24,7 @@
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-value-form": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",

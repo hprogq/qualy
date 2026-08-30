@@ -9,8 +9,10 @@ import {
   draftsFromStored,
   materializeField,
   materializeInput,
-} from '@qualy/plugin-assessment-formula/client/value-form/model'
-import { InputValueForm } from '@qualy/plugin-assessment-formula/client/value-form/InputValueForm'
+  materializeFields,
+  draftsFromFields,
+} from '@qualy/web-value-form/model'
+import { InputValueForm, ValueFieldsForm } from '@qualy/web-value-form/InputValueForm'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import '../src/app.css'
 
@@ -174,5 +176,47 @@ describe('the generated form', () => {
     )!
     expect(field.getAttribute('data-invalid')).toBe('true')
     expect(field.textContent).toContain('请输入整数')
+  })
+
+  it('treats field ids as opaque identities, not identifiers', async () => {
+    // a recognition contract addresses values by stable ids - hyphens,
+    // uuid-looking strings, anything - and the fields form must never
+    // borrow the parameter-name grammar an input contract happens to have
+    const fields = [
+      {
+        id: 'recognition-uuid-a',
+        schema: { type: 'string', enum: ['national', 'provincial'] } as const,
+      },
+      {
+        id: 'rec-2.ordinal',
+        schema: { type: 'integer', minimum: 1, maximum: 10 } as const,
+      },
+    ]
+    const drafts = draftsFromFields(fields, { 'recognition-uuid-a': 'provincial' })
+    expect(drafts['recognition-uuid-a']).toBe('provincial')
+    const done = materializeFields(fields, { ...drafts, 'rec-2.ordinal': '3' })
+    expect(done.value).toEqual({ 'recognition-uuid-a': 'provincial', 'rec-2.ordinal': 3 })
+
+    const screen = await mount(
+      <ValueFieldsForm
+        fields={fields}
+        drafts={drafts}
+        onDraft={() => {}}
+        locale="zh-CN"
+        scope="opaque"
+      />,
+    )
+    await vi.waitFor(
+      () => {
+        if (screen.container.querySelector('[data-testid="value-form-opaque"]') === null)
+          throw new Error('form not mounted yet')
+      },
+      { timeout: 5_000 },
+    )
+    const form = screen.container.querySelector('[data-testid="value-form-opaque"]')!
+    const rendered = [...form.querySelectorAll('[data-parameter]')].map((one) =>
+      one.getAttribute('data-parameter'),
+    )
+    expect(rendered).toEqual(['recognition-uuid-a', 'rec-2.ordinal'])
   })
 })

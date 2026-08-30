@@ -1,0 +1,23 @@
+{
+  "name": "@qualy/web-value-form",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./model": "./src/model.ts",
+    "./InputValueForm": "./src/InputValueForm.tsx"
+  },
+  "dependencies": {
+    "@qualy/ui": "workspace:*",
+    "@qualy/value-schema": "workspace:*",
+    "@stylexjs/stylex": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:"
+  }
+}

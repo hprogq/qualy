@@ -11,7 +11,6 @@ import {
   choiceLabel,
   displayDescription,
   displayTitle,
-  inputOrder,
   kindOf,
   type AtomicSchema,
   type ChoiceSchema,
@@ -21,13 +20,26 @@ import { Input } from '@qualy/ui/input'
 import { NativeSelect } from '@qualy/ui/native-select'
 import { Checkbox } from '@qualy/ui/checkbox'
 import { Field } from '@qualy/ui/admin'
-import type { FieldDraft } from './model.ts'
+import { fieldsOfInput, type FieldDraft, type ValueFieldSpec } from './model.ts'
 
 const styles = stylex.create({
   grid: { display: 'flex', flexDirection: 'column', gap: '0.625rem' },
   description: { fontSize: '0.75rem', color: 'var(--q-surface-muted-foreground)', margin: 0 },
   problem: { fontSize: '0.75rem', color: 'var(--q-danger, #b91c1c)', margin: 0 },
 })
+
+export interface ValueFieldsFormProps {
+  /** opaque field ids with their schemas, in display order */
+  readonly fields: readonly ValueFieldSpec[]
+  readonly drafts: Readonly<Record<string, FieldDraft>>
+  readonly onDraft: (id: string, draft: FieldDraft) => void
+  readonly locale: string
+  readonly disabled?: boolean
+  /** field id -> already-translated words about what stops it */
+  readonly problems?: ReadonlyMap<string, string>
+  /** distinguishes multiple forms on one screen for stable test hooks */
+  readonly scope: string
+}
 
 export interface InputValueFormProps {
   readonly schema: NormalizedInputSchema
@@ -153,28 +165,33 @@ export function AtomicValueField({
   )
 }
 
-export function InputValueForm({
-  schema,
+/**
+ * The form itself: one field per spec, in the array's order.
+ *
+ * Ids are opaque - nothing here parses or constrains them - so the same
+ * component serves an input contract's parameter names and a recognition
+ * contract's stable identities alike.
+ */
+export function ValueFieldsForm({
+  fields,
   drafts,
   onDraft,
   locale,
   disabled = false,
   problems,
   scope,
-}: InputValueFormProps) {
+}: ValueFieldsFormProps) {
   return (
     <div {...stylex.props(styles.grid)} data-testid={`value-form-${scope}`}>
-      {inputOrder(schema).map((name) => {
-        const property = schema.properties[name]
-        if (property === undefined) return null
-        const problem = problems?.get(name)
+      {fields.map((field) => {
+        const problem = problems?.get(field.id)
         return (
           <AtomicValueField
-            key={name}
-            schema={property}
-            name={name}
-            draft={drafts[name] ?? ''}
-            onDraft={(draft) => onDraft(name, draft)}
+            key={field.id}
+            schema={field.schema}
+            name={field.id}
+            draft={drafts[field.id] ?? ''}
+            onDraft={(draft) => onDraft(field.id, draft)}
             locale={locale}
             disabled={disabled}
             {...(problem === undefined ? {} : { problem })}
@@ -183,4 +200,9 @@ export function InputValueForm({
       })}
     </div>
   )
+}
+
+/** the input-contract face: parameters in authored order */
+export function InputValueForm({ schema, ...rest }: InputValueFormProps) {
+  return <ValueFieldsForm fields={fieldsOfInput(schema)} {...rest} />
 }
