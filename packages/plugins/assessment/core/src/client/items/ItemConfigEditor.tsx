@@ -30,6 +30,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@qualy/ui/textarea'
 import { toast } from '@qualy/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
+import { materializeField, type FieldDraft as ValueDraft } from '@qualy/web-value-form/model'
+import type { AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
+import { ScoringBindingEditor } from './ScoringBindingEditor.tsx'
 import { assessmentApi } from '../api.ts'
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { SUMMARY_FIELDS_MOST, summaryFieldIdsOf } from '../../entry/summary.ts'
@@ -1170,19 +1173,54 @@ export interface StoredScoringV2 {
   bindings: Record<string, unknown>
 }
 
+/**
+ * One recognised fact as this pen holds it.
+ *
+ * `id` is the server's identity when the fact already has one, and null
+ * while it is still being composed - a new recognition is addressed by its
+ * handle until a save mints it one. `refinement` is never authored here:
+ * it narrows what the fact may be, this build has no control for it, and
+ * carrying it opaquely is the difference between renaming a fact and
+ * quietly widening it.
+ */
+export interface RecognitionDraft {
+  id: string | null
+  label: string
+  refinement: unknown
+  defaultFromFieldId: string | null
+}
+
+/**
+ * What feeds one of the calculator's parameters.
+ *
+ * A constant keeps BOTH the stored value and the edit in progress: an
+ * untouched one travels back exactly as it arrived, so opening a question
+ * and saving it moves no byte, and only a value somebody actually typed
+ * goes through the value form's own materialization.
+ */
+export type BindingDraft =
+  { kind: 'constant'; value: unknown; draft?: ValueDraft } | { kind: 'recognition'; handle: string }
+
 export type ScoringDraft =
   /** the legacy language: the pen's own three fields are the whole truth */
   | { language: 'v1' }
   /**
    * The versioned language. `original` is what the server stored, byte for
-   * byte; `calculator` is the part the chosen calculator's own editor owns,
+   * byte - null for a question this pen upgraded, which has no stored V2
+   * yet. `calculator` is the part the chosen calculator's own editor owns,
    * and is only written back once that editor has actually changed it. The
    * folding rule is not here because it was always this pen's own field.
+   *
+   * Recognitions are keyed by HANDLE, which for an existing fact is its own
+   * identity: the draft language addresses them by handle, and reusing the
+   * id spares this pen a second name for the same thing.
    */
   | {
       language: 'v2'
-      original: StoredScoringV2
+      original: StoredScoringV2 | null
       calculator: { ref: string; config: unknown }
+      recognitions: Record<string, RecognitionDraft>
+      bindings: Record<string, BindingDraft>
       touched: boolean
     }
   /**
@@ -1212,7 +1250,36 @@ const scoringDraftOf = (stored: unknown): ScoringDraft => {
   const version = (stored as { version?: unknown }).version
   if (version !== 2) return { language: 'unsupported', original: stored, version }
   const original = stored as unknown as StoredScoringV2
-  return { language: 'v2', original, calculator: original.calculator, touched: false }
+  return {
+    language: 'v2',
+    original,
+    calculator: original.calculator,
+    // the stored form is keyed by identity; the draft form by handle, and
+    // an existing fact's handle is that identity
+    recognitions: Object.fromEntries(
+      Object.entries(original.recognitions ?? {}).map(([id, one]) => [
+        id,
+        {
+          id,
+          label: one.label,
+          refinement: one.refinement,
+          defaultFromFieldId: one.defaultFromFieldId,
+        },
+      ]),
+    ),
+    bindings: Object.fromEntries(
+      Object.entries(original.bindings ?? {}).map(([parameter, binding]) => {
+        const held = binding as { kind?: unknown; value?: unknown; recognitionId?: unknown }
+        return [
+          parameter,
+          held.kind === 'recognition'
+            ? { kind: 'recognition' as const, handle: String(held.recognitionId) }
+            : { kind: 'constant' as const, value: held.value },
+        ]
+      }),
+    ),
+    touched: false,
+  }
 }
 
 /** the stored configuration back into the pen; a shape this pen cannot hold starts fresh */
@@ -1430,22 +1497,78 @@ const storedStage = (stage: StageDraft, panelable: boolean) => ({
  *  to whoever wrote it, and is carried rather than rebuilt */
 const OWN_AGGREGATORS = new Set(['sum@1', 'max@1', 'top-n-sum@1'])
 
-const scoringOf = (draft: Draft, aggregator: { ref: string; config: unknown }) => {
+/**
+ * The versioned scoring the pen would submit, as the DRAFT language.
+ *
+ * Recognitions go out as an array addressed by handle, because a fact
+ * composed here has no identity until the server mints one; an existing
+ * fact carries its id beside its handle so the save knows it is the same
+ * fact renamed rather than a new one. Constants nobody edited carry the
+ * value that was stored, byte for byte - materialization is for values a
+ * person actually typed.
+ */
+const draftScoringOf = (
+  scoring: Extract<ScoringDraft, { language: 'v2' }>,
+  aggregator: { ref: string; config: unknown },
+  schemaOf: (parameter: string) => AtomicSchema | undefined,
+) => ({
+  version: 2,
+  calculator: scoring.calculator,
+  aggregator,
+  recognitions: Object.entries(scoring.recognitions).map(([handle, one]) => ({
+    handle,
+    ...(one.id === null ? {} : { id: one.id }),
+    label: one.label,
+    refinement: (one.refinement ?? null) as unknown,
+    defaultFromFieldId: one.defaultFromFieldId,
+  })),
+  bindings: Object.fromEntries(
+    Object.entries(scoring.bindings).map(([parameter, binding]) => {
+      if (binding.kind === 'recognition') {
+        return [parameter, { kind: 'recognition' as const, handle: binding.handle }]
+      }
+      if (binding.draft === undefined) {
+        return [parameter, { kind: 'constant' as const, value: binding.value }]
+      }
+      // a value that will not materialize travels as what was typed: the
+      // save gate holds it back, and a caller who gets past that meets the
+      // server's own refusal by name rather than a missing key
+      const schema = schemaOf(parameter)
+      const outcome = schema === undefined ? undefined : materializeField(schema, binding.draft)
+      return [
+        parameter,
+        {
+          kind: 'constant' as const,
+          value: outcome?.kind === 'value' ? outcome.value : binding.draft,
+        },
+      ]
+    }),
+  ),
+})
+
+const scoringOf = (
+  draft: Draft,
+  aggregator: { ref: string; config: unknown },
+  schemaOf: (parameter: string) => AtomicSchema | undefined = () => undefined,
+) => {
   // a language from a newer build travels whole, always
   if (draft.scoring.language === 'unsupported') return draft.scoring.original
   if (draft.scoring.language === 'v2') {
     const { original, calculator, touched } = draft.scoring
-    return {
-      ...original,
-      // the calculator's configuration is its own editor's; it is written
-      // back only once that editor has actually changed something
-      calculator: touched ? calculator : original.calculator,
-      // the folding rule, though, has always been this pen's field: the
-      // select above reads it and writes it, so a versioned question whose
-      // aggregator this editor understands is written from the pen. One it
-      // does not understand it carries.
-      aggregator: OWN_AGGREGATORS.has(original.aggregator.ref) ? aggregator : original.aggregator,
+    // the folding rule has always been this pen's field: the select above
+    // reads it and writes it, so a versioned question whose aggregator this
+    // editor understands is written from the pen. One it does not
+    // understand it carries.
+    const folding =
+      original === null || OWN_AGGREGATORS.has(original.aggregator.ref)
+        ? aggregator
+        : original.aggregator
+    // nothing about the arithmetic was touched: the stored form goes back
+    // exactly as it came, which the server treats as the no-op it is
+    if (!touched && original !== null) {
+      return { ...original, aggregator: folding }
     }
+    return draftScoringOf({ ...draft.scoring, calculator }, folding, schemaOf)
   }
   return {
     calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
@@ -1453,14 +1576,22 @@ const scoringOf = (draft: Draft, aggregator: { ref: string; config: unknown }) =
   }
 }
 
-/** the pen back into the configuration the api validates */
-const configOf = (draft: Draft) =>
+/**
+ * The pen back into the configuration the api validates.
+ *
+ * `schemaOf` answers what type a calculator parameter takes, which only the
+ * compiled contract knows. Without it a constant somebody typed cannot be
+ * turned into a wire value - so the caller that has the contract passes it,
+ * and the ones that only need the shape (change detection before it
+ * arrives) do not.
+ */
+const configOf = (draft: Draft, schemaOf?: (parameter: string) => AtomicSchema | undefined) =>
   draft.itemType === 'declaration'
     ? {
         // one press is the whole filing: no fields, review as configured
         entrySource: draft.entrySource,
         formConfig: {},
-        scoringConfig: scoringOf(draft, aggregatorOf(draft)),
+        scoringConfig: scoringOf(draft, aggregatorOf(draft), schemaOf),
         ...displayConfigOf(draft, false),
         reviewPolicy: reviewPolicyOf(draft),
       }
@@ -1469,11 +1600,11 @@ const configOf = (draft: Draft) =>
           // granted, never filed: no form, no route, only the amount
           entrySource: 'administrative' as const,
           formConfig: {},
-          scoringConfig: scoringOf(draft, { ref: 'sum@1', config: {} }),
+          scoringConfig: scoringOf(draft, { ref: 'sum@1', config: {} }, schemaOf),
           ...displayConfigOf(draft, false),
           reviewPolicy: { mode: 'none' },
         }
-      : evidenceConfigOf(draft)
+      : evidenceConfigOf(draft, schemaOf)
 
 /** the rule the pen holds, before it is an aggregator reference */
 const foldingOf = (draft: Draft): Folding =>
@@ -1526,7 +1657,10 @@ const displayConfigOf = (draft: Draft, withSummary: boolean) => {
       }
 }
 
-const evidenceConfigOf = (draft: Draft) => ({
+const evidenceConfigOf = (
+  draft: Draft,
+  schemaOf?: (parameter: string) => AtomicSchema | undefined,
+) => ({
   entrySource: draft.entrySource,
   formConfig: {
     fields: draft.fields.map((field) => {
@@ -1588,7 +1722,7 @@ const evidenceConfigOf = (draft: Draft) => ({
       }
     }),
   },
-  scoringConfig: scoringOf(draft, aggregatorOf(draft)),
+  scoringConfig: scoringOf(draft, aggregatorOf(draft), schemaOf),
   ...displayConfigOf(draft, true),
   reviewPolicy: reviewPolicyOf(draft),
 })
@@ -1664,7 +1798,7 @@ export function ItemConfigEditor({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError, formatText } = useI18n()
+  const { format, formatError, formatText, locale } = useI18n()
   const [draft, setDraft] = useState<Draft>(() => {
     if (held !== undefined) return held
     const seeded = draftOf(item, groups, options)
@@ -1732,7 +1866,7 @@ export function ItemConfigEditor({
 
   const save = useMutation({
     mutationFn: ({ reason, effects }: { reason: string | null; effects?: ChangeEffects }) => {
-      const config = configOf(draft)
+      const config = configOf(draft, schemaOf)
       // one grant per person: the count is not the administrator's to set on
       // a question nobody files
       const maxEntries =
@@ -1883,13 +2017,96 @@ export function ItemConfigEditor({
     // the amount in the pen's own field, the versioned one holds the whole
     // calculator configuration and remembers that it was edited
     if (draft.scoring.language === 'v2') {
-      patch({ scoring: { ...draft.scoring, calculator: next, touched: true } })
+      // a different arithmetic asks for different things: the facts and
+      // bindings answered the OLD contract, and carrying them across would
+      // leave a configuration that names parameters nobody has
+      const rebound = next.ref !== draft.scoring.calculator.ref
+      patch({
+        scoring: {
+          ...draft.scoring,
+          calculator: next,
+          ...(rebound ? { recognitions: {}, bindings: {} } : {}),
+          touched: true,
+        },
+      })
       return
     }
     if (next.ref === 'fixed@1' && draft.scoring.language === 'v1') {
       patch({ fixedValue: String((next.config as { value?: unknown })?.value ?? '') })
     }
   }
+
+  /**
+   * Choosing which arithmetic scores this question.
+   *
+   * The legacy language stays itself for as long as it keeps its own
+   * arithmetic; anything else needs the versioned one, and once a question
+   * speaks it, it never goes back - a V2 question scored by a fixed amount
+   * is lawful, and downgrading would throw away identities the server
+   * refuses to revive.
+   */
+  const onCalculatorPicked = (ref: string) => {
+    if (ref === chosenCalculator.ref) return
+    if (draft.scoring.language === 'v1' && ref === 'fixed@1') return
+    if (draft.scoring.language === 'v1') {
+      patch({
+        scoring: {
+          language: 'v2',
+          original: null,
+          calculator: { ref, config: {} },
+          recognitions: {},
+          bindings: {},
+          touched: true,
+        },
+      })
+      return
+    }
+    onCalculatorChange({ ref, config: {} })
+  }
+
+  /**
+   * What the chosen arithmetic needs, asked of the server (§9.8).
+   *
+   * The key IS the candidate: batch, question, form and the whole calculator
+   * configuration. React Query never applies an answer to a different key,
+   * so a reply to the configuration somebody has already moved on from
+   * cannot land on the one in front of them - which matters here because
+   * each answer decides what the parameter rows even are.
+   *
+   * Not on every keystroke: the calculator's own editor commits a
+   * configuration, and the form fields are read as they stand when it does.
+   */
+  const formConfigNow = configOf(draft).formConfig
+  const contract = useQuery({
+    queryKey: [
+      'assessment',
+      'scoring-preview',
+      batchId,
+      item?.id ?? 'new',
+      draft.itemType,
+      JSON.stringify(formConfigNow),
+      chosenCalculator.ref,
+      JSON.stringify(chosenCalculator.config),
+    ],
+    queryFn: () =>
+      run(
+        api.assessment.previewScoring({
+          params: { batchId },
+          payload: {
+            itemType: draft.itemType,
+            formConfig: formConfigNow,
+            calculator: chosenCalculator,
+            ...(item === null ? {} : { itemId: item.id }),
+          },
+        }),
+      ),
+    enabled: draft.scoring.language === 'v2',
+  })
+  const parameterSchemas = contract.data?.inputSchema as NormalizedInputSchema | undefined
+  const schemaOf = (parameter: string): AtomicSchema | undefined =>
+    parameterSchemas !== undefined && Object.hasOwn(parameterSchemas.properties, parameter)
+      ? (parameterSchemas.properties[parameter] as AtomicSchema)
+      : undefined
 
   const granted = draft.itemType === 'constant'
   const declaredKind = draft.itemType === 'declaration'
@@ -1905,6 +2122,13 @@ export function ItemConfigEditor({
       ? format(m.itemsNeedFieldLabel)
       : '',
     routed && draft.stages.some((stage) => !stageReady(stage)) ? format(m.itemsNeedStage) : '',
+    // a versioned question whose arithmetic was edited cannot be written
+    // against a contract this screen does not have: the bindings would be
+    // composed against the last one that answered, which is a different
+    // question from the one being saved
+    draft.scoring.language === 'v2' && draft.scoring.touched && !contract.isSuccess
+      ? format(m.itemsContractUnavailable)
+      : '',
   ].filter((one) => one !== '')
 
   // The api asks for a sentence when a live question's scoring or placement
@@ -1915,7 +2139,7 @@ export function ItemConfigEditor({
   const scoringMoved =
     item?.currentRevision !== null &&
     item?.currentRevision !== undefined &&
-    JSON.stringify(configOf(draft).scoringConfig) !==
+    JSON.stringify(configOf(draft, schemaOf).scoringConfig) !==
       JSON.stringify(item.currentRevision.scoringConfig)
   const placementMoved = item !== null && draft.scoreGroupId !== item.scoreGroupId
   const needsReason =
@@ -2195,12 +2419,13 @@ export function ItemConfigEditor({
                   <div {...stylex.props(styles.w208)}>
                     <Field label={format(m.itemsCalculator)}>
                       {(id) => (
-                        // Reading only until an editor exists for every
-                        // calculator on offer: choosing one has to hand the
-                        // question a configuration that calculator accepts,
-                        // and a chooser that changed the reference without
-                        // one would save an arithmetic nobody configured.
-                        <Select value={chosenCalculator.ref} disabled>
+                        // Choosing one hands the question a configuration
+                        // that calculator accepts - an empty one, which its
+                        // own editor below fills in. A question already in
+                        // the versioned language stays in it whatever is
+                        // chosen: the identities it holds are the server's
+                        // to mint and it refuses to revive them.
+                        <Select value={chosenCalculator.ref} onValueChange={onCalculatorPicked}>
                           <SelectTrigger id={id} xstyle={styles.fullWidth}>
                             <SelectValue />
                           </SelectTrigger>
@@ -2233,6 +2458,32 @@ export function ItemConfigEditor({
                     }}
                   />
                 )}
+                {/* what the chosen arithmetic asks for, and what this
+                    question can answer it with */}
+                {draft.scoring.language === 'v2' &&
+                  (contract.isPending ? (
+                    <p {...stylex.props(styles.mutedText)}>{format(m.itemsContractPending)}</p>
+                  ) : contract.isError ? (
+                    <Feedback message={format(m.itemsContractUnavailable)} />
+                  ) : (
+                    <ScoringBindingEditor
+                      inputSchema={contract.data.inputSchema as NormalizedInputSchema}
+                      bindableFields={contract.data.bindableFields}
+                      recognitions={draft.scoring.recognitions}
+                      bindings={draft.scoring.bindings}
+                      disabled={false}
+                      locale={locale}
+                      onChange={(next) =>
+                        patch({
+                          scoring: {
+                            ...(draft.scoring as Extract<ScoringDraft, { language: 'v2' }>),
+                            ...next,
+                            touched: true,
+                          },
+                        })
+                      }
+                    />
+                  ))}
                 {/* how several claims fold together, and how many one
                     person may file: both are questions about filing, and a
                     question granted to everybody is never filed */}

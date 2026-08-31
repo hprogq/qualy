@@ -192,6 +192,47 @@ const BOTH_CALCULATORS = {
 
 const OTHER_VERSION_ID = '01920000-0000-7000-8000-0000000000f3'
 
+/** the decimal the formula's parameter takes, and the fixture's refinement */
+const GRADE = {
+  type: 'string',
+  format: 'qualy-decimal',
+  'x-qualy-maxScale': 1,
+  'x-qualy-minimum': '60',
+  'x-qualy-maximum': '100',
+}
+
+/**
+ * What the server answers about a candidate's arithmetic.
+ *
+ * A fixed amount asks for nothing; the formula asks for one graded fact.
+ * Two form fields are on offer: one that can seed it, and one that is
+ * deliberately WIDER than the fact admits - a value the field allows would
+ * not be a legal determination, so it is not a lawful default however alike
+ * the two look by type name.
+ */
+const previewFor = (ref: string) => ({
+  calculator: { ref, contractHash: 'contract-1' },
+  inputSchema:
+    ref === 'formula@1'
+      ? {
+          type: 'object',
+          properties: { level: { ...GRADE, title: '等级分' } },
+          required: ['level'],
+          additionalProperties: false,
+        }
+      : { type: 'object', properties: {}, required: [], additionalProperties: false },
+  outputSchema: { type: 'string', format: 'qualy-decimal', 'x-qualy-maxScale': 2 },
+  bindableFields: [
+    { fieldId: 'claimed-level', payloadKey: 'claimed-level', schema: GRADE, always: true },
+    {
+      fieldId: 'claimed-any',
+      payloadKey: 'claimed-any',
+      schema: { type: 'string', format: 'qualy-decimal', 'x-qualy-maxScale': 1 },
+      always: true,
+    },
+  ],
+})
+
 /** what the round may bind now, and the one this question already runs */
 const bindingOptions = (over: { current?: unknown; items?: readonly unknown[] } = {}) => ({
   items: over.items ?? [
@@ -230,6 +271,10 @@ const open = (
     surfaces?: { collections: Record<string, unknown[]>; slots: Record<string, unknown[]> }
     /** what the formula plugin answers about this round's bindings */
     binding?: unknown
+    /** what the server answers about the candidate's arithmetic */
+    preview?: unknown
+    /** the server cannot say what the arithmetic needs */
+    previewFails?: boolean
   } = {},
 ) =>
   renderScreen({
@@ -263,6 +308,15 @@ const open = (
           had.saved?.push(call.payload)
           return Effect.succeed({ item: { id: ITEM_ID } })
         },
+        previewScoring: (call: { payload: { calculator: { ref: string } } }) =>
+          had.previewFails === true
+            ? Effect.fail(
+                Object.assign(new Error('ASSESSMENT_ITEM_CONFIG_INVALID'), {
+                  _tag: 'ASSESSMENT_ITEM_CONFIG_INVALID',
+                  issues: [{ path: 'calculator.config', reason: 'formula-version-not-found' }],
+                }),
+              )
+            : Effect.succeed(had.preview ?? previewFor(call.payload.calculator.ref)),
       },
       assessmentFormula: {
         listFormulaBindingOptions: () => Effect.succeed(had.binding ?? bindingOptions()),
@@ -468,31 +522,19 @@ describe("what may do a question's arithmetic", () => {
       items: [officerItem()],
       saved,
       question: ITEM_ID,
-      surfaces: {
-        collections: {
-          'assessment/calculator-authoring-options': [
-            ...CALCULATOR_SURFACES.collections['assessment/calculator-authoring-options'],
-            {
-              id: 'test/other-calculator',
-              ref: 'other@1',
-              label: { kind: 'literal', value: '另一种算法' },
-              order: 20,
-            },
-          ],
-        },
-        slots: CALCULATOR_SURFACES.slots,
-      },
+      surfaces: BOTH_CALCULATORS,
     })
 
-    // what the assembly installed is what the chooser knows about; it is
-    // read-only until every calculator on offer has an editor, so this
-    // proves the enumeration and not a selection
+    // what the assembly installed is what the chooser knows about, and
+    // choosing hands the seat to whoever owns the reference
     const chooser = page.getByRole('combobox', { name: '分值来源' })
     await expect.element(chooser).toBeVisible()
-    await expect.element(chooser).toBeDisabled()
-    // the built-in editor holds the seat, because it is what this question
-    // is scored by
     await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
+
+    await chooser.click()
+    await page.getByRole('option', { name: '已发布的公式' }).click()
+    await expect.element(page.getByTestId('formula-version-picker')).toBeVisible()
+    expect(page.getByRole('textbox', { name: '每条通过计分' }).elements()).toHaveLength(0)
   })
 
   it('seats the formula picker for a question a formula scores, and only it', async () => {
@@ -563,17 +605,31 @@ describe("what may do a question's arithmetic", () => {
 
     const sent = saved.at(-1)?.config?.scoringConfig as Record<string, unknown> | undefined
     const before = item.currentRevision.scoringConfig as Record<string, unknown>
-    // exactly the version, and nothing else: the same language, the same
-    // recognitions with the same identities and refinements, the same
-    // bindings, the same folding rule
+    // exactly the version, and nothing else. Touched scoring travels in the
+    // DRAFT language - facts addressed by handle so a new one can be minted
+    // - so the same fact is the same IDENTITY carried across, wearing the
+    // same refinement, feeding the same parameter.
     expect(sent?.['calculator']).toEqual({
       ref: 'formula@1',
       config: { versionId: OTHER_VERSION_ID },
     })
     expect(sent?.['version']).toBe(2)
-    expect(sent?.['recognitions']).toEqual(before['recognitions'])
-    expect(sent?.['bindings']).toEqual(before['bindings'])
     expect(sent?.['aggregator']).toEqual(before['aggregator'])
+    const facts = sent?.['recognitions'] as readonly Record<string, unknown>[]
+    const held = (before['recognitions'] as Record<string, Record<string, unknown>>)[
+      RECOGNITION_ID
+    ]!
+    expect(facts).toHaveLength(1)
+    expect(facts[0]).toEqual({
+      handle: RECOGNITION_ID,
+      id: RECOGNITION_ID,
+      label: held['label'],
+      refinement: held['refinement'],
+      defaultFromFieldId: held['defaultFromFieldId'],
+    })
+    expect(sent?.['bindings']).toEqual({
+      level: { kind: 'recognition', handle: RECOGNITION_ID },
+    })
   })
 
   it('leaves the seat empty for a calculator it does not own', async () => {
@@ -661,5 +717,115 @@ describe('who owns which half of a versioned configuration', () => {
     expect(JSON.stringify(sent?.['calculator'])).toBe(JSON.stringify(was.calculator))
     expect(JSON.stringify(sent?.['recognitions'])).toBe(JSON.stringify(was.recognitions))
     expect(JSON.stringify(sent?.['bindings'])).toBe(JSON.stringify(was.bindings))
+  })
+})
+
+// Binding a calculator's parameters to what a question knows (§9.9-9.11).
+//
+// The contract these rows are built from is the server's own compile, so
+// what is named here is what will be frozen. Which form fields may seed a
+// recognised fact is a question of ASSIGNABILITY - the shared value layer
+// answers it, and a field that merely LOOKS like the right kind is refused
+// when its own bounds admit values the fact would not.
+describe('binding what the arithmetic asks for', () => {
+  const openFormula = (over: Parameters<typeof open>[0] = {}) =>
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [formulaItem()],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+      ...over,
+    })
+
+  it('offers only the fields a determination could lawfully come from', async () => {
+    openFormula()
+    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+
+    // the fact carries a refinement: a graded decimal between 60 and 100.
+    // One field is exactly that; the other is a decimal with no bounds at
+    // all - same kind, wider domain, and therefore not a lawful default
+    await page.getByTestId('recognition-default').click()
+    const options = page.getByRole('option').elements()
+    const assignable = Object.fromEntries(
+      options.map((option) => [
+        option.textContent?.trim(),
+        option.getAttribute('data-field-assignable'),
+      ]),
+    )
+    expect(assignable['claimed-level']).toBe('true')
+    expect(assignable['claimed-any']).toBe('false')
+  })
+
+  it('renames a fact without touching what it admits', async () => {
+    const saved: { config?: { scoringConfig?: Record<string, unknown> } }[] = []
+    const item = formulaItem()
+    openFormula({ items: [item], saved })
+    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+
+    const label = page.getByRole('textbox', { name: '认定名称' })
+    await label.fill('获奖等级')
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    const facts = saved[0]?.config?.scoringConfig?.['recognitions'] as readonly Record<
+      string,
+      unknown
+    >[]
+    const held = (
+      item.currentRevision.scoringConfig as {
+        recognitions: Record<string, { refinement: unknown }>
+      }
+    ).recognitions[RECOGNITION_ID]!
+    expect(facts[0]?.['label']).toBe('获奖等级')
+    // the identity and the narrowing survive a rename, untouched: this pen
+    // has no control for either, and carrying them is the difference
+    // between renaming a fact and quietly widening it
+    expect(facts[0]?.['id']).toBe(RECOGNITION_ID)
+    expect(facts[0]?.['refinement']).toEqual(held.refinement)
+  })
+
+  it('clears the facts a different arithmetic never asked for', async () => {
+    const saved: { config?: { scoringConfig?: Record<string, unknown> } }[] = []
+    openFormula({ saved })
+    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+
+    // a fixed amount asks for nothing; the facts and bindings answered the
+    // formula's contract, and carrying them across would leave a
+    // configuration naming parameters nobody has
+    await page.getByRole('combobox', { name: '分值来源' }).click()
+    await page.getByRole('option', { name: '固定分值' }).click()
+    await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
+    await page.getByRole('textbox', { name: '每条通过计分' }).fill('5')
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    const sent = saved[0]?.config?.scoringConfig as Record<string, unknown>
+    // and it stays the versioned language: the identities are the server's
+    // to mint, and it refuses to revive one
+    expect(sent['version']).toBe(2)
+    expect(sent['calculator']).toEqual({ ref: 'fixed@1', config: { value: '5' } })
+    expect(sent['recognitions']).toEqual([])
+    expect(sent['bindings']).toEqual({})
+  })
+
+  it('will not save an arithmetic whose contract it could not read', async () => {
+    const saved: { config?: unknown }[] = []
+    openFormula({ saved, previewFails: true })
+    await expect.element(page.getByTestId('formula-version-picker')).toBeVisible()
+
+    // rebinding is a real scoring edit; without a contract the bindings
+    // would be composed against whatever answered last, which is a
+    // different question from the one in front of the reader
+    const rows = page.getByTestId('formula-version-option')
+    const offered = rows
+      .elements()
+      .find((row) => row.getAttribute('data-version-id') === OTHER_VERSION_ID)!
+    ;(offered as HTMLButtonElement).click()
+    await page.getByRole('button', { name: '保存' }).click()
+
+    // the press is how a reader asks what is wrong, and the answer is that
+    // nothing was sent
+    await expect.element(page.getByTestId('feedback').first()).toBeVisible()
+    expect(saved).toHaveLength(0)
   })
 })

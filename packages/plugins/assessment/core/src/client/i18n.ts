@@ -1360,6 +1360,42 @@ const i18n = definePluginMessages({
       defaultMessage:
         'This scoring setup was written by a newer version and cannot be edited here. Everything else about the question can still be changed.',
     },
+    itemsBindingSource: {
+      id: 'assessment/items/binding-source',
+      defaultMessage: 'Comes from',
+    },
+    itemsBindingConstant: {
+      id: 'assessment/items/binding-constant',
+      defaultMessage: 'A fixed value',
+    },
+    itemsBindingRecognition: {
+      id: 'assessment/items/binding-recognition',
+      defaultMessage: 'A recognised fact',
+    },
+    itemsBindingValue: {
+      id: 'assessment/items/binding-value',
+      defaultMessage: 'Value',
+    },
+    itemsRecognitionLabel: {
+      id: 'assessment/items/recognition-label',
+      defaultMessage: 'What to call it',
+    },
+    itemsRecognitionDefault: {
+      id: 'assessment/items/recognition-default',
+      defaultMessage: 'Suggested from',
+    },
+    itemsRecognitionNoDefault: {
+      id: 'assessment/items/recognition-no-default',
+      defaultMessage: 'Nothing; ask for it',
+    },
+    itemsContractPending: {
+      id: 'assessment/items/contract-pending',
+      defaultMessage: 'Reading what this arithmetic needs…',
+    },
+    itemsContractUnavailable: {
+      id: 'assessment/items/contract-unavailable',
+      defaultMessage: 'What this arithmetic needs could not be read, so it cannot be saved yet.',
+    },
     itemsCalculator: {
       id: 'assessment/items/calculator',
       defaultMessage: 'Where the score comes from',
