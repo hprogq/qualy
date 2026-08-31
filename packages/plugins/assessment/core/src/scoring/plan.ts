@@ -401,6 +401,53 @@ export const recognitionSourceOf = (input: {
         ? 'automatic'
         : 'review'
 
+/**
+ * What one calculator freezes for one configuration, or why it cannot.
+ *
+ * The seam a save and a preview share, so "the value the codec PRODUCED is
+ * the value that runs" stays one rule rather than two spellings of it. A
+ * codec is allowed to transform - fill a default, drop a stray key,
+ * normalize a spelling - so handing the calculator the raw value after
+ * checking the decoded one would execute a configuration nobody proved.
+ * The built-in schemas happen to be identity codecs today; the contract
+ * must not depend on that staying true.
+ */
+export const contractOf = (inputs: {
+  readonly calculator: CalculatorDefinition
+  readonly compile: CompileInputs['compile']
+  readonly host: CalculatorCompileContext
+  readonly config: unknown
+}): Effect.Effect<
+  { readonly contract: CompiledCalculator } | { readonly issues: readonly PlanIssue[] }
+> =>
+  Effect.gen(function* () {
+    const config = yield* decode(
+      inputs.calculator.configSchema as Schema.Codec<unknown>,
+      inputs.config,
+    )
+    if (config._tag === 'None') {
+      return {
+        issues: [{ path: 'scoringConfig.calculator.config', reason: 'calculator-config-invalid' }],
+      }
+    }
+    const compiled = yield* inputs
+      .compile(inputs.calculator.ref, config.value, inputs.host)
+      .pipe(Effect.result)
+    if (compiled._tag === 'Failure') {
+      // a calculator with a more precise refusal names it; the generic
+      // contract-unavailable stays the honest fallback for those without
+      return {
+        issues: [
+          {
+            path: 'scoringConfig.calculator.config',
+            reason: compiled.failure.code ?? 'calculator-contract-unavailable',
+          },
+        ],
+      }
+    }
+    return { contract: compiled.success }
+  })
+
 export interface CompileInputs {
   readonly definitions: {
     readonly calculators: ReadonlyMap<string, CalculatorDefinition>
@@ -600,25 +647,6 @@ export const compileScoringPlan = (
     // that whoever called it already did. Saving a question does validate
     // them first; the boot sweep calls straight in here, and "both paths
     // rest on the same proof" has to be true of this function alone.
-    //
-    // And what the decoder PRODUCES is what runs. A codec is allowed to
-    // transform - fill a default, drop a stray key, normalize a spelling -
-    // so handing the driver the raw value after checking the decoded one
-    // would execute a configuration nobody proved. The built-in schemas
-    // happen to be identity codecs today; the contract must not depend on
-    // that staying true.
-    const calculatorConfig = yield* decode(
-      calculator.configSchema as Schema.Codec<unknown>,
-      authoring.calculator.config,
-    )
-    if (calculatorConfig._tag === 'None') {
-      return {
-        issues: [
-          ...issues,
-          { path: 'scoringConfig.calculator.config', reason: 'calculator-config-invalid' },
-        ],
-      }
-    }
     let aggregatorConfig: unknown = authoring.aggregator.config
     if (aggregator !== undefined) {
       const decoded = yield* decode(
@@ -635,29 +663,20 @@ export const compileScoringPlan = (
       }
     }
 
-    const compiled = yield* inputs
-      .compile(authoring.calculator.ref, calculatorConfig.value, inputs.host)
-      .pipe(Effect.result)
-    if (compiled._tag === 'Failure') {
-      // a calculator with a more precise refusal names it; the generic
-      // contract-unavailable stays the honest fallback for those without
-      return {
-        issues: [
-          ...issues,
-          {
-            path: 'scoringConfig.calculator.config',
-            reason: compiled.failure.code ?? 'calculator-contract-unavailable',
-          },
-        ],
-      }
-    }
+    const compiled = yield* contractOf({
+      calculator,
+      compile: inputs.compile,
+      host: inputs.host,
+      config: authoring.calculator.config,
+    })
+    if ('issues' in compiled) return { issues: [...issues, ...compiled.issues] }
     const {
       inputSchema,
       outputSchema,
       contractHash,
       config: executionConfig,
       runtimeRef,
-    } = compiled.success
+    } = compiled.contract
     // a runtime identity has no home in the V1 language: dropping it would
     // freeze a plan that cannot cite the program it is bound to, so the
     // calculator's demand for the versioned language is a refusal, never a

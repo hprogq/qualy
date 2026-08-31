@@ -35,6 +35,7 @@ import {
   scoringRegistrations,
   scoringRuntimeLayer,
   storageForTest,
+  shapeOf,
   storedRuntimeRefOf,
   testDefinitions,
   testRuntime,
@@ -1704,5 +1705,273 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(tagOf(result.foreign)).toBe('ASSESSMENT_BATCH_NOT_FOUND')
     const issues = errorOf<{ issues?: readonly { reason: string }[] }>(result.editVoided)
     expect((issues?.issues ?? []).map((issue) => issue.reason)).toContain('item-voided')
+  })
+})
+
+// What a calculator needs, answered before anything is saved (§9.8).
+//
+// A preview is a real compile against the batch under its lock, which is
+// what makes it worth asking: the same refusal a save would give, at the
+// moment somebody can still do something about it. What it must never do is
+// let the caller decide what history this question has - the previous
+// runtime identity comes from the item's own frozen plan, and an item the
+// caller names that is not in this batch is simply not one.
+describe.runIf(postgresAvailable)('previewing a calculator contract', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('assessment-scoring-preview')
+  })
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  it('answers the contract and the form fields a binding could read', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('preview-contract')
+          const assessment = yield* Assessment
+          const { batch } = yield* draftBatch(f, 'Round')
+          const constant = yield* assessment.previewScoring(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              formConfig: { required: ['certificate'] },
+              calculator: { ref: 'fixed@1', config: { value: '3.00' } },
+            },
+            f.principal,
+          )
+          const typed = yield* assessment.previewScoring(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              formConfig: { required: ['certificate'] },
+              calculator: { ref: 'two-fact-test@1', config: {} },
+            },
+            f.principal,
+          )
+          return { constant, typed }
+        }),
+      ),
+    )
+
+    // an amount nobody has to be asked for: a contract with no parameters
+    expect(result.constant.calculator.ref).toBe('fixed@1')
+    expect(Object.keys((result.constant.inputSchema as { properties: object }).properties)).toEqual(
+      [],
+    )
+    // and one that does ask, named parameter by parameter
+    expect(
+      Object.keys((result.typed.inputSchema as { properties: object }).properties).sort(),
+    ).toEqual(['level', 'ordinal'])
+    expect(result.typed.calculator.contractHash).toBe('test:two-fact')
+    // what the FORM offers a binding, from this driver reading this config
+    expect(result.typed.bindableFields.map((field) => field.fieldId)).toContain('claimed-level')
+  })
+
+  it('compiles the value its own codec produced, never the one submitted', async () => {
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('preview-codec')
+          const assessment = yield* Assessment
+          const { batch } = yield* draftBatch(f, 'Round')
+          return yield* assessment.previewScoring(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              formConfig: {},
+              // a key this calculator's schema does not admit, riding along
+              calculator: { ref: 'shaped-test@1', config: { program: 'p', junk: 'x' } },
+            },
+            f.principal,
+          )
+        }),
+      ),
+    )
+
+    // the calculator saw exactly what its schema admits: a decoder is
+    // allowed to transform, so whatever it produced is what must run
+    expect(result.calculator.contractHash).toBe(shapeOf({ program: 'p' }))
+  })
+
+  it('takes the previous binding from the question, not from whoever asked', async () => {
+    const withdrawn = { program: 'prog-preview', onlyAsContinuation: true }
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('preview-continuation')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const other = yield* draftBatch(f, 'Other round')
+          // bound while the program was still offered
+          const item = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: '续绑',
+              scoreGroupId: groupId,
+              maxEntries: 1,
+              config: studentConfig({
+                scoringConfig: {
+                  version: 2,
+                  calculator: { ref: 'stored-test@1', config: { program: 'prog-preview' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                  recognitions: {},
+                  bindings: {},
+                },
+              }),
+            },
+            f.principal,
+          )
+          // the SAME program, bound in another round: only "not this
+          // question" can stop it being read as this question's history
+          const elsewhere = yield* assessment.createItem(
+            f.tenant,
+            other.batch.id,
+            {
+              itemType: 'evidence',
+              title: '别处',
+              scoreGroupId: other.groupId,
+              maxEntries: 1,
+              config: studentConfig({
+                scoringConfig: {
+                  version: 2,
+                  calculator: { ref: 'stored-test@1', config: { program: 'prog-preview' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                  recognitions: {},
+                  bindings: {},
+                },
+              }),
+            },
+            f.principal,
+          )
+          const preview = (itemId?: string) =>
+            Effect.exit(
+              assessment.previewScoring(
+                f.tenant,
+                batch.id,
+                {
+                  itemType: 'evidence',
+                  formConfig: {},
+                  calculator: { ref: 'stored-test@1', config: withdrawn },
+                  ...(itemId === undefined ? {} : { itemId }),
+                },
+                f.principal,
+              ),
+            )
+          return {
+            continued: yield* preview(item.id),
+            fresh: yield* preview(),
+            foreign: yield* preview(elsewhere.id),
+          }
+        }),
+      ),
+    )
+
+    // the question's own frozen identity carries it forward
+    expect(Exit.isSuccess(result.continued)).toBe(true)
+    // and without one, the same configuration is a new binding, refused by
+    // the calculator's own present-day answer - the code it named, not a
+    // generic unavailability
+    const reasons = (exit: Exit.Exit<unknown, unknown>) =>
+      (errorOf<{ issues?: readonly { reason: string }[] }>(exit)?.issues ?? []).map(
+        (issue) => issue.reason,
+      )
+    expect(reasons(result.fresh)).toEqual(['test-program-not-bindable'])
+    // a question of another round is not this question's history, and
+    // naming one tells the caller nothing about whether it exists
+    expect(reasons(result.foreign)).toEqual(['test-program-not-bindable'])
+  })
+
+  it('refuses arithmetic nobody installed rather than failing outright', async () => {
+    const result = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('preview-unknown')
+        const assessment = yield* Assessment
+        const { batch } = yield* draftBatch(f, 'Round')
+        return yield* assessment.previewScoring(
+          f.tenant,
+          batch.id,
+          {
+            itemType: 'evidence',
+            formConfig: {},
+            calculator: { ref: 'ghost@1', config: {} },
+          },
+          f.principal,
+        )
+      }),
+    )
+
+    // an answer, not a defect: the screen offers whatever the manifest
+    // offers, and a stale one must not take the request down
+    expect(tagOf(result)).toBe('ASSESSMENT_ITEM_CONFIG_INVALID')
+    expect(
+      (errorOf<{ issues?: readonly { reason: string }[] }>(result)?.issues ?? []).map(
+        (issue) => issue.reason,
+      ),
+    ).toEqual(['calculator-not-installed'])
+  })
+
+  it('refuses a form its own driver cannot read', async () => {
+    const result = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('preview-form')
+        const assessment = yield* Assessment
+        const { batch } = yield* draftBatch(f, 'Round')
+        return yield* assessment.previewScoring(
+          f.tenant,
+          batch.id,
+          {
+            itemType: 'evidence',
+            // `required` is a list of names; a number is not a form
+            formConfig: { required: 7 },
+            calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+          },
+          f.principal,
+        )
+      }),
+    )
+
+    expect(
+      (errorOf<{ issues?: readonly { path: string }[] }>(result)?.issues ?? []).map(
+        (issue) => issue.path,
+      ),
+    ).toEqual(['formConfig'])
+  })
+
+  it('answers nobody who could not manage the round', async () => {
+    const result = await run(
+      db.url,
+      Effect.gen(function* () {
+        const f = yield* seed('preview-authz')
+        const assessment = yield* Assessment
+        const { batch } = yield* draftBatch(f, 'Round')
+        return yield* assessment.previewScoring(
+          f.tenant,
+          batch.id,
+          {
+            itemType: 'evidence',
+            formConfig: {},
+            calculator: { ref: 'fixed@1', config: { value: '1.00' } },
+          },
+          // the student on the roster, who administers nothing
+          { tenantId: f.tenant, userId: f.student, sessionId: 's' },
+        )
+      }),
+    )
+
+    expect(tagOf(result)).toBe('ACCESS_DENIED')
   })
 })

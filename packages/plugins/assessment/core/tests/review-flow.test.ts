@@ -1827,12 +1827,7 @@ describe.runIf(postgresAvailable)('the single review stage', () => {
             { decision: 'approve', comment: '这次齐了' },
             reviewer,
           )
-          const appealed = yield* assessment.appealEntry(
-            f.t,
-            entry.id,
-            { reason: '不服' },
-            s1,
-          )
+          const appealed = yield* assessment.appealEntry(f.t, entry.id, { reason: '不服' }, s1)
           return {
             first,
             second,

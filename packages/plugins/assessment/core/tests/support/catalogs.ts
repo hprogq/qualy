@@ -8,6 +8,7 @@ import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema
 import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import type { Contributed, ProvideExtension } from '@qualy/plugin-kit'
 import {
+  CalculatorContractError,
   CalculatorRuntimeError,
   ItemPayloadInvalid,
   ItemTypeCatalog,
@@ -213,11 +214,28 @@ export const storedTest: CalculatorRegistration = {
   configSchema: Schema.Struct({
     program: Schema.String,
     brokenSha: Schema.optional(Schema.Boolean),
+    // the stand-in for a withdrawn formula version: still lawful to keep
+    // running, no longer offered to anybody starting fresh. Only a compile
+    // that carries the item's own frozen identity may have it
+    onlyAsContinuation: Schema.optional(Schema.Boolean),
   }),
   bind: Effect.succeed({
     ref: 'stored-test@1',
     compile: (config, context) => {
-      const spec = config as { program: string; brokenSha?: boolean }
+      const spec = config as {
+        program: string
+        brokenSha?: boolean
+        onlyAsContinuation?: boolean
+      }
+      if (spec.onlyAsContinuation === true && context.previousRuntimeRef?.id !== spec.program) {
+        return Effect.fail(
+          new CalculatorContractError(
+            'refusal',
+            'this program is no longer offered for a new binding',
+            'test-program-not-bindable',
+          ),
+        )
+      }
       return Effect.succeed({
         inputSchema: normalizeInputSchema({
           type: 'object',
@@ -313,12 +331,51 @@ export const storageForTest = (backend: MemoryBackend = memoryBackend()) =>
   )
 
 /** every calculator registration a suite installs, builtin plus the tests' */
+/**
+ * A calculator whose contract identity is the SHAPE of the config it was
+ * handed, so a suite can see WHICH value reached it.
+ *
+ * Every other calculator here answers the same contract whatever stray keys
+ * ride along, which is exactly what makes "the value the codec produced is
+ * the value that runs" impossible to observe. This one cannot: a key its
+ * own schema does not admit moves the hash if it ever gets through.
+ */
+export const shapedTest: CalculatorRegistration = {
+  kind: 'calculator',
+  ref: 'shaped-test@1',
+  configSchema: Schema.Struct({ program: Schema.String }),
+  bind: Effect.succeed({
+    ref: 'shaped-test@1',
+    compile: (config) =>
+      Effect.succeed({
+        config: config as Record<string, unknown>,
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        }),
+        outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
+        contractHash: shapeOf(config),
+      }),
+    verify: () => Effect.void,
+    prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('1.00') }),
+  }),
+}
+
+/** the own keys of a config, as a contract identity a suite can predict */
+export const shapeOf = (config: unknown): string =>
+  `shape:${Object.keys(config as object)
+    .sort()
+    .join(',')}`
+
 export const scoringRegistrations: readonly CalculatorRegistration[] = [
   ...builtinCalculators,
   gradedTest,
   twoFactTest,
   narrowFactTest,
   storedTest,
+  shapedTest,
 ]
 
 const contributed = <T>(values: readonly T[]): readonly Contributed<T>[] =>

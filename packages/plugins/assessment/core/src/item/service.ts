@@ -1,4 +1,4 @@
-import { Effect, Result } from 'effect'
+import { Effect, Result, Schema } from 'effect'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
@@ -21,6 +21,7 @@ import { scaledAmount } from '../scoring/builtins.ts'
 import {
   carriesInto,
   compileScoringPlan,
+  contractOf,
   readScoringPlan,
   recognitionSourceOf,
   type PlanIssue,
@@ -264,6 +265,43 @@ export interface ItemMethods {
     input: ReplaceScoreGroupsInput,
     as: Principal,
   ) => Effect.Effect<{ groups: readonly ScoreGroupView[]; version: number }, ReplaceGroupsError>
+  readonly previewScoring: (
+    tenantId: string,
+    batchId: string,
+    input: ScoringPreviewInput,
+    as: Principal,
+  ) => Effect.Effect<
+    ScoringPreviewView,
+    BatchNotFound | AccessDenied | ItemConfigInvalid,
+    ScoringRuntimeCatalog
+  >
+}
+
+/**
+ * A candidate configuration, asked what its calculator would need.
+ *
+ * `itemId` is the question being edited, when there is one. It is not a
+ * claim about history - the server reads that question's own frozen plan -
+ * and one that is not in this batch simply is not this question.
+ */
+export interface ScoringPreviewInput {
+  readonly itemType: string
+  readonly formConfig: unknown
+  readonly calculator: { readonly ref: string; readonly config: unknown }
+  readonly itemId?: string
+}
+
+/** the contract a screen binds parameters against, and what it may bind them to */
+export interface ScoringPreviewView {
+  readonly calculator: { readonly ref: string; readonly contractHash: string }
+  readonly inputSchema: unknown
+  readonly outputSchema: unknown
+  readonly bindableFields: readonly {
+    readonly fieldId: string
+    readonly payloadKey: string
+    readonly schema: unknown
+    readonly always: boolean
+  }[]
 }
 
 /** what the item methods borrow from the service that owns authorization */
@@ -1717,6 +1755,120 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     },
   )
 
+  /**
+   * What this candidate configuration's calculator would need (§9.8).
+   *
+   * A real compile, under the batch lock, through the same seam a save
+   * uses - so the answer a screen shows is the answer the save will give,
+   * and not a second, kinder judgment that lets somebody bind what cannot
+   * be bound. Short on purpose: nothing is written, and the lock is held
+   * only for as long as the compile takes.
+   *
+   * The previous runtime identity is derived here, from the named
+   * question's own frozen plan and only when the SAME calculator is being
+   * recompiled. A caller who names another round's question is previewing
+   * a new binding, which is exactly what they would be saving.
+   */
+  const previewScoring: ItemMethods['previewScoring'] = Effect.fn('Assessment.previewScoring')(
+    function* (tenantId, batchId, input, as) {
+      const runtime = yield* ScoringRuntimeCatalog
+      return yield* withDb(
+        transaction(
+          Effect.gen(function* () {
+            const locked = yield* lockBatch(tenantId, batchId)
+            if (!locked) return yield* new BatchNotFound()
+            yield* deps.requireRosterReach(as, tenantId, batchId)
+            const batch = yield* oneBatch(tenantId, batchId)
+            const materialRange = deps.parseRange(String(batch!.materialRange))
+
+            const driver = catalogs.itemTypes.get(input.itemType)
+            if (driver === undefined) {
+              return yield* new ItemConfigInvalid({
+                issues: [{ path: 'itemType', reason: 'item-type-not-installed' }],
+              })
+            }
+            // the driver's own codec decides what a form IS, and what it
+            // produces is what the bindable fields are read from
+            const formConfig = yield* Effect.match(
+              Schema.decodeUnknownEffect(driver.configSchema as Schema.Codec<unknown>)(
+                input.formConfig,
+              ),
+              { onSuccess: (value: unknown) => ({ value }), onFailure: () => null },
+            )
+            if (formConfig === null) {
+              return yield* new ItemConfigInvalid({
+                issues: [{ path: 'formConfig', reason: 'form-config-invalid' }],
+              })
+            }
+            const formIssues =
+              driver.configIssues?.(formConfig.value, { materialRange })?.map((issue) => ({
+                path: issue.path,
+                reason: issue.reason,
+              })) ?? []
+            if (formIssues.length > 0) return yield* new ItemConfigInvalid({ issues: formIssues })
+
+            const calculator = catalogs.calculators.get(input.calculator.ref)
+            if (calculator === undefined) {
+              return yield* new ItemConfigInvalid({
+                issues: [{ path: 'calculator.ref', reason: 'calculator-not-installed' }],
+              })
+            }
+            // history comes from the question, never from the payload
+            const previousRuntimeRef = yield* Effect.gen(function* () {
+              if (input.itemId === undefined) return undefined
+              const item = yield* itemOf(tenantId, input.itemId)
+              if (item === null || item.batchId !== batchId) return undefined
+              if (item.currentRevisionId === null) return undefined
+              const revision = yield* revisionOf(tenantId, item.currentRevisionId)
+              if (revision === null) return undefined
+              const plan = yield* readScoringPlan(revision).pipe(Effect.orDie)
+              return plan.version === 2 && plan.calculator.ref === input.calculator.ref
+                ? plan.calculator.runtimeRef
+                : undefined
+            })
+
+            const compiled = yield* contractOf({
+              calculator,
+              compile: runtime.compile,
+              host: {
+                tenantId,
+                batchId,
+                ...(previousRuntimeRef === undefined ? {} : { previousRuntimeRef }),
+              },
+              config: input.calculator.config,
+            })
+            if ('issues' in compiled) {
+              // the compiler speaks in scoringConfig paths; a preview is
+              // asked about a candidate, so the paths are the payload's
+              return yield* new ItemConfigInvalid({
+                issues: compiled.issues.map((issue) => ({
+                  path: issue.path.replace(/^scoringConfig\./, ''),
+                  reason: issue.reason,
+                })),
+              })
+            }
+            return {
+              calculator: {
+                ref: input.calculator.ref,
+                contractHash: compiled.contract.contractHash,
+              },
+              inputSchema: compiled.contract.inputSchema,
+              outputSchema: compiled.contract.outputSchema,
+              bindableFields: (
+                driver.bindableFields?.(formConfig.value, { materialRange }) ?? []
+              ).map((field) => ({
+                fieldId: field.fieldId,
+                payloadKey: field.payloadKey,
+                schema: field.schema,
+                always: field.always,
+              })),
+            }
+          }),
+        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+      )
+    },
+  )
+
   return {
     listItems,
     createItem,
@@ -1727,5 +1879,6 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     setItemStatus,
     listScoreGroups,
     replaceScoreGroups,
+    previewScoring,
   }
 }

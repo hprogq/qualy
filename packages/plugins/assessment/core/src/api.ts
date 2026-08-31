@@ -905,6 +905,36 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     }).middleware(Authenticated),
   )
   .add(
+    // what a candidate's arithmetic would need, before anything is saved:
+    // the real compile a save would run, so a screen never offers a binding
+    // the save is about to refuse
+    HttpApiEndpoint.post('previewScoring', '/assessment/batches/:batchId/scoring-preview', {
+      params: Schema.Struct({ batchId: id }),
+      payload: Schema.Struct({
+        itemType: Schema.String,
+        formConfig: Schema.Unknown,
+        calculator: Schema.Struct({ ref: Schema.String, config: Schema.Unknown }),
+        /** the question being edited, when there is one: the server reads
+         *  ITS frozen plan for the binding being continued */
+        itemId: Schema.optional(id),
+      }),
+      success: Schema.Struct({
+        calculator: Schema.Struct({ ref: Schema.String, contractHash: Schema.String }),
+        inputSchema: Schema.Unknown,
+        outputSchema: Schema.Unknown,
+        bindableFields: Schema.Array(
+          Schema.Struct({
+            fieldId: Schema.String,
+            payloadKey: Schema.String,
+            schema: Schema.Unknown,
+            always: Schema.Boolean,
+          }),
+        ),
+      }),
+      error: [BatchNotFound, AccessDenied, ItemConfigInvalid],
+    }).middleware(Authenticated),
+  )
+  .add(
     // what a question's configuration may point at, for whoever runs the round
     HttpApiEndpoint.get('itemOptions', '/assessment/batches/:batchId/item-options', {
       params: Schema.Struct({ batchId: id }),
