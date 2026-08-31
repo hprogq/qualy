@@ -70,14 +70,15 @@ class MockSocket {
   }
 }
 
-const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCodeEditor>[0]>) => ({
-  functionId: 'f-1',
-  value,
-  onChange: () => {},
-  readOnly: false,
-  ariaLabel: 'Formula source',
-  ...extra,
-}) as Parameters<typeof FormulaCodeEditor>[0]
+const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCodeEditor>[0]>) =>
+  ({
+    functionId: 'f-1',
+    value,
+    onChange: () => {},
+    readOnly: false,
+    ariaLabel: 'Formula source',
+    ...extra,
+  }) as Parameters<typeof FormulaCodeEditor>[0]
 
 const mount = (element: React.ReactElement) =>
   render(
@@ -102,8 +103,8 @@ describe('the formula code editor', () => {
     try {
       await vi.waitFor(
         () => {
-        const status = screen.container.querySelector('[data-testid="formula-lsp-status"]')
-        if (status?.getAttribute('data-state') !== 'ready') throw new Error('not ready')
+          const status = screen.container.querySelector('[data-testid="formula-lsp-status"]')
+          if (status?.getAttribute('data-state') !== 'ready') throw new Error('not ready')
         },
         { timeout: 5_000 },
       )
@@ -111,8 +112,10 @@ describe('the formula code editor', () => {
       // the keyword with a token class, which plain text never gets
       await vi.waitFor(
         () => {
-        const token = screen.container.querySelector('[data-testid="formula-code-editor"] .mtk6, [data-testid="formula-code-editor"] .mtk8')
-        if (token === null) throw new Error('no tokenized spans yet')
+          const token = screen.container.querySelector(
+            '[data-testid="formula-code-editor"] .mtk6, [data-testid="formula-code-editor"] .mtk8',
+          )
+          if (token === null) throw new Error('no tokenized spans yet')
         },
         { timeout: 5_000 },
       )
@@ -133,9 +136,7 @@ describe('the formula code editor', () => {
     const onChange = (value: string) => {
       latest = value
     }
-    const screen = await mount(
-      <FormulaCodeEditor {...editorProps('first\n', { onChange })} />,
-    )
+    const screen = await mount(<FormulaCodeEditor {...editorProps('first\n', { onChange })} />)
     try {
       // the provider settles asynchronously; wait for the editor to exist
       await vi.waitFor(
@@ -175,7 +176,7 @@ describe('the formula code editor', () => {
       )
       await vi.waitFor(
         () => {
-        if (model.getValue() !== 'the server draft\n') throw new Error('not reseeded yet')
+          if (model.getValue() !== 'the server draft\n') throw new Error('not reseeded yet')
         },
         { timeout: 5_000 },
       )
@@ -186,17 +187,17 @@ describe('the formula code editor', () => {
 
   it('honors readOnly while the rest keeps working', async () => {
     vi.stubGlobal('WebSocket', MockSocket)
-    const screen = await mount(<FormulaCodeEditor {...editorProps('archived\n', { readOnly: true })} />)
+    const screen = await mount(
+      <FormulaCodeEditor {...editorProps('archived\n', { readOnly: true })} />,
+    )
     try {
       await vi.waitFor(
         () => {
-        if (monaco.editor.getEditors().length === 0) throw new Error('no editor yet')
+          if (monaco.editor.getEditors().length === 0) throw new Error('no editor yet')
         },
         { timeout: 5_000 },
       )
-      const editor = monaco.editor
-        .getEditors()
-        .find((one) => one.getModel() === formulaModel())!
+      const editor = monaco.editor.getEditors().find((one) => one.getModel() === formulaModel())!
       expect(editor.getOption(monaco.editor.EditorOption.readOnly)).toBe(true)
     } finally {
       screen.unmount()
@@ -224,7 +225,7 @@ describe('the formula code editor', () => {
       for (const socket of MockSocket.instances) socket.close(1006)
       await vi.waitFor(
         () => {
-        if (status() !== 'unavailable') throw new Error(`state is ${status()}`)
+          if (status() !== 'unavailable') throw new Error(`state is ${status()}`)
         },
         { timeout: 5_000 },
       )

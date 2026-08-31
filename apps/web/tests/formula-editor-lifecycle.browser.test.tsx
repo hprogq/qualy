@@ -70,15 +70,16 @@ class MockSocket {
   }
 }
 
-const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCodeEditor>[0]>) => ({
-  functionId: 'f-1',
-  value,
-  onChange: () => {},
-  seed: 0,
-  readOnly: false,
-  ariaLabel: 'Formula source',
-  ...extra,
-}) as Parameters<typeof FormulaCodeEditor>[0]
+const editorProps = (value: string, extra?: Partial<Parameters<typeof FormulaCodeEditor>[0]>) =>
+  ({
+    functionId: 'f-1',
+    value,
+    onChange: () => {},
+    seed: 0,
+    readOnly: false,
+    ariaLabel: 'Formula source',
+    ...extra,
+  }) as Parameters<typeof FormulaCodeEditor>[0]
 
 const mount = (element: React.ReactElement) =>
   render(
@@ -102,7 +103,7 @@ describe('the formula editor lifecycle', () => {
     const first = await mount(<FormulaCodeEditor {...editorProps('one\n')} />)
     await vi.waitFor(
       () => {
-      if (MockSocket.instances.length === 0) throw new Error('no socket yet')
+        if (MockSocket.instances.length === 0) throw new Error('no socket yet')
       },
       { timeout: 5_000 },
     )
@@ -120,7 +121,7 @@ describe('the formula editor lifecycle', () => {
     try {
       await vi.waitFor(
         () => {
-        if (formulaModel() === null) throw new Error('no model yet')
+          if (formulaModel() === null) throw new Error('no model yet')
         },
         { timeout: 5_000 },
       )
@@ -132,5 +133,4 @@ describe('the formula editor lifecycle', () => {
     expect(monaco.editor.getEditors().length).toBeLessThanOrEqual(editorsAfterFirst)
     expect(formulaModel()).toBeNull()
   })
-
 })

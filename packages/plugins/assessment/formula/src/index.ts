@@ -5,6 +5,7 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Scoring } from '@qualy/plugin-assessment/plugin'
+import { calculatorAuthoringOptions, calculatorEditorSlot } from '@qualy/plugin-assessment/surfaces'
 import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import { permissions } from './permissions.ts'
@@ -81,6 +82,33 @@ const plugin = Plugin.define(
     layout: APP_SHELL,
     title: message('assessment-formula/list/title', 'Scoring formulas'),
     visibility: permissionOf('assessment.formula.manage'),
+  }),
+  // this plugin's arithmetic, offered in the question editor's own chooser
+  // and editing its own configuration in the seat beside it. The component
+  // stays internal: the registry builds its import from the reference here,
+  // so a package export would only widen what neighbours can reach
+  Ui.surfaces({
+    collections: [
+      {
+        key: calculatorAuthoringOptions.key,
+        id: 'assessment-formula/calculator',
+        value: {
+          ref: 'formula@1',
+          label: message('assessment-formula/binding/calculator', 'A published formula'),
+          order: 20,
+        },
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+    ],
+    slots: [
+      {
+        key: calculatorEditorSlot.key,
+        id: 'assessment-formula/calculator-editor',
+        component: Ui.react('./client/CalculatorEditor.tsx'),
+        visibility: permissionOf('assessment.batch.manage'),
+        order: 20,
+      },
+    ],
   }),
   Ui.i18n('./client/i18n.ts'),
 )

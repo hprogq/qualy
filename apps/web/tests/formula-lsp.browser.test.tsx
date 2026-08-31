@@ -135,7 +135,7 @@ const wire = async (
   socket.serverOpen()
   await vi.waitFor(
     () => {
-    if (connection.state !== 'ready') throw new Error('not ready yet')
+      if (connection.state !== 'ready') throw new Error('not ready yet')
     },
     { timeout: 5_000 },
   )
@@ -200,7 +200,11 @@ describe('coordinate and shape conversions', () => {
       expect(mapped.sortText).toBe('11')
       expect(mapped.commitCharacters).toEqual(['('])
       expect(mapped.tags).toEqual([monaco.languages.CompletionItemTag.Deprecated])
-      const documentation = mapped.documentation as { value: string; isTrusted?: boolean; supportHtml?: boolean }
+      const documentation = mapped.documentation as {
+        value: string
+        isTrusted?: boolean
+        supportHtml?: boolean
+      }
       expect(documentation.isTrusted).toBe(false)
       expect(documentation.supportHtml).toBe(false)
 
@@ -441,7 +445,7 @@ describe('the document against a scripted wire', () => {
       next.serverOpen()
       await vi.waitFor(
         () => {
-        if (wired.connection.state !== 'ready') throw new Error('not ready yet')
+          if (wired.connection.state !== 'ready') throw new Error('not ready yet')
         },
         { timeout: 5_000 },
       )

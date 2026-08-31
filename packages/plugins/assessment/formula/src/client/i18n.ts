@@ -455,6 +455,26 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/editor/load-failed',
       defaultMessage: 'The formula could not be loaded.',
     },
+    calculatorOption: {
+      id: 'assessment-formula/binding/calculator',
+      defaultMessage: 'A published formula',
+    },
+    bindingTitle: {
+      id: 'assessment-formula/binding/title',
+      defaultMessage: 'Formula',
+    },
+    bindingParameters: {
+      id: 'assessment-formula/binding/parameters',
+      defaultMessage: 'Takes {names}',
+    },
+    bindingKeptOnly: {
+      id: 'assessment-formula/binding/kept-only',
+      defaultMessage: 'Kept, not offered',
+    },
+    bindingMore: {
+      id: 'assessment-formula/binding/more',
+      defaultMessage: 'Show more',
+    },
   },
   errors: defineErrorTranslations<ErrorsByCode<typeof formulaErrors>>()({
     ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND: {

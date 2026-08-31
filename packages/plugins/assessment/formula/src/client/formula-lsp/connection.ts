@@ -90,7 +90,10 @@ export const openLspConnection = (options: LspConnectionOptions): LspConnection 
       socket.onclose = null
       socket.onerror = null
       try {
-        if (socket.readyState === WebSocketImpl.OPEN || socket.readyState === WebSocketImpl.CONNECTING)
+        if (
+          socket.readyState === WebSocketImpl.OPEN ||
+          socket.readyState === WebSocketImpl.CONNECTING
+        )
           socket.close()
       } catch {
         // an already-dead socket closes to no effect
@@ -141,7 +144,13 @@ export const openLspConnection = (options: LspConnectionOptions): LspConnection 
         scheduleReconnect()
         return
       }
-      const frame = message as { id?: unknown; method?: unknown; result?: unknown; error?: unknown; params?: unknown }
+      const frame = message as {
+        id?: unknown
+        method?: unknown
+        result?: unknown
+        error?: unknown
+        params?: unknown
+      }
       if (typeof frame.id === 'number' && frame.method === undefined) {
         const waiter = pending.get(frame.id)
         // an unknown id is a response we stopped waiting for; ignored
@@ -150,7 +159,9 @@ export const openLspConnection = (options: LspConnectionOptions): LspConnection 
         clearTimeout(waiter.timer)
         if (frame.error !== undefined) {
           const detail = (frame.error as { message?: unknown }).message
-          waiter.reject(new Error(typeof detail === 'string' ? detail : 'the language request failed'))
+          waiter.reject(
+            new Error(typeof detail === 'string' ? detail : 'the language request failed'),
+          )
         } else {
           waiter.resolve(frame.result)
         }

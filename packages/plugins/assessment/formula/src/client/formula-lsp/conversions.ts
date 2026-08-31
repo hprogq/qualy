@@ -31,7 +31,8 @@ export const toMonacoRange = (range: LspRange): monaco.IRange => ({
 
 const documentationText = (
   value: string | { readonly value: string } | undefined,
-): string | undefined => (value === undefined ? undefined : typeof value === 'string' ? value : value.value)
+): string | undefined =>
+  value === undefined ? undefined : typeof value === 'string' ? value : value.value
 
 /** markdown from the language server renders, but never executes: no
  * command links, no html - the server is trusted, the capability is not
@@ -131,7 +132,10 @@ export const toMonacoCompletion = (
   return {
     label: item.label,
     kind: completionKindOf(monacoApi, item.kind),
-    range: item.textEdit === undefined ? fallbackRange(model, position) : toMonacoRange(item.textEdit.range),
+    range:
+      item.textEdit === undefined
+        ? fallbackRange(model, position)
+        : toMonacoRange(item.textEdit.range),
     insertText,
     ...(item.insertTextFormat === 2
       ? { insertTextRules: monacoApi.languages.CompletionItemInsertTextRule.InsertAsSnippet }
@@ -160,9 +164,7 @@ export const toMonacoHover = (hover: LspHover): monaco.languages.Hover => {
   }
 }
 
-export const toMonacoSignatureHelp = (
-  help: LspSignatureHelp,
-): monaco.languages.SignatureHelp => ({
+export const toMonacoSignatureHelp = (help: LspSignatureHelp): monaco.languages.SignatureHelp => ({
   signatures: help.signatures.map((signature) => ({
     label: signature.label,
     ...(documentationText(signature.documentation) === undefined
@@ -212,7 +214,5 @@ export const toMonacoMarker = (
   }
 }
 
-export const toMonacoTextEdits = (
-  edits: readonly LspTextEdit[],
-): monaco.languages.TextEdit[] =>
+export const toMonacoTextEdits = (edits: readonly LspTextEdit[]): monaco.languages.TextEdit[] =>
   edits.map((edit) => ({ range: toMonacoRange(edit.range), text: edit.newText }))

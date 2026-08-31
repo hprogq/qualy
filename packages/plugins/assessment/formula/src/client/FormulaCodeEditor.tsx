@@ -24,7 +24,11 @@ import { HttpApiClient } from 'effect/unstable/httpapi'
 import { useI18n } from '@qualy/web-i18n'
 import { formulaApi } from './api.ts'
 import { monaco } from './monaco-setup.ts'
-import { openLspConnection, type ConnectionState, type LspConnection } from './formula-lsp/connection.ts'
+import {
+  openLspConnection,
+  type ConnectionState,
+  type LspConnection,
+} from './formula-lsp/connection.ts'
 import { makeFormulaDocument, type FormulaDocument } from './formula-lsp/document.ts'
 import {
   POLICY_MARKERS,
@@ -199,7 +203,11 @@ export default function FormulaCodeEditor(props: FormulaCodeEditorProps) {
   return (
     <div {...stylex.props(styles.frame)}>
       <div ref={containerRef} {...stylex.props(styles.editor)} data-testid="formula-code-editor" />
-      <p {...stylex.props(styles.status)} data-testid="formula-lsp-status" data-state={connectionState}>
+      <p
+        {...stylex.props(styles.status)}
+        data-testid="formula-lsp-status"
+        data-state={connectionState}
+      >
         {statusText}
       </p>
     </div>

@@ -161,6 +161,64 @@ const CALCULATOR_SURFACES = {
   },
 }
 
+/** both calculators on offer, each with its own editor in the seat */
+const BOTH_CALCULATORS = {
+  collections: {
+    'assessment/calculator-authoring-options': [
+      ...CALCULATOR_SURFACES.collections['assessment/calculator-authoring-options'],
+      {
+        id: 'assessment-formula/calculator',
+        ref: 'formula@1',
+        label: {
+          kind: 'message',
+          id: 'assessment-formula/binding/calculator',
+          defaultMessage: 'A published formula',
+        },
+        order: 20,
+      },
+    ],
+  },
+  slots: {
+    'assessment/calculator-editor': [
+      ...CALCULATOR_SURFACES.slots['assessment/calculator-editor'],
+      {
+        id: 'assessment-formula/calculator-editor',
+        component: 'assessment-formula/CalculatorEditor',
+        order: 20,
+      },
+    ],
+  },
+}
+
+const OTHER_VERSION_ID = '01920000-0000-7000-8000-0000000000f3'
+
+/** what the round may bind now, and the one this question already runs */
+const bindingOptions = (over: { current?: unknown; items?: readonly unknown[] } = {}) => ({
+  items: over.items ?? [
+    {
+      versionId: OTHER_VERSION_ID,
+      functionId: '01920000-0000-7000-8000-0000000000e1',
+      functionName: '竞赛加分',
+      versionNo: 4,
+      publishedAt: '2026-02-01T00:00:00.000Z',
+      parameters: ['level'],
+    },
+  ],
+  nextCursor: null,
+  current:
+    over.current === undefined
+      ? {
+          versionId: FORMULA_VERSION_ID,
+          functionId: '01920000-0000-7000-8000-0000000000e1',
+          functionName: '竞赛加分',
+          versionNo: 3,
+          publishedAt: '2026-01-01T00:00:00.000Z',
+          parameters: ['level'],
+          bindableForNew: false,
+        }
+      : over.current,
+})
+
 const open = (
   had: {
     groups?: readonly unknown[]
@@ -170,6 +228,8 @@ const open = (
     question?: string
     /** the calculator surfaces this assembly declares */
     surfaces?: { collections: Record<string, unknown[]>; slots: Record<string, unknown[]> }
+    /** what the formula plugin answers about this round's bindings */
+    binding?: unknown
   } = {},
 ) =>
   renderScreen({
@@ -204,6 +264,9 @@ const open = (
           return Effect.succeed({ item: { id: ITEM_ID } })
         },
       },
+      assessmentFormula: {
+        listFormulaBindingOptions: () => Effect.succeed(had.binding ?? bindingOptions()),
+      },
     } as never),
     routes: [
       {
@@ -214,6 +277,9 @@ const open = (
     registry: {
       'assessment/FixedCalculatorEditor': lazy(
         () => components['assessment/FixedCalculatorEditor']!() as never,
+      ),
+      'assessment-formula/CalculatorEditor': lazy(
+        () => components['assessment-formula/CalculatorEditor']!() as never,
       ),
     } as never,
     route:
@@ -429,15 +495,109 @@ describe("what may do a question's arithmetic", () => {
     await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
   })
 
-  it('leaves the seat empty for a calculator it does not own', async () => {
-    // the same built-in editor, in front of a question scored by a formula:
-    // it renders for its own reference and nothing for anybody else's
+  it('seats the formula picker for a question a formula scores, and only it', async () => {
+    // the same slot, filled by whoever owns the reference: the built-in
+    // editor renders nothing here, and the formula plugin's picker lists
+    // what this round may bind
     open({
       groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
       items: [formulaItem()],
       question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
     })
-    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
+
+    await expect.element(page.getByTestId('formula-version-picker')).toBeVisible()
+    expect(page.getByRole('textbox', { name: '每条通过计分' }).elements()).toHaveLength(0)
+  })
+
+  it('keeps the binding a question already has, however policy moved on', async () => {
+    // A version withdrawn from NEW bindings is still the lawful thing this
+    // question runs. It stays in the picker, marked as kept rather than
+    // offered, and stays choosable - otherwise renaming the question would
+    // mean rebinding it.
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [formulaItem()],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+    })
+
+    const rows = page.getByTestId('formula-version-option')
+    await expect.element(rows.first()).toBeVisible()
+    // the one this question runs is present, named as history, and not held
+    const held = rows.elements().map((row) => ({
+      id: row.getAttribute('data-version-id'),
+      origin: row.getAttribute('data-version-origin'),
+      disabled: (row as HTMLButtonElement).disabled,
+    }))
+    expect(held).toContainEqual({
+      id: FORMULA_VERSION_ID,
+      origin: 'current',
+      disabled: false,
+    })
+    expect(held).toContainEqual({
+      id: OTHER_VERSION_ID,
+      origin: 'offered',
+      disabled: false,
+    })
+  })
+
+  it('rebinds to the version chosen, and moves nothing else about the scoring', async () => {
+    const saved: { config?: { scoringConfig?: Record<string, unknown> } }[] = []
+    const item = formulaItem()
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [item],
+      saved,
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+    })
+
+    const rows = page.getByTestId('formula-version-option')
+    await expect.element(rows.first()).toBeVisible()
+    const offered = rows
+      .elements()
+      .find((row) => row.getAttribute('data-version-id') === OTHER_VERSION_ID)!
+    ;(offered as HTMLButtonElement).click()
+    await page.getByRole('button', { name: '保存' }).click()
+
+    const sent = saved.at(-1)?.config?.scoringConfig as Record<string, unknown> | undefined
+    const before = item.currentRevision.scoringConfig as Record<string, unknown>
+    // exactly the version, and nothing else: the same language, the same
+    // recognitions with the same identities and refinements, the same
+    // bindings, the same folding rule
+    expect(sent?.['calculator']).toEqual({
+      ref: 'formula@1',
+      config: { versionId: OTHER_VERSION_ID },
+    })
+    expect(sent?.['version']).toBe(2)
+    expect(sent?.['recognitions']).toEqual(before['recognitions'])
+    expect(sent?.['bindings']).toEqual(before['bindings'])
+    expect(sent?.['aggregator']).toEqual(before['aggregator'])
+  })
+
+  it('leaves the seat empty for a calculator it does not own', async () => {
+    // both editors installed, in front of a question scored by a fixed
+    // amount: each renders for its own reference and nothing for anybody
+    // else's, so the seat holds exactly one however many sit in it
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [officerItem()],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+    })
+    await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
+    expect(page.getByTestId('formula-version-picker').elements()).toHaveLength(0)
+  })
+
+  it('leaves it empty the other way round too', async () => {
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [formulaItem()],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+    })
+    await expect.element(page.getByTestId('formula-version-picker')).toBeVisible()
     expect(page.getByRole('textbox', { name: '每条通过计分' }).elements()).toHaveLength(0)
   })
 })

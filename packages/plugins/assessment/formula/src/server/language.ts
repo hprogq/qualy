@@ -54,7 +54,6 @@ export class FormulaLanguage extends Context.Service<
   }
 >()('@qualy/plugin-assessment-formula/FormulaLanguage') {}
 
-
 const unavailable = () => new FormulaLanguageUnavailable()
 
 const refusalOf = (failure: LspSendError): FormulaLanguageSendError => {
@@ -104,12 +103,9 @@ export const formulaLanguageLayer = (options?: {
           // remount answer 429. The sandbox's own fail-closed permit keeps
           // guarding the real resource.
           yield* Effect.addFinalizer(() =>
-            client.CloseLsp({ sessionId: opened.sessionId }).pipe(
-              tameTransport(unavailable),
-              Effect.ignore,
-              Effect.forkDetach,
-              Effect.asVoid,
-            ),
+            client
+              .CloseLsp({ sessionId: opened.sessionId })
+              .pipe(tameTransport(unavailable), Effect.ignore, Effect.forkDetach, Effect.asVoid),
           )
           // sends are serialized by the bridge's single consumer; the
           // counter itself bumps in the synchronous prefix regardless
@@ -117,16 +113,14 @@ export const formulaLanguageLayer = (options?: {
           const send = (jsonRpc: string): Effect.Effect<void, FormulaLanguageSendError> =>
             Effect.suspend(() => {
               sequence += 1
-              return client
-                .SendLsp({ sessionId: opened.sessionId, sequence, jsonRpc })
-                .pipe(
-                  Effect.catch((failure) =>
-                    Predicate.isTagged(failure, 'RpcClientError')
-                      ? Effect.fail(new FormulaLanguageUnavailable())
-                      : Effect.fail(refusalOf(failure as LspSendError)),
-                  ),
-                  tameTransport(unavailable),
-                )
+              return client.SendLsp({ sessionId: opened.sessionId, sequence, jsonRpc }).pipe(
+                Effect.catch((failure) =>
+                  Predicate.isTagged(failure, 'RpcClientError')
+                    ? Effect.fail(new FormulaLanguageUnavailable())
+                    : Effect.fail(refusalOf(failure as LspSendError)),
+                ),
+                tameTransport(unavailable),
+              )
             })
           const events: Stream.Stream<string, FormulaLanguageUnavailable> = client
             .LspEvents({ sessionId: opened.sessionId })
@@ -143,12 +137,7 @@ export const formulaLanguageLayer = (options?: {
     // layerNet's signature carries SocketError, but building it only wraps
     // a lazy open: boot stays independent of the sandbox being up
     Layer.provide(
-      NodeSocket.layerNet({ path: options?.socketPath ?? authoringSocketPath() }).pipe(
-        Layer.orDie,
-      ),
+      NodeSocket.layerNet({ path: options?.socketPath ?? authoringSocketPath() }).pipe(Layer.orDie),
     ),
-    Layer.provide(
-      RpcSerialization.layerNdjsonWith({ maxBufferSize: SANDBOX_RPC_MAX_FRAME_BYTES }),
-    ),
+    Layer.provide(RpcSerialization.layerNdjsonWith({ maxBufferSize: SANDBOX_RPC_MAX_FRAME_BYTES })),
   )
-

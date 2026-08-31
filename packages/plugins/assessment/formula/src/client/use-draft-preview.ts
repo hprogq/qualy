@@ -19,10 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type {
-  NormalizedAtomicSchema,
-  NormalizedInputSchema,
-} from '@qualy/value-schema'
+import type { NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 
 export interface DraftContract {
   readonly sourceSha256: string
@@ -128,21 +125,19 @@ export const useDraftPreview = (
     const known = currentRef.current
     // only a READY verdict for the exact buffer short-circuits; a refusal
     // is retried - the code may be fine and the sandbox was not
-    if (
-      wanted !== null &&
-      known.status === 'ready' &&
-      known.source === wanted
-    )
+    if (wanted !== null && known.status === 'ready' && known.source === wanted)
       return Promise.resolve(known)
     if (timer.current !== null) {
       clearTimeout(timer.current)
       timer.current = null
     }
-    return launchRef.current().then((outcome) =>
-      outcome.status !== 'idle' && outcome.source === sourceRef.current
-        ? outcome
-        : launchRef.current(),
-    )
+    return launchRef
+      .current()
+      .then((outcome) =>
+        outcome.status !== 'idle' && outcome.source === sourceRef.current
+          ? outcome
+          : launchRef.current(),
+      )
   }, [])
 
   return { current, lastGood, ensureFresh }

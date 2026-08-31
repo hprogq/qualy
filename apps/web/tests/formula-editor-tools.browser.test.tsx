@@ -67,13 +67,18 @@ const detail = (tests: readonly { name: string; input: unknown; expected: string
 
 interface Wire {
   previews: unknown[]
-  evaluations: { sourceTs: string; cases: readonly { clientId: string; input: unknown; expected?: string }[] }[]
+  evaluations: {
+    sourceTs: string
+    cases: readonly { clientId: string; input: unknown; expected?: string }[]
+  }[]
   saves: Record<string, unknown>[]
 }
 
 const screenFor = (
   tests: readonly { name: string; input: unknown; expected: string }[],
-  answer: (cases: readonly { clientId: string; input: unknown }[]) => readonly Record<string, unknown>[],
+  answer: (
+    cases: readonly { clientId: string; input: unknown }[],
+  ) => readonly Record<string, unknown>[],
 ) => {
   const wire: Wire = { previews: [], evaluations: [], saves: [] }
   const client = fakeClient({
@@ -148,10 +153,7 @@ describe('the formula authoring tools', () => {
         [ordinalInput!, '3'],
         [baseInput!, '2.50'],
       ] as const) {
-        const setter = Object.getOwnPropertyDescriptor(
-          HTMLInputElement.prototype,
-          'value',
-        )!.set!
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
         setter.call(element, value)
         element.dispatchEvent(new Event('input', { bubbles: true }))
       }
@@ -226,10 +228,7 @@ describe('the formula authoring tools', () => {
       // patches the name only - the broken case holds the tests back, and
       // nothing claims they were contract-checked
       const caseName = rows[0]!.querySelector('input')! as HTMLInputElement
-      const nameSetter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        'value',
-      )!.set!
+      const nameSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
       nameSetter.call(caseName, 'renamed case')
       caseName.dispatchEvent(new Event('input', { bubbles: true }))
       const inputs = [...view.container.querySelectorAll('input')] as HTMLInputElement[]
