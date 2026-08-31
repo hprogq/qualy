@@ -133,20 +133,25 @@ describe('the line between evaluating and accounting', () => {
     expect(offences).toEqual([])
   })
 
-  it('ships no formula calculator in the production declarations', async () => {
+  it('ships exactly one formula calculator, declared by the formula plugin', async () => {
     // From the assembled declarations, not a directory listing: what is
     // registered is what runs, wherever its file happens to live. The
-    // formula library may exist as code; the moment its calculator ref
-    // enters this channel it is a shipped scoring driver, and that is a
-    // Phase 7 decision, not a side effect.
-    // both scoring channels: a formula ref in either the declarations or
-    // the runtime registrations is a shipped driver
+    // deliberate decision this gate once held shut - shipping a formula
+    // scoring driver at all - has been taken: formula@1 is registered by
+    // the formula plugin, exactly once, in BOTH scoring channels (the
+    // declaration and the runtime binding travel as a pair or the boot
+    // refuses). Anything beyond that one ref, or the same ref from any
+    // other plugin, is still a decision nobody has made.
     const definitions = contributions('@qualy/plugin-assessment/scoring-definitions')
     const runtimes = contributions('@qualy/plugin-assessment/scoring-runtimes')
-    const refs = [...definitions, ...runtimes].map((driver) => (driver as { ref: string }).ref)
     expect(definitions.length).toBeGreaterThan(0)
     expect(runtimes.length).toBeGreaterThan(0)
-    expect(refs.filter((ref) => ref.startsWith('formula@'))).toEqual([])
+    for (const channel of [definitions, runtimes]) {
+      const formulaRefs = channel.filter((driver) =>
+        (driver as { ref?: string }).ref?.startsWith('formula@'),
+      )
+      expect(formulaRefs.map((driver) => (driver as { ref: string }).ref)).toEqual(['formula@1'])
+    }
   })
 
   it('keeps the shared value form exactly as light as it claims', () => {

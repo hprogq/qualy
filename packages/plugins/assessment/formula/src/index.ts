@@ -4,6 +4,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
+import { Scoring } from '@qualy/plugin-assessment/plugin'
 import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import { permissions } from './permissions.ts'
@@ -15,6 +16,7 @@ import { bindingCatalogLayer } from './server/binding-catalog.ts'
 import { formulaAuthoringLayer } from './server/authoring.ts'
 import { formulaLanguageLayer } from './server/language.ts'
 import { formulaLspQuotaLayer } from './server/lsp-bridge.ts'
+import { formula1 } from './scoring/formula-calculator.ts'
 import { Layer } from 'effect'
 import { compositeForeignKeys, entities } from './db/entities.ts'
 
@@ -43,6 +45,8 @@ const plugin = Plugin.define(
     dependsOn: ['@qualy/plugin-org'],
   }),
   Access.permissions('assessment-formula', permissions),
+  // the shipped scoring driver: 7.3's decision, made here and nowhere else
+  ...Scoring.calculator(formula1),
   Audit.actions('assessment-formula', formulaActions),
   Plugin.layer(
     Layer.mergeAll(
