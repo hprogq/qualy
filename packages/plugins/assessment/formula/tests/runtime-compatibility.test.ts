@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import {
   checkRuntimeCompatibility,
+  storedPatternIssues,
   validateStoredValueSchema,
 } from '../src/server/runtime-compatibility.ts'
 
 // The policy that decides whether THIS build may execute a stored version.
-// A supported number means "we hold replay evidence for that historical
-// language" - profile 1 earned its place through the 2026-08-31 inventory,
-// where every v1 row canonicalized to its own stored contract hash - and
-// provenance never enters: the input type has no field for an engine or a
+// A supported number means "we hold acceptance-semantics evidence for that
+// historical language". Profile 1 is NOT in the set: its rows' contract
+// hashes reproduce under the current canonicalizer (2026-08-31 inventory),
+// but hash identity only proves the schema bytes - while still called v1,
+// the language swapped regex engines and date arithmetic, which no schema
+// hash can see. So a v1 row answers unsupported until someone implements
+// the v1 acceptance semantics and bears them with era-accurate fixtures.
+// Provenance never enters: the input type has no field for an engine or a
 // toolchain string, so an equality gate on one cannot even be written.
 
-/** a REAL historical v1 row (01a04dbc…, published 2026-08-29): the schemas
- *  exactly as stored, not today's shapes with the number turned down */
+/** a REAL historical v1 row (01a04dbc…, published 2026-08-29): kept as the
+ *  specimen of what a v1 row looks like - readable history, not certified
+ *  runtime */
 const HISTORICAL_V1 = {
   inputSchema: {
     type: 'object',
@@ -45,11 +51,49 @@ describe('runtime compatibility', () => {
     expect(checkRuntimeCompatibility(current)).toEqual([])
   })
 
-  it('accepts the inventoried historical v1 language', () => {
-    expect(checkRuntimeCompatibility({ ...current, valueSchemaProfileVersion: 1 })).toEqual([])
+  it('refuses the historical v1 language until its own semantics are borne', () => {
+    // the hash-identity inventory is not acceptance evidence: v1 swapped
+    // regex engines and date arithmetic without moving a single hash
+    const refused = checkRuntimeCompatibility({ ...current, valueSchemaProfileVersion: 1 })
+    expect(refused.map((issue) => issue.facet)).toEqual(['value-schema-profile'])
+    expect(refused[0]!.stored).toBe(1)
     expect(
-      validateStoredValueSchema(1, HISTORICAL_V1.inputSchema, HISTORICAL_V1.outputSchema),
-    ).toEqual([])
+      validateStoredValueSchema(1, HISTORICAL_V1.inputSchema, HISTORICAL_V1.outputSchema).map(
+        (issue) => issue.facet,
+      ),
+    ).toEqual(['value-schema-profile'])
+  })
+
+  it('judges stored patterns by the profile dialect, or not at all', () => {
+    const withPattern = (pattern: string) => ({
+      type: 'object',
+      required: ['code'],
+      properties: {
+        code: { type: 'string', maxLength: 32, pattern },
+      },
+      additionalProperties: false,
+    })
+    // a pattern inside the RE2 dialect is compatible
+    expect(storedPatternIssues(1, withPattern('^[a-z]{2,8}$'), HISTORICAL_V1.outputSchema)).toEqual(
+      [],
+    )
+    // lookbehind is outside the dialect: unsupported, facet named
+    const outside = storedPatternIssues(1, withPattern('(?<=a)b'), HISTORICAL_V1.outputSchema)
+    expect(outside.map((issue) => issue.facet)).toEqual(['regex-profile'])
+    // an unsupported dialect version is refused BY VERSION, and the stored
+    // pattern is never interpreted by the current dialect: one issue, the
+    // version's own, however hostile the pattern beside it
+    const alien = storedPatternIssues(999, withPattern('(?<=a)b'), HISTORICAL_V1.outputSchema)
+    expect(alien).toHaveLength(1)
+    expect(alien[0]!.facet).toBe('regex-profile')
+    expect(alien[0]!.stored).toBe(999)
+    // and the full gate carries the same verdicts through
+    expect(
+      checkRuntimeCompatibility({
+        ...current,
+        inputSchema: withPattern('(?<=a)b'),
+      }).map((issue) => issue.facet),
+    ).toEqual(['regex-profile'])
   })
 
   it('names the facet that has no evidence', () => {

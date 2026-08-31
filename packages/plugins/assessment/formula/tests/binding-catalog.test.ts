@@ -6,7 +6,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import type { Orm } from '@qualy/plugin-database/server'
 import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
-import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import {
+  normalizeAtomicSchema,
+  normalizeInputSchema,
+  VALUE_SCHEMA_PROFILE_VERSION,
+} from '@qualy/value-schema'
 import {
   BindableFormulaCatalog,
   bindingCatalogLayer,
@@ -133,12 +137,14 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
                     (tenant_id, function_id, version_no, source_ts, runtime_js,
                      input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
                      typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
-                     quickjs_engine_version, tests, test_report, published_by)
+                     quickjs_engine_version, tests, test_report, published_by,
+                     value_schema_profile_version)
                   values (${f.t}, ${functionId}, 1, 'export {}', ${artifact},
                           ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
                           ${sha256Hex('export {}')}, ${sha256Hex(artifact)}, ${identity.contractSha256},
                           '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
-                          'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin})
+                          'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin},
+                          ${VALUE_SCHEMA_PROFILE_VERSION})
                   returning id`),
               ).id
               return { functionId, versionId }

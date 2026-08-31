@@ -5,18 +5,26 @@ import {
   validateAtomicProfile,
   validateInputProfile,
 } from '@qualy/value-schema'
-import { REGEX_PROFILE_VERSION } from '@qualy/value-schema/regex'
+import { REGEX_PROFILE_VERSION, patternIssues } from '@qualy/value-schema/regex'
 
 // Whether THIS build can faithfully execute a stored version - a pure
 // policy, decided from the row's own facts and nothing else.
 //
 // A supported version number means "we hold evidence this historical
 // language replays under the current reader", never merely "the number is
-// in a set". Value-schema profile 1 is supported because every v1 row was
-// inventoried (2026-08-31, five rows): each canonicalizes under the current
-// reader to its own stored contract hash, byte for byte. Growing or
-// shrinking these sets is a decision made HERE, with fresh replay evidence
-// attached - v3 does not get in by bumping a constant.
+// in a set" - and the evidence has to be about ACCEPTANCE semantics, not
+// canonical bytes. Profile 1 is NOT supported: the 2026-08-31 inventory
+// showed every v1 row's stored contract hash reproducible under the
+// current canonicalizer, but that only proves the schema bytes never
+// drifted - while still calling itself v1, the language swapped its regex
+// engine for the RE2 dialect, its date validation for calendar arithmetic,
+// and grew ceilings and prototype refusals, none of which move a schema's
+// hash. A v1 row remains fully readable publication history; it is just
+// not a certified runtime version until someone implements
+// validateStoredValueSchemaV1 against the historical semantics and bears
+// it with era-accurate fixtures. Growing these sets is a decision made
+// HERE, with that evidence attached - v3 does not get in by bumping a
+// constant.
 //
 // Deliberately absent from the input type: every provenance field.
 // typescriptVersion, esbuildVersion, quickjsEngineVersion, buildIds and
@@ -41,7 +49,6 @@ export interface RuntimeCompatibilityIssue {
 export const SUPPORTED_FORMULA_ABI: ReadonlySet<number> = new Set([FORMULA_ABI_VERSION])
 export const SUPPORTED_SANDBOX_ABI: ReadonlySet<number> = new Set([SANDBOX_ABI_VERSION])
 export const SUPPORTED_VALUE_SCHEMA_PROFILES: ReadonlySet<number> = new Set([
-  1,
   VALUE_SCHEMA_PROFILE_VERSION,
 ])
 export const SUPPORTED_REGEX_PROFILES: ReadonlySet<number> = new Set([REGEX_PROFILE_VERSION])
@@ -62,12 +69,11 @@ export const validateStoredValueSchema = (
     return [
       {
         facet: 'value-schema-profile',
-        reason: 'no replay evidence for this value-schema profile',
+        reason: 'no acceptance-semantics evidence for this value-schema profile',
         stored: profileVersion,
       },
     ]
   }
-  // v1 ⊂ v2 by inventory: both are judged by the current reader's profile
   const issues: RuntimeCompatibilityIssue[] = []
   for (const wrong of validateInputProfile(inputSchema)) {
     issues.push({ facet: 'input-schema', reason: `${wrong.path} ${wrong.reason}` })
@@ -76,6 +82,37 @@ export const validateStoredValueSchema = (
     issues.push({ facet: 'output-schema', reason: `${wrong.path} ${wrong.reason}` })
   }
   return issues
+}
+
+/**
+ * The stored patterns judged under an explicitly named regex profile.
+ *
+ * The structural check (validateInputProfile) only says a `pattern` is a
+ * string; whether it belongs to the profile's RE2 dialect is this pass -
+ * the same split every publication entry point already honors. An
+ * unsupported dialect version returns its own issue and NEVER runs the
+ * current interpreter over the stored pattern: judging another dialect's
+ * program by this one's rules would be exactly the false confidence this
+ * gate exists to refuse.
+ */
+export const storedPatternIssues = (
+  regexProfileVersion: number,
+  inputSchema: unknown,
+  outputSchema: unknown,
+): readonly RuntimeCompatibilityIssue[] => {
+  if (!SUPPORTED_REGEX_PROFILES.has(regexProfileVersion)) {
+    return [
+      {
+        facet: 'regex-profile',
+        reason: 'no acceptance-semantics evidence for this regex profile',
+        stored: regexProfileVersion,
+      },
+    ]
+  }
+  return [...patternIssues(inputSchema), ...patternIssues(outputSchema)].map((wrong) => ({
+    facet: 'regex-profile' as const,
+    reason: `${wrong.path} ${wrong.reason}`,
+  }))
 }
 
 export const checkRuntimeCompatibility = (version: {
@@ -101,13 +138,9 @@ export const checkRuntimeCompatibility = (version: {
       stored: version.sandboxAbiVersion,
     })
   }
-  if (!SUPPORTED_REGEX_PROFILES.has(version.regexProfileVersion)) {
-    issues.push({
-      facet: 'regex-profile',
-      reason: 'no replay evidence for this regex profile',
-      stored: version.regexProfileVersion,
-    })
-  }
+  issues.push(
+    ...storedPatternIssues(version.regexProfileVersion, version.inputSchema, version.outputSchema),
+  )
   issues.push(
     ...validateStoredValueSchema(
       version.valueSchemaProfileVersion,

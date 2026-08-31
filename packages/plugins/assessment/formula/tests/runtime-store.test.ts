@@ -163,10 +163,16 @@ describe.runIf(postgresAvailable)('the formula runtime store', () => {
           yield* runSql(sql`
             update assessment_formula_versions set formula_abi_version = 1 where id = ${row.id}`)
 
-          // a v1 row stays resolvable: the inventoried historical language
+          // a v1 row is readable history but not certified runtime: hash
+          // identity cannot vouch for acceptance semantics that changed
+          // under the same version number
           yield* runSql(sql`
             update assessment_formula_versions set value_schema_profile_version = 1 where id = ${row.id}`)
-          const asProfileOne = yield* store.resolve({ tenantId: f.t, versionId: row.id })
+          const asProfileOne = yield* Effect.exit(
+            store.resolve({ tenantId: f.t, versionId: row.id }),
+          )
+          yield* runSql(sql`
+            update assessment_formula_versions set value_schema_profile_version = 2 where id = ${row.id}`)
 
           // provenance never gates: an ancient engine string and an
           // unrecorded build id describe how it was made, not whether it runs
@@ -217,7 +223,8 @@ describe.runIf(postgresAvailable)('the formula runtime store', () => {
       'ASSESSMENT_FORMULA_RUNTIME_UNSUPPORTED',
     )
     expect(inspect(outcome.unsupportedAbi, { depth: 8 })).toContain('formula-abi')
-    expect(outcome.asProfileOne.valueSchemaProfileVersion).toBe(1)
+    expect(Exit.isFailure(outcome.asProfileOne)).toBe(true)
+    expect(inspect(outcome.asProfileOne, { depth: 8 })).toContain('value-schema-profile')
     expect(outcome.ancientProvenance.versionId).toBe(outcome.row.id)
   }, 120_000)
 })
