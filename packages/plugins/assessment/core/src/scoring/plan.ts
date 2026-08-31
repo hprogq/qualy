@@ -706,7 +706,13 @@ export const compileScoringPlan = (
           })
           continue
         }
-        parameters[parameter] = { kind: 'constant', value: binding.value }
+        // V2 freezes the canonical spelling, so "3.0" and "3.00" are one
+        // constant and one planHash; V1 keeps the authored spelling it has
+        // always stored - historical hashes never move
+        parameters[parameter] = {
+          kind: 'constant',
+          value: authoring.version === 2 ? canonicalizeValue(schema, binding.value) : binding.value,
+        }
         continue
       }
       const declared = own(recognitions, binding.recognitionId)

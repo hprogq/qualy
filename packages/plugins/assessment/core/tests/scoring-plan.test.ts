@@ -691,6 +691,33 @@ describe('a V2 configuration refines what a reviewer may determine', () => {
     }
   })
 
+  it('freezes one canonical constant for every spelling of the amount', async () => {
+    const spelledAs = (value: string) =>
+      v2Config({
+        bindings: {
+          level: { kind: 'recognition', recognitionId: R_LEVEL },
+          ordinal: { kind: 'recognition', recognitionId: R_ORDINAL },
+          base: { kind: 'constant', value },
+        },
+      })
+    const outcomes = await Promise.all(
+      ['3', '3.0', '3.00', '3.000'].map((v) => compile(spelledAs(v))),
+    )
+    for (const outcome of outcomes) {
+      expect('plan' in outcome).toBe(true)
+      if ('plan' in outcome) {
+        expect(outcome.plan.parameters['base']).toEqual({ kind: 'constant', value: '3' })
+        expect(outcome.plan.planHash).toBe(
+          ('plan' in outcomes[0]! && outcomes[0].plan.planHash) || '',
+        )
+      }
+    }
+    // a spelling the amount grammar refuses is refused, not repaired
+    expect(reasons(await compile(spelledAs('03.000')))).toContain(
+      'scoringConfig.bindings.base:constant-format',
+    )
+  })
+
   it('refuses a version this compiler does not speak, even straight from the column', async () => {
     const alien = await compile({ ...v2Config({}), version: 3 })
     expect(reasons(alien)).toEqual(['scoringConfig.version:authoring-version-unsupported'])
