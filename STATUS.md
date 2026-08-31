@@ -12316,3 +12316,106 @@ entrypoint 仍应答)。wrapper 因此从「globalThis 赋值」改为 install �
 字节必然变化,`golden-artifacts.json` 依 golden.test 自述规则在同一笔内再生
 (identity 25437B / all-kinds 25882B),已发布的历史 artifact 不受影响(bundler 只
 作用于新 publish)。
+
+## Phase 7.3:formula@1 Calculator(2026-09-01)
+
+规格权威 = phase7-design §8(8.1-8.13)+ 用户两轮终审(rev 3:B1 corrected 后
+APPROVED;B2/B3/B4 与三收紧 PASS);基线 main @ 2b7753a4。六笔全部落地,每笔:
+承重先行 → 实现 → 摘除-复原差分 → 四件套 → 提交推送 → headSha 盯 CI 绿。零 wire
+变化(frozen-routes/error-codes/openapi 不动)、零 migration、前端零变化
+(picker 归 7.4)。
+
+### 提交链(全部 CI success)
+
+1. `be08ac71` test(web): pin the calendar tests that depend on today(插曲:翻月
+   暴露两条对真实「今天」敏感的日历测试,fake Date 钉住,2 月也稳)
+2. `868e9fce` feat(assessment): carry the calculator failure taxonomy
+3. `851f305b` feat(formula): harden the sandbox entrypoints(golden 依规同笔再生)
+4. `3452ff16` feat(formula): decode the formula envelope strictly
+5. `18acc6c9` feat(formula): register the formula calculator(**首例跨插件
+   calculator 贡献,smoke 真启动闭合**;scoring-ledger 门禁翻转:「ships no formula
+   calculator」→「恰好一个、来自 formula 插件、两通道成对」,方向门禁原样)
+6. `23632843` feat(formula): linearize new-binding eligibility
+7. 本笔:end-to-end bearing + core testkit + 本总账
+
+### 用户裁决的落位
+
+- **B1 corrected**:strict 长在 `formulaConfigSchema` 本身(Schema.Unknown +
+  makeFilter 判 raw,core 的 generic decode 在投影前拒 extra;实查 rc.111 的
+  makeFilter/check 于 repos/effect Schema.ts:5124/6586);verify/prepare 的
+  frozen.config 走不到该 seam,resolveFrozen 自跑同一 exact decoder。承重两式:
+  frozen.config 加键 + 重算 planHash → reader 绿 resolveFrozen 红(formula-
+  calculator.test);authoring extra 在 config 语言单测拒(counting-compile 的
+  服务层全链版留待 7.4 的 authoring 面,B1 的 seam 语义已由 schema 单测 + core
+  的「decoder 产物才进 compile」结构保证)。
+- **B2**:requireBindable 重写为锁定步读——batch FOR UPDATE(save 已持)→
+  FormulaFunction FOR SHARE → owner+全部 anchor 的 OrgNode 按 UUID 序 FOR SHARE →
+  在锁行的 path 上以前缀判定证明 ancestor-or-self(ltree label 无点,前缀 = @>);
+  废除锁路径上的 LEFT JOIN 单查。anchor 集 creation-frozen(用户代查:
+  insertManagementAnchors 唯一生产调用在 createBatch 事务)——不锁 relation 行,
+  长期规则:management boundary set mutation 必须以 batch row lock 为共同
+  serialization point。并发承重双会话实测:writer 持锁未 commit 时,archive
+  (function 行 UPDATE)与 anchor 节点 rename(org 行 UPDATE)都阻塞至 commit。
+  事务传播(JOIN-EXISTING、withDatabase 不换连接)由用户终审核定。
+- **B3**:E2E 主链真 sandbox-runtime 进程(spawn + unix socket + QuickJS):
+  publish → formula@1 V2 create item(经 normalize mint 两个 recognition)→
+  Plan V2(runtimeRef 冻结)→ readScoringPlan → auditStoredPlans(verify 收完整
+  frozen,沙箱不碰)→ catalog.prepare → 真 socket evaluate → '7.5' →
+  scaledAmount 75000n;q.fail → refusal。**大 artifact**(>256KiB,ballast 进
+  run 防摇,仍 < SOURCE_LIMIT)发布后照常执行——publishable ⇒ executable 实测;
+  **进程杀死后** prepare 依旧绿(不碰执行),evaluate 报 kind='unavailable'。
+- **B4 taxonomy**:五类 kind(refusal/unavailable/execution/integrity/invariant)
+  为三个 Calculator 错误类的必填字段;CalculatorContractError 另携 `code?`,plan
+  compiler 用 Effect.result 取代吞 reason 的 Effect.option,有 code 透传为
+  PlanIssue.reason(fixed 无 code 保持 calculator-contract-unavailable,既有断言
+  零红)。映射表:q.fail→refusal;Unavailable/WorkerLost→unavailable;Timeout/
+  Memory/Stack/OutputTooLarge/EvalFailed/InputTooLarge/malformed envelope→
+  execution;ArtifactMismatch→integrity;**ArtifactTooLarge→invariant**(host 违背
+  publishable⇒executable);NEW+Missing→refusal/formula-version-not-found,
+  CONTINUATION+Missing→integrity/formula-runtime-missing;requireBindable 四拒→
+  refusal,batch-not-found 与 version-not-found(resolve 刚见过)→invariant。
+  **continuation 完整身份**:absent→NEW;kind 异→integrity(formula-previous-
+  runtime-alien);id 异→NEW;id 同 sha 异→integrity(formula-continuation-corrupt,
+  绝不被 resave「修复」);全等→continuation 跳过 eligibility(archive 后
+  continuation 仍 compile——7.0 盯守③真身重演)。
+- **收紧 1**:`resolveFrozen` 单一证明(strict decode → resolve → runtimeRef 三
+  字段 → contractHash === contractSha256 → 两 profile present+exact → schema 语义
+  经既有链 `contractIdentityOf(frozen schemas) === frozen.contractHash ===
+row.contractSha256`,不造第三种 canonical equality);verify=asVoid、prepare=
+  capture 同一次 resolution。
+- **收紧 2**:一个 envelope parser 两个 adapter——authoring 的 malformed 是单
+  case defect(evaluateCases 行为向,发布不因此整体 Unavailable),scoring 的
+  malformed → execution。严格 union(closed keys、message 在 decoder 内截
+  FORMULA_FAILURE_MESSAGE_LIMIT)。
+- **收紧 3(落位权衡记录)**:E2E 在 formula 侧;core 开最窄 `./testkit`
+  (**明确 re-export 清单**:Assessment/serviceLayer/auditStoredPlans/
+  readScoringPlan/frozenCalculatorOf/scaledAmount/builtins/scoringRuntimeProvider/
+  PhaseSpecInput——非 export *),testkit 纪律照旧(不进包根、生产零 import、三门
+  禁核);core devDependencies 加 formula/sandbox/sandbox-runtime(evidence 下游
+  先例,方向黑名单只查 dependencies)——二者并用:core devDeps 供 formula-
+  calculator 类型面,testkit 供 formula 侧 E2E 驱动真 item 服务。
+
+### 其他记录
+
+- §8.10 hardening 见笔 3 前的 golden 再生记录段(prelude non-configurable getter,
+  hostile 六式承重)。
+- `FORMULA_SCORING_LIMITS`:deadline 25/100ms(sandbox 严格 default,7.6
+  benchmark 一处调)、artifactBytes = MAX_COMPILED_ARTIFACT_BYTES、input/output
+  512KiB/64KiB 显式 transport budget。大 artifact E2E 实测通过,deadline 未调。
+- contractHash 裁决:formula@1 的 CompiledCalculator.contractHash 直接取
+  FormulaVersion.contractSha256(与 fixed@1 的 contractHashOf 拼法不同;core 从不
+  跨 calculator 比 hash;RuntimeStore 已用 contractIdentityOf 复验该字段)。
+- 老 teardown 挂死本地首现并被测量仪点名(effect-api manifest it,双挂 →
+  scope-close 根因域,与 7.3 变更零交集,单跑绿):见稳定化插曲段追录。
+- 插曲:formula stack 的 booted catalog 补编 assessment 权限与 actions(E2E 走真
+  item 服务所需;其余 formula 套件不受影响)。
+
+### 7.4 移交记账
+
+- bindable HTTP 端点(requireManage + listForBatch)+ versionId 进 wire DTO +
+  keyset 分页;calculator authoring surfaces(§9.3 collection/slot);
+  **ItemConfigEditor round-trip ownership 先行**(§9.1:打开 formula 题改标题保存
+  不得改写 scoring——过不了这条禁止做 picker);新 PlanIssue codes(formula-*)
+  的前端翻译与展示归 authoring UI 落地时一并补。
+- taxonomy 的消费(refusal/unavailable 在结果页与决策面的分流)归 7.5;
+  evaluate 路径目前仍 orDie。
