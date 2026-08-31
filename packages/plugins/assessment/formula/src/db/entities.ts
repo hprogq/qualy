@@ -128,6 +128,12 @@ export const FormulaVersion = defineEntity({
 export const entities = [FormulaFunction, FormulaVersion] as const
 
 export const compositeForeignKeys = [
+  // RESTRICT, not CASCADE: a published version is a permanent execution
+  // fact - dropping the function must be refused (23001) while any version
+  // stands. Tenant lifecycle still cascades whole: restrict evaluates the
+  // STATEMENT's final state, so one `delete from tenants` removes versions
+  // through their own tenant edge before the function edge is judged
+  // (probed and CI-held by the isomorphic diamond in org's schema.test).
   `alter table assessment_formula_versions add constraint fk_assessment_formula_versions_function
-     foreign key (tenant_id, function_id) references assessment_formula_functions (tenant_id, id) on delete cascade`,
+     foreign key (tenant_id, function_id) references assessment_formula_functions (tenant_id, id) on delete restrict`,
 ]

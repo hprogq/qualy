@@ -234,6 +234,61 @@ describe.runIf(postgresAvailable)('assessment schema', () => {
     ).toBe('23503')
   })
 
+  it("pins the same-batch references: another round's row is a 23503", async () => {
+    const f = await createFixture('same-batch')
+    const ours = await createBatch(f, 'Ours')
+    const theirs = await createBatch(f, 'Theirs')
+    const phaseOf = async (batchId: string, ordinal: number) =>
+      (
+        await db.row<{ id: string }>(
+          `insert into batch_phases (tenant_id, batch_id, ordinal, phase_key, display_name)
+           values ($1, $2, $3, 'entry', 'Entry') returning id`,
+          [f.tenantId, batchId, ordinal],
+        )
+      ).id
+    const theirPhase = await phaseOf(theirs, 0)
+    // the current-phase projection may only name a phase of its own round
+    expect(
+      await pgCode(
+        db.query(`update assessment_batches set current_phase_id = $2 where id = $1`, [
+          ours,
+          theirPhase,
+        ]),
+      ),
+    ).toBe('23503')
+    const ourPhase = await phaseOf(ours, 0)
+    await db.query(`update assessment_batches set current_phase_id = $2 where id = $1`, [
+      ours,
+      ourPhase,
+    ])
+    // and deleting the phase still clears exactly the one column
+    await db.query(`delete from batch_phases where id = $1`, [ourPhase])
+    const after = await db.row<{ current_phase_id: string | null; tenant_id: string }>(
+      `select current_phase_id, tenant_id from assessment_batches where id = $1`,
+      [ours],
+    )
+    expect(after.current_phase_id).toBeNull()
+    expect(after.tenant_id).toBe(f.tenantId)
+
+    // a participant event may only cite a participant of its own round
+    const participant = (
+      await db.row<{ id: string }>(
+        `insert into batch_participants (tenant_id, batch_id, user_id, assessment_anchor_node_id, anchor_path, anchor_lineage, user_type_id)
+         values ($1, $2, $3, $4, 'same_batch', '[]', $5) returning id`,
+        [f.tenantId, theirs, f.userId, f.nodeId, f.userTypeId],
+      )
+    ).id
+    expect(
+      await pgCode(
+        db.query(
+          `insert into batch_participant_events (tenant_id, batch_id, participant_id, kind, actor_id)
+           values ($1, $2, $3, 'included', $4)`,
+          [f.tenantId, ours, participant, f.userId],
+        ),
+      ),
+    ).toBe('23503')
+  })
+
   it('keeps assessment history when its subjects are deleted, and follows the batch down', async () => {
     const f = await createFixture('del')
     const batchId = await createBatch(f, 'Deletion semantics')

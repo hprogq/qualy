@@ -211,6 +211,12 @@ export const BatchPhase = defineEntity({
       expression:
         'create unique index uq_batch_phases_tenant_batch_ordinal on batch_phases (tenant_id, batch_id, ordinal)',
     },
+    {
+      // the target of the batch's same-batch current-phase reference
+      name: 'uq_batch_phases_tenant_batch_id',
+      expression:
+        'create unique index uq_batch_phases_tenant_batch_id on batch_phases (tenant_id, batch_id, id)',
+    },
   ],
 })
 
@@ -1695,7 +1701,7 @@ export const ReviewSupplementAttachment = defineEntity({
  */
 export const compositeForeignKeys = [
   `alter table assessment_batches add constraint fk_assessment_batches_current_phase
-     foreign key (tenant_id, current_phase_id) references batch_phases (tenant_id, id) on delete set null (current_phase_id)`,
+     foreign key (tenant_id, id, current_phase_id) references batch_phases (tenant_id, batch_id, id) on delete set null (current_phase_id)`,
   `alter table roster_imports add constraint fk_roster_imports_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table batch_management_anchors add constraint fk_batch_management_anchors_batch
@@ -1719,7 +1725,7 @@ export const compositeForeignKeys = [
   `alter table batch_participant_events add constraint fk_batch_participant_events_batch
      foreign key (tenant_id, batch_id) references assessment_batches (tenant_id, id) on delete cascade`,
   `alter table batch_participant_events add constraint fk_batch_participant_events_participant
-     foreign key (tenant_id, participant_id) references batch_participants (tenant_id, id) on delete cascade`,
+     foreign key (tenant_id, batch_id, participant_id) references batch_participants (tenant_id, batch_id, id) on delete cascade`,
   `alter table phase_events add constraint fk_phase_events_phase
      foreign key (tenant_id, phase_id) references batch_phases (tenant_id, id) on delete cascade`,
   `alter table phase_item_scopes add constraint fk_phase_item_scopes_phase
