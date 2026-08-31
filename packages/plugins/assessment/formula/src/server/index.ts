@@ -1,4 +1,5 @@
 import { contractIdentityOf, sha256Hex } from './contract-identity.ts'
+import { decodeFormulaEnvelope } from './envelope.ts'
 import { Context, Effect, Layer } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
@@ -16,11 +17,7 @@ import {
   Sandbox,
   type SandboxRuntimeIdentity,
 } from '@qualy/plugin-sandbox/service'
-import {
-  FORMULA_ABI_VERSION,
-  FORMULA_FAILURE_MESSAGE_LIMIT,
-  SCORE_AMOUNT_SCHEMA,
-} from '@qualy/formula'
+import { FORMULA_ABI_VERSION, SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
 import { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT } from '@qualy/sandbox-rpc'
 import { FormulaAuthoring } from './authoring.ts'
 import {
@@ -565,21 +562,27 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           return yield* new FormulaCompileUnavailable()
         }
         runtime = outcome.answer.runtime
-        const envelope = JSON.parse(outcome.answer.output) as {
-          ok: boolean
-          amount?: string
-          failure?: { message: string }
-        }
-        if (!envelope.ok) {
-          // the SDK caps the message at creation; capping again here keeps a
-          // forged envelope from carrying an unbounded string to screens
+        const decodedAnswer = decodeFormulaEnvelope(outcome.answer.output)
+        if (decodedAnswer._tag === 'malformed') {
+          // an answer that is not the wrapper's envelope is this CASE's
+          // defect, recorded beside the others; the round keeps evaluating
           report.push({
             ...(expected === undefined ? {} : { passed: false, expected }),
-            refusal: (envelope.failure?.message ?? '').slice(0, FORMULA_FAILURE_MESSAGE_LIMIT),
+            defect: `malformed formula envelope: ${decodedAnswer.reason}`,
           })
           continue
         }
-        const actual = canonicalDecimal(envelope.amount ?? '') ?? envelope.amount ?? ''
+        const envelope = decodedAnswer.envelope
+        if (!envelope.ok) {
+          // the strict decoder already capped the message; forged envelopes
+          // cannot carry an unbounded string to screens
+          report.push({
+            ...(expected === undefined ? {} : { passed: false, expected }),
+            refusal: envelope.failure.message,
+          })
+          continue
+        }
+        const actual = canonicalDecimal(envelope.amount) ?? envelope.amount
         // the same boundary the official evaluator holds: what came back is
         // judged against the formula's own output contract before anything
         // compares or displays it - a violating answer is a broken contract,
