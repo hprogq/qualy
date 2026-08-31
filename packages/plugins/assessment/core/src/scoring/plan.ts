@@ -17,20 +17,25 @@
 import { Data, Effect, Schema } from 'effect'
 import {
   INTEGER_TO_DECIMAL,
+  VALUE_SCHEMA_PROFILE_VERSION,
   assignmentPlan,
   canonicalizeAtomicSchema,
   canonicalizeInputSchema,
   normalizeAtomicSchema,
+  normalizeInputSchema,
   validateAtomicProfile,
   validateInputProfile,
   type AssignmentPlan,
   type AtomicSchema,
+  type InputSchema,
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
 } from '@qualy/value-schema'
+import { REGEX_PROFILE_VERSION, patternIssues } from '@qualy/value-schema/regex'
 import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import { validateValue } from '@qualy/value-schema/validate'
-import { hashCanonicalJson } from '@qualy/value-schema/hash'
+import { canonicalizeValue } from '@qualy/value-schema/values'
+import { canonicalJson, hashCanonicalJson } from '@qualy/value-schema/hash'
 import type {
   AggregatorDriver,
   BatchContext,
@@ -40,6 +45,7 @@ import type {
   CalculatorHostContext,
   CompiledCalculator,
   ItemTypeDriver,
+  RuntimeRef,
 } from '../plugin.ts'
 
 /** how one calculator parameter gets its value at scoring time */
@@ -52,13 +58,16 @@ export type ParameterBinding =
     }
 
 /**
- * The frozen arithmetic of one item revision.
+ * The frozen arithmetic of one item revision, in the language it was
+ * compiled under.
  *
  * `version` is the plan language's own, not the calculator's: a plan already
  * written is never rewritten, so a later version means new revisions compile
- * differently, never that old ones are recompiled.
+ * differently, never that old ones are recompiled. The two languages are
+ * genuinely separate: V1 stays byte-for-byte what it always was, and V2 is
+ * strict and canonical from its first stored row.
  */
-export interface ScoringPlan {
+export interface ScoringPlanV1 {
   readonly version: 1
   readonly calculator: {
     readonly ref: string
@@ -95,6 +104,61 @@ export interface ScoringPlan {
   readonly outputSchema: NormalizedAtomicSchema
   readonly planHash: string
 }
+
+/** a V2 parameter binding: a recognition feeds its parameter directly or not
+ *  at all - a refinement is a narrowing of the same fact, never a conversion,
+ *  so `convert` lives only on the Evidence side of a default seed */
+export type ParameterBindingV2 =
+  | { readonly kind: 'constant'; readonly value: unknown }
+  | {
+      readonly kind: 'recognition'
+      readonly recognitionId: string
+      readonly assignment: { readonly kind: 'direct' }
+    }
+
+/**
+ * The V2 plan language. Everything V1 froze, plus the facts 7.1 taught this
+ * system to demand: which value-schema and regex profiles the schemas were
+ * proven under (hash identity vouches for bytes, never for the semantics
+ * that interpreted them), and the exact runtime identity a stored-program
+ * calculator bound to. All of it is inside the semantic hash.
+ */
+export interface ScoringPlanV2 {
+  readonly version: 2
+  /** the acceptance semantics these schemas were proven under */
+  readonly valueSchemaProfileVersion: number
+  readonly regexProfileVersion: number
+  readonly calculator: {
+    readonly ref: string
+    readonly config: unknown
+    /** the contract this plan was proven against */
+    readonly contractHash: string
+    /** the exact runtime fact this plan is bound to, when there is one */
+    readonly runtimeRef?: RuntimeRef
+  }
+  /** every parameter the contract requires, bound exactly once */
+  readonly parameters: Readonly<Record<string, ParameterBindingV2>>
+  /** what each recognition id admits, frozen for the reviewers who fill it */
+  readonly recognitionSchemas: Readonly<Record<string, NormalizedAtomicSchema>>
+  /** which evidence field seeds a recognition, and how it converts */
+  readonly defaultBindings: Readonly<
+    Record<
+      string,
+      {
+        readonly fieldId: string
+        /** required in V2: the language carries no legacy fallback */
+        readonly payloadKey: string
+        readonly assignment: AssignmentPlan
+      }
+    >
+  >
+  readonly aggregator: { readonly ref: string; readonly config: unknown }
+  readonly inputSchema: NormalizedInputSchema
+  readonly outputSchema: NormalizedAtomicSchema
+  readonly planHash: string
+}
+
+export type ScoringPlan = ScoringPlanV1 | ScoringPlanV2
 
 /**
  * A stored plan's shape, as this build will execute it.
@@ -146,6 +210,70 @@ const persistedPlanShape = Schema.Struct({
   outputSchema: Schema.Unknown,
   planHash: Schema.String,
 })
+
+const runtimeRefShape = Schema.Struct({
+  kind: Schema.String,
+  id: Schema.String,
+  sha256: Schema.String,
+})
+
+// the V2 envelope, decoded strictly: an unknown key on any of these structs
+// refuses the plan instead of being stripped - a newer build adding a
+// semantic field must stop an older one, not be silently projected away.
+// calculator.config, aggregator.config and the schema bodies stay Unknown:
+// those are their owners' languages, not this envelope's.
+const persistedPlanShapeV2 = Schema.Struct({
+  version: Schema.Literal(2),
+  valueSchemaProfileVersion: Schema.Number,
+  regexProfileVersion: Schema.Number,
+  calculator: Schema.Struct({
+    ref: Schema.String,
+    config: Schema.Unknown,
+    contractHash: Schema.String,
+    runtimeRef: Schema.optional(runtimeRefShape),
+  }),
+  parameters: Schema.Record(
+    Schema.String,
+    Schema.Union([
+      Schema.Struct({ kind: Schema.Literal('constant'), value: Schema.Unknown }),
+      Schema.Struct({
+        kind: Schema.Literal('recognition'),
+        recognitionId: Schema.String,
+        // V2 freezes only direct here; convert belongs to evidence seeding
+        assignment: Schema.Struct({ kind: Schema.Literal('direct') }),
+      }),
+    ]),
+  ),
+  recognitionSchemas: Schema.Record(Schema.String, Schema.Unknown),
+  defaultBindings: Schema.Record(
+    Schema.String,
+    Schema.Struct({
+      fieldId: Schema.String,
+      payloadKey: Schema.String,
+      assignment: assignmentShape,
+    }),
+  ),
+  aggregator: Schema.Struct({ ref: Schema.String, config: Schema.Unknown }),
+  inputSchema: Schema.Unknown,
+  outputSchema: Schema.Unknown,
+  planHash: Schema.String,
+})
+
+const SHA256_HEX = /^[0-9a-f]{64}$/
+const UUIDV7_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+/**
+ * The one lexical guard a runtime reference must pass, shared by the V2
+ * writer and the V2 reader: a plan that stores a reference the reader would
+ * refuse must never be written in the first place. `id` stays opaque - the
+ * core does not know what kind of identity a stored program names - but a
+ * field called sha256 has to actually be one.
+ */
+export const runtimeRefIssues = (ref: RuntimeRef): readonly string[] => [
+  ...(ref.kind.length === 0 ? ['kind is empty'] : []),
+  ...(ref.id.length === 0 ? ['id is empty'] : []),
+  ...(SHA256_HEX.test(ref.sha256) ? [] : ['sha256 is not 64 lowercase hex characters']),
+]
 
 /** what a compile refuses, in the same shape item configuration issues take */
 export interface PlanIssue {
@@ -260,7 +388,7 @@ export interface CompileInputs {
  * hash-consistent bodies and prove the reader judges content, not just
  * integrity.
  */
-export const semanticPlanBody = (plan: Omit<ScoringPlan, 'planHash'>) => ({
+export const semanticPlanBodyV1 = (plan: Omit<ScoringPlanV1, 'planHash'>) => ({
   version: plan.version,
   calculator: {
     ref: plan.calculator.ref,
@@ -280,8 +408,46 @@ export const semanticPlanBody = (plan: Omit<ScoringPlan, 'planHash'>) => ({
   outputSchema: canonicalizeAtomicSchema(plan.outputSchema),
 })
 
+/**
+ * The V2 identity adds what V2 froze: the language version, the two profile
+ * versions the schemas were proven under, and the runtime identity when the
+ * calculator bound one. A runtimeRef change MUST move the hash - the plan's
+ * arithmetic lives in those bytes.
+ */
+export const semanticPlanBodyV2 = (plan: Omit<ScoringPlanV2, 'planHash'>) => ({
+  version: plan.version,
+  valueSchemaProfileVersion: plan.valueSchemaProfileVersion,
+  regexProfileVersion: plan.regexProfileVersion,
+  calculator: {
+    ref: plan.calculator.ref,
+    config: plan.calculator.config,
+    contractHash: plan.calculator.contractHash,
+    ...(plan.calculator.runtimeRef === undefined ? {} : { runtimeRef: plan.calculator.runtimeRef }),
+  },
+  parameters: plan.parameters,
+  recognitionSchemas: Object.fromEntries(
+    Object.entries(plan.recognitionSchemas).map(([id, schema]) => [
+      id,
+      canonicalizeAtomicSchema(schema),
+    ]),
+  ),
+  defaultBindings: plan.defaultBindings,
+  aggregator: plan.aggregator,
+  inputSchema: canonicalizeInputSchema(plan.inputSchema),
+  outputSchema: canonicalizeAtomicSchema(plan.outputSchema),
+})
+
+export const semanticPlanBody = (
+  plan: Omit<ScoringPlanV1, 'planHash'> | Omit<ScoringPlanV2, 'planHash'>,
+) => (plan.version === 1 ? semanticPlanBodyV1(plan) : semanticPlanBodyV2(plan))
+
 const decode = <A>(schema: Schema.Codec<A>, value: unknown) =>
   Effect.option(Schema.decodeUnknownEffect(schema)(value))
+
+// the V2 languages refuse unknown envelope keys instead of stripping them
+// (rc.111 default is "ignore"; probed in repos/effect SchemaAST.ts ParseOptions)
+const decodeStrict = <A>(schema: Schema.Codec<A>, value: unknown) =>
+  Effect.option(Schema.decodeUnknownEffect(schema)(value, { onExcessProperty: 'error' }))
 
 /**
  * Whether a value survives the jsonb column and the hash unchanged.
@@ -596,7 +762,7 @@ export const compileScoringPlan = (
 
     if (issues.length > 0) return { issues }
 
-    const body: Omit<ScoringPlan, 'planHash'> = {
+    const body: Omit<ScoringPlanV1, 'planHash'> = {
       version: 1,
       // what the calculator will execute, not what the administrator typed:
       // the item revision keeps the authored spelling, the plan keeps the
@@ -611,11 +777,13 @@ export const compileScoringPlan = (
       inputSchema,
       outputSchema,
     }
-    return { plan: { ...body, planHash: hashCanonicalJson(semanticPlanBody(body)) } }
+    return { plan: { ...body, planHash: hashCanonicalJson(semanticPlanBodyV1(body)) } }
   })
 
-/** the only plan version this build knows how to execute */
-export const SCORING_PLAN_VERSION = 1
+/** the two plan languages this build reads: V1 as it always was, V2 strict
+ *  and canonical. An unknown version is refused at the read, never cast. */
+export const SCORING_PLAN_V1_VERSION = 1
+export const SCORING_PLAN_V2_VERSION = 2
 
 export class ScoringPlanUnreadable extends Data.TaggedError('ASSESSMENT_SCORING_PLAN_UNREADABLE')<{
   readonly revisionId: string
@@ -658,23 +826,37 @@ export const readScoringPlan = (revision: {
         reason: 'no compiled plan; the assembly boot backfill has not run',
       })
     }
+    // dispatch on the version's OWN property before any decode: a lenient
+    // projection could otherwise read a V2 plan as a V1 one by stripping
+    // the very fields that make it V2
+    const version = Object.hasOwn(stored, 'version')
+      ? (stored as Record<string, unknown>)['version']
+      : undefined
+    if (version === SCORING_PLAN_V1_VERSION) return yield* readPlanV1(revision.id, stored)
+    if (version === SCORING_PLAN_V2_VERSION) return yield* readPlanV2(revision.id, stored)
+    return yield* new ScoringPlanUnreadable({
+      revisionId: revision.id,
+      reason: `version ${String(version)}, and this build executes ${SCORING_PLAN_V1_VERSION} or ${SCORING_PLAN_V2_VERSION}`,
+    })
+  })
+
+/** the V1 read, exactly as it always was: this language never tightens */
+const readPlanV1 = (
+  revisionId: string,
+  stored: object,
+): Effect.Effect<ScoringPlanV1, ScoringPlanUnreadable> =>
+  Effect.gen(function* () {
     const decoded = yield* decode(
-      persistedPlanShape as unknown as Schema.Codec<ScoringPlan>,
+      persistedPlanShape as unknown as Schema.Codec<ScoringPlanV1>,
       stored,
     )
     if (decoded._tag === 'None') {
       return yield* new ScoringPlanUnreadable({
-        revisionId: revision.id,
+        revisionId,
         reason: 'not a plan this build can read',
       })
     }
     const plan = decoded.value
-    if (plan.version !== SCORING_PLAN_VERSION) {
-      return yield* new ScoringPlanUnreadable({
-        revisionId: revision.id,
-        reason: `version ${String(plan.version)}, and this build executes ${SCORING_PLAN_VERSION}`,
-      })
-    }
     // The schemas are data to the hash but a LANGUAGE to the evaluator: a
     // newer build can store a hash-consistent plan whose schemas use a
     // profile feature this build has never heard of, and ajv would judge
@@ -687,7 +869,7 @@ export const readScoringPlan = (revision: {
     ]
     if (foreign.length > 0) {
       return yield* new ScoringPlanUnreadable({
-        revisionId: revision.id,
+        revisionId,
         reason: `a stored schema is outside this build's value profile: ${foreign[0]!.reason}`,
       })
     }
@@ -698,18 +880,189 @@ export const readScoringPlan = (revision: {
     // the walk. That is still "this build cannot read it", and it still
     // deserves the refusal that names the revision, not a bare TypeError.
     const rehashed = yield* Effect.try({
-      try: () => hashCanonicalJson(semanticPlanBody(body)),
+      try: () => hashCanonicalJson(semanticPlanBodyV1(body)),
       catch: () =>
         new ScoringPlanUnreadable({
-          revisionId: revision.id,
+          revisionId,
           reason: 'not a plan this build can read',
         }),
     })
     if (rehashed !== planHash) {
       return yield* new ScoringPlanUnreadable({
-        revisionId: revision.id,
+        revisionId,
         reason: 'the plan and the hash it was stored with disagree',
       })
+    }
+    return plan
+  })
+
+/**
+ * The V2 read is a full language check, not an integrity check: the hash can
+ * only prove the body matches its own identity, never that the body is a
+ * lawful V2 plan. Every proof the compiler made is re-made here - the
+ * profile versions it was proven under, the dialect of every stored pattern,
+ * the normalized representation of every schema, the identity shape of every
+ * recognition, and the assignability of every binding - because a database
+ * write is not a compiler.
+ */
+const readPlanV2 = (
+  revisionId: string,
+  stored: object,
+): Effect.Effect<ScoringPlanV2, ScoringPlanUnreadable> =>
+  Effect.gen(function* () {
+    const refuse = (reason: string) => new ScoringPlanUnreadable({ revisionId, reason })
+    const decoded = yield* decodeStrict(
+      persistedPlanShapeV2 as unknown as Schema.Codec<ScoringPlanV2>,
+      stored,
+    )
+    if (decoded._tag === 'None') {
+      return yield* refuse('not a plan this build can read')
+    }
+    const plan = decoded.value
+    // acceptance semantics first, 7.1's lesson: schema bytes mean nothing
+    // until the profile that interprets them is one this build certifies
+    if (plan.valueSchemaProfileVersion !== VALUE_SCHEMA_PROFILE_VERSION) {
+      return yield* refuse(
+        `value-schema profile ${String(plan.valueSchemaProfileVersion)} is not certified by this build`,
+      )
+    }
+    if (plan.regexProfileVersion !== REGEX_PROFILE_VERSION) {
+      return yield* refuse(
+        `regex profile ${String(plan.regexProfileVersion)} is not certified by this build`,
+      )
+    }
+    const schemas: readonly (readonly [string, unknown])[] = [
+      ['inputSchema', plan.inputSchema],
+      ['outputSchema', plan.outputSchema],
+      ...Object.entries(plan.recognitionSchemas).map(
+        ([id, schema]) => [`recognitionSchemas.${id}`, schema] as const,
+      ),
+    ]
+    const foreign = [
+      ...validateInputProfile(plan.inputSchema),
+      ...validateAtomicProfile(plan.outputSchema),
+      ...Object.values(plan.recognitionSchemas).flatMap((schema) => validateAtomicProfile(schema)),
+    ]
+    if (foreign.length > 0) {
+      return yield* refuse(
+        `a stored schema is outside this build's value profile: ${foreign[0]!.reason}`,
+      )
+    }
+    const dialect = schemas.flatMap(([, schema]) => patternIssues(schema))
+    if (dialect.length > 0) {
+      return yield* refuse(
+        `a stored pattern is outside this build's regex profile: ${dialect[0]!.reason}`,
+      )
+    }
+    // V2 schemas are stored in their normalized representation, and the
+    // reader proves it rather than trusting it: canonicalization for the
+    // hash would forgive a denormalized spelling (a "3.00" decimal bound)
+    // that the evaluator would then execute as written
+    const denormalized =
+      canonicalJson(normalizeInputSchema(plan.inputSchema as unknown as InputSchema)) !==
+        canonicalJson(plan.inputSchema) ||
+      canonicalJson(normalizeAtomicSchema(plan.outputSchema as unknown as AtomicSchema)) !==
+        canonicalJson(plan.outputSchema) ||
+      Object.values(plan.recognitionSchemas).some(
+        (schema) =>
+          canonicalJson(normalizeAtomicSchema(schema as unknown as AtomicSchema)) !==
+          canonicalJson(schema),
+      )
+    if (denormalized) {
+      return yield* refuse('a stored schema is not in its normalized representation')
+    }
+    // identities: recognition ids are server-minted UUIDs, and a runtime
+    // reference passes the same guard the writer holds it to
+    for (const id of Object.keys(plan.recognitionSchemas)) {
+      if (!UUIDV7_SHAPE.test(id)) {
+        return yield* refuse('a recognition id is not a server-minted identity')
+      }
+    }
+    if (plan.calculator.runtimeRef !== undefined) {
+      const wrong = runtimeRefIssues(plan.calculator.runtimeRef)
+      if (wrong.length > 0) {
+        return yield* refuse(`the runtime reference is malformed: ${wrong[0]!}`)
+      }
+    }
+    // the binding account: every contract parameter bound exactly once,
+    // every recognition read exactly once, every default aimed at a
+    // recognition that exists
+    const parameterNames = Object.keys(plan.inputSchema.properties)
+    const boundNames = Object.keys(plan.parameters)
+    if (
+      parameterNames.length !== boundNames.length ||
+      !parameterNames.every((name) => Object.hasOwn(plan.parameters, name))
+    ) {
+      return yield* refuse('the bound parameters are not the contract parameters')
+    }
+    const readBy = new Set<string>()
+    for (const [parameter, binding] of Object.entries(plan.parameters)) {
+      if (binding.kind === 'constant') {
+        const schema = own(plan.inputSchema.properties, parameter)
+        if (schema === undefined) {
+          return yield* refuse('the bound parameters are not the contract parameters')
+        }
+        const normalized = normalizeAtomicSchema(schema)
+        if (validateValue(normalized, binding.value).length > 0) {
+          return yield* refuse('a constant does not fit its parameter')
+        }
+        if (canonicalizeValue(schema, binding.value) !== binding.value) {
+          return yield* refuse('a constant is not in its canonical spelling')
+        }
+        continue
+      }
+      const recognition = own(plan.recognitionSchemas, binding.recognitionId)
+      if (recognition === undefined) {
+        return yield* refuse('a binding names a recognition the plan does not declare')
+      }
+      if (!UUIDV7_SHAPE.test(binding.recognitionId)) {
+        return yield* refuse('a recognition id is not a server-minted identity')
+      }
+      if (readBy.has(binding.recognitionId)) {
+        return yield* refuse('one recognition stands in for two parameters')
+      }
+      readBy.add(binding.recognitionId)
+      // the stored proof is re-made, not believed: a hash-consistent plan
+      // can carry a widened recognition schema with its old `direct` label,
+      // and only recomputing the assignment catches it. V2 admits nothing
+      // but direct here - a refinement narrows, it never converts.
+      const parameterSchema = own(plan.inputSchema.properties, parameter)
+      if (parameterSchema === undefined) {
+        return yield* refuse('the bound parameters are not the contract parameters')
+      }
+      const actual = assignmentPlan(
+        normalizeAtomicSchema(recognition),
+        normalizeAtomicSchema(parameterSchema),
+      )
+      if (actual.kind !== 'direct') {
+        return yield* refuse('a recognition no longer proves into its parameter')
+      }
+    }
+    for (const id of Object.keys(plan.recognitionSchemas)) {
+      if (!readBy.has(id)) {
+        return yield* refuse('a recognition is declared but nothing reads it')
+      }
+    }
+    for (const id of Object.keys(plan.defaultBindings)) {
+      if (!Object.hasOwn(plan.recognitionSchemas, id)) {
+        return yield* refuse('a default seeds a recognition the plan does not declare')
+      }
+    }
+    // the answer still has to be a score
+    const intoScore = assignmentPlan(
+      normalizeAtomicSchema(plan.outputSchema as unknown as AtomicSchema),
+      normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
+    )
+    if (intoScore.kind !== 'direct') {
+      return yield* refuse('the calculator output is no longer a score amount')
+    }
+    const { planHash, ...body } = plan
+    const rehashed = yield* Effect.try({
+      try: () => hashCanonicalJson(semanticPlanBodyV2(body)),
+      catch: () => refuse('not a plan this build can read'),
+    })
+    if (rehashed !== planHash) {
+      return yield* refuse('the plan and the hash it was stored with disagree')
     }
     return plan
   })

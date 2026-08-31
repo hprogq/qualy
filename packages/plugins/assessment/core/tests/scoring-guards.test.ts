@@ -11,6 +11,8 @@ import {
   compileScoringPlan,
   readScoringPlan,
   semanticPlanBody,
+  semanticPlanBodyV2,
+  type ScoringPlanV2,
 } from '../src/scoring/plan.ts'
 import { gradedTest, testDefinitions, testHost, testRuntime } from './support/catalogs.ts'
 import {
@@ -203,6 +205,277 @@ describe('what a stored plan must be before it runs', () => {
     expect(Exit.isFailure(await read({ version: 1, parameters: 'oops' }))).toBe(true)
     expect(Exit.isFailure(await read(null))).toBe(true)
     expect(Exit.isFailure(await read([1, 2, 3]))).toBe(true)
+  })
+})
+
+describe('the V2 plan language, at the read', () => {
+  // the reader is the only writer-independent proof the language has: every
+  // body below is FORGED hash-consistent, so what refuses it is the language
+  // check itself, never integrity
+  const REC = '01920000-0000-7000-8000-000000000001'
+  const level = JSON.parse(
+    JSON.stringify(
+      normalizeAtomicSchema({
+        type: 'string',
+        format: 'qualy-decimal',
+        'x-qualy-maxScale': 2,
+        'x-qualy-minimum': '0',
+        'x-qualy-maximum': '100',
+      }),
+    ),
+  ) as Record<string, unknown>
+  const input = JSON.parse(
+    JSON.stringify(
+      normalizeInputSchema({
+        type: 'object',
+        properties: {
+          base: {
+            type: 'string',
+            format: 'qualy-decimal',
+            'x-qualy-maxScale': 2,
+            'x-qualy-minimum': '0',
+            'x-qualy-maximum': '10',
+          },
+          level: {
+            type: 'string',
+            format: 'qualy-decimal',
+            'x-qualy-maxScale': 2,
+            'x-qualy-minimum': '0',
+            'x-qualy-maximum': '100',
+          },
+        },
+        required: ['base', 'level'],
+        additionalProperties: false,
+      }),
+    ),
+  ) as Record<string, unknown>
+  const output = JSON.parse(JSON.stringify(normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA))) as Record<
+    string,
+    unknown
+  >
+
+  const v2Body = () => ({
+    version: 2 as const,
+    valueSchemaProfileVersion: 2,
+    regexProfileVersion: 1,
+    calculator: { ref: 'stored@1', config: { program: 'p-1' }, contractHash: 'c'.repeat(64) },
+    parameters: {
+      base: { kind: 'constant' as const, value: '3' },
+      level: {
+        kind: 'recognition' as const,
+        recognitionId: REC,
+        assignment: { kind: 'direct' as const },
+      },
+    },
+    recognitionSchemas: { [REC]: level },
+    defaultBindings: {
+      [REC]: {
+        fieldId: 'field-level',
+        payloadKey: 'payload-level',
+        assignment: { kind: 'direct' as const },
+      },
+    },
+    aggregator: { ref: 'sum@1', config: {} },
+    inputSchema: input,
+    outputSchema: output,
+  })
+
+  const sealed = (body: Record<string, unknown>) => ({
+    ...body,
+    planHash: hashCanonicalJson(semanticPlanBodyV2(body as never)),
+  })
+
+  const read = (scoringPlan: unknown) =>
+    Effect.runPromiseExit(readScoringPlan({ id: 'rev-2', scoringPlan }))
+
+  it('reads back a lawful body, with and without a runtime reference', async () => {
+    expect(Exit.isSuccess(await read(sealed(v2Body())))).toBe(true)
+    const bound = v2Body()
+    const withRef = {
+      ...bound,
+      calculator: {
+        ...bound.calculator,
+        runtimeRef: { kind: 'stored-program', id: 'prog-1', sha256: 'a'.repeat(64) },
+      },
+    }
+    const back = await read(sealed(withRef))
+    expect(Exit.isSuccess(back)).toBe(true)
+    if (Exit.isSuccess(back)) {
+      expect((back.value as ScoringPlanV2).calculator.runtimeRef?.sha256).toBe('a'.repeat(64))
+    }
+  })
+
+  it('refuses profiles this build does not certify, before anything else', async () => {
+    expect(
+      Exit.isFailure(await read(sealed({ ...v2Body(), valueSchemaProfileVersion: 999 }))),
+    ).toBe(true)
+    expect(Exit.isFailure(await read(sealed({ ...v2Body(), regexProfileVersion: 999 })))).toBe(true)
+  })
+
+  it('judges every stored pattern by the dialect, and every schema by its normalized form', async () => {
+    const body = v2Body()
+    const outsideDialect = {
+      ...body,
+      recognitionSchemas: {
+        [REC]: { type: 'string', minLength: 1, maxLength: 8, pattern: '(?<=a)b' },
+      },
+      // keep the account intact: the recognition still feeds a text-shaped
+      // parameter so only the dialect can be what refuses it
+      inputSchema: JSON.parse(
+        JSON.stringify(
+          normalizeInputSchema({
+            type: 'object',
+            properties: {
+              base: {
+                type: 'string',
+                format: 'qualy-decimal',
+                'x-qualy-maxScale': 2,
+                'x-qualy-minimum': '0',
+                'x-qualy-maximum': '10',
+              },
+              level: { type: 'string', minLength: 1, maxLength: 8, pattern: '(?<=a)b' },
+            },
+            required: ['base', 'level'],
+            additionalProperties: false,
+          }),
+        ),
+      ),
+    }
+    expect(Exit.isFailure(await read(sealed(outsideDialect)))).toBe(true)
+
+    // a denormalized spelling: the canonical hash forgives "3.00" as a
+    // decimal bound, so only the normalized-representation proof stops it
+    const denormalized = {
+      ...body,
+      recognitionSchemas: {
+        [REC]: { ...level, 'x-qualy-maximum': '100.00' },
+      },
+    }
+    expect(Exit.isFailure(await read(sealed(denormalized)))).toBe(true)
+  })
+
+  it('holds every identity to its shape: recognition ids, runtime refs, spellings', async () => {
+    const body = v2Body()
+    // a recognition keyed by an authored string is not a V2 identity
+    const authoredKey = {
+      ...body,
+      parameters: {
+        ...body.parameters,
+        level: {
+          kind: 'recognition' as const,
+          recognitionId: 'rec-level',
+          assignment: { kind: 'direct' as const },
+        },
+      },
+      recognitionSchemas: { 'rec-level': level },
+      defaultBindings: {},
+    }
+    expect(Exit.isFailure(await read(sealed(authoredKey)))).toBe(true)
+    // a sha256 that is not one
+    const badRef = {
+      ...body,
+      calculator: {
+        ...body.calculator,
+        runtimeRef: { kind: 'stored-program', id: 'prog-1', sha256: 'not-a-hash' },
+      },
+    }
+    expect(Exit.isFailure(await read(sealed(badRef)))).toBe(true)
+    // a constant spelled off its canonical form
+    const spelled = {
+      ...body,
+      parameters: { ...body.parameters, base: { kind: 'constant' as const, value: '3.00' } },
+    }
+    expect(Exit.isFailure(await read(sealed(spelled)))).toBe(true)
+  })
+
+  it('refuses an unknown envelope key instead of stripping it', async () => {
+    expect(Exit.isFailure(await read(sealed({ ...v2Body(), novel: true })))).toBe(true)
+    const body = v2Body()
+    const nested = {
+      ...body,
+      calculator: { ...body.calculator, newSemanticFlag: true },
+    }
+    expect(Exit.isFailure(await read(sealed(nested)))).toBe(true)
+  })
+
+  it('re-proves every assignment instead of believing the stored label', async () => {
+    const body = v2Body()
+    // the recognition schema widened after the proof: direct is still the
+    // stored label, the hash is recomputed, and only re-proving catches it
+    const widened = {
+      ...body,
+      recognitionSchemas: {
+        [REC]: { ...level, 'x-qualy-maximum': '1000' },
+      },
+    }
+    expect(Exit.isFailure(await read(sealed(widened)))).toBe(true)
+    // a converter where V2 admits only direct: refused as language, not proof
+    const converted = {
+      ...body,
+      recognitionSchemas: {
+        [REC]: JSON.parse(
+          JSON.stringify(normalizeAtomicSchema({ type: 'integer', minimum: 0, maximum: 100 })),
+        ),
+      },
+      parameters: {
+        ...body.parameters,
+        level: {
+          kind: 'recognition' as const,
+          recognitionId: REC,
+          assignment: { kind: 'convert' as const, converter: 'integer-to-decimal@1' },
+        },
+      },
+    }
+    expect(Exit.isFailure(await read(sealed(converted)))).toBe(true)
+  })
+
+  it('keeps the binding account: no stranger parameters, no orphans, no double reads', async () => {
+    const body = v2Body()
+    const unbound = { ...body, parameters: { base: body.parameters.base } }
+    expect(Exit.isFailure(await read(sealed(unbound)))).toBe(true)
+    const orphan = {
+      ...body,
+      recognitionSchemas: {
+        ...body.recognitionSchemas,
+        '01920000-0000-7000-8000-000000000002': level,
+      },
+    }
+    expect(Exit.isFailure(await read(sealed(orphan)))).toBe(true)
+    const strayDefault = {
+      ...body,
+      defaultBindings: {
+        ...body.defaultBindings,
+        '01920000-0000-7000-8000-000000000003': {
+          fieldId: 'f',
+          payloadKey: 'p',
+          assignment: { kind: 'direct' as const },
+        },
+      },
+    }
+    expect(Exit.isFailure(await read(sealed(strayDefault)))).toBe(true)
+    const bare = v2Body() as { defaultBindings: Record<string, Record<string, unknown>> }
+    delete bare.defaultBindings[REC]!['payloadKey']
+    expect(Exit.isFailure(await read(sealed(bare as never)))).toBe(true)
+  })
+
+  it('refuses a body that came apart from its stored identity', async () => {
+    const lawful = sealed(v2Body()) as Record<string, unknown>
+    const tampered = {
+      ...lawful,
+      parameters: {
+        ...(lawful['parameters'] as Record<string, unknown>),
+        base: { kind: 'constant', value: '4' },
+      },
+    }
+    expect(Exit.isFailure(await read(tampered))).toBe(true)
+  })
+
+  it('still requires the answer to be a score', async () => {
+    const body = {
+      ...v2Body(),
+      outputSchema: JSON.parse(JSON.stringify(normalizeAtomicSchema({ type: 'boolean' }))),
+    }
+    expect(Exit.isFailure(await read(sealed(body)))).toBe(true)
   })
 })
 
