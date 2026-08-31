@@ -12161,3 +12161,139 @@ db-dispose 挂 → 库侧」。
 - **根因未定罪**:打点落地后挂死未再现身。下一次任何一笔的 CI 再挂,日志自动携带
   阶段归属——挂 scope-close 则沿装配 finalizer 链深挖(lsp/沙箱/池),挂 db-dispose
   则查连接残留。7.2 施工中的 effect-api 红从此一眼可辨「业务回归 vs 老 teardown」。
+
+## Phase 7.2:Scoring Authoring V2 + ScoringPlan V2(2026-08-31)
+
+规格权威 = 用户二十四节收紧方案 + 终审 5 amendment + 3 澄清(计划 rev 2 经用户
+APPROVED);基线 main @ a197a506。八笔全部落地,每笔:承重先行 → 实现 → 摘除-复原
+差分 → 四件套(typecheck/test/test:browser/build)→ 提交推送 → headSha 盯 CI 绿。
+零 DB migration(全在 scoring_config/scoring_plan JSONB);零 wire 变化
+(frozen-routes/error-codes/openapi 全程不动);前端零变化(ItemConfigEditor 继续写
+legacy V1,test:browser 273 全绿即证)。
+
+### 提交链(全部 CI success)
+
+1. `30cbc9f2` refactor(assessment): version the scoring plan language
+2. `3ccd4124` refactor(assessment): hand the frozen calculator contract to runtime
+3. `5a094833` feat(assessment): normalize scoring authoring to its stored form
+4. `49cb16e5` feat(assessment): compile recognition refinements
+5. `ab407ba8` feat(assessment): canonicalize V2 plan constants
+6. `d14c92ed` feat(assessment): write ScoringPlan V2 and refuse a homeless runtimeRef
+7. `f13f9b5b` feat(assessment): thread the previous runtime identity and the evaluation identity
+8. 本笔:end-to-end bearing + 本总账
+
+### 各笔要点
+
+- **笔 1(reader-first)**:ScoringPlan 拆 `ScoringPlanV1 | ScoringPlanV2`;
+  semanticPlanBodyV1 逐字迁移(V1 hash 零移动),semanticPlanBodyV2 新增
+  version/两 profile/runtimeRef 进 hash;reader 以 `Object.hasOwn` 在任何 decode 之前
+  按 version 分派(宽松投影降级 V2 → 不可能),未知版本点名拒;V2 envelope
+  `onExcessProperty: 'error'`(rc.111 默认 ignore 会静默剥键——实查
+  repos/effect/SchemaAST.ts:445/:484/:2229,记 docs/notes/effect.md);V2 read 是完整
+  语言校验:两 profile ∈ 认证集(7.1 教训)、patternIssues 全净、**stored schema 必须
+  与 normalized 形态等价**(amendment 4A,canonicalJson 键序无关比较——jsonb 重排键)、
+  recognition id UUIDv7 shape、runtimeRef 过共享 lexical guard(kind/id 非空 +
+  sha256 64hex)、constant 合法且 canonical、绑定账双向平衡、**逐参数重证
+  assignmentPlan(R,P) 必须 direct**(amendment 1:hash 自洽的改宽 R/伪 direct 被拒;
+  V2 的 R→P 语言级只认 direct,persisted shape 就钉死)、payloadKey 必填,最后 rehash。
+- **笔 2**:`FrozenCalculatorContract`{config, contractHash, runtimeRef?, inputSchema,
+  outputSchema, valueSchemaProfileVersion?, regexProfileVersion?}(amendment 2);
+  BoundCalculator/ScoringRuntimeCatalog 的 verify/prepare 改收 (frozen, context);
+  `frozenCalculatorOf(plan)`:V1 → runtimeRef 与两 profile 全 undefined
+  (**absent = 该 plan 从未说过,绝不伪造历史事实**);boot audit 与结果 prepare 两个
+  调用点换装;migration-upgrade 植入 calculator 记录收到的 frozen 并逐字段断言
+  (V1 行两 profile === undefined)。
+- **笔 3**:src/scoring/authoring.ts `normalizeScoringAuthoring({current, submitted,
+mint})`——legacy 无 version 恒等透传;V2 Draft(recognitions **数组**
+  {handle,id?,label,refinement,defaultFromFieldId},错误路径带下标
+  `scoringConfig.recognitions[3].id`)→ Stored(UUID-keyed、键排序);id 只认 current
+  Stored V2 已声明者(发明/复活/共用全拒,V1 current 授予零个 ⇒ V1→V2 全新
+  identity 集);数量 ≤ PROFILE_LIMITS.inputParameters 在 **mint 之前**;
+  `mintRecognitionIds(count)` 单 SQL `select n, uuidv7() ... order by n`(ordinal 钉
+  第 n 个 id 归第 n 个待 mint recognition,澄清③);保存管线重排:expectedRevisionId
+  上移至 current 读后,normalize 随后,scoringChanged/reason 门/issuesOf/compile/
+  impact/append 全链只吃 normalized——换 handle 不是变化(不 append 不索 reason),
+  Stored 原样重提交 no-op(读回即写回字节同构)。
+- **笔 4**:compile 入口同款 hasOwn 分派(未知 version 即使库直改也拒);V2
+  authoringShape 严格;refinement 语义(amendment 5 顺序):`presented =
+{...(refinement ?? P), title: label}` → validateAtomicProfile + patternIssues
+  (非法 label 是 issue 不是 normalize 的 TypeError;label 恒覆盖 refinement 自带
+  title)→ normalizeAtomicSchema → `assignmentPlan(R,P)` **必须 direct**
+  (incompatible → `refinement-${code}`;convert → `refinement-requires-conversion`
+  ——int 证入 decimal 是穿了戏服的转换,不是收窄);E→R 保留 direct/convert
+  (E int →convert→ R decimal 窄 →direct→ P 三层链承重)。
+- **笔 5**:V2 constant `validateValue → canonicalizeValue → freeze`
+  ("3"/"3.0"/"3.00"/"3.000" 同 constant 同 planHash;"03.000" 词法拒不修复——
+  设计文档 §7.9 举例的事实修正:LEXICAL 拒前导零);V1 分支零改动。
+- **笔 6**:V2 body{version:2, 两 profile 常量, calculator 含 runtimeRef} →
+  semanticPlanBodyV2 hash,writer 产物过自己 reader(column roundtrip 承重);
+  **:414 老丢弃点落两道门**:V1 + runtimeRef → `calculator-runtime-requires-plan-v2`
+  (7.0 起的 silent-drop 记账清账);畸形 runtimeRef → `calculator-runtime-ref-invalid`
+  (writer 与 reader 同一 guard,坏 calculator 永远写不出一个自己读不回的 plan)。
+  测试侧 `stored-test@1`(formula@1 的形状替身):compile 按 config 冻 runtimeRef,
+  verify/prepare 只认 exact frozen(引用逐字段 + **两 profile 必须 present**)。
+- **笔 7**:compiledCandidate 收 previous(updateItem 传 current,createItem null);
+  **previous 读取 fail-closed**(amendment 3:orDie,unreadable current = invariant
+  failure,updateItem 死掉而非把坏 continuation 读成 new binding——DB 级承重:篡改
+  current plan 后 update → defect);仅 previousPlan.calculator.ref === 提交 ref 时传
+  previousRuntimeRef(四步链 DB 承重:A→A 传旧 id、A→B 无、B→A 复回 null,
+  stored-test 把收到的 continuation 写进冻结 execution config,由持久产物自证);
+  `evaluationHash(plan)`:calculator{ref,config,contractHash,runtimeRef} +
+  parameters(constant 经 canonicalizeValue)+ aggregator,version/label/refinement/
+  defaultBindings/schemas 不进——六条承重:rename 同 / default 来源改 planHash 变而
+  evaluationHash 同 / refinement 收窄 同 / constant 改 变 / runtimeRef 改 变 /
+  aggregator 改 变;**V1 全 constant "3.00" 与 V2 "3" 同 arithmetic 同 hash**
+  (R5 澄清①:version 不进 body;V2 recognition identity 是真正的新事实,变是正确)。
+- **笔 8**:端到端(真 PG 走 Assessment 服务层):Draft V2(stored-test@1)→ create
+  → 库中 Plan V2(runtimeRef 冻结)→ readScoringPlan 绿 → auditStoredPlans 绿
+  (verify 收到完整 frozen 由 stored-test 的 exact-match 自证)→ 结果侧
+  prepare→evaluate 出分('5.00')→ **tamper runtimeRef + 重算 planHash → reader 绿
+  而 audit/verify 拒**(hash 抓不住的伪造由 runtime 抓住——只有程序自己知道哪个
+  fact 是它的)。
+
+### §23 承重门禁对照(用户清单逐条)
+
+V1 byte/hash/result 不变(每笔全量绿 + scoring-plan.test:216 的 '3.00' 断言原样)/
+unknown authoring version 拒(笔 3/4)/ unknown plan version 拒(笔 1)/ 伪造
+assignment 重算 hash 拒(笔 1)/ V1+runtimeRef 拒不 drop(笔 6)/ V2 runtimeRef 进
+planHash(笔 6)/ tamper+recompute → verify 仍拒(笔 8)/ new→server UUID、invented
+拒、删后重加新、同 id 换 handle no-op、mint 有序(笔 3)/ narrow 过、wide 拒、非法
+regex 拒、label 超长 issue 非 throw、E⊄R 拒(笔 4)/ decimal 归一同 planHash(笔 5)
+/ label rename 同 planHash、default 来源改 evaluationHash 同、runtimeRef 改两 hash
+变(笔 4/6/7)/ boot verify 与 result prepare 收 frozen(V1 profile=undefined)
+(笔 2/8)/ A→A previousRuntimeRef 在、A→B 无、unreadable current 拒不编译(笔 7)。
+
+### 已裁决的收紧与事实修正(相对 phase7-design §7 原文)
+
+- ScoringPlanV2 冻结 valueSchemaProfileVersion/regexProfileVersion 且进 planHash。
+- FrozenCalculatorContract 取代 (config, runtimeRef) 二参,并携带两 profile
+  (V1 absent,不伪造)。
+- V2 reader 逐参数重证 assignment;V2 的 R→P 只认 direct。
+- V2 strict + canonical:envelope 未知键拒、stored schema 必须 normalized、
+  payloadKey 必填、recognition id UUIDv7、runtimeRef 共享 guard。
+- refinement 校验在 label 合并之后(issue 而非 TypeError)。
+- "03.000" 不是合法 decimal(§7.9 举例修正);canonical 组改为
+  "3"/"3.0"/"3.00"/"3.000"。
+
+### 终态验收(逐条实跑,笔 8 收口轮)
+
+- `pnpm typecheck` 零错;`pnpm test` **1311 passed | 17 skipped (1328)**;
+  `pnpm test:browser` **273 passed**;`pnpm build` 通过;笔 1-7 CI 全链 success
+  (headSha 逐笔盯守),笔 8 待本 push 后同规格盯守。
+- 全程零 teardown 事故(稳定化插曲的两阶段打点未再点名任何阶段)。
+- 差分逐笔红/绿闭合(笔 1 三条、笔 2/5 各一条、笔 3/4/7 各两条、笔 6 三条);
+  V1 面既有承重零改动零红。
+
+### 7.3 移交记账
+
+- formula@1 的落位 = 把 stored-test@1 的三件事换成真的:compile 经
+  BindableFormulaCatalog.requireBindable + FormulaRuntimeStore 冻
+  {kind:'formula-version', id: versionId, sha256: runtimeSha256};verify/prepare 经
+  FormulaRuntimeStore.resolve 复验,且**必须要求 frozen 的 runtimeRef 与两 profile
+  present 并与 FormulaVersion exact match**(FrozenCalculatorContract 已带全部字段)。
+- previousRuntimeRef 通路已就绪(同 ref 才传;formula@1 以此分 existing
+  continuation vs new binding,new binding 走 requireBindable)。
+- 7.1 前置照旧:requireBindable 写路径须与 FormulaFunction archive/restore、owner
+  OrgNode 删除线性化(writer 持锁至 ItemRevision commit 或 append 前锁下复验);
+  `withDatabase()` 不吃 ambient TransactionManager,7.3 有条件做。
+- scoring-ledger.test 的 formula@* 双通道门禁在 7.3 注册时必红,届时按裁决更新。
