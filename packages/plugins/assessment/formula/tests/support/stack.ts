@@ -19,6 +19,8 @@ import { entities as orgEntities } from '@qualy/plugin-org/db'
 import { entities as authEntities } from '@qualy/plugin-auth/db'
 import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { entities as auditEntities } from '@qualy/plugin-audit/db'
+import { permissions as assessmentPermissions } from '@qualy/plugin-assessment/permissions'
+import { assessmentActions } from '@qualy/plugin-assessment/actions'
 import { permissions as formulaPermissions } from '../../src/permissions.ts'
 import { formulaActions } from '../../src/actions.ts'
 import { entities as storageEntities } from '@qualy/plugin-storage/db'
@@ -27,6 +29,9 @@ import { entities } from '../../src/db/entities.ts'
 
 export const catalog: readonly ActivePermission[] = compileCatalog([
   { owner: 'rbac', permissions: rbacPermissions },
+  // the assessment catalog rides along for the end-to-end suite, which
+  // drives the real item service; every other suite simply never asks
+  { owner: 'assessment', permissions: assessmentPermissions },
   { owner: 'assessment-formula', permissions: formulaPermissions },
 ])
 
@@ -54,6 +59,7 @@ export const servicesFor = (url: string) =>
               AuditActionCatalog,
               compileActionCatalog([
                 { owner: 'rbac', actions: accessActions },
+                { owner: 'assessment', actions: assessmentActions },
                 { owner: 'assessment-formula', actions: formulaActions },
               ]),
             ),

@@ -14,7 +14,8 @@
     "./server/configuration-access": "./src/server/configuration-access.ts",
     "./api": "./src/api.ts",
     "./client/api": "./src/client/api.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./testkit": "./src/testkit.ts"
   },
   "dependencies": {
     "@mikro-orm/core": "catalog:",
@@ -43,8 +44,11 @@
   },
   "devDependencies": {
     "@qualy/plugin-assessment-evidence": "workspace:*",
+    "@qualy/plugin-assessment-formula": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",
+    "@qualy/plugin-sandbox": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/sandbox-runtime": "workspace:*",
     "@types/react": "catalog:"
   },
   "peerDependencies": {

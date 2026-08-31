@@ -764,12 +764,21 @@ importers:
       '@qualy/plugin-assessment-evidence':
         specifier: workspace:*
         version: link:../evidence
+      '@qualy/plugin-assessment-formula':
+        specifier: workspace:*
+        version: link:../formula
       '@qualy/plugin-audit':
         specifier: workspace:*
         version: link:../../base/audit
+      '@qualy/plugin-sandbox':
+        specifier: workspace:*
+        version: link:../../infra/sandbox
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry
+      '@qualy/sandbox-runtime':
+        specifier: workspace:*
+        version: link:../../../../apps/sandbox-runtime
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
