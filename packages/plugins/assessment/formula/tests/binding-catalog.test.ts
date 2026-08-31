@@ -15,6 +15,7 @@ import {
   BindableFormulaCatalog,
   bindingCatalogLayer,
   type FormulaNotBindable,
+  type BindablePage,
 } from '../src/server/binding-catalog.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { contractIdentityOf, sha256Hex } from '../src/server/contract-identity.ts'
@@ -201,8 +202,8 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
           )
 
           return {
-            listA: listA.map((v) => v.functionName),
-            listAB: listAB.map((v) => v.functionName),
+            listA: listA.items.map((v) => v.functionName),
+            listAB: listAB.items.map((v) => v.functionName),
             bindRootOnA,
             bindAOnA,
             bindBOnA,
@@ -211,7 +212,7 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
             zeroAnchors,
             archivedResolve,
             archivedBind,
-            listAfterArchive: listAfterArchive.map((v) => v.functionName),
+            listAfterArchive: listAfterArchive.items.map((v) => v.functionName),
             ownerGoneResolve,
             ownerGoneBind,
             versionIds: { root: rootFormula.versionId, a: collegeAFormula.versionId },
@@ -350,5 +351,190 @@ describe.runIf(postgresAvailable)('eligibility holds its ground until the writer
     expect(outcome.archiveContention.during).toBe('blocked')
     expect(outcome.orgContention.during).toBe('blocked')
     expect(outcome.archiveContention.versionId).toBeDefined()
+  }, 120_000)
+})
+
+describe.runIf(postgresAvailable)('paging what a batch may bind', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('formula-binding-paging')
+  }, 120_000)
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  it('walks every version once across pages, however the names collide', async () => {
+    // The ordering runs in two directions - names up, versions down - and
+    // two functions may share a name, so the page boundary is only sound
+    // with the version id closing it. Two same-named functions with several
+    // versions each is exactly the shape that drops or repeats rows when it
+    // is not.
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('bc-paging')
+          const catalog = yield* BindableFormulaCatalog
+          const root = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
+            ),
+          ).id
+          const batchId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_batches (tenant_id, name, material_range)
+              values (${f.t}, 'Paging', daterange('2026-03-01','2026-09-01')) returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
+            values (${f.t}, ${batchId}, ${f.collegeA})`)
+
+          const identity = contractIdentityOf(CONTRACT.input, CONTRACT.output)
+          const artifact = '/*artifact*/'
+          const publishVersions = (name: string, count: number) =>
+            Effect.gen(function* () {
+              const functionId = one<{ id: string }>(
+                yield* runSql(sql`
+                  insert into assessment_formula_functions
+                    (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
+                  values (${f.t}, ${root}, ${name}, 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
+                  returning id`),
+              ).id
+              const ids: string[] = []
+              for (let no = 1; no <= count; no += 1) {
+                ids.push(
+                  one<{ id: string }>(
+                    yield* runSql(sql`
+                      insert into assessment_formula_versions
+                        (tenant_id, function_id, version_no, source_ts, runtime_js,
+                         input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
+                         typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
+                         quickjs_engine_version, tests, test_report, published_by,
+                         value_schema_profile_version)
+                      values (${f.t}, ${functionId}, ${no}, 'export {}', ${artifact},
+                              ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
+                              ${sha256Hex('export {}')}, ${sha256Hex(artifact)}, ${identity.contractSha256},
+                              '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
+                              'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin},
+                              ${VALUE_SCHEMA_PROFILE_VERSION})
+                      returning id`),
+                  ).id,
+                )
+              }
+              return ids
+            })
+          // the same name twice, three versions each
+          const left = yield* publishVersions('同名公式', 3)
+          const right = yield* publishVersions('同名公式', 3)
+
+          // one at a time: the two functions share a name AND their version
+          // numbers, so every page boundary falls between two rows that
+          // differ only by id - which is the whole point of the last key
+          const walked: string[] = []
+          let after: { functionName: string; versionNo: number; versionId: string } | undefined =
+            undefined
+          for (let page = 0; page < 20; page += 1) {
+            const got: BindablePage = yield* catalog.listForBatch(f.t, batchId, {
+              limit: 1,
+              after,
+            })
+            walked.push(...got.items.map((one) => one.versionId))
+            if (!got.more || got.last === null) break
+            after = got.last
+          }
+          const all = yield* catalog.listForBatch(f.t, batchId, { limit: 100 })
+          return {
+            walked,
+            every: all.items.map((one) => one.versionId),
+            planted: [...left, ...right],
+          }
+        }),
+      ),
+    )
+    // every planted version, exactly once, and the same set the single page
+    // returns - no drops at the boundary, no repeats
+    expect([...outcome.walked].sort()).toEqual([...outcome.planted].sort())
+    expect([...outcome.every].sort()).toEqual([...outcome.planted].sort())
+    expect(new Set(outcome.walked).size).toBe(outcome.walked.length)
+  }, 120_000)
+
+  it('shows a bound version as history, whatever became of its function', async () => {
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('bc-current')
+          const catalog = yield* BindableFormulaCatalog
+          const root = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
+            ),
+          ).id
+          const batchId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_batches (tenant_id, name, material_range)
+              values (${f.t}, 'Current', daterange('2026-03-01','2026-09-01')) returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
+            values (${f.t}, ${batchId}, ${f.collegeA})`)
+          const identity = contractIdentityOf(CONTRACT.input, CONTRACT.output)
+          const artifact = '/*artifact*/'
+          const functionId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_formula_functions
+                (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
+              values (${f.t}, ${root}, '历史公式', 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
+              returning id`),
+          ).id
+          const versionId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_formula_versions
+                (tenant_id, function_id, version_no, source_ts, runtime_js,
+                 input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
+                 typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
+                 quickjs_engine_version, tests, test_report, published_by,
+                 value_schema_profile_version)
+              values (${f.t}, ${functionId}, 1, 'export {}', ${artifact},
+                      ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
+                      ${sha256Hex('export {}')}, ${sha256Hex(artifact)}, ${identity.contractSha256},
+                      '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
+                      'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin},
+                      ${VALUE_SCHEMA_PROFILE_VERSION})
+              returning id`),
+          ).id
+
+          const whileLive = yield* catalog.currentBinding(f.t, batchId, versionId)
+          const listedWhileLive = yield* catalog.listForBatch(f.t, batchId)
+          // archived: it leaves the options and stays the history
+          yield* runSql(
+            sql`update assessment_formula_functions set archived_at = now() where id = ${functionId}`,
+          )
+          const afterArchive = yield* catalog.currentBinding(f.t, batchId, versionId)
+          const listedAfter = yield* catalog.listForBatch(f.t, batchId)
+          const absent = yield* catalog.currentBinding(
+            f.t,
+            batchId,
+            '01920000-0000-7000-8000-0000000000ee',
+          )
+          return {
+            whileLive,
+            afterArchive,
+            absent,
+            listedWhileLive: listedWhileLive.items.map((one) => one.versionId),
+            listedAfter: listedAfter.items.map((one) => one.versionId),
+          }
+        }),
+      ),
+    )
+    expect(outcome.whileLive?.bindableForNew).toBe(true)
+    expect(outcome.listedWhileLive).toEqual([outcome.whileLive!.version.versionId])
+    // the same row, still readable, no longer on offer
+    expect(outcome.afterArchive?.version.versionId).toBe(outcome.whileLive?.version.versionId)
+    expect(outcome.afterArchive?.bindableForNew).toBe(false)
+    expect(outcome.listedAfter).toEqual([])
+    expect(outcome.absent).toBeNull()
   }, 120_000)
 })

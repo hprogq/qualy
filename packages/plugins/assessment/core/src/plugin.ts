@@ -2,7 +2,7 @@ import { Context, Layer } from 'effect'
 import type { Effect, Schema } from 'effect'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
-import type { BatchNotFound } from './server/errors.ts'
+import type { BatchNotFound, ItemNotFound } from './server/errors.ts'
 import type {
   AtomicSchema,
   NormalizedAtomicSchema,
@@ -462,6 +462,41 @@ export class AssessmentConfigurationAccess extends Context.Service<
     ) => Effect.Effect<{ readonly managementAnchors: readonly string[] }, BatchNotFound>
   }
 >()('@qualy/plugin-assessment/ConfigurationAccess') {}
+
+/**
+ * What a question is scored by RIGHT NOW, as its frozen plan says.
+ *
+ * A second narrow face beside the configuration one, and deliberately not
+ * folded into it: that one answers who may administer a round and where it
+ * is run from, this one answers a question of fact about one question's
+ * arithmetic. A calculator plugin building an authoring screen needs to
+ * show what the question is bound to today, and the only truthful source
+ * for that is the compiled plan - the authored configuration is what
+ * somebody typed, while the plan is what the scorer will actually run, and
+ * a plan is where the exact runtime identity lives.
+ *
+ * The answer is opaque to this plugin: a reference and the frozen contract
+ * behind it. Whether `formula@1` means anything, and what a runtime
+ * reference of some particular kind implies, is the asking plugin's to
+ * interpret and this one's to never learn.
+ */
+export class AssessmentScoringAuthoringAccess extends Context.Service<
+  AssessmentScoringAuthoringAccess,
+  {
+    readonly currentCalculator: (
+      tenantId: string,
+      batchId: string,
+      itemId: string,
+    ) => Effect.Effect<
+      {
+        readonly revisionId: string
+        readonly ref: string
+        readonly frozen: FrozenCalculatorContract
+      } | null,
+      BatchNotFound | ItemNotFound
+    >
+  }
+>()('@qualy/plugin-assessment/ScoringAuthoringAccess') {}
 
 export class ScoringDefinitionCatalog extends Context.Service<
   ScoringDefinitionCatalog,

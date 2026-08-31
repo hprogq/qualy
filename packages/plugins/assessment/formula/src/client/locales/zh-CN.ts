@@ -127,4 +127,6 @@ export default {
   'assessment-formula/error/execution-limit': '编译或提取合同超出了允许的资源，请精简公式后再试。',
   'assessment-formula/error/test-failed': '发布前需要全部示例通过，且至少有一条示例。',
   'assessment-formula/error/compile-unavailable': '发布服务暂时不可用，请稍后再试。',
+  'assessment-formula/error/binding-options-unavailable':
+    '本批次未设置管理范围，暂时无法绑定公式。',
 } satisfies MessageCatalog

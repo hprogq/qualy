@@ -30,9 +30,22 @@ export interface BindableFormulaVersion {
   readonly functionId: string
   readonly functionName: string
   readonly versionNo: number
+  readonly publishedAt: Date | string
   readonly contractSha256: string
   readonly inputSchema: NormalizedInputSchema
   readonly outputSchema: NormalizedAtomicSchema
+}
+
+/** one page of what a batch may newly bind, oldest cursor rules apply */
+export interface BindablePage {
+  readonly items: readonly BindableFormulaVersion[]
+  /** the last row's ordering key, for the caller to encode */
+  readonly last: {
+    readonly functionName: string
+    readonly versionNo: number
+    readonly versionId: string
+  } | null
+  readonly more: boolean
 }
 
 export type NotBindableReason =
@@ -55,7 +68,32 @@ export class BindableFormulaCatalog extends Context.Service<
     readonly listForBatch: (
       tenantId: string,
       batchId: string,
-    ) => Effect.Effect<readonly BindableFormulaVersion[], FormulaNotBindable>
+      page?: {
+        readonly limit?: number
+        readonly after?: {
+          readonly functionName: string
+          readonly versionNo: number
+          readonly versionId: string
+        }
+      },
+    ) => Effect.Effect<BindablePage, FormulaNotBindable>
+    /**
+     * One exact version as this batch's history, not as an option.
+     *
+     * A question already bound to a version keeps showing it however its
+     * function or owner has changed since - so this read asks for none of
+     * that, and answers separately whether the same version could still be
+     * bound anew. It never proves the version is executable: that is the
+     * runtime store's answer, and finally the save's.
+     */
+    readonly currentBinding: (
+      tenantId: string,
+      batchId: string,
+      versionId: string,
+    ) => Effect.Effect<
+      { readonly version: BindableFormulaVersion; readonly bindableForNew: boolean } | null,
+      FormulaNotBindable
+    >
     readonly requireBindable: (
       tenantId: string,
       batchId: string,
@@ -77,6 +115,7 @@ interface CandidateRow {
   readonly functionId: string
   readonly functionName: string
   readonly versionNo: number
+  readonly publishedAt: Date | string
   readonly contractSha256: string
   readonly inputSchema: unknown
   readonly outputSchema: unknown
@@ -87,6 +126,7 @@ const toBindable = (row: CandidateRow): BindableFormulaVersion => ({
   functionId: row.functionId,
   functionName: row.functionName,
   versionNo: Number(row.versionNo),
+  publishedAt: row.publishedAt,
   contractSha256: row.contractSha256,
   inputSchema: row.inputSchema as NormalizedInputSchema,
   outputSchema: row.outputSchema as NormalizedAtomicSchema,
@@ -109,12 +149,14 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
     )
 
   return BindableFormulaCatalog.of({
-    listForBatch: (tenantId, batchId) =>
+    listForBatch: (tenantId, batchId, page) =>
       Effect.gen(function* () {
         const anchors = yield* anchorsOf(tenantId, batchId)
+        const size = Math.max(1, page?.limit ?? 50)
+        const after = page?.after
         const rows = yield* database(
-          db.query((k) =>
-            k
+          db.query((k) => {
+            let query = k
               .selectFrom('FormulaVersion as v')
               .innerJoin('FormulaFunction as f', (join) =>
                 join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
@@ -129,6 +171,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.functionId as functionId',
                 'f.name as functionName',
                 'v.versionNo as versionNo',
+                'v.publishedAt as publishedAt',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',
                 'v.outputSchema as outputSchema',
@@ -136,12 +179,103 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
               .where('v.tenantId', '=', tenantId)
               .where('f.archivedAt', 'is', null)
               .where(coversEveryAnchor(tenantId, anchors))
+            if (after !== undefined) {
+              // The ordering runs in two directions - names up, versions
+              // down - so a row-value comparison would be asking postgres
+              // the wrong question. Spelled out per key instead, which is
+              // what a mixed-direction keyset actually means. The version
+              // id closes it: two functions may share a name, and without a
+              // unique last key a page boundary would drop rows or repeat
+              // them.
+              query = query.where(
+                sql<boolean>`(
+                  f.name > ${after.functionName}
+                  or (f.name = ${after.functionName} and v.version_no < ${after.versionNo})
+                  or (f.name = ${after.functionName} and v.version_no = ${after.versionNo}
+                      and v.id > ${after.versionId}::uuid)
+                )`,
+              )
+            }
+            return query
               .orderBy('f.name')
               .orderBy('v.versionNo', 'desc')
-              .execute(),
+              .orderBy('v.id')
+              .limit(size + 1)
+              .execute()
+          }),
+        ).pipe(Effect.orDie)
+        const all = rows as unknown as CandidateRow[]
+        const items = all.slice(0, size).map(toBindable)
+        const tail = items[items.length - 1]
+        return {
+          items,
+          last:
+            tail === undefined
+              ? null
+              : {
+                  functionName: tail.functionName,
+                  versionNo: tail.versionNo,
+                  versionId: tail.versionId,
+                },
+          more: all.length > size,
+        }
+      }),
+
+    currentBinding: (tenantId, batchId, versionId) =>
+      Effect.gen(function* () {
+        // the anchors are read first for the same reason every other read
+        // here does: a batch with no boundary can bind nothing, and saying
+        // so is not the same as saying the version does not exist
+        const anchors = yield* anchorsOf(tenantId, batchId)
+        const row = yield* database(
+          db.query((k) =>
+            k
+              .selectFrom('FormulaVersion as v')
+              // the function, whatever state it is in - a version outlives
+              // its function's archival, and the question bound to it keeps
+              // showing it. No owner join at all: a deleted owner node is
+              // exactly one of the histories this read exists to survive.
+              .innerJoin('FormulaFunction as f', (join) =>
+                join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
+              )
+              .select([
+                'v.id as versionId',
+                'v.functionId as functionId',
+                'f.name as functionName',
+                'v.versionNo as versionNo',
+                'v.publishedAt as publishedAt',
+                'v.contractSha256 as contractSha256',
+                'v.inputSchema as inputSchema',
+                'v.outputSchema as outputSchema',
+              ])
+              .select(['f.archivedAt as archivedAt', 'f.ownerNodeId as ownerNodeId'])
+              .where('v.tenantId', '=', tenantId)
+              .where('v.id', '=', versionId)
+              .executeTakeFirst(),
           ),
         ).pipe(Effect.orDie)
-        return (rows as unknown as CandidateRow[]).map(toBindable)
+        if (row === undefined) return null
+        const state = row as unknown as CandidateRow & {
+          archivedAt: unknown
+          ownerNodeId: string
+        }
+        // whether the SAME version could be bound afresh today, which is a
+        // policy snapshot and nothing more
+        const covers = yield* database(
+          db.query((k) =>
+            k
+              .selectFrom('OrgNode as owner')
+              .select(['owner.id as id'])
+              .where('owner.tenantId', '=', tenantId)
+              .where('owner.id', '=', state.ownerNodeId)
+              .where(coversEveryAnchor(tenantId, anchors))
+              .executeTakeFirst(),
+          ),
+        ).pipe(Effect.orDie)
+        return {
+          version: toBindable(state),
+          bindableForNew: state.archivedAt === null && covers !== undefined,
+        }
       }),
 
     requireBindable: (tenantId, batchId, versionId) =>

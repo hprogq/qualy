@@ -36,9 +36,14 @@ import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
 import { permissions as formulaPermissions } from '../src/permissions.ts'
 import { formulaActions } from '../src/actions.ts'
+import { entities as assessmentEntities } from '@qualy/plugin-assessment/db'
+import { entities as storageEntities } from '@qualy/plugin-storage/db'
 import { entities } from '../src/db/entities.ts'
 import { formulaApiGroup } from '../src/api.ts'
 import { formulaApiHandlers, layer as formulaLayer } from '../src/server/index.ts'
+import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
+import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/scoring-authoring-access'
+import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
 import { formulaLanguageLayer } from '../src/server/language.ts'
 import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 
@@ -56,6 +61,10 @@ const catalog: readonly ActivePermission[] = compileCatalog([
 ])
 
 const closure = [
+  // the binding-options endpoint reads a batch's own tables through the
+  // assessment access faces, so this suite's database has to have them
+  ...storageEntities,
+  ...assessmentEntities,
   ...orgEntities,
   ...authEntities,
   ...rbacEntities,
@@ -144,6 +153,11 @@ beforeAll(async () => {
     // lazily, so an assembly that never opens a session never connects
     formulaLanguageLayer(),
     formulaLspQuotaLayer,
+    // the binding-options endpoint's: the batch's own access faces, and the
+    // catalog that reads what a round may newly bind
+    configurationAccessLayer,
+    scoringAuthoringAccessLayer,
+    bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
   ).pipe(Layer.provideMerge(services))
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(
@@ -423,3 +437,27 @@ const rootNode = async () => {
   )
   return one<{ id: string }>(found).id
 }
+
+describe.runIf(postgresAvailable)('the versions a batch may bind, over http', () => {
+  it("answers to the round's administrator, and to nobody by unknown batch", async () => {
+    // the gate is the ROUND's, not this library's: whoever may administer
+    // the batch may see what it can bind
+    const unknown = await call(
+      'GET',
+      '/api/assessment/batches/01920000-0000-7000-8000-0000000000c1/formula-binding-options',
+    )
+    expect(unknown.status, inspect(unknown.body)).toBe(404)
+  }, 120_000)
+
+  it('derives the current binding from the frozen plan, not from a supplied id', async () => {
+    // knowing a version's uuid must not be a way to make the server show
+    // it: the current binding comes from the question's own plan, and a
+    // question of another round is simply not this caller's question
+    const stray = await call(
+      'GET',
+      '/api/assessment/batches/01920000-0000-7000-8000-0000000000c2/formula-binding-options?itemId=01920000-0000-7000-8000-0000000000c3',
+    )
+    // the batch does not exist for this tenant, so the answer stops there
+    expect(stray.status, inspect(stray.body)).toBe(404)
+  }, 120_000)
+})

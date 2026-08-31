@@ -509,6 +509,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/error/compile-unavailable',
       defaultMessage: 'Publishing is temporarily unavailable. Try again shortly.',
     },
+    ASSESSMENT_FORMULA_BINDING_OPTIONS_UNAVAILABLE: {
+      id: 'assessment-formula/error/binding-options-unavailable',
+      defaultMessage: 'This round has no unit it is run from, so no formula can be bound to it.',
+    },
   }),
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),

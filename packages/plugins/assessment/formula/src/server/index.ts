@@ -63,7 +63,17 @@ import {
   FormulaTestFailed,
   FormulaTypecheckFailed,
   FormulaVersionNotFound,
+  FormulaBindingOptionsUnavailable,
 } from './errors.ts'
+import {
+  AssessmentConfigurationAccess,
+  AssessmentScoringAuthoringAccess,
+} from '@qualy/plugin-assessment/plugin'
+import {
+  BindableFormulaCatalog,
+  type BindableFormulaVersion,
+  type FormulaNotBindable,
+} from './binding-catalog.ts'
 
 const MANAGE = 'assessment.formula.manage'
 
@@ -76,6 +86,39 @@ const MAX_CANONICAL_CONTRACT_BYTES = 65_536
 /** compiles queue behind one permit; past this depth the service is busy */
 
 const LIST_FINGERPRINT = 'assessment-formula-functions'
+/** one batch's options are their own query: a cursor from another round's
+ *  page describes a position in a different list */
+const bindingFingerprint = (batchId: string) => `assessment-formula-binding-options:${batchId}`
+
+const FORMULA_REF = 'formula@1'
+const FORMULA_RUNTIME_KIND = 'formula-version'
+
+/** a published version as the chooser shows it; the schemas stay server-side
+ *  - a picker names versions, and what a contract IS comes from the preview */
+const bindingOptionDto = (version: BindableFormulaVersion) => ({
+  versionId: version.versionId,
+  functionId: version.functionId,
+  functionName: version.functionName,
+  versionNo: version.versionNo,
+  publishedAt: iso(version.publishedAt),
+  parameters: Object.keys(version.inputSchema.properties).sort(),
+})
+
+/**
+ * What a caller may be told when the catalog refuses the whole question.
+ *
+ * Only a batch with no management boundary makes the options unanswerable;
+ * every other reason the writer distinguishes is about ONE row qualifying,
+ * which a list expresses by leaving it out. Those cannot reach here - the
+ * list filters rather than fails - and a defect says so rather than
+ * inventing a public meaning for them.
+ */
+const bindingOptionsFailure = (
+  error: FormulaNotBindable,
+): Effect.Effect<never, FormulaBindingOptionsUnavailable> =>
+  error.reason === 'no-management-boundary'
+    ? Effect.fail(new FormulaBindingOptionsUnavailable({ reason: 'no-management-boundary' }))
+    : Effect.die(new Error(`binding options refused for an unexpected reason: ${error.reason}`))
 
 // word-level on purpose: the formula language is tiny, and "strictly typed
 // at publication" stops being true the moment any `any` slips in - even the
@@ -1318,6 +1361,72 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         const library = yield* FormulaLibrary
         const principal = yield* CurrentUser
         return yield* library.listFunctions(principal.tenantId, query, principal)
+      }),
+    )
+    .handle(
+      'listFormulaBindingOptions',
+      Effect.fn('assessmentFormula.bindingOptions.handler')(function* ({ params, query }) {
+        const principal = yield* CurrentUser
+        const access = yield* AssessmentConfigurationAccess
+        const authoring = yield* AssessmentScoringAuthoringAccess
+        const catalog = yield* BindableFormulaCatalog
+        const tenantId = principal.tenantId
+        // the actor gate first, and this plugin's own permission has no say
+        // in it: who may bind a formula to a question is the round's
+        // administrator, not the formula library's
+        yield* access.requireManage(tenantId, params.batchId, principal)
+
+        // what the question is bound to TODAY comes from its frozen plan,
+        // never from a version id the caller supplies: knowing a uuid must
+        // not be a way to make the server display an arbitrary version
+        const bound =
+          query.itemId === undefined
+            ? null
+            : yield* authoring
+                .currentCalculator(tenantId, params.batchId, query.itemId)
+                .pipe(Effect.catchTag('ASSESSMENT_ITEM_NOT_FOUND', () => Effect.succeed(null)))
+        const boundVersionId =
+          bound !== null &&
+          bound.ref === FORMULA_REF &&
+          bound.frozen.runtimeRef?.kind === FORMULA_RUNTIME_KIND
+            ? bound.frozen.runtimeRef.id
+            : null
+
+        const size = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const cursor = readQueryCursor(query.cursor, bindingFingerprint(params.batchId), [
+          'text',
+          'text',
+          'uuid',
+        ])
+        if (cursor === null) return yield* cursorUnusable()
+        const after =
+          cursor === undefined
+            ? undefined
+            : { functionName: cursor[0]!, versionNo: Number(cursor[1]), versionId: cursor[2]! }
+        const page = yield* catalog
+          .listForBatch(tenantId, params.batchId, { limit: size, after })
+          .pipe(Effect.catch(bindingOptionsFailure))
+        const current =
+          boundVersionId === null
+            ? null
+            : yield* catalog
+                .currentBinding(tenantId, params.batchId, boundVersionId)
+                .pipe(Effect.catch(bindingOptionsFailure))
+        return {
+          items: page.items.map(bindingOptionDto),
+          nextCursor:
+            page.more && page.last !== null
+              ? encodeQueryCursor(bindingFingerprint(params.batchId), [
+                  page.last.functionName,
+                  String(page.last.versionNo),
+                  page.last.versionId,
+                ])
+              : null,
+          current:
+            current === null
+              ? null
+              : { ...bindingOptionDto(current.version), bindableForNew: current.bindableForNew },
+        }
       }),
     )
     .handle(

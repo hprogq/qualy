@@ -23,8 +23,10 @@ import {
   FormulaTestFailed,
   FormulaTypecheckFailed,
   FormulaCompileUnavailable,
+  FormulaBindingOptionsUnavailable,
   FormulaVersionNotFound,
 } from './server/errors.ts'
+import { BatchNotFound } from '@qualy/plugin-assessment/server/errors'
 
 const id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))
 
@@ -103,6 +105,19 @@ const versionDetail = Schema.Struct({
   testReport: Schema.Unknown,
 })
 
+/** one published version as a chooser shows it; the schemas stay out - a
+ *  picker names versions, and what a version's contract IS comes from the
+ *  preview that compiles it */
+const bindingOptionView = Schema.Struct({
+  versionId: Schema.String,
+  functionId: Schema.String,
+  functionName: Schema.String,
+  versionNo: Schema.Number,
+  publishedAt: Schema.String,
+  /** the parameter names this version takes, for a one-line summary */
+  parameters: Schema.Array(Schema.String),
+})
+
 export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
   .add(
     // where this principal may CREATE a formula: the nodes their manage
@@ -122,6 +137,43 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       success: pageOf(functionView),
       error: [BadRequest, AccessDenied],
     }).middleware(Authenticated),
+  )
+  .add(
+    /**
+     * The formula versions this batch may newly bind, and what it is bound
+     * to today.
+     *
+     * Two different questions, so two fields. The page answers current
+     * POLICY - is this version's function live, and does its owner cover
+     * every anchor this round is run from - and says nothing about whether
+     * the version can still be executed by this build; that is the runtime
+     * store's answer, given when a candidate is previewed, and finally the
+     * save's. The current binding is history rather than an option: a
+     * question keeps showing what it is bound to however its function or
+     * owner has changed, and the server derives it from the question's own
+     * frozen plan rather than taking a version id from the caller.
+     */
+    HttpApiEndpoint.get(
+      'listFormulaBindingOptions',
+      '/assessment/batches/:batchId/formula-binding-options',
+      {
+        params: Schema.Struct({ batchId: id }),
+        query: Schema.Struct({ ...pageQuery, itemId: Schema.optional(id) }),
+        success: Schema.Struct({
+          items: Schema.Array(bindingOptionView),
+          nextCursor: Schema.NullOr(Schema.String),
+          current: Schema.NullOr(
+            Schema.Struct({
+              ...bindingOptionView.fields,
+              /** whether the same version could still be bound afresh - a
+               *  policy snapshot, never a promise that it will run */
+              bindableForNew: Schema.Boolean,
+            }),
+          ),
+        }),
+        error: [BadRequest, AccessDenied, BatchNotFound, FormulaBindingOptionsUnavailable],
+      },
+    ).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.post('createFormulaFunction', '/assessment/formula-functions', {

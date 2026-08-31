@@ -47,6 +47,9 @@ import { formulaApiGroup } from '../src/api.ts'
 import { formulaApiHandlers, layer as formulaLayer } from '../src/server/index.ts'
 import { formulaLanguageLayer } from '../src/server/language.ts'
 import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
+import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
+import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/scoring-authoring-access'
+import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
 
 // The browser's whole language path, end to end and byte for byte: the
 // ambient session cookie opens the handshake, the Origin header is the
@@ -73,11 +76,7 @@ const closure = [
 
 const here = createRequire(import.meta.url)
 const authoringMain = () =>
-  path.join(
-    path.dirname(here.resolve('@qualy/sandbox-authoring/package.json')),
-    'src',
-    'main.ts',
-  )
+  path.join(path.dirname(here.resolve('@qualy/sandbox-authoring/package.json')), 'src', 'main.ts')
 
 // with QUALY_SANDBOX_PARITY_EXTERNAL=1 the suite speaks to whatever serves
 // the default .qualy authoring socket - the container-form acceptance run -
@@ -244,10 +243,7 @@ class Client {
     const backlog = this.frames.findIndex(predicate)
     if (backlog >= 0) return Promise.resolve(this.frames.splice(backlog, 1)[0]!)
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`timed out waiting for ${label}`)),
-        30_000,
-      )
+      const timer = setTimeout(() => reject(new Error(`timed out waiting for ${label}`)), 30_000)
       this.waiters.push({
         predicate,
         resolve: (message) => {
@@ -356,6 +352,11 @@ beforeAll(async () => {
     ),
     formulaLanguageLayer({ socketPath: authoringSocket }),
     formulaLspQuotaLayer,
+    // the binding-options endpoint's services: this suite never calls it,
+    // but the handler group is assembled whole
+    configurationAccessLayer,
+    scoringAuthoringAccessLayer,
+    bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
   ).pipe(Layer.provideMerge(services))
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(
@@ -416,9 +417,7 @@ describe.runIf(postgresAvailable).sequential('the formula language bridge', () =
   }, 30_000)
 
   it('reads an unknown function as the same not-found a stranger sees', async () => {
-    expect(
-      await refusalOf(handshake({ target: '00000000-0000-7000-8000-000000000000' })),
-    ).toBe(404)
+    expect(await refusalOf(handshake({ target: '00000000-0000-7000-8000-000000000000' }))).toBe(404)
   }, 30_000)
 
   it('speaks the language: completion, hover and both diagnostic voices', async () => {
@@ -500,9 +499,9 @@ describe.runIf(postgresAvailable).sequential('the formula language bridge', () =
           ((message.params as { diagnostics: readonly unknown[] }).diagnostics.length ?? 0) > 0,
         'the policy voice refusing an import',
       )
-      expect(
-        JSON.stringify((policy.params as { diagnostics: unknown }).diagnostics),
-      ).toContain('import')
+      expect(JSON.stringify((policy.params as { diagnostics: unknown }).diagnostics)).toContain(
+        'import',
+      )
       // stale protection is version-keyed on the client; the push must say
       // which document version it speaks for
       expect((policy.params as { version?: number }).version).toBe(3)
@@ -672,30 +671,34 @@ describe.runIf(postgresAvailable).sequential('the formula language bridge', () =
     await next.closed
   }, 60_000)
 
-  it.skipIf(external)('reports the authoring sandbox dying as 1011 and frees the seat', async () => {
-    const client = await handshake()
-    await openDocument(client)
-    authoring!.kill('SIGKILL')
-    const closed = await client.closed
-    expect(closed.code).toBe(1011)
-    // the seat was returned even though the language side died: the next
-    // refusal is about availability, not the quota
-    expect(await refusalOf(handshake())).toBe(503)
-    // a restarted sandbox brings the whole path back on the same address
-    authoring = await spawnAuthoring()
-    const deadline = Date.now() + 20_000
-    for (;;) {
-      try {
-        const revived = await handshake()
-        revived.socket.close(1000)
-        await revived.closed
-        break
-      } catch (error) {
-        if (Date.now() > deadline) throw error
-        await new Promise((resolve) => setTimeout(resolve, 250))
+  it.skipIf(external)(
+    'reports the authoring sandbox dying as 1011 and frees the seat',
+    async () => {
+      const client = await handshake()
+      await openDocument(client)
+      authoring!.kill('SIGKILL')
+      const closed = await client.closed
+      expect(closed.code).toBe(1011)
+      // the seat was returned even though the language side died: the next
+      // refusal is about availability, not the quota
+      expect(await refusalOf(handshake())).toBe(503)
+      // a restarted sandbox brings the whole path back on the same address
+      authoring = await spawnAuthoring()
+      const deadline = Date.now() + 20_000
+      for (;;) {
+        try {
+          const revived = await handshake()
+          revived.socket.close(1000)
+          await revived.closed
+          break
+        } catch (error) {
+          if (Date.now() > deadline) throw error
+          await new Promise((resolve) => setTimeout(resolve, 250))
+        }
       }
-    }
-  }, 60_000)
+    },
+    60_000,
+  )
 
   it('ends every open conversation when the backend shuts down', async () => {
     const client = await handshake()

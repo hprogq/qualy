@@ -13,6 +13,8 @@
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
     "./server/configuration-access": "./src/server/configuration-access.ts",
+    "./server/scoring-authoring-access": "./src/server/scoring-authoring-access.ts",
+    "./server/errors": "./src/server/errors.ts",
     "./api": "./src/api.ts",
     "./client/api": "./src/client/api.ts",
     "./package.json": "./package.json",
