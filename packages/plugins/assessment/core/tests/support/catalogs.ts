@@ -253,7 +253,9 @@ export const storedTest: CalculatorRegistration = {
 const refuseUnlessExact = (frozen: FrozenCalculatorContract) => {
   const program = (frozen.config as { program?: unknown }).program
   if (typeof program !== 'string') {
-    return Effect.fail(new CalculatorRuntimeError('the frozen config names no program'))
+    return Effect.fail(
+      new CalculatorRuntimeError('invariant', 'the frozen config names no program'),
+    )
   }
   const ref = frozen.runtimeRef
   if (
@@ -262,10 +264,14 @@ const refuseUnlessExact = (frozen: FrozenCalculatorContract) => {
     ref.id !== program ||
     ref.sha256 !== programShaOf(program)
   ) {
-    return Effect.fail(new CalculatorRuntimeError('the frozen runtime fact is not this program'))
+    return Effect.fail(
+      new CalculatorRuntimeError('integrity', 'the frozen runtime fact is not this program'),
+    )
   }
   if (frozen.valueSchemaProfileVersion === undefined || frozen.regexProfileVersion === undefined) {
-    return Effect.fail(new CalculatorRuntimeError('a stored program demands its proving profiles'))
+    return Effect.fail(
+      new CalculatorRuntimeError('integrity', 'a stored program demands its proving profiles'),
+    )
   }
   return Effect.void
 }

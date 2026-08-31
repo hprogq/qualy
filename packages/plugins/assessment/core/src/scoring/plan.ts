@@ -637,12 +637,17 @@ export const compileScoringPlan = (
 
     const compiled = yield* inputs
       .compile(authoring.calculator.ref, calculatorConfig.value, inputs.host)
-      .pipe(Effect.option)
-    if (compiled._tag === 'None') {
+      .pipe(Effect.result)
+    if (compiled._tag === 'Failure') {
+      // a calculator with a more precise refusal names it; the generic
+      // contract-unavailable stays the honest fallback for those without
       return {
         issues: [
           ...issues,
-          { path: 'scoringConfig.calculator.config', reason: 'calculator-contract-unavailable' },
+          {
+            path: 'scoringConfig.calculator.config',
+            reason: compiled.failure.code ?? 'calculator-contract-unavailable',
+          },
         ],
       }
     }
@@ -652,7 +657,7 @@ export const compileScoringPlan = (
       contractHash,
       config: executionConfig,
       runtimeRef,
-    } = compiled.value
+    } = compiled.success
     // a runtime identity has no home in the V1 language: dropping it would
     // freeze a plan that cannot cite the program it is bound to, so the
     // calculator's demand for the versioned language is a refusal, never a

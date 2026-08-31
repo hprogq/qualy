@@ -219,22 +219,48 @@ export interface CompiledCalculator extends CalculatorContract {
   readonly runtimeRef?: RuntimeRef
 }
 
+/**
+ * What KIND of failure a calculator is reporting - the taxonomy every
+ * failure carries from 7.3 on, consumed by the failure-handling work later:
+ *
+ * - `refusal`: the calculator itself said no on a lawful input or
+ *   configuration (a formula's own q.fail, an ineligible binding);
+ * - `unavailable`: retryable infrastructure - the execution process is
+ *   down or was lost mid-call;
+ * - `execution`: the program failed to compute on a lawful input
+ *   (timeout, memory, an uncaught exception, a malformed answer);
+ * - `integrity`: a frozen promise no longer holds - a runtime reference,
+ *   hash, contract or persisted profile that storage can no longer honor;
+ * - `invariant`: the host already proved this impossible, and it happened
+ *   anyway.
+ */
+export type CalculatorFailureKind =
+  'refusal' | 'unavailable' | 'execution' | 'integrity' | 'invariant'
+
 /** the calculator could not say what it needs, under this configuration */
 export class CalculatorContractError extends Error {
   readonly _tag = 'ASSESSMENT_CALCULATOR_CONTRACT_ERROR'
+  readonly kind: CalculatorFailureKind
   readonly reason: string
-  constructor(reason: string) {
+  /** a stable kebab-case code for the plan issue, when the calculator has
+   *  one more precise than the generic contract-unavailable */
+  readonly code?: string
+  constructor(kind: CalculatorFailureKind, reason: string, code?: string) {
     super(`calculator contract unavailable: ${reason}`)
+    this.kind = kind
     this.reason = reason
+    if (code !== undefined) this.code = code
   }
 }
 
 /** the calculator refused, or failed, on an input the host had already proven */
 export class CalculatorEvaluationError extends Error {
   readonly _tag = 'ASSESSMENT_CALCULATOR_EVALUATION_ERROR'
+  readonly kind: CalculatorFailureKind
   readonly reason: string
-  constructor(reason: string) {
+  constructor(kind: CalculatorFailureKind, reason: string) {
     super(`calculator evaluation failed: ${reason}`)
+    this.kind = kind
     this.reason = reason
   }
 }
@@ -242,9 +268,11 @@ export class CalculatorEvaluationError extends Error {
 /** the frozen runtime fact behind a plan cannot be verified or prepared */
 export class CalculatorRuntimeError extends Error {
   readonly _tag = 'ASSESSMENT_CALCULATOR_RUNTIME_ERROR'
+  readonly kind: CalculatorFailureKind
   readonly reason: string
-  constructor(reason: string) {
+  constructor(kind: CalculatorFailureKind, reason: string) {
     super(`calculator runtime unavailable: ${reason}`)
+    this.kind = kind
     this.reason = reason
   }
 }

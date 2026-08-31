@@ -16,6 +16,7 @@ import {
 import { compileScoringPlan, evaluationHash, readScoringPlan } from '../src/scoring/plan.ts'
 import type { RecognitionSource } from '../src/scoring/plan.ts'
 import type { AtomicSchema } from '@qualy/value-schema'
+import { CalculatorContractError } from '../src/plugin.ts'
 import type {
   BatchContext,
   CalculatorContract,
@@ -934,5 +935,70 @@ describe('the evaluation identity: would the same values score the same', () => 
     expect(v2.version).toBe(2)
     expect((v1.parameters['base'] as { value: string }).value).toBe('3.00')
     expect(evaluationHash(v1)).toBe(evaluationHash(v2))
+  })
+})
+
+describe('what a calculator refusal carries out of the compile', () => {
+  const coded: CalculatorRegistration = {
+    kind: 'calculator',
+    ref: 'coded-test@1',
+    configSchema: Schema.Struct({}),
+    bind: Effect.succeed({
+      ref: 'coded-test@1',
+      compile: () =>
+        Effect.fail(
+          new CalculatorContractError(
+            'refusal',
+            'the named version is unavailable',
+            'coded-version-not-found',
+          ),
+        ),
+      verify: () => Effect.void,
+      prepare: () => Effect.die(new Error('never prepared')),
+    }),
+  }
+  const mute: CalculatorRegistration = {
+    kind: 'calculator',
+    ref: 'mute-test@1',
+    configSchema: Schema.Struct({}),
+    bind: Effect.succeed({
+      ref: 'mute-test@1',
+      compile: () => Effect.fail(new CalculatorContractError('invariant', 'no code on this one')),
+      verify: () => Effect.void,
+      prepare: () => Effect.die(new Error('never prepared')),
+    }),
+  }
+  const extended = [fixed1, coded, mute]
+  const compileWith = (scoringConfig: unknown) =>
+    Effect.runPromise(
+      compileScoringPlan({
+        definitions: testDefinitions(extended, builtinAggregators),
+        compile: testRuntime(extended).compile,
+        host: testHost,
+        itemType: undefined,
+        formConfig: {},
+        scoringConfig,
+        batch,
+        recognitionSource: 'review',
+      }),
+    )
+
+  it("carries the calculator's own code into the issue, and stays generic without one", async () => {
+    const named = await compileWith({
+      calculator: { ref: 'coded-test@1', config: {} },
+      aggregator: { ref: 'sum@1', config: {} },
+    })
+    expect(reasons(named)).toEqual(['scoringConfig.calculator.config:coded-version-not-found'])
+    const generic = await compileWith({
+      calculator: { ref: 'mute-test@1', config: {} },
+      aggregator: { ref: 'sum@1', config: {} },
+    })
+    expect(reasons(generic)).toEqual([
+      'scoringConfig.calculator.config:calculator-contract-unavailable',
+    ])
+    // and the kind rides on the error itself, for the failure handling to come
+    const error = new CalculatorContractError('refusal', 'why', 'code-x')
+    expect(error.kind).toBe('refusal')
+    expect(error.code).toBe('code-x')
   })
 })

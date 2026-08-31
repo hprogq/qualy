@@ -165,7 +165,7 @@ export const fixed1: CalculatorRegistration = {
       // what it will execute, and "3.00" and "3.0" are one amount to it
       const canonical = typeof written === 'string' ? canonicalDecimal(written) : null
       return canonical === null
-        ? Effect.fail(new CalculatorContractError('value is not a decimal amount'))
+        ? Effect.fail(new CalculatorContractError('invariant', 'value is not a decimal amount'))
         : Effect.succeed({ ...fixedContract, config: { value: canonical } })
     },
     verify: () => Effect.void,

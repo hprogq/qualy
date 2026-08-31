@@ -1096,7 +1096,9 @@ describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
           verify: (frozen) =>
             Effect.suspend(() => {
               handed.push(frozen)
-              return Effect.fail(new CalculatorRuntimeError('the frozen runtime fact is gone'))
+              return Effect.fail(
+                new CalculatorRuntimeError('integrity', 'the frozen runtime fact is gone'),
+              )
             }),
           prepare: () => Effect.die(new Error('prepare is not part of this audit')),
         }),
