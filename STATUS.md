@@ -12126,3 +12126,38 @@ issue(未进 interpreter);v1 → value-schema-profile issue(单元 + 集成双�
   删除线性化——writer 要么持相应 share/key-share 锁直到 ItemRevision commit,要么在
   append 前于锁下复验;`listForBatch()` 是 picker snapshot,不需要锁。
   `withDatabase()` 不吃 ambient TransactionManager,7.3 有条件做。
+
+## 测试基建插曲:effect-api teardown 稳定化(2026-08-31,先于 7.2 施工)
+
+用户裁决:7.1 CLOSED(main @ 89db167d)后、7.2 施工前,先收掉「CI 随机 120s 杀掉
+effect-api 任意一条 it」的问题——7.2 会频繁触发全量装配门禁,红绿反馈必须可信。
+独立一笔,不属于任何 phase。
+
+### 证据与定位
+
+- 同 HEAD 两轮 CI 各红一条**不同的** effect-api it(第 4、第 2 条),均 120s 打满;
+  同 HEAD browser job 绿、单跑绿。
+- 挂点钉在 teardown 而非业务路径:首轮失败 it 的**最后一个断言已被服务端应答**
+  (`GET /api/api/ping/hello` 双前缀探测全仓唯一,CI 与本地失败轮的服务端日志都有它
+  的 RouteNotFound),且同文件下一条 it 随即绑同端口正常通过(server 已让出、PG 可用)。
+- 本地复现穷举六轮全绿:常规全量 ×3(其一照抄 typecheck→test 失败序列)、CPU 压满下
+  单文件 ×25、`--maxWorkers=2`、`--maxWorkers=1`(全部文件同 worker 进程)。挂死是
+  CI 环境相关的低概率事件,现场只能等它自己再来。
+
+### 测量仪(a7c4e185)
+
+teardown 拆为两个命名有界阶段:`scope-close`(放倒全量装配 finalizer 链)与
+`db-dispose`(还 scratch 库),各带时间戳日志与 30s 预算(健康值全文件 teardown
+<1s,在册最慢关闭是 lsp-bridge ~20s)。超时立即失败并点名卡住的阶段,不再吞掉
+it 的整个 120s;两阶段**都跑**(scope 卡死不许连带泄漏 scratch 库),错误全部上浮,
+没有任何「让挂死看起来绿」的路径。差分自检(故意塞永不完成的 promise):30s 点名
+scope-close、db-dispose 继续执行、双错并出 AggregateError——三条全证。白捡一条判读
+线索:scope 不关时连 force drop 都会 >30s,故「双挂 → 根因在 scope-close;仅
+db-dispose 挂 → 库侧」。
+
+### 验收与遗留
+
+- 本地六轮全量/变体全绿(见上);CI run 33354447351(a7c4e185)全链 success。
+- **根因未定罪**:打点落地后挂死未再现身。下一次任何一笔的 CI 再挂,日志自动携带
+  阶段归属——挂 scope-close 则沿装配 finalizer 链深挖(lsp/沙箱/池),挂 db-dispose
+  则查连接残留。7.2 施工中的 effect-api 红从此一眼可辨「业务回归 vs 老 teardown」。
