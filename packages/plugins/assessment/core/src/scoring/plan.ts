@@ -417,8 +417,11 @@ export interface CompileInputs {
     config: unknown,
     context: CalculatorCompileContext,
   ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
-  /** where this compilation is happening, from the host's own reads */
-  readonly host: CalculatorHostContext
+  /** where this compilation is happening, from the host's own reads - and
+   *  the runtime identity the item's previous plan froze, when the SAME
+   *  calculator is being recompiled: a compile that keeps it continues an
+   *  existing binding, one that names another identity is a new binding */
+  readonly host: CalculatorCompileContext
   readonly itemType: ItemTypeDriver | undefined
   readonly formConfig: unknown
   readonly scoringConfig: unknown
@@ -1270,6 +1273,44 @@ export const frozenCalculatorOf = (plan: ScoringPlan): FrozenCalculatorContract 
         valueSchemaProfileVersion: plan.valueSchemaProfileVersion,
         regexProfileVersion: plan.regexProfileVersion,
       }
+
+/**
+ * The identity of the arithmetic alone: would the same already-determined
+ * values score the same? Presentation and admission stay out - labels,
+ * refinements, default seeding, the schemas themselves - because they shape
+ * what MAY be determined, not what a given determination computes. Constants
+ * are hashed in canonical spelling whatever the plan language stored, so a
+ * V1 plan's "3.00" and a V2 plan's "3" are one arithmetic; `plan.version`
+ * itself never enters, and the languages differ only through what they
+ * genuinely freeze differently (a V2 recognition identity is a new fact).
+ * Computed fresh per call and stored nowhere.
+ */
+export const evaluationHash = (plan: ScoringPlan): string =>
+  hashCanonicalJson({
+    calculator: {
+      ref: plan.calculator.ref,
+      config: plan.calculator.config,
+      contractHash: plan.calculator.contractHash,
+      ...(plan.version === 2 && plan.calculator.runtimeRef !== undefined
+        ? { runtimeRef: plan.calculator.runtimeRef }
+        : {}),
+    },
+    parameters: Object.fromEntries(
+      Object.entries(plan.parameters).map(([parameter, binding]) => [
+        parameter,
+        binding.kind === 'constant'
+          ? {
+              kind: 'constant',
+              value:
+                own(plan.inputSchema.properties, parameter) === undefined
+                  ? binding.value
+                  : canonicalizeValue(plan.inputSchema.properties[parameter]!, binding.value),
+            }
+          : binding,
+      ]),
+    ),
+    aggregator: plan.aggregator,
+  })
 
 export const carriesInto = (
   before: Readonly<Record<string, NormalizedAtomicSchema>>,

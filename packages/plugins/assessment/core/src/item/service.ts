@@ -454,13 +454,37 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     item: ItemRow
     materialRange: MaterialRange
     config: ItemConfigInput
+    /** the revision being replaced; its frozen plan carries the previous
+     *  runtime identity when the same calculator is recompiled */
+    previous: ItemRevisionRow | null
   }) =>
     Effect.gen(function* () {
       const runtime = yield* ScoringRuntimeCatalog
+      // fail closed, never option: a current revision whose plan cannot be
+      // read is an operational invariant failure, and reading it as "no
+      // previous runtime" would quietly turn a broken continuation into a
+      // brand-new binding
+      const previousPlan =
+        input.previous === null ? null : yield* readScoringPlan(input.previous).pipe(Effect.orDie)
+      const submitted = input.config.scoringConfig
+      const submittedCalculator =
+        submitted !== null && typeof submitted === 'object' && !Array.isArray(submitted)
+          ? (submitted as { calculator?: { ref?: unknown } }).calculator?.ref
+          : undefined
+      const previousRuntimeRef =
+        previousPlan !== null &&
+        previousPlan.version === 2 &&
+        previousPlan.calculator.ref === submittedCalculator
+          ? previousPlan.calculator.runtimeRef
+          : undefined
       return yield* compileScoringPlan({
         definitions: { calculators: catalogs.calculators, aggregators: catalogs.aggregators },
         compile: runtime.compile,
-        host: { tenantId: input.tenantId, batchId: input.item.batchId },
+        host: {
+          tenantId: input.tenantId,
+          batchId: input.item.batchId,
+          ...(previousRuntimeRef === undefined ? {} : { previousRuntimeRef }),
+        },
         itemType: deps.catalogs.itemTypes.get(input.item.itemType),
         formConfig: input.config.formConfig,
         scoringConfig: input.config.scoringConfig,
@@ -970,6 +994,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 item,
                 materialRange,
                 config,
+                previous: null,
               }),
               actorId: as.userId,
               reason: null,
@@ -1184,7 +1209,13 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             if (config !== undefined) {
               const batch = yield* oneBatch(tenantId, item.batchId)
               const materialRange = deps.parseRange(String(batch!.materialRange))
-              const nextPlan = yield* compiledCandidate({ tenantId, item, materialRange, config })
+              const nextPlan = yield* compiledCandidate({
+                tenantId,
+                item,
+                materialRange,
+                config,
+                previous: current,
+              })
               const counted = yield* impactUnder({
                 tenantId,
                 item,

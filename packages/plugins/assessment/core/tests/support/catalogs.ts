@@ -216,7 +216,7 @@ export const storedTest: CalculatorRegistration = {
   }),
   bind: Effect.succeed({
     ref: 'stored-test@1',
-    compile: (config) => {
+    compile: (config, context) => {
       const spec = config as { program: string; brokenSha?: boolean }
       return Effect.succeed({
         inputSchema: normalizeInputSchema({
@@ -227,7 +227,10 @@ export const storedTest: CalculatorRegistration = {
         }),
         outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
         contractHash: programShaOf(`contract:${spec.program}`),
-        config: { program: spec.program },
+        // the continuation lands in the frozen execution config, so a suite
+        // can prove from the PERSISTED plan what the compile was handed: an
+        // existing binding's identity, or nothing
+        config: { program: spec.program, continuation: context.previousRuntimeRef?.id ?? null },
         runtimeRef:
           spec.brokenSha === true
             ? { kind: 'test-program', id: spec.program, sha256: 'not-a-hash' }

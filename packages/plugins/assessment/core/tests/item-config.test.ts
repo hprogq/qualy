@@ -394,6 +394,108 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(inspect(result.invented, { depth: 10 })).toContain('recognition-id-unknown')
   })
 
+  it('hands the previous runtime identity to the same calculator, and only to it', async () => {
+    const base = studentConfig()
+    const stored = (program: string) => ({
+      ...base,
+      scoringConfig: {
+        version: 2,
+        calculator: { ref: 'stored-test@1', config: { program } },
+        aggregator: { ref: 'sum@1', config: {} },
+        recognitions: {},
+        bindings: {},
+      },
+    })
+    const fixedV2 = {
+      ...base,
+      scoringConfig: {
+        version: 2,
+        calculator: { ref: 'fixed@1', config: { value: '3' } },
+        aggregator: { ref: 'sum@1', config: {} },
+        recognitions: {},
+        bindings: {},
+      },
+    }
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-continuation')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const created = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: '存续的题',
+              scoreGroupId: groupId,
+              maxEntries: 1,
+              config: stored('prog-alpha'),
+            },
+            f.principal,
+          )
+          const planOf = (revisionId: string) =>
+            Effect.promise(() =>
+              db.row<{ scoring_plan: { calculator: { config: { continuation: string | null } } } }>(
+                `select scoring_plan from assessment_item_revisions where id = $1`,
+                [revisionId],
+              ),
+            )
+          const first = yield* planOf(created.currentRevision!.id)
+          // the same calculator, recompiled: the previous frozen identity
+          // rides into the compile as an existing continuation
+          const kept = yield* assessment.updateItem(
+            f.tenant,
+            created.id,
+            { config: stored('prog-beta') },
+            f.principal,
+          )
+          const second = yield* planOf(kept.currentRevision!.id)
+          // another calculator: no borrowed identity
+          const swapped = yield* assessment.updateItem(
+            f.tenant,
+            created.id,
+            { config: fixedV2 },
+            f.principal,
+          )
+          // and back: the previous plan is fixed's, so nothing continues
+          const returned = yield* assessment.updateItem(
+            f.tenant,
+            created.id,
+            { config: stored('prog-gamma') },
+            f.principal,
+          )
+          const fourth = yield* planOf(returned.currentRevision!.id)
+          // a current revision whose frozen plan cannot be read is an
+          // invariant failure: the update dies rather than compiling with a
+          // fabricated "no previous runtime"
+          yield* Effect.promise(() =>
+            db.query(
+              `update assessment_item_revisions
+                 set scoring_plan = jsonb_set(scoring_plan, '{planHash}', to_jsonb('f'::text || repeat('0', 63)))
+               where id = $1`,
+              [returned.currentRevision!.id],
+            ),
+          )
+          const broken = yield* Effect.exit(
+            assessment.updateItem(
+              f.tenant,
+              created.id,
+              { config: stored('prog-delta') },
+              f.principal,
+            ),
+          )
+          return { first, second, fourth, broken }
+        }),
+      ),
+    )
+    expect(result.first.scoring_plan.calculator.config.continuation).toBeNull()
+    expect(result.second.scoring_plan.calculator.config.continuation).toBe('prog-alpha')
+    expect(result.fourth.scoring_plan.calculator.config.continuation).toBeNull()
+    expect(Exit.isFailure(result.broken)).toBe(true)
+  })
+
   it('holds the driver transition rule on the server, not only in the browser', async () => {
     // the browser mints a fresh identity on retype; whoever speaks the api
     // directly meets the same refusal, judged by the driver with both

@@ -13,7 +13,7 @@ import {
   testHost,
   testRuntime,
 } from './support/catalogs.ts'
-import { compileScoringPlan, readScoringPlan } from '../src/scoring/plan.ts'
+import { compileScoringPlan, evaluationHash, readScoringPlan } from '../src/scoring/plan.ts'
 import type { RecognitionSource } from '../src/scoring/plan.ts'
 import type { AtomicSchema } from '@qualy/value-schema'
 import type {
@@ -800,5 +800,139 @@ describe('a stored-program calculator freezes its runtime identity', () => {
       )
       expect(back.planHash).toBe(outcome.plan.planHash)
     }
+  })
+})
+
+describe('the evaluation identity: would the same values score the same', () => {
+  const R_LEVEL = '01920000-0000-7000-8000-000000000201'
+  const R_ORDINAL = '01920000-0000-7000-8000-000000000202'
+  const gradedV2 = (over: Record<string, unknown> = {}) => ({
+    version: 2,
+    calculator: { ref: 'graded-test@1', config: {} },
+    aggregator: { ref: 'sum@1', config: {} },
+    recognitions: {
+      [R_LEVEL]: { label: '级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+      [R_ORDINAL]: {
+        label: '序位',
+        refinement: { type: 'integer', minimum: 2, maximum: 8 },
+        defaultFromFieldId: null,
+      },
+    },
+    bindings: {
+      level: { kind: 'recognition', recognitionId: R_LEVEL },
+      ordinal: { kind: 'recognition', recognitionId: R_ORDINAL },
+      base: { kind: 'constant', value: '3' },
+    },
+    ...over,
+  })
+  const planOf = async (config: unknown) => {
+    const outcome = await compile(config)
+    if (!('plan' in outcome)) throw new Error(`fixture did not compile: ${JSON.stringify(outcome)}`)
+    return outcome.plan
+  }
+
+  it('ignores presentation and admission, and moves with the arithmetic', async () => {
+    const base = await planOf(gradedV2())
+    // a rename: same everything
+    const renamed = await planOf(
+      gradedV2({
+        recognitions: {
+          [R_LEVEL]: { label: '换个名', refinement: null, defaultFromFieldId: 'claimed-level' },
+          [R_ORDINAL]: {
+            label: '序位',
+            refinement: { type: 'integer', minimum: 2, maximum: 8 },
+            defaultFromFieldId: null,
+          },
+        },
+      }),
+    )
+    expect(evaluationHash(renamed)).toBe(evaluationHash(base))
+    // a different default seeding moves the plan identity, not the arithmetic
+    const reseeded = await planOf(
+      gradedV2({
+        recognitions: {
+          [R_LEVEL]: { label: '级别', refinement: null, defaultFromFieldId: null },
+          [R_ORDINAL]: {
+            label: '序位',
+            refinement: { type: 'integer', minimum: 2, maximum: 8 },
+            defaultFromFieldId: null,
+          },
+        },
+      }),
+    )
+    expect(reseeded.planHash).not.toBe(base.planHash)
+    expect(evaluationHash(reseeded)).toBe(evaluationHash(base))
+    // a tighter refinement narrows what MAY be determined, not what a given
+    // determination computes
+    const tightened = await planOf(
+      gradedV2({
+        recognitions: {
+          [R_LEVEL]: { label: '级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+          [R_ORDINAL]: {
+            label: '序位',
+            refinement: { type: 'integer', minimum: 3, maximum: 7 },
+            defaultFromFieldId: null,
+          },
+        },
+      }),
+    )
+    expect(tightened.planHash).not.toBe(base.planHash)
+    expect(evaluationHash(tightened)).toBe(evaluationHash(base))
+    // and what genuinely changes the arithmetic changes the identity
+    const repriced = await planOf(
+      gradedV2({
+        bindings: {
+          level: { kind: 'recognition', recognitionId: R_LEVEL },
+          ordinal: { kind: 'recognition', recognitionId: R_ORDINAL },
+          base: { kind: 'constant', value: '4' },
+        },
+      }),
+    )
+    expect(evaluationHash(repriced)).not.toBe(evaluationHash(base))
+    const refolded = await planOf(gradedV2({ aggregator: { ref: 'max@1', config: {} } }))
+    expect(evaluationHash(refolded)).not.toBe(evaluationHash(base))
+  })
+
+  it('moves with the runtime identity', async () => {
+    const alpha = await planOf({
+      version: 2,
+      calculator: { ref: 'stored-test@1', config: { program: 'prog-alpha' } },
+      aggregator: { ref: 'sum@1', config: {} },
+      recognitions: {},
+      bindings: {},
+    })
+    const beta = await planOf({
+      version: 2,
+      calculator: { ref: 'stored-test@1', config: { program: 'prog-beta' } },
+      aggregator: { ref: 'sum@1', config: {} },
+      recognitions: {},
+      bindings: {},
+    })
+    expect(evaluationHash(alpha)).not.toBe(evaluationHash(beta))
+  })
+
+  it('reads one arithmetic across the two plan languages', async () => {
+    // all-constant bindings, so no V2 recognition identity separates them:
+    // the V1 plan froze "3.00" as authored, the V2 plan froze "3", and the
+    // evaluation identity spells both canonically
+    const constants = {
+      level: { kind: 'constant', value: 'national' },
+      ordinal: { kind: 'constant', value: 5 },
+    }
+    const v1 = await planOf({
+      calculator: { ref: 'graded-test@1', config: {} },
+      aggregator: { ref: 'sum@1', config: {} },
+      bindings: { ...constants, base: { kind: 'constant', value: '3.00' } },
+    })
+    const v2 = await planOf(
+      gradedV2({
+        recognitions: {},
+        bindings: { ...constants, base: { kind: 'constant', value: '3' } },
+      }),
+    )
+    expect(v1.version).toBe(1)
+    expect(v2.version).toBe(2)
+    expect((v1.parameters['base'] as { value: string }).value).toBe('3.00')
+    expect(evaluationHash(v1)).toBe(evaluationHash(v2))
   })
 })
