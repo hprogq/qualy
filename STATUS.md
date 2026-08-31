@@ -11989,3 +11989,102 @@ undefined`),但 type 关随即遇函数而拒——端到端 fail-closed,无需�
 - FormulaRuntimeStore / runtime-compatibility / BindableFormulaCatalog /
   AssessmentConfigurationAccess 窄能力,均见设计文档 §6。
 - `runtimeRef` 落盘、semanticPlanBodyV2 归 7.2;capability negotiation 归 7.3。
+
+## Phase 7.1:Immutable Formula Runtime & Binding Catalog(2026-08-31)
+
+依据 docs/phase7-design.md §6 + §13,基线 f238ad03(7.0 PASS/CLOSED 后用户授权)。施工
+计划经两轮评审:第一轮 3 必须修 + 2 收紧(catalog 去 Principal、Plugin.service、profile
+证据);执行首笔即撞内核事实——`Plugin.service` 的 requires 只认 keyed 服务而 Orm/Rbac 全
+为 opaque(Orm 无可命名 key),报告后**用户撤回第 2 条**并裁决「同为 opaque + dependsOn
+拓扑,不改内核;消费方 opaque 层只能依赖 descriptor dependsOn 保证在其下方构建的层」——
+与 FormulaLibrary 消费 rbac/db 的现行机制同构。
+
+### 提交链(9 笔,全部独立验收、CI 绿)
+
+`66fa10b5` feat(assessment) configuration access → `b2a058fa` fix(db) permanence +
+same-batch + `ci:` compile cache(同 push)→ `c32b91b0` ci: 修 runner context(job 级
+env 不识 `runner.*`,workflow 因此完全不解析——用户贴出真实报错定位)→ `25a84782`
+refactor(formula) contract-identity → `42b2d30c` feat(formula) RuntimeStore →
+`04d3a7ef` feat(formula) compatibility gate → `d2fc67da` feat(formula)
+BindableFormulaCatalog + `a3b7a4ce` test(server) 子进程输出转发(同 push)。
+
+### 各笔要点(承重与摘除-复原差分均红/绿闭合)
+
+- **AssessmentConfigurationAccess**(§6.10 + 终审修订 1/4):tag 进 core/plugin.ts
+  (catalog tags 先例);两方法职责分立——`requireManage`(actor gate)与 `boundary`
+  (事实:存在性 + 冻结锚,一个方法内完成,未知 batch → BatchNotFound、真实零锚 →
+  `{managementAnchors: []}`,绝不混同);`rosterReachOf` 工厂把 :1616 的判定原体迁出为
+  **唯一实现**,Assessment.make 与新层同吃——差分弱化一刀,新套件与既有
+  org-move-reach **同时红**(单源证明);零新错误码。
+- **fix(db) 三件**:formula FK CASCADE→**RESTRICT**(评审确认:PG restrict 按语句终态
+  评估,org schema.test 的同构菱形 pg18 实测 + CI 看守;permanence 双断言:直删 function
+  23001 且两行俱在、`delete from tenants` 一条语句两表清零);`uq_batch_phases_tenant_batch_id`
+  新索引先行 + current_phase 同父 same-batch FK(列级 set null 保持)+ participant_events
+  same-batch FK;迁移 `20260831120000_formula-permanence-same-batch.sql`(generate 产物
+  手工重排——**生成序把唯一索引放在了引用它的 FK 之后**,已修;drop-guard 对纯
+  constraint 替换不拦,实测,未加 destructive 头);开发库应用零违反、generate no-op;
+  formula 补上缺失的 entity-parity 门禁;core schema.test 两条 23503 承重 + set null 只清
+  一列。phase_participant_scopes 不做(无 batch_id 列、触发表无事故)。
+- **contract-identity 提取**(§6.3):`sha256Hex` + `contractIdentityOf` 单源,publish
+  的 prepare 与 RuntimeStore 共用;固定向量 + annotation 不动 hash + 语义动 hash;
+  formula-library publish 全量回归绿(fingerprint 不移)。
+- **FormulaRuntimeStore**(§6.2):`resolve({tenantId, versionId})`——无 Principal、无
+  batchId、不触 FormulaLibrary(盯守①结构证据);判定序 = 取行(缺→Missing,跨租户同
+  读)→ runtimeJs 复验(→Tampered'runtime')→ 兼容门(→Unsupported,先于 contract 复
+  验:域外 profile 无法安全 canonicalize,诚实名之 unsupported 而非诬之 tampered)→
+  contract 复算(→Tampered'contract',canonicalizer 抛掷同判)。承重单 it 全链:publish→
+  resolve 全字段往返、双租户交叉 Missing、篡 runtime_js/jsonb_set 放宽 schema 各红、
+  archive 后 resolve 仍成、owner 叶节点删除后 resolve 仍成(盯守②);三连差分(摘
+  runtime 复验/contract 复验/tenant 过滤)各红。
+- **compatibility gate**(§6.4 + 终审修订 3):**inventory 先行**——开发库 5 条 v1 行
+  逐行经当前 reader canonicalize,contract hash 逐字吻合(另 2 条 v2)→ 走「正式支持 1」
+  分支,纯单元 fixture 用真实历史行(01a04dbc,schema 原样,非改数字);
+  `validateStoredValueSchema(profileVersion, in, out)` 显式 policy(版本分派在函数体,
+  支持集语义 =「持有 replay 证据」,v3 扩缩是此处的显式决策);入参类型**无任何
+  provenance 字段**;承重:各 facet 越界点名、v1 行 resolve 活着、**provenance 陷阱**
+  (runSql 改 quickjs='0.0.1-ancient'/buildId → resolve 仍成功,gate 里加 engine 等值探针
+  即红)。
+- **BindableFormulaCatalog**(§6.7-6.9/§6.11 + 终审修订 1/5):**两方法无 Principal**
+  ——actor 授权归调用面(7.4 HTTP 先 requireManage;7.3 compile 直接 requireBindable,
+  与冻结的无-Principal CalculatorCompileContext 无冲突);流程 = `access.boundary`
+  (batch-not-found / 零锚 no-management-boundary fail closed,用户裁决)→ formula 闭包
+  内 `owner.path @> anchor.path` 对**每个**锚全称量化(unnest + left join,解析不到的锚
+  = 不覆盖);requireBindable **先取全状态再逐项判** version-not-found →
+  function-archived → owner-node-missing → outside-management-boundary(不复用 list 的
+  过滤 SQL 做诊断);承重单 it:根/A 院/B 院三公式 × 单锚/双锚批次(双锚只剩根)、六个
+  reason 互不混同、**同 fixture 上 resolve 成而 requireBindable 拒(archive 与 owner 删
+  各一组——盯守③分岔铁证)**;四连差分(摘覆盖谓词/archived 过滤/零锚拒绝/reason 折叠)
+  各红。层经 `Plugin.layer` 并入(用户拓扑裁决),formula package.json 加
+  @qualy/plugin-assessment 与 @qualy/plugin-storage(测试闭包);stack.ts 闭包并入
+  assessment+storage 实体。
+- **§6.12 九条对照**:#1-#5、#7 → runtime-store.test;#6、#8 → binding-catalog.test
+  (与 #5/#7 并排);#9 → permanence.test。全部落地且红/绿闭合。
+
+### 事故与处置
+
+- CI 红两次:①笔 1 后 effect-api 的 client 用例 120s 打满(同族建库超时第四例)——不再
+  加预算,随笔 2 落 **NODE_COMPILE_CACHE**(job 级共享 V8 编译缓存;依据:CI 上 vitest
+  import 实测 ~121s、本地 1.4s,本地实证 strip-types 模块进缓存);落地时踩 `runner.*`
+  不可用于 job 级 env(workflow 完全不解析,用户贴报错定位),改固定 /tmp 路径。效果:
+  此后**六连绿**,run 总时长 6-8min → ~5min。②笔 6 全量中 web-survives 复现——**形态
+  已变**:7.0 的 watchdog 生效,300s 静默挂死变 40s 内 exit 1 断言红;但测试未转发子进
+  程 stdio,现场日志丢失 → `a3b7a4ce` 补双管道转发,下次复现自带现场(dev 监督者域的
+  根因调查仍留待现场)。
+- 笔 6 提交时误把 web-survives 转发混进同笔(git add -A),推送前发现并 reset 拆为两笔
+  ——提交命令此后保持单纯,不并粘无关操作。
+
+### 终态验收(逐条实跑)
+
+- `pnpm typecheck` 零错;`pnpm test` 1270 passed | 17 skipped(web-survives 复现单跑
+  2/2 绿,与笔 6 无关);`pnpm test:browser` 273 passed;`pnpm build` 通过;CI 全链
+  success(HEAD a3b7a4ce)。
+- 本批新增承重 ~18 条,差分逐笔红/绿闭合;迁移应用开发库 + generate no-op;
+  frozen-routes/error-codes/openapi 零变化(7.1 零 wire);formula@1 仍零注册。
+
+### 7.2 前置记账(未动工)
+
+- **runtimeRef 不得静默丢弃**(用户裁决):formula@1 注册前立承重——Plan V1 compiler
+  遇 calculator 返回 runtimeRef 必须显式拒绝或走 V2 writer,不许 drop。
+- semanticPlanBodyV2 / ScoringPlan V2 / RecognitionId server-mint / constant
+  canonicalize(§7 全章);7.4 记账:bindable HTTP 端点(requireManage + list)、
+  versionId 进 wire DTO、keyset 分页。
