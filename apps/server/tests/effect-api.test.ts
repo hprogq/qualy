@@ -37,6 +37,60 @@ const base = `http://127.0.0.1:${port}`
 
 const spec = `${QUALY_API_PREFIX}/openapi.json` as const
 
+// teardown in two named, bounded stages. By the time either runs, the
+// business assertions have all finished - a jam here is a shutdown defect,
+// not a test failure. Each stage gets far more budget than its worst
+// healthy showing (the whole file tears down in well under a second, and
+// the slowest shutdown on record anywhere is the lsp bridge's ~20s), so a
+// breach is a verdict, not noise: the stage is named and the run fails
+// fast instead of silently eating the it's whole 120s. Both stages always
+// run - a stuck scope must not also leak the scratch database - and every
+// error surfaces; nothing here exists to make a hung run look green.
+const TEARDOWN_STAGE_BUDGET_MS = 30_000
+const teardownStaged = async (
+  label: string,
+  scope: Scope.Scope,
+  db: { dispose: () => Promise<void> },
+) => {
+  const at = () => new Date().toISOString().slice(11, 23)
+  const failures: unknown[] = []
+  const stage = async (name: string, run: () => Promise<void>) => {
+    console.log(`[teardown ${label}] ${name} begins at ${at()}`)
+    const started = performance.now()
+    let watch: NodeJS.Timeout | undefined
+    try {
+      await Promise.race([
+        run(),
+        new Promise<never>((_, reject) => {
+          watch = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `effect-api teardown stuck in ${name} (${label}): no completion within ${TEARDOWN_STAGE_BUDGET_MS}ms`,
+                ),
+              ),
+            TEARDOWN_STAGE_BUDGET_MS,
+          )
+        }),
+      ])
+      console.log(
+        `[teardown ${label}] ${name} done at ${at()} in ${Math.round(performance.now() - started)}ms`,
+      )
+    } catch (error) {
+      console.log(`[teardown ${label}] ${name} FAILED at ${at()}: ${String(error)}`)
+      failures.push(error)
+    } finally {
+      clearTimeout(watch)
+    }
+  }
+  await stage('scope-close', () => Effect.runPromise(Scope.close(scope, Exit.void)))
+  await stage('db-dispose', () => db.dispose())
+  if (failures.length === 1) throw failures[0]
+  if (failures.length > 1) {
+    throw new AggregateError(failures, `effect-api teardown failed in both stages (${label})`)
+  }
+}
+
 // the production assembler over the production resolution, minus the web
 // plugin: its raw routes would mount vite, which this suite is not about
 const assembled = await (async () => {
@@ -146,8 +200,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       expect((await fetch(`${base}/health/live`)).status).toBe(200)
       expect((await fetch(`${base}${QUALY_API_PREFIX}/health/live`)).status).toBe(404)
     } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
-      await db.dispose()
+      await teardownStaged('effect-api', scope, db)
     }
   }, 120_000)
 
@@ -182,8 +235,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
         component: 'auth-local/LoginMethod',
       })
     } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
-      await db.dispose()
+      await teardownStaged('login-methods', scope, db)
     }
   }, 120_000)
 
@@ -221,8 +273,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       })
       expect(manifest.layouts.map((layout) => layout.contract)).toContain('app-shell/v1')
     } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
-      await db.dispose()
+      await teardownStaged('manifest', scope, db)
     }
   }, 120_000)
 
@@ -258,8 +309,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       const doubled = await fetch(`${base}${QUALY_API_PREFIX}${QUALY_API_PREFIX}/ping/hello`)
       expect(doubled.status).toBe(404)
     } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
-      await db.dispose()
+      await teardownStaged('client', scope, db)
     }
   }, 120_000)
 
@@ -294,8 +344,7 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       // and the probes are absent from it, as the old server guaranteed
       expect(advertised.some((path) => path.includes('/health/'))).toBe(false)
     } finally {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
-      await db.dispose()
+      await teardownStaged('parity', scope, db)
     }
   }, 120_000)
 })
