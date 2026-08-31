@@ -10,6 +10,7 @@ import { devTopology, pluginRoots } from './dev/topology.ts'
 import { supervisedPrepareFence } from './dev/fence.ts'
 import { verifyAssembly } from './verify-assembly.ts'
 import { manifestPath } from './manifest.ts'
+import { stillFinalizing, traceLayerLifecycle } from '@qualy/plugin-kit/shutdown-trace'
 
 // Everything this process does before it is an application, and everything it
 // says while doing it, through one logger. This process generates nothing:
@@ -243,6 +244,22 @@ const launched = Layer.launch(application).pipe(
  * supervisor (or a test) waiting on it forever; with it, the failure is a
  * logged, prompt exit 1 that says which promise was broken.
  */
+/**
+ * Which layer is releasing, and how long it took.
+ *
+ * A shutdown that overruns says so already; what it could not say is where
+ * the time went. Every assembled plugin layer is bracketed at its own
+ * finalizer boundary, so the log reads as a sequence - and when the deadline
+ * below fires, whatever began releasing and never finished is named. Purely
+ * an observation: nothing here holds a resource, changes an order, or lets
+ * an unfinished release pass for a finished one.
+ */
+traceLayerLifecycle({
+  finalizing: (name) => logLine(logging, 'Debug', `shutdown finalizer start: ${name}`),
+  finalized: (name, elapsedMs) =>
+    logLine(logging, 'Debug', `shutdown finalizer done:  ${name} ${String(elapsedMs)}ms`),
+})
+
 const forceExitAfter = Number(process.env.QUALY_SHUTDOWN_TIMEOUT ?? 30) * 1000
 let stoppingSince: number | null = null
 // what a timed-out shutdown exits with: a signal's own code when a signal
@@ -252,7 +269,14 @@ onShutdownRequested(() => {
   if (forceExitAfter > 0) {
     // unref: this timer must never be the reason the process stays alive
     setTimeout(() => {
-      logLine(logging, 'Error', `shutdown did not finish within ${forceExitAfter}ms, exiting`)
+      const stuck = stillFinalizing()
+      logLine(
+        logging,
+        'Error',
+        stuck.length === 0
+          ? `shutdown did not finish within ${forceExitAfter}ms, exiting; no layer was mid-release`
+          : `shutdown did not finish within ${forceExitAfter}ms, exiting; still releasing: ${stuck.join(', ')}`,
+      )
       process.exit(timedOutExitCode)
     }, forceExitAfter).unref()
   }

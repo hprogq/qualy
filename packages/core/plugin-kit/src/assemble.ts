@@ -1,4 +1,5 @@
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Scope } from 'effect'
+import { layerFinalized, layerFinalizing } from './shutdown-trace.ts'
 import type {
   AnyLayer,
   Contributed,
@@ -52,7 +53,26 @@ export interface Assembled {
  */
 const owned = (plugin: string, layer: AnyLayer): AnyLayer =>
   Layer.fromBuild((memoMap, scope) =>
-    Effect.annotateLogs(Layer.buildWithMemoMap(layer, memoMap, scope), { source: plugin }),
+    Effect.gen(function* () {
+      // The two markers bracket this layer's own teardown. Scope finalizers
+      // run last-registered-first, so the one added BEFORE the build runs
+      // AFTER everything the build registered, and the one added after runs
+      // first: between them lies exactly this plugin's release, in the
+      // order it always had. Neither marker holds anything, fails anything
+      // or changes what runs.
+      yield* Scope.addFinalizer(
+        scope,
+        Effect.sync(() => layerFinalized(plugin)),
+      )
+      const built = yield* Effect.annotateLogs(Layer.buildWithMemoMap(layer, memoMap, scope), {
+        source: plugin,
+      })
+      yield* Scope.addFinalizer(
+        scope,
+        Effect.sync(() => layerFinalizing(plugin)),
+      )
+      return built
+    }),
   )
 
 export function assemble(descriptors: readonly PluginDescriptor[]): Assembled {

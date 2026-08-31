@@ -9,7 +9,8 @@
     "./package.json": "./package.json",
     "./assemble": "./src/assemble.ts",
     "./dev": "./src/dev.ts",
-    "./cli": "./src/cli.ts"
+    "./cli": "./src/cli.ts",
+    "./shutdown-trace": "./src/shutdown-trace.ts"
   },
   "dependencies": {
     "effect": "catalog:"
