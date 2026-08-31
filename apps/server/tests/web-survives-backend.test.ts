@@ -78,6 +78,22 @@ const until = async (holds: () => Promise<boolean>, within = 90_000) => {
   throw new Error('never happened')
 }
 
+/**
+ * Forwarded so a failure carries its scene: when a backend's graceful
+ * shutdown blows its deadline, the watchdog's own log line - and whatever
+ * finalizer spoke before it - is the diagnosis, and it comes out of these
+ * pipes or nowhere.
+ */
+const forwarded = (child: ChildProcess, label: string) => {
+  child.stdout?.on('data', (chunk: Buffer) => {
+    process.stdout.write(`[${label}] ${chunk.toString()}`)
+  })
+  child.stderr?.on('data', (chunk: Buffer) => {
+    process.stderr.write(`[${label}] ${chunk.toString()}`)
+  })
+  return child
+}
+
 const spoken = (child: ChildProcess, type: ChildMessage['type']) =>
   new Promise<void>((resolve, reject) => {
     child.on('message', (message: ChildMessage) => {
@@ -91,7 +107,7 @@ const startWeb = async () => {
     env: { ...process.env, NODE_ENV: 'development' },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
-  children.push(child)
+  children.push(forwarded(child, 'web'))
   const spec: DevServiceSpec = {
     key: '@qualy/plugin-web:web',
     pluginId: '@qualy/plugin-web',
@@ -126,7 +142,7 @@ const startBackend = async () => {
     },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
-  children.push(child)
+  children.push(forwarded(child, 'backend'))
   await spoken(child, 'prepared')
   child.send({ protocol: PROTOCOL, type: 'accept' })
   await until(async () => (await answers(`http://127.0.0.1:${String(port)}/health/live`)) === 200)
