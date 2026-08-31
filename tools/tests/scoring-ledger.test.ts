@@ -18,12 +18,19 @@ const root = path.resolve(import.meta.dirname, '../..')
 
 // the production assembly, loaded the way the runtime loads it
 const resolution = await currentResolution(manifestPath())
-const contributions = (point: string): unknown[] =>
-  [...resolution.descriptors.values()].flatMap((descriptor) =>
+// contributions WITH their owner: which plugin ships a driver is half of
+// what these gates are about, and a value alone cannot say
+const contributions = (point: string): readonly { pluginId: string; value: unknown }[] =>
+  [...resolution.descriptors.entries()].flatMap(([pluginId, descriptor]) =>
     descriptor.features.flatMap((feature) =>
-      feature._tag === 'Contribute' && feature.point.id === point ? [feature.value] : [],
+      feature._tag === 'Contribute' && feature.point.id === point
+        ? [{ pluginId, value: feature.value }]
+        : [],
     ),
   )
+
+const valuesOf = (point: string): unknown[] =>
+  contributions(point).map((contribution) => contribution.value)
 
 const codeOnly = (source: string) =>
   source.split('\n').map((line) =>
@@ -147,10 +154,18 @@ describe('the line between evaluating and accounting', () => {
     expect(definitions.length).toBeGreaterThan(0)
     expect(runtimes.length).toBeGreaterThan(0)
     for (const channel of [definitions, runtimes]) {
-      const formulaRefs = channel.filter((driver) =>
-        (driver as { ref?: string }).ref?.startsWith('formula@'),
-      )
-      expect(formulaRefs.map((driver) => (driver as { ref: string }).ref)).toEqual(['formula@1'])
+      // owner AND ref: a formula driver that moved into assessment core, or
+      // into some third plugin, would still be one ref in both channels -
+      // and would still be a decision nobody made
+      const formula = channel
+        .filter((contribution) =>
+          (contribution.value as { ref?: string }).ref?.startsWith('formula@'),
+        )
+        .map((contribution) => ({
+          pluginId: contribution.pluginId,
+          ref: (contribution.value as { ref: string }).ref,
+        }))
+      expect(formula).toEqual([{ pluginId: '@qualy/plugin-assessment-formula', ref: 'formula@1' }])
     }
   })
 
@@ -168,7 +183,7 @@ describe('the line between evaluating and accounting', () => {
     // the plugin's own suite proves the same thing against its source; this
     // copy runs against the assembled declarations, so a second item-type
     // driver cannot arrive offering attachments to scoring unnoticed
-    const drivers = contributions('@qualy/plugin-assessment/item-types') as readonly {
+    const drivers = valuesOf('@qualy/plugin-assessment/item-types') as readonly {
       id: string
       bindableFields?: (config: unknown) => readonly { fieldId: string; schema: unknown }[]
     }[]

@@ -44,11 +44,8 @@
   },
   "devDependencies": {
     "@qualy/plugin-assessment-evidence": "workspace:*",
-    "@qualy/plugin-assessment-formula": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",
-    "@qualy/plugin-sandbox": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
-    "@qualy/sandbox-runtime": "workspace:*",
     "@types/react": "catalog:"
   },
   "peerDependencies": {
