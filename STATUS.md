@@ -12161,6 +12161,13 @@ db-dispose 挂 → 库侧」。
 - **根因未定罪**:打点落地后挂死未再现身。下一次任何一笔的 CI 再挂,日志自动携带
   阶段归属——挂 scope-close 则沿装配 finalizer 链深挖(lsp/沙箱/池),挂 db-dispose
   则查连接残留。7.2 施工中的 effect-api 红从此一眼可辨「业务回归 vs 老 teardown」。
+- **2026-08-31 测量仪首次点名(7.2 笔 8 的 CI 轮,run 33365589245)**:login-methods
+  it 双阶段各 30s 打满——`scope-close FAILED ... stuck in scope-close` 后
+  `db-dispose FAILED ... stuck in db-dispose`,61s 点名红取代 120s 静默。按预立判读
+  (scope 不关时 force drop 也活不了):**根因域 = scope-close,即全量装配 finalizer
+  链**;db-dispose 是连带。与 7.2 变更零交集(失败面在 effect-api,断言全过后挂在
+  teardown),rerun 后绿。下一步的根因调查应沿 finalizer 链逐段计时(lsp/沙箱子进程
+  关闭、scheduler interrupt、池 close),待用户授权。
 
 ## Phase 7.2:Scoring Authoring V2 + ScoringPlan V2(2026-08-31)
 
