@@ -21,7 +21,8 @@ jobs:
       # suites over their timeouts one at a time. The first step fills the
       # cache; everything after it reuses compiled bytecode. Probed locally:
       # stripped-type modules do land in the cache.
-      NODE_COMPILE_CACHE: ${{ runner.temp }}/node-compile-cache
+      # a fixed path: the runner context is not available in job-level env
+      NODE_COMPILE_CACHE: /tmp/node-compile-cache
     services:
       postgres:
         # same image as the local compose stack
