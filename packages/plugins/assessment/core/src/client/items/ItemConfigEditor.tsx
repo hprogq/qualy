@@ -1174,10 +1174,27 @@ export type ScoringDraft =
   /** the legacy language: the pen's own three fields are the whole truth */
   | { language: 'v1' }
   /**
-   * the versioned language: pristine until touched. `original` is what the
-   * server stored, byte for byte; re-submitting it is a no-op by design.
+   * The versioned language. `original` is what the server stored, byte for
+   * byte; `calculator` is the part the chosen calculator's own editor owns,
+   * and is only written back once that editor has actually changed it. The
+   * folding rule is not here because it was always this pen's own field.
    */
-  | { language: 'v2'; original: StoredScoringV2; touched: boolean }
+  | {
+      language: 'v2'
+      original: StoredScoringV2
+      calculator: { ref: string; config: unknown }
+      touched: boolean
+    }
+  /**
+   * A language written by a newer build than this one.
+   *
+   * There is nothing honest to do with it but carry it: reading it as the
+   * legacy language would let a rename rebuild it as a fixed amount, which
+   * is the exact silent rewrite this whole model exists to prevent. The
+   * scoring controls are closed while it is on screen, and everything else
+   * about the question stays editable.
+   */
+  | { language: 'unsupported'; original: unknown; version: unknown }
 
 /**
  * Which scoring language a stored configuration is written in.
@@ -1192,8 +1209,10 @@ const scoringDraftOf = (stored: unknown): ScoringDraft => {
     return { language: 'v1' }
   }
   if (!Object.hasOwn(stored, 'version')) return { language: 'v1' }
-  if ((stored as { version?: unknown }).version !== 2) return { language: 'v1' }
-  return { language: 'v2', original: stored as unknown as StoredScoringV2, touched: false }
+  const version = (stored as { version?: unknown }).version
+  if (version !== 2) return { language: 'unsupported', original: stored, version }
+  const original = stored as unknown as StoredScoringV2
+  return { language: 'v2', original, calculator: original.calculator, touched: false }
 }
 
 /** the stored configuration back into the pen; a shape this pen cannot hold starts fresh */
@@ -1407,13 +1426,32 @@ const storedStage = (stage: StageDraft, panelable: boolean) => ({
  * question. Only an actual scoring edit gives this pen the right to write
  * the versioned language itself - and that arrives with the binding editor.
  */
-const scoringOf = (draft: Draft, aggregator: { ref: string; config: unknown }) =>
-  draft.scoring.language === 'v2' && !draft.scoring.touched
-    ? draft.scoring.original
-    : {
-        calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
-        aggregator,
-      }
+/** the folding rules this editor owns; an aggregator outside them belongs
+ *  to whoever wrote it, and is carried rather than rebuilt */
+const OWN_AGGREGATORS = new Set(['sum@1', 'max@1', 'top-n-sum@1'])
+
+const scoringOf = (draft: Draft, aggregator: { ref: string; config: unknown }) => {
+  // a language from a newer build travels whole, always
+  if (draft.scoring.language === 'unsupported') return draft.scoring.original
+  if (draft.scoring.language === 'v2') {
+    const { original, calculator, touched } = draft.scoring
+    return {
+      ...original,
+      // the calculator's configuration is its own editor's; it is written
+      // back only once that editor has actually changed something
+      calculator: touched ? calculator : original.calculator,
+      // the folding rule, though, has always been this pen's field: the
+      // select above reads it and writes it, so a versioned question whose
+      // aggregator this editor understands is written from the pen. One it
+      // does not understand it carries.
+      aggregator: OWN_AGGREGATORS.has(original.aggregator.ref) ? aggregator : original.aggregator,
+    }
+  }
+  return {
+    calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
+    aggregator,
+  }
+}
 
 /** the pen back into the configuration the api validates */
 const configOf = (draft: Draft) =>
@@ -1838,21 +1876,19 @@ export function ItemConfigEditor({
   const calculators = useUiCollection(calculatorAuthoringOptions)
   const chosenCalculator =
     draft.scoring.language === 'v2'
-      ? {
-          ref: draft.scoring.original.calculator.ref,
-          config: draft.scoring.original.calculator.config,
-        }
+      ? draft.scoring.calculator
       : { ref: 'fixed@1', config: { value: draft.fixedValue } }
   const onCalculatorChange = (next: { ref: string; config: unknown }) => {
-    // the legacy language owns exactly one calculator, and its amount is
-    // still the pen's own field; anything else is the versioned language,
-    // which the binding editor writes
+    // where the change lands depends on the language: the legacy one keeps
+    // the amount in the pen's own field, the versioned one holds the whole
+    // calculator configuration and remembers that it was edited
+    if (draft.scoring.language === 'v2') {
+      patch({ scoring: { ...draft.scoring, calculator: next, touched: true } })
+      return
+    }
     if (next.ref === 'fixed@1' && draft.scoring.language === 'v1') {
       patch({ fixedValue: String((next.config as { value?: unknown })?.value ?? '') })
     }
-  }
-  const chooseCalculator = (ref: string) => {
-    void ref
   }
 
   const granted = draft.itemType === 'constant'
@@ -2159,10 +2195,12 @@ export function ItemConfigEditor({
                   <div {...stylex.props(styles.w208)}>
                     <Field label={format(m.itemsCalculator)}>
                       {(id) => (
-                        <Select
-                          value={chosenCalculator.ref}
-                          onValueChange={(next) => chooseCalculator(next)}
-                        >
+                        // Reading only until an editor exists for every
+                        // calculator on offer: choosing one has to hand the
+                        // question a configuration that calculator accepts,
+                        // and a chooser that changed the reference without
+                        // one would save an arithmetic nobody configured.
+                        <Select value={chosenCalculator.ref} disabled>
                           <SelectTrigger id={id} xstyle={styles.fullWidth}>
                             <SelectValue />
                           </SelectTrigger>
@@ -2180,17 +2218,21 @@ export function ItemConfigEditor({
                 )}
                 {/* whoever owns the chosen arithmetic edits its own
                     configuration here; this editor never reads into it */}
-                <UiSlot
-                  token={calculatorEditorSlot}
-                  context={{
-                    batchId,
-                    itemId: item?.id ?? null,
-                    calculator: chosenCalculator,
-                    amountPer: granted ? ('item' as const) : ('entry' as const),
-                    disabled: false,
-                    onChange: onCalculatorChange,
-                  }}
-                />
+                {draft.scoring.language === 'unsupported' ? (
+                  <Feedback message={format(m.itemsScoringUnsupported)} />
+                ) : (
+                  <UiSlot
+                    token={calculatorEditorSlot}
+                    context={{
+                      batchId,
+                      itemId: item?.id ?? null,
+                      calculator: chosenCalculator,
+                      amountPer: granted ? ('item' as const) : ('entry' as const),
+                      disabled: false,
+                      onChange: onCalculatorChange,
+                    }}
+                  />
+                )}
                 {/* how several claims fold together, and how many one
                     person may file: both are questions about filing, and a
                     question granted to everybody is never filed */}
@@ -2201,6 +2243,7 @@ export function ItemConfigEditor({
                         {(id) => (
                           <Select
                             value={draft.folding}
+                            disabled={draft.scoring.language === 'unsupported'}
                             onValueChange={(next) => patch({ folding: next as Draft['folding'] })}
                           >
                             <SelectTrigger id={id} xstyle={styles.fullWidth}>

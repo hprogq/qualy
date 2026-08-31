@@ -1355,6 +1355,11 @@ const i18n = definePluginMessages({
       id: 'assessment/items/fixed-value',
       defaultMessage: 'Score per approved entry',
     },
+    itemsScoringUnsupported: {
+      id: 'assessment/items/scoring-unsupported',
+      defaultMessage:
+        'This scoring setup was written by a newer version and cannot be edited here. Everything else about the question can still be changed.',
+    },
     itemsCalculator: {
       id: 'assessment/items/calculator',
       defaultMessage: 'Where the score comes from',

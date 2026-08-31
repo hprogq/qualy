@@ -418,17 +418,88 @@ describe("what may do a question's arithmetic", () => {
       },
     })
 
-    // both installed calculators are on offer, and the built-in one is chosen
+    // what the assembly installed is what the chooser knows about; it is
+    // read-only until every calculator on offer has an editor, so this
+    // proves the enumeration and not a selection
     const chooser = page.getByRole('combobox', { name: '分值来源' })
     await expect.element(chooser).toBeVisible()
-    await chooser.click()
-    expect(page.getByRole('option').elements()).toHaveLength(2)
-    await page.getByRole('option', { name: '另一种算法' }).click()
+    await expect.element(chooser).toBeDisabled()
+    // the built-in editor holds the seat, because it is what this question
+    // is scored by
+    await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
+  })
 
-    // the fixed editor renders for its own reference and nothing for the
-    // other, so choosing somebody else's arithmetic empties the seat
-    await expect
-      .poll(() => page.getByRole('textbox', { name: '每条通过计分' }).elements())
-      .toHaveLength(0)
+  it('leaves the seat empty for a calculator it does not own', async () => {
+    // the same built-in editor, in front of a question scored by a formula:
+    // it renders for its own reference and nothing for anybody else's
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [formulaItem()],
+      question: ITEM_ID,
+    })
+    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
+    expect(page.getByRole('textbox', { name: '每条通过计分' }).elements()).toHaveLength(0)
+  })
+})
+
+describe('a scoring language this build does not speak', () => {
+  it('carries it whole and refuses to author it', async () => {
+    // Read as the legacy language, a newer build's configuration would be
+    // rebuilt as a fixed amount by a rename - the very rewrite this model
+    // exists to prevent. So it travels untouched and its controls close.
+    const saved: { config?: unknown }[] = []
+    const item = formulaItem()
+    const future = {
+      ...item,
+      currentRevision: {
+        ...item.currentRevision,
+        scoringConfig: { ...item.currentRevision.scoringConfig, version: 3, novelty: 'kept' },
+      },
+    }
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [future],
+      saved,
+      question: ITEM_ID,
+    })
+    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
+    expect(page.getByRole('textbox', { name: '每条通过计分' }).elements()).toHaveLength(0)
+    await expect.element(page.getByRole('combobox', { name: '多条申报计分方式' })).toBeDisabled()
+
+    await page.getByRole('textbox', { name: '标题' }).fill('未来的题(改名)')
+    await page.getByRole('button', { name: '保存' }).click()
+    await expect.poll(() => saved.length).toBe(1)
+    const sent = (saved[0]?.config as { scoringConfig?: unknown })?.scoringConfig
+    expect(JSON.stringify(sent)).toBe(JSON.stringify(future.currentRevision.scoringConfig))
+  })
+})
+
+describe('who owns which half of a versioned configuration', () => {
+  it('writes the folding rule it owns without disturbing the arithmetic', async () => {
+    // The folding rule was always this editor's field; the calculator's
+    // configuration, its recognitions and their refinements never were. A
+    // change to one must not travel as a change to the other.
+    const saved: { config?: unknown }[] = []
+    const item = formulaItem()
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [item],
+      saved,
+      question: ITEM_ID,
+    })
+    const folding = page.getByRole('combobox', { name: '多条申报计分方式' })
+    await expect.element(folding).toBeVisible()
+    await folding.click()
+    await page.getByRole('option', { name: '全部累加' }).click()
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    const sent = (saved[0]?.config as { scoringConfig?: Record<string, unknown> })?.scoringConfig
+    const was = item.currentRevision.scoringConfig
+    expect(sent?.['aggregator']).toEqual({ ref: 'sum@1', config: {} })
+    expect(sent?.['version']).toBe(2)
+    expect(JSON.stringify(sent?.['calculator'])).toBe(JSON.stringify(was.calculator))
+    expect(JSON.stringify(sent?.['recognitions'])).toBe(JSON.stringify(was.recognitions))
+    expect(JSON.stringify(sent?.['bindings'])).toBe(JSON.stringify(was.bindings))
   })
 })

@@ -307,6 +307,8 @@ export default {
   'assessment/items/field-max-size': '单个文件上限（MB）',
   'assessment/items/field-accept': '允许的文件类型',
   'assessment/items/fixed-value': '每条通过计分',
+  'assessment/items/scoring-unsupported':
+    '该计分配置由更新的版本写入，暂时无法在此修改；题目的其他内容仍可编辑。',
   'assessment/items/calculator': '分值来源',
   'assessment/items/calculator-fixed': '固定分值',
   'assessment/items/granted-value': '每人计分',
