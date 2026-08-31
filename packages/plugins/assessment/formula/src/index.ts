@@ -11,6 +11,7 @@ import { formulaActions } from './actions.ts'
 import { formulaApiGroup } from './api.ts'
 import { formulaApiHandlers, layer as libraryLayer } from './server/index.ts'
 import { runtimeStoreLayer } from './server/runtime-store.ts'
+import { bindingCatalogLayer } from './server/binding-catalog.ts'
 import { formulaAuthoringLayer } from './server/authoring.ts'
 import { formulaLanguageLayer } from './server/language.ts'
 import { formulaLspQuotaLayer } from './server/lsp-bridge.ts'
@@ -52,6 +53,7 @@ const plugin = Plugin.define(
       // them - resolution consults no authoring state, and 7.3's
       // calculator bind is where both get consumed together
       runtimeStoreLayer,
+      bindingCatalogLayer,
     ),
   ),
   Api.group(formulaApiGroup, formulaApiHandlers),

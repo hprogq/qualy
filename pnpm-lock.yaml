@@ -809,6 +809,9 @@ importers:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../contracts/i18n
+      '@qualy/plugin-assessment':
+        specifier: workspace:*
+        version: link:../core
       '@qualy/plugin-auth':
         specifier: workspace:*
         version: link:../../base/auth
@@ -827,6 +830,9 @@ importers:
       '@qualy/plugin-sandbox':
         specifier: workspace:*
         version: link:../../infra/sandbox
+      '@qualy/plugin-storage':
+        specifier: workspace:*
+        version: link:../../infra/storage
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../infra/ui-registry

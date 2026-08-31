@@ -21,6 +21,8 @@ import { entities as rbacEntities } from '@qualy/plugin-rbac/db'
 import { entities as auditEntities } from '@qualy/plugin-audit/db'
 import { permissions as formulaPermissions } from '../../src/permissions.ts'
 import { formulaActions } from '../../src/actions.ts'
+import { entities as storageEntities } from '@qualy/plugin-storage/db'
+import { entities as assessmentEntities } from '@qualy/plugin-assessment/db'
 import { entities } from '../../src/db/entities.ts'
 
 export const catalog: readonly ActivePermission[] = compileCatalog([
@@ -33,6 +35,11 @@ export const harnessClosure = [
   ...authEntities,
   ...rbacEntities,
   ...auditEntities,
+  // the binding catalog reads a batch's frozen boundary through the
+  // assessment access face, so its suite needs the batch tables to exist;
+  // every other suite just ignores them
+  ...storageEntities,
+  ...assessmentEntities,
   ...entities,
 ] as const
 
