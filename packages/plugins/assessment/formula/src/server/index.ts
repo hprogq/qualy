@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { contractIdentityOf, sha256Hex } from './contract-identity.ts'
 import { Context, Effect, Layer } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
@@ -27,8 +27,6 @@ import {
   VALUE_SCHEMA_PROFILE_VERSION,
   assignmentPlan,
   canonicalDecimal,
-  canonicalizeAtomicSchema,
-  canonicalizeInputSchema,
   constraintOf,
   kindOf,
   normalizeAtomicSchema,
@@ -158,8 +156,6 @@ export interface EvaluatedCase {
   readonly refusal?: string
   readonly defect?: string
 }
-
-const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 
 const iso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString()
@@ -740,8 +736,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       const intoScore = assignmentPlan(outputSchema, normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA))
       if (intoScore.kind !== 'direct') issues.push({ path: 'output', reason: 'not-a-score-amount' })
 
-      const canonicalInput = canonicalizeInputSchema(inputSchema)
-      const canonicalOutput = canonicalizeAtomicSchema(outputSchema)
+      const { canonicalInput, canonicalOutput, contractSha256 } = contractIdentityOf(
+        inputSchema,
+        outputSchema,
+      )
       if (
         Buffer.byteLength(canonicalInput, 'utf8') + Buffer.byteLength(canonicalOutput, 'utf8') >
         MAX_CANONICAL_CONTRACT_BYTES
@@ -755,7 +753,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         outputSchema,
         sourceSha256: compiled.sourceSha256,
         runtimeSha256: compiled.runtimeSha256,
-        contractSha256: sha256(`${canonicalInput}|${canonicalOutput}`),
+        contractSha256,
         sandboxRuntime: extracted.runtime,
         formulaAbiVersion: compiled.formulaAbiVersion,
         formulaRuntimeSha256: compiled.formulaRuntimeSha256,
@@ -1112,10 +1110,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     // it anywhere else could name a process that served none of this work.
     const engine = compiled.sandboxRuntime.engineVersion
     const sandboxRuntimeBuildId = compiled.sandboxRuntime.runtimeBuildId
-    const fingerprint = sha256(
+    const fingerprint = sha256Hex(
       [
         compiled.sourceSha256,
-        sha256(JSON.stringify(row.draftTests)),
+        sha256Hex(JSON.stringify(row.draftTests)),
         compiled.typescriptVersion,
         compiled.esbuildVersion,
         String(compiled.sourcePolicyVersion),
