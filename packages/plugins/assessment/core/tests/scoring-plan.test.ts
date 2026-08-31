@@ -429,3 +429,273 @@ describe('what a question may not be saved as', () => {
     )
   })
 })
+
+describe('a V2 configuration refines what a reviewer may determine', () => {
+  const R_LEVEL = '01920000-0000-7000-8000-000000000101'
+  const R_ORDINAL = '01920000-0000-7000-8000-000000000102'
+  const R_BASE = '01920000-0000-7000-8000-000000000103'
+
+  const v2Config = (over: {
+    recognitions?: Record<string, unknown>
+    bindings?: Record<string, unknown>
+  }) => ({
+    version: 2,
+    calculator: { ref: 'graded-test@1', config: {} },
+    aggregator: { ref: 'sum@1', config: {} },
+    recognitions: over.recognitions ?? {
+      [R_LEVEL]: { label: '认定级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+      [R_ORDINAL]: { label: '认定序位', refinement: null, defaultFromFieldId: 'claimed-ordinal' },
+    },
+    bindings: over.bindings ?? {
+      level: { kind: 'recognition', recognitionId: R_LEVEL },
+      ordinal: { kind: 'recognition', recognitionId: R_ORDINAL },
+      base: { kind: 'constant', value: '3.00' },
+    },
+  })
+
+  const ordinalRefined = (refinement: unknown) =>
+    v2Config({
+      recognitions: {
+        [R_LEVEL]: { label: '认定级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+        [R_ORDINAL]: { label: '认定序位', refinement, defaultFromFieldId: null },
+      },
+    })
+
+  it('freezes a narrowing, and refuses a widening by name', async () => {
+    const narrowed = await compile(ordinalRefined({ type: 'integer', minimum: 2, maximum: 8 }))
+    expect('plan' in narrowed).toBe(true)
+    if ('plan' in narrowed) {
+      const frozen = narrowed.plan.recognitionSchemas[R_ORDINAL] as {
+        minimum: number
+        maximum: number
+        title?: string
+      }
+      // the refinement IS the frozen contract, label riding as its title
+      expect(frozen.minimum).toBe(2)
+      expect(frozen.maximum).toBe(8)
+      expect(frozen.title).toBe('认定序位')
+    }
+    const widened = await compile(ordinalRefined({ type: 'integer', minimum: 0, maximum: 20 }))
+    expect(reasons(widened)).toContain(
+      'scoringConfig.bindings.ordinal:refinement-integer-range-widens',
+    )
+  })
+
+  it('narrows a choice to a subset, never past it', async () => {
+    const subset = await compile(
+      v2Config({
+        recognitions: {
+          [R_LEVEL]: {
+            label: '认定级别',
+            refinement: { type: 'string', enum: ['national'] },
+            defaultFromFieldId: null,
+          },
+          [R_ORDINAL]: {
+            label: '认定序位',
+            refinement: null,
+            defaultFromFieldId: 'claimed-ordinal',
+          },
+        },
+      }),
+    )
+    expect('plan' in subset).toBe(true)
+    const superset = await compile(
+      v2Config({
+        recognitions: {
+          [R_LEVEL]: {
+            label: '认定级别',
+            refinement: { type: 'string', enum: ['national', 'provincial', 'municipal'] },
+            defaultFromFieldId: null,
+          },
+          [R_ORDINAL]: {
+            label: '认定序位',
+            refinement: null,
+            defaultFromFieldId: 'claimed-ordinal',
+          },
+        },
+      }),
+    )
+    expect(reasons(superset)).toContain('scoringConfig.bindings.level:refinement-choice-widens')
+  })
+
+  it('calls a conversion a costume: another kind is refused however convertible', async () => {
+    // integer proves INTO a decimal parameter by conversion - which is
+    // exactly what a refinement is not allowed to be
+    const converted = await compile(
+      v2Config({
+        recognitions: {
+          [R_LEVEL]: { label: '认定级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+          [R_ORDINAL]: {
+            label: '认定序位',
+            refinement: null,
+            defaultFromFieldId: 'claimed-ordinal',
+          },
+          [R_BASE]: {
+            label: '基础分',
+            refinement: { type: 'integer', minimum: 0, maximum: 9 },
+            defaultFromFieldId: null,
+          },
+        },
+        bindings: {
+          level: { kind: 'recognition', recognitionId: R_LEVEL },
+          ordinal: { kind: 'recognition', recognitionId: R_ORDINAL },
+          base: { kind: 'recognition', recognitionId: R_BASE },
+        },
+      }),
+    )
+    expect(reasons(converted)).toContain(
+      'scoringConfig.bindings.base:refinement-requires-conversion',
+    )
+    const crossed = await compile(ordinalRefined({ type: 'string', minLength: 1, maxLength: 8 }))
+    expect(reasons(crossed)).toContain('scoringConfig.bindings.ordinal:refinement-kind-mismatch')
+  })
+
+  it('seeds evidence through a conversion into a refined recognition: E into R into P', async () => {
+    // claimed-count is an integer field; the recognition refines the decimal
+    // base parameter. Evidence converts INTO the recognition (that side may),
+    // and the recognition proves directly into the parameter (that side must).
+    const chained = await compile(
+      v2Config({
+        recognitions: {
+          [R_LEVEL]: { label: '认定级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+          [R_ORDINAL]: {
+            label: '认定序位',
+            refinement: null,
+            defaultFromFieldId: 'claimed-ordinal',
+          },
+          [R_BASE]: {
+            label: '基础分',
+            refinement: {
+              type: 'string',
+              format: 'qualy-decimal',
+              'x-qualy-maxScale': 2,
+              'x-qualy-minimum': '0',
+              'x-qualy-maximum': '100',
+            },
+            defaultFromFieldId: 'claimed-count',
+          },
+        },
+        bindings: {
+          level: { kind: 'recognition', recognitionId: R_LEVEL },
+          ordinal: { kind: 'recognition', recognitionId: R_ORDINAL },
+          base: { kind: 'recognition', recognitionId: R_BASE },
+        },
+      }),
+    )
+    expect('plan' in chained).toBe(true)
+    if ('plan' in chained) {
+      expect(chained.plan.parameters['base']).toEqual({
+        kind: 'recognition',
+        recognitionId: R_BASE,
+        assignment: { kind: 'direct' },
+      })
+      expect(chained.plan.defaultBindings[R_BASE]?.assignment).toEqual({
+        kind: 'convert',
+        converter: 'integer-to-decimal@1',
+      })
+    }
+    // and an evidence field the refined recognition would not admit is refused
+    const overflowingSeed = await compile(
+      v2Config({
+        recognitions: {
+          [R_LEVEL]: { label: '认定级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+          [R_ORDINAL]: {
+            label: '认定序位',
+            refinement: { type: 'integer', minimum: 2, maximum: 8 },
+            defaultFromFieldId: 'wide-ordinal',
+          },
+        },
+      }),
+    )
+    expect(reasons(overflowingSeed)).toEqual([
+      `scoringConfig.recognitions.${R_ORDINAL}:default-integer-range-widens`,
+    ])
+  })
+
+  it('judges the merged schema - label included - as an issue, never a TypeError', async () => {
+    const long = '长'.repeat(256)
+    // an unlawful label over a null refinement: the parameter schema itself
+    // was fine, so only the merged validation can catch it
+    const bareLong = await compile(
+      ordinalRefined(null) === undefined
+        ? {}
+        : v2Config({
+            recognitions: {
+              [R_LEVEL]: {
+                label: '认定级别',
+                refinement: null,
+                defaultFromFieldId: 'claimed-level',
+              },
+              [R_ORDINAL]: { label: long, refinement: null, defaultFromFieldId: 'claimed-ordinal' },
+            },
+          }),
+    )
+    expect(reasons(bareLong)).toContain(
+      `scoringConfig.recognitions.${R_ORDINAL}:recognition-annotation-too-long`,
+    )
+    const refinedLong = await compile(
+      v2Config({
+        recognitions: {
+          [R_LEVEL]: { label: '认定级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+          [R_ORDINAL]: {
+            label: long,
+            refinement: { type: 'integer', minimum: 2, maximum: 8 },
+            defaultFromFieldId: null,
+          },
+        },
+      }),
+    )
+    expect(reasons(refinedLong)).toContain(
+      `scoringConfig.recognitions.${R_ORDINAL}:recognition-annotation-too-long`,
+    )
+    // a pattern outside the dialect is caught before any kind proof
+    const dialect = await compile(
+      ordinalRefined({ type: 'string', minLength: 1, maxLength: 8, pattern: '(?<=a)b' }),
+    )
+    expect(reasons(dialect)).toContain(
+      `scoringConfig.recognitions.${R_ORDINAL}:recognition-pattern-outside-dialect`,
+    )
+  })
+
+  it("freezes the administrator's label over the refinement's own title", async () => {
+    const outcome = await compile(
+      ordinalRefined({ type: 'integer', minimum: 2, maximum: 8, title: '别的名字' }),
+    )
+    expect('plan' in outcome).toBe(true)
+    if ('plan' in outcome) {
+      expect((outcome.plan.recognitionSchemas[R_ORDINAL] as { title?: string }).title).toBe(
+        '认定序位',
+      )
+    }
+  })
+
+  it('keeps a rename off the plan identity', async () => {
+    const [a, b] = await Promise.all([
+      compile(ordinalRefined({ type: 'integer', minimum: 2, maximum: 8 })),
+      compile(
+        v2Config({
+          recognitions: {
+            [R_LEVEL]: { label: '认定级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+            [R_ORDINAL]: {
+              label: '换了个说法',
+              refinement: { type: 'integer', minimum: 2, maximum: 8 },
+              defaultFromFieldId: null,
+            },
+          },
+        }),
+      ),
+    ])
+    expect('plan' in a && 'plan' in b).toBe(true)
+    if ('plan' in a && 'plan' in b) {
+      expect(a.plan.planHash).toBe(b.plan.planHash)
+    }
+  })
+
+  it('refuses a version this compiler does not speak, even straight from the column', async () => {
+    const alien = await compile({ ...v2Config({}), version: 3 })
+    expect(reasons(alien)).toEqual(['scoringConfig.version:authoring-version-unsupported'])
+    // and the strict envelope refuses a stray key instead of stripping it
+    const stray = await compile({ ...v2Config({}), novel: true })
+    expect(reasons(stray)).toEqual(['scoringConfig:scoring-config-shape'])
+  })
+})

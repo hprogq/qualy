@@ -315,6 +315,56 @@ const authoringShape = Schema.Struct({
 })
 
 /**
+ * The V2 authoring language, always in its stored form by the time it gets
+ * here: normalization already minted identities and resolved handles. The
+ * envelope is strict - an unknown key refuses rather than strips - and
+ * every recognition carries its label, its refinement (or an explicit
+ * null), and its default source. The refinement body itself stays Unknown:
+ * it is value-schema's language, proven where the recognition is compiled.
+ */
+const authoringShapeV2 = Schema.Struct({
+  version: Schema.Literal(2),
+  calculator: Schema.Struct({ ref: Schema.String, config: Schema.Unknown }),
+  aggregator: Schema.Struct({ ref: Schema.String, config: Schema.Unknown }),
+  recognitions: Schema.Record(
+    Schema.String,
+    Schema.Struct({
+      label: Schema.String,
+      refinement: Schema.NullOr(Schema.Unknown),
+      defaultFromFieldId: Schema.NullOr(Schema.String),
+    }),
+  ),
+  bindings: Schema.Record(
+    Schema.String,
+    Schema.Union([
+      Schema.Struct({ kind: Schema.Literal('constant'), value: Schema.Unknown }),
+      Schema.Struct({ kind: Schema.Literal('recognition'), recognitionId: Schema.String }),
+    ]),
+  ),
+})
+
+/** both authoring languages, seen through one lens once decoded: the
+ *  version tells the compiler which proofs the language demands */
+interface AuthoringView {
+  readonly version: 1 | 2
+  readonly calculator: { readonly ref: string; readonly config: unknown }
+  readonly aggregator: { readonly ref: string; readonly config: unknown }
+  readonly recognitions?: Record<
+    string,
+    {
+      readonly label?: string
+      readonly refinement?: unknown
+      readonly defaultFromFieldId?: string | null
+    }
+  >
+  readonly bindings?: Record<
+    string,
+    | { readonly kind: 'constant'; readonly value: unknown }
+    | { readonly kind: 'recognition'; readonly recognitionId: string }
+  >
+}
+
+/**
  * Who, if anyone, can determine a recognised fact for this question.
  *
  * The compiler needs this to answer one question honestly: can a recognition
@@ -499,22 +549,37 @@ export const compileScoringPlan = (
   inputs: CompileInputs,
 ): Effect.Effect<{ readonly plan: ScoringPlan } | { readonly issues: readonly PlanIssue[] }> =>
   Effect.gen(function* () {
-    const parsed = yield* decode(
-      authoringShape as unknown as Schema.Codec<{
-        calculator: { ref: string; config: unknown }
-        aggregator: { ref: string; config: unknown }
-        recognitions?: Record<string, { label?: string; defaultFromFieldId?: string | null }>
-        bindings?: Record<
-          string,
-          { kind: 'constant'; value: unknown } | { kind: 'recognition'; recognitionId: string }
-        >
-      }>,
-      inputs.scoringConfig,
-    )
-    if (parsed._tag === 'None') {
+    // the same own-property dispatch the plan reader uses: a V2 stored form
+    // must never be projected down to the legacy language by a lenient
+    // decode, and a version this compiler does not speak is refused even
+    // when the database was written to directly
+    const config = inputs.scoringConfig
+    const configVersion =
+      config !== null && typeof config === 'object' && Object.hasOwn(config, 'version')
+        ? (config as Record<string, unknown>)['version']
+        : undefined
+    if (configVersion !== undefined && configVersion !== 2) {
+      return {
+        issues: [{ path: 'scoringConfig.version', reason: 'authoring-version-unsupported' }],
+      }
+    }
+    const authoring: AuthoringView | undefined = yield* Effect.gen(function* () {
+      if (configVersion === 2) {
+        const strict = yield* decodeStrict(
+          authoringShapeV2 as unknown as Schema.Codec<Omit<AuthoringView, 'version'>>,
+          config,
+        )
+        return strict._tag === 'None' ? undefined : { ...strict.value, version: 2 as const }
+      }
+      const parsed = yield* decode(
+        authoringShape as unknown as Schema.Codec<Omit<AuthoringView, 'version'>>,
+        config,
+      )
+      return parsed._tag === 'None' ? undefined : { ...parsed.value, version: 1 as const }
+    })
+    if (authoring === undefined) {
       return { issues: [{ path: 'scoringConfig', reason: 'scoring-config-shape' }] }
     }
-    const authoring = parsed.value
     const issues: PlanIssue[] = []
 
     const calculator = inputs.definitions.calculators.get(authoring.calculator.ref)
@@ -662,24 +727,65 @@ export const compileScoringPlan = (
         })
         continue
       }
-      // the recognition's own type IS the parameter's, until the language
-      // grows refinements: a question may narrow what a reviewer may
-      // determine, never widen it past what the arithmetic accepts
       // The label an administrator gave the recognition rides in as the
       // schema's own title annotation - the annotation layer exists exactly
       // so presentation never needs a second protocol, and the semantic
       // body strips it, so renaming a recognition moves no hash.
-      const recognitionSchema = normalizeAtomicSchema({
-        ...schema,
-        ...(declared.label === undefined ? {} : { title: declared.label }),
-      })
-      const assignment = assignmentPlan(recognitionSchema, normalizeAtomicSchema(schema))
-      if (assignment.kind === 'incompatible') {
-        issues.push({
-          path: `scoringConfig.bindings.${parameter}`,
-          reason: `recognition-${assignment.code}`,
+      //
+      // In V1 the recognition's own type IS the parameter's. In V2 a
+      // refinement may narrow it - the same fact with a tighter admission,
+      // proven `direct` into the parameter: a conversion is another type
+      // wearing a costume, and it is refused here however convertible.
+      // The merged schema - refinement AND label - is validated as one
+      // value before normalize ever sees it, so an unlawful label (too
+      // long, say) is an issue on this recognition, never a TypeError.
+      let recognitionSchema: NormalizedAtomicSchema
+      let assignment: AssignmentPlan
+      if (authoring.version === 2) {
+        const semantic = (declared.refinement ?? schema) as AtomicSchema
+        const presented = { ...semantic, title: declared.label }
+        const wrongShape = validateAtomicProfile(presented)
+        if (wrongShape.length > 0) {
+          issues.push({
+            path: `scoringConfig.recognitions.${binding.recognitionId}`,
+            reason: `recognition-${wrongShape[0]!.reason}`,
+          })
+          continue
+        }
+        if (patternIssues(presented).length > 0) {
+          issues.push({
+            path: `scoringConfig.recognitions.${binding.recognitionId}`,
+            reason: 'recognition-pattern-outside-dialect',
+          })
+          continue
+        }
+        recognitionSchema = normalizeAtomicSchema(presented)
+        const proof = assignmentPlan(recognitionSchema, normalizeAtomicSchema(schema))
+        if (proof.kind !== 'direct') {
+          issues.push({
+            path: `scoringConfig.bindings.${parameter}`,
+            reason:
+              proof.kind === 'incompatible'
+                ? `refinement-${proof.code}`
+                : 'refinement-requires-conversion',
+          })
+          continue
+        }
+        assignment = proof
+      } else {
+        recognitionSchema = normalizeAtomicSchema({
+          ...schema,
+          ...(declared.label === undefined ? {} : { title: declared.label }),
         })
-        continue
+        const proof = assignmentPlan(recognitionSchema, normalizeAtomicSchema(schema))
+        if (proof.kind === 'incompatible') {
+          issues.push({
+            path: `scoringConfig.bindings.${parameter}`,
+            reason: `recognition-${proof.code}`,
+          })
+          continue
+        }
+        assignment = proof
       }
       parameters[parameter] = {
         kind: 'recognition',
