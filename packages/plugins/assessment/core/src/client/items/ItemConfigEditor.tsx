@@ -1397,7 +1397,12 @@ const draftOf = (
     ),
     fields: fields.length > 0 ? fields : [blankField(nextKey())],
     // 100.0000 is how it is stored, not how anybody types it
-    fixedValue: trimAmount(scoring?.calculator?.config?.value ?? '1'),
+    // the stored spelling, verbatim: trimAmount renders an amount for
+    // READING, and seeding an editable field with it makes opening a
+    // question and saving it rewrite "2.00" as "2" - the same amount, a
+    // different byte, and a live question asking for a reason for a change
+    // nobody made
+    fixedValue: scoring?.calculator?.config?.value ?? '1',
     folding: aggregatorRef === 'max@1' ? 'max' : aggregatorRef === 'top-n-sum@1' ? 'top-n' : 'sum',
     topN: String(scoring?.aggregator?.config?.n ?? 2),
     scoring: scoringLanguage,

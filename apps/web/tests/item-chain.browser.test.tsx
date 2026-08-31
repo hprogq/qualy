@@ -829,3 +829,78 @@ describe('binding what the arithmetic asks for', () => {
     expect(saved).toHaveLength(0)
   })
 })
+
+// The round trips a question has to survive (§9.14).
+//
+// Every one of these is the same shape: open a saved question, do the
+// smallest thing somebody would actually do, and check that nothing else
+// moved. They are here because the failure they guard against is silent -
+// a configuration is only ever read back by the scorer, long after the
+// person who saved it has gone.
+describe('what survives a round trip', () => {
+  const openWith = (over: Parameters<typeof open>[0]) =>
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+      ...over,
+    })
+
+  it('gives back a fixed amount exactly as it was stored', async () => {
+    const saved: { config?: { scoringConfig?: unknown } }[] = []
+    const item = officerItem()
+    openWith({ items: [item], saved })
+    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    expect(JSON.stringify(saved[0]?.config?.scoringConfig)).toBe(
+      JSON.stringify(item.currentRevision.scoringConfig),
+    )
+  })
+
+  it('renames a question whose binding is no longer offered to anybody new', async () => {
+    // The version this question runs was withdrawn from new bindings. That
+    // is a fact about what may be bound NEXT, and it must not stand between
+    // an administrator and a typo in the title.
+    const saved: { config?: { scoringConfig?: unknown } }[] = []
+    const item = formulaItem()
+    openWith({ items: [item], saved, binding: bindingOptions() })
+    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
+    await page.getByRole('textbox', { name: '标题' }).fill('竞赛获奖(改名)')
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    expect(JSON.stringify(saved[0]?.config?.scoringConfig)).toBe(
+      JSON.stringify(item.currentRevision.scoringConfig),
+    )
+  })
+
+  it('keeps one fact one fact, however often it is renamed', async () => {
+    // The pen addresses a saved fact by the identity the server gave it, so
+    // editing it again is editing THAT fact. A pen that minted a fresh
+    // handle per edit would hand the server two facts where the question
+    // has one - and the server, which never revives an identity, would mint
+    // a duplicate rather than refuse.
+    const saved: { config?: { scoringConfig?: Record<string, unknown> } }[] = []
+    openWith({ items: [formulaItem()], saved })
+    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+    const label = page.getByRole('textbox', { name: '认定名称' })
+    await label.fill('获奖等级')
+    await label.fill('获奖等第')
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    const carried = saved[0]?.config?.scoringConfig?.['recognitions'] as readonly Record<
+      string,
+      unknown
+    >[]
+    expect(carried.map((one) => one['id'])).toEqual([RECOGNITION_ID])
+    expect(carried.map((one) => one['handle'])).toEqual([RECOGNITION_ID])
+    expect(carried[0]?.['label']).toBe('获奖等第')
+    // and the binding still points at it by that handle
+    expect(saved[0]?.config?.scoringConfig?.['bindings']).toEqual({
+      level: { kind: 'recognition', handle: RECOGNITION_ID },
+    })
+  })
+})

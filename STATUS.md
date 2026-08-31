@@ -12419,3 +12419,102 @@ row.contractSha256`,不造第三种 canonical equality);verify=asVoid、prepare=
   的前端翻译与展示归 authoring UI 落地时一并补。
 - taxonomy 的消费(refusal/unavailable 在结果页与决策面的分流)归 7.5;
   evaluate 路径目前仍 orDie。
+
+## Phase 7.4a:Item Authoring & Typed Binding UX(2026-09-01)
+
+范围 B(用户裁决):§9.1-9.11 + §9.13 二值兼容 + §9.14 七条往返。OUT:§9.12
+refinement 控件、§9.13 详细诊断(→ 7.4b,不必先于 7.5)。基线 main @ `f0fb6a93`。
+
+### 提交链
+
+| 笔 | commit | CI |
+| --- | --- | --- |
+| 1 | `7e8af034` fix(assessment): keep a question's scoring language across a save | success |
+| 2 | `9663a873` feat(assessment): declare the calculator authoring surfaces | success |
+| — | `57f838ba` fix(assessment): keep versioned scoring edits fail closed | success |
+| 3 | `dd65b31b` feat(formula): list the versions a batch may bind | success |
+| 4 | `131d4d29` feat(assessment): preview what a calculator needs | success |
+| 5 | `171459b9` feat(formula): offer the version picker in the calculator slot | success |
+| 6 | `dfd3e861` feat(assessment): bind typed parameters and author recognitions | (盯守中) |
+| 7 | 本笔 test(web) + 本段 | — |
+
+### 两条红线的落位
+
+- **refinement read-through / write-preserve, 暂不 author**:`RecognitionDraft.refinement`
+  是 `unknown`,无任何控件;`draftScoringOf` 原样带回。承重「renames a fact without
+  touching what it admits」断言改名后 refinement 逐字节相同;差分不适用(没有写入
+  路径可摘)。
+- **list 的「可绑定」只是 NEW-binding policy eligibility**:wire 字段名
+  `bindableForNew`,current 单独一路 exact query。三层权威:
+  `BindableFormulaCatalog`(当前政策)/ `previewScoring` 的真 compile(持久化兼容与
+  exact contract)/ Item save 的 compile(最终权威)。
+
+### 四条 amendment 的落位
+
+- **A1(pristine → touched 状态机)**:`ScoringDraft` 判别 union;V2 未 touch 时
+  `scoringOf` 返回 stored 原样(服务端设计好的 no-op),touch 后转 Draft V2;
+  `original: StoredScoringV2 | null`(null = 本笔从 V1 升级,无 stored V2)。语言转换
+  写死:V1+fixed → V1;V1+其他 → 升 V2;**V2 永不降级**;换 calculator ref → 清
+  recognitions/bindings(承重 + 差分)。aggregator 服从同一 preserve 规则
+  (`OWN_AGGREGATORS`)。
+- **A2(current 与 NEW-binding page 分离)**:`{items, nextCursor, current}`;current
+  只 inner-join function,不 join owner、不过滤 archived、不 resolve,另算
+  `bindableForNew`;currentVersionId 从 **frozen plan** 派生(新窄服务
+  `AssessmentScoringAuthoringAccess.currentCalculator`,core 永不知道 formula 是什么);
+  mixed-direction keyset 显式三段谓词(name ASC / versionNo DESC / versionId ASC),
+  同名同版本号 fixture + `limit: 1` 使 tiebreaker 成为必需(差分:摘第三段 → 跨页漏行);
+  窄 wire 错误 `FormulaBindingOptionsUnavailable{reason:'no-management-boundary'}`,
+  writer 的六态不上 public API。
+- **A3(preview 的 authority seam)**:payload 收 `itemId?`,previousRuntimeRef 由
+  **服务端**从该题 frozen plan 派生且仅同 ref 时;短事务 `lockBatch → requireRosterReach
+  → 派生 → decode → compile`;owner-codec 纪律抽成 `contractOf`(plan.ts),save 与
+  preview 同源。承重:fixed@1 空契约 / 真参数契约 + bindableFields / 别题 itemId 不作
+  continuation / 未知 ref 是 ItemConfigInvalid 而非 defect / 未授权 403 / 驱动读不懂的
+  form 被拒。差分两条:摘 codec 产物 → 红;摘 itemId∈batch → 红。
+- **A4(preview identity + 防陈旧)**:React Query key = batchId + (itemId|new) +
+  itemType + formConfig + calculator.ref + calculator.config —— key 本身即防陈旧
+  (React Query 不会把一个 key 的答复应用到另一个 key);pending/error 且 touched 时
+  保存被 `missing` 拦下(承重 + 差分)。
+
+### §9.14 七条往返
+
+1. fixed 开/存字节不变 — 「gives back a fixed amount exactly as it was stored」
+2. formula 开/存 no-op 不变 — 「returns a formula question's arithmetic exactly as it arrived」
+3. formula 只改标题 → scoring 不变 — 同上(该承重即改标题)
+4. archived 绑定的 formula 题改标题成功 — 「renames a question whose binding is no longer offered」
+5. 换版本 → exact 新 versionId — 「rebinds to the version chosen, and moves nothing else」
+6. Recognition UUID 保持 — 「keeps one fact one fact, however often it is renamed」
+7. 只改 label → 键集不变 — 「renames a fact without touching what it admits」
+
+### 笔 7 顺手修掉的 §9.1 同族缺陷
+
+`draftOf` 用 `trimAmount()`(entry/model.ts 的**显示**helper,注释自陈 "amounts render
+without their bookkeeping zeros")种 `fixedValue`,于是打开一道存着 `"2.00"` 的题再保存
+就写回 `"2"` —— 同一金额、不同字节,足以让 `scoringMoved` 为真、向一道 live 题索要一个
+没人做过的改动的理由。改为按存储原样种入(差分:换回 trimAmount → 第 1 条往返红)。
+`trimAmount` 仍留在它该在的地方(渲染合计)。
+
+### 承重与差分总表(笔 3-7)
+
+| 位置 | 承重 | 差分 |
+| --- | --- | --- |
+| binding-catalog.test | 4(含跨页无漏无重、archived current 仍在 current) | 摘 tiebreaker → 红 |
+| formula-http.test | 7 | — |
+| item-config.test(preview) | 6 | 摘 codec 产物 → 红;摘 itemId∈batch → 红 |
+| item-chain.browser | 22 | 摘「非本 ref 让位」→ 红;current 也 disabled → 红;兼容判定改按 type 猜 → 红;不清理 → 红;摘保存闸门 → 红;换回 trimAmount → 红 |
+
+### 施工中被门禁抓到的两处真实违规
+
+- `bindingOptionsFailure` 曾在纯函数里 `Effect.runSync(Effect.die(...))` —— 被
+  tools/tests/test-layers.test.ts 的「runs effects only at the edges」抓住,改为返回
+  Effect(`Effect.catch`,v4 里 `catch_ as catch`,见 repos/effect Effect.ts:2637/2647)。
+- `previewScoring` 曾泄漏 `QueryFailed` 到方法签名 —— typecheck 与 plugin-isolation
+  同时报,补 `Effect.catchTag('QueryFailed', Effect.die)`。
+
+### 7.4b / 7.5 移交
+
+- **7.4b**:§9.12 refinement 编辑控件;§9.13 详细诊断文案(现在只有二值 disabled,
+  不解释「为什么这个字段不能预填」);formula-* PlanIssue codes 的逐条前端翻译。
+- **7.5**:taxonomy 消费(refusal/unavailable 在结果页与决策面的分流;evaluate 路径
+  目前仍 orDie);§10.2 determination probe;§10.3 共享 evaluateRecognition。
+- **仍挂账**:后端 shutdown finalizer 挂死的根因(已装测量仪,未定名;7.1 插曲段)。
