@@ -147,52 +147,92 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
     requireBindable: (tenantId, batchId, versionId) =>
       Effect.gen(function* () {
         const anchors = yield* anchorsOf(tenantId, batchId)
-        // full state first, judged step by step - the list's "only what
-        // qualifies" filter would collapse every distinct refusal into
-        // version-not-found and the reasons would mean nothing
-        const row = yield* database(
+        const refuse = (reason: NotBindableReason) =>
+          new FormulaNotBindable({ batchId, versionId, reason })
+        // A writer's eligibility check, judged step by step on ROWS IT
+        // LOCKS: this runs inside the item save's transaction (the batch
+        // row is already held FOR UPDATE), and every fact the yes depends
+        // on - the function's liveness and owner, the owner's and every
+        // anchor's place in the tree - is read under FOR SHARE, so an
+        // archive or an org move serializes after the ItemRevision commit
+        // instead of racing it. The anchor SET itself is creation-frozen
+        // with the batch (its one writer runs in createBatch, under the
+        // same batch lock), so the batch lock stabilizes the set and the
+        // node rows stabilize the facts. The lock order is fixed: batch,
+        // then function, then org nodes in UUID order.
+        const version = yield* database(
           db.query((k) =>
             k
               .selectFrom('FormulaVersion as v')
-              .innerJoin('FormulaFunction as f', (join) =>
-                join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
-              )
-              .leftJoin('OrgNode as owner', (join) =>
-                join
-                  .onRef('owner.tenantId', '=', 'f.tenantId')
-                  .onRef('owner.id', '=', 'f.ownerNodeId'),
-              )
               .select([
                 'v.id as versionId',
                 'v.functionId as functionId',
-                'f.name as functionName',
                 'v.versionNo as versionNo',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',
                 'v.outputSchema as outputSchema',
-                'f.archivedAt as archivedAt',
-                'owner.id as ownerId',
-                sql<boolean>`case when owner.id is null then false else ${coversEveryAnchor(tenantId, anchors)} end`.as(
-                  'covers',
-                ),
               ])
               .where('v.tenantId', '=', tenantId)
               .where('v.id', '=', versionId)
               .executeTakeFirst(),
           ),
         ).pipe(Effect.orDie)
-        const refuse = (reason: NotBindableReason) =>
-          new FormulaNotBindable({ batchId, versionId, reason })
-        if (row === undefined) return yield* refuse('version-not-found')
-        const state = row as unknown as CandidateRow & {
-          archivedAt: unknown
-          ownerId: string | null
-          covers: boolean
+        if (version === undefined) return yield* refuse('version-not-found')
+        const found = version as unknown as Omit<CandidateRow, 'functionName'>
+        const fn = yield* database(
+          db.query((k) =>
+            k
+              .selectFrom('FormulaFunction')
+              .select(['id', 'name', 'archivedAt', 'ownerNodeId'])
+              .where('tenantId', '=', tenantId)
+              .where('id', '=', found.functionId)
+              .forShare()
+              .executeTakeFirst(),
+          ),
+        ).pipe(Effect.orDie)
+        if (fn === undefined) {
+          // the version row references it under RESTRICT; absence is a
+          // broken invariant, not a state this catalog explains
+          return yield* Effect.die(new Error('a formula version outlived its function'))
         }
-        if (state.archivedAt !== null) return yield* refuse('function-archived')
-        if (state.ownerId === null) return yield* refuse('owner-node-missing')
-        if (state.covers !== true) return yield* refuse('outside-management-boundary')
-        return toBindable(state)
+        const holder = fn as unknown as {
+          name: string
+          archivedAt: unknown
+          ownerNodeId: string
+        }
+        if (holder.archivedAt !== null) return yield* refuse('function-archived')
+        const nodeIds = [...new Set([holder.ownerNodeId, ...anchors])].sort()
+        const nodes = yield* database(
+          db.query((k) =>
+            k
+              .selectFrom('OrgNode')
+              .select(['id', sql<string>`path::text`.as('path')])
+              .where('tenantId', '=', tenantId)
+              .where('id', 'in', nodeIds)
+              .orderBy('id')
+              .forShare()
+              .execute(),
+          ),
+        ).pipe(Effect.orDie)
+        const pathOf = new Map(
+          (nodes as unknown as readonly { id: string; path: string }[]).map((node) => [
+            node.id,
+            node.path,
+          ]),
+        )
+        const ownerPath = pathOf.get(holder.ownerNodeId)
+        if (ownerPath === undefined) return yield* refuse('owner-node-missing')
+        // ancestor-or-self, proven on the locked rows: ltree labels never
+        // contain a dot, so prefix-by-label is exactly @>
+        const covers = (anchorPath: string) =>
+          anchorPath === ownerPath || anchorPath.startsWith(`${ownerPath}.`)
+        for (const anchor of anchors) {
+          const anchorPath = pathOf.get(anchor)
+          if (anchorPath === undefined || !covers(anchorPath)) {
+            return yield* refuse('outside-management-boundary')
+          }
+        }
+        return toBindable({ ...found, functionName: holder.name })
       }),
   })
 })

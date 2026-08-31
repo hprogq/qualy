@@ -1,10 +1,10 @@
 import { inspect } from 'node:util'
 import { randomUUID } from 'node:crypto'
-import { Effect, Exit, Layer } from 'effect'
+import { Effect, Exit, Fiber, Layer } from 'effect'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
-import type { Orm } from '@qualy/plugin-database/server'
+import { transaction, type Orm } from '@qualy/plugin-database/server'
 import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
 import {
   normalizeAtomicSchema,
@@ -235,5 +235,120 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
     expect(outcome.listAfterArchive).toEqual(['校级公式'])
     expect(outcome.ownerGoneResolve.runtimeJs).toBe('/*artifact*/')
     expect(reasonOf(outcome.ownerGoneBind)).toBe('owner-node-missing')
+  }, 120_000)
+})
+
+describe.runIf(postgresAvailable)('eligibility holds its ground until the writer commits', () => {
+  let db: Awaited<ReturnType<typeof createTestContext>>
+
+  beforeAll(async () => {
+    db = await createTestContext('formula-binding-locks')
+  }, 120_000)
+
+  afterAll(async () => {
+    await db?.dispose()
+  })
+
+  it('makes archive and an org move wait for the item revision, not race it', async () => {
+    // The writer's transaction reads every fact its yes depends on under
+    // FOR SHARE. A concurrent archive (an UPDATE on the function row) and a
+    // concurrent org rename (an UPDATE on an anchor's node row) must both
+    // queue behind the commit - the requireBindable connection is the
+    // services' pool, the contender is the admin pool, genuinely two
+    // sessions.
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('bc-locks')
+          const catalog = yield* BindableFormulaCatalog
+          const root = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
+            ),
+          ).id
+          const batch = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_batches (tenant_id, name, material_range)
+              values (${f.t}, 'Locked Round', daterange('2026-03-01','2026-09-01'))
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
+            values (${f.t}, ${batch}, ${f.collegeA})`)
+          const identity = contractIdentityOf(CONTRACT.input, CONTRACT.output)
+          const artifact = '/*artifact*/'
+          const functionId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_formula_functions
+                (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
+              values (${f.t}, ${root}, '锁下公式', 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
+              returning id`),
+          ).id
+          const versionId = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_formula_versions
+                (tenant_id, function_id, version_no, source_ts, runtime_js,
+                 input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
+                 typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
+                 quickjs_engine_version, tests, test_report, published_by,
+                 value_schema_profile_version)
+              values (${f.t}, ${functionId}, 1, 'export {}', ${artifact},
+                      ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
+                      ${sha256Hex('export {}')}, ${sha256Hex(artifact)}, ${identity.contractSha256},
+                      '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
+                      'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin},
+                      ${VALUE_SCHEMA_PROFILE_VERSION})
+              returning id`),
+          ).id
+
+          const contend = (statement: string, params: readonly unknown[]) =>
+            Effect.gen(function* () {
+              let release!: () => void
+              const gate = new Promise<void>((resolve) => {
+                release = resolve
+              })
+              const writer = yield* Effect.forkChild(
+                transaction(
+                  Effect.gen(function* () {
+                    const bindable = yield* catalog.requireBindable(f.t, batch, versionId)
+                    yield* Effect.promise(() => gate)
+                    return bindable
+                  }),
+                ),
+              )
+              // let the writer take its locks before contending
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 150)))
+              const contender = db.query(statement, params)
+              const during = yield* Effect.promise(() =>
+                Promise.race([
+                  contender.then(() => 'finished' as const),
+                  new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 200)),
+                ]),
+              )
+              release()
+              yield* Effect.promise(() => contender)
+              const bindable = yield* Fiber.join(writer)
+              return { during, versionId: bindable.versionId }
+            })
+
+          const archiveContention = yield* contend(
+            `update assessment_formula_functions set archived_at = now() where id = $1`,
+            [functionId],
+          )
+          yield* runSql(
+            sql`update assessment_formula_functions set archived_at = null where id = ${functionId}`,
+          )
+          const orgContention = yield* contend(
+            `update org_nodes set name = 'Renamed College' where id = $1`,
+            [f.collegeA],
+          )
+          return { archiveContention, orgContention }
+        }),
+      ),
+    )
+    expect(outcome.archiveContention.during).toBe('blocked')
+    expect(outcome.orgContention.during).toBe('blocked')
+    expect(outcome.archiveContention.versionId).toBeDefined()
   }, 120_000)
 })
