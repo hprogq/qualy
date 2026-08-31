@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { DateRangePicker, type DateRange } from '@qualy/ui/date-range-picker'
@@ -239,6 +239,11 @@ describe('one month at a time, with the neighbouring days on show', () => {
   })
 
   it('hunts backwards across the turn of the month', async () => {
+    // an empty picker opens on the real today, and this hunt needs the turn
+    // of a KNOWN month on screen - so today is pinned, dates only, for the
+    // life of this test (every other case anchors its view with a value)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 7, 15))
     page.viewport(PHONE.width, PHONE.height)
     await open({ start: '', end: '' })
     const second = dated('2026年9月2日')
@@ -248,6 +253,7 @@ describe('one month at a time, with the neighbouring days on show', () => {
     await expect.poll(() => solid(candidate)).toBe(true)
     expect(solid(second)).toBe(true)
     expect(openEnds()).toEqual([])
+    vi.useRealTimers()
   })
 })
 

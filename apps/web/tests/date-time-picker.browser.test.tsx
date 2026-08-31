@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { DateTimePicker } from '@qualy/ui/date-time-picker'
@@ -112,6 +112,10 @@ describe('choosing an instant', () => {
   })
 
   it('offers nothing to clear until there is something to clear', async () => {
+    // a null value opens the calendar on the real today; the day this test
+    // clicks lives in August 2026, so today is pinned there - dates only
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 7, 15))
     render(<Harness initial={null} />)
     expect(page.getByRole('button', { name: 'clear' }).elements()).toHaveLength(0)
 
@@ -128,5 +132,6 @@ describe('choosing an instant', () => {
 
     await userEvent.click(page.getByRole('button', { name: 'clear' }))
     expect(page.getByTestId('value').element().textContent).toBe('')
+    vi.useRealTimers()
   })
 })
