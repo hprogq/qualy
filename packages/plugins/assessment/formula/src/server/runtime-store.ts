@@ -3,6 +3,10 @@ import type { NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value
 import { withDatabase } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
 import { contractIdentityOf, sha256Hex } from './contract-identity.ts'
+import {
+  checkRuntimeCompatibility,
+  type RuntimeCompatibilityIssue,
+} from './runtime-compatibility.ts'
 
 // The runtime half of the formula world: what one immutable published
 // version IS, by exact identity, for whoever replays it - and nothing else.
@@ -65,7 +69,16 @@ interface StoredVersionRow {
   readonly quickjsEngineVersion: string
 }
 
-export type FormulaRuntimeResolutionError = FormulaRuntimeMissing | FormulaRuntimeTampered
+/** this build holds no evidence it can faithfully execute the stored row */
+export class FormulaRuntimeUnsupported extends Data.TaggedError(
+  'ASSESSMENT_FORMULA_RUNTIME_UNSUPPORTED',
+)<{
+  readonly versionId: string
+  readonly issues: readonly RuntimeCompatibilityIssue[]
+}> {}
+
+export type FormulaRuntimeResolutionError =
+  FormulaRuntimeMissing | FormulaRuntimeTampered | FormulaRuntimeUnsupported
 
 export class FormulaRuntimeStore extends Context.Service<
   FormulaRuntimeStore,
@@ -116,6 +129,15 @@ export const make = Effect.fn('FormulaRuntimeStore.make')(function* () {
           // the artifact must still be the bytes its own hash promises
           if (sha256Hex(stored.runtimeJs) !== stored.runtimeSha256) {
             return yield* new FormulaRuntimeTampered({ versionId, field: 'runtime' })
+          }
+
+          // compatibility before the contract recheck: a schema outside
+          // every supported profile cannot be safely canonicalized, and a
+          // row written by a newer build is honestly "unsupported here",
+          // never accused of tampering
+          const unsupported = checkRuntimeCompatibility(stored)
+          if (unsupported.length > 0) {
+            return yield* new FormulaRuntimeUnsupported({ versionId, issues: unsupported })
           }
 
           // and the contract must still be the schemas ITS hash promises,

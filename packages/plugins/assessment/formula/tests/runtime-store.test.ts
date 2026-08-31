@@ -148,6 +148,34 @@ describe.runIf(postgresAvailable)('the formula runtime store', () => {
             store.resolve({ tenantId: f.t, versionId: row.id }),
           )
 
+          // repair the contract, then probe the compatibility gate
+          yield* runSql(sql`
+            update assessment_formula_versions
+            set input_schema = jsonb_set(input_schema, '{properties,value,x-qualy-maximum}', '"10.00"')
+            where id = ${row.id}`)
+
+          // an abi this host does not speak: unsupported, facet named
+          yield* runSql(sql`
+            update assessment_formula_versions set formula_abi_version = 999 where id = ${row.id}`)
+          const unsupportedAbi = yield* Effect.exit(
+            store.resolve({ tenantId: f.t, versionId: row.id }),
+          )
+          yield* runSql(sql`
+            update assessment_formula_versions set formula_abi_version = 1 where id = ${row.id}`)
+
+          // a v1 row stays resolvable: the inventoried historical language
+          yield* runSql(sql`
+            update assessment_formula_versions set value_schema_profile_version = 1 where id = ${row.id}`)
+          const asProfileOne = yield* store.resolve({ tenantId: f.t, versionId: row.id })
+
+          // provenance never gates: an ancient engine string and an
+          // unrecorded build id describe how it was made, not whether it runs
+          yield* runSql(sql`
+            update assessment_formula_versions
+            set quickjs_engine_version = '0.0.1-ancient', authoring_build_id = 'unrecorded'
+            where id = ${row.id}`)
+          const ancientProvenance = yield* store.resolve({ tenantId: f.t, versionId: row.id })
+
           return {
             row,
             resolved,
@@ -157,6 +185,9 @@ describe.runIf(postgresAvailable)('the formula runtime store', () => {
             afterOwnerGone,
             tamperedRuntime,
             tamperedContract,
+            unsupportedAbi,
+            asProfileOne,
+            ancientProvenance,
           }
         }),
       ),
@@ -180,5 +211,13 @@ describe.runIf(postgresAvailable)('the formula runtime store', () => {
     expect(inspect(outcome.tamperedRuntime, { depth: 6 })).toContain("field: 'runtime'")
     expect(Exit.isFailure(outcome.tamperedContract)).toBe(true)
     expect(inspect(outcome.tamperedContract, { depth: 6 })).toContain("field: 'contract'")
+
+    expect(Exit.isFailure(outcome.unsupportedAbi)).toBe(true)
+    expect(inspect(outcome.unsupportedAbi, { depth: 8 })).toContain(
+      'ASSESSMENT_FORMULA_RUNTIME_UNSUPPORTED',
+    )
+    expect(inspect(outcome.unsupportedAbi, { depth: 8 })).toContain('formula-abi')
+    expect(outcome.asProfileOne.valueSchemaProfileVersion).toBe(1)
+    expect(outcome.ancientProvenance.versionId).toBe(outcome.row.id)
   }, 120_000)
 })
