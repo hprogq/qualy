@@ -12,6 +12,16 @@ jobs:
       # this job provisions a postgres service: integration tests must not
       # silently skip when it is unreachable
       QUALY_REQUIRE_POSTGRES_TESTS: '1'
+      # One on-disk V8 compile cache for every node process in this job.
+      # This tree runs as type-stripped sources with no bundler, so each
+      # process - the vitest host, every forked backend and vite child, the
+      # production smoke - pays module compilation from scratch: measured at
+      # ~2 minutes for the vitest import graph on these 2-core runners
+      # (~1.4s warm locally), which is what has been tipping the db-backed
+      # suites over their timeouts one at a time. The first step fills the
+      # cache; everything after it reuses compiled bytecode. Probed locally:
+      # stripped-type modules do land in the cache.
+      NODE_COMPILE_CACHE: ${{ runner.temp }}/node-compile-cache
     services:
       postgres:
         # same image as the local compose stack
