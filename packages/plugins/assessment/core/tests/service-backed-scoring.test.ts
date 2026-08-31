@@ -19,7 +19,7 @@ import {
 import { scoringRuntimeProvider } from '../src/scoring/runtime-provider.ts'
 import { builtinAggregators, builtinCalculators } from '../src/scoring/builtins.ts'
 import { sweepScoringPlans } from '../src/scoring/backfill.ts'
-import { readScoringPlan } from '../src/scoring/plan.ts'
+import { frozenCalculatorOf, readScoringPlan } from '../src/scoring/plan.ts'
 import { evaluateEntry } from '../src/scoring/evaluate.ts'
 import { scaledAmount } from '../src/scoring/builtins.ts'
 
@@ -220,7 +220,7 @@ describe.runIf(postgresAvailable)('a service-backed calculator, through the real
       expect(plan.calculator.ref).toBe('service-backed-test@1')
 
       const prepared = await Effect.runPromise(
-        catalog.prepare(plan.calculator.ref, plan.calculator.config, undefined, {
+        catalog.prepare(plan.calculator.ref, frozenCalculatorOf(plan), {
           tenantId: tenant,
           batchId: batch,
         }),

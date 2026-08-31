@@ -249,6 +249,26 @@ export class CalculatorRuntimeError extends Error {
   }
 }
 
+/**
+ * Everything a stored plan froze about its calculator, handed whole to the
+ * runtime half. `verify` and `prepare` receive the complete frozen fact -
+ * config, contract identity, the exact schemas, the runtime reference and
+ * the profile versions the plan was proven under - so a stored-program
+ * calculator can prove "the plan's claimed contract IS my program's
+ * contract" instead of trusting whoever assembled the call. A V1 plan
+ * never froze a runtime reference or its profile versions, so those stay
+ * absent: absence means "this plan never said", never an invented fact.
+ */
+export interface FrozenCalculatorContract {
+  readonly config: unknown
+  readonly contractHash: string
+  readonly runtimeRef?: RuntimeRef
+  readonly inputSchema: NormalizedInputSchema
+  readonly outputSchema: NormalizedAtomicSchema
+  readonly valueSchemaProfileVersion?: number
+  readonly regexProfileVersion?: number
+}
+
 /** one already-bound calculator, prepared for one plan: evaluate many times */
 export interface PreparedCalculator {
   /** the amount, as an exact decimal string, for one already-validated input */
@@ -279,13 +299,11 @@ export interface BoundCalculator {
     context: CalculatorCompileContext,
   ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
   readonly verify: (
-    config: unknown,
-    runtimeRef: RuntimeRef | undefined,
+    frozen: FrozenCalculatorContract,
     context: CalculatorHostContext,
   ) => Effect.Effect<void, CalculatorRuntimeError>
   readonly prepare: (
-    config: unknown,
-    runtimeRef: RuntimeRef | undefined,
+    frozen: FrozenCalculatorContract,
     context: CalculatorHostContext,
   ) => Effect.Effect<PreparedCalculator, CalculatorRuntimeError>
 }
@@ -441,14 +459,12 @@ export class ScoringRuntimeCatalog extends Context.Service<
     ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
     readonly verify: (
       ref: string,
-      config: unknown,
-      runtimeRef: RuntimeRef | undefined,
+      frozen: FrozenCalculatorContract,
       context: CalculatorHostContext,
     ) => Effect.Effect<void, CalculatorRuntimeError>
     readonly prepare: (
       ref: string,
-      config: unknown,
-      runtimeRef: RuntimeRef | undefined,
+      frozen: FrozenCalculatorContract,
       context: CalculatorHostContext,
     ) => Effect.Effect<PreparedCalculator, CalculatorRuntimeError>
   }

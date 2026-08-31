@@ -169,9 +169,9 @@ export const fixed1: CalculatorRegistration = {
         : Effect.succeed({ ...fixedContract, config: { value: canonical } })
     },
     verify: () => Effect.void,
-    prepare: (config) =>
+    prepare: (frozen) =>
       Effect.succeed({
-        evaluate: () => Effect.succeed((config as { value: string }).value),
+        evaluate: () => Effect.succeed((frozen.config as { value: string }).value),
       }),
   }),
 }

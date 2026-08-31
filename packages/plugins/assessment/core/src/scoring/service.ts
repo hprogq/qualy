@@ -18,7 +18,7 @@ import {
   type ScoreInputItem,
 } from './calc.ts'
 import { evaluateEntry, type EvaluationFact } from './evaluate.ts'
-import { readScoringPlan } from './plan.ts'
+import { frozenCalculatorOf, readScoringPlan } from './plan.ts'
 import type { ScoringPlan } from './plan.ts'
 import { participantEntries, participantRowByUser } from './db.ts'
 
@@ -307,8 +307,7 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
               if (hit !== undefined) return hit
               const built = yield* runtime.prepare(
                 item.plan.calculator.ref,
-                item.plan.calculator.config,
-                undefined,
+                frozenCalculatorOf(item.plan),
                 { tenantId, batchId },
               )
               prepared.set(item.id, built)

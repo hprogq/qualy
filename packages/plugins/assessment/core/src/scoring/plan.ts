@@ -44,6 +44,7 @@ import type {
   CalculatorDefinition,
   CalculatorHostContext,
   CompiledCalculator,
+  FrozenCalculatorContract,
   ItemTypeDriver,
   RuntimeRef,
 } from '../plugin.ts'
@@ -1082,6 +1083,32 @@ const readPlanV2 = (
  * old contract will never fill it, and the determination reaches scoring
  * incomplete.
  */
+/**
+ * The frozen calculator fact of one stored plan, in the shape the runtime
+ * half consumes. V1 plans froze neither a runtime reference nor their
+ * profile versions, and this projection does not invent them: absent means
+ * the plan never said.
+ */
+export const frozenCalculatorOf = (plan: ScoringPlan): FrozenCalculatorContract =>
+  plan.version === 1
+    ? {
+        config: plan.calculator.config,
+        contractHash: plan.calculator.contractHash,
+        inputSchema: plan.inputSchema,
+        outputSchema: plan.outputSchema,
+      }
+    : {
+        config: plan.calculator.config,
+        contractHash: plan.calculator.contractHash,
+        ...(plan.calculator.runtimeRef === undefined
+          ? {}
+          : { runtimeRef: plan.calculator.runtimeRef }),
+        inputSchema: plan.inputSchema,
+        outputSchema: plan.outputSchema,
+        valueSchemaProfileVersion: plan.valueSchemaProfileVersion,
+        regexProfileVersion: plan.regexProfileVersion,
+      }
+
 export const carriesInto = (
   before: Readonly<Record<string, NormalizedAtomicSchema>>,
   after: Readonly<Record<string, NormalizedAtomicSchema>>,

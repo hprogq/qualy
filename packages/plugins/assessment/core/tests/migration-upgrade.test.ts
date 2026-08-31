@@ -1083,6 +1083,7 @@ describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
       // frozen runtime fact behind it still gone - the verify gate is the
       // one that notices, and it must say which revision and which
       // calculator, without ever contacting an execution process.
+      const handed: unknown[] = []
       const verifyRefusing: CalculatorRegistration = {
         kind: 'calculator',
         ref: 'verify-test@1',
@@ -1090,7 +1091,13 @@ describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
         bind: Effect.succeed({
           ref: 'verify-test@1',
           compile: () => Effect.die(new Error('compile is not part of this audit')),
-          verify: () => Effect.fail(new CalculatorRuntimeError('the frozen runtime fact is gone')),
+          // records what the audit handed over before refusing: the boot
+          // audit must pass the WHOLE frozen fact, not just a config
+          verify: (frozen) =>
+            Effect.suspend(() => {
+              handed.push(frozen)
+              return Effect.fail(new CalculatorRuntimeError('the frozen runtime fact is gone'))
+            }),
           prepare: () => Effect.die(new Error('prepare is not part of this audit')),
         }),
       }
@@ -1122,6 +1129,23 @@ describe.runIf(postgresAvailable)('the stored-plan boot gate', () => {
       expect(spoken).toContain('verify-test@1')
       expect(spoken).toContain(revision)
       expect(spoken).toContain('the frozen runtime fact is gone')
+      // and what verify received was the whole frozen fact of the stored V1
+      // plan - contract identity and both schemas intact, with no invented
+      // runtime reference or profile versions for a plan that froze none
+      expect(handed).toHaveLength(1)
+      const frozen = handed[0] as Record<string, unknown>
+      const storedPlan = refused as Record<string, unknown>
+      expect(frozen['contractHash']).toBe(
+        (storedPlan['calculator'] as Record<string, unknown>)['contractHash'],
+      )
+      expect(frozen['config']).toEqual(
+        (storedPlan['calculator'] as Record<string, unknown>)['config'],
+      )
+      expect(frozen['inputSchema']).toEqual(storedPlan['inputSchema'])
+      expect(frozen['outputSchema']).toEqual(storedPlan['outputSchema'])
+      expect(frozen['runtimeRef']).toBeUndefined()
+      expect(frozen['valueSchemaProfileVersion']).toBeUndefined()
+      expect(frozen['regexProfileVersion']).toBeUndefined()
 
       // restoring the true plan clears the gate
       await db.query(

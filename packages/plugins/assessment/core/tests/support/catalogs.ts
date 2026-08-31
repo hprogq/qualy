@@ -14,7 +14,7 @@ import {
   type CalculatorHostContext,
   type CalculatorRegistration,
   type ItemTypeDriver,
-  type RuntimeRef,
+  type FrozenCalculatorContract,
   type ScoringDefinition,
   type ScoringDefinitionCatalog,
 } from '../../src/plugin.ts'
@@ -280,18 +280,10 @@ export const testRuntime = (registrations: readonly CalculatorRegistration[]) =>
   return {
     compile: (ref: string, config: unknown, context: CalculatorCompileContext) =>
       demand(ref).compile(config, context),
-    verify: (
-      ref: string,
-      config: unknown,
-      runtimeRef: RuntimeRef | undefined,
-      context: CalculatorHostContext,
-    ) => demand(ref).verify(config, runtimeRef, context),
-    prepare: (
-      ref: string,
-      config: unknown,
-      runtimeRef: RuntimeRef | undefined,
-      context: CalculatorHostContext,
-    ) => demand(ref).prepare(config, runtimeRef, context),
+    verify: (ref: string, frozen: FrozenCalculatorContract, context: CalculatorHostContext) =>
+      demand(ref).verify(frozen, context),
+    prepare: (ref: string, frozen: FrozenCalculatorContract, context: CalculatorHostContext) =>
+      demand(ref).prepare(frozen, context),
   }
 }
 

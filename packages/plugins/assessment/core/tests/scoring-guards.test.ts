@@ -93,7 +93,15 @@ describe('what a fixed amount may be spelled as', () => {
         const bound = yield* fixed1.bind
         for (const value of ['3', '3.0', '3.00', '-1.5', '0', '0.0001']) {
           const compiled = yield* bound.compile({ value }, testHost)
-          const prepared = yield* bound.prepare(compiled.config, undefined, testHost)
+          const prepared = yield* bound.prepare(
+            {
+              config: compiled.config,
+              contractHash: compiled.contractHash,
+              inputSchema: compiled.inputSchema,
+              outputSchema: compiled.outputSchema,
+            },
+            testHost,
+          )
           const answer = yield* prepared.evaluate({})
           expect(validateValue(compiled.outputSchema, answer), value).toEqual([])
         }

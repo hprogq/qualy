@@ -26,9 +26,14 @@ import type {
   CalculatorRuntimeError,
   CompiledCalculator,
   ItemTypeDriver,
-  RuntimeRef,
+  FrozenCalculatorContract,
 } from '../plugin.ts'
-import { compileScoringPlan, readScoringPlan, recognitionSourceOf } from './plan.ts'
+import {
+  compileScoringPlan,
+  frozenCalculatorOf,
+  readScoringPlan,
+  recognitionSourceOf,
+} from './plan.ts'
 import { db } from '../server/db.ts'
 import { policyModeOf } from '../review/chain.ts'
 
@@ -121,8 +126,7 @@ export interface BackfillDeps {
    */
   readonly verify: (
     ref: string,
-    config: unknown,
-    runtimeRef: RuntimeRef | undefined,
+    frozen: FrozenCalculatorContract,
     context: CalculatorHostContext,
   ) => Effect.Effect<void, CalculatorRuntimeError>
 }
@@ -281,12 +285,14 @@ export const auditStoredPlans = (deps: BackfillDeps) =>
             revisionId: row.id,
           })
         }
-        // and the runtime fact itself: a version-1 plan froze none, so its
-        // calculator is handed `undefined` and fixed@1 verifies trivially -
-        // but a calculator whose facts live elsewhere re-proves them here,
-        // before the port opens, never on a results page
+        // and the runtime fact itself, handed over WHOLE: the frozen
+        // contract, the runtime reference and the profile versions the plan
+        // was proven under (a V1 plan froze none of the latter, and none
+        // are invented for it). fixed@1 verifies trivially; a calculator
+        // whose facts live elsewhere re-proves them here, before the port
+        // opens, never on a results page
         yield* deps
-          .verify(plan.calculator.ref, plan.calculator.config, undefined, {
+          .verify(plan.calculator.ref, frozenCalculatorOf(plan), {
             tenantId: row.tenantId,
             batchId: row.batchId,
           })

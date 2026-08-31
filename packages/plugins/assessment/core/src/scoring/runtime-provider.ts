@@ -70,9 +70,8 @@ export const bindScoringRuntimes = (
     }
     return ScoringRuntimeCatalog.of({
       compile: (ref, config, context) => demand(ref).compile(config, context),
-      verify: (ref, config, runtimeRef, context) => demand(ref).verify(config, runtimeRef, context),
-      prepare: (ref, config, runtimeRef, context) =>
-        demand(ref).prepare(config, runtimeRef, context),
+      verify: (ref, frozen, context) => demand(ref).verify(frozen, context),
+      prepare: (ref, frozen, context) => demand(ref).prepare(frozen, context),
     })
   })
 
