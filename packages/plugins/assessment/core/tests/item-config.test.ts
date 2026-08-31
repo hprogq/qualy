@@ -32,11 +32,22 @@ import { permissions as assessmentPermissions } from '../src/permissions.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/index.ts'
 import {
   catalogLayers,
+  scoringRegistrations,
   scoringRuntimeLayer,
   storageForTest,
+  storedRuntimeRefOf,
+  testDefinitions,
   testRuntime,
 } from './support/catalogs.ts'
-import { builtinCalculators } from '../src/scoring/builtins.ts'
+import { builtinAggregators, builtinCalculators } from '../src/scoring/builtins.ts'
+import { auditStoredPlans } from '../src/scoring/backfill.ts'
+import {
+  frozenCalculatorOf,
+  readScoringPlan,
+  semanticPlanBodyV2,
+  type ScoringPlanV2,
+} from '../src/scoring/plan.ts'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { ScoringRuntimeCatalog } from '../src/plugin.ts'
 
 // The configuration gauntlet, end to end: a question is created with its
@@ -470,6 +481,12 @@ describe.runIf(postgresAvailable)('item configuration', () => {
           // a current revision whose frozen plan cannot be read is an
           // invariant failure: the update dies rather than compiling with a
           // fabricated "no previous runtime"
+          const intact = yield* Effect.promise(() =>
+            db.row<{ scoring_plan: unknown }>(
+              `select scoring_plan from assessment_item_revisions where id = $1`,
+              [returned.currentRevision!.id],
+            ),
+          )
           yield* Effect.promise(() =>
             db.query(
               `update assessment_item_revisions
@@ -486,6 +503,14 @@ describe.runIf(postgresAvailable)('item configuration', () => {
               f.principal,
             ),
           )
+          // the wound was this test's fixture; the shared database is not
+          // where it gets to stay
+          yield* Effect.promise(() =>
+            db.query(
+              `update assessment_item_revisions set scoring_plan = $2::jsonb where id = $1`,
+              [returned.currentRevision!.id, JSON.stringify(intact.scoring_plan)],
+            ),
+          )
           return { first, second, fourth, broken }
         }),
       ),
@@ -494,6 +519,113 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(result.second.scoring_plan.calculator.config.continuation).toBe('prog-alpha')
     expect(result.fourth.scoring_plan.calculator.config.continuation).toBeNull()
     expect(Exit.isFailure(result.broken)).toBe(true)
+  })
+
+  it('carries the V2 protocol from draft to evaluation, end to end', async () => {
+    const base = studentConfig()
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-v2-protocol')
+          const assessment = yield* Assessment
+          const catalogService = yield* ScoringRuntimeCatalog
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const created = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: '存续程序的题',
+              scoreGroupId: groupId,
+              maxEntries: 1,
+              config: {
+                ...base,
+                scoringConfig: {
+                  version: 2,
+                  calculator: { ref: 'stored-test@1', config: { program: 'prog-e2e' } },
+                  aggregator: { ref: 'sum@1', config: {} },
+                  recognitions: {},
+                  bindings: {},
+                },
+              },
+            },
+            f.principal,
+          )
+          const revisionId = created.currentRevision!.id
+          const row = yield* Effect.promise(() =>
+            db.row<{ scoring_plan: Record<string, unknown> }>(
+              `select scoring_plan from assessment_item_revisions where id = $1`,
+              [revisionId],
+            ),
+          )
+          // the column round trip reads back through the fail-closed reader
+          const plan = yield* readScoringPlan({ id: revisionId, scoringPlan: row.scoring_plan })
+          // the boot audit hands the WHOLE frozen fact over, and the stored
+          // program accepts nothing less: a green audit is the proof
+          const deps = {
+            itemTypes: new Map(),
+            definitions: testDefinitions(scoringRegistrations, builtinAggregators),
+            ...testRuntime(scoringRegistrations),
+          }
+          yield* auditStoredPlans(deps)
+          // the results-side prepare receives the same frozen fact and the
+          // program answers
+          const prepared = yield* catalogService.prepare(
+            plan.calculator.ref,
+            frozenCalculatorOf(plan),
+            { tenantId: f.tenant, batchId: batch.id },
+          )
+          const answered = yield* prepared.evaluate({})
+          // now the forgery the hash cannot catch: another program's id under
+          // a recomputed, self-consistent planHash. The reader stays green -
+          // the language is lawful - and the runtime refuses it, because only
+          // the program itself knows which fact is its own.
+          const forged = JSON.parse(JSON.stringify(row.scoring_plan)) as Record<string, unknown> & {
+            calculator: { runtimeRef: { id: string; sha256: string } }
+          }
+          forged.calculator.runtimeRef = {
+            ...storedRuntimeRefOf('prog-other'),
+          }
+          const { planHash: _dropped, ...forgedBody } = forged
+          const sealed = {
+            ...forgedBody,
+            planHash: hashCanonicalJson(
+              semanticPlanBodyV2(forgedBody as unknown as Omit<ScoringPlanV2, 'planHash'>),
+            ),
+          }
+          yield* Effect.promise(() =>
+            db.query(
+              `update assessment_item_revisions set scoring_plan = $2::jsonb where id = $1`,
+              [revisionId, JSON.stringify(sealed)],
+            ),
+          )
+          const readsBack = yield* Effect.exit(
+            readScoringPlan({ id: revisionId, scoringPlan: sealed }),
+          )
+          const audited = yield* Effect.exit(auditStoredPlans(deps))
+          // leave the shared database as this test found it
+          yield* Effect.promise(() =>
+            db.query(
+              `update assessment_item_revisions set scoring_plan = $2::jsonb where id = $1`,
+              [revisionId, JSON.stringify(row.scoring_plan)],
+            ),
+          )
+          return { plan, answered, readsBack, audited }
+        }),
+      ),
+    )
+    expect(result.plan.version).toBe(2)
+    if (result.plan.version === 2) {
+      expect(result.plan.calculator.runtimeRef).toEqual(storedRuntimeRefOf('prog-e2e'))
+    }
+    expect(result.answered).toBe('5.00')
+    // hash-consistent forgery: lawful to the reader, refused by the runtime
+    expect(Exit.isSuccess(result.readsBack)).toBe(true)
+    expect(Exit.isFailure(result.audited)).toBe(true)
+    expect(inspect(result.audited, { depth: 8 })).toContain(
+      'ASSESSMENT_STORED_SCORING_RUNTIME_INVALID',
+    )
   })
 
   it('holds the driver transition rule on the server, not only in the browser', async () => {
