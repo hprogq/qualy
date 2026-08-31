@@ -68,12 +68,30 @@ const officerItem = () => ({
     id: REVISION_ID,
     revisionNo: 1,
     entrySource: 'student',
-    formConfig: { files: {} },
+    // a named field: an unnamed one is another thing the editor refuses to
+    // save, and this suite is about the scoring language
+    formConfig: {
+      files: {},
+      fields: [{ id: 'claimed-level', key: 'claimed-level', label: '获奖级别', type: 'text' }],
+    },
     scoringConfig: {
       calculator: { ref: 'fixed@1', config: { value: '2.00' } },
       aggregator: { ref: 'max@1', config: {} },
     },
-    reviewPolicy: { normal: { stages: [] }, escalation: { stages: [] } },
+    // a finished review step: the editor refuses to save an unfinished one,
+    // and this suite's subject is the scoring language, not the chain
+    reviewPolicy: {
+      normal: {
+        stages: [
+          {
+            label: '班委初审',
+            selector: { kind: 'roleAt', nodeTypeId: ORG_TYPE_ID, roleIds: [ROLE_ID] },
+            quorum: { type: 'any' },
+          },
+        ],
+      },
+      escalation: { stages: [] },
+    },
     displayConfig: {},
     reason: null,
     createdAt: '2026-02-01T00:00:00.000Z',
@@ -81,7 +99,47 @@ const officerItem = () => ({
   createdAt: '2026-02-01T00:00:00.000Z',
 })
 
-const open = (had: { groups?: readonly unknown[]; items?: readonly unknown[] } = {}) =>
+const FORMULA_VERSION_ID = '01920000-0000-7000-8000-0000000000f1'
+const RECOGNITION_ID = '01920000-0000-7000-8000-0000000000f2'
+
+/** a saved question whose arithmetic is a published formula: an identity
+ *  this pen cannot yet author, and a refinement it cannot yet even show */
+const formulaItem = () => ({
+  ...officerItem(),
+  title: '竞赛获奖',
+  currentRevision: {
+    ...officerItem().currentRevision,
+    scoringConfig: {
+      version: 2,
+      calculator: { ref: 'formula@1', config: { versionId: FORMULA_VERSION_ID } },
+      aggregator: { ref: 'max@1', config: {} },
+      recognitions: {
+        [RECOGNITION_ID]: {
+          label: '认定级别',
+          refinement: {
+            type: 'string',
+            format: 'qualy-decimal',
+            'x-qualy-maxScale': 1,
+            'x-qualy-minimum': '60',
+            'x-qualy-maximum': '100',
+          },
+          defaultFromFieldId: 'claimed-level',
+        },
+      },
+      bindings: { level: { kind: 'recognition', recognitionId: RECOGNITION_ID } },
+    },
+  },
+})
+
+const open = (
+  had: {
+    groups?: readonly unknown[]
+    items?: readonly unknown[]
+    saved?: { config?: unknown }[]
+    /** the question the page opens on, as the address names it */
+    question?: string
+  } = {},
+) =>
   renderScreen({
     client: fakeClient({
       app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
@@ -102,6 +160,10 @@ const open = (had: { groups?: readonly unknown[]; items?: readonly unknown[] } =
           }),
         reviewAlerts: () => Effect.succeed({ groups: [] }),
         reviewCoverage: () => Effect.succeed({ nodes: [] }),
+        updateItem: (call: { payload: { config?: unknown } }) => {
+          had.saved?.push(call.payload)
+          return Effect.succeed({ item: { id: ITEM_ID } })
+        },
       },
     } as never),
     routes: [
@@ -110,7 +172,10 @@ const open = (had: { groups?: readonly unknown[]; items?: readonly unknown[] } =
         element: <ItemSettingsPage />,
       },
     ] as never,
-    route: `/assessment/batches/${BATCH_ID}/items`,
+    route:
+      had.question === undefined
+        ? `/assessment/batches/${BATCH_ID}/items`
+        : `/assessment/batches/${BATCH_ID}/items?question=${had.question}`,
   })
 
 /** into the editor of a question being composed, chain on screen */
@@ -238,5 +303,46 @@ describe('what a question can contribute', () => {
 
     // 2 a post, five posts filed, only the highest counted
     await expect.element(page.getByTestId('group-subtotal')).toHaveAttribute('data-subtotal', '2')
+  })
+})
+
+describe('what a save may not quietly rewrite', () => {
+  it("returns a formula question's arithmetic exactly as it arrived", async () => {
+    // The pen cannot author recognitions, bindings or refinements. Opening
+    // such a question and renaming it must therefore hand the arithmetic
+    // back byte for byte - anything less deletes what it cannot see.
+    const saved: { config?: unknown }[] = []
+    const item = formulaItem()
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [item],
+      saved,
+      question: ITEM_ID,
+    })
+    await expect.element(page.getByRole('textbox', { name: '标题' })).toBeVisible()
+    await page.getByRole('textbox', { name: '标题' }).fill('竞赛获奖(改名)')
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    const sent = (saved[0]?.config as { scoringConfig?: unknown })?.scoringConfig
+    expect(JSON.stringify(sent)).toBe(JSON.stringify(item.currentRevision.scoringConfig))
+  })
+
+  it('still rebuilds the legacy language from the fields that own it', async () => {
+    const saved: { config?: unknown }[] = []
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [officerItem()],
+      saved,
+      question: ITEM_ID,
+    })
+    await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
+    await page.getByRole('textbox', { name: '每条通过计分' }).fill('3')
+    await page.getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => saved.length).toBe(1)
+    const sent = (saved[0]?.config as { scoringConfig?: { calculator?: { config?: unknown } } })
+      ?.scoringConfig
+    expect(sent?.calculator?.config).toEqual({ value: '3' })
   })
 })

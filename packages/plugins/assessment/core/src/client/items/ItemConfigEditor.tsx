@@ -1141,7 +1141,58 @@ export interface Draft {
   /** how approved lines fold into the item's amount */
   folding: 'sum' | 'max' | 'top-n'
   topN: string
+  /**
+   * The scoring LANGUAGE this question was read under, and - for the
+   * versioned one - the stored configuration exactly as the server sent it.
+   *
+   * A versioned configuration says things this pen cannot yet author:
+   * recognitions with their identities, parameter bindings, refinements
+   * narrowing what a reviewer may determine. Rebuilding it out of the two
+   * fields the pen does hold would not "lose formatting" - it would delete
+   * the question's arithmetic and quietly store a different one. So until
+   * somebody actually edits the scoring, a versioned question is saved back
+   * as the bytes it arrived as.
+   */
+  scoring: ScoringDraft
   stages: StageDraft[]
+}
+
+/** the stored versioned language, carried whole */
+export interface StoredScoringV2 {
+  version: 2
+  calculator: { ref: string; config: unknown }
+  aggregator: { ref: string; config: unknown }
+  recognitions: Record<
+    string,
+    { label: string; refinement: unknown; defaultFromFieldId: string | null }
+  >
+  bindings: Record<string, unknown>
+}
+
+export type ScoringDraft =
+  /** the legacy language: the pen's own three fields are the whole truth */
+  | { language: 'v1' }
+  /**
+   * the versioned language: pristine until touched. `original` is what the
+   * server stored, byte for byte; re-submitting it is a no-op by design.
+   */
+  | { language: 'v2'; original: StoredScoringV2; touched: boolean }
+
+/**
+ * Which scoring language a stored configuration is written in.
+ *
+ * The version key is the whole test, read as an own property before any
+ * shape is assumed - exactly as the server's own reader dispatches. A
+ * configuration that says version 2 is carried whole; anything else is the
+ * legacy language, which this pen has always rebuilt from its own fields.
+ */
+const scoringDraftOf = (stored: unknown): ScoringDraft => {
+  if (stored === null || typeof stored !== 'object' || Array.isArray(stored)) {
+    return { language: 'v1' }
+  }
+  if (!Object.hasOwn(stored, 'version')) return { language: 'v1' }
+  if ((stored as { version?: unknown }).version !== 2) return { language: 'v1' }
+  return { language: 'v2', original: stored as unknown as StoredScoringV2, touched: false }
 }
 
 /** the stored configuration back into the pen; a shape this pen cannot hold starts fresh */
@@ -1233,6 +1284,7 @@ const draftOf = (
         aggregator?: { ref?: string; config?: { n?: number } }
       }
     | undefined
+  const scoringLanguage = scoringDraftOf(config?.scoringConfig)
   const aggregatorRef = scoring?.aggregator?.ref ?? 'sum@1'
   const stages = stagesOf(config?.reviewPolicy, options)
   return {
@@ -1261,6 +1313,7 @@ const draftOf = (
     fixedValue: trimAmount(scoring?.calculator?.config?.value ?? '1'),
     folding: aggregatorRef === 'max@1' ? 'max' : aggregatorRef === 'top-n-sum@1' ? 'top-n' : 'sum',
     topN: String(scoring?.aggregator?.config?.n ?? 2),
+    scoring: scoringLanguage,
     stages: stages.length > 0 ? stages : [blankStage(options, 'normal')],
   }
 }
@@ -1344,6 +1397,23 @@ const storedStage = (stage: StageDraft, panelable: boolean) => ({
   quorum: { type: panelable && stage.participation === 'all' ? 'all' : 'any' },
 })
 
+/**
+ * The scoring half of a save, in the language the question is written in.
+ *
+ * A pristine versioned configuration goes back exactly as it came: the pen
+ * cannot yet author recognitions, bindings or refinements, and a save that
+ * rebuilt them out of what it can see would be storing a different
+ * question. Only an actual scoring edit gives this pen the right to write
+ * the versioned language itself - and that arrives with the binding editor.
+ */
+const scoringOf = (draft: Draft, aggregator: { ref: string; config: unknown }) =>
+  draft.scoring.language === 'v2' && !draft.scoring.touched
+    ? draft.scoring.original
+    : {
+        calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
+        aggregator,
+      }
+
 /** the pen back into the configuration the api validates */
 const configOf = (draft: Draft) =>
   draft.itemType === 'declaration'
@@ -1351,10 +1421,7 @@ const configOf = (draft: Draft) =>
         // one press is the whole filing: no fields, review as configured
         entrySource: draft.entrySource,
         formConfig: {},
-        scoringConfig: {
-          calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
-          aggregator: aggregatorOf(draft),
-        },
+        scoringConfig: scoringOf(draft, aggregatorOf(draft)),
         ...displayConfigOf(draft, false),
         reviewPolicy: reviewPolicyOf(draft),
       }
@@ -1363,10 +1430,7 @@ const configOf = (draft: Draft) =>
           // granted, never filed: no form, no route, only the amount
           entrySource: 'administrative' as const,
           formConfig: {},
-          scoringConfig: {
-            calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
-            aggregator: { ref: 'sum@1', config: {} },
-          },
+          scoringConfig: scoringOf(draft, { ref: 'sum@1', config: {} }),
           ...displayConfigOf(draft, false),
           reviewPolicy: { mode: 'none' },
         }
@@ -1485,10 +1549,7 @@ const evidenceConfigOf = (draft: Draft) => ({
       }
     }),
   },
-  scoringConfig: {
-    calculator: { ref: 'fixed@1', config: { value: draft.fixedValue.trim() } },
-    aggregator: aggregatorOf(draft),
-  },
+  scoringConfig: scoringOf(draft, aggregatorOf(draft)),
   ...displayConfigOf(draft, true),
   reviewPolicy: reviewPolicyOf(draft),
 })
@@ -1776,7 +1837,9 @@ export function ItemConfigEditor({
   const missing: string[] = [
     draft.title.trim() === '' ? format(m.itemsNeedTitle) : '',
     draft.scoreGroupId === '' ? format(m.itemsNeedGroup) : '',
-    draft.fixedValue.trim() === '' ? format(m.itemsNeedValue) : '',
+    draft.scoring.language === 'v1' && draft.fixedValue.trim() === ''
+      ? format(m.itemsNeedValue)
+      : '',
     fielded && draft.fields.some((field) => field.label.trim() === '')
       ? format(m.itemsNeedFieldLabel)
       : '',
@@ -1785,6 +1848,9 @@ export function ItemConfigEditor({
 
   // The api asks for a sentence when a live question's scoring or placement
   // moves, and only then. Asking any wider trains people to invent one.
+  // like for like: a pristine versioned configuration is carried whole, so
+  // it compares equal by construction rather than by luck, and an untouched
+  // question no longer demands a sentence explaining a change nobody made
   const scoringMoved =
     item?.currentRevision !== null &&
     item?.currentRevision !== undefined &&
