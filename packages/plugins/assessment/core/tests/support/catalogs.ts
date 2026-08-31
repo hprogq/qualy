@@ -1,11 +1,14 @@
+import { createHash } from 'node:crypto'
 import { Effect, Layer, Schema } from 'effect'
 import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
 import { registryLayer } from '@qualy/plugin-storage/server/registry'
 import { serviceLayer as storageOnlyLayer } from '@qualy/plugin-storage/server/service'
 import { backendLayer, memoryBackend, type MemoryBackend } from '@qualy/plugin-storage/testkit'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
+import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import type { Contributed, ProvideExtension } from '@qualy/plugin-kit'
 import {
+  CalculatorRuntimeError,
   ItemPayloadInvalid,
   ItemTypeCatalog,
   Scoring,
@@ -190,6 +193,80 @@ export const narrowFactTest: CalculatorRegistration = testCalculator({
   required: ['level', 'ordinal'],
 })
 
+/**
+ * A stored-program stand-in: compile freezes a runtime identity derived from
+ * its config, and verify/prepare accept nothing but the exact frozen fact -
+ * reference, contract and profiles alike. This is the shape formula@1 will
+ * take; the suite proves the protocol without pulling Formula into Core.
+ */
+const programShaOf = (program: string) => createHash('sha256').update(program).digest('hex')
+
+export const storedRuntimeRefOf = (program: string) => ({
+  kind: 'test-program',
+  id: program,
+  sha256: programShaOf(program),
+})
+
+export const storedTest: CalculatorRegistration = {
+  kind: 'calculator',
+  ref: 'stored-test@1',
+  configSchema: Schema.Struct({
+    program: Schema.String,
+    brokenSha: Schema.optional(Schema.Boolean),
+  }),
+  bind: Effect.succeed({
+    ref: 'stored-test@1',
+    compile: (config) => {
+      const spec = config as { program: string; brokenSha?: boolean }
+      return Effect.succeed({
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        }),
+        outputSchema: normalizeAtomicSchema(SCORE_AMOUNT_SCHEMA),
+        contractHash: programShaOf(`contract:${spec.program}`),
+        config: { program: spec.program },
+        runtimeRef:
+          spec.brokenSha === true
+            ? { kind: 'test-program', id: spec.program, sha256: 'not-a-hash' }
+            : storedRuntimeRefOf(spec.program),
+      })
+    },
+    verify: (frozen) => Effect.suspend(() => refuseUnlessExact(frozen)),
+    prepare: (frozen) =>
+      Effect.suspend(() =>
+        Effect.as(refuseUnlessExact(frozen), {
+          evaluate: () => Effect.succeed('5.00'),
+        }),
+      ),
+  }),
+}
+
+/** the exact-match discipline formula@1 will hold the plan to: the frozen
+ *  reference must be THIS program's, byte for byte, and a stored-program
+ *  plan must say which profiles it was proven under */
+const refuseUnlessExact = (frozen: FrozenCalculatorContract) => {
+  const program = (frozen.config as { program?: unknown }).program
+  if (typeof program !== 'string') {
+    return Effect.fail(new CalculatorRuntimeError('the frozen config names no program'))
+  }
+  const ref = frozen.runtimeRef
+  if (
+    ref === undefined ||
+    ref.kind !== 'test-program' ||
+    ref.id !== program ||
+    ref.sha256 !== programShaOf(program)
+  ) {
+    return Effect.fail(new CalculatorRuntimeError('the frozen runtime fact is not this program'))
+  }
+  if (frozen.valueSchemaProfileVersion === undefined || frozen.regexProfileVersion === undefined) {
+    return Effect.fail(new CalculatorRuntimeError('a stored program demands its proving profiles'))
+  }
+  return Effect.void
+}
+
 export const twoFactScoring = {
   calculator: { ref: twoFactTest.ref, config: {} },
   aggregator: { ref: 'sum@1', config: {} },
@@ -232,6 +309,7 @@ export const scoringRegistrations: readonly CalculatorRegistration[] = [
   gradedTest,
   twoFactTest,
   narrowFactTest,
+  storedTest,
 ]
 
 const contributed = <T>(values: readonly T[]): readonly Contributed<T>[] =>

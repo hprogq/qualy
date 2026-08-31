@@ -643,7 +643,31 @@ export const compileScoringPlan = (
         ],
       }
     }
-    const { inputSchema, outputSchema, contractHash, config: executionConfig } = compiled.value
+    const {
+      inputSchema,
+      outputSchema,
+      contractHash,
+      config: executionConfig,
+      runtimeRef,
+    } = compiled.value
+    // a runtime identity has no home in the V1 language: dropping it would
+    // freeze a plan that cannot cite the program it is bound to, so the
+    // calculator's demand for the versioned language is a refusal, never a
+    // silent projection
+    if (authoring.version === 1 && runtimeRef !== undefined) {
+      return {
+        issues: [
+          { path: 'scoringConfig.calculator', reason: 'calculator-runtime-requires-plan-v2' },
+        ],
+      }
+    }
+    // and one the reader would refuse must never be written: the writer
+    // holds the reference to the same lexical guard
+    if (runtimeRef !== undefined && runtimeRefIssues(runtimeRef).length > 0) {
+      return {
+        issues: [{ path: 'scoringConfig.calculator', reason: 'calculator-runtime-ref-invalid' }],
+      }
+    }
     // what goes into the plan must come back out of the column identical
     if (!isJsonValue(executionConfig)) {
       return {
@@ -874,6 +898,32 @@ export const compileScoringPlan = (
     }
 
     if (issues.length > 0) return { issues }
+
+    if (authoring.version === 2) {
+      // every proof above ran under exactly these two profiles, and the plan
+      // says so - hash identity vouches for bytes, these two facts say which
+      // semantics interpreted them. The V2 loop froze only direct recognition
+      // assignments and always wrote payloadKey, which is what the casts
+      // state.
+      const body: Omit<ScoringPlanV2, 'planHash'> = {
+        version: 2,
+        valueSchemaProfileVersion: VALUE_SCHEMA_PROFILE_VERSION,
+        regexProfileVersion: REGEX_PROFILE_VERSION,
+        calculator: {
+          ref: authoring.calculator.ref,
+          config: executionConfig,
+          contractHash,
+          ...(runtimeRef === undefined ? {} : { runtimeRef }),
+        },
+        parameters: parameters as Readonly<Record<string, ParameterBindingV2>>,
+        recognitionSchemas,
+        defaultBindings: defaultBindings as ScoringPlanV2['defaultBindings'],
+        aggregator: { ref: authoring.aggregator.ref, config: aggregatorConfig },
+        inputSchema,
+        outputSchema,
+      }
+      return { plan: { ...body, planHash: hashCanonicalJson(semanticPlanBodyV2(body)) } }
+    }
 
     const body: Omit<ScoringPlanV1, 'planHash'> = {
       version: 1,

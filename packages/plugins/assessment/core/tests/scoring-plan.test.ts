@@ -6,8 +6,14 @@ import {
   INTEGER_TO_DECIMAL,
 } from '@qualy/value-schema'
 import { builtinAggregators, fixed1 } from '../src/scoring/builtins.ts'
-import { testDefinitions, testHost, testRuntime } from './support/catalogs.ts'
-import { compileScoringPlan } from '../src/scoring/plan.ts'
+import {
+  storedRuntimeRefOf,
+  storedTest,
+  testDefinitions,
+  testHost,
+  testRuntime,
+} from './support/catalogs.ts'
+import { compileScoringPlan, readScoringPlan } from '../src/scoring/plan.ts'
 import type { RecognitionSource } from '../src/scoring/plan.ts'
 import type { AtomicSchema } from '@qualy/value-schema'
 import type {
@@ -127,7 +133,7 @@ const itemType: ItemTypeDriver = {
 
 const batch: BatchContext = { materialRange: { start: '2026-01-01', end: '2026-12-31' } }
 
-const registrations = [fixed1, graded, overflowing]
+const registrations = [fixed1, graded, overflowing, storedTest]
 const definitions = testDefinitions(registrations, builtinAggregators)
 const runtime = testRuntime(registrations)
 
@@ -724,5 +730,75 @@ describe('a V2 configuration refines what a reviewer may determine', () => {
     // and the strict envelope refuses a stray key instead of stripping it
     const stray = await compile({ ...v2Config({}), novel: true })
     expect(reasons(stray)).toEqual(['scoringConfig:scoring-config-shape'])
+  })
+})
+
+describe('a stored-program calculator freezes its runtime identity', () => {
+  const storedConfig = (program: string, over: Record<string, unknown> = {}) => ({
+    version: 2,
+    calculator: { ref: 'stored-test@1', config: { program, ...over } },
+    aggregator: { ref: 'sum@1', config: {} },
+    recognitions: {},
+    bindings: {},
+  })
+
+  it('freezes the exact reference into the plan, inside its identity', async () => {
+    const [a, b, c] = await Promise.all([
+      compile(storedConfig('prog-alpha')),
+      compile(storedConfig('prog-alpha')),
+      compile(storedConfig('prog-beta')),
+    ])
+    expect('plan' in a && 'plan' in b && 'plan' in c).toBe(true)
+    if ('plan' in a && 'plan' in b && 'plan' in c) {
+      expect(a.plan.version).toBe(2)
+      if (a.plan.version === 2) {
+        expect(a.plan.calculator.runtimeRef).toEqual(storedRuntimeRefOf('prog-alpha'))
+        expect(a.plan.valueSchemaProfileVersion).toBe(2)
+        expect(a.plan.regexProfileVersion).toBe(1)
+      }
+      expect(a.plan.planHash).toBe(b.plan.planHash)
+      // a different program is a different arithmetic, by hash
+      expect(a.plan.planHash).not.toBe(c.plan.planHash)
+    }
+  })
+
+  it('refuses the V1 language a home for a runtime identity, never drops it', async () => {
+    const legacy = await compile({
+      calculator: { ref: 'stored-test@1', config: { program: 'prog-alpha' } },
+      aggregator: { ref: 'sum@1', config: {} },
+    })
+    expect(reasons(legacy)).toEqual([
+      'scoringConfig.calculator:calculator-runtime-requires-plan-v2',
+    ])
+  })
+
+  it('lets a V2 plan carry no reference at all: fixed stays welcome', async () => {
+    const outcome = await compile({
+      version: 2,
+      calculator: { ref: 'fixed@1', config: { value: '3' } },
+      aggregator: { ref: 'sum@1', config: {} },
+      recognitions: {},
+      bindings: {},
+    })
+    expect('plan' in outcome).toBe(true)
+    if ('plan' in outcome && outcome.plan.version === 2) {
+      expect(outcome.plan.calculator.runtimeRef).toBeUndefined()
+    }
+  })
+
+  it('never writes a reference its own reader would refuse', async () => {
+    const outcome = await compile(storedConfig('prog-alpha', { brokenSha: true }))
+    expect(reasons(outcome)).toEqual(['scoringConfig.calculator:calculator-runtime-ref-invalid'])
+  })
+
+  it('writes what its reader certifies: the V2 plan survives the column round trip', async () => {
+    const outcome = await compile(storedConfig('prog-alpha'))
+    expect('plan' in outcome).toBe(true)
+    if ('plan' in outcome) {
+      const back = await Effect.runPromise(
+        readScoringPlan({ id: 'rev-rt', scoringPlan: JSON.parse(JSON.stringify(outcome.plan)) }),
+      )
+      expect(back.planHash).toBe(outcome.plan.planHash)
+    }
   })
 })
