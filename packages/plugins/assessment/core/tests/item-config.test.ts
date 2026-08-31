@@ -285,6 +285,115 @@ describe.runIf(postgresAvailable)('item configuration', () => {
     expect(result.listed.capabilities.canManage).toBe(true)
   })
 
+  it('mints stored identities on save, and a re-spelled draft is no change', async () => {
+    // one fixed base: studentConfig() mints fresh review-stage ids per call,
+    // and this test's subject is the scoring language alone
+    const base = studentConfig()
+    const withScoring = (scoringConfig: unknown) => ({ ...base, scoringConfig })
+    const draftV2 = (over: Partial<Record<string, unknown>> = {}) => ({
+      version: 2,
+      calculator: { ref: 'graded-test@1', config: {} },
+      aggregator: { ref: 'sum@1', config: {} },
+      recognitions: [{ handle: 'lvl', label: '级别', refinement: null, defaultFromFieldId: null }],
+      bindings: { level: { kind: 'recognition', handle: 'lvl' } },
+      ...over,
+    })
+    const result = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('item-v2-identity')
+          const assessment = yield* Assessment
+          const { batch, groupId } = yield* draftBatch(f, 'Round')
+          const created = yield* assessment.createItem(
+            f.tenant,
+            batch.id,
+            {
+              itemType: 'evidence',
+              title: '含认定的题',
+              scoreGroupId: groupId,
+              maxEntries: 1,
+              config: withScoring(draftV2()),
+            },
+            f.principal,
+          )
+          const stored = created.currentRevision?.scoringConfig as {
+            recognitions: Record<string, { label: string }>
+            bindings: Record<string, { recognitionId?: string }>
+          }
+          const id = Object.keys(stored.recognitions)[0]!
+          // the same recognition under a different client handle: normalized
+          // equal, so nothing appends and no reason is ever demanded
+          const respelled = yield* assessment.updateItem(
+            f.tenant,
+            created.id,
+            {
+              config: withScoring(
+                draftV2({
+                  recognitions: [
+                    {
+                      handle: 'renamed',
+                      id,
+                      label: '级别',
+                      refinement: null,
+                      defaultFromFieldId: null,
+                    },
+                  ],
+                  bindings: { level: { kind: 'recognition', handle: 'renamed' } },
+                }),
+              ),
+            },
+            f.principal,
+          )
+          // the stored form itself, read back and submitted verbatim
+          const verbatim = yield* assessment.updateItem(
+            f.tenant,
+            created.id,
+            { config: withScoring(stored) },
+            f.principal,
+          )
+          const invented = yield* Effect.exit(
+            assessment.updateItem(
+              f.tenant,
+              created.id,
+              {
+                config: withScoring(
+                  draftV2({
+                    recognitions: [
+                      {
+                        handle: 'ghost',
+                        id: '01920000-0000-7000-8000-0000000000ff',
+                        label: 'x',
+                        refinement: null,
+                        defaultFromFieldId: null,
+                      },
+                    ],
+                    bindings: { level: { kind: 'recognition', handle: 'ghost' } },
+                  }),
+                ),
+              },
+              f.principal,
+            ),
+          )
+          return { created, stored, id, respelled, verbatim, invented }
+        }),
+      ),
+    )
+    // a server-minted identity, not the client's handle
+    expect(result.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
+    expect(result.stored.recognitions[result.id]?.label).toBe('级别')
+    expect(result.stored.bindings['level']?.recognitionId).toBe(result.id)
+    // neither re-spelling produced a revision
+    expect(result.created.currentRevision?.revisionNo).toBe(1)
+    expect(result.respelled.currentRevision?.revisionNo).toBe(1)
+    expect(result.verbatim.currentRevision?.revisionNo).toBe(1)
+    // and an identity nobody granted is refused by name
+    expect(Exit.isFailure(result.invented)).toBe(true)
+    expect(inspect(result.invented, { depth: 10 })).toContain('recognition-id-unknown')
+  })
+
   it('holds the driver transition rule on the server, not only in the browser', async () => {
     // the browser mints a fresh identity on retype; whoever speaks the api
     // directly meets the same refusal, judged by the driver with both

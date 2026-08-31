@@ -27,6 +27,7 @@ import {
   type ScoringPlan,
 } from '../scoring/plan.ts'
 import { judgeRecognition, recognitionFormFields } from '../scoring/recognition.ts'
+import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
 import { validateItemConfig, type Catalogs, type ItemConfigInput } from './config.ts'
 import {
@@ -66,6 +67,7 @@ import {
   insertGroup,
   insertItem,
   insertItemRevision,
+  mintRecognitionIds,
   itemAloneInPhaseScope,
   itemHasEntries,
   itemOf,
@@ -946,17 +948,28 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             })
             const item = (yield* itemOf(tenantId, itemId))!
             const materialRange = deps.parseRange(String(batch!.materialRange))
+            // the first revision stores the normalized form too: identities
+            // are minted at creation, not at some later edit
+            const normalized = yield* normalizeScoringAuthoring({
+              current: null,
+              submitted: input.config.scoringConfig,
+              mint: mintRecognitionIds,
+            })
+            if ('issues' in normalized) {
+              return yield* new ItemConfigInvalid({ issues: normalized.issues })
+            }
+            const config = { ...input.config, scoringConfig: normalized.config }
             const appended = yield* appendRevision({
               tenantId,
               item,
               current: null,
               materialRange,
-              config: input.config,
+              config,
               compiled: yield* compiledCandidate({
                 tenantId,
                 item,
                 materialRange,
-                config: input.config,
+                config,
               }),
               actorId: as.userId,
               reason: null,
@@ -1087,6 +1100,36 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               item.currentRevisionId === null
                 ? null
                 : yield* revisionOf(tenantId, item.currentRevisionId)
+            // Which version this edit was composed against. Without it two
+            // administrators with the same question open both save, and the
+            // second is answering an impact report drawn from a state that
+            // stopped existing while they were reading it. Checked before
+            // anything reads or gates on the submitted configuration.
+            if (
+              input.expectedRevisionId !== undefined &&
+              input.expectedRevisionId !== (item.currentRevisionId ?? null)
+            ) {
+              return yield* new ItemConfigInvalid({
+                issues: [{ path: 'expectedRevisionId', reason: 'item-revision-conflict' }],
+              })
+            }
+            // The submitted scoring language is normalized BEFORE anything
+            // compares or gates on it: change detection, the reason gate,
+            // compilation, impact and the appended revision all consume the
+            // one stored form - so a client re-spelling its draft handles is
+            // not a change, and a stored form re-submitted is a no-op.
+            let config: ItemConfigInput | undefined
+            if (input.config !== undefined) {
+              const normalized = yield* normalizeScoringAuthoring({
+                current: current?.scoringConfig ?? null,
+                submitted: input.config.scoringConfig,
+                mint: mintRecognitionIds,
+              })
+              if ('issues' in normalized) {
+                return yield* new ItemConfigInvalid({ issues: normalized.issues })
+              }
+              config = { ...input.config, scoringConfig: normalized.config }
+            }
 
             const fieldDiff: Record<string, unknown> = {}
             if (input.title !== undefined && input.title !== item.title) {
@@ -1107,9 +1150,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
             // references, and which group's caps the item answers to, are
             // scoring semantics. A title is not.
             const scoringChanged =
-              input.config !== undefined &&
+              config !== undefined &&
               current !== null &&
-              !sameJson(current.scoringConfig, input.config.scoringConfig)
+              !sameJson(current.scoringConfig, config.scoringConfig)
             const semanticChange = scoringChanged || fieldDiff['scoreGroupId'] !== undefined
             const reason = input.reason?.trim() ?? ''
             // A question nobody has been asked yet has produced no facts to
@@ -1138,23 +1181,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 },
               })
             }
-            // Which version this edit was composed against. Without it two
-            // administrators with the same question open both save, and the
-            // second is answering an impact report drawn from a state that
-            // stopped existing while they were reading it.
-            if (
-              input.expectedRevisionId !== undefined &&
-              input.expectedRevisionId !== (item.currentRevisionId ?? null)
-            ) {
-              return yield* new ItemConfigInvalid({
-                issues: [{ path: 'expectedRevisionId', reason: 'item-revision-conflict' }],
-              })
-            }
-
-            if (input.config !== undefined) {
+            if (config !== undefined) {
               const batch = yield* oneBatch(tenantId, item.batchId)
               const materialRange = deps.parseRange(String(batch!.materialRange))
-              const config = input.config
               const nextPlan = yield* compiledCandidate({ tenantId, item, materialRange, config })
               const counted = yield* impactUnder({
                 tenantId,

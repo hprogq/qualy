@@ -453,6 +453,23 @@ export const insertItemRevision = (input: {
     )
     .pipe(Effect.map((row) => String((row as { id: unknown }).id)))
 
+/**
+ * Batch-mints recognition identities in one round trip. The ordinal column
+ * makes the mapping deterministic: the nth minted id belongs to the nth
+ * unminted recognition, by contract rather than by whatever order the
+ * server happened to emit rows in.
+ */
+export const mintRecognitionIds = (count: number) =>
+  db
+    .query((k) =>
+      sql<{ id: string }>`
+        select n, uuidv7() as id
+        from generate_series(1, ${count}) as n
+        order by n
+      `.execute(k),
+    )
+    .pipe(Effect.map(({ rows }) => rows.map((row) => row.id)))
+
 export const nextRevisionNo = (tenantId: string, itemId: string) =>
   db
     .query((k) =>
