@@ -43,29 +43,55 @@ const subpath = (packageName: string, exportName: string): string => {
 // the real intrinsics captured ahead of any user top-level code. The
 // sandbox freezes them too; this is the artifact's own layer of the same
 // defence.
-const PRELUDE = `export const jsonParse = JSON.parse
-export const jsonStringify = JSON.stringify
+//
+// The entrypoints are claimed HERE, before any user code runs, as
+// non-configurable getters over a closure only this module can reach: the
+// wrapper's install runs after the user module, but a user top-level that
+// assigns, deletes or redefines __qualyContract/__qualyInvoke meets a
+// sealed property and cannot hijack what the host will call. Only the
+// wrapper can import installEntrypoints - the user module's import world
+// is closed to '@qualy/formula' alone.
+const PRELUDE = `const jsonParseCaptured = JSON.parse
+const jsonStringifyCaptured = JSON.stringify
+const definePropertyCaptured = Object.defineProperty
+const slots = { contract: undefined, invoke: undefined }
+definePropertyCaptured(globalThis, '__qualyContract', {
+  configurable: false,
+  enumerable: true,
+  get: () => slots.contract,
+})
+definePropertyCaptured(globalThis, '__qualyInvoke', {
+  configurable: false,
+  enumerable: true,
+  get: () => slots.invoke,
+})
+export const installEntrypoints = (contract, invoke) => {
+  slots.contract = contract
+  slots.invoke = invoke
+}
+export const jsonParse = jsonParseCaptured
+export const jsonStringify = jsonStringifyCaptured
 `
 
-const WRAPPER = `import { jsonParse, jsonStringify } from 'qualy:prelude'
+const WRAPPER = `import { installEntrypoints, jsonParse, jsonStringify } from 'qualy:prelude'
 import definition from 'qualy:formula'
 import { decodeInput, encodeOutput, formulaContext, isFormulaFailure } from '@qualy/formula/runtime'
 
-globalThis.__qualyContract = () =>
-  jsonStringify({ input: definition.input, output: definition.output })
-
-globalThis.__qualyInvoke = (inputJson) => {
-  try {
-    const decoded = decodeInput(definition.input, jsonParse(inputJson))
-    const value = definition.run(decoded, formulaContext)
-    return jsonStringify({ ok: true, amount: encodeOutput(definition.output, value) })
-  } catch (error) {
-    if (isFormulaFailure(error)) {
-      return jsonStringify({ ok: false, failure: { message: error.message } })
+installEntrypoints(
+  () => jsonStringify({ input: definition.input, output: definition.output }),
+  (inputJson) => {
+    try {
+      const decoded = decodeInput(definition.input, jsonParse(inputJson))
+      const value = definition.run(decoded, formulaContext)
+      return jsonStringify({ ok: true, amount: encodeOutput(definition.output, value) })
+    } catch (error) {
+      if (isFormulaFailure(error)) {
+        return jsonStringify({ ok: false, failure: { message: error.message } })
+      }
+      throw error
     }
-    throw error
-  }
-}
+  },
+)
 `
 
 export interface BundleFailure {

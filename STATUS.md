@@ -12304,3 +12304,15 @@ regex 拒、label 超长 issue 非 throw、E⊄R 拒(笔 4)/ decimal 归一同 p
   OrgNode 删除线性化(writer 持锁至 ItemRevision commit 或 append 前锁下复验);
   `withDatabase()` 不吃 ambient TransactionManager,7.3 有条件做。
 - scoring-ledger.test 的 formula@* 双通道门禁在 7.3 注册时必红,届时按裁决更新。
+
+## Phase 7.3 进行中:笔 2 的 golden 再生记录(2026-09-01)
+
+`feat(formula): harden the sandbox entrypoints`(§8.10)是一次 deliberate toolchain
+change:bundler 的 prelude 在任何 user module 执行前以 non-configurable getter 预占
+`__qualyContract`/`__qualyInvoke`(closure 只有 wrapper 经 installEntrypoints 可达;
+user module 的 import 世界闭合于 '@qualy/formula',拿不到 prelude),user top-level
+的 assign/delete/defineProperty 六式劫持全部失效(hostile 承重六条,真沙箱断言真
+entrypoint 仍应答)。wrapper 因此从「globalThis 赋值」改为 install 调用——artifact
+字节必然变化,`golden-artifacts.json` 依 golden.test 自述规则在同一笔内再生
+(identity 25437B / all-kinds 25882B),已发布的历史 artifact 不受影响(bundler 只
+作用于新 publish)。

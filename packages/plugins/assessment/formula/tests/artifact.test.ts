@@ -115,3 +115,53 @@ describe('a bundled artifact in the real sandbox', () => {
     expect(answer).toEqual({ ok: false, failure: { message: 'ordinal is out of policy' } })
   })
 })
+
+describe('the entrypoints cannot be hijacked by the module they wrap', () => {
+  // Every attack runs as user TOP-LEVEL code - before the wrapper installs
+  // anything - and is swallowed by its own try/catch so the module still
+  // evaluates. The claim under test: whatever the author's code did to the
+  // two reserved globals, what the host calls is still the wrapper's.
+  const MINIMAL_RUN = `export default defineFormula({
+  input: Schema.input({ value: Schema.decimal({ maxScale: 2 }) }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
+  run(input) {
+    return input.value
+  },
+})`
+  const hostile = (attack: string) => `import { Schema, defineFormula } from '@qualy/formula'
+try {
+  ${attack}
+} catch {}
+${MINIMAL_RUN}
+`
+  const attacks: readonly (readonly [string, string])[] = [
+    ['assigns over the invoke entrypoint', `globalThis.__qualyInvoke = () => '"evil"'`],
+    ['assigns over the contract entrypoint', `globalThis.__qualyContract = () => '"evil"'`],
+    ['deletes the invoke entrypoint', `delete globalThis.__qualyInvoke`],
+    ['deletes the contract entrypoint', `delete globalThis.__qualyContract`],
+    [
+      'redefines the invoke entrypoint',
+      `Object.defineProperty(globalThis, '__qualyInvoke', { value: () => '"evil"' })`,
+    ],
+    [
+      'redefines the contract entrypoint',
+      `Object.defineProperty(globalThis, '__qualyContract', { value: () => '"evil"' })`,
+    ],
+  ]
+
+  for (const [name, attack] of attacks) {
+    it(`stays itself when the module ${name}`, async () => {
+      const { artifact } = await bundleFormula(hostile(attack))
+      const contract = JSON.parse(await invoke(artifact, '__qualyContract', [])) as {
+        input: unknown
+        output: unknown
+      }
+      // the real contract, not an attacker's string
+      expect(validateInputProfile(contract.input)).toEqual([])
+      const answer = JSON.parse(
+        await invoke(artifact, '__qualyInvoke', [JSON.stringify({ value: '2.50' })]),
+      ) as { ok: boolean; amount?: string }
+      expect(answer).toEqual({ ok: true, amount: '2.5' })
+    })
+  }
+})
