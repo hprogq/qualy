@@ -12038,7 +12038,9 @@ BindableFormulaCatalog + `a3b7a4ce` test(server) 子进程输出转发(同 push)
   runtime 复验/contract 复验/tenant 过滤)各红。
 - **compatibility gate**(§6.4 + 终审修订 3):**inventory 先行**——开发库 5 条 v1 行
   逐行经当前 reader canonicalize,contract hash 逐字吻合(另 2 条 v2)→ 走「正式支持 1」
-  分支,纯单元 fixture 用真实历史行(01a04dbc,schema 原样,非改数字);
+  分支(**该裁决已被 7.1 follow-up 收回**,见下方小节:hash 吻合只证 canonical bytes,
+  不证 acceptance semantics),纯单元 fixture 用真实历史行(01a04dbc,schema 原样,非改
+  数字);
   `validateStoredValueSchema(profileVersion, in, out)` 显式 policy(版本分派在函数体,
   支持集语义 =「持有 replay 证据」,v3 扩缩是此处的显式决策);入参类型**无任何
   provenance 字段**;承重:各 facet 越界点名、v1 行 resolve 活着、**provenance 陷阱**
@@ -12088,3 +12090,39 @@ BindableFormulaCatalog + `a3b7a4ce` test(server) 子进程输出转发(同 push)
 - semanticPlanBodyV2 / ScoringPlan V2 / RecognitionId server-mint / constant
   canonicalize(§7 全章);7.4 记账:bindable HTTP 端点(requireManage + list)、
   versionId 进 wire DTO、keyset 分页。
+
+### Follow-up:historical runtime compatibility 收紧(2026-08-31,用户终审裁决)
+
+用户审计定 7.1 主体 PASS,但 CLOSED 前要求补一笔 `fix(formula): tighten historical
+runtime compatibility`,两半:
+
+- **regex gate 补全**:此前 `checkRuntimeCompatibility` 只查 regexProfileVersion 在集合、
+  `validateStoredValueSchema` 只跑结构检查——value-schema 故意把正则语义
+  (`patternIssues`)与结构拆开,publication 两者都跑(server/index.ts 的 preflight),
+  replay 却漏了后者。新增 `storedPatternIssues(regexProfileVersion, in, out)`:
+  unsupported 方言版本 → 单条 regex-profile issue 且**绝不把存储的 pattern 交给当前
+  interpreter**(别的方言下的字符串不能用今天的语义去解释);supported →
+  `patternIssues(input) + patternIssues(output)` 映射为 regex-profile issues。
+- **收回 profile v1 的泛化支持**:`SUPPORTED_VALUE_SCHEMA_PROFILES = {2}`。inventory 的
+  hash 吻合只证 canonical bytes 没漂,**不证 acceptance semantics**——712225bc 在仍叫
+  v1 时换 RE2 引擎、改日历算术、加 ceilings 与 `__proto__` 拒绝,均不动 schema hash;
+  `{type:'string',format:'date'}` 的闰日边界与 pattern 的方言语义都可能已变。v1 行仍是
+  可读的 publication history,但不是 RuntimeStore 认证的 runtime version;将来要支持须
+  实现 `validateStoredValueSchemaV1` 并以 era-accurate fixtures 承重真历史语义。
+  runtime-store 集成测试里「把今天的 v2 行 UPDATE 成 version=1 再断言可 resolve」不能
+  证明 legacy replay,已反转为断言 Unsupported。
+
+测试:supported regex + RE2 合法 pattern → compatible;supported + lookbehind →
+Unsupported('regex-profile');unsupported regex version + 恶意 pattern → 恰一条版本
+issue(未进 interpreter);v1 → value-schema-profile issue(单元 + 集成双处)。差分:
+摘 pattern 检查 → lookbehind 用例红;把 1 放回集合 → v1 拒绝用例红。binding-catalog
+的合成 fixture 补显式 `value_schema_profile_version = ${VALUE_SCHEMA_PROFILE_VERSION}`
+(此前吃列默认 1,被收紧误伤——当代语言的合成行本就该自我声明)。
+
+### 7.3 前置记账(用户裁决,不阻 7.2)
+
+- **new-binding eligibility 必须与并发写线性化**:`requireBindable()` 是 snapshot read,
+  7.3 writer 保存 new binding 时须与 FormulaFunction archive/restore、owner OrgNode
+  删除线性化——writer 要么持相应 share/key-share 锁直到 ItemRevision commit,要么在
+  append 前于锁下复验;`listForBatch()` 是 picker snapshot,不需要锁。
+  `withDatabase()` 不吃 ambient TransactionManager,7.3 有条件做。
