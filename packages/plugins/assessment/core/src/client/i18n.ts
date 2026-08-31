@@ -1355,6 +1355,14 @@ const i18n = definePluginMessages({
       id: 'assessment/items/fixed-value',
       defaultMessage: 'Score per approved entry',
     },
+    itemsCalculator: {
+      id: 'assessment/items/calculator',
+      defaultMessage: 'Where the score comes from',
+    },
+    itemsCalculatorFixed: {
+      id: 'assessment/items/calculator-fixed',
+      defaultMessage: 'A fixed amount',
+    },
     itemsEscalationTitle: {
       id: 'assessment/items/escalation-title',
       defaultMessage: 'Escalation workflow',

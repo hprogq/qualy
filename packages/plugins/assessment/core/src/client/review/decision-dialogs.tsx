@@ -704,8 +704,7 @@ export function RejectDialog({
   // a typo in a suggestion must hold the door, never file as text where a
   // number belongs - and an all-empty grid stays "keep everything"
   const suggestionsInvalid =
-    suggesting &&
-    fields.some((field) => suggestionDraftInvalid(field, suggested[field.key] ?? ''))
+    suggesting && fields.some((field) => suggestionDraftInvalid(field, suggested[field.key] ?? ''))
   const confirm = () => {
     if (!ready || suggestionsInvalid) return
     const changes = Object.fromEntries(

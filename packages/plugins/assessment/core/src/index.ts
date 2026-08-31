@@ -19,6 +19,7 @@ import {
   workspaceNavigationBadge,
 } from '@qualy/ui-contract'
 import { compositeForeignKeys, entities } from './db/entities.ts'
+import { calculatorAuthoringOptions, calculatorEditorSlot } from './surfaces.ts'
 import { ItemTypes, Scoring } from './plugin.ts'
 import { constantDriver } from './item/constant.ts'
 import { declarationDriver } from './item/declaration.ts'
@@ -74,6 +75,33 @@ const plugin = Plugin.define(
   Audit.actions('assessment', assessmentActions),
   Ui.i18n('./client/i18n.ts'),
   // the sidebar section this domain owns; its pages file under it by id
+  // This plugin's own arithmetic takes a seat in the chooser like anybody
+  // else's, and edits its configuration in the same slot: a built-in with a
+  // private path would be a second way of doing the one thing, and the two
+  // would drift the first time a calculator was added.
+  Ui.surfaces({
+    collections: [
+      {
+        key: calculatorAuthoringOptions.key,
+        id: 'assessment/fixed-calculator',
+        value: {
+          ref: 'fixed@1',
+          label: message('assessment/items/calculator-fixed', 'A fixed amount'),
+          order: 10,
+        },
+        visibility: permissionOf('assessment.batch.manage'),
+      },
+    ],
+    slots: [
+      {
+        key: calculatorEditorSlot.key,
+        id: 'assessment/fixed-calculator-editor',
+        component: Ui.react('./client/items/FixedCalculatorEditor.tsx'),
+        visibility: permissionOf('assessment.batch.manage'),
+        order: 10,
+      },
+    ],
+  }),
   Ui.surfaces({
     collections: [
       {

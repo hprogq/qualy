@@ -22,7 +22,13 @@ import { entryRefusalReason } from './refusals.ts'
 import { AttachmentLink } from './AttachmentLink.tsx'
 import { EntryTrail } from './EntryHistory.tsx'
 import { EntryStanding } from './EntryStanding.tsx'
-import { displayValueOf, fieldsOf, type ActionAvailability, type EntryDto, type ItemDto } from './model.ts'
+import {
+  displayValueOf,
+  fieldsOf,
+  type ActionAvailability,
+  type EntryDto,
+  type ItemDto,
+} from './model.ts'
 
 // One claim, in full, in a drawer over the list it came from.
 //

@@ -68,9 +68,7 @@ export const currentRecognitionOf = (tenantId: string, entryId: string) =>
       k
         .selectFrom('EntryRecognition as r')
         .innerJoin('Entry as e', (join) =>
-          join
-            .onRef('e.tenantId', '=', 'r.tenantId')
-            .onRef('e.currentRecognitionId', '=', 'r.id'),
+          join.onRef('e.tenantId', '=', 'r.tenantId').onRef('e.currentRecognitionId', '=', 'r.id'),
         )
         .select(['r.id', 'r.values', 'r.supersedesId', 'r.entryRevisionId'])
         .where('r.tenantId', '=', tenantId)

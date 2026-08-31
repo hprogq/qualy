@@ -1,3 +1,4 @@
+import { lazy } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -131,6 +132,35 @@ const formulaItem = () => ({
   },
 })
 
+/** the calculator surfaces this editor now assembles itself from: the
+ *  chooser reads the manifest, and the chosen calculator's own editor
+ *  arrives through the slot - the same route a plugin's would */
+const CALCULATOR_SURFACES = {
+  collections: {
+    'assessment/calculator-authoring-options': [
+      {
+        id: 'assessment/fixed-calculator',
+        ref: 'fixed@1',
+        label: {
+          kind: 'message',
+          id: 'assessment/items/calculator-fixed',
+          defaultMessage: 'Fixed',
+        },
+        order: 10,
+      },
+    ],
+  },
+  slots: {
+    'assessment/calculator-editor': [
+      {
+        id: 'assessment/fixed-calculator-editor',
+        component: 'assessment/FixedCalculatorEditor',
+        order: 10,
+      },
+    ],
+  },
+}
+
 const open = (
   had: {
     groups?: readonly unknown[]
@@ -138,11 +168,20 @@ const open = (
     saved?: { config?: unknown }[]
     /** the question the page opens on, as the address names it */
     question?: string
+    /** the calculator surfaces this assembly declares */
+    surfaces?: { collections: Record<string, unknown[]>; slots: Record<string, unknown[]> }
   } = {},
 ) =>
   renderScreen({
     client: fakeClient({
-      app: { getManifest: () => Effect.succeed({ ...emptyManifest(), pages: PAGES }) },
+      app: {
+        getManifest: () =>
+          Effect.succeed({
+            ...emptyManifest(),
+            pages: PAGES,
+            ...(had.surfaces ?? CALCULATOR_SURFACES),
+          }),
+      },
       assessment: {
         getBatch: () => Effect.succeed({ batch: batch() }),
         listScoreGroups: () =>
@@ -172,6 +211,11 @@ const open = (
         element: <ItemSettingsPage />,
       },
     ] as never,
+    registry: {
+      'assessment/FixedCalculatorEditor': lazy(
+        () => components['assessment/FixedCalculatorEditor']!() as never,
+      ),
+    } as never,
     route:
       had.question === undefined
         ? `/assessment/batches/${BATCH_ID}/items`
@@ -344,5 +388,47 @@ describe('what a save may not quietly rewrite', () => {
     const sent = (saved[0]?.config as { scoringConfig?: { calculator?: { config?: unknown } } })
       ?.scoringConfig
     expect(sent?.calculator?.config).toEqual({ value: '3' })
+  })
+})
+
+describe("what may do a question's arithmetic", () => {
+  it('offers what the assembly installed, and lets it edit its own configuration', async () => {
+    // The chooser is assembled from the manifest, so a second calculator
+    // needs no case in this editor - and the amount field belongs to the
+    // calculator that owns it, arriving through the slot.
+    const saved: { config?: unknown }[] = []
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [officerItem()],
+      saved,
+      question: ITEM_ID,
+      surfaces: {
+        collections: {
+          'assessment/calculator-authoring-options': [
+            ...CALCULATOR_SURFACES.collections['assessment/calculator-authoring-options'],
+            {
+              id: 'test/other-calculator',
+              ref: 'other@1',
+              label: { kind: 'literal', value: '另一种算法' },
+              order: 20,
+            },
+          ],
+        },
+        slots: CALCULATOR_SURFACES.slots,
+      },
+    })
+
+    // both installed calculators are on offer, and the built-in one is chosen
+    const chooser = page.getByRole('combobox', { name: '分值来源' })
+    await expect.element(chooser).toBeVisible()
+    await chooser.click()
+    expect(page.getByRole('option').elements()).toHaveLength(2)
+    await page.getByRole('option', { name: '另一种算法' }).click()
+
+    // the fixed editor renders for its own reference and nothing for the
+    // other, so choosing somebody else's arithmetic empties the seat
+    await expect
+      .poll(() => page.getByRole('textbox', { name: '每条通过计分' }).elements())
+      .toHaveLength(0)
   })
 })

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { UiSlot, useApi, useApiQuery, useRunApi, useUiCollection } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
+import { calculatorAuthoringOptions, calculatorEditorSlot } from '../../surfaces.ts'
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -1625,7 +1626,7 @@ export function ItemConfigEditor({
 }) {
   const api = useApi(assessmentApi)
   const run = useRunApi()
-  const { format, formatError } = useI18n()
+  const { format, formatError, formatText } = useI18n()
   const [draft, setDraft] = useState<Draft>(() => {
     if (held !== undefined) return held
     const seeded = draftOf(item, groups, options)
@@ -1830,6 +1831,30 @@ export function ItemConfigEditor({
    * merely dead tells the reader they have done something wrong without ever
    * saying what - and the answer is always known here.
    */
+  // What may do the arithmetic, from the manifest rather than a list kept
+  // here: a plugin that ships a scoring driver says so in its own
+  // descriptor, and this chooser can only ever show what the assembly
+  // actually installed for this reader.
+  const calculators = useUiCollection(calculatorAuthoringOptions)
+  const chosenCalculator =
+    draft.scoring.language === 'v2'
+      ? {
+          ref: draft.scoring.original.calculator.ref,
+          config: draft.scoring.original.calculator.config,
+        }
+      : { ref: 'fixed@1', config: { value: draft.fixedValue } }
+  const onCalculatorChange = (next: { ref: string; config: unknown }) => {
+    // the legacy language owns exactly one calculator, and its amount is
+    // still the pen's own field; anything else is the versioned language,
+    // which the binding editor writes
+    if (next.ref === 'fixed@1' && draft.scoring.language === 'v1') {
+      patch({ fixedValue: String((next.config as { value?: unknown })?.value ?? '') })
+    }
+  }
+  const chooseCalculator = (ref: string) => {
+    void ref
+  }
+
   const granted = draft.itemType === 'constant'
   const declaredKind = draft.itemType === 'declaration'
   const fielded = draft.itemType === 'evidence'
@@ -2130,23 +2155,42 @@ export function ItemConfigEditor({
               {/* the width belongs to the wrapper: a field stretches whatever
                   control it is given to its own width */}
               <div {...stylex.props(styles.scoringRow)}>
-                <div {...stylex.props(styles.w152)}>
-                  <Field label={format(granted ? m.itemsGrantedValue : m.itemsFixedValue)}>
-                    {(id) => (
-                      <Input
-                        id={id}
-                        {...stylex.props(styles.figure)}
-                        value={draft.fixedValue}
-                        onChange={(event) => patch({ fixedValue: event.target.value })}
-                        tail={
-                          <span {...stylex.props(styles.unitTail)}>
-                            {format(m.itemsFixedValueUnit)}
-                          </span>
-                        }
-                      />
-                    )}
-                  </Field>
-                </div>
+                {calculators.length > 1 && (
+                  <div {...stylex.props(styles.w208)}>
+                    <Field label={format(m.itemsCalculator)}>
+                      {(id) => (
+                        <Select
+                          value={chosenCalculator.ref}
+                          onValueChange={(next) => chooseCalculator(next)}
+                        >
+                          <SelectTrigger id={id} xstyle={styles.fullWidth}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {calculators.map((option) => (
+                              <SelectItem key={option.ref} value={option.ref}>
+                                {formatText(option.label)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </Field>
+                  </div>
+                )}
+                {/* whoever owns the chosen arithmetic edits its own
+                    configuration here; this editor never reads into it */}
+                <UiSlot
+                  token={calculatorEditorSlot}
+                  context={{
+                    batchId,
+                    itemId: item?.id ?? null,
+                    calculator: chosenCalculator,
+                    amountPer: granted ? ('item' as const) : ('entry' as const),
+                    disabled: false,
+                    onChange: onCalculatorChange,
+                  }}
+                />
                 {/* how several claims fold together, and how many one
                     person may file: both are questions about filing, and a
                     question granted to everybody is never filed */}

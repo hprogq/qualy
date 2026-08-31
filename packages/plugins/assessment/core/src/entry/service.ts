@@ -1,10 +1,6 @@
 import { Effect, Result } from 'effect'
 import { insertRecognition, currentRecognitionOf } from '../scoring/recognition-db.ts'
-import {
-  canonicalRecognition,
-  judgeRecognition,
-  seedFromEvidence,
-} from '../scoring/recognition.ts'
+import { canonicalRecognition, judgeRecognition, seedFromEvidence } from '../scoring/recognition.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
 import type { ScoringPlan } from '../scoring/plan.ts'
 
@@ -202,7 +198,8 @@ const provenRecognition = (
     : Effect.fail(
         new EntryPayloadInvalid({
           issues: wrong.map((issue) => ({
-            field: issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
+            field:
+              issue.recognitionId === '' ? 'recognition' : `recognition.${issue.recognitionId}`,
             reason: issue.reason,
           })),
         }),
@@ -1137,11 +1134,7 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
             // the projection hides it; this is where it is refused. A fact
             // the office recorded or an import carried in is not the
             // subject's to withdraw, whatever the phase allows in general
-            if (
-              action === 'abandon' &&
-              entry.source !== 'self' &&
-              entry.source !== 'proxy'
-            ) {
+            if (action === 'abandon' && entry.source !== 'self' && entry.source !== 'proxy') {
               return yield* refuse(action, 'entry-not-abandonable')
             }
             if (participant.status !== 'active') {
@@ -1825,7 +1818,12 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
               { kind: 'review-instance-changed' },
             ])
             const gone_ = (yield* entryOf(tenantId, entryId))!
-            return view(gone_, yield* revisionView(tenantId, gone_.currentRevisionId), as, participant)
+            return view(
+              gone_,
+              yield* revisionView(tenantId, gone_.currentRevisionId),
+              as,
+              participant,
+            )
           }
 
           if (entry.status !== 'in_review' && entry.status !== 'approved') {

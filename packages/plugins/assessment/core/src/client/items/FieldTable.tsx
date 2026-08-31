@@ -855,7 +855,10 @@ function FieldSettings({
             )}
           </Field>
           <div {...stylex.props(styles.span2)}>
-            <AcceptPicker accept={field.accept} onChange={(accept) => onChange({ ...field, accept })} />
+            <AcceptPicker
+              accept={field.accept}
+              onChange={(accept) => onChange({ ...field, accept })}
+            />
           </div>
         </>
       )}

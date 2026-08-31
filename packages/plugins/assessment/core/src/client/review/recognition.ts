@@ -62,6 +62,5 @@ export const changedSeedKeys = (
   value: Readonly<Record<string, unknown>>,
 ): readonly string[] =>
   Object.keys(seed).filter(
-    (key) =>
-      Object.hasOwn(value, key) && JSON.stringify(value[key]) !== JSON.stringify(seed[key]),
+    (key) => Object.hasOwn(value, key) && JSON.stringify(value[key]) !== JSON.stringify(seed[key]),
   )

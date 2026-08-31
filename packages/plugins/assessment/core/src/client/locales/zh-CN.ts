@@ -307,6 +307,8 @@ export default {
   'assessment/items/field-max-size': '单个文件上限（MB）',
   'assessment/items/field-accept': '允许的文件类型',
   'assessment/items/fixed-value': '每条通过计分',
+  'assessment/items/calculator': '分值来源',
+  'assessment/items/calculator-fixed': '固定分值',
   'assessment/items/granted-value': '每人计分',
   'assessment/items/escalation-title': '复核流程',
   'assessment/items/escalation-hint':
