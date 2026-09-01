@@ -230,6 +230,26 @@ const settle = async (
   }
 }
 
+/**
+ * Who is asking, read off the running fiber without an effect: the fiber's
+ * current span and its log annotations are both kept on the fiber itself.
+ */
+const ownerOnFiber = (kind: CheckoutOwner['kind']): CheckoutOwner => {
+  const fiber = Fiber.getCurrent() as
+    | (Fiber.Fiber<unknown, unknown> & {
+        readonly currentSpan?: { readonly _tag: string; readonly name?: string }
+      })
+    | undefined
+  const source = fiber?.getRef(References.CurrentLogAnnotations)['source']
+  return {
+    kind,
+    token: {},
+    fiber: fiber?.id,
+    span: fiber?.currentSpan?._tag === 'Span' ? fiber.currentSpan.name : undefined,
+    source: typeof source === 'string' ? source : undefined,
+  }
+}
+
 /** who is asking, as the ledger will describe it if the checkout never returns */
 const ownerOf = (kind: CheckoutOwner['kind']) =>
   Effect.gen(function* () {
@@ -324,16 +344,12 @@ export class QueryFailed extends Error {
 export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =>
   Effect.suspend(() => {
     const started = performance.now()
-    // the fiber alone: a statement outside a transaction gives its
-    // connection back in the driver's own finally, so this only has to say
-    // who was mid-statement if the pool is asked while one is
-    const owner: CheckoutOwner = {
-      kind: 'query',
-      token: {},
-      fiber: Fiber.getCurrent()?.id,
-      span: undefined,
-      source: undefined,
-    }
+    // A statement outside a transaction gives its connection back in the
+    // driver's own finally, so this only has to say who was mid-statement
+    // if the pool is asked while one is - read synchronously off the fiber,
+    // because this is every query's hot path. The span and the source are
+    // what a CI autopsy could not say when all it had was a fiber number.
+    const owner: CheckoutOwner = ownerOnFiber('query')
     return Effect.tryPromise({
       try: () => checkoutOwner.run(owner, run),
       catch: (cause) => new QueryFailed(cause),
