@@ -19,6 +19,8 @@ import {
   type RecognitionValues,
 } from '../scoring/recognition.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
+import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
+import { ScoringRuntimeCatalog } from '../plugin.ts'
 import {
   currentRecognitionOf,
   insertRecognition,
@@ -37,10 +39,13 @@ import { bumpParticipantAttention } from '../entry/db.ts'
 import {
   BatchNotFound,
   BatchReadOnly,
+  DeterminationRefused,
   EntryActionRefused,
   EntryPayloadInvalid,
+  ItemRevisionConflict,
   ReviewConflict,
   ReviewNotFound,
+  ScoringUnavailable,
 } from '../server/errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { itemOf, revisionOf } from '../item/db.ts'
@@ -449,7 +454,15 @@ export interface ReviewMethods {
     as: Principal,
   ) => Effect.Effect<
     ReviewDetailView,
-    ReviewNotFound | ReviewConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
+    | ReviewNotFound
+    | ReviewConflict
+    | ItemRevisionConflict
+    | BatchReadOnly
+    | EntryActionRefused
+    | EntryPayloadInvalid
+    | DeterminationRefused
+    | ScoringUnavailable,
+    ScoringRuntimeCatalog
   >
   /**
    * Contest the decision a claim currently stands on.
@@ -1184,663 +1197,754 @@ export const makeReviewMethods = (deps: ReviewDeps): ReviewMethods => {
   const decideReview: ReviewMethods['decideReview'] = Effect.fn('Assessment.decideReview')(
     function* (tenantId, instanceId, input, as) {
       const action = input.decision
-      const decided = withDb(
-        transaction(
-          Effect.gen(function* () {
-            // where the round lives, and nothing else: a round never changes
-            // batch, so this is safe to lock by and safe to be stale about
-            const located = yield* instanceOf(tenantId, instanceId)
-            if (located === null) return yield* new ReviewNotFound()
-            const locked = yield* lockBatch(tenantId, located.batchId)
-            if (locked!.status === 'archived') return yield* new BatchReadOnly()
-            // The round row, taken under the batch lock and never before it:
-            // panel votes and seat claims serialize here, and every panel
-            // read below is post-lock. Order matters - a void or re-route
-            // holds the batch and then touches instance rows, so locking
-            // the instance first was a deadlock with everything (found the
-            // hard way, as an ABBA kill under CI load).
-            yield* lockReviewInstance(tenantId, instanceId)
-            // Read it again, and judge from this one. A word is answered by
-            // the step the round stands on at the moment it is written, not
-            // the step it stood on when the page was drawn: between the two
-            // another judge can have confirmed this step and handed the
-            // round upward, and a decision taken against the abandoned step
-            // would close the round from a place its author never held.
-            const row = yield* instanceOf(tenantId, instanceId)
-            if (row === null) return yield* new ReviewNotFound()
-            const judge = yield* mayAct(tenantId, row, as)
-            if (!judge) {
-              // the read rule decides what the refusal admits: a reader is
-              // told they may not act, a stranger that there is nothing here
-              const admin = yield* deps.rosterReach(as, tenantId, row.batchId)
-              if (row.subjectUserId === as.userId || admin) {
-                return yield* refuse(action, 'not-reviewer')
+      const runtime = yield* ScoringRuntimeCatalog
+      // A word that would make a determination a fact is proven against the
+      // question's arithmetic first, and the proof is made between two runs
+      // of this transaction rather than inside one: the arithmetic may take
+      // seconds, and a batch lock must not be held for it. The first run
+      // stops where it would write the determination and says what to
+      // prove; the second carries the proof, and writes only if every fact
+      // the proof rested on still stands.
+      const attempt = (proven: string | null) =>
+        withDb(
+          transaction(
+            Effect.gen(function* () {
+              // where the round lives, and nothing else: a round never changes
+              // batch, so this is safe to lock by and safe to be stale about
+              const located = yield* instanceOf(tenantId, instanceId)
+              if (located === null) return yield* new ReviewNotFound()
+              const locked = yield* lockBatch(tenantId, located.batchId)
+              if (locked!.status === 'archived') return yield* new BatchReadOnly()
+              // The round row, taken under the batch lock and never before it:
+              // panel votes and seat claims serialize here, and every panel
+              // read below is post-lock. Order matters - a void or re-route
+              // holds the batch and then touches instance rows, so locking
+              // the instance first was a deadlock with everything (found the
+              // hard way, as an ABBA kill under CI load).
+              yield* lockReviewInstance(tenantId, instanceId)
+              // Read it again, and judge from this one. A word is answered by
+              // the step the round stands on at the moment it is written, not
+              // the step it stood on when the page was drawn: between the two
+              // another judge can have confirmed this step and handed the
+              // round upward, and a decision taken against the abandoned step
+              // would close the round from a place its author never held.
+              const row = yield* instanceOf(tenantId, instanceId)
+              if (row === null) return yield* new ReviewNotFound()
+              const judge = yield* mayAct(tenantId, row, as)
+              if (!judge) {
+                // the read rule decides what the refusal admits: a reader is
+                // told they may not act, a stranger that there is nothing here
+                const admin = yield* deps.rosterReach(as, tenantId, row.batchId)
+                if (row.subjectUserId === as.userId || admin) {
+                  return yield* refuse(action, 'not-reviewer')
+                }
+                return yield* new ReviewNotFound()
               }
-              return yield* new ReviewNotFound()
-            }
-            const gate = yield* deps.reviewGate(tenantId, row.batchId)
-            if (!gate.allowed) return yield* refuse(action, gate.reason)
-            // a round that asked for more has nothing to decide until the
-            // answer comes back or the ask is taken back
-            if (row.state === 'awaiting_supplement') {
-              return yield* refuse(action, 'awaiting-supplement')
-            }
-            // and a round that has already concluded takes no more words. The
-            // single judge's terminal write says this for itself by failing
-            // its compare-and-set; a panel would otherwise seat itself afresh
-            // on a closed round and leave the sitting open behind it.
-            if (row.state === 'completed') return yield* new ReviewConflict()
+              const gate = yield* deps.reviewGate(tenantId, row.batchId)
+              if (!gate.allowed) return yield* refuse(action, gate.reason)
+              // a round that asked for more has nothing to decide until the
+              // answer comes back or the ask is taken back
+              if (row.state === 'awaiting_supplement') {
+                return yield* refuse(action, 'awaiting-supplement')
+              }
+              // and a round that has already concluded takes no more words. The
+              // single judge's terminal write says this for itself by failing
+              // its compare-and-set; a panel would otherwise seat itself afresh
+              // on a closed round and leave the sitting open behind it.
+              if (row.state === 'completed') return yield* new ReviewConflict()
 
-            const policy = row.effectivePolicy
-            const here = stageById(policy, row.currentRoute, row.currentStageId)
-            if (here === null) return yield* refuse(action, 'chain-unreadable')
-            // Where this round stands decides what may be said here (§14,
-            // §32.66): the ordinary route confirms step by step and may hand
-            // the round to the escalation ladder while the phase opens that;
-            // every rung of the ladder may settle the matter, and only its
-            // last rung may finally refuse it.
-            const escalationDecision =
-              action === 'escalate' && here.route === 'normal'
-                ? yield* deps.escalateGate(tenantId, row.batchId)
-                : { allowed: true as const }
-            const allowed = decisionsAt(policy, here, {
-              mayEscalate: escalationDecision.allowed,
-            })
-            if (!allowed.includes(action)) {
-              // an escalation refused by the phase says so in the phase's own
-              // words; anything else is simply not on offer here
-              return yield* refuse(
-                action,
-                action === 'escalate' && !escalationDecision.allowed
-                  ? (escalationDecision as { reason: string }).reason
-                  : 'decision-not-available',
-              )
-            }
-
-            const comment = input.comment?.trim() ?? ''
-            if (comment === '' && action !== 'approve') {
-              // everything except a plain approval is something being said to
-              // a person; without a word it is only an obstacle
-              return yield* new EntryPayloadInvalid({
-                issues: [{ field: 'comment', reason: 'required' }],
+              const policy = row.effectivePolicy
+              const here = stageById(policy, row.currentRoute, row.currentStageId)
+              if (here === null) return yield* refuse(action, 'chain-unreadable')
+              // Where this round stands decides what may be said here (§14,
+              // §32.66): the ordinary route confirms step by step and may hand
+              // the round to the escalation ladder while the phase opens that;
+              // every rung of the ladder may settle the matter, and only its
+              // last rung may finally refuse it.
+              const escalationDecision =
+                action === 'escalate' && here.route === 'normal'
+                  ? yield* deps.escalateGate(tenantId, row.batchId)
+                  : { allowed: true as const }
+              const allowed = decisionsAt(policy, here, {
+                mayEscalate: escalationDecision.allowed,
               })
-            }
-            // the label is picked, not invented: it must come off the batch's
-            // configured list for this act, and when a list is configured the
-            // act does not go through without one
-            const reason = input.reason?.trim() ?? ''
-            const offered =
-              action === 'reject'
-                ? reasonsOf(row.batchReviewReasons).reject
-                : action === 'escalate'
-                  ? reasonsOf(row.batchReviewReasons).escalate
-                  : []
-            if (action === 'reject' || action === 'escalate') {
-              if (offered.length > 0 && reason === '') {
-                return yield* new EntryPayloadInvalid({
-                  issues: [{ field: 'reason', reason: 'required' }],
-                })
+              if (!allowed.includes(action)) {
+                // an escalation refused by the phase says so in the phase's own
+                // words; anything else is simply not on offer here
+                return yield* refuse(
+                  action,
+                  action === 'escalate' && !escalationDecision.allowed
+                    ? (escalationDecision as { reason: string }).reason
+                    : 'decision-not-available',
+                )
               }
-              if (reason !== '' && !offered.includes(reason)) {
-                return yield* new EntryPayloadInvalid({
-                  issues: [{ field: 'reason', reason: 'not-offered' }],
-                })
-              }
-            } else if (reason !== '') {
-              return yield* new EntryPayloadInvalid({
-                issues: [{ field: 'reason', reason: 'not-allowed' }],
-              })
-            }
-            let suggestion: unknown
-            if (input.suggestedPayload !== undefined) {
-              // advice to the person who filed rides only a rejection that
-              // actually reaches them: a climbing opinion and a panel vote
-              // end nothing, and their words go to the next judge instead
-              if (!(action === 'reject' && wordEnds(policy, here, 'reject'))) {
-                return yield* new EntryPayloadInvalid({
-                  issues: [{ field: 'suggestedPayload', reason: 'not-allowed' }],
-                })
-              }
-              suggestion = yield* decodeSuggestion(tenantId, row, input.suggestedPayload)
-            }
 
-            // What this round determines under, and what it is standing on
-            // now. The contract is the one frozen when the round opened -
-            // not today's - so an administrator saving the question
-            // mid-round cannot change what a reviewer is being asked.
-            const contract = yield* revisionOf(tenantId, row.recognitionRevisionId)
-            if (contract === null) return yield* refuse(action, 'chain-unreadable')
-            const plan = yield* Effect.orDie(readScoringPlan(contract))
-            const seed = yield* recognitionSeed(tenantId, instanceId, plan, row)
-
-            // a refusal or a referral determines nothing: "I cannot tell"
-            // is a legitimate thing for a reviewer to say, and forcing a
-            // determination out of it would put words in their mouth
-            if (action !== 'approve' && input.recognition !== undefined) {
-              return yield* new EntryPayloadInvalid({
-                issues: [{ field: 'recognition', reason: 'not-allowed' }],
-              })
-            }
-            let determined: RecognitionValues | undefined
-            let determinedHash: string | undefined
-            let determinedReason: string | null = null
-            if (action === 'approve') {
-              // A determination is made, never assumed. The seed is what
-              // the reviewer was SHOWN - a pre-fill and the baseline for
-              // "did they change anything" - and a request that says only
-              // "approve" has not confirmed it: an old client or a screen
-              // that failed to render the form would otherwise have the
-              // system record the filing's defaults as words this reviewer
-              // never said, against their name, into the score. Only a
-              // contract that asks for nothing may be answered by omission,
-              // because {} is its complete answer rather than anybody's
-              // guess.
-              if (
-                input.recognition === undefined &&
-                Object.keys(plan.recognitionSchemas).length > 0
-              ) {
+              const comment = input.comment?.trim() ?? ''
+              if (comment === '' && action !== 'approve') {
+                // everything except a plain approval is something being said to
+                // a person; without a word it is only an obstacle
                 return yield* new EntryPayloadInvalid({
-                  issues: [{ field: 'recognition', reason: 'required' }],
+                  issues: [{ field: 'comment', reason: 'required' }],
                 })
               }
-              // Judged raw, canonicalized after. The wire hands over an
-              // unknown - the judge is what earns it the right to be treated
-              // as a determination at all, and canonicalizing first would
-              // hand `null` and friends to code that assumes an object,
-              // turning a malformed request into a defect instead of the
-              // refusal already written for it.
-              const offered: unknown =
-                input.recognition === undefined ? {} : input.recognition.values
-              const wrong = judgeRecognition(plan.recognitionSchemas, offered)
-              if (wrong.length > 0) {
+              // the label is picked, not invented: it must come off the batch's
+              // configured list for this act, and when a list is configured the
+              // act does not go through without one
+              const reason = input.reason?.trim() ?? ''
+              const offered =
+                action === 'reject'
+                  ? reasonsOf(row.batchReviewReasons).reject
+                  : action === 'escalate'
+                    ? reasonsOf(row.batchReviewReasons).escalate
+                    : []
+              if (action === 'reject' || action === 'escalate') {
+                if (offered.length > 0 && reason === '') {
+                  return yield* new EntryPayloadInvalid({
+                    issues: [{ field: 'reason', reason: 'required' }],
+                  })
+                }
+                if (reason !== '' && !offered.includes(reason)) {
+                  return yield* new EntryPayloadInvalid({
+                    issues: [{ field: 'reason', reason: 'not-offered' }],
+                  })
+                }
+              } else if (reason !== '') {
                 return yield* new EntryPayloadInvalid({
-                  issues: wrong.map((issue) => ({
-                    field:
-                      issue.recognitionId === ''
-                        ? 'recognition'
-                        : `recognition.${issue.recognitionId}`,
-                    reason: issue.reason,
-                  })),
+                  issues: [{ field: 'reason', reason: 'not-allowed' }],
                 })
               }
-              const candidate = canonicalRecognition(
-                plan.recognitionSchemas,
-                offered as RecognitionValues,
-              )
-              // Contradicting what was already determined is a decision of
-              // its own, and one the next reader is owed an explanation for.
-              // Filling in a fact that had none is not: a reviewer-only
-              // field reaches the first reader empty by design, and asking
-              // them to justify writing it would be asking them to justify
-              // doing their job.
-              const changed = contradicted(seed, candidate).length > 0
-              const given = input.recognition?.reason?.trim() ?? ''
-              if (changed && given === '') {
+              let suggestion: unknown
+              if (input.suggestedPayload !== undefined) {
+                // advice to the person who filed rides only a rejection that
+                // actually reaches them: a climbing opinion and a panel vote
+                // end nothing, and their words go to the next judge instead
+                if (!(action === 'reject' && wordEnds(policy, here, 'reject'))) {
+                  return yield* new EntryPayloadInvalid({
+                    issues: [{ field: 'suggestedPayload', reason: 'not-allowed' }],
+                  })
+                }
+                suggestion = yield* decodeSuggestion(tenantId, row, input.suggestedPayload)
+              }
+
+              // What this round determines under, and what it is standing on
+              // now. The contract is the one frozen when the round opened -
+              // not today's - so an administrator saving the question
+              // mid-round cannot change what a reviewer is being asked.
+              const contract = yield* revisionOf(tenantId, row.recognitionRevisionId)
+              if (contract === null) return yield* refuse(action, 'chain-unreadable')
+              const plan = yield* Effect.orDie(readScoringPlan(contract))
+              const seed = yield* recognitionSeed(tenantId, instanceId, plan, row)
+
+              /**
+               * Asks for the proof a determination needs before it is written,
+               * unless this run already carries it.
+               *
+               * Scored by the question as it stands TODAY, not by the contract
+               * the round opened under: an approved claim is counted by the
+               * current plan, so that is the arithmetic that has to accept it.
+               * The identity names every fact the proof rests on; a second run
+               * whose facts have moved asks again, and the caller reads that
+               * as the round having moved.
+               */
+              const proveDetermination = (
+                point: 'terminal' | 'first-ballot' | 'resolution',
+                values: RecognitionValues,
+                extra: Record<string, unknown> = {},
+              ) =>
+                Effect.gen(function* () {
+                  const question = yield* itemOf(tenantId, row.itemId)
+                  const current =
+                    question === null || question.currentRevisionId === null
+                      ? null
+                      : yield* revisionOf(tenantId, question.currentRevisionId)
+                  if (current === null) return yield* new ReviewConflict()
+                  const livePlan =
+                    current.id === contract.id
+                      ? plan
+                      : yield* Effect.orDie(readScoringPlan(current))
+                  const standing = yield* currentRecognitionOf(tenantId, row.entryId)
+                  const identity = probeIdentity({
+                    point,
+                    revisionId: current.id,
+                    planHash: livePlan.planHash,
+                    state: row.state,
+                    route: row.currentRoute,
+                    stageId: row.currentStageId,
+                    standing: standing?.id ?? null,
+                    recognition: recognitionHash(values),
+                    ...extra,
+                  })
+                  if (proven === identity) return
+                  return yield* new ProbeNeeded({
+                    probe: {
+                      identity,
+                      revisionId: current.id,
+                      tenantId,
+                      batchId: row.batchId,
+                      itemId: row.itemId,
+                      plan: livePlan,
+                      recognition: values,
+                    },
+                  })
+                })
+
+              // a refusal or a referral determines nothing: "I cannot tell"
+              // is a legitimate thing for a reviewer to say, and forcing a
+              // determination out of it would put words in their mouth
+              if (action !== 'approve' && input.recognition !== undefined) {
                 return yield* new EntryPayloadInvalid({
-                  issues: [{ field: 'recognition.reason', reason: 'required' }],
+                  issues: [{ field: 'recognition', reason: 'not-allowed' }],
                 })
               }
-              determined = candidate
-              determinedHash = recognitionHash(candidate)
-              determinedReason = given === '' ? null : given
-            }
+              let determined: RecognitionValues | undefined
+              let determinedHash: string | undefined
+              let determinedReason: string | null = null
+              if (action === 'approve') {
+                // A determination is made, never assumed. The seed is what
+                // the reviewer was SHOWN - a pre-fill and the baseline for
+                // "did they change anything" - and a request that says only
+                // "approve" has not confirmed it: an old client or a screen
+                // that failed to render the form would otherwise have the
+                // system record the filing's defaults as words this reviewer
+                // never said, against their name, into the score. Only a
+                // contract that asks for nothing may be answered by omission,
+                // because {} is its complete answer rather than anybody's
+                // guess.
+                if (
+                  input.recognition === undefined &&
+                  Object.keys(plan.recognitionSchemas).length > 0
+                ) {
+                  return yield* new EntryPayloadInvalid({
+                    issues: [{ field: 'recognition', reason: 'required' }],
+                  })
+                }
+                // Judged raw, canonicalized after. The wire hands over an
+                // unknown - the judge is what earns it the right to be treated
+                // as a determination at all, and canonicalizing first would
+                // hand `null` and friends to code that assumes an object,
+                // turning a malformed request into a defect instead of the
+                // refusal already written for it.
+                const offered: unknown =
+                  input.recognition === undefined ? {} : input.recognition.values
+                const wrong = judgeRecognition(plan.recognitionSchemas, offered)
+                if (wrong.length > 0) {
+                  return yield* new EntryPayloadInvalid({
+                    issues: wrong.map((issue) => ({
+                      field:
+                        issue.recognitionId === ''
+                          ? 'recognition'
+                          : `recognition.${issue.recognitionId}`,
+                      reason: issue.reason,
+                    })),
+                  })
+                }
+                const candidate = canonicalRecognition(
+                  plan.recognitionSchemas,
+                  offered as RecognitionValues,
+                )
+                // Contradicting what was already determined is a decision of
+                // its own, and one the next reader is owed an explanation for.
+                // Filling in a fact that had none is not: a reviewer-only
+                // field reaches the first reader empty by design, and asking
+                // them to justify writing it would be asking them to justify
+                // doing their job.
+                const changed = contradicted(seed, candidate).length > 0
+                const given = input.recognition?.reason?.trim() ?? ''
+                if (changed && given === '') {
+                  return yield* new EntryPayloadInvalid({
+                    issues: [{ field: 'recognition.reason', reason: 'required' }],
+                  })
+                }
+                determined = candidate
+                determinedHash = recognitionHash(candidate)
+                determinedReason = given === '' ? null : given
+              }
 
-            const say = (kind: string) =>
-              insertReviewEvent({
-                tenantId,
-                reviewInstanceId: instanceId,
-                kind,
-                actorId: as.userId,
-                // where it was said, so a round re-routed onto a newer policy
-                // can still answer "which level approved this"
-                route: here.route,
-                stageId: here.id,
-                reason: reason === '' ? null : reason,
-                comment: comment === '' ? null : comment,
-                ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
-                ...(determined === undefined
-                  ? {}
-                  : {
-                      recognitionPayload: determined,
-                      recognitionReason: determinedReason,
-                      recognitionHash: determinedHash ?? null,
-                    }),
-              })
-            /** the round's own word, spoken by no one: a sitting concluding */
-            const sayFrom = (
-              kind: string,
-              actorId: string | null,
-              snapshot?: {
-                readonly recognitionPayload: RecognitionValues
-                readonly recognitionHash: string
-                /** the sitting's own explanation for its proposal, if it gave one */
-                readonly recognitionReason: string | null
-              },
-            ) =>
-              insertReviewEvent({
-                tenantId,
-                reviewInstanceId: instanceId,
-                kind,
-                actorId,
-                route: here.route,
-                stageId: here.id,
-                ...(snapshot === undefined
-                  ? {}
-                  : {
-                      recognitionPayload: snapshot.recognitionPayload,
-                      recognitionHash: snapshot.recognitionHash,
-                      recognitionReason: snapshot.recognitionReason,
-                    }),
-              })
-
-            /**
-             * The determination this round settles on, written down.
-             *
-             * Appended, never edited: if this claim already stood recognised
-             * as something, the new determination supersedes that one by
-             * pointing at it, so an appeal reads as "provincial, then
-             * national" rather than as a value whose history is gone. The
-             * pointer moves in the same statement that moves the status,
-             * because an approved claim without a determination is a row the
-             * table refuses.
-             */
-            const settle = (values: RecognitionValues, eventId: string) =>
-              Effect.gen(function* () {
-                const standing = yield* currentRecognitionOf(tenantId, row.entryId)
-                return yield* insertRecognition({
+              const say = (kind: string) =>
+                insertReviewEvent({
                   tenantId,
-                  batchId: row.batchId,
-                  entryId: row.entryId,
-                  entryRevisionId: row.revisionId,
-                  itemId: row.itemId,
-                  itemRevisionId: row.recognitionRevisionId,
-                  values,
-                  source: 'review',
                   reviewInstanceId: instanceId,
-                  reviewEventId: eventId,
-                  ...(standing === null ? {} : { supersedesId: standing.id }),
+                  kind,
+                  actorId: as.userId,
+                  // where it was said, so a round re-routed onto a newer policy
+                  // can still answer "which level approved this"
+                  route: here.route,
+                  stageId: here.id,
+                  reason: reason === '' ? null : reason,
+                  comment: comment === '' ? null : comment,
+                  ...(suggestion !== undefined ? { suggestedPayload: suggestion } : {}),
+                  ...(determined === undefined
+                    ? {}
+                    : {
+                        recognitionPayload: determined,
+                        recognitionReason: determinedReason,
+                        recognitionHash: determinedHash ?? null,
+                      }),
                 })
-              })
-
-            /**
-             * Climbs the ladder from `from`: the next rung somebody
-             * independent can stand at, stepping over rungs held only by
-             * this round's own earlier judges, blocking on a genuinely
-             * unstaffed one. The acting event is already written, so the
-             * walker's independence rule counts the very act being taken.
-             */
-            const climb = (from: number) =>
-              Effect.gen(function* () {
-                const landing = yield* resolveArrival({
+              /** the round's own word, spoken by no one: a sitting concluding */
+              const sayFrom = (
+                kind: string,
+                actorId: string | null,
+                snapshot?: {
+                  readonly recognitionPayload: RecognitionValues
+                  readonly recognitionHash: string
+                  /** the sitting's own explanation for its proposal, if it gave one */
+                  readonly recognitionReason: string | null
+                },
+              ) =>
+                insertReviewEvent({
                   tenantId,
-                  batchId: row.batchId,
-                  policy,
-                  route: 'escalation',
-                  from,
-                  subjectUserId: row.subjectUserId,
-                  actorId: row.actorId,
-                  excludeJudgedOfInstanceId: instanceId,
-                  conflictSkip: true,
+                  reviewInstanceId: instanceId,
+                  kind,
+                  actorId,
+                  route: here.route,
+                  stageId: here.id,
+                  ...(snapshot === undefined
+                    ? {}
+                    : {
+                        recognitionPayload: snapshot.recognitionPayload,
+                        recognitionHash: snapshot.recognitionHash,
+                        recognitionReason: snapshot.recognitionReason,
+                      }),
                 })
-                if (landing === null || landing.stage.nodeId === null) {
+
+              /**
+               * The determination this round settles on, written down.
+               *
+               * Appended, never edited: if this claim already stood recognised
+               * as something, the new determination supersedes that one by
+               * pointing at it, so an appeal reads as "provincial, then
+               * national" rather than as a value whose history is gone. The
+               * pointer moves in the same statement that moves the status,
+               * because an approved claim without a determination is a row the
+               * table refuses.
+               */
+              const settle = (values: RecognitionValues, eventId: string) =>
+                Effect.gen(function* () {
+                  const standing = yield* currentRecognitionOf(tenantId, row.entryId)
+                  return yield* insertRecognition({
+                    tenantId,
+                    batchId: row.batchId,
+                    entryId: row.entryId,
+                    entryRevisionId: row.revisionId,
+                    itemId: row.itemId,
+                    itemRevisionId: row.recognitionRevisionId,
+                    values,
+                    source: 'review',
+                    reviewInstanceId: instanceId,
+                    reviewEventId: eventId,
+                    ...(standing === null ? {} : { supersedesId: standing.id }),
+                  })
+                })
+
+              /**
+               * Climbs the ladder from `from`: the next rung somebody
+               * independent can stand at, stepping over rungs held only by
+               * this round's own earlier judges, blocking on a genuinely
+               * unstaffed one. The acting event is already written, so the
+               * walker's independence rule counts the very act being taken.
+               */
+              const climb = (from: number) =>
+                Effect.gen(function* () {
+                  const landing = yield* resolveArrival({
+                    tenantId,
+                    batchId: row.batchId,
+                    policy,
+                    route: 'escalation',
+                    from,
+                    subjectUserId: row.subjectUserId,
+                    actorId: row.actorId,
+                    excludeJudgedOfInstanceId: instanceId,
+                    conflictSkip: true,
+                  })
+                  if (landing === null || landing.stage.nodeId === null) {
+                    return yield* refuse(action, 'chain-ends-here')
+                  }
+                  const nodePath = yield* nodePathOf(tenantId, landing.stage.nodeId)
+                  if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
+                  const moved = yield* advanceReviewInstance({
+                    tenantId,
+                    instanceId,
+                    fromRoute: here.route,
+                    fromStageId: here.id,
+                    toRoute: 'escalation',
+                    toStageId: landing.stage.id,
+                    roleIds: landing.stage.roleIds,
+                    nodeId: landing.stage.nodeId,
+                    nodePath,
+                    state: landing.state,
+                    blockedReason: landing.blockedReason,
+                  })
+                  if (!moved) return yield* new ReviewConflict()
+                  // the steps stepped over, on the record: the chain view and
+                  // the trail both read them off the round itself
+                  for (const stepped of landing.skipped) {
+                    yield* insertReviewEvent({
+                      tenantId,
+                      reviewInstanceId: instanceId,
+                      kind: 'stage-skipped',
+                      actorId: null,
+                      route: 'escalation',
+                      stageId: stepped.id,
+                    })
+                  }
+                  if (landing.state === 'blocked') {
+                    yield* insertReviewEvent({
+                      tenantId,
+                      reviewInstanceId: instanceId,
+                      kind: 'assignee-not-found',
+                      actorId: null,
+                      route: 'escalation',
+                      stageId: landing.stage.id,
+                    })
+                  } else if (isPanelStage(landing.stage)) {
+                    yield* createPanel({
+                      tenantId,
+                      reviewInstanceId: instanceId,
+                      route: 'escalation',
+                      stageId: landing.stage.id,
+                      members: landing.eligible,
+                    })
+                  }
+                })
+
+              /** what every path returns: the round as it now stands */
+              const written = () =>
+                Effect.gen(function* () {
+                  yield* announce(tenantId, row.batchId, [
+                    { kind: 'review-instance-changed' },
+                    { kind: 'review-inbox-changed' },
+                    { kind: 'entries-changed', subjectUserId: row.subjectUserId },
+                    { kind: 'result-changed', subjectUserId: row.subjectUserId },
+                  ])
+                  const after = (yield* instanceOf(tenantId, instanceId))!
+                  return yield* assembleDetail(tenantId, after, {
+                    canDecide: false,
+                    resolveReviewers: false,
+                  })
+                })
+
+              if (isPanelStage(here)) {
+                // The sitting. Usually constituted when the round arrived; a
+                // round that arrived blocked and healed constitutes it on
+                // first contact, from whoever is eligible now.
+                let panel = yield* openPanelOf(tenantId, instanceId)
+                if (panel === null) {
+                  const arrived = yield* stageArrival({
+                    tenantId,
+                    batchId: row.batchId,
+                    stage: here,
+                    subjectUserId: row.subjectUserId,
+                    actorId: row.actorId,
+                    excludeJudgedOfInstanceId: instanceId,
+                  })
+                  if (arrived.state !== 'active') return yield* new ReviewConflict()
+                  yield* createPanel({
+                    tenantId,
+                    reviewInstanceId: instanceId,
+                    route: here.route,
+                    stageId: here.id,
+                    members: arrived.eligible,
+                  })
+                  panel = yield* openPanelOf(tenantId, instanceId)
+                  if (panel === null) return yield* new ReviewConflict()
+                }
+                // live truth about the seats: an unvoted occupant who lost
+                // standing frees the seat here and now, not at the next patrol
+                const seats = yield* livePanelSeats(tenantId, panel.id)
+                const eligibleNow = new Set(
+                  here.nodeId === null
+                    ? []
+                    : yield* reviewersAtStage(tenantId, row, here, instanceId),
+                )
+                for (const seat of seats) {
+                  if (seat.voted === null && !eligibleNow.has(seat.userId)) {
+                    yield* endPanelAssignment({
+                      tenantId,
+                      assignmentId: seat.assignmentId,
+                      reason: 'eligibility-lost',
+                    })
+                  }
+                }
+
+                if (action === 'escalate') {
+                  // one member pulling the matter up ends the sitting: raising
+                  // the level is safe, and the unturned ballots are moot
+                  const closed = yield* resolvePanel({
+                    tenantId,
+                    panelId: panel.id,
+                    resolution: 'escalated',
+                  })
+                  if (!closed) return yield* new ReviewConflict()
+                  yield* say('escalated')
+                  yield* climb(here.index + 1)
+                  return yield* written()
+                }
+
+                // approve and reject are ballots; the sitting concludes when
+                // every seat has spoken, and not a moment sooner - the point
+                // of a panel is every judgment, not the first
+                const own = seats.find(
+                  (seat) =>
+                    seat.userId === as.userId &&
+                    seat.voted === null &&
+                    eligibleNow.has(seat.userId),
+                )
+                const taken =
+                  own !== undefined
+                    ? { assignmentId: own.assignmentId }
+                    : yield* claimPanelSeat({ tenantId, panelId: panel.id, userId: as.userId })
+                if (taken === null) return yield* new ReviewConflict()
+
+                // The determination this sitting is voting on, frozen by its
+                // Establishing what a sitting is voting on, and voting on it,
+                // are two acts.
+                //
+                // The first APPROVING ballot fixes the text: three reviewers
+                // approving three different determinations is not a decision
+                // anybody could act on, so every approval after it must be for
+                // the same words or be refused. A refusal fixes nothing and is
+                // held to nothing - "I cannot pass this" is answerable without
+                // anybody having determined anything, and a sitting whose
+                // first reviewer refuses would otherwise have to invent a
+                // complete determination before it could say no. It costs
+                // nothing in safety: the round can only end approved if every
+                // ballot approved, and every approving ballot carried the one
+                // frozen text.
+                const frozen = yield* panelRecognitionOf(tenantId, panel.id)
+                let ballotHash = frozen === null ? null : frozen.hash
+                if (action === 'approve') {
+                  // Two ballots carry a determination toward becoming a fact:
+                  // the first, which fixes the text every later approval must
+                  // match, and the one that completes a sitting of approvals.
+                  // Each is proven against the question as it stands when it
+                  // is cast - the rule may have changed between them - and
+                  // the ballots in between prove nothing, because they decide
+                  // nothing on their own.
+                  const cast = yield* votesOfPanel(tenantId, panel.id)
+                  if (frozen === null) {
+                    const opening = canonicalRecognition(
+                      plan.recognitionSchemas,
+                      determined ?? seed,
+                    )
+                    const wrong = judgeRecognition(plan.recognitionSchemas, opening)
+                    if (wrong.length > 0) {
+                      return yield* new EntryPayloadInvalid({
+                        issues: wrong.map((issue) => ({
+                          field:
+                            issue.recognitionId === ''
+                              ? 'recognition'
+                              : `recognition.${issue.recognitionId}`,
+                          reason: issue.reason,
+                        })),
+                      })
+                    }
+                    yield* proveDetermination('first-ballot', opening, { cast: cast.length })
+                    yield* lockPanelRecognition({
+                      tenantId,
+                      panelId: panel.id,
+                      values: opening as Record<string, unknown>,
+                      hash: recognitionHash(opening),
+                      // frozen with its explanation: the round ends on this
+                      // text, so "why it differs from what we inherited" has
+                      // to travel with it or it is lost when the sitting
+                      // resolves
+                      reason: determinedReason,
+                    })
+                    ballotHash = recognitionHash(opening)
+                  } else if (
+                    determined !== undefined &&
+                    recognitionHash(determined) !== frozen.hash
+                  ) {
+                    return yield* new EntryPayloadInvalid({
+                      issues: [{ field: 'recognition', reason: 'panel-recognition-locked' }],
+                    })
+                  } else if (
+                    cast.length + 1 >= panel.seatCount &&
+                    cast.every((vote) => vote.decision === 'approve')
+                  ) {
+                    yield* proveDetermination('resolution', frozen.values, { cast: cast.length })
+                  }
+                }
+                yield* insertVote({
+                  tenantId,
+                  panelId: panel.id,
+                  assignmentId: taken.assignmentId,
+                  voterUserId: as.userId,
+                  decision: action,
+                  reason: reason === '' ? null : reason,
+                  comment: comment === '' ? null : comment,
+                  // what this ballot was cast on: the frozen text where one
+                  // exists, and nothing where a refusal came before any
+                  recognitionHash: ballotHash,
+                })
+                const votes = yield* votesOfPanel(tenantId, panel.id)
+                if (votes.length >= panel.seatCount) {
+                  const unanimous = votes.every((vote) => vote.decision === 'approve')
+                  // What the sitting amounted to, settled before it is written
+                  // down: a split at the ladder's end is the refusal, and
+                  // resolving as 'escalated' first left the row saying it had
+                  // handed the matter up while the round closed rejected.
+                  const ends = !unanimous && isRouteEnd(policy, here)
+                  const closed = yield* resolvePanel({
+                    tenantId,
+                    panelId: panel.id,
+                    resolution: unanimous ? 'approved' : ends ? 'rejected' : 'escalated',
+                  })
+                  if (!closed) return yield* new ReviewConflict()
+                  if (unanimous) {
+                    const won = yield* completeInstance({
+                      tenantId,
+                      instanceId,
+                      outcome: 'approved',
+                    })
+                    if (!won) return yield* new ReviewConflict()
+                    // The sitting's own word, and the determination it voted
+                    // on: the frozen proposal, not this last ballot's opinion.
+                    // Unanimous approval means every ballot was an approval,
+                    // and the first of those fixed the text - so there is one.
+                    const sitting = yield* panelRecognitionOf(tenantId, panel.id)
+                    if (sitting === null) return yield* new ReviewConflict()
+                    const eventId = yield* sayFrom('approved', null, {
+                      recognitionPayload: sitting.values,
+                      recognitionHash: sitting.hash,
+                      recognitionReason: sitting.reason,
+                    })
+                    const recognitionId = yield* settle(sitting.values, eventId)
+                    yield* setEntryState({
+                      tenantId,
+                      entryId: row.entryId,
+                      from: ['in_review'],
+                      to: 'approved',
+                      currentRecognitionId: recognitionId,
+                    })
+                    yield* bumpParticipantAttention(tenantId, row.entryId)
+                  } else if (ends) {
+                    // The end of the ladder owns the final no, and a sitting
+                    // held there has nowhere to hand a split to: the split is
+                    // the refusal. A panel is forbidden on the route's last
+                    // step, but that is checked by POSITION while the round
+                    // walks by RESOLUTION - a later step whose selector finds
+                    // nobody for this participant is stepped over, which can
+                    // leave this sitting as the last one. Climbing from here
+                    // refuses the whole transaction, which threw the deciding
+                    // vote away and left the round unable to ever conclude.
+                    const won = yield* completeInstance({
+                      tenantId,
+                      instanceId,
+                      outcome: 'rejected',
+                    })
+                    if (!won) return yield* new ReviewConflict()
+                    yield* sayFrom('rejected', null)
+                    yield* setEntryState({
+                      tenantId,
+                      entryId: row.entryId,
+                      from: ['in_review'],
+                      to: 'rejected',
+                    })
+                    yield* bumpParticipantAttention(tenantId, row.entryId)
+                  } else {
+                    // anything short of every voice saying yes climbs, the
+                    // 0-for-all case included: the ladder's end owns the final
+                    // no, and it climbs with all the opinions attached
+                    yield* sayFrom('escalated', null)
+                    yield* climb(here.index + 1)
+                  }
+                }
+                return yield* written()
+              }
+
+              // a single judge answers for this step
+              if (wordEnds(policy, here, action)) {
+                // a determination about to become a fact is proven first; a
+                // word that ends the round without one proves nothing
+                if (determined !== undefined) yield* proveDetermination('terminal', determined)
+                // first writer wins; everyone else is told the round has closed
+                const won = yield* completeInstance({
+                  tenantId,
+                  instanceId,
+                  outcome: action === 'approve' ? 'approved' : 'rejected',
+                })
+                if (!won) return yield* new ReviewConflict()
+                const eventId = yield* say(action === 'approve' ? 'approved' : 'rejected')
+                const recognitionId =
+                  determined === undefined ? undefined : yield* settle(determined, eventId)
+                yield* setEntryState({
+                  tenantId,
+                  entryId: row.entryId,
+                  from: ['in_review'],
+                  to: action === 'approve' ? 'approved' : 'rejected',
+                  ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
+                })
+                // the verdict is the owner's news, not the stage handovers
+                // on the way to it (§32.72)
+                yield* bumpParticipantAttention(tenantId, row.entryId)
+                return yield* written()
+              }
+
+              if (action === 'approve') {
+                // the ordinary route's onward step: this level has confirmed,
+                // the next one is owed the same look
+                const next = nextAfter(policy, here)
+                if (next === null || next.nodeId === null) {
                   return yield* refuse(action, 'chain-ends-here')
                 }
-                const nodePath = yield* nodePathOf(tenantId, landing.stage.nodeId)
+                const nodePath = yield* nodePathOf(tenantId, next.nodeId)
                 if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
+                const arrived = yield* stageArrival({
+                  tenantId,
+                  batchId: row.batchId,
+                  stage: next,
+                  subjectUserId: row.subjectUserId,
+                  actorId: row.actorId,
+                })
+                // the arrival check, at every stage a round enters (§14): a
+                // stage with nobody in it is written down as blocked, which the
+                // patrol owns and heals - it is never the student's problem
                 const moved = yield* advanceReviewInstance({
                   tenantId,
                   instanceId,
                   fromRoute: here.route,
                   fromStageId: here.id,
-                  toRoute: 'escalation',
-                  toStageId: landing.stage.id,
-                  roleIds: landing.stage.roleIds,
-                  nodeId: landing.stage.nodeId,
+                  toRoute: next.route,
+                  toStageId: next.id,
+                  roleIds: next.roleIds,
+                  nodeId: next.nodeId,
                   nodePath,
-                  state: landing.state,
-                  blockedReason: landing.blockedReason,
+                  state: arrived.state,
+                  blockedReason: arrived.blockedReason,
                 })
                 if (!moved) return yield* new ReviewConflict()
-                // the steps stepped over, on the record: the chain view and
-                // the trail both read them off the round itself
-                for (const stepped of landing.skipped) {
-                  yield* insertReviewEvent({
-                    tenantId,
-                    reviewInstanceId: instanceId,
-                    kind: 'stage-skipped',
-                    actorId: null,
-                    route: 'escalation',
-                    stageId: stepped.id,
-                  })
-                }
-                if (landing.state === 'blocked') {
+                yield* say('approved')
+                if (arrived.state === 'blocked') {
                   yield* insertReviewEvent({
                     tenantId,
                     reviewInstanceId: instanceId,
                     kind: 'assignee-not-found',
                     actorId: null,
-                    route: 'escalation',
-                    stageId: landing.stage.id,
-                  })
-                } else if (isPanelStage(landing.stage)) {
-                  yield* createPanel({
-                    tenantId,
-                    reviewInstanceId: instanceId,
-                    route: 'escalation',
-                    stageId: landing.stage.id,
-                    members: landing.eligible,
+                    route: next.route,
+                    stageId: next.id,
                   })
                 }
-              })
-
-            /** what every path returns: the round as it now stands */
-            const written = () =>
-              Effect.gen(function* () {
-                yield* announce(tenantId, row.batchId, [
-                  { kind: 'review-instance-changed' },
-                  { kind: 'review-inbox-changed' },
-                  { kind: 'entries-changed', subjectUserId: row.subjectUserId },
-                  { kind: 'result-changed', subjectUserId: row.subjectUserId },
-                ])
-                const after = (yield* instanceOf(tenantId, instanceId))!
-                return yield* assembleDetail(tenantId, after, {
-                  canDecide: false,
-                  resolveReviewers: false,
-                })
-              })
-
-            if (isPanelStage(here)) {
-              // The sitting. Usually constituted when the round arrived; a
-              // round that arrived blocked and healed constitutes it on
-              // first contact, from whoever is eligible now.
-              let panel = yield* openPanelOf(tenantId, instanceId)
-              if (panel === null) {
-                const arrived = yield* stageArrival({
-                  tenantId,
-                  batchId: row.batchId,
-                  stage: here,
-                  subjectUserId: row.subjectUserId,
-                  actorId: row.actorId,
-                  excludeJudgedOfInstanceId: instanceId,
-                })
-                if (arrived.state !== 'active') return yield* new ReviewConflict()
-                yield* createPanel({
-                  tenantId,
-                  reviewInstanceId: instanceId,
-                  route: here.route,
-                  stageId: here.id,
-                  members: arrived.eligible,
-                })
-                panel = yield* openPanelOf(tenantId, instanceId)
-                if (panel === null) return yield* new ReviewConflict()
-              }
-              // live truth about the seats: an unvoted occupant who lost
-              // standing frees the seat here and now, not at the next patrol
-              const seats = yield* livePanelSeats(tenantId, panel.id)
-              const eligibleNow = new Set(
-                here.nodeId === null
-                  ? []
-                  : yield* reviewersAtStage(tenantId, row, here, instanceId),
-              )
-              for (const seat of seats) {
-                if (seat.voted === null && !eligibleNow.has(seat.userId)) {
-                  yield* endPanelAssignment({
-                    tenantId,
-                    assignmentId: seat.assignmentId,
-                    reason: 'eligibility-lost',
-                  })
-                }
-              }
-
-              if (action === 'escalate') {
-                // one member pulling the matter up ends the sitting: raising
-                // the level is safe, and the unturned ballots are moot
-                const closed = yield* resolvePanel({
-                  tenantId,
-                  panelId: panel.id,
-                  resolution: 'escalated',
-                })
-                if (!closed) return yield* new ReviewConflict()
-                yield* say('escalated')
-                yield* climb(here.index + 1)
                 return yield* written()
               }
 
-              // approve and reject are ballots; the sitting concludes when
-              // every seat has spoken, and not a moment sooner - the point
-              // of a panel is every judgment, not the first
-              const own = seats.find(
-                (seat) =>
-                  seat.userId === as.userId && seat.voted === null && eligibleNow.has(seat.userId),
-              )
-              const taken =
-                own !== undefined
-                  ? { assignmentId: own.assignmentId }
-                  : yield* claimPanelSeat({ tenantId, panelId: panel.id, userId: as.userId })
-              if (taken === null) return yield* new ReviewConflict()
-
-              // The determination this sitting is voting on, frozen by its
-              // Establishing what a sitting is voting on, and voting on it,
-              // are two acts.
-              //
-              // The first APPROVING ballot fixes the text: three reviewers
-              // approving three different determinations is not a decision
-              // anybody could act on, so every approval after it must be for
-              // the same words or be refused. A refusal fixes nothing and is
-              // held to nothing - "I cannot pass this" is answerable without
-              // anybody having determined anything, and a sitting whose
-              // first reviewer refuses would otherwise have to invent a
-              // complete determination before it could say no. It costs
-              // nothing in safety: the round can only end approved if every
-              // ballot approved, and every approving ballot carried the one
-              // frozen text.
-              const frozen = yield* panelRecognitionOf(tenantId, panel.id)
-              let ballotHash = frozen === null ? null : frozen.hash
-              if (action === 'approve') {
-                if (frozen === null) {
-                  const opening = canonicalRecognition(plan.recognitionSchemas, determined ?? seed)
-                  const wrong = judgeRecognition(plan.recognitionSchemas, opening)
-                  if (wrong.length > 0) {
-                    return yield* new EntryPayloadInvalid({
-                      issues: wrong.map((issue) => ({
-                        field:
-                          issue.recognitionId === ''
-                            ? 'recognition'
-                            : `recognition.${issue.recognitionId}`,
-                        reason: issue.reason,
-                      })),
-                    })
-                  }
-                  yield* lockPanelRecognition({
-                    tenantId,
-                    panelId: panel.id,
-                    values: opening as Record<string, unknown>,
-                    hash: recognitionHash(opening),
-                    // frozen with its explanation: the round ends on this
-                    // text, so "why it differs from what we inherited" has
-                    // to travel with it or it is lost when the sitting
-                    // resolves
-                    reason: determinedReason,
-                  })
-                  ballotHash = recognitionHash(opening)
-                } else if (
-                  determined !== undefined &&
-                  recognitionHash(determined) !== frozen.hash
-                ) {
-                  return yield* new EntryPayloadInvalid({
-                    issues: [{ field: 'recognition', reason: 'panel-recognition-locked' }],
-                  })
-                }
-              }
-              yield* insertVote({
-                tenantId,
-                panelId: panel.id,
-                assignmentId: taken.assignmentId,
-                voterUserId: as.userId,
-                decision: action,
-                reason: reason === '' ? null : reason,
-                comment: comment === '' ? null : comment,
-                // what this ballot was cast on: the frozen text where one
-                // exists, and nothing where a refusal came before any
-                recognitionHash: ballotHash,
-              })
-              const votes = yield* votesOfPanel(tenantId, panel.id)
-              if (votes.length >= panel.seatCount) {
-                const unanimous = votes.every((vote) => vote.decision === 'approve')
-                // What the sitting amounted to, settled before it is written
-                // down: a split at the ladder's end is the refusal, and
-                // resolving as 'escalated' first left the row saying it had
-                // handed the matter up while the round closed rejected.
-                const ends = !unanimous && isRouteEnd(policy, here)
-                const closed = yield* resolvePanel({
-                  tenantId,
-                  panelId: panel.id,
-                  resolution: unanimous ? 'approved' : ends ? 'rejected' : 'escalated',
-                })
-                if (!closed) return yield* new ReviewConflict()
-                if (unanimous) {
-                  const won = yield* completeInstance({
-                    tenantId,
-                    instanceId,
-                    outcome: 'approved',
-                  })
-                  if (!won) return yield* new ReviewConflict()
-                  // The sitting's own word, and the determination it voted
-                  // on: the frozen proposal, not this last ballot's opinion.
-                  // Unanimous approval means every ballot was an approval,
-                  // and the first of those fixed the text - so there is one.
-                  const sitting = yield* panelRecognitionOf(tenantId, panel.id)
-                  if (sitting === null) return yield* new ReviewConflict()
-                  const eventId = yield* sayFrom('approved', null, {
-                    recognitionPayload: sitting.values,
-                    recognitionHash: sitting.hash,
-                    recognitionReason: sitting.reason,
-                  })
-                  const recognitionId = yield* settle(sitting.values, eventId)
-                  yield* setEntryState({
-                    tenantId,
-                    entryId: row.entryId,
-                    from: ['in_review'],
-                    to: 'approved',
-                    currentRecognitionId: recognitionId,
-                  })
-                  yield* bumpParticipantAttention(tenantId, row.entryId)
-                } else if (ends) {
-                  // The end of the ladder owns the final no, and a sitting
-                  // held there has nowhere to hand a split to: the split is
-                  // the refusal. A panel is forbidden on the route's last
-                  // step, but that is checked by POSITION while the round
-                  // walks by RESOLUTION - a later step whose selector finds
-                  // nobody for this participant is stepped over, which can
-                  // leave this sitting as the last one. Climbing from here
-                  // refuses the whole transaction, which threw the deciding
-                  // vote away and left the round unable to ever conclude.
-                  const won = yield* completeInstance({
-                    tenantId,
-                    instanceId,
-                    outcome: 'rejected',
-                  })
-                  if (!won) return yield* new ReviewConflict()
-                  yield* sayFrom('rejected', null)
-                  yield* setEntryState({
-                    tenantId,
-                    entryId: row.entryId,
-                    from: ['in_review'],
-                    to: 'rejected',
-                  })
-                  yield* bumpParticipantAttention(tenantId, row.entryId)
-                } else {
-                  // anything short of every voice saying yes climbs, the
-                  // 0-for-all case included: the ladder's end owns the final
-                  // no, and it climbs with all the opinions attached
-                  yield* sayFrom('escalated', null)
-                  yield* climb(here.index + 1)
-                }
-              }
+              // The climbing words. The word goes on the record first, then
+              // the ladder is walked: the walker's independence rule reads the
+              // trail, and the very act being taken must already count -
+              // whoever escalates or objects here is done with this round.
+              yield* say(action === 'escalate' ? 'escalated' : 'opinion-rejected')
+              yield* climb(here.route === 'normal' ? 0 : here.index + 1)
               return yield* written()
-            }
-
-            // a single judge answers for this step
-            if (wordEnds(policy, here, action)) {
-              // first writer wins; everyone else is told the round has closed
-              const won = yield* completeInstance({
-                tenantId,
-                instanceId,
-                outcome: action === 'approve' ? 'approved' : 'rejected',
-              })
-              if (!won) return yield* new ReviewConflict()
-              const eventId = yield* say(action === 'approve' ? 'approved' : 'rejected')
-              const recognitionId =
-                determined === undefined ? undefined : yield* settle(determined, eventId)
-              yield* setEntryState({
-                tenantId,
-                entryId: row.entryId,
-                from: ['in_review'],
-                to: action === 'approve' ? 'approved' : 'rejected',
-                ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
-              })
-              // the verdict is the owner's news, not the stage handovers
-              // on the way to it (§32.72)
-              yield* bumpParticipantAttention(tenantId, row.entryId)
-              return yield* written()
-            }
-
-            if (action === 'approve') {
-              // the ordinary route's onward step: this level has confirmed,
-              // the next one is owed the same look
-              const next = nextAfter(policy, here)
-              if (next === null || next.nodeId === null) {
-                return yield* refuse(action, 'chain-ends-here')
-              }
-              const nodePath = yield* nodePathOf(tenantId, next.nodeId)
-              if (nodePath === null) return yield* refuse(action, 'chain-ends-here')
-              const arrived = yield* stageArrival({
-                tenantId,
-                batchId: row.batchId,
-                stage: next,
-                subjectUserId: row.subjectUserId,
-                actorId: row.actorId,
-              })
-              // the arrival check, at every stage a round enters (§14): a
-              // stage with nobody in it is written down as blocked, which the
-              // patrol owns and heals - it is never the student's problem
-              const moved = yield* advanceReviewInstance({
-                tenantId,
-                instanceId,
-                fromRoute: here.route,
-                fromStageId: here.id,
-                toRoute: next.route,
-                toStageId: next.id,
-                roleIds: next.roleIds,
-                nodeId: next.nodeId,
-                nodePath,
-                state: arrived.state,
-                blockedReason: arrived.blockedReason,
-              })
-              if (!moved) return yield* new ReviewConflict()
-              yield* say('approved')
-              if (arrived.state === 'blocked') {
-                yield* insertReviewEvent({
-                  tenantId,
-                  reviewInstanceId: instanceId,
-                  kind: 'assignee-not-found',
-                  actorId: null,
-                  route: next.route,
-                  stageId: next.id,
-                })
-              }
-              return yield* written()
-            }
-
-            // The climbing words. The word goes on the record first, then
-            // the ladder is walked: the walker's independence rule reads the
-            // trail, and the very act being taken must already count -
-            // whoever escalates or objects here is done with this round.
-            yield* say(action === 'escalate' ? 'escalated' : 'opinion-rejected')
-            yield* climb(here.route === 'normal' ? 0 : here.index + 1)
-            return yield* written()
-          }),
-        ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+            }),
+          ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+        )
+      const decided = settleWithProbe(runtime, attempt, (first, again) =>
+        // the question moved under the round, or the round moved under the
+        // judge: each is said in its own words
+        again.revisionId !== first.revisionId
+          ? new ItemRevisionConflict({ itemId: first.itemId, currentRevisionId: again.revisionId })
+          : new ReviewConflict(),
       )
       // one count per decision that actually landed; refusals are not decisions
       return yield* decided.pipe(Effect.tap(() => reviewDecisionCount({ decision: action })))

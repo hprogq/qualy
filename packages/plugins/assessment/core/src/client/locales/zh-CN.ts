@@ -1333,6 +1333,8 @@ export default {
   'assessment/error/item-config-invalid': '项目保存失败，请根据提示修改后重试。',
   'assessment/error/score-group-invalid': '分组保存失败，请根据提示修改后重试。',
   'assessment/error/score-group-version-conflict': '分组已被其他人员修改，请刷新后重新操作。',
+  'assessment/error/determination-refused': '该认定不符合当前计分规则：{reason}',
+  'assessment/error/scoring-unavailable': '计分服务暂时不可用，请稍后重试。',
   'assessment/error/access-invalid': '权限变更失败，请检查相关设置后重试。',
   'assessment/error/advance-invalid': '当前无法进入下一阶段，请检查相关设置。',
   'assessment/permission-group/assessment': '综合测评',

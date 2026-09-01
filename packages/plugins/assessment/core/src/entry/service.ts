@@ -1,6 +1,13 @@
 import { Effect, Result } from 'effect'
 import { insertRecognition, currentRecognitionOf } from '../scoring/recognition-db.ts'
-import { canonicalRecognition, judgeRecognition, seedFromEvidence } from '../scoring/recognition.ts'
+import {
+  canonicalRecognition,
+  judgeRecognition,
+  recognitionHash,
+  seedFromEvidence,
+} from '../scoring/recognition.ts'
+import { ProbeNeeded, probeIdentity, settleWithProbe } from '../scoring/failure-boundary.ts'
+import { ScoringRuntimeCatalog } from '../plugin.ts'
 import { readScoringPlan } from '../scoring/plan.ts'
 import type { ScoringPlan } from '../scoring/plan.ts'
 
@@ -23,11 +30,13 @@ import type { GateContext } from '../phase/gate.ts'
 import {
   BatchNotFound,
   BatchReadOnly,
+  DeterminationRefused,
   EntryActionRefused,
   EntryNotFound,
   EntryPayloadInvalid,
   ItemNotFound,
   ItemRevisionConflict,
+  ScoringUnavailable,
   ParticipantNotFound,
 } from '../server/errors.ts'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
@@ -224,12 +233,19 @@ export type CreateEntryError =
   | BatchReadOnly
   | EntryActionRefused
   | EntryPayloadInvalid
+  | DeterminationRefused
+  | ScoringUnavailable
   | AccessDenied
 export type ReviseEntryError =
   EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused | EntryPayloadInvalid
 /** the activity stream's public vocabulary; raw event kinds never leave */
 export type EntryStatusError =
-  EntryNotFound | ItemRevisionConflict | BatchReadOnly | EntryActionRefused
+  | EntryNotFound
+  | ItemRevisionConflict
+  | BatchReadOnly
+  | EntryActionRefused
+  | DeterminationRefused
+  | ScoringUnavailable
 
 /**
  * What an administrator may do to a claim without pretending to be its
@@ -345,7 +361,7 @@ export interface EntryMethods {
     tenantId: string,
     input: CreateEntryInput,
     as: Principal,
-  ) => Effect.Effect<EntryView, CreateEntryError>
+  ) => Effect.Effect<EntryView, CreateEntryError, ScoringRuntimeCatalog>
   readonly getEntry: (
     tenantId: string,
     entryId: string,
@@ -364,7 +380,7 @@ export interface EntryMethods {
     as: Principal,
     /** the question the caller's screen showed when the press happened */
     expectedItemRevisionId?: string,
-  ) => Effect.Effect<EntryView, EntryStatusError>
+  ) => Effect.Effect<EntryView, EntryStatusError, ScoringRuntimeCatalog>
   readonly markMyEntryRead: (
     tenantId: string,
     batchId: string,
@@ -804,187 +820,220 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
 
   const createEntry: EntryMethods['createEntry'] = Effect.fn('Assessment.createEntry')(
     function* (tenantId, input, as) {
-      return yield* withDb(
-        transaction(
-          Effect.gen(function* () {
-            // the first read only locates the batch; nothing else read
-            // before the lock may be trusted - a void can land between the
-            // read and the lock, and its whole point is that no new work
-            // starts after it
-            const located = yield* itemOf(tenantId, input.itemId)
-            if (located === null) return yield* new ItemNotFound()
-            const locked = yield* lockBatch(tenantId, located.batchId)
-            if (!locked) return yield* new BatchNotFound()
-            if (locked.status === 'archived') return yield* new BatchReadOnly()
-            const item = (yield* itemOf(tenantId, input.itemId))!
-            const participant = yield* participantOf(tenantId, item.batchId, input.participantId)
-            if (participant === null) return yield* refuse('create', 'participant-not-found')
-            if (participant.status !== 'active') {
-              return yield* refuse('create', 'participant-not-active')
-            }
-            if (item.status !== 'active') return yield* refuse('create', 'item-not-active')
-            // a derived question is granted, never filed: there is no claim
-            // for anybody - participant or staff - to create under it
-            if (driverOf(item)?.interaction === 'derived') {
-              return yield* refuse('create', 'item-not-fileable')
-            }
-            yield* sameQuestion(item, input.expectedItemRevisionId)
-            const revision =
-              item.currentRevisionId === null
-                ? null
-                : yield* revisionOf(tenantId, item.currentRevisionId)
-            if (revision === null) return yield* refuse('create', 'item-not-configured')
-
-            // who is filing is the item's decision, never the caller's: a
-            // student question takes the participant themselves, an
-            // administrative one takes staff whose accepted authority covers
-            // this participant's frozen anchor
-            const administrative = revision.entrySource === 'administrative'
-            const code = administrative ? 'assessment.entry.record' : 'assessment.entry.create'
-            if (!administrative && participant.userId !== as.userId) {
-              return yield* refuse('create', 'not-your-participant')
-            }
-            const decision = yield* deps.authorize(as, code, item.batchId, {
-              itemId: item.id,
-              participantId: participant.id,
-            })
-            if (!decision.allowed) return yield* refuse('create', decision.reason)
-            if (administrative) {
-              // A record is one person writing a fact about another, and it
-              // is approved the moment it is written - no reviewer ever sees
-              // it. Both halves of that depend on the two people being two
-              // people: a registrar who also sits on the roster must not be
-              // able to hand themselves points nobody looked at. The screen
-              // not offering them is a courtesy; this is the rule.
-              if (participant.userId === as.userId) {
-                return yield* refuse('create', 'self-record-refused')
+      const runtime = yield* ScoringRuntimeCatalog
+      // An administrative record is approved the moment it is written, so
+      // what the office determined is proven against the question's
+      // arithmetic before the row exists - between two runs of this
+      // transaction, never inside one. A student's filing determines
+      // nothing and runs once, as before.
+      const attempt = (proven: string | null) =>
+        withDb(
+          transaction(
+            Effect.gen(function* () {
+              // the first read only locates the batch; nothing else read
+              // before the lock may be trusted - a void can land between the
+              // read and the lock, and its whole point is that no new work
+              // starts after it
+              const located = yield* itemOf(tenantId, input.itemId)
+              if (located === null) return yield* new ItemNotFound()
+              const locked = yield* lockBatch(tenantId, located.batchId)
+              if (!locked) return yield* new BatchNotFound()
+              if (locked.status === 'archived') return yield* new BatchReadOnly()
+              const item = (yield* itemOf(tenantId, input.itemId))!
+              const participant = yield* participantOf(tenantId, item.batchId, input.participantId)
+              if (participant === null) return yield* refuse('create', 'participant-not-found')
+              if (participant.status !== 'active') {
+                return yield* refuse('create', 'participant-not-active')
               }
-              const reaches = yield* staffReachesParticipant({
-                tenantId,
-                batchId: item.batchId,
-                userId: as.userId,
-                permissionCode: code,
-                participant,
-              })
-              if (!reaches) return yield* refuse('create', 'participant-out-of-reach')
-              // the basis is the record: an administrative fact without its
-              // document reference is an assertion nobody can check
-              if ((input.note ?? '').trim() === '') {
-                return yield* refuse('create', 'basis-required')
+              if (item.status !== 'active') return yield* refuse('create', 'item-not-active')
+              // a derived question is granted, never filed: there is no claim
+              // for anybody - participant or staff - to create under it
+              if (driverOf(item)?.interaction === 'derived') {
+                return yield* refuse('create', 'item-not-fileable')
               }
-            }
+              yield* sameQuestion(item, input.expectedItemRevisionId)
+              const revision =
+                item.currentRevisionId === null
+                  ? null
+                  : yield* revisionOf(tenantId, item.currentRevisionId)
+              if (revision === null) return yield* refuse('create', 'item-not-configured')
 
-            if (item.maxEntries !== null) {
-              const count = yield* entryCountOf(tenantId, item.id, participant.id)
-              if (count >= item.maxEntries) return yield* refuse('create', 'max-entries-reached')
-            }
-
-            const batch = yield* oneBatch(tenantId, item.batchId)
-            const materialRange = deps.parseRange(String(batch!.materialRange))
-            const driver = driverOf(item)
-            if (driver === undefined) return yield* refuse('create', 'item-type-not-installed')
-            const decoded = yield* decodePayload(driver, revision, input.payload, materialRange)
-            const plan = yield* Effect.orDie(readScoringPlan(revision))
-            // a determination is a thing only an approving door may carry:
-            // a student filing a claim does not get to say what it is worth
-            if (!administrative && input.recognition !== undefined) {
-              return yield* new EntryPayloadInvalid({
-                issues: [{ field: 'recognition', reason: 'not-allowed' }],
+              // who is filing is the item's decision, never the caller's: a
+              // student question takes the participant themselves, an
+              // administrative one takes staff whose accepted authority covers
+              // this participant's frozen anchor
+              const administrative = revision.entrySource === 'administrative'
+              const code = administrative ? 'assessment.entry.record' : 'assessment.entry.create'
+              if (!administrative && participant.userId !== as.userId) {
+                return yield* refuse('create', 'not-your-participant')
+              }
+              const decision = yield* deps.authorize(as, code, item.batchId, {
+                itemId: item.id,
+                participantId: participant.id,
               })
-            }
-            // and where the door does carry one, it has to actually carry
-            // it: a record is approved the moment it is written, so a
-            // request that omits a non-empty determination would have the
-            // defaults recorded as the officer's words unseen
-            if (
-              administrative &&
-              input.recognition === undefined &&
-              Object.keys(plan.recognitionSchemas).length > 0
-            ) {
-              return yield* new EntryPayloadInvalid({
-                issues: [{ field: 'recognition', reason: 'required' }],
-              })
-            }
-
-            // An administrative record is approved the moment it is filed,
-            // but it becomes approved in the statement below rather than in
-            // this one: the row has to have a determination before it can
-            // call itself approved, and the determination needs the row.
-            const entryId = yield* insertEntry({
-              tenantId,
-              batchId: item.batchId,
-              itemId: item.id,
-              participantId: participant.id,
-              source: administrative ? 'record' : 'self',
-              status: 'draft',
-            })
-            const revisionId = yield* insertEntryRevision({
-              tenantId,
-              entryId,
-              itemId: item.id,
-              itemRevisionId: revision.id,
-              revisionNo: 1,
-              payload: decoded,
-              actorId: as.userId,
-              subjectId: participant.userId,
-              source: administrative ? 'record' : 'self',
-              note: input.note?.trim() || null,
-            })
-            const refs = driver.attachmentRefs(revision.formConfig, decoded)
-            yield* bindAttachments({ tenantId, entryId: null, actorId: as.userId, refs })
-            yield* insertRevisionAttachments(
-              tenantId,
-              revisionId,
-              refs.map((ref, position) => ({ attachmentId: ref.attachmentId, position })),
-            )
-            // What the office determined by recording this.
-            //
-            // The member of staff filing it is its author, so what they send
-            // is authoritative and the plan's defaults are only what the form
-            // was pre-filled with. Either way it is proven complete before
-            // the claim becomes approved.
-            const recognitionId = administrative
-              ? yield* insertRecognition({
+              if (!decision.allowed) return yield* refuse('create', decision.reason)
+              if (administrative) {
+                // A record is one person writing a fact about another, and it
+                // is approved the moment it is written - no reviewer ever sees
+                // it. Both halves of that depend on the two people being two
+                // people: a registrar who also sits on the roster must not be
+                // able to hand themselves points nobody looked at. The screen
+                // not offering them is a courtesy; this is the rule.
+                if (participant.userId === as.userId) {
+                  return yield* refuse('create', 'self-record-refused')
+                }
+                const reaches = yield* staffReachesParticipant({
                   tenantId,
                   batchId: item.batchId,
-                  entryId,
-                  entryRevisionId: revisionId,
-                  itemId: item.id,
-                  itemRevisionId: revision.id,
-                  // the same rule as a reviewer's approval: the defaults
-                  // pre-fill the form, they do not stand in for the officer
-                  // confirming them. Only the contract that asks for nothing
-                  // is answered by omission.
-                  values: yield* provenRecognition(
+                  userId: as.userId,
+                  permissionCode: code,
+                  participant,
+                })
+                if (!reaches) return yield* refuse('create', 'participant-out-of-reach')
+                // the basis is the record: an administrative fact without its
+                // document reference is an assertion nobody can check
+                if ((input.note ?? '').trim() === '') {
+                  return yield* refuse('create', 'basis-required')
+                }
+              }
+
+              if (item.maxEntries !== null) {
+                const count = yield* entryCountOf(tenantId, item.id, participant.id)
+                if (count >= item.maxEntries) return yield* refuse('create', 'max-entries-reached')
+              }
+
+              const batch = yield* oneBatch(tenantId, item.batchId)
+              const materialRange = deps.parseRange(String(batch!.materialRange))
+              const driver = driverOf(item)
+              if (driver === undefined) return yield* refuse('create', 'item-type-not-installed')
+              const decoded = yield* decodePayload(driver, revision, input.payload, materialRange)
+              const plan = yield* Effect.orDie(readScoringPlan(revision))
+              // a determination is a thing only an approving door may carry:
+              // a student filing a claim does not get to say what it is worth
+              if (!administrative && input.recognition !== undefined) {
+                return yield* new EntryPayloadInvalid({
+                  issues: [{ field: 'recognition', reason: 'not-allowed' }],
+                })
+              }
+              // and where the door does carry one, it has to actually carry
+              // it: a record is approved the moment it is written, so a
+              // request that omits a non-empty determination would have the
+              // defaults recorded as the officer's words unseen
+              if (
+                administrative &&
+                input.recognition === undefined &&
+                Object.keys(plan.recognitionSchemas).length > 0
+              ) {
+                return yield* new EntryPayloadInvalid({
+                  issues: [{ field: 'recognition', reason: 'required' }],
+                })
+              }
+
+              // What the office determined by recording this, proven complete
+              // and proven scorable before anything is written. The member of
+              // staff filing it is its author, so what they send is
+              // authoritative and the plan's defaults are only what the form
+              // was pre-filled with - the same rule as a reviewer's approval.
+              const determined = administrative
+                ? yield* provenRecognition(
                     plan,
                     input.recognition === undefined ? {} : input.recognition.values,
-                  ),
-                  source: 'record',
-                  createdBy: as.userId,
+                  )
+                : undefined
+              if (determined !== undefined) {
+                const identity = probeIdentity({
+                  revisionId: revision.id,
+                  planHash: plan.planHash,
+                  recognition: recognitionHash(determined),
                 })
-              : undefined
-            yield* setEntryState({
-              tenantId,
-              entryId,
-              from: ['draft'],
-              to: administrative ? 'approved' : 'draft',
-              currentRevisionId: revisionId,
-              ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
-            })
-            // a fact somebody else just added to their account is exactly
-            // what the unread marker exists for: the broadcast reaches whoever
-            // is looking, this reaches whoever is not
-            if (administrative) yield* bumpParticipantAttention(tenantId, entryId)
-            yield* announce(tenantId, item.batchId, [
-              { kind: 'entries-changed', subjectUserId: participant.userId },
-              ...(administrative
-                ? [{ kind: 'result-changed' as const, subjectUserId: participant.userId }]
-                : []),
-            ])
-            const entry = (yield* entryOf(tenantId, entryId))!
-            return view(entry, yield* revisionView(tenantId, revisionId), as, participant)
-          }),
-        ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+                if (proven !== identity) {
+                  return yield* new ProbeNeeded({
+                    probe: {
+                      identity,
+                      revisionId: revision.id,
+                      tenantId,
+                      batchId: item.batchId,
+                      itemId: item.id,
+                      plan,
+                      recognition: determined,
+                    },
+                  })
+                }
+              }
+
+              // An administrative record is approved the moment it is filed,
+              // but it becomes approved in the statement below rather than in
+              // this one: the row has to have a determination before it can
+              // call itself approved, and the determination needs the row.
+              const entryId = yield* insertEntry({
+                tenantId,
+                batchId: item.batchId,
+                itemId: item.id,
+                participantId: participant.id,
+                source: administrative ? 'record' : 'self',
+                status: 'draft',
+              })
+              const revisionId = yield* insertEntryRevision({
+                tenantId,
+                entryId,
+                itemId: item.id,
+                itemRevisionId: revision.id,
+                revisionNo: 1,
+                payload: decoded,
+                actorId: as.userId,
+                subjectId: participant.userId,
+                source: administrative ? 'record' : 'self',
+                note: input.note?.trim() || null,
+              })
+              const refs = driver.attachmentRefs(revision.formConfig, decoded)
+              yield* bindAttachments({ tenantId, entryId: null, actorId: as.userId, refs })
+              yield* insertRevisionAttachments(
+                tenantId,
+                revisionId,
+                refs.map((ref, position) => ({ attachmentId: ref.attachmentId, position })),
+              )
+              const recognitionId =
+                determined === undefined
+                  ? undefined
+                  : yield* insertRecognition({
+                      tenantId,
+                      batchId: item.batchId,
+                      entryId,
+                      entryRevisionId: revisionId,
+                      itemId: item.id,
+                      itemRevisionId: revision.id,
+                      values: determined,
+                      source: 'record',
+                      createdBy: as.userId,
+                    })
+              yield* setEntryState({
+                tenantId,
+                entryId,
+                from: ['draft'],
+                to: administrative ? 'approved' : 'draft',
+                currentRevisionId: revisionId,
+                ...(recognitionId === undefined ? {} : { currentRecognitionId: recognitionId }),
+              })
+              // a fact somebody else just added to their account is exactly
+              // what the unread marker exists for: the broadcast reaches whoever
+              // is looking, this reaches whoever is not
+              if (administrative) yield* bumpParticipantAttention(tenantId, entryId)
+              yield* announce(tenantId, item.batchId, [
+                { kind: 'entries-changed', subjectUserId: participant.userId },
+                ...(administrative
+                  ? [{ kind: 'result-changed' as const, subjectUserId: participant.userId }]
+                  : []),
+              ])
+              const entry = (yield* entryOf(tenantId, entryId))!
+              return view(entry, yield* revisionView(tenantId, revisionId), as, participant)
+            }),
+          ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+        )
+      return yield* settleWithProbe(
+        runtime,
+        attempt,
+        (first, again) =>
+          new ItemRevisionConflict({ itemId: first.itemId, currentRevisionId: again.revisionId }),
       )
     },
   )
@@ -1117,116 +1166,115 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
 
   const setEntryStatus: EntryMethods['setEntryStatus'] = Effect.fn('Assessment.setEntryStatus')(
     function* (tenantId, entryId, to, as, expectedItemRevisionId) {
-      const acted = withDb(
-        transaction(
-          Effect.gen(function* () {
-            const located = yield* entryOf(tenantId, entryId)
-            if (located === null) return yield* new EntryNotFound()
-            const locked = yield* lockBatch(tenantId, located.batchId)
-            if (locked!.status === 'archived') return yield* new BatchReadOnly()
-            const { entry, item, participant } = (yield* loadEntry(tenantId, entryId))!
-            const action = to === 'in_review' ? 'submit' : to === 'voided' ? 'abandon' : 'withdraw'
-            // only handing it on is a decision about today's rules; taking
-            // it back or giving it up must not be refused because the form
-            // moved (§32.69)
-            if (to === 'in_review') yield* sameQuestion(item, expectedItemRevisionId)
-            if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
-            // the projection hides it; this is where it is refused. A fact
-            // the office recorded or an import carried in is not the
-            // subject's to withdraw, whatever the phase allows in general
-            if (action === 'abandon' && entry.source !== 'self' && entry.source !== 'proxy') {
-              return yield* refuse(action, 'entry-not-abandonable')
-            }
-            if (participant.status !== 'active') {
-              return yield* refuse(action, 'participant-not-active')
-            }
-            // every act answers to the phase plan, abandoning included
-            // (§32.69): the plan is what keeps settled results still
-            const code =
-              to === 'in_review'
-                ? 'assessment.entry.submit'
-                : to === 'voided'
-                  ? 'assessment.entry.abandon'
-                  : 'assessment.entry.withdraw'
-            const decision = yield* deps
-              .authorize(as, code, entry.batchId, {
-                itemId: item.id,
-                participantId: participant.id,
-              })
-              .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
-            if (!decision.allowed) return yield* refuse(action, decision.reason)
+      const runtime = yield* ScoringRuntimeCatalog
+      // a claim nobody reviews is approved by the rule at submission, so the
+      // rule's arithmetic is asked first - between two runs of this
+      // transaction, as every other determination is
+      const attempt = (proven: string | null) =>
+        withDb(
+          transaction(
+            Effect.gen(function* () {
+              const located = yield* entryOf(tenantId, entryId)
+              if (located === null) return yield* new EntryNotFound()
+              const locked = yield* lockBatch(tenantId, located.batchId)
+              if (locked!.status === 'archived') return yield* new BatchReadOnly()
+              const { entry, item, participant } = (yield* loadEntry(tenantId, entryId))!
+              const action =
+                to === 'in_review' ? 'submit' : to === 'voided' ? 'abandon' : 'withdraw'
+              // only handing it on is a decision about today's rules; taking
+              // it back or giving it up must not be refused because the form
+              // moved (§32.69)
+              if (to === 'in_review') yield* sameQuestion(item, expectedItemRevisionId)
+              if (participant.userId !== as.userId) return yield* refuse(action, 'not-your-entry')
+              // the projection hides it; this is where it is refused. A fact
+              // the office recorded or an import carried in is not the
+              // subject's to withdraw, whatever the phase allows in general
+              if (action === 'abandon' && entry.source !== 'self' && entry.source !== 'proxy') {
+                return yield* refuse(action, 'entry-not-abandonable')
+              }
+              if (participant.status !== 'active') {
+                return yield* refuse(action, 'participant-not-active')
+              }
+              // every act answers to the phase plan, abandoning included
+              // (§32.69): the plan is what keeps settled results still
+              const code =
+                to === 'in_review'
+                  ? 'assessment.entry.submit'
+                  : to === 'voided'
+                    ? 'assessment.entry.abandon'
+                    : 'assessment.entry.withdraw'
+              const decision = yield* deps
+                .authorize(as, code, entry.batchId, {
+                  itemId: item.id,
+                  participantId: participant.id,
+                })
+                .pipe(Effect.catchTag('ASSESSMENT_BATCH_NOT_FOUND', (error) => Effect.die(error)))
+              if (!decision.allowed) return yield* refuse(action, decision.reason)
 
-            if (to === 'in_review') {
-              // draft, or rejected as it stands (§32.65): the round said no
-              // to this filing, and re-asking with the same filing is the
-              // participant's right. needs_revision is not - that round
-              // asked for different material and only a new version answers
-              if (entry.status !== 'draft' && entry.status !== 'rejected') {
-                return yield* refuse(action, 'entry-not-submittable')
-              }
-              if (item.status !== 'active') return yield* refuse(action, 'item-not-active')
-              if (entry.currentRevisionId === null) {
-                return yield* refuse(action, 'entry-not-submittable')
-              }
-              const current = yield* entryRevisionOf(tenantId, entry.currentRevisionId)
-              // Two versions of the question, two different jobs (§32.62).
-              // What was written is read as an answer to the form it was
-              // written under; what happens to it now - which form it has to
-              // satisfy, whose route it walks - is the question as it stands
-              // today. Nothing has begun yet, so there is nothing to
-              // grandfather: a draft that has been sitting since before the
-              // form gained a required field is a draft that is not finished.
-              const written = yield* revisionOf(tenantId, current!.itemRevisionId)
-              const live =
-                item.currentRevisionId === null
-                  ? null
-                  : yield* revisionOf(tenantId, item.currentRevisionId)
-              if (written === null || live === null) {
-                return yield* refuse(action, 'item-not-configured')
-              }
-              const batch = yield* oneBatch(tenantId, entry.batchId)
-              const driver = driverOf(item)
-              if (driver === undefined) return yield* refuse(action, 'item-type-not-installed')
-              const carried =
-                driver.projectPayload === undefined
-                  ? current!.payload
-                  : driver.projectPayload(written.formConfig, live.formConfig, current!.payload)
-              const readable = yield* Effect.result(
-                driver.decodePayload(live.formConfig, carried, {
-                  materialRange: deps.parseRange(String(batch!.materialRange)),
-                }),
-              )
-              if (Result.isFailure(readable)) {
-                // not "you cannot submit": the form asks for something this
-                // draft does not have yet, and the way on is to go and fill
-                // it in
-                return yield* refuse(action, 'entry-needs-revision')
-              }
+              if (to === 'in_review') {
+                // draft, or rejected as it stands (§32.65): the round said no
+                // to this filing, and re-asking with the same filing is the
+                // participant's right. needs_revision is not - that round
+                // asked for different material and only a new version answers
+                if (entry.status !== 'draft' && entry.status !== 'rejected') {
+                  return yield* refuse(action, 'entry-not-submittable')
+                }
+                if (item.status !== 'active') return yield* refuse(action, 'item-not-active')
+                if (entry.currentRevisionId === null) {
+                  return yield* refuse(action, 'entry-not-submittable')
+                }
+                const current = yield* entryRevisionOf(tenantId, entry.currentRevisionId)
+                // Two versions of the question, two different jobs (§32.62).
+                // What was written is read as an answer to the form it was
+                // written under; what happens to it now - which form it has to
+                // satisfy, whose route it walks - is the question as it stands
+                // today. Nothing has begun yet, so there is nothing to
+                // grandfather: a draft that has been sitting since before the
+                // form gained a required field is a draft that is not finished.
+                const written = yield* revisionOf(tenantId, current!.itemRevisionId)
+                const live =
+                  item.currentRevisionId === null
+                    ? null
+                    : yield* revisionOf(tenantId, item.currentRevisionId)
+                if (written === null || live === null) {
+                  return yield* refuse(action, 'item-not-configured')
+                }
+                const batch = yield* oneBatch(tenantId, entry.batchId)
+                const driver = driverOf(item)
+                if (driver === undefined) return yield* refuse(action, 'item-type-not-installed')
+                const carried =
+                  driver.projectPayload === undefined
+                    ? current!.payload
+                    : driver.projectPayload(written.formConfig, live.formConfig, current!.payload)
+                const readable = yield* Effect.result(
+                  driver.decodePayload(live.formConfig, carried, {
+                    materialRange: deps.parseRange(String(batch!.materialRange)),
+                  }),
+                )
+                if (Result.isFailure(readable)) {
+                  // not "you cannot submit": the form asks for something this
+                  // draft does not have yet, and the way on is to go and fill
+                  // it in
+                  return yield* refuse(action, 'entry-needs-revision')
+                }
 
-              // A question that answers to nobody (§32.65, mode:'none'):
-              // the submission is the decision. Approved on the spot, said
-              // in the entry's own record, and no round ever exists - so
-              // there is nothing to withdraw and nothing to appeal.
-              if (policyModeOf(live.reviewPolicy) === 'none') {
-                // determined by the rule itself, against the configuration
-                // in force now - the same one that decided there is nobody
-                // to ask. A previous determination, if this claim was
-                // approved before, is superseded rather than edited.
-                const standing = yield* currentRecognitionOf(tenantId, entryId)
-                const livePlan = yield* Effect.orDie(readScoringPlan(live))
-                const recognitionId = yield* insertRecognition({
-                  tenantId,
-                  batchId: entry.batchId,
-                  entryId,
-                  entryRevisionId: current!.id,
-                  itemId: entry.itemId,
-                  itemRevisionId: live.id,
-                  // nobody is going to be asked, so the defaults are the
-                  // whole determination - and if they do not add up to a
-                  // complete one, this claim cannot become approved at all.
-                  // The compiler refuses that configuration, so reaching it
-                  // means the question changed under an old plan.
-                  values: yield* provenRecognition(
+                // A question that answers to nobody (§32.65, mode:'none'):
+                // the submission is the decision. Approved on the spot, said
+                // in the entry's own record, and no round ever exists - so
+                // there is nothing to withdraw and nothing to appeal.
+                if (policyModeOf(live.reviewPolicy) === 'none') {
+                  // determined by the rule itself, against the configuration
+                  // in force now - the same one that decided there is nobody
+                  // to ask. A previous determination, if this claim was
+                  // approved before, is superseded rather than edited.
+                  const standing = yield* currentRecognitionOf(tenantId, entryId)
+                  const livePlan = yield* Effect.orDie(readScoringPlan(live))
+                  // nobody is going to be asked, so the defaults are the whole
+                  // determination - and if they do not add up to a complete
+                  // one, this claim cannot become approved at all. The compiler
+                  // refuses that configuration, so reaching it means the
+                  // question changed under an old plan.
+                  const determined = yield* provenRecognition(
                     livePlan,
                     seedFromEvidence(livePlan, carried),
                   ).pipe(
@@ -1236,230 +1284,265 @@ export const makeEntryMethods = (deps: EntryDeps): EntryMethods => {
                     Effect.catchTag('ASSESSMENT_ENTRY_PAYLOAD_INVALID', () =>
                       refuse(action, 'item-not-configured'),
                     ),
-                  ),
-                  source: 'system',
-                  createdBy: as.userId,
-                  ...(standing === null ? {} : { supersedesId: standing.id }),
+                  )
+                  const identity = probeIdentity({
+                    revisionId: live.id,
+                    planHash: livePlan.planHash,
+                    entryRevisionId: current!.id,
+                    standing: standing?.id ?? null,
+                    recognition: recognitionHash(determined),
+                  })
+                  if (proven !== identity) {
+                    return yield* new ProbeNeeded({
+                      probe: {
+                        identity,
+                        revisionId: live.id,
+                        tenantId,
+                        batchId: entry.batchId,
+                        itemId: entry.itemId,
+                        plan: livePlan,
+                        recognition: determined,
+                      },
+                    })
+                  }
+                  const recognitionId = yield* insertRecognition({
+                    tenantId,
+                    batchId: entry.batchId,
+                    entryId,
+                    entryRevisionId: current!.id,
+                    itemId: entry.itemId,
+                    itemRevisionId: live.id,
+                    values: determined,
+                    source: 'system',
+                    createdBy: as.userId,
+                    ...(standing === null ? {} : { supersedesId: standing.id }),
+                  })
+                  const settled = yield* setEntryState({
+                    tenantId,
+                    entryId,
+                    from: ['draft', 'rejected'],
+                    to: 'approved',
+                    currentRecognitionId: recognitionId,
+                    // A claim that was refused, and is now approved by a rule
+                    // instead, no longer stands on that refusal. Leaving the
+                    // old round attached would keep offering an appeal against
+                    // a decision this approval has already replaced.
+                    currentReviewInstanceId: null,
+                  })
+                  if (!settled) return yield* refuse(action, 'entry-not-submittable')
+                  yield* insertEntryEvent({
+                    tenantId,
+                    entryId,
+                    kind: 'auto-approved',
+                    actorId: as.userId,
+                  })
+                  yield* announce(tenantId, entry.batchId, [
+                    { kind: 'entries-changed', subjectUserId: participant.userId },
+                    { kind: 'result-changed', subjectUserId: participant.userId },
+                  ])
+                  const written = (yield* entryOf(tenantId, entryId))!
+                  const { participant: after } = (yield* loadEntry(tenantId, entryId))!
+                  return view(
+                    written,
+                    yield* revisionView(tenantId, written.currentRevisionId),
+                    as,
+                    after,
+                  )
+                }
+
+                // Both routes, resolved once against this person's frozen
+                // lineage and snapshotted. The escalation route is resolved here
+                // too, though most rounds never reach it: escalating must
+                // not re-resolve an organization that has moved since (§14).
+                const policy = yield* resolvePolicy({
+                  tenantId,
+                  batchId: entry.batchId,
+                  policy: readPolicy(live.reviewPolicy),
+                  lineage: participant.anchorLineage,
                 })
-                const settled = yield* setEntryState({
+                const first = enterableFrom(policy, 'normal', 0)
+                // every stage named a level this person sits under none of:
+                // there is nowhere to anchor a round, and no later grant can
+                // supply it - the configuration itself is wrong here
+                if (first === null) return yield* refuse(action, 'review-level-missing')
+                const nodePath = yield* nodePathOf(tenantId, first.nodeId!)
+                if (nodePath === null) return yield* refuse(action, 'review-level-missing')
+                // Nobody can act at the stage today - which is the round's
+                // problem, not this person's. The round is written down as
+                // blocked with its reason so the patrol and the alert panel
+                // own it, and it heals the moment somebody is appointed (§14).
+                const arrived = yield* stageArrival({
+                  tenantId,
+                  batchId: entry.batchId,
+                  stage: first,
+                  subjectUserId: participant.userId,
+                  actorId: current!.actorId,
+                })
+
+                const roundNo = yield* nextRoundNo(tenantId, entryId)
+                const instanceId = yield* insertReviewInstance({
                   tenantId,
                   entryId,
-                  from: ['draft', 'rejected'],
-                  to: 'approved',
-                  currentRecognitionId: recognitionId,
-                  // A claim that was refused, and is now approved by a rule
-                  // instead, no longer stands on that refusal. Leaving the
-                  // old round attached would keep offering an appeal against
-                  // a decision this approval has already replaced.
-                  currentReviewInstanceId: null,
+                  revisionId: entry.currentRevisionId,
+                  roundNo,
+                  policyRevisionId: live.id,
+                  // the same revision today, said twice on purpose: procedure and
+                  // recognition contract are separate facts about this round
+                  recognitionRevisionId: live.id,
+                  effectivePolicy: policy,
+                  // an ordinary submission: it walks the ordinary route, and
+                  // whoever it reaches may end it (§32.63)
+                  route: 'normal',
+                  stageId: first.id,
+                  roleIds: first.roleIds,
+                  nodeId: first.nodeId!,
+                  nodePath,
+                  state: arrived.state,
+                  blockedReason: arrived.blockedReason,
                 })
-                if (!settled) return yield* refuse(action, 'entry-not-submittable')
-                yield* insertEntryEvent({
-                  tenantId,
-                  entryId,
-                  kind: 'auto-approved',
-                  actorId: as.userId,
-                })
-                yield* announce(tenantId, entry.batchId, [
-                  { kind: 'entries-changed', subjectUserId: participant.userId },
-                  { kind: 'result-changed', subjectUserId: participant.userId },
-                ])
-                const written = (yield* entryOf(tenantId, entryId))!
-                const { participant: after } = (yield* loadEntry(tenantId, entryId))!
-                return view(
-                  written,
-                  yield* revisionView(tenantId, written.currentRevisionId),
-                  as,
-                  after,
-                )
-              }
-
-              // Both routes, resolved once against this person's frozen
-              // lineage and snapshotted. The escalation route is resolved here
-              // too, though most rounds never reach it: escalating must
-              // not re-resolve an organization that has moved since (§14).
-              const policy = yield* resolvePolicy({
-                tenantId,
-                batchId: entry.batchId,
-                policy: readPolicy(live.reviewPolicy),
-                lineage: participant.anchorLineage,
-              })
-              const first = enterableFrom(policy, 'normal', 0)
-              // every stage named a level this person sits under none of:
-              // there is nowhere to anchor a round, and no later grant can
-              // supply it - the configuration itself is wrong here
-              if (first === null) return yield* refuse(action, 'review-level-missing')
-              const nodePath = yield* nodePathOf(tenantId, first.nodeId!)
-              if (nodePath === null) return yield* refuse(action, 'review-level-missing')
-              // Nobody can act at the stage today - which is the round's
-              // problem, not this person's. The round is written down as
-              // blocked with its reason so the patrol and the alert panel
-              // own it, and it heals the moment somebody is appointed (§14).
-              const arrived = yield* stageArrival({
-                tenantId,
-                batchId: entry.batchId,
-                stage: first,
-                subjectUserId: participant.userId,
-                actorId: current!.actorId,
-              })
-
-              const roundNo = yield* nextRoundNo(tenantId, entryId)
-              const instanceId = yield* insertReviewInstance({
-                tenantId,
-                entryId,
-                revisionId: entry.currentRevisionId,
-                roundNo,
-                policyRevisionId: live.id,
-                // the same revision today, said twice on purpose: procedure and
-                // recognition contract are separate facts about this round
-                recognitionRevisionId: live.id,
-                effectivePolicy: policy,
-                // an ordinary submission: it walks the ordinary route, and
-                // whoever it reaches may end it (§32.63)
-                route: 'normal',
-                stageId: first.id,
-                roleIds: first.roleIds,
-                nodeId: first.nodeId!,
-                nodePath,
-                state: arrived.state,
-                blockedReason: arrived.blockedReason,
-              })
-              yield* insertReviewEvent({
-                tenantId,
-                reviewInstanceId: instanceId,
-                kind: 'submitted',
-                actorId: as.userId,
-                route: 'normal',
-                stageId: first.id,
-              })
-              if (arrived.state === 'blocked') {
                 yield* insertReviewEvent({
                   tenantId,
                   reviewInstanceId: instanceId,
-                  kind: 'assignee-not-found',
-                  actorId: null,
+                  kind: 'submitted',
+                  actorId: as.userId,
                   route: 'normal',
                   stageId: first.id,
                 })
-              }
-              const moved = yield* setEntryState({
-                tenantId,
-                entryId,
-                from: ['draft', 'rejected'],
-                to: 'in_review',
-                currentReviewInstanceId: instanceId,
-              })
-              // unreachable while the batch lock is held over a fresh read;
-              // checked so a future reordering fails loudly instead of
-              // leaving a review round attached to nothing
-              if (!moved) return yield* refuse(action, 'entry-not-submittable')
-            } else if (to === 'voided') {
-              // Walking away from a claim (§32.65, widened by §32.69): the
-              // history stays - the rounds, the words, the versions - and
-              // the quota place opens. A live round is closed as cancelled
-              // first; an approved conclusion is left exactly as written -
-              // the review was not undone, the claim just stopped being
-              // used - and the scorer stops counting it because the entry
-              // is no longer an effective fact.
-              if (entry.status === 'voided') {
-                return yield* refuse(action, 'entry-not-abandonable')
-              }
-              if (entry.status === 'in_review') {
-                if (entry.currentReviewInstanceId === null) {
+                if (arrived.state === 'blocked') {
+                  yield* insertReviewEvent({
+                    tenantId,
+                    reviewInstanceId: instanceId,
+                    kind: 'assignee-not-found',
+                    actorId: null,
+                    route: 'normal',
+                    stageId: first.id,
+                  })
+                }
+                const moved = yield* setEntryState({
+                  tenantId,
+                  entryId,
+                  from: ['draft', 'rejected'],
+                  to: 'in_review',
+                  currentReviewInstanceId: instanceId,
+                })
+                // unreachable while the batch lock is held over a fresh read;
+                // checked so a future reordering fails loudly instead of
+                // leaving a review round attached to nothing
+                if (!moved) return yield* refuse(action, 'entry-not-submittable')
+              } else if (to === 'voided') {
+                // Walking away from a claim (§32.65, widened by §32.69): the
+                // history stays - the rounds, the words, the versions - and
+                // the quota place opens. A live round is closed as cancelled
+                // first; an approved conclusion is left exactly as written -
+                // the review was not undone, the claim just stopped being
+                // used - and the scorer stops counting it because the entry
+                // is no longer an effective fact.
+                if (entry.status === 'voided') {
                   return yield* refuse(action, 'entry-not-abandonable')
+                }
+                if (entry.status === 'in_review') {
+                  if (entry.currentReviewInstanceId === null) {
+                    return yield* refuse(action, 'entry-not-abandonable')
+                  }
+                  const cancelled = yield* cancelReviewInstance({
+                    tenantId,
+                    instanceId: entry.currentReviewInstanceId,
+                    outcome: 'cancelled',
+                  })
+                  if (!cancelled) return yield* refuse(action, 'entry-not-abandonable')
+                  yield* insertReviewEvent({
+                    tenantId,
+                    reviewInstanceId: entry.currentReviewInstanceId,
+                    kind: 'cancelled-by-submitter',
+                    actorId: as.userId,
+                  })
+                }
+                const moved = yield* setEntryState({
+                  tenantId,
+                  entryId,
+                  from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
+                  to: 'voided',
+                  ...(entry.status === 'in_review' ? { currentReviewInstanceId: null } : {}),
+                })
+                if (!moved) return yield* refuse(action, 'entry-not-abandonable')
+                yield* insertEntryEvent({
+                  tenantId,
+                  entryId,
+                  kind: 'abandoned-by-submitter',
+                  actorId: as.userId,
+                })
+              } else {
+                if (entry.status !== 'in_review' || entry.currentReviewInstanceId === null) {
+                  return yield* refuse(action, 'entry-not-withdrawable')
+                }
+                // withdrawing ends where review begins (§32.69), and an
+                // appeal round is never withdrawable back to draft - the
+                // decision under appeal would be quietly unmade with it
+                const standing = (yield* withdrawStandingsOf(tenantId, [
+                  entry.currentReviewInstanceId,
+                ])).get(entry.currentReviewInstanceId)
+                if (standing?.origin === 'appeal') {
+                  return yield* refuse(action, 'appeal-not-withdrawable')
+                }
+                if (standing?.begun === true) {
+                  return yield* refuse(action, 'review-under-way')
                 }
                 const cancelled = yield* cancelReviewInstance({
                   tenantId,
                   instanceId: entry.currentReviewInstanceId,
                   outcome: 'cancelled',
                 })
-                if (!cancelled) return yield* refuse(action, 'entry-not-abandonable')
+                if (!cancelled) return yield* refuse(action, 'entry-not-withdrawable')
                 yield* insertReviewEvent({
                   tenantId,
                   reviewInstanceId: entry.currentReviewInstanceId,
                   kind: 'cancelled-by-submitter',
                   actorId: as.userId,
                 })
+                const moved = yield* setEntryState({
+                  tenantId,
+                  entryId,
+                  from: ['in_review'],
+                  to: 'draft',
+                  currentReviewInstanceId: null,
+                })
+                if (!moved) return yield* refuse(action, 'entry-not-withdrawable')
+                // the user act in the entry's own ledger: the round's
+                // cancelled-by-submitter above is closing bookkeeping, and
+                // the activity feed must not have to guess which business
+                // act - withdraw or abandon - stood behind it (§32.73)
+                yield* insertEntryEvent({
+                  tenantId,
+                  entryId,
+                  kind: 'withdrawn-by-submitter',
+                  actorId: as.userId,
+                })
               }
-              const moved = yield* setEntryState({
-                tenantId,
-                entryId,
-                from: ['draft', 'rejected', 'needs_revision', 'in_review', 'approved'],
-                to: 'voided',
-                ...(entry.status === 'in_review' ? { currentReviewInstanceId: null } : {}),
-              })
-              if (!moved) return yield* refuse(action, 'entry-not-abandonable')
-              yield* insertEntryEvent({
-                tenantId,
-                entryId,
-                kind: 'abandoned-by-submitter',
-                actorId: as.userId,
-              })
-            } else {
-              if (entry.status !== 'in_review' || entry.currentReviewInstanceId === null) {
-                return yield* refuse(action, 'entry-not-withdrawable')
-              }
-              // withdrawing ends where review begins (§32.69), and an
-              // appeal round is never withdrawable back to draft - the
-              // decision under appeal would be quietly unmade with it
-              const standing = (yield* withdrawStandingsOf(tenantId, [
-                entry.currentReviewInstanceId,
-              ])).get(entry.currentReviewInstanceId)
-              if (standing?.origin === 'appeal') {
-                return yield* refuse(action, 'appeal-not-withdrawable')
-              }
-              if (standing?.begun === true) {
-                return yield* refuse(action, 'review-under-way')
-              }
-              const cancelled = yield* cancelReviewInstance({
-                tenantId,
-                instanceId: entry.currentReviewInstanceId,
-                outcome: 'cancelled',
-              })
-              if (!cancelled) return yield* refuse(action, 'entry-not-withdrawable')
-              yield* insertReviewEvent({
-                tenantId,
-                reviewInstanceId: entry.currentReviewInstanceId,
-                kind: 'cancelled-by-submitter',
-                actorId: as.userId,
-              })
-              const moved = yield* setEntryState({
-                tenantId,
-                entryId,
-                from: ['in_review'],
-                to: 'draft',
-                currentReviewInstanceId: null,
-              })
-              if (!moved) return yield* refuse(action, 'entry-not-withdrawable')
-              // the user act in the entry's own ledger: the round's
-              // cancelled-by-submitter above is closing bookkeeping, and
-              // the activity feed must not have to guess which business
-              // act - withdraw or abandon - stood behind it (§32.73)
-              yield* insertEntryEvent({
-                tenantId,
-                entryId,
-                kind: 'withdrawn-by-submitter',
-                actorId: as.userId,
-              })
-            }
-            // coarse across the three branches: whichever way the claim
-            // moved, its owner's paper, the reviewers' queues and any open
-            // round may all read differently now
-            yield* announce(tenantId, entry.batchId, [
-              { kind: 'entries-changed', subjectUserId: participant.userId },
-              { kind: 'review-inbox-changed' },
-              { kind: 'review-instance-changed' },
-              { kind: 'result-changed', subjectUserId: participant.userId },
-            ])
-            const written = (yield* entryOf(tenantId, entryId))!
-            return view(
-              written,
-              yield* revisionView(tenantId, written.currentRevisionId),
-              as,
-              participant,
-            )
-          }),
-        ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+              // coarse across the three branches: whichever way the claim
+              // moved, its owner's paper, the reviewers' queues and any open
+              // round may all read differently now
+              yield* announce(tenantId, entry.batchId, [
+                { kind: 'entries-changed', subjectUserId: participant.userId },
+                { kind: 'review-inbox-changed' },
+                { kind: 'review-instance-changed' },
+                { kind: 'result-changed', subjectUserId: participant.userId },
+              ])
+              const written = (yield* entryOf(tenantId, entryId))!
+              return view(
+                written,
+                yield* revisionView(tenantId, written.currentRevisionId),
+                as,
+                participant,
+              )
+            }),
+          ).pipe(Effect.catchTag('QueryFailed', (error: QueryFailed) => Effect.die(error))),
+        )
+      const acted = settleWithProbe(runtime, attempt, (first, again) =>
+        // the question moved under the claim, or the claim itself moved:
+        // each is said in the words the caller already knows
+        again.revisionId !== first.revisionId
+          ? new ItemRevisionConflict({ itemId: first.itemId, currentRevisionId: again.revisionId })
+          : refuse('submit', 'entry-not-submittable'),
       )
       // only the handing-on is a counted business signal; a typed failure is
       // a refusal, a defect is an outage and stays out of the business count

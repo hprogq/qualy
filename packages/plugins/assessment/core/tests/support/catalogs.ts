@@ -9,6 +9,7 @@ import { SCORE_AMOUNT_SCHEMA } from '@qualy/value-schema/score'
 import type { Contributed, ProvideExtension } from '@qualy/plugin-kit'
 import {
   CalculatorContractError,
+  CalculatorEvaluationError,
   CalculatorRuntimeError,
   ItemPayloadInvalid,
   ItemTypeCatalog,
@@ -165,6 +166,141 @@ const testCalculator = (spec: {
   }),
 })
 
+/**
+ * A calculator that can fail every way the taxonomy names, on request.
+ *
+ * The ordinal is the switch: 8 is an outage, 9 a program that cannot
+ * compute, 6 waits for the suite to let go (the shape of a probe that is
+ * still running), and anything past `maxOrdinal` (5 unless configured) is
+ * the rule refusing these values in its own words. A configured
+ * `refuseLevel` refuses that level whatever the ordinal, and `outageLevel`
+ * is an outage on it, for plans that bind nothing but the level. Everything
+ * else pays like gradedTest.
+ */
+export const probeHold: { until: Promise<void> } = { until: Promise.resolve() }
+
+export const probeTest: CalculatorRegistration = {
+  kind: 'calculator',
+  ref: 'probe-test@1',
+  configSchema: Schema.Struct({
+    maxOrdinal: Schema.optional(Schema.Number),
+    refuseLevel: Schema.optional(Schema.String),
+    outageLevel: Schema.optional(Schema.String),
+  }),
+  bind: Effect.succeed({
+    ref: 'probe-test@1',
+    compile: (config) =>
+      Effect.succeed({
+        config,
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: { level: LEVEL, ordinal: { type: 'integer', minimum: 1, maximum: 10 } },
+          required: ['level', 'ordinal'],
+          additionalProperties: false,
+        }),
+        outputSchema: testAmount,
+        contractHash: 'test:probe',
+      }),
+    verify: () => Effect.void,
+    prepare: (frozen) =>
+      Effect.succeed({
+        evaluate: (input: Record<string, unknown>) =>
+          Effect.gen(function* () {
+            const config = frozen.config as {
+              maxOrdinal?: number
+              refuseLevel?: string
+              outageLevel?: string
+            }
+            const ordinal = input['ordinal']
+            if (ordinal === 8) {
+              return yield* Effect.fail(
+                new CalculatorEvaluationError('unavailable', 'the sandbox is gone'),
+              )
+            }
+            if (ordinal === 9) {
+              return yield* Effect.fail(
+                new CalculatorEvaluationError('execution', 'the program looped'),
+              )
+            }
+            if (ordinal === 6) {
+              // the shape of a proof still running: waits, then pays
+              yield* Effect.promise(() => probeHold.until)
+              return '4.00'
+            }
+            if (typeof ordinal === 'number' && ordinal > (config.maxOrdinal ?? 5)) {
+              return yield* Effect.fail(
+                new CalculatorEvaluationError(
+                  'refusal',
+                  `only the first ${config.maxOrdinal ?? 5} are recognised`,
+                ),
+              )
+            }
+            if (config.outageLevel !== undefined && input['level'] === config.outageLevel) {
+              return yield* Effect.fail(
+                new CalculatorEvaluationError('unavailable', 'the sandbox is gone'),
+              )
+            }
+            if (config.refuseLevel !== undefined && input['level'] === config.refuseLevel) {
+              return yield* Effect.fail(
+                new CalculatorEvaluationError(
+                  'refusal',
+                  `${config.refuseLevel} is not recognised here`,
+                ),
+              )
+            }
+            return input['level'] === 'national' ? '10.00' : '4.00'
+          }),
+      }),
+  }),
+}
+
+/** the probing rule bound to the level alone, for plans the filing seeds whole */
+export const probeLevelTest: CalculatorRegistration = {
+  kind: 'calculator',
+  ref: 'probe-level-test@1',
+  configSchema: Schema.Struct({
+    refuseLevel: Schema.optional(Schema.String),
+    outageLevel: Schema.optional(Schema.String),
+  }),
+  bind: Effect.succeed({
+    ref: 'probe-level-test@1',
+    compile: (config) =>
+      Effect.succeed({
+        config,
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: { level: LEVEL },
+          required: ['level'],
+          additionalProperties: false,
+        }),
+        outputSchema: testAmount,
+        contractHash: 'test:probe-level',
+      }),
+    verify: () => Effect.void,
+    prepare: (frozen) =>
+      Effect.succeed({
+        evaluate: (input: Record<string, unknown>) =>
+          Effect.gen(function* () {
+            const config = frozen.config as { refuseLevel?: string; outageLevel?: string }
+            if (config.outageLevel !== undefined && input['level'] === config.outageLevel) {
+              return yield* Effect.fail(
+                new CalculatorEvaluationError('unavailable', 'the sandbox is gone'),
+              )
+            }
+            if (config.refuseLevel !== undefined && input['level'] === config.refuseLevel) {
+              return yield* Effect.fail(
+                new CalculatorEvaluationError(
+                  'refusal',
+                  `${config.refuseLevel} is not recognised here`,
+                ),
+              )
+            }
+            return input['level'] === 'national' ? '10.00' : '4.00'
+          }),
+      }),
+  }),
+}
+
 export const gradedTest: CalculatorRegistration = testCalculator({
   ref: 'graded-test@1',
   contractHash: 'test:graded',
@@ -309,6 +445,28 @@ export const twoFactScoring = {
   },
 }
 
+/** the probing calculator, with the ordinal a reviewer alone determines */
+export const probeScoring = (config: { maxOrdinal?: number; refuseLevel?: string } = {}) => ({
+  calculator: { ref: probeTest.ref, config },
+  aggregator: { ref: 'sum@1', config: {} },
+  recognitions: {
+    'rec-level': { defaultFromFieldId: 'claimed-level' },
+    'rec-ordinal': { defaultFromFieldId: null },
+  },
+  bindings: {
+    level: { kind: 'recognition' as const, recognitionId: 'rec-level' },
+    ordinal: { kind: 'recognition' as const, recognitionId: 'rec-ordinal' },
+  },
+})
+
+/** the probing calculator bound to the level alone, so the filing seeds the whole determination */
+export const probeLevelScoring = (config: { refuseLevel?: string; outageLevel?: string } = {}) => ({
+  calculator: { ref: probeLevelTest.ref, config },
+  aggregator: { ref: 'sum@1', config: {} },
+  recognitions: { 'rec-level': { defaultFromFieldId: 'claimed-level' } },
+  bindings: { level: { kind: 'recognition' as const, recognitionId: 'rec-level' } },
+})
+
 /** the scoring configuration that puts a determination in front of a score */
 export const gradedScoring = {
   calculator: { ref: gradedTest.ref, config: {} },
@@ -377,6 +535,8 @@ export const scoringRegistrations: readonly CalculatorRegistration[] = [
   narrowFactTest,
   storedTest,
   shapedTest,
+  probeTest,
+  probeLevelTest,
 ]
 
 const contributed = <T>(values: readonly T[]): readonly Contributed<T>[] =>

@@ -392,3 +392,31 @@ export type AdvancePhaseError = BatchNotFound | PhaseNotFound | AdvanceInvalid |
  */
 export type SchedulePhaseError =
   BatchNotFound | BatchReadOnly | PhaseNotFound | PlanInvalid | BatchNoParticipants | AccessDenied
+
+/**
+ * The scoring rule refused this determination.
+ *
+ * Not a reviewer's rejection and not a validation failure: the values are
+ * lawful under the question's contract, and the calculator - asked before
+ * anything was written - said that under its own rules they are not
+ * something it will score. `reason` is the rule author's own sentence,
+ * plain text for the person who tried to determine, never a code.
+ */
+export class DeterminationRefused extends Schema.TaggedError<DeterminationRefused>()(
+  'ASSESSMENT_DETERMINATION_REFUSED',
+  { itemId: Schema.String, reason: Schema.String },
+  { httpApiStatus: 422, identifier: 'AssessmentDeterminationRefused' },
+) {}
+
+/**
+ * The arithmetic could not be reached.
+ *
+ * A retryable outage of whatever runs a calculator, met while proving a
+ * determination or reading an account. Nothing was written and nothing is
+ * decided by it; the same request later is the whole remedy.
+ */
+export class ScoringUnavailable extends Schema.TaggedError<ScoringUnavailable>()(
+  'ASSESSMENT_SCORING_UNAVAILABLE',
+  {},
+  { httpApiStatus: 503, identifier: 'AssessmentScoringUnavailable' },
+) {}

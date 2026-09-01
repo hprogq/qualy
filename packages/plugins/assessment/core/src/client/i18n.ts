@@ -17,6 +17,13 @@ import type * as assessmentErrors from '../server/errors.ts'
 // refusal or a new gated code stops compiling here rather than reaching a
 // screen as a raw identifier.
 
+// the rule's own sentence travels as a value: it is what the person
+// determining needs to read, and it is nobody's translation key
+const determinationRefused = defineMessage<{ reason: string }>()({
+  id: 'assessment/error/determination-refused',
+  defaultMessage: 'The current scoring rule does not accept this determination: {reason}',
+})
+
 const participantCount = defineMessage<{ count: number }>()({
   id: 'assessment/roster/count',
   defaultMessage:
@@ -4422,6 +4429,14 @@ const i18n = definePluginMessages({
       id: 'assessment/error/score-group-version-conflict',
       defaultMessage:
         'The scoring groups were changed by another user while you were editing. Refresh and apply the changes again.',
+    },
+    ASSESSMENT_DETERMINATION_REFUSED: {
+      message: determinationRefused,
+      values: (data) => ({ reason: data.reason }),
+    },
+    ASSESSMENT_SCORING_UNAVAILABLE: {
+      id: 'assessment/error/scoring-unavailable',
+      defaultMessage: 'Scoring is temporarily unavailable. Try again in a moment.',
     },
   }),
   locales: {
