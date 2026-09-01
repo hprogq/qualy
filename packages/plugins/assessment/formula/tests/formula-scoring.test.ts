@@ -215,6 +215,7 @@ const publishFormula = (
   as: Principal,
   source: string,
   name: string,
+  test: { readonly value: string; readonly expected: string } = { value: '3.00', expected: '3' },
 ) =>
   Effect.gen(function* () {
     const created = yield* library.createFunction(tenantId, { name, description: '' }, as)
@@ -224,7 +225,7 @@ const publishFormula = (
       {
         expectedDraftRevision: created.draftRevision,
         draftSourceTs: source,
-        draftTests: [{ name: 'ok', input: { value: '3.00' }, expected: '3' }],
+        draftTests: [{ name: 'ok', input: { value: test.value }, expected: test.expected }],
       },
       as,
     )
@@ -276,14 +277,22 @@ const roundWithGroup = (
   })
 
 /** one question's configuration, scored by an exact published version */
-const boundConfig = (versionId: string) => ({
+const boundConfig = (versionId: string, valueId?: string) => ({
   entrySource: 'student' as const,
   formConfig: {},
   scoringConfig: {
     version: 2,
     calculator: { ref: 'formula@1', config: { versionId } },
     aggregator: { ref: 'sum@1', config: {} },
-    recognitions: [{ handle: 'value', label: '数值', refinement: null, defaultFromFieldId: null }],
+    recognitions: [
+      {
+        handle: 'value',
+        ...(valueId === undefined ? {} : { id: valueId }),
+        label: '数值',
+        refinement: null,
+        defaultFromFieldId: null,
+      },
+    ],
     bindings: { value: { kind: 'recognition', handle: 'value' } },
   },
   reviewPolicy: {
@@ -680,6 +689,214 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
     expect(outcome.row.bytes).toBeGreaterThan(256 * 1024)
     expect(outcome.amount).toBe('4.25')
   }, 120_000)
+
+  it('proves a determination against the rule, and a rule against what stands, over the socket', async () => {
+    // The whole closure, on the real arithmetic: a determination the rule
+    // refuses never becomes a fact; a rule that refuses what stands never
+    // becomes the rule; a rule that re-prices what stands is acknowledged
+    // and then read back at its new amount.
+    const REFUSING = `import { Schema, defineFormula } from '@qualy/formula'
+
+export default defineFormula({
+  input: Schema.input({
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+  }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
+  run(input, q) {
+    if (q.decimal.compare(input.value, q.decimal.fromInteger(3)) === 0) {
+      q.fail('three is not recognised here')
+    }
+    return input.value
+  },
+})
+`
+    const FOUR = `import { Schema, defineFormula } from '@qualy/formula'
+
+export default defineFormula({
+  input: Schema.input({
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+  }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
+  run: (_input, q) => q.decimal.fromInteger(4),
+})
+`
+    const outcome = ok(
+      await Effect.runPromiseExit(
+        Effect.provide(
+          Effect.gen(function* () {
+            const f = yield* seedFormulaFixture('fs-closure')
+            const library = yield* FormulaLibrary
+            const assessment = yield* Assessment
+            const mine = f.principal(f.authorA)
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              select ${f.t}, ${f.authorA}, id from roles
+              where tenant_id = ${f.t} and system_key = 'tenant-admin'`)
+            const v1 = yield* publishFormula(library, f.t, mine, PASSTHROUGH, '直通')
+            const refusing = yield* publishFormula(library, f.t, mine, REFUSING, '拒三', {
+              value: '2.00',
+              expected: '2',
+            })
+            const four = yield* publishFormula(library, f.t, mine, FOUR, '恒四', {
+              value: '3.00',
+              expected: '4',
+            })
+            const { batchId, groupId } = yield* roundWithGroup(assessment, f, '闭环轮次')
+            // the round is entered, with the office allowed to record
+            yield* assessment.replacePlan(
+              f.t,
+              batchId,
+              {
+                specs: [
+                  phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.record'] }),
+                  phase({ phaseKey: 'archive' }),
+                ],
+              },
+              mine,
+            )
+            const plan = yield* assessment.getPlan(f.t, batchId, mine)
+            yield* assessment.schedulePhase(f.t, batchId, plan[0]!.id, Date.now() + 3_600_000, mine)
+            yield* assessment.advancePhase(
+              f.t,
+              batchId,
+              { to: plan[0]!.id, force: true, reason: 'the round opens' },
+              mine,
+            )
+            const participant = one<{ id: string }>(
+              yield* runSql(sql`
+                select id from batch_participants
+                where batch_id = ${batchId} and user_id = ${f.bystander}`),
+            ).id
+            const recorded = (versionId: string, valueId?: string) => ({
+              ...boundConfig(versionId, valueId),
+              entrySource: 'administrative' as const,
+            })
+            const ask = (title: string, versionId: string) =>
+              Effect.gen(function* () {
+                const item = yield* assessment.createItem(
+                  f.t,
+                  batchId,
+                  {
+                    itemType: 'plain',
+                    title,
+                    scoreGroupId: groupId,
+                    maxEntries: null,
+                    config: recorded(versionId),
+                  },
+                  mine,
+                )
+                yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, mine)
+                const stored = item.currentRevision!.scoringConfig as {
+                  recognitions: Record<string, unknown>
+                }
+                return { id: item.id, valueId: Object.keys(stored.recognitions)[0]! }
+              })
+            const record = (item: { id: string; valueId: string }, value: string) =>
+              Effect.exit(
+                assessment.createEntry(
+                  f.t,
+                  {
+                    itemId: item.id,
+                    participantId: participant,
+                    payload: {},
+                    note: 'the register',
+                    recognition: { values: { [item.valueId]: value } },
+                  },
+                  mine,
+                ),
+              )
+            const tagOf = (exit: Exit.Exit<unknown, unknown>) =>
+              Exit.isFailure(exit)
+                ? (failureOf(exit) as { _tag?: string; reason?: string })
+                : undefined
+
+            // the rule refuses a determination before it is a fact
+            const gated = yield* ask('拒三题', refusing.versionId)
+            const refused = yield* record(gated, '3.00')
+            const taken = yield* record(gated, '1.00')
+
+            // a determination in force under the passthrough rule
+            const open = yield* ask('直通题', v1.versionId)
+            const stood = yield* record(open, '3.00')
+            const before = yield* assessment.getMyResult(f.t, batchId, f.principal(f.bystander))
+
+            // a rule that refuses what stands cannot become the rule
+            const rebound = yield* Effect.exit(
+              assessment.updateItem(
+                f.t,
+                open.id,
+                { config: recorded(refusing.versionId, open.valueId), reason: '换规则' },
+                mine,
+              ),
+            )
+            // a rule that re-prices what stands is acknowledged, then read back
+            const asked = yield* Effect.exit(
+              assessment.updateItem(
+                f.t,
+                open.id,
+                { config: recorded(four.versionId, open.valueId), reason: '恒四' },
+                mine,
+              ),
+            )
+            const report = tagOf(asked) as
+              | {
+                  _tag?: string
+                  impactToken?: string
+                  scoring?: { approved: { amountChanged: number } }
+                }
+              | undefined
+            const saved = yield* assessment.updateItem(
+              f.t,
+              open.id,
+              {
+                config: recorded(four.versionId, open.valueId),
+                reason: '恒四',
+                effects: { impactToken: report?.impactToken ?? '' },
+              },
+              mine,
+            )
+            const after = yield* assessment.getMyResult(f.t, batchId, f.principal(f.bystander))
+            return {
+              refused: tagOf(refused),
+              taken: Exit.isSuccess(taken),
+              stood: Exit.isSuccess(stood),
+              before: before.total,
+              rebound: tagOf(rebound) as
+                { _tag?: string; approved?: { refused: number } } | undefined,
+              asked: report?._tag,
+              amountChanged: report?.scoring?.approved.amountChanged,
+              saved: saved.currentRevision?.revisionNo,
+              after: after.total,
+            }
+          }),
+          stack(db.url, socketPath) as never,
+        ) as Effect.Effect<never, never>,
+      ),
+    ) as {
+      refused: { _tag?: string; reason?: string } | undefined
+      taken: boolean
+      stood: boolean
+      before: string
+      rebound: { _tag?: string; approved?: { refused: number } } | undefined
+      asked: string | undefined
+      amountChanged: number | undefined
+      saved: number | undefined
+      after: string
+    }
+    expect(outcome.refused?._tag).toBe('ASSESSMENT_DETERMINATION_REFUSED')
+    expect(outcome.refused?.reason).toBe('three is not recognised here')
+    expect(outcome.taken).toBe(true)
+    expect(outcome.stood).toBe(true)
+    // 1.00 from the gated question, 3.00 from the open one
+    expect(outcome.before).toBe('4.00')
+    expect(outcome.rebound?._tag).toBe('ASSESSMENT_ITEM_SCORING_INCOMPATIBLE')
+    expect(outcome.rebound?.approved?.refused).toBe(1)
+    expect(outcome.asked).toBe('ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED')
+    expect(outcome.amountChanged).toBe(1)
+    expect(outcome.saved).toBe(2)
+    // 1.00 from the gated question, now 4.00 from the re-priced one
+    expect(outcome.after).toBe('5.00')
+  }, 180_000)
 
   it('reads a dead sandbox as plain unavailability, never a broken promise', async () => {
     // this runs LAST: the runtime process is killed, prepare still succeeds

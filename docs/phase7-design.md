@@ -326,8 +326,8 @@ afterServices
 当前：
 
 ```ts
-ScoringDeclarations;
-phase = "prepare";
+ScoringDeclarations
+phase = 'prepare'
 ```
 
 `ScoringCatalog` 因而是 prepare catalog。
@@ -335,13 +335,13 @@ phase = "prepare";
 与此同时：
 
 ```ts
-Assessment.make;
+Assessment.make
 ```
 
 在 Assessment service 构建期间：
 
 ```ts
-const scoring = yield * ScoringCatalog;
+const scoring = yield * ScoringCatalog
 ```
 
 所以不能简单：
@@ -440,17 +440,17 @@ apps/server/src/runtime.ts
 `ExtensionPhase`：
 
 ```ts
-type ExtensionPhase = "prepare" | "runtime" | "afterServices" | "external";
+type ExtensionPhase = 'prepare' | 'runtime' | 'afterServices' | 'external'
 ```
 
 `Assembled`：
 
 ```ts
 interface Assembled {
-  prepared: AnyLayer;
-  services: AnyLayer;
-  runtime: AnyLayer;
-  above: AnyLayer;
+  prepared: AnyLayer
+  services: AnyLayer
+  runtime: AnyLayer
+  above: AnyLayer
 }
 ```
 
@@ -526,58 +526,58 @@ afterServices consumer
 
 ```ts
 interface CalculatorDefinition {
-  readonly kind: "calculator";
-  readonly ref: string;
-  readonly configSchema: Schema.Top;
+  readonly kind: 'calculator'
+  readonly ref: string
+  readonly configSchema: Schema.Top
 }
 
 interface RuntimeRef {
-  readonly kind: string;
-  readonly id: string;
-  readonly sha256: string;
+  readonly kind: string
+  readonly id: string
+  readonly sha256: string
 }
 
 interface CalculatorHostContext {
-  readonly tenantId: string;
-  readonly batchId: string;
+  readonly tenantId: string
+  readonly batchId: string
 }
 
 interface CalculatorCompileContext extends CalculatorHostContext {
-  readonly previousRuntimeRef?: RuntimeRef;
+  readonly previousRuntimeRef?: RuntimeRef
 }
 
 interface PreparedCalculator {
   readonly evaluate: (
     input: Record<string, unknown>,
-  ) => Effect.Effect<string, CalculatorEvaluationError>;
+  ) => Effect.Effect<string, CalculatorEvaluationError>
 }
 
 interface BoundCalculator {
-  readonly ref: string;
+  readonly ref: string
 
   readonly compile: (
     config: unknown,
     context: CalculatorCompileContext,
-  ) => Effect.Effect<CompiledCalculator, CalculatorContractError>;
+  ) => Effect.Effect<CompiledCalculator, CalculatorContractError>
 
   readonly verify: (
     config: unknown,
     runtimeRef: RuntimeRef | undefined,
     context: CalculatorHostContext,
-  ) => Effect.Effect<void, CalculatorRuntimeError>;
+  ) => Effect.Effect<void, CalculatorRuntimeError>
 
   readonly prepare: (
     config: unknown,
     runtimeRef: RuntimeRef | undefined,
     context: CalculatorHostContext,
-  ) => Effect.Effect<PreparedCalculator, CalculatorRuntimeError>;
+  ) => Effect.Effect<PreparedCalculator, CalculatorRuntimeError>
 }
 
 interface CalculatorRegistration<R> {
-  readonly ref: string;
-  readonly configSchema: Schema.Top;
+  readonly ref: string
+  readonly configSchema: Schema.Top
 
-  readonly bind: Effect.Effect<BoundCalculator, never, R>;
+  readonly bind: Effect.Effect<BoundCalculator, never, R>
 }
 ```
 
@@ -585,8 +585,8 @@ interface CalculatorRegistration<R> {
 
 ```ts
 interface CompiledCalculator extends CalculatorContract {
-  readonly config: unknown;
-  readonly runtimeRef?: RuntimeRef;
+  readonly config: unknown
+  readonly runtimeRef?: RuntimeRef
 }
 ```
 
@@ -645,19 +645,19 @@ prepare:
 建议：
 
 ```ts
-ScoringDefinitions;
-phase: "prepare";
+ScoringDefinitions
+phase: 'prepare'
 
-ScoringRuntimes;
-phase: "runtime";
+ScoringRuntimes
+phase: 'runtime'
 ```
 
 Definition Catalog：
 
 ```ts
 class ScoringDefinitionCatalog {
-  calculators: Map<string, CalculatorDefinition>;
-  aggregators: Map<string, AggregatorDriver>;
+  calculators: Map<string, CalculatorDefinition>
+  aggregators: Map<string, AggregatorDriver>
 }
 ```
 
@@ -756,7 +756,7 @@ request / boot 真执行某 method
 不要用：
 
 ```ts
-let runtimeCatalog: ScoringRuntimeCatalog | undefined;
+let runtimeCatalog: ScoringRuntimeCatalog | undefined
 ```
 
 再在后面赋值。
@@ -773,7 +773,7 @@ Calculator 另建独立 host context。
 
 ```ts
 {
-  (tenantId, batchId);
+  ;(tenantId, batchId)
 }
 ```
 
@@ -1081,31 +1081,31 @@ packages/plugins/assessment/formula/src/server/runtime-store.ts
 
 ```ts
 interface FormulaRuntimeVersion {
-  readonly versionId: string;
-  readonly functionId: string;
-  readonly versionNo: number;
+  readonly versionId: string
+  readonly functionId: string
+  readonly versionNo: number
 
-  readonly runtimeJs: string;
-  readonly runtimeSha256: string;
-  readonly contractSha256: string;
+  readonly runtimeJs: string
+  readonly runtimeSha256: string
+  readonly contractSha256: string
 
-  readonly inputSchema: NormalizedInputSchema;
-  readonly outputSchema: NormalizedAtomicSchema;
+  readonly inputSchema: NormalizedInputSchema
+  readonly outputSchema: NormalizedAtomicSchema
 
-  readonly formulaAbiVersion: number;
-  readonly formulaRuntimeSha256: string;
-  readonly sandboxAbiVersion: number;
-  readonly valueSchemaProfileVersion: number;
-  readonly regexProfileVersion: number;
+  readonly formulaAbiVersion: number
+  readonly formulaRuntimeSha256: string
+  readonly sandboxAbiVersion: number
+  readonly valueSchemaProfileVersion: number
+  readonly regexProfileVersion: number
 
-  readonly quickjsEngineVersion: string;
+  readonly quickjsEngineVersion: string
 }
 
 class FormulaRuntimeStore {
   resolve(input: {
-    tenantId: string;
-    versionId: string;
-  }): Effect<FormulaRuntimeVersion, FormulaRuntimeResolutionError>;
+    tenantId: string
+    versionId: string
+  }): Effect<FormulaRuntimeVersion, FormulaRuntimeResolutionError>
 }
 ```
 
@@ -1295,9 +1295,9 @@ functionId + versionNo
 API DTO 命名：
 
 ```ts
-versionId;
-functionId;
-versionNo;
+versionId
+functionId
+versionNo
 ```
 
 不要只返回 `id` 让三个 id 混在一起。
@@ -1418,9 +1418,9 @@ Formula plugin 不应 deep-import Assessment DB。
 
 ```ts
 class AssessmentConfigurationAccess {
-  requireManage(tenantId, batchId, principal);
+  requireManage(tenantId, batchId, principal)
 
-  managementAnchors(tenantId, batchId);
+  managementAnchors(tenantId, batchId)
 }
 ```
 
@@ -1583,38 +1583,38 @@ ScoringPlan V2
 
 ```ts
 interface ScoringAuthoringV2 {
-  readonly version: 2;
+  readonly version: 2
 
   readonly calculator: {
-    readonly ref: string;
-    readonly config: unknown;
-  };
+    readonly ref: string
+    readonly config: unknown
+  }
 
   readonly aggregator: {
-    readonly ref: string;
-    readonly config: unknown;
-  };
+    readonly ref: string
+    readonly config: unknown
+  }
 
   readonly recognitions: Record<
     RecognitionId,
     {
-      readonly label: string;
-      readonly refinement: AtomicSchema | null;
-      readonly defaultFromFieldId: string | null;
+      readonly label: string
+      readonly refinement: AtomicSchema | null
+      readonly defaultFromFieldId: string | null
     }
-  >;
+  >
 
   readonly bindings: Record<
     ParameterName,
     | {
-        readonly kind: "constant";
-        readonly value: unknown;
+        readonly kind: 'constant'
+        readonly value: unknown
       }
     | {
-        readonly kind: "recognition";
-        readonly recognitionId: RecognitionId;
+        readonly kind: 'recognition'
+        readonly recognitionId: RecognitionId
       }
-  >;
+  >
 }
 ```
 
@@ -1641,11 +1641,11 @@ awardLevel
 
 ```ts
 interface RecognitionDraft {
-  readonly handle: string;
-  readonly id?: string;
-  readonly label: string;
-  readonly refinement: AtomicSchema | null;
-  readonly defaultFromFieldId: string | null;
+  readonly handle: string
+  readonly id?: string
+  readonly label: string
+  readonly refinement: AtomicSchema | null
+  readonly defaultFromFieldId: string | null
 }
 ```
 
@@ -2041,7 +2041,7 @@ V2
 Item update compile 时，把 previous plan 的 runtimeRef 传入：
 
 ```ts
-CalculatorCompileContext.previousRuntimeRef;
+CalculatorCompileContext.previousRuntimeRef
 ```
 
 Formula adapter 用它判定：
@@ -2065,13 +2065,13 @@ Core 不理解 versionId。
 引入 pure helper：
 
 ```ts
-evaluationIdentity(plan);
+evaluationIdentity(plan)
 ```
 
 或：
 
 ```ts
-evaluationHash(plan);
+evaluationHash(plan)
 ```
 
 至少包含：
@@ -2151,7 +2151,7 @@ packages/plugins/assessment/formula/src/scoring/formula-calculator.ts
 
 ```ts
 {
-  versionId: UUID;
+  versionId: UUID
 }
 ```
 
@@ -2225,7 +2225,7 @@ canonical config：
 
 ```ts
 {
-  versionId;
+  versionId
 }
 ```
 
@@ -2355,7 +2355,7 @@ Formula SDK runtime 的 decode/encode 只是 defense-in-depth，不替代 host b
 不要继续：
 
 ```ts
-JSON.parse(output) as SomeType;
+JSON.parse(output) as SomeType
 ```
 
 定义严格：
@@ -2363,15 +2363,15 @@ JSON.parse(output) as SomeType;
 ```ts
 type FormulaEnvelope =
   | {
-      ok: true;
-      amount: string;
+      ok: true
+      amount: string
     }
   | {
-      ok: false;
+      ok: false
       failure: {
-        message: string;
-      };
-    };
+        message: string
+      }
+    }
 ```
 
 拒绝：
@@ -2402,12 +2402,7 @@ FORMULA_FAILURE_MESSAGE_LIMIT
 建议：
 
 ```ts
-type CalculatorFailureKind =
-  | "refusal"
-  | "unavailable"
-  | "execution"
-  | "integrity"
-  | "invariant";
+type CalculatorFailureKind = 'refusal' | 'unavailable' | 'execution' | 'integrity' | 'invariant'
 ```
 
 ### refusal
@@ -2652,7 +2647,7 @@ open formula item
 禁止：
 
 ```ts
-import { FormulaVersionPicker } from "@qualy/plugin-assessment-formula/...";
+import { FormulaVersionPicker } from '@qualy/plugin-assessment-formula/...'
 ```
 
 使用现有 UI surfaces。
@@ -2675,23 +2670,23 @@ plugin component lazy loading
 在 Assessment 的 browser-safe UI contract 中定义：
 
 ```ts
-calculatorAuthoringOptions;
+calculatorAuthoringOptions
 ```
 
 collection：
 
 ```ts
 interface CalculatorAuthoringOption {
-  readonly ref: string;
-  readonly label: UiText;
-  readonly order?: number;
+  readonly ref: string
+  readonly label: UiText
+  readonly order?: number
 }
 ```
 
 以及：
 
 ```ts
-calculatorEditorSlot;
+calculatorEditorSlot
 ```
 
 cardinality：
@@ -2745,17 +2740,17 @@ context 至少：
 
 ```ts
 interface CalculatorEditorContext {
-  readonly batchId: string;
-  readonly itemId: string | null;
+  readonly batchId: string
+  readonly itemId: string | null
 
   readonly calculator: {
-    readonly ref: string;
-    readonly config: unknown;
-  };
+    readonly ref: string
+    readonly config: unknown
+  }
 
-  readonly disabled: boolean;
+  readonly disabled: boolean
 
-  readonly onChange: (calculator: { ref: string; config: unknown }) => void;
+  readonly onChange: (calculator: { ref: string; config: unknown }) => void
 }
 ```
 
@@ -2877,19 +2872,19 @@ POST /assessment/batches/:batchId/scoring-preview
 ```ts
 {
   calculator: {
-    ref: string;
-    contractHash: string;
+    ref: string
+    contractHash: string
   }
 
-  inputSchema: NormalizedInputSchema;
-  outputSchema: NormalizedAtomicSchema;
+  inputSchema: NormalizedInputSchema
+  outputSchema: NormalizedAtomicSchema
 
   bindableFields: Array<{
-    fieldId: string;
-    payloadKey: string;
-    schema: AtomicSchema;
-    always: boolean;
-  }>;
+    fieldId: string
+    payloadKey: string
+    schema: AtomicSchema
+    always: boolean
+  }>
 }
 ```
 
@@ -3392,10 +3387,10 @@ scoring impact = none
 
 ```ts
 {
-  evaluated: number;
-  unchanged: number;
-  changed: number;
-  rejected: number;
+  evaluated: number
+  unchanged: number
+  changed: number
+  rejected: number
 }
 ```
 
@@ -3511,7 +3506,47 @@ evaluate derived grant under old/new plan
 
 ---
 
-# 10.15 7.5 Done
+# 10.15 落地记录（2026-09-02，Phase 7.5 施工时两条正式裁决与实现约定）
+
+以下按用户在开工前的终审写死，与本节前文冲突处以本小节为准：
+
+**Decision A — 计分金额变化的确认。** `ChangeImpact` 增加只读 `scoring` 段
+（`approved: {total, comparable, amountChanged, refused, executionFailed}`，
+`derived: null | {comparable, amountChanged, refused, executionFailed}`）；
+`ChangeEffects` **不加**字段（assessment-design §32.62：scoringConfig 不进 effects 词汇表）。
+`amountChanged > 0` 且全部可算 → 首次保存 409 `ItemChangeDecisionRequired`，
+带同一 `impactToken` 重交即视为确认。`impactToken` 绑定候选语义身份
+`candidateImpactHash = hashCanonicalJson({ formConfig, reviewPolicy, scoringIntent: 提交的原始
+scoringConfig, calculatorContract })`——对服务端每次请求重新 mint 的 Recognition id 做 α-equivalence。
+不引入 keep-old-score；current-plan scoring 语义不变。
+
+**Decision B — failure kind 描述 calculator 发生了什么，业务边界决定它意味着什么。**
+五类 taxonomy 不改名、不合并：
+
+| calculator failure | 旧 plan（impact） | 候选 plan（impact） | settlement                | result |
+| ------------------ | ----------------- | ------------------- | ------------------------- | ------ |
+| refusal            | 500               | 422 incompatible    | 422 determination refused | 500    |
+| execution          | 500               | 422 incompatible    | 500                       | 500    |
+| unavailable        | 503               | 503                 | 503                       | 503    |
+| integrity          | 500               | 500                 | 500                       | 500    |
+| invariant          | 500               | 500                 | 500                       | 500    |
+
+运行时失败（`runtime.prepare` 的 `CalculatorRuntimeError`）与求值失败（`ScoringEvaluationFailed`）
+分开映射：任何边界下 prepare 阶段的 `refusal` 都不是 determination refusal。
+
+**Probe 只在 terminal determination 前。** 串行审核仅 `approve && wordEnds`；normal route 的中间
+approve 是过程意见，不探测。合议：首张 approving ballot 在冻结文本前探测，中间票不探测，形成
+approving resolution 的末票按当时的 current plan 再探测（本模型里一致通过的合议总是结束回合）。
+
+**探测永不在 DB 事务内。** 三条 settlement 与 item 改规则都是 pass（事务，写前停下并回滚）→
+probe/trial（事务外）→ pass（事务，重跑全部 legality，再只比 probe-relevant identity）。
+item 改规则的 stale-token 刷新：第二次 pass 发现状态移动只返回新报告，不再进入写入。
+变化开关是 `recognitionEvaluationHash`（= `evaluationHash` 减 aggregator）；探测 old-first。
+
+**Rollout 前提。** 7.5 只建立 prospective 不变量；7.6 在 `formula@1` writer 生产开放前负责
+existing-state audit，非生产历史数据可重建。
+
+# 10.16 7.5 Done
 
 承重：
 
