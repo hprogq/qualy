@@ -1,6 +1,6 @@
 import { Context, Effect } from 'effect'
 
-// The one question org asks auth, as a port rather than a whole service.
+// The questions other plugins ask auth, as ports rather than a whole service.
 //
 // This package exists because of a defect rather than in anticipation of one.
 // org calls iam.usersBlockingOrgType while importing nothing from
@@ -10,7 +10,7 @@ import { Context, Effect } from 'effect'
 // importing @qualy/plugin-auth from org would be a genuine cycle: auth
 // value-imports org's schema for its foreign keys.
 //
-// It carries one method and no database types. The current signature takes
+// Each tag carries one question and no database types. The current signature takes
 // auth's own transaction, which leaks auth's connection across a boundary
 // whose whole purpose is to not do that. There is nothing to leak now: the
 // connection travels in the fiber, so a call made inside the caller's
@@ -34,3 +34,28 @@ export class Placement extends Context.Service<
     ) => Effect.Effect<number>
   }
 >()('@qualy/auth-contract/Placement') {}
+
+/**
+ * Where one person stands.
+ *
+ * A second tag rather than a second method on the one above, because these
+ * are different questions asked by different plugins for different reasons:
+ * `Placement` answers whether a KIND of person may stand somewhere, which is
+ * a rule; this answers where a PARTICULAR person actually does, which is a
+ * fact. Merging them would turn a port into a placement facade that grows
+ * every time somebody needs one more thing about a user, and would make
+ * every stub of the other tag carry a method its test never asks about.
+ *
+ * Null when nobody stands anywhere - a deleted unit detaches a deleted user
+ * - and a caller reading an audience from it should read that as reaching
+ * nothing rather than as reaching everything.
+ */
+export class UserPlacement extends Context.Service<
+  UserPlacement,
+  {
+    readonly primaryNode: (
+      tenantId: string,
+      userId: string,
+    ) => Effect.Effect<{ readonly nodeId: string } | null>
+  }
+>()('@qualy/auth-contract/UserPlacement') {}

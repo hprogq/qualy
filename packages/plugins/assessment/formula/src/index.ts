@@ -44,8 +44,9 @@ const plugin = Plugin.define(
   },
   Db.entities(entities, {
     compositeForeignKeys,
-    // the tenant foreign key is the one edge out of this plugin's tables
-    dependsOn: ['@qualy/plugin-org'],
+    // org owns the tenant these tables hang on and the units a share scope
+    // points at; auth owns the people a template names as its author
+    dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'],
   }),
   Access.permissions('assessment-formula', permissions),
   // the shipped scoring driver: 7.3's decision, made here and nowhere else

@@ -20,6 +20,7 @@ import {
   FormulaSourceRefused,
   FormulaSharingConflict,
   FormulaSourceTooLarge,
+  FormulaTemplateNotFound,
   FormulaTestFailed,
   FormulaTypecheckFailed,
   FormulaCompileUnavailable,
@@ -103,6 +104,38 @@ const versionDetail = Schema.Struct({
   quickjsEngineVersion: Schema.String,
   tests: Schema.Array(formulaTest),
   testReport: Schema.Unknown,
+})
+
+/** one template as a library row shows it: never the artifact, never the source */
+const templateSummary = Schema.Struct({
+  versionId: Schema.String,
+  functionId: Schema.String,
+  functionName: Schema.String,
+  description: Schema.NullOr(Schema.String),
+  versionNo: Schema.Number,
+  publishedAt: Schema.String,
+  authorUserId: Schema.String,
+  /** null when the author's row is gone; a template does not depend on it */
+  authorName: Schema.NullOr(Schema.String),
+  parameters: Schema.Array(Schema.String),
+  sourceStatus: Schema.Literals(['active', 'archived']),
+})
+
+/**
+ * One template as its own page shows it.
+ *
+ * The source and the examples ride along, and the artifact does not.
+ * Somebody who may see this may copy it, and a copy hands them the source
+ * anyway - so showing it grants no reach they did not already have, while a
+ * page that showed only the summary would leave a reader deciding whether to
+ * copy something they cannot look at.
+ */
+const templateDetail = Schema.Struct({
+  ...templateSummary.fields,
+  sourceTs: Schema.String,
+  tests: Schema.Array(formulaTest),
+  inputSchema: Schema.Unknown,
+  outputSchema: Schema.Unknown,
 })
 
 /** a published version's audience, and what it looked like when read */
@@ -324,6 +357,25 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         error: [FormulaFunctionNotFound, FormulaVersionNotFound, AccessDenied, BadRequest],
       },
     ).middleware(Authenticated),
+  )
+  .add(
+    // published versions other authors have offered to where this reader
+    // stands. Never their own: those are already in their own library
+    HttpApiEndpoint.get('listFormulaTemplates', '/assessment/formula-templates', {
+      query: Schema.Struct({ ...pageQuery }),
+      success: pageOf(templateSummary),
+      error: [BadRequest, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // one template, judged discoverable again rather than trusted from the
+    // listing: a version somebody can name but not discover is not a
+    // template to them, and any other answer tells them it exists
+    HttpApiEndpoint.get('getFormulaTemplate', '/assessment/formula-templates/:versionId', {
+      params: Schema.Struct({ versionId: id }),
+      success: Schema.Struct({ template: templateDetail }),
+      error: [FormulaTemplateNotFound, AccessDenied],
+    }).middleware(Authenticated),
   )
   .add(
     // who this published version has been offered to. The token is what the

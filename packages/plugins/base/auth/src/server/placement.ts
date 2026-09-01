@@ -114,6 +114,33 @@ export const usersBlockingOrgType = (tenantId: string, orgNodeId: string, orgTyp
     { at: 'type', id: orgTypeId },
   )
 
+/**
+ * Where one person stands, as a peer plugin asks it.
+ *
+ * A fact rather than a rule: the four predicates around it answer whether a
+ * KIND of person may stand somewhere, and this answers where a PARTICULAR
+ * one actually does. Null covers both "no such user here" and "detached" -
+ * a deleted unit sets the column null - and neither of them is a place, so
+ * a caller reading an audience from this reaches nothing.
+ */
+export const primaryNode = (tenantId: string, userId: string) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('User')
+        .select(['primaryOrgNodeId'])
+        .where('tenantId', '=', tenantId)
+        .where('id', '=', userId)
+        .executeTakeFirst(),
+    )
+    .pipe(
+      Effect.orDie,
+      Effect.map((row) => {
+        const nodeId = (row as { primaryOrgNodeId: string | null } | undefined)?.primaryOrgNodeId
+        return nodeId === null || nodeId === undefined ? null : { nodeId }
+      }),
+    )
+
 /** the same predicate every individual write is decided by, asked of every row at once */
 export const placementViolations = (tenantId: string) =>
   countStranded((found) => found.where('u.tenantId', '=', tenantId), {

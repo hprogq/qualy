@@ -803,6 +803,9 @@ importers:
       '@qualy/audit-contract':
         specifier: workspace:*
         version: link:../../../contracts/audit
+      '@qualy/auth-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/auth
       '@qualy/formula':
         specifier: workspace:*
         version: link:../../../core/formula

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
-import { Placement } from '@qualy/auth-contract'
+import { Placement, UserPlacement } from '@qualy/auth-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
@@ -9,7 +9,7 @@ import { codeFrom, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import { Audit } from '@qualy/audit-contract/effect'
 
-import { placementViolations, usersBlockingOrgType } from './placement.ts'
+import { placementViolations, primaryNode, usersBlockingOrgType } from './placement.ts'
 import { makeProviders } from './providers.ts'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
 import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
@@ -21,10 +21,11 @@ import { Authenticated, Viewer, layer as sessionLayer, viewerLayer } from './ses
 
 // auth as an Effect layer.
 //
-// It provides two tags from one construction. `Placement` is the port org
-// holds: one question, no database types crossing it, because the connection
-// travels in the fiber and there is nothing left to pass. `Iam` is auth's own
-// surface, which its handlers use and no peer does.
+// It provides three tags from one construction. `Placement` and
+// `UserPlacement` are the ports peers hold: one question each, no database
+// types crossing them, because the connection travels in the fiber and there
+// is nothing left to pass. `Iam` is auth's own surface, which its handlers
+// use and no peer does.
 //
 // Like rbac, this reads org's tables directly and never holds the org
 // service. Keeping it that way is what keeps the service graph acyclic.
@@ -57,6 +58,13 @@ export const make = Effect.fn('Auth.make')(function* () {
       usersBlockingOrgType: (tenantId: string, orgNodeId: string, orgTypeId: string) =>
         withDb(usersBlockingOrgType(tenantId, orgNodeId, orgTypeId)),
     },
+    userPlacement: {
+      // where one person stands, which is a fact rather than the rule
+      // above it. Null when nobody stands anywhere: a deleted unit detaches
+      // a deleted user, and a caller reading an audience from this should
+      // read that as reaching nothing rather than as reaching everything.
+      primaryNode: (tenantId: string, userId: string) => withDb(primaryNode(tenantId, userId)),
+    },
     iam: {
       // the same predicate every individual write is decided by, asked of
       // every row at once
@@ -74,12 +82,17 @@ export const make = Effect.fn('Auth.make')(function* () {
  * One construction provides both tags, so the port org holds and the surface
  * auth's own handlers use come from the same state rather than two.
  */
-const tags: Layer.Layer<Placement | Iam, never, Orm | Rbac | Audit> = Layer.effectContext(
-  Effect.gen(function* () {
-    const { placement, iam } = yield* make()
-    return Context.empty().pipe(Context.add(Placement, placement), Context.add(Iam, iam))
-  }),
-)
+const tags: Layer.Layer<Placement | UserPlacement | Iam, never, Orm | Rbac | Audit> =
+  Layer.effectContext(
+    Effect.gen(function* () {
+      const { placement, userPlacement, iam } = yield* make()
+      return Context.empty().pipe(
+        Context.add(Placement, placement),
+        Context.add(UserPlacement, userPlacement),
+        Context.add(Iam, iam),
+      )
+    }),
+  )
 
 /**
  * What this plugin contributes.
@@ -94,7 +107,7 @@ export { config } from './auth-config.ts'
 
 /** the services alone; the entry composes them with what the plugin registers */
 export const serviceLayer: Layer.Layer<
-  Placement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
+  Placement | UserPlacement | Iam | Authenticated | Viewer | SignIn | LoginSessions,
   never,
   Orm | Rbac | Audit | AuthConfig | LoginDrivers
 > = Layer.mergeAll(tags, sessionLayer, viewerLayer, signInLayer)

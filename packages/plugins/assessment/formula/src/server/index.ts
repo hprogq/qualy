@@ -11,6 +11,7 @@ import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'
+import { UserPlacement } from '@qualy/auth-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import {
   SANDBOX_ABI_VERSION,
@@ -49,7 +50,11 @@ import { formulaApiGroup } from '../api.ts'
 import { FormulaLanguage } from './language.ts'
 import { FormulaLspQuota, bridgeSocket } from './lsp-bridge.ts'
 import { db } from './db.ts'
-import { FormulaTemplateLibrary } from './template-library.ts'
+import {
+  FormulaTemplateLibrary,
+  type TemplateDetail,
+  type TemplateSummary,
+} from './template-library.ts'
 import {
   FormulaBundleFailed,
   FormulaCompileUnavailable,
@@ -94,6 +99,10 @@ const MAX_CANONICAL_CONTRACT_BYTES = 65_536
 /** compiles queue behind one permit; past this depth the service is busy */
 
 const LIST_FINGERPRINT = 'assessment-formula-functions'
+
+/** the template library is one list for everybody who can see it */
+const TEMPLATE_FINGERPRINT = 'assessment-formula-templates'
+
 /** one batch's options are their own query: a cursor from another round's
  *  page describes a position in a different list */
 const bindingFingerprint = (batchId: string) => `assessment-formula-binding-options:${batchId}`
@@ -101,8 +110,28 @@ const bindingFingerprint = (batchId: string) => `assessment-formula-binding-opti
 const FORMULA_REF = 'formula@1'
 const FORMULA_RUNTIME_KIND = 'formula-version'
 
-/** a published version as the chooser shows it; the schemas stay server-side
- *  - a picker names versions, and what a contract IS comes from the preview */
+/** one template as a library row shows it */
+const templateSummaryDto = (row: TemplateSummary) => ({
+  versionId: row.versionId,
+  functionId: row.functionId,
+  functionName: row.functionName,
+  description: row.description,
+  versionNo: Number(row.versionNo),
+  publishedAt: iso(row.publishedAt),
+  authorUserId: row.authorUserId,
+  authorName: row.authorName,
+  parameters: row.parameters,
+  sourceStatus: row.sourceStatus,
+})
+
+const templateDetailDto = (row: TemplateDetail) => ({
+  ...templateSummaryDto(row),
+  sourceTs: row.sourceTs,
+  tests: row.tests as unknown as FormulaTestInput[],
+  inputSchema: row.inputSchema,
+  outputSchema: row.outputSchema,
+})
+
 const bindingOptionDto = (version: BindableFormulaVersion) => ({
   versionId: version.versionId,
   functionId: version.functionId,
@@ -293,6 +322,15 @@ export interface DraftPreview {
 type DraftRefusal = Exclude<CompileRefusal, FormulaTestFailed>
 
 interface FormulaLibraryShape {
+  /**
+   * Whether this person may write scoring formulas at all.
+   *
+   * On the library because it is the library's own capability, and the
+   * template surface needs the same answer: a template's only product action
+   * is becoming one of your own formulas, so somebody who may not write one
+   * has nothing to do there.
+   */
+  readonly requireAuthor: (as: Principal) => Effect.Effect<void, AccessDenied>
   readonly previewDraft: (
     tenantId: string,
     functionId: string,
@@ -1278,6 +1316,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
   // every method runs with the database provided once, here: the bodies
   // above stay plain Orm-requiring effects, and nothing leaks the requirement
   const service: FormulaLibraryShape = {
+    requireAuthor,
     previewDraft: (tenantId, functionId, sourceTs, as) =>
       withDb(previewDraft(tenantId, functionId, sourceTs, as)),
     evaluateDraft: (tenantId, functionId, sourceTs, cases, as) =>
@@ -1454,6 +1493,60 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           principal,
         )
         return { version }
+      }),
+    )
+    .handle(
+      'listFormulaTemplates',
+      Effect.fn('assessmentFormula.listTemplates.handler')(function* ({ query }) {
+        const templates = yield* FormulaTemplateLibrary
+        const placement = yield* UserPlacement
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        const tenantId = principal.tenantId
+        // the capability gate first: a template's only product action is to
+        // become one of your own formulas, so somebody who may not write
+        // them has nothing to do here
+        yield* library.requireAuthor(principal)
+        const stands = yield* placement.primaryNode(tenantId, principal.userId)
+        const size = pageSize(query.limit, DEFAULT_PAGE_SIZE)
+        const cursor = readQueryCursor(query.cursor, TEMPLATE_FINGERPRINT, ['timestamp', 'uuid'])
+        if (cursor === null) return yield* cursorUnusable()
+        const page = yield* templates.listTemplates(
+          tenantId,
+          { userId: principal.userId, nodeId: stands?.nodeId ?? null },
+          {
+            limit: size,
+            ...(cursor === undefined
+              ? {}
+              : { after: { publishedAt: cursor[0]!, versionId: cursor[1]! } }),
+          },
+        )
+        return {
+          items: page.items.map(templateSummaryDto),
+          nextCursor:
+            page.more && page.last !== null
+              ? encodeQueryCursor(TEMPLATE_FINGERPRINT, [
+                  page.last.publishedAt,
+                  page.last.versionId,
+                ])
+              : null,
+        }
+      }),
+    )
+    .handle(
+      'getFormulaTemplate',
+      Effect.fn('assessmentFormula.getTemplate.handler')(function* ({ params }) {
+        const templates = yield* FormulaTemplateLibrary
+        const placement = yield* UserPlacement
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        yield* library.requireAuthor(principal)
+        const stands = yield* placement.primaryNode(principal.tenantId, principal.userId)
+        const template = yield* templates.getTemplate(principal.tenantId, params.versionId, {
+          userId: principal.userId,
+          nodeId: stands?.nodeId ?? null,
+        })
+        return { template: templateDetailDto(template) }
       }),
     )
     .handle(

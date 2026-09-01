@@ -17,7 +17,7 @@
 
 import { Effect, Layer, Context } from 'effect'
 import { createHash } from 'node:crypto'
-import { sql } from 'kysely'
+import { sql, type RawBuilder } from 'kysely'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
@@ -29,6 +29,7 @@ import { FormulaVersionSharingChanged } from '../actions.ts'
 import {
   FormulaFunctionNotFound,
   FormulaSharingConflict,
+  FormulaTemplateNotFound,
   FormulaVersionNotFound,
 } from './errors.ts'
 
@@ -58,9 +59,55 @@ export const sharingToken = (orgNodeIds: readonly string[]): string =>
     .update([...orgNodeIds].sort().join('\n'), 'utf8')
     .digest('hex')
 
+export interface TemplateSummary {
+  readonly versionId: string
+  readonly functionId: string
+  readonly functionName: string
+  readonly description: string | null
+  readonly versionNo: number
+  readonly publishedAt: Date | string
+  /** null when the author's row is gone; a template does not depend on it */
+  readonly authorUserId: string
+  readonly authorName: string | null
+  readonly parameters: readonly string[]
+  readonly sourceStatus: 'active' | 'archived'
+}
+
+export interface TemplateDetail extends TemplateSummary {
+  readonly sourceTs: string
+  readonly tests: readonly Record<string, unknown>[]
+  readonly inputSchema: unknown
+  readonly outputSchema: unknown
+}
+
+export interface TemplatePage {
+  readonly items: readonly TemplateSummary[]
+  readonly last: { readonly publishedAt: string; readonly versionId: string } | null
+  readonly more: boolean
+}
+
 export class FormulaTemplateLibrary extends Context.Service<
   FormulaTemplateLibrary,
   {
+    /**
+     * The published versions this reader may discover.
+     *
+     * `viewerNodeId` is where they stand, and null means nowhere - which
+     * reaches nothing rather than everything.
+     */
+    readonly listTemplates: (
+      tenantId: string,
+      viewer: { readonly userId: string; readonly nodeId: string | null },
+      page?: {
+        readonly limit?: number
+        readonly after?: { readonly publishedAt: string; readonly versionId: string }
+      },
+    ) => Effect.Effect<TemplatePage>
+    readonly getTemplate: (
+      tenantId: string,
+      versionId: string,
+      viewer: { readonly userId: string; readonly nodeId: string | null },
+    ) => Effect.Effect<TemplateDetail, FormulaTemplateNotFound>
     readonly getSharing: (
       tenantId: string,
       functionId: string,
@@ -83,6 +130,33 @@ export class FormulaTemplateLibrary extends Context.Service<
     >
   }
 >()('@qualy/plugin-assessment-formula/FormulaTemplateLibrary') {}
+
+/** the columns every template read projects, summary and detail alike */
+const TEMPLATE_COLUMNS = [
+  'v.id as versionId',
+  'v.functionId as functionId',
+  'f.name as functionName',
+  'f.description as description',
+  'v.versionNo as versionNo',
+  'v.publishedAt as publishedAt',
+  'v.inputSchema as inputSchema',
+  'f.createdBy as authorUserId',
+  'u.displayName as authorName',
+  'f.archivedAt as archivedAt',
+] as const
+
+interface TemplateRow {
+  readonly versionId: string
+  readonly functionId: string
+  readonly functionName: string
+  readonly description: string | null
+  readonly versionNo: number
+  readonly publishedAt: Date | string
+  readonly inputSchema: unknown
+  readonly authorUserId: string
+  readonly authorName: string | null
+  readonly archivedAt: unknown
+}
 
 /** an org node as this service needs it: its identity and its place */
 interface NodeRow {
@@ -171,7 +245,151 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
       token: sharingToken(scopes.map((scope) => scope.orgNodeId)),
     }))
 
+  /**
+   * Whether one published version is a template FOR THIS READER.
+   *
+   * One predicate, and the same one behind every way of reaching a template
+   * - listing them, opening one, copying one. Discovery and copying must
+   * never drift into two rules: a version excluded from a reader's list but
+   * copyable by version id would be a hole shaped exactly like the product
+   * decision it contradicts.
+   *
+   * Their own work is not a template to them; it is already in their
+   * library. Standing nowhere reaches nothing, which is why a null node
+   * short-circuits rather than widening the query.
+   */
+  const visibleTemplate = (
+    tenantId: string,
+    viewerUserId: string,
+    viewerNodeId: string,
+  ): RawBuilder<boolean> =>
+    sql<boolean>`(
+      f.created_by <> ${viewerUserId}::uuid
+      and exists (
+        select 1
+          from assessment_formula_share_scopes s
+          join org_nodes scope
+            on scope.tenant_id = s.tenant_id and scope.id = s.org_node_id
+          join org_nodes viewer
+            on viewer.tenant_id = s.tenant_id and viewer.id = ${viewerNodeId}::uuid
+         where s.tenant_id = ${tenantId}::uuid
+           and s.version_id = v.id
+           and viewer.path <@ scope.path
+      )
+    )`
+
+  const summaryOf = (row: TemplateRow): TemplateSummary => ({
+    versionId: row.versionId,
+    functionId: row.functionId,
+    functionName: row.functionName,
+    description: row.description,
+    versionNo: Number(row.versionNo),
+    publishedAt: row.publishedAt,
+    authorUserId: row.authorUserId,
+    authorName: row.authorName,
+    parameters: Object.keys(
+      (row.inputSchema as { properties?: Record<string, unknown> }).properties ?? {},
+    ).sort(),
+    sourceStatus: row.archivedAt === null ? 'active' : 'archived',
+  })
+
   return FormulaTemplateLibrary.of({
+    listTemplates: (tenantId, viewer, page) =>
+      Effect.gen(function* () {
+        const size = Math.max(1, page?.limit ?? 50)
+        if (viewer.nodeId === null) return { items: [], last: null, more: false }
+        const nodeId = viewer.nodeId
+        const after = page?.after
+        const rows = yield* database(
+          db.query((k) => {
+            let query = k
+              .selectFrom('FormulaVersion as v')
+              .innerJoin('FormulaFunction as f', (join) =>
+                join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
+              )
+              // LEFT, because authorship carries no foreign key: a template
+              // must not disappear because the row naming its author did
+              .leftJoin('User as u', (join) =>
+                join.onRef('u.tenantId', '=', 'f.tenantId').onRef('u.id', '=', 'f.createdBy'),
+              )
+              .select(TEMPLATE_COLUMNS)
+              .where('v.tenantId', '=', tenantId)
+              .where(visibleTemplate(tenantId, viewer.userId, nodeId))
+            if (after !== undefined) {
+              // newest first, the id closing the boundary: two versions can
+              // share an instant, and without a unique last key a page edge
+              // would drop rows or repeat them
+              query = query.where(
+                sql<boolean>`(
+                  v.published_at < ${after.publishedAt}::timestamptz
+                  or (v.published_at = ${after.publishedAt}::timestamptz
+                      and v.id < ${after.versionId}::uuid)
+                )`,
+              )
+            }
+            return query
+              .orderBy('v.publishedAt', 'desc')
+              .orderBy('v.id', 'desc')
+              .limit(size + 1)
+              .execute()
+          }),
+        ).pipe(Effect.orDie)
+        const all = rows as unknown as TemplateRow[]
+        const items = all.slice(0, size).map(summaryOf)
+        const tail = all[items.length - 1]
+        return {
+          items,
+          last:
+            tail === undefined
+              ? null
+              : {
+                  publishedAt: new Date(tail.publishedAt).toISOString(),
+                  versionId: tail.versionId,
+                },
+          more: all.length > size,
+        }
+      }),
+
+    getTemplate: (tenantId, versionId, viewer) =>
+      Effect.gen(function* () {
+        // the same predicate the listing uses, asked of one row: a version
+        // somebody can name but not discover is not a template to them, and
+        // saying so any other way would tell them it exists
+        if (viewer.nodeId === null) return yield* new FormulaTemplateNotFound()
+        const nodeId = viewer.nodeId
+        const row = yield* database(
+          db.query((k) =>
+            k
+              .selectFrom('FormulaVersion as v')
+              .innerJoin('FormulaFunction as f', (join) =>
+                join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
+              )
+              .leftJoin('User as u', (join) =>
+                join.onRef('u.tenantId', '=', 'f.tenantId').onRef('u.id', '=', 'f.createdBy'),
+              )
+              .select([...TEMPLATE_COLUMNS, 'v.sourceTs as sourceTs', 'v.tests as tests'])
+              .select('v.outputSchema as outputSchema')
+              .where('v.tenantId', '=', tenantId)
+              .where('v.id', '=', versionId)
+              .where(visibleTemplate(tenantId, viewer.userId, nodeId))
+              .executeTakeFirst(),
+          ),
+        ).pipe(Effect.orDie)
+        if (row === undefined) return yield* new FormulaTemplateNotFound()
+        const found = row as unknown as TemplateRow & {
+          sourceTs: string
+          tests: readonly Record<string, unknown>[]
+          outputSchema: unknown
+        }
+        return {
+          ...summaryOf(found),
+          sourceTs: found.sourceTs,
+          tests: found.tests,
+          inputSchema: found.inputSchema,
+          outputSchema: found.outputSchema,
+        }
+      }),
+
     getSharing: (tenantId, functionId, versionNo, as) =>
       database(
         Effect.gen(function* () {

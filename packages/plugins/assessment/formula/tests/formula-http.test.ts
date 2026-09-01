@@ -45,6 +45,7 @@ import { configurationAccessLayer } from '@qualy/plugin-assessment/server/config
 import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/scoring-authoring-access'
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
 import { templateLibraryLayer } from '../src/server/template-library.ts'
+import { UserPlacement } from '@qualy/auth-contract'
 import { formulaLanguageLayer } from '../src/server/language.ts'
 import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 
@@ -160,6 +161,10 @@ beforeAll(async () => {
     scoringAuthoringAccessLayer,
     bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
     templateLibraryLayer,
+    // this suite never asks the template surface anything - where a person
+    // stands is borne against the real placement in its own suite - so the
+    // port is answered rather than assembled
+    Layer.succeed(UserPlacement, { primaryNode: () => Effect.succeed(null) }),
   ).pipe(Layer.provideMerge(services))
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(
