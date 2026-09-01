@@ -9,6 +9,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { stillFinalizing, traceLayerLifecycle } from '@qualy/plugin-kit/shutdown-trace'
 import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
@@ -47,6 +48,31 @@ const spec = `${QUALY_API_PREFIX}/openapi.json` as const
 // run - a stuck scope must not also leak the scratch database - and every
 // error surfaces; nothing here exists to make a hung run look green.
 const TEARDOWN_STAGE_BUDGET_MS = 30_000
+
+/**
+ * The finalizer observer, installed on the scope THIS FILE owns.
+ *
+ * The assembler already marks every plugin layer's teardown boundary, and
+ * the host installs an observer for them - but the host is `main.ts`, and
+ * none of these tests run it. Each `it` here makes its own scope, builds
+ * the shell into it and closes it itself, so the markers fired during that
+ * close had nowhere to report to: a run that hung in `scope-close` could
+ * only ever say `scope-close`, never which layer was still releasing.
+ *
+ * Installed here rather than at each call site because this is the single
+ * seam every one of these tests already closes through, and the window that
+ * matters is exactly the one it owns: the markers fire while the scope is
+ * closing, and the observer is removed only once that has finished.
+ */
+const traceTeardown = (label: string) => {
+  const at = () => new Date().toISOString().slice(11, 23)
+  traceLayerLifecycle({
+    finalizing: (name) => console.log(`[teardown ${label}] finalizer start ${name} at ${at()}`),
+    finalized: (name, elapsedMs) =>
+      console.log(`[teardown ${label}] finalizer done ${name} in ${elapsedMs}ms`),
+  })
+}
+
 const teardownStaged = async (
   label: string,
   scope: Scope.Scope,
@@ -54,6 +80,7 @@ const teardownStaged = async (
 ) => {
   const at = () => new Date().toISOString().slice(11, 23)
   const failures: unknown[] = []
+  traceTeardown(label)
   const stage = async (name: string, run: () => Promise<void>) => {
     console.log(`[teardown ${label}] ${name} begins at ${at()}`)
     const started = performance.now()
@@ -78,13 +105,27 @@ const teardownStaged = async (
       )
     } catch (error) {
       console.log(`[teardown ${label}] ${name} FAILED at ${at()}: ${String(error)}`)
+      // the whole point of the observer: name the layers that began
+      // releasing and never finished, so the next occurrence indicts one
+      // plugin rather than the whole assembly
+      const stuck = stillFinalizing()
+      console.log(
+        `[teardown ${label}] still releasing: ${stuck.length === 0 ? '(none reported)' : stuck.join(', ')}`,
+      )
       failures.push(error)
     } finally {
       clearTimeout(watch)
     }
   }
-  await stage('scope-close', () => Effect.runPromise(Scope.close(scope, Exit.void)))
-  await stage('db-dispose', () => db.dispose())
+  try {
+    await stage('scope-close', () => Effect.runPromise(Scope.close(scope, Exit.void)))
+    await stage('db-dispose', () => db.dispose())
+  } finally {
+    // only once the close has finished, or given up: an observer removed
+    // any earlier would stop recording halfway through the window it exists
+    // to describe
+    traceLayerLifecycle(undefined)
+  }
   if (failures.length === 1) throw failures[0]
   if (failures.length > 1) {
     throw new AggregateError(failures, `effect-api teardown failed in both stages (${label})`)
