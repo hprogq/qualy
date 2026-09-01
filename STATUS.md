@@ -12608,3 +12608,65 @@ frozen-routes 删 `GET /assessment/formula-owner-options`;error-codes(删 `Formu
 落点在已有的那处 defect 驯服(此前只认 `SocketError`),三个 RPC 客户端全覆盖:runtime 侧 `sandbox/src/service.ts`,authoring 与 language bridge 共用的 `formula/src/server/transport.ts`(它本就是为此抽出来的共享边界),以及 `authoring.ts` 自己那处。
 
 承重:`remote.test.ts` 起一个**真的 RpcServer**,只在 Invoke 的 success schema 上差一代(缺 provenance),经真 socket 对话——修复前 25s 不落地,修复后 713ms 返回 typed outage;`transport.test.ts`(新建)直接守共享边界的三条(不可达 → outage、读不懂 → 同一个 outage、真 bug 照飞)。差分各自转红。
+
+## 公式模板:共享与分叉(2026-09-01)
+
+作者私有的公式域补上了复用这一条路,且没有推翻 7.4a 与所有权重构的任何一条:
+
+```
+私有 FormulaFunction → publish → 不可变 FormulaVersion
+        ↓ 作者显式把某个版本共享给某个组织节点
+     模板库(别人发现、看源码)
+        ↓ copy(snapshot fork,新的私有函数)
+自己 publish → 才进自己的 picker
+```
+
+**共享给的是发现权与复制权,不是绑定权。** 这是本轮的红线:A 把 V1 共享到 B 所在学院,B 在模板库看得见、能读到源码、能复制,但把题目直接指向 `A.V1` 仍然 `formula-not-yours`。`authoring-policy.ts` / `BindableFormulaCatalog` / `formula@1` 一行没改,新建的 `fork-isolation.test.ts` 把「共享」这一维补进那条既有红线,并证明分叉发布之后 B 自己的版本才可绑、才进 B 的 picker。
+
+### 已裁决(冻结)
+
+1. **共享的是 Version 不是 Function**:共享 V1 不意味着明天发的 V2 自动暴露。
+2. **archive 与 share 正交**:函数归档后已共享的版本仍在模板库、仍可 copy,只标注「来源已归档」;停止传播的唯一动作是 unshare。因此 sharing 路径**只看所有权与权限,绝不因 `archivedAt` 拒绝**——顺手复用一个「可编辑」guard 就会变成「一归档再也无法取消共享」。
+3. **Unshare 只停止未来**:已 copy 出去的函数、已发布的分叉、已有 binding、源版本自身的 replay 全不受影响。共享是分发政策,不是 DRM。
+4. **copy 是 snapshot fork**:draft、版本、运行与权限状态完全脱钩;provenance 只保证 `copiedFromVersionId`,逐层记(C 记 B.V1,不 flatten 回 A.V3),无 FK,读它不做任何 audience 判断——否则 A 一 unshare,B 自己的页面就打不开了。
+5. **旧数据零 backfill**:现有函数 0 条 share scope、`copiedFromVersionId = null`。
+
+### 三条实现上必须写死的形状
+
+**一个 `visibleTemplate` 谓词,list / detail / copy 共用。** 「排除自己写的」若只写在列表上会漏一道缝:A 看不到自己共享的版本,却能直接 `POST /formula-templates/A.V1/copies` 复制自己。发现权与复制权由同一个谓词回答,就不会漂成两套规则。模板库的 404 全部是同一个 `FormulaTemplateNotFound`:版本不存在、没共享、audience 不覆盖我、是我自己的、我没有站位——分开报会让任何持有 uuid 的人问出它是否存在。
+
+**锁序:version row → share rows。** `transaction()` 默认 read committed(`orm.ts:158-162` 原文「each statement sees its own moment」),所以「同事务即线性点」不成立:可见性 SELECT 之后另一个事务完全可以 unshare 并提交。copy 取 `FOR SHARE`,`replaceSharing` 取 `FOR UPDATE`。先 unshare 提交则 copy 404,先 copy 持锁则 unshare 排队等待。
+
+**非法节点必须在 `canAt` 之前验证存在。** 实查:`Rbac.canAt` 对不存在的 target node 返回 **false**(实现刻意 INNER JOIN 目标节点),不是「节点不存在」的错误。直接 `canAt` 会把「不存在 / 跨租户 / 真实但无权限」三种都变成 403。处理顺序写死为:去重 → 节点存在性(400)→ **在最终集合上**判祖孙冗余(400)→ 算 delta → **只对新增**判 `canAt`(403)→ delta 写入。冗余判定必须针对最终 desired set:`current={学院}`、`desired={班级}` 实际是「移除学院、新增班级」,拿 `current ∪ added` 判会错误拒绝。
+
+### 权限的不对称
+
+`assessment.formula.share` 是 **org-node target**(`canAt`),与 tenant target 的 `formula.author` 不同。**扩大受众需要那个节点上的权限,收回从不需要**——否则一个人失去权限之后,已经发出去的共享就永远撤不回来了。服务端与界面一致:无 `formula.share` 时不显示新增控件,已有 scope 仍可删。`/assessment/formula-share-options` 在无权限时返回 **200 + 空列表**而不是 403(`listAuthorizedScope` 本就在无该权限时返回 `{tenantWide:false, anchors:[]}`),并且**响应不含 `path`**——照抄 auth `placeableNodes` 的理由:交出物化路径等于把组织的形状公布给任何持有一个叶子的人。
+
+audience 判定与 options 端点是**两个不同的问题**,这也是它们用两套写法的原因:「viewer 是否位于某个共享 scope 之下」是业务分发语义,formula 自己写 ltree containment;「我持有 `formula.share` 的授权范围覆盖哪些节点」就是 RBAC scope projection,走 `listAuthorizedScope` + `scopeCoverage`。
+
+### 承重与差分
+
+| 位置                               | 承重                                                                                                                                                     | 差分                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| migration-upgrade                  | 旧函数 `copied_from_version_id is null`、share 表为空;删 org 节点 → share 行消失而版本不动;删租户 → 整图清干净                                           | —                                                                                    |
+| version-sharing(5)                 | 共享自己的成功 / 别人的 404;扩大要权限、收回不要;不存在节点 → **400 而非 403**;stale token → 409 且未变 scope 的 `sharedAt` 不动;归档函数仍可管理        | 摘 token 比对 → 并发红;全量删建 → `sharedAt` 红;存在性挪到 `canAt` 之后 → 400/403 红 |
+| template-discovery(5)              | 子树可见、兄弟学院不可见、只共享 V1 则 V2 不出现、租户根 = 全租户;归档仍在列表并标注;unshare 后消失且详情 404;作者行被删仍能列出;无站位 → 空             | audience 改「同节点」→ 后代红;INNER JOIN 作者 → 作者缺失红                           |
+| template-copy(5)                   | `createdBy` 归 B、source 字符串精确相等、tests JSON 深度相等、`copiedFromVersionId` 精确、零 FormulaVersion、零沙箱;B 改草稿 A 不变;超 `SOURCE_LIMIT` 拒 | 去掉 `FOR SHARE` → 并发红                                                            |
+| fork-isolation(2,本轮新建)         | **共享后仍 `formula-not-yours`**、不在 B 的 picker 里、分叉发布后才可绑且只有分叉进 picker;unshare + 归档源之后分叉与其 provenance 全不受影响            | 取消 `createdBy` 比较 → 红线红                                                       |
+| formula-templates.browser(5)       | 列表只出现共享给我的、归档标注、详情看得到源码、copy 后跳到新函数、**没有任何同步/升级控件**                                                             | —                                                                                    |
+| formula-version-sharing.browser(4) | 增删共享(wire 发的是最终受众而非 diff)、无权限时只能减不能增、未共享说明白、409 是可读拒绝                                                               | 无 options 仍渲染新增 → 红;只发新增项 → 红                                           |
+
+### 门禁与账
+
+新增 5 条唯一 path / 6 个 endpoint(sharing GET+PUT 同 path、template list、template detail、copies、share-node options)、2 个 wire 错误码(`FormulaSharingConflict` 409、`FormulaTemplateNotFound` 404)、2 个审计 action(`FormulaVersionSharingChanged` **no-op 不记**、`FormulaTemplateCopied` **单条**、target 是新函数)。permission 计数 30 → 31,`qualy resolve` 重写 lock。formula 新增 `@qualy/auth-contract` 依赖:auth 同一个 `make()` 现在同时提供 `Placement` 与新的窄 tag `UserPlacement`(没有往 `Placement` 上加方法——它刻意只承载 org 问 auth 的那一个问题,扩它会逼所有 stub 补一个与测试无关的方法)。
+
+`assessment_formula_share_scopes` 是本仓库第一条指向 `org_nodes` 的 CASCADE。理由是生命周期不同,不是「其余都是 restrict」(auth 的 `users → org_nodes` 本就是 `on delete set null`):share scope 是活的分发政策,节点没了它就没有意义;而 `FormulaVersion → FormulaFunction` 的 RESTRICT 守的是永久执行事实。
+
+### teardown 挂死:机制已经点名,现场还没有
+
+`2ea44cd5` 的池诊断在 CI 上给出了答案的一半:关闭时 **`total: 3, idle: 2, waiting: 0`,30 秒稳定不变**——有一条池连接被 checkout 之后再没还回来,而且没有任何人在排队。所以既不是慢的对端,也不是 finalizer 互锁,是**一次连接泄漏**。泄漏点仍未点名,`orm.ts:84` 非事务路径上那个从不关闭的 `orm.em.fork()` 是当前的第一嫌疑。本地仍未复现(5 次以上全绿)。
+
+### 下一轮移交(7.5)
+
+模板域到此闭合,不做 follow-latest / 同步升级 / 协作编辑 / 所有权转移——这些是被明确否掉的,不是没来得及做。仍挂账的两项是 7.4a 期间用户裁定「不进本轮 Plan、单独裁决」的 typed authoring UX 债:refinement 控件与详细的兼容性诊断。
