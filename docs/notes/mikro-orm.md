@@ -140,3 +140,16 @@ peer 完全没看见调用方的事务。
   新建表同迁移内的 CHECK 走 metadata 渲染,不受影响。
 - 同日另一处:部分唯一索引的 `where state in (...)` 谓词要按 `pg_get_indexdef` 的回读形态拼写,
   否则 comparator 对 expression index 的文本配对永远 diff 自己。
+
+## 被拒绝的 COMMIT 会永久占住池连接(7.1.13,2026-09-02 实测)
+
+`em.begin()/commit()/rollback()` 走 Kysely 的 controlled transaction,连接只在 COMMIT / ROLLBACK
+**成功之后**才归还池(`ControlledTransaction.commit()` 里的 `release()`);而 `em.commit()` 抛错时
+既不回滚也不清 `#transactionContext`。于是延迟约束、serializable 冲突、会话被终止这类「服务端在
+COMMIT 那一刻拒绝」的情况,pg client 永远 checked out,`pool.end()` 等它到天荒地老,`orm.close()`
+不返回。实测形态:后端 `idle`、`xact_start` 为空、最后一句 `commit`,而池仍记着一条在外。
+
+本仓库的 `transaction()` 自己收尾(`orm.ts` 的 `settle`):COMMIT 被拒 → ROLLBACK(健康连接上对
+已 abort 的事务回滚成功即归还);ROLLBACK 也失败 → 会话已死,经账本把 client 按坏连接交还池。
+承重 `packages/plugins/infra/database/tests/pool-release.test.ts`;上游草稿
+`docs/upstream/mikro-orm-8-refused-commit-keeps-the-pool-client.md`。

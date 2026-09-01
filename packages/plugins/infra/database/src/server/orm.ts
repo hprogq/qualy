@@ -1,10 +1,29 @@
 import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-orm/postgresql'
 import { type EntitySchema } from '@mikro-orm/core'
 import type { Pool } from 'pg'
-import { Context, Effect, Exit, Fiber, Layer, Metric, Option, Redacted } from 'effect'
+import {
+  Context,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Metric,
+  Option,
+  Redacted,
+  References,
+} from 'effect'
 import { QualyNamingStrategy } from '../naming.ts'
 import { DatabaseConfig } from './config.ts'
 import { unwrapPgError } from '../pg-errors.ts'
+import {
+  checkoutOwner,
+  describeBackend,
+  describeBackends,
+  describeCheckout,
+  PoolLedger,
+  type CheckoutOwner,
+} from './checkouts.ts'
 
 // The ORM as an Effect resource, built from an entity set the host hands in.
 //
@@ -167,6 +186,65 @@ export interface TransactionOptions {
 /** how often a pool that will not close reports what it is still holding */
 const POOL_CLOSE_REPORT_MS = 5_000
 
+/** the ledger watching each ORM's pool, for the release path to consult */
+const ledgers = new WeakMap<MikroORM, PoolLedger>()
+
+/**
+ * Ends a transaction, and returns its connection to the pool whatever
+ * happened.
+ *
+ * The driver hands a transaction's client back only once COMMIT or ROLLBACK
+ * has succeeded (kysely dist/kysely.js `ControlledTransaction`, whose
+ * release is the deferred `provideControlledConnection` resolves), and the
+ * ORM's `commit()` throws with the transaction still attached. So a commit
+ * the server refuses - a deferred constraint, a serialization failure -
+ * would leave the slot checked out for the life of the process, and the
+ * pool would wait for it forever at shutdown. Measured, before this: the
+ * backend idle with `commit` as its last statement, and the scope never
+ * closing. A rollback returns it; when even that fails the session is gone
+ * and the ledger hands the client back as broken.
+ *
+ * The refusal itself still propagates, as it always did.
+ */
+const settle = async (
+  orm: MikroORM,
+  em: PostgresEntityManager,
+  owner: CheckoutOwner,
+  exit: Exit.Exit<unknown, unknown>,
+): Promise<void> => {
+  try {
+    if (Exit.isSuccess(exit)) await em.commit()
+    else await em.rollback()
+  } catch (refusal) {
+    if (Exit.isSuccess(exit)) {
+      try {
+        await em.rollback()
+      } catch {
+        // the session is gone as well; the ledger below still knows the client
+      }
+    }
+    ledgers
+      .get(orm)
+      ?.release(owner.token, refusal instanceof Error ? refusal : new Error(String(refusal)))
+    throw refusal
+  }
+}
+
+/** who is asking, as the ledger will describe it if the checkout never returns */
+const ownerOf = (kind: CheckoutOwner['kind']) =>
+  Effect.gen(function* () {
+    const parent = yield* Effect.option(Effect.currentParentSpan)
+    const annotations = yield* References.CurrentLogAnnotations
+    const source = annotations.source
+    return {
+      kind,
+      token: {},
+      fiber: Fiber.getCurrent()?.id,
+      span: Option.isSome(parent) && parent.value._tag === 'Span' ? parent.value.name : undefined,
+      source: typeof source === 'string' ? source : undefined,
+    } satisfies CheckoutOwner
+  })
+
 export const transaction = <A, E, R>(
   body: Effect.Effect<A, E, R>,
   options?: TransactionOptions,
@@ -179,6 +257,7 @@ export const transaction = <A, E, R>(
 
     const orm = yield* Orm
     const em = orm.em.fork()
+    const owner = yield* ownerOf('transaction')
     // the mode has to be set before the transaction reads anything, which is
     // why it is spelled here and not by the caller's first query
     const mode = [
@@ -186,16 +265,13 @@ export const transaction = <A, E, R>(
       ...(options?.readOnly === true ? ['read only'] : []),
     ].join(', ')
     return yield* Effect.acquireUseRelease(
-      Effect.promise(() => em.begin()),
+      Effect.promise(() => checkoutOwner.run(owner, () => em.begin())),
       () =>
         (mode === ''
           ? body
           : Effect.promise(() => em.execute(`set transaction ${mode}`)).pipe(Effect.andThen(body))
         ).pipe(Effect.provideService(TransactionManager, em)),
-      (_, exit) =>
-        Exit.isSuccess(exit)
-          ? Effect.promise(() => em.commit())
-          : Effect.promise(() => em.rollback()),
+      (_, exit) => Effect.promise(() => settle(orm, em, owner, exit)),
     ).pipe(Effect.withSpan('db.transaction', DB_SPAN))
   })
 
@@ -248,7 +324,20 @@ export class QueryFailed extends Error {
 export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =>
   Effect.suspend(() => {
     const started = performance.now()
-    return Effect.tryPromise({ try: run, catch: (cause) => new QueryFailed(cause) }).pipe(
+    // the fiber alone: a statement outside a transaction gives its
+    // connection back in the driver's own finally, so this only has to say
+    // who was mid-statement if the pool is asked while one is
+    const owner: CheckoutOwner = {
+      kind: 'query',
+      token: {},
+      fiber: Fiber.getCurrent()?.id,
+      span: undefined,
+      source: undefined,
+    }
+    return Effect.tryPromise({
+      try: () => checkoutOwner.run(owner, run),
+      catch: (cause) => new QueryFailed(cause),
+    }).pipe(
       Effect.onExit((exit) =>
         Metric.update(
           Metric.withAttributes(operationDuration, operationAttributes(exit)),
@@ -313,9 +402,11 @@ export class DatabaseStartupFailed extends Error {
  * documented pg API - no private field is read. The connection-count
  * conventions these feed are still Development-status in OTel semconv, so
  * the names may follow upstream renames; acquisition WAIT TIME is the one
- * pool number deliberately not collected, because measuring it means
- * wrapping the acquire path itself - if it becomes diagnostically
- * necessary, that is the §12.1 re-evaluation trigger, not a hack here.
+ * pool number deliberately not collected. The acquire path is now wrapped
+ * (checkouts.ts, for the teardown that would not name its holder), which
+ * was the §12.1 re-evaluation trigger - and the re-evaluation still says
+ * no to the metric: attribution needs one tag on the client handed out,
+ * a wait-time histogram needs a clock around every queue position.
  */
 // UpDownCounters per semconv, not gauges: a non-incremental effect counter
 // exports as a non-monotonic sum, and the sampler below feeds it deltas so
@@ -345,6 +436,50 @@ const pendingRequests = Metric.withAttributes(pendingRequestsCount, {
   unit: '{request}',
 })
 
+/**
+ * What the pool is still holding, said every few seconds while it closes.
+ *
+ * Read on every tick, not captured once: the previous shape evaluated the
+ * counters when the report was built, so a run that printed `total: 3,
+ * idle: 2` for thirty seconds was repeating a snapshot taken before
+ * `pool.end()` had even removed the idle two. The server is asked once, on
+ * the first report - it is a session of its own, and one autopsy is what
+ * the next occurrence needs.
+ */
+const reportWhileClosing = (
+  pool: () => Pool | undefined,
+  ledger: PoolLedger,
+  url: string,
+): Effect.Effect<never> => {
+  const report = Effect.suspend(() => {
+    const current = pool()
+    const now = Date.now()
+    return Effect.logWarning('the connection pool is still closing').pipe(
+      Effect.annotateLogs({
+        total: current?.totalCount,
+        idle: current?.idleCount,
+        waiting: current?.waitingCount,
+        outstanding: ledger.outstanding().map((checkout) => describeCheckout(checkout, now)),
+      }),
+    )
+  })
+  const autopsy = Effect.gen(function* () {
+    const ours = new Set(ledger.outstanding().map((checkout) => checkout.pid))
+    const backends = yield* describeBackends(url).pipe(Effect.timeoutOption(Duration.seconds(5)))
+    if (Option.isNone(backends)) {
+      return yield* Effect.logWarning('pg_stat_activity did not answer within 5s')
+    }
+    for (const backend of backends.value) {
+      yield* Effect.logWarning(describeBackend(backend, ours.has(backend.pid)))
+    }
+  }).pipe(Effect.catchCause((cause) => Effect.logWarning('could not read pg_stat_activity', cause)))
+  return Effect.sleep(POOL_CLOSE_REPORT_MS).pipe(
+    Effect.andThen(report),
+    Effect.andThen(autopsy),
+    Effect.andThen(Effect.forever(Effect.sleep(POOL_CLOSE_REPORT_MS).pipe(Effect.andThen(report)))),
+  )
+}
+
 export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Entities> =
   Layer.effect(
     Orm,
@@ -352,6 +487,7 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
       const config = yield* DatabaseConfig
       const entities = yield* Entities
       let pool: Pool | undefined
+      const ledger = new PoolLedger()
       const orm = yield* Effect.acquireRelease(
         Effect.tryPromise({
           try: () =>
@@ -363,6 +499,7 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
               driverOptions: {
                 onPoolCreated: (created: Pool) => {
                   pool = created
+                  ledger.attach(created)
                 },
               },
               // an assembly part way through the migration has entities for
@@ -382,19 +519,18 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
             // that this plugin is still releasing - which is where the
             // search used to stop. Nothing below shortens the wait: a
             // release that gave up would turn a leaked connection into a
-            // silent success. It only says, while it waits, what the pool
-            // is still holding, so the next occurrence names the leak.
+            // silent success. It only says, while it waits, what is still
+            // out - whose checkout, on which backend, and what the server
+            // says that backend is doing - so the next occurrence names
+            // the holder rather than the plugin.
             const stuck = yield* Effect.forkChild(
-              Effect.logWarning('the connection pool is still closing', {
-                total: pool?.totalCount,
-                idle: pool?.idleCount,
-                waiting: pool?.waitingCount,
-              }).pipe(Effect.delay(POOL_CLOSE_REPORT_MS), Effect.forever),
+              reportWhileClosing(() => pool, ledger, Redacted.value(config.url)),
             )
             yield* Fiber.join(closing)
             yield* Fiber.interrupt(stuck)
           }),
       )
+      ledgers.set(orm, ledger)
       // Wall-clock sampling on purpose. A node timer instead of an Effect
       // sleep keeps the loop off the ambient Clock - test suites replace
       // that with a TestClock whose quiescence-wait a forever-sleeping

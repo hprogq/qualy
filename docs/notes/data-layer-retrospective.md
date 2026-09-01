@@ -36,6 +36,7 @@
 | dirty/projection 基础设施     | P3 第一个真实派生数据场景                                                              |
 | 迁移 mode verify(校验不执行)  | 应用容器无 DDL 权限的生产部署真实出现                                                  |
 | 插件自带 migration 序列       | 出现需独立发版的外部插件生态(版本 DAG/多 ledger)                                       |
+| ~~池连接账本(checkout 归属)~~ | ~~关闭时池连接不归还且计数说不出是谁~~ **已于 2026-09-02 触发并落地**(见下)            |
 
 ## 冻结规则
 
@@ -52,3 +53,23 @@ clean-room 测试(挑一组插件、清空迁移目录、从零生成 lineage、
 所以正确的触发条件应表述为:**插件需要携带 Drizzle 表达不了的 SQL,且安装者不应手改宿主迁移**。这条与 trigger 数量无关,零个 trigger 时它就已经成立。
 
 落地范围刻意保持窄:`baselineDir` 片段编译 + `dependsOn` 解析期校验 + clean-room 回归测试。**未恢复** installed/assembly/behavior 三 lock、对象 registry、自动 PURGE、运行时 DDL 注册、每插件独立 ledger。
+
+## 2026-09-02:池连接账本已触发
+
+触发它的是 `apps/server/tests/effect-api.test.ts` 在 CI 上偶发的 teardown 挂死(最近一次
+run 33481203308):`@qualy/plugin-database` 的 release 不返回,池计数只能说「一条连接在外、无人排队」,
+说不出是谁、在哪个后端、服务端认为它在做什么。orm.ts 里原先的注释把「包住 acquire 路径」保留为
+§12.1 的重新评估触发点;这次事故正是那个触发。
+
+落地范围刻意保持窄:
+
+- `checkouts.ts`:一份 `AsyncLocalStorage` 把 `transaction`/`query` 的发起者(fiber、父 span、
+  `source` 注解)带进池的 acquire;给驱动交出的 `pg.Pool` 包一层 `connect`,给**返回的 client**
+  打标(不用 `'acquire'` 事件:实测排队等待者的 acquire 事件在释放者的异步上下文里触发,饱和时会
+  张冠李戴);`'release'`/`'remove'` 事件消账。
+- 关闭时的报告改成**每次实时读**池计数(原先是一次性快照,那 30 秒不变的 `total: 3, idle: 2`
+  是构造时捕获的对象被重复打印),附账本里每条在外连接的持有者;首轮报告后用独立会话读一次
+  `pg_stat_activity`(state / wait_event / 事务年龄 / 阻塞者 / 最后一句),两腿都有超时。
+- 顺手证明并修掉一条真实泄漏:COMMIT 被拒后连接永不归还(见 notes/mikro-orm.md)。
+
+**未做**:acquire 等待时间指标、按持有时长的告警、任何缩短等待的超时——放弃等待会把泄漏变成静默成功。
