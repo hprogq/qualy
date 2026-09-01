@@ -283,6 +283,19 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       success: Schema.Struct({
         function: functionDetail,
         versions: Schema.Array(versionView),
+        /**
+         * Where this draft was forked from, if it was.
+         *
+         * On the response rather than inside `functionDetail`, which every
+         * write path also answers with: provenance is a projection of how
+         * this function came to exist, not part of the mutable row, and
+         * putting it there would make a rename carry it too. Read without
+         * asking whether the source is still a template - withdrawing an
+         * offer must not disturb somebody's own copy.
+         */
+        copiedFrom: Schema.NullOr(
+          Schema.Struct({ versionId: Schema.String, versionNo: Schema.Number }),
+        ),
       }),
       error: [FormulaFunctionNotFound, AccessDenied],
     }).middleware(Authenticated),
@@ -375,6 +388,19 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
       params: Schema.Struct({ versionId: id }),
       success: Schema.Struct({ template: templateDetail }),
       error: [FormulaTemplateNotFound, AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
+    // forking a template into a draft of your own. A copy, not a
+    // subscription: nothing about the source reaches it afterwards
+    HttpApiEndpoint.post('copyFormulaTemplate', '/assessment/formula-templates/:versionId/copies', {
+      params: Schema.Struct({ versionId: id }),
+      payload: Schema.Struct({
+        name: trimmedName(255),
+        description: Schema.optional(boundedText(2000)),
+      }),
+      success: Schema.Struct({ function: functionDetail }),
+      error: [FormulaTemplateNotFound, FormulaSourceTooLarge, AccessDenied, BadRequest],
     }).middleware(Authenticated),
   )
   .add(

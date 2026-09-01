@@ -25,10 +25,12 @@ import { BadRequest } from '@qualy/api-kit/schema'
 import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import { db } from './db.ts'
-import { FormulaVersionSharingChanged } from '../actions.ts'
+import { FormulaTemplateCopied, FormulaVersionSharingChanged } from '../actions.ts'
+import { SOURCE_LIMIT } from '@qualy/sandbox-rpc'
 import {
   FormulaFunctionNotFound,
   FormulaSharingConflict,
+  FormulaSourceTooLarge,
   FormulaTemplateNotFound,
   FormulaVersionNotFound,
 } from './errors.ts'
@@ -108,6 +110,21 @@ export class FormulaTemplateLibrary extends Context.Service<
       versionId: string,
       viewer: { readonly userId: string; readonly nodeId: string | null },
     ) => Effect.Effect<TemplateDetail, FormulaTemplateNotFound>
+    /**
+     * Fork one template into a private draft of the reader's own.
+     *
+     * A snapshot, not a subscription: what comes back is theirs, and
+     * nothing about the source reaches it afterwards.
+     */
+    readonly copyTemplate: (
+      tenantId: string,
+      versionId: string,
+      viewer: { readonly userId: string; readonly nodeId: string | null },
+      input: { readonly name: string; readonly description?: string | null },
+    ) => Effect.Effect<
+      { readonly functionId: string },
+      FormulaTemplateNotFound | FormulaSourceTooLarge
+    >
     readonly getSharing: (
       tenantId: string,
       functionId: string,
@@ -389,6 +406,83 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
           outputSchema: found.outputSchema,
         }
       }),
+
+    copyTemplate: (tenantId, versionId, viewer, input) =>
+      database(
+        transaction(
+          Effect.gen(function* () {
+            if (viewer.nodeId === null) return yield* new FormulaTemplateNotFound()
+            const nodeId = viewer.nodeId
+            // The version row first, held FOR SHARE, and the audience read
+            // under it - the same order every writer of that audience
+            // takes. That is what makes this and a concurrent withdrawal
+            // linear rather than racing: the database runs read committed,
+            // where each statement sees its own moment, so a visibility
+            // check followed by an unlocked insert would happily copy
+            // something already taken back.
+            const source = yield* db
+              .query((k) =>
+                k
+                  .selectFrom('FormulaVersion as v')
+                  .innerJoin('FormulaFunction as f', (join) =>
+                    join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
+                  )
+                  .select(['v.id as versionId', 'v.sourceTs as sourceTs', 'v.tests as tests'])
+                  .where('v.tenantId', '=', tenantId)
+                  .where('v.id', '=', versionId)
+                  .where(visibleTemplate(tenantId, viewer.userId, nodeId))
+                  .forShare()
+                  .executeTakeFirst(),
+              )
+              .pipe(Effect.orDie)
+            if (source === undefined) return yield* new FormulaTemplateNotFound()
+            const found = source as unknown as {
+              sourceTs: string
+              tests: readonly Record<string, unknown>[]
+            }
+            // the same service invariant every other way of creating a
+            // draft holds. A version published under a wider ceiling stays
+            // replayable forever, but it must not become a draft that
+            // breaks the ceiling drafts are held to today.
+            if (Buffer.byteLength(found.sourceTs, 'utf8') > SOURCE_LIMIT) {
+              return yield* new FormulaSourceTooLarge({ limit: SOURCE_LIMIT })
+            }
+            const created = yield* db
+              .query((k) =>
+                k
+                  .insertInto('FormulaFunction')
+                  .values({
+                    tenantId,
+                    name: input.name,
+                    description: input.description ?? null,
+                    // byte for byte what was published, and no version of
+                    // its own: the source was compiled by a toolchain that
+                    // has moved on, so its new author publishes it again in
+                    // today's world or it never runs
+                    draftSourceTs: found.sourceTs,
+                    draftTests: sql`${JSON.stringify(found.tests)}::jsonb`,
+                    createdBy: viewer.userId,
+                    updatedBy: viewer.userId,
+                    copiedFromVersionId: versionId,
+                  } as never)
+                  .returning('id')
+                  .executeTakeFirstOrThrow(),
+              )
+              .pipe(Effect.orDie)
+            const functionId = (created as { id: string }).id
+            // one act, recorded once: this IS how the function came to
+            // exist, so a separate creation entry beside it would say the
+            // same thing twice
+            yield* audit.record(FormulaTemplateCopied, {
+              tenantId,
+              actor: { kind: 'user', userId: viewer.userId },
+              target: { id: functionId, label: input.name },
+              details: { sourceVersionId: versionId },
+            })
+            return { functionId }
+          }),
+        ),
+      ),
 
     getSharing: (tenantId, functionId, versionNo, as) =>
       database(

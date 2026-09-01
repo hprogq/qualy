@@ -9,6 +9,7 @@ export default {
   'assessment-formula/audit/create': '新建计分公式',
   'assessment-formula/audit/draft-update': '更新公式草稿',
   'assessment-formula/audit/sharing-change': '调整公式共享范围',
+  'assessment-formula/audit/template-copy': '复制公式模板',
   'assessment-formula/audit/archive': '归档计分公式',
   'assessment-formula/audit/restore': '恢复计分公式',
   'assessment-formula/navigation/formulas': '计分公式',

@@ -62,10 +62,26 @@ export const FormulaFunctionRestored = AuditAction.define({
   details: Schema.Struct({}),
 })
 
+/**
+ * A template forked into somebody's own draft.
+ *
+ * This IS how the new function came to exist, so it stands alone: recording
+ * a creation beside it would say the same thing twice, and the row already
+ * names who did it and what they got.
+ */
+export const FormulaTemplateCopied = AuditAction.define({
+  code: 'assessment.formula.template.copy',
+  target: 'assessment.formula',
+  version: 1,
+  name: message('assessment-formula/audit/template-copy', 'Copy formula template'),
+  details: Schema.Struct({ sourceVersionId: Schema.String }),
+})
+
 export const formulaActions = [
   FormulaFunctionCreated,
   FormulaDraftReplaced,
   FormulaFunctionArchived,
   FormulaFunctionRestored,
   FormulaVersionSharingChanged,
+  FormulaTemplateCopied,
 ] as const

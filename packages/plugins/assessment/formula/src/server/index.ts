@@ -153,6 +153,8 @@ export interface FormulaTestInput {
 
 interface FunctionRow {
   id: string
+  /** the exact published version this draft was forked from, if it was */
+  copiedFromVersionId: string | null
   /** the author: who wrote it, and the only person who may edit it */
   createdBy: string
   name: string
@@ -376,6 +378,8 @@ interface FormulaLibraryShape {
     {
       function: ReturnType<typeof functionDetailDto>
       versions: ReturnType<typeof versionViewDto>[]
+      /** where this draft was forked from, if it was */
+      copiedFrom: { versionId: string; versionNo: number } | null
     },
     AccessDenied | FormulaFunctionNotFound
   >
@@ -1016,9 +1020,36 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
           .execute(),
       )
       .pipe(Effect.orDie)
+    // Where this draft was forked from, if it was - read as this function's
+    // own history rather than as a template. A withdrawn offer must not
+    // disturb somebody's copy, so nothing here asks whether the source is
+    // still discoverable; the version number comes off the source row,
+    // which publication makes permanent.
+    const copiedFrom =
+      row.copiedFromVersionId === null
+        ? null
+        : yield* db
+            .query((k) =>
+              k
+                .selectFrom('FormulaVersion')
+                .select(['id', 'versionNo'])
+                .where('tenantId', '=', tenantId)
+                .where('id', '=', row.copiedFromVersionId as string)
+                .executeTakeFirst(),
+            )
+            .pipe(
+              Effect.orDie,
+              Effect.map((source) => {
+                const found = source as { id: string; versionNo: number } | undefined
+                return found === undefined
+                  ? null
+                  : { versionId: found.id, versionNo: Number(found.versionNo) }
+              }),
+            )
     return {
       function: functionDetailDto(row),
       versions: (versions as unknown as VersionRow[]).map(versionViewDto),
+      copiedFrom,
     }
   })
 
@@ -1547,6 +1578,33 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           nodeId: stands?.nodeId ?? null,
         })
         return { template: templateDetailDto(template) }
+      }),
+    )
+    .handle(
+      'copyFormulaTemplate',
+      Effect.fn('assessmentFormula.copyTemplate.handler')(function* ({ params, payload }) {
+        const templates = yield* FormulaTemplateLibrary
+        const placement = yield* UserPlacement
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        const tenantId = principal.tenantId
+        yield* library.requireAuthor(principal)
+        const stands = yield* placement.primaryNode(tenantId, principal.userId)
+        const created = yield* templates.copyTemplate(
+          tenantId,
+          params.versionId,
+          { userId: principal.userId, nodeId: stands?.nodeId ?? null },
+          {
+            name: payload.name,
+            ...(payload.description === undefined ? {} : { description: payload.description }),
+          },
+        )
+        // it was inserted a statement ago by this very caller: a function
+        // that cannot be read back is the host contradicting itself
+        const detail = yield* library
+          .getFunction(tenantId, created.functionId, principal)
+          .pipe(Effect.orDie)
+        return { function: detail.function }
       }),
     )
     .handle(

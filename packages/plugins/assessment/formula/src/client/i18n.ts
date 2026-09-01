@@ -44,6 +44,10 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/audit/sharing-change',
       defaultMessage: 'Change formula sharing',
     },
+    'audit.template-copy': {
+      id: 'assessment-formula/audit/template-copy',
+      defaultMessage: 'Copy formula template',
+    },
     'audit.archive': {
       id: 'assessment-formula/audit/archive',
       defaultMessage: 'Archive scoring formula',
