@@ -17,7 +17,7 @@
 import { Data, Effect } from 'effect'
 import { validateValue } from '@qualy/value-schema/validate'
 import { applyAssignment } from '@qualy/value-schema'
-import type { PreparedCalculator } from '../plugin.ts'
+import type { CalculatorFailureKind, PreparedCalculator } from '../plugin.ts'
 import type { ScoringPlan } from './plan.ts'
 import { scaledAmount } from './builtins.ts'
 
@@ -31,22 +31,55 @@ export interface EvaluatedEntry {
   readonly calculatorRef: string
 }
 
-/** the scoring facts one evaluation needs about an entry */
-export interface EvaluationFact {
-  readonly entryId: string
-  readonly entryRevisionId: string | null
+/**
+ * The scoring facts one evaluation needs, and nothing about whose they are.
+ *
+ * A determination is worth the same whether it is being counted into an
+ * account, proven before it becomes a fact, or tried against a rule that
+ * has not been saved yet - so the primitive knows the question and the
+ * values, and the three callers add what they each know on top.
+ */
+export interface RecognitionEvaluationFact {
   readonly itemId: string
-  /** the item revision's frozen plan; the arithmetic this entry is scored by */
+  /** the frozen plan; the arithmetic this determination is scored by */
   readonly plan: ScoringPlan
   /** the recognized values, keyed by recognition id; empty until a plan has any */
   readonly recognition: Readonly<Record<string, unknown>>
 }
 
-/** a calculator answered something the host had already proven impossible */
+/** what one determination is worth under one plan */
+export interface EvaluatedRecognition {
+  /** scaled by 1e4, exact */
+  readonly amount: bigint
+  readonly calculatorRef: string
+}
+
+/** the scoring facts one evaluation needs about an entry */
+export interface EvaluationFact extends RecognitionEvaluationFact {
+  readonly entryId: string
+  readonly entryRevisionId: string | null
+}
+
+/**
+ * An evaluation that did not produce an amount, sorted the way the
+ * calculator sorted it.
+ *
+ * `kind` is the calculator's own word for what happened, carried through
+ * untouched: a lawful refusal of these values, arithmetic that could not be
+ * reached, a program that failed to compute, a frozen promise broken, or a
+ * state the host had proven impossible. Which of those it is decides what
+ * the caller may do about it - retry, refuse the determination, or die -
+ * so it must not be flattened into prose on the way up. The two failures
+ * this file finds itself have kinds of their own: an input the frozen
+ * contract rejects was assembled from facts this process stored, so it is
+ * an invariant broken; an answer the frozen contract rejects came from a
+ * program that failed to compute a lawful one.
+ */
 export class ScoringEvaluationFailed extends Data.TaggedError(
   'ASSESSMENT_SCORING_EVALUATION_FAILED',
 )<{
   readonly itemId: string
+  readonly kind: CalculatorFailureKind
   readonly reason: string
 }> {}
 
@@ -77,22 +110,22 @@ const inputFor = (plan: ScoringPlan, recognition: Readonly<Record<string, unknow
 }
 
 /**
- * One entry's amount: build the input, prove it against the frozen contract,
- * ask the calculator, prove the answer, scale it.
+ * One determination's amount: build the input, prove it against the frozen
+ * contract, ask the calculator, prove the answer, scale it.
  *
  * The calculator arrives already prepared - resolved and closed over what
- * its plan needs, once, by the caller - so this function runs per entry
- * without paying any per-entry resolution.
+ * its plan needs, once, by the caller - so this function runs per
+ * determination without paying any per-determination resolution.
  *
  * Both proofs are the host's, on both sides of an untrusted boundary. The
  * input was assembled from facts this process stored, so a failure there is
  * a defect in this file or a plan that no longer matches its calculator; the
  * output arrives from arithmetic that may live in another process entirely.
  */
-export const evaluateEntry = (
+export const evaluateRecognition = (
   calculator: PreparedCalculator,
-  fact: EvaluationFact,
-): Effect.Effect<EvaluatedEntry, ScoringEvaluationFailed> =>
+  fact: RecognitionEvaluationFact,
+): Effect.Effect<EvaluatedRecognition, ScoringEvaluationFailed> =>
   Effect.gen(function* () {
     const plan = fact.plan
     const input = inputFor(plan, fact.recognition)
@@ -100,28 +133,40 @@ export const evaluateEntry = (
     if (wrong.length > 0) {
       return yield* new ScoringEvaluationFailed({
         itemId: fact.itemId,
+        kind: 'invariant',
         reason: `input ${wrong[0]!.path} ${wrong[0]!.reason}`,
       })
     }
-    const answer = yield* calculator
-      .evaluate(input)
-      .pipe(
-        Effect.mapError(
-          (failure) => new ScoringEvaluationFailed({ itemId: fact.itemId, reason: failure.reason }),
-        ),
-      )
+    const answer = yield* calculator.evaluate(input).pipe(
+      Effect.mapError(
+        (failure) =>
+          new ScoringEvaluationFailed({
+            itemId: fact.itemId,
+            kind: failure.kind,
+            reason: failure.reason,
+          }),
+      ),
+    )
     const outputWrong = validateValue(plan.outputSchema, answer)
     if (outputWrong.length > 0) {
       return yield* new ScoringEvaluationFailed({
         itemId: fact.itemId,
+        kind: 'execution',
         reason: `output ${outputWrong[0]!.reason}`,
       })
     }
-    return {
-      entryId: fact.entryId,
-      entryRevisionId: fact.entryRevisionId,
-      itemId: fact.itemId,
-      amount: scaledAmount(answer),
-      calculatorRef: plan.calculator.ref,
-    }
+    return { amount: scaledAmount(answer), calculatorRef: plan.calculator.ref }
   })
+
+/** one entry's amount: the primitive, with the entry's identity carried alongside */
+export const evaluateEntry = (
+  calculator: PreparedCalculator,
+  fact: EvaluationFact,
+): Effect.Effect<EvaluatedEntry, ScoringEvaluationFailed> =>
+  Effect.map(evaluateRecognition(calculator, fact), (evaluated) => ({
+    entryId: fact.entryId,
+    entryRevisionId: fact.entryRevisionId,
+    itemId: fact.itemId,
+    amount: evaluated.amount,
+    calculatorRef: evaluated.calculatorRef,
+  }))

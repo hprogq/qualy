@@ -13,7 +13,12 @@ import {
   testHost,
   testRuntime,
 } from './support/catalogs.ts'
-import { compileScoringPlan, evaluationHash, readScoringPlan } from '../src/scoring/plan.ts'
+import {
+  compileScoringPlan,
+  evaluationHash,
+  readScoringPlan,
+  recognitionEvaluationHash,
+} from '../src/scoring/plan.ts'
 import type { RecognitionSource } from '../src/scoring/plan.ts'
 import type { AtomicSchema } from '@qualy/value-schema'
 import { CalculatorContractError } from '../src/plugin.ts'
@@ -892,6 +897,41 @@ describe('the evaluation identity: would the same values score the same', () => 
     expect(evaluationHash(repriced)).not.toBe(evaluationHash(base))
     const refolded = await planOf(gradedV2({ aggregator: { ref: 'max@1', config: {} } }))
     expect(evaluationHash(refolded)).not.toBe(evaluationHash(base))
+  })
+
+  it('knows what one determination is worth apart from how they are folded', async () => {
+    // The narrower identity: the trial that re-runs every standing
+    // determination through a candidate rule asks whether any ONE of them
+    // is worth something else now. A question folding its amounts
+    // differently changes nothing about that, and neither does admission.
+    const base = await planOf(gradedV2())
+    const refolded = await planOf(gradedV2({ aggregator: { ref: 'max@1', config: {} } }))
+    expect(evaluationHash(refolded)).not.toBe(evaluationHash(base))
+    expect(recognitionEvaluationHash(refolded)).toBe(recognitionEvaluationHash(base))
+    const tightened = await planOf(
+      gradedV2({
+        recognitions: {
+          [R_LEVEL]: { label: '级别', refinement: null, defaultFromFieldId: 'claimed-level' },
+          [R_ORDINAL]: {
+            label: '序位',
+            refinement: { type: 'integer', minimum: 3, maximum: 7 },
+            defaultFromFieldId: null,
+          },
+        },
+      }),
+    )
+    expect(recognitionEvaluationHash(tightened)).toBe(recognitionEvaluationHash(base))
+    // and what genuinely changes what a determination computes still moves it
+    const repriced = await planOf(
+      gradedV2({
+        bindings: {
+          level: { kind: 'recognition', recognitionId: R_LEVEL },
+          ordinal: { kind: 'recognition', recognitionId: R_ORDINAL },
+          base: { kind: 'constant', value: '4' },
+        },
+      }),
+    )
+    expect(recognitionEvaluationHash(repriced)).not.toBe(recognitionEvaluationHash(base))
   })
 
   it('moves with the runtime identity', async () => {

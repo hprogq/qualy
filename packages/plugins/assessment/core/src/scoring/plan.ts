@@ -1310,31 +1310,53 @@ export const frozenCalculatorOf = (plan: ScoringPlan): FrozenCalculatorContract 
  * Computed fresh per call and stored nowhere.
  */
 export const evaluationHash = (plan: ScoringPlan): string =>
-  hashCanonicalJson({
-    calculator: {
-      ref: plan.calculator.ref,
-      config: plan.calculator.config,
-      contractHash: plan.calculator.contractHash,
-      ...(plan.version === 2 && plan.calculator.runtimeRef !== undefined
-        ? { runtimeRef: plan.calculator.runtimeRef }
-        : {}),
-    },
-    parameters: Object.fromEntries(
-      Object.entries(plan.parameters).map(([parameter, binding]) => [
-        parameter,
-        binding.kind === 'constant'
-          ? {
-              kind: 'constant',
-              value:
-                own(plan.inputSchema.properties, parameter) === undefined
-                  ? binding.value
-                  : canonicalizeValue(plan.inputSchema.properties[parameter]!, binding.value),
-            }
-          : binding,
-      ]),
-    ),
-    aggregator: plan.aggregator,
-  })
+  hashCanonicalJson({ ...recognitionEvaluationBody(plan), aggregator: plan.aggregator })
+
+/**
+ * The part of the arithmetic one determination meets on its own: the
+ * calculator and what each of its parameters is bound to. The aggregator
+ * folds many amounts into a question's subtotal and never sees a single
+ * determination, so it stays out.
+ */
+const recognitionEvaluationBody = (plan: ScoringPlan) => ({
+  calculator: {
+    ref: plan.calculator.ref,
+    config: plan.calculator.config,
+    contractHash: plan.calculator.contractHash,
+    ...(plan.version === 2 && plan.calculator.runtimeRef !== undefined
+      ? { runtimeRef: plan.calculator.runtimeRef }
+      : {}),
+  },
+  parameters: Object.fromEntries(
+    Object.entries(plan.parameters).map(([parameter, binding]) => [
+      parameter,
+      binding.kind === 'constant'
+        ? {
+            kind: 'constant',
+            value:
+              own(plan.inputSchema.properties, parameter) === undefined
+                ? binding.value
+                : canonicalizeValue(plan.inputSchema.properties[parameter]!, binding.value),
+          }
+        : binding,
+    ]),
+  ),
+})
+
+/**
+ * Would the same already-determined values be worth the same amount?
+ *
+ * Narrower than `evaluationHash` by exactly the aggregator: a question
+ * switching from a sum to a maximum changes its subtotal without changing
+ * what any one determination is worth, and the trial that re-runs every
+ * standing determination through a candidate rule is asking only the
+ * latter. Admission - schemas, refinements, seeding - stays out for the
+ * same reason it stays out above: it decides what MAY be determined, not
+ * what a determination computes, and the contract hash already freezes
+ * what the calculator reads.
+ */
+export const recognitionEvaluationHash = (plan: ScoringPlan): string =>
+  hashCanonicalJson(recognitionEvaluationBody(plan))
 
 export const carriesInto = (
   before: Readonly<Record<string, NormalizedAtomicSchema>>,
