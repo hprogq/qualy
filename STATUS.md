@@ -12663,10 +12663,57 @@ audience 判定与 options 端点是**两个不同的问题**,这也是它们用
 
 `assessment_formula_share_scopes` 是本仓库第一条指向 `org_nodes` 的 CASCADE。理由是生命周期不同,不是「其余都是 restrict」(auth 的 `users → org_nodes` 本就是 `on delete set null`):share scope 是活的分发政策,节点没了它就没有意义;而 `FormulaVersion → FormulaFunction` 的 RESTRICT 守的是永久执行事实。
 
-### teardown 挂死:机制已经点名,现场还没有
+### teardown 挂死:一条连接在外,其余当时说过头了
 
-`2ea44cd5` 的池诊断在 CI 上给出了答案的一半:关闭时 **`total: 3, idle: 2, waiting: 0`,30 秒稳定不变**——有一条池连接被 checkout 之后再没还回来,而且没有任何人在排队。所以既不是慢的对端,也不是 finalizer 互锁,是**一次连接泄漏**。泄漏点仍未点名,`orm.ts:84` 非事务路径上那个从不关闭的 `orm.em.fork()` 是当前的第一嫌疑。本地仍未复现(5 次以上全绿)。
+`2ea44cd5` 的池诊断在 CI 上给出的可靠事实只有一条:release 开始时 **一条池连接 checked out、无人排队**。「30 秒稳定不变」是那段诊断自己的缺陷(计数被构造时捕获、反复打印),「不是锁等待、是连接泄漏」「`em.fork()` 是第一嫌疑」两句都超出了证据——`em.fork()` 只是新的工作单元,不占连接。校正与后续的查证见下文「2026-09-02:teardown 挂死复查」。本地仍未复现(5 次以上全绿)。
 
 ### 下一轮移交(7.5)
 
 模板域到此闭合,不做 follow-latest / 同步升级 / 协作编辑 / 所有权转移——这些是被明确否掉的,不是没来得及做。仍挂账的两项是 7.4a 期间用户裁定「不进本轮 Plan、单独裁决」的 typed authoring UX 债:refinement 控件与详细的兼容性诊断。
+
+## 2026-09-02:teardown 挂死复查——一条真实泄漏、一份账本、一次尸检
+
+用户对上一节的校正成立:`total: 3, idle: 2, waiting: 0` 只能推出「release 开始时一条连接在外、无人在池外排队」;`waitingCount` 是 pg-pool 的获取队列,与 PostgreSQL 内部的锁等待无关;`em.fork()` 只是新的工作单元,不占连接。本节是复查的结果,分三部分:从上游源码与 CI 日志推出来的**事实**,一条被实验证明并已修掉的**泄漏**,以及下一次能直接点名的**账本与尸检**。
+
+### 一、从源码与日志能确定的事实
+
+按 `docs/agents/effect-source-policy.md` 逐文件实查(路径即证据):
+
+- **关闭链直达 `pool.end()`,中间没有任何会等待的东西。** `MikroORM.close()`(`@mikro-orm/core/MikroORM.js:157`)→ `DatabaseDriver.close`(`drivers/DatabaseDriver.js:100`)→ `AbstractSqlConnection.close`(`@mikro-orm/sql/AbstractSqlConnection.js:59`,`super.close` 只是删配置键)→ Kysely `RuntimeDriver.destroy`(`kysely/dist/driver/runtime-driver.js:96`,只等 init promise)→ `PostgresDriver.destroy` → `pool.end()`。所以挂死 = `pool.end()` 在等一条 checked-out 的 client,没有别的解释。
+- **`pool.end()` 会同步移除 idle 连接**(`pg-pool/index.js:127-146`,`_pulseQueue` 在 `ending` 时 `_remove` 全部 idle,`_clients` 为空才回调)。因此 `idle: 2` 不可能是 `end()` 之后的实时读数——上一轮的诊断把计数对象在构造时捕获后重复打印,「30 秒稳定」是诊断自己的假象。这次改成每轮实时读。
+- **关闭时没有任何已知 fiber 还持有事务。** Effect v4 的 `Scope.close` 默认顺序 LIFO(`repos/effect/packages/effect/src/internal/effect.ts:3802-3824`);每个 memo 化 layer 有自己的 scope,其关闭作为一条 finalizer 登记在父 scope(`Layer.ts:390-412`);`forkIn`/`Fiber.runIn` 登记的 finalizer 是 `fiberInterrupt`,它 **等待** fiber 退出(`effect.ts:5412-5430`、`fiberInterruptAs` 里的 `fiberAwait`)。调度器的 sweep/patrol/storage 循环与 HTTP 请求 fiber 都在数据库 layer 之后登记,所以在 ORM release 开始之前已被中断并等到退出——trace 里那些 0ms 的 `@qualy/plugin-assessment` 就是它们。剩下的那条连接,持有者不是任何 scope 认识的 fiber。
+- **Kysely 只在 COMMIT/ROLLBACK 成功后才归还事务连接**(`kysely/dist/kysely.js:695-812` 的 `ControlledTransaction`,归还是 `provide-controlled-connection.js` 里那个 deferred 的 resolve);**MikroORM 的 `em.commit()` 抛错时既不回滚也不清上下文**(`@mikro-orm/core/EntityManager.js:1188-1200`);`AbstractSqlConnection.rollback` 先 `waitForIdleTransaction` 等在途语句(`AbstractSqlConnection.js:172-190`)。`Effect.promise` 无 signal 时被中断即放弃 promise、不等它(`effect.ts:1051` + `callbackOptions`)。
+- **CI 的 PostgreSQL 容器日志在 07:17:26–07:18:26 之间一行没有**(run 33481203308 的 Stop containers 步骤):没有 EOF、没有 FATAL;`log_lock_waits` 关着,锁等待本就不会出现。CI 现在打开它(`ci.yml`,可 reload,不重启)。
+
+### 二、被证明的泄漏:COMMIT 被拒 → 连接永不归还
+
+把上面第四条连起来就是一条完整机制,实验复现(`deferrable initially deferred` 唯一约束,COMMIT 时才违反):`transaction()` 里 `em.commit()` 抛 `duplicate key`,之后 `pg_stat_activity` 显示后端 **`idle`、`xact_start` 为空、最后一句 `commit`**——服务端事务早已结束——而池仍记着一条在外,`Scope.close` 3 秒不返回。指纹与 CI 完全一致:PG 安静、一条 checked-out、无人排队。**能否断定它就是 CI 那次的原因:不能**——那条 DB 上没有延迟约束,PG 日志也没有 COMMIT 报错;但它是生产里真实会发生的事(serializable 冲突、会话被终止都走同一条路),一次就永久少一个池位,直到重启。
+
+修法在 `orm.ts` 的 `settle`:COMMIT 被拒 → 补一次 ROLLBACK(健康连接上对已 abort 的事务回滚成功即归还,**同一后端 pid** 继续服务下一个事务);ROLLBACK 也失败 → 会话已死,经账本把 client 按坏连接交还池(`client.release(error)`,pg-pool 公开 API)。拒绝本身照旧作为 defect 抛出。上游草稿 `docs/upstream/mikro-orm-8-refused-commit-keeps-the-pool-client.md`,notes/mikro-orm.md 有对应条目。
+
+### 三、账本与尸检(`checkouts.ts`)
+
+- **归属**:`transaction`/`query` 把发起者(fiber id、父 span 名、`source` 注解、`kind`)放进一份 `AsyncLocalStorage`,给驱动交出的 `pg.Pool` 包一层 `connect`,给**返回的 client** 打标。不用 `'acquire'` 事件——实测(scratch 脚本,max=1 的池):新建与复用 idle 时事件在发起者上下文里触发,但**排队等待者**的 acquire 事件在释放者的上下文里触发,饱和时会张冠李戴;返回的 client 才是唯一精确的锚点。
+- **报告**:关闭 5 秒后每 5 秒一条 `the connection pool is still closing`,注解里是**实时**的 `total/idle/waiting` 与每条在外连接的 `pid X held Ns by transaction #fiber (span) for source`。
+- **尸检**:首轮报告后用一条**独立会话**(不走正在关闭的池)读 `pg_stat_activity`:state、wait_event、事务年龄、距上次状态变化、`pg_blocking_pids`、最后一句,标出哪些 pid 是我们的;连接与查询各 3 秒超时,整段 5 秒超时——能挂死的诊断正是它要诊断的东西。
+- 这正是 orm.ts 原注释里留的 §12.1 触发点(「包住 acquire 路径」);重新评估后**仍不采集**等待时间指标:归属只要给交出的 client 打一个标,等待时间要给每个排队位置计时。
+
+### 承重与差分(`packages/plugins/infra/database/tests/pool-release.test.ts`,3 条)
+
+| 承重                                                                                                                                                                          | 差分                                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| COMMIT 被拒:拒绝仍抛出;下一个事务跑在**同一 pid** 上;layer 立即关闭                                                                                                           | 摘掉补回滚 → 下一个事务换了 pid(client 被当坏连接销毁)→ 红                                                                                                                     |
+| 会话被 `pg_terminate_backend` 终止:COMMIT 与 ROLLBACK 都失败;新会话服务下一个事务;layer 立即关闭                                                                              | 摘掉账本归还 → `Scope.close` 3 秒不返回 → 红                                                                                                                                   |
+| 一条事务在 scope 外被 daemon fiber 持有:报告点名 `pid`、`by transaction`、span `PoolRelease.holder`、source;实时 `total:1, idle:0`;尸检行 `pid N (ours): idle in transaction` | 计数改回一次性快照**未转红**:在这个 harness 里 `orm.close()` 在报告构造前就已跑到 `pool.end()`,快照恰好等于实时值。实时性由 `Effect.suspend` 内读取保证,不由差分证明——如实记下 |
+
+第三条差分不红这件事本身说明:上一轮 CI 里 `idle: 2` 的快照究竟是在 `pool.end()` 之前还是之后取的,取决于 forkChild 与微任务的相对时序,**不可知**。这也是快照式诊断必须换掉的理由。
+
+### 嫌疑排序(留给下一次尸检裁决)
+
+1. COMMIT/ROLLBACK 被拒后连接未归还(已修;若是它,下次不会再发生)。
+2. 一条在途语句被放弃后永不结束(PG 侧 `active`;尸检会给出 wait_event 与阻塞者;CI 的 `log_lock_waits` 会补锁等待)。
+3. 某个不经 `transaction()`/`query()` 的检出(账本会标「something this process did not attribute」)。
+
+### 门禁
+
+typecheck 0(新增 `BackendsUnreadable` 带 tag 的错误,消掉 Effect LSP 的两条 global-Error 警告);node **1371 passed | 17 skipped**(+3);数据库插件 13 文件 + effect-api 套件 66 tests 全绿;browser **301 passed**;build 0(99 文件 staged)。
