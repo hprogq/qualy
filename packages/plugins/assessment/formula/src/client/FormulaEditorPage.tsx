@@ -140,6 +140,10 @@ export default function FormulaEditorPage() {
   )
   const fn = detail.data?.function
   const versions = detail.data?.versions ?? []
+  // Where this draft was started from, when it was started from somebody
+  // else's. A note about how it came to exist and nothing more: there is
+  // no following the source, and no version of it to be behind.
+  const copiedFrom = detail.data?.copiedFrom ?? null
 
   const [name, setName] = useState('')
   const [source, setSource] = useState('')
@@ -771,7 +775,14 @@ export default function FormulaEditorPage() {
     <div {...stylex.props(styles.page)}>
       <PageHeader
         title={fn.name}
-        description={fn.description ?? undefined}
+        description={
+          copiedFrom === null
+            ? (fn.description ?? undefined)
+            : `${fn.description === null ? '' : `${fn.description} · `}${format(
+                m.templatesCopiedFrom,
+                { number: copiedFrom.versionNo },
+              )}`
+        }
         actions={
           <div {...stylex.props(styles.actions)}>
             {archived ? <Badge variant="outline">{format(m.statusArchived)}</Badge> : null}

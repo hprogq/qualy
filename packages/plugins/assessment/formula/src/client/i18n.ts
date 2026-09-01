@@ -60,6 +60,74 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/navigation/formulas',
       defaultMessage: 'Scoring formulas',
     },
+    templatesTitle: {
+      id: 'assessment-formula/templates/title',
+      defaultMessage: 'Formula templates',
+    },
+    templatesHint: {
+      id: 'assessment-formula/templates/hint',
+      defaultMessage: 'Formulas other people have offered you. Copy one to start your own.',
+    },
+    templatesEmpty: {
+      id: 'assessment-formula/templates/empty',
+      defaultMessage: 'Nobody has offered you a formula yet.',
+    },
+    templatesAuthorColumn: {
+      id: 'assessment-formula/templates/author-column',
+      defaultMessage: 'Written by',
+    },
+    templatesAuthorUnknown: {
+      id: 'assessment-formula/templates/author-unknown',
+      defaultMessage: 'Unknown',
+    },
+    templatesPublishedColumn: {
+      id: 'assessment-formula/templates/published-column',
+      defaultMessage: 'Published',
+    },
+    templatesParameters: {
+      id: 'assessment-formula/templates/parameters',
+      defaultMessage: 'Takes {names}',
+    },
+    templatesSourceArchived: {
+      id: 'assessment-formula/templates/source-archived',
+      defaultMessage: 'Source archived',
+    },
+    templatesCopy: {
+      id: 'assessment-formula/templates/copy',
+      defaultMessage: 'Copy to my formulas',
+    },
+    templatesCopyTitle: {
+      id: 'assessment-formula/templates/copy-title',
+      defaultMessage: 'Copy this formula',
+    },
+    templatesSource: {
+      id: 'assessment-formula/templates/source',
+      defaultMessage: 'Source',
+    },
+    templatesExamples: {
+      id: 'assessment-formula/templates/examples',
+      defaultMessage: '{count, plural, one {# example} other {# examples}}',
+    },
+    templatesLoadFailed: {
+      id: 'assessment-formula/templates/load-failed',
+      defaultMessage: 'The templates could not be loaded.',
+    },
+    templatesLoading: {
+      id: 'assessment-formula/templates/loading',
+      defaultMessage: 'Loading…',
+    },
+    templatesRetry: {
+      id: 'assessment-formula/templates/retry',
+      defaultMessage: 'Try again',
+    },
+    templatesCopiedFrom: {
+      id: 'assessment-formula/templates/copied-from',
+      defaultMessage: 'Started from version {number} of another formula',
+    },
+    navigationTemplates: {
+      id: 'assessment-formula/navigation/templates',
+      defaultMessage: 'Formula templates',
+    },
     listTitle: {
       id: 'assessment-formula/list/title',
       defaultMessage: 'Scoring formulas',

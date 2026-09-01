@@ -83,6 +83,31 @@ const plugin = Plugin.define(
     },
   }),
   Ui.page({
+    id: 'assessment-formula/templates',
+    path: '/assessment/formula-templates',
+    component: Ui.react('./client/FormulaTemplatesPage.tsx'),
+    layout: APP_SHELL,
+    title: message('assessment-formula/templates/title', 'Formula templates'),
+    // the same capability the library itself takes: the only thing to do
+    // with a template is start a formula of your own from it
+    visibility: permissionOf('assessment.formula.author'),
+    navigation: {
+      label: message('assessment-formula/navigation/templates', 'Formula templates'),
+      order: 30,
+      group: 'assessment/main',
+    },
+  }),
+  Ui.page({
+    // reached from the library rather than from the navigation, so it
+    // declares no entry of its own
+    id: 'assessment-formula/template',
+    path: '/assessment/formula-templates/:versionId',
+    component: Ui.react('./client/FormulaTemplatePage.tsx'),
+    layout: APP_SHELL,
+    title: message('assessment-formula/templates/title', 'Formula templates'),
+    visibility: permissionOf('assessment.formula.author'),
+  }),
+  Ui.page({
     id: 'assessment-formula/editor',
     path: '/assessment/formulas/:functionId',
     component: Ui.react('./client/FormulaEditorPage.tsx'),

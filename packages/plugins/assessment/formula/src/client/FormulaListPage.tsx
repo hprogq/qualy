@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -23,19 +23,7 @@ const styles = stylex.create({
   },
   row: { cursor: 'pointer', borderTop: '1px solid var(--q-border)' },
   cell: { padding: '0.625rem 0.75rem' },
-  picker: {
-    width: '100%',
-    padding: '0.5rem',
-    borderRadius: '0.375rem',
-    border: '1px solid var(--q-border)',
-    background: 'var(--q-surface)',
-    color: 'var(--q-foreground)',
-    fontFamily: 'inherit',
-  },
 })
-
-/** the tree flattened for a select: indentation says what nesting said */
-const indented = (depth: number, name: string) => `${'  '.repeat(depth)}${name}`
 
 function NewFormulaDialog({
   open,
