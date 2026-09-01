@@ -12717,3 +12717,84 @@ audience 判定与 options 端点是**两个不同的问题**,这也是它们用
 ### 门禁
 
 typecheck 0(新增 `BackendsUnreadable` 带 tag 的错误,消掉 Effect LSP 的两条 global-Error 警告);node **1371 passed | 17 skipped**(+3);数据库插件 13 文件 + effect-api 套件 66 tests 全绿;browser **301 passed**;build 0(99 文件 staged)。
+
+## Phase 7.5:Determination / Impact / Failure Semantics(2026-09-02)
+
+计划 rev 2 + 勘误(用户两轮修订后批准)。7.3 让 Formula 能算、7.4 让管理员能选绑共享,但在此之前**没有任何写路径跑过 calculator**:approved 却算不了的状态可以经三条写路径正常制造出来,而结果页把 q.fail、沙箱不在、公式超时、artifact 被改、host 违约统统压成同一个 500。本阶段建立四条不变量:**I1** approved ⇒ 当前 plan 的 calculator 接受其 Recognition;**I2** 改计分规则不得让仍生效的 Recognition 变得算不了;**I3** 沙箱永不在 DB 事务内执行;**I4** 五类 failure 不压扁、不变成 0 分。两条正式裁决(A:只读 `ChangeImpact.scoring` + token 即确认、token 绑 α-equivalent 的候选身份;B:failure kind 描述 calculator 发生了什么、业务边界决定它意味着什么,矩阵见 [docs/phase7-design.md §10.15](docs/phase7-design.md))与 terminal-only 探测、prove→probe→settle、old-first 试算、runtime/evaluation 分开映射、`recognitionEvaluationHash` = evaluationHash body 减 aggregator,全部落地。
+
+### 提交链
+
+| 笔  | commit                                                                         | 内容                                                                                                                                                                                                                                                                                                                                                                |
+| --- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `f1a5c34d` refactor(assessment): share recognition evaluation primitive        | `evaluateRecognition` + `evaluateEntry` 薄包装;`ScoringEvaluationFailed.kind` 三条固定映射(input 违约 → invariant、calculator 原 kind、output 违约 → execution);`mapRuntimeFailure` / `mapEvaluationFailure` 两张表;`recognitionEvaluationBody` / `recognitionEvaluationHash`                                                                                       |
+| 2   | `f9f88a27` feat(assessment): probe calculator before determination settlement  | createEntry(administrative)/ setEntryStatus(自动批准)/ decideReview(串行终审、panel 首票与末票)统一 `settleWithProbe`:第一遍在事务内走到写入点抛 `ProbeNeeded` 回滚 → 事务外 `proveSettlement` → 第二遍重跑全部合法性并比 probe identity;两个新错误码 `DeterminationRefused` 422 / `ScoringUnavailable` 503;三端点错误列表;R 拓宽 `ScoringRuntimeCatalog`           |
+| 3   | `b5796c2b` feat(assessment): add scoring change impact                         | `ChangeImpact.scoring`(approved 五计数 + derived 四布尔)、`candidateImpactHash`(scoringIntent 原始 draft + calculatorContract)、`TrialNeeded` 两遍编排、old-first 试算(`impact-probe.ts`,并发 4,纯 reduce)、422 `ItemScoringIncompatible` 无 force、stale token 事务外刷新后直接返回新 409、audit diff 附 `scoringImpact`;Schema/ImpactDialog/ItemConfigEditor 同笔 |
+| 4   | `f88dc590` test(assessment): keep scoring probes outside database transactions | I3 的墙:evaluate 被 Deferred 卡住时另一条事务照常取 `lockBatch` 并完成                                                                                                                                                                                                                                                                                              |
+| 5   | `d8a09101` feat(assessment): surface scoring failures by semantics             | `getMyResult` unavailable → 503、其余 die 前带 tenant/batch/item/calculatorRef/runtimeRef/kind 注解;MyResult 不可用态(无 total,「重新计算」= refetch);审核页 422/503 保留工作台与已填值;ImpactDialog 只读计分段;三个错误码的 zh-CN;`qualy.assessment.scoring.evaluation` 有界计数器                                                                                 |
+| —   | `04fca10d` chore(database): name the span and source behind a query checkout     | 见下「teardown 现场」                                                                                                                                                                                                                                                                                                                                               |
+| 6   | `9cc3f0d2` test(assessment): bear determination impact and failure semantics     | formula 侧整链承重(真沙箱、不经共享/分叉)+ 设计文档 §10.15                                                                                                                                                                                                                                                                                                          |
+
+### 与计划的已记账偏离
+
+- **第二遍重跑整个 pass**,不是计划里的「slim identity 查询 + 复用第一遍 compile」:每条合法性只有一种建立方式;token 绑定的 `calculatorContract` 保证第二次编译不会把另一套算术带进 revision。计划里的 `RefreshImpact` 类型没有单独存在——stale token 走同一条 `TrialNeeded` 路径,第二遍再抛即事务外重试算并**直接返回新 409**,绝不进入第三次写入 pass。
+- **α-equivalence 的实际可达面**:对「任何人已站在其下」的题新增 Recognition,`impactUnder` 在任何报告之前就以 stranding 拒绝(422),所以 mint 不稳定在这条路上根本到不了 409;承重仍在 token 层证明「同一 draft 两次随机 mint → 第一次的 token 确认第二次」与「resolved runtimeRef/contractHash 变 → stale」,那是它存在的理由。
+- panel 的「非 terminal panel 不探测」在本模型里是空集:一致通过的 panel 总是结束该轮,所以每个 panel 的首票与成决票都探测(设计文档已注)。
+- `useDeferredDecision` 的 `sendBeacon` 兜底看不到 422——那条路径本就是失败静默,不改。
+
+### 承重(node 28 + browser 4 + formula 整链 1)
+
+| 文件                       | 条  | 证明什么                                                                                                                                                                                                                                                                                                                            |
+| -------------------------- | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| recognition-evaluation     | 4   | refusal 保持 refusal、unavailable 保持 unavailable、坏输出 → execution、host 不可能输入 → invariant                                                                                                                                                                                                                                 |
+| failure-boundary           | 3   | settlement 下 `CalculatorRuntimeError('refusal')` → die 而 `ScoringEvaluationFailed('refusal')` → 422;`recognitionEvaluationHash` 换 aggregator 不变、改常量/绑定/config 变、`evaluationHash` 对既有 fixture 不变                                                                                                                   |
+| determination-probe        | 7   | 终审 q.fail → 422、instance 仍 active、entry 仍 in_review、零 Recognition、零事件;normal route 中间 approve 照常前进;管理员记录 q.fail → 零行;自动批准 q.fail → 不 approved;探测期间 item revision 移动 → `ItemRevisionConflict` 零 Recognition;count 2→3 未到顶 → 照常写入;panel 首票 q.fail **零 ballot**、末票在规则变化后重探测 |
+| scoring-impact             | 9   | 拒一条旧 Recognition → 422 无 revision;execution 单独计数;金额变化 → 409 精确计数、带 token 才写;别的候选 / 别的状态的 token → 409;`sum@1 → max@1` 零 prepare 而 fixed 改金额有 approved → 409;old-first(old execution + next refusal → 500);unavailable → 503 零写入;derived 单独试算;α-equivalence                                |
+| probe-transaction-boundary | 2   | settlement 与 candidate trial 卡在 evaluate 时另一条事务照常拿锁完成                                                                                                                                                                                                                                                                |
+| result-failure-semantics   | 3   | approved 有效 + unavailable → 503 绝不 total=0;稳定态 refusal → die;fixed@1 深比较不变                                                                                                                                                                                                                                              |
+| scoring-failures.browser   | 4   | 审核 approve 收 422 → 工作台仍在、`rec-ordinal` 输入保留;MyResult 503 → `result-unavailable` 且无 total、重试触发 refetch;ImpactDialog 显示计分段且带 token 重交;422 incompatible → 无保存路径                                                                                                                                      |
+| formula-scoring(新增 1)    | 1   | 真沙箱 unix socket:own V1 直通 → 「拒三」规则拒 3.00 的记录(422 带公式原话)而 1.00 落地;直通题上 3.00 站定 → 改绑「拒三」→ 422 `approved.refused = 1`;改绑「恒四」→ 409 `amountChanged = 1` → 带 token 重交 → revision 2、成绩 5.00                                                                                                 |
+
+### 差分
+
+每笔提交前按计划表逐条做过摘除-复原差分;那部分输出随对话上下文压缩丢失,收口时挑三条重跑留档(其余以提交时的红/绿为准,不在此复述):
+
+| 摘除                                     | 结果                                                                                                          |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `settleWithProbe` 跳过 `proveSettlement` | determination-probe **6 failed / 1 passed**(唯一绿的正是「count 2→3 照常写入」——它本就不依赖探测)             |
+| `impactTokenOf` 去掉 `candidate:` 行     | scoring-impact 「refuses an acknowledgement given to another candidate, or to another state」**红**,其余 8 绿 |
+| `mapResultFailure` 的 unavailable 改 die | result-failure-semantics 「says the arithmetic is out of reach in place of the account」**红**,其余 2 绿      |
+
+三处均以精确字符串替换复原,`git status` 对 core/src 干净。
+
+### Done Definition 逐条
+
+- [x] kind 从 calculator 到 host 不丢失;result / settlement / impact 同一 `evaluateRecognition`
+- [x] 三条 settlement 在落事实前探测;normal route 中间 approve 不探测;沙箱永不在 settlement 与 item-change 事务内(含 stale 刷新)
+- [x] 探测与 commit 之间 ItemRevision / Entry-Recognition / ReviewInstance 变化 → conflict 零事实;entryCount 变化不误判
+- [x] q.fail settlement → 422 零事实;unavailable → 503 零事实;execution/integrity/invariant → die 零事实
+- [x] 候选 calculator 跑过全部 effective Recognition(+ derived),old-first;refusal/execution 分开计数 → 422 零写入;金额变化 → 409 精确计数;token 绑候选且 α-equivalent;stale → 事务外刷新后 409;unavailable → 503;换 aggregator 或只收窄 schema 不探测
+- [x] runtime 与 evaluation 分开映射
+- [x] result unavailable → 503,其余 die,无零回退,fixed@1 不变
+- [x] 四件套全绿(下)
+
+### 门禁(实际执行)
+
+```text
+typecheck exit 0(全部工程 + client component references)
+node    Test Files 200 passed | 3 skipped   Tests 1401 passed | 17 skipped (1418)
+browser Test Files 44 passed               Tests 305 passed (305)
+build   ✓ built in 1m 10s  staged web assets  precompressed 99 file(s)
+formula-scoring.test.ts  5 passed (5)  含新增整链承重 1158ms
+```
+
+frozen-routes 零变化(没有新路径);error-codes 冻结表 +3(`ASSESSMENT_DETERMINATION_REFUSED`、`ASSESSMENT_SCORING_UNAVAILABLE`、`ASSESSMENT_ITEM_SCORING_INCOMPATIBLE`);catalogs 完整。
+
+### teardown 现场:又一具尸体,这次差一个名字
+
+笔 4 的 CI(run 33563277930,`f88dc590`)再次撞上 teardown 挂死,账本首次开口:`pid 1933 held by query #4500`,后端 **idle、无事务、无最后一句**——一条在关闭时刻发起的普通查询检出,从未发出 SQL,也从未归还。排除项:MikroORM 的 `onCreateConnection/onReserveConnection` 默认不设;fork 上 `getKysely()` 不预留连接;pg-pool 的 `newClient` 在 `ending` 时仍会交出连接(`pg-pool/index.js`)。持有者仍未点名,所以查询检出现在也带 span 与 source(`ownerOnFiber`,同步读 fiber 的 `currentSpan` 与 `CurrentLogAnnotations`,不为热路径付 Effect 开销):下一具尸体会说出是哪个 span、哪个插件在关闭时发了一条永远没送出去的查询。
+
+### 移交(7.6)
+
+- **existing-state audit**:7.5 只建立 prospective 不变量;`formula@1` writer 生产开放前必须审计已有 approved 数据是否都能被当前 plan 接受(非生产历史可重建)。
+- 容量:5000 条 approved 的试算压测(现在并发 4、每 plan prepare 一次)。
+- 仍挂账:7.4a 的两项 typed authoring UX 债(refinement 控件、详细兼容性诊断);teardown 挂死根因(测量仪已能点名 span/source,等下一次)。
