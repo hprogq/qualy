@@ -5,7 +5,10 @@ import { createRequire } from 'node:module'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { Effect, Exit, Layer, Result, Scope, type Context } from 'effect'
+import { Effect, Exit, Fiber, Layer, Result, Schema, Scope, type Context } from 'effect'
+import { NodeSocketServer } from '@effect/platform-node'
+import { SocketServer } from 'effect/unstable/socket'
+import { Rpc, RpcGroup, RpcSerialization, RpcServer } from 'effect/unstable/rpc'
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest'
 import {
   Sandbox,
@@ -289,6 +292,64 @@ describe('a hostile or absent peer', () => {
     onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())))
     const outcome = await Effect.runPromise(attempt(floodPath, 20_000))
     expectTypedRefusal(outcome)
+  }, 40_000)
+
+  it('refuses an answer from a runtime older than the proof this host requires', async () => {
+    // The trap a stale deployment actually sets. A runtime one generation
+    // behind still speaks the protocol - it accepts the request, runs the
+    // artifact and answers - but its answer predates the provenance this
+    // host now requires of every invocation. A required field that is
+    // missing arrives as a DECODE failure, which the rpc client raises as a
+    // defect rather than an error, so unhandled it becomes a 500 reading
+    // `Missing key at ["value"]["engineVersion"]` on whatever page happened
+    // to be scoring - naming neither the cause nor the cure.
+    //
+    // Served by a real rpc server over a real socket, differing from the
+    // current one in exactly one way: the shape of what it answers.
+    const oldPath = path.join(tempDir, 'previous-generation.sock')
+    const PreviousGeneration = RpcGroup.make(
+      Rpc.make('Invoke', {
+        payload: {
+          artifact: Schema.String,
+          artifactSha256: Schema.String,
+          entrypoint: Schema.String,
+          argumentsJson: Schema.String,
+          limits: Schema.Unknown,
+          rpcApiVersion: Schema.Number,
+          sandboxAbiVersion: Schema.Number,
+        },
+        // the generation before provenance: an output, and nothing saying
+        // who produced it
+        success: Schema.Struct({ output: Schema.String }),
+      }),
+    )
+    const stale = RpcServer.layer(PreviousGeneration, { disableFatalDefects: true }).pipe(
+      Layer.provide(
+        PreviousGeneration.toLayer({ Invoke: () => Effect.succeed({ output: '"alive"' }) }),
+      ),
+      Layer.provideMerge(RpcServer.layerProtocolSocketServer),
+      Layer.provideMerge(
+        Layer.effect(SocketServer.SocketServer, NodeSocketServer.make({ path: oldPath })),
+      ),
+      Layer.provide(RpcSerialization.layerNdjson),
+    )
+    // launched, not merely built: the server runs for as long as its own
+    // fiber does, exactly as the real runtime's main does
+    const serving = Effect.runFork(Layer.launch(stale))
+    onTestFinished(() => Effect.runPromise(Fiber.interrupt(serving)))
+    for (let waited = 0; waited < 200 && !fs.existsSync(oldPath); waited += 1) {
+      await new Promise((done) => setTimeout(done, 50))
+    }
+    expect(fs.existsSync(oldPath)).toBe(true)
+
+    const outcome = await Effect.runPromise(attempt(oldPath, 25_000))
+    expectTypedRefusal(outcome)
+    // an outage, not a crash: the host cannot trust an answer that will not
+    // say who gave it, and says so where an operator will read it
+    if (outcome !== 'hung' && Result.isFailure(outcome)) {
+      expect(outcome.failure._tag).toBe('SandboxUnavailable')
+      expect(String((outcome.failure as { reason?: string }).reason)).toMatch(/cannot read/i)
+    }
   }, 40_000)
 
   it('the real runtime dying mid-call fails the call and heals on restart', async () => {

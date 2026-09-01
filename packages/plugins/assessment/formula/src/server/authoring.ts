@@ -7,7 +7,7 @@
  * implementation lives on the testkit subpath for tests.
  */
 
-import { Cause, Context, Effect, Fiber, Layer, Predicate, Result } from 'effect'
+import { Cause, Context, Effect, Fiber, Layer, Predicate, Result, Schema } from 'effect'
 import { NodeSocket } from '@effect/platform-node'
 import { RpcClient, RpcSerialization } from 'effect/unstable/rpc'
 import {
@@ -114,12 +114,16 @@ export const formulaAuthoringLayer = (options?: {
                 ? Effect.fail(failure)
                 : Effect.fail(fromWire(failure)),
             ),
-            // a mid-call socket failure arrives as a deliberate upstream
-            // defect (RpcClient send is orDie); tame exactly that into the
-            // 503 and let real defects fly
+            // Two deliberate upstream defects, both of them this peer being
+            // unusable rather than a bug here: a mid-call socket failure
+            // (RpcClient send is orDie), and an answer this host cannot
+            // read (its decode is orDie too) - which is what a compiler
+            // process left running across an upgrade produces. Tame exactly
+            // those into the 503 and let real defects fly.
             Effect.catchCause((cause) => {
               if (Result.isSuccess(Cause.findError(cause))) return Effect.failCause(cause)
-              return Predicate.isTagged(Cause.squash(cause), 'SocketError')
+              const defect = Cause.squash(cause)
+              return Predicate.isTagged(defect, 'SocketError') || Schema.isSchemaError(defect)
                 ? Effect.fail(new FormulaCompileUnavailable())
                 : Effect.failCause(cause)
             }),

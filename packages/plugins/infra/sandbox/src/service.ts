@@ -14,7 +14,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { Cause, Context, Effect, Fiber, Layer, Predicate, Result } from 'effect'
+import { Cause, Context, Effect, Fiber, Layer, Predicate, Result, Schema } from 'effect'
 import { NodeSocket } from '@effect/platform-node'
 import { RpcClient, RpcSerialization } from 'effect/unstable/rpc'
 import {
@@ -248,16 +248,37 @@ export const sandboxLayer = (options?: { readonly socketPath?: string }): Layer.
           Effect.catch((failure) =>
             failure instanceof SandboxUnavailable ? Effect.fail(failure) : fromWire(failure),
           ),
-          // the protocol turns a mid-call socket failure into a DEFECT on
-          // purpose (vendored RpcClient.ts:1156 `Effect.orDie(write(...))`);
-          // on this side of the boundary that is not a bug in anybody's
-          // code, it is the runtime being unreachable - tame exactly that
-          // defect back into the typed outage and let real defects fly.
+          // The protocol turns two different things into DEFECTS on purpose,
+          // and on this side of the boundary neither is a bug in anybody's
+          // code. Both are the runtime being unusable, so both are tamed
+          // back into the typed outage and every real defect still flies.
           Effect.catchCause((cause) => {
             if (Result.isSuccess(Cause.findError(cause))) return Effect.failCause(cause)
-            return Predicate.isTagged(Cause.squash(cause), 'SocketError')
-              ? Effect.fail(new SandboxUnavailable({ reason: 'the connection failed mid-call' }))
-              : Effect.failCause(cause)
+            const defect = Cause.squash(cause)
+            // a mid-call socket failure (vendored RpcClient.ts:1156
+            // `Effect.orDie(write(...))`)
+            if (Predicate.isTagged(defect, 'SocketError')) {
+              return Effect.fail(
+                new SandboxUnavailable({ reason: 'the connection failed mid-call' }),
+              )
+            }
+            // An answer this host cannot read (vendored RpcClient.ts:748,
+            // `decodeExit(...).pipe(Effect.orDie)`). That is a runtime a
+            // generation apart - most often one left running while the host
+            // moved on - and it must not reach a caller as a bare schema
+            // path. The advisory fields of the capabilities answer are
+            // optional on the wire precisely so an older runtime stays
+            // readable; the provenance of an invocation is not advisory, so
+            // an answer that omits it is refused rather than accepted with
+            // a hole where the proof should be.
+            if (Schema.isSchemaError(defect)) {
+              return Effect.fail(
+                new SandboxUnavailable({
+                  reason: `cannot read the runtime's answer, which is a generation apart from this host: ${defect.message}`,
+                }),
+              )
+            }
+            return Effect.failCause(cause)
           }),
           // the transport's own deadline: a peer that accepts and stalls -
           // or flaps so fast a write never lands (measured with a
