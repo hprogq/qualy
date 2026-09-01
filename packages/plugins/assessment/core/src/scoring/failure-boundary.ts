@@ -19,7 +19,7 @@ import { evaluateRecognition, type ScoringEvaluationFailed } from './evaluate.ts
 import { frozenCalculatorOf, type ScoringPlan } from './plan.ts'
 
 /** where the host stood when the arithmetic failed */
-export type FailureBoundary = 'settlement' | 'result'
+export type FailureBoundary = 'settlement' | 'result' | 'impact-current' | 'impact-candidate'
 
 /** what a log line needs to name the arithmetic, and nothing a person wrote */
 export interface FailureSite {
@@ -43,7 +43,10 @@ const annotated = (site: FailureSite, kind: string, reason: string) => ({
 })
 
 /** a failure that is nobody's decision: named in the log, then a defect */
-const dies = (site: FailureSite, error: { readonly kind: string; readonly reason: string }) =>
+export const defectAt = (
+  site: FailureSite,
+  error: { readonly kind: string; readonly reason: string },
+): Effect.Effect<never> =>
   Effect.logError('scoring failed', annotated(site, error.kind, error.reason)).pipe(
     Effect.andThen(Effect.die(error)),
   )
@@ -60,7 +63,7 @@ export const mapRuntimeFailure = (
   site: FailureSite,
   error: CalculatorRuntimeError,
 ): Effect.Effect<never, ScoringUnavailable> =>
-  error.kind === 'unavailable' ? Effect.fail(new ScoringUnavailable()) : dies(site, error)
+  error.kind === 'unavailable' ? Effect.fail(new ScoringUnavailable()) : defectAt(site, error)
 
 /**
  * Running the arithmetic failed.
@@ -80,7 +83,7 @@ export const mapEvaluationFailure = (
   if (error.kind === 'refusal' && boundary === 'settlement') {
     return Effect.fail(new DeterminationRefused({ itemId: site.itemId, reason: error.reason }))
   }
-  return dies(site, error)
+  return defectAt(site, error)
 }
 
 /**

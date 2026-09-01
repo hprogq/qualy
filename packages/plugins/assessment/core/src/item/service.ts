@@ -1,4 +1,4 @@
-import { Effect, Result, Schema } from 'effect'
+import { Data, Effect, Result, Schema } from 'effect'
 import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/server'
 import type { Principal } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
@@ -16,8 +16,10 @@ import {
   ItemChangeDecisionRequired,
   ItemConfigInvalid,
   ItemNotFound,
+  ItemScoringIncompatible,
   ScoreGroupInvalid,
   ScoreGroupVersionConflict,
+  ScoringUnavailable,
 } from '../server/errors.ts'
 import { lockBatch, oneBatch } from '../server/db.ts'
 import { announce } from '../live/events.ts'
@@ -28,10 +30,17 @@ import {
   compileScoringPlan,
   contractOf,
   readScoringPlan,
+  recognitionEvaluationHash,
   recognitionSourceOf,
   type PlanIssue,
   type ScoringPlan,
 } from '../scoring/plan.ts'
+import {
+  trialRefuses,
+  trialScoringImpact,
+  type ScoringTrial,
+  type StandingDetermination,
+} from '../scoring/impact-probe.ts'
 import { judgeRecognition, recognitionFormFields } from '../scoring/recognition.ts'
 import { normalizeScoringAuthoring } from '../scoring/authoring.ts'
 import { policyModeOf } from '../review/chain.ts'
@@ -59,11 +68,15 @@ import {
 } from '../review/chain.ts'
 import { createPanel } from '../review/db.ts'
 import {
+  candidateImpactHashOf,
   decisionNeeded,
   impactOf,
   missingDecisions,
+  unchangedScoring,
   type ChangeEffects,
+  type ChangeImpact,
   type Incompatible,
+  type ScoringImpact,
 } from './impact.ts'
 import {
   bumpScoreGroupsVersion,
@@ -207,6 +220,8 @@ export type UpdateItemError =
   | AccessDenied
   | ItemChangeDecisionRequired
   | ItemConfigInvalid
+  | ItemScoringIncompatible
+  | ScoringUnavailable
 export type ReplaceGroupsError =
   BatchNotFound | BatchReadOnly | AccessDenied | ScoreGroupInvalid | ScoreGroupVersionConflict
 
@@ -618,6 +633,10 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     config: ItemConfigInput
     /** the one compilation of this save, shared with appendRevision */
     nextPlan: { readonly plan: ScoringPlan } | { readonly issues: readonly PlanIssue[] }
+    /** which candidate this report is about; see `candidateImpactHashOf` */
+    candidateImpactHash: string
+    /** what running the candidate over what stands found; unchanged until it ran */
+    scoring: (approvedTotal: number) => ScoringImpact
   }) =>
     Effect.gen(function* () {
       const driver = catalogs.itemTypes.get(input.item.itemType) as ItemTypeDriver | undefined
@@ -696,6 +715,8 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
         stranded: stranded as readonly string[],
         incompatible: refusals as readonly Incompatible[],
         impact: impactOf({
+          candidateImpactHash: input.candidateImpactHash,
+          scoring: input.scoring(live.filter((row) => row.status === 'approved').length),
           currentRevisionId: input.current?.id ?? null,
           currentConfig: input.current,
           nextConfig: input.config,
@@ -1204,237 +1225,406 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     },
   )
 
+  /**
+   * The trial a scoring change owes, and the facts it needs.
+   *
+   * Raised inside the first pass of a save that has to run the candidate
+   * arithmetic over what already stands determined: the pass rolls back
+   * having written nothing, the trial runs outside any transaction, and
+   * the save goes on from what it found. `token` names the state the
+   * trial was drawn for, so the second pass can tell whether it still
+   * applies.
+   */
+  class TrialNeeded extends Data.TaggedError('TrialNeeded')<{
+    readonly trial: ScoringTrial
+    /** the report as counted before the trial, whose token names the state */
+    readonly impact: ChangeImpact
+  }> {}
+
+  /** what a trial found for one state, carried into the second pass */
+  interface TrialReceipt {
+    readonly token: string
+    readonly scoring: ScoringImpact
+  }
+
   const updateItem: ItemMethods['updateItem'] = Effect.fn('Assessment.updateItem')(
     function* (tenantId, itemId, input, as) {
-      return yield* withDb(
-        transaction(
-          Effect.gen(function* () {
-            const located = yield* itemOf(tenantId, itemId)
-            if (located === null) return yield* new ItemNotFound()
-            const locked = yield* lockBatch(tenantId, located.batchId)
-            if (!locked) return yield* new BatchNotFound()
-            yield* deps.requireRosterReach(as, tenantId, located.batchId)
-            if (locked.status === 'archived') return yield* new BatchReadOnly()
-            // only the state read under the lock is trusted: a void landing
-            // between the locate read and the lock must be seen, or an edit
-            // would quietly reconfigure a question that no longer runs
-            const item = yield* itemOf(tenantId, itemId)
-            if (item === null) return yield* new ItemNotFound()
-            // a voided question keeps its history; un-voiding it is its own
-            // act, not a side effect of an edit
-            if (item.status === 'voided') {
-              return yield* new ItemConfigInvalid({
-                issues: [{ path: 'item', reason: 'item-voided' }],
-              })
-            }
-            if (input.scoreGroupId !== undefined) {
-              const groups = yield* groupsOf(tenantId, item.batchId)
-              if (!groups.some((group) => group.id === input.scoreGroupId)) {
+      const runtime = yield* ScoringRuntimeCatalog
+
+      /**
+       * One pass through the save.
+       *
+       * With no receipt it either completes - a save that changes no
+       * arithmetic, or one whose arithmetic nobody stands under - or stops
+       * where it would have to run the candidate over what stands, and
+       * says what to try. With a receipt for THIS state it completes,
+       * judging by what the trial found; with one for another state it
+       * hands back the report drawn afresh, because the answer it carries
+       * was given to a question that has since changed.
+       */
+      const pass = (receipt: TrialReceipt | null) =>
+        withDb(
+          transaction(
+            Effect.gen(function* () {
+              const located = yield* itemOf(tenantId, itemId)
+              if (located === null) return yield* new ItemNotFound()
+              const locked = yield* lockBatch(tenantId, located.batchId)
+              if (!locked) return yield* new BatchNotFound()
+              yield* deps.requireRosterReach(as, tenantId, located.batchId)
+              if (locked.status === 'archived') return yield* new BatchReadOnly()
+              // only the state read under the lock is trusted: a void landing
+              // between the locate read and the lock must be seen, or an edit
+              // would quietly reconfigure a question that no longer runs
+              const item = yield* itemOf(tenantId, itemId)
+              if (item === null) return yield* new ItemNotFound()
+              // a voided question keeps its history; un-voiding it is its own
+              // act, not a side effect of an edit
+              if (item.status === 'voided') {
                 return yield* new ItemConfigInvalid({
-                  issues: [{ path: 'scoreGroupId', reason: 'group-not-in-batch' }],
+                  issues: [{ path: 'item', reason: 'item-voided' }],
                 })
               }
-            }
-            const current =
-              item.currentRevisionId === null
-                ? null
-                : yield* revisionOf(tenantId, item.currentRevisionId)
-            // Which version this edit was composed against. Without it two
-            // administrators with the same question open both save, and the
-            // second is answering an impact report drawn from a state that
-            // stopped existing while they were reading it. Checked before
-            // anything reads or gates on the submitted configuration.
-            if (
-              input.expectedRevisionId !== undefined &&
-              input.expectedRevisionId !== (item.currentRevisionId ?? null)
-            ) {
-              return yield* new ItemConfigInvalid({
-                issues: [{ path: 'expectedRevisionId', reason: 'item-revision-conflict' }],
-              })
-            }
-            // The submitted scoring language is normalized BEFORE anything
-            // compares or gates on it: change detection, the reason gate,
-            // compilation, impact and the appended revision all consume the
-            // one stored form - so a client re-spelling its draft handles is
-            // not a change, and a stored form re-submitted is a no-op.
-            let config: ItemConfigInput | undefined
-            if (input.config !== undefined) {
-              const normalized = yield* normalizeScoringAuthoring({
-                current: current?.scoringConfig ?? null,
-                submitted: input.config.scoringConfig,
-                mint: mintRecognitionIds,
-              })
-              if ('issues' in normalized) {
-                return yield* new ItemConfigInvalid({ issues: normalized.issues })
-              }
-              config = { ...input.config, scoringConfig: normalized.config }
-            }
-
-            const fieldDiff: Record<string, unknown> = {}
-            if (input.title !== undefined && input.title !== item.title) {
-              fieldDiff['title'] = [item.title, input.title]
-            }
-            if (input.scoreGroupId !== undefined && input.scoreGroupId !== item.scoreGroupId) {
-              fieldDiff['scoreGroupId'] = [item.scoreGroupId, input.scoreGroupId]
-            }
-            if (input.maxEntries !== undefined && input.maxEntries !== item.maxEntries) {
-              fieldDiff['maxEntries'] = [item.maxEntries, input.maxEntries]
-            }
-            if (input.sortOrder !== undefined && input.sortOrder !== item.sortOrder) {
-              fieldDiff['sortOrder'] = [item.sortOrder, input.sortOrder]
-            }
-
-            // On a running round, changing what a question is worth needs a
-            // sentence saying why (assessment-design §32.8): the scoring
-            // references, and which group's caps the item answers to, are
-            // scoring semantics. A title is not.
-            const scoringChanged =
-              config !== undefined &&
-              current !== null &&
-              !sameJson(current.scoringConfig, config.scoringConfig)
-            const semanticChange = scoringChanged || fieldDiff['scoreGroupId'] !== undefined
-            const reason = input.reason?.trim() ?? ''
-            // A question nobody has been asked yet has produced no facts to
-            // explain (§32.60), so composing one inside a running round is
-            // still just composing.
-            if (
-              locked.status === 'active' &&
-              item.status !== 'draft' &&
-              semanticChange &&
-              reason === ''
-            ) {
-              return yield* new ItemConfigInvalid({
-                issues: [{ path: 'reason', reason: 'reason-required' }],
-              })
-            }
-
-            if (Object.keys(fieldDiff).length > 0) {
-              yield* updateItemFields({
-                tenantId,
-                itemId,
-                fields: {
-                  ...(input.title !== undefined ? { title: input.title } : {}),
-                  ...(input.scoreGroupId !== undefined ? { scoreGroupId: input.scoreGroupId } : {}),
-                  ...(input.maxEntries !== undefined ? { maxEntries: input.maxEntries } : {}),
-                  ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
-                },
-              })
-            }
-            if (config !== undefined) {
-              const batch = yield* oneBatch(tenantId, item.batchId)
-              const materialRange = deps.parseRange(String(batch!.materialRange))
-              const nextPlan = yield* compiledCandidate({
-                tenantId,
-                item,
-                materialRange,
-                config,
-                previous: current,
-                as,
-              })
-              const counted = yield* impactUnder({
-                tenantId,
-                item,
-                current,
-                materialRange,
-                config,
-                nextPlan,
-              })
-              // A determination somebody already made is not something a
-              // dialog can offer to handle. Scoring reads the question's
-              // CURRENT plan, so a configuration the standing determinations
-              // do not fit leaves those claims approved and unscorable -
-              // and there is no remedy a student or a reviewer could carry
-              // out. It is refused at the save, which is the only moment
-              // anybody is looking (§35).
-              if (counted.stranded.length > 0) {
-                return yield* new ItemConfigInvalid({
-                  issues: counted.stranded.map((entryId) => ({
-                    path: `scoringConfig.recognitions:${entryId}`,
-                    reason: 'strands-existing-recognition',
-                  })),
-                })
-              }
-              // A save that would disturb work under way comes back with what
-              // it would disturb rather than going ahead or refusing. The
-              // whole transaction rolls back, so nothing was half done while
-              // the question was being asked.
-              if (missingDecisions(counted.impact, input.effects)) {
-                return yield* new ItemChangeDecisionRequired(counted.impact)
-              }
-              // and the answer is only carried out against the state it was
-              // drawn from: reviewers keep working while a dialog is open
-              if (
-                input.effects !== undefined &&
-                input.effects.impactToken !== counted.impact.impactToken
-              ) {
-                return yield* new ItemChangeDecisionRequired(counted.impact)
-              }
-              const appended = yield* appendRevision({
-                tenantId,
-                item,
-                current,
-                materialRange,
-                config,
-                compiled: nextPlan,
-                actorId: as.userId,
-                reason: input.reason ?? null,
-              })
-              if (appended.changed) {
-                fieldDiff['config'] = {
-                  oldRevisionId: current?.id ?? null,
-                  newRevisionId: appended.revisionId,
-                }
-                const decided = decisionNeeded(counted.impact)
-                if (input.effects !== undefined && (decided.form || decided.review)) {
-                  const result = yield* propagate({
-                    tenantId,
-                    item,
-                    newRevisionId: appended.revisionId,
-                    effects: input.effects,
-                    live: counted.live,
-                    rounds: counted.rounds,
-                    incompatible: counted.incompatible,
-                    nextPolicy: config.reviewPolicy,
-                    actorId: as.userId,
-                    reason: input.reason ?? null,
+              if (input.scoreGroupId !== undefined) {
+                const groups = yield* groupsOf(tenantId, item.batchId)
+                if (!groups.some((group) => group.id === input.scoreGroupId)) {
+                  return yield* new ItemConfigInvalid({
+                    issues: [{ path: 'scoreGroupId', reason: 'group-not-in-batch' }],
                   })
-                  // one change, one line: what was chosen and what it did
-                  fieldDiff['propagation'] = {
-                    form: input.effects.form ?? null,
-                    review: input.effects.review ?? null,
-                  }
-                  fieldDiff['propagationResult'] = result
                 }
               }
-            }
-            // an update that changed nothing leaves no event and moves no
-            // counter; recordConfigChange skips the empty diff
-            yield* deps.recordConfigChange(
-              tenantId,
-              item.batchId,
-              locked.status,
-              Object.keys(fieldDiff).length > 0 ? { itemId, ...fieldDiff } : {},
-              as.userId,
-              input.reason ?? null,
-            )
-            // coarse on purpose: an edit may have swept rounds and standing
-            // along with the paper, and a wake-up says only "look again"
-            yield* announce(tenantId, item.batchId, [
-              { kind: 'item-changed' },
-              { kind: 'entries-changed' },
-              { kind: 'review-inbox-changed' },
-              { kind: 'review-instance-changed' },
-              { kind: 'result-changed' },
-            ])
-            const written = (yield* itemOf(tenantId, itemId))!
-            const revision =
-              written.currentRevisionId === null
-                ? null
-                : yield* revisionOf(tenantId, written.currentRevisionId)
-            return toView(written, revision)
-          }),
-        ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+              const current =
+                item.currentRevisionId === null
+                  ? null
+                  : yield* revisionOf(tenantId, item.currentRevisionId)
+              // Which version this edit was composed against. Without it two
+              // administrators with the same question open both save, and the
+              // second is answering an impact report drawn from a state that
+              // stopped existing while they were reading it. Checked before
+              // anything reads or gates on the submitted configuration.
+              if (
+                input.expectedRevisionId !== undefined &&
+                input.expectedRevisionId !== (item.currentRevisionId ?? null)
+              ) {
+                return yield* new ItemConfigInvalid({
+                  issues: [{ path: 'expectedRevisionId', reason: 'item-revision-conflict' }],
+                })
+              }
+              // The submitted scoring language is normalized BEFORE anything
+              // compares or gates on it: change detection, the reason gate,
+              // compilation, impact and the appended revision all consume the
+              // one stored form - so a client re-spelling its draft handles is
+              // not a change, and a stored form re-submitted is a no-op.
+              let config: ItemConfigInput | undefined
+              if (input.config !== undefined) {
+                const normalized = yield* normalizeScoringAuthoring({
+                  current: current?.scoringConfig ?? null,
+                  submitted: input.config.scoringConfig,
+                  mint: mintRecognitionIds,
+                })
+                if ('issues' in normalized) {
+                  return yield* new ItemConfigInvalid({ issues: normalized.issues })
+                }
+                config = { ...input.config, scoringConfig: normalized.config }
+              }
+
+              const fieldDiff: Record<string, unknown> = {}
+              if (input.title !== undefined && input.title !== item.title) {
+                fieldDiff['title'] = [item.title, input.title]
+              }
+              if (input.scoreGroupId !== undefined && input.scoreGroupId !== item.scoreGroupId) {
+                fieldDiff['scoreGroupId'] = [item.scoreGroupId, input.scoreGroupId]
+              }
+              if (input.maxEntries !== undefined && input.maxEntries !== item.maxEntries) {
+                fieldDiff['maxEntries'] = [item.maxEntries, input.maxEntries]
+              }
+              if (input.sortOrder !== undefined && input.sortOrder !== item.sortOrder) {
+                fieldDiff['sortOrder'] = [item.sortOrder, input.sortOrder]
+              }
+
+              // On a running round, changing what a question is worth needs a
+              // sentence saying why (assessment-design §32.8): the scoring
+              // references, and which group's caps the item answers to, are
+              // scoring semantics. A title is not.
+              const scoringChanged =
+                config !== undefined &&
+                current !== null &&
+                !sameJson(current.scoringConfig, config.scoringConfig)
+              const semanticChange = scoringChanged || fieldDiff['scoreGroupId'] !== undefined
+              const reason = input.reason?.trim() ?? ''
+              // A question nobody has been asked yet has produced no facts to
+              // explain (§32.60), so composing one inside a running round is
+              // still just composing.
+              if (
+                locked.status === 'active' &&
+                item.status !== 'draft' &&
+                semanticChange &&
+                reason === ''
+              ) {
+                return yield* new ItemConfigInvalid({
+                  issues: [{ path: 'reason', reason: 'reason-required' }],
+                })
+              }
+
+              // the plain fields are written only once every gate below has
+              // let the save through: a pass that stops to ask must leave
+              // nothing behind, and this one may stop twice
+              const applyFields = Effect.suspend(() =>
+                Object.keys(fieldDiff).length === 0
+                  ? Effect.void
+                  : updateItemFields({
+                      tenantId,
+                      itemId,
+                      fields: {
+                        ...(input.title !== undefined ? { title: input.title } : {}),
+                        ...(input.scoreGroupId !== undefined
+                          ? { scoreGroupId: input.scoreGroupId }
+                          : {}),
+                        ...(input.maxEntries !== undefined ? { maxEntries: input.maxEntries } : {}),
+                        ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+                      },
+                    }),
+              )
+              if (config !== undefined) {
+                const batch = yield* oneBatch(tenantId, item.batchId)
+                const materialRange = deps.parseRange(String(batch!.materialRange))
+                const nextPlan = yield* compiledCandidate({
+                  tenantId,
+                  item,
+                  materialRange,
+                  config,
+                  previous: current,
+                  as,
+                })
+                // the candidate as the administrator keeps sending it, and
+                // what it resolved to - never the identities minted for it
+                // on this request, which the next request mints afresh
+                const candidateImpactHash = candidateImpactHashOf({
+                  formConfig: input.config!.formConfig,
+                  reviewPolicy: input.config!.reviewPolicy,
+                  scoringIntent: input.config!.scoringConfig,
+                  calculatorContract: 'plan' in nextPlan ? nextPlan.plan.calculator : null,
+                })
+                const currentPlan =
+                  current === null ? null : yield* readScoringPlan(current).pipe(Effect.orDie)
+                // Whether the arithmetic a determination meets on its own has
+                // moved. Presentation, admission and the aggregator stay out:
+                // renaming a fact, narrowing what may be determined, or
+                // folding amounts differently changes nothing about what any
+                // one determination is worth, so no trial is owed for them.
+                const arithmeticMoved =
+                  'plan' in nextPlan &&
+                  currentPlan !== null &&
+                  recognitionEvaluationHash(currentPlan) !==
+                    recognitionEvaluationHash(nextPlan.plan)
+                const derived =
+                  deps.catalogs.itemTypes.get(item.itemType)?.interaction === 'derived'
+                const counted = yield* impactUnder({
+                  tenantId,
+                  item,
+                  current,
+                  materialRange,
+                  config,
+                  nextPlan,
+                  candidateImpactHash,
+                  scoring: (approvedTotal) =>
+                    receipt !== null && arithmeticMoved
+                      ? receipt.scoring
+                      : unchangedScoring(approvedTotal),
+                })
+                // A determination somebody already made is not something a
+                // dialog can offer to handle. Scoring reads the question's
+                // CURRENT plan, so a configuration the standing determinations
+                // do not fit leaves those claims approved and unscorable -
+                // and there is no remedy a student or a reviewer could carry
+                // out. It is refused at the save, which is the only moment
+                // anybody is looking (§35).
+                if (counted.stranded.length > 0) {
+                  return yield* new ItemConfigInvalid({
+                    issues: counted.stranded.map((entryId) => ({
+                      path: `scoringConfig.recognitions:${entryId}`,
+                      reason: 'strands-existing-recognition',
+                    })),
+                  })
+                }
+                // What stands determined, and whether the candidate rule can
+                // take it. The shape check above says the values still fit
+                // the contract; only running the rule says whether it scores
+                // them, and what it makes of them. That run is owed whenever
+                // the arithmetic moved and anything stands under it, and it
+                // happens outside this transaction: the pass stops here with
+                // nothing written and asks for it, unless it already carries
+                // the answer for exactly this state.
+                const standing: StandingDetermination[] = counted.live
+                  .filter((row) => row.status === 'approved' && row.recognition !== null)
+                  .map((row) => ({ entryId: row.entryId, recognition: row.recognition! }))
+                const trialOwed = arithmeticMoved && (standing.length > 0 || derived)
+                if (
+                  trialOwed &&
+                  'plan' in nextPlan &&
+                  currentPlan !== null &&
+                  (receipt === null || receipt.token !== counted.impact.impactToken)
+                ) {
+                  return yield* new TrialNeeded({
+                    impact: counted.impact,
+                    trial: {
+                      tenantId,
+                      batchId: item.batchId,
+                      itemId,
+                      current: currentPlan,
+                      candidate: nextPlan.plan,
+                      standing,
+                      derived,
+                    },
+                  })
+                }
+                // a rule that cannot take what stands is not a choice the
+                // dialog can offer either: the save is refused, with the
+                // counts, and the entries are named in the log
+                if (trialRefuses(counted.impact.scoring)) {
+                  yield* Effect.logWarning('a candidate scoring rule cannot take what stands', {
+                    itemId,
+                    approved: counted.impact.scoring.approved,
+                    derived: counted.impact.scoring.derived,
+                  })
+                  return yield* new ItemScoringIncompatible({
+                    itemId,
+                    approved: {
+                      total: counted.impact.scoring.approved.total,
+                      refused: counted.impact.scoring.approved.refused,
+                      executionFailed: counted.impact.scoring.approved.executionFailed,
+                    },
+                    derived:
+                      counted.impact.scoring.derived === null
+                        ? null
+                        : {
+                            refused: counted.impact.scoring.derived.refused,
+                            executionFailed: counted.impact.scoring.derived.executionFailed,
+                          },
+                  })
+                }
+                // A save that would disturb work under way comes back with what
+                // it would disturb rather than going ahead or refusing. The
+                // whole transaction rolls back, so nothing was half done while
+                // the question was being asked.
+                if (missingDecisions(counted.impact, input.effects)) {
+                  return yield* new ItemChangeDecisionRequired(counted.impact)
+                }
+                // and the answer is only carried out against the state it was
+                // drawn from: reviewers keep working while a dialog is open
+                if (
+                  input.effects !== undefined &&
+                  input.effects.impactToken !== counted.impact.impactToken
+                ) {
+                  return yield* new ItemChangeDecisionRequired(counted.impact)
+                }
+                yield* applyFields
+                const appended = yield* appendRevision({
+                  tenantId,
+                  item,
+                  current,
+                  materialRange,
+                  config,
+                  compiled: nextPlan,
+                  actorId: as.userId,
+                  reason: input.reason ?? null,
+                })
+                if (appended.changed) {
+                  fieldDiff['config'] = {
+                    oldRevisionId: current?.id ?? null,
+                    newRevisionId: appended.revisionId,
+                  }
+                  if (counted.impact.scoring.changed) {
+                    // what the trial found, on the record beside the change
+                    // it belongs to; never which determinations, and never
+                    // the rule's words for them
+                    fieldDiff['scoringImpact'] = {
+                      approved: {
+                        total: counted.impact.scoring.approved.total,
+                        amountChanged: counted.impact.scoring.approved.amountChanged,
+                      },
+                      derived:
+                        counted.impact.scoring.derived === null
+                          ? null
+                          : { amountChanged: counted.impact.scoring.derived.amountChanged },
+                    }
+                  }
+                  const decided = decisionNeeded(counted.impact)
+                  if (input.effects !== undefined && (decided.form || decided.review)) {
+                    const result = yield* propagate({
+                      tenantId,
+                      item,
+                      newRevisionId: appended.revisionId,
+                      effects: input.effects,
+                      live: counted.live,
+                      rounds: counted.rounds,
+                      incompatible: counted.incompatible,
+                      nextPolicy: config.reviewPolicy,
+                      actorId: as.userId,
+                      reason: input.reason ?? null,
+                    })
+                    // one change, one line: what was chosen and what it did
+                    fieldDiff['propagation'] = {
+                      form: input.effects.form ?? null,
+                      review: input.effects.review ?? null,
+                    }
+                    fieldDiff['propagationResult'] = result
+                  }
+                }
+              } else {
+                yield* applyFields
+              }
+              // an update that changed nothing leaves no event and moves no
+              // counter; recordConfigChange skips the empty diff
+              yield* deps.recordConfigChange(
+                tenantId,
+                item.batchId,
+                locked.status,
+                Object.keys(fieldDiff).length > 0 ? { itemId, ...fieldDiff } : {},
+                as.userId,
+                input.reason ?? null,
+              )
+              // coarse on purpose: an edit may have swept rounds and standing
+              // along with the paper, and a wake-up says only "look again"
+              yield* announce(tenantId, item.batchId, [
+                { kind: 'item-changed' },
+                { kind: 'entries-changed' },
+                { kind: 'review-inbox-changed' },
+                { kind: 'review-instance-changed' },
+                { kind: 'result-changed' },
+              ])
+              const written = (yield* itemOf(tenantId, itemId))!
+              const revision =
+                written.currentRevisionId === null
+                  ? null
+                  : yield* revisionOf(tenantId, written.currentRevisionId)
+              return toView(written, revision)
+            }),
+          ).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
+        )
+
+      // The save, in as many passes as the trial needs and never more than
+      // two: the first stops to ask, the trial answers outside any
+      // transaction, the second carries the answer. A second pass that
+      // finds the state moved asks once more - and that answer is not
+      // carried out either, only reported, because the report is what the
+      // administrator is owed and the next submission will ask again.
+      const first = yield* Effect.result(pass(null))
+      if (Result.isSuccess(first)) return first.success
+      if (!(first.failure instanceof TrialNeeded)) return yield* Effect.fail(first.failure)
+      const tried = yield* trialScoringImpact(runtime, first.failure.trial)
+      const second = yield* Effect.result(
+        pass({ token: first.failure.impact.impactToken, scoring: tried }),
       )
+      if (Result.isSuccess(second)) return second.success
+      if (!(second.failure instanceof TrialNeeded)) return yield* Effect.fail(second.failure)
+      // the state moved while the trial ran: the answer the caller carried
+      // no longer applies, so what they get is the report drawn afresh -
+      // tried again, outside any transaction, and only reported
+      const retried = yield* trialScoringImpact(runtime, second.failure.trial)
+      return yield* new ItemChangeDecisionRequired({
+        ...second.failure.impact,
+        scoring: retried,
+      })
     },
   )
 

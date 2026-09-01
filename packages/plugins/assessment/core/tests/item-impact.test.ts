@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { impactOf } from '../src/item/impact.ts'
+import { impactOf, unchangedScoring } from '../src/item/impact.ts'
 
 // What counts as a change to a live question. jsonb hands its objects back
 // with the keys re-sorted, so a configuration that came out of the
@@ -76,6 +76,8 @@ const report = (next: { formConfig: unknown; reviewPolicy: unknown }) =>
       },
     ],
     incompatible: [],
+    candidateImpactHash: 'candidate-under-test',
+    scoring: unchangedScoring(0),
   })
 
 describe('what counts as a change to a live question', () => {

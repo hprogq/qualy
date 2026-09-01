@@ -24,6 +24,17 @@ const determinationRefused = defineMessage<{ reason: string }>()({
   defaultMessage: 'The current scoring rule does not accept this determination: {reason}',
 })
 
+// how many determinations in force the candidate rule cannot take, and how
+const scoringIncompatible = defineMessage<{
+  affected: number
+  refused: number
+  executionFailed: number
+}>()({
+  id: 'assessment/error/item-scoring-incompatible',
+  defaultMessage:
+    'The new scoring rule cannot handle {affected, plural, one {# determination} other {# determinations}} already in force ({refused} refused by the rule, {executionFailed} failed to compute). Correct the rule and try again.',
+})
+
 const participantCount = defineMessage<{ count: number }>()({
   id: 'assessment/roster/count',
   defaultMessage:
@@ -4437,6 +4448,15 @@ const i18n = definePluginMessages({
     ASSESSMENT_SCORING_UNAVAILABLE: {
       id: 'assessment/error/scoring-unavailable',
       defaultMessage: 'Scoring is temporarily unavailable. Try again in a moment.',
+    },
+    ASSESSMENT_ITEM_SCORING_INCOMPATIBLE: {
+      message: scoringIncompatible,
+      values: (data) => {
+        const refused = data.approved.refused + (data.derived?.refused === true ? 1 : 0)
+        const executionFailed =
+          data.approved.executionFailed + (data.derived?.executionFailed === true ? 1 : 0)
+        return { affected: refused + executionFailed, refused, executionFailed }
+      },
     },
   }),
   locales: {

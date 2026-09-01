@@ -186,6 +186,8 @@ export const probeTest: CalculatorRegistration = {
     maxOrdinal: Schema.optional(Schema.Number),
     refuseLevel: Schema.optional(Schema.String),
     outageLevel: Schema.optional(Schema.String),
+    /** added to every amount: the shape of a rule that re-prices what stands */
+    bonus: Schema.optional(Schema.Number),
   }),
   bind: Effect.succeed({
     ref: 'probe-test@1',
@@ -210,7 +212,9 @@ export const probeTest: CalculatorRegistration = {
               maxOrdinal?: number
               refuseLevel?: string
               outageLevel?: string
+              bonus?: number
             }
+            const pays = (base: number) => (base + (config.bonus ?? 0)).toFixed(2)
             const ordinal = input['ordinal']
             if (ordinal === 8) {
               return yield* Effect.fail(
@@ -225,7 +229,7 @@ export const probeTest: CalculatorRegistration = {
             if (ordinal === 6) {
               // the shape of a proof still running: waits, then pays
               yield* Effect.promise(() => probeHold.until)
-              return '4.00'
+              return pays(4)
             }
             if (typeof ordinal === 'number' && ordinal > (config.maxOrdinal ?? 5)) {
               return yield* Effect.fail(
@@ -248,7 +252,7 @@ export const probeTest: CalculatorRegistration = {
                 ),
               )
             }
-            return input['level'] === 'national' ? '10.00' : '4.00'
+            return pays(input['level'] === 'national' ? 10 : 4)
           }),
       }),
   }),
@@ -297,6 +301,48 @@ export const probeLevelTest: CalculatorRegistration = {
             }
             return input['level'] === 'national' ? '10.00' : '4.00'
           }),
+      }),
+  }),
+}
+
+/**
+ * The rule of a granted question: reads nothing, pays what it is configured
+ * to, and fails whichever way it is told to - so a trial of a derived
+ * question has something to find.
+ */
+export const probeGrantTest: CalculatorRegistration = {
+  kind: 'calculator',
+  ref: 'probe-grant-test@1',
+  configSchema: Schema.Struct({
+    amount: Schema.String,
+    fails: Schema.optional(Schema.Literals(['refusal', 'execution', 'unavailable'])),
+  }),
+  bind: Effect.succeed({
+    ref: 'probe-grant-test@1',
+    compile: (config) =>
+      Effect.succeed({
+        config,
+        inputSchema: normalizeInputSchema({
+          type: 'object',
+          properties: {},
+          required: [],
+          additionalProperties: false,
+        }),
+        outputSchema: testAmount,
+        contractHash: 'test:probe-grant',
+      }),
+    verify: () => Effect.void,
+    prepare: (frozen) =>
+      Effect.succeed({
+        evaluate: () => {
+          const config = frozen.config as {
+            amount: string
+            fails?: 'refusal' | 'execution' | 'unavailable'
+          }
+          return config.fails === undefined
+            ? Effect.succeed(config.amount)
+            : Effect.fail(new CalculatorEvaluationError(config.fails, `told to: ${config.fails}`))
+        },
       }),
   }),
 }
@@ -446,7 +492,9 @@ export const twoFactScoring = {
 }
 
 /** the probing calculator, with the ordinal a reviewer alone determines */
-export const probeScoring = (config: { maxOrdinal?: number; refuseLevel?: string } = {}) => ({
+export const probeScoring = (
+  config: { maxOrdinal?: number; refuseLevel?: string; bonus?: number } = {},
+) => ({
   calculator: { ref: probeTest.ref, config },
   aggregator: { ref: 'sum@1', config: {} },
   recognitions: {
@@ -537,6 +585,7 @@ export const scoringRegistrations: readonly CalculatorRegistration[] = [
   shapedTest,
   probeTest,
   probeLevelTest,
+  probeGrantTest,
 ]
 
 const contributed = <T>(values: readonly T[]): readonly Contributed<T>[] =>

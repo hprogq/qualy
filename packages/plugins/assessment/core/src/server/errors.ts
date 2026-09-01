@@ -189,8 +189,54 @@ export class ItemChangeDecisionRequired extends Schema.TaggedError<ItemChangeDec
       /** mappable rounds whose walked-so-far differs under the new policy */
       pastChanged: Schema.Number,
     }),
+    // what the candidate arithmetic makes of what already stands
+    // determined, found by running it; read-only, acknowledged by
+    // answering with the token (assessment-design §32.62)
+    scoring: Schema.Struct({
+      changed: Schema.Boolean,
+      approved: Schema.Struct({
+        total: Schema.Number,
+        comparable: Schema.Number,
+        amountChanged: Schema.Number,
+        refused: Schema.Number,
+        executionFailed: Schema.Number,
+      }),
+      derived: Schema.NullOr(
+        Schema.Struct({
+          comparable: Schema.Boolean,
+          amountChanged: Schema.Boolean,
+          refused: Schema.Boolean,
+          executionFailed: Schema.Boolean,
+        }),
+      ),
+    }),
   },
   { httpApiStatus: 409, identifier: 'AssessmentItemChangeDecisionRequired' },
+) {}
+
+/**
+ * A scoring rule that cannot handle what already stands determined.
+ *
+ * A refusal, unlike the decision above: a determination in force that the
+ * candidate rule refuses, or cannot compute, would stand approved and
+ * unscorable the moment the rule took effect, and there is no answer an
+ * administrator could give that makes that lawful. The counts say how
+ * many and in which way; which ones is in the log.
+ */
+export class ItemScoringIncompatible extends Schema.TaggedError<ItemScoringIncompatible>()(
+  'ASSESSMENT_ITEM_SCORING_INCOMPATIBLE',
+  {
+    itemId: Schema.String,
+    approved: Schema.Struct({
+      total: Schema.Number,
+      refused: Schema.Number,
+      executionFailed: Schema.Number,
+    }),
+    derived: Schema.NullOr(
+      Schema.Struct({ refused: Schema.Boolean, executionFailed: Schema.Boolean }),
+    ),
+  },
+  { httpApiStatus: 422, identifier: 'AssessmentItemScoringIncompatible' },
 ) {}
 
 /** a score-tree write that cannot be accepted, row by row */

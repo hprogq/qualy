@@ -59,6 +59,23 @@ export interface ChangeImpact {
     /** mappable rounds whose walked-so-far differs under the new policy */
     readonly pastChanged: number
   }
+  /** what the new arithmetic makes of the determinations in force; read-only */
+  readonly scoring: {
+    readonly changed: boolean
+    readonly approved: {
+      readonly total: number
+      readonly comparable: number
+      readonly amountChanged: number
+      readonly refused: number
+      readonly executionFailed: number
+    }
+    readonly derived: null | {
+      readonly comparable: boolean
+      readonly amountChanged: boolean
+      readonly refused: boolean
+      readonly executionFailed: boolean
+    }
+  }
 }
 
 export interface ChangeEffects {

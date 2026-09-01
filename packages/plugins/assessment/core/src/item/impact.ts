@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
+import { hashCanonicalJson } from '@qualy/value-schema/hash'
 import { readPolicy, readResolved, type ReviewRoute } from '../review/chain.ts'
+import type { ScoringPlan } from '../scoring/plan.ts'
 import type { LiveEntryRow, OpenRoundRow } from './db.ts'
 
 // What a configuration change would do to work already under way, and the
@@ -57,7 +59,55 @@ export interface ChangeImpact {
      */
     readonly pastChanged: number
   }
+  readonly scoring: ScoringImpact
 }
+
+/**
+ * What the candidate arithmetic makes of what already stands determined.
+ *
+ * Counted by actually running it: every determination in force is scored
+ * under the current rule and under the candidate, and the two amounts are
+ * compared exactly. `changed` says whether the trial was owed at all - the
+ * arithmetic a determination meets on its own moved - and the rest is
+ * what the trial found. A determination the candidate refuses, or cannot
+ * compute, is one the save may not make unscorable; an amount that
+ * differs is one the administrator is told about. Nothing here models
+ * how amounts fold into a subtotal: that is the aggregator's, and it
+ * never sees a single determination.
+ */
+export interface ScoringImpact {
+  readonly changed: boolean
+  readonly approved: {
+    readonly total: number
+    /** scored under both rules, so the two amounts could be compared */
+    readonly comparable: number
+    readonly amountChanged: number
+    /** the candidate rule refused these values */
+    readonly refused: number
+    /** the candidate program failed to compute them */
+    readonly executionFailed: number
+  }
+  /** a granted question's own amount, tried the same way; null for a filed one */
+  readonly derived: null | {
+    readonly comparable: boolean
+    readonly amountChanged: boolean
+    readonly refused: boolean
+    readonly executionFailed: boolean
+  }
+}
+
+/** the trial nobody owed: the arithmetic a determination meets did not move */
+export const unchangedScoring = (approvedTotal: number): ScoringImpact => ({
+  changed: false,
+  approved: {
+    total: approvedTotal,
+    comparable: 0,
+    amountChanged: 0,
+    refused: 0,
+    executionFailed: 0,
+  },
+  derived: null,
+})
 
 /** which entries this change would leave the form unable to read */
 export interface Incompatible {
@@ -98,11 +148,14 @@ const sameJson = (a: unknown, b: unknown) => canonical(a ?? null) === canonical(
  */
 export const impactTokenOf = (input: {
   currentRevisionId: string | null
-  live: readonly LiveEntryRow[]
-  rounds: readonly OpenRoundRow[]
+  live: readonly Pick<LiveEntryRow, 'entryId' | 'status' | 'entryRevisionId' | 'recognitionId'>[]
+  rounds: readonly Pick<OpenRoundRow, 'id' | 'state' | 'route' | 'stageId'>[]
+  /** which candidate the report was drawn for; see `candidateImpactHashOf` */
+  candidateImpactHash: string
 }): string => {
   const lines = [
     `revision:${input.currentRevisionId ?? ''}`,
+    `candidate:${input.candidateImpactHash}`,
     // the determination too, not only the filing: a claim re-judged while
     // the dialog was open stands recognised as something else now, and a
     // confirmation given against the old answer would be carried out against
@@ -119,6 +172,37 @@ export const impactTokenOf = (input: {
   ]
   return createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 32)
 }
+
+/**
+ * Which candidate a report is about, so an answer is carried out only
+ * against the configuration it was given for.
+ *
+ * The token used to bind the state a report was counted from and nothing
+ * about the candidate: a screen could ask about one configuration and
+ * confirm another. What it binds now is the administrator's own intent as
+ * they keep re-sending it - the form, the policy, and the scoring
+ * language BEFORE it is normalized, where a new recognition still goes by
+ * the handle the screen gave it. The stored form would not do: identities
+ * are minted afresh on every request until one is saved, so two requests
+ * carrying the same draft would never agree. The calculator's resolved
+ * contract comes along beside the intent, because the same intent can
+ * resolve to a different program once the runtime behind it moves - and
+ * that contract carries no minted identity.
+ */
+export const candidateImpactHashOf = (input: {
+  formConfig: unknown
+  reviewPolicy: unknown
+  /** the scoring configuration exactly as submitted, handles and all */
+  scoringIntent: unknown
+  /** what the intent resolved to; null when it did not compile */
+  calculatorContract: ScoringPlan['calculator'] | null
+}): string =>
+  hashCanonicalJson({
+    formConfig: input.formConfig ?? null,
+    reviewPolicy: input.reviewPolicy ?? null,
+    scoringIntent: input.scoringIntent ?? null,
+    calculatorContract: input.calculatorContract,
+  })
 
 /**
  * Whether a step a round is standing at survives into the new policy, and
@@ -164,6 +248,8 @@ export const impactOf = (input: {
   live: readonly LiveEntryRow[]
   rounds: readonly OpenRoundRow[]
   incompatible: readonly Incompatible[]
+  candidateImpactHash: string
+  scoring: ScoringImpact
 }): ChangeImpact => {
   const formChanged =
     input.currentConfig === null ||
@@ -193,6 +279,7 @@ export const impactOf = (input: {
           ).length
         : 0,
     },
+    scoring: input.scoring,
   }
 }
 
@@ -210,6 +297,12 @@ export const decisionNeeded = (impact: ChangeImpact) => ({
     impact.form.changed &&
     impact.form.inReview.incompatible + impact.form.approved.incompatible > 0,
   review: impact.review.changed && impact.review.open > 0,
+  // an acknowledgement rather than a choice: the amounts will change, and
+  // there is nothing to pick - the current rule is the only rule there is
+  // (assessment-design §32.62), so being told is the whole decision
+  scoring:
+    impact.scoring.changed &&
+    (impact.scoring.approved.amountChanged > 0 || impact.scoring.derived?.amountChanged === true),
 })
 
 /** what an answer left unstated, if anything */
@@ -218,7 +311,9 @@ export const missingDecisions = (
   effects: ChangeEffects | undefined,
 ): boolean => {
   const needed = decisionNeeded(impact)
-  if (!needed.form && !needed.review) return false
+  if (!needed.form && !needed.review && !needed.scoring) return false
+  // the scoring acknowledgement is given by answering at all: a second
+  // submission carrying the token has read the report
   if (effects === undefined) return true
   if (needed.form && effects.form === undefined) return true
   if (needed.review && effects.review === undefined) return true

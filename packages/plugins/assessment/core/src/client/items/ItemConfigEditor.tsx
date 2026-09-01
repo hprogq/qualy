@@ -1944,7 +1944,12 @@ export function ItemConfigEditor({
       const asked = error as { _tag?: string } & ChangeImpact
       if (asked?._tag === 'ASSESSMENT_ITEM_CHANGE_DECISION_REQUIRED') {
         setAskingReason(false)
-        setImpact({ impactToken: asked.impactToken, form: asked.form, review: asked.review })
+        setImpact({
+          impactToken: asked.impactToken,
+          form: asked.form,
+          review: asked.review,
+          scoring: asked.scoring,
+        })
         return
       }
       const config = error as { issues?: readonly { path: string; reason: string }[] }
