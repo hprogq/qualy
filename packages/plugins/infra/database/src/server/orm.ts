@@ -1,7 +1,7 @@
 import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-orm/postgresql'
 import { type EntitySchema } from '@mikro-orm/core'
 import type { Pool } from 'pg'
-import { Context, Effect, Exit, Layer, Metric, Option, Redacted } from 'effect'
+import { Context, Effect, Exit, Fiber, Layer, Metric, Option, Redacted } from 'effect'
 import { QualyNamingStrategy } from '../naming.ts'
 import { DatabaseConfig } from './config.ts'
 import { unwrapPgError } from '../pg-errors.ts'
@@ -164,6 +164,9 @@ export interface TransactionOptions {
   readonly readOnly?: boolean
 }
 
+/** how often a pool that will not close reports what it is still holding */
+const POOL_CLOSE_REPORT_MS = 5_000
+
 export const transaction = <A, E, R>(
   body: Effect.Effect<A, E, R>,
   options?: TransactionOptions,
@@ -187,9 +190,7 @@ export const transaction = <A, E, R>(
       () =>
         (mode === ''
           ? body
-          : Effect.promise(() => em.execute(`set transaction ${mode}`)).pipe(
-              Effect.andThen(body),
-            )
+          : Effect.promise(() => em.execute(`set transaction ${mode}`)).pipe(Effect.andThen(body))
         ).pipe(Effect.provideService(TransactionManager, em)),
       (_, exit) =>
         Exit.isSuccess(exit)
@@ -373,7 +374,26 @@ export const layer: Layer.Layer<Orm, DatabaseStartupFailed, DatabaseConfig | Ent
         }),
         // a release that fails is nobody's decision to make: the scope is
         // already closing and there is no caller left to hand it to
-        (orm) => Effect.promise(() => orm.close()),
+        (orm) =>
+          Effect.gen(function* () {
+            const closing = yield* Effect.forkChild(Effect.promise(() => orm.close()))
+            // A pool closes when every connection has come back. One that
+            // never does waits forever, and a shutdown stuck here says only
+            // that this plugin is still releasing - which is where the
+            // search used to stop. Nothing below shortens the wait: a
+            // release that gave up would turn a leaked connection into a
+            // silent success. It only says, while it waits, what the pool
+            // is still holding, so the next occurrence names the leak.
+            const stuck = yield* Effect.forkChild(
+              Effect.logWarning('the connection pool is still closing', {
+                total: pool?.totalCount,
+                idle: pool?.idleCount,
+                waiting: pool?.waitingCount,
+              }).pipe(Effect.delay(POOL_CLOSE_REPORT_MS), Effect.forever),
+            )
+            yield* Fiber.join(closing)
+            yield* Fiber.interrupt(stuck)
+          }),
       )
       // Wall-clock sampling on purpose. A node timer instead of an Effect
       // sleep keeps the loop off the ambient Clock - test suites replace
