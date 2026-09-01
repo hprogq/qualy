@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { BarChart3Icon } from 'lucide-react'
 import { useApiQuery, usePageNavigate, usePageRouteParams } from '@qualy/web-runtime'
-import { useI18n } from '@qualy/web-i18n'
+import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Badge } from '@qualy/ui/badge'
@@ -83,6 +83,15 @@ const styles = stylex.create({
   },
   waiting: { height: 160, width: '100%' },
   page: { display: 'flex', flexGrow: 1, flexShrink: 1, flexBasis: '0%', flexDirection: 'column' },
+  unavailable: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 24,
+  },
+  unavailableTitle: { fontSize: 15, fontWeight: 600 },
+  unavailableHint: { fontSize: 13, lineHeight: 1.625, color: tokens.mutedForeground },
   standing: {
     display: 'flex',
     flexGrow: 1,
@@ -396,6 +405,31 @@ function Standing({ batchId }: { batchId: string }) {
   }, 0)
   // the bar shares one denominator so the segments mean what they show
   const denominator = full ?? (total > 0 ? total : 1)
+
+  // The arithmetic behind the account is out of reach. Not an error to
+  // read past: nothing on this page is true until it answers, and the last
+  // total it gave is not the current one - so the account is not drawn at
+  // all, and the one thing offered is to ask again.
+  const unavailable =
+    result.error !== null && isApiErrorCode(result.error, 'ASSESSMENT_SCORING_UNAVAILABLE')
+  if (unavailable) {
+    return (
+      <div {...stylex.props(styles.page)}>
+        <section {...stylex.props(styles.unavailable)} data-testid="result-unavailable">
+          <p {...stylex.props(styles.unavailableTitle)}>{format(m.resultUnavailableTitle)}</p>
+          <p {...stylex.props(styles.unavailableHint)}>{format(m.resultUnavailableHint)}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={result.isFetching}
+            onClick={() => void result.refetch()}
+          >
+            {format(m.resultRecalculate)}
+          </Button>
+        </section>
+      </div>
+    )
+  }
 
   return (
     <AsyncSection

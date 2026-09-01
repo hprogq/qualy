@@ -15,7 +15,12 @@ import { Effect } from 'effect'
 import type { PreparedCalculator, ScoringRuntimeCatalog } from '../plugin.ts'
 import { ScoringUnavailable } from '../server/errors.ts'
 import { evaluateRecognition, type ScoringEvaluationFailed } from './evaluate.ts'
-import { defectAt, mapRuntimeFailure, type FailureSite } from './failure-boundary.ts'
+import {
+  countEvaluation,
+  defectAt,
+  mapRuntimeFailure,
+  type FailureSite,
+} from './failure-boundary.ts'
 import type { ScoringImpact } from '../item/impact.ts'
 import { frozenCalculatorOf, type ScoringPlan } from './plan.ts'
 
@@ -109,12 +114,16 @@ export const trialScoringImpact = (
           itemId: trial.itemId,
           plan: trial.current,
           recognition,
-        }).pipe(Effect.catch((error) => baselineFailure(at(trial.current), error)))
+        }).pipe(
+          countEvaluation('impact'),
+          Effect.catch((error) => baselineFailure(at(trial.current), error)),
+        )
         const after = yield* evaluateRecognition(candidate, {
           itemId: trial.itemId,
           plan: trial.candidate,
           recognition,
         }).pipe(
+          countEvaluation('impact'),
           Effect.map((evaluated): Verdict =>
             evaluated.amount === before.amount ? 'same' : 'changed',
           ),

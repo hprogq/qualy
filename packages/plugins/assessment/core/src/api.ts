@@ -984,7 +984,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     HttpApiEndpoint.get('getMyResult', '/assessment/batches/:batchId/me/result', {
       params: Schema.Struct({ batchId: id }),
       success: myResultView,
-      error: [BatchNotFound, ParticipantNotFound, AccessDenied],
+      error: [BatchNotFound, ParticipantNotFound, ScoringUnavailable, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(

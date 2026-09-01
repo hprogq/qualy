@@ -13,10 +13,39 @@
 
 import { Data, Effect, Result } from 'effect'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
-import type { CalculatorRuntimeError, ScoringRuntimeCatalog } from '../plugin.ts'
+import { boundedCounter } from '@qualy/telemetry/metrics'
+import type {
+  CalculatorFailureKind,
+  CalculatorRuntimeError,
+  ScoringRuntimeCatalog,
+} from '../plugin.ts'
 import { DeterminationRefused, ScoringUnavailable } from '../server/errors.ts'
 import { evaluateRecognition, type ScoringEvaluationFailed } from './evaluate.ts'
 import { frozenCalculatorOf, type ScoringPlan } from './plan.ts'
+
+/**
+ * Every evaluation, counted by where it was asked and how it ended.
+ *
+ * Two bounded labels and nothing else: the outcome is the calculator's own
+ * word for it, the operation is the host's. Which rule, which question,
+ * which determination stay in the log - a metric carrying them would
+ * carry a label per formula.
+ */
+const evaluationCount = boundedCounter('qualy.assessment.scoring.evaluation', {
+  operation: ['result', 'settlement', 'impact'],
+  outcome: ['success', 'refusal', 'unavailable', 'execution', 'integrity', 'invariant'],
+})
+
+/** counts how one evaluation ended, whichever half of the arithmetic said so */
+export const countEvaluation =
+  (operation: 'result' | 'settlement' | 'impact') =>
+  <A, E extends { readonly kind: CalculatorFailureKind }, R>(
+    effect: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, R> =>
+    effect.pipe(
+      Effect.tap(() => evaluationCount({ operation, outcome: 'success' })),
+      Effect.tapError((error) => evaluationCount({ operation, outcome: error.kind })),
+    )
 
 /** where the host stood when the arithmetic failed */
 export type FailureBoundary = 'settlement' | 'result' | 'impact-current' | 'impact-candidate'
@@ -87,6 +116,19 @@ export const mapEvaluationFailure = (
 }
 
 /**
+ * Running the arithmetic failed while an account was being read.
+ *
+ * The same rule as above, said with the type the reader can honour: only
+ * an outage comes back as a failure; a refusal here is a state that was
+ * proven impossible before it stood, and dies with everything else.
+ */
+export const mapResultFailure = (
+  site: FailureSite,
+  error: ScoringEvaluationFailed,
+): Effect.Effect<never, ScoringUnavailable> =>
+  error.kind === 'unavailable' ? Effect.fail(new ScoringUnavailable()) : defectAt(site, error)
+
+/**
  * A determination the writer is about to make a fact, and what the proof
  * of it depends on.
  *
@@ -134,7 +176,10 @@ export const proveSettlement = (
       itemId: probe.itemId,
       plan: probe.plan,
       recognition: probe.recognition,
-    }).pipe(Effect.catch((error) => mapEvaluationFailure('settlement', probe, error)))
+    }).pipe(
+      countEvaluation('settlement'),
+      Effect.catch((error) => mapEvaluationFailure('settlement', probe, error)),
+    )
   })
 
 /**

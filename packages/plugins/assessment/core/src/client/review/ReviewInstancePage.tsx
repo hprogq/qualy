@@ -730,13 +730,41 @@ function Workbench({ batch }: { batch: BatchDto }) {
       current.map((entry) => (entry.instanceId === id ? { ...entry, status } : entry)),
     )
 
+  /** the last approval the rule sent back on this round, for the dialog to reopen with */
+  const [refused, setRefused] = useState<{ instanceId: string; worded: WordedDecision } | null>(
+    null,
+  )
   const deferred = useDeferredDecision({
     onCommitted: (staged) => {
       mark(staged.instanceId, 'sent')
       refresh()
     },
     onFailed: (staged, error) => {
-      mark(staged.instanceId, 'failed')
+      // The rule sending a determination back, or the arithmetic being out
+      // of reach, is not this sitting's decision failing: it is the round
+      // still waiting for one. It leaves the session log so it is back in
+      // the queue and the workbench stands, and what the reviewer typed
+      // comes back with it to correct or resend. Anything else stays
+      // logged as failed, the way it always did.
+      const theirs =
+        isApiErrorCode(error, 'ASSESSMENT_DETERMINATION_REFUSED') ||
+        isApiErrorCode(error, 'ASSESSMENT_SCORING_UNAVAILABLE')
+      if (theirs) {
+        setLog((current) => current.filter((entry) => entry.instanceId !== staged.instanceId))
+        if (staged.kind === 'decision' && staged.decision === 'approve') {
+          setRefused({
+            instanceId: staged.instanceId,
+            worded: {
+              comment: staged.payload.comment ?? '',
+              ...(staged.payload.recognition === undefined
+                ? {}
+                : { recognition: staged.payload.recognition }),
+            },
+          })
+        }
+      } else {
+        mark(staged.instanceId, 'failed')
+      }
       toast.error(formatError(error))
       refresh()
     },
@@ -1419,12 +1447,16 @@ function Workbench({ batch }: { batch: BatchDto }) {
           <ApproveDialog
             // remade whenever the claim or the sitting's frozen text moves:
             // drafts belong to one determination, never to the next
-            key={`${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}`}
+            key={`${review.id}:${review.recognitionForm?.locked?.hash ?? 'open'}:${refused?.instanceId === review.id ? 'refused' : 'fresh'}`}
             open={dialog === 'approve'}
             review={review}
             caution={caution(unseen())}
+            {...(refused?.instanceId === review.id ? { initial: refused.worded } : {})}
             onClose={() => setDialog(null)}
-            onConfirm={(worded) => stageDecision('approve', worded)}
+            onConfirm={(worded) => {
+              setRefused(null)
+              stageDecision('approve', worded)
+            }}
           />
         )}
         {lingeringDialog === 'reject' && review !== undefined && (

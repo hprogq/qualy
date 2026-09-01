@@ -7,7 +7,7 @@ import {
 } from '../plugin.ts'
 import type { Principal } from '@qualy/rbac-contract'
 import type { AccessDenied } from '@qualy/rbac-contract/effect'
-import { BatchNotFound, ParticipantNotFound } from '../server/errors.ts'
+import { BatchNotFound, ParticipantNotFound, ScoringUnavailable } from '../server/errors.ts'
 import { oneBatch } from '../server/db.ts'
 import { groupsOf, itemsOf, revisionsByIdOf } from '../item/db.ts'
 import {
@@ -18,6 +18,7 @@ import {
   type ScoreInputItem,
 } from './calc.ts'
 import { evaluateEntry, type EvaluationFact } from './evaluate.ts'
+import { countEvaluation, mapResultFailure, mapRuntimeFailure } from './failure-boundary.ts'
 import { frozenCalculatorOf, readScoringPlan } from './plan.ts'
 import type { ScoringPlan } from './plan.ts'
 import { participantEntries, participantRowByUser } from './db.ts'
@@ -49,7 +50,7 @@ export interface ScoringMethods {
     as: Principal,
   ) => Effect.Effect<
     MyResultView,
-    BatchNotFound | ParticipantNotFound | AccessDenied,
+    BatchNotFound | ParticipantNotFound | ScoringUnavailable | AccessDenied,
     ScoringRuntimeCatalog
   >
 }
@@ -166,10 +167,12 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
    * a special case that drifts.
    */
   const evaluateInput = (
+    tenantId: string,
+    batchId: string,
     preparedFor: (item: {
       readonly id: string
       readonly plan: ScoringPlan
-    }) => Effect.Effect<PreparedCalculator, CalculatorRuntimeError>,
+    }) => Effect.Effect<PreparedCalculator, ScoringUnavailable>,
     collected: {
       readonly groups: ScoreInput['groups']
       readonly items: readonly {
@@ -213,6 +216,12 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           items.push({ ...common, standing: item.status === 'draft' ? 'unpublished' : 'withdrawn' })
           continue
         }
+        // Whatever a calculator says here that is not an amount is sorted
+        // at the boundary of reading an account: an outage is one to
+        // retry, and everything else - a refusal included - is a state this
+        // process should never have allowed to stand, and dies naming the
+        // question rather than scoring it at nothing.
+        const at = { tenantId, batchId, itemId: item.id, plan: item.plan }
         if (item.derived) {
           const granted = yield* evaluateEntry(yield* preparedFor(item), {
             entryId: `derived:${item.id}`,
@@ -220,7 +229,10 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
             itemId: item.id,
             plan: item.plan,
             recognition: {},
-          })
+          }).pipe(
+            countEvaluation('result'),
+            Effect.catch((error) => mapResultFailure(at, error)),
+          )
           items.push({ ...common, standing: 'granted', derivedAmount: granted.amount })
           continue
         }
@@ -266,7 +278,12 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
           // calculator ever sees of this claim
           recognition: entry.recognition,
         }
-        const evaluated = yield* evaluateEntry(yield* preparedFor(item), fact)
+        const evaluated = yield* evaluateEntry(yield* preparedFor(item), fact).pipe(
+          countEvaluation('result'),
+          Effect.catch((error) =>
+            mapResultFailure({ tenantId, batchId, itemId: item.id, plan: item.plan }, error),
+          ),
+        )
         entries.push({
           ...common,
           standing: 'counted',
@@ -305,21 +322,31 @@ export const makeScoringMethods = (deps: ScoringDeps): ScoringMethods => {
             Effect.gen(function* () {
               const hit = prepared.get(item.id)
               if (hit !== undefined) return hit
-              const built = yield* runtime.prepare(
-                item.plan.calculator.ref,
-                frozenCalculatorOf(item.plan),
-                { tenantId, batchId },
-              )
+              const built = yield* runtime
+                .prepare(item.plan.calculator.ref, frozenCalculatorOf(item.plan), {
+                  tenantId,
+                  batchId,
+                })
+                .pipe(
+                  Effect.catch((error) =>
+                    mapRuntimeFailure(
+                      'result',
+                      { tenantId, batchId, itemId: item.id, plan: item.plan },
+                      error,
+                    ),
+                  ),
+                )
               prepared.set(item.id, built)
               return built
             })
-          // An evaluation that fails is not a state a reader can be in: the
-          // configuration was proven against its calculator's contract when
-          // it was saved, and the input was assembled from that same frozen
-          // plan. Reaching here means the plan and the installed arithmetic
-          // disagree, which is an assembly fault - it dies naming the item
-          // rather than quietly scoring that question at zero.
-          const input = yield* evaluateInput(preparedFor, collected).pipe(Effect.orDie)
+          // An evaluation that fails is not a state a reader can be in:
+          // every determination in force was proven against the rule before
+          // it stood, and the rule was tried against them before it took
+          // effect. So only an outage is anybody's to retry - it is said as
+          // one, and the whole account waits for it rather than printing
+          // part of one - and anything else dies naming the question rather
+          // than quietly scoring it at zero.
+          const input = yield* evaluateInput(tenantId, batchId, preparedFor, collected)
           return { mode: 'provisional' as const, ...calcParticipant(deps.catalogs, input) }
         }).pipe(Effect.catchTag('QueryFailed', (error) => Effect.die(error))),
       )

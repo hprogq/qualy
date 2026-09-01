@@ -451,6 +451,7 @@ export function ApproveDialog({
   open,
   review,
   caution,
+  initial,
   onClose,
   onConfirm,
 }: {
@@ -459,12 +460,18 @@ export function ApproveDialog({
   review: ReviewDto
   /** a last quiet word above the act - faces that matter, still unread */
   caution?: ReactNode
+  /**
+   * What the last attempt said, when the rule sent it back: the reviewer's
+   * own words and determination, returned to them to correct rather than
+   * retyped from the seed
+   */
+  initial?: WordedDecision
   onClose: () => void
   onConfirm: (decision: WordedDecision) => void
 }) {
   const { format, locale } = useI18n()
   const fine = useFinePointer()
-  const [comment, setComment] = useState('')
+  const [comment, setComment] = useState(initial?.comment ?? '')
 
   // The determination, where the frozen contract asks for one. The wire
   // hands the fields as opaque ids with their frozen schemas; a sitting
@@ -484,9 +491,12 @@ export function ApproveDialog({
   const seed = (form?.seed ?? {}) as Record<string, unknown>
   const locked = form?.locked ?? null
   const [drafts, setDrafts] = useState<Record<string, FieldDraft>>(() =>
-    draftsFromFields(fields, (locked?.values ?? seed) as Record<string, unknown>),
+    draftsFromFields(
+      fields,
+      (locked?.values ?? initial?.recognition?.values ?? seed) as Record<string, unknown>,
+    ),
   )
-  const [determinationReason, setDeterminationReason] = useState('')
+  const [determinationReason, setDeterminationReason] = useState(initial?.recognition?.reason ?? '')
   const materialized = useMemo(() => materializeFields(fields, drafts), [fields, drafts])
   const changed =
     form !== null &&

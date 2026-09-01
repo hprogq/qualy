@@ -1064,6 +1064,15 @@ const i18n = definePluginMessages({
         '{pending, plural, other {# under review}}, {drafts, plural, other {# drafts}}',
     },
     resultTotal: { id: 'assessment/result/total', defaultMessage: 'Total' },
+    resultUnavailableTitle: {
+      id: 'assessment/result/unavailable-title',
+      defaultMessage: 'Scoring is temporarily unavailable',
+    },
+    resultUnavailableHint: {
+      id: 'assessment/result/unavailable-hint',
+      defaultMessage: 'Your score could not be calculated just now. Try again in a moment.',
+    },
+    resultRecalculate: { id: 'assessment/result/recalculate', defaultMessage: 'Recalculate' },
     resultGroupItems: { id: 'assessment/result/group-items', defaultMessage: 'Item subtotal' },
     resultGroupChildren: {
       id: 'assessment/result/group-children',
@@ -2989,6 +2998,31 @@ const i18n = definePluginMessages({
     itemsImpactOrphanRestart: {
       id: 'assessment/items/impact-orphan-restart',
       defaultMessage: 'Restart them from the start of their own route on the updated workflow',
+    },
+    itemsImpactScoringTitle: {
+      id: 'assessment/items/impact-scoring-title',
+      defaultMessage: 'Scoring rule changed',
+    },
+    itemsImpactScoringApproved: {
+      id: 'assessment/items/impact-scoring-approved',
+      defaultMessage: 'Determinations in force',
+    },
+    itemsImpactScoringComparable: {
+      id: 'assessment/items/impact-scoring-comparable',
+      defaultMessage: 'Scored by both rules',
+    },
+    itemsImpactScoringAmountChanged: {
+      id: 'assessment/items/impact-scoring-amount-changed',
+      defaultMessage: 'Amounts that change',
+    },
+    itemsImpactScoringDerived: {
+      id: 'assessment/items/impact-scoring-derived',
+      defaultMessage: 'The fixed amount this question grants will change.',
+    },
+    itemsImpactScoringNote: {
+      id: 'assessment/items/impact-scoring-note',
+      defaultMessage:
+        'Saving applies the new rule to every determination already in force; the amounts above are recalculated when results are read.',
     },
     itemsChainHintRecorded: {
       id: 'assessment/items/chain-hint-recorded',

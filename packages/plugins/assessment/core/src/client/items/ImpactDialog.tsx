@@ -41,6 +41,26 @@ const styles = stylex.create({
     lineHeight: 1.625,
     color: tokens.mutedForeground,
   },
+  scoring: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  scoringTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  scoringRows: {
+    display: 'grid',
+    gridTemplateColumns: 'auto max-content',
+    columnGap: 16,
+    rowGap: 4,
+    fontSize: 13,
+  },
+  scoringCount: {
+    fontVariantNumeric: 'tabular-nums',
+    textAlign: 'end',
+  },
 })
 
 export interface ChangeImpact {
@@ -94,6 +114,10 @@ const asking = (impact: ChangeImpact) => ({
     impact.form.changed &&
     impact.form.inReview.incompatible + impact.form.approved.incompatible > 0,
   review: impact.review.changed && impact.review.open > 0,
+  // told, not asked: the amounts will change and there is nothing to pick
+  scoring:
+    impact.scoring.changed &&
+    (impact.scoring.approved.amountChanged > 0 || impact.scoring.derived?.amountChanged === true),
 })
 
 export function ImpactDialog({
@@ -162,6 +186,34 @@ export function ImpactDialog({
       }
     >
       <div {...stylex.props(styles.column)}>
+        {asked.scoring && (
+          <section
+            {...stylex.props(styles.scoring)}
+            data-testid="impact-scoring"
+            data-approved={impact.scoring.approved.total}
+            data-comparable={impact.scoring.approved.comparable}
+            data-amount-changed={impact.scoring.approved.amountChanged}
+            data-derived-changed={impact.scoring.derived?.amountChanged === true ? 'true' : 'false'}
+          >
+            <p {...stylex.props(styles.scoringTitle)}>{format(m.itemsImpactScoringTitle)}</p>
+            {impact.scoring.approved.total > 0 && (
+              <dl {...stylex.props(styles.scoringRows)}>
+                <dt>{format(m.itemsImpactScoringApproved)}</dt>
+                <dd {...stylex.props(styles.scoringCount)}>{impact.scoring.approved.total}</dd>
+                <dt>{format(m.itemsImpactScoringComparable)}</dt>
+                <dd {...stylex.props(styles.scoringCount)}>{impact.scoring.approved.comparable}</dd>
+                <dt>{format(m.itemsImpactScoringAmountChanged)}</dt>
+                <dd {...stylex.props(styles.scoringCount)}>
+                  {impact.scoring.approved.amountChanged}
+                </dd>
+              </dl>
+            )}
+            {impact.scoring.derived?.amountChanged === true && (
+              <p {...stylex.props(styles.pastChangedNote)}>{format(m.itemsImpactScoringDerived)}</p>
+            )}
+            <p {...stylex.props(styles.pastChangedNote)}>{format(m.itemsImpactScoringNote)}</p>
+          </section>
+        )}
         {asked.form && (
           <div {...stylex.props(styles.formQuestions)}>
             {impact.form.inReview.incompatible > 0 && (
