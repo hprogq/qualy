@@ -12590,3 +12590,21 @@ frozen-routes 删 `GET /assessment/formula-owner-options`;error-codes(删 `Formu
 ### 下一轮移交
 
 `assessment_formula_share_scopes` + `assessment.formula.share` + 模板库页 + copy 流(`copiedFromVersionId`)一起落,届时再定义:谁能发现模板、谁能 copy、share scope 挂 Function 还是 Version、归档模板如何表现、copy 后是否与源完全脱钩。
+
+## 沙箱:旧一代 runtime 的答复(2026-09-01,手测事故)
+
+`GET /assessment/batches/{id}/me/result` 500,`SchemaError: Missing key at ["value"]["engineVersion"]`。
+
+**直接原因不是代码**:`docker ps` 显示 `qualy-sandbox-runtime-1` / `qualy-sandbox-authoring-1` 是 **2026-08-30 07:50** 建的容器,而 `engineVersion` 是 `cebab126`(2026-08-31 00:55,fix(sandbox): prove the answering runtime on every invocation)才加进 Invoke 响应的。镜像比它早 17 小时,所以答复里没有这个字段。`getMyResult` 会真的调沙箱算分(`scoring/service.ts` 的 `evaluateEntry`),开发装配用远端变体(`service.ts` 的 `sandboxLayer()`),必然撞上。修法:`pnpm sandbox:down && pnpm sandbox:build && pnpm sandbox:up`。
+
+**但它暴露了一条真实缺口**(`486f5ab7` 已修)。协议只守请求方向:Invoke 的 payload 带 `rpcApiVersion` / `sandboxAbiVersion`,旧 runtime 遇到新请求会按版本干净拒绝。响应方向没有守卫,而 vendored `RpcClient.ts:748` 的 `decodeExit(...).pipe(Effect.orDie)` 刻意把解码失败变成 **defect**,于是它绕过了所有 `catchTag` / `catch`。实测比 500 更糟:**调用根本不落地**(25s 赛跑都赢不了),因为 defect 逃过 `Effect.result` 直接打死调用方 fiber。
+
+**没有改成连接时握手**——`sandboxLayer` 里有一条明确的既有裁决否掉了它:
+
+> no cached capabilities gate: ... a process swapped under the socket is judged per call - a cached verdict about a previous instance proves nothing about this one
+
+**也没有把字段放宽成 optional**。协议对 `maxFrameBytes` / `maxEnvelopeBytes` 已有明说的策略(「Optional on the wire so a newer reader stays able to decode an older runtime's answer」),但那两个是 advisory;invocation 的 provenance 不是,接受一个「证明处留空」的答复正是 `cebab126` 要防的事。所以是**按名拒绝**:`SandboxUnavailable`,reason 写明对方与本机差了一代。
+
+落点在已有的那处 defect 驯服(此前只认 `SocketError`),三个 RPC 客户端全覆盖:runtime 侧 `sandbox/src/service.ts`,authoring 与 language bridge 共用的 `formula/src/server/transport.ts`(它本就是为此抽出来的共享边界),以及 `authoring.ts` 自己那处。
+
+承重:`remote.test.ts` 起一个**真的 RpcServer**,只在 Invoke 的 success schema 上差一代(缺 provenance),经真 socket 对话——修复前 25s 不落地,修复后 713ms 返回 typed outage;`transport.test.ts`(新建)直接守共享边界的三条(不可达 → outage、读不懂 → 同一个 outage、真 bug 照飞)。差分各自转红。
