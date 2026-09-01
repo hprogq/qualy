@@ -60,6 +60,7 @@ export const FROZEN_ROUTES = [
 
   'GET /assessment/batches/{batchId}/formula-binding-options',
   'GET /assessment/formula-functions',
+  'GET /assessment/formula-share-options',
   'GET /assessment/formula-templates',
   'GET /assessment/formula-templates/{versionId}',
   'POST /assessment/formula-templates/{versionId}/copies',

@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto'
 import { sql, type RawBuilder } from 'kysely'
 import { transaction, withDatabase } from '@qualy/plugin-database/server'
 import { Rbac } from '@qualy/rbac-contract/effect'
+import { scopeCoverage } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { BadRequest } from '@qualy/api-kit/schema'
 import type { Principal } from '@qualy/rbac-contract'
@@ -125,6 +126,27 @@ export class FormulaTemplateLibrary extends Context.Service<
       { readonly functionId: string },
       FormulaTemplateNotFound | FormulaSourceTooLarge
     >
+    /**
+     * The units this person may offer a formula to.
+     *
+     * Their sharing permission's reach, expanded: a subtree grant means the
+     * whole subtree, and returning only the anchor would hide most of what
+     * they may actually do. Empty rather than refused when they hold none -
+     * the screen still shows what is already offered, and still lets them
+     * take it back.
+     */
+    readonly shareableNodes: (
+      tenantId: string,
+      as: Principal,
+      options?: { readonly search?: string; readonly limit?: number },
+    ) => Effect.Effect<{
+      readonly nodes: readonly {
+        readonly id: string
+        readonly name: string
+        readonly depth: number
+      }[]
+      readonly truncated: boolean
+    }>
     readonly getSharing: (
       tenantId: string,
       functionId: string,
@@ -483,6 +505,44 @@ export const make = Effect.fn('FormulaTemplateLibrary.make')(function* () {
           }),
         ),
       ),
+
+    shareableNodes: (tenantId, as, options) =>
+      Effect.gen(function* () {
+        // this IS an rbac scope projection, unlike the audience above: the
+        // question is what a permission reaches, which is rbac's own
+        // vocabulary rather than a rule about where somebody stands
+        const scope = yield* rbac.listAuthorizedScope(as, SHARE)
+        if (!scope.tenantWide && scope.anchors.length === 0) {
+          return { nodes: [], truncated: false }
+        }
+        const limit = Math.max(1, options?.limit ?? 50)
+        const search = options?.search?.trim() ?? ''
+        const rows = yield* database(
+          db.query((k) => {
+            let found = k
+              .selectFrom('OrgNode as n')
+              // the parent shape a picker needs, never the path: handing
+              // over the materialized path publishes the shape of an
+              // organization to whoever holds a leaf of it
+              .select(['n.id', 'n.name', 'n.depth'])
+              .where('n.tenantId', '=', tenantId)
+              .where((eb) =>
+                scopeCoverage(scope, {
+                  id: eb.ref('n.id'),
+                  tenantId: eb.ref('n.tenantId'),
+                  path: eb.ref('n.path'),
+                }),
+              )
+            if (search !== '') found = found.where('n.name', 'ilike', `%${search}%`)
+            return found
+              .orderBy(sql`path`)
+              .limit(limit + 1)
+              .execute()
+          }),
+        ).pipe(Effect.orDie)
+        const all = rows as unknown as { id: string; name: string; depth: number }[]
+        return { nodes: all.slice(0, limit), truncated: all.length > limit }
+      }),
 
     getSharing: (tenantId, functionId, versionNo, as) =>
       database(

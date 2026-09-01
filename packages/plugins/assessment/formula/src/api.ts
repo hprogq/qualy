@@ -372,6 +372,24 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
     ).middleware(Authenticated),
   )
   .add(
+    // the units this author may offer a formula to. Empty rather than
+    // refused when they hold no sharing permission: the editor still shows
+    // what is already offered, and still lets them take it back
+    HttpApiEndpoint.get('listFormulaShareOptions', '/assessment/formula-share-options', {
+      query: Schema.Struct({
+        search: Schema.optional(Schema.String),
+        limit: Schema.optional(Schema.String),
+      }),
+      success: Schema.Struct({
+        nodes: Schema.Array(
+          Schema.Struct({ id: Schema.String, name: Schema.String, depth: Schema.Number }),
+        ),
+        truncated: Schema.Boolean,
+      }),
+      error: [AccessDenied],
+    }).middleware(Authenticated),
+  )
+  .add(
     // published versions other authors have offered to where this reader
     // stands. Never their own: those are already in their own library
     HttpApiEndpoint.get('listFormulaTemplates', '/assessment/formula-templates', {

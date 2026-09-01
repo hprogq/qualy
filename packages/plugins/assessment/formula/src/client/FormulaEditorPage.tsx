@@ -14,6 +14,7 @@ import { validateValue } from '@qualy/value-schema/validate'
 import { formulaApi } from './api.ts'
 import { formulaMessages as m } from './i18n.ts'
 import { useDraftPreview, type DraftContract } from './use-draft-preview.ts'
+import { VersionSharing } from './VersionSharing.tsx'
 import { AtomicValueField, InputValueForm } from '@qualy/web-value-form/InputValueForm'
 import {
   draftsFromStored,
@@ -1167,6 +1168,9 @@ export default function FormulaEditorPage() {
                   </td>
                   <td {...stylex.props(styles.reportCell)}>
                     {new Date(version.publishedAt).toLocaleString()}
+                  </td>
+                  <td {...stylex.props(styles.reportCell)}>
+                    <VersionSharing functionId={functionId} versionNo={version.versionNo} />
                   </td>
                 </tr>
               ))}

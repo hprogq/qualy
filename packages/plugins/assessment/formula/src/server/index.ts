@@ -1527,6 +1527,20 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
       }),
     )
     .handle(
+      'listFormulaShareOptions',
+      Effect.fn('assessmentFormula.shareOptions.handler')(function* ({ query }) {
+        const templates = yield* FormulaTemplateLibrary
+        const library = yield* FormulaLibrary
+        const principal = yield* CurrentUser
+        yield* library.requireAuthor(principal)
+        const limit = Number(query.limit)
+        return yield* templates.shareableNodes(principal.tenantId, principal, {
+          ...(query.search === undefined ? {} : { search: query.search }),
+          ...(Number.isSafeInteger(limit) && limit > 0 ? { limit } : {}),
+        })
+      }),
+    )
+    .handle(
       'listFormulaTemplates',
       Effect.fn('assessmentFormula.listTemplates.handler')(function* ({ query }) {
         const templates = yield* FormulaTemplateLibrary

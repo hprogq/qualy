@@ -510,6 +510,18 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/report/contract',
       defaultMessage: 'Contract findings',
     },
+    sharingPrivate: {
+      id: 'assessment-formula/sharing/private',
+      defaultMessage: 'Not shared',
+    },
+    sharingAdd: {
+      id: 'assessment-formula/sharing/add',
+      defaultMessage: 'Share with a unit',
+    },
+    sharingRemove: {
+      id: 'assessment-formula/sharing/remove',
+      defaultMessage: 'Stop sharing with {name}',
+    },
     versionsTitle: {
       id: 'assessment-formula/editor/versions',
       defaultMessage: 'Published versions',
