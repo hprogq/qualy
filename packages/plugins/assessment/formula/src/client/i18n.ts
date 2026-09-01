@@ -20,6 +20,14 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/permission-hint/author',
       defaultMessage: 'Write, test, publish and archive your own scoring formulas.',
     },
+    'permission.assessment.formula.share': {
+      id: 'assessment-formula/permission/share',
+      defaultMessage: 'Share scoring formulas',
+    },
+    'permission-hint.assessment.formula.share': {
+      id: 'assessment-formula/permission-hint/share',
+      defaultMessage: 'Offer your published formulas to the authors working under this unit.',
+    },
     'permission-group.assessment': {
       id: 'assessment-formula/permission-group/assessment',
       defaultMessage: 'Assessment',
@@ -31,6 +39,10 @@ const i18n = definePluginMessages({
     'audit.draft-update': {
       id: 'assessment-formula/audit/draft-update',
       defaultMessage: 'Update formula draft',
+    },
+    'audit.sharing-change': {
+      id: 'assessment-formula/audit/sharing-change',
+      defaultMessage: 'Change formula sharing',
     },
     'audit.archive': {
       id: 'assessment-formula/audit/archive',
@@ -476,6 +488,14 @@ const i18n = definePluginMessages({
     ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND: {
       id: 'assessment-formula/error/function-not-found',
       defaultMessage: 'The formula could not be found.',
+    },
+    ASSESSMENT_FORMULA_SHARING_CONFLICT: {
+      id: 'assessment-formula/error/sharing-conflict',
+      defaultMessage: 'The sharing changed while you were editing it. Reload and try again.',
+    },
+    ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND: {
+      id: 'assessment-formula/error/template-not-found',
+      defaultMessage: 'That template could not be found.',
     },
     ASSESSMENT_FORMULA_VERSION_NOT_FOUND: {
       id: 'assessment-formula/error/version-not-found',

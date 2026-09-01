@@ -34,6 +34,26 @@ export const FormulaFunctionArchived = AuditAction.define({
   details: Schema.Struct({}),
 })
 
+/**
+ * The audience a published version carries, changed.
+ *
+ * Worth recording because it leaves no other trace: the share rows say what
+ * the audience IS now, and nothing says who widened it, or when somebody
+ * took it back. A change that adds and removes nothing is not an act and is
+ * not recorded.
+ */
+export const FormulaVersionSharingChanged = AuditAction.define({
+  code: 'assessment.formula.sharing.change',
+  target: 'assessment.formula',
+  version: 1,
+  name: message('assessment-formula/audit/sharing-change', 'Change formula sharing'),
+  details: Schema.Struct({
+    versionId: Schema.String,
+    addedOrgNodeIds: Schema.Array(Schema.String),
+    removedOrgNodeIds: Schema.Array(Schema.String),
+  }),
+})
+
 export const FormulaFunctionRestored = AuditAction.define({
   code: 'assessment.formula.restore',
   target: 'assessment.formula',
@@ -47,4 +67,5 @@ export const formulaActions = [
   FormulaDraftReplaced,
   FormulaFunctionArchived,
   FormulaFunctionRestored,
+  FormulaVersionSharingChanged,
 ] as const

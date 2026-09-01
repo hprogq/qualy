@@ -49,6 +49,7 @@ import { formulaApiGroup } from '../api.ts'
 import { FormulaLanguage } from './language.ts'
 import { FormulaLspQuota, bridgeSocket } from './lsp-bridge.ts'
 import { db } from './db.ts'
+import { FormulaTemplateLibrary } from './template-library.ts'
 import {
   FormulaBundleFailed,
   FormulaCompileUnavailable,
@@ -1453,6 +1454,41 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           principal,
         )
         return { version }
+      }),
+    )
+    .handle(
+      'getFormulaVersionSharing',
+      Effect.fn('assessmentFormula.getSharing.handler')(function* ({ params }) {
+        const templates = yield* FormulaTemplateLibrary
+        const principal = yield* CurrentUser
+        const versionNo = Number(params.versionNo)
+        if (!Number.isSafeInteger(versionNo) || versionNo < 1) {
+          return yield* new BadRequest({ message: 'the version number is not usable here' })
+        }
+        return yield* templates.getSharing(
+          principal.tenantId,
+          params.functionId,
+          versionNo,
+          principal,
+        )
+      }),
+    )
+    .handle(
+      'replaceFormulaVersionSharing',
+      Effect.fn('assessmentFormula.replaceSharing.handler')(function* ({ params, payload }) {
+        const templates = yield* FormulaTemplateLibrary
+        const principal = yield* CurrentUser
+        const versionNo = Number(params.versionNo)
+        if (!Number.isSafeInteger(versionNo) || versionNo < 1) {
+          return yield* new BadRequest({ message: 'the version number is not usable here' })
+        }
+        return yield* templates.replaceSharing(
+          principal.tenantId,
+          params.functionId,
+          versionNo,
+          { expectedToken: payload.expectedToken, orgNodeIds: payload.orgNodeIds },
+          principal,
+        )
       }),
     )
     .handle(

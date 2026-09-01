@@ -50,6 +50,7 @@ import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
 import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/scoring-authoring-access'
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
+import { templateLibraryLayer } from '../src/server/template-library.ts'
 
 // The browser's whole language path, end to end and byte for byte: the
 // ambient session cookie opens the handshake, the Origin header is the
@@ -357,6 +358,7 @@ beforeAll(async () => {
     configurationAccessLayer,
     scoringAuthoringAccessLayer,
     bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
+    templateLibraryLayer,
   ).pipe(Layer.provideMerge(services))
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(

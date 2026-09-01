@@ -18,6 +18,7 @@ import {
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
   FormulaSourceRefused,
+  FormulaSharingConflict,
   FormulaSourceTooLarge,
   FormulaTestFailed,
   FormulaTypecheckFailed,
@@ -102,6 +103,12 @@ const versionDetail = Schema.Struct({
   quickjsEngineVersion: Schema.String,
   tests: Schema.Array(formulaTest),
   testReport: Schema.Unknown,
+})
+
+/** a published version's audience, and what it looked like when read */
+const versionSharing = Schema.Struct({
+  scopes: Schema.Array(Schema.Struct({ orgNodeId: Schema.String, name: Schema.String })),
+  token: Schema.String,
 })
 
 /** one published version as a chooser shows it; the schemas stay out - a
@@ -315,6 +322,41 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
         params: Schema.Struct({ functionId: id, versionNo: Schema.String }),
         success: Schema.Struct({ version: versionDetail }),
         error: [FormulaFunctionNotFound, FormulaVersionNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    // who this published version has been offered to. The token is what the
+    // audience looked like when it was read, so two screens editing the
+    // same one cannot take turns silently overwriting each other
+    HttpApiEndpoint.get(
+      'getFormulaVersionSharing',
+      '/assessment/formula-functions/:functionId/versions/:versionNo/sharing',
+      {
+        params: Schema.Struct({ functionId: id, versionNo: Schema.String }),
+        success: versionSharing,
+        error: [FormulaFunctionNotFound, FormulaVersionNotFound, AccessDenied, BadRequest],
+      },
+    ).middleware(Authenticated),
+  )
+  .add(
+    HttpApiEndpoint.put(
+      'replaceFormulaVersionSharing',
+      '/assessment/formula-functions/:functionId/versions/:versionNo/sharing',
+      {
+        params: Schema.Struct({ functionId: id, versionNo: Schema.String }),
+        payload: Schema.Struct({
+          expectedToken: Schema.String,
+          orgNodeIds: Schema.Array(id),
+        }),
+        success: versionSharing,
+        error: [
+          FormulaFunctionNotFound,
+          FormulaVersionNotFound,
+          FormulaSharingConflict,
+          AccessDenied,
+          BadRequest,
+        ],
       },
     ).middleware(Authenticated),
   )

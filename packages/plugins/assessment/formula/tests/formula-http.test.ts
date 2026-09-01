@@ -44,6 +44,7 @@ import { formulaApiHandlers, layer as formulaLayer } from '../src/server/index.t
 import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
 import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/scoring-authoring-access'
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
+import { templateLibraryLayer } from '../src/server/template-library.ts'
 import { formulaLanguageLayer } from '../src/server/language.ts'
 import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 
@@ -158,6 +159,7 @@ beforeAll(async () => {
     configurationAccessLayer,
     scoringAuthoringAccessLayer,
     bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
+    templateLibraryLayer,
   ).pipe(Layer.provideMerge(services))
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(

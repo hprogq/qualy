@@ -69,6 +69,8 @@ export const FROZEN_ROUTES = [
   'PUT /assessment/formula-functions/{functionId}/status',
   'POST /assessment/formula-functions/{functionId}/versions',
   'GET /assessment/formula-functions/{functionId}/versions/{versionNo}',
+  'GET /assessment/formula-functions/{functionId}/versions/{versionNo}/sharing',
+  'PUT /assessment/formula-functions/{functionId}/versions/{versionNo}/sharing',
 
   'GET /assessment/batches',
   'POST /assessment/batches',

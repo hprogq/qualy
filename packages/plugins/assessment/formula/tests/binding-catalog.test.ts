@@ -6,19 +6,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
 import {
-  normalizeAtomicSchema,
-  normalizeInputSchema,
-  VALUE_SCHEMA_PROFILE_VERSION,
-} from '@qualy/value-schema'
-import {
   BindableFormulaCatalog,
   bindingCatalogLayer,
   type BindablePage,
   type FormulaNotBindable,
 } from '../src/server/binding-catalog.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
-import { contractIdentityOf, sha256Hex } from '../src/server/contract-identity.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
+import { addVersion, ARTIFACT, publishedVersion, sha256Hex } from './support/versions.ts'
 
 // What a question may be scored by, as a read model of FACTS - no principal
 // in any signature. Who may create a binding is an authoring question with
@@ -52,58 +47,6 @@ const reasonOf = (exit: Exit.Exit<unknown, FormulaNotBindable>) => {
   return match?.[1] ?? rendered
 }
 
-const CONTRACT = {
-  input: normalizeInputSchema({
-    type: 'object',
-    properties: { level: { type: 'string', enum: ['national', 'provincial'] } },
-    required: ['level'],
-    additionalProperties: false,
-  }),
-  output: normalizeAtomicSchema({
-    type: 'string',
-    format: 'qualy-decimal',
-    'x-qualy-maxScale': 2,
-    'x-qualy-minimum': '-99999999.99',
-    'x-qualy-maximum': '99999999.99',
-  }),
-}
-
-const IDENTITY = contractIdentityOf(CONTRACT.input, CONTRACT.output)
-const ARTIFACT = '/*artifact*/'
-
-const addVersion = (tenantId: string, functionId: string, author: string, versionNo: number) =>
-  Effect.map(
-    runSql(sql`
-      insert into assessment_formula_versions
-        (tenant_id, function_id, version_no, source_ts, runtime_js,
-         input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
-         typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
-         quickjs_engine_version, tests, test_report, published_by,
-         value_schema_profile_version)
-      values (${tenantId}, ${functionId}, ${versionNo}, 'export {}', ${ARTIFACT},
-              ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
-              ${sha256Hex('export {}')}, ${sha256Hex(ARTIFACT)}, ${IDENTITY.contractSha256},
-              '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
-              'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${author},
-              ${VALUE_SCHEMA_PROFILE_VERSION})
-      returning id`),
-    (result) => one<{ id: string }>(result).id,
-  )
-
-/** one published version of a fresh function, by a named author */
-const publishOne = (tenantId: string, author: string, name: string, versionNo = 1) =>
-  Effect.gen(function* () {
-    const functionId = one<{ id: string }>(
-      yield* runSql(sql`
-        insert into assessment_formula_functions
-          (tenant_id, name, draft_source_ts, draft_tests, created_by, updated_by)
-        values (${tenantId}, ${name}, 'export {}', '[]'::jsonb, ${author}, ${author})
-        returning id`),
-    ).id
-    const versionId = yield* addVersion(tenantId, functionId, author, versionNo)
-    return { functionId, versionId }
-  })
-
 describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
 
@@ -124,8 +67,8 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
           const catalog = yield* BindableFormulaCatalog
           const store = yield* FormulaRuntimeStore
 
-          const mine = yield* publishOne(f.t, f.authorA, 'A 的公式')
-          const theirs = yield* publishOne(f.t, f.authorB, 'B 的公式')
+          const mine = yield* publishedVersion(f.t, f.authorA, 'A 的公式')
+          const theirs = yield* publishedVersion(f.t, f.authorB, 'B 的公式')
 
           const forA = yield* catalog.listForBatch(f.t, f.authorA)
           const forB = yield* catalog.listForBatch(f.t, f.authorB)
@@ -178,7 +121,7 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
         Effect.gen(function* () {
           const f = yield* seedFormulaFixture('bc-locks')
           const catalog = yield* BindableFormulaCatalog
-          const published = yield* publishOne(f.t, f.authorA, '锁下公式')
+          const published = yield* publishedVersion(f.t, f.authorA, '锁下公式')
 
           const contender = yield* Effect.forkChild(
             Effect.promise(async () => {
@@ -230,7 +173,7 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
           const catalog = yield* BindableFormulaCatalog
           const publishVersions = (name: string, count: number) =>
             Effect.gen(function* () {
-              const first = yield* publishOne(f.t, f.authorA, name, 1)
+              const first = yield* publishedVersion(f.t, f.authorA, name, 1)
               const ids = [first.versionId]
               for (let no = 2; no <= count; no += 1) {
                 ids.push(yield* addVersion(f.t, first.functionId, f.authorA, no))
@@ -283,7 +226,7 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
         Effect.gen(function* () {
           const f = yield* seedFormulaFixture('bc-current')
           const catalog = yield* BindableFormulaCatalog
-          const published = yield* publishOne(f.t, f.authorA, '仍在跑的公式')
+          const published = yield* publishedVersion(f.t, f.authorA, '仍在跑的公式')
 
           const live = yield* catalog.currentBinding(f.t, published.versionId, f.authorA)
           // somebody else looking at the same question: it is history to

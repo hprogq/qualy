@@ -48,6 +48,35 @@ export class FormulaVersionNotFound extends Schema.TaggedError<FormulaVersionNot
   { httpApiStatus: 404, identifier: 'AssessmentFormulaVersionNotFound' },
 ) {}
 
+/**
+ * The audience moved while somebody was editing it.
+ *
+ * Two screens open on the same version's sharing must not let the later
+ * save silently swallow the earlier one - removing a unit and adding
+ * another are both whole decisions, and last-write-wins turns one of them
+ * into a mistake nobody made.
+ */
+export class FormulaSharingConflict extends Schema.TaggedError<FormulaSharingConflict>()(
+  'ASSESSMENT_FORMULA_SHARING_CONFLICT',
+  {},
+  { httpApiStatus: 409, identifier: 'AssessmentFormulaSharingConflict' },
+) {}
+
+/**
+ * There is no such template for this reader.
+ *
+ * One answer for every way a template can fail to be one: the version does
+ * not exist, it was never offered, the offer does not reach where this
+ * reader stands, or it is their own. Telling them apart would let anybody
+ * holding a version id learn whether it exists, which is the one thing the
+ * template surface must not leak.
+ */
+export class FormulaTemplateNotFound extends Schema.TaggedError<FormulaTemplateNotFound>()(
+  'ASSESSMENT_FORMULA_TEMPLATE_NOT_FOUND',
+  {},
+  { httpApiStatus: 404, identifier: 'AssessmentFormulaTemplateNotFound' },
+) {}
+
 export class FormulaFunctionArchived extends Schema.TaggedError<FormulaFunctionArchived>()(
   'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED',
   {},
