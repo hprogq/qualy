@@ -51,12 +51,17 @@ jobs:
       # The same trade the compose stack makes, for the same reason: this
       # database exists for the length of one job and every test commits.
       # A service container takes no command, so the settings are applied
-      # afterwards - all three are reloadable, no restart involved.
+      # afterwards - all four are reloadable, no restart involved.
+      #
+      # log_lock_waits is for the teardown that occasionally stays open: a
+      # session waiting on a lock past deadlock_timeout is otherwise silent
+      # on the server, and the container log is the one thing a finished
+      # job still lets us read.
       - name: a database nobody has to recover
         env:
           PGPASSWORD: qualy
         run: |
-          for setting in fsync=off synchronous_commit=off full_page_writes=off; do
+          for setting in fsync=off synchronous_commit=off full_page_writes=off log_lock_waits=on; do
             psql -h localhost -U qualy -d qualy -c "alter system set ${setting/=/ = }"
           done
           psql -h localhost -U qualy -d qualy -c 'select pg_reload_conf()'
