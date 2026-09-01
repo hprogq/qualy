@@ -275,6 +275,8 @@ const open = (
     preview?: unknown
     /** the server cannot say what the arithmetic needs */
     previewFails?: boolean
+    /** every calculator the screen actually asked the server about */
+    previewed?: string[]
   } = {},
 ) =>
   renderScreen({
@@ -308,15 +310,17 @@ const open = (
           had.saved?.push(call.payload)
           return Effect.succeed({ item: { id: ITEM_ID } })
         },
-        previewScoring: (call: { payload: { calculator: { ref: string } } }) =>
-          had.previewFails === true
+        previewScoring: (call: { payload: { calculator: { ref: string } } }) => {
+          had.previewed?.push(call.payload.calculator.ref)
+          return had.previewFails === true
             ? Effect.fail(
                 Object.assign(new Error('ASSESSMENT_ITEM_CONFIG_INVALID'), {
                   _tag: 'ASSESSMENT_ITEM_CONFIG_INVALID',
                   issues: [{ path: 'calculator.config', reason: 'formula-version-not-found' }],
                 }),
               )
-            : Effect.succeed(had.preview ?? previewFor(call.payload.calculator.ref)),
+            : Effect.succeed(had.preview ?? previewFor(call.payload.calculator.ref))
+        },
       },
       assessmentFormula: {
         listFormulaBindingOptions: () => Effect.succeed(had.binding ?? bindingOptions()),
@@ -902,5 +906,71 @@ describe('what survives a round trip', () => {
     expect(saved[0]?.config?.scoringConfig?.['bindings']).toEqual({
       level: { kind: 'recognition', handle: RECOGNITION_ID },
     })
+  })
+})
+
+// Choosing arithmetic is not the same as configuring it.
+//
+// The moment somebody picks a different calculator, the question holds a
+// reference with no configuration behind it yet - a perfectly ordinary
+// state on the way to a finished one. Reporting it as a contract this
+// screen could not read would be telling somebody a step they have not
+// reached yet has failed.
+describe('a calculator chosen but not yet configured', () => {
+  it('says nothing has been configured, not that nothing could be read', async () => {
+    const saved: { config?: unknown }[] = []
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [officerItem()],
+      saved,
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+      // and the server would refuse an empty configuration, as any
+      // calculator's own codec would
+      previewFails: true,
+    })
+    await expect.element(page.getByRole('combobox', { name: '分值来源' })).toBeVisible()
+    await page.getByRole('combobox', { name: '分值来源' }).click()
+    await page.getByRole('option', { name: '已发布的公式' }).click()
+
+    // the formula's own picker is seated and waiting to be used
+    await expect.element(page.getByTestId('formula-version-picker')).toBeVisible()
+    // nothing is claimed to have failed, and nothing is claimed to be
+    // under way either - no request is in flight to be waiting on
+    expect(page.getByTestId('feedback').elements()).toHaveLength(0)
+    expect(page.getByTestId('contract-pending').elements()).toHaveLength(0)
+
+    // and the save says which step is outstanding
+    await page.getByRole('button', { name: '保存' }).click()
+    await expect.element(page.getByTestId('feedback').first()).toBeVisible()
+    expect(saved).toHaveLength(0)
+  })
+
+  it('asks the server what it needs once a version is chosen, and not before', async () => {
+    const previewed: string[] = []
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [officerItem()],
+      question: ITEM_ID,
+      surfaces: BOTH_CALCULATORS,
+      previewed,
+    })
+    await page.getByRole('combobox', { name: '分值来源' }).click()
+    await page.getByRole('option', { name: '已发布的公式' }).click()
+    await expect.element(page.getByTestId('formula-version-picker')).toBeVisible()
+    // nothing was asked of the server: an empty placeholder is not a
+    // question worth putting to it, and its answer could only be a refusal
+    expect(previewed).toEqual([])
+    expect(page.getByTestId('scoring-bindings').elements()).toHaveLength(0)
+
+    const offered = page
+      .getByTestId('formula-version-option')
+      .elements()
+      .find((row) => row.getAttribute('data-version-id') === OTHER_VERSION_ID)!
+    ;(offered as HTMLButtonElement).click()
+
+    // now there is a configuration, so there is a contract to bind against
+    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+    expect(previewed).toEqual(['formula@1'])
   })
 })

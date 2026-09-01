@@ -1388,6 +1388,10 @@ const i18n = definePluginMessages({
       id: 'assessment/items/recognition-no-default',
       defaultMessage: 'Nothing; ask for it',
     },
+    itemsNeedCalculatorConfig: {
+      id: 'assessment/items/need-calculator-config',
+      defaultMessage: 'Finish setting up the scoring',
+    },
     itemsContractPending: {
       id: 'assessment/items/contract-pending',
       defaultMessage: 'Reading what this arithmetic needs…',

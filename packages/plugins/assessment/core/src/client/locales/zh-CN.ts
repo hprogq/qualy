@@ -314,6 +314,7 @@ export default {
   'assessment/items/recognition-label': '认定名称',
   'assessment/items/recognition-default': '预填自',
   'assessment/items/recognition-no-default': '不预填，逐条认定',
+  'assessment/items/need-calculator-config': '计分设置尚未完成',
   'assessment/items/contract-pending': '正在读取该算法需要的参数……',
   'assessment/items/contract-unavailable': '读取不到该算法需要的参数，暂时无法保存。',
   'assessment/items/scoring-unsupported':

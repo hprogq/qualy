@@ -1222,6 +1222,20 @@ export type ScoringDraft =
       recognitions: Record<string, RecognitionDraft>
       bindings: Record<string, BindingDraft>
       touched: boolean
+      /**
+       * Whether the chosen calculator's own editor has produced a
+       * configuration yet.
+       *
+       * A different dimension from `touched`, and they must not be merged:
+       * `touched` says whether the stored scoring has to be rewritten,
+       * `configured` says whether what is in hand is a configuration at
+       * all. Choosing a calculator hands the question a reference with an
+       * empty placeholder behind it - an ordinary step on the way to a
+       * finished one, and not something to ask the server about. An empty
+       * object cannot stand in for this: it is a lawful configuration for
+       * a calculator whose schema takes nothing.
+       */
+      configured: boolean
     }
   /**
    * A language written by a newer build than this one.
@@ -1254,6 +1268,8 @@ const scoringDraftOf = (stored: unknown): ScoringDraft => {
     language: 'v2',
     original,
     calculator: original.calculator,
+    // what the server stored IS a configuration, whoever wrote it
+    configured: true,
     // the stored form is keyed by identity; the draft form by handle, and
     // an existing fact's handle is that identity
     recognitions: Object.fromEntries(
@@ -2032,6 +2048,8 @@ export function ItemConfigEditor({
           calculator: next,
           ...(rebound ? { recognitions: {}, bindings: {} } : {}),
           touched: true,
+          // this call IS the owning editor handing over a configuration
+          configured: true,
         },
       })
       return
@@ -2062,11 +2080,26 @@ export function ItemConfigEditor({
           recognitions: {},
           bindings: {},
           touched: true,
+          // a reference with a placeholder behind it: the chosen
+          // calculator's own editor fills it in
+          configured: false,
         },
       })
       return
     }
-    onCalculatorChange({ ref, config: {} })
+    // a language this build cannot read has its controls closed; nothing
+    // here may reach in and rewrite it
+    if (draft.scoring.language !== 'v2') return
+    patch({
+      scoring: {
+        ...draft.scoring,
+        calculator: { ref, config: {} },
+        recognitions: {},
+        bindings: {},
+        touched: true,
+        configured: false,
+      },
+    })
   }
 
   /**
@@ -2105,7 +2138,10 @@ export function ItemConfigEditor({
           },
         }),
       ),
-    enabled: draft.scoring.language === 'v2',
+    // only once there is something to ask about: an empty placeholder is
+    // not a configuration any calculator's codec would accept, and asking
+    // would report a step nobody has reached yet as a failure
+    enabled: draft.scoring.language === 'v2' && draft.scoring.configured,
   })
   const parameterSchemas = contract.data?.inputSchema as NormalizedInputSchema | undefined
   const schemaOf = (parameter: string): AtomicSchema | undefined =>
@@ -2131,7 +2167,13 @@ export function ItemConfigEditor({
     // against a contract this screen does not have: the bindings would be
     // composed against the last one that answered, which is a different
     // question from the one being saved
-    draft.scoring.language === 'v2' && draft.scoring.touched && !contract.isSuccess
+    draft.scoring.language === 'v2' && !draft.scoring.configured
+      ? format(m.itemsNeedCalculatorConfig)
+      : '',
+    draft.scoring.language === 'v2' &&
+    draft.scoring.configured &&
+    draft.scoring.touched &&
+    !contract.isSuccess
       ? format(m.itemsContractUnavailable)
       : '',
   ].filter((one) => one !== '')
@@ -2466,8 +2508,11 @@ export function ItemConfigEditor({
                 {/* what the chosen arithmetic asks for, and what this
                     question can answer it with */}
                 {draft.scoring.language === 'v2' &&
+                  draft.scoring.configured &&
                   (contract.isPending ? (
-                    <p {...stylex.props(styles.mutedText)}>{format(m.itemsContractPending)}</p>
+                    <p {...stylex.props(styles.mutedText)} data-testid="contract-pending">
+                      {format(m.itemsContractPending)}
+                    </p>
                   ) : contract.isError ? (
                     <Feedback message={format(m.itemsContractUnavailable)} />
                   ) : (
