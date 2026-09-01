@@ -9,6 +9,7 @@ import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/tes
 import type { Rbac } from '@qualy/rbac-contract/effect'
 import { FormulaAuthoring } from '../src/server/authoring.ts'
 import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
+import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
 
 // The library end to end on a real database: authoring, optimistic
@@ -18,14 +19,18 @@ import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
 // suites; here it is the service's own composition and records.
 
 const stack = (url: string) =>
-  formulaLayer.pipe(
-    Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
-    Layer.provide(formulaAuthoringLocalLayer),
-    Layer.provideMerge(servicesFor(url)),
-  )
+  Layer.mergeAll(
+    formulaLayer.pipe(
+      Layer.provide(sandboxLocalLayer({ size: 1, variant: 'release' })),
+      Layer.provide(formulaAuthoringLocalLayer),
+    ),
+    runtimeStoreLayer,
+  ).pipe(Layer.provideMerge(servicesFor(url)))
 
-const run = <A, E>(url: string, effect: Effect.Effect<A, E, FormulaLibrary | Rbac | Orm>) =>
-  Effect.runPromiseExit(Effect.provide(effect, stack(url)))
+const run = <A, E>(
+  url: string,
+  effect: Effect.Effect<A, E, FormulaLibrary | FormulaRuntimeStore | Rbac | Orm>,
+) => Effect.runPromiseExit(Effect.provide(effect, stack(url) as never) as Effect.Effect<A, E>)
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
   if (Exit.isSuccess(exit)) return exit.value
@@ -66,7 +71,7 @@ describe.runIf(postgresAvailable)('the formula library', () => {
           const as = f.principal(f.admin)
           const created = yield* library.createFunction(
             f.t,
-            { ownerNodeId: f.collegeA, name: '认定分值', description: '直接采用认定分值' },
+            { name: '认定分值', description: '直接采用认定分值' },
             as,
           )
           const drafted = yield* library.updateDraft(
@@ -113,11 +118,7 @@ describe.runIf(postgresAvailable)('the formula library', () => {
           const f = yield* seed('fx-refusals')
           const library = yield* FormulaLibrary
           const as = f.principal(f.admin)
-          const created = yield* library.createFunction(
-            f.t,
-            { ownerNodeId: f.collegeA, name: 'Broken' },
-            as,
-          )
+          const created = yield* library.createFunction(f.t, { name: 'Broken' }, as)
 
           // the default draft carries no examples: publishing has nothing proven
           const untested = yield* Effect.flip(
@@ -213,11 +214,7 @@ export default { ...definition, input: undefined } as unknown as typeof definiti
           const f = yield* seed('fx-forged')
           const library = yield* FormulaLibrary
           const as = f.principal(f.admin)
-          const created = yield* library.createFunction(
-            f.t,
-            { ownerNodeId: f.collegeA, name: 'Forged' },
-            as,
-          )
+          const created = yield* library.createFunction(f.t, { name: 'Forged' }, as)
           const drafted = yield* library.updateDraft(
             f.t,
             created.id,
@@ -248,7 +245,7 @@ export default { ...definition, input: undefined } as unknown as typeof definiti
           const as = f.principal(f.admin)
           const created = yield* library.createFunction(
             f.t,
-            { ownerNodeId: f.collegeA, name: '越界公式', description: '' },
+            { name: '越界公式', description: '' },
             as,
           )
           // the contract admits at most 5.00; the body answers 7 for a large
@@ -307,7 +304,7 @@ export default defineFormula({
         const as = f.principal(f.admin)
         const created = yield* library.createFunction(
           f.t,
-          { ownerNodeId: f.collegeA, name: '旧编译器', description: '' },
+          { name: '旧编译器', description: '' },
           as,
         )
         return yield* Effect.exit(library.previewDraft(f.t, created.id, IDENTITY, as))
@@ -352,37 +349,131 @@ export default defineFormula({
     }
   }, 120_000)
 
-  it('keeps unauthorized readers outside: empty lists, unknown functions', async () => {
+  it("keeps one author out of another author's work, capability or no", async () => {
+    // Two people who hold the SAME capability: what separates them is
+    // authorship alone, and to somebody who did not write it a formula is
+    // not forbidden, it is absent.
     const outcome = ok(
       await run(
         db.url,
         Effect.gen(function* () {
-          const f = yield* seed('fx-access')
+          const f = yield* seed('fx-ownership')
           const library = yield* FormulaLibrary
-          const admin = f.principal(f.admin)
-          const created = yield* library.createFunction(
-            f.t,
-            { ownerNodeId: f.collegeA, name: 'Private' },
-            admin,
-          )
-          const outsider = f.principal(f.bystander)
-          const listed = yield* library.listFunctions(f.t, {}, outsider)
-          const denied = yield* Effect.flip(library.getFunction(f.t, created.id, outsider))
-          const archived = yield* library.setStatus(f.t, created.id, 'archived', admin)
-          const editRefused = yield* Effect.flip(
+          const a = f.principal(f.authorA)
+          const b = f.principal(f.authorB)
+          const mine = yield* library.createFunction(f.t, { name: 'Private' }, a)
+          const theirs = yield* library.createFunction(f.t, { name: 'Theirs' }, b)
+
+          const listedByA = yield* library.listFunctions(f.t, {}, a)
+          const listedByB = yield* library.listFunctions(f.t, {}, b)
+          const read = yield* Effect.flip(library.getFunction(f.t, mine.id, b))
+          const edited = yield* Effect.flip(
             library.updateDraft(
               f.t,
-              created.id,
-              { expectedDraftRevision: archived.draftRevision, draftSourceTs: IDENTITY },
-              admin,
+              mine.id,
+              { expectedDraftRevision: mine.draftRevision, draftSourceTs: IDENTITY },
+              b,
             ),
           )
-          return { listed, denied, editRefused }
+          const archived = yield* Effect.flip(library.setStatus(f.t, mine.id, 'archived', b))
+          const published = yield* Effect.flip(library.publish(f.t, mine.id, mine.draftRevision, b))
+          // and somebody with no capability at all
+          const outsider = yield* Effect.flip(
+            library.listFunctions(f.t, {}, f.principal(f.bystander)),
+          )
+          return {
+            mine: mine.id,
+            theirs: theirs.id,
+            listedByA: listedByA.items.map((row) => row.id),
+            listedByB: listedByB.items.map((row) => row.id),
+            read: read._tag,
+            edited: edited._tag,
+            archived: archived._tag,
+            published: published._tag,
+            outsider: outsider._tag,
+          }
         }),
       ),
     )
-    expect(outcome.listed.items).toEqual([])
-    expect(outcome.denied._tag).toBe('ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND')
-    expect(outcome.editRefused._tag).toBe('ASSESSMENT_FORMULA_FUNCTION_ARCHIVED')
+
+    // each author's list is their own work
+    expect(outcome.listedByA).toEqual([outcome.mine])
+    expect(outcome.listedByB).toEqual([outcome.theirs])
+    // and every road to somebody else's formula reads as absence, not as a
+    // refusal that would confirm it exists
+    for (const tag of [outcome.read, outcome.edited, outcome.archived, outcome.published]) {
+      expect(tag).toBe('ASSESSMENT_FORMULA_FUNCTION_NOT_FOUND')
+    }
+    // holding no capability is a different answer: there is nothing to be
+    // absent from
+    expect(outcome.outsider).toBe('ACCESS_DENIED')
+  }, 120_000)
+
+  it('closes the whole authoring plane when the capability goes, and touches nothing published', async () => {
+    // Revoking "may write formulas" must not leave every URL still working.
+    // It also must not reach into what was already published: a version is
+    // an immutable record that questions may be running, and the person's
+    // authority to write more of them has nothing to do with it.
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seed('fx-capability')
+          const library = yield* FormulaLibrary
+          const store = yield* FormulaRuntimeStore
+          const a = f.principal(f.authorA)
+          const created = yield* library.createFunction(f.t, { name: 'Mine' }, a)
+          const drafted = yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: created.draftRevision,
+              draftSourceTs: IDENTITY,
+              draftTests: [{ name: 'three', input: { value: '3.00' }, expected: '3' }],
+            },
+            a,
+          )
+          const version = yield* library.publish(f.t, created.id, drafted.draftRevision, a)
+          const versionId = one<{ id: string }>(
+            yield* runSql(sql`
+              select id from assessment_formula_versions
+              where tenant_id = ${f.t} and function_id = ${created.id}`),
+          ).id
+
+          yield* f.revokeAuthoring(f.authorA)
+
+          const listed = yield* Effect.flip(library.listFunctions(f.t, {}, a))
+          const read = yield* Effect.flip(library.getFunction(f.t, created.id, a))
+          const edited = yield* Effect.flip(
+            library.updateDraft(
+              f.t,
+              created.id,
+              { expectedDraftRevision: drafted.draftRevision, draftSourceTs: IDENTITY },
+              a,
+            ),
+          )
+          const archived = yield* Effect.flip(library.setStatus(f.t, created.id, 'archived', a))
+          const republished = yield* Effect.flip(
+            library.publish(f.t, created.id, drafted.draftRevision, a),
+          )
+          const createdAgain = yield* Effect.flip(library.createFunction(f.t, { name: 'Next' }, a))
+          // the published fact itself, read the way a scorer reads it
+          const resolved = yield* store.resolve({ tenantId: f.t, versionId })
+
+          return {
+            tags: [listed, read, edited, archived, republished, createdAgain].map(
+              (error) => (error as { _tag: string })._tag,
+            ),
+            contract: resolved.contractSha256,
+            published: version.contractSha256,
+          }
+        }),
+      ),
+    )
+
+    // every road through the authoring plane, closed by the same answer
+    expect(outcome.tags).toEqual(Array(6).fill('ACCESS_DENIED'))
+    // and the version they published before is exactly as it was
+    expect(outcome.contract).toBe(outcome.published)
   }, 120_000)
 })

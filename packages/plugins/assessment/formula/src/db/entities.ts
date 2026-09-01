@@ -23,15 +23,16 @@ export const FormulaFunction = defineEntity({
   properties: {
     id: p.uuid().primary().defaultRaw('uuidv7()'),
     tenantId: tenantOf('assessment_formula_functions_tenant_id_tenants_id_fkey'),
-    // deliberately no foreign key: a function outlives its owning node as a
-    // readable historical fact, it just cannot anchor NEW configuration once
-    // the node is gone - the service refuses that, not the schema
-    ownerNodeId: p.uuid(),
     name: p.string().length(255),
     description: p.text().nullable(),
     draftSourceTs: p.text(),
     draftTests: p.json<readonly Record<string, unknown>[]>(),
     draftRevision: p.integer().default(1),
+    // The author, and deliberately no foreign key: authorship is a fact
+    // about who wrote this, not a live reference. It never moves - there is
+    // no transfer and no administrative takeover - so when an author's
+    // account goes away the mutable function simply has nobody who may edit
+    // it, while every published version it minted stays replayable forever.
     createdBy: p.uuid(),
     createdAt: p.datetime().defaultRaw('now()'),
     updatedBy: p.uuid(),
@@ -51,9 +52,15 @@ export const FormulaFunction = defineEntity({
         'create unique index uq_assessment_formula_functions_tenant_id_id on assessment_formula_functions (tenant_id, id)',
     },
     {
-      name: 'idx_assessment_formula_functions_tenant_owner',
+      // Exactly the library list's keyset: one author's formulas, newest
+      // touched first, with the id breaking ties. Declared ascending and
+      // read backwards, which a btree does natively and which gives the
+      // `updated_at desc, id desc` the list asks for - spelling the
+      // directions out instead would only make the schema generator and
+      // the ORM's own create-schema disagree about the trailing column.
+      name: 'idx_assessment_formula_functions_tenant_author_updated',
       expression:
-        'create index idx_assessment_formula_functions_tenant_owner on assessment_formula_functions (tenant_id, owner_node_id)',
+        'create index idx_assessment_formula_functions_tenant_author_updated on assessment_formula_functions (tenant_id, created_by, updated_at, id)',
     },
   ],
 })

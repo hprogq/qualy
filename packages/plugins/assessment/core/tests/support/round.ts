@@ -33,8 +33,13 @@ import { entities as storageEntities } from '@qualy/plugin-storage/db'
 import { entities } from '../../src/db/entities.ts'
 import { permissions as assessmentPermissions } from '../../src/permissions.ts'
 import { Assessment, serviceLayer, type PhaseSpecInput } from '../../src/server/index.ts'
-import { catalogLayers, scoringRuntimeLayer, storageForTest } from './catalogs.ts'
-import { ScoringRuntimeCatalog } from '../../src/plugin.ts'
+import {
+  catalogLayers,
+  scoringAuthoringPolicyLayer,
+  scoringRuntimeLayer,
+  storageForTest,
+} from './catalogs.ts'
+import { ScoringAuthoringPolicyCatalog, ScoringRuntimeCatalog } from '../../src/plugin.ts'
 
 // The round every policy suite stands in: two colleges, two classes, a
 // student and their neighbours, a reviewer holding the review role at
@@ -83,11 +88,11 @@ const stack = (url: string) => {
   // services and the prepared catalogs, registering the scoring boot hook
   // into the same registry (the barrier that RUNS hooks is the host's, and
   // these suites do not boot one)
-  const runtimeCatalog = scoringRuntimeLayer.pipe(
+  const runtimeCatalog = Layer.mergeAll(scoringRuntimeLayer, scoringAuthoringPolicyLayer).pipe(
     Layer.provide(services),
     Layer.provide(catalogLayers),
     Layer.provide(assembledLayer),
-  ) as Layer.Layer<ScoringRuntimeCatalog>
+  ) as Layer.Layer<ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog>
   return serviceLayer.pipe(
     Layer.provideMerge(storage),
     Layer.provideMerge(services),
@@ -104,7 +109,13 @@ export const run = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    Assessment | Storage | Rbac | Orm | DatabaseNotifications | ScoringRuntimeCatalog
+    | Assessment
+    | Storage
+    | Rbac
+    | Orm
+    | DatabaseNotifications
+    | ScoringRuntimeCatalog
+    | ScoringAuthoringPolicyCatalog
   >,
 ) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 

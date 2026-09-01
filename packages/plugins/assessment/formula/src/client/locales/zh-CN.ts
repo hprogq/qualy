@@ -1,8 +1,8 @@
 import type { MessageCatalog } from '@qualy/i18n-contract'
 
 export default {
-  'assessment-formula/permission/manage': '管理计分公式',
-  'assessment-formula/permission-hint/manage': '在该节点下编写、试算、发布和归档计分公式。',
+  'assessment-formula/permission/author': '编写计分公式',
+  'assessment-formula/permission-hint/author': '编写、试算、发布和归档自己的计分公式。',
   'assessment-formula/permission-group/assessment': '综合测评',
   'assessment-formula/audit/create': '新建计分公式',
   'assessment-formula/audit/draft-update': '更新公式草稿',
@@ -14,7 +14,6 @@ export default {
   'assessment-formula/list/empty': '还没有公式。',
   'assessment-formula/list/new': '新建公式',
   'assessment-formula/field/name': '名称',
-  'assessment-formula/field/owner': '归属单位',
   'assessment-formula/field/description': '说明',
   'assessment-formula/create/confirm': '创建',
   'assessment-formula/common/cancel': '取消',
@@ -121,7 +120,6 @@ export default {
   'assessment-formula/binding/more': '加载更多',
   'assessment-formula/error/function-not-found': '找不到该公式。',
   'assessment-formula/error/version-not-found': '找不到该版本。',
-  'assessment-formula/error/owner-node-invalid': '请选择公式的归属单位。',
   'assessment-formula/error/function-archived': '该公式已归档，恢复后才能编辑。',
   'assessment-formula/error/draft-conflict': '草稿已在别处被修改，请刷新后再应用你的改动。',
   'assessment-formula/error/source-too-large': '源码过大，无法保存。',
@@ -132,6 +130,4 @@ export default {
   'assessment-formula/error/execution-limit': '编译或提取合同超出了允许的资源，请精简公式后再试。',
   'assessment-formula/error/test-failed': '发布前需要全部示例通过，且至少有一条示例。',
   'assessment-formula/error/compile-unavailable': '发布服务暂时不可用，请稍后再试。',
-  'assessment-formula/error/binding-options-unavailable':
-    '本批次未设置管理范围，暂时无法绑定公式。',
 } satisfies MessageCatalog

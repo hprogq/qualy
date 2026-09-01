@@ -82,7 +82,7 @@ describe.runIf(postgresAvailable)('the formula runtime store', () => {
           ).id
           const created = yield* library.createFunction(
             f.t,
-            { ownerNodeId: owner, name: '认定分值', description: '' },
+            { name: '认定分值', description: '' },
             as,
           )
           const drafted = yield* library.updateDraft(

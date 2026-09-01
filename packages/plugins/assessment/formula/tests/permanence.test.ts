@@ -58,9 +58,9 @@ describe.runIf(postgresAvailable)('formula version permanence', () => {
     const functionId = (
       await db.row<{ id: string }>(
         `insert into assessment_formula_functions
-           (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
-         values ($1, $2, 'Kept', 'export {}', '[]'::jsonb, $3, $3) returning id`,
-        [tenantId, nodeId, userId],
+           (tenant_id, name, draft_source_ts, draft_tests, created_by, updated_by)
+         values ($1, 'Kept', 'export {}', '[]'::jsonb, $2, $2) returning id`,
+        [tenantId, userId],
       )
     ).id
     const versionId = (

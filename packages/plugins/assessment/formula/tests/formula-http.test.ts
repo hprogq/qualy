@@ -224,7 +224,6 @@ export default defineFormula({
 describe.runIf(postgresAvailable)('the formula api over http', () => {
   it('saves through the real HttpApiClient pipeline, the way the browser does', async () => {
     const created = await call('POST', '/api/assessment/formula-functions', {
-      ownerNodeId: await rootNode(),
       name: 'Client pipeline',
     })
     expect(created.status, inspect(created.body)).toBe(200)
@@ -255,7 +254,6 @@ describe.runIf(postgresAvailable)('the formula api over http', () => {
 
   it('saves an example-less draft through the client pipeline too', async () => {
     const created = await call('POST', '/api/assessment/formula-functions', {
-      ownerNodeId: await rootNode(),
       name: 'Empty examples',
     })
     expect(created.status, inspect(created.body)).toBe(200)
@@ -287,7 +285,6 @@ describe.runIf(postgresAvailable)('the formula api over http', () => {
   it('walks the browser flow: create, read, save the draft, publish', async () => {
     void tenantId
     const created = await call('POST', '/api/assessment/formula-functions', {
-      ownerNodeId: await rootNode(),
       name: '认定分值',
     })
     expect(created.status, inspect(created.body)).toBe(200)
@@ -317,7 +314,6 @@ describe.runIf(postgresAvailable)('the formula api over http', () => {
 
   it('previews and evaluates the current buffer without touching the draft', async () => {
     const created = await call('POST', '/api/assessment/formula-functions', {
-      ownerNodeId: await rootNode(),
       name: 'Draft tools',
     })
     expect(created.status, inspect(created.body)).toBe(200)
@@ -400,7 +396,6 @@ export default defineFormula({
     const owner = await rootNode()
     for (let index = 0; index < 12; index += 1) {
       const created = await call('POST', '/api/assessment/formula-functions', {
-        ownerNodeId: owner,
         name: `Paged ${String(index).padStart(2, '0')}`,
       })
       expect(created.status, inspect(created.body)).toBe(200)

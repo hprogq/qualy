@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
   "manifestHash": "sha256:b121dabb4728c925631e2a71c979240f9c0585304d4627a37c398980ac34dd71",
-  "resolutionHash": "sha256:da9ae89d33c2af6afa20a192d147959235e688f4f00236e5af83c5ee7237be27",
+  "resolutionHash": "sha256:1ae28811e6530485eabceb036eff067978122419b59e05be1410251a15cf9876",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -84,7 +84,7 @@
         "permissions": {
           "owner": "assessment-formula",
           "codes": [
-            "assessment.formula.manage"
+            "assessment.formula.author"
           ]
         }
       }

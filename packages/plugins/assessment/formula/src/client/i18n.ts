@@ -12,13 +12,13 @@ import type * as formulaErrors from '../server/errors.ts'
 const i18n = definePluginMessages({
   namespace: 'assessment-formula',
   messages: {
-    'permission.assessment.formula.manage': {
-      id: 'assessment-formula/permission/manage',
-      defaultMessage: 'Manage scoring formulas',
+    'permission.assessment.formula.author': {
+      id: 'assessment-formula/permission/author',
+      defaultMessage: 'Write scoring formulas',
     },
-    'permission-hint.assessment.formula.manage': {
-      id: 'assessment-formula/permission-hint/manage',
-      defaultMessage: 'Write, test, publish and archive scoring formulas owned by this node.',
+    'permission-hint.assessment.formula.author': {
+      id: 'assessment-formula/permission-hint/author',
+      defaultMessage: 'Write, test, publish and archive your own scoring formulas.',
     },
     'permission-group.assessment': {
       id: 'assessment-formula/permission-group/assessment',
@@ -63,10 +63,6 @@ const i18n = definePluginMessages({
     nameLabel: {
       id: 'assessment-formula/field/name',
       defaultMessage: 'Name',
-    },
-    ownerLabel: {
-      id: 'assessment-formula/field/owner',
-      defaultMessage: 'Owning unit',
     },
     descriptionLabel: {
       id: 'assessment-formula/field/description',
@@ -485,10 +481,6 @@ const i18n = definePluginMessages({
       id: 'assessment-formula/error/version-not-found',
       defaultMessage: 'That version could not be found.',
     },
-    ASSESSMENT_FORMULA_OWNER_NODE_INVALID: {
-      id: 'assessment-formula/error/owner-node-invalid',
-      defaultMessage: 'Choose an organizational unit for the formula.',
-    },
     ASSESSMENT_FORMULA_FUNCTION_ARCHIVED: {
       id: 'assessment-formula/error/function-archived',
       defaultMessage: 'The formula is archived. Restore it before editing.',
@@ -528,10 +520,6 @@ const i18n = definePluginMessages({
     ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE: {
       id: 'assessment-formula/error/compile-unavailable',
       defaultMessage: 'Publishing is temporarily unavailable. Try again shortly.',
-    },
-    ASSESSMENT_FORMULA_BINDING_OPTIONS_UNAVAILABLE: {
-      id: 'assessment-formula/error/binding-options-unavailable',
-      defaultMessage: 'This round has no unit it is run from, so no formula can be bound to it.',
     },
   }),
   locales: {

@@ -127,7 +127,7 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
 
           const created = yield* library.createFunction(
             f.t,
-            { ownerNodeId: root, name: '心情分', description: '' },
+            { name: '心情分', description: '' },
             as,
           )
           const drafted = yield* library.updateDraft(
@@ -246,7 +246,7 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           ).id
           const created = yield* library.createFunction(
             f.t,
-            { ownerNodeId: root, name: '冻结分', description: '' },
+            { name: '冻结分', description: '' },
             as,
           )
           const drafted = yield* library.updateDraft(
@@ -355,7 +355,7 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           ).id
           const created = yield* library.createFunction(
             f.t,
-            { ownerNodeId: root, name: '真跑分', description: '' },
+            { name: '真跑分', description: '' },
             as,
           )
           const drafted = yield* library.updateDraft(

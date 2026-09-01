@@ -46,7 +46,7 @@ import { decodeFormulaEnvelope } from '../server/envelope.ts'
 import { FORMULA_SCORING_LIMITS } from './limits.ts'
 
 const REF = 'formula@1'
-const RUNTIME_REF_KIND = 'formula-version'
+export const RUNTIME_REF_KIND = 'formula-version'
 const UUIDV7_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 export interface FormulaConfig {
@@ -125,8 +125,8 @@ const compileResolutionFailure = (error: FormulaRuntimeResolutionError, continua
   }
 }
 
-/** how the bindability answer reads: four lawful refusals, and two answers
- *  that contradict what the save or this very compile already proved */
+/** how the bindability answer reads: one lawful refusal, and one answer
+ *  that contradicts what this very compile already proved */
 const bindabilityFailure = (error: FormulaNotBindable) => {
   switch (error.reason) {
     case 'function-archived':
@@ -135,28 +135,6 @@ const bindabilityFailure = (error: FormulaNotBindable) => {
         'formula-function-archived',
         'the formula function is archived; a new binding needs a live one',
       )
-    case 'outside-management-boundary':
-      return contractRefusal(
-        'refusal',
-        'formula-outside-management-boundary',
-        "the formula's owner does not cover every management anchor of this batch",
-      )
-    case 'no-management-boundary':
-      return contractRefusal(
-        'refusal',
-        'formula-no-management-boundary',
-        'this batch has no management boundary to prove a binding inside',
-      )
-    case 'owner-node-missing':
-      return contractRefusal(
-        'refusal',
-        'formula-owner-node-missing',
-        "the formula's owner node no longer exists",
-      )
-    case 'batch-not-found':
-      // the save holds the batch row under lock; a missing batch here is the
-      // host contradicting itself, never an administrator's mistake
-      return contractRefusal('invariant', 'formula-batch-not-found', 'the locked batch vanished')
     case 'version-not-found':
       // this compile resolved the immutable version moments ago
       return contractRefusal(
@@ -334,7 +312,7 @@ export const formula1: CalculatorRegistration<
           }
         } else {
           yield* bindable
-            .requireBindable(context.tenantId, context.batchId, decoded.versionId)
+            .requireBindable(context.tenantId, decoded.versionId)
             .pipe(Effect.mapError(bindabilityFailure))
         }
         return {

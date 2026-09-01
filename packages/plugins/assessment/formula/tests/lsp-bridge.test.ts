@@ -383,7 +383,6 @@ beforeAll(async () => {
   })
 
   const created = await call('POST', '/api/assessment/formula-functions', {
-    ownerNodeId: seeded.root,
     name: 'Language target',
   })
   if (created.status !== 200) throw new Error(inspect(created.body))

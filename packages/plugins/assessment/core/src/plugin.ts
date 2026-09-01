@@ -435,6 +435,78 @@ export const ScoringRuntimes = ExtensionPoint.make<CalculatorRegistration<any>>(
 )
 
 /**
+ * Why one person may not create a binding another person could.
+ *
+ * A calculator's contract is a fact about arithmetic and is proven without
+ * anybody's identity - that is what makes a frozen plan replayable years
+ * later by a scorer with no session at all. But WHO may point a question at
+ * a particular program is an authoring question, and authoring questions
+ * have an actor.
+ *
+ * So the actor never reaches the calculator. It reaches this, a seam beside
+ * it: the host asks the owning plugin, before it compiles anything, whether
+ * this principal may bind this configuration afresh. A continuation - the
+ * question already runs this exact program - is not a new binding and is
+ * never re-asked, because a rule about who may START something must not
+ * quietly become a rule about who may keep a question working.
+ */
+export interface ScoringAuthoringRefusal {
+  /** a path into the submitted configuration, as the compiler spells them */
+  readonly path: string
+  /** a stable word the contributing plugin owns and translates */
+  readonly reason: string
+}
+
+export interface ScoringAuthoringInput {
+  readonly tenantId: string
+  readonly batchId: string
+  readonly principal: Principal
+  /** the configuration as submitted; the owning plugin reads its own
+   *  language, and one it cannot read is not this seam's refusal to make */
+  readonly config: unknown
+  /** the runtime identity this question's previous plan froze, when the
+   *  SAME calculator is being recompiled */
+  readonly previousRuntimeRef?: RuntimeRef
+}
+
+export interface BoundScoringAuthoringPolicy {
+  readonly authorize: (input: ScoringAuthoringInput) => Effect.Effect<void, ScoringAuthoringRefusal>
+}
+
+/**
+ * One calculator's authoring policy, bound the way its runtime is.
+ *
+ * The `R` closes at bind, exactly as a calculator's does: what the policy
+ * needs from the running graph it acquires once, while its layer builds,
+ * and what it hands back asks for nothing. A registration that kept an open
+ * requirement would make the seam's own dependencies invisible to the boot.
+ */
+export interface ScoringAuthoringPolicyRegistration<R = never> {
+  readonly ref: string
+  readonly bind: Effect.Effect<BoundScoringAuthoringPolicy, never, R>
+}
+
+export const ScoringAuthoringPolicies = ExtensionPoint.make<
+  ScoringAuthoringPolicyRegistration<any>
+>('@qualy/plugin-assessment/scoring-authoring-policies', { phase: 'runtime' })
+
+/**
+ * The bound policies, by calculator reference. A calculator with none is
+ * unrestricted - most arithmetic is nobody's property.
+ */
+export class ScoringAuthoringPolicyCatalog extends Context.Service<
+  ScoringAuthoringPolicyCatalog,
+  { readonly authorize: ScoringAuthoringPolicyCatalogShape['authorize'] }
+>()('@qualy/plugin-assessment/ScoringAuthoringPolicyCatalog') {}
+
+interface ScoringAuthoringPolicyCatalogShape {
+  readonly authorize: (
+    ref: string,
+    input: ScoringAuthoringInput,
+  ) => Effect.Effect<void, ScoringAuthoringRefusal>
+}
+
+/**
  * The narrow face assessment offers other plugins about one round's
  * administration - and nothing else.
  *
@@ -608,6 +680,18 @@ export const Scoring = {
   aggregator: (driver: AggregatorDriver): PluginFeature => {
     refuseRefFormat(driver.ref)
     return Plugin.contribute(ScoringDefinitions, driver)
+  },
+
+  /**
+   * Declares who may point a question at one of this calculator's
+   * configurations. Optional: a calculator that nobody owns needs none.
+   */
+  authoringPolicy: <R>(registration: ScoringAuthoringPolicyRegistration<R>): PluginFeature => {
+    refuseRefFormat(registration.ref)
+    return Plugin.contribute(
+      ScoringAuthoringPolicies,
+      registration as ScoringAuthoringPolicyRegistration<any>,
+    )
   },
 
   definitionProvider: Plugin.provideExtension(ScoringDefinitions, {

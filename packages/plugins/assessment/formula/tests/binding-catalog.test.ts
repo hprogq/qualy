@@ -5,7 +5,6 @@ import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { transaction, type Orm } from '@qualy/plugin-database/server'
-import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
 import {
   normalizeAtomicSchema,
   normalizeInputSchema,
@@ -14,27 +13,27 @@ import {
 import {
   BindableFormulaCatalog,
   bindingCatalogLayer,
-  type FormulaNotBindable,
   type BindablePage,
+  type FormulaNotBindable,
 } from '../src/server/binding-catalog.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { contractIdentityOf, sha256Hex } from '../src/server/contract-identity.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
 
-// New-binding eligibility as a read model of facts - no principal in either
-// signature, because the item update already authorized its administrator
-// and 7.3's calculator compiles with no principal at all. The rule: the
-// owner node must cover EVERY frozen management anchor; an archived
-// function, a deleted owner, an unresolvable anchor, an absent version or a
-// boundary with no anchors each fails closed under its own name. And on the
-// same rows, the runtime store keeps answering - the two services parting
-// ways on one fixture is the continuation/new-binding split made flesh.
+// What a question may be scored by, as a read model of FACTS - no principal
+// in any signature. Who may create a binding is an authoring question with
+// an actor, answered beside the compiler; this service is asked only what
+// exists and what state it is in, and the author id it takes is a column to
+// filter on rather than an identity to authorize.
+//
+// One thing it must keep apart. A version's function may be archived, and
+// then it is no longer offered for new configuration - while the runtime
+// store goes on resolving it, because a question already bound to it must
+// keep running. The two services parting ways on one fixture is the
+// continuation/new-binding split made flesh.
 
 const stack = (url: string) =>
-  Layer.mergeAll(
-    runtimeStoreLayer,
-    bindingCatalogLayer.pipe(Layer.provide(configurationAccessLayer)),
-  ).pipe(Layer.provideMerge(servicesFor(url)))
+  Layer.mergeAll(runtimeStoreLayer, bindingCatalogLayer).pipe(Layer.provideMerge(servicesFor(url)))
 
 const run = <A, E>(
   url: string,
@@ -69,6 +68,42 @@ const CONTRACT = {
   }),
 }
 
+const IDENTITY = contractIdentityOf(CONTRACT.input, CONTRACT.output)
+const ARTIFACT = '/*artifact*/'
+
+const addVersion = (tenantId: string, functionId: string, author: string, versionNo: number) =>
+  Effect.map(
+    runSql(sql`
+      insert into assessment_formula_versions
+        (tenant_id, function_id, version_no, source_ts, runtime_js,
+         input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
+         typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
+         quickjs_engine_version, tests, test_report, published_by,
+         value_schema_profile_version)
+      values (${tenantId}, ${functionId}, ${versionNo}, 'export {}', ${ARTIFACT},
+              ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
+              ${sha256Hex('export {}')}, ${sha256Hex(ARTIFACT)}, ${IDENTITY.contractSha256},
+              '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
+              'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${author},
+              ${VALUE_SCHEMA_PROFILE_VERSION})
+      returning id`),
+    (result) => one<{ id: string }>(result).id,
+  )
+
+/** one published version of a fresh function, by a named author */
+const publishOne = (tenantId: string, author: string, name: string, versionNo = 1) =>
+  Effect.gen(function* () {
+    const functionId = one<{ id: string }>(
+      yield* runSql(sql`
+        insert into assessment_formula_functions
+          (tenant_id, name, draft_source_ts, draft_tests, created_by, updated_by)
+        values (${tenantId}, ${name}, 'export {}', '[]'::jsonb, ${author}, ${author})
+        returning id`),
+    ).id
+    const versionId = yield* addVersion(tenantId, functionId, author, versionNo)
+    return { functionId, versionId }
+  })
+
 describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
   let db: Awaited<ReturnType<typeof createTestContext>>
 
@@ -80,7 +115,7 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
     await db?.dispose()
   })
 
-  it('answers eligibility from the boundary and the owner, and parts ways with replay', async () => {
+  it('offers one author their own published versions, and nobody else theirs', async () => {
     const outcome = ok(
       await run(
         db.url,
@@ -89,339 +124,116 @@ describe.runIf(postgresAvailable)('the bindable formula catalog', () => {
           const catalog = yield* BindableFormulaCatalog
           const store = yield* FormulaRuntimeStore
 
-          // a second college beside fixture's college A, plus batches
-          const collegeB = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
-              select ${f.t}, org_type_id, id, 'College B', path || 'b', 1
-              from org_nodes where tenant_id = ${f.t} and parent_id is null
-              returning id`),
-          ).id
-          const batch = (name: string, anchors: readonly string[]) =>
-            Effect.gen(function* () {
-              const id = one<{ id: string }>(
-                yield* runSql(sql`
-                  insert into assessment_batches (tenant_id, name, material_range)
-                  values (${f.t}, ${name}, daterange('2026-03-01', '2026-09-01')) returning id`),
-              ).id
-              for (const anchor of anchors) {
-                yield* runSql(sql`
-                  insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
-                  values (${f.t}, ${id}, ${anchor})`)
-              }
-              return id
-            })
-          const root = one<{ id: string }>(
-            yield* runSql(
-              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-            ),
-          ).id
-          const batchA = yield* batch('Round A', [f.collegeA])
-          const batchAB = yield* batch('Round A+B', [f.collegeA, collegeB])
-          const anchorless = yield* batch('Leftover', [])
+          const mine = yield* publishOne(f.t, f.authorA, 'A 的公式')
+          const theirs = yield* publishOne(f.t, f.authorB, 'B 的公式')
 
-          // three formulas: tenant-root owned, college-A owned, college-B owned
-          const identity = contractIdentityOf(CONTRACT.input, CONTRACT.output)
-          const artifact = '/*artifact*/'
-          const publish = (ownerNodeId: string, name: string) =>
-            Effect.gen(function* () {
-              const functionId = one<{ id: string }>(
-                yield* runSql(sql`
-                  insert into assessment_formula_functions
-                    (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
-                  values (${f.t}, ${ownerNodeId}, ${name}, 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
-                  returning id`),
-              ).id
-              const versionId = one<{ id: string }>(
-                yield* runSql(sql`
-                  insert into assessment_formula_versions
-                    (tenant_id, function_id, version_no, source_ts, runtime_js,
-                     input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
-                     typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
-                     quickjs_engine_version, tests, test_report, published_by,
-                     value_schema_profile_version)
-                  values (${f.t}, ${functionId}, 1, 'export {}', ${artifact},
-                          ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
-                          ${sha256Hex('export {}')}, ${sha256Hex(artifact)}, ${identity.contractSha256},
-                          '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
-                          'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin},
-                          ${VALUE_SCHEMA_PROFILE_VERSION})
-                  returning id`),
-              ).id
-              return { functionId, versionId }
-            })
-          const rootFormula = yield* publish(root, '校级公式')
-          const collegeAFormula = yield* publish(f.collegeA, 'A 院公式')
-          const collegeBFormula = yield* publish(collegeB, 'B 院公式')
+          const forA = yield* catalog.listForBatch(f.t, f.authorA)
+          const forB = yield* catalog.listForBatch(f.t, f.authorB)
 
-          const listA = yield* catalog.listForBatch(f.t, batchA)
-          const listAB = yield* catalog.listForBatch(f.t, batchAB)
-          const bindRootOnA = yield* catalog.requireBindable(f.t, batchA, rootFormula.versionId)
-          const bindAOnA = yield* catalog.requireBindable(f.t, batchA, collegeAFormula.versionId)
-          const bindBOnA = yield* Effect.exit(
-            catalog.requireBindable(f.t, batchA, collegeBFormula.versionId),
-          )
-          const unknownBatch = yield* Effect.exit(
-            catalog.requireBindable(f.t, randomUUID(), rootFormula.versionId),
-          )
-          const unknownVersion = yield* Effect.exit(
-            catalog.requireBindable(f.t, batchA, randomUUID()),
-          )
-          const zeroAnchors = yield* Effect.exit(
-            catalog.requireBindable(f.t, anchorless, rootFormula.versionId),
-          )
-
-          // archive college A's function: replay keeps answering, new
-          // binding stops - the same row, two different rights
+          // archive A's function: replay keeps answering, new binding stops
+          // - the same row, two different rights
           yield* runSql(sql`
             update assessment_formula_functions set archived_at = now()
-            where id = ${collegeAFormula.functionId}`)
+            where id = ${mine.functionId}`)
+          const afterArchive = yield* catalog.listForBatch(f.t, f.authorA)
           const archivedResolve = yield* store.resolve({
             tenantId: f.t,
-            versionId: collegeAFormula.versionId,
+            versionId: mine.versionId,
           })
-          const archivedBind = yield* Effect.exit(
-            catalog.requireBindable(f.t, batchA, collegeAFormula.versionId),
-          )
-          const listAfterArchive = yield* catalog.listForBatch(f.t, batchA)
-
-          // delete college B's owner node: same split
-          yield* runSql(sql`
-            update assessment_formula_functions set archived_at = null
-            where id = ${collegeAFormula.functionId}`)
-          const ownerlessTarget = yield* publish(collegeB, 'B 院第二式')
-          yield* runSql(sql`delete from batch_management_anchors where org_node_id = ${collegeB}`)
-          yield* runSql(sql`
-            delete from org_nodes where id = ${collegeB}`)
-          const ownerGoneResolve = yield* store.resolve({
-            tenantId: f.t,
-            versionId: ownerlessTarget.versionId,
-          })
-          const ownerGoneBind = yield* Effect.exit(
-            catalog.requireBindable(f.t, batchA, ownerlessTarget.versionId),
-          )
+          const archivedBind = yield* Effect.exit(catalog.requireBindable(f.t, mine.versionId))
+          const unknownVersion = yield* Effect.exit(catalog.requireBindable(f.t, randomUUID()))
 
           return {
-            listA: listA.items.map((v) => v.functionName),
-            listAB: listAB.items.map((v) => v.functionName),
-            bindRootOnA,
-            bindAOnA,
-            bindBOnA,
-            unknownBatch,
-            unknownVersion,
-            zeroAnchors,
-            archivedResolve,
-            archivedBind,
-            listAfterArchive: listAfterArchive.items.map((v) => v.functionName),
-            ownerGoneResolve,
-            ownerGoneBind,
-            versionIds: { root: rootFormula.versionId, a: collegeAFormula.versionId },
+            forA: forA.items.map((row) => row.versionId),
+            forB: forB.items.map((row) => row.versionId),
+            afterArchive: afterArchive.items.map((row) => row.versionId),
+            archivedResolve: archivedResolve.runtimeSha256,
+            archivedBind: reasonOf(archivedBind),
+            unknownVersion: reasonOf(unknownVersion),
+            mine: mine.versionId,
+            theirs: theirs.versionId,
           }
         }),
       ),
     )
-    // the boundary rule, universally quantified over anchors
-    expect(outcome.listA.sort()).toEqual(['A 院公式', '校级公式'])
-    expect(outcome.listAB).toEqual(['校级公式'])
-    expect(outcome.bindRootOnA.versionId).toBe(outcome.versionIds.root)
-    expect(outcome.bindAOnA.versionId).toBe(outcome.versionIds.a)
-    expect(reasonOf(outcome.bindBOnA)).toBe('outside-management-boundary')
-    // each refusal under its own name, never collapsed
-    expect(reasonOf(outcome.unknownBatch)).toBe('batch-not-found')
-    expect(reasonOf(outcome.unknownVersion)).toBe('version-not-found')
-    expect(reasonOf(outcome.zeroAnchors)).toBe('no-management-boundary')
-    // the split: replay answers, new binding refuses - same rows
-    expect(outcome.archivedResolve.versionId).toBe(outcome.versionIds.a)
-    expect(reasonOf(outcome.archivedBind)).toBe('function-archived')
-    expect(outcome.listAfterArchive).toEqual(['校级公式'])
-    expect(outcome.ownerGoneResolve.runtimeJs).toBe('/*artifact*/')
-    expect(reasonOf(outcome.ownerGoneBind)).toBe('owner-node-missing')
-  }, 120_000)
-})
 
-describe.runIf(postgresAvailable)('eligibility holds its ground until the writer commits', () => {
-  let db: Awaited<ReturnType<typeof createTestContext>>
-
-  beforeAll(async () => {
-    db = await createTestContext('formula-binding-locks')
-  }, 120_000)
-
-  afterAll(async () => {
-    await db?.dispose()
+    // each author is offered what they wrote, and only that
+    expect(outcome.forA).toEqual([outcome.mine])
+    expect(outcome.forB).toEqual([outcome.theirs])
+    // archived: gone from the offer, still resolvable for whoever runs it
+    expect(outcome.afterArchive).toEqual([])
+    expect(outcome.archivedResolve).toBe(sha256Hex(ARTIFACT))
+    expect(outcome.archivedBind).toBe('function-archived')
+    expect(outcome.unknownVersion).toBe('version-not-found')
   })
 
-  it('makes archive and an org move wait for the item revision, not race it', async () => {
-    // The writer's transaction reads every fact its yes depends on under
-    // FOR SHARE. A concurrent archive (an UPDATE on the function row) and a
-    // concurrent org rename (an UPDATE on an anchor's node row) must both
-    // queue behind the commit - the requireBindable connection is the
-    // services' pool, the contender is the admin pool, genuinely two
-    // sessions.
+  it('makes an archive wait for the item revision, not race it', async () => {
+    // The writer's transaction reads the fact its yes depends on under FOR
+    // SHARE. A concurrent archive (an UPDATE on the function row) must queue
+    // behind the commit - the requireBindable connection is the services'
+    // pool, the contender is the admin pool, genuinely two sessions.
     const outcome = ok(
       await run(
         db.url,
         Effect.gen(function* () {
           const f = yield* seedFormulaFixture('bc-locks')
           const catalog = yield* BindableFormulaCatalog
-          const root = one<{ id: string }>(
-            yield* runSql(
-              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-            ),
-          ).id
-          const batch = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into assessment_batches (tenant_id, name, material_range)
-              values (${f.t}, 'Locked Round', daterange('2026-03-01','2026-09-01'))
-              returning id`),
-          ).id
-          yield* runSql(sql`
-            insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
-            values (${f.t}, ${batch}, ${f.collegeA})`)
-          const identity = contractIdentityOf(CONTRACT.input, CONTRACT.output)
-          const artifact = '/*artifact*/'
-          const functionId = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into assessment_formula_functions
-                (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
-              values (${f.t}, ${root}, '锁下公式', 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
-              returning id`),
-          ).id
-          const versionId = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into assessment_formula_versions
-                (tenant_id, function_id, version_no, source_ts, runtime_js,
-                 input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
-                 typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
-                 quickjs_engine_version, tests, test_report, published_by,
-                 value_schema_profile_version)
-              values (${f.t}, ${functionId}, 1, 'export {}', ${artifact},
-                      ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
-                      ${sha256Hex('export {}')}, ${sha256Hex(artifact)}, ${identity.contractSha256},
-                      '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
-                      'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin},
-                      ${VALUE_SCHEMA_PROFILE_VERSION})
-              returning id`),
-          ).id
+          const published = yield* publishOne(f.t, f.authorA, '锁下公式')
 
-          const contend = (statement: string, params: readonly unknown[]) =>
+          const contender = yield* Effect.forkChild(
+            Effect.promise(async () => {
+              const started = Date.now()
+              await db.query(
+                `update assessment_formula_functions set archived_at = now() where id = $1`,
+                [published.functionId],
+              )
+              return Date.now() - started
+            }),
+          )
+
+          // the save's own transaction: prove the binding, hold, commit
+          const inside = yield* transaction(
             Effect.gen(function* () {
-              let release!: () => void
-              const gate = new Promise<void>((resolve) => {
-                release = resolve
-              })
-              const writer = yield* Effect.forkChild(
-                transaction(
-                  Effect.gen(function* () {
-                    const bindable = yield* catalog.requireBindable(f.t, batch, versionId)
-                    yield* Effect.promise(() => gate)
-                    return bindable
-                  }),
-                ),
-              )
-              // let the writer take its locks before contending
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 150)))
-              const contender = db.query(statement, params)
-              const during = yield* Effect.promise(() =>
-                Promise.race([
-                  contender.then(() => 'finished' as const),
-                  new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 200)),
-                ]),
-              )
-              release()
-              yield* Effect.promise(() => contender)
-              const bindable = yield* Fiber.join(writer)
-              return { during, versionId: bindable.versionId }
-            })
+              const proven = yield* catalog.requireBindable(f.t, published.versionId)
+              // long enough that an unlocked contender would certainly have
+              // landed before the commit
+              yield* Effect.promise(() => new Promise((done) => setTimeout(done, 300)))
+              return proven.versionId
+            }),
+          )
+          const waitedMs = yield* Fiber.join(contender)
 
-          const archiveContention = yield* contend(
-            `update assessment_formula_functions set archived_at = now() where id = $1`,
-            [functionId],
-          )
-          yield* runSql(
-            sql`update assessment_formula_functions set archived_at = null where id = ${functionId}`,
-          )
-          const orgContention = yield* contend(
-            `update org_nodes set name = 'Renamed College' where id = $1`,
-            [f.collegeA],
-          )
-          return { archiveContention, orgContention }
+          const after = yield* Effect.exit(catalog.requireBindable(f.t, published.versionId))
+          return { inside, waitedMs, after: reasonOf(after) }
         }),
       ),
     )
-    expect(outcome.archiveContention.during).toBe('blocked')
-    expect(outcome.orgContention.during).toBe('blocked')
-    expect(outcome.archiveContention.versionId).toBeDefined()
-  }, 120_000)
-})
 
-describe.runIf(postgresAvailable)('paging what a batch may bind', () => {
-  let db: Awaited<ReturnType<typeof createTestContext>>
-
-  beforeAll(async () => {
-    db = await createTestContext('formula-binding-paging')
-  }, 120_000)
-
-  afterAll(async () => {
-    await db?.dispose()
+    expect(outcome.inside).toEqual(expect.any(String))
+    // the archive could not land while the proof was held
+    expect(outcome.waitedMs).toBeGreaterThan(150)
+    // and once it did, the same version is no longer offered anew
+    expect(outcome.after).toBe('function-archived')
   })
 
   it('walks every version once across pages, however the names collide', async () => {
     // The ordering runs in two directions - names up, versions down - and
     // two functions may share a name, so the page boundary is only sound
-    // with the version id closing it. Two same-named functions with several
-    // versions each is exactly the shape that drops or repeats rows when it
-    // is not.
+    // with the version id closing it. Two same-named functions carrying the
+    // same version numbers is exactly the shape that drops or repeats rows
+    // when it is not.
     const outcome = ok(
       await run(
         db.url,
         Effect.gen(function* () {
           const f = yield* seedFormulaFixture('bc-paging')
           const catalog = yield* BindableFormulaCatalog
-          const root = one<{ id: string }>(
-            yield* runSql(
-              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-            ),
-          ).id
-          const batchId = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into assessment_batches (tenant_id, name, material_range)
-              values (${f.t}, 'Paging', daterange('2026-03-01','2026-09-01')) returning id`),
-          ).id
-          yield* runSql(sql`
-            insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
-            values (${f.t}, ${batchId}, ${f.collegeA})`)
-
-          const identity = contractIdentityOf(CONTRACT.input, CONTRACT.output)
-          const artifact = '/*artifact*/'
           const publishVersions = (name: string, count: number) =>
             Effect.gen(function* () {
-              const functionId = one<{ id: string }>(
-                yield* runSql(sql`
-                  insert into assessment_formula_functions
-                    (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
-                  values (${f.t}, ${root}, ${name}, 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
-                  returning id`),
-              ).id
-              const ids: string[] = []
-              for (let no = 1; no <= count; no += 1) {
-                ids.push(
-                  one<{ id: string }>(
-                    yield* runSql(sql`
-                      insert into assessment_formula_versions
-                        (tenant_id, function_id, version_no, source_ts, runtime_js,
-                         input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
-                         typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
-                         quickjs_engine_version, tests, test_report, published_by,
-                         value_schema_profile_version)
-                      values (${f.t}, ${functionId}, ${no}, 'export {}', ${artifact},
-                              ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
-                              ${sha256Hex('export {}')}, ${sha256Hex(artifact)}, ${identity.contractSha256},
-                              '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
-                              'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin},
-                              ${VALUE_SCHEMA_PROFILE_VERSION})
-                      returning id`),
-                  ).id,
-                )
+              const first = yield* publishOne(f.t, f.authorA, name, 1)
+              const ids = [first.versionId]
+              for (let no = 2; no <= count; no += 1) {
+                ids.push(yield* addVersion(f.t, first.functionId, f.authorA, no))
               }
               return ids
             })
@@ -436,18 +248,18 @@ describe.runIf(postgresAvailable)('paging what a batch may bind', () => {
           let after: { functionName: string; versionNo: number; versionId: string } | undefined =
             undefined
           for (let page = 0; page < 20; page += 1) {
-            const got: BindablePage = yield* catalog.listForBatch(f.t, batchId, {
+            const got: BindablePage = yield* catalog.listForBatch(f.t, f.authorA, {
               limit: 1,
               after,
             })
-            walked.push(...got.items.map((one) => one.versionId))
+            walked.push(...got.items.map((row) => row.versionId))
             if (!got.more || got.last === null) break
             after = got.last
           }
-          const all = yield* catalog.listForBatch(f.t, batchId, { limit: 100 })
+          const all = yield* catalog.listForBatch(f.t, f.authorA, { limit: 100 })
           return {
             walked,
-            every: all.items.map((one) => one.versionId),
+            every: all.items.map((row) => row.versionId),
             planted: [...left, ...right],
           }
         }),
@@ -457,84 +269,53 @@ describe.runIf(postgresAvailable)('paging what a batch may bind', () => {
     // returns - no drops at the boundary, no repeats
     expect([...outcome.walked].sort()).toEqual([...outcome.planted].sort())
     expect([...outcome.every].sort()).toEqual([...outcome.planted].sort())
-    expect(new Set(outcome.walked).size).toBe(outcome.walked.length)
-  }, 120_000)
+  })
 
   it('shows a bound version as history, whatever became of its function', async () => {
+    // A question already bound keeps showing what it runs. The offer and the
+    // history are separate reads for exactly this reason: an archived
+    // function leaves the list, and the question that runs one of its
+    // versions still names it - with `bindableForNew` saying, for THIS
+    // viewer, whether the same choice could be made afresh today.
     const outcome = ok(
       await run(
         db.url,
         Effect.gen(function* () {
           const f = yield* seedFormulaFixture('bc-current')
           const catalog = yield* BindableFormulaCatalog
-          const root = one<{ id: string }>(
-            yield* runSql(
-              sql`select id from org_nodes where tenant_id = ${f.t} and parent_id is null`,
-            ),
-          ).id
-          const batchId = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into assessment_batches (tenant_id, name, material_range)
-              values (${f.t}, 'Current', daterange('2026-03-01','2026-09-01')) returning id`),
-          ).id
-          yield* runSql(sql`
-            insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
-            values (${f.t}, ${batchId}, ${f.collegeA})`)
-          const identity = contractIdentityOf(CONTRACT.input, CONTRACT.output)
-          const artifact = '/*artifact*/'
-          const functionId = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into assessment_formula_functions
-                (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
-              values (${f.t}, ${root}, '历史公式', 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
-              returning id`),
-          ).id
-          const versionId = one<{ id: string }>(
-            yield* runSql(sql`
-              insert into assessment_formula_versions
-                (tenant_id, function_id, version_no, source_ts, runtime_js,
-                 input_schema, output_schema, source_sha256, runtime_sha256, contract_sha256,
-                 typescript_version, esbuild_version, formula_abi_version, formula_runtime_sha256,
-                 quickjs_engine_version, tests, test_report, published_by,
-                 value_schema_profile_version)
-              values (${f.t}, ${functionId}, 1, 'export {}', ${artifact},
-                      ${JSON.stringify(CONTRACT.input)}::jsonb, ${JSON.stringify(CONTRACT.output)}::jsonb,
-                      ${sha256Hex('export {}')}, ${sha256Hex(artifact)}, ${identity.contractSha256},
-                      '7.0.0', '0.28.0', 1, ${sha256Hex('runtime')},
-                      'quickjs-test', '[]'::jsonb, '[]'::jsonb, ${f.admin},
-                      ${VALUE_SCHEMA_PROFILE_VERSION})
-              returning id`),
-          ).id
+          const published = yield* publishOne(f.t, f.authorA, '仍在跑的公式')
 
-          const whileLive = yield* catalog.currentBinding(f.t, batchId, versionId)
-          const listedWhileLive = yield* catalog.listForBatch(f.t, batchId)
-          // archived: it leaves the options and stays the history
-          yield* runSql(
-            sql`update assessment_formula_functions set archived_at = now() where id = ${functionId}`,
-          )
-          const afterArchive = yield* catalog.currentBinding(f.t, batchId, versionId)
-          const listedAfter = yield* catalog.listForBatch(f.t, batchId)
-          const absent = yield* catalog.currentBinding(
-            f.t,
-            batchId,
-            '01920000-0000-7000-8000-0000000000ee',
-          )
+          const live = yield* catalog.currentBinding(f.t, published.versionId, f.authorA)
+          // somebody else looking at the same question: it is history to
+          // them too, but not a choice they could make
+          const asOther = yield* catalog.currentBinding(f.t, published.versionId, f.authorB)
+
+          yield* runSql(sql`
+            update assessment_formula_functions set archived_at = now()
+            where id = ${published.functionId}`)
+          const archived = yield* catalog.currentBinding(f.t, published.versionId, f.authorA)
+          const offered = yield* catalog.listForBatch(f.t, f.authorA)
+          const missing = yield* catalog.currentBinding(f.t, randomUUID(), f.authorA)
+
           return {
-            whileLive,
-            afterArchive,
-            absent,
-            listedWhileLive: listedWhileLive.items.map((one) => one.versionId),
-            listedAfter: listedAfter.items.map((one) => one.versionId),
+            live: { id: live?.version.versionId, bindable: live?.bindableForNew },
+            asOther: { id: asOther?.version.versionId, bindable: asOther?.bindableForNew },
+            archived: { id: archived?.version.versionId, bindable: archived?.bindableForNew },
+            offered: offered.items.length,
+            missing,
+            published: published.versionId,
           }
         }),
       ),
     )
-    expect(outcome.whileLive?.bindableForNew).toBe(true)
-    expect(outcome.listedWhileLive).toEqual([outcome.whileLive!.version.versionId])
-    // the same row, still readable, no longer on offer
-    expect(outcome.afterArchive?.version.versionId).toBe(outcome.whileLive?.version.versionId)
-    expect(outcome.afterArchive?.bindableForNew).toBe(false)
-    expect(outcome.listedAfter).toEqual([])
-    expect(outcome.absent).toBeNull()
-  }, 120_000)
+
+    expect(outcome.live).toEqual({ id: outcome.published, bindable: true })
+    // the same row, read by somebody who did not write it
+    expect(outcome.asOther).toEqual({ id: outcome.published, bindable: false })
+    // archived: still shown, no longer a choice
+    expect(outcome.archived).toEqual({ id: outcome.published, bindable: false })
+    expect(outcome.offered).toBe(0)
+    // and a version nobody has is not a history to invent
+    expect(outcome.missing).toBeNull()
+  })
 })

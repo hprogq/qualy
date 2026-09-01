@@ -33,6 +33,7 @@ import { Assessment, serviceLayer, type PhaseSpecInput } from '../src/server/ind
 import {
   catalogLayers,
   scoringRegistrations,
+  scoringAuthoringPolicyLayer,
   scoringRuntimeLayer,
   storageForTest,
   shapeOf,
@@ -49,7 +50,7 @@ import {
   type ScoringPlanV2,
 } from '../src/scoring/plan.ts'
 import { hashCanonicalJson } from '@qualy/value-schema/hash'
-import { ScoringRuntimeCatalog } from '../src/plugin.ts'
+import { ScoringAuthoringPolicyCatalog, ScoringRuntimeCatalog } from '../src/plugin.ts'
 
 // The configuration gauntlet, end to end: a question is created with its
 // first revision, every later save appends the next one, and a save that
@@ -90,11 +91,11 @@ const stack = (url: string) => {
     ),
     { catalog },
   )
-  const runtimeCatalog = scoringRuntimeLayer.pipe(
+  const runtimeCatalog = Layer.mergeAll(scoringRuntimeLayer, scoringAuthoringPolicyLayer).pipe(
     Layer.provide(services),
     Layer.provide(catalogLayers),
     Layer.provide(assembledLayer),
-  ) as Layer.Layer<ScoringRuntimeCatalog>
+  ) as Layer.Layer<ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog>
   return serviceLayer.pipe(
     Layer.provideMerge(services),
     Layer.provide(catalogLayers),
@@ -109,7 +110,11 @@ const stack = (url: string) => {
 
 const run = <A, E>(
   url: string,
-  effect: Effect.Effect<A, E, Assessment | Rbac | Orm | ScoringRuntimeCatalog>,
+  effect: Effect.Effect<
+    A,
+    E,
+    Assessment | Rbac | Orm | ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog
+  >,
 ) => Effect.runPromiseExit(Effect.provide(effect, stack(url)))
 
 const ok = <A, E>(exit: Exit.Exit<A, E>): A => {

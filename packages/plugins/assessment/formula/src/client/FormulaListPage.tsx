@@ -52,20 +52,12 @@ function NewFormulaDialog({
   const queryClient = useQueryClient()
   const { format, formatError } = useI18n()
 
-  const options = useQuery({
-    ...query.assessmentFormula.listFormulaOwnerOptions.queryOptions({}),
-    enabled: open,
-  })
-  const nodes = options.data?.nodes ?? []
-
   const [name, setName] = useState('')
-  const [ownerNodeId, setOwnerNodeId] = useState('')
   const [description, setDescription] = useState('')
   const [failure, setFailure] = useState<string | null>(null)
 
   const reset = () => {
     setName('')
-    setOwnerNodeId('')
     setDescription('')
     setFailure(null)
   }
@@ -75,7 +67,6 @@ function NewFormulaDialog({
       run(
         api.assessmentFormula.createFormulaFunction({
           payload: {
-            ownerNodeId,
             name: name.trim(),
             ...(description.trim() === '' ? {} : { description: description.trim() }),
           },
@@ -90,7 +81,7 @@ function NewFormulaDialog({
     onError: (error: unknown) => setFailure(formatError(error)),
   })
 
-  const ready = name.trim() !== '' && ownerNodeId !== ''
+  const ready = name.trim() !== ''
 
   const close = () => {
     reset()
@@ -115,23 +106,6 @@ function NewFormulaDialog({
     >
       <Field label={format(m.nameLabel)} required>
         {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
-      </Field>
-      <Field label={format(m.ownerLabel)} required>
-        {(id) => (
-          <select
-            id={id}
-            {...stylex.props(styles.picker)}
-            value={ownerNodeId}
-            onChange={(event) => setOwnerNodeId(event.target.value)}
-          >
-            <option value="" />
-            {nodes.map((node) => (
-              <option key={node.id} value={node.id}>
-                {indented(node.depth, node.name)}
-              </option>
-            ))}
-          </select>
-        )}
       </Field>
       <Field label={format(m.descriptionLabel)}>
         {(id) => (

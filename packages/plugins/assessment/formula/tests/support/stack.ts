@@ -116,6 +116,41 @@ export const seedFormulaFixture = (slug: string) =>
     yield* runSql(
       sql`insert into role_grants (tenant_id, user_id, role_id) values (${t}, ${admin}, ${adminRole})`,
     )
+    // Two people who may write formulas, and nothing else. The tenant admin
+    // above holds every code by definition, which is exactly what an
+    // ownership suite must not lean on: authorship has to separate two
+    // people who hold the SAME capability.
+    const authorRole = one<{ id: string }>(
+      yield* runSql(sql`
+        insert into roles (tenant_id, code, name, kind, status)
+        values (${t}, 'formula-author', 'Formula author', 'tenant', 'active') returning id`),
+    ).id
+    yield* runSql(sql`
+      insert into role_permissions (tenant_id, role_id, permission_id)
+      select ${t}, ${authorRole}, p.id from permissions p
+      where p.code = 'assessment.formula.author'`)
+    const authorA = one<{ id: string }>(yield* person('Author A', collegeA)).id
+    const authorB = one<{ id: string }>(yield* person('Author B', collegeA)).id
+    for (const who of [authorA, authorB]) {
+      yield* runSql(sql`
+        insert into role_grants (tenant_id, user_id, role_id) values (${t}, ${who}, ${authorRole})`)
+    }
+    /** takes the authoring capability away, leaving what they wrote alone */
+    const revokeAuthoring = (userId: string) =>
+      runSql(sql`
+        delete from role_grants
+        where tenant_id = ${t} and user_id = ${userId} and role_id = ${authorRole}`)
+
     const principal = (userId: string): Principal => ({ tenantId: t, userId, sessionId: 's' })
-    return { t, root, collegeA, admin, bystander, principal }
+    return {
+      t,
+      root,
+      collegeA,
+      admin,
+      bystander,
+      authorA,
+      authorB,
+      revokeAuthoring,
+      principal,
+    }
   })

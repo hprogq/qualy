@@ -25,6 +25,7 @@ import { constantDriver } from './item/constant.ts'
 import { declarationDriver } from './item/declaration.ts'
 import { builtinAggregators, builtinCalculators } from './scoring/builtins.ts'
 import { scoringRuntimeProvider } from './scoring/runtime-provider.ts'
+import { scoringAuthoringPolicyProvider } from './scoring/authoring-policy-provider.ts'
 import { permissions } from './permissions.ts'
 import { assessmentApiGroup } from './api.ts'
 import { AssessmentLive } from './live/service.ts'
@@ -70,6 +71,7 @@ const plugin = Plugin.define(
   ItemTypes.driver(declarationDriver),
   Scoring.definitionProvider,
   scoringRuntimeProvider,
+  scoringAuthoringPolicyProvider,
   ...builtinCalculators.flatMap((calculator) => [...Scoring.calculator(calculator)]),
   ...builtinAggregators.map((aggregator) => Scoring.aggregator(aggregator)),
   Access.permissions('assessment', permissions),

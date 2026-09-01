@@ -48,12 +48,6 @@ export class FormulaVersionNotFound extends Schema.TaggedError<FormulaVersionNot
   { httpApiStatus: 404, identifier: 'AssessmentFormulaVersionNotFound' },
 ) {}
 
-export class FormulaOwnerNodeInvalid extends Schema.TaggedError<FormulaOwnerNodeInvalid>()(
-  'ASSESSMENT_FORMULA_OWNER_NODE_INVALID',
-  {},
-  { httpApiStatus: 422, identifier: 'AssessmentFormulaOwnerNodeInvalid' },
-) {}
-
 export class FormulaFunctionArchived extends Schema.TaggedError<FormulaFunctionArchived>()(
   'ASSESSMENT_FORMULA_FUNCTION_ARCHIVED',
   {},
@@ -122,20 +116,4 @@ export class FormulaCompileUnavailable extends Schema.TaggedError<FormulaCompile
   'ASSESSMENT_FORMULA_COMPILE_UNAVAILABLE',
   {},
   { httpApiStatus: 503, identifier: 'AssessmentFormulaCompileUnavailable' },
-) {}
-
-/**
- * The batch cannot offer formula bindings at all.
- *
- * Narrow on purpose: whether one particular version qualifies is a filter,
- * not a failure - an archived function or an owner outside the boundary
- * simply is not among the options. Only a batch with no management
- * boundary to prove anything inside makes the whole question unanswerable,
- * and freezing the writer's internal reasons into a public contract would
- * promise a vocabulary this endpoint does not need.
- */
-export class FormulaBindingOptionsUnavailable extends Schema.TaggedError<FormulaBindingOptionsUnavailable>()(
-  'ASSESSMENT_FORMULA_BINDING_OPTIONS_UNAVAILABLE',
-  { reason: Schema.Literals(['no-management-boundary']) },
-  { httpApiStatus: 409, identifier: 'AssessmentFormulaBindingOptionsUnavailable' },
 ) {}

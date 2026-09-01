@@ -17,13 +17,11 @@ import {
   FormulaDraftConflict,
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
-  FormulaOwnerNodeInvalid,
   FormulaSourceRefused,
   FormulaSourceTooLarge,
   FormulaTestFailed,
   FormulaTypecheckFailed,
   FormulaCompileUnavailable,
-  FormulaBindingOptionsUnavailable,
   FormulaVersionNotFound,
 } from './server/errors.ts'
 import { BatchNotFound } from '@qualy/plugin-assessment/server/errors'
@@ -44,7 +42,8 @@ const functionView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   description: Schema.NullOr(Schema.String),
-  ownerNodeId: Schema.String,
+  /** the author, and the only person who may edit it */
+  authorUserId: Schema.String,
   status: Schema.Literals(['active', 'archived']),
   draftRevision: Schema.Number,
   latestVersionNo: Schema.NullOr(Schema.Number),
@@ -120,18 +119,6 @@ const bindingOptionView = Schema.Struct({
 
 export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
   .add(
-    // where this principal may CREATE a formula: the nodes their manage
-    // permission actually covers, not the whole visible org tree
-    HttpApiEndpoint.get('listFormulaOwnerOptions', '/assessment/formula-owner-options', {
-      success: Schema.Struct({
-        nodes: Schema.Array(
-          Schema.Struct({ id: Schema.String, name: Schema.String, depth: Schema.Number }),
-        ),
-      }),
-      error: [AccessDenied],
-    }).middleware(Authenticated),
-  )
-  .add(
     HttpApiEndpoint.get('listFormulaFunctions', '/assessment/formula-functions', {
       query: Schema.Struct({ ...pageQuery }),
       success: pageOf(functionView),
@@ -171,20 +158,19 @@ export const formulaApiGroup = HttpApiGroup.make('assessmentFormula')
             }),
           ),
         }),
-        error: [BadRequest, AccessDenied, BatchNotFound, FormulaBindingOptionsUnavailable],
+        error: [BadRequest, AccessDenied, BatchNotFound],
       },
     ).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.post('createFormulaFunction', '/assessment/formula-functions', {
       payload: Schema.Struct({
-        ownerNodeId: id,
         name: trimmedName(255),
         description: Schema.optional(boundedText(2000)),
         draftSourceTs: Schema.optional(sourceText),
       }),
       success: Schema.Struct({ function: functionDetail }),
-      error: [BadRequest, AccessDenied, FormulaOwnerNodeInvalid, FormulaSourceTooLarge],
+      error: [BadRequest, AccessDenied, FormulaSourceTooLarge],
     }).middleware(Authenticated),
   )
   .add(

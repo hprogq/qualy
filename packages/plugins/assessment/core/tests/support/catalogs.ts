@@ -25,6 +25,7 @@ import {
 import type { AtomicSchema } from '@qualy/value-schema'
 import { builtinAggregators, builtinCalculators } from '../../src/scoring/builtins.ts'
 import { scoringRuntimeProvider } from '../../src/scoring/runtime-provider.ts'
+import { scoringAuthoringPolicyProvider } from '../../src/scoring/authoring-policy-provider.ts'
 import { constantDriver } from '../../src/item/constant.ts'
 import { declarationDriver } from '../../src/item/declaration.ts'
 
@@ -403,6 +404,17 @@ const definitionLayer = (Scoring.definitionProvider as unknown as ProvideExtensi
 export const scoringRuntimeLayer = (scoringRuntimeProvider as unknown as ProvideExtension).compile(
   contributed(scoringRegistrations),
 )
+
+/**
+ * The authoring-policy catalog these suites run with: nobody vets anything.
+ *
+ * Core's own calculators are nobody's property, so an empty contribution set
+ * is the honest default here - a suite about who may bind what contributes
+ * its own policy and gets asked instead.
+ */
+export const scoringAuthoringPolicyLayer = (
+  scoringAuthoringPolicyProvider as unknown as ProvideExtension
+).compile([])
 
 /**
  * The compile face of a set of registrations, bound at the test boundary.

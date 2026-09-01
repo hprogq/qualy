@@ -11,9 +11,11 @@ import { AuditAction } from '@qualy/audit-contract/action'
 export const FormulaFunctionCreated = AuditAction.define({
   code: 'assessment.formula.create',
   target: 'assessment.formula',
-  version: 1,
+  // 2: the owning node it used to record is not a fact about a formula any
+  // more - authorship is, and the audit row already carries the actor
+  version: 2,
   name: message('assessment-formula/audit/create', 'Create scoring formula'),
-  details: Schema.Struct({ ownerNodeId: Schema.String }),
+  details: Schema.Struct({}),
 })
 
 export const FormulaDraftReplaced = AuditAction.define({

@@ -97,11 +97,7 @@ describe.runIf(postgresAvailable)('publication through the real sandbox processe
       const f = yield* seedFormulaFixture(slug)
       const library = yield* FormulaLibrary
       const as = f.principal(f.admin)
-      const created = yield* library.createFunction(
-        f.t,
-        { ownerNodeId: f.collegeA, name: `Parity ${assembly}` },
-        as,
-      )
+      const created = yield* library.createFunction(f.t, { name: `Parity ${assembly}` }, as)
       const drafted = yield* library.updateDraft(
         f.t,
         created.id,

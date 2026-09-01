@@ -10,7 +10,7 @@ import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
-import { scopeCoverage, type Principal } from '@qualy/rbac-contract'
+import type { Principal } from '@qualy/rbac-contract'
 import { Audit } from '@qualy/audit-contract/effect'
 import {
   SANDBOX_ABI_VERSION,
@@ -57,13 +57,11 @@ import {
   FormulaExecutionLimitExceeded,
   FormulaFunctionArchived,
   FormulaFunctionNotFound,
-  FormulaOwnerNodeInvalid,
   FormulaSourceRefused,
   FormulaSourceTooLarge,
   FormulaTestFailed,
   FormulaTypecheckFailed,
   FormulaVersionNotFound,
-  FormulaBindingOptionsUnavailable,
 } from './errors.ts'
 import {
   AssessmentConfigurationAccess,
@@ -75,7 +73,16 @@ import {
   type FormulaNotBindable,
 } from './binding-catalog.ts'
 
-const MANAGE = 'assessment.formula.manage'
+/**
+ * The capability to write scoring formulas at all - tenant-wide, because
+ * what somebody authors belongs to them rather than to a unit.
+ *
+ * Two orthogonal questions, and they must not be merged: this one is
+ * whether a person may author formulas; `createdBy` is which formulas are
+ * theirs. Holding it grants nothing over anybody else's work, and losing it
+ * closes the whole authoring plane - not just the create button.
+ */
+const AUTHOR = 'assessment.formula.author'
 
 /** what an author may SAVE - the formula's own text */
 /** the sandbox transport for __qualyContract, above the largest legal
@@ -104,22 +111,6 @@ const bindingOptionDto = (version: BindableFormulaVersion) => ({
   parameters: Object.keys(version.inputSchema.properties).sort(),
 })
 
-/**
- * What a caller may be told when the catalog refuses the whole question.
- *
- * Only a batch with no management boundary makes the options unanswerable;
- * every other reason the writer distinguishes is about ONE row qualifying,
- * which a list expresses by leaving it out. Those cannot reach here - the
- * list filters rather than fails - and a defect says so rather than
- * inventing a public meaning for them.
- */
-const bindingOptionsFailure = (
-  error: FormulaNotBindable,
-): Effect.Effect<never, FormulaBindingOptionsUnavailable> =>
-  error.reason === 'no-management-boundary'
-    ? Effect.fail(new FormulaBindingOptionsUnavailable({ reason: 'no-management-boundary' }))
-    : Effect.die(new Error(`binding options refused for an unexpected reason: ${error.reason}`))
-
 // word-level on purpose: the formula language is tiny, and "strictly typed
 // at publication" stops being true the moment any `any` slips in - even the
 // word inside a string is refused, and the message says exactly that
@@ -132,7 +123,8 @@ export interface FormulaTestInput {
 
 interface FunctionRow {
   id: string
-  ownerNodeId: string
+  /** the author: who wrote it, and the only person who may edit it */
+  createdBy: string
   name: string
   description: string | null
   draftSourceTs: string
@@ -204,7 +196,7 @@ const functionDto = (row: FunctionRow) => ({
   id: row.id,
   name: row.name,
   description: row.description,
-  ownerNodeId: row.ownerNodeId,
+  authorUserId: row.createdBy,
   status: (row.archivedAt === null ? 'active' : 'archived') as 'active' | 'archived',
   draftRevision: row.draftRevision,
   latestVersionNo: row.latestVersionNo === null ? null : Number(row.latestVersionNo),
@@ -305,7 +297,7 @@ interface FormulaLibraryShape {
     functionId: string,
     sourceTs: string,
     as: Principal,
-  ) => Effect.Effect<DraftPreview, FormulaFunctionNotFound | DraftRefusal>
+  ) => Effect.Effect<DraftPreview, AccessDenied | FormulaFunctionNotFound | DraftRefusal>
   readonly evaluateDraft: (
     tenantId: string,
     functionId: string,
@@ -314,13 +306,13 @@ interface FormulaLibraryShape {
     as: Principal,
   ) => Effect.Effect<
     DraftPreview & { readonly results: readonly EvaluatedCase[] },
-    FormulaFunctionNotFound | DraftRefusal
+    AccessDenied | FormulaFunctionNotFound | DraftRefusal
   >
   readonly managedDraft: (
     tenantId: string,
     functionId: string,
     as: Principal,
-  ) => Effect.Effect<{ readonly draftSourceTs: string }, FormulaFunctionNotFound>
+  ) => Effect.Effect<{ readonly draftSourceTs: string }, AccessDenied | FormulaFunctionNotFound>
   readonly listFunctions: (
     tenantId: string,
     page: { cursor?: string; limit?: string },
@@ -330,16 +322,13 @@ interface FormulaLibraryShape {
       items: ReturnType<typeof functionDto>[]
       nextCursor: string | null
     },
-    BadRequest
+    AccessDenied | BadRequest
   >
   readonly createFunction: (
     tenantId: string,
-    input: { ownerNodeId: string; name: string; description?: string; draftSourceTs?: string },
+    input: { name: string; description?: string; draftSourceTs?: string },
     as: Principal,
-  ) => Effect.Effect<
-    ReturnType<typeof functionDetailDto>,
-    AccessDenied | FormulaOwnerNodeInvalid | FormulaSourceTooLarge
-  >
+  ) => Effect.Effect<ReturnType<typeof functionDetailDto>, AccessDenied | FormulaSourceTooLarge>
   readonly getFunction: (
     tenantId: string,
     functionId: string,
@@ -349,7 +338,7 @@ interface FormulaLibraryShape {
       function: ReturnType<typeof functionDetailDto>
       versions: ReturnType<typeof versionViewDto>[]
     },
-    FormulaFunctionNotFound
+    AccessDenied | FormulaFunctionNotFound
   >
   readonly updateDraft: (
     tenantId: string,
@@ -364,14 +353,18 @@ interface FormulaLibraryShape {
     as: Principal,
   ) => Effect.Effect<
     ReturnType<typeof functionDetailDto>,
-    FormulaFunctionNotFound | FormulaFunctionArchived | FormulaDraftConflict | FormulaSourceTooLarge
+    | AccessDenied
+    | FormulaFunctionNotFound
+    | FormulaFunctionArchived
+    | FormulaDraftConflict
+    | FormulaSourceTooLarge
   >
   readonly setStatus: (
     tenantId: string,
     functionId: string,
     status: 'active' | 'archived',
     as: Principal,
-  ) => Effect.Effect<ReturnType<typeof functionDetailDto>, FormulaFunctionNotFound>
+  ) => Effect.Effect<ReturnType<typeof functionDetailDto>, AccessDenied | FormulaFunctionNotFound>
   readonly publish: (
     tenantId: string,
     functionId: string,
@@ -379,7 +372,11 @@ interface FormulaLibraryShape {
     as: Principal,
   ) => Effect.Effect<
     ReturnType<typeof versionDetailDto>,
-    FormulaFunctionNotFound | FormulaFunctionArchived | FormulaDraftConflict | CompileRefusal
+    | AccessDenied
+    | FormulaFunctionNotFound
+    | FormulaFunctionArchived
+    | FormulaDraftConflict
+    | CompileRefusal
   >
   readonly getVersion: (
     tenantId: string,
@@ -388,12 +385,8 @@ interface FormulaLibraryShape {
     as: Principal,
   ) => Effect.Effect<
     ReturnType<typeof versionDetailDto>,
-    FormulaFunctionNotFound | FormulaVersionNotFound
+    AccessDenied | FormulaFunctionNotFound | FormulaVersionNotFound
   >
-  readonly listOwnerOptions: (
-    tenantId: string,
-    as: Principal,
-  ) => Effect.Effect<{ nodes: { id: string; name: string; depth: number }[] }>
 }
 
 export class FormulaLibrary extends Context.Service<FormulaLibrary, FormulaLibraryShape>()(
@@ -449,20 +442,38 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
         ),
       )
 
-  /** the manage gate for one function; unknown and unreachable read the same */
-  const managedRow = (tenantId: string, functionId: string, as: Principal) =>
+  /**
+   * Whether this person may author formulas at all.
+   *
+   * A tenant-wide capability, so `hasPermission` rather than `canAt`. It
+   * guards the WHOLE authoring plane - reading, editing, testing,
+   * publishing, archiving - not merely creating: a capability that can be
+   * revoked while every URL still works is not a capability.
+   */
+  const requireAuthor = (as: Principal) =>
+    Effect.flatMap(rbac.hasPermission(as, AUTHOR), (allowed) =>
+      allowed
+        ? Effect.void
+        : Effect.fail(new AccessDenied({ reason: 'cannot author scoring formulas' })),
+    )
+
+  /** one function of this author's own; somebody else's reads as absent */
+  const ownedRow = (tenantId: string, functionId: string, as: Principal) =>
     foundRow(tenantId, functionId).pipe(
       Effect.tap((row) =>
-        Effect.flatMap(rbac.canAt(as, MANAGE, row.ownerNodeId), (allowed) =>
-          allowed ? Effect.void : Effect.fail(new FormulaFunctionNotFound()),
-        ),
+        row.createdBy === as.userId ? Effect.void : Effect.fail(new FormulaFunctionNotFound()),
       ),
     )
 
-  // the language bridge's whole database need: the same visibility and
-  // manage gate every write uses, projected down to the draft source
+  /** the gate every authoring road goes through: the capability, then the
+   *  ownership - unknown and not-mine read the same */
+  const authoringRow = (tenantId: string, functionId: string, as: Principal) =>
+    requireAuthor(as).pipe(Effect.andThen(ownedRow(tenantId, functionId, as)))
+
+  // the language bridge's whole database need: the same gate every write
+  // uses, projected down to the draft source
   const managedDraft = (tenantId: string, functionId: string, as: Principal) =>
-    managedRow(tenantId, functionId, as).pipe(
+    authoringRow(tenantId, functionId, as).pipe(
       Effect.map((row) => ({ draftSourceTs: row.draftSourceTs })),
     )
 
@@ -482,7 +493,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     sourceTs: string,
     as: Principal,
   ) {
-    yield* managedRow(tenantId, functionId, as)
+    yield* authoringRow(tenantId, functionId, as)
     const prepared = yield* dropTestFailure(prepare(sourceTs))
     return previewOf(prepared)
   })
@@ -494,7 +505,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     cases: readonly EvaluationCaseInput[],
     as: Principal,
   ) {
-    yield* managedRow(tenantId, functionId, as)
+    yield* authoringRow(tenantId, functionId, as)
     const prepared = yield* dropTestFailure(prepare(sourceTs))
     const evaluated = yield* evaluateCases(prepared, cases)
     return { ...previewOf(prepared), results: evaluated.results }
@@ -850,9 +861,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     page: { cursor?: string; limit?: string },
     as: Principal,
   ) {
-    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
-    if (!scope.tenantWide && scope.anchors.length === 0)
-      return { items: [], nextCursor: null as string | null }
+    yield* requireAuthor(as)
     const size = pageSize(page.limit, DEFAULT_PAGE_SIZE)
     const cursor = readQueryCursor(page.cursor, LIST_FINGERPRINT, ['timestamp', 'uuid'])
     if (cursor === null) return yield* cursorUnusable()
@@ -860,31 +869,22 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       .query((k) => {
         let query = k
           .selectFrom('FormulaFunction')
-          .innerJoin('OrgNode', (join) =>
-            join
-              .onRef('OrgNode.tenantId', '=', 'FormulaFunction.tenantId')
-              .onRef('OrgNode.id', '=', 'FormulaFunction.ownerNodeId'),
-          )
           // projection on purpose: the list never needs the draft source or
           // the examples, and a row may carry a quarter megabyte of each
           .select([
             'FormulaFunction.id',
             'FormulaFunction.name',
             'FormulaFunction.description',
-            'FormulaFunction.ownerNodeId',
+            'FormulaFunction.createdBy',
             'FormulaFunction.draftRevision',
             'FormulaFunction.archivedAt',
             'FormulaFunction.updatedAt',
           ])
           .select(latestNoSubquery.as('latestVersionNo'))
           .where('FormulaFunction.tenantId', '=', tenantId)
-          .where(
-            scopeCoverage(scope, {
-              id: sql.ref('org_nodes.id') as never,
-              tenantId: sql.ref('org_nodes.tenant_id') as never,
-              path: sql.ref('org_nodes.path') as never,
-            }),
-          )
+          // what this author wrote, and nothing else: there is no
+          // organizational range to a formula any more
+          .where('FormulaFunction.createdBy', '=', as.userId)
         if (cursor !== undefined) {
           // row-value keyset comparison is the postgres-specific idiom the
           // repo allows as a minimal sql fragment
@@ -913,11 +913,10 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
 
   const createFunction = Effect.fn('FormulaLibrary.createFunction')(function* (
     tenantId: string,
-    input: { ownerNodeId: string; name: string; description?: string; draftSourceTs?: string },
+    input: { name: string; description?: string; draftSourceTs?: string },
     as: Principal,
   ) {
-    const allowed = yield* rbac.canAt(as, MANAGE, input.ownerNodeId)
-    if (!allowed) return yield* new AccessDenied({ reason: 'cannot manage scoring formulas here' })
+    yield* requireAuthor(as)
     // the byte gate is a service invariant, identical at create, update and
     // compile - the api's character-length check is not a byte check
     const seed = input.draftSourceTs ?? DEFAULT_SOURCE
@@ -926,28 +925,12 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const created = yield* withDb(
       transaction(
         Effect.gen(function* () {
-          // there is deliberately no owner foreign key, so the existence
-          // check and the insert must not race a node deletion: the shared
-          // lock keeps the row alive until this commits
-          const node = yield* db
-            .query((k) =>
-              k
-                .selectFrom('OrgNode')
-                .select('id')
-                .where('tenantId', '=', tenantId)
-                .where('id', '=', input.ownerNodeId)
-                .forShare()
-                .executeTakeFirst(),
-            )
-            .pipe(Effect.orDie)
-          if (node === undefined) return yield* new FormulaOwnerNodeInvalid()
           const row = yield* db
             .query((k) =>
               k
                 .insertInto('FormulaFunction')
                 .values({
                   tenantId,
-                  ownerNodeId: input.ownerNodeId,
                   name: input.name,
                   description: input.description ?? null,
                   draftSourceTs: seed,
@@ -965,7 +948,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             tenantId,
             actor: actorOf(as),
             target: { id: row.id as string, label: input.name },
-            details: { ownerNodeId: input.ownerNodeId },
+            details: {},
           })
           return row
         }),
@@ -980,7 +963,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     functionId: string,
     as: Principal,
   ) {
-    const row = yield* managedRow(tenantId, functionId, as)
+    const row = yield* authoringRow(tenantId, functionId, as)
     // summaries only: every published row also carries the full artifact and
     // sources, which belong to getVersion, not to opening the editor
     const versions = yield* db
@@ -1012,7 +995,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     },
     as: Principal,
   ) {
-    const row = yield* managedRow(tenantId, functionId, as)
+    const row = yield* authoringRow(tenantId, functionId, as)
     if (row.archivedAt !== null) return yield* new FormulaFunctionArchived()
     if (
       patch.draftSourceTs !== undefined &&
@@ -1094,7 +1077,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     status: 'active' | 'archived',
     as: Principal,
   ) {
-    const row = yield* managedRow(tenantId, functionId, as)
+    const row = yield* authoringRow(tenantId, functionId, as)
     const willArchive = status === 'archived'
     if ((row.archivedAt !== null) !== willArchive) {
       yield* withDb(
@@ -1137,7 +1120,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     expectedDraftRevision: number,
     as: Principal,
   ) {
-    const row = yield* managedRow(tenantId, functionId, as)
+    const row = yield* authoringRow(tenantId, functionId, as)
     if (row.archivedAt !== null) return yield* new FormulaFunctionArchived()
     if (row.draftRevision !== expectedDraftRevision)
       return yield* new FormulaDraftConflict({ draftRevision: row.draftRevision })
@@ -1183,7 +1166,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             .query((k) =>
               k
                 .selectFrom('FormulaFunction')
-                .select(['draftRevision', 'archivedAt', 'ownerNodeId'])
+                .select(['draftRevision', 'archivedAt', 'createdBy'])
                 .where('tenantId', '=', tenantId)
                 .where('id', '=', functionId)
                 .forUpdate()
@@ -1191,12 +1174,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
             )
             .pipe(Effect.orDie)
           if (locked === undefined) return yield* new FormulaFunctionNotFound()
-          // the compile took real time; the authority that opened this call
-          // may have been revoked meanwhile, and what is being minted is an
+          // The compile took real time, and what is being minted is an
           // immutable official record - re-ask before committing (a second
-          // pool connection is fine here: one row lock, pool size above one)
-          const stillAllowed = yield* rbac.canAt(as, MANAGE, locked.ownerNodeId as string)
-          if (!stillAllowed) return yield* new FormulaFunctionNotFound()
+          // pool connection is fine here: one row lock, pool size above one).
+          // Authorship is immutable and cannot have moved; the CAPABILITY
+          // can have been revoked meanwhile, and that is what is re-asked.
+          yield* requireAuthor(as)
+          if (locked.createdBy !== as.userId) return yield* new FormulaFunctionNotFound()
           if (locked.archivedAt !== null) return yield* new FormulaFunctionArchived()
           // the compile ran on a snapshot; a draft that moved meanwhile would
           // freeze bytes nobody asked to publish
@@ -1268,40 +1252,13 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     return versionDetailDto(inserted as unknown as VersionRow)
   })
 
-  const listOwnerOptions = Effect.fn('FormulaLibrary.listOwnerOptions')(function* (
-    tenantId: string,
-    as: Principal,
-  ) {
-    const scope = yield* rbac.listAuthorizedScope(as, MANAGE)
-    if (!scope.tenantWide && scope.anchors.length === 0)
-      return { nodes: [] as { id: string; name: string; depth: number }[] }
-    const rows = yield* db
-      .query((k) =>
-        k
-          .selectFrom('OrgNode')
-          .select(['id', 'name', 'depth'])
-          .where('tenantId', '=', tenantId)
-          .where(
-            scopeCoverage(scope, {
-              id: sql.ref('org_nodes.id') as never,
-              tenantId: sql.ref('org_nodes.tenant_id') as never,
-              path: sql.ref('org_nodes.path') as never,
-            }),
-          )
-          .orderBy(sql`path`)
-          .execute(),
-      )
-      .pipe(Effect.orDie)
-    return { nodes: rows as { id: string; name: string; depth: number }[] }
-  })
-
   const getVersion = Effect.fn('FormulaLibrary.getVersion')(function* (
     tenantId: string,
     functionId: string,
     versionNo: number,
     as: Principal,
   ) {
-    yield* managedRow(tenantId, functionId, as)
+    yield* authoringRow(tenantId, functionId, as)
     const version = yield* db
       .query((k) =>
         k
@@ -1336,7 +1293,6 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
       withDb(publish(tenantId, functionId, expected, as)),
     getVersion: (tenantId, functionId, versionNo, as) =>
       withDb(getVersion(tenantId, functionId, versionNo, as)),
-    listOwnerOptions: (tenantId, as) => withDb(listOwnerOptions(tenantId, as)),
   }
   return service
 })
@@ -1347,14 +1303,6 @@ const local = Api.local(formulaApiGroup)
 
 export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula', (handlers) =>
   handlers
-    .handle(
-      'listFormulaOwnerOptions',
-      Effect.fn('assessmentFormula.ownerOptions.handler')(function* () {
-        const library = yield* FormulaLibrary
-        const principal = yield* CurrentUser
-        return yield* library.listOwnerOptions(principal.tenantId, principal)
-      }),
-    )
     .handle(
       'listFormulaFunctions',
       Effect.fn('assessmentFormula.list.handler')(function* ({ query }) {
@@ -1403,15 +1351,14 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           cursor === undefined
             ? undefined
             : { functionName: cursor[0]!, versionNo: Number(cursor[1]), versionId: cursor[2]! }
-        const page = yield* catalog
-          .listForBatch(tenantId, params.batchId, { limit: size, after })
-          .pipe(Effect.catch(bindingOptionsFailure))
+        const page = yield* catalog.listForBatch(tenantId, principal.userId, {
+          limit: size,
+          after,
+        })
         const current =
           boundVersionId === null
             ? null
-            : yield* catalog
-                .currentBinding(tenantId, params.batchId, boundVersionId)
-                .pipe(Effect.catch(bindingOptionsFailure))
+            : yield* catalog.currentBinding(tenantId, boundVersionId, principal.userId)
         return {
           items: page.items.map(bindingOptionDto),
           nextCursor:
@@ -1437,7 +1384,6 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         const created = yield* library.createFunction(
           principal.tenantId,
           {
-            ownerNodeId: payload.ownerNodeId,
             name: payload.name,
             ...(payload.description === undefined ? {} : { description: payload.description }),
             ...(payload.draftSourceTs === undefined

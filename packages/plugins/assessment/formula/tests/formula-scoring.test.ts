@@ -21,6 +21,7 @@ import {
   frozenCalculatorOf,
   readScoringPlan,
   scaledAmount,
+  scoringAuthoringPolicyProvider,
   scoringRuntimeProvider,
   serviceLayer,
   type PhaseSpecInput,
@@ -29,6 +30,7 @@ import {
   ItemPayloadInvalid,
   ItemTypeCatalog,
   Scoring,
+  ScoringAuthoringPolicyCatalog,
   ScoringRuntimeCatalog,
   type CalculatorEvaluationError,
   type ItemTypeDriver,
@@ -45,6 +47,7 @@ import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
 import { formula1 } from '../src/scoring/formula-calculator.ts'
+import { formulaAuthoringPolicy } from '../src/scoring/authoring-policy.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
 
 // The whole 7.3 protocol in one walk, against the REAL sandbox-runtime
@@ -111,15 +114,21 @@ const stack = (url: string, socketPath: string) => {
       contributed(definitions),
     ) as Layer.Layer<never>,
   )
-  const runtimeCatalog = (scoringRuntimeProvider as unknown as ProvideExtension)
-    .compile(contributed(registrations))
-    .pipe(
-      Layer.provide(formulaServices),
-      Layer.provide(sandbox),
-      Layer.provide(catalogLayers),
-      Layer.provide(assembledLayer),
-      Layer.provide(services),
-    ) as Layer.Layer<ScoringRuntimeCatalog>
+  // the calculator's runtime binding and its authoring policy, the pair the
+  // host wires: one answers what a configuration compiles to, the other who
+  // may create the binding in the first place
+  const runtimeCatalog = Layer.mergeAll(
+    (scoringRuntimeProvider as unknown as ProvideExtension).compile(contributed(registrations)),
+    (scoringAuthoringPolicyProvider as unknown as ProvideExtension).compile(
+      contributed([formulaAuthoringPolicy]),
+    ),
+  ).pipe(
+    Layer.provide(formulaServices),
+    Layer.provide(sandbox),
+    Layer.provide(catalogLayers),
+    Layer.provide(assembledLayer),
+    Layer.provide(services),
+  ) as Layer.Layer<ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog>
   const storage = storageOnlyLayer.pipe(
     Layer.provideMerge(backendLayer(memoryBackend())),
     Layer.provideMerge(registryLayer),
@@ -187,6 +196,114 @@ export default defineFormula({
 })
 `
 
+/** a formula that hands its one parameter straight back as the amount */
+const PASSTHROUGH = `import { Schema, defineFormula } from '@qualy/formula'
+
+export default defineFormula({
+  input: Schema.input({
+    value: Schema.decimal({ minimum: '0.00', maximum: '10.00', maxScale: 2 }),
+  }),
+  output: Schema.scoreAmount({ maxScale: 2 }),
+  run: (input) => input.value,
+})
+`
+
+/** author, draft, publish - and the exact version id that came out */
+const publishFormula = (
+  library: FormulaLibrary['Service'],
+  tenantId: string,
+  as: Principal,
+  source: string,
+  name: string,
+) =>
+  Effect.gen(function* () {
+    const created = yield* library.createFunction(tenantId, { name, description: '' }, as)
+    const drafted = yield* library.updateDraft(
+      tenantId,
+      created.id,
+      {
+        expectedDraftRevision: created.draftRevision,
+        draftSourceTs: source,
+        draftTests: [{ name: 'ok', input: { value: '3.00' }, expected: '3' }],
+      },
+      as,
+    )
+    yield* library.publish(tenantId, created.id, drafted.draftRevision, as)
+    const versionId = one<{ id: string }>(
+      yield* runSql(
+        sql`select id from assessment_formula_versions where function_id = ${created.id}`,
+      ),
+    ).id
+    return { functionId: created.id, versionId }
+  })
+
+/** a running round with one score group, ready to hold questions */
+const roundWithGroup = (
+  assessment: Assessment['Service'],
+  f: { t: string; collegeA: string; admin: string; principal: (userId: string) => Principal },
+  name: string,
+) =>
+  Effect.gen(function* () {
+    const as = f.principal(f.admin)
+    const studentType = one<{ id: string }>(
+      yield* runSql(sql`select id from user_types where tenant_id = ${f.t}`),
+    ).id
+    const batch = yield* assessment.createBatch(
+      f.t,
+      {
+        name,
+        materialRange: { start: '2026-03-01', end: '2026-09-01' },
+        import: { orgNodeIds: [f.collegeA], userTypeIds: [studentType] },
+      },
+      as,
+    )
+    yield* assessment.replacePlan(
+      f.t,
+      batch.id,
+      { specs: [phase({ phaseKey: 'entry' }), phase({ phaseKey: 'archive' })] },
+      as,
+    )
+    const groups = yield* assessment.replaceScoreGroups(
+      f.t,
+      batch.id,
+      {
+        groups: [{ name: '主组', parentGroupId: null, cap: null, floor: null }],
+        expectedVersion: 1,
+      },
+      as,
+    )
+    return { batchId: batch.id, groupId: groups.groups[0]!.id }
+  })
+
+/** one question's configuration, scored by an exact published version */
+const boundConfig = (versionId: string) => ({
+  entrySource: 'student' as const,
+  formConfig: {},
+  scoringConfig: {
+    version: 2,
+    calculator: { ref: 'formula@1', config: { versionId } },
+    aggregator: { ref: 'sum@1', config: {} },
+    recognitions: [{ handle: 'value', label: '数值', refinement: null, defaultFromFieldId: null }],
+    bindings: { value: { kind: 'recognition', handle: 'value' } },
+  },
+  reviewPolicy: {
+    normal: {
+      stages: [
+        {
+          id: 's1',
+          selector: {
+            kind: 'roleAt',
+            nodeTypeId: '01920000-0000-7000-8000-0000000000d1',
+            roleIds: ['01920000-0000-7000-8000-0000000000d2'],
+          },
+          quorum: { type: 'any' },
+        },
+      ],
+    },
+    escalation: { stages: [] },
+  },
+})
+
 const phase = (over: Partial<PhaseSpecInput> & { phaseKey: string }): PhaseSpecInput => ({
   displayName: over.phaseKey,
   permissionProfile: [],
@@ -238,7 +355,7 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
 
             const created = yield* library.createFunction(
               f.t,
-              { ownerNodeId: root, name: '真进程分', description: '' },
+              { name: '真进程分', description: '' },
               as,
             )
             const drafted = yield* library.updateDraft(
@@ -385,6 +502,117 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
     expect(Exit.isFailure(outcome.refused)).toBe(true)
   }, 120_000)
 
+  it('binds only a formula the person saving it wrote, and never re-asks a continuation', async () => {
+    // The rule is about who may START a binding. Somebody else's published
+    // version is not a thing this administrator may point a question at,
+    // however completely they administer the round; and once a question IS
+    // pointed at one, keeping it working is a different question with a
+    // different answer, so a rename goes through even after authorship has
+    // moved out from under it.
+    const outcome = ok(
+      await Effect.runPromiseExit(
+        Effect.provide(
+          Effect.gen(function* () {
+            const f = yield* seedFormulaFixture('fs-owned')
+            const library = yield* FormulaLibrary
+            const assessment = yield* Assessment
+            const mine = f.principal(f.authorA)
+            // both of them administer this round, completely and equally:
+            // what separates them is authorship and nothing else
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              select ${f.t}, ${f.authorA}, id from roles
+              where tenant_id = ${f.t} and system_key = 'tenant-admin'`)
+            const published = yield* publishFormula(library, f.t, mine, PASSTHROUGH, '我的公式')
+            const { batchId, groupId } = yield* roundWithGroup(assessment, f, '所有权轮次')
+
+            const bind = (versionId: string, as: Principal) =>
+              assessment.createItem(
+                f.t,
+                batchId,
+                {
+                  itemType: 'plain',
+                  title: '公式题',
+                  scoreGroupId: groupId,
+                  maxEntries: 1,
+                  config: boundConfig(versionId),
+                },
+                as,
+              )
+
+            // the author binds their own: allowed
+            const own = yield* bind(published.versionId, mine)
+            // a batch administrator who did not write it: refused, by name
+            const other = yield* Effect.flip(bind(published.versionId, f.principal(f.admin)))
+
+            // and the preview a screen shows must give the SAME answer the
+            // save would: a kinder one would offer a binding the save is
+            // about to turn down
+            const previewed = yield* Effect.flip(
+              assessment.previewScoring(
+                f.t,
+                batchId,
+                {
+                  itemType: 'plain',
+                  formConfig: {},
+                  calculator: { ref: 'formula@1', config: { versionId: published.versionId } },
+                },
+                f.principal(f.admin),
+              ),
+            )
+
+            // authorship moves out from under the question that already runs
+            // it - the shape of an author leaving
+            yield* runSql(sql`
+              update assessment_formula_functions set created_by = ${f.authorB}
+              where id = ${published.functionId}`)
+            // a real save carrying the SAME configuration, which is what
+            // makes this a continuation rather than a title-only edit the
+            // compiler never sees
+            const renamed = yield* assessment.updateItem(
+              f.t,
+              own.id,
+              { title: '公式题(改名)', config: boundConfig(published.versionId) },
+              mine,
+            )
+            // but pointing a NEW question at it is a new binding, and now it
+            // is somebody else's
+            const freshRefused = yield* Effect.flip(bind(published.versionId, mine))
+
+            return {
+              own: own.currentRevision!.id,
+              other: (other as { issues?: readonly { reason: string }[] }).issues?.map(
+                (issue) => issue.reason,
+              ),
+              previewed: (previewed as { issues?: readonly { path: string; reason: string }[] })
+                .issues,
+              renamed: renamed.title,
+              freshRefused: (
+                freshRefused as { issues?: readonly { reason: string }[] }
+              ).issues?.map((issue) => issue.reason),
+            }
+          }),
+          stack(db.url, socketPath) as never,
+        ) as Effect.Effect<never, never>,
+      ),
+    ) as {
+      own: string
+      other: readonly string[] | undefined
+      previewed: readonly { path: string; reason: string }[] | undefined
+      renamed: string
+      freshRefused: readonly string[] | undefined
+    }
+
+    expect(outcome.own).toEqual(expect.any(String))
+    expect(outcome.other).toEqual(['formula-not-yours'])
+    // the same refusal, and spelled in the payload's own paths rather than
+    // the compiler's - a preview is asked about a candidate
+    expect(outcome.previewed).toEqual([{ path: 'calculator.config', reason: 'formula-not-yours' }])
+    // a continuation is never re-asked: the question keeps working
+    expect(outcome.renamed).toBe('公式题(改名)')
+    expect(outcome.freshRefused).toEqual(['formula-not-yours'])
+  }, 120_000)
+
   it('executes an artifact larger than the sandbox default, because it was publishable', async () => {
     const outcome = ok(
       await Effect.runPromiseExit(
@@ -401,7 +629,7 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
             ).id
             const created = yield* library.createFunction(
               f.t,
-              { ownerNodeId: root, name: '大公式', description: '' },
+              { name: '大公式', description: '' },
               as,
             )
             const drafted = yield* library.updateDraft(
@@ -493,8 +721,8 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
             const functionId = one<{ id: string }>(
               yield* runSql(sql`
                 insert into assessment_formula_functions
-                  (tenant_id, owner_node_id, name, draft_source_ts, draft_tests, created_by, updated_by)
-                values (${f.t}, ${root}, '断线公式', 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
+                  (tenant_id, name, draft_source_ts, draft_tests, created_by, updated_by)
+                values (${f.t}, '断线公式', 'export {}', '[]'::jsonb, ${f.admin}, ${f.admin})
                 returning id`),
             ).id
             const versionId = one<{ id: string }>(

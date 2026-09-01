@@ -2,28 +2,23 @@ import { Context, Data, Effect, Layer } from 'effect'
 import { sql } from 'kysely'
 import type { NormalizedAtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { withDatabase } from '@qualy/plugin-database/server'
-import { AssessmentConfigurationAccess } from '@qualy/plugin-assessment/plugin'
 import { db } from './db.ts'
 
-// Which published versions may anchor NEW configuration in one batch - a
-// read model of facts, and only facts.
+// What a question may be scored by - a read model of facts, and only facts.
 //
-// Deliberately no principal: whether the CALLER may modify the batch is the
-// application boundary's question (the item update already authorizes its
-// administrator; a picker endpoint will ask requireManage first), while
-// whether this VERSION may be newly bound here is a property of the round's
-// frozen boundary and the formula's owner - the calculator compiling a
-// configuration holds no principal at all, by 7.0's frozen contract. And
-// deliberately not the runtime store: eligibility here is about the
-// function's and its owner's CURRENT state, which historical replay must
-// never consult. The two answers part ways on the same row - an archived
-// function still resolves, and stops being newly bindable - and that
-// divergence is the point.
+// Deliberately no principal. Two different questions used to be tangled
+// here and are now apart: whether a person may create a binding at all is
+// an authoring question with an actor, answered beside the compiler by the
+// authoring policy; whether a version is a thing that can be bound is a
+// property of rows, answered here. A caller that needs the author-scoped
+// view passes an author's id as DATA - a column to filter on, not an
+// identity to authorize.
 //
-// The rule (assessment-formula design §6.8): the owner node must be an
-// ancestor-or-self of EVERY management anchor. An anchor that no longer
-// resolves, an owner that was deleted, an archived function, an absent
-// version, a boundary with no anchors at all - each fails closed, named.
+// Deliberately not the runtime store either: what is offered here is about
+// a function's CURRENT state, which historical replay must never consult.
+// The two answers part ways on the same row - an archived function still
+// resolves, and stops being newly bindable - and that divergence is the
+// point.
 
 export interface BindableFormulaVersion {
   readonly versionId: string
@@ -36,7 +31,7 @@ export interface BindableFormulaVersion {
   readonly outputSchema: NormalizedAtomicSchema
 }
 
-/** one page of what a batch may newly bind, oldest cursor rules apply */
+/** one page of what an author may newly bind, oldest cursor rules apply */
 export interface BindablePage {
   readonly items: readonly BindableFormulaVersion[]
   /** the last row's ordering key, for the caller to encode */
@@ -48,26 +43,25 @@ export interface BindablePage {
   readonly more: boolean
 }
 
-export type NotBindableReason =
-  | 'batch-not-found'
-  | 'version-not-found'
-  | 'function-archived'
-  | 'owner-node-missing'
-  | 'outside-management-boundary'
-  | 'no-management-boundary'
+export type NotBindableReason = 'version-not-found' | 'function-archived'
 
 export class FormulaNotBindable extends Data.TaggedError('ASSESSMENT_FORMULA_NOT_BINDABLE')<{
-  readonly batchId: string
-  readonly versionId?: string
+  readonly versionId: string
   readonly reason: NotBindableReason
 }> {}
 
 export class BindableFormulaCatalog extends Context.Service<
   BindableFormulaCatalog,
   {
+    /**
+     * The published versions one author may point a question at.
+     *
+     * `authorUserId` is a filter, not a principal: this service authorizes
+     * nobody, and its caller has already established whose list this is.
+     */
     readonly listForBatch: (
       tenantId: string,
-      batchId: string,
+      authorUserId: string,
       page?: {
         readonly limit?: number
         readonly after?: {
@@ -76,39 +70,38 @@ export class BindableFormulaCatalog extends Context.Service<
           readonly versionId: string
         }
       },
-    ) => Effect.Effect<BindablePage, FormulaNotBindable>
+    ) => Effect.Effect<BindablePage>
     /**
-     * One exact version as this batch's history, not as an option.
+     * One exact version as a question's history, not as an option.
      *
      * A question already bound to a version keeps showing it however its
-     * function or owner has changed since - so this read asks for none of
-     * that, and answers separately whether the same version could still be
-     * bound anew. It never proves the version is executable: that is the
-     * runtime store's answer, and finally the save's.
+     * function has changed since - so this read asks for none of that, and
+     * answers separately whether the same version could still be bound
+     * anew. It never proves the version is executable: that is the runtime
+     * store's answer, and finally the save's.
      */
     readonly currentBinding: (
       tenantId: string,
-      batchId: string,
       versionId: string,
-    ) => Effect.Effect<
-      { readonly version: BindableFormulaVersion; readonly bindableForNew: boolean } | null,
-      FormulaNotBindable
-    >
+      viewerUserId: string,
+    ) => Effect.Effect<{
+      readonly version: BindableFormulaVersion
+      readonly bindableForNew: boolean
+    } | null>
+    /**
+     * The facts a NEW binding needs, on rows this holds.
+     *
+     * Still principal-free, and it stays that way: this runs inside the
+     * calculator's compile, which by the frozen contract knows nothing
+     * about who is asking. What it proves is that the version exists and
+     * that its function is still open to new configuration.
+     */
     readonly requireBindable: (
       tenantId: string,
-      batchId: string,
       versionId: string,
     ) => Effect.Effect<BindableFormulaVersion, FormulaNotBindable>
   }
 >()('@qualy/plugin-assessment-formula/BindableFormulaCatalog') {}
-
-/** every anchor resolves against the live tree AND sits under the owner */
-const coversEveryAnchor = (tenantId: string, anchors: readonly string[]) =>
-  sql<boolean>`not exists (
-    select 1 from unnest(${anchors}::uuid[]) as anchor(id)
-    left join org_nodes an on an.tenant_id = ${tenantId} and an.id = anchor.id
-    where an.id is null or not (owner.path @> an.path)
-  )`
 
 interface CandidateRow {
   readonly versionId: string
@@ -134,24 +127,10 @@ const toBindable = (row: CandidateRow): BindableFormulaVersion => ({
 
 export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
   const database = yield* withDatabase
-  const access = yield* AssessmentConfigurationAccess
-
-  const anchorsOf = (tenantId: string, batchId: string) =>
-    access.boundary(tenantId, batchId).pipe(
-      Effect.mapError(() => new FormulaNotBindable({ batchId, reason: 'batch-not-found' })),
-      Effect.flatMap(({ managementAnchors }) =>
-        managementAnchors.length === 0
-          ? // an empty boundary would make the for-all rule vacuously true
-            // for EVERY owner - fail closed instead, by its own name
-            Effect.fail(new FormulaNotBindable({ batchId, reason: 'no-management-boundary' }))
-          : Effect.succeed(managementAnchors),
-      ),
-    )
 
   return BindableFormulaCatalog.of({
-    listForBatch: (tenantId, batchId, page) =>
+    listForBatch: (tenantId, authorUserId, page) =>
       Effect.gen(function* () {
-        const anchors = yield* anchorsOf(tenantId, batchId)
         const size = Math.max(1, page?.limit ?? 50)
         const after = page?.after
         const rows = yield* database(
@@ -160,11 +139,6 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
               .selectFrom('FormulaVersion as v')
               .innerJoin('FormulaFunction as f', (join) =>
                 join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
-              )
-              .innerJoin('OrgNode as owner', (join) =>
-                join
-                  .onRef('owner.tenantId', '=', 'f.tenantId')
-                  .onRef('owner.id', '=', 'f.ownerNodeId'),
               )
               .select([
                 'v.id as versionId',
@@ -177,8 +151,8 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.outputSchema as outputSchema',
               ])
               .where('v.tenantId', '=', tenantId)
+              .where('f.createdBy', '=', authorUserId)
               .where('f.archivedAt', 'is', null)
-              .where(coversEveryAnchor(tenantId, anchors))
             if (after !== undefined) {
               // The ordering runs in two directions - names up, versions
               // down - so a row-value comparison would be asking postgres
@@ -221,20 +195,15 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
         }
       }),
 
-    currentBinding: (tenantId, batchId, versionId) =>
+    currentBinding: (tenantId, versionId, viewerUserId) =>
       Effect.gen(function* () {
-        // the anchors are read first for the same reason every other read
-        // here does: a batch with no boundary can bind nothing, and saying
-        // so is not the same as saying the version does not exist
-        const anchors = yield* anchorsOf(tenantId, batchId)
         const row = yield* database(
           db.query((k) =>
             k
               .selectFrom('FormulaVersion as v')
               // the function, whatever state it is in - a version outlives
               // its function's archival, and the question bound to it keeps
-              // showing it. No owner join at all: a deleted owner node is
-              // exactly one of the histories this read exists to survive.
+              // showing it
               .innerJoin('FormulaFunction as f', (join) =>
                 join.onRef('f.tenantId', '=', 'v.tenantId').onRef('f.id', '=', 'v.functionId'),
               )
@@ -248,7 +217,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.inputSchema as inputSchema',
                 'v.outputSchema as outputSchema',
               ])
-              .select(['f.archivedAt as archivedAt', 'f.ownerNodeId as ownerNodeId'])
+              .select(['f.archivedAt as archivedAt', 'f.createdBy as createdBy'])
               .where('v.tenantId', '=', tenantId)
               .where('v.id', '=', versionId)
               .executeTakeFirst(),
@@ -257,43 +226,23 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
         if (row === undefined) return null
         const state = row as unknown as CandidateRow & {
           archivedAt: unknown
-          ownerNodeId: string
+          createdBy: string
         }
-        // whether the SAME version could be bound afresh today, which is a
-        // policy snapshot and nothing more
-        const covers = yield* database(
-          db.query((k) =>
-            k
-              .selectFrom('OrgNode as owner')
-              .select(['owner.id as id'])
-              .where('owner.tenantId', '=', tenantId)
-              .where('owner.id', '=', state.ownerNodeId)
-              .where(coversEveryAnchor(tenantId, anchors))
-              .executeTakeFirst(),
-          ),
-        ).pipe(Effect.orDie)
         return {
           version: toBindable(state),
-          bindableForNew: state.archivedAt === null && covers !== undefined,
+          // whether THIS viewer could bind the same version afresh today: a
+          // policy snapshot beside a historical fact, and nothing more
+          bindableForNew: state.archivedAt === null && state.createdBy === viewerUserId,
         }
       }),
 
-    requireBindable: (tenantId, batchId, versionId) =>
+    requireBindable: (tenantId, versionId) =>
       Effect.gen(function* () {
-        const anchors = yield* anchorsOf(tenantId, batchId)
-        const refuse = (reason: NotBindableReason) =>
-          new FormulaNotBindable({ batchId, versionId, reason })
-        // A writer's eligibility check, judged step by step on ROWS IT
-        // LOCKS: this runs inside the item save's transaction (the batch
-        // row is already held FOR UPDATE), and every fact the yes depends
-        // on - the function's liveness and owner, the owner's and every
-        // anchor's place in the tree - is read under FOR SHARE, so an
-        // archive or an org move serializes after the ItemRevision commit
-        // instead of racing it. The anchor SET itself is creation-frozen
-        // with the batch (its one writer runs in createBatch, under the
-        // same batch lock), so the batch lock stabilizes the set and the
-        // node rows stabilize the facts. The lock order is fixed: batch,
-        // then function, then org nodes in UUID order.
+        const refuse = (reason: NotBindableReason) => new FormulaNotBindable({ versionId, reason })
+        // Judged on a row it LOCKS: this runs inside the item save's
+        // transaction, and the function's liveness is read FOR SHARE, so an
+        // archive serializes after the ItemRevision commit instead of
+        // racing it.
         const version = yield* database(
           db.query((k) =>
             k
@@ -302,6 +251,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
                 'v.id as versionId',
                 'v.functionId as functionId',
                 'v.versionNo as versionNo',
+                'v.publishedAt as publishedAt',
                 'v.contractSha256 as contractSha256',
                 'v.inputSchema as inputSchema',
                 'v.outputSchema as outputSchema',
@@ -317,7 +267,7 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
           db.query((k) =>
             k
               .selectFrom('FormulaFunction')
-              .select(['id', 'name', 'archivedAt', 'ownerNodeId'])
+              .select(['id', 'name', 'archivedAt'])
               .where('tenantId', '=', tenantId)
               .where('id', '=', found.functionId)
               .forShare()
@@ -329,43 +279,8 @@ export const make = Effect.fn('BindableFormulaCatalog.make')(function* () {
           // broken invariant, not a state this catalog explains
           return yield* Effect.die(new Error('a formula version outlived its function'))
         }
-        const holder = fn as unknown as {
-          name: string
-          archivedAt: unknown
-          ownerNodeId: string
-        }
+        const holder = fn as unknown as { name: string; archivedAt: unknown }
         if (holder.archivedAt !== null) return yield* refuse('function-archived')
-        const nodeIds = [...new Set([holder.ownerNodeId, ...anchors])].sort()
-        const nodes = yield* database(
-          db.query((k) =>
-            k
-              .selectFrom('OrgNode')
-              .select(['id', sql<string>`path::text`.as('path')])
-              .where('tenantId', '=', tenantId)
-              .where('id', 'in', nodeIds)
-              .orderBy('id')
-              .forShare()
-              .execute(),
-          ),
-        ).pipe(Effect.orDie)
-        const pathOf = new Map(
-          (nodes as unknown as readonly { id: string; path: string }[]).map((node) => [
-            node.id,
-            node.path,
-          ]),
-        )
-        const ownerPath = pathOf.get(holder.ownerNodeId)
-        if (ownerPath === undefined) return yield* refuse('owner-node-missing')
-        // ancestor-or-self, proven on the locked rows: ltree labels never
-        // contain a dot, so prefix-by-label is exactly @>
-        const covers = (anchorPath: string) =>
-          anchorPath === ownerPath || anchorPath.startsWith(`${ownerPath}.`)
-        for (const anchor of anchors) {
-          const anchorPath = pathOf.get(anchor)
-          if (anchorPath === undefined || !covers(anchorPath)) {
-            return yield* refuse('outside-management-boundary')
-          }
-        }
         return toBindable({ ...found, functionName: holder.name })
       }),
   })

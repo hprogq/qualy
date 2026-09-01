@@ -11,6 +11,7 @@ import {
   type ScoringDefinition,
 } from '../src/plugin.ts'
 import { bindScoringRuntimes } from '../src/scoring/runtime-provider.ts'
+import { bindAuthoringPolicies } from '../src/scoring/authoring-policy-provider.ts'
 import { builtinAggregators, builtinCalculators, fixed1, sum1 } from '../src/scoring/builtins.ts'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import type { CalculatorContract } from '../src/plugin.ts'
@@ -69,6 +70,19 @@ const scoringCatalogOf = (contributions: readonly Contributed<ScoringDefinition>
   Effect.runSync(ScoringDefinitionCatalog.pipe(Effect.provide(definitionLayerOf(contributions))))
 
 /** the definition half Scoring.calculator would derive from a registration */
+/** the smallest complete calculator: declared, bound, and answering '0' */
+const registration = (ref: string): CalculatorRegistration => ({
+  kind: 'calculator',
+  ref,
+  configSchema: Schema.Struct({}),
+  bind: Effect.succeed({
+    ref,
+    compile: (config) => Effect.succeed({ ...emptyContract, config }),
+    verify: () => Effect.void,
+    prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('0') }),
+  }),
+})
+
 const definitionOf = (registration: CalculatorRegistration): ScoringDefinition => ({
   kind: 'calculator',
   ref: registration.ref,
@@ -184,18 +198,6 @@ describe('the runtime channel and the definitions, one story', () => {
   // declared cannot be configured - both are a broken assembly, refused with
   // the refs named. Aggregators deliberately sit outside the equality: an
   // aggregator IS its definition, whole, with no runtime half.
-  const registration = (ref: string): CalculatorRegistration => ({
-    kind: 'calculator',
-    ref,
-    configSchema: Schema.Struct({}),
-    bind: Effect.succeed({
-      ref,
-      compile: (config) => Effect.succeed({ ...emptyContract, config }),
-      verify: () => Effect.void,
-      prepare: () => Effect.succeed({ evaluate: () => Effect.succeed('0') }),
-    }),
-  })
-
   const boundOver = (
     definitions: readonly ScoringDefinition[],
     registrations: readonly CalculatorRegistration[],
@@ -251,6 +253,62 @@ describe('the runtime channel and the definitions, one story', () => {
       ],
     )
     expect(String(renamed)).toMatch(/registered as "spoken@1" bound itself as "other@1"/)
+  })
+})
+
+describe('the authoring policies', () => {
+  // A policy answers who may create a binding, which is a security boundary
+  // - so the two ways one could quietly stop being asked are refusals at
+  // boot rather than surprises later.
+  const policy = (ref: string) => ({
+    ref,
+    bind: Effect.succeed({ authorize: () => Effect.void }),
+  })
+
+  const boundOver = (
+    definitions: readonly ScoringDefinition[],
+    policies: readonly {
+      ref: string
+      bind: Effect.Effect<{ authorize: () => Effect.Effect<void> }>
+    }[],
+  ) =>
+    Effect.runSyncExit(
+      bindAuthoringPolicies(
+        policies.map((value) => ({ pluginId: '@qualy/plugin-under-test', value })) as never,
+      ).pipe(
+        Effect.provide(
+          definitionLayerOf(
+            definitions.map((value) => ({ pluginId: '@qualy/plugin-under-test', value })),
+          ),
+        ),
+      ) as unknown as Effect.Effect<unknown, unknown>,
+    )
+
+  it('leaves a calculator with no policy unrestricted', () => {
+    const outcome = boundOver([definitionOf(registration('open@1'))], [])
+    expect(Exit.isSuccess(outcome)).toBe(true)
+    const catalog = (outcome as Exit.Success<{ authorize: (ref: string, input: never) => unknown }>)
+      .value
+    expect(
+      Exit.isSuccess(Effect.runSyncExit(catalog.authorize('open@1', {} as never) as never)),
+    ).toBe(true)
+  })
+
+  it('refuses two policies for one calculator', () => {
+    const outcome = boundOver(
+      [definitionOf(registration('claimed@1'))],
+      [policy('claimed@1'), policy('claimed@1')],
+    )
+    expect(Exit.isFailure(outcome)).toBe(true)
+    expect(String(outcome)).toMatch(/two plugins vet bindings for the calculator "claimed@1"/)
+  })
+
+  it('refuses a policy for a calculator nobody provides', () => {
+    const outcome = boundOver([], [policy('ghost@1')])
+    expect(Exit.isFailure(outcome)).toBe(true)
+    expect(String(outcome)).toMatch(
+      /vets bindings for the calculator "ghost@1", which no selected plugin provides/,
+    )
   })
 })
 

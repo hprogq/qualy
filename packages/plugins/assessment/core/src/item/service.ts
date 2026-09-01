@@ -3,7 +3,12 @@ import { transaction, type Orm, type QueryFailed } from '@qualy/plugin-database/
 import type { Principal } from '@qualy/rbac-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import type { EpochMillis } from '../phase/engine/types.ts'
-import { ScoringRuntimeCatalog, type ItemTypeDriver } from '../plugin.ts'
+import {
+  ScoringAuthoringPolicyCatalog,
+  ScoringRuntimeCatalog,
+  type ItemTypeDriver,
+  type RuntimeRef,
+} from '../plugin.ts'
 import {
   ItemActionRefused,
   BatchNotFound,
@@ -219,7 +224,11 @@ export interface ItemMethods {
     batchId: string,
     input: CreateItemInput,
     as: Principal,
-  ) => Effect.Effect<ItemView, CreateItemError, ScoringRuntimeCatalog>
+  ) => Effect.Effect<
+    ItemView,
+    CreateItemError,
+    ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog
+  >
   readonly getRecognitionContract: (
     tenantId: string,
     itemId: string,
@@ -235,7 +244,11 @@ export interface ItemMethods {
     itemId: string,
     input: UpdateItemInput,
     as: Principal,
-  ) => Effect.Effect<ItemView, UpdateItemError, ScoringRuntimeCatalog>
+  ) => Effect.Effect<
+    ItemView,
+    UpdateItemError,
+    ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog
+  >
   readonly deleteItem: (
     tenantId: string,
     itemId: string,
@@ -273,7 +286,7 @@ export interface ItemMethods {
   ) => Effect.Effect<
     ScoringPreviewView,
     BatchNotFound | AccessDenied | ItemConfigInvalid,
-    ScoringRuntimeCatalog
+    ScoringRuntimeCatalog | ScoringAuthoringPolicyCatalog
   >
 }
 
@@ -487,6 +500,67 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
    * disagree about what was frozen. The impact trial and the appended
    * revision are both fed THIS result.
    */
+  /**
+   * Whether this principal may point the question at this configuration.
+   *
+   * Asked of whoever owns the calculator, before anything is compiled and
+   * under the same batch lock the write holds - so a screen's preview and
+   * the save it leads to give one answer. A continuation is never asked
+   * about: the question already runs this exact program, and a rule about
+   * who may START a binding must not become a rule about who may keep a
+   * question working.
+   */
+  const vetBinding = (input: {
+    tenantId: string
+    batchId: string
+    ref: string
+    config: unknown
+    previousRuntimeRef: RuntimeRef | undefined
+    as: Principal
+  }) =>
+    Effect.gen(function* () {
+      const policies = yield* ScoringAuthoringPolicyCatalog
+      return yield* policies.authorize(input.ref, {
+        tenantId: input.tenantId,
+        batchId: input.batchId,
+        principal: input.as,
+        config: input.config,
+        ...(input.previousRuntimeRef === undefined
+          ? {}
+          : { previousRuntimeRef: input.previousRuntimeRef }),
+      })
+    })
+
+  /** the compiler's path into a submitted configuration, as the preview's
+   *  payload spells it - a preview is asked about a candidate, not about a
+   *  question's stored scoring */
+  const payloadPath = (path: string) => path.replace(/^scoringConfig\./, '')
+
+  /** the calculator a submitted configuration names, without decoding it */
+  const submittedRef = (scoringConfig: unknown): string | undefined => {
+    const ref =
+      scoringConfig !== null && typeof scoringConfig === 'object' && !Array.isArray(scoringConfig)
+        ? (scoringConfig as { calculator?: { ref?: unknown } }).calculator?.ref
+        : undefined
+    return typeof ref === 'string' ? ref : undefined
+  }
+
+  /** the runtime identity a question's current plan froze, when the SAME
+   *  calculator is being recompiled - the one discriminator both the compile
+   *  and the authoring seam read */
+  const continuationOf = (previous: ItemRevisionRow | null, ref: string | undefined) =>
+    Effect.gen(function* () {
+      if (previous === null) return undefined
+      // fail closed, never option: a current revision whose plan cannot be
+      // read is an operational invariant failure, and reading it as "no
+      // previous runtime" would quietly turn a broken continuation into a
+      // brand-new binding
+      const plan = yield* readScoringPlan(previous).pipe(Effect.orDie)
+      return plan.version === 2 && plan.calculator.ref === ref
+        ? plan.calculator.runtimeRef
+        : undefined
+    })
+
   const compiledCandidate = (input: {
     tenantId: string
     item: ItemRow
@@ -495,26 +569,27 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
     /** the revision being replaced; its frozen plan carries the previous
      *  runtime identity when the same calculator is recompiled */
     previous: ItemRevisionRow | null
+    /** who is saving: the authoring seam's question, never the compiler's */
+    as: Principal
   }) =>
     Effect.gen(function* () {
       const runtime = yield* ScoringRuntimeCatalog
-      // fail closed, never option: a current revision whose plan cannot be
-      // read is an operational invariant failure, and reading it as "no
-      // previous runtime" would quietly turn a broken continuation into a
-      // brand-new binding
-      const previousPlan =
-        input.previous === null ? null : yield* readScoringPlan(input.previous).pipe(Effect.orDie)
-      const submitted = input.config.scoringConfig
-      const submittedCalculator =
-        submitted !== null && typeof submitted === 'object' && !Array.isArray(submitted)
-          ? (submitted as { calculator?: { ref?: unknown } }).calculator?.ref
-          : undefined
-      const previousRuntimeRef =
-        previousPlan !== null &&
-        previousPlan.version === 2 &&
-        previousPlan.calculator.ref === submittedCalculator
-          ? previousPlan.calculator.runtimeRef
-          : undefined
+      const ref = submittedRef(input.config.scoringConfig)
+      const previousRuntimeRef = yield* continuationOf(input.previous, ref)
+      // whoever owns the arithmetic gets asked BEFORE it is compiled: a
+      // refusal here is about who is asking, and it must not be reachable
+      // only through a calculator that has already read a program
+      if (ref !== undefined) {
+        yield* vetBinding({
+          tenantId: input.tenantId,
+          batchId: input.item.batchId,
+          ref,
+          config: (input.config.scoringConfig as { calculator?: { config?: unknown } } | null)
+            ?.calculator?.config,
+          previousRuntimeRef,
+          as: input.as,
+        }).pipe(Effect.catch((issue) => new ItemConfigInvalid({ issues: [issue] })))
+      }
       return yield* compileScoringPlan({
         definitions: { calculators: catalogs.calculators, aggregators: catalogs.aggregators },
         compile: runtime.compile,
@@ -1033,6 +1108,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 materialRange,
                 config,
                 previous: null,
+                as,
               }),
               actorId: as.userId,
               reason: null,
@@ -1253,6 +1329,7 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
                 materialRange,
                 config,
                 previous: current,
+                as,
               })
               const counted = yield* impactUnder({
                 tenantId,
@@ -1820,12 +1897,29 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               if (item === null || item.batchId !== batchId) return undefined
               if (item.currentRevisionId === null) return undefined
               const revision = yield* revisionOf(tenantId, item.currentRevisionId)
-              if (revision === null) return undefined
-              const plan = yield* readScoringPlan(revision).pipe(Effect.orDie)
-              return plan.version === 2 && plan.calculator.ref === input.calculator.ref
-                ? plan.calculator.runtimeRef
-                : undefined
+              return yield* continuationOf(revision, input.calculator.ref)
             })
+
+            // the same question the save asks, at the moment somebody can
+            // still do something about the answer
+            yield* vetBinding({
+              tenantId,
+              batchId,
+              ref: input.calculator.ref,
+              config: input.calculator.config,
+              previousRuntimeRef,
+              as,
+            }).pipe(
+              // the policy speaks the compiler's paths; a preview is asked
+              // about a candidate, so the paths are the payload's
+              Effect.catch((issue) =>
+                Effect.fail(
+                  new ItemConfigInvalid({
+                    issues: [{ path: payloadPath(issue.path), reason: issue.reason }],
+                  }),
+                ),
+              ),
+            )
 
             const compiled = yield* contractOf({
               calculator,
@@ -1838,11 +1932,9 @@ export const makeItemMethods = (deps: ItemDeps): ItemMethods => {
               config: input.calculator.config,
             })
             if ('issues' in compiled) {
-              // the compiler speaks in scoringConfig paths; a preview is
-              // asked about a candidate, so the paths are the payload's
               return yield* new ItemConfigInvalid({
                 issues: compiled.issues.map((issue) => ({
-                  path: issue.path.replace(/^scoringConfig\./, ''),
+                  path: payloadPath(issue.path),
                   reason: issue.reason,
                 })),
               })
