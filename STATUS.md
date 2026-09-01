@@ -12427,16 +12427,16 @@ refinement 控件、§9.13 详细诊断(→ 7.4b,不必先于 7.5)。基线 main
 
 ### 提交链
 
-| 笔 | commit | CI |
-| --- | --- | --- |
-| 1 | `7e8af034` fix(assessment): keep a question's scoring language across a save | success |
-| 2 | `9663a873` feat(assessment): declare the calculator authoring surfaces | success |
-| — | `57f838ba` fix(assessment): keep versioned scoring edits fail closed | success |
-| 3 | `dd65b31b` feat(formula): list the versions a batch may bind | success |
-| 4 | `131d4d29` feat(assessment): preview what a calculator needs | success |
-| 5 | `171459b9` feat(formula): offer the version picker in the calculator slot | success |
-| 6 | `dfd3e861` feat(assessment): bind typed parameters and author recognitions | (盯守中) |
-| 7 | 本笔 test(web) + 本段 | — |
+| 笔  | commit                                                                       | CI       |
+| --- | ---------------------------------------------------------------------------- | -------- |
+| 1   | `7e8af034` fix(assessment): keep a question's scoring language across a save | success  |
+| 2   | `9663a873` feat(assessment): declare the calculator authoring surfaces       | success  |
+| —   | `57f838ba` fix(assessment): keep versioned scoring edits fail closed         | success  |
+| 3   | `dd65b31b` feat(formula): list the versions a batch may bind                 | success  |
+| 4   | `131d4d29` feat(assessment): preview what a calculator needs                 | success  |
+| 5   | `171459b9` feat(formula): offer the version picker in the calculator slot    | success  |
+| 6   | `dfd3e861` feat(assessment): bind typed parameters and author recognitions   | (盯守中) |
+| 7   | 本笔 test(web) + 本段                                                        | —        |
 
 ### 两条红线的落位
 
@@ -12467,7 +12467,7 @@ refinement 控件、§9.13 详细诊断(→ 7.4b,不必先于 7.5)。基线 main
   writer 的六态不上 public API。
 - **A3(preview 的 authority seam)**:payload 收 `itemId?`,previousRuntimeRef 由
   **服务端**从该题 frozen plan 派生且仅同 ref 时;短事务 `lockBatch → requireRosterReach
-  → 派生 → decode → compile`;owner-codec 纪律抽成 `contractOf`(plan.ts),save 与
+→ 派生 → decode → compile`;owner-codec 纪律抽成 `contractOf`(plan.ts),save 与
   preview 同源。承重:fixed@1 空契约 / 真参数契约 + bindableFields / 别题 itemId 不作
   continuation / 未知 ref 是 ItemConfigInvalid 而非 defect / 未授权 403 / 驱动读不懂的
   form 被拒。差分两条:摘 codec 产物 → 红;摘 itemId∈batch → 红。
@@ -12496,12 +12496,12 @@ without their bookkeeping zeros")种 `fixedValue`,于是打开一道存着 `"2.0
 
 ### 承重与差分总表(笔 3-7)
 
-| 位置 | 承重 | 差分 |
-| --- | --- | --- |
-| binding-catalog.test | 4(含跨页无漏无重、archived current 仍在 current) | 摘 tiebreaker → 红 |
-| formula-http.test | 7 | — |
-| item-config.test(preview) | 6 | 摘 codec 产物 → 红;摘 itemId∈batch → 红 |
-| item-chain.browser | 22 | 摘「非本 ref 让位」→ 红;current 也 disabled → 红;兼容判定改按 type 猜 → 红;不清理 → 红;摘保存闸门 → 红;换回 trimAmount → 红 |
+| 位置                      | 承重                                             | 差分                                                                                                                        |
+| ------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| binding-catalog.test      | 4(含跨页无漏无重、archived current 仍在 current) | 摘 tiebreaker → 红                                                                                                          |
+| formula-http.test         | 7                                                | —                                                                                                                           |
+| item-config.test(preview) | 6                                                | 摘 codec 产物 → 红;摘 itemId∈batch → 红                                                                                     |
+| item-chain.browser        | 22                                               | 摘「非本 ref 让位」→ 红;current 也 disabled → 红;兼容判定改按 type 猜 → 红;不清理 → 红;摘保存闸门 → 红;换回 trimAmount → 红 |
 
 ### 施工中被门禁抓到的两处真实违规
 
@@ -12518,3 +12518,75 @@ without their bookkeeping zeros")种 `fixedValue`,于是打开一道存着 `"2.0
 - **7.5**:taxonomy 消费(refusal/unavailable 在结果页与决策面的分流;evaluate 路径
   目前仍 orDie);§10.2 determination probe;§10.3 共享 evaluateRecognition。
 - **仍挂账**:后端 shutdown finalizer 挂死的根因(已装测量仪,未定名;7.1 插曲段)。
+
+## Formula 所有权重构:createdBy 作者制(2026-09-01)
+
+手测暴露的两条提示查清后是两件事,分两笔落地。基线 main @ `221a1638`。
+
+### 提交链
+
+| commit     | 内容                                                                    | CI                                        |
+| ---------- | ----------------------------------------------------------------------- | ----------------------------------------- |
+| `cc85170c` | fix(assessment): tell an unconfigured calculator from an unreadable one | 红 —— 已知 teardown 挂死,非功能回归(见下) |
+| `b6cc1177` | test(server): trace the effect-api-owned scope finalizers               | success                                   |
+| `e84bb401` | feat(formula): make the author the owner of a formula                   | (盯守中)                                  |
+
+### 第一条提示:未配置态
+
+`onCalculatorPicked` 交出 `config: {}`,而任何 calculator 的 codec 都拒绝它,于是「已选算法、尚未配置」这个正常中间态被报成「读取不到该算法需要的参数」。空对象不能当作「尚未配置」的信号——它是 `configSchema: Schema.Struct({})` 那类 calculator 的合法配置——所以 V2 draft 加第二个维度 `configured`,与 `touched` **不得合并**:
+
+```
+touched     = 是否需要重写 stored scoring
+configured  = 当前 calculator 的配置是否已由它自己的编辑器产出
+```
+
+未配置时不向服务端发问(空占位不值得问,唯一可能的答复是拒绝),也不声称「正在读取」(确实没有请求在飞),保存被拦下并说明是哪一步没完成。两道闸门各自有承重、各自差分转红。
+
+### 第二条提示:ownerNodeId 的三重职责
+
+`本批次未设置管理范围` 的判断本身正确(开发库两个有题的批次 anchors 都是 0 行),但它暴露了 `ownerNodeId` 同时承担三件无关的事。终态:
+
+```
+谁创作   = createdBy(不可转移、无 FK、不允许管理员接管)
+谁能发现 = share scopes(下一轮,与模板库同时落地)
+谁在运行 = exact FormulaVersion / runtimeRef(不变)
+```
+
+### 用户终审 5 条修订的落位
+
+1. **`formula.author` 守整个 authoring plane**:服务端拆 `ownedRow`(`createdBy === userId`,非本人 404)/ `requireAuthor`(`hasPermission`,tenant target)/ `authoringRow` = 二者;8 个网关全换;publish 锁内复检改为**重新要 capability**(`createdBy` 本就 immutable,compile 期间会变的是那条 grant)。**绑定不要 `formula.author`**——那是配置批次,不是继续写代码。
+2. **索引换而不是删**:`(tenant_id, owner_node_id)` → `(tenant_id, created_by, updated_at, id)`。**全升序**是与用户原文 `updated_at desc, id desc` 的一处等价偏离:btree 反向扫描恰好给出所要的降序,而写出方向会让 schema 生成器(丢末列 DESC)与 MikroORM create-schema(保留)在 clean-room-parity 与 entity-parity 之间对不上——两道门禁实测冲突后改的。
+3. **authoring policy 用 bind 模式**:`ScoringAuthoringPolicies`(runtime 相,与 `ScoringRuntimes` 同构),`R` 在 bind 后闭合;provider boot 期硬拒同 ref 两条 policy、以及指向未安装 calculator 的 policy(registries.test 三条承重)。
+4. **`BindableFormulaCatalog` 保持 Principal-free**:传 `authorUserId` / `viewerUserId`;`AssessmentConfigurationAccess`、`anchorsOf`、`coversEveryAnchor`、owner join 全部删除;`FormulaNotBindable` 收缩为 `version-not-found | function-archived`,calculator 侧六态 mapping 同笔收缩为两态。
+5. **continuation 只比 kind + id**,sha 留给 calculator compile —— 同 id + 坏 sha 仍报 `formula-continuation-corrupt`,不被 author check 抢先降级。
+
+### 为什么是一笔而不是三笔
+
+`owner_node_id` 是 NOT NULL:writer 一停止写入就必须删列 → 一删列 catalog 必须改 → anchor 规则一撤,作者检查必须同时在位。任何拆法都会在 main 上留下一个「任何批次管理员能绑任何人公式」的提交。是 typecheck 先报出来的,不是推测。
+
+### 承重与差分
+
+| 位置                    | 承重                                                                                                                                                                         | 差分                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| item-chain.browser      | 未配置态两条(不报错 + 不发请求;选版本后才发问并出现绑定区)                                                                                                                   | preview 无视 `configured` → 红;绑定区无视 `configured` → 红 |
+| formula-library         | 所有权(两人同持 capability,互相 404;列表各自其所写)+ 创作能力(撤权后自己的函数 6 条路全 403,而已发布版本 resolve 不变)                                                       | `authoringRow` 摘 `requireAuthor` → 撤权承重红              |
+| binding-catalog         | 4 条(作者作用域、归档离开列表但仍 resolve、跨页无漏无重、current 作为历史且按 viewer 判 `bindableForNew`)                                                                    | 摘 tiebreaker → 跨页红(7.4a 已建立)                         |
+| formula-scoring E2E     | 「只能绑自己写的」:作者可绑 / 同为管理员的他人被拒 `formula-not-yours` / **preview 同样被拒且路径是 payload 的** / 作者身份变更后 continuation 仍保存成功 / 之后新绑再次被拒 | 保存跳过 policy → 红;continuation 也查作者 → 红             |
+| registries              | policy provider boot 硬拒两条 + 无 policy 即放行                                                                                                                             | —                                                           |
+| migration-upgrade(新建) | 列消失、新索引存在、函数与 created_by 完好、退役码从 permissions/role_permissions/batch_access_source_permissions 三处消失、保留码未被波及                                   | —                                                           |
+
+差分二最初没红:改标题不带 config 根本不会重编译,continuation 路径没被走到;改成**重交同一份配置**后才真正经过。
+
+### 门禁
+
+frozen-routes 删 `GET /assessment/formula-owner-options`;error-codes(删 `FormulaOwnerNodeInvalid` 与 `FormulaBindingOptionsUnavailable` 及其翻译);catalogs(权限两个 id 换名、`ownerLabel` 孤儿键清除);seed 计数退一增一不变;`pnpm qualy resolve` 重写 lock 的 `permissions.codes`;audit `FormulaFunctionCreated` v1 `{ownerNodeId}` → v2 `{}`。
+
+### teardown 挂死:探针一直装错了 Scope
+
+`cc85170c` 的 CI 红是那条已挂账的 `scope-close` 挂死。这一轮拿到了关键进展:**`traceLayerLifecycle` 装在 `apps/server/src/main.ts`,而 `effect-api.test.ts` 每个 `it` 自建 Scope、根本不跑 main.ts**——所以 marker 全是 no-op,复现一次也只能得到一句 `stuck in scope-close`。探针已搬到该测试自己的 `teardownStaged`(装在唯一的关闭出口,`Scope.close` 完成或放弃后才卸载),并实测:正常关闭逐个点名;人为让 org 插件自己的 finalizer 不返回,超时那一刻打印 `still releasing: @qualy/plugin-org`。
+
+**顺带发现的盲区**:LIFO 下注册在 assembler `owned()` 包装**之外**的 finalizer 会卡住关闭却一个名字都不报。下次若又是 `(none reported)`,那本身就是强证据——卡的不是任何插件层。
+
+### 下一轮移交
+
+`assessment_formula_share_scopes` + `assessment.formula.share` + 模板库页 + copy 流(`copiedFromVersionId`)一起落,届时再定义:谁能发现模板、谁能 copy、share scope 挂 Function 还是 Version、归档模板如何表现、copy 后是否与源完全脱钩。
