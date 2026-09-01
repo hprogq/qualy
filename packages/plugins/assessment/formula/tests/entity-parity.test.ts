@@ -10,7 +10,11 @@ import { entities, compositeForeignKeys } from '../src/db/entities.ts'
 // from the lineage; only the two formula tables are dropped and rebuilt
 // from the entities, org keeps its own.
 
-const TABLES = ['assessment_formula_functions', 'assessment_formula_versions']
+const TABLES = [
+  'assessment_formula_functions',
+  'assessment_formula_versions',
+  'assessment_formula_share_scopes',
+]
 
 const DEPENDENCY_TABLES = ['org_nodes', 'org_type_rules', 'org_types', 'tenants']
 

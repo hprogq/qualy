@@ -38,6 +38,13 @@ export const FormulaFunction = defineEntity({
     updatedBy: p.uuid(),
     updatedAt: p.datetime().defaultRaw('now()'),
     archivedAt: p.datetime().nullable(),
+    // Where this draft was forked from, if it was - the exact published
+    // version somebody copied to start it. Deliberately no foreign key, for
+    // the same reason `createdBy` has none: it records a fact about how this
+    // function came to exist, not a live reference. A copy is a snapshot, so
+    // nothing here is consulted to run anything; the source may be renamed,
+    // archived, unshared or republished without this function noticing.
+    copiedFromVersionId: p.uuid().nullable(),
   },
   checks: [
     {
@@ -129,10 +136,58 @@ export const FormulaVersion = defineEntity({
       expression:
         'create unique index uq_assessment_formula_versions_fingerprint on assessment_formula_versions (tenant_id, function_id, publish_fingerprint)',
     },
+    {
+      // the template library's keyset: newest published first, the id
+      // breaking ties. Declared ascending and read backwards, which a btree
+      // does natively - the same handling as the library list's own index.
+      name: 'idx_assessment_formula_versions_tenant_published',
+      expression:
+        'create index idx_assessment_formula_versions_tenant_published on assessment_formula_versions (tenant_id, published_at, id)',
+    },
   ],
 })
 
-export const entities = [FormulaFunction, FormulaVersion] as const
+/**
+ * Who a published version has been offered to.
+ *
+ * A row is one audience: everybody standing at this org node or under it may
+ * DISCOVER this version and copy it. Discovery and copying, and nothing
+ * else - a shared version never becomes bindable to somebody else's
+ * question, which stays the author's own right.
+ *
+ * Scoped to the VERSION rather than the function on purpose. A version is an
+ * immutable published fact; offering v1 must not silently offer whatever its
+ * author publishes tomorrow.
+ */
+export const FormulaShareScope = defineEntity({
+  name: 'FormulaShareScope',
+  tableName: 'assessment_formula_share_scopes',
+  properties: {
+    id: p.uuid().primary().defaultRaw('uuidv7()'),
+    tenantId: tenantOf('assessment_formula_share_scopes_tenant_id_tenants_id_fkey'),
+    versionId: p.uuid(),
+    orgNodeId: p.uuid(),
+    // who offered it; a fact about the act, not a live reference - same
+    // reasoning as `createdBy` above
+    sharedBy: p.uuid(),
+    sharedAt: p.datetime().defaultRaw('now()'),
+  },
+  indexes: [
+    {
+      name: 'uq_assessment_formula_share_scopes',
+      expression:
+        'create unique index uq_assessment_formula_share_scopes on assessment_formula_share_scopes (tenant_id, version_id, org_node_id)',
+    },
+    {
+      // the audience read: from a viewer's node outward to what it may see
+      name: 'idx_assessment_formula_share_scopes_node',
+      expression:
+        'create index idx_assessment_formula_share_scopes_node on assessment_formula_share_scopes (tenant_id, org_node_id, version_id)',
+    },
+  ],
+})
+
+export const entities = [FormulaFunction, FormulaVersion, FormulaShareScope] as const
 
 export const compositeForeignKeys = [
   // RESTRICT, not CASCADE: a published version is a permanent execution
@@ -143,4 +198,14 @@ export const compositeForeignKeys = [
   // (probed and CI-held by the isomorphic diamond in org's schema.test).
   `alter table assessment_formula_versions add constraint fk_assessment_formula_versions_function
      foreign key (tenant_id, function_id) references assessment_formula_functions (tenant_id, id) on delete restrict`,
+  // CASCADE on both edges, and the difference from the RESTRICT above is
+  // lifetime rather than importance. A published version is a permanent
+  // execution fact, so nothing may quietly remove one; an audience is the
+  // CURRENT distribution policy, and a policy naming a version or a unit
+  // that no longer exists is not a fact worth keeping - it is a row that
+  // can only ever mislead a reader.
+  `alter table assessment_formula_share_scopes add constraint fk_assessment_formula_share_scopes_version
+     foreign key (tenant_id, version_id) references assessment_formula_versions (tenant_id, id) on delete cascade`,
+  `alter table assessment_formula_share_scopes add constraint fk_assessment_formula_share_scopes_node
+     foreign key (tenant_id, org_node_id) references org_nodes (tenant_id, id) on delete cascade`,
 ]

@@ -19,19 +19,32 @@ import { MIGRATIONS_FOLDER, runMigrations } from '@qualy/plugin-database/migrato
 // and means "may write formulas of your own". Turning one into the other
 // would hand somebody authority nobody granted.
 
-const TARGET = '20260901014046_formula-author-ownership.sql'
+/**
+ * The lineage up to, but not including, one migration - which the migrator's
+ * ledger then completes with exactly the remainder.
+ *
+ * Everything that sorts BEFORE the target, not "everything except it": a
+ * suite written the second way passes only while its target happens to be
+ * the newest file in the folder, and quietly starts applying the lineage out
+ * of order the day another migration lands after it.
+ */
+const lineageBefore = (target: string, label: string): string => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), `qualy-${label}-`))
+  for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
+    if (file.endsWith('.sql') && file < target) {
+      fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(folder, file))
+    }
+  }
+  return folder
+}
+
+const OWNERSHIP = '20260901014046_formula-author-ownership.sql'
+const SHARING = '20260901064240_formula-version-sharing.sql'
 
 describe.runIf(postgresAvailable)('the formula author-ownership migration', () => {
   it('drops the owning node, retires its permission, and keeps every author', async () => {
-    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, TARGET))).toBe(true)
-    // the lineage up to, but not including, the migration under test; the
-    // migrator's ledger makes the later full run apply exactly the remainder
-    const before = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-formula-ownership-'))
-    for (const file of fs.readdirSync(MIGRATIONS_FOLDER).sort()) {
-      if (file.endsWith('.sql') && file !== TARGET) {
-        fs.copyFileSync(path.join(MIGRATIONS_FOLDER, file), path.join(before, file))
-      }
-    }
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, OWNERSHIP))).toBe(true)
+    const before = lineageBefore(OWNERSHIP, 'formula-ownership')
     const db = await createTestContext('formula-ownership-upgrade', {
       migrations: 'apply',
       migrationsFolder: before,
@@ -162,6 +175,139 @@ describe.runIf(postgresAvailable)('the formula author-ownership migration', () =
         [tenantId],
       )
       expect(copied.rows).toEqual([])
+    } finally {
+      await db.dispose()
+    }
+  }, 180_000)
+})
+
+// Offering a version to an audience, and where a fork came from.
+//
+// The part worth a suite is what the new edges do when the world moves
+// under them. An audience names a unit; a unit can be dissolved, and when
+// it is, the offer it carried is not a fact worth keeping - while the
+// version it pointed at is a permanent publication and must not move at
+// all. Those two lifetimes meet on one row, which is exactly where a
+// cascade rule gets written the wrong way round.
+describe.runIf(postgresAvailable)('the formula version-sharing migration', () => {
+  it('adds an audience nobody has yet, and lets a unit go without taking the version', async () => {
+    expect(fs.existsSync(path.join(MIGRATIONS_FOLDER, SHARING))).toBe(true)
+    const before = lineageBefore(SHARING, 'formula-sharing')
+    const db = await createTestContext('formula-sharing-upgrade', {
+      migrations: 'apply',
+      migrationsFolder: before,
+    })
+    try {
+      const tenantId = (
+        await db.row<{ id: string }>(
+          `insert into tenants (slug, name) values ('share-up', 'Share') returning id`,
+        )
+      ).id
+      const orgTypeId = (
+        await db.row<{ id: string }>(
+          `insert into org_types (tenant_id, name) values ($1, 'College') returning id`,
+          [tenantId],
+        )
+      ).id
+      const rootId = (
+        await db.row<{ id: string }>(
+          `insert into org_nodes (tenant_id, org_type_id, name, path, depth)
+           values ($1, $2, 'Root', 'share_up', 0) returning id`,
+          [tenantId, orgTypeId],
+        )
+      ).id
+      const collegeId = (
+        await db.row<{ id: string }>(
+          `insert into org_nodes (tenant_id, org_type_id, parent_id, name, path, depth)
+           values ($1, $2, $3, 'College', 'share_up.a', 1) returning id`,
+          [tenantId, orgTypeId, rootId],
+        )
+      ).id
+      const userTypeId = (
+        await db.row<{ id: string }>(
+          `insert into user_types (tenant_id, code, name, placement_mode)
+           values ($1, 'staff', 'Staff', 'unrestricted') returning id`,
+          [tenantId],
+        )
+      ).id
+      const authorId = (
+        await db.row<{ id: string }>(
+          `insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
+           values ($1, 'Author', $2, $3) returning id`,
+          [tenantId, userTypeId, rootId],
+        )
+      ).id
+      // a formula that already exists when the audience model arrives
+      const functionId = (
+        await db.row<{ id: string }>(
+          `insert into assessment_formula_functions
+             (tenant_id, name, draft_source_ts, draft_tests, created_by, updated_by)
+           values ($1, 'Existing', 'export {}', '[]'::jsonb, $2, $2) returning id`,
+          [tenantId, authorId],
+        )
+      ).id
+
+      await runMigrations(db.url, { folder: MIGRATIONS_FOLDER, entities: [] })
+
+      // nothing was invented on anybody's behalf: the formula that was here
+      // before is still private, and came from nowhere
+      const carried = await db.row<{ copied_from_version_id: string | null }>(
+        `select copied_from_version_id from assessment_formula_functions where id = $1`,
+        [functionId],
+      )
+      expect(carried.copied_from_version_id).toBeNull()
+      const offers = await db.query<{ count: string }>(
+        `select count(*)::text as count from assessment_formula_share_scopes`,
+      )
+      expect(offers.rows[0]?.count).toBe('0')
+
+      // now a published version, offered to the college
+      const versionId = (
+        await db.row<{ id: string }>(
+          `insert into assessment_formula_versions
+             (tenant_id, function_id, version_no, source_ts, runtime_js, input_schema,
+              output_schema, source_sha256, runtime_sha256, contract_sha256,
+              typescript_version, esbuild_version, formula_abi_version,
+              formula_runtime_sha256, quickjs_engine_version, tests, test_report, published_by)
+           values ($1, $2, 1, 'export {}', '/*a*/', '{}'::jsonb, '{}'::jsonb,
+                   repeat('a', 64), repeat('b', 64), repeat('c', 64),
+                   '7.0.0', '0.28.0', 1, repeat('d', 64), 'quickjs-test',
+                   '[]'::jsonb, '[]'::jsonb, $3) returning id`,
+          [tenantId, functionId, authorId],
+        )
+      ).id
+      await db.query(
+        `insert into assessment_formula_share_scopes (tenant_id, version_id, org_node_id, shared_by)
+         values ($1, $2, $3, $4)`,
+        [tenantId, versionId, collegeId, authorId],
+      )
+
+      // the unit is dissolved: the offer it carried goes with it, and the
+      // publication does not move
+      await db.query(`delete from org_nodes where id = $1`, [collegeId])
+      const afterNode = await db.query<{ count: string }>(
+        `select count(*)::text as count from assessment_formula_share_scopes`,
+      )
+      expect(afterNode.rows[0]?.count).toBe('0')
+      const version = await db.query<{ id: string }>(
+        `select id from assessment_formula_versions where id = $1`,
+        [versionId],
+      )
+      expect(version.rows).toHaveLength(1)
+
+      // and the whole graph still leaves with its tenant
+      await db.query(`delete from tenants where id = $1`, [tenantId])
+      for (const table of [
+        'assessment_formula_functions',
+        'assessment_formula_versions',
+        'assessment_formula_share_scopes',
+      ]) {
+        const left = await db.query<{ count: string }>(
+          `select count(*)::text as count from ${table} where tenant_id = $1`,
+          [tenantId],
+        )
+        expect({ table, count: left.rows[0]?.count }).toEqual({ table, count: '0' })
+      }
     } finally {
       await db.dispose()
     }
