@@ -74,6 +74,8 @@ cordis.gen.yml
 apps/web/.qualy/
 # sandbox process sockets and runtime scratch, owned by the sandbox apps
 .qualy/run/
+# the benchmark's own assembly, dataset record and run summaries
+.qualy/benchmarks/
 
 # attachments the local storage provider keeps when this machine is the
 # deployment (its default root, ./data/storage; QUALY_STORAGE_LOCAL_ROOT moves

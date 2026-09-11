@@ -3712,6 +3712,8 @@ Sandbox process CPU
 runtime timeouts
 ```
 
+**落地记录（2026-09-11，Phase 7.6 步骤 4）**：harness 在 `tools/benchmarks/formula-provisional-scoring.ts`（`pnpm benchmark:formula-scoring`），手工执行、不进 CI。它写一份只翻 formula `authoring: true` 的基准 manifest（`.qualy/benchmarks/qualy.yml`，config 不进 resolutionHash，staged 资产照用），在 `qualy_benchmark` 库上 deploy + seed，经真实 api 发布 formula、建轮次与题（每题独立 published FormulaVersion，`declaration` 行政题、`reviewPolicy: none`），以 SQL 镜像行政记录写集批量落下 approved 认定，并以 `qualy assessment audit-scoring` clean 作为数据集有效性门；然后 spawn 真 production entry（`apps/server/src/run.ts production`，`QUALY_CONFIG` 指向基准 manifest），从外部以 100 名学生逐个请求 `GET /me/result`。矩阵：1/5/10/50 个 Formula Item × 100 approved = 100/500/1000/5000；`--control` 另跑 10 个 `fixed@1` 题作 Core/DB 固定成本；`--soak N` 用同一 harness 做 boot → ready → 一轮 → SIGTERM → exit 0 的重复。指标来源：p50/p95 客户端计时；Sandbox invokes 与 timeouts 取宿主导出的 `qualy.assessment.scoring.evaluation{operation=result}`（OTLP http/json 推到 driver 的 receiver）；**FormulaVersion DB queries 以 `pg_stat_user_tables.idx_scan(assessment_formula_versions)` 差分为零配置 proxy**（不是 SQL 查询计数；理论值 `expected prepares = requests × items` 另记）；SQL/req 取 `db.client.operation.duration` count；server RSS/CPU 取 `ps`；Sandbox CPU 取容器 cgroup `cpu.stat`。baseline 见 STATUS。
+
 ---
 
 # 11.7 优化顺序
