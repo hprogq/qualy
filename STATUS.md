@@ -13042,3 +13042,40 @@ harness 本笔:`--node-args` 把 `--max-old-space-size` / `--trace-gc` / `--heap
 **待裁决的修法(未动生产代码)**:在 `@qualy/value-schema` 内把缓存改为两级——身份 `WeakMap`(请求内热路径不变)未命中时,按 `canonicalizeInputSchema / canonicalizeAtomicSchema` 的语义体字符串(与 hash 同源;`canonical.ts` 已裁定「语义体相等 ⇔ 接纳同一集合」,annotation 本就不参与校验)查 `Map<string, ValidateFunction>`,内容首次出现才编译;增长从 ∝ 流量变为 ∝ 出现过的不同 schema 数(题 × 修订),每个约 15 KB,Ajv 侧同样只保留每种内容一份。承重:三个新建的同构、带 pattern 的 normalized 对象只让 `compilePattern` 被调用一次;差分:去掉内容级 Map → 3 次 → 红。替代方案「跨请求 plan 缓存」改的是 assessment 的读取语义,且不补 value-schema 自身的契约缺口,不推荐。
 
 **门禁(实际执行,harness 笔)**:`pnpm typecheck` exit 0;`pnpm test` 206 文件中 1 失败——`apps/server/tests/effect-api.test.ts > is reachable through a client built from the definition alone` 的 teardown 在 `scope-close` 30 s 后 `db-dispose` 再 30 s(7.2 起挂账的间歇性卡死,与本笔零交集),单跑 5/5 绿;这次门禁脚本的 grep 把它本该点名的 `still releasing:` 行过滤掉了,是记录失误,脚本已改为全量留档、只在屏幕上摘要;`pnpm test:browser` 44 文件 306 全过;`pnpm build` 通过、99 文件预压缩。
+
+### 步骤 4 续三:`b7b3bd14` fix(value-schema): compile one validator per schema meaning, in bounded generations(CI 见下)
+
+用户裁决(在上一段的诊断之上加强一档):不只加语义 Map,**`WeakMap<object, semanticKey>` + 有界 generation + generation 自有的 Ajv**——外层 Map 的 LRU/delete 释放不了 Ajv 强持有的编译产物,只有整代替换 Ajv 实例才让 `_cache` 与 codegen scope 一起成为 GC 候选;并且修完必须重建 post-fix baseline 再裁 §11.7 #2,因为原 baseline 每题 5.8 ms server CPU 里有相当一部分就是每次评估两次 Ajv compile。
+
+- **实现**(`packages/core/value-schema/src/validate.ts`):`identityKeys: WeakMap<object, string>` 只记 schema 的语义键(`input:` / `atomic:` 前缀 + `canonicalizeInputSchema / canonicalizeAtomicSchema` 的语义体,与 hash 同源);`generation = { ajv, validators: Map<string, ValidateFunction> }`,命中直接返回;未命中且当前代已满 `MAX_VALIDATORS_PER_GENERATION = 256` 则整代替换(新 `build()` 的 Ajv + 空 Map),再在当前代编译。WeakMap 不再缓存 validator,所以存活的 normalized 对象不会把旧代拖住。
+- **承重**(`tests/validate.test.ts`,node 2 条):①三个新建、语义相同的 pattern schema 对象只 compile 一次,choice 的顺序 / 标签 / title / description / i18n 变体共用同一 validator,input 契约的 `x-qualy-order` 变体亦然,不同 pattern 各自 compile 且互不代答(spy `Ajv2020.prototype.compile`);②600 个不同语义各 compile 恰好一次,`build()` 至少发生两次(spy `addFormat`,每代两次),第一个语义随旧代离开后再校验会重新 compile,最后一个仍在当前代不再 compile。既有「compiles each pattern once and never crosses instances」继续通过。
+- **差分**(摘除 → 承重 → 精确复原):绕过语义命中 → 2 红(3 objects 3 compiles;旧语义不再命中);去掉轮换 → 1 红(`build()` 0 次、旧语义不重编);复原 → 10/10 绿。
+- **有界性实证**(scratch 脚本,`node --expose-gc`,修复后):同义新对象 20000 次评估 GC 后堆 **9.5 → 11.3 → 11.3 → 11.3 → 11.3 MiB**(修前 9.4 → 300.4);同一对象 11.1 MiB 持平;**3000 个不同语义依次出现(跨 11 代轮换)12.7 → 12.9 MiB 平台**,没有线性上升。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 206 文件 1426 通过(含新增 2 条)、17 跳过,teardown 卡死本次未复现;`pnpm test:browser` 44 文件 306 通过;`pnpm build` 通过、99 文件预压缩。
+
+#### post-fix baseline(main @ `b7b3bd14`,同一台开发机、同一沙箱容器 `f870e0070394`、同一数据集,`--rounds 2 --concurrency 1 --control`;括号内为修前 `b6643a2d` 的数字)
+
+| cell                  | items | p50 ms(r1 / r2)              | p95 ms(r1 / r2)              | max ms | sql/req | fv.idx_scan/轮 | server RSS max | server CPU s/轮          | sandbox CPU s/轮 |
+| --------------------- | ----- | ---------------------------- | ---------------------------- | ------ | ------- | -------------- | -------------- | ------------------------ | ---------------- |
+| 1                     | 1     | 29.9 / 28.3(35.2 / 32.1)     | 40.9 / 37.6(45.1 / 43.4)     | 43.6   | 11 / 10 | 97 / 74        | 400 MiB(403)   | 1.4 / 1.2(2.0 / 1.7)     | 0.39 / 0.36      |
+| 5                     | 5     | 100.8 / 101.0(107.6 / 105.0) | 110.1 / 112.0(118.4 / 118.4) | 123.1  | 14      | 504 / 447      | 411 MiB(465)   | 2.5 / 2.3(4.4 / 4.3)     | 1.80 / 1.82      |
+| 10                    | 10    | 172.5 / 173.7(180.7 / 179.7) | 187.1 / 188.4(191.7 / 189.4) | 204.1  | 19      | 1024 / 998     | 459 MiB(664)   | 2.9 / 3.8(6.8 / 7.1)     | 3.60 / 3.58      |
+| 50                    | 50    | 776.3 / 777.1(772.5 / 771.7) | 784.5 / 783.7(786.3 / 780.4) | 792.8  | 59      | 5006 / 5018    | 572 MiB(1136)  | 13.3 / 12.8(28.4 / 30.4) | 17.05 / 17.05    |
+| control(fixed@1 × 10) | 10    | 39.6 / 39.6(31.1 / 38.1)     | 43.6 / 43.9(41.9 / 43.9)     | 47.2   | 9       | 0              | 572 MiB        | 1.4 / 1.3(1.6 / 1.4)     | 0.01             |
+
+各轮 5xx 0、mismatched 0、invokes == 100·N、execution/unavailable 0、soft/hard 0,`holds` 全 yes;boot `http listening` 1887 ms,shutdown 32 ms,exit 0。跑前数据集审计(4 in flight)命中 **2 次 soft** 超时(harness 按 phase 放行、报告不掩盖)。
+
+- **server CPU 减半以上**:50 题档每轮 28.4–30.4 s → **12.8–13.3 s**(每次评估 ≈ 5.8 → **≈ 2.6 ms CPU**);10 题档 6.8–7.1 → 2.9–3.8 s。原 baseline 那句「每题 5.8 ms server CPU = resolve + sha256」不成立,其中一半以上是每次评估两次 Ajv compile。
+- **RSS 不再爬升**:整个矩阵 396 → 572 MiB(修前 403 → 1136 MiB),50 题档两轮 567 / 572 MiB 持平。
+- **延迟几乎不变**:p50 在 1/5/10 题档各降 3–7 ms,50 题档 772 → 777 ms(噪声内);p95 同。斜率仍 **≈ 15.2 ms / Formula Item**((777 − 29) / 49)。也就是说每题 15 ms 里 server CPU 只占 2.6 ms、sandbox CPU 3.4 ms,**其余 ≈ 9 ms 是串行等待**(每题一次 SQL 往返 + 一次 RPC 往返,`for` 串行)。修复把 CPU 与内存从瓶颈里拿掉了,但没有碰这条串行链——这正是 §11.7 #2 面对的量。
+
+**审计 ×5(post-fix,`EVALUATION_CONCURRENCY = 4` 不变,每次 7600 次评估)**:soft **1 / 3 / 2 / 4 / 0**(10 / 38000 ≈ 0.026%,修前同条件 5 / 38000 ≈ 0.013%),hard 全 0,每次 19–20 s;两次 benchmark 跑前的数据集审计另计 2 与 3 次 soft。**server 侧 CPU 减半没有让 soft 超时减少**——它不是宿主 CPU 竞争,而是沙箱容器内 1 CPU / 2 worker 的 wall-clock 调度,与上一段的归类一致。
+
+**RSS(`--cells 50 --rounds 5 --no-telemetry`,25000 次评估)**:server RSS max 逐轮 **501 → 503 → 504 → 506 → 561 MiB**(修前 784 → 1821 MiB),p50 774–777 ms 全程持平,server CPU 12.4–15.2 s/轮,零超时,shutdown 40 ms exit 0。泄漏已消除;剩余的 +60 MiB 在 V8 堆的正常波动范围,不再记为问题。
+
+**§11.7 #2 的裁决数据(由用户定)**
+
+- 用户设定的「修完直接不做并发」条件(10 题明显低于 ~180 ms、50 题进入可接受范围)**未满足**:10 题 173 ms、50 题 777 ms,延迟与修前同。
+- 每题 15 ms 的新构成:server CPU 2.6 + sandbox CPU 3.4 + **串行等待 ≈ 9 ms**。请求内 2 路有界并发能重叠的是等待与 server 侧工作,sandbox CPU 在 1 核上不可并行(下界 ≈ 3.4 ms × N):50 题的理论下界约 300 ms,2 路并发的现实预期约 450–500 ms;只有做了才知道。
+- 风险仍是 soft 超时:请求内并发就是审计那种「同一 prepared calculator 紧密循环」的形态,而紧密循环 4 in flight 至今稳定出现 0.01–0.03% 的 soft 超时;请求级 c=2 的 30000 次零超时不能直接外推到请求内 2 路。**按既定裁决树,先解决 soft 校准(1 CPU / 2 worker 的调度关系、25 ms 是否过紧),再做 #2**;#2 的实现约束照旧(先定 active items、每 item prepare exactly once、再对 evaluation 有界并发)。
+- 若产品上 50 个 Formula Item 的结果页 777 ms 可接受,#2 可以不做;10 题 173 ms 已在可接受范围。
