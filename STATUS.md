@@ -12927,3 +12927,53 @@ CI         success(run 34572203371,headSha 6f13e536)
 ### 移交:步骤 4
 
 benchmark 100/500/1000/5000 + 按 §11.7 顺序优化 + teardown soak;仓库目前没有任何 benchmark harness(搜到的 bench 全是 workbench)。
+
+### 步骤 4:formula provisional scoring benchmark(`4c13094f` harness,baseline 记于本节)
+
+用户裁决:主矩阵只用 `formula@1` + 真 published FormulaVersion + 真 sandbox 容器,公式是便宜、确定性的 PASSTHROUGH;1/5/10/50 个 Formula Item × 100 approved = 100/500/1000/5000,每题独立 published version;`fixed@1` 只作 control;harness 在 `tools/benchmarks/`,独立 driver spawn 真 production server、从外部发真实 result 请求,手工执行不进 CI,同一 harness 做 teardown soak;**先出完整 baseline,再谈优化,优化严格按 §11.7 顺序**。
+
+#### harness(`4c13094f` feat(tools): benchmark formula provisional scoring against the production server,CI success,run 34590751938)
+
+`pnpm benchmark:formula-scoring [--cells 1,5,10,50] [--rounds 2] [--concurrency 1] [--warmup 1] [--control] [--reseed] [--soak N]`。四个文件:`formula-provisional-scoring.ts`(矩阵/采样/报告/JSON)、`support/pg.ts`(**唯一**连库文件,登记进 `test-layers` 的 `SCRIPTS_MAY_CONNECT`:建/删 `qualy_benchmark` 库、批量写数据集、读 `pg_stat_*`)、`support/server.ts`(基准 manifest、spawn/ready/stop、JSON 日志解析、OTLP receiver、`ps`/cgroup 采样、分位数)、`support/dataset.ts`(HTTP 客户端、播种、审计门)。不引 Effect、不引 vitest;typecheck 与 `ports`/`test-layers` 门禁覆盖。
+
+- **基准 manifest**:`.qualy/benchmarks/qualy.yml`(gitignored)= 仓库 manifest 只改三处(`workspace: ../../apps/server`、database `migrationsFolder: ../../db/migrations`、formula `authoring: true`),`resolve --yml` 写同目录 lock;config 不进 resolutionHash,所以 `pnpm build` 的 staged 资产照用(driver 先比对 `.qualy-assembly.json`)。server 以 `QUALY_CONFIG` 指向它、`DATABASE_URL` 指向基准库、继承环境里删掉 `QUALY_MIGRATIONS`/`NODE_ENV`,其余与 `pnpm start` 完全一致。仓库 `qualy.yml` 一字不动。
+- **dataset**(`.qualy/benchmarks/dataset.json` 是权威 fingerprint:version/recipe/formula/resolutionHash/students/cells,复用条件还要四档 batch 在库、每档 100 参评人、N 个 active 题、100·N approved,以及审计无数据类缺陷;任一不成立提示 `--reseed`):`ensureDatabase` → `qualy deploy --yml` → `pnpm seed`(admin `benchmark-admin-password`)→ SQL 建 `benchmark-student` 类型、100 学生(租户根节点)、100 session → HTTP 逐个 create/PATCH/publish 66 个函数(发布按 fingerprint 幂等,N 个版本要 N 个函数;版本 id 只能 SQL 取)→ 每档 `POST /assessment/batches`(**createBatch 的 roster import 是唯一的参评人来源**,读回并 assert 恰好 100)→ phases(entry 带 `assessment.entry.record`)→ score-groups → N 个 `declaration` 行政题绑各自版本(`reviewPolicy: none`)→ activate → recognition-contract → **SQL 镜像行政记录写集**(entries → entry_revisions → entry_recognitions → update approved,canonical 值 `"3"`)→ schedule `now+3s`;学生 0 的 result 页 `total`(`3.00/15.00/30.00/150.00`)与 `lines.length` 校验;`qualy assessment audit-scoring --tenant` 作数据门(只拦 refused/unreadable/unprepared/integrity/invariant,execution/unavailable 计入报告)。首跑含播种 5 分 38 秒;复用跑 5 分 26 秒(其中审计 7600 次评估约 25 秒)。
+- **测量**:OTLP receiver 先于 server 启动(`http/json`,export 间隔 1s,traces 与 metrics 都导出——Effect 的 Otlp 层不认 `OTEL_TRACES_EXPORTER=none`);warmup 后等两次完整 export 取 before,跑完等两次再取 after;不变量自检:invokes == requests × items、5xx == 0、execution/unavailable == 0、`total` 一致,违背则 exit 1(首跑正是这样抓到 harness 自己的口径问题:before 快照取在 warmup 计数器导出之前,cell 1 第 1 轮记了 101/100,已修)。指标来源:客户端计时;`qualy.assessment.scoring.evaluation{operation=result}` 各 outcome;`db.client.operation.duration` count;`http.server.request.duration{route}`;`pg_stat_user_tables.idx_scan`(**index scan 计数,作为零配置环境下 FormulaVersion resolve/query 的 proxy,不是 SQL 查询计数**)与 `pg_stat_database.xact_commit`;`ps -o rss=,cputime=`;容器 cgroup `cpu.stat`。
+
+#### baseline(main @ `b6643a2d` 代码,M-series Mac 开发机,沙箱容器 `cpus: 1` / 2 workers,`--rounds 2 --concurrency 1 --control`;两次完整矩阵数字一致,下表取第二次)
+
+| cell                  | items | 请求数/轮 | p50 ms(r1 / r2) | p95 ms(r1 / r2) | max ms | invokes/轮   | exec | sql/req | fv.idx_scan/轮 | server RSS max | server CPU s/轮 | sandbox CPU s/轮 |
+| --------------------- | ----- | --------- | --------------- | --------------- | ------ | ------------ | ---- | ------- | -------------- | -------------- | --------------- | ---------------- |
+| 1                     | 1     | 100       | 35.2 / 32.1     | 45.1 / 43.4     | 53.8   | 100          | 0    | 11 / 10 | 87 / 104       | 403 MiB        | 2.0 / 1.7       | 0.41 / 0.38      |
+| 5                     | 5     | 100       | 107.6 / 105.0   | 118.4 / 118.4   | 124.8  | 500          | 0    | 14      | 475 / 505      | 465 MiB        | 4.4 / 4.3       | 1.85 / 1.84      |
+| 10                    | 10    | 100       | 180.7 / 179.7   | 191.7 / 189.4   | 197.2  | 1000         | 0    | 19      | 962 / 1008     | 664 MiB        | 6.8 / 7.1       | 3.62 / 3.54      |
+| 50                    | 50    | 100       | 772.5 / 771.7   | 786.3 / 780.4   | 828.5  | 5000         | 0    | 59      | 5006 / 5028    | 1136 MiB       | 28.4 / 30.4     | 17.30 / 17.22    |
+| control(fixed@1 × 10) | 10    | 100       | 31.1 / 38.1     | 41.9 / 43.9     | 51.1   | 1000(无沙箱) | 0    | 9       | 0              | —              | 1.6 / 1.4       | 0.01             |
+
+- **斜率**:p50 从 33 ms(1 题)到 772 ms(50 题),**≈ 15.1 ms / Formula Item**;p95 同样 ≈ 15.1 ms / item(44 → 783)。截距 ≈ 18 ms(1 题 33 ms − 15 ms),与 control 的 31–38 ms(10 个 fixed 题、无沙箱)一起说明:**Core/DB 固定成本约 20–30 ms,每个 Formula Item 线性再加 15 ms**。服务端 http 直方图的均值与客户端 mean 只差 ≈2 ms(driver 开销)。
+- **每题 15 ms 的构成**(50 题档,每轮 5000 次评估):server CPU 28–30 s → **≈ 5.8 ms CPU / 评估**;sandbox CPU 17.2–17.6 s → **≈ 3.5 ms CPU / 评估**;其余是往返等待。sql/req = 9 + N 与 `xact_commit` ≈ 6 + N 精确对应「每题一次 `FormulaRuntimeStore.resolve`(一条 `assessment_formula_versions` 查询 + 重算 runtime_js 的 sha256)」;`fv.idx_scan` ≈ 100·N 与理论值 `expected prepares = requests × items` 相符(相差 ±5%,是 pg 统计收集器的时序抖动)。题目在 `getMyResult` 里是**串行 `for`** 评估,所以 50 题的延迟就是 50 × 单题成本。
+- **runtime timeouts**:矩阵各轮(串行请求)execution/unavailable 全为 0。审计以并发 4 打同一沙箱做 7600 次评估时,四次运行分别出现 **0 / 3 / 2 / 2** 次 `SandboxTimeout`(execution,≈0.03%),全部在 passthrough 公式上。pool 的 hard watchdog 在请求 post 给 worker 时才起算(排队不计,`sandbox-engine/src/pool.ts:135-140`),所以这是 1 CPU 容器上 2 个 worker 与主机侧同时争抢 CPU 时的 wall-clock 超时(soft 25 ms / hard 100 ms);soft 与 hard 在 `formula-calculator.ts:233-242` 合并成同一 `execution`,分不开。**这是 §11.7 #2「有界并发」必须先面对的事实**:并发上限不只由主机决定,还受 `QUALY_SANDBOX_POOL_SIZE`(默认 2)与容器 `cpus` 约束。
+- **boot / shutdown / soak**:`http listening` 922–1933 ms(两次冷启动差一倍,未深究);SIGTERM 到 exit 0 为 25–52 ms;`--soak 5`:5/5 exit 0,shutdown 28–35 ms,最慢 finalizer 是 `@qualy/plugin-assessment` 2–5 ms,无 `still releasing`。teardown 挂死在 benchmark 期间未复现。
+- **RSS**:server RSS max 随档位从 ~400 MiB 升到 ~1.1 GiB,且在 control 档不回落。本次测量 traces + metrics 都在导出(每请求 59 条 db span + 50 条 RpcClient span),RSS 上升到底来自 trace 缓冲还是计分路径未分离,**只记观察,不下结论,也不在步骤 4 处理**。
+
+#### §11.7 裁决
+
+- **#1 request-local plan cache:已存在。** `getMyResult` 对同一请求内的同一题只 `prepare` 一次、多条 entry 复用(`scoring/service.ts:318-340`,注释「The cache is request-local」)。本矩阵每题独立 plan/version,`planHash` 去重无额外收益 → **记为「现状已覆盖主要重复-entry 成本,本矩阵无理由再改」,不造 cross-request `PreparedCalculator` cache**。若将来数据证明每请求重复 `FormulaRuntimeStore.resolve()` 是主要成本,对应的是 #3 的 bounded LRU,不是改 #1 的语义。
+- **是否进入 #2 bounded Sandbox parallelism:由用户裁决。** 数据摆在这里:每个 Formula Item 线性 15 ms,其中 server 侧 CPU 5.8 ms、sandbox CPU 3.5 ms;并发只能重叠往返与 sandbox 那一半,server 侧每题的 resolve + sha256 不会因并发变少;而沙箱是 1 CPU / 2 worker,4 路并发已经出现 0.03% 的超时。一个只有 10 个 Formula Item 的真实轮次今天是 ~180 ms p50 / ~190 ms p95。
+
+#### 门禁(实际执行)
+
+```text
+typecheck  exit 0
+node       Test Files 206 passed | 3 skipped   Tests 1424 passed | 17 skipped
+browser    Test Files 44 passed               Tests 306 passed
+build      ✓ built  staged 99 file(s)
+tools/tests/test-layers + ports  15 passed(单文件豁免;引用路径存在)
+benchmark  两次完整矩阵 exit 0(全部不变量成立);--soak 5 exit 0
+```
+
+#### 已知边界
+
+- 沙箱进程零可观测:invokes/timeouts 全由宿主导出的计数器计;soft/hard 分不开。
+- `pnpm sandbox:up` 与 `pnpm build` 是前置,driver 只检查不代做;`qualy_benchmark` 库与 `.qualy/benchmarks/` 由 driver 持有,`--reseed` 重建。
+- 审计门以并发 4 跑真沙箱,它自己就是一次 7600 评估的压测,其超时计数随报告一起给出,不拦测量。
