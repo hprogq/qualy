@@ -1,5 +1,6 @@
 import { Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
+import { Cli } from '@qualy/plugin-kit/cli'
 import { Api } from '@qualy/api-kit/plugin'
 import { Db } from '@qualy/plugin-database/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
@@ -76,6 +77,15 @@ const plugin = Plugin.define(
   ...builtinAggregators.map((aggregator) => Scoring.aggregator(aggregator)),
   Access.permissions('assessment', permissions),
   Audit.actions('assessment', assessmentActions),
+  // the audit of what stands, run by an operator over the assembled services
+  // and never by the serving process; its module loads only when invoked
+  Cli.command({
+    namespace: 'assessment',
+    name: 'audit-scoring',
+    summary: 'evaluate every standing determination and derived grant under its current plan',
+    context: 'runtime',
+    load: () => import('./cli/audit-scoring.ts'),
+  }),
   Ui.i18n('./client/i18n.ts'),
   // the sidebar section this domain owns; its pages file under it by id
   // This plugin's own arithmetic takes a seat in the chooser like anybody

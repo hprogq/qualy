@@ -315,7 +315,7 @@ export const probeGrantTest: CalculatorRegistration = {
   ref: 'probe-grant-test@1',
   configSchema: Schema.Struct({
     amount: Schema.String,
-    fails: Schema.optional(Schema.Literals(['refusal', 'execution', 'unavailable'])),
+    fails: Schema.optional(Schema.Literals(['refusal', 'execution', 'unavailable', 'integrity'])),
   }),
   bind: Effect.succeed({
     ref: 'probe-grant-test@1',
@@ -337,7 +337,7 @@ export const probeGrantTest: CalculatorRegistration = {
         evaluate: () => {
           const config = frozen.config as {
             amount: string
-            fails?: 'refusal' | 'execution' | 'unavailable'
+            fails?: 'refusal' | 'execution' | 'unavailable' | 'integrity'
           }
           return config.fails === undefined
             ? Effect.succeed(config.amount)

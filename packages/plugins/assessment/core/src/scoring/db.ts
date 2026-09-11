@@ -30,6 +30,67 @@ export const participantRowByUser = (tenantId: string, batchId: string, userId: 
       ),
     )
 
+/** a question the audit evaluates: active, configured, with the round it belongs to */
+export interface AuditableItem {
+  id: string
+  tenantId: string
+  batchId: string
+  itemType: string
+  currentRevisionId: string
+  batchStatus: string
+}
+
+/**
+ * Every question anybody can be scored by, across tenants, a page at a time.
+ *
+ * The audit acts as the system rather than for a principal, so this read is
+ * deliberately not tenant-scoped unless asked to be; an archived round still
+ * reads its results, so its questions are still here. The keyset is the
+ * item's own uuidv7 primary key, which is what makes one global walk sound.
+ */
+export const auditableItems = (page: {
+  readonly after?: string
+  readonly tenantId?: string
+  readonly batchId?: string
+  readonly limit: number
+}) =>
+  db
+    .query((k) => {
+      let query = k
+        .selectFrom('AssessmentItem as i')
+        .innerJoin('AssessmentBatch as b', (join) =>
+          join.onRef('b.tenantId', '=', 'i.tenantId').onRef('b.id', '=', 'i.batchId'),
+        )
+        .select([
+          'i.id as id',
+          'i.tenantId as tenantId',
+          'i.batchId as batchId',
+          'i.itemType as itemType',
+          'i.currentRevisionId as currentRevisionId',
+          'b.status as batchStatus',
+        ])
+        .where('i.status', '=', 'active')
+        .where('i.currentRevisionId', 'is not', null)
+        .orderBy('i.id')
+        .limit(page.limit)
+      if (page.after !== undefined) query = query.where('i.id', '>', page.after)
+      if (page.tenantId !== undefined) query = query.where('i.tenantId', '=', page.tenantId)
+      if (page.batchId !== undefined) query = query.where('i.batchId', '=', page.batchId)
+      return query.execute()
+    })
+    .pipe(
+      Effect.map((rows): AuditableItem[] =>
+        rows.map((row) => ({
+          id: row.id,
+          tenantId: row.tenantId,
+          batchId: row.batchId,
+          itemType: row.itemType,
+          currentRevisionId: String(row.currentRevisionId),
+          batchStatus: String(row.batchStatus),
+        })),
+      ),
+    )
+
 export interface ScoredEntryRow {
   id: string
   itemId: string

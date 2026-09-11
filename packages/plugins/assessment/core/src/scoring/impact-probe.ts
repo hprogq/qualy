@@ -45,13 +45,13 @@ export interface ScoringTrial {
 type Verdict = 'same' | 'changed' | 'refused' | 'execution'
 
 /**
- * How many determinations are tried at once.
+ * How many determinations are evaluated at once, here and in the audit.
  *
  * Bounded rather than unbounded because the arithmetic behind a stored
  * program is one shared sandbox; four keeps a large question moving
  * without turning a save into a burst against it.
  */
-const TRIAL_CONCURRENCY = 4
+export const EVALUATION_CONCURRENCY = 4
 
 /**
  * The candidate's own failures, sorted for the trial.
@@ -137,7 +137,7 @@ export const trialScoringImpact = (
       (row) => tryOne(row.recognition),
       // each row is a round trip to whatever runs the arithmetic; a
       // question with thousands of determinations must not open thousands
-      { concurrency: TRIAL_CONCURRENCY },
+      { concurrency: EVALUATION_CONCURRENCY },
     )
     const count = (verdict: Verdict) => verdicts.filter((one) => one === verdict).length
     const derived = trial.derived ? yield* tryOne({}) : null
