@@ -12874,3 +12874,56 @@ CI         success(run 34572203371,headSha 6f13e536)
 ### 移交:步骤 3
 
 `qualy assessment audit-scoring`:runtime 档 CLI 的最小基础设施 + 只读扫描(tenant → batch → current ItemRevision → effective Recognition → prepare 每 plan 一次 → evaluate),输出 items/plans/recognitions 与 accepted/refused/executionFailed/unavailable/integrityFailed/invariantFailed;`refusal`/`execution` 是历史违约,`integrity`/`invariant` fail closed,`unavailable` 可重试且不污染违约统计。兼容性诊断文案归步骤 5(`ItemConfigEditor.tsx` 目前原样打印 `path: reason`,本笔的新码也会这样出现)。
+
+### 步骤 3:existing-state auditor 与 `runtime` 档 CLI(`b7f61aea` + `388a9cf5`)
+
+两笔代码。用户开工前钉死的四条不可变边界全部承重:runtime CLI 真 headless 且 migrations 强制 off(显式 `apply` 拒绝);不跑 server boot hook;审计含 derived item;unavailable 不算违约但不放行。
+
+#### 笔 1 `b7f61aea` feat(cli): add the runtime tier for commands that need services(CI success,run 34583801010)
+
+- **seam 拆成两片,不新增两个 core 包之间的依赖**:`loadAssembly` 原样从 `apps/server/src/assembly.ts` 搬到 `@qualy/assembly/runtime`(server 与 CLI 共用;`@qualy/assembly` 只为 `Layer.mergeAll` 加 `effect` 依赖,根入口与 `./host` 仍不加载 Effect);`@qualy/api-kit/headless` 提供 `headlessHost`(只为让 assemble 不拒 afterServices 贡献的 sink)与 `headlessGraph`(`runtime` provideMerge `services` provideMerge `prepared`,再 merge `readinessLayer`、`assembledLayer`、各插件 `configs`,最底下 `ConfigProvider.fromEnv` 的快照里 **`QUALY_MIGRATIONS` 钉成 `off`**;永不触碰 `above`,永不组合 `assembledBarrier`)。没按用户原话把整段放进 `@qualy/assembly`:那会让 Vite 配置与全部门禁 import 的包声明 api-kit,而 headlessGraph 用不到 Resolution。
+- **契约**(`@qualy/plugin-kit/cli`):`context` 加 `'runtime'` 档,判别联合——runtime 命令的 `load` 解析为 `{ run: (ctx) => Effect<void, unknown, any> }`,命令模块交出 Effect 程序、**永不 `Effect.run*`**;`CliRefused` 是普通 Error 子类(不用 `Data.TaggedError`,因为 `resolve.ts` 每次 `qualy resolve` 都加载这个模块,resolve 至今不加载 Effect;strip-only Node 禁参数属性)。
+- **宿主**(`apps/cli/src/runtime.ts`,登记进 `test-layers` 的 `RUNS_EFFECTS`;`main.ts` 只多一个惰性 import 分支,保持零 Effect):环境显式 `QUALY_MIGRATIONS=apply` → 在 `load()` 与任何连接之前 stderr 拒绝、exit 1;`Layer.buildWithScope` 建图 → `Effect.exit(provideContext(program))` → 关 scope(插件 LIFO 释放、池最后);建图失败(`MigrationsBehind`、库不可达)以原有 crafted message 说、exit 1,不是 verdict code;`CliRefused` 带自己的 exit code;关停超时同 server(`QUALY_SHUTDOWN_TIMEOUT`,点名 `stillFinalizing()`)。logger 用 Effect 默认 logger,级别 `QUALY_LOG_LEVEL`(默认 Warn),没搬 server 的 pretty logger。
+- 实查记入:web 插件没有任何 `Plugin.layer`(Vite 归 dev supervisor,`Dev.service` 是 external),headless **不需要过滤任何插件**——`effect-api.test` 过滤 web 的注释已过时;sandbox 与 formula 的 RpcClient 层在建层后**立刻 fork 静默重连 fiber**(实测,socket 不存在时 ≤5s 重试、不致命、scope 关闭即停),代码注释里的「lazy open」只对 `layerNet` 成立;`AssessmentLive` / `DatabaseNotifications` 的 LISTEN 在 hook / 订阅时才建;rbac 未 mirror 时 `canAt` 一律 false → 审计不经 `Assessment` service。
+
+承重(`apps/server/tests/headless-runtime.test.ts` 2 条,真 resolution + scratch DB、不过滤 web;`descriptor-prototype` +1):env 含 `QUALY_MIGRATIONS: 'apply'` 仍观察到 `DatabaseConfig.migrations === 'off'`,context 里取得 `ScoringRuntimeCatalog`、`ItemTypeCatalog`(含 `constant`);`Assembled.hooks` 含 `rbac/permission-catalog`、`assessment/scoring-plans` 但 rbac 的 `permissions` 表计数 0(barrier 从未跑)、`net.Server.prototype.listen` 从未被调。差分:图里混入 `assembledBarrier` → 权限表 mirror 出 31 行,红;去掉钉死 → 观察到 `apply`,红。
+
+#### 笔 2 `388a9cf5` feat(assessment): audit standing determinations under their current plans(CI success,run 34584787329)
+
+- `qualy assessment audit-scoring [--tenant <id>] [--batch <id>]`(`core/src/cli/audit-scoring.ts`,惰性加载,登记进 `runtime-imports`;`Cli.command` 在 assessment 描述器;`qualy list` 自动列出)。审计本体 `scoring/audit.ts` `auditScoringState(filter)`:唯一新查询 `auditableItems`(active 且有 current revision 的题,inner join batch,**不按 batch status 过滤**,keyset 按 item uuidv7 全局翻页 200)→ 每题 `revisionOf` → `Effect.result(readScoringPlan)` → 先读行集(`liveEntryPayloads` 过滤 approved 且有 recognition,与 7.5 trial 的 `standing` 同源)→ `Effect.result(runtime.prepare)` 一次 → `Effect.forEach(evaluateRecognition, { concurrency: EVALUATION_CONCURRENCY })`(常数从 `impact-probe.ts` 导出,不另起数字)→ derived 题**不管有没有 Recognition** 都再评一次 `{}`。五类 kind + `unreadable` + `unprepared` 分账;verdict fail-closed(4)> violations(2)> inconclusive(3)> clean(0)。prepare 遇 unavailable 把该题全部认定计入 unavailable 并**继续下一题**(与 trial 遇 outage 整体中止不同:死沙箱不能把违约藏在后面)。不经 `failure-boundary.ts` 的映射器(它们对非 outage 一律 die),不计 telemetry(`countEvaluation` 标签集封闭、`boundedCounter` 会夹到别的标签),不写审计、不写领域历史。输出每条 failure 一行(`tenant/batch/item[/entry | (derived)] stage kind: reason`,只打 calculator 的话、永不打认定值)+ summary + `verdict: <v>`;非 clean → `CliRefused` 带 verdict 的 exit code。
+- 测试支持:`probeGrantTest.fails` 加 `'integrity'`;fixture 里「历史偏离规则」只能用 SQL 改 `entry_recognitions.values`——7.5 的门让任何 API 都造不出这种状态,这正是审计存在的理由;`brokenSha` 的 runtimeRef 在保存时就被 7.2 的 writer 守卫拒掉(`calculator-runtime-ref-invalid`),所以 fail-closed 用 SQL 破坏 stored plan(→ `unreadable`)与 derived 题的 integrity 两条真实路径承重。
+
+承重(`core/tests/scoring-audit.test.ts` 6 条真 PG;`tools/tests/runtime-cli.test.ts` 3 条 spawn 真 CLI):
+
+| 条             | 断言                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| counts exactly | 两道 probe 题 4 条认定(1 accepted;SQL 改成 7 refusal、9 execution、8 unavailable)+ derived 题 calculator 拒绝其 grant(零认定仍是违约)+ draft 题、voided 题不评 + 归档轮次一条 accepted → `items 4 / plans 4 / recognitions 5 / derivedGrants 1 / accepted 2 / refused 2 / executionFailed 1 / unavailable 1`,verdict violations、exit 2;failures 逐条对应 entry/kind,derived 行无 entryId;`JSON.stringify(report)` 不含认定值 |
+| inconclusive   | 只有 ordinal 8 → unavailable 1、违约 0、exit 3                                                                                                                                                                                                                                                                                                                                                                                |
+| fail-closed    | refusal + SQL 破坏 plan(unreadable 1,stage plan)+ derived integrity(integrityFailed 1)→ verdict fail-closed、exit 4                                                                                                                                                                                                                                                                                                           |
+| clean          | 1 accepted + 1 derived grant → exit 0、failures 空                                                                                                                                                                                                                                                                                                                                                                            |
+| --batch        | 两个轮次各一条,过滤只数一个                                                                                                                                                                                                                                                                                                                                                                                                   |
+| I3             | ordinal 6 卡住时:`pg_stat_activity` 中本库 `idle in transaction` 为 **0**,且另一事务 `updateItem` 3 秒内完成                                                                                                                                                                                                                                                                                                                  |
+| runtime-cli    | 空库 → exit 0、`verdict: clean`、`items: 0`;`QUALY_MIGRATIONS=apply` + 不可达 DB → exit 1、stderr 含 `pnpm qualy deploy`;`qualy list` 列出                                                                                                                                                                                                                                                                                    |
+
+差分(摘除 → 承重 → 精确复原):derived 只在有认定时评 → counts 红;unavailable 计入 refused → inconclusive 红;evaluate 遇 unavailable 抛出中止 sweep → counts 红;`auditItem` 整段包进 `transaction()` → I3 观察到 `idle in transaction` = 1,红;apply 拒绝挪到建图之后 → spawn 用例 stderr 变成 database 的「could not read the migration ledger」,红。
+
+#### 门禁(实际执行)
+
+```text
+笔 1  typecheck 0 / node 1415 passed | 17 skipped / browser 306 / build 0    CI success 34583801010
+笔 2  typecheck 0 / node 1424 passed | 17 skipped / browser 306 / build 0    CI success 34584787329
+手测(开发库,只读):qualy list 列出命令;qualy assessment audit-scoring →
+  items: 11  plans: 11  recognitions: 10  derived grants: 1  accepted: 11  verdict: clean(2.8s)
+  QUALY_MIGRATIONS=apply → 拒绝、exit 1、未连接数据库
+```
+
+#### 已知边界
+
+- 沙箱不在线 → formula 题 evaluate 报 unavailable → inconclusive,summary 提示 `pnpm sandbox:up`;建层时 sandbox/formula 的重连 fiber 静默运行,命令结束随 scope 中断。
+- 从未被 server boot 过的空 plan revision → `unreadable`(报告原话「backfill has not run」),处置是先启动一次 server 或 deploy。
+- runtime 命令经 `resolveCurrent` 拒绝 lock 漂移(比 dev server 严)。
+- Deployment B 流程(步骤 5):`pnpm qualy assessment audit-scoring` exit 0 → `authoring: true` → resolve → 提交 → 部署;审计结果不持久化。
+
+### 移交:步骤 4
+
+benchmark 100/500/1000/5000 + 按 §11.7 顺序优化 + teardown soak;仓库目前没有任何 benchmark harness(搜到的 bench 全是 workbench)。
