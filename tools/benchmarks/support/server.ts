@@ -121,6 +121,7 @@ export const sampleProcess = (pid: number): { rssBytes: number; cpuSeconds: numb
 export interface LogLine {
   readonly level: string
   readonly message: string
+  readonly annotations: Readonly<Record<string, unknown>>
   readonly raw: string
 }
 
@@ -184,10 +185,19 @@ export const startServer = (options: {
     for (const raw of parts) {
       if (raw.trim() === '') continue
       try {
-        const parsed = JSON.parse(raw) as { level?: string; message?: string }
-        lines.push({ level: parsed.level ?? '', message: parsed.message ?? '', raw })
+        const parsed = JSON.parse(raw) as {
+          level?: string
+          message?: string
+          annotations?: Record<string, unknown>
+        }
+        lines.push({
+          level: parsed.level ?? '',
+          message: parsed.message ?? '',
+          annotations: parsed.annotations ?? {},
+          raw,
+        })
       } catch {
-        lines.push({ level: '', message: raw, raw })
+        lines.push({ level: '', message: raw, annotations: {}, raw })
       }
     }
   }

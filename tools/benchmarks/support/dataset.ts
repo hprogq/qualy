@@ -443,7 +443,13 @@ export interface DatasetAudit {
   readonly exitCode: number | null
   readonly verdict: string
   readonly counts: Readonly<Record<string, number>>
-  /** the dataset itself is sound: nothing refused, unreadable, unprepared or broken */
+  /** the deadlines crossed, told apart by the failure's own words */
+  readonly timeouts: { readonly soft: number; readonly hard: number }
+  /**
+   * The dataset itself is sound: nothing refused, unreadable, unprepared or
+   * broken, and the only executions that failed are the ones a deadline
+   * ended. Anything else a formula did wrong is a defect of the dataset.
+   */
   readonly sound: boolean
   readonly output: string
 }
@@ -451,9 +457,10 @@ export interface DatasetAudit {
 /**
  * The audit over the dataset, as the gate on what was built - and, at the
  * same time, the first number of the benchmark: it evaluates every standing
- * determination four at a time through the same sandbox, so a runtime
- * timeout it meets is the runtime's behaviour under load, recorded and
- * reported, never a defect of the dataset.
+ * determination four at a time through the same sandbox, so a deadline it
+ * crosses is the runtime's behaviour under load, recorded and reported by
+ * phase, never a defect of the dataset. The goal remains a clean verdict;
+ * until the deadlines are calibrated the timeouts are counted, not hidden.
  */
 export const auditDataset = (databaseUrl: string, tenantId: string): DatasetAudit => {
   const { QUALY_MIGRATIONS: _migrations, ...inherited } = process.env
@@ -473,6 +480,10 @@ export const auditDataset = (databaseUrl: string, tenantId: string): DatasetAudi
     counts[match[1]!.trim()] = Number(match[2])
   }
   const verdict = /verdict: (\S+)/.exec(ran.stdout)?.[1] ?? 'unknown'
+  const timeouts = {
+    soft: (ran.stdout.match(/evaluate execution: .*soft deadline/g) ?? []).length,
+    hard: (ran.stdout.match(/evaluate execution: .*hard deadline/g) ?? []).length,
+  }
   const sound =
     ran.status !== null &&
     verdict !== 'unknown' &&
@@ -480,8 +491,10 @@ export const auditDataset = (databaseUrl: string, tenantId: string): DatasetAudi
     (counts['unreadable'] ?? 0) === 0 &&
     (counts['unprepared'] ?? 0) === 0 &&
     (counts['integrity failed'] ?? 0) === 0 &&
-    (counts['invariant failed'] ?? 0) === 0
-  return { exitCode: ran.status, verdict, counts, sound, output }
+    (counts['invariant failed'] ?? 0) === 0 &&
+    (counts['unavailable'] ?? 0) === 0 &&
+    (counts['execution failed'] ?? 0) === timeouts.soft + timeouts.hard
+  return { exitCode: ran.status, verdict, counts, timeouts, sound, output }
 }
 
 // --- the dataset, present or built ---------------------------------------------

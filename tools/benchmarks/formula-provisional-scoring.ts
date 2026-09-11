@@ -100,9 +100,28 @@ interface RoundResult {
   readonly pg: PgStats
   readonly process: { rssMaxBytes: number; cpuSeconds: number }
   readonly sandbox: { cpuSeconds: number | null }
+  /** deadlines crossed during the round, by phase, from the server's own log */
+  readonly timeouts: { soft: number; hard: number }
+  readonly wallMs: number
+  readonly requestsPerSecond: number
   readonly expected: { invokes: number; total: string }
   readonly holds: boolean
 }
+
+const timeoutsIn = (
+  lines: readonly { message: string; annotations: Readonly<Record<string, unknown>> }[],
+) =>
+  lines.reduce(
+    (total, line) => {
+      if (line.message !== 'scoring failed') return total
+      const reason = String(line.annotations['reason'] ?? '')
+      return {
+        soft: total.soft + (reason.includes('soft deadline') ? 1 : 0),
+        hard: total.hard + (reason.includes('hard deadline') ? 1 : 0),
+      }
+    },
+    { soft: 0, hard: 0 },
+  )
 
 interface CellResult {
   readonly name: string
@@ -258,6 +277,8 @@ const main = async () => {
           process: sampleProcess(server.pid),
         }
         let rssMax = before.process?.rssBytes ?? 0
+        const firstLine = server.lines.length
+        const startedAt = performance.now()
         const sampler = setInterval(() => {
           const sample = sampleProcess(server!.pid)
           if (sample && sample.rssBytes > rssMax) rssMax = sample.rssBytes
@@ -285,8 +306,10 @@ const main = async () => {
           concurrency,
         )
         clearInterval(sampler)
+        const wallMs = performance.now() - startedAt
         // two more exports after the last answer, so every counter has landed
         await receiver.awaitExports(2)
+        const timeouts = timeoutsIn(server.lines.slice(firstLine))
         const after = {
           otlp: receiver.latest(),
           pg: await pgStatSnapshot(db),
@@ -338,6 +361,9 @@ const main = async () => {
                 ? null
                 : after.sandbox - before.sandbox,
           },
+          timeouts,
+          wallMs,
+          requestsPerSecond: (students.length / wallMs) * 1000,
           expected: { invokes: expectedInvokes, total: expectedTotalString },
           holds:
             http5xx === 0 &&
@@ -349,7 +375,7 @@ const main = async () => {
         if (!result.holds) exitCode = 1
         roundResults.push(result)
         log(
-          `${name} round ${round}: p50 ${result.latencyMs.p50.toFixed(1)}ms p95 ${result.latencyMs.p95.toFixed(1)}ms invokes ${invokes}/${expectedInvokes}${result.holds ? '' : ' (INVARIANT BROKEN)'}`,
+          `${name} round ${round}: p50 ${result.latencyMs.p50.toFixed(1)}ms p95 ${result.latencyMs.p95.toFixed(1)}ms ${result.requestsPerSecond.toFixed(1)} req/s invokes ${invokes}/${expectedInvokes} timeouts soft ${timeouts.soft} hard ${timeouts.hard}${result.holds ? '' : ' (INVARIANT BROKEN)'}`,
         )
       }
       cellResults.push({
@@ -431,6 +457,7 @@ const main = async () => {
         ? null
         : {
             verdict: datasetAudit.verdict,
+            timeouts: datasetAudit.timeouts,
             exitCode: datasetAudit.exitCode,
             counts: datasetAudit.counts,
           },
@@ -446,13 +473,17 @@ const main = async () => {
     'items',
     'entries',
     'round',
+    'conc',
     'reqs',
     'p50ms',
     'p95ms',
     'maxms',
+    'req/s',
     '5xx',
     'invokes',
     'exec',
+    'soft',
+    'hard',
     'unavail',
     'sql/req',
     'fv.idx_scan',
@@ -467,13 +498,17 @@ const main = async () => {
       String(cell.items),
       String(cell.entries),
       String(round.round),
+      String(round.concurrency),
       String(round.requests),
       round.latencyMs.p50.toFixed(1),
       round.latencyMs.p95.toFixed(1),
       round.latencyMs.max.toFixed(1),
+      round.requestsPerSecond.toFixed(1),
       String(round.http5xx),
       `${OUTCOMES.reduce((total, outcome) => total + round.server.evaluation[outcome], 0)}/${round.expected.invokes}`,
       String(round.server.evaluation.execution),
+      String(round.timeouts.soft),
+      String(round.timeouts.hard),
       String(round.server.evaluation.unavailable),
       (round.server.dbOperations / round.requests).toFixed(1),
       String(round.pg.formulaVersionsIdxScan),
@@ -496,7 +531,7 @@ const main = async () => {
   for (const row of rows) console.log(line(row))
   if (datasetAudit) {
     console.log(
-      `audit (qualy assessment audit-scoring, 4 in flight): ${datasetAudit.verdict}; ${Object.entries(
+      `audit (qualy assessment audit-scoring, 4 in flight): ${datasetAudit.verdict}; timeouts soft ${datasetAudit.timeouts.soft} hard ${datasetAudit.timeouts.hard}; ${Object.entries(
         datasetAudit.counts,
       )
         .map(([key, value]) => `${key} ${value}`)
