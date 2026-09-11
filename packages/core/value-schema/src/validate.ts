@@ -29,6 +29,7 @@ import {
   type NormalizedAtomicSchema,
   type NormalizedInputSchema,
 } from './profile.ts'
+import { canonicalizeAtomicSchema, canonicalizeInputSchema } from './canonical.ts'
 import { compilePattern } from './regex.ts'
 
 export interface ValueIssue {
@@ -110,18 +111,63 @@ const build = (): Ajv2020 => {
   return ajv
 }
 
-let instance: Ajv2020 | undefined
-const compiled = new WeakMap<object, ValidateFunction>()
+/**
+ * One validator per MEANING, in generations of bounded size.
+ *
+ * ajv keeps everything it ever compiled: its schema cache is a strong Map,
+ * and its codegen scope appends every compiled schema and function to
+ * arrays the generated code closes over, so nothing an instance compiled is
+ * released while the instance lives. Callers hand this module a freshly
+ * decoded schema object per request (a plan is read from its row each
+ * time), so a cache keyed by identity compiled on every call and the
+ * process kept every one of them.
+ *
+ * So the identity map remembers only a schema's semantic key, and the
+ * validators live in a generation that owns its ajv instance: when a
+ * generation is full, the next new meaning starts another, and the old
+ * instance goes with its cache and scope. Deleting one entry could never
+ * release anything - the instance is the unit of release.
+ */
+const MAX_VALIDATORS_PER_GENERATION = 256
 
-// normalized-only on purpose: the cache below keys by object identity and
-// assumes the schema can never mutate afterwards, which is exactly what the
-// Normalized brand promises (frozen, produced by the normalize factories)
-const validatorFor = (schema: NormalizedAtomicSchema | NormalizedInputSchema): ValidateFunction => {
-  const known = compiled.get(schema)
+interface Generation {
+  readonly ajv: Ajv2020
+  readonly validators: Map<string, ValidateFunction>
+}
+
+const identityKeys = new WeakMap<object, string>()
+let generation: Generation | undefined
+
+// the semantic body is the identity: two schemas admit the same values
+// exactly when their canonical bytes agree (canonical.ts), and what it
+// strips - words, locales, labels, the order parameters are shown in - is
+// a no-op to validation, so one validator answers for all of them. The
+// prefix keeps an input body and an atomic body apart on its own.
+const semanticKey = (schema: NormalizedAtomicSchema | NormalizedInputSchema): string => {
+  const known = identityKeys.get(schema)
   if (known !== undefined) return known
-  instance ??= build()
-  const validator = instance.compile(schema as object)
-  compiled.set(schema, validator)
+  const key =
+    schema.type === 'object'
+      ? `input:${canonicalizeInputSchema(schema)}`
+      : `atomic:${canonicalizeAtomicSchema(schema)}`
+  identityKeys.set(schema, key)
+  return key
+}
+
+// normalized-only on purpose: the key above is remembered by object
+// identity and assumes the schema can never mutate afterwards, which is
+// exactly what the Normalized brand promises (frozen, produced by the
+// normalize factories)
+const validatorFor = (schema: NormalizedAtomicSchema | NormalizedInputSchema): ValidateFunction => {
+  const key = semanticKey(schema)
+  generation ??= { ajv: build(), validators: new Map() }
+  const hit = generation.validators.get(key)
+  if (hit !== undefined) return hit
+  if (generation.validators.size >= MAX_VALIDATORS_PER_GENERATION) {
+    generation = { ajv: build(), validators: new Map() }
+  }
+  const validator = generation.ajv.compile(schema as object)
+  generation.validators.set(key, validator)
   return validator
 }
 

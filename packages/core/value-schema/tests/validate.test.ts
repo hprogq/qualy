@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { Ajv2020 } from 'ajv/dist/2020.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parameterSchemaAt } from '../src/diagnose.ts'
 import {
   normalizeAtomicSchema,
@@ -129,5 +130,74 @@ describe('the frozen pattern engine inside ajv', () => {
     const issues = validateValue(tricky, bait)
     expect(performance.now() - began).toBeLessThan(200)
     expect(issues.map((issue) => issue.reason)).toEqual(['pattern'])
+  })
+})
+
+describe('one validator per meaning, in bounded generations', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('compiles once for every object that spells the same schema', () => {
+    const compile = vi.spyOn(Ajv2020.prototype, 'compile')
+    // three objects, one meaning: what a caller that decodes its plan per
+    // request hands over
+    const spelled = [1, 2, 3].map(() => atomic({ type: 'string', pattern: '^plate-[a-z]{3}$' }))
+    expect(spelled[0]).not.toBe(spelled[1])
+    expect(reasons(spelled[0]!, 'plate-abc')).toEqual([])
+    expect(reasons(spelled[1]!, 'plate-abc')).toEqual([])
+    expect(reasons(spelled[2]!, 'PLATE')).toEqual(['pattern'])
+    expect(compile).toHaveBeenCalledTimes(1)
+    // the people-facing layer never moves the meaning: words, locales,
+    // labels and the order choices are offered in
+    const choice = atomic({ type: 'string', enum: ['sea', 'sky'] })
+    const relabeled = atomic({
+      type: 'string',
+      enum: ['sky', 'sea'],
+      title: 'Where',
+      description: 'The element to report',
+      'x-qualy-enumLabels': { sea: 'Sea', sky: 'Sky' },
+      'x-qualy-i18n': { 'en-GB': { title: 'Whereabouts' } },
+    })
+    expect(reasons(choice, 'sea')).toEqual([])
+    expect(reasons(relabeled, 'sea')).toEqual([])
+    expect(reasons(relabeled, 'land')).toEqual(['enum'])
+    expect(compile).toHaveBeenCalledTimes(2)
+    // an input contract likewise, whatever order its parameters are shown in
+    const contract = (order: readonly string[]) =>
+      input({
+        type: 'object',
+        properties: { hours: { type: 'integer', minimum: 0, maximum: 24 }, where: choice },
+        required: ['hours', 'where'],
+        additionalProperties: false,
+        'x-qualy-order': order,
+      })
+    expect(reasons(contract(['hours', 'where']), { hours: 3, where: 'sea' })).toEqual([])
+    expect(reasons(contract(['where', 'hours']), { hours: 3, where: 'sea' })).toEqual([])
+    expect(reasons(contract(['where', 'hours']), { hours: 25, where: 'sea' })).toEqual(['maximum'])
+    expect(compile).toHaveBeenCalledTimes(3)
+    // a different meaning is a different validator, and neither answers for the other
+    const other = atomic({ type: 'string', pattern: '^plate-[0-9]{3}$' })
+    expect(reasons(other, 'plate-123')).toEqual([])
+    expect(reasons(other, 'plate-abc')).toEqual(['pattern'])
+    expect(reasons(spelled[0]!, 'plate-123')).toEqual(['pattern'])
+    expect(compile).toHaveBeenCalledTimes(4)
+  })
+
+  it('starts a fresh ajv when a generation is full, and lets the old one go', () => {
+    // build() registers two formats on every new instance: each pair is a generation
+    const built = vi.spyOn(Ajv2020.prototype, 'addFormat')
+    const compile = vi.spyOn(Ajv2020.prototype, 'compile')
+    // more meanings than two generations hold, each compiled exactly once
+    const meaning = (n: number) => atomic({ type: 'integer', minimum: 0, maximum: n })
+    for (let n = 1; n <= 600; n++) expect(reasons(meaning(n), 0)).toEqual([])
+    expect(compile).toHaveBeenCalledTimes(600)
+    expect(built.mock.calls.length / 2).toBeGreaterThanOrEqual(2)
+    // the first meaning went with its generation and compiles again in the
+    // current one; the last is still held
+    expect(reasons(meaning(1), 0)).toEqual([])
+    expect(compile).toHaveBeenCalledTimes(601)
+    expect(reasons(meaning(600), 0)).toEqual([])
+    expect(compile).toHaveBeenCalledTimes(601)
   })
 })
