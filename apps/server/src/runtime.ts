@@ -11,7 +11,7 @@ import { AssemblyInfo, assembledBarrier, assembledLayer } from '@qualy/api-kit/a
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { Plugin } from '@qualy/plugin-kit'
 import { lockFromResolution, type Resolution } from '@qualy/assembly'
-import { loadAssembly } from './assembly.ts'
+import { loadAssembly } from '@qualy/assembly/runtime'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
 import { accessLog } from './access-log.ts'
 import type { LoggingSettings } from './logging.ts'

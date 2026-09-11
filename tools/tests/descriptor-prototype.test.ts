@@ -173,4 +173,25 @@ describe('cli command collection', () => {
       collectCliCommands([Plugin.define('@fake/a', command('resolve', 'x'))], ['resolve']),
     ).toThrow(/claims cli namespace resolve, which is a core verb/)
   })
+
+  it('collects a runtime-tier command, whose implementation is a program', () => {
+    // the tier a command that needs services declares: its module hands the
+    // host an effect to run over the assembled runtime, and never runs one
+    const { commands } = collectCliCommands(
+      [
+        Plugin.define(
+          '@fake/a',
+          Cli.command({
+            namespace: 'assessment',
+            name: 'audit-scoring',
+            summary: 'x',
+            context: 'runtime',
+            load: () => Promise.resolve({ run: () => Effect.void }),
+          }),
+        ),
+      ],
+      ['resolve'],
+    )
+    expect(commands.get('assessment audit-scoring')?.command.context).toBe('runtime')
+  })
 })

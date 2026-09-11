@@ -21,7 +21,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
 import { readLock, lockPathFor, resolveAssembly } from '@qualy/assembly'
 import { clientFor } from '@qualy/web-runtime/api'
-import { loadAssembly } from '../src/assembly.ts'
+import { loadAssembly } from '@qualy/assembly/runtime'
 import { manifestPath } from '../src/manifest.ts'
 import { healthApi, healthHandlers } from '../src/health.ts'
 

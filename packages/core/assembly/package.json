@@ -8,11 +8,13 @@
   "exports": {
     ".": "./src/index.ts",
     "./testkit": "./src/testkit.ts",
-    "./host": "./src/host.ts"
+    "./host": "./src/host.ts",
+    "./runtime": "./src/runtime.ts"
   },
   "dependencies": {
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "effect": "catalog:",
     "yaml": "catalog:"
   }
 }

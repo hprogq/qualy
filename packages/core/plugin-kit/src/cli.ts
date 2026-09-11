@@ -1,3 +1,4 @@
+import type { Effect } from 'effect'
 import { ExtensionPoint, Plugin, type PluginDescriptor, type PluginFeature } from './index.ts'
 
 // Commands, as descriptor vocabulary (docs/plugin-descriptor-plan.md, M3a).
@@ -14,7 +15,7 @@ import { ExtensionPoint, Plugin, type PluginDescriptor, type PluginFeature } fro
 // in that graph; `load` is called when the command is invoked and never
 // before. oclif ships the same shape for the same reason.
 
-/** what a command receives; grows a `runtime` tier when a command needs services */
+/** what a command of the `assembly` or `capability` tier receives */
 export interface CliContext {
   /** whatever followed the command on the command line */
   readonly args: readonly string[]
@@ -26,7 +27,13 @@ export interface CliContext {
   readonly capability?: unknown
 }
 
-export interface CliCommandContribution {
+/** what a command of the `runtime` tier receives: its services arrive as context, not here */
+export interface RuntimeCliContext {
+  /** whatever followed the command on the command line */
+  readonly args: readonly string[]
+}
+
+interface CliCommandBase {
   /** the claimed namespace, e.g. 'database'; unique per assembly */
   readonly namespace: string
   /** short alternative spellings, e.g. ['db']; unique like the namespace */
@@ -34,14 +41,52 @@ export interface CliCommandContribution {
   readonly name: string
   /** one line for `qualy list` */
   readonly summary: string
-  /**
-   * What the command needs prepared: `assembly` is the resolution alone,
-   * `capability` adds the CapabilityWorkContext of this plugin's capability.
-   */
+}
+
+/**
+ * A command the host runs as a promise: `assembly` is the resolution alone,
+ * `capability` adds the CapabilityWorkContext of this plugin's capability.
+ */
+export interface HostedCliCommand extends CliCommandBase {
   readonly context: 'assembly' | 'capability'
   readonly load: () => Promise<{
     readonly run: (context: CliContext) => Promise<void>
   }>
+}
+
+/**
+ * A command that needs services.
+ *
+ * The host builds the assembly's service graph the way the server does -
+ * and unlike the server binds no port, runs no boot hook and applies no
+ * migration - then runs the ONE effect this module hands back over it, and
+ * closes the scope. The module never runs an effect itself: running belongs
+ * to the process edge, and this keeps a command's failure in the host's
+ * hands, where an exit code is decided.
+ */
+export interface RuntimeCliCommand extends CliCommandBase {
+  readonly context: 'runtime'
+  readonly load: () => Promise<{
+    readonly run: (context: RuntimeCliContext) => Effect.Effect<void, unknown, any>
+  }>
+}
+
+export type CliCommandContribution = HostedCliCommand | RuntimeCliCommand
+
+/**
+ * A command's own refusal, with the exit code it chose.
+ *
+ * A plain Error with plain fields: this module is imported by every
+ * `qualy resolve`, which never loads Effect, and strip-only node refuses a
+ * parameter property.
+ */
+export class CliRefused extends Error {
+  readonly _tag = 'CliRefused'
+  readonly exitCode: number
+  constructor(message: string, exitCode = 1) {
+    super(message)
+    this.exitCode = exitCode
+  }
 }
 
 /** every plugin's commands; interpreted by the CLI host, not by the assembler */

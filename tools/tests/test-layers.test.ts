@@ -305,6 +305,9 @@ describe('test layering', () => {
       // runs the plugin's own two effects and holds the scope open around
       // them, which is the whole of what it does.
       'apps/server/src/dev/service-runner.ts',
+      // the CLI's runtime edge: builds the headless assembly once, runs the
+      // one program a runtime-tier command handed it, and closes the scope
+      'apps/cli/src/runtime.ts',
       // the browser's single runtime: pages hand it effects rather than
       // running them, which is what carries E across into the query's TError
       // the browser's single runtime: pages hand it effects rather than

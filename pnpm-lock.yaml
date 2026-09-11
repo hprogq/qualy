@@ -267,12 +267,18 @@ importers:
 
   apps/cli:
     dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../packages/core/api-kit
       '@qualy/assembly':
         specifier: workspace:*
         version: link:../../packages/core/assembly
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../packages/core/plugin-kit
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
 
   apps/sandbox-authoring:
     dependencies:
@@ -402,6 +408,10 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
+    devDependencies:
+      kysely:
+        specifier: 'catalog:'
+        version: 0.29.5
 
   apps/web:
     dependencies:
@@ -609,6 +619,9 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../plugin-kit
+      effect:
+        specifier: 'catalog:'
+        version: 4.0.0-rc.111
       yaml:
         specifier: 'catalog:'
         version: 2.9.0

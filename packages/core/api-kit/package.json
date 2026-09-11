@@ -13,7 +13,8 @@
     "./node": "./src/node.ts",
     "./request": "./src/request.ts",
     "./assembled": "./src/assembled.ts",
-    "./plugin": "./src/plugin.ts"
+    "./plugin": "./src/plugin.ts",
+    "./headless": "./src/headless.ts"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",

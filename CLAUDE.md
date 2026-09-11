@@ -56,7 +56,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 - 类型账:插件侧零 cast,擦除集中在装配器与宿主 narrow;整装配的编译期闭合让位给 boot 校验(dev 每次启动即校验,CI 真启动 + 生产 smoke)。
 - 浏览器代码在 `src/client/`(自带 tsconfig,根工程与 plugin-isolation 门禁 exclude)。叶子子路径:`./db` `./permissions` `./api`(HttpApiGroup 契约,服务端实现与浏览器 typed client 共用的叶子)`./client/api`(本插件 `Api.local(...groups)` typed client)等,禁止 barrel。
 - contribution 声明源:provider 的 `contributionFromDescriptor(pluginId, descriptor, packageRoot)` 单源读描述器(同键的 package.json 声明硬拒);resolve **import 描述器**取运行时元数据(描述器是纯值,import 无副作用);能力扩展点带 `capability` 键,resolve 据此在写 lock 前拒绝「贡献了没人提供的能力」。
-- **CLI 命令**:名词优先两级——`qualy <lifecycle>`(resolve/plan/generate/deploy/list,保留字)+ `qualy <namespace> <command>`(插件经 `Cli.command` 声明,@qualy/plugin-kit/cli)。命名空间一次认领一个所有者,`aliases` 支持(`db`→`database`),实现惰性加载。context 档位:`assembly` / `capability`;`runtime` 档等第一个需要服务的命令出现再建。`qualy list` 列出全部。
+- **CLI 命令**:名词优先两级——`qualy <lifecycle>`(resolve/plan/generate/deploy/list,保留字)+ `qualy <namespace> <command>`(插件经 `Cli.command` 声明,@qualy/plugin-kit/cli)。命名空间一次认领一个所有者,`aliases` 支持(`db`→`database`),实现惰性加载。context 档位:`assembly` / `capability` / `runtime`。`runtime` 档(宿主 `apps/cli/src/runtime.ts`,seam `@qualy/assembly/runtime` + `@qualy/api-kit/headless`)= 解析 frozen resolution → 按 server 同一 assembly 建 prepared/services/runtime → **不起 HTTP、不跑 boot hook、migrations 强制 off(显式 `apply` 直接拒绝)** → 命令模块交出的 Effect 程序在 scoped runtime 上执行 → dispose;不是 job framework,不建 daemon。`qualy list` 列出全部。
 
 ## 角色与隔离
 
