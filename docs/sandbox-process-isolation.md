@@ -1211,7 +1211,7 @@ CPU 1
 
 具体数值用现有 benchmark 验证后调整。
 
-**校准记录（2026-09-11，Phase 7.6）**：QuickJS worker pool 必须与 CPU 配额对齐——`cpus: 1` 配 `QUALY_SANDBOX_POOL_SIZE=1`（代码默认 2 是给多核配额用的）。计分的 soft deadline 是 wall-clock（worker 里 `Date.now() + softDeadlineMs` 做 interrupt handler），两个 worker 共享一核时健康的 passthrough 公式也会被调度延迟打穿 25 ms（审计 7600 次评估、4 in flight，每次 1–4 次 soft 超时）；一核一 worker 后同一负载 0 超时，且吞吐不变（QuickJS 在一核上本就只能逐个执行）。deadline 本身没有动。数字见 STATUS。
+**校准记录（2026-09-11，Phase 7.6）**：QuickJS worker pool 必须与 CPU 配额对齐——`cpus: 1` 配 `QUALY_SANDBOX_POOL_SIZE=1`（代码默认 2 是给多核配额用的）。计分的 soft deadline 是 wall-clock（worker 里 `Date.now() + softDeadlineMs` 做 interrupt handler），两个 worker 共享一核时健康的 passthrough 公式也会被调度延迟打穿 25 ms（审计 7600 次评估、4 in flight，每次 1–4 次 soft 超时）；一核一 worker 后同一负载在宿主相对空闲时 0 超时，且吞吐不变（QuickJS 在一核上本就只能逐个执行）；但 25 ms 是 wall-clock 预算，起算点在 QuickJS runtime 创建之后、bootstrap 与 artifact 加载之前，对严重的宿主调度抖动仍有极低概率敏感（181,200 次 invocation 里出现 1 次，发生在宿主刚跑完整套测试的那一分钟）。pool = 2 是此前稳定假超时的主要原因；deadline 的最终取值由 Phase 7.6 的校准实验定，数字见 STATUS。
 
 ---
 

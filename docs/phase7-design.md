@@ -3716,6 +3716,8 @@ runtime timeouts
 
 **追记（2026-09-11，同日）**：第一份 baseline 暴露出 `@qualy/value-schema` 的 validator 缓存按对象身份键、而计分路径每请求解码新 plan，于是每次评估两次 Ajv compile 且被 Ajv 永久保留（1 GiB 老生代在 50 题 × 12 轮内耗尽）。`fix(value-schema)` 改为语义键 + 有界 generation（256 个语义一代，整代连同 Ajv 实例一起释放）。**修前的 baseline 是有效的故障基线，不再是 §11.7 优化决策的依据**；post-fix baseline 与 #2 的裁决见 STATUS。
 
+**校准定案（2026-09-12）**：runtime sandbox 的 worker pool 与 CPU 配额对齐（`cpus: 1` + `QUALY_SANDBOX_POOL_SIZE=1`，pool = 2 是此前稳定假超时的主因），scoring budget 定为 **soft 50 / hard 100 ms**（`FORMULA_SCORING_LIMITS`，本节 §11.7 之外唯一被 benchmark 移动的值；hard 上界不动）。依据：soft 是 worker 侧整个 envelope 的 wall-clock，25 ms 在 181,200 次 invocation 里被健康公式打穿一次；50 ms 在静默态与 load 25 的高负载窗口累计 181,200 次为 0/0。§11.7 #2 不做：pool 1 不改变串行延迟，10 题 ≈ 175 ms、50 题 ≈ 777 ms p50，无 SLO 要求下不为理论并行空间引入 scoring concurrency。数字见 STATUS。
+
 ---
 
 # 11.7 优化顺序

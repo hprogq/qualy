@@ -13116,3 +13116,30 @@ harness 本笔:`--node-args` 把 `--max-old-space-size` / `--trace-gc` / `--heap
 **提交版 compose 重建后的复核(容器 `a2d253b1a3ce`,`67fbe399`)**:四件套(typecheck 0;node 206 文件 1426 通过;browser 44/306;build 通过)在该容器上跑完的**同一分钟**内跑审计 ×2:**第 1 次 1 soft(violations)、第 2 次 clean**;随后机器静默态(load average 仍 14.6 → 10.7,是 macOS 的 mediaanalysisd / appstoreagent / WindowServer 在吃 CPU)审计 ×5 **全 clean 0 / 0 / 0 / 0 / 0**。候选配置累计:128,000 + 7 × 7,600 = **181,200 次 invocation,1 次 soft(≈ 0.0006%),0 hard**;pool 2 同负载是 0.013–0.026%。**证据能说的**:pool 与 CPU 对齐把假超时率压低了至少 20 倍,并在静默态归零;但 soft deadline 是 wall-clock,在开发机的 Docker VM 上、宿主刚跑完整套测试的那一刻仍能被打穿一次。**证据不能说的**:专用 CPU 的生产宿主上是否为零——没有测。
 
 **待裁决**:①接受残余(生产审计在空闲宿主上跑;25 ms 计分预算不动);②进 C 组(pool 1 + soft 50 / hard 100),用同样的 ≥ 100k 累计再证明一次归零。在此之前**步骤 4 不宣布关闭**;步骤 5(production smoke、compatibility diagnostics UX、writer 默认开启、最终 `audit-scoring` clean、STATUS / design CLOSED)等此裁决。
+
+### 步骤 4 CLOSED:C 组校准与计分预算定案(`7797ff19` fix(formula): widen the scoring soft deadline to 50ms)
+
+用户裁决:进 C 组(pool 1 + soft 50 / hard 100),是继续校准而非直接定案;判定规则冻结为——**50 ms 在静默态 ≥ 100k 为 0/0,且在"测试刚结束、高 load"窗口也为 0/0 → 批准 soft 25 → 50、关闭步骤 4;若高负载下仍偶发 soft → 保留 25、接受 documented residual、同样关闭步骤 4**;不做 D、不做 #2。B 组"25 ms 没问题"的结论收窄为:25 ms 在 CPU quota 与 worker 对齐、宿主相对空闲时稳定,pool = 2 是此前稳定假超时的主要原因,但 25 ms wall-clock 预算(起算点在 QuickJS runtime 创建之后、bootstrap 与 artifact 加载之前,`sandbox-engine/src/worker.ts:175-179`)对严重宿主调度抖动仍有极低概率敏感。
+
+**实验(零代码:`limits.ts` 本地改 50 跑完自动复原;pool 1 容器 `a2d253b1a3ce`;"高负载窗口" = 后台跑整套 `pnpm test` 期间持续审计,套件结束后立刻再审计 ×5,每次审计记 load average)**
+
+| 组                     | 负载                                              | invocations | soft | hard | load average(1 min)        |
+| ---------------------- | ------------------------------------------------- | ----------: | ---: | ---: | -------------------------- |
+| 25/100 对照,高负载窗口 | 套件期间审计 ×2 + 结束后 ×5                       |      53,200 |    0 |    0 | 10.9 → 15.3;12.0 → 6.3     |
+| 50/100 静默态          | 审计 ×5                                           |      38,000 |    0 |    0 | 5.9 → 4.7                  |
+| 50/100 静默态          | 全矩阵 `--rounds 2 --control`(含跑前审计、warmup) |      27,400 |    0 |    0 |                            |
+| 50/100 静默态          | `--cells 50 --rounds 10`(含跑前审计、warmup)      |      62,600 |    0 |    0 |                            |
+| 50/100 高负载窗口      | 套件期间审计 ×2 + 结束后 ×5                       |      53,200 |    0 |    0 | 8.4 → **25.2**;20.0 → 10.1 |
+| **50/100 合计**        |                                                   | **181,200** |    0 |    0 | 12 次审计全 clean          |
+
+两次 `pnpm test` 都是 1426 通过、exit 0。50/100 静默态基准与 25/100 逐档一致:1 题 35.8 / 27.4 ms、5 题 100.4 / 102.6、10 题 173.8 / 176.6、50 题 776.4 / 776.8 ms p50;50 题 × 10 轮 p50 774.6–777.7、p95 783.7–792.9 ms,RSS 635 → 655 MiB 持平,server CPU 11.0–14.2 s/轮,sandbox CPU 16.9–17.6 s/轮;boot 1.87–1.91 s,shutdown 31–32 ms,exit 0;各轮 `holds` yes。
+
+**判定**:C 的两个条件都成立(静默 128,000 为 0/0;高负载窗口 53,200 为 0/0,窗口内 load 达 25.2)→ 按规则批准 soft 25 → 50,hard 100 不动。**证据的边界必须写明**:同一轮的 25/100 高负载对照也是 0/0(53,200 次),即这次的负载窗口没有复现 B 组那 1 次失败;因此本轮证据能说的是"50 在等于或高于 B 组失败时的负载下全程为零",不能说"50 修好了 25 会失败的那个窗口"。50 的依据仍是三条:预算是 worker 侧整个 envelope 的 wall-clock;25 在 181,200 次里被健康公式打穿过一次;50 在所有测过的窗口为零且 hard 上界不变。
+
+- **实现**(`formula/src/scoring/limits.ts`):`softDeadlineMs: 50`,`hardDeadlineMs` 仍取 `DEFAULT_LIMITS`;头注释改写为校准依据。`artifact.test.ts` 的注释同步。
+- **承重**(`formula/tests/limits.test.ts`,node 2 条):soft = 50 = 沙箱默认的 2 倍、hard = 沙箱默认;artifactBytes = `MAX_COMPILED_ARTIFACT_BYTES`。既有 `envelope.test`(引用常量)、`formula-calculator.test`(真沙箱 `loop` → `soft deadline`)继续通过。
+- **差分**:soft 改回 `DEFAULT_LIMITS.softDeadlineMs` → 1 红;复原 → 11/11 绿。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 207 文件 1428 通过(含新增 2 条)、17 跳过;`pnpm test:browser` 44 文件 306 通过;`pnpm build` 通过、99 文件预压缩。prettier 只对三个改动文件执行。
+- **不动的东西**:代码默认 pool 2(多核配额用)、沙箱自身默认 25/100(`sandbox-rpc/protocol.ts`,`docs/assessment-design.md:760` 描述的正是这个引擎默认,仍然成立)、hard 100、§11.7 #2(不做)。
+
+**步骤 4 CLOSED。** 生产计分形态定为:runtime sandbox `cpus: 1` + `QUALY_SANDBOX_POOL_SIZE=1`,scoring budget soft 50 / hard 100;post-fix、post-calibration 的 baseline 是 10 题 ≈ 175 ms p50 / 190 ms p95、50 题 ≈ 777 ms p50 / 790 ms p95,server ≈ 2.6 ms CPU/评估,RSS 稳定。移交步骤 5(final acceptance):production smoke、compatibility diagnostics UX、writer 默认开启(`authoring: true` + resolve)、最终 `audit-scoring` clean(在空闲窗口执行)、STATUS / design 标 CLOSED。
