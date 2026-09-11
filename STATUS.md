@@ -13019,3 +13019,26 @@ benchmark  两次完整矩阵 exit 0(全部不变量成立);--soak 5 exit 0
 1. 超时根因归类为 **soft / 调度**:hard 从未出现。按裁决树进入「研究 1 CPU / 2 worker 的调度关系以及 25 ms 是否过紧」,`FORMULA_SCORING_LIMITS` 的注释本就把 deadline 留给 7.6 校准。两个可选的窄改动,由用户定:(a)审计/impact 的 `EVALUATION_CONCURRENCY` 4 → 2(与沙箱 pool 对齐,率降 4 倍但不归零);(b)把 soft deadline 从 25 ms 提到与容器形态相称的值(hard 100 ms 不动),再以审计 ×N 验证归零。
 2. **§11.7 #2**:请求级 c=2 的「零超时」条件成立(30000 次);「latency 实质下降」在请求级实验里不可能成立(它本来就是并发共享沙箱),真正的 intra-request 2 路并行能拿到的收益受 server 侧每题串行工作限制,只有做了才知道。按裁决树,超时未归零之前**不实现 #2**;先做 1 的校准。
 3. 实现 #2 时的既定约束照旧:先定 active items、每 item prepare exactly once、再对 evaluation 做有界并发;不能把 `getMyResult` 的 `for` 直接换成 `Effect.forEach(concurrency: 2)`(`prepared` 是普通 Map,依赖串行)。
+
+#### 步骤 4 续二:内存是保留,不是惰性增长(harness `d4d98c64` fix(tools): keep the benchmark alive when the server dies, and pass flags to its node)
+
+上一段把 RSS 增长记为「步骤 5 前必须回答的问题」。本段用两次有界检查回答:**是计分路径的保留,根因在 `@qualy/value-schema` 的 validator 缓存契约与 Ajv 的永久保留相遇**;生产代码未动,修法待裁决。
+
+harness 本笔:`--node-args` 把 `--max-old-space-size` / `--trace-gc` / `--heapsnapshot-*` 直接交给 server 的 node(`NODE_OPTIONS` 拒绝 `--trace-gc` 与 `--heapsnapshot-signal`,实测 exit 9);server 被信号带走时 `exited()` 报信号名而非 `null`;请求在 server 死亡时记 `unanswered`(此前 driver 自己 `fetch failed` 炸掉、证据随进程消失);轮末发现 server 已退出则打印其最后 8 行并中止;整份 server 日志写到 `<out>.server.log`。
+
+**有界检查一(`--cells 50 --rounds 20 --no-telemetry --node-args "--max-old-space-size=1024 --trace-gc"`)**:224 次 Mark-Compact 之后的老生代存活集 16.2(#1)→ 365.6(#25)→ 662.4(#50)→ 800.7(#75)→ 918.8(#100)→ 934.6(#125)→ 942.0(#150)→ 951.2(#175)→ 955.3(#200)→ 957.8 MB(#224),随后 `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory`,server 在第 12 轮(warmup 5000 + 11 整轮 55000 = 60000 次评估后)死亡;前 11 轮 p50 768–877 ms、零超时、`holds` 全 yes。**full GC 之后仍留下的存活集单调上升到堆上限**——保留。
+
+**有界检查二(堆快照,`--max-old-space-size=320 --heapsnapshot-near-heap-limit=1 --heapsnapshot-signal=SIGUSR2`)**:warmup 后空闲基线 111.3 MiB 与触顶快照 325.6 MiB 之差 214.3 MiB,按类型:`string` +108.4 MiB(+296,633 个)、`array:(object elements)` +23.9、`object:Object` +15.1(+356,653)、`object:ValueScopeName` +7.3(+136,564)、`code:ScopeInfo` +6.1、`hidden:PropertyArray` +5.8、`object:system/Context` +5.0(+109,530)、`closure` +4.4(+82,196)、`object:_Code` +4.2(+136,568)、`object:Name` +4.2(+136,564)、`object:SchemaEnv` +2.7 MiB(+27,316)。`SchemaEnv / ValueScopeName / _Code / Name / ScopeInfo` 只在 Ajv 编译 validator 时产生。
+
+**机制(源码实查)**:
+
+- `packages/core/value-schema/src/validate.ts` 的 `validatorFor` 用 `WeakMap` 按 schema **对象身份**缓存编译结果(注释原话:keys by object identity and assumes the schema can never mutate)。
+- 计分路径的每个 schema 都来自 `readScoringPlan(revision)` 对存储 JSON 的**每次解码**(`scoring/service.ts:133`、`entry/service.ts:910`、`review/service.ts:1051`、`item/service.ts:573`…):每请求每题一个新对象 → 跨请求永不命中 → 每次 `validateValue` 都走 `instance.compile()`。每次评估 2 次(`evaluate.ts:132/150` 的 input 与 output),录入/评审经 `judgeRecognition` 每个认定字段 1 次,公式自测亦然。
+- Ajv 8.20.0 的单例把每次编译**永久保留**:`dist/core.js:100/453` 的 `_cache` 是强引用 `Map`(按 schema 对象键);代码生成的 `ValueScope` 把 schema 与生成的 validate 函数追加进只增不减的数组(`dist/compile/codegen/scope.js:88-91`,`_scope[prefix][itemIndex] = value.ref`),生成函数经 `makeValidate(this, this.scope.get())`(`dist/compile/index.js:89-90`)闭包引用该 scope;`removeSchema` 只清 `_cache`,不清 scope。每次编译约 15 KB 永不释放。
+- 复现(scratch 脚本,`node --expose-gc`,同构 schema):每次评估新建 normalized 对象 → GC 后堆 9.4 → 84.3(5000 次)→ 156.3(10000)→ 227.2(15000)→ 300.4 MiB(20000);同一对象复用 → 11.0–11.1 MiB 全程持平。与 server 观测同量级(≈150 MB / 5000 次评估;真实 plan 的 schema 更大)。
+
+**影响面**:不是 benchmark 特有。结果页、审计/impact、录入与评审的认定校验、公式自测都在生产路径上泄漏,增长 ∝ 流量、无上界;1 GiB 老生代在 50 题 × 100 人 × 12 轮内耗尽。「RSS 只记账」升级为**步骤 5 前必须修**。
+
+**待裁决的修法(未动生产代码)**:在 `@qualy/value-schema` 内把缓存改为两级——身份 `WeakMap`(请求内热路径不变)未命中时,按 `canonicalizeInputSchema / canonicalizeAtomicSchema` 的语义体字符串(与 hash 同源;`canonical.ts` 已裁定「语义体相等 ⇔ 接纳同一集合」,annotation 本就不参与校验)查 `Map<string, ValidateFunction>`,内容首次出现才编译;增长从 ∝ 流量变为 ∝ 出现过的不同 schema 数(题 × 修订),每个约 15 KB,Ajv 侧同样只保留每种内容一份。承重:三个新建的同构、带 pattern 的 normalized 对象只让 `compilePattern` 被调用一次;差分:去掉内容级 Map → 3 次 → 红。替代方案「跨请求 plan 缓存」改的是 assessment 的读取语义,且不补 value-schema 自身的契约缺口,不推荐。
+
+**门禁(实际执行,harness 笔)**:`pnpm typecheck` exit 0;`pnpm test` 206 文件中 1 失败——`apps/server/tests/effect-api.test.ts > is reachable through a client built from the definition alone` 的 teardown 在 `scope-close` 30 s 后 `db-dispose` 再 30 s(7.2 起挂账的间歇性卡死,与本笔零交集),单跑 5/5 绿;这次门禁脚本的 grep 把它本该点名的 `still releasing:` 行过滤掉了,是记录失误,脚本已改为全量留档、只在屏幕上摘要;`pnpm test:browser` 44 文件 306 全过;`pnpm build` 通过、99 文件预压缩。
