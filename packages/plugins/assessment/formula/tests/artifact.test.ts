@@ -77,7 +77,7 @@ const invoke = async (artifact: string, entrypoint: string, args: readonly unkno
           artifactHash: createHash('sha256').update(artifact, 'utf8').digest('hex'),
           entrypoint,
           arguments: args as never,
-          // this suite EXPECTS completion; the 25ms scoring default is a
+          // this suite EXPECTS completion; the 50ms scoring soft deadline is a
           // design value, not a wait budget, and cold ci machines miss it
           limits: { softDeadlineMs: 5_000, hardDeadlineMs: 10_000 },
         }),
