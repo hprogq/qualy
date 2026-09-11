@@ -69,6 +69,9 @@ const port = numberOption('port', 3198)
 const otlpPort = numberOption('otlp-port', 43180)
 const control = flag('control')
 const reseed = flag('reseed')
+// with telemetry off the server exports nothing: invocations are then the
+// dataset's arithmetic rather than a counter, and the run says so
+const telemetry = !flag('no-telemetry')
 const out =
   option('out') ?? path.join(benchDir, `${new Date().toISOString().replaceAll(':', '-')}.json`)
 
@@ -216,7 +219,13 @@ const main = async () => {
   const receiver = await startOtlpReceiver(otlpPort)
   const db = await openDb(databaseUrl)
   const serve = (level: 'info' | 'debug') =>
-    startServer({ port, manifest, databaseUrl, otlpEndpoint: receiver.endpoint, level })
+    startServer({
+      port,
+      manifest,
+      databaseUrl,
+      otlpEndpoint: telemetry ? receiver.endpoint : null,
+      level,
+    })
 
   let server: RunningServer | undefined
   let exitCode = 0
@@ -269,7 +278,7 @@ const main = async () => {
         // two full exports after the warm-up: the export in flight when the
         // warm-up answered may still carry its counters, and the one after
         // it is the first that cannot
-        await receiver.awaitExports(2)
+        if (telemetry) await receiver.awaitExports(2)
         const before = {
           otlp: receiver.latest(),
           pg: await pgStatSnapshot(db),
@@ -308,7 +317,8 @@ const main = async () => {
         clearInterval(sampler)
         const wallMs = performance.now() - startedAt
         // two more exports after the last answer, so every counter has landed
-        await receiver.awaitExports(2)
+        if (telemetry) await receiver.awaitExports(2)
+        else await delay(2_500)
         const timeouts = timeoutsIn(server.lines.slice(firstLine))
         const after = {
           otlp: receiver.latest(),
@@ -368,9 +378,11 @@ const main = async () => {
           holds:
             http5xx === 0 &&
             mismatched === 0 &&
-            evaluation.execution === 0 &&
-            evaluation.unavailable === 0 &&
-            invokes === expectedInvokes,
+            timeouts.soft + timeouts.hard === 0 &&
+            (!telemetry ||
+              (evaluation.execution === 0 &&
+                evaluation.unavailable === 0 &&
+                invokes === expectedInvokes)),
         }
         if (!result.holds) exitCode = 1
         roundResults.push(result)
@@ -446,7 +458,7 @@ const main = async () => {
     startedAt: new Date().toISOString(),
     commit,
     node: process.version,
-    args: { cells, rounds, concurrency, warmup, control, soak, port },
+    args: { cells, rounds, concurrency, warmup, control, soak, port, telemetry },
     assembly: { manifest: path.relative(repoRoot, manifest), resolutionHash },
     server: { port, ...boot },
     sandbox,
@@ -505,12 +517,14 @@ const main = async () => {
       round.latencyMs.max.toFixed(1),
       round.requestsPerSecond.toFixed(1),
       String(round.http5xx),
-      `${OUTCOMES.reduce((total, outcome) => total + round.server.evaluation[outcome], 0)}/${round.expected.invokes}`,
-      String(round.server.evaluation.execution),
+      telemetry
+        ? `${OUTCOMES.reduce((total, outcome) => total + round.server.evaluation[outcome], 0)}/${round.expected.invokes}`
+        : `n/a/${round.expected.invokes}`,
+      telemetry ? String(round.server.evaluation.execution) : 'n/a',
       String(round.timeouts.soft),
       String(round.timeouts.hard),
-      String(round.server.evaluation.unavailable),
-      (round.server.dbOperations / round.requests).toFixed(1),
+      telemetry ? String(round.server.evaluation.unavailable) : 'n/a',
+      telemetry ? (round.server.dbOperations / round.requests).toFixed(1) : 'n/a',
       String(round.pg.formulaVersionsIdxScan),
       `${(round.process.rssMaxBytes / 1_048_576).toFixed(0)}MiB`,
       round.process.cpuSeconds.toFixed(1),

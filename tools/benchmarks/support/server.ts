@@ -150,7 +150,8 @@ export const startServer = (options: {
   readonly port: number
   readonly manifest: string
   readonly databaseUrl: string
-  readonly otlpEndpoint: string
+  /** null runs the server with telemetry off, to tell its cost apart */
+  readonly otlpEndpoint: string | null
   readonly level: 'info' | 'debug'
 }): RunningServer => {
   const { QUALY_MIGRATIONS: _migrations, NODE_ENV: _mode, ...inherited } = process.env
@@ -169,9 +170,13 @@ export const startServer = (options: {
         QUALY_ACCESS_LOG: 'off',
         QUALY_BOOT_TIMING: '1',
         QUALY_SHUTDOWN_TIMEOUT: '25',
-        OTEL_EXPORTER_OTLP_ENDPOINT: options.otlpEndpoint,
-        OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
-        OTEL_METRIC_EXPORT_INTERVAL: '1000',
+        ...(options.otlpEndpoint === null
+          ? {}
+          : {
+              OTEL_EXPORTER_OTLP_ENDPOINT: options.otlpEndpoint,
+              OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+              OTEL_METRIC_EXPORT_INTERVAL: '1000',
+            }),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
