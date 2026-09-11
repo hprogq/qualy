@@ -21,6 +21,8 @@ import {
 import { FORMULA_ABI_VERSION, SCORE_AMOUNT_SCHEMA } from '@qualy/formula'
 import { MAX_COMPILED_ARTIFACT_BYTES, SOURCE_LIMIT } from '@qualy/sandbox-rpc'
 import { FormulaAuthoring } from './authoring.ts'
+import { FormulaSettings } from './config.ts'
+import { bindingOptionsResponse } from './binding-options.ts'
 import {
   VALUE_SCHEMA_PROFILE_VERSION,
   assignmentPlan,
@@ -130,15 +132,6 @@ const templateDetailDto = (row: TemplateDetail) => ({
   tests: row.tests as unknown as FormulaTestInput[],
   inputSchema: row.inputSchema,
   outputSchema: row.outputSchema,
-})
-
-const bindingOptionDto = (version: BindableFormulaVersion) => ({
-  versionId: version.versionId,
-  functionId: version.functionId,
-  functionName: version.functionName,
-  versionNo: version.versionNo,
-  publishedAt: iso(version.publishedAt),
-  parameters: Object.keys(version.inputSchema.properties).sort(),
 })
 
 // word-level on purpose: the formula language is tiny, and "strictly typed
@@ -1389,6 +1382,7 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         const access = yield* AssessmentConfigurationAccess
         const authoring = yield* AssessmentScoringAuthoringAccess
         const catalog = yield* BindableFormulaCatalog
+        const settings = yield* FormulaSettings
         const tenantId = principal.tenantId
         // the actor gate first, and this plugin's own permission has no say
         // in it: who may bind a formula to a question is the round's
@@ -1410,6 +1404,17 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           bound.frozen.runtimeRef?.kind === FORMULA_RUNTIME_KIND
             ? bound.frozen.runtimeRef.id
             : null
+        const current =
+          boundVersionId === null
+            ? null
+            : yield* catalog.currentBinding(tenantId, boundVersionId, principal.userId)
+
+        // with the writer closed the catalog of what could be newly bound is
+        // never opened - not paged, not even cursor-read: the page is history
+        // only, and history has no cursor
+        if (!settings.authoring) {
+          return bindingOptionsResponse({ authoring: false, current, offered: null })
+        }
 
         const size = pageSize(query.limit, DEFAULT_PAGE_SIZE)
         const cursor = readQueryCursor(query.cursor, bindingFingerprint(params.batchId), [
@@ -1426,25 +1431,21 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
           limit: size,
           after,
         })
-        const current =
-          boundVersionId === null
-            ? null
-            : yield* catalog.currentBinding(tenantId, boundVersionId, principal.userId)
-        return {
-          items: page.items.map(bindingOptionDto),
-          nextCursor:
-            page.more && page.last !== null
-              ? encodeQueryCursor(bindingFingerprint(params.batchId), [
-                  page.last.functionName,
-                  String(page.last.versionNo),
-                  page.last.versionId,
-                ])
-              : null,
-          current:
-            current === null
-              ? null
-              : { ...bindingOptionDto(current.version), bindableForNew: current.bindableForNew },
-        }
+        return bindingOptionsResponse({
+          authoring: true,
+          current,
+          offered: {
+            items: page.items,
+            nextCursor:
+              page.more && page.last !== null
+                ? encodeQueryCursor(bindingFingerprint(params.batchId), [
+                    page.last.functionName,
+                    String(page.last.versionNo),
+                    page.last.versionId,
+                  ])
+                : null,
+          },
+        })
       }),
     )
     .handle(

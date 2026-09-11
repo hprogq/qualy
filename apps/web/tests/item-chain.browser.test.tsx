@@ -541,6 +541,19 @@ describe("what may do a question's arithmetic", () => {
     expect(page.getByRole('textbox', { name: '每条通过计分' }).elements()).toHaveLength(0)
   })
 
+  it('shows no chooser when the assembly offers one arithmetic, and keeps its editor', async () => {
+    // a deployment with the formula writer closed projects no option: the
+    // chooser has nothing to choose between and stays out of the way, while
+    // the arithmetic on offer edits its own configuration as before
+    open({
+      groups: [paper, { ...paper, id: SECTION_ID, parentGroupId: PAPER_ID, name: '文体' }],
+      items: [officerItem()],
+      question: ITEM_ID,
+    })
+    await expect.element(page.getByRole('textbox', { name: '每条通过计分' })).toBeVisible()
+    expect(page.getByRole('combobox', { name: '分值来源' }).elements()).toHaveLength(0)
+  })
+
   it('seats the formula picker for a question a formula scores, and only it', async () => {
     // the same slot, filled by whoever owns the reference: the built-in
     // editor renders nothing here, and the formula plugin's picker lists

@@ -47,6 +47,7 @@ import { formulaApiGroup } from '../src/api.ts'
 import { formulaApiHandlers, layer as formulaLayer } from '../src/server/index.ts'
 import { formulaLanguageLayer } from '../src/server/language.ts'
 import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
+import { FormulaSettings } from '../src/server/config.ts'
 import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
 import { scoringAuthoringAccessLayer } from '@qualy/plugin-assessment/server/scoring-authoring-access'
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
@@ -364,6 +365,8 @@ beforeAll(async () => {
     // stands is borne against the real placement in its own suite - so the
     // port is answered rather than assembled
     Layer.succeed(UserPlacement, { primaryNode: () => Effect.succeed(null) }),
+    // the binding-options handler reads the writer switch; nothing here asks it
+    Layer.succeed(FormulaSettings, FormulaSettings.of({ authoring: true })),
   ).pipe(Layer.provideMerge(services))
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(

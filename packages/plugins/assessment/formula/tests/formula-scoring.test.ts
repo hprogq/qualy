@@ -48,6 +48,7 @@ import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-st
 import { bindingCatalogLayer } from '../src/server/binding-catalog.ts'
 import { formula1 } from '../src/scoring/formula-calculator.ts'
 import { formulaAuthoringPolicy } from '../src/scoring/authoring-policy.ts'
+import { FormulaSettings } from '../src/server/config.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
 
 // The whole 7.3 protocol in one walk, against the REAL sandbox-runtime
@@ -100,7 +101,11 @@ const definitions: readonly ScoringDefinition[] = [
 const contributed = <T>(values: readonly T[]): readonly Contributed<T>[] =>
   values.map((value) => ({ pluginId: '@qualy/plugin-assessment-formula-tests', value }))
 
-const stack = (url: string, socketPath: string) => {
+const stack = (
+  url: string,
+  socketPath: string,
+  settings: { readonly authoring: boolean } = { authoring: true },
+) => {
   const services = servicesFor(url)
   const sandbox = sandboxLayer({ socketPath })
   const formulaServices = Layer.mergeAll(
@@ -123,6 +128,7 @@ const stack = (url: string, socketPath: string) => {
       contributed([formulaAuthoringPolicy]),
     ),
   ).pipe(
+    Layer.provide(Layer.succeed(FormulaSettings, FormulaSettings.of(settings))),
     Layer.provide(formulaServices),
     Layer.provide(sandbox),
     Layer.provide(catalogLayers),
@@ -620,6 +626,206 @@ describe.runIf(postgresAvailable)('formula scoring, end to end', () => {
     // a continuation is never re-asked: the question keeps working
     expect(outcome.renamed).toBe('公式题(改名)')
     expect(outcome.freshRefused).toEqual(['formula-not-yours'])
+  }, 120_000)
+
+  it('keeps a bound question working with the writer closed, and admits nothing new', async () => {
+    // Deployment A, on real data. A question bound while the writer was open
+    // goes on being read, scored and re-saved under the same exact version
+    // after the writer is closed - and nothing new is bound at any version,
+    // by a save or by a preview.
+    const administrative = (versionId: string, valueId?: string) => ({
+      ...boundConfig(versionId, valueId),
+      entrySource: 'administrative' as const,
+    })
+    const opened = ok(
+      await Effect.runPromiseExit(
+        Effect.provide(
+          Effect.gen(function* () {
+            const f = yield* seedFormulaFixture('fs-reader')
+            const library = yield* FormulaLibrary
+            const assessment = yield* Assessment
+            const mine = f.principal(f.authorA)
+            yield* runSql(sql`
+              insert into role_grants (tenant_id, user_id, role_id)
+              select ${f.t}, ${f.authorA}, id from roles
+              where tenant_id = ${f.t} and system_key = 'tenant-admin'`)
+            const v1 = yield* publishFormula(library, f.t, mine, PASSTHROUGH, '直通一')
+            const v2 = yield* publishFormula(library, f.t, mine, PASSTHROUGH, '直通二')
+            const { batchId, groupId } = yield* roundWithGroup(assessment, f, '只读部署轮次')
+            yield* assessment.replacePlan(
+              f.t,
+              batchId,
+              {
+                specs: [
+                  phase({ phaseKey: 'entry', permissionProfile: ['assessment.entry.record'] }),
+                  phase({ phaseKey: 'archive' }),
+                ],
+              },
+              mine,
+            )
+            const plan = yield* assessment.getPlan(f.t, batchId, mine)
+            yield* assessment.schedulePhase(f.t, batchId, plan[0]!.id, Date.now() + 3_600_000, mine)
+            yield* assessment.advancePhase(
+              f.t,
+              batchId,
+              { to: plan[0]!.id, force: true, reason: 'the round opens' },
+              mine,
+            )
+            const participant = one<{ id: string }>(
+              yield* runSql(sql`
+                select id from batch_participants
+                where batch_id = ${batchId} and user_id = ${f.bystander}`),
+            ).id
+            const item = yield* assessment.createItem(
+              f.t,
+              batchId,
+              {
+                itemType: 'plain',
+                title: '直通题',
+                scoreGroupId: groupId,
+                maxEntries: null,
+                config: administrative(v1.versionId),
+              },
+              mine,
+            )
+            yield* assessment.setItemStatus(f.t, item.id, { status: 'active' }, mine)
+            const stored = item.currentRevision!.scoringConfig as {
+              recognitions: Record<string, unknown>
+            }
+            const valueId = Object.keys(stored.recognitions)[0]!
+            yield* assessment.createEntry(
+              f.t,
+              {
+                itemId: item.id,
+                participantId: participant,
+                payload: {},
+                note: 'the register',
+                recognition: { values: { [valueId]: '3.00' } },
+              },
+              mine,
+            )
+            const student = f.principal(f.bystander)
+            const before = yield* assessment.getMyResult(f.t, batchId, student)
+            return {
+              t: f.t,
+              batchId,
+              groupId,
+              itemId: item.id,
+              valueId,
+              v1: v1.versionId,
+              v2: v2.versionId,
+              mine,
+              student,
+              before: before.total,
+            }
+          }),
+          stack(db.url, socketPath) as never,
+        ) as Effect.Effect<never, never>,
+      ),
+    ) as {
+      t: string
+      batchId: string
+      groupId: string
+      itemId: string
+      valueId: string
+      v1: string
+      v2: string
+      mine: Principal
+      student: Principal
+      before: string
+    }
+
+    type Issues = readonly { path: string; reason: string }[] | undefined
+    const issuesOf = (error: unknown): Issues => (error as { issues?: Issues }).issues
+    const closed = ok(
+      await Effect.runPromiseExit(
+        Effect.provide(
+          Effect.gen(function* () {
+            const assessment = yield* Assessment
+            const { t, batchId, groupId, itemId, valueId, v1, v2, mine, student } = opened
+            const calculator = (versionId: string) => ({
+              ref: 'formula@1',
+              config: { versionId },
+            })
+            // the same exact version, re-saved: a continuation, never re-asked
+            const renamed = yield* assessment.updateItem(
+              t,
+              itemId,
+              { title: '直通题(改名)', config: administrative(v1, valueId) },
+              mine,
+            )
+            const after = yield* assessment.getMyResult(t, batchId, student)
+            // a new question at a version the writer would have admitted
+            const fresh = yield* Effect.flip(
+              assessment.createItem(
+                t,
+                batchId,
+                {
+                  itemType: 'plain',
+                  title: '新公式题',
+                  scoreGroupId: groupId,
+                  maxEntries: null,
+                  config: administrative(v1),
+                },
+                mine,
+              ),
+            )
+            const previewedNew = yield* Effect.flip(
+              assessment.previewScoring(
+                t,
+                batchId,
+                { itemType: 'plain', formConfig: {}, calculator: calculator(v1) },
+                mine,
+              ),
+            )
+            const previewedSame = yield* Effect.exit(
+              assessment.previewScoring(
+                t,
+                batchId,
+                { itemType: 'plain', formConfig: {}, calculator: calculator(v1), itemId },
+                mine,
+              ),
+            )
+            const rebound = yield* Effect.flip(
+              assessment.updateItem(
+                t,
+                itemId,
+                { config: administrative(v2, valueId), reason: '换版本' },
+                mine,
+              ),
+            )
+            return {
+              renamed: renamed.title,
+              after: after.total,
+              fresh: issuesOf(fresh),
+              previewedNew: issuesOf(previewedNew),
+              previewedSame: Exit.isSuccess(previewedSame),
+              rebound: issuesOf(rebound),
+            }
+          }),
+          stack(db.url, socketPath, { authoring: false }) as never,
+        ) as Effect.Effect<never, never>,
+      ),
+    ) as {
+      renamed: string
+      after: string
+      fresh: Issues
+      previewedNew: Issues
+      previewedSame: boolean
+      rebound: Issues
+    }
+
+    expect(closed.renamed).toBe('直通题(改名)')
+    expect(closed.after).toBe(opened.before)
+    const disabled = [
+      { path: 'scoringConfig.calculator.config', reason: 'formula-authoring-disabled' },
+    ]
+    expect(closed.fresh).toEqual(disabled)
+    expect(closed.previewedNew).toEqual([
+      { path: 'calculator.config', reason: 'formula-authoring-disabled' },
+    ])
+    expect(closed.previewedSame).toBe(true)
+    expect(closed.rebound).toEqual(disabled)
   }, 120_000)
 
   it('executes an artifact larger than the sandbox default, because it was publishable', async () => {

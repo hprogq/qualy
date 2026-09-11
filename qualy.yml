@@ -42,4 +42,8 @@ plugins:
   '@qualy/plugin-assessment-evidence': {}
   '@qualy/plugin-audit': {}
   '@qualy/plugin-sandbox': {}
-  '@qualy/plugin-assessment-formula': {}
+  '@qualy/plugin-assessment-formula':
+    config:
+      # new formula bindings stay closed until the existing-state audit is
+      # green; flip to true, `pnpm qualy resolve`, commit the lock
+      authoring: false

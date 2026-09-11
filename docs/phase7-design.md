@@ -3618,6 +3618,8 @@ UI chunks可以存在但 writer disabled
 
 优先用 assembly/config 中已有模式，不增加临时 module global flag。
 
+**落地记录（2026-09-11，Phase 7.6 步骤 2）**：载体是 formula 插件的 manifest config，`'@qualy/plugin-assessment-formula': { config: { authoring: false } }`；**省略即 disabled**，没有环境变量或运行时覆盖，改值进 `manifestHash`、必须 `pnpm qualy resolve` 并提交 lock。`authoring` 只控制**把已发布 FormulaVersion 新绑到 assessment item**，不关闭 FormulaFunction 的创作、发布、共享、分叉，也不影响既有绑定的执行与结果读取。承重边界在 `formula@1.compile()` 的 NEW/CONTINUATION 分岔上：`decode → 校验 previous runtime kind → 判定 continuation → NEW && !authoring ⇒ refusal 'formula-authoring-disabled' → resolve → continuation integrity / NEW requireBindable`，gate 在 resolve 之前（关着时不存在的版本读作同一拒绝），continuation 永不经过 gate 且坏 sha 仍 `formula-continuation-corrupt`。save 与 preview 同走这条链（422 `ItemConfigInvalid`，路径分别为 `scoringConfig.calculator.config` / `calculator.config`）。UI 只做投影：chooser 的 formula 选项由 `server/authoring-surface.ts` 在插件建层时按 config 有条件注册进 `Ui.contribute`（scoped），编辑器 slot 保持静态声明，既有 formula 题照常渲染；binding-options 在关着时于 cursor 解析与 `listForBatch` 之前短路，只答 history（`items: []`、`current.bindableForNew: false`）。建层时打一行 `formula binding authoring enabled|disabled`——它只报告 writer rollout state，**不是**下节要求的 Deployment A capability report。
+
 ---
 
 # 11.3 Deployment A 验证
@@ -3654,6 +3656,8 @@ new node writes formula plan
 → old node receives result request
 → old node cannot execute
 ```
+
+**落地记录（2026-09-11）**：Deployment B = `qualy.yml` 把 `authoring` 改为 `true` → `pnpm qualy resolve` → 提交 lock → 部署；翻开关之前必须先跑 Phase 7.6 步骤 3 的 existing-state audit（`qualy assessment audit-scoring`）且全部 accepted——审计结果不持久化为任何 flag，上线时跑一次并立即完成 B。开关翻回 `false` 同样只影响新绑定。
 
 ---
 

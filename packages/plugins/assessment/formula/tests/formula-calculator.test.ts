@@ -21,6 +21,7 @@ import { FormulaLibrary, layer as formulaLayer } from '../src/server/index.ts'
 import { FormulaRuntimeStore, runtimeStoreLayer } from '../src/server/runtime-store.ts'
 import { BindableFormulaCatalog, bindingCatalogLayer } from '../src/server/binding-catalog.ts'
 import { formula1, formulaConfigSchema } from '../src/scoring/formula-calculator.ts'
+import { FormulaSettings } from '../src/server/config.ts'
 import { one, seedFormulaFixture, servicesFor } from './support/stack.ts'
 
 // formula@1 itself: the administrator's whole configuration is one exact
@@ -58,6 +59,9 @@ const ok = <A, E>(exit: Exit.Exit<A, E>): A => {
 const dyingSandbox = {
   invoke: () => Effect.die(new Error('the sandbox must not be touched on this path')),
 } as unknown as Sandbox['Service']
+
+/** the writer open, which every bearing about compile itself assumes */
+const authoringOn = Effect.provideService(FormulaSettings, FormulaSettings.of({ authoring: true }))
 
 const MOODY = `import { Schema, defineFormula } from '@qualy/formula'
 
@@ -155,7 +159,10 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
 
           // every compile in this test runs against a DYING sandbox: the
           // whole compile path never touches execution
-          const bound = yield* formula1.bind.pipe(Effect.provideService(Sandbox, dyingSandbox))
+          const bound = yield* formula1.bind.pipe(
+            Effect.provideService(Sandbox, dyingSandbox),
+            authoringOn,
+          )
           const host = { tenantId: f.t, batchId: batch }
 
           const fresh = yield* bound.compile({ versionId }, host)
@@ -230,6 +237,90 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
     expect(invalid.code).toBe('formula-config-invalid')
   }, 120_000)
 
+  it('holds a NEW binding behind the writer switch, and never a continuation', async () => {
+    // The rollout gate. While the manifest keeps the writer closed, no
+    // question can be newly pointed at a formula - not even one nobody
+    // could fault - and a question already bound keeps proving the same
+    // exact identity it always did. The gate answers before the version is
+    // looked up, so an unknown version reads the same way, and it never
+    // stands between a continuation and its integrity proof.
+    const outcome = ok(
+      await run(
+        db.url,
+        Effect.gen(function* () {
+          const f = yield* seedFormulaFixture('fc-gate')
+          const library = yield* FormulaLibrary
+          const as = f.principal(f.admin)
+          const batch = one<{ id: string }>(
+            yield* runSql(sql`
+              insert into assessment_batches (tenant_id, name, material_range)
+              values (${f.t}, 'Round', daterange('2026-03-01','2026-09-01'))
+              returning id`),
+          ).id
+          yield* runSql(sql`
+            insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
+            values (${f.t}, ${batch}, ${f.collegeA})`)
+          const created = yield* library.createFunction(
+            f.t,
+            { name: '心情分', description: '' },
+            as,
+          )
+          const drafted = yield* library.updateDraft(
+            f.t,
+            created.id,
+            {
+              expectedDraftRevision: created.draftRevision,
+              draftSourceTs: MOODY,
+              draftTests: [{ name: 'ok', input: { mode: 'ok', value: '3.00' }, expected: '3' }],
+            },
+            as,
+          )
+          yield* library.publish(f.t, created.id, drafted.draftRevision, as)
+          const versionId = one<{ id: string }>(
+            yield* runSql(
+              sql`select id from assessment_formula_versions where function_id = ${created.id}`,
+            ),
+          ).id
+          const bound = (authoring: boolean) =>
+            formula1.bind.pipe(
+              Effect.provideService(Sandbox, dyingSandbox),
+              Effect.provideService(FormulaSettings, FormulaSettings.of({ authoring })),
+            )
+          const open = yield* bound(true)
+          const closed = yield* bound(false)
+          const host = { tenantId: f.t, batchId: batch }
+          const fresh = yield* open.compile({ versionId }, host)
+          const reference = fresh.runtimeRef as RuntimeRef
+          const gated = yield* Effect.exit(closed.compile({ versionId }, host))
+          const unknownGated = yield* Effect.exit(
+            closed.compile({ versionId: '01920000-0000-7000-8000-0000000000aa' }, host),
+          )
+          const continued = yield* Effect.exit(
+            closed.compile({ versionId }, { ...host, previousRuntimeRef: reference }),
+          )
+          const corrupt = yield* Effect.exit(
+            closed.compile(
+              { versionId },
+              { ...host, previousRuntimeRef: { ...reference, sha256: 'a'.repeat(64) } },
+            ),
+          )
+          return { gated, unknownGated, continued, corrupt }
+        }),
+      ),
+    )
+    const refused = failureOf(outcome.gated) as CalculatorContractError
+    expect(refused.kind).toBe('refusal')
+    expect(refused.code).toBe('formula-authoring-disabled')
+    // before the lookup: with the writer closed there is nothing to look up
+    const unknown = failureOf(outcome.unknownGated) as CalculatorContractError
+    expect(unknown.code).toBe('formula-authoring-disabled')
+    // the same identity continues, and its integrity is still proven
+    expect(Exit.isSuccess(outcome.continued)).toBe(true)
+    const corrupted = failureOf(outcome.corrupt) as CalculatorContractError
+    expect(corrupted.kind).toBe('integrity')
+    expect(corrupted.code).toBe('formula-continuation-corrupt')
+  }, 120_000)
+
   it('holds a frozen plan to the whole published fact, without the sandbox', async () => {
     const outcome = ok(
       await run(
@@ -280,7 +371,10 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
             valueSchemaProfileVersion: resolved.valueSchemaProfileVersion,
             regexProfileVersion: resolved.regexProfileVersion,
           }
-          const bound = yield* formula1.bind.pipe(Effect.provideService(Sandbox, dyingSandbox))
+          const bound = yield* formula1.bind.pipe(
+            Effect.provideService(Sandbox, dyingSandbox),
+            authoringOn,
+          )
           const host = { tenantId: f.t, batchId: '01920000-0000-7000-8000-0000000000bb' }
 
           const verified = yield* Effect.exit(bound.verify(frozen, host))
@@ -385,7 +479,7 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
             valueSchemaProfileVersion: resolved.valueSchemaProfileVersion,
             regexProfileVersion: resolved.regexProfileVersion,
           }
-          const bound = yield* formula1.bind
+          const bound = yield* formula1.bind.pipe(authoringOn)
           const host = { tenantId: f.t, batchId: '01920000-0000-7000-8000-0000000000cc' }
           const prepared = yield* bound.prepare(frozen, host)
           const answered = yield* prepared.evaluate({ mode: 'ok', value: '7.50' })

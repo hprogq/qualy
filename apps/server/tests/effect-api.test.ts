@@ -15,6 +15,7 @@ import { DatabaseConfig } from '@qualy/plugin-database/server'
 import { AuthConfig } from '@qualy/plugin-auth/server/sign-in'
 import { DEFAULT_LIMITS, StorageConfig } from '@qualy/plugin-storage/server'
 import { LocalStorageConfig } from '@qualy/plugin-storage-local/config'
+import { FormulaSettings } from '@qualy/plugin-assessment-formula/config'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
@@ -208,6 +209,8 @@ const shell = (url: string) => {
           LocalStorageConfig,
           LocalStorageConfig.of({ root: path.join(tmpdir(), 'qualy-effect-api-storage') }),
         ),
+        // the formula writer stays closed here, as the committed manifest has it
+        Layer.succeed(FormulaSettings, FormulaSettings.of({ authoring: false })),
       ),
     ),
   ) as unknown as Layer.Layer<never>

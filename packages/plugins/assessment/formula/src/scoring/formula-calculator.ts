@@ -23,6 +23,7 @@
  */
 
 import { Effect, Schema } from 'effect'
+import { FormulaSettings } from '../server/config.ts'
 import {
   CalculatorContractError,
   CalculatorEvaluationError,
@@ -254,7 +255,7 @@ const evaluationFailure = (error: { readonly _tag: string }): CalculatorEvaluati
 }
 
 export const formula1: CalculatorRegistration<
-  FormulaRuntimeStore | BindableFormulaCatalog | Sandbox
+  FormulaRuntimeStore | BindableFormulaCatalog | Sandbox | FormulaSettings
 > = {
   kind: 'calculator',
   ref: REF,
@@ -263,6 +264,7 @@ export const formula1: CalculatorRegistration<
     const store = yield* FormulaRuntimeStore
     const bindable = yield* BindableFormulaCatalog
     const sandbox = yield* Sandbox
+    const settings = yield* FormulaSettings
 
     const compile = (
       config: unknown,
@@ -294,6 +296,20 @@ export const formula1: CalculatorRegistration<
           )
         }
         const continuation = previous !== undefined && previous.id === decoded.versionId
+        if (!continuation && !settings.authoring) {
+          // the rollout gate, and the first thing a NEW binding meets: with
+          // the writer closed there is nothing to look up, so a version that
+          // does not exist reads the same as one that does. A continuation
+          // never meets it - the question keeps the exact identity it has,
+          // and the integrity proof below is still the whole of its answer
+          return yield* Effect.fail(
+            contractRefusal(
+              'refusal',
+              'formula-authoring-disabled',
+              'formula authoring is disabled on this instance; a question already bound keeps running',
+            ),
+          )
+        }
         const resolved = yield* store
           .resolve({ tenantId: context.tenantId, versionId: decoded.versionId })
           .pipe(Effect.mapError((error) => compileResolutionFailure(error, continuation)))

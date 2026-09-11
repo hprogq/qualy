@@ -5,7 +5,7 @@ import { Access } from '@qualy/rbac-contract/plugin'
 import { Audit } from '@qualy/audit-contract/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { Scoring } from '@qualy/plugin-assessment/plugin'
-import { calculatorAuthoringOptions, calculatorEditorSlot } from '@qualy/plugin-assessment/surfaces'
+import { calculatorEditorSlot } from '@qualy/plugin-assessment/surfaces'
 import { APP_SHELL, permissionOf } from '@qualy/ui-contract'
 import { message } from '@qualy/i18n-contract'
 import { permissions } from './permissions.ts'
@@ -18,6 +18,8 @@ import { templateLibraryLayer } from './server/template-library.ts'
 import { formulaAuthoringLayer } from './server/authoring.ts'
 import { formulaLanguageLayer } from './server/language.ts'
 import { formulaLspQuotaLayer } from './server/lsp-bridge.ts'
+import { config } from './server/config.ts'
+import { formulaAuthoringSurfaceLayer } from './server/authoring-surface.ts'
 import { formula1 } from './scoring/formula-calculator.ts'
 import { formulaAuthoringPolicy } from './scoring/authoring-policy.ts'
 import { Layer } from 'effect'
@@ -41,6 +43,8 @@ const plugin = Plugin.define(
       '@qualy/plugin-sandbox',
       '@qualy/plugin-ui-registry',
     ],
+    // the writer switch, from the manifest: see ./server/config.ts
+    config,
   },
   Db.entities(entities, {
     compositeForeignKeys,
@@ -66,6 +70,9 @@ const plugin = Plugin.define(
       // the audience half: what a published version has been offered to,
       // which the private library above deliberately knows nothing about
       templateLibraryLayer,
+      // the chooser's option, offered only while the manifest opens the
+      // writer; the editor seat below stays declared whatever it says
+      formulaAuthoringSurfaceLayer,
     ),
   ),
   Api.group(formulaApiGroup, formulaApiHandlers),
@@ -115,23 +122,12 @@ const plugin = Plugin.define(
     title: message('assessment-formula/list/title', 'Scoring formulas'),
     visibility: permissionOf('assessment.formula.author'),
   }),
-  // this plugin's arithmetic, offered in the question editor's own chooser
-  // and editing its own configuration in the seat beside it. The component
+  // this plugin's arithmetic editing its own configuration in the seat
+  // beside the question editor's chooser; the chooser's option itself is
+  // offered at build time, by ./server/authoring-surface.ts. The component
   // stays internal: the registry builds its import from the reference here,
   // so a package export would only widen what neighbours can reach
   Ui.surfaces({
-    collections: [
-      {
-        key: calculatorAuthoringOptions.key,
-        id: 'assessment-formula/calculator',
-        value: {
-          ref: 'formula@1',
-          label: message('assessment-formula/binding/calculator', 'A published formula'),
-          order: 20,
-        },
-        visibility: permissionOf('assessment.batch.manage'),
-      },
-    ],
     slots: [
       {
         key: calculatorEditorSlot.key,

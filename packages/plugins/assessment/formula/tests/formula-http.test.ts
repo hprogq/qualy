@@ -35,6 +35,7 @@ import { hashSessionToken } from '../../../base/auth/src/session.ts'
 import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
 import { permissions as formulaPermissions } from '../src/permissions.ts'
+import { permissions as assessmentPermissions } from '@qualy/plugin-assessment/permissions'
 import { formulaActions } from '../src/actions.ts'
 import { entities as assessmentEntities } from '@qualy/plugin-assessment/db'
 import { entities as storageEntities } from '@qualy/plugin-storage/db'
@@ -48,6 +49,7 @@ import { templateLibraryLayer } from '../src/server/template-library.ts'
 import { UserPlacement } from '@qualy/auth-contract'
 import { formulaLanguageLayer } from '../src/server/language.ts'
 import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
+import { FormulaSettings } from '../src/server/config.ts'
 
 // The layer the service suite cannot see: the HttpApi wire itself. Every
 // request here is the byte-for-byte shape the browser client sends - method,
@@ -56,9 +58,14 @@ import { formulaLspQuotaLayer } from '../src/server/lsp-bridge.ts'
 
 const port = 3205
 const base = `http://127.0.0.1:${port}`
+// the same library served with the writer closed
+const closedPort = 3206
+const closedBase = `http://127.0.0.1:${closedPort}`
 
 const catalog: readonly ActivePermission[] = compileCatalog([
   { owner: 'rbac', permissions: rbacPermissions },
+  // the binding-options endpoint asks the ROUND's permission before its own
+  { owner: 'assessment', permissions: assessmentPermissions },
   { owner: 'assessment-formula', permissions: formulaPermissions },
 ])
 
@@ -166,23 +173,34 @@ beforeAll(async () => {
     // port is answered rather than assembled
     Layer.succeed(UserPlacement, { primaryNode: () => Effect.succeed(null) }),
   ).pipe(Layer.provideMerge(services))
-  const application = HttpRouter.serve(
-    HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(
-      Layer.provide(
-        formulaApiHandlers.pipe(
-          Layer.provide(library),
-          Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
+  // two servers over the same library and database, apart only in what the
+  // manifest says about the writer: the main one has it open, as every
+  // authoring bearing here assumes, and the second has it closed
+  const serving = (at: number, authoring: boolean) => {
+    const settings = Layer.succeed(FormulaSettings, FormulaSettings.of({ authoring }))
+    return HttpRouter.serve(
+      HttpApiBuilder.layer(Api.local(formulaApiGroup)).pipe(
+        Layer.provide(
+          formulaApiHandlers.pipe(
+            Layer.provide(library),
+            Layer.provide(settings),
+            Layer.provide(sessionLayer.pipe(Layer.provide(Layer.mergeAll(infra, authConfig)))),
+          ),
         ),
       ),
-    ),
-  ).pipe(
-    Layer.provide(NodeHttpServer.layer(createServer, { port })),
-    Layer.provide(infra),
-    Layer.provide(library),
-  )
+    ).pipe(
+      Layer.provide(NodeHttpServer.layer(createServer, { port: at })),
+      Layer.provide(infra),
+      Layer.provide(library),
+      Layer.provide(settings),
+    )
+  }
 
   scope = await Effect.runPromise(Scope.make())
-  await Effect.runPromise(Layer.buildWithScope(application, scope))
+  // built apart, not merged: each server declares the whole api on a router
+  // of its own, and one router refuses a route declared twice
+  await Effect.runPromise(Layer.buildWithScope(serving(port, true), scope))
+  await Effect.runPromise(Layer.buildWithScope(serving(closedPort, false), scope))
   const seeded = Exit.match(await Effect.runPromiseExit(Effect.provide(seed(), infra)), {
     onFailure: (cause) => {
       throw new Error(inspect(cause, { depth: 8 }))
@@ -198,8 +216,8 @@ afterAll(async () => {
   await db.dispose()
 })
 
-const call = async (method: string, path: string, body?: unknown) => {
-  const response = await fetch(`${base}${path}`, {
+const callAt = async (origin: string, method: string, path: string, body?: unknown) => {
+  const response = await fetch(`${origin}${path}`, {
     method,
     headers: {
       cookie: `${sessionCookieName}=${token}`,
@@ -216,6 +234,8 @@ const call = async (method: string, path: string, body?: unknown) => {
   }
   return { status: response.status, body: parsed }
 }
+
+const call = (method: string, path: string, body?: unknown) => callAt(base, method, path, body)
 
 const IDENTITY = `import { Schema, defineFormula } from '@qualy/formula'
 
@@ -430,15 +450,11 @@ export default defineFormula({
   }, 120_000)
 })
 
-const rootNode = async () => {
-  const found = await Effect.runPromise(
-    Effect.provide(
-      runSql(sql`select id from org_nodes where path = 'fx_http'`),
-      databaseFor(db.url, { entities: closure }),
-    ),
-  )
-  return one<{ id: string }>(found).id
-}
+const query = (statement: Parameters<typeof runSql>[0]) =>
+  Effect.runPromise(Effect.provide(runSql(statement), databaseFor(db.url, { entities: closure })))
+
+const rootNode = async () =>
+  one<{ id: string }>(await query(sql`select id from org_nodes where path = 'fx_http'`)).id
 
 describe.runIf(postgresAvailable)('the versions a batch may bind, over http', () => {
   it("answers to the round's administrator, and to nobody by unknown batch", async () => {
@@ -461,5 +477,56 @@ describe.runIf(postgresAvailable)('the versions a batch may bind, over http', ()
     )
     // the batch does not exist for this tenant, so the answer stops there
     expect(stray.status, inspect(stray.body)).toBe(404)
+  }, 120_000)
+
+  it('offers nothing to bind afresh while the writer is closed, whatever the cursor says', async () => {
+    // The same round, the same author, the same published version, asked of
+    // two deployments: the open one lists it; the closed one answers with
+    // history only, and never opens the catalog of what could be newly
+    // bound - so a cursor the open deployment refuses is not even read.
+    const root = await rootNode()
+    const batch = one<{ id: string }>(
+      await query(sql`
+        insert into assessment_batches (tenant_id, name, material_range)
+        values (${tenantId}, 'Closed round', daterange('2026-03-01','2026-09-01'))
+        returning id`),
+    ).id
+    await query(sql`
+      insert into batch_management_anchors (tenant_id, batch_id, org_node_id)
+      values (${tenantId}, ${batch}, ${root})`)
+    const created = await call('POST', '/api/assessment/formula-functions', { name: '闭门公式' })
+    expect(created.status, inspect(created.body)).toBe(200)
+    const id = (created.body as { function: { id: string } }).function.id
+    const saved = await call('PATCH', `/api/assessment/formula-functions/${id}`, {
+      expectedDraftRevision: 1,
+      name: '闭门公式',
+      draftSourceTs: IDENTITY,
+      draftTests: [{ name: 'three', input: { value: '3.00' }, expected: '3' }],
+    })
+    expect(saved.status, inspect(saved.body)).toBe(200)
+    const published = await call('POST', `/api/assessment/formula-functions/${id}/versions`, {
+      expectedDraftRevision: 2,
+    })
+    expect(published.status, inspect(published.body)).toBe(200)
+
+    const options = `/api/assessment/batches/${batch}/formula-binding-options`
+    const open = await call('GET', options)
+    expect(open.status, inspect(open.body)).toBe(200)
+    // among whatever else this author has published in this suite
+    expect(
+      (open.body as { items: readonly { functionId: string }[] }).items.map(
+        (item) => item.functionId,
+      ),
+    ).toContain(id)
+    const closed = await callAt(closedBase, 'GET', options)
+    expect(closed.status, inspect(closed.body)).toBe(200)
+    expect(closed.body).toEqual({ items: [], nextCursor: null, current: null })
+
+    const garbage = `${options}?cursor=${encodeURIComponent('not-a-cursor')}`
+    const openGarbage = await call('GET', garbage)
+    expect(openGarbage.status, inspect(openGarbage.body)).toBe(400)
+    const closedGarbage = await callAt(closedBase, 'GET', garbage)
+    expect(closedGarbage.status, inspect(closedGarbage.body)).toBe(200)
+    expect(closedGarbage.body).toEqual({ items: [], nextCursor: null, current: null })
   }, 120_000)
 })

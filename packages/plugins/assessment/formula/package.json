@@ -11,6 +11,7 @@
     "./db": "./src/db/entities.ts",
     "./permissions": "./src/permissions.ts",
     "./api": "./src/api.ts",
+    "./config": "./src/server/config.ts",
     "./client/api": "./src/client/api.ts",
     "./client/FormulaCodeEditor": "./src/client/FormulaCodeEditor.tsx",
     "./client/monaco-setup": "./src/client/monaco-setup.ts",
