@@ -222,7 +222,10 @@ const resolveFrozenWith = (
 /** the sandbox's refusals, sorted into the failure taxonomy; a tag this
  *  build has never heard of reads as an execution failure - fail closed,
  *  never retried forever */
-const evaluationFailure = (error: { readonly _tag: string }): CalculatorEvaluationError => {
+const evaluationFailure = (error: {
+  readonly _tag: string
+  readonly phase?: 'soft' | 'hard'
+}): CalculatorEvaluationError => {
   switch (error._tag) {
     case 'SandboxUnavailable':
     case 'SandboxWorkerLost':
@@ -230,7 +233,21 @@ const evaluationFailure = (error: { readonly _tag: string }): CalculatorEvaluati
         'unavailable',
         `the sandbox is unavailable: ${error._tag}`,
       )
-    case 'SandboxTimeout':
+    case 'SandboxTimeout': {
+      // the same kind either way - a program that did not finish is a
+      // program that failed to compute - but which deadline it crossed is
+      // the one fact that tells a scheduler starved of cpu from a worker
+      // that wedged, so it rides in the reason
+      const phase = error.phase ?? 'hard'
+      const deadline =
+        phase === 'soft'
+          ? FORMULA_SCORING_LIMITS.softDeadlineMs
+          : FORMULA_SCORING_LIMITS.hardDeadlineMs
+      return new CalculatorEvaluationError(
+        'execution',
+        `the formula did not finish within the ${phase} deadline of ${deadline}ms: SandboxTimeout`,
+      )
+    }
     case 'SandboxMemoryExceeded':
     case 'SandboxStackExceeded':
     case 'SandboxOutputTooLarge':

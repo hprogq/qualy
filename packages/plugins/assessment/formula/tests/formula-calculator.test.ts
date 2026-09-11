@@ -7,6 +7,7 @@ import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-data
 import type { Orm } from '@qualy/plugin-database/server'
 import { sandboxLocalLayer } from '@qualy/plugin-sandbox/testkit'
 import { Sandbox } from '@qualy/plugin-sandbox/service'
+import { SandboxTimeout } from '@qualy/sandbox-rpc'
 import { formulaAuthoringLocalLayer } from '@qualy/plugin-assessment-formula/testkit'
 import { configurationAccessLayer } from '@qualy/plugin-assessment/server/configuration-access'
 import type { Rbac } from '@qualy/rbac-contract/effect'
@@ -485,7 +486,22 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
           const answered = yield* prepared.evaluate({ mode: 'ok', value: '7.50' })
           const refused = yield* Effect.exit(prepared.evaluate({ mode: 'refuse', value: '1.00' }))
           const looped = yield* Effect.exit(prepared.evaluate({ mode: 'loop', value: '1.00' }))
-          return { answered, refused, looped }
+          // the two deadlines a sandbox can cross, told apart in the failure
+          // it hands back: a stub that crosses each, over the same frozen
+          // contract, so the sorting is proven without waiting for a worker
+          // to actually wedge
+          const timingOut = (phase: 'soft' | 'hard') =>
+            formula1.bind.pipe(
+              Effect.provideService(Sandbox, {
+                invoke: () => Effect.fail(new SandboxTimeout({ phase })),
+              } as unknown as Sandbox['Service']),
+              authoringOn,
+            )
+          const softly = yield* (yield* timingOut('soft')).prepare(frozen, host)
+          const hardly = yield* (yield* timingOut('hard')).prepare(frozen, host)
+          const soft = yield* Effect.exit(softly.evaluate({ mode: 'ok', value: '1.00' }))
+          const hard = yield* Effect.exit(hardly.evaluate({ mode: 'ok', value: '1.00' }))
+          return { answered, refused, looped, soft, hard }
         }),
       ),
     )
@@ -495,6 +511,15 @@ describe.runIf(postgresAvailable)('the formula calculator', () => {
     expect(refusal.reason).toBe('refused by policy')
     const execution = failureOf(outcome.looped) as CalculatorEvaluationError
     expect(execution.kind).toBe('execution')
+    // a loop is interrupted at the soft deadline, and the failure says which
+    expect(execution.reason).toContain('soft deadline')
+    const soft = failureOf(outcome.soft) as CalculatorEvaluationError
+    expect(soft.kind).toBe('execution')
+    expect(soft.reason).toContain('soft deadline')
+    const hard = failureOf(outcome.hard) as CalculatorEvaluationError
+    expect(hard.kind).toBe('execution')
+    expect(hard.reason).toContain('hard deadline')
+    expect(hard.reason).not.toContain('soft')
   }, 120_000)
 })
 
