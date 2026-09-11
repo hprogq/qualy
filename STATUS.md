@@ -12977,3 +12977,45 @@ benchmark  两次完整矩阵 exit 0(全部不变量成立);--soak 5 exit 0
 - 沙箱进程零可观测:invokes/timeouts 全由宿主导出的计数器计;soft/hard 分不开。
 - `pnpm sandbox:up` 与 `pnpm build` 是前置,driver 只检查不代做;`qualy_benchmark` 库与 `.qualy/benchmarks/` 由 driver 持有,`--reseed` 重建。
 - 审计门以并发 4 跑真沙箱,它自己就是一次 7600 评估的压测,其超时计数随报告一起给出,不拦测量。
+
+#### 步骤 4 续:reliability calibration(`fa4c0df9` fix(formula)、`ae9a1878` fix(tools),CI success 34594545941;harness `--no-telemetry` 见 `48dc509a` fix(tools))
+
+用户审阅 baseline 后的裁决:harness 与数字成立,但先不进 §11.7 #2——超时在 7.5/7.6 语义里是可靠性问题(audit 把 execution 判成 violations、impact 把 candidate execution 判成不兼容),而 soft deadline 与 hard 一样是 **wall-clock**(worker 里 `Date.now() + softDeadlineMs` 做 interrupt handler),1 CPU 容器上两个 QuickJS worker 互相抢调度就可能击穿 25 ms;而 `evaluationFailure()` 把 `SandboxTimeout.phase` 丢了,分不清是 soft 被调度延迟击穿还是 hard watchdog 杀了 worker。于是:
+
+- **phase 保留**(`fa4c0df9`):`formula-calculator.ts` 的 `evaluationFailure` 对 `SandboxTimeout` 保留 phase,reason 变为 `the formula did not finish within the {soft|hard} deadline of {25|100}ms: SandboxTimeout`;kind 仍是 `execution`,HTTP 状态、deadline 数值、telemetry label 都不动。承重:真沙箱 `loop` 公式 → reason 含 `soft deadline`;stub sandbox 分别报 `soft`/`hard` → reason 各自命名、hard 不含 soft。差分:phase 改回常量 → 红。
+- **harness 数据门收紧**(`ae9a1878`):只有 reason 里能辨认出 soft/hard deadline 的 execution 才被放行,其它任何 execution/unavailable → 数据集不 sound;每轮从 server JSON 日志按 phase 计超时,另加 `req/s`。最终目标仍是 `verdict === clean`。
+- `--no-telemetry`(本节 harness 笔):不设 OTEL 环境变量起 server,用来把遥测导出的成本与计分路径分开;此时 invokes/sql 列打 `n/a`。
+
+**校准一(请求级并发,`--cells 10,50 --rounds 5`,每组 30000 次评估,共 90000 次,代码 `ae9a1878`)**
+
+| conc | cell | p50 ms(5 轮范围) | p95 ms   | req/s     | soft / hard | sandbox CPU s/轮 | server CPU s/轮 |
+| ---- | ---- | ---------------- | -------- | --------- | ----------- | ---------------- | --------------- |
+| 1    | 10   | 180–183          | 190–196  | 5.5       | 0 / 0       | 3.7              | 6.4–7.0         |
+| 1    | 50   | 770–772          | 780–789  | 1.3       | 0 / 0       | 17.9–18.0        | 26.2–27.2       |
+| 2    | 10   | 240–269          | 292–312  | 7.6–8.2   | 0 / 0       | 3.5–3.6          | 4.6–4.9         |
+| 2    | 50   | 892–906          | 971–983  | 2.2       | 0 / 0       | 16.9–17.2        | 16.4–16.8       |
+| 4    | 10   | 248–261          | 310–333  | 14.9–15.9 | 0 / 0       | 3.0–3.1          | 2.8–3.4         |
+| 4    | 50   | 909–929          | 978–1021 | 4.3       | 0 / 0       | 14.1–14.3        | 10.0–10.4       |
+
+- **零超时**:请求级并发 1/2/4 下 90000 次评估 soft 与 hard 全为 0(各组 `holds` 全 yes,exit 0)。
+- 吞吐随并发上升(50 题:1.3 → 2.2 → 4.3 req/s),单请求延迟按预期变差(50 题 p50 772 → 900 → 915 ms):同一沙箱被 2/4 条 invocation 同时压,但没有被压出超时。
+- server CPU 不是按评估次数线性的:同样 5000 次评估,c=1 用 26–27 s(墙钟 77 s),c=4 用 10 s(墙钟 23 s),CPU/墙钟 ≈ 0.35–0.43 核在各并发下相同;`--no-telemetry` 下 c=1 仍是 26–28 s。所以 baseline 里「每次评估 5.8 ms server CPU」是上界,其中有一部分是按墙钟计的固定负载,本轮未分离。sandbox CPU 稳定在每 5000 次评估 14–18 s。
+
+**校准二(审计并发,`qualy assessment audit-scoring --tenant` 对 7600 条认定各跑 5 次;`EVALUATION_CONCURRENCY` 本地改动、跑完复原、未提交)**
+
+| `EVALUATION_CONCURRENCY` | 5 次审计的 soft 超时 | hard | 违约率             |
+| ------------------------ | -------------------- | ---- | ------------------ |
+| 4(现值)                  | 1 / 2 / 0 / 0 / 2    | 0    | 5 / 38000 ≈ 0.013% |
+| 2                        | 0 / 0 / 0 / 1 / 0    | 0    | 1 / 38000 ≈ 0.003% |
+
+- **全部是 soft,零 hard**:没有 worker 被 watchdog 杀死;是 1 CPU / 2 worker 容器里的 wall-clock 调度延迟击穿 25 ms。
+- 只在审计/impact 那种**同一 prepared calculator 紧密循环并发评估**的形态下出现;请求级并发因为每次 invoke 之间夹着 resolve/sha256/DB 读,90000 次里一次都没有。
+- 并发从 4 降到 2 把率降了约 4 倍,但**没有归零**——2 个 worker 本身就在同一颗 CPU 上互相抢。
+
+**RSS(50 题,每轮 5000 次评估)**:有遥测 1010 → 1956 MiB(5 轮),`--no-telemetry` 784 → 1821 MiB(5 轮),**增长与 trace 导出无关**,≈ +200 MiB / 5000 次评估;20 轮平台化观察:`--cells 50 --rounds 20 --no-telemetry`(100000 次评估)RSS max 逐轮 840 → 1161 → 1540 → 1635 → 1917 → 1924 → 2053 → 2315 → 2356 → 2570 → 2706 → 2848 → 3023 → 2949 → 2950 → 3047 → 3104 → 3192 → 3338 → **3688 MiB**,20 轮内没有平台,≈ +150 MiB / 5000 次评估;同时 p50 全程 770–777 ms、零超时、shutdown 125 ms exit 0。这不是 trace 缓冲;是否是 V8 堆的惰性增长还是计分路径的保留,本轮不下结论,记为步骤 5 前必须回答的问题(用 `--max-old-space-size` 或 heap snapshot 做一次有界检查)。
+
+**结论与待裁决**
+
+1. 超时根因归类为 **soft / 调度**:hard 从未出现。按裁决树进入「研究 1 CPU / 2 worker 的调度关系以及 25 ms 是否过紧」,`FORMULA_SCORING_LIMITS` 的注释本就把 deadline 留给 7.6 校准。两个可选的窄改动,由用户定:(a)审计/impact 的 `EVALUATION_CONCURRENCY` 4 → 2(与沙箱 pool 对齐,率降 4 倍但不归零);(b)把 soft deadline 从 25 ms 提到与容器形态相称的值(hard 100 ms 不动),再以审计 ×N 验证归零。
+2. **§11.7 #2**:请求级 c=2 的「零超时」条件成立(30000 次);「latency 实质下降」在请求级实验里不可能成立(它本来就是并发共享沙箱),真正的 intra-request 2 路并行能拿到的收益受 server 侧每题串行工作限制,只有做了才知道。按裁决树,超时未归零之前**不实现 #2**;先做 1 的校准。
+3. 实现 #2 时的既定约束照旧:先定 active items、每 item prepare exactly once、再对 evaluation 做有界并发;不能把 `getMyResult` 的 `for` 直接换成 `Effect.forEach(concurrency: 2)`(`prepared` 是普通 Map,依赖串行)。
