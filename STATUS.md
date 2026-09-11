@@ -12731,8 +12731,8 @@ typecheck 0(新增 `BackendsUnreadable` 带 tag 的错误,消掉 Effect LSP 的�
 | 3   | `b5796c2b` feat(assessment): add scoring change impact                         | `ChangeImpact.scoring`(approved 五计数 + derived 四布尔)、`candidateImpactHash`(scoringIntent 原始 draft + calculatorContract)、`TrialNeeded` 两遍编排、old-first 试算(`impact-probe.ts`,并发 4,纯 reduce)、422 `ItemScoringIncompatible` 无 force、stale token 事务外刷新后直接返回新 409、audit diff 附 `scoringImpact`;Schema/ImpactDialog/ItemConfigEditor 同笔 |
 | 4   | `f88dc590` test(assessment): keep scoring probes outside database transactions | I3 的墙:evaluate 被 Deferred 卡住时另一条事务照常取 `lockBatch` 并完成                                                                                                                                                                                                                                                                                              |
 | 5   | `d8a09101` feat(assessment): surface scoring failures by semantics             | `getMyResult` unavailable → 503、其余 die 前带 tenant/batch/item/calculatorRef/runtimeRef/kind 注解;MyResult 不可用态(无 total,「重新计算」= refetch);审核页 422/503 保留工作台与已填值;ImpactDialog 只读计分段;三个错误码的 zh-CN;`qualy.assessment.scoring.evaluation` 有界计数器                                                                                 |
-| —   | `04fca10d` chore(database): name the span and source behind a query checkout     | 见下「teardown 现场」                                                                                                                                                                                                                                                                                                                                               |
-| 6   | `9cc3f0d2` test(assessment): bear determination impact and failure semantics     | formula 侧整链承重(真沙箱、不经共享/分叉)+ 设计文档 §10.15                                                                                                                                                                                                                                                                                                          |
+| —   | `04fca10d` chore(database): name the span and source behind a query checkout   | 见下「teardown 现场」                                                                                                                                                                                                                                                                                                                                               |
+| 6   | `9cc3f0d2` test(assessment): bear determination impact and failure semantics   | formula 侧整链承重(真沙箱、不经共享/分叉)+ 设计文档 §10.15                                                                                                                                                                                                                                                                                                          |
 
 ### 与计划的已记账偏离
 
@@ -12798,3 +12798,79 @@ frozen-routes 零变化(没有新路径);error-codes 冻结表 +3(`ASSESSMENT_DE
 - **existing-state audit**:7.5 只建立 prospective 不变量;`formula@1` writer 生产开放前必须审计已有 approved 数据是否都能被当前 plan 接受(非生产历史可重建)。
 - 容量:5000 条 approved 的试算压测(现在并发 4、每 plan prepare 一次)。
 - 仍挂账:7.4a 的两项 typed authoring UX 债(refinement 控件、详细兼容性诊断);teardown 挂死根因(测量仪已能点名 span/source,等下一次)。
+
+## Phase 7.6:Production Rollout / Performance / Final Acceptance(2026-09-11 起,进行中)
+
+停工后重启。7.5 已封板(`8464c741`,CI success);7.6 不扩能力边界,只回答三个问题:writer 有没有生产级开关、库里已有的 effective Recognition 能否全部被当前 plan 稳定算出、5000 条规模下实时 provisional scoring 表现如何。五步冻结:
+
+1. 重入(零代码):四件套 + formula 真沙箱套件。
+2. writer gate:插件 config → 服务端 NEW compile 拒绝 → UI 投影。
+3. existing-state auditor:只读扫描,五类 failure 分账;同时诞生最小 `runtime` 档 CLI。
+4. benchmark 100/500/1000/5000 + 按 §11.7 顺序优化 + teardown soak。
+5. final acceptance:production smoke、兼容性诊断、审计绿 → `authoring: true` → resolve → Phase 7 CLOSED。
+
+用户裁决(写死):auditor 建正式 **runtime 档 CLI** `qualy assessment audit-scoring`,属 Assessment 不属 Formula,不做测试脚本;runtime 档语义严格限定为「解析 frozen resolution → 按 server 同一 assembly 建 services graph → 不起 HTTP → 命令在 scoped runtime 上执行 → 结束 dispose」,不造 job framework / daemon / runner registry;auditor 复用 7.5 的 evaluation primitive 与 old-first 能力,不拥有第二套 scoring 语义;审计绿是 Deployment B 的硬前置但**不持久化**为 flag。7.4a 两项 UX 债:兼容性诊断进 7.6(只改善既有 compile/preview/save refusal 的可操作性——哪个 parameter、哪个 binding、期望/实际 schema、为何不 assignable;不加类型规则、不改 assignability、不扩 profile);refinement 控件 **carry forward 到 Phase 8**。
+
+### 步骤 1:重入(main @ `8464c741`,实际执行)
+
+```text
+typecheck  exit 0(3 条 suggestion,不判)
+node       Test Files 200 passed | 3 skipped   Tests 1401 passed | 17 skipped
+formula-scoring(真沙箱 unix socket)  5 passed
+browser    Test Files 44 passed               Tests 305 passed
+build      ✓ built  staged 99 file(s)
+```
+
+无停工期漂移,进入施工。
+
+### 步骤 2:writer rollout gate(`6f13e536` feat(formula): gate new formula bindings for reader-first rollout)
+
+开工前的事实:代码里没有任何 writer gate,`formula@1` 的 V2 writer 机制完整、`qualy.yml` 默认装了 formula 插件、calculator 选项静态投影给所有 `assessment.batch.manage` 持有者——设计文档 §11.2「UI chunks 可以存在但 writer disabled」当时不成立。
+
+- **载体**:formula 插件新增 manifest config 通道(`src/server/config.ts`,`FormulaSettings { authoring }`,模板 storage-local),`qualy.yml` 显式 `authoring: false`;**省略即 disabled**,无环境变量覆盖(承重:`QUALY_FORMULA_AUTHORING=true` 不生效)。`config` 进 `manifestHash`、不进 `resolutionHash`:`pnpm qualy resolve` 只改 lock 第 3 行,`--frozen-lockfile` 零写入。命名避开了 `formula-calculator.ts` 既有的 `interface FormulaConfig { versionId }`。语义注释写死:只控制**新绑定**,不关闭 FormulaFunction 创作/发布/共享/分叉,不影响既有绑定执行与结果读取。
+- **承重边界**:`formula@1.compile()` 的 NEW/CONTINUATION 分岔上,顺序 `decode → previous kind → continuation → NEW && !authoring ⇒ refusal 'formula-authoring-disabled' → resolve → continuation integrity / NEW requireBindable`。gate 在 `store.resolve` 之前(关着时不存在的版本读作同一拒绝);continuation 永不经过 gate,坏 sha 仍 `formula-continuation-corrupt`。save 与 preview 同经 `contractOf`,422 `ItemConfigInvalid` 路径分别为 `scoringConfig.calculator.config` / `calculator.config`。core 的 authoring policy 在 compile 之前跑,非作者先得 `formula-not-yours`——不是漏洞,承重以作者身份观察本码。boot sweep 只编译 `scoring_plan is null` 的 revision,formula revision 一律带 plan 写入,gate 在 boot 不可能触发(残余:手工插入的空 plan formula 行在 OFF 下会以 `ScoringPlanBackfillFailed` 拦停 boot,这是 sweep 对任何 refusal 的既定行为)。
+- **投影**:chooser 的 formula 选项从描述器的静态 `Ui.surfaces` 挪到 `src/server/authoring-surface.ts`,插件建层时按 config 有条件 `ui.contribute`(registry 的 scoped 注册,注释明言留给「build 时才能决定的 surface」);编辑器 slot 保持静态声明——既有 formula 题照常渲染自己的编辑器,浏览器构建的组件发现不受配置值影响。core 零改动:chooser 在只剩 fixed@1 时本就自动隐藏。建层时一行 `formula binding authoring enabled|disabled` 日志,只报告 writer rollout state,不是 §11.3 的 capability report。
+- **binding-options 如实**:OFF 在 cursor 解析与 `listForBatch` 之前短路(`requireManage` → 解析 current binding → 直接返回 `items: []`、`nextCursor: null`、`current.bindableForNew: false`);纯函数 `bindingOptionsResponse` 只做 DTO shaping、不以「已取得 page」为前提。wire schema、OpenAPI、frozen-routes 零变化。
+- 计划偏离:两台 HTTP 测试服务器不能 `Layer.mergeAll` 后一次构建(同一路由表拒绝重复声明 `GET /api/assessment/formula-functions`),改为同一 scope 内分别 `Layer.buildWithScope`;`HttpRouter.serve` 层要求 handler 的 R,外层要和内层一样 provide `FormulaSettings`(typecheck 抓到)。
+
+#### 承重(node 14 + browser 1)
+
+| 文件                                     | 条  | 证明什么                                                                                                                                                                                                                                                       |
+| ---------------------------------------- | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| config(新)                               | 4   | `{authoring:true/false}` 原样;`{}` → **false**;未知键 / `authoring:'yes'` → SchemaError;环境变量不生效                                                                                                                                                         |
+| authoring-surface(新)                    | 2   | OFF → collections 无该项;ON → 恰一条(id/ref/order/visibility 精确),scope 关闭后消失                                                                                                                                                                            |
+| binding-options(新)                      | 2   | OFF 只给 current → `items: []`、`nextCursor: null`、`bindableForNew:false`;ON → page + current 透传                                                                                                                                                            |
+| formula-calculator(+1)                   | 1   | ON:NEW 编译成功;OFF:同 versionId → `refusal` / `formula-authoring-disabled`;OFF + 不存在的版本 → 同码(gate 在 resolve 前);OFF + previous 同 id 同 sha → 成功;OFF + 坏 sha → 仍 `formula-continuation-corrupt`                                                  |
+| formula-scoring(+1,真沙箱,同一 DB 两相)  | 1   | 相 1 ON:作者发布 v1/v2、建轮次、绑 v1 建题、激活、记一条、取总分;相 2 OFF:改题名(同 config)成功且总分不变;新建 formula 题 → 422 `scoringConfig.calculator.config`;无 itemId 的 preview → 422 `calculator.config`;带 itemId 同版本 preview → 成功;改绑 v2 → 422 |
+| formula-http(+1,第二台 OFF 服务器 :3206) | 1   | 同一轮次、同一作者、同一已发布版本:开的一台列出;关的一台 `{items:[], nextCursor:null, current:null}`;同一无效 cursor 开的一台 400、关的一台仍 200 同体(短路在 cursor 解析前)                                                                                   |
+| item-chain.browser(+1)                   | 1   | 只装 fixed@1 的 manifest → `combobox 分值来源` 不存在、固定分值输入在                                                                                                                                                                                          |
+
+#### 差分(摘除 → 承重 → 精确复原)
+
+| 摘除                                               | 结果                                                                             |
+| -------------------------------------------------- | -------------------------------------------------------------------------------- |
+| calculator 的 gate 条件加 `&& false`               | formula-calculator 新承重红;formula-scoring 新承重红                             |
+| authoring-surface 的 `if (!authoring) return` 失效 | 「is not offered while authoring is off」红,ON 用例绿                            |
+| config 默认 `?? false` 改 `?? true`                | 「is off when the manifest is silent」与「takes nothing from the environment」红 |
+| handler 短路挪到 cursor 解析之后                   | http 新承重红(无效 cursor 在关的一台变 400)                                      |
+
+第四条第一次没做成:复原用的锚点 `const size = pageSize(...)` 在文件里不唯一,断言拦住后源码停在「短路被摘」状态,改用带注释行的唯一锚点复原并重做——复原后承重绿、`git diff` 只含本笔改动。
+
+#### 门禁(实际执行)
+
+```text
+typecheck  exit 0
+node       Test Files 203 passed | 3 skipped   Tests 1412 passed | 17 skipped (1429)
+browser    Test Files 44 passed               Tests 306 passed (306)
+build      ✓ built  staged 99 file(s)
+qualy resolve  lock 仅 manifestHash 变;resolve --frozen-lockfile "up to date"
+CI         success(run 34572203371,headSha 6f13e536)
+```
+
+#### Deployment B 操作(写进 docs/phase7-design.md §11.4)
+
+`qualy.yml` 把 `authoring` 改 `true` → `pnpm qualy resolve` → 提交 lock → 部署;翻之前必须先跑步骤 3 的审计且全部 accepted;审计结果不持久化,上线时跑一次并立即完成 B。
+
+### 移交:步骤 3
+
+`qualy assessment audit-scoring`:runtime 档 CLI 的最小基础设施 + 只读扫描(tenant → batch → current ItemRevision → effective Recognition → prepare 每 plan 一次 → evaluate),输出 items/plans/recognitions 与 accepted/refused/executionFailed/unavailable/integrityFailed/invariantFailed;`refusal`/`execution` 是历史违约,`integrity`/`invariant` fail closed,`unavailable` 可重试且不污染违约统计。兼容性诊断文案归步骤 5(`ItemConfigEditor.tsx` 目前原样打印 `path: reason`,本笔的新码也会这样出现)。
