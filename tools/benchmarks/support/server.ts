@@ -129,6 +129,8 @@ export interface RunningServer {
   readonly pid: number
   readonly base: string
   readonly lines: readonly LogLine[]
+  /** how the process ended on its own - an exit code, or the signal that took it; null while it runs */
+  readonly exited: () => string | null
   readonly ready: () => Promise<{ listeningMs: number | null }>
   readonly stop: () => Promise<{
     exitCode: number | null
@@ -153,11 +155,18 @@ export const startServer = (options: {
   /** null runs the server with telemetry off, to tell its cost apart */
   readonly otlpEndpoint: string | null
   readonly level: 'info' | 'debug'
+  /** flags for the server's own node - a heap ceiling, gc tracing - never the driver's */
+  readonly nodeArgs?: readonly string[]
 }): RunningServer => {
   const { QUALY_MIGRATIONS: _migrations, NODE_ENV: _mode, ...inherited } = process.env
   const child: ChildProcess = spawn(
     process.execPath,
-    ['--env-file-if-exists=.env', path.join(repoRoot, 'apps/server/src/run.ts'), 'production'],
+    [
+      ...(options.nodeArgs ?? []),
+      '--env-file-if-exists=.env',
+      path.join(repoRoot, 'apps/server/src/run.ts'),
+      'production',
+    ],
     {
       cwd: repoRoot,
       env: {
@@ -208,7 +217,15 @@ export const startServer = (options: {
   }
   child.stdout!.on('data', consume)
   child.stderr!.on('data', consume)
-  const exited = new Promise<number | null>((resolve) => child.on('exit', resolve))
+  let ended: string | null = null
+  const exited = new Promise<number | null>((resolve) =>
+    child.on('exit', (code, signal) => {
+      // a fatal error in v8 ends the process by signal, with no exit code:
+      // both spellings are "gone", and a request must not be sent to a ghost
+      ended = code === null ? String(signal) : String(code)
+      resolve(code)
+    }),
+  )
   const base = `http://127.0.0.1:${options.port}`
   const bootMark = (name: string): number | null => {
     const found = lines.find(
@@ -222,6 +239,7 @@ export const startServer = (options: {
     pid: child.pid!,
     base,
     lines,
+    exited: () => ended,
     ready: async () => {
       // readiness includes the database probe, so give it time
       const deadline = Date.now() + 90_000

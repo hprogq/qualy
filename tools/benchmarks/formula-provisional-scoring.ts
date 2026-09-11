@@ -72,6 +72,8 @@ const reseed = flag('reseed')
 // with telemetry off the server exports nothing: invocations are then the
 // dataset's arithmetic rather than a counter, and the run says so
 const telemetry = !flag('no-telemetry')
+// e.g. --node-args "--max-old-space-size=1024 --trace-gc": the server's node, not this one
+const nodeArgs = (option('node-args') ?? '').split(/\s+/).filter((arg) => arg !== '')
 const out =
   option('out') ?? path.join(benchDir, `${new Date().toISOString().replaceAll(':', '-')}.json`)
 
@@ -94,6 +96,8 @@ interface RoundResult {
   readonly ok: number
   readonly http5xx: number
   readonly mismatched: number
+  /** requests the server never answered: it was gone */
+  readonly unanswered: number
   readonly latencyMs: Percentiles
   readonly server: {
     readonly http: { count: number; sumSeconds: number }
@@ -174,11 +178,23 @@ const pooled = async (tasks: readonly (() => Promise<void>)[], limit: number) =>
 
 const resultPage = async (base: string, batchId: string, token: string) => {
   const started = performance.now()
-  const response = await fetch(`${base}/api/assessment/batches/${batchId}/me/result`, {
-    headers: { cookie: `qualy_session=${token}` },
-  })
-  const text = await response.text()
-  return { ms: performance.now() - started, status: response.status, text }
+  try {
+    const response = await fetch(`${base}/api/assessment/batches/${batchId}/me/result`, {
+      headers: { cookie: `qualy_session=${token}` },
+    })
+    const text = await response.text()
+    return { ms: performance.now() - started, status: response.status, text }
+  } catch (error) {
+    // the server went away under the request: a status of its own, so the
+    // round records it and the run goes on to say what the server said last
+    return { ms: performance.now() - started, status: 0, text: String(error) }
+  }
+}
+
+/** what the server said, kept beside the summary: the evidence a crash leaves */
+const writeServerLog = (file: string, lines: readonly { raw: string }[]) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, `${lines.map((line) => line.raw).join('\n')}\n`)
 }
 
 const evaluationCounts = (snapshot: Snapshot | undefined) =>
@@ -225,6 +241,7 @@ const main = async () => {
       databaseUrl,
       otlpEndpoint: telemetry ? receiver.endpoint : null,
       level,
+      nodeArgs,
     })
 
   let server: RunningServer | undefined
@@ -296,10 +313,19 @@ const main = async () => {
         let ok = 0
         let http5xx = 0
         let mismatched = 0
+        let unanswered = 0
         await pooled(
           students.map((token) => async () => {
+            if (server!.exited() !== null) {
+              unanswered += 1
+              return
+            }
             const answer = await resultPage(server!.base, batch.id, token)
             latencies.push(answer.ms)
+            if (answer.status === 0) {
+              unanswered += 1
+              return
+            }
             if (answer.status >= 500) {
               http5xx += 1
               return
@@ -349,6 +375,7 @@ const main = async () => {
           ok,
           http5xx,
           mismatched,
+          unanswered,
           latencyMs: percentiles(latencies),
           server: {
             http: {
@@ -378,6 +405,7 @@ const main = async () => {
           holds:
             http5xx === 0 &&
             mismatched === 0 &&
+            unanswered === 0 &&
             timeouts.soft + timeouts.hard === 0 &&
             (!telemetry ||
               (evaluation.execution === 0 &&
@@ -386,6 +414,14 @@ const main = async () => {
         }
         if (!result.holds) exitCode = 1
         roundResults.push(result)
+        if (server.exited() !== null) {
+          const last = server.lines.slice(-8).map((line) => `    ${line.raw.slice(0, 300)}`)
+          log(
+            `the server exited ${server.exited()} during ${name} round ${round}; its last lines:\n${last.join('\n')}`,
+          )
+          exitCode = 1
+          break
+        }
         log(
           `${name} round ${round}: p50 ${result.latencyMs.p50.toFixed(1)}ms p95 ${result.latencyMs.p95.toFixed(1)}ms ${result.requestsPerSecond.toFixed(1)} req/s invokes ${invokes}/${expectedInvokes} timeouts soft ${timeouts.soft} hard ${timeouts.hard}${result.holds ? '' : ' (INVARIANT BROKEN)'}`,
         )
@@ -398,8 +434,10 @@ const main = async () => {
         batchId: batch.id,
         rounds: roundResults,
       })
+      if (server.exited() !== null) break
     }
 
+    writeServerLog(`${out.replace(/\.json$/, '')}.server.log`, server.lines)
     const stopped = await server.stop()
     boot = {
       listeningMs: ready.listeningMs,
@@ -458,7 +496,7 @@ const main = async () => {
     startedAt: new Date().toISOString(),
     commit,
     node: process.version,
-    args: { cells, rounds, concurrency, warmup, control, soak, port, telemetry },
+    args: { cells, rounds, concurrency, warmup, control, soak, port, telemetry, nodeArgs },
     assembly: { manifest: path.relative(repoRoot, manifest), resolutionHash },
     server: { port, ...boot },
     sandbox,
