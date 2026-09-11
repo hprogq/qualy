@@ -13079,3 +13079,40 @@ harness 本笔:`--node-args` 把 `--max-old-space-size` / `--trace-gc` / `--heap
 - 每题 15 ms 的新构成:server CPU 2.6 + sandbox CPU 3.4 + **串行等待 ≈ 9 ms**。请求内 2 路有界并发能重叠的是等待与 server 侧工作,sandbox CPU 在 1 核上不可并行(下界 ≈ 3.4 ms × N):50 题的理论下界约 300 ms,2 路并发的现实预期约 450–500 ms;只有做了才知道。
 - 风险仍是 soft 超时:请求内并发就是审计那种「同一 prepared calculator 紧密循环」的形态,而紧密循环 4 in flight 至今稳定出现 0.01–0.03% 的 soft 超时;请求级 c=2 的 30000 次零超时不能直接外推到请求内 2 路。**按既定裁决树,先解决 soft 校准(1 CPU / 2 worker 的调度关系、25 ms 是否过紧),再做 #2**;#2 的实现约束照旧(先定 active items、每 item prepare exactly once、再对 evaluation 有界并发)。
 - 若产品上 50 个 Formula Item 的结果页 777 ms 可接受,#2 可以不做;10 题 173 ms 已在可接受范围。
+
+### 步骤 4 收口:sandbox 调度校准——worker pool 与 CPU 配额对齐,消灭假超时(`67fbe399` fix(sandbox): run one runtime worker per CPU of quota)
+
+用户裁决:先不做 §11.7 #2;先做一次调度校准,**第一变量是 worker pool,不是放宽 soft deadline**。理由:运行时沙箱 `cpus: 1`,而 `QUALY_SANDBOX_POOL_SIZE` 未配置时代码默认 2,即「一核跑两个 QuickJS worker」;soft deadline 是 wall-clock(`sandbox-engine/src/worker.ts:176-179`,`Date.now() + softDeadlineMs` 做 interrupt handler),两个 worker 抢一核的时间片时,几毫秒 CPU 的 passthrough 也会被拉过 25 ms。这不是 benchmark 噪声:Deployment B 前 `audit-scoring` 必须 clean,而 soft 超时被归入 execution → violations,健康数据集也会随机把部署审计打红,是步骤 5 前必须收掉的可靠性问题。矩阵 A(1 CPU / pool 2 / 25/100,现状)→ B(1 CPU / pool 1 / 25/100)→ 仅当 B 仍有 soft 才 C(pool 1 / 50/100)→ D(pool 2 / 50/100)。每组 `audit ×5`(38000 次评估),候选配置累计 ≥ 100000 次 passthrough invocation、soft = hard = 0。
+
+**A 组(现状,post-fix 代码 `b7b3bd14`,上一段已记)**:soft 1 / 3 / 2 / 4 / 0,hard 0,每次 19–20 s。
+
+**B 组(零代码:scratch 的 compose override 只加 `QUALY_SANDBOX_POOL_SIZE=1`,重建 `sandbox-runtime`,`docker inspect` 确认 env 与 `NanoCpus = 1e9`)**:审计 ×5 **全部 clean,soft 0 / 0 / 0 / 0 / 0,hard 0**,每次 19–20 s——与 pool 2 的耗时相同,QuickJS 在一核上本就逐个执行,第二个 worker 只贡献调度抖动。**结论:25 ms 本身没有问题,问题是 runtime worker pool 与 CPU quota 不匹配。** C、D 组不需要跑。
+
+**候选配置累计(同一 pool 1 容器 `29781020ea2d`,代码 `55581849`)**
+
+| 负载                                                    | invocations | soft | hard | 审计          |
+| ------------------------------------------------------- | ----------: | ---: | ---: | ------------- |
+| B 组 audit ×5                                           |      38,000 |    0 |    0 | 5/5 clean     |
+| 全矩阵 `--rounds 2 --control`(跑前审计 + warmup + 2 轮) |      27,400 |    0 |    0 | clean         |
+| `--cells 50 --rounds 10`(跑前审计 + warmup + 10 轮)     |      62,600 |    0 |    0 | clean         |
+| **合计**                                                | **128,000** |    0 |    0 | **7/7 clean** |
+
+全部轮次 `holds` yes(5xx 0、mismatched 0、invokes == 100·N、execution/unavailable 0)。
+
+| cell(pool 1) | p50 ms(r1 / r2) | p95 ms(r1 / r2) | server RSS max | server CPU s/轮 | sandbox CPU s/轮 |
+| ------------ | --------------- | --------------- | -------------- | --------------- | ---------------- |
+| 1            | 29.9 / 28.0     | 41.1 / 39.3     | 397 MiB        | 1.3 / 1.1       | 0.39 / 0.39      |
+| 5            | 102.4 / 101.6   | 116.4 / 116.1   | 408 MiB        | 2.7 / 2.8       | 1.90 / 1.85      |
+| 10           | 179.9 / 176.9   | 193.7 / 187.8   | 413 MiB        | 4.3 / 4.1       | 3.54 / 3.54      |
+| 50           | 773.9 / 774.7   | 785.3 / 803.4   | 592 MiB        | 14.4 / 14.4     | 16.97 / 17.10    |
+| control      | 42.2 / 42.0     | 52.1 / 54.2     | 597 MiB        | 1.5 / 1.5       | 0.02 / 0.01      |
+
+- **pool 1 不改变串行路径的延迟**:与 pool 2 的 post-fix baseline 逐档在噪声内(50 题 774–775 vs 776–777 ms;10 题 177–180 vs 173–174 ms)。串行请求一次只占一个 worker,第二个 worker 本来就没被用到。
+- **50 题 × 10 轮(50000 次评估)**:p50 773.5–777.2 ms、p95 780–807 ms 全程平稳;server RSS max 648 → 654 → 631 → … → 637 MiB 持平;server CPU 11.8–14.4 s/轮;sandbox CPU 16.9–17.5 s/轮;boot 1919 ms,shutdown 36 ms,exit 0。
+- **落地**:`docker-compose.yml` 的 `sandbox-runtime` 加 `environment: QUALY_SANDBOX_POOL_SIZE: '1'`(注释说明 pool 与 CPU 配额对齐的原因),`docs/sandbox-process-isolation.md` §30 追记校准记录;`FORMULA_SCORING_LIMITS`(25 / 100 ms)与代码默认 pool 2(多核配额用)都不动。用提交版 compose(不带 override)重建容器后 `docker inspect` 同样是 `QUALY_SANDBOX_POOL_SIZE=1`、`NanoCpus = 1e9`,再跑审计确认(见下)。
+
+**§11.7 #2:默认不做**(用户裁决)。修复与校准后的现实状态:10 题 ≈ 177 ms p50 / 188 ms p95,50 题 ≈ 775 ms p50 / 785 ms p95,串行结果路径 0 超时,server CPU ≈ 2.6 ms/评估,RSS 稳定,最坏的 50 题在 1 s 内。§11.7 的原则是「有数据证明需要才优化」;在 1 CPU + pool 1 的生产形态下,请求内 2 路并发只能重叠 host 侧等待,QuickJS 仍逐个执行。重开条件:`pool 2 + 校准后的 deadline` 在 ≥ 100k invocation 下 0 超时,且真实的请求内 concurrency = 2 把 50 题 p95 至少降 25%(≈ 784 → ≤ 590 ms)、10 题不退化、prepare-once 不变量保持、0 execution/unavailable;降到 650 ms 一类的结果直接停。
+
+**提交版 compose 重建后的复核(容器 `a2d253b1a3ce`,`67fbe399`)**:四件套(typecheck 0;node 206 文件 1426 通过;browser 44/306;build 通过)在该容器上跑完的**同一分钟**内跑审计 ×2:**第 1 次 1 soft(violations)、第 2 次 clean**;随后机器静默态(load average 仍 14.6 → 10.7,是 macOS 的 mediaanalysisd / appstoreagent / WindowServer 在吃 CPU)审计 ×5 **全 clean 0 / 0 / 0 / 0 / 0**。候选配置累计:128,000 + 7 × 7,600 = **181,200 次 invocation,1 次 soft(≈ 0.0006%),0 hard**;pool 2 同负载是 0.013–0.026%。**证据能说的**:pool 与 CPU 对齐把假超时率压低了至少 20 倍,并在静默态归零;但 soft deadline 是 wall-clock,在开发机的 Docker VM 上、宿主刚跑完整套测试的那一刻仍能被打穿一次。**证据不能说的**:专用 CPU 的生产宿主上是否为零——没有测。
+
+**待裁决**:①接受残余(生产审计在空闲宿主上跑;25 ms 计分预算不动);②进 C 组(pool 1 + soft 50 / hard 100),用同样的 ≥ 100k 累计再证明一次归零。在此之前**步骤 4 不宣布关闭**;步骤 5(production smoke、compatibility diagnostics UX、writer 默认开启、最终 `audit-scoring` clean、STATUS / design CLOSED)等此裁决。
