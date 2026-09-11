@@ -1211,6 +1211,8 @@ CPU 1
 
 具体数值用现有 benchmark 验证后调整。
 
+**校准记录（2026-09-11，Phase 7.6）**：QuickJS worker pool 必须与 CPU 配额对齐——`cpus: 1` 配 `QUALY_SANDBOX_POOL_SIZE=1`（代码默认 2 是给多核配额用的）。计分的 soft deadline 是 wall-clock（worker 里 `Date.now() + softDeadlineMs` 做 interrupt handler），两个 worker 共享一核时健康的 passthrough 公式也会被调度延迟打穿 25 ms（审计 7600 次评估、4 in flight，每次 1–4 次 soft 超时）；一核一 worker 后同一负载 0 超时，且吞吐不变（QuickJS 在一核上本就只能逐个执行）。deadline 本身没有动。数字见 STATUS。
+
 ---
 
 # 31. Docker Authoring Sandbox

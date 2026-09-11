@@ -159,6 +159,11 @@ services:
       - /tmp:size=32m,noexec,nosuid,nodev
     mem_limit: 256m
     cpus: 1
+    # one QuickJS worker per CPU of quota: the scoring soft deadline is
+    # wall-clock, and two workers sharing one core interrupted healthy
+    # formulas at 25ms (measured, see STATUS); one worker on one core did not
+    environment:
+      QUALY_SANDBOX_POOL_SIZE: '1'
     volumes:
       - ./.qualy/run/sandbox/runtime:/run/qualy-sandbox/runtime
 
