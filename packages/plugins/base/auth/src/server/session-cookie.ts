@@ -19,6 +19,16 @@ const HOST_PREFIX = '__Host-'
 export const sessionCookieNameFor = (secure: boolean): string =>
   secure ? `${HOST_PREFIX}${sessionCookieName}` : sessionCookieName
 
+/**
+ * Both names, for a tool that drives a server without knowing which entry
+ * it was started as: it takes the session cookie under whichever name the
+ * response set and sends that name back.
+ */
+export const sessionCookieNames: readonly [string, string] = [
+  sessionCookieNameFor(true),
+  sessionCookieNameFor(false),
+]
+
 /** appends the session cookie to the response this request will send */
 export const setSessionCookie = (
   name: string,

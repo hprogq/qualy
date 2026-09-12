@@ -13471,3 +13471,20 @@ acceptance done
   ```
 
   开发态(`pnpm dev`,secureCookies=false)只读写 `qualy_session`,浏览器套件 320 条(shell、login、item-chain)在开发名下全绿;`cookie` 包从 auth 插件与 catalog 移除后 `pnpm install --offline` 无新增依赖。
+
+### 复查后的两笔小修(2026-09-13)
+
+复查结论:31 个文件是一处必填字段的涟漪(14 个测试桩各补一行 `sessionCookieName`),实质正确。一处必改:该笔 commit message 带了 `Co-Authored-By` trailer,CLAUDE.md 明文禁止——已 `git commit --amend` 去掉并 `--force-with-lease` 重推,main 现为 `2409ff93`(内容不变)。两处可选一并做了,各自一笔:
+
+- `perf(auth): answer a missing session cookie without a lookup`:`Authenticated` 在没有 Cookie 时原本仍拿 `hash('')` 查一次 `sessions`(改名前就如此);现在 `token === ''` 直接 `AuthRequired`,匿名访问受保护端点不再碰数据库。`Viewer` 本来就短路,不动。
+- `fix(repo): send the session cookie under the name the server set`:三个工具原本写死 `sessionCookieNameFor(true)`,等于假定自己永远打的是生产入口。现在 `session-cookie.ts` 导出 `sessionCookieNames`(两个名字),工具从登录响应的 Set-Cookie 里取服务端实际设置的那个名字并回发,连自己种进库的 session(benchmark 的 100 个学生、公式 smoke 的学生)也按这个名字发;`ensureDataset` 把学到的名字交给基准驱动。顺带发现**第四处**:`tools/benchmarks/formula-provisional-scoring.ts` 的 `resultPage` 自己写死了 `qualy_session=`,上一笔提交后基准打生产入口其实已经是 401(复查与我都漏了它),这次一并修。录制器改为「浏览器持有的 Cookie 名在两个名字之内」即可。
+- **门禁(实际执行)**:
+
+  ```text
+  tsc -p tsconfig.json --noEmit  -> 0 errors(只剩既有的 effect suggestion)
+  pnpm test                      -> Test Files 213 passed | 3 skipped (216); Tests 1496 passed | 17 skipped (1513); exit 0
+  smoke:formula-production       -> PASS(admin 登录取回 __Host- 名,学生 session 按同名发送,result 3.00,audit clean)
+  pnpm brand:record              -> ready-300ms: 111 frames painted; ready-3s: 362 frames painted
+  benchmark:formula-scoring --cells 1 --rounds 1 --warmup 1 --concurrency 1 --no-telemetry
+                                 -> production entry port 3198, dataset present(verify 模式,种下的 session 仍存活), 100 reqs 5xx 0, holds yes, exit 0
+  ```

@@ -6,6 +6,8 @@ import { repoRoot } from '../lib/manifest.ts'
 import {
   auditDataset,
   clientFor,
+  sessionFromResponse,
+  type SessionCookie,
   PASSTHROUGH,
   sessionsFor,
   type Api,
@@ -18,7 +20,6 @@ import {
   startServer,
   type RunningServer,
 } from '../benchmarks/support/server.ts'
-import { sessionCookieNameFor } from '../../packages/plugins/base/auth/src/server/session-cookie.ts'
 
 // The formula scoring chain, in production, end to end.
 //
@@ -93,7 +94,11 @@ const runOrThrow = (
   }
 }
 
-const loginAs = async (base: string, identifier: string, password: string): Promise<string> => {
+const loginAs = async (
+  base: string,
+  identifier: string,
+  password: string,
+): Promise<SessionCookie> => {
   const response = await fetch(`${base}/api/auth/local/local/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -102,12 +107,9 @@ const loginAs = async (base: string, identifier: string, password: string): Prom
   if (response.status !== 200) {
     throw new SmokeFailure('login', `status ${response.status}\n${await response.text()}`)
   }
-  // the production entry names its cookie with the `__Host-` prefix
-  const cookie = new RegExp(`${sessionCookieNameFor(true)}=([^;]+)`).exec(
-    response.headers.get('set-cookie') ?? '',
-  )
-  if (!cookie) throw new SmokeFailure('login', 'the login answered without a session cookie')
-  return cookie[1]!
+  const session = sessionFromResponse(response)
+  if (!session) throw new SmokeFailure('login', 'the login answered without a session cookie')
+  return session
 }
 
 /** what the manifest says about the writer, read before anything else is touched */
@@ -118,7 +120,8 @@ const authoringEnabled = (manifest: string): boolean => {
 
 const chain = async (base: string, databaseUrl: string): Promise<{ tenantId: string }> => {
   // --- who is acting, and where -------------------------------------------
-  const admin: Api = clientFor(base, await loginAs(base, ADMIN_USERNAME, ADMIN_PASSWORD))
+  const adminSession = await loginAs(base, ADMIN_USERNAME, ADMIN_PASSWORD)
+  const admin: Api = clientFor(base, adminSession)
   const session = must(
     await admin.call<{ user: { id: string; tenant: { id: string } } }>('GET', '/auth/session'),
     'admin session',
@@ -167,7 +170,8 @@ const chain = async (base: string, databaseUrl: string): Promise<{ tenantId: str
   } finally {
     await db.end()
   }
-  const participant: Api = clientFor(base, studentToken)
+  // under the name the admin's sign-in came back with: the entry reads one
+  const participant: Api = clientFor(base, { name: adminSession.name, token: studentToken })
   must(await participant.call('GET', '/auth/session'), 'student session')
   say(`student ${student.id} signed in`)
 

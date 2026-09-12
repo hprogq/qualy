@@ -13,6 +13,7 @@ import {
   type Dataset,
   type DatasetAudit,
   type DatasetBatch,
+  type SessionCookie,
 } from './support/dataset.ts'
 import {
   benchmarkUrl,
@@ -176,11 +177,11 @@ const pooled = async (tasks: readonly (() => Promise<void>)[], limit: number) =>
   await Promise.all(Array.from({ length: Math.max(1, limit) }, worker))
 }
 
-const resultPage = async (base: string, batchId: string, token: string) => {
+const resultPage = async (base: string, batchId: string, session: SessionCookie) => {
   const started = performance.now()
   try {
     const response = await fetch(`${base}/api/assessment/batches/${batchId}/me/result`, {
-      headers: { cookie: `qualy_session=${token}` },
+      headers: { cookie: `${session.name}=${session.token}` },
     })
     const text = await response.text()
     return { ms: performance.now() - started, status: response.status, text }
@@ -250,6 +251,8 @@ const main = async () => {
   const soakRuns: SoakRun[] = []
   let boot: { listeningMs: number | null; shutdownMs: number; exitCode: number | null } | undefined
   let dataset: Dataset | undefined
+  // the cookie name the entry reads, learned from the dataset's sign-in
+  let cookieName = ''
   let datasetAudit: DatasetAudit | undefined
   try {
     server = serve('info')
@@ -267,6 +270,7 @@ const main = async () => {
     })
     dataset = ensured.dataset
     datasetAudit = ensured.audit
+    cookieName = ensured.cookieName
     if (datasetAudit.verdict !== 'clean') {
       // the runtime under four-way load, before a single page was asked for:
       // reported with the rest, never hidden behind a retry
@@ -289,7 +293,10 @@ const main = async () => {
       const expectedTotalString = expectedTotal(batch.items)
       const students = dataset.sessions
       for (let index = 0; index < warmup; index += 1) {
-        await resultPage(server.base, batch.id, students[index % students.length]!)
+        await resultPage(server.base, batch.id, {
+          name: cookieName,
+          token: students[index % students.length]!,
+        })
       }
       for (let round = 1; round <= rounds; round += 1) {
         // two full exports after the warm-up: the export in flight when the
@@ -320,7 +327,7 @@ const main = async () => {
               unanswered += 1
               return
             }
-            const answer = await resultPage(server!.base, batch.id, token)
+            const answer = await resultPage(server!.base, batch.id, { name: cookieName, token })
             latencies.push(answer.ms)
             if (answer.status === 0) {
               unanswered += 1
@@ -459,7 +466,9 @@ const main = async () => {
       const first = plan[0]!
       const latencies: number[] = []
       for (const token of dataset.sessions) {
-        latencies.push((await resultPage(instance.base, first.batch.id, token)).ms)
+        latencies.push(
+          (await resultPage(instance.base, first.batch.id, { name: cookieName, token })).ms,
+        )
       }
       const stopped = await instance.stop()
       server = undefined

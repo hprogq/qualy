@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { chromium, type BrowserContext } from 'playwright'
 
 import { repoRoot } from '../lib/manifest.ts'
-import { sessionCookieNameFor } from '../../packages/plugins/base/auth/src/server/session-cookie.ts'
+import { sessionCookieNames } from '../../packages/plugins/base/auth/src/server/session-cookie.ts'
 
 // Two cold starts of the real product, twelve frames each.
 //
@@ -41,8 +41,6 @@ const freePort = (): Promise<string> =>
 const PORT = process.env.RECORD_PORT ?? (await freePort())
 const BASE = `http://127.0.0.1:${PORT}`
 const OUT = path.join(import.meta.dirname, 'out')
-/** the cookie a production entry reads: the prefixed name, which the browser holds to Secure and Path=/ */
-const SESSION_COOKIE = sessionCookieNameFor(true)
 const RUNS = [
   {
     name: 'ready-300ms',
@@ -116,8 +114,8 @@ const signIn = async (context: BrowserContext): Promise<void> => {
     // read without a url: playwright's url filter drops Secure cookies for
     // every http host but `localhost`, while the browser itself keeps them
     const names = (await context.cookies()).map((cookie) => cookie.name)
-    if (!names.includes(SESSION_COOKIE)) {
-      throw new Error(`the browser kept no ${SESSION_COOKIE} cookie; it holds ${names.join(', ')}`)
+    if (!names.some((name) => sessionCookieNames.includes(name))) {
+      throw new Error(`the browser kept no session cookie; it holds ${names.join(', ')}`)
     }
   } finally {
     await page.close()

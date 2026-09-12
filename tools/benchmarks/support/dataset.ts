@@ -6,10 +6,26 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { repoRoot } from '../../lib/manifest.ts'
 import type { Db } from './pg.ts'
 import { benchDir, cli } from './server.ts'
-import { sessionCookieNameFor } from '../../../packages/plugins/base/auth/src/server/session-cookie.ts'
+import { sessionCookieNames } from '../../../packages/plugins/base/auth/src/server/session-cookie.ts'
 
-/** the cookie the production entry this benchmark drives reads: the `__Host-` name */
-const SESSION_COOKIE = sessionCookieNameFor(true)
+/**
+ * A session as a browser would hold it: the token under the name the server
+ * set. Which name that is depends on the entry the server was started as, so
+ * a tool learns it from the sign-in response and sends that name back, for
+ * the sessions it plants itself too.
+ */
+export interface SessionCookie {
+  readonly name: string
+  readonly token: string
+}
+
+/** the session cookie a sign-in set, under whichever name this entry uses */
+export const sessionFromResponse = (response: Response): SessionCookie | undefined => {
+  const cookie = new RegExp(`(${sessionCookieNames.join('|')})=([^;]+)`).exec(
+    response.headers.get('set-cookie') ?? '',
+  )
+  return cookie ? { name: cookie[1]!, token: cookie[2]! } : undefined
+}
 
 // The dataset the benchmark reads: a fixed recipe, built through the real
 // product paths wherever a path exists - formulas published through the
@@ -78,12 +94,12 @@ export interface Api {
   ) => Promise<{ status: number; body: T; text: string }>
 }
 
-export const clientFor = (base: string, token: string): Api => ({
+export const clientFor = (base: string, session: SessionCookie): Api => ({
   call: async (method, route, body) => {
     const response = await fetch(`${base}/api${route}`, {
       method,
       headers: {
-        cookie: `${SESSION_COOKIE}=${token}`,
+        cookie: `${session.name}=${session.token}`,
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -110,7 +126,7 @@ const must = <T>(
   return answer.body
 }
 
-export const login = async (base: string): Promise<string> => {
+export const login = async (base: string): Promise<SessionCookie> => {
   const response = await fetch(`${base}/api/auth/local/local/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -119,11 +135,9 @@ export const login = async (base: string): Promise<string> => {
   if (response.status !== 200) {
     throw new Error(`admin login failed: status ${response.status}\n${await response.text()}`)
   }
-  const cookie = new RegExp(`${SESSION_COOKIE}=([^;]+)`).exec(
-    response.headers.get('set-cookie') ?? '',
-  )
-  if (!cookie) throw new Error('the login answered without a session cookie')
-  return cookie[1]!
+  const session = sessionFromResponse(response)
+  if (!session) throw new Error('the login answered without a session cookie')
+  return session
 }
 
 const sha256hex = (value: string) => createHash('sha256').update(value).digest('hex')
@@ -207,9 +221,12 @@ export const sessionsFor = async (db: Db, tenantId: string, userIds: readonly st
   return tokens
 }
 
-const sessionAlive = async (base: string, token: string): Promise<boolean> =>
-  (await fetch(`${base}/api/auth/session`, { headers: { cookie: `${SESSION_COOKIE}=${token}` } }))
-    .status === 200
+const sessionAlive = async (base: string, session: SessionCookie): Promise<boolean> =>
+  (
+    await fetch(`${base}/api/auth/session`, {
+      headers: { cookie: `${session.name}=${session.token}` },
+    })
+  ).status === 200
 
 // --- the product paths ---------------------------------------------------
 
@@ -560,7 +577,8 @@ export const ensureDataset = async (options: {
   /** 'seed' builds on a fresh database; 'verify' trusts only what the fingerprint and the counts confirm */
   readonly mode: 'seed' | 'verify'
   readonly log: (line: string) => void
-}): Promise<{ dataset: Dataset; audit: DatasetAudit }> => {
+  /** `cookieName` is the one the running entry reads; the planted sessions are sent under it */
+}): Promise<{ dataset: Dataset; audit: DatasetAudit; cookieName: string }> => {
   const { db, base, log } = options
   if (options.mode === 'verify') {
     const existing = readDataset()
@@ -573,14 +591,17 @@ export const ensureDataset = async (options: {
     if (counts !== null)
       throw new Error(`the database no longer matches the dataset (${counts}); run with --reseed`)
     let dataset = existing
-    if (!(await sessionAlive(base, existing.sessions[0]!))) {
+    // the sign-in also says which cookie name this entry reads; the planted
+    // student sessions are sent under the same one
+    const signedIn = await login(base)
+    if (!(await sessionAlive(base, { name: signedIn.name, token: existing.sessions[0]! }))) {
       log('sessions expired; minting new ones')
       const tenant = await tenantOf(db)
       const students = await studentsOf(db, tenant)
       dataset = { ...existing, sessions: await sessionsFor(db, tenant.tenantId, students) }
     }
     if (options.control && !dataset.batches[cellName(CONTROL_ITEMS, 'control')]) {
-      const admin = clientFor(base, await login(base))
+      const admin = clientFor(base, signedIn)
       const tenant = await tenantOf(db)
       const built = await buildBatch(db, admin, tenant, 'control', CONTROL_ITEMS, log)
       await delay(Math.max(0, built.opensAt - Date.now()) + 1_000)
@@ -594,10 +615,11 @@ export const ensureDataset = async (options: {
     if (!audit.sound) throw new Error(`the dataset is not sound:\n${audit.output}`)
     fs.writeFileSync(datasetFile, `${JSON.stringify(dataset, null, 2)}\n`)
     log(`dataset present, audit ${audit.verdict}`)
-    return { dataset, audit }
+    return { dataset, audit, cookieName: signedIn.name }
   }
 
-  const admin = clientFor(base, await login(base))
+  const signedIn = await login(base)
+  const admin = clientFor(base, signedIn)
   const tenant = await tenantOf(db)
   const students = await studentsOf(db, tenant)
   const sessions = await sessionsFor(db, tenant.tenantId, students)
@@ -617,10 +639,10 @@ export const ensureDataset = async (options: {
   // the first student's page, once per round: the numbers the benchmark
   // will read are the numbers the product shows
   for (const [name, batch] of Object.entries(batches)) {
-    const page = await clientFor(base, sessions[0]!).call<{ total: string; lines: unknown[] }>(
-      'GET',
-      `/assessment/batches/${batch.id}/me/result`,
-    )
+    const page = await clientFor(base, {
+      name: signedIn.name,
+      token: sessions[0]!,
+    }).call<{ total: string; lines: unknown[] }>('GET', `/assessment/batches/${batch.id}/me/result`)
     if (
       page.status !== 200 ||
       page.body.total !== expectedTotal(batch.items) ||
@@ -649,5 +671,5 @@ export const ensureDataset = async (options: {
   fs.mkdirSync(benchDir, { recursive: true })
   fs.writeFileSync(datasetFile, `${JSON.stringify(dataset, null, 2)}\n`)
   log(`dataset built, audit ${audit.verdict}`)
-  return { dataset, audit }
+  return { dataset, audit, cookieName: signedIn.name }
 }
