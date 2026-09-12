@@ -16,11 +16,16 @@ const walk = (dir: string) => walkFiles(dir, ['dist']).filter((file) => file.end
 
 describe('the ports test servers listen on', () => {
   it('gives each suite one of its own', () => {
+    // every fixed port a suite names, whatever it calls it: a second server
+    // in the same file (`closedPort`, `barePort`, `receiverPort`) is a claim
+    // just as much as the first, and one of those collided with another
+    // suite's only port for months before a filtered run put the two files
+    // side by side
     const claims = new Map<string, string[]>()
     for (const file of roots.flatMap(walk)) {
       const source = fs.readFileSync(file, 'utf8')
-      for (const match of source.matchAll(/\bconst port = (\d{4})\b/g)) {
-        claims.set(match[1]!, [...(claims.get(match[1]!) ?? []), file])
+      for (const match of source.matchAll(/\bconst (\w*[pP]ort) = (\d{4})\b/g)) {
+        claims.set(match[2]!, [...(claims.get(match[2]!) ?? []), `${file} (${match[1]})`])
       }
     }
     const shared = [...claims]
@@ -38,7 +43,7 @@ describe('the ports test servers listen on', () => {
       .flatMap(walk)
       .filter((file) => {
         const source = fs.readFileSync(file, 'utf8')
-        return /\bconst port = \d{4}\b/.test(source) && /\.concurrent\b/.test(source)
+        return /\bconst \w*[pP]ort = \d{4}\b/.test(source) && /\.concurrent\b/.test(source)
       })
       .map((file) => `${file} claims a fixed port and runs concurrently`)
     expect(offenders).toEqual([])

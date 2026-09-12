@@ -59,7 +59,7 @@ import { FormulaSettings } from '../src/server/config.ts'
 const port = 3205
 const base = `http://127.0.0.1:${port}`
 // the same library served with the writer closed
-const closedPort = 3206
+const closedPort = 3207
 const closedBase = `http://127.0.0.1:${closedPort}`
 
 const catalog: readonly ActivePermission[] = compileCatalog([

@@ -18,7 +18,7 @@ import { healthApi, healthHandlers } from '../src/health.ts'
 
 const port = 3197
 // its own, because suites are separate files and files run in parallel
-const barePort = 3196
+const barePort = 3208
 const base = `http://127.0.0.1:${port}`
 
 const shell = (url: string, migrations: 'apply' | 'off' = 'apply') =>

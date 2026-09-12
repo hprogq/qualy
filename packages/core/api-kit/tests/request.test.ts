@@ -88,7 +88,7 @@ const base = `http://127.0.0.1:${port}`
 // one suite, one extra listener: the OTLP receiver the exported spans land
 // on; 3203 is claimed here the way `port` claims 3196 - keep both unique
 // across suites
-const receiverPort = 3203
+const receiverPort = 3209
 
 interface ExportedSpan {
   name: string
