@@ -159,6 +159,8 @@
 3. **然后**才 `document.startViewTransition(() => { 去掉 html[data-cold-start]; flushSync(卸载覆盖层) })`——快照是实心字标。覆盖层的字标与顶栏的字标共用 `view-transition-name: qualy-wordmark`;顶栏那个在覆盖层在场时被 `html[data-cold-start] [data-brand-wordmark] { view-transition-name: none }` 压掉,否则同名两元素会让浏览器跳过过渡。`::view-transition-group(qualy-wordmark)` 320ms `cubic-bezier(.2,.8,.2,1)`,old/new 图像不交叉淡化(同一张画);`::view-transition-new(root)` 从 60ms 起 260ms 淡入,`::view-transition-old(root)` 150ms 淡出。规则在 `apps/web/src/app.css`(根伪元素只能写在那里)。
 4. 不支持 View Transitions 或 `prefers-reduced-motion: reduce`:覆盖层 150ms 淡出后卸载,不做 FLIP。
 5. 落位后顶栏的字标是唯一的字标。
+6. **飞行只属于第一屏**:宿主按 episode 计数,同一页面里覆盖层第二次以后出现(登录后 manifest 重载、切换布局)只做 150ms 交叉淡入。
+7. **目的地不存在时**(登录页用的是无顶栏的 blank shell):`::view-transition-old(qualy-wordmark):only-child` 让旧图像随覆盖层 150ms 淡出,而不是原地停满 320ms 再消失。
 
 就绪到可交互 ≤ 500ms(150 + 320,内容淡入与飞行重叠)。
 

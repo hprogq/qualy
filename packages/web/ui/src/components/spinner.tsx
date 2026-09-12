@@ -279,6 +279,10 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
   const [phase, setPhase] = useState<Phase>('idle')
   const [hint, setHint] = useState(false)
   const overlay = useRef<HTMLDivElement>(null)
+  // how many times the screen has gone up in this page: the flight into
+  // the top bar is the first screen's gesture, and a screen that comes
+  // back later - the manifest reloading after a sign-in - leaves by a fade
+  const episodes = useRef(0)
 
   useLayoutEffect(() => {
     hosts += 1
@@ -293,6 +297,7 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
   // place, its loop set to begin 400ms from now
   useLayoutEffect(() => {
     if (pending > 0 && phase === 'idle') {
+      episodes.current += 1
       setHint(false)
       setPhase('waiting')
     }
@@ -340,7 +345,11 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
           document.documentElement.removeAttribute(COLD_START)
           flushSync(() => setPhase('idle'))
         }
-        if (typeof document.startViewTransition === 'function' && !reducedMotion()) {
+        const flight =
+          episodes.current === 1 &&
+          typeof document.startViewTransition === 'function' &&
+          !reducedMotion()
+        if (flight) {
           document.startViewTransition(leave)
         } else {
           setPhase('fading')

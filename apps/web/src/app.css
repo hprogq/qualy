@@ -30,6 +30,15 @@
   animation: none;
   mix-blend-mode: normal;
 }
+/* a screen with no top bar - the sign-in page - gives the wordmark nowhere
+   to fly to; an old image with no new one beside it fades out with the
+   screen instead of holding its place for the flight's duration */
+::view-transition-old(qualy-wordmark):only-child {
+  animation: q-cold-start-out 150ms ease-out both;
+}
+::view-transition-new(qualy-wordmark):only-child {
+  animation: q-cold-start-in 150ms ease-out both;
+}
 ::view-transition-old(root) {
   animation: q-cold-start-out 150ms ease-out both;
 }

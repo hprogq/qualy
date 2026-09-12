@@ -45,6 +45,15 @@ function Booting({ done }: { done: boolean }) {
   )
 }
 
+const withMotion = async (body: () => Promise<void>) => {
+  await commands.emulateMedia({ reducedMotion: 'no-preference' })
+  try {
+    await body()
+  } finally {
+    await commands.emulateMedia({ reducedMotion: 'reduce' })
+  }
+}
+
 const overlay = () => document.querySelector<HTMLElement>('[data-cold-start-phase]')
 const rectOf = (element: Element) => {
   const { left, top, width, height } = element.getBoundingClientRect()
@@ -128,6 +137,36 @@ describe('the cold start', () => {
       }
     })
   })
+
+  it('flies only on the first screen; a later screen leaves by a fade', async () =>
+    withMotion(async () => {
+      const transitions = vi.spyOn(document, 'startViewTransition')
+      try {
+        let finish!: () => void
+        let restart!: () => void
+        function Screen() {
+          const [done, setDone] = useState(false)
+          finish = () => setDone(true)
+          restart = () => setDone(false)
+          return <Booting done={done} />
+        }
+        await render(<Screen />)
+        await expect.element(page.getByRole('status')).toBeInTheDocument()
+        finish()
+        await vi.waitFor(() => expect(overlay()).toBeNull(), { timeout: 2000 })
+        expect(transitions).toHaveBeenCalledTimes(1)
+
+        // the manifest reloading after a sign-in: the screen comes back,
+        // and goes without a flight
+        restart()
+        await vi.waitFor(() => expect(overlay()).not.toBeNull(), { timeout: 2000 })
+        finish()
+        await vi.waitFor(() => expect(overlay()).toBeNull(), { timeout: 2000 })
+        expect(transitions).toHaveBeenCalledTimes(1)
+      } finally {
+        transitions.mockRestore()
+      }
+    }))
 
   it('draws a plain screen when no host is mounted', async () => {
     await render(<LoadingScreen />)

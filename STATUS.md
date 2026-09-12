@@ -13378,3 +13378,10 @@ acceptance done
   ```
 
   期间一次全量 `pnpm test` 里 `web-survives-backend`(固定端口 3200)与 `descriptor-prototype` 各红 1 条:当时我的诊断生产服务器正占着 3199/3200,单独重跑 11/11 绿;上面的记录是之后独占机器的一次。prettier 只对新增与改动文件执行。
+
+#### 阶段 3 追加(用户看实机后的两处):`fix(web): fly the wordmark only on the first screen`
+
+- **登录页(blank shell,无顶栏字标)**:view transition 找不到 `qualy-wordmark` 的目的地,而 `::view-transition-old(qualy-wordmark)` 写的是 `animation: none`,旧图像原地停满 320ms 再消失,叠在已经淡入的登录卡上。修法:`app.css` 加 `::view-transition-old(qualy-wordmark):only-child { animation: q-cold-start-out 150ms }`(及 new 的对称规则)——没有 new 图像时旧图像随覆盖层一起 150ms 淡出。
+- **登录后又飞一次**:登录 → `useSessionTransition` 的 `resetQueries` → manifest 重新 pending → `LoadingScreen` 再次认领 → 宿主把整套(含飞行)重跑。修法:`ColdStart` 按 episode 计数,飞行(`startViewTransition`)只在第一个 episode;之后的覆盖层退场只做 150ms 交叉淡入。
+- **承重**:`cold-start.browser.test.tsx` 加 1 条——no-preference 下 spy `document.startViewTransition`,第一次认领撤走时调用 1 次,再认领再撤走仍是 1 次(5 条全绿)。dev server 上实录(scratchpad,未入库):未登录冷启动到 `/login` 在 1007ms 字标与登录卡交叉淡入、1214ms 只剩登录卡;提交登录后 +410ms 覆盖层、+616ms 字标淡出 shell 浮现、+804ms 落定,无飞行。docs/brand.md「落位」补第 6、7 条。
+- **门禁(实际执行)**:`pnpm typecheck` 19 programs exit 0;`pnpm test:browser` Test Files 46 passed (46), Tests 320 passed (320), exit 0;`pnpm build` 通过、chunk 环 0。node 套件未受影响(改动只在 spinner.tsx、app.css、一条浏览器测试与文档)。
