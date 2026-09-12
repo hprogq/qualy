@@ -25,6 +25,14 @@ export default defineConfig(({ mode }) => ({
       // root; pinned so every pipeline (dev server, test, build) agrees
       // regardless of its working directory
       unstable_moduleResolution: { type: 'commonJS', rootDir: repoRoot },
+      // Where the compiled rules go in a production build. The plugin appends
+      // them to the stylesheet named index.css or style.css, and failing
+      // both to whichever css asset comes first in the bundle; with hashed
+      // names neither exists, and the first asset was the formula editor's
+      // lazy stylesheet - so every rule of the product rode along with one
+      // page nobody had opened yet, and the shell came up unstyled. The
+      // entry's own stylesheet is the one the shell links.
+      cssInjectionTarget: (file) => /(^|[\\/])index-[^\\/]*\.css$/.test(file),
     }),
     react(),
   ],
@@ -45,6 +53,19 @@ export default defineConfig(({ mode }) => ({
         // them.
         codeSplitting: {
           groups: [
+            // The widget library, whole. Its modules import one another in
+            // rings - a context made in one file and read in the next - which
+            // an ESM graph tolerates module by module but not chunk by chunk:
+            // pooled below by which entries reach them, they landed in two
+            // chunks that import each other, and whichever ran second read
+            // the first's `var`s before that chunk had run. The shell threw
+            // before it drew, in production only; nothing that fetches the
+            // bundle without executing it could see it. One pool, no ring.
+            {
+              name: 'widgets',
+              test: /[\\/]node_modules[\\/]@mantine[\\/]/,
+              priority: 2,
+            },
             // One locale, one file. Every plugin dynamic-imports its own
             // table for the chosen locale, and all of them are awaited before
             // the first screen - eight requests standing in a row where one
