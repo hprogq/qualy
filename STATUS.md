@@ -13353,3 +13353,28 @@ acceptance done
   ```
 
   prettier 只对新增与改动文件执行。
+
+### 阶段 3:场景接入与首屏(2026-09-13,完成)
+
+三笔提交:`fix(web): make the production bundle boot styled`(先修两个既有生产缺陷,否则录制无从谈起)、`feat(web): adopt brand loader and wordmark in shell`、`feat(web): cold-start brand sequence`(含 favicon 的 `<link>`)。规格与推导见 `docs/brand.md`「场景接入」「首屏」两章。
+
+- **两个既有生产缺陷(本阶段用浏览器执行生产包才暴露;`smoke-production` 只查 HTTP,从未执行 JS)**:①`shared` 分池(entriesAware)把 Mantine 内部互相 import 的模块拆进两个互相 import 的 chunk,先跑的那边读到未初始化的 `var`,shell 在画任何东西之前就抛错——在 Phase 7 收官时的同一个 `index-D1JzDxVJ.js` 上复现为 `TypeError: p is not a function`;修法:`apps/web/vite.config.ts` 加一个 `widgets` 组(`test: /[\\/]node_modules[\\/]@mantine[\\/]/`,priority 2)把 Mantine 收进一个池子,chunk 环从 1 个到 0 个(检查脚本:遍历 dist 里 chunk 的 `from"./x.js"` 图找环)。②`@stylexjs/unplugin` 生产期把聚合 CSS 追加到名为 `index.css`/`style.css` 的资产,两者都不存在(名字带 hash)就追加到 bundle 里**第一个** CSS 资产——那是公式编辑器的懒加载样式表,于是产品全部 StyleX 规则(1222 个类)只在打开公式编辑器后才出现,shell 一直无样式;修法:`cssInjectionTarget: (file) => /(^|[\\/])index-[^\\/]*\.css$/.test(file)`。修后 `index-*.css` 356KB 含全部 1222 个类,公式编辑器样式表只剩自己的 80KB。上一提交(`3f96607f`,worktree 重建)两个缺陷都在,不是本阶段引入。**遗留**:生产 smoke 应至少用浏览器执行一次 bundle(CI 的 smoke job 没装 chromium,需调整顺序),本阶段未做,记为下一步。
+- **spinner.tsx**(`Spinner` / `LoadingScreen` / `PageLoading` 导出名与 props 不变,内部替换,lucide `Loader2Icon` 不再引用):`Spinner` = `<Loader size={16}>` + `role="status"` + `aria-label`;`PageLoading` = `<Loader size={24}>`,`opacity` 0 → 1、150ms、`animation-delay: 300ms`、`both`,外层 `role="status"` + `VisuallyHidden`;`LoadingScreen` = 对共享覆盖层的**认领**(`useLayoutEffect` 计数),新导出 `ColdStart({ copy })` 是挂在根上的宿主。理由:catalog → manifest → 布局 chunk 三段 fallback 串联,各画各的会在交接处重启循环且没人能退场;宿主在最后一个认领撤走**一帧之后**才退场(fallback 之间的交接是同一 commit 里先撤后认,不会被当成结束)。`@qualy/ui` 保持零文案:冷启动文案由 `App.tsx` 从 `commonMessages` 的英文 `defaultMessage` 取(新增 `stillLoading`,zh-CN「仍在加载」)。
+- **落位顺序(用户补充的第 2 点)**:先 `settle()`——暂停八条循环动画、读各段当前 `opacity` / `transform`、WAAPI 150ms 到 1 / 归位并 `fill: forwards`——**然后**才 `document.startViewTransition(() => { 去掉 html[data-cold-start]; flushSync(setPhase('idle')) })`,快照是实心字标。覆盖层与顶栏字标共用 `view-transition-name: qualy-wordmark`,顶栏那个在覆盖层在场时由 `app.css` 的 `html[data-cold-start] [data-brand-wordmark] { view-transition-name: none }` 压掉(同名两元素会让浏览器跳过过渡);`::view-transition-group(qualy-wordmark)` 320ms `cubic-bezier(.2,.8,.2,1)`,old/new 不交叉淡化,`::view-transition-new(root)` 60ms 起 260ms 淡入。不支持或 reduced-motion:覆盖层 150ms 淡出,不做 FLIP。6s 提示、30s 停转 + 重试(刷新);请求失败时加载器撤走认领、覆盖层退场露出运行时自己的失败界面。
+- **首帧**(用户补充的第 1、3 点):`index.html` 内联字标(cap 28、环心线 44vh、`calc(44vh - 14.42px)`)、内联脚本按 `qualy.theme` 键(与 `ThemeProvider` 同一个)读偏好、无持久化只看 `prefers-color-scheme`,设 `data-mode` 并提前加 `.dark` 类;颜色用应用 token 值(`oklch(1 0 0)` / `oklch(0.145 0 0)`,深色反之 / `oklch(0.985 0 0)`)而不是规格里预览页的 `#18191D` / `#FAFAF8`——接管那一帧覆盖层用同一组 token,否则会跳一下色。`ColdStart` 在自己的 `useLayoutEffect` 里同帧移除 `#qualy-boot`。index.html 里**不放注释**(原样发给浏览器;用户要求),说明移到 `tools/tests/index-html-sync.test.ts`。`<link rel="icon" href="/favicon.svg">`;`pnpm build` 后 favicon 与首帧都在 `client-dist/`。
+- **顶栏**:`Brand` = `<Wordmark height={14} title="Qualy" data-brand-wordmark>`,链接的可访问名称只来自 `<title>`;`brandMark` / `brandWord` 样式删除;`layout-default` 与 `@qualy/ui` 加 `@qualy/brand` 依赖;`Wordmark` 透传 svg 属性。
+- **测试**:`tools/tests/index-html-sync.test.ts`(5 条:六条路径与 viewBox / 宽高逐字相同、44vh 偏移、token 颜色值、主题键、favicon;放在 tools/tests 而不是规格写的 brand 包——web 侧 tsconfig `types: []` 读不了文件);`apps/web/tests/cold-start.browser.test.tsx`(4 条:注入 index.html 首帧片段比对 `getBoundingClientRect` 逐像素一致且占位节点被移除、400ms 内就绪循环从未点亮(delay 400、currentTime < 400、opacity 1)并退场、fake timers 推到 6s 出提示 / 30s 出重试且八段静止、无宿主时画普通屏);`shell.browser.test.tsx` 加"链接名 Qualy 恰一个";`brand.browser.test.tsx` 加尾巴 t = 0 / 20 / 39ms opacity = 1、320ms = 0.32(用户要的实测:0ms 那帧尾巴看起来变浅是缩放错觉;`2.857%` 把切换点舍到 39.998ms,所以 40ms 处读到 0.999956)。
+- **录制** `pnpm brand:record`(`tools/brand/record.ts`):起生产入口(空闲端口向系统申请——同端口连跑两次时上一进程的 readiness 还在、chunk 请求时已退出,录出过一次"shell 无法显示")、管理员登录、`page.route` 把 manifest 压到 300ms / 3000ms、CDP screencast 按合成器时间戳取帧,各 12 帧 + 拼图 `tools/brand/out/ready-300ms.png` / `ready-3s.png`。300ms 那段:57ms 首帧 → 474ms 接管(像素相同,中间没有新帧)→ 循环从未点亮 → 900ms 飞行 → 1200ms 落位;3s 那段:1400–3000ms 循环可见 → 3300–3500 归实心 → 3700 飞行 + 内容淡入 → 4000 落位。
+- **用户问的居中**:环心线在 44vh 是规格 §4.1 的值,不是 bug;896px 高的窗口里字标上缘 380px、下缘 481px 正是它。6s 的提示行在字标下方 40px,300ms 内就绪看不到。改到几何中心是 `coldStartPlacement.line`、index.html 与 sync 测试各一处,等裁决。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm typecheck    -> 19 programs, exit 0
+  pnpm test         -> Test Files 210 passed | 3 skipped (213); Tests 1470 passed | 17 skipped (1487); exit 0
+  pnpm test:browser -> Test Files 46 passed (46); Tests 319 passed (319); exit 0
+  pnpm build        -> ✓ built; staged web assets, precompressed 98 file(s); client-dist/favicon.svg 与 index.html 首帧在场;chunk 环 0
+  smoke-production  -> /health/live /health/ready / /api/app/manifest /assets/index-TS2o2YrX.js ok, brotli, shutdown clean (exit 0)
+  pnpm brand:record -> ready-300ms 116 frames, ready-3s 375 frames, page error 0
+  ```
+
+  期间一次全量 `pnpm test` 里 `web-survives-backend`(固定端口 3200)与 `descriptor-prototype` 各红 1 条:当时我的诊断生产服务器正占着 3199/3200,单独重跑 11/11 绿;上面的记录是之后独占机器的一次。prettier 只对新增与改动文件执行。

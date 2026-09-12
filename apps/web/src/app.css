@@ -12,3 +12,40 @@
 @layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;
 
 @import '@qualy/ui/theme.css';
+
+/* The cold start's landing: the loading screen's wordmark and the top bar's
+   share one view-transition-name, so the browser flies the one onto the
+   other while the application fades in underneath. The name is held off
+   the top bar's wordmark while the loading screen is up - two elements
+   with one name would make the browser skip the transition - and comes
+   back in the same update that removes the screen. Pseudo-elements on the
+   root are the only place these rules can live. */
+::view-transition-group(qualy-wordmark) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+::view-transition-old(qualy-wordmark),
+::view-transition-new(qualy-wordmark) {
+  /* the same drawing at both ends: no cross-fade, only the flight */
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  animation: q-cold-start-out 150ms ease-out both;
+}
+::view-transition-new(root) {
+  animation: q-cold-start-in 260ms ease-out 60ms both;
+}
+html[data-cold-start] [data-brand-wordmark] {
+  view-transition-name: none;
+}
+@keyframes q-cold-start-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes q-cold-start-in {
+  from {
+    opacity: 0;
+  }
+}

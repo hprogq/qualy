@@ -111,9 +111,60 @@
 
 `prefers-reduced-motion: reduce` 时不循环:七段无动画,尾巴以 `2400ms` 周期 `opacity 1 → 0.55 → 1` 缓慢呼吸(只动透明度),探身关闭。StyleX 媒体查询条件,纯 CSS。
 
-### 一次性序列
+### 一次性序列(冷启动)
 
-只属于 LoadingScreen(阶段 3):开始 = 给字标的 Q 挂循环、`animation-delay: 400ms`;退出 = 暂停八条动画、读各元素当前 `opacity`、WAAPI 150ms 过渡到 1,尾巴同一 150ms 内退回;然后落位。
+只属于 `LoadingScreen`,见下文「首屏」。
+
+## 场景接入
+
+| 场景                             | 位置                                   | 形态                                                                                                         |
+| -------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 冷启动、i18n 回退、manifest 加载 | `@qualy/ui/spinner` 的 `LoadingScreen` | 首屏全套(下节)                                                                                               |
+| 路由级内容区等待                 | `PageLoading`                          | `<Loader size={24}>`,`opacity` 0 → 1、150ms、`animation-delay: 300ms`、`both`:300ms 内到达的页面永远看不到它 |
+| 按钮内、行内、提交态             | `Spinner`                              | `<Loader size={16}>`(浅极性),`role="status"` + `aria-label`,点击即显示、完成即消失                           |
+| 顶栏                             | `layout-default/TopBar.tsx` 的 `Brand` | `<Wordmark height={14} title="Qualy">`,永不 `live`;链接的可访问名称就是 `<title>`,不再另加 aria-label        |
+| favicon                          | `apps/web/public/favicon.svg`          | 静态标志,内嵌 `prefers-color-scheme` 切 `#18191D` / `#FAFAF8`;`index.html` 的 `<link rel="icon">`            |
+
+`Spinner` / `LoadingScreen` / `PageLoading` 三个导出名与 props 不变,lucide 的 `Loader2Icon` 不再被引用。加载类元素带 `role="status"`,视觉隐藏文案用 `@qualy/ui/visually-hidden`;冷启动的文案由宿主(`apps/web/src/App.tsx`)从 `commonMessages` 的英文 `defaultMessage` 取出交给宿主组件——它运行在 catalog 之前,而 `@qualy/ui` 保持零文案。
+
+## 首屏(冷启动)
+
+按用户真实等待的每一刻定义:加载动画不能让等待变长,也不能让快的加载显得慢。
+
+### 结构:一个宿主,多个认领
+
+到第一屏之前有三段串联的等待——catalog、manifest、布局 chunk——每一段都渲染 `<LoadingScreen />`。如果每个自己画字标,循环会在每次交接时重启,而且没有谁能动画退场:画它的那个 fallback 在后面的画面出现时已经卸载了。所以 `LoadingScreen` 是对一块共享覆盖层的**认领**(`useLayoutEffect` 里计数),覆盖层由挂在根上、位于所有 provider 之上的 `<ColdStart copy>` 画:只要有认领就在,最后一个认领撤走一帧之后退场。没有宿主的树里,`LoadingScreen` 画一个普通的静态屏。
+
+### 首帧(0ms,JS 之前)
+
+`apps/web/index.html` 内联字标 SVG:cap 28px,环心所在的水平线在 `44vh`,水平按包围盒居中;颜色用应用自己的前景 / 背景 token 值(`oklch(0.145 0 0)` / `oklch(1 0 0)`,深色 `oklch(0.985 0 0)` / `oklch(0.145 0 0)`),不用预览页的 `#18191D` / `#FAFAF8`——接管那一帧覆盖层用的是同一组 token,两者必须逐值相同。一段内联脚本按 `ThemeProvider` 持久化的同一个键 `qualy.theme` 读取用户偏好(`packages/web/runtime/src/theme.tsx`),没有持久化就只看 `prefers-color-scheme`,设 `data-mode` 并提前加上 token 切换用的 `.dark` 类,页面背景同理。首帧不淡入。index.html 里不放任何注释(它原样发给每个浏览器),说明在 `tools/tests/index-html-sync.test.ts`。
+
+路径字符串手写在 index.html 里;`tools/tests/index-html-sync.test.ts` 用 `geometry.ts` 在同一 s 下重算 viewBox、宽高、六条路径、44vh 偏移、颜色值与主题键逐一比对——这是测试,不是 codegen。
+
+### 接管(React 挂载后)
+
+`ColdStart` 用完全相同的几何与位置渲染 `<Wordmark height={28} live>`(循环带 400ms delay),在它自己的 `useLayoutEffect` 里**同帧**移除 `#qualy-boot`,不出现双字标或空白帧。浏览器测试把 index.html 的首帧片段注入页面,比对两者的 `getBoundingClientRect`,逐像素一致。
+
+### 等待
+
+- 400ms 内就绪:循环从未开始(delay 未过),直接落位。
+- 超过 400ms:循环从探身开始(关键帧 0%)。
+- 6000ms 未就绪:字标下方 40px 淡入一行 muted 小字(英文 fallback "Still loading"),400ms。
+- 30000ms 未就绪:停止循环(八段 150ms 归 1、尾巴退回,WAAPI 保持),显示重试按钮(刷新页面)。请求失败时,失败的加载器撤走认领,覆盖层照常退场,露出运行时自己的失败界面(带重试)——失败时不会还在转。
+
+### 落位(就绪后)
+
+1. 最后一个认领撤走 → 下一帧确认没有新的认领(fallback 之间的交接是同一次 commit 里的先撤后认,不会被当成结束)。
+2. 先暂停八条循环动画,读各段当前 `opacity` 与尾巴的 `transform`,WAAPI 150ms 过渡到 1 / 归位并保持。
+3. **然后**才 `document.startViewTransition(() => { 去掉 html[data-cold-start]; flushSync(卸载覆盖层) })`——快照是实心字标。覆盖层的字标与顶栏的字标共用 `view-transition-name: qualy-wordmark`;顶栏那个在覆盖层在场时被 `html[data-cold-start] [data-brand-wordmark] { view-transition-name: none }` 压掉,否则同名两元素会让浏览器跳过过渡。`::view-transition-group(qualy-wordmark)` 320ms `cubic-bezier(.2,.8,.2,1)`,old/new 图像不交叉淡化(同一张画);`::view-transition-new(root)` 从 60ms 起 260ms 淡入,`::view-transition-old(root)` 150ms 淡出。规则在 `apps/web/src/app.css`(根伪元素只能写在那里)。
+4. 不支持 View Transitions 或 `prefers-reduced-motion: reduce`:覆盖层 150ms 淡出后卸载,不做 FLIP。
+5. 落位后顶栏的字标是唯一的字标。
+
+就绪到可交互 ≤ 500ms(150 + 320,内容淡入与飞行重叠)。
+
+### 录制
+
+`pnpm brand:record`(`tools/brand/record.ts`,手工):起真实的生产入口(需 `pnpm build`、compose 数据库与 seed、`.env` 里的 `QUALY_ADMIN_USERNAME` / `QUALY_ADMIN_PASSWORD`),管理员登录,把 `/api/app/manifest` 分别压到导航开始后 300ms 与 3000ms 才应答,用 CDP screencast 按合成器时间戳取帧,各挑 12 个时刻写 `tools/brand/out/ready-300ms-*.png` / `ready-3s-*.png` 与两张拼图。
 
 ## 使用规则
 

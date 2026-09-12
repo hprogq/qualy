@@ -16,7 +16,7 @@ import { UiProvider } from '@qualy/ui/provider'
 import { I18nProvider, useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
-import { LoadingScreen, PageLoading } from '@qualy/ui/spinner'
+import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { catalogs, components, errorMessages } from 'virtual:qualy/plugins'
 
 // There is no global client to build: each plugin derives its own from the
@@ -77,21 +77,35 @@ const registry: ComponentRegistry = Object.fromEntries(
   ]),
 )
 
+// The cold start's own copy, in the fallback language: the host stands above
+// the catalogs, which is the point of it, so it is handed the english
+// defaults of the same messages the rest of the shell formats.
+const coldStartCopy = {
+  loading: commonMessages.loading.defaultMessage,
+  stillLoading: commonMessages.stillLoading.defaultMessage,
+  retry: commonMessages.retry.defaultMessage,
+}
+
 export default function App() {
   // localization wraps everything: even the manifest loading and error
-  // states are localized, so the shell never renders untranslated copy
+  // states are localized, so the shell never renders untranslated copy.
+  // The cold-start host stands beside it, above every provider, and draws
+  // the one loading screen the fallbacks below claim in turn.
   return (
-    <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
-      <ThemeProvider>
-        <WidgetBridge>
-          <RuntimeProvider registry={registry}>
-            <BrowserRouter>
-              <ManifestRouter />
-            </BrowserRouter>
-          </RuntimeProvider>
-        </WidgetBridge>
-      </ThemeProvider>
-    </I18nProvider>
+    <>
+      <ColdStart copy={coldStartCopy} />
+      <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
+        <ThemeProvider>
+          <WidgetBridge>
+            <RuntimeProvider registry={registry}>
+              <BrowserRouter>
+                <ManifestRouter />
+              </BrowserRouter>
+            </RuntimeProvider>
+          </WidgetBridge>
+        </ThemeProvider>
+      </I18nProvider>
+    </>
   )
 }
 
