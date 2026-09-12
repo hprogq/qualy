@@ -9,14 +9,16 @@ import { Client } from 'pg'
 const DEFAULT_URL = 'postgres://qualy:qualy@localhost:5432/qualy'
 const BENCHMARK_DATABASE = 'qualy_benchmark'
 
-/** the benchmark's own database: explicit, or the compose stack's server with its own name */
-export const benchmarkUrl = (): string => {
-  const explicit = process.env.QUALY_BENCH_DATABASE_URL
-  if (explicit) return explicit
+/** a database of the given name on the configured server: the compose stack's by default */
+export const databaseUrlFor = (name: string): string => {
   const url = new URL(process.env.DATABASE_URL ?? DEFAULT_URL)
-  url.pathname = `/${BENCHMARK_DATABASE}`
+  url.pathname = `/${name}`
   return url.toString()
 }
+
+/** the benchmark's own database: explicit, or the configured server with its own name */
+export const benchmarkUrl = (): string =>
+  process.env.QUALY_BENCH_DATABASE_URL || databaseUrlFor(BENCHMARK_DATABASE)
 
 const databaseNameOf = (url: string): string => {
   const name = decodeURIComponent(new URL(url).pathname.slice(1))

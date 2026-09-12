@@ -65,6 +65,7 @@
     "sandbox:build": "docker compose --profile sandbox build",
     "sandbox:up": "node tools/quality/sandbox-uds-gate.ts && docker compose --profile sandbox up -d sandbox-runtime sandbox-authoring",
     "sandbox:down": "docker compose --profile sandbox down sandbox-runtime sandbox-authoring",
-    "sandbox:smoke": "node tools/quality/sandbox-smoke.ts"
+    "sandbox:smoke": "node tools/quality/sandbox-smoke.ts",
+    "smoke:formula-production": "node tools/quality/formula-production-smoke.ts"
   }
 }

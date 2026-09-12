@@ -3716,6 +3716,8 @@ runtime timeouts
 
 **追记（2026-09-11，同日）**：第一份 baseline 暴露出 `@qualy/value-schema` 的 validator 缓存按对象身份键、而计分路径每请求解码新 plan，于是每次评估两次 Ajv compile 且被 Ajv 永久保留（1 GiB 老生代在 50 题 × 12 轮内耗尽）。`fix(value-schema)` 改为语义键 + 有界 generation（256 个语义一代，整代连同 Ajv 实例一起释放）。**修前的 baseline 是有效的故障基线，不再是 §11.7 优化决策的依据**；post-fix baseline 与 #2 的裁决见 STATUS。
 
+**两个 production smoke 的分工（2026-09-12，步骤 5B）**：`tools/quality/smoke-production.ts`（CI 必跑）证明整个 production assembly 能起、serve 静态与 manifest、未登录 API 401、SIGTERM exit 0，不登录、不建库、不碰沙箱；`tools/quality/formula-production-smoke.ts`（`pnpm smoke:formula-production`，手工、不进 CI，依赖真 PG 与两个沙箱）证明 Phase 7 新增的业务链：提交版 `qualy.yml`/lock → production entry → 自有库 deploy + seed → 真 authoring 沙箱发布 FormulaVersion → binding catalog 见到该版本 → `formula@1` Item 绑定精确 versionId → 行政记录经产品 API `POST /assessment/entries` 落 approved 认定（真 runtime 沙箱 probe）→ 参评人 `/me/result` 精确断言 total 与 `provenance.calculatorRef === 'formula@1'` → `audit-scoring` clean/0/0 → clean shutdown。唯一 fixture 是参评人的 session 行（没有为他人设密码的 API）。writer 关闭时它先读 manifest 就拒绝（exit 2），不建库、不起 server、不碰沙箱。两者不可互相替代，final acceptance 都要跑。
+
 **校准定案（2026-09-12）**：runtime sandbox 的 worker pool 与 CPU 配额对齐（`cpus: 1` + `QUALY_SANDBOX_POOL_SIZE=1`，pool = 2 是此前稳定假超时的主因），scoring budget 定为 **soft 50 / hard 100 ms**（`FORMULA_SCORING_LIMITS`，本节 §11.7 之外唯一被 benchmark 移动的值；hard 上界不动）。依据：soft 是 worker 侧整个 envelope 的 wall-clock，25 ms 在 181,200 次 invocation 里被健康公式打穿一次；50 ms 在静默态与 load 25 的高负载窗口累计 181,200 次为 0/0。§11.7 #2 不做：pool 1 不改变串行延迟，10 题 ≈ 175 ms、50 题 ≈ 777 ms p50，无 SLO 要求下不为理论并行空间引入 scoring concurrency。数字见 STATUS。
 
 ---

@@ -187,7 +187,7 @@ const studentsOf = async (db: Db, tenant: Tenant): Promise<string[]> => {
 }
 
 /** a session per student, minted by hand: nobody's password is involved */
-const sessionsFor = async (db: Db, tenantId: string, userIds: readonly string[]) => {
+export const sessionsFor = async (db: Db, tenantId: string, userIds: readonly string[]) => {
   const tokens: string[] = []
   for (const userId of userIds) {
     const token = randomBytes(24).toString('hex')
