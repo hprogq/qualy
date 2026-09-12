@@ -196,8 +196,11 @@ export const layer = Layer.effect(
       withDb(
         Effect.gen(function* () {
           const token = yield* presentedToken(config.sessionCookieName)
+          // no token is the commonest way to be unauthenticated, and the one
+          // that costs nothing to answer: it never reaches the database
+          if (token === '') return yield* new AuthRequired()
           const session = yield* sessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
-          // an unknown token and no token are the same answer
+          // an unknown token is the same answer
           if (!session) return yield* new AuthRequired()
           if (session.expired) {
             yield* deleteSession(session.id).pipe(Effect.orDie)
