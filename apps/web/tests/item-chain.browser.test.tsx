@@ -105,7 +105,9 @@ const RECOGNITION_ID = '01920000-0000-7000-8000-0000000000f2'
 
 /** a saved question whose arithmetic is a published formula: an identity
  *  this pen cannot yet author, and a refinement it cannot yet even show */
-const formulaItem = () => ({
+const formulaItem = (
+  over: { defaultFromFieldId?: string | null; bindings?: Record<string, unknown> } = {},
+) => ({
   ...officerItem(),
   title: '竞赛获奖',
   currentRevision: {
@@ -124,10 +126,14 @@ const formulaItem = () => ({
             'x-qualy-minimum': '60',
             'x-qualy-maximum': '100',
           },
-          defaultFromFieldId: 'claimed-level',
+          defaultFromFieldId:
+            over.defaultFromFieldId === undefined ? 'claimed-level' : over.defaultFromFieldId,
         },
       },
-      bindings: { level: { kind: 'recognition', recognitionId: RECOGNITION_ID } },
+      bindings: {
+        level: { kind: 'recognition', recognitionId: RECOGNITION_ID },
+        ...(over.bindings ?? {}),
+      },
     },
   },
 })
@@ -232,6 +238,35 @@ const previewFor = (ref: string) => ({
     },
   ],
 })
+
+/** the same arithmetic, republished: its parameter now admits 70 to 100 */
+const narrowedPreview = () => {
+  const preview = previewFor('formula@1')
+  return {
+    ...preview,
+    inputSchema: {
+      ...preview.inputSchema,
+      properties: { level: { ...GRADE, 'x-qualy-minimum': '70', title: '等级分' } },
+    },
+  }
+}
+
+/** a whole-number field on offer too: integers 60 to 100 convert into the graded fact */
+const withRankField = () => {
+  const preview = previewFor('formula@1')
+  return {
+    ...preview,
+    bindableFields: [
+      ...preview.bindableFields,
+      {
+        fieldId: 'claimed-rank',
+        payloadKey: 'claimed-rank',
+        schema: { type: 'integer', minimum: 60, maximum: 100 },
+        always: true,
+      },
+    ],
+  }
+}
 
 /** what the round may bind now, and the one this question already runs */
 const bindingOptions = (over: { current?: unknown; items?: readonly unknown[] } = {}) => ({
@@ -765,12 +800,111 @@ describe('binding what the arithmetic asks for', () => {
     const options = page.getByRole('option').elements()
     const assignable = Object.fromEntries(
       options.map((option) => [
-        option.textContent?.trim(),
+        option.getAttribute('data-field-id'),
         option.getAttribute('data-field-assignable'),
       ]),
     )
     expect(assignable['claimed-level']).toBe('true')
     expect(assignable['claimed-any']).toBe('false')
+  })
+
+  const diagnosticsOf = () =>
+    page
+      .getByTestId('binding-diagnostic')
+      .elements()
+      .map((one) => ({
+        parameter: one.getAttribute('data-parameter'),
+        source: one.getAttribute('data-source'),
+        reason: one.getAttribute('data-reason'),
+        text: one.textContent ?? '',
+      }))
+
+  it('explains why a suggested field cannot seed the fact', async () => {
+    // the stored default is the unbounded decimal: what the field allows is
+    // not always a legal determination, and the row now says so
+    openFormula({ items: [formulaItem({ defaultFromFieldId: 'claimed-any' })] })
+    await expect.element(page.getByTestId('binding-diagnostic')).toBeVisible()
+    const [only, ...rest] = diagnosticsOf()
+    expect(rest).toEqual([])
+    expect(only).toMatchObject({
+      parameter: 'level',
+      source: 'default',
+      reason: 'decimal-range-widens',
+    })
+    // the bounds the fact holds are fixture data, not copy
+    expect(only?.text).toContain('60')
+    expect(only?.text).toContain('100')
+    // and the option itself carries the same reason
+    await page.getByTestId('recognition-default').click()
+    const reasons = Object.fromEntries(
+      page
+        .getByRole('option')
+        .elements()
+        .map((option) => [
+          option.getAttribute('data-field-id'),
+          option.getAttribute('data-field-reason'),
+        ]),
+    )
+    expect(reasons['claimed-any']).toBe('decimal-range-widens')
+    expect(reasons['claimed-level']).toBeNull()
+  })
+
+  it('says nothing when everything fits', async () => {
+    openFormula()
+    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+    expect(page.getByTestId('binding-diagnostic').elements()).toEqual([])
+    expect(page.getByTestId('binding-orphans').elements()).toEqual([])
+  })
+
+  it('explains a narrowing the arithmetic no longer admits, before the default', async () => {
+    // republished: the parameter now starts at 70, the stored fact still
+    // admits 60. The fact's own narrowing is judged first, then what seeds it
+    openFormula({
+      items: [formulaItem({ defaultFromFieldId: 'claimed-any' })],
+      preview: narrowedPreview(),
+    })
+    await expect.element(page.getByTestId('binding-diagnostic').first()).toBeVisible()
+    const found = diagnosticsOf()
+    expect(found.map((one) => [one.parameter, one.source, one.reason])).toEqual([
+      ['level', 'recognition', 'decimal-range-widens'],
+      ['level', 'default', 'decimal-range-widens'],
+    ])
+    // what the parameter needs, and what the fact actually admits
+    expect(found[0]?.text).toContain('70')
+    expect(found[0]?.text).toContain('60')
+  })
+
+  it('names a binding whose parameter the arithmetic no longer has', async () => {
+    openFormula({
+      items: [formulaItem({ bindings: { oldLevel: { kind: 'constant', value: '1' } } })],
+    })
+    await expect.element(page.getByTestId('binding-orphans')).toBeVisible()
+    const orphans = page
+      .getByTestId('binding-orphan')
+      .elements()
+      .map((one) => [one.getAttribute('data-parameter'), one.getAttribute('data-reason')])
+    expect(orphans).toEqual([['oldLevel', 'binding-unknown-parameter']])
+    // the parameters the arithmetic does have are not among them
+    expect(page.getByTestId('binding-diagnostic').elements()).toEqual([])
+  })
+
+  it('offers a whole-number field the graded fact converts from', async () => {
+    // integers 60 to 100 convert into a decimal fact of the same bounds:
+    // the value layer answers `convert`, which the server accepts as a
+    // seeding, so the option is on offer and nothing is diagnosed
+    openFormula({
+      items: [formulaItem({ defaultFromFieldId: 'claimed-rank' })],
+      preview: withRankField(),
+    })
+    await expect.element(page.getByTestId('scoring-bindings')).toBeVisible()
+    expect(page.getByTestId('binding-diagnostic').elements()).toEqual([])
+    await page.getByTestId('recognition-default').click()
+    const rank = page
+      .getByRole('option')
+      .elements()
+      .find((option) => option.getAttribute('data-field-id') === 'claimed-rank')
+    expect(rank?.getAttribute('data-field-assignable')).toBe('true')
+    expect(rank?.getAttribute('aria-disabled')).not.toBe('true')
   })
 
   it('renames a fact without touching what it admits', async () => {

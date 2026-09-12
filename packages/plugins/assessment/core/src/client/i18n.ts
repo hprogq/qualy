@@ -1273,6 +1273,7 @@ const i18n = definePluginMessages({
     itemsFieldType: { id: 'assessment/items/field-type', defaultMessage: 'Type' },
     itemsTypeText: { id: 'assessment/items/type-text', defaultMessage: 'Text' },
     itemsTypeDate: { id: 'assessment/items/type-date', defaultMessage: 'Date' },
+    itemsTypeBoolean: { id: 'assessment/items/type-boolean', defaultMessage: 'Yes/no' },
     entryIssueNotAnInteger: {
       id: 'assessment/entry/issue-not-an-integer',
       defaultMessage: 'Enter a whole number',
@@ -1426,6 +1427,98 @@ const i18n = definePluginMessages({
     itemsContractUnavailable: {
       id: 'assessment/items/contract-unavailable',
       defaultMessage: 'What this arithmetic needs could not be read, so it cannot be saved yet.',
+    },
+    itemsBindingDiagnosticSourceRecognition: {
+      id: 'assessment/items/binding-diagnostic-source-recognition',
+      defaultMessage: 'The fact’s own range',
+    },
+    itemsBindingDiagnosticSourceDefault: {
+      id: 'assessment/items/binding-diagnostic-source-default',
+      defaultMessage: 'Suggested from {field}',
+    },
+    itemsBindingDiagnosticExpected: {
+      id: 'assessment/items/binding-diagnostic-expected',
+      defaultMessage: 'Needs {facet}',
+    },
+    itemsBindingDiagnosticActual: {
+      id: 'assessment/items/binding-diagnostic-actual',
+      defaultMessage: 'Gets {facet}',
+    },
+    itemsBindingFacetMin: {
+      id: 'assessment/items/binding-facet-min',
+      defaultMessage: 'at least {constraint}',
+    },
+    itemsBindingFacetMax: {
+      id: 'assessment/items/binding-facet-max',
+      defaultMessage: 'at most {constraint}',
+    },
+    itemsBindingFacetScale: {
+      id: 'assessment/items/binding-facet-scale',
+      defaultMessage: '{constraint} decimal places',
+    },
+    itemsBindingFacetMinLength: {
+      id: 'assessment/items/binding-facet-min-length',
+      defaultMessage: 'at least {constraint} characters',
+    },
+    itemsBindingFacetMaxLength: {
+      id: 'assessment/items/binding-facet-max-length',
+      defaultMessage: 'at most {constraint} characters',
+    },
+    itemsBindingFacetPattern: {
+      id: 'assessment/items/binding-facet-pattern',
+      defaultMessage: 'format {constraint}',
+    },
+    itemsBindingFacetChoices: {
+      id: 'assessment/items/binding-facet-choices',
+      defaultMessage: 'one of {constraint}',
+    },
+    itemsBindingReasonKindMismatch: {
+      id: 'assessment/items/binding-reason-kind-mismatch',
+      defaultMessage: 'Not the same kind of value.',
+    },
+    itemsBindingReasonTextLengthWidens: {
+      id: 'assessment/items/binding-reason-text-length-widens',
+      defaultMessage: 'Allows a length the fact does not.',
+    },
+    itemsBindingReasonPatternUnprovable: {
+      id: 'assessment/items/binding-reason-pattern-unprovable',
+      defaultMessage: 'Its format cannot be shown to fit.',
+    },
+    itemsBindingReasonRangeWidens: {
+      id: 'assessment/items/binding-reason-range-widens',
+      defaultMessage: 'Allows values outside the range.',
+    },
+    itemsBindingReasonScaleWidens: {
+      id: 'assessment/items/binding-reason-scale-widens',
+      defaultMessage: 'Allows more decimal places.',
+    },
+    itemsBindingReasonChoiceWidens: {
+      id: 'assessment/items/binding-reason-choice-widens',
+      defaultMessage: 'Includes options the fact does not admit: {extra}.',
+    },
+    itemsBindingReasonConverterDomainExceeds: {
+      id: 'assessment/items/binding-reason-converter-domain-exceeds',
+      defaultMessage: 'Whole numbers here can fall outside the range.',
+    },
+    itemsBindingReasonRequiresConversion: {
+      id: 'assessment/items/binding-reason-requires-conversion',
+      defaultMessage: 'Would need converting, which a narrowing may not.',
+    },
+    itemsBindingReasonUnknownParameter: {
+      id: 'assessment/items/binding-reason-unknown-parameter',
+      defaultMessage: 'This arithmetic has no such parameter.',
+    },
+    itemsBindingReasonDefaultFieldUnknown: {
+      id: 'assessment/items/binding-reason-default-field-unknown',
+      defaultMessage: 'This field is no longer on the form.',
+    },
+    itemsBindingReasonRefinementNotInProfile: {
+      id: 'assessment/items/binding-reason-refinement-not-in-profile',
+      defaultMessage: 'The fact’s range is not a legal rule.',
+    },
+    itemsBindingReasonOther: {
+      id: 'assessment/items/binding-reason-other',
+      defaultMessage: 'Cannot feed it ({reason}).',
     },
     itemsCalculator: {
       id: 'assessment/items/calculator',

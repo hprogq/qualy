@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex'
-import { assignmentPlan, inputOrder, normalizeAtomicSchema } from '@qualy/value-schema'
-import type { AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
+import { assignmentPlan, inputOrder, kindOf, normalizeAtomicSchema } from '@qualy/value-schema'
+import type { AtomicKind, AtomicSchema, NormalizedInputSchema } from '@qualy/value-schema'
 import { AtomicValueField } from '@qualy/web-value-form/InputValueForm'
 import type { FieldDraft } from '@qualy/web-value-form/model'
 import { useI18n } from '@qualy/web-i18n'
@@ -10,6 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import type { BindingDraft, RecognitionDraft } from './ItemConfigEditor.tsx'
+import {
+  bindingDiagnostics,
+  type BindingDiagnostic,
+  type SchemaFacet,
+} from './binding-diagnostics.ts'
 
 // Where a calculator's parameters meet what this question actually knows.
 //
@@ -21,7 +26,10 @@ import type { BindingDraft, RecognitionDraft } from './ItemConfigEditor.tsx'
 //
 // A refinement narrows what a fact may be. This build has no control for
 // one, and it is carried untouched rather than dropped: renaming a fact
-// must not quietly widen what it admits.
+// must not quietly widen what it admits. What the editor does say is why a
+// binding will be refused - a narrowing the parameter no longer takes, a
+// field that cannot seed the fact, a parameter the arithmetic no longer
+// has - in the words of the same proof the save runs (binding-diagnostics).
 
 const styles = stylex.create({
   frame: { display: 'flex', flexDirection: 'column', gap: '0.75rem' },
@@ -39,6 +47,22 @@ const styles = stylex.create({
   row: { display: 'flex', gap: '0.75rem', flexWrap: 'wrap' },
   source: { width: 160 },
   grown: { flex: 1, minWidth: 200 },
+  diagnostic: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.125rem',
+    fontSize: '0.8125rem',
+    color: tokens.danger,
+  },
+  orphans: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+    margin: 0,
+    paddingLeft: '1rem',
+    fontSize: '0.8125rem',
+    color: tokens.danger,
+  },
 })
 
 export interface ScoringBindingEditorProps {
@@ -48,6 +72,8 @@ export interface ScoringBindingEditorProps {
   readonly bindings: Record<string, BindingDraft>
   readonly disabled: boolean
   readonly locale: string
+  /** the form's own names for its fields, by field identity */
+  readonly fieldLabels?: Readonly<Record<string, string>>
   readonly onChange: (next: {
     recognitions: Record<string, RecognitionDraft>
     bindings: Record<string, BindingDraft>
@@ -68,10 +94,90 @@ export function ScoringBindingEditor({
   bindings,
   disabled,
   locale,
+  fieldLabels,
   onChange,
 }: ScoringBindingEditorProps) {
   const { format } = useI18n()
   const parameters = inputOrder(inputSchema)
+  const diagnostics = bindingDiagnostics({ inputSchema, bindableFields, recognitions, bindings })
+  const fieldName = (fieldId: string) => fieldLabels?.[fieldId] ?? fieldId
+
+  // the words for a proof's verdict: the kind, the bounds the rule read,
+  // and the rule itself, each from the catalog and none from a code
+  const kindWord = (kind: AtomicKind) =>
+    format(
+      kind === 'text'
+        ? m.itemsTypeText
+        : kind === 'integer'
+          ? m.itemsTypeInteger
+          : kind === 'decimal'
+            ? m.itemsTypeDecimal
+            : kind === 'choice'
+              ? m.itemsTypeChoice
+              : kind === 'boolean'
+                ? m.itemsTypeBoolean
+                : m.itemsTypeDate,
+    )
+  const facetText = (facet: SchemaFacet) =>
+    [
+      kindWord(facet.kind),
+      ...facet.constraints.map(({ rule, value }) =>
+        format(
+          rule === 'min'
+            ? m.itemsBindingFacetMin
+            : rule === 'max'
+              ? m.itemsBindingFacetMax
+              : rule === 'scale'
+                ? m.itemsBindingFacetScale
+                : rule === 'minLength'
+                  ? m.itemsBindingFacetMinLength
+                  : rule === 'maxLength'
+                    ? m.itemsBindingFacetMaxLength
+                    : rule === 'pattern'
+                      ? m.itemsBindingFacetPattern
+                      : m.itemsBindingFacetChoices,
+          { constraint: value },
+        ),
+      ),
+    ].join(', ')
+  const reasonText = ({ code, detail }: BindingDiagnostic['reason']) => {
+    switch (code) {
+      case 'kind-mismatch':
+        return format(m.itemsBindingReasonKindMismatch)
+      case 'text-length-widens':
+        return format(m.itemsBindingReasonTextLengthWidens)
+      case 'pattern-unprovable':
+        return format(m.itemsBindingReasonPatternUnprovable)
+      case 'integer-range-widens':
+      case 'decimal-range-widens':
+        return format(m.itemsBindingReasonRangeWidens)
+      case 'decimal-scale-widens':
+        return format(m.itemsBindingReasonScaleWidens)
+      case 'choice-widens':
+        return format(m.itemsBindingReasonChoiceWidens, {
+          extra: ((detail as { extra?: readonly string[] } | undefined)?.extra ?? []).join(', '),
+        })
+      case 'converter-domain-exceeds':
+        return format(m.itemsBindingReasonConverterDomainExceeds)
+      case 'requires-conversion':
+        return format(m.itemsBindingReasonRequiresConversion)
+      case 'binding-unknown-parameter':
+        return format(m.itemsBindingReasonUnknownParameter)
+      case 'default-field-unknown':
+        return format(m.itemsBindingReasonDefaultFieldUnknown)
+      case 'refinement-not-in-profile':
+        return format(m.itemsBindingReasonRefinementNotInProfile)
+      default:
+        return format(m.itemsBindingReasonOther, { reason: code })
+    }
+  }
+  const sourceText = (source: BindingDiagnostic['source']) =>
+    source.kind === 'recognition'
+      ? format(m.itemsBindingDiagnosticSourceRecognition)
+      : source.kind === 'default'
+        ? format(m.itemsBindingDiagnosticSourceDefault, { field: fieldName(source.fieldId) })
+        : format(m.itemsBindingConstant)
+  const orphans = diagnostics.filter((one) => one.reason.code === 'binding-unknown-parameter')
 
   const write = (
     parameter: string,
@@ -113,6 +219,9 @@ export function ScoringBindingEditor({
             <div {...stylex.props(styles.head)}>
               <span {...stylex.props(styles.name)}>{schema.title ?? parameter}</span>
               <span {...stylex.props(styles.kind)}>{parameter}</span>
+              <span {...stylex.props(styles.kind)} data-schema-kind={kindOf(schema)}>
+                {kindWord(kindOf(schema))}
+              </span>
             </div>
             <div {...stylex.props(styles.row)}>
               <div {...stylex.props(styles.source)}>
@@ -221,19 +330,34 @@ export function ScoringBindingEditor({
                             <SelectItem value="">{format(m.itemsRecognitionNoDefault)}</SelectItem>
                             {bindableFields.map((field) => {
                               // assignable, as the value layer judges it -
-                              // never a guess from the field's type name
+                              // never a guess from the field's type name. A
+                              // seeding may convert (a whole number into a
+                              // decimal fact); only an impossible one is
+                              // refused, exactly as the save refuses it
                               const proof = assignmentPlan(
                                 normalizeAtomicSchema(field.schema as AtomicSchema),
                                 target,
                               )
+                              const refused = proof.kind === 'incompatible' ? proof : undefined
+                              const label = fieldName(field.fieldId)
                               return (
                                 <SelectItem
                                   key={field.fieldId}
                                   value={field.fieldId}
-                                  disabled={proof.kind !== 'direct'}
-                                  data-field-assignable={proof.kind === 'direct'}
+                                  disabled={refused !== undefined}
+                                  data-field-id={field.fieldId}
+                                  data-field-assignable={refused === undefined}
+                                  {...(refused === undefined
+                                    ? {}
+                                    : {
+                                        'data-field-reason': refused.code,
+                                        title: reasonText(refused),
+                                      })}
+                                  {...(label === field.fieldId
+                                    ? {}
+                                    : { description: field.fieldId })}
                                 >
-                                  {field.fieldId}
+                                  {label}
                                 </SelectItem>
                               )
                             })}
@@ -245,9 +369,48 @@ export function ScoringBindingEditor({
                 </>
               )}
             </div>
+            {diagnostics
+              .filter((one) => one.parameter === parameter && one.expected !== null)
+              .map((one) => (
+                <div
+                  {...stylex.props(styles.diagnostic)}
+                  key={`${one.source.kind}:${one.reason.code}`}
+                  role="alert"
+                  data-testid="binding-diagnostic"
+                  data-parameter={one.parameter}
+                  data-source={one.source.kind}
+                  data-reason={one.reason.code}
+                >
+                  <span>
+                    {sourceText(one.source)} · {reasonText(one.reason)}
+                  </span>
+                  <span>
+                    {format(m.itemsBindingDiagnosticExpected, {
+                      facet: facetText(one.expected!),
+                    })}
+                    {one.actual === null
+                      ? null
+                      : ` · ${format(m.itemsBindingDiagnosticActual, { facet: facetText(one.actual) })}`}
+                  </span>
+                </div>
+              ))}
           </div>
         )
       })}
+      {orphans.length === 0 ? null : (
+        <ul {...stylex.props(styles.orphans)} role="alert" data-testid="binding-orphans">
+          {orphans.map((one) => (
+            <li
+              key={one.parameter}
+              data-testid="binding-orphan"
+              data-parameter={one.parameter}
+              data-reason={one.reason.code}
+            >
+              {one.parameter} · {sourceText(one.source)} · {reasonText(one.reason)}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

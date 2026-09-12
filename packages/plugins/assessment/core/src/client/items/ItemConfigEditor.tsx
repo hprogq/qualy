@@ -2528,6 +2528,9 @@ export function ItemConfigEditor({
                       bindings={draft.scoring.bindings}
                       disabled={false}
                       locale={locale}
+                      fieldLabels={Object.fromEntries(
+                        draft.fields.map((field) => [field.id, field.label]),
+                      )}
                       onChange={(next) =>
                         patch({
                           scoring: {
