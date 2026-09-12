@@ -415,6 +415,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@qualy/brand':
+        specifier: workspace:*
+        version: link:../../packages/web/brand
       '@qualy/plugin-assessment':
         specifier: workspace:*
         version: link:../../packages/plugins/assessment/core

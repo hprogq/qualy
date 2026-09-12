@@ -8,6 +8,7 @@
   "exports": {
     "./mark": "./src/Mark.tsx",
     "./wordmark": "./src/Wordmark.tsx",
+    "./loader": "./src/Loader.tsx",
     "./geometry": "./src/geometry.ts"
   },
   "peerDependencies": {

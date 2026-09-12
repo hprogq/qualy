@@ -13329,3 +13329,27 @@ acceptance done
   ```
 
   prettier 只对新增与改动文件执行。
+
+### 阶段 2a 修正(`10c33e4c`)与阶段 2b:八段加载动画(2026-09-13,完成,等用户看 12 帧后再做阶段 3)
+
+用户对 2a 的三条裁决已落地(`fix(web): draw the static ring as one band and freeze the wordmark white`):①静态 Mark / Wordmark 用一条连续路径画 sector 1–7(`bandPath`,67.5°–382.5°,内轮廓仍是同一个椭圆,`data-seg="1-7"`)+ 尾巴,接缝消失;八段独立路径只用于 Loader 与 `Wordmark live`(`src/segments.tsx` 的 `WholeQ` / `SegmentedQ`);②目标白冻结为绝对值 `TARGET_WHITE = 0.97`(s),`k` 从公开 API 移除,`white` 选项只给预览页当旋钮;③预览截图前 `rm -rf out/`,五张:浅 / 深 / 模糊 / 镜像 / 倒置。sector 角域定为 `[22.5°+45k, 67.5°+45k]`。
+
+2b(`feat(web): eight-segment loading animation`):
+
+- **规则模块** `tools/brand/loop.ts`:一圈 1400ms,停留 `[280, 160×7]`,头切换点 `C[i] + 40ms` → `[2.857, 22.857, 34.286, 45.714, 57.143, 68.571, 80, 91.429]%`,两张明度表(暗 `[0.40, 0.62, 0.85, 1, 1, 1, 1, 1]` / 尾巴作头 0.32;浅 `[1, 0.60, 0.36, 0.24, 0.17, 0.14, 0.13, 0.12]` / 1),探身 `translate(0) → (−3.394px) @10% → 0 @25.714%`,呼吸 `1 → 0.55 → 1`;另产出预览页用的纯 CSS。
+- **关键帧** `src/keyframes.ts`:16 套 opacity + 探身 + 呼吸,全部内联字面量(`stylex.keyframes()` 实测只接受字面量对象,引用常量即报错 `keyframes() can only accept an object`);`loopStyles[polarity][k]` 与 `delayed`(400ms)由同文件的 `stylex.create` 导出,跨文件只传样式对象。**帧值语义**:每个关键帧携带该时刻已到达的值(第 j 个切换点 = `target(k, (j+7)%8)`),新目标在下一帧,帧内曲线快变慢停——附录 A.4 "第 i 个切换点的值 = level[(i−k)%8]" 会让元素提前一段停留变亮,与 A.3 rAF 语义不符,按语义实现并写进 docs。
+- **StyleX 实测结论(用户要的)**:0.19 编译器接受关键帧内 `animationTimingFunction`(输出 `animation-timing-function`)、`animationName` 的 `@media (prefers-reduced-motion: reduce)` 条件值、两条动画的模板串;浏览器里 `effect.getKeyframes()[i].easing` 读回 `cubic-bezier(0.1, 0.9, 0.2, 1)` / `cubic-bezier(0.4, 0, 0.6, 1)`——**采用首选方案,未用 18 停靠点**。CSS `transform` 在 SVG `<path>` 上以用户单位生效(140ms 时 computed `matrix(1,0,0,1,−3.394,−3.394)`,48px 画布上包围盒位移 1.273px),探身留在 path 上,没有改到 `<g>`。基准平移烙在路径坐标里,探身关键帧因此是相对量(0 → −0.3s·cos45° → 0)。
+- **组件**:`Loader`(`./loader` 导出恢复;`size` / `polarity` 缺省 ≤ 24 浅、> 24 暗 / `title` / `xstyle`,`data-polarity`,透传 svg 属性,无 title 且无 role/aria-label 时 `aria-hidden`;八段 `SegmentedQ`,尾巴两条动画,reduced-motion 下七段无动画、尾巴 2400ms 呼吸);`Wordmark live`(同帧把 `WholeQ` 换成 `SegmentedQ` + 暗极性 + 400ms delay,字母不动,`data-live`)。apps/web 加 `@qualy/brand` 依赖(浏览器测试要 import)。
+- **门禁**:`tools/tests/brand-loop.test.ts`(21 条)从 `keyframes.ts` 源码文本提取 18 个 `stylex.keyframes({...})` 字面量,与 `loop.ts` 的推导逐一 `toEqual`,并验证每套 100% = 0%;`apps/web/tests/brand.browser.test.tsx`(4 条):八个元素各一条运行中的动画、尾巴两条、逐帧 easing 读回、探身用户单位与像素位移、极性缺省、reduced-motion 下无循环只呼吸、`live` 前后 whole/segmented 切换与 400ms delay。为此 `vitest.browser.config.ts` 注册了唯一的 browser command `emulateMedia({ reducedMotion })`(套件上下文默认 reduce,动画测试自己切到 no-preference 并复原),类型增强在 `apps/web/tests/support/browser-commands.d.ts`(**必须带 `export {}`**,否则 `declare module` 是整体替换而非增强——typecheck 曾因此报 `vitest/browser` 没有 `page`)。
+- **预览**:Loader 16 / 24 浅、48 暗;28px live 字标;截 12 帧(`document.getAnimations()` 全部 pause 后按 `currentTime = 400 + t` 采样,t = 0..2750 步 250,`live-01..12.png` + `live-strip.png`)。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm vitest run tools/tests/brand-loop.test.ts                   -> 21 passed
+  pnpm vitest run --config vitest.browser.config.ts brand.browser  -> 4 passed
+  pnpm typecheck  -> 19 programs, exit 0
+  pnpm test       -> Test Files 209 passed | 3 skipped (212); Tests 1465 passed | 17 skipped (1482); exit 0
+  pnpm test:browser -> Test Files  45 passed (45); Tests  315 passed (315); exit 0
+  ```
+
+  prettier 只对新增与改动文件执行。

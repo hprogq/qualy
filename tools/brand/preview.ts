@@ -8,6 +8,7 @@ import {
   wordmarkLayout,
   type WordmarkLayout,
 } from '../../packages/web/brand/src/geometry.ts'
+import { LEAD, loopCss, PERIOD } from './loop.ts'
 
 // A page to look at the brand on, and four screenshots of it.
 //
@@ -16,7 +17,10 @@ import {
 // a blur, which shows whether ring and letters weigh the same; a mirror and
 // an upside-down turn, which show spacing the reading habit hides. One row
 // is for the rule rather than the design: the spacing at neighbouring
-// amounts of white. The window is wide enough for the 256 wordmark to sit
+// amounts of white. The loader and the live wordmark run on the same
+// keyframes the components use, spelled out from the rule in loop.ts, and
+// twelve frames of the live wordmark are taken by stepping its animations
+// rather than by waiting, so every run shows the same moments. The window is wide enough for the 256 wordmark to sit
 // inside its panel - an overflowing panel is mirrored off the page and out
 // of the screenshot. The output folder is emptied first, so a picture from
 // an earlier design cannot survive next to the new ones.
@@ -35,8 +39,36 @@ const WHITES = [0.85, 0.97, 1.09]
 const mark = markPaths(16)
 const wordmark = wordmarkLayout(16)
 
+/** which part the head is on t ms after the loop starts, for a caption */
+const headAt = (t: number): string => {
+  const u = (((t - LEAD) % PERIOD) + PERIOD) % PERIOD
+  if (t < LEAD) return 'nothing yet, the tail leaning'
+  const dwell = [280, 160, 160, 160, 160, 160, 160, 160]
+  let at = 0
+  for (let i = 0; i < 8; i += 1) {
+    if (u < at + dwell[i]!) return i === 0 ? 'the tail' : `sector ${i}`
+    at += dwell[i]!
+  }
+  return 'the tail'
+}
+
 const whole = (band: string, tail: string) =>
   `<path data-seg="1-7" d="${band}"/><path data-seg="0" d="${tail}"/>`
+
+const segmented = (paths: readonly string[]) =>
+  paths.map((d, k) => `<path data-seg="${k}" d="${d}"/>`).join('')
+
+const loaderSvg = (size: number, polarity: 'dark' | 'light') =>
+  `<svg class="q-${polarity}" viewBox="${mark.viewBox}" width="${size}" height="${size}" fill="currentColor">${segmented(mark.segments)}</svg>`
+
+const liveWordmarkSvg = (capHeight: number, id: string) => {
+  const [, , width = 0, height = 0] = wordmark.viewBox.split(' ').map(Number)
+  const scale = capHeight / wordmark.cap
+  const letters = wordmark.letters
+    .map((letter) => `<path data-letter="${letter.char}" d="${letter.d}"/>`)
+    .join('')
+  return `<svg id="${id}" class="q-dark q-delayed" viewBox="${wordmark.viewBox}" width="${width * scale}" height="${height * scale}" fill="currentColor">${segmented(wordmark.segments)}${letters}</svg>`
+}
 
 const markSvg = (size: number) =>
   `<svg viewBox="${mark.viewBox}" width="${size}" height="${size}" fill="currentColor">${whole(mark.band, mark.tail)}</svg>`
@@ -96,6 +128,9 @@ const html = `<!doctype html>
   body.blur .stage { filter: blur(4px); }
   body.mirror .stage { transform: scaleX(-1); }
   body.flip .stage { transform: rotate(180deg); }
+  .q-delayed [data-seg] { animation-delay: 400ms; }
+  ${loopCss('dark')}
+  ${loopCss('light')}
 </style>
 </head>
 <body class="light">
@@ -122,6 +157,14 @@ const html = `<!doctype html>
   <section>
     <h2>Top bar, 14px cap height</h2>
     <div class="bar">${wordmarkSvg(14)}<nav><span class="active">测评</span><span class="idle">工作台</span><span class="idle">资源库</span></nav><span class="end"></span></div>
+  </section>
+  <section>
+    <h2>Loader: light polarity at 16 and 24, dark at 48</h2>
+    <div class="grounds">${bothGrounds(cell('16 light', loaderSvg(16, 'light')) + cell('24 light', loaderSvg(24, 'light')) + cell('48 dark', loaderSvg(48, 'dark')))}</div>
+  </section>
+  <section>
+    <h2>Live wordmark, 28px cap height, loop from 400ms</h2>
+    <div class="grounds">${panel('light', cell('28 live', liveWordmarkSvg(28, 'live-light')))}${panel('dark', cell('28 live', liveWordmarkSvg(28, 'live-dark')))}</div>
   </section>
   <section>
     <h2>Spacing rule at neighbouring whites (48)</h2>
@@ -169,6 +212,33 @@ try {
     await tab.screenshot({ path: path.join(OUT, file), fullPage: true })
     console.log(`brand: wrote ${path.relative(ROOT, path.join(OUT, file))}`)
   }
+
+  // twelve moments of the live wordmark over three seconds, a quarter of a
+  // second apart, taken by pausing its animations and setting their time:
+  // the 400ms delay is part of the animation's own clock, so a moment t
+  // after the loop starts is currentTime 400 + t
+  await tab.goto(pathToFileURL(page).href)
+  const frames: string[] = []
+  for (let i = 0; i < 12; i += 1) {
+    const t = i * 250
+    await tab.evaluate(
+      `for (const a of document.getElementById('live-light').getAnimations({ subtree: true })) { a.pause(); a.currentTime = ${400 + t} }`,
+    )
+    const file = `live-${String(i + 1).padStart(2, '0')}.png`
+    const shot = await tab.locator('#live-light').screenshot({ path: path.join(OUT, file) })
+    frames.push(
+      `<figure><img src="data:image/png;base64,${shot.toString('base64')}"><figcaption>${t}ms · head on ${headAt(t)}</figcaption></figure>`,
+    )
+  }
+  console.log(`brand: wrote ${path.relative(ROOT, OUT)}/live-01.png … live-12.png`)
+  const strip = path.join(OUT, 'live-strip.html')
+  fs.writeFileSync(
+    strip,
+    `<!doctype html><meta charset="utf-8"><title>Qualy live wordmark, 12 frames</title><style>body{margin:0;background:${LIGHT.background};color:${LIGHT.foreground};font:12px system-ui}main{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding:16px}figure{margin:0;display:grid;gap:6px}img{width:100%;display:block}figcaption{opacity:.6;font-variant-numeric:tabular-nums}</style><main>${frames.join('')}</main>`,
+  )
+  await tab.goto(pathToFileURL(strip).href)
+  await tab.screenshot({ path: path.join(OUT, 'live-strip.png'), fullPage: true })
+  console.log(`brand: wrote ${path.relative(ROOT, path.join(OUT, 'live-strip.png'))}`)
 } finally {
   await browser.close()
 }

@@ -2,7 +2,7 @@
 
 标志是一个由八段同形扇环组成的圆环,其中一段——尾巴——沿它所朝的方向滑出到环外,于是环有了豁口、Q 有了尾巴,两者是同一个零件。字标 "Qualy" 里的 Q 由标志本身充当,后面四个字母 `ualy` 用与环相同的词汇(正圆环带、直杆、平切)构造,**没有字体、没有导出、没有生成物**:几何全部在 `packages/web/brand/src/geometry.ts` 里运行时计算。
 
-代码在 `packages/web/brand`(`@qualy/brand`),叶子子路径 `./mark` `./wordmark` `./geometry`(`./loader` 随动画阶段回来),无 barrel。静态素材在该包 `assets/mark.svg` 与 `assets/wordmark.svg`,favicon 在 `apps/web/public/favicon.svg`,三者由 `pnpm brand:export` 从几何写出。
+代码在 `packages/web/brand`(`@qualy/brand`),叶子子路径 `./mark` `./wordmark` `./loader` `./geometry`,无 barrel。静态素材在该包 `assets/mark.svg` 与 `assets/wordmark.svg`,favicon 在 `apps/web/public/favicon.svg`,三者由 `pnpm brand:export` 从几何写出。
 
 ## 几何(冻结)
 
@@ -65,7 +65,55 @@
 
 ## 动画
 
-阶段 2b 补:八段各自只改 `opacity`(尾巴另有探身),没有旋转、没有零件移动;时序、明度表与关键帧推导届时写在这里。
+### 原理
+
+八个元素——sector 1..7 与尾巴——各自只改 `opacity`,尾巴另有一个小位移。**没有旋转、没有零件移动、豁口永远敞开、字母永不退场。** 一段"光"或"墨"按顺序在八个元素间传递:`尾巴(0) → 1 → 2 → … → 7 → 尾巴`(顺时针,从右下经底、左、顶、右回到右下)。
+
+### 时序
+
+| 项                   | 值                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| 一圈                 | `1400ms`                                                                                     |
+| 各元素停留           | 尾巴 `280ms`,其余七段各 `160ms`                                                              |
+| 头进入各元素的时刻 C | `[0, 280, 440, 600, 760, 920, 1080, 1240]`                                                   |
+| 切换的缓动           | 帧内 `cubic-bezier(.1,.9,.2,1)`(快变慢停);尾巴离开后的那一段 `cubic-bezier(.4,0,.6,1)`(余光) |
+
+### 两种极性(同一时序、同一几何,只换明度表)
+
+`level[d]` 是"头在 d 步之前经过它"的元素明度,d = 0 表示头正在它上面。
+
+| 极性 | 用途                   | level[0..7]                                     | 尾巴作头时 |
+| ---- | ---------------------- | ----------------------------------------------- | ---------- |
+| 暗   | 字标、> 24px 的 Loader | `[0.40, 0.62, 0.85, 1, 1, 1, 1, 1]`             | `0.32`     |
+| 浅   | ≤ 24px 行内指示器      | `[1, 0.60, 0.36, 0.24, 0.17, 0.14, 0.13, 0.12]` | `1`        |
+
+`<Loader polarity>` 缺省按尺寸:≤ 24 浅、> 24 暗。`<Wordmark live>` 永远暗。
+
+### 门口三动作(只作用于尾巴)
+
+1. **探身**:头到达尾巴前 40ms,尾巴沿 45° 向豁口移动 `0.3s`(平移向量 1.5s → 1.2s),140ms 缓出到位,再 220ms 缓入缓出退回。实现为尾巴 `<path>` 上的第二条 CSS 动画:`transform: translate(0) → translate(−3.394px, −3.394px)`(用户单位,s = 16 时 0.3s·cos45°)→ 回 0;基准平移已烙在路径坐标里,所以关键帧是相对量。
+2. **更亮**:尾巴作头时用上表"尾巴作头时"一列。
+3. **余光**:头离开尾巴后的那一段用 `cubic-bezier(.4,0,.6,1)`。
+
+### 关键帧推导(`src/keyframes.ts` 是手写字面量,`tools/brand/loop.ts` 是规则,`tools/tests/brand-loop.test.ts` 把两者钉在一起)
+
+- 关键帧的 **0% 定义为探身开始**(时序 1360ms)。于是 `animation-delay: 0` 从探身开始,`animation-delay: 400ms` 就是首屏的 400ms 门槛。
+- 头切换点 = `C[i] + 40ms` → `[2.857%, 22.857%, 34.286%, 45.714%, 57.143%, 68.571%, 80%, 91.429%]`。
+- `target(k, i)` = 头在元素 i 上时元素 k 的目标明度 = `level[(i − k + 8) % 8]`,k = 0 且 i = 0 时取"尾巴作头时"。
+- **每个关键帧携带该时刻元素已到达的值**:第 j 个切换点上元素 k 的值 = `target(k, (j + 7) % 8)`(上一段停留的目标),新目标出现在下一个关键帧;帧内 timing function 作用于到下一帧的区间,所以变化在头到达后立即发生、随后停住。0% 与 100% 的值 = `target(k, 7)`,循环连续。附录里"第 i 个切换点的值 = level[(i − k) % 8]"的写法会让每个元素提前一段停留变亮,与 rAF 语义不符,按语义实现。
+- 尾巴(k = 0)在第 1 个切换点(22.857%,头刚离开)的帧用余光曲线,其余帧用快变慢停曲线;100% 帧不带 timing function。
+- 探身:`0%: translate(0)`,`10% (140ms): translate(−3.394px)`,`25.714% (360ms): translate(0)`,`100%: translate(0)`;缓动分别为 `cubic-bezier(.33,1,.68,1)`(缓出)与 `cubic-bezier(.65,0,.35,1)`(缓入缓出)。
+- 属性层:`animation-duration: 1400ms`、`linear`(帧内曲线覆盖它)、`infinite`;尾巴是两条动画的逗号列表。
+
+**StyleX 实测结论**:`@stylexjs/stylex` 0.19 的编译器接受关键帧内的 `animationTimingFunction`(原样输出为 `animation-timing-function`),接受 `animationName: { default, '@media (prefers-reduced-motion: reduce)': ... }` 与两条动画的模板串;浏览器测试从 `getAnimations()[].effect.getKeyframes()` 读回逐帧 `easing`,与源码一致——**采用首选方案(帧内 timing function),未用 18 停靠点**。`stylex.keyframes()` 只接受字面量对象(引用常量直接报错),因此八套关键帧内联在调用里,规则与门禁在包外。CSS `transform` 在 SVG `<path>` 上以用户单位生效(Chromium 实测:140ms 时 computed transform 为 `matrix(1,0,0,1,−3.394,−3.394)`,48px 画布上包围盒位移 1.27px)。
+
+### 减少动态
+
+`prefers-reduced-motion: reduce` 时不循环:七段无动画,尾巴以 `2400ms` 周期 `opacity 1 → 0.55 → 1` 缓慢呼吸(只动透明度),探身关闭。StyleX 媒体查询条件,纯 CSS。
+
+### 一次性序列
+
+只属于 LoadingScreen(阶段 3):开始 = 给字标的 Q 挂循环、`animation-delay: 400ms`;退出 = 暂停八条动画、读各元素当前 `opacity`、WAAPI 150ms 过渡到 1,尾巴同一 150ms 内退回;然后落位。
 
 ## 使用规则
 
@@ -81,7 +129,7 @@ pnpm brand:export    # tools/brand/export.ts:从 geometry 写 packages/web/brand
 pnpm brand:preview   # tools/brand/preview.ts:清空 out/,写 preview.html,playwright 截 浅色 / 深色 / 模糊 / 镜像 / 倒置 五张图
 ```
 
-预览页:标志与字标 16 / 24 / 32 / 48 / 96 / 256(字标尺寸是 cap 高)、14px 顶栏模拟、模糊 / 镜像 / 倒置 180° 开关、目标白取 0.85 / 0.97 / 1.09s 的对照行;截图前清空 `tools/brand/out/`,出 浅 / 深 / 模糊 / 镜像 / 倒置 五张。
+预览页:标志与字标 16 / 24 / 32 / 48 / 96 / 256(字标尺寸是 cap 高)、14px 顶栏模拟、Loader 16 / 24 浅与 48 暗、28px live 字标、模糊 / 镜像 / 倒置 180° 开关、目标白取 0.85 / 0.97 / 1.09s 的对照行;截图前清空 `tools/brand/out/`,出 浅 / 深 / 模糊 / 镜像 / 倒置 五张,另外把 live 字标的动画暂停后逐 250ms 设 `currentTime` 截 12 帧(`live-01..12.png`)并拼成 `live-strip.png`。预览页的动画 CSS 由 `tools/brand/loop.ts` 从规则生成,与组件用的字面量经门禁保持一致。
 
 **关于"零 codegen"**:`assets/*.svg` 与 favicon 是设计资产,等价于设计师从绘图工具导出的文件;导出工具是设计工具,不是构建步骤。不设"重新导出必须无 diff"的门禁、不进 CI,产物由人审阅后提交;favicon 与几何的一致性由测试守(阶段 3)。`geometry.ts` 是运行时代码,不是生成物。
 

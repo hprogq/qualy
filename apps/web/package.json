@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@qualy/brand": "workspace:*",
     "@qualy/plugin-assessment": "workspace:*",
     "@qualy/plugin-assessment-formula": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",
@@ -24,8 +25,8 @@
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",
-    "@qualy/web-value-form": "workspace:*",
     "@qualy/web-runtime": "workspace:*",
+    "@qualy/web-value-form": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:"

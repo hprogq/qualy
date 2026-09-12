@@ -4,6 +4,7 @@
 import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import react from '@vitejs/plugin-react'
 import { playwright } from '@vitest/browser-playwright'
+import type { BrowserCommand } from 'vitest/node'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import { qualyPlugins } from '@qualy/web-build/vite'
@@ -12,6 +13,16 @@ const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
 
 const repoRoot = fileURLToPath(new URL('.', import.meta.url))
+
+// The one media feature a test may change: the context asks for reduced
+// motion (below), and a test about motion itself has to be able to ask for
+// the opposite for its own duration and put it back.
+const emulateMedia: BrowserCommand<[{ reducedMotion: 'reduce' | 'no-preference' }]> = async (
+  { page },
+  media,
+) => {
+  await page.emulateMedia(media)
+}
 
 // Component tests run in a real browser rather than a simulated dom. What
 // this project's screens actually get wrong lives in the gap between the
@@ -66,6 +77,7 @@ export default defineConfig({
       // itself with page.viewport()
       viewport: { width: 1280, height: 800 },
       instances: [{ browser: 'chromium' }],
+      commands: { emulateMedia },
     },
   },
 })
