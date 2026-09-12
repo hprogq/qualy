@@ -112,6 +112,9 @@ describe('the application shell', () => {
   it('shows one tab per application and the sections of the open one', async () => {
     shell(<AppShell />, '/organization/users', '/organization/users')
 
+    // the brand leads the bar, named by its wordmark's title and nothing else
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+    expect(await page.getByRole('link', { name: 'Qualy' }).elements()).toHaveLength(1)
     // an application is a tab; its sections are a row of their own, and only
     // when there is more than one to choose between
     await expect.element(page.getByRole('link', { name: '组织与权限' })).toBeVisible()

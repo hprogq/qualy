@@ -1,8 +1,14 @@
 import type * as React from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { flushSync } from 'react-dom'
 import * as stylex from '@stylexjs/stylex'
-import { Loader2Icon } from 'lucide-react'
+import { fixed, wordmarkLayout } from '@qualy/brand/geometry'
+import { Loader } from '@qualy/brand/loader'
+import { Wordmark } from '@qualy/brand/wordmark'
 
+import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { seatOf } from '../lib/xstyle.ts'
+import { tokens } from '../theme/tokens.stylex.ts'
 
 // Work in progress, wherever a screen has to wait.
 //
@@ -10,41 +16,46 @@ import { seatOf } from '../lib/xstyle.ts'
 // renders are the i18n catalog fallback and the manifest loading screen -
 // both stand OUTSIDE the widget provider, which mounts further down the
 // same tree. A provider-dependent loader there throws before the app can
-// draw anything (it did). So the spinner is a bare SVG and a compiled
-// keyframe, needing nothing, and it takes the ink of whatever names it.
+// draw anything (it did). So the spinner is a bare SVG and compiled
+// keyframes, needing nothing, and it takes the ink of whatever names it.
+//
+// Three surfaces. The inline spinner shows at once and goes at once. The
+// page loader waits 300ms before appearing, because a page that arrives in
+// 200ms should not flash a spinner on the way. The loading screen is the
+// brand's cold start: the wordmark index.html already painted, taken over
+// in place, its Q lit only if the wait passes 400ms, and flown into the top
+// bar when the shell arrives.
 
-const spin = stylex.keyframes({
-  '100%': { transform: 'rotate(360deg)' },
+const appear = stylex.keyframes({
+  from: { opacity: 0 },
+  to: { opacity: 1 },
+})
+
+const vanish = stylex.keyframes({
+  to: { opacity: 0 },
 })
 
 const styles = stylex.create({
-  mark: {
-    width: 16,
-    height: 16,
-    animationName: spin,
-    animationDuration: '1s',
-    animationTimingFunction: 'linear',
-    animationIterationCount: 'infinite',
-  },
-  screen: {
-    display: 'flex',
-    minHeight: '100vh',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  screenMark: {
-    width: 32,
-    height: 32,
-  },
   page: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     paddingBlock: 96,
   },
-  pageMark: {
-    width: 24,
-    height: 24,
+  // opacity from 0, with the delay counted in: a page that comes in under
+  // 300ms never shows this at all
+  lateArrival: {
+    animationName: appear,
+    animationDuration: '150ms',
+    animationDelay: '300ms',
+    animationFillMode: 'both',
+  },
+  // the standalone screen, for a tree without a cold-start host
+  screen: {
+    display: 'flex',
+    minHeight: '100vh',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 })
 
@@ -57,34 +68,324 @@ interface SpinnerProps {
   style?: React.CSSProperties
 }
 
+/** the inline indicator: 16px, light polarity, shown at once and gone at once */
 function Spinner({ className, style, xstyle, ...rest }: SpinnerProps) {
   return (
-    <Loader2Icon
+    <Loader
+      size={16}
       data-slot="spinner"
       role="status"
       aria-label="Loading"
       {...rest}
-      {...seatOf(stylex.props(styles.mark, xstyle), className, style)}
+      {...seatOf(stylex.props(xstyle), className, style)}
     />
-  )
-}
-
-// the two loading surfaces the app composes from the spinner
-function LoadingScreen() {
-  return (
-    <div {...stylex.props(styles.screen)}>
-      <Spinner xstyle={styles.screenMark} />
-    </div>
   )
 }
 
 /** fills the content area of a page without claiming the whole viewport */
 function PageLoading() {
   return (
-    <div {...stylex.props(styles.page)}>
-      <Spinner xstyle={styles.pageMark} />
+    <div {...stylex.props(styles.page)} role="status">
+      <Loader size={24} xstyle={styles.lateArrival} />
+      <VisuallyHidden>Loading</VisuallyHidden>
     </div>
   )
 }
 
-export { Spinner, LoadingScreen, PageLoading }
+// ---------------------------------------------------------------------------
+// The cold start.
+//
+// Three fallbacks stand in a row on the way to the first screen - the
+// catalog, the manifest, the layout chunk - and each of them renders a
+// LoadingScreen. If each drew its own wordmark, the loop would restart at
+// every hand-over and nothing could animate out, because the fallback that
+// drew it is gone by the time the screen behind it exists. So a
+// LoadingScreen is a CLAIM on one shared overlay, and the overlay is drawn
+// by a host mounted once at the root, above every provider. The host keeps
+// the wordmark up while any claim stands, times the threshold and the
+// hints from the first claim, and when the last claim goes it fades the
+// loop to solid and hands the wordmark to the top bar through a view
+// transition. A LoadingScreen in a tree with no host draws a plain screen
+// of its own, so it never renders nothing by mistake.
+
+type Listener = () => void
+const listeners = new Set<Listener>()
+let claims = 0
+let hosts = 0
+const notify = () => {
+  for (const listener of listeners) listener()
+}
+const subscribe = (listener: Listener) => {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+const claimsNow = () => claims
+const hostsNow = () => hosts
+
+/** a claim on the cold-start overlay; on its own, a plain loading screen */
+function LoadingScreen() {
+  const hosted = useSyncExternalStore(subscribe, hostsNow, hostsNow) > 0
+  useLayoutEffect(() => {
+    claims += 1
+    notify()
+    return () => {
+      claims -= 1
+      notify()
+    }
+  }, [])
+  if (hosted) return null
+  return (
+    <div {...stylex.props(styles.screen)} role="status">
+      <Wordmark height={28} />
+      <VisuallyHidden>Loading</VisuallyHidden>
+    </div>
+  )
+}
+
+const HINT_AFTER = 6000
+const STALL_AFTER = 30000
+const EXIT = 150
+const CAP = 28
+const NAME = 'qualy-wordmark'
+/** the placeholder index.html paints before any script runs */
+const PLACEHOLDER = 'qualy-boot'
+const COLD_START = 'data-cold-start'
+
+// The ring's centre line sits at 44vh, so the wordmark's top is that much
+// higher; the hint sits 40px under its bottom. The same three numbers,
+// from the same geometry, are written into index.html by hand, and a test
+// holds the two together.
+const geometry = wordmarkLayout(16)
+const [, boxTop = 0, , boxHeight = 0] = geometry.viewBox.split(' ').map(Number)
+const scale = CAP / geometry.cap
+export const coldStartPlacement = {
+  /** cap height of the wordmark in CSS pixels */
+  cap: CAP,
+  /** from the wordmark's top edge down to the ring's centre line, in CSS pixels */
+  ringDrop: fixed((geometry.ringCenter.y - boxTop) * scale),
+  /** the wordmark's rendered height, in CSS pixels */
+  height: fixed(boxHeight * scale),
+  /** the ring's centre line, as a share of the viewport height */
+  line: '44vh',
+  /** from the wordmark's bottom edge to the hint */
+  hintGap: 40,
+}
+// the two offsets, resolved here and handed to the dynamic styles below:
+// the compiler reads a stylesheet's values from the file itself and will
+// not follow a number computed from an import
+const seatTop = `calc(${coldStartPlacement.line} - ${coldStartPlacement.ringDrop}px)`
+const hintTop = `calc(${coldStartPlacement.line} - ${coldStartPlacement.ringDrop}px + ${coldStartPlacement.height}px + ${coldStartPlacement.hintGap}px)`
+
+const overlayStyles = stylex.create({
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 1000,
+    backgroundColor: tokens.background,
+    color: tokens.foreground,
+  },
+  fading: {
+    animationName: vanish,
+    animationDuration: '150ms',
+    animationTimingFunction: 'ease-out',
+    animationFillMode: 'forwards',
+  },
+  seat: (top: string) => ({
+    position: 'absolute',
+    top,
+    insetInline: 0,
+    display: 'flex',
+    justifyContent: 'center',
+  }),
+  wordmark: {
+    viewTransitionName: NAME,
+  },
+  below: (top: string) => ({
+    position: 'absolute',
+    top,
+    insetInline: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 16,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    color: tokens.mutedForeground,
+    animationName: appear,
+    animationDuration: '400ms',
+    animationFillMode: 'both',
+  }),
+  retry: {
+    appearance: 'none',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    borderRadius: tokens.radiusMd,
+    backgroundColor: tokens.surface,
+    color: tokens.foreground,
+    paddingInline: 12,
+    paddingBlock: 6,
+    fontSize: 14,
+    lineHeight: '1.25rem',
+    cursor: 'pointer',
+  },
+})
+
+type Phase = 'idle' | 'waiting' | 'stalled' | 'fading'
+
+export interface ColdStartCopy {
+  /** what the status region says while the screen is up */
+  loading: string
+  /** the line under the wordmark once the wait has run long */
+  stillLoading: string
+  /** the button once the wait has run too long */
+  retry: string
+}
+
+const reducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/**
+ * The loop brought to rest: the eight parts paused where they are, then
+ * every one taken to full ink and the tail back home within EXIT ms. A
+ * script animation sits above the paused stylesheet ones and holds, so the
+ * picture the view transition takes afterwards is of the solid wordmark.
+ */
+const settle = (root: HTMLElement): Promise<void> => {
+  const finished: Promise<unknown>[] = []
+  for (const part of root.querySelectorAll<SVGElement>('[data-seg]')) {
+    const { opacity, transform } = getComputedStyle(part)
+    for (const animation of part.getAnimations()) animation.pause()
+    const rest = part.animate(
+      [
+        { opacity, transform },
+        { opacity: 1, transform: 'none' },
+      ],
+      { duration: EXIT, easing: 'ease-out', fill: 'forwards' },
+    )
+    finished.push(rest.finished)
+  }
+  return Promise.all(finished).then(() => undefined)
+}
+
+/**
+ * The host of the cold-start overlay: mounted once, at the root, above
+ * every provider, with the copy the fallbacks cannot fetch yet.
+ */
+function ColdStart({ copy }: { copy: ColdStartCopy }) {
+  const pending = useSyncExternalStore(subscribe, claimsNow, claimsNow)
+  const [phase, setPhase] = useState<Phase>('idle')
+  const [hint, setHint] = useState(false)
+  const overlay = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    hosts += 1
+    notify()
+    return () => {
+      hosts -= 1
+      notify()
+    }
+  }, [])
+
+  // a claim while nothing is up: the overlay goes up, in the placeholder's
+  // place, its loop set to begin 400ms from now
+  useLayoutEffect(() => {
+    if (pending > 0 && phase === 'idle') {
+      setHint(false)
+      setPhase('waiting')
+    }
+  }, [pending, phase])
+
+  // the placeholder leaves in the same frame the overlay arrives, so neither
+  // two wordmarks nor none are ever painted
+  useLayoutEffect(() => {
+    if (phase === 'idle') return
+    document.getElementById(PLACEHOLDER)?.remove()
+    document.documentElement.setAttribute(COLD_START, '')
+  }, [phase])
+
+  // the wait's own clock: a hint, then a way out
+  useEffect(() => {
+    if (phase !== 'waiting') return
+    const hintTimer = setTimeout(() => setHint(true), HINT_AFTER)
+    const stallTimer = setTimeout(() => setPhase('stalled'), STALL_AFTER)
+    return () => {
+      clearTimeout(hintTimer)
+      clearTimeout(stallTimer)
+    }
+  }, [phase])
+
+  // stalled: the loop is brought to rest and stays there
+  useEffect(() => {
+    if (phase !== 'stalled' || overlay.current === null) return
+    void settle(overlay.current)
+  }, [phase])
+
+  // the last claim has gone: rest the loop, then hand the wordmark over.
+  // Checked a frame later, so a hand-over between two fallbacks - one claim
+  // released and the next made in the same commit - is not taken for the
+  // end. The snapshot the view transition takes is of the settled wordmark,
+  // which is why the transition waits for the rest to finish.
+  useEffect(() => {
+    if (pending > 0 || (phase !== 'waiting' && phase !== 'stalled')) return
+    let cancelled = false
+    const frame = requestAnimationFrame(() => {
+      const root = overlay.current
+      if (root === null) return
+      void settle(root).then(() => {
+        if (cancelled) return
+        const leave = () => {
+          document.documentElement.removeAttribute(COLD_START)
+          flushSync(() => setPhase('idle'))
+        }
+        if (typeof document.startViewTransition === 'function' && !reducedMotion()) {
+          document.startViewTransition(leave)
+        } else {
+          setPhase('fading')
+          setTimeout(leave, EXIT)
+        }
+      })
+    })
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frame)
+    }
+  }, [pending, phase])
+
+  if (phase === 'idle') return null
+  return (
+    <div
+      ref={overlay}
+      role="status"
+      data-cold-start-phase={phase}
+      {...stylex.props(overlayStyles.overlay, phase === 'fading' && overlayStyles.fading)}
+    >
+      <div {...stylex.props(overlayStyles.seat(seatTop))}>
+        <Wordmark
+          height={CAP}
+          live={phase === 'waiting' || phase === 'stalled'}
+          xstyle={overlayStyles.wordmark}
+        />
+      </div>
+      <VisuallyHidden>{copy.loading}</VisuallyHidden>
+      {hint || phase === 'stalled' ? (
+        <div {...stylex.props(overlayStyles.below(hintTop))} data-testid="cold-start-hint">
+          <span>{copy.stillLoading}</span>
+          {phase === 'stalled' ? (
+            <button
+              type="button"
+              {...stylex.props(overlayStyles.retry)}
+              onClick={() => window.location.reload()}
+            >
+              {copy.retry}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export { Spinner, LoadingScreen, PageLoading, ColdStart }

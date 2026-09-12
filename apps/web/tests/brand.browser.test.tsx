@@ -149,5 +149,21 @@ describe('the wordmark', () => {
       for (const letter of svg.querySelectorAll('path[data-letter]')) {
         expect(letter.getAnimations()).toEqual([])
       }
+
+      // during the lean's first 40ms only the tail's place changes: its
+      // opacity holds at 1 until the head lands, then falls to its head
+      // value by the time the head moves on
+      const tail = segments[0]!
+      const opacityAt = (ms: number) => {
+        for (const animation of svg.getAnimations({ subtree: true })) {
+          animation.pause()
+          animation.currentTime = 400 + ms
+        }
+        return Number(getComputedStyle(tail).opacity)
+      }
+      expect(opacityAt(0)).toBe(1)
+      expect(opacityAt(20)).toBe(1)
+      expect(opacityAt(39)).toBe(1)
+      expect(opacityAt(320)).toBeCloseTo(0.32, 2)
     }))
 })

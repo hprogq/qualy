@@ -73,6 +73,7 @@
     "@mantine/core": "catalog:",
     "@mantine/dates": "catalog:",
     "@mantine/hooks": "catalog:",
+    "@qualy/brand": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "clsx": "catalog:",
     "dayjs": "catalog:",

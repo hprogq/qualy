@@ -24,7 +24,8 @@ const styles = stylex.create({
   },
 })
 
-export interface WordmarkProps {
+export interface WordmarkProps
+  extends Omit<React.ComponentProps<'svg'>, 'className' | 'style' | 'children' | 'title'> {
   /** cap height in CSS pixels */
   height?: number
   /** the Q's parts carry the loading loop, from 400ms in */
@@ -45,6 +46,7 @@ export function Wordmark({
   xstyle,
   className,
   style,
+  ...rest
 }: WordmarkProps) {
   const scale = height / layout.cap
   return (
@@ -55,6 +57,7 @@ export function Wordmark({
       fill="currentColor"
       data-live={live ? '' : undefined}
       {...(title === undefined ? { 'aria-hidden': true } : { role: 'img' })}
+      {...rest}
       {...seatOf(stylex.props(styles.wordmark, xstyle), className, style)}
     >
       {title === undefined ? null : <title>{title}</title>}

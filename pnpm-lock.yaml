@@ -1129,6 +1129,9 @@ importers:
 
   packages/plugins/base/layout-default:
     dependencies:
+      '@qualy/brand':
+        specifier: workspace:*
+        version: link:../../../web/brand
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../../contracts/i18n
@@ -1657,6 +1660,9 @@ importers:
       '@mantine/hooks':
         specifier: 'catalog:'
         version: 9.5.2(react@19.2.8)
+      '@qualy/brand':
+        specifier: workspace:*
+        version: link:../brand
       '@stylexjs/stylex':
         specifier: 'catalog:'
         version: 0.19.0

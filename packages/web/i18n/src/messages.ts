@@ -21,6 +21,8 @@ export const commonMessages = {
   // promise to undo something
   close: { id: 'common/action/close', defaultMessage: 'Close' },
   loading: { id: 'common/state/loading', defaultMessage: 'Loading' },
+  // under the wordmark once a cold start has run past six seconds
+  stillLoading: { id: 'common/state/still-loading', defaultMessage: 'Still loading' },
   // the calendar's caption pickers, named for whoever cannot see them
   clockHour: { id: 'common/clock/hour', defaultMessage: 'Hour' },
   clockMinute: { id: 'common/clock/minute', defaultMessage: 'Minute' },

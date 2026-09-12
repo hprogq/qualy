@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
+import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { headerActions, sidebarUser, type ResolvedNavigationItem } from '@qualy/ui-contract'
 import { UiSlot } from '@qualy/web-runtime'
@@ -30,25 +31,11 @@ const styles = stylex.create({
     display: 'flex',
     flexShrink: 0,
     alignItems: 'center',
-    gap: 10,
+    color: tokens.foreground,
   },
-  brandMark: {
-    display: 'flex',
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: tokens.radiusLg,
-    backgroundColor: tokens.primary,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    fontWeight: 700,
-    color: tokens.primaryForeground,
-  },
-  brandWord: {
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
-    fontWeight: 600,
+  // the cold start's loading screen flies its wordmark onto this one
+  wordmark: {
+    viewTransitionName: 'qualy-wordmark',
   },
   tabsNav: {
     minWidth: 0,
@@ -140,14 +127,11 @@ export interface AppEntry {
   icon?: string
 }
 
+// the wordmark, never live here: the loop belongs to the loading screen.
+// Its title names the link, so nothing else has to
 function Brand({ to }: { to?: string }) {
   const mark = (
-    <>
-      <span aria-hidden {...stylex.props(styles.brandMark)}>
-        Q
-      </span>
-      <span {...stylex.props(styles.brandWord)}>Qualy</span>
-    </>
+    <Wordmark height={14} title="Qualy" xstyle={styles.wordmark} data-brand-wordmark="" />
   )
   return to === undefined ? (
     <span {...stylex.props(styles.brand)}>{mark}</span>

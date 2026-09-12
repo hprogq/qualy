@@ -34,6 +34,7 @@ export default {
   'common/calendar/month': '月份',
   'common/calendar/year': '年份',
   'common/state/loading': '加载中',
+  'common/state/still-loading': '仍在加载',
   'common/state/more-results': '还有更多结果，缩小搜索范围可以看到。',
   'common/manifest/load-failed': '界面清单加载失败，请检查网络。',
   'common/component/missing': '渲染器缺失：{component}',
