@@ -13169,3 +13169,26 @@ harness 本笔:`--node-args` 把 `--max-old-space-size` / `--trace-gc` / `--heap
 - **writer OFF 的实测(提交版 manifest)**:`pnpm smoke:formula-production` 只打印 `formula authoring is disabled in qualy.yml (...)`,exit 2;`pg_database` 里无 `qualy_formula_smoke`,3196 无监听。
 - **工具自检(harness self-test against a temporary local writer-enabled working tree; not the formal production acceptance)**:python 精确把 `qualy.yml` 的 `authoring: false` 翻成 `true` → `pnpm qualy resolve` → smoke **PASS**,九步全过,server 881 ms 就绪、shutdown 19 ms、整链 49.8 s(含 deploy + seed + 3 s 等待开放)→ 精确复原 → `pnpm qualy resolve` → `git diff --exit-code -- qualy.yml qualy.lock.json` 干净。**5B 结束时:`authoring: false`、lock 与提交版一致、production writer OFF、正式 full smoke 尚未宣称 PASS。**
 - **门禁(实际执行)**:`pnpm vitest run tools/tests/ports.test.ts tools/tests/test-layers.test.ts` 15/15;`pnpm typecheck` exit 0;`pnpm test` 207 文件 1428 通过、17 跳过;`pnpm test:browser` 44 文件 311 通过;`pnpm build` 通过。prettier 只对改动文件执行。
+
+#### 5C `05714cf2` feat(formula): enable formula binding authoring by default(Deployment B;CI success,run 34677053818)
+
+顺序不可调换:先 final audit,clean 才翻开关。Plan 经批准后直接执行。
+
+- **Final existing-state audit(2026-09-12,提交版沙箱形态 `cpus: 1` / `QUALY_SANDBOX_POOL_SIZE=1`、scoring 50/100,宿主 load 5.4,整个开发库,`pnpm qualy assessment audit-scoring` 不带 `--tenant`,CLI 自读 `.env`)**:
+
+  ```text
+  scoring audit
+    items: 11   plans: 11   recognitions: 10   derived grants: 1
+    accepted: 11   refused: 0   execution failed: 0   unavailable: 0
+    integrity failed: 0   invariant failed: 0   unreadable: 0   unprepared: 0
+    verdict: clean
+    (no boot hook ran; migrations were not applied)
+  ```
+
+  exit 0,3 s。Deployment B 的硬前置成立。
+
+- **翻开关**:`qualy.yml:47-49` 注释改为交代现状与回退语义(set false to close it again, questions already bound keep running),`authoring: true`;`pnpm qualy resolve` → `qualy.lock.json written`,`git diff` 只有第 3 行 `manifestHash`(`sha256:9e66afa5… → sha256:1e7df6cf…`),`resolutionHash` 不变、staged 资产照用;`pnpm qualy resolve --frozen-lockfile` → `qualy.lock.json is up to date`(零写入)。不手改 lock。
+- **承重不删**:所有 OFF 语义的测试都显式注入 `FormulaSettings` 或 stub manifest(config 4、authoring-surface 2、binding-options 2、formula-calculator / formula-scoring / formula-http 各 1、item-chain.browser 1),翻转后全部保持;`FormulaSettings` 默认 `?? false` 不动(manifest 省略仍是 disabled);`apps/server/tests/effect-api.test.ts` 只改一行注释(它本就显式钉 false,理由是该套件的对象是 api 聚合而非 rollout)。
+- **默认装配的可观察证明(真实装配)**:`tools/quality/formula-production-smoke.ts` 新增断言——管理员 `GET /app/manifest` 的 `collections['assessment/calculator-authoring-options']` 含 `ref === 'formula@1'`;浏览器侧渲染证明仍由 `item-chain.browser.test.tsx`(集合含 formula → chooser 可见可选、picker 出现;不含 → 无 chooser)承担,stub 驱动、未动。翻转后的工作树上 `pnpm smoke:formula-production` **PASS**(manifest 断言 → 学生 → 发布 → binding catalog → 绑定 → 行政记录 → 结果 3.00 / `formula@1` → 审计 clean → shutdown 20 ms;server 919 ms 就绪,整链 49.9 s)。**正式 full acceptance run 归 5D(在 CI 绿的 HEAD 上重跑)。**
+- **文档**:`docs/phase7-design.md` §11.4 追加 Deployment B 落地记录(审计数字、翻转与 lock 语义、chooser 证明的位置);`:300` 的"writer 在 7.6 前不得默认生产开放"追注"7.6 步骤 5C 起默认开放"。
+- **门禁(实际执行)**:定向 `assembly-resolve`(40,含 has a lock that matches it)/ `runtime-cli`(3)/ `config`(4)/ `authoring-surface`(2)= 49/49;`pnpm typecheck` exit 0;`pnpm test` 207 文件 1428 通过、17 跳过;`pnpm test:browser` 44 文件 311 通过;`pnpm build` 通过。prettier 只对改动文件执行。
