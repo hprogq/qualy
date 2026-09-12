@@ -13402,3 +13402,35 @@ acceptance done
 - **400ms 门槛改为从首帧起算**(用户的可选项):第一个 episode 的 `animation-delay = max(0, 400 − performance.now())`,之后的 episode 仍是 400;`keyframes.ts` 的 `delayed` 变成动态样式,`Wordmark` 加 `liveDelay`,cold-start 测试改为断言 delay 与该公式一致(±60ms)、第二个 episode 为 400。
 - **下一步(独立任务,本次不做)**:**生产 smoke 必须在浏览器里真正执行一次 bundle**——CI 的 smoke job 装 chromium(或把它并进 browser job),起生产入口后用 playwright 打开壳、断言无 `pageerror`、顶栏字标在 DOM、StyleX 类在入口样式表。本阶段发现的两个生产缺陷(chunk 环、CSS 注入到懒加载样式表)都只有这样的检查能看见。
 - **门禁(实际执行)**:`pnpm typecheck` 19 programs exit 0;`pnpm test` Test Files 210 passed | 3 skipped (213), Tests 1470 passed | 17 skipped (1487), exit 0;`pnpm test:browser` Test Files 46 passed (46), Tests 320 passed (320), exit 0;`pnpm build` 通过、chunk 环 0;生产入口实测两次如上。
+
+## 请求来源校验(CSRF 纵深防御,2026-09-13)
+
+`feat(server): refuse unsafe requests from other origins`。结论与不做的事见 `docs/notes/auth-security.md`「请求来源校验」。
+
+- **上游核对**(`repos/effect` rc.111):`HttpRouter.serve` 的 `middleware` 形状是 `(effect: Effect<HttpServerResponse, …>) => Effect<HttpServerResponse, HE, HR>`(`HttpRouter.ts:1241-1250`),中间件可以直接返回一个响应短路 httpApp;`HttpServerRequest.remoteAddress: Option<string>`(`HttpServerRequest.ts:518`),`headers` 是 `Headers.fromInput` 全部小写键的记录(`Headers.ts:187-202`);`HttpServerResponse.schemaJson(schema)(body, { status })` 经 `Body.jsonSchema` 编码(`HttpServerResponse.ts:317`),对 TaggedError 编出 `{"_tag":…,"message":…}`(实查 `BadRequest` → `{"_tag":"BAD_REQUEST","message":"x"}`),与 HttpApi 的 `encodeError` 同形;`HttpMiddleware` 只有 cors / logger / tracer / xForwardedHeaders / searchParamsParser / compression,没有现成守卫。
+- **模块** `packages/core/api-kit/src/origin.ts`(叶子 `@qualy/api-kit/origin`,不进根导出):`originVerdict({ method, secFetchSite, origin, publicHost })` 纯函数;`originMatchesHost(origin, host)` 是唯一的判定实现;`publicHostOf(request, trusted)` 实现放在 `request.ts` 与 `clientAddressOf` 并列(同一哲学:对端受信才读 `x-forwarded-host` 第一段,否则 `Host`),origin.ts 再导出,并挂到 `RequestContext.publicHost`——插件拿不到宿主的代理策略,公式 WebSocket 握手改读 `currentRequestContext().publicHost`(裸起服务的测试没有 context 时退回 `Host`)再调 `originMatchesHost`,原先内联的判断删除;`sameOriginRequest(request, trusted)` 供有策略的一侧用;`requestOriginGuard({ trustedProxies })` 中间件,拒绝 = `schemaJson(RequestOriginRefused)` 403 + 一条 Warn(method / path / secFetchSite / origin / host 五个字段,缺则 null)。`RequestOriginRefused` 在 `api-kit/schema.ts` 与 `BadRequest` 并列,`error-codes.test` 把它归 common。
+- **组合**:`apps/server/src/serve-middleware.ts` 把 runtime.ts 里的链抽成 `serveMiddleware({ trustedProxies, access })` = `requestContext(accessLog(httpMetrics(routeSpanNames(guard(httpApp)))))`,守卫最内层;runtime.ts 只调用它,`trustedProxies` 与 `requestContext` 同源(`ServerConfig`)。顺序语义未动(requestContext 仍在 tracer 之内、access log 之外;routeSpanNames 仍最靠近路由——只是守卫插在它和路由之间,守卫不需要路由信息)。
+- **浏览器侧**:`commonErrorMessages.REQUEST_ORIGIN_REFUSED`(`common/error/request-origin-refused`),zh-CN「请求来源不受信任,请刷新页面后重试。」,并加进 zh-CN catalog 的类型化描述符集(`runtimeMessages`)。
+- **测试**:`api-kit/tests/origin.test.ts` 15 条(§4 的 10 行表 + 未知 fetch-metadata 值拒绝 + 安全方法一律放行 + `publicHostOf` 三条);`apps/server/tests/serve-middleware.test.ts` 6 条(端口 3210,真实 HTTP:cross-site 403 且 `_tag === 'REQUEST_ORIGIN_REFUSED'`、same-site 403、same-origin 200、无 Sec-Fetch 时 Origin 对 Host(evil 403 / 本机 200)、两者皆无 200、GET + cross-site 200);`tools/tests/effect-api-parity.test.ts` 加「没有任何 GET 声明 requestBody」;公式 WebSocket 的同源用例已存在(`lsp-bridge.test.ts:417`,无 Origin / evil / chrome-extension 各 403)且改造后 14/14 绿。两处 `RequestContextShape` 测试桩补 `publicHost: undefined`。
+- **curl 实打(开发服务器 :5173 经 Vite 反代到后端)**:
+
+  ```text
+  POST /api/auth/local/local/login(无 Sec-Fetch、无 Origin,错误口令)        -> 401
+  POST … -H 'sec-fetch-site: cross-site'                                       -> 403 application/json
+        {"_tag":"REQUEST_ORIGIN_REFUSED","message":"the request did not come from this application"}
+  POST … -H 'origin: https://evil.example'(无 Sec-Fetch)                      -> 403
+        {"_tag":"REQUEST_ORIGIN_REFUSED","message":"the request did not come from this application"}
+  ```
+
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm typecheck    -> 19 programs, exit 0
+  pnpm test         -> Test Files 212 passed | 3 skipped (215); Tests 1492 passed | 17 skipped (1509); exit 0
+                       (含 origin 15、serve-middleware 6、effect-api-parity 3、error-codes 7、catalogs 10、ports 3、plugin-isolation 18、lsp-bridge 14)
+  pnpm test:browser -> Test Files 46 passed (46); Tests 320 passed (320); exit 0
+  pnpm build        -> ✓ built; staged web assets, precompressed 98 file(s)
+  smoke-production  -> /health/live /health/ready / /api/app/manifest /assets/index-*.js ok, brotli, shutdown clean (exit 0)
+  ```
+
+  路由集不变(frozen-routes 等价比对通过),不新增端点;`@qualy/api-kit/origin` 只被服务端与公式插件的 server 侧引用,browser-graph 门禁在全量 node 套件里绿。浏览器里登录、改用户、登出照常(浏览器套件 320 条含 shell、login、item-chain 全绿;浏览器发出的请求天然 `same-origin`)。

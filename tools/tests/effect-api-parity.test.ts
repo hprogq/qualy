@@ -49,6 +49,19 @@ const effectRoutes = () => {
 }
 
 describe('the Effect api against the frozen surface', () => {
+  // The origin guard lets every GET through unexamined, on the premise that
+  // a GET changes nothing. A GET that declares a body is the first sign of
+  // that premise being broken.
+  it('declares no request body on any GET', () => {
+    const document = OpenApi.fromApi(qualyApi) as {
+      paths: Record<string, Record<string, { requestBody?: unknown }>>
+    }
+    const withBody = Object.entries(document.paths).flatMap(([path, methods]) =>
+      methods['get']?.requestBody === undefined ? [] : [path],
+    )
+    expect(withBody).toEqual([])
+  })
+
   it('serves only routes the frozen table already names', () => {
     const frozen = new Set(FROZEN_ROUTES)
     const invented = effectRoutes().filter((route) => !frozen.has(route))

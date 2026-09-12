@@ -155,6 +155,12 @@ export const commonErrorMessages = {
   BAD_REQUEST: {
     message: { id: 'common/error/bad-request', defaultMessage: 'Some input is invalid.' },
   },
+  REQUEST_ORIGIN_REFUSED: {
+    message: {
+      id: 'common/error/request-origin-refused',
+      defaultMessage: 'This request did not come from Qualy. Reload the page and try again.',
+    },
+  },
 } as const satisfies ErrorMessageMap
 
 export const networkErrorMessage = {

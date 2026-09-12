@@ -116,6 +116,7 @@ describe('logging settings', () => {
                 userAgent: undefined,
                 traceId: undefined,
                 sessionId: undefined,
+                publicHost: undefined,
                 bindSession: () => Effect.void,
               }),
             )

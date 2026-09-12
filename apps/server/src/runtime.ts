@@ -4,7 +4,6 @@ import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { httpMetrics, requestContext, routeSpanNames } from '@qualy/api-kit/request'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
 import { NodeServer } from '@qualy/api-kit/node'
 import { AssemblyInfo, assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
@@ -13,7 +12,7 @@ import { Plugin } from '@qualy/plugin-kit'
 import { lockFromResolution, type Resolution } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
-import { accessLog } from './access-log.ts'
+import { serveMiddleware } from './serve-middleware.ts'
 import type { LoggingSettings } from './logging.ts'
 import { healthApi, healthHandlers } from './health.ts'
 import { mark } from './boot-timing.ts'
@@ -169,21 +168,17 @@ export async function makeApplication(
       // the services are provided inside the serve composition: the router
       // discharges request-time requirements only for layers inside its
       // argument, and requests find their services in the built context
-      // the platform wraps this whole chain in its tracer span, so the
-      // request context reads the span the request actually runs under; it
-      // sits outside the access log so the log can name the request id
-      const withRequestContext = requestContext({ trustedProxies: config.trustedProxies })
       return HttpRouter.serve(
         routes.pipe(Layer.provide(runtimeGraph), Layer.provide(services), Layer.provide(prepared)),
         {
           // the upstream logger prints every response at Info and every failed
           // exit's cause - interrupted requests included; ours speaks in levels
           disableLogger: true,
-          // route templates land on the span innermost, so the access log,
-          // the RED histogram and the exported span all speak from inside
-          // the request context
-          middleware: (httpApp) =>
-            withRequestContext(accessLog(logging.access)(httpMetrics(routeSpanNames(httpApp)))),
+          // the one chain in front of the router, ordered in its own module
+          middleware: serveMiddleware({
+            trustedProxies: config.trustedProxies,
+            access: logging.access,
+          }),
         },
       ).pipe(
         Layer.provide(

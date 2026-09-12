@@ -1,12 +1,14 @@
 import { contractIdentityOf, sha256Hex } from './contract-identity.ts'
 import { decodeFormulaEnvelope } from './envelope.ts'
-import { Context, Effect, Layer } from 'effect'
+import { Context, Effect, Layer, Option } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { sql } from 'kysely'
 import { Api } from '@qualy/api-kit/local'
 import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/api-kit'
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
+import { originMatchesHost } from '@qualy/api-kit/origin'
+import { currentRequestContext } from '@qualy/api-kit/request'
 import { CurrentUser } from '@qualy/plugin-auth/server/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
@@ -1725,21 +1727,14 @@ export const formulaApiHandlers = HttpApiBuilder.group(local, 'assessmentFormula
         // a browser-initiated WebSocket carries the ambient qualy_session
         // cookie regardless of the initiating page, so the ORIGIN header is
         // the whole cross-site defense: absent, non-http(s) or pointing at a
-        // different host means someone else's page is speaking
-        const origin = request.headers['origin']
-        const host = request.headers['host']
-        const sameOrigin = (() => {
-          if (origin === undefined || host === undefined) return false
-          try {
-            const parsed = new URL(origin)
-            return (
-              (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.host === host
-            )
-          } catch {
-            return false
-          }
-        })()
-        if (!sameOrigin) return HttpServerResponse.empty({ status: 403 })
+        // different host means someone else's page is speaking. The host it
+        // is held against is the one the request context resolved through
+        // the deployment's proxy policy; served bare, the Host header
+        const context = Option.getOrUndefined(yield* currentRequestContext)
+        const publicHost = context === undefined ? request.headers['host'] : context.publicHost
+        if (!originMatchesHost(request.headers['origin'], publicHost)) {
+          return HttpServerResponse.empty({ status: 403 })
+        }
 
         const principal = yield* CurrentUser
         const library = yield* FormulaLibrary

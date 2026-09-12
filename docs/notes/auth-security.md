@@ -7,8 +7,35 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 - 单进程同源部署(vite middleware 与 API 共端口),无跨域需求,JWT 的无状态优势用不上;
 - 「logout/禁用即失效」是验收硬指标,纯 JWT 结构性做不到(黑名单=变相服务端状态);
 - localStorage 可被任意 XSS 脚本读走,HttpOnly Cookie 免疫此类窃取;
-- SameSite=Lax 在同源部署下覆盖 CSRF 主面(跨站 POST 不带 Cookie);P1 不加 CSRF token,
-  若未来放开 SameSite 或出现第三方嵌入场景再评。
+- CSRF:见下节「请求来源校验」——SameSite=Lax 只区分站点,不区分同站兄弟子域,
+  那一格由 Fetch Metadata 守卫显式补上;不加 token、不签名、不装 CORS。
+
+## 请求来源校验(2026-09-13 定案)
+
+跨站 CSRF 已被三层彼此独立的机制挡住:
+
+1. `qualy_session` 是 HttpOnly + SameSite=Lax + Path=/(生产 Secure),跨站的 POST/PUT/PATCH/DELETE 不带 Cookie;
+2. 全部写操作走非安全方法,71 个 GET 都是读,登出是 `DELETE /auth/session`;`tools/tests/effect-api-parity.test.ts` 断言 OpenAPI 里没有任何 GET 声明 requestBody;
+3. HttpApi 的 `decodePayload` 按 Content-Type 选解码器,JSON 端点收到表单编码直接 415;服务端没装 `HttpMiddleware.cors`,跨域 fetch 的 `application/json` 过不了预检。公式编辑器的 WebSocket 握手校验 `Origin` 与公开 host;本地存储 `PUT /api/storage/local/uploads/:reservationId` 认 reservation 不认 session。
+
+**唯一的缺口是同站不同源**:SameSite 不区分 `qualy-dev.hprogq.com` 与 `rec.hprogq.com`,也不区分将来学校域名下的任何兄弟子域,兄弟子域发出的请求带着 Cookie。这一格现在只靠「JSON + 无 CORS + 无副作用 GET」挡着,任何一条将来松动(multipart 端点、有副作用的 GET、某天加上的 CORS)就漏。
+
+**守卫**(`@qualy/api-kit/origin` 的 `requestOriginGuard`,serve 中间件链最内层,`apps/server/src/serve-middleware.ts`):
+
+1. `GET` / `HEAD` / `OPTIONS` 放行。
+2. 否则读 `sec-fetch-site`:`same-origin` / `none` 放行;`same-site`、`cross-site` 与其他任何值拒绝——`same-site` 必须拒,那正是兄弟子域。
+3. 没有 `sec-fetch-site`(Safari ≤ 16.3、非浏览器客户端)读 `origin`:有则解析,协议必须 http/https 且 host 等于公开 host,否则拒绝;没有 `origin` 放行——curl、CLI、node 测试、undici 走这里,它们没有受害者的 Cookie,不构成 CSRF。
+
+拒绝 = 403,响应体经 `RequestOriginRefused` schema 编码(`{"_tag":"REQUEST_ORIGIN_REFUSED","message":"…"}`),与 HttpApi 编出的错误同形,不进路由、不碰数据库;日志一条 Warn,只含 method / path / secFetchSite / origin / host。公开 host 与 `clientAddressOf` 同一哲学(`publicHostOf`):对端是受信任代理才读 `x-forwarded-host`(第一段),否则用 `Host`;它同时挂在 `RequestContext.publicHost` 上,公式 WebSocket 握手的同源判定读的就是它,判定函数 `originMatchesHost` 只有一份。无状态,前端零改动;浏览器发出的请求天然 `same-origin`。
+
+**明确不做及理由**:
+
+- RSA / HMAC 签名请求头:签名解决的是篡改与重放,不是浏览器自动附带凭据;密钥若在前端 JS 里,能跑 XSS 的人一样能签。
+- HTML 级 / 双提交 CSRF token:服务端渲染表单的方案,本项目是 SPA + JSON;双提交在兄弟子域场景下反而更弱,兄弟子域能给父域种 Cookie。
+- CORS 中间件:现在没有跨域需求,`HttpMiddleware.cors` 装上就是打开一个面。
+- `__Host-` Cookie 前缀(待办):想做过,但 `HttpApiSecurity.apiKey` 的 key 是静态的,而 `qualy-dev.hprogq.com` 走 http,`__Host-` 在那里被浏览器拒绝,要做就得按 `secureCookies` 切两套 security 声明;按「复杂度必须由已发生的问题证明」只记录不做。
+
+**auth-cas / auth-oidc 落地时的硬要求**:回调必须用绑定 Cookie 的 `state` 防登录 CSRF(攻击者把自己的回调 URL 交给受害者打开,受害者会登进攻击者的账号);`state` 随机、单次、与发起登录的浏览器绑定。
 
 ## Session
 

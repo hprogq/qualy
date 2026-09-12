@@ -40,6 +40,12 @@ export interface RequestContextShape {
    */
   readonly sessionId: string | undefined
   readonly bindSession: (sessionId: string) => Effect.Effect<void>
+  /**
+   * The host this request was addressed to, as the browser saw it: the
+   * forwarded host when a trusted proxy wrote it, the Host header
+   * otherwise. What an Origin header has to match.
+   */
+  readonly publicHost: string | undefined
 }
 
 export class RequestContext extends Context.Service<RequestContext, RequestContextShape>()(
@@ -74,7 +80,7 @@ export const bindSessionId = Effect.fn('RequestContext.bindSessionId')(function*
  * unmapped. Undefined for anything that is not an address, because a value
  * that only looks like one poisons every equality check downstream.
  */
-const normalizeIp = (raw: string | undefined): string | undefined => {
+export const normalizeIp = (raw: string | undefined): string | undefined => {
   if (raw === undefined) return undefined
   let value = raw.trim()
   const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(value)
@@ -166,6 +172,32 @@ export const clientAddressOf = (
     if (!trusted(hop)) return hop
   }
   return normalizeIp(chain[0]) ?? remote
+}
+
+/**
+ * The host the client addressed, through the same trust policy as the
+ * client address: a forwarded host is read only when the socket peer is a
+ * trusted proxy, and only its first entry; everything else answers with
+ * the Host header, which is what the browser itself sent. Undefined when a
+ * request carries neither, which no browser request does.
+ */
+/** the two facts of a request the host policy reads; a server request is one, and a test can spell one */
+export interface AddressedRequest {
+  readonly headers: { readonly [name: string]: string }
+  readonly remoteAddress?: Option.Option<string> | undefined
+}
+
+export const publicHostOf = (
+  request: AddressedRequest,
+  trusted: TrustedProxies,
+): string | undefined => {
+  const peer = normalizeIp(Option.getOrUndefined(request.remoteAddress ?? Option.none()))
+  const forwarded = request.headers['x-forwarded-host']
+  if (peer !== undefined && trusted(peer) && forwarded !== undefined) {
+    const first = forwarded.split(',')[0]!.trim()
+    if (first !== '') return first
+  }
+  return request.headers['host']
 }
 
 // --- the middleware ---
@@ -321,6 +353,7 @@ export const requestContext = (options?: {
           trusted,
         ),
         userAgent: request.headers['user-agent'],
+        publicHost: publicHostOf(request, trusted),
         // 'noop' is the disabled tracer's sentinel span
         // (repos/effect/packages/effect/src/internal/effect.ts:5645-5648),
         // not an id worth recording

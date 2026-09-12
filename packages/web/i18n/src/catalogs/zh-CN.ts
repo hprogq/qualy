@@ -12,6 +12,7 @@ const runtimeMessages = {
   sessionExpired: commonErrorMessages.SESSION_EXPIRED.message,
   accessDenied: commonErrorMessages.ACCESS_DENIED.message,
   badRequest: commonErrorMessages.BAD_REQUEST.message,
+  requestOriginRefused: commonErrorMessages.REQUEST_ORIGIN_REFUSED.message,
 } as const
 
 // common/* messages: shared shell copy and transport-level api errors.
@@ -26,6 +27,7 @@ export default {
   'common/error/session-expired': '登录状态已过期，请重新登录。',
   'common/error/access-denied': '你没有执行该操作的权限。',
   'common/error/bad-request': '输入内容有误。',
+  'common/error/request-origin-refused': '请求来源不受信任，请刷新页面后重试。',
   'common/error/network': '无法连接服务器，请检查网络后重试。',
   'common/error/unexpected': '操作失败，请重试。',
   'common/clock/hour': '小时',

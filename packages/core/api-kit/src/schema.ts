@@ -75,6 +75,19 @@ export const cursorUnusable = () =>
   new BadRequest({ message: 'the pagination cursor is not usable here' })
 
 /**
+ * An unsafe request that did not come from this application's own pages.
+ *
+ * Raised by the origin guard in front of the router, never by a handler;
+ * declared here because every endpoint can answer with it and the browser
+ * translates it once, centrally.
+ */
+export class RequestOriginRefused extends Schema.TaggedError<RequestOriginRefused>()(
+  'REQUEST_ORIGIN_REFUSED',
+  { message: Schema.String },
+  { httpApiStatus: 403, identifier: 'RequestOriginRefused' },
+) {}
+
+/**
  * The page size a request asked for.
  *
  * A limit that is not a usable number is treated as absent rather than
