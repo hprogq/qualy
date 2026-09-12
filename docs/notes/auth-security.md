@@ -66,6 +66,27 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 
 发版注意:升级当天所有已登录用户会被登出一次(Cookie 改名);生产必须是 HTTPS(`__Host-` 要求 Secure,http 下浏览器直接丢弃,登录会「无声失败」);反向代理终结 TLS 后以 http 转给后端时,`secureCookies` 仍按 `NODE_ENV` 判定,与代理协议无关。以生产入口跑的工具(`tools/quality/formula-production-smoke.ts`、`tools/benchmarks/support/dataset.ts` 与基准驱动、`tools/brand/record.ts`)不假定自己打的是哪个入口:从登录响应的 Set-Cookie 里取服务端实际设置的名字(`sessionCookieNames` 二选一),之后连自己种进库的 session 也按这个名字回发。录制工具不能用 Playwright `addCookies` 种 `__Host-` Cookie(协议要求给出 domain,前缀禁止),只能让浏览器自己在本源页面上调登录接口、由服务端 Set-Cookie 落盘;Chromium 把回环地址视为安全上下文,`http://127.0.0.1` 上照样保留 Secure Cookie。校验时用不带 URL 的 `context.cookies()`:带 URL 的过滤只豁免 `localhost` 主机名,会把 127.0.0.1 上的 Secure Cookie 滤掉。
 
+## 响应头(2026-09-13 定案)
+
+应用此前不设任何安全头(开发代理加的 `Vary: Origin` / `connection: close` 生产没有)。补的东西分三个面,各自的落点不同,因为写响应的人不同:
+
+**1. `/api` 与 `/health` 的 Effect 响应**——`apps/server/src/response-headers.ts`,serve 链里紧挨来源校验外侧(`serveMiddleware` = requestContext → accessLog → httpMetrics → routeSpanNames → **responseHeaders** → originGuard),所以 403 拒绝也带这些头。按「尚无时设」补四个头(`Headers.has` 查已有再 `setHeaders`,rc.111 的 `setHeader` 是覆盖语义,`HttpServerResponse.ts:525-544`):
+
+| 头                             | 值                                | 备注                                                                                |
+| ------------------------------ | --------------------------------- | ----------------------------------------------------------------------------------- |
+| `Cache-Control`                | `no-store`                        | 已有的不覆盖;`text/event-stream` 改 `no-cache`(`no-store` 会让部分浏览器不肯挂住流) |
+| `X-Content-Type-Options`       | `nosniff`                         | 附件下载已自带,不重复                                                               |
+| `Cross-Origin-Resource-Policy` | `same-origin`                     | no-cors 嵌入也读不到                                                                |
+| `Referrer-Policy`              | `strict-origin-when-cross-origin` |                                                                                     |
+
+排除:`upgrade: websocket` 的请求与 101 响应不碰(公式 LSP 的握手响应就是升级本身)。**只限这两个前缀**:壳与哈希资源由 sirv 经 `fromConnect` 直接写 Node 响应,Effect 侧拿到的是一个空 200,改它的头到不了浏览器;前缀限定让两边永不相遇。
+
+**2. HTML 壳与静态资源**——`packages/plugins/infra/web/src/server/index.ts` 的 sirv `setHeaders`,唯一能给这些字节设头的地方。所有响应 `X-Content-Type-Options: nosniff` + `Referrer-Policy: strict-origin-when-cross-origin`;壳(`.html` 或无扩展名路径)另加 `X-Frame-Options: DENY`(点击劫持)与 `Cross-Origin-Opener-Policy: same-origin`(仓库里没有 `window.open`,隔离零成本),`Cache-Control: no-cache` 保留;哈希资源保留 `immutable`,不加文档类头。开发态 Vite 不设这些头。
+
+**3. 边缘(反向代理)**——不是应用代码,参考配置在 `ops/reverse-proxy/`(`Caddyfile` 优先,`nginx.conf` 同义):终结 TLS;`Strict-Transport-Security: max-age=31536000; includeSubDomains`(不加 `preload`,那是整个可注册域的单向门);原样转发 `Host` 并写 `X-Forwarded-For/Proto/Host`,应用侧 `QUALY_TRUSTED_PROXIES` 填代理地址——来源校验与客户端地址都只信受信任代理发来的这几个头;`/api` 下 WebSocket 升级放行;SSE 禁用响应缓冲(nginx `proxy_buffering off`,Caddy `flush_interval -1`);上游 keep-alive 打开。
+
+不加:`X-XSS-Protection`(已废弃且曾引入漏洞)、`Expect-CT`、HPKP、`Permissions-Policy`(暂无需要)。生产 smoke(`tools/quality/smoke-production.ts`)断言壳带 DENY / same-origin / nosniff / referrer、`/api/app/manifest` 为 `no-store` + nosniff、哈希资源仍 `immutable` 且无 `X-Frame-Options`。
+
 ## 密码
 
 - Argon2id,参数显式固定:memoryCost 64 MiB、timeCost 3、parallelism 4

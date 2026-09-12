@@ -1,0 +1,48 @@
+# The edge in front of one Qualy process, as Caddy.
+#
+# What the application does NOT do for itself, and expects the edge to do:
+# terminate TLS, say so to browsers for a year, and forward the request
+# with enough of its origin intact for the application's own checks to
+# read. Everything the application does do for itself (cache, sniffing,
+# framing, referrer, the content security policy) is set by the process and
+# passes through here untouched.
+#
+# Replace the site address and the upstream port; the rest is the contract.
+
+qualy.example.com {
+	# TLS is Caddy's default: certificates are obtained and renewed for the
+	# site address above. The application never sees a certificate.
+
+	# Every future visit goes straight to https, for a year, subdomains
+	# included. Not `preload`: the preload list is a one-way door for the
+	# whole registrable domain and is a decision for its owner, not this file.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	reverse_proxy 127.0.0.1:3000 {
+		# The application judges where a request came from (the request-origin
+		# guard, the websocket handshake) against the PUBLIC host, and it
+		# reads that host from X-Forwarded-Host only when the peer is a
+		# trusted proxy. Caddy forwards the Host header as received and adds
+		# X-Forwarded-For / X-Forwarded-Proto by default; X-Forwarded-Host is
+		# added here so the two agree. On the application side set
+		# QUALY_TRUSTED_PROXIES to this proxy's address (the peer the process
+		# sees, e.g. 127.0.0.1), or none of these headers are believed.
+		header_up X-Forwarded-Host {http.request.host}
+
+		# Server-sent events (the batch live channel) are answered as an
+		# open response that trickles: a buffering proxy would hold the
+		# first bytes until the buffer fills, which for an event stream is
+		# never. -1 flushes every write immediately.
+		flush_interval -1
+
+		# Websocket upgrades (the formula editor's language bridge under
+		# /api) pass through reverse_proxy as-is; nothing to enable.
+
+		# One pool of upstream connections rather than a handshake per
+		# request: the process behind this is a single node server.
+		transport http {
+			keepalive 90s
+			keepalive_idle_conns 32
+		}
+	}
+}

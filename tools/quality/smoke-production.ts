@@ -78,7 +78,19 @@ let shell = ''
 await check('/', async (response) => {
   shell = await response.text()
   if (response.status !== 200) return `status ${response.status}`
-  return shell.includes('<!doctype html') ? undefined : 'no html shell'
+  if (!shell.includes('<!doctype html')) return 'no html shell'
+  // the document-only headers, set by the static middleware rather than
+  // the serve chain, which never sees these bytes
+  for (const [name, expected] of [
+    ['x-frame-options', 'DENY'],
+    ['cross-origin-opener-policy', 'same-origin'],
+    ['x-content-type-options', 'nosniff'],
+    ['referrer-policy', 'strict-origin-when-cross-origin'],
+  ] as const) {
+    const actual = response.headers.get(name)
+    if (actual !== expected) return `${name}: ${actual ?? 'absent'}, expected ${expected}`
+  }
+  return undefined
 })
 // the live channel, answered like any authenticated endpoint: no session,
 // no stream - and the route resolving at all means the listener layer
@@ -93,6 +105,12 @@ await check('/api/assessment/batches/00000000-0000-4000-8000-000000000000/events
 
 await check('/api/app/manifest', async (response) => {
   if (response.status !== 200) return `status ${response.status}`
+  // an api answer is never cached and never sniffed; set by the serve
+  // chain, which sees every Effect response
+  if (response.headers.get('cache-control') !== 'no-store') {
+    return `cache-control: ${response.headers.get('cache-control') ?? 'absent'}, expected no-store`
+  }
+  if (response.headers.get('x-content-type-options') !== 'nosniff') return 'not nosniff'
   const body = (await response.json()) as { pages?: unknown[] }
   return Array.isArray(body.pages) ? undefined : 'no pages in the manifest'
 })
@@ -100,9 +118,17 @@ await check('/api/app/manifest', async (response) => {
 // the build instead of hardcoding a chunk name
 const asset = /(?:src|href)="(\/assets\/[^"]+\.js)"/.exec(shell)?.[1]
 if (!asset) fail('the shell references no /assets/*.js entry')
-await check(asset!, async (response) =>
-  response.status === 200 ? undefined : `status ${response.status}`,
-)
+await check(asset!, async (response) => {
+  if (response.status !== 200) return `status ${response.status}`
+  // a hashed asset keeps its immutable caching and is not sniffed
+  const caching = response.headers.get('cache-control') ?? ''
+  if (!caching.includes('immutable'))
+    return `cache-control: ${caching || 'absent'}, expected immutable`
+  if (response.headers.get('x-content-type-options') !== 'nosniff') return 'not nosniff'
+  // not a document: the framing and opener headers belong to the shell only
+  if (response.headers.get('x-frame-options') !== null) return 'x-frame-options on an asset'
+  return undefined
+})
 // and it arrives compressed: the twins are written by the staging step and
 // served by the static server, two halves that fail silently on their own -
 // a missing twin just means the raw file goes out, five times the bytes

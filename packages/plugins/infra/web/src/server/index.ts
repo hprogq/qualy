@@ -81,10 +81,26 @@ const assets = (assetRoot: string): ConnectMiddleware =>
     maxAge: 31_536_000,
     immutable: true,
     setHeaders: (response, pathname) => {
+      // The static middleware writes the node response itself, so the serve
+      // chain's headers never reach these bytes: whatever the shell and the
+      // assets carry is set here, and only here.
+      // a script is served as a script and an image as an image, never
+      // sniffed into something else; and a link out of any page says no
+      // more than the origin to the other side
+      response.setHeader('X-Content-Type-Options', 'nosniff')
+      response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
       // pathname is the request path, so spa navigations ('/', '/ping') have no
       // extension: those serve the html shell, which must not be cached
       if (pathname.endsWith('.html') || !path.posix.extname(pathname)) {
         response.setHeader('Cache-Control', 'no-cache')
+        // The shell is a document and gets the document-only headers: no
+        // other site may frame it (clickjacking), and a page that opens it
+        // from another origin gets no handle back on its window (the
+        // repository opens no windows itself, so the isolation costs
+        // nothing). The hashed assets are not documents and are left with
+        // their immutable caching.
+        response.setHeader('X-Frame-Options', 'DENY')
+        response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
       }
     },
   })

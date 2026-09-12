@@ -13488,3 +13488,20 @@ acceptance done
   benchmark:formula-scoring --cells 1 --rounds 1 --warmup 1 --concurrency 1 --no-telemetry
                                  -> production entry port 3198, dataset present(verify 模式,种下的 session 仍存活), 100 reqs 5xx 0, holds yes, exit 0
   ```
+
+## 响应安全头(2026-09-13,第一步:立即生效的一批)
+
+`feat(server): cache, sniff, framing and referrer headers`。规则与理由见 `docs/notes/auth-security.md`「响应头」。
+
+- **上游核对**(rc.111):`HttpServerResponse.setHeader` / `setHeaders` 是覆盖语义(`HttpServerResponse.ts:525-544`,`Headers.set` / `setAll` 直接写键),「尚无时设」用 `Headers.has`(小写查键,`Headers.ts:231-237`)先查再 `setHeaders` 实现。**`HttpRouter.serve` 的 `middleware` 包住的是「发送响应」本身**(`HttpRouter.ts:1233-1240` 的 Gotchas;`HttpEffect.toHandled` 里 `responded` 已把响应写到 socket,`HttpEffect.ts:66-80`),在 serve 中间件里 `Effect.map` 改返回值到不了客户端——第一版就是这样红的(只有来源守卫自己返回的 403 带上了头)。正确做法是 `HttpEffect.withPreResponseHandler`(`HttpEffect.ts:212-225`):在 app 运行前给请求挂 pre-response handler,发送前调用;而中间件自己产出的响应(守卫的 403)不走 handler、直接 `handleResponse`(`HttpEffect.ts:106-110`),所以对返回值再套一次同一个幂等函数。`makeResponse` 构造时就把 `body.contentType` 写进 `headers['content-type']`(`HttpServerResponse.ts:1336-1360`),SSE 判定读头即可;`HttpApiSchema.StreamSse` 只定 `text/event-stream`、不设缓存头(`HttpApiSchema.ts:417`)。
+- **实现**:`apps/server/src/response-headers.ts`(`responseHeaders` serve 中间件,只对 `/api` 与 `/health` 前缀,`upgrade: websocket` 与 101 不碰),接进 `serveMiddleware` 链的来源守卫外侧;`packages/plugins/infra/web/src/server/index.ts` 的 sirv `setHeaders` 给所有响应 nosniff + Referrer-Policy,壳另加 `X-Frame-Options: DENY` + `COOP: same-origin`;`ops/reverse-proxy/{Caddyfile,nginx.conf}` 边缘参考配置(HSTS 无 preload、Host/X-Forwarded-* 转发与 `QUALY_TRUSTED_PROXIES` 的对应、WebSocket 放行、SSE 不缓冲、上游 keep-alive),从 auth-security.md 链接。为什么 fromConnect 的响应不能在 serve 链里设头:sirv 直接写 Node 响应,Effect 侧只剩空 200,改它无效或 `ERR_HTTP_HEADERS_SENT`,前缀限定让两边永不相遇。
+- **测试**:新 `apps/server/tests/response-headers.test.ts`(端口 3213,6 条):JSON 四个头齐、已有 `Cache-Control` 不覆盖、SSE 为 `no-cache`、`/health` 覆盖、守卫 403 也带头、前缀之外不碰。公式 LSP 的 `lsp-bridge`(14)与 `transport`(3)照常绿。生产 smoke 增加断言:`/` 含 DENY / same-origin / nosniff / referrer,`/api/app/manifest` 为 `no-store` + nosniff,哈希资源仍 `immutable` 且无 `X-Frame-Options`。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm typecheck    -> 19 programs + client component references, exit 0
+  pnpm test         -> Test Files 214 passed | 3 skipped (217); Tests 1502 passed | 17 skipped (1519); exit 0
+  pnpm test:browser -> Test Files 46 passed (46); Tests 320 passed (320); exit 0
+  pnpm build        -> ✓ built in 8.10s; staged web assets -> packages/plugins/infra/web/client-dist
+  smoke-production  -> /health/ready /health/live / (四个文档头) /api/…/events /api/app/manifest (no-store, nosniff) /assets/index-*.js (immutable, nosniff, 无 XFO) ok, brotli, shutdown clean (exit 0)
+  ```

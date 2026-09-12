@@ -9,6 +9,7 @@ import {
 } from '@qualy/api-kit/request'
 import { accessLog } from './access-log.ts'
 import type { LoggingSettings } from './logging.ts'
+import { responseHeaders } from './response-headers.ts'
 
 // The chain every request passes through before the router, in one place
 // so a test can serve a router of its own behind exactly what production
@@ -19,8 +20,10 @@ import type { LoggingSettings } from './logging.ts'
 // the access log, so it can name the request id, and the RED histogram,
 // both of which read the route template that routeSpanNames writes onto
 // the span from innermost - which is why that one sits last but one. The
-// origin guard is the innermost of all: a refusal is still a request line
-// in the log and a 403 in the histogram, and it needs no route to decide.
+// response headers sit just outside the origin guard, so a refusal carries
+// them like any other api answer. The origin guard is the innermost of all:
+// a refusal is still a request line in the log and a 403 in the histogram,
+// and it needs no route to decide.
 
 export const serveMiddleware = (options: {
   readonly trustedProxies: readonly string[]
@@ -35,5 +38,6 @@ export const serveMiddleware = (options: {
     HttpServerResponse.HttpServerResponse,
     E,
     Exclude<R, RequestContext> | HttpServerRequest.HttpServerRequest
-  > => withRequestContext(withAccessLog(httpMetrics(routeSpanNames(guard(httpApp)))))
+  > =>
+    withRequestContext(withAccessLog(httpMetrics(routeSpanNames(responseHeaders(guard(httpApp))))))
 }
