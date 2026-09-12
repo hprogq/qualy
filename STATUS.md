@@ -12799,7 +12799,7 @@ frozen-routes 零变化(没有新路径);error-codes 冻结表 +3(`ASSESSMENT_DE
 - 容量:5000 条 approved 的试算压测(现在并发 4、每 plan prepare 一次)。
 - 仍挂账:7.4a 的两项 typed authoring UX 债(refinement 控件、详细兼容性诊断);teardown 挂死根因(测量仪已能点名 span/source,等下一次)。
 
-## Phase 7.6:Production Rollout / Performance / Final Acceptance(2026-09-11 起,进行中)
+## Phase 7.6:Production Rollout / Performance / Final Acceptance(2026-09-11 – 2026-09-12,CLOSED;Phase 7 CLOSED)
 
 停工后重启。7.5 已封板(`8464c741`,CI success);7.6 不扩能力边界,只回答三个问题:writer 有没有生产级开关、库里已有的 effective Recognition 能否全部被当前 plan 稳定算出、5000 条规模下实时 provisional scoring 表现如何。五步冻结:
 
@@ -13192,3 +13192,88 @@ harness 本笔:`--node-args` 把 `--max-old-space-size` / `--trace-gc` / `--heap
 - **默认装配的可观察证明(真实装配)**:`tools/quality/formula-production-smoke.ts` 新增断言——管理员 `GET /app/manifest` 的 `collections['assessment/calculator-authoring-options']` 含 `ref === 'formula@1'`;浏览器侧渲染证明仍由 `item-chain.browser.test.tsx`(集合含 formula → chooser 可见可选、picker 出现;不含 → 无 chooser)承担,stub 驱动、未动。翻转后的工作树上 `pnpm smoke:formula-production` **PASS**(manifest 断言 → 学生 → 发布 → binding catalog → 绑定 → 行政记录 → 结果 3.00 / `formula@1` → 审计 clean → shutdown 20 ms;server 919 ms 就绪,整链 49.9 s)。**正式 full acceptance run 归 5D(在 CI 绿的 HEAD 上重跑)。**
 - **文档**:`docs/phase7-design.md` §11.4 追加 Deployment B 落地记录(审计数字、翻转与 lock 语义、chooser 证明的位置);`:300` 的"writer 在 7.6 前不得默认生产开放"追注"7.6 步骤 5C 起默认开放"。
 - **门禁(实际执行)**:定向 `assembly-resolve`(40,含 has a lock that matches it)/ `runtime-cli`(3)/ `config`(4)/ `authoring-surface`(2)= 49/49;`pnpm typecheck` exit 0;`pnpm test` 207 文件 1428 通过、17 跳过;`pnpm test:browser` 44 文件 311 通过;`pnpm build` 通过。prettier 只对改动文件执行。
+
+#### 5D 第一次验收(HEAD `47655e0b`)发现的可靠性缺陷与修复 `699782eb` test(repo): give every fixed test port one owner
+
+第一次完整验收 10 步里 9 步通过,第 06 步(formula 真沙箱套件,`vitest run packages/plugins/assessment/formula/tests`)红:`lsp-bridge.test.ts` 的文件级 `beforeAll` 在 3206 上 `listen EADDRINUSE`,14 条因 hook 失败被记为 skipped、文件记 failed。诊断(不盲目重跑):端口此刻无监听、无残留进程,单独重跑同样红 → 不是瞬时占用;`formula-http.test.ts:62`(7.6 步骤 2 的 writer-OFF 承重)把 **`closedPort = 3206`** 与 `lsp-bridge.test.ts:64` 的 `port = 3206` 撞在一起——两文件并行时谁先绑谁赢,全量 `pnpm test` 靠文件调度顺序错开(每次都绿),只跑 formula 目录时必撞。`tools/tests/ports.test.ts` 的固定端口登记只匹配 `const port = \d{4}`,`closedPort` 这种标识符漏网;同类漏网还有两处:`api-kit/tests/request.test.ts` 的 `port = 3196` 撞 `effect-shell.test.ts` 的 `barePort = 3196`,其 `receiverPort = 3203` 撞 `supervisor.test.ts` 的 `port = 3203`。
+
+- **承重先行**:门禁改为识别任何 `const <…>[pP]ort = \d{4}`(claims 带标识符名),当前树 → 红,点名 3 个端口;挪 `closedPort → 3207`、`barePort → 3208`、`receiverPort → 3209` → 绿。
+- **复核**:formula 目录 24/24 文件 102 条(lsp-bridge 14 条真跑,23.6 s);`effect-shell` / `supervisor` / `request` 24/24。
+- 这是测试基础设施的可靠性缺陷,不是产品缺陷;按 5D 规则(只修验收自己发现的 correctness/reliability fault)修,不重开任何 §11.7 项。修复提交后在新 HEAD 上**整套验收重跑**(下)。
+
+#### 5D final acceptance run(第二次,HEAD `699782eb` = Deployment B `05714cf2` + STATUS + 端口修复,writer ON,提交版沙箱 `cpus: 1` / pool 1、scoring 50/100;固定顺序,途中不做任何修改;`--frozen-lockfile` up to date,teardown 无残留进程、工作树干净)
+
+```text
+HEAD 699782eb 2026-09-12T06:18:59Z
+01-frozen-resolve: exit 0 (1s)
+is up to date
+02-typecheck: exit 0 (7s)
+03-node: exit 0 (46s)
+ Test Files  207 passed | 3 skipped (210)
+      Tests  1428 passed | 17 skipped (1445)
+04-browser: exit 0 (62s)
+ Test Files  44 passed (44)
+      Tests  311 passed (311)
+05-build: exit 0 (15s)
+staged web assets -> packages/plugins/infra/web/client-dist
+  precompressed 99 file(s), 4.44 MB saved on the wire
+06-formula-sandbox-suite: exit 0 (27s)
+ Test Files  24 passed (24)
+      Tests  102 passed (102)
+07-sandbox-smoke: exit 0 (3s)
+PASS  sandbox-authoring: serves its own socket
+
+sandbox security smoke: PASS
+08-smoke-production: exit 0 (16s)
+smoke: /assets/index-D1JzDxVJ.js ok
+smoke: /assets/index-D1JzDxVJ.js served brotli-compressed
+smoke: shutdown clean (exit 0)
+09-smoke-formula-production: exit 0 (50s)
+smoke: committed assembly sha256:c9aa58c7d21dbcff05540f30ad0540dbe099f05b892f1fcb1e2595a5c01e0306
+smoke: database qualy_formula_smoke deployed and seeded
+smoke: server pid 92045 listening after 924ms
+smoke: the assembly offers the formula calculator
+smoke: tenant 01a09447-a97d-7d67-a29b-ce5dd762eb17, root 01a09447-a981-79c1-b467-3869cc45557d
+smoke: student 01a09447-b089-76e7-bdce-8d5f1ff4646c signed in
+smoke: formula 01a09447-b09f-73ca-9650-1c31e3e9daa4 published
+smoke: binding catalog offers version 01a09447-b118-712e-a18c-fb5e27196917
+smoke: question 01a09447-b186-72f8-8bbe-2d5d96411326 active; entry opens in 3s
+smoke: determination recorded and approved
+smoke: result 3.00 from one formula@1 line
+smoke: audit-scoring clean
+smoke: shutdown clean in 18ms
+formula production smoke: PASS
+load before audit: 8.91 9.52 8.67
+10-audit-scoring: exit 0 (2s)
+  items: 11   plans: 11   recognitions: 10   derived grants: 1
+  accepted: 11   refused: 0   execution failed: 0   unavailable: 0
+  integrity failed: 0   invariant failed: 0   unreadable: 0   unprepared: 0
+  verdict: clean
+== teardown / tree
+qualy-sandbox-authoring-1 Up 25 hours
+qualy-sandbox-runtime-1 Up 15 hours
+acceptance done
+```
+
+两个 production smoke 都保留并都通过:通用 smoke 证明 assembly / static / shutdown,formula smoke 证明 Phase 7 新增的业务链;二者不可互相替代。本轮未重开 §11.7 #2 / #3 / #4。
+
+### Phase 7.6 Done Definition 逐条
+
+- [x] 步骤 1 重入:四门(frozen resolve / typecheck / node / browser)+ 真沙箱 formula 套件,零代码
+- [x] 步骤 2 writer rollout gate:manifest `authoring`(省略 = disabled),NEW 编译链上、`store.resolve` 之前;OFF 承重 node 14 + browser 1
+- [x] 步骤 3 existing-state auditor:`runtime` 档 CLI `qualy assessment audit-scoring`,无 HTTP、无 boot hook、migrations 强制 off;verdict fail-closed > violations > inconclusive > clean
+- [x] 步骤 4 benchmark:harness + baseline → 内存泄漏定位并修复(value-schema 语义键 + 有界 generation)→ sandbox pool 与 CPU 对齐 → scoring soft 50 / hard 100 校准;#2 数据裁定不做
+- [x] 步骤 5A 兼容性诊断(7.4a 债关闭;refinement 控件 carry 到 Phase 8)
+- [x] 步骤 5B formula production smoke(提交版 manifest、产品 API 行政记录、唯一 fixture 是 session)
+- [x] 步骤 5C Deployment B:final audit clean → `authoring: true` → resolve → frozen up to date → CI
+- [x] 步骤 5D final acceptance(上)
+- [x] 步骤 5E closure 文档(本笔)
+
+### Phase 7 收口:最终形态与移交
+
+- **生产计分形态**:runtime sandbox `cpus: 1` + `QUALY_SANDBOX_POOL_SIZE=1`;`FORMULA_SCORING_LIMITS` soft 50 / hard 100 ms;`@qualy/value-schema` validator 缓存按语义键、256 个语义一代整代释放;writer 默认开放(`manifestHash sha256:1e7df6cf…`,`resolutionHash sha256:c9aa58c7…` 自 Phase 7.6 起未变)。
+- **性能形态(post-fix、post-calibration)**:10 题 ≈ 175 ms p50 / 190 ms p95,50 题 ≈ 777 ms p50 / 790 ms p95,斜率 ≈ 15 ms / Formula Item(其中 server CPU ≈ 2.6 ms、sandbox CPU ≈ 3.4 ms、串行等待 ≈ 9 ms);RSS 25000 次评估内持平;串行结果路径 0 超时;pool 1 + 50 ms 累计 181,200 次 invocation 0 soft / 0 hard(含 load 25 的高负载窗口)。**§11.7 #2 bounded parallelism 明确不做**,重开条件:pool 2 + 校准后 deadline 在 ≥ 100k 下 0 超时,且请求内 concurrency = 2 把 50 题 p95 至少降 25%、10 题不退化、prepare-once 不变量保持。#3 / #4 / #5 同样未做。
+- **carry forward 到 Phase 8**:§9.12 refinement 编辑控件;§9.9 参数行常驻 constraints(可选 UX debt,本阶段只做 schema kind + 不兼容诊断);teardown 挂死根因(测量仪已能点名 span/source,7.6 期间在 `effect-api.test.ts` 复现一次、单跑绿,仍未点名);ScoreRun / Publication 持久化(§11.7 #5)。
+- **提交链(步骤 5)**:`fdd66ca3` 5A → `820b3f48` docs → `24594c57` 5B → `48d64cf3` docs → `05714cf2` 5C → `47655e0b` docs → `699782eb` 端口修复(验收发现;CI success,run 34677801505)→ 本笔 closure。
+
+**Phase 7 CLOSED(2026-09-12)。**

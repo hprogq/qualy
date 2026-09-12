@@ -1,7 +1,7 @@
 # Qualy Phase 7 — Formula Calculator 完整开发设计与执行规范
 
 > 编写基线：`main @ ffb2f3dd8c276ed552e6bf93c699982ac879450a`  
-> 阶段状态：Phase 6 CLOSED；Phase 7 AUTHORIZED  
+> 阶段状态：Phase 6 CLOSED；Phase 7 CLOSED（2026-09-12，收口记录见 §11 末尾；refinement 编辑控件等 carry forward 到 Phase 8）  
 > 本文目标：定义 Phase 7 从 service-backed scoring 基础设施到 `formula@1` 正式生产启用的唯一实施路线。
 
 ---
@@ -294,7 +294,7 @@ Formula 只能知道自己的 typed input。
 7.3  formula@1 Calculator
 7.4  Item Authoring & Typed Binding UX
 7.5  Determination / Impact / Failure Semantics
-7.6  Production Rollout / Performance / Final Acceptance
+7.6  Production Rollout / Performance / Final Acceptance   （CLOSED 2026-09-12）
 ```
 
 `formula@1` writer 在 7.6 前不得默认生产开放。（7.6 步骤 5C 起默认开放：Deployment B 已落地，见 §11.4。）
@@ -3777,6 +3777,8 @@ module-global Map
 不在 Phase 7 做。
 
 如果实时 provisional scoring 最终规模不足，再由后续 ScoreRun/Publication 阶段持久化结果。
+
+**收口记录（2026-09-12，Phase 7.6 CLOSED，Phase 7 CLOSED）**：步骤 5 五笔——5A 兼容性诊断（`fdd66ca3`）、5B formula production smoke（`24594c57`）、5C Deployment B（`05714cf2`：final audit clean → `authoring: true` → resolve）、5D final acceptance（HEAD `699782eb`，固定顺序：frozen resolve / typecheck / node / browser / build / formula 真沙箱套件 / sandbox smoke / 通用 production smoke / formula production smoke / 空闲窗口 `audit-scoring` clean / teardown 与工作树检查；第一次验收发现测试端口撞车并修复后整套重跑通过）、5E closure。最终生产形态：runtime sandbox `cpus: 1` + `QUALY_SANDBOX_POOL_SIZE=1`，scoring soft 50 / hard 100 ms，value-schema validator 按语义键、有界 generation；writer 默认开放。性能形态：10 题 ≈ 175 ms p50 / 190 ms p95，50 题 ≈ 777 / 790 ms，串行路径 0 超时；§11.7 #2/#3/#4/#5 未做（#2 的重开条件见 STATUS）。carry forward 到 Phase 8：§9.12 refinement 编辑控件、§9.9 参数行常驻 constraints（可选）、teardown 挂死根因、ScoreRun/Publication 持久化。数字与实录见 STATUS。
 
 ---
 
