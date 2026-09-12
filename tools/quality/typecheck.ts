@@ -29,6 +29,7 @@ const projects = [
   'packages/web/i18n',
   'packages/web/ui',
   'packages/web/value-form',
+  'packages/web/brand',
   'apps/web',
   ...findClientProjects('packages'),
 ]

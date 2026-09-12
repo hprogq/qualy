@@ -89,6 +89,7 @@ describe('semantic token completeness', () => {
 const browserRoots = [
   'packages/web/ui/src',
   'packages/web/value-form/src',
+  'packages/web/brand/src',
   'packages/web/runtime/src',
   'packages/web/i18n/src',
   'apps/web/src',

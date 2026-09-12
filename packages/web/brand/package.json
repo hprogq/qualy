@@ -1,0 +1,21 @@
+{
+  "name": "@qualy/brand",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./mark": "./src/Mark.tsx",
+    "./wordmark": "./src/Wordmark.tsx",
+    "./loader": "./src/Loader.tsx",
+    "./geometry": "./src/geometry.ts"
+  },
+  "peerDependencies": {
+    "@stylexjs/stylex": "catalog:",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:"
+  }
+}

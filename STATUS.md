@@ -13277,3 +13277,33 @@ acceptance done
 - **提交链(步骤 5)**:`fdd66ca3` 5A → `820b3f48` docs → `24594c57` 5B → `48d64cf3` docs → `05714cf2` 5C → `47655e0b` docs → `699782eb` 端口修复(验收发现;CI success,run 34677801505)→ 本笔 closure。
 
 **Phase 7 CLOSED(2026-09-12)。**
+
+## 品牌标识包 @qualy/brand(2026-09-13,阶段 1 完成,等用户看截图后再做阶段 2)
+
+规格与使用规则见 `docs/brand.md`(冻结几何、颜色 token、字标方程、加载动画、使用规则、生成命令);fontkit 实查见 `docs/notes/fontkit.md`。本笔不动任何组件、不接青蓝 token、不改字体、不做"完成"动画。
+
+- **包**:`packages/web/brand`(`@qualy/brand`,AGPL-3.0-only,`sideEffects: false`,叶子 exports `./mark` `./wordmark` `./loader` `./geometry`,react 与 `@stylexjs/stylex` 都是 `catalog:` peer,零 dependencies);tsconfig 照 value-form(`types: []`、DOM、react-jsx,include src + tests);已接进 `tools/quality/typecheck.ts` 的工程列表与 `semantic-tokens.test.ts` 的浏览器根。
+- **几何**:`src/geometry.ts` 纯函数 `markGeometry({ s = 16, center })` → 环 / 滑出零件 / 归位零件 / 完整轨道四条 `d` + viewBox + 平移向量,`pieceReach = 3.832`。`tests/geometry.test.ts` 5 条:确定性、规格自检点 (82.37, 108.35)、全部落点在画布内、零件平移 (16.971, 16.971)、任意环心的 8s 画布。
+- **组件**:`Mark`(size/title/xstyle/className/style,无 title 即 `aria-hidden`)、`Wordmark`(height = capHeight 像素)、`Loader`(轨道 18% 单色、零件 1.2s linear 绕画布中心,`prefers-reduced-motion` 用 StyleX 媒体查询切到静态标志,可透传 svg 属性给阶段 2 的 Spinner)。`seat.ts` 是 ui 的 `seatOf` 的本地副本(ui 之后要依赖 brand,不能反向 import)。
+- **字体读取(偏离规格的地方,需用户知晓)**:fontkit 2.0.4 能打开 fontsource 的 WOFF2,但对 glyf 变换过的 WOFF2 **不应用 gvar**(每个 wght 的 `l` stem 恒为 80,`getVariation` 还会因用错子类直接抛错;实查见 notes)。处理:根 devDependency 加 `wawoff2` 2.0.1(Google woff2 参考解码器的 WASM 编译,无 install 脚本),先无损展开为 TTF 字节再 `fontkit.create`。字体、文件、读取库都没换;预览页把浏览器用同一 woff2 在 wght 551 渲染的活文本叠在冻结路径上,肉眼零偏移。
+- **字重方程**:wght 500–700 逐 1 扫描,**wght 551**,stem 120 / capHeight 700,环高 / capHeight = **1.0286**(目标 1.03,偏差 −0.14%,在 ±2% 内)。
+- **字标**:s = 16(0.13333 / font unit),capHeight 93.333,环心 (48, −46.667),viewBox `0 -104 341.34 133.333`。**参数 A = 0.5s,参数 B = −0.02em**(起始值即终值;预览页有 0.35/0.5/0.65/0.8 与 −0.01/−0.02/−0.03 对照,0.5 与 u–a 的 0.611s 视觉最一致,0.65 起明显松;−0.03 时 a–l 挤)。空白(s):tail–u 0.500、u–a 0.611、a–l 0.856、l–y 0.343。**第二处偏离**:viewBox 顶取 min(环顶, 字母顶)而非规格写的"环顶"——Jost 的 `l` 上伸 780 units,高过环顶 710 units,按原文会裁掉 l。
+- **工具**:`pnpm brand:generate`(`tools/brand/generate.ts` + `font.ts` 解方程 + `wordmark.ts` 排布 + `spec.ts` 参数,几何直接 import 包内 geometry.ts)写 `src/wordmark-paths.ts`(文件头记字体、版本、wght、OFL、命令)与 `assets/{mark,wordmark}.svg`;`pnpm brand:preview` 写 `tools/brand/out/preview.html` 并用仓库 playwright 截四张图(`out/` 已在 .gitignore)。两者重复运行输出逐字节一致。
+- **依赖**:根 devDependencies `fontkit@2.0.4`、`@types/fontkit@2.0.9`、`@fontsource-variable/jost@5.3.0`、`wawoff2@2.0.1`;pnpm 未报任何 ignored build,`pnpm-workspace.yaml` 无变化。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm brand:generate
+  brand: wght 551: stem 120 / cap height 700 font units; ring height is 1.0286 cap heights (target 1.03, off by -0.14%)
+  brand: s = 16 wordmark units (0.13333 per font unit); cap height 93.333; ring centre 48, -46.667
+  brand: whitespace in s: tail-u 0.500, u-a 0.611, a-l 0.856, l-y 0.343
+  brand: wordmark viewBox 0 -104 341.34 133.333
+  pnpm brand:preview
+  brand: wrote tools/brand/out/preview-light.png / preview-dark.png / preview-light-blur.png / preview-light-mirror.png
+  pnpm typecheck  -> 19 programs, exit 0(仅既有 effect suggestion,无 error)
+  pnpm test       -> Test Files 208 passed | 3 skipped (211); Tests 1433 passed | 17 skipped (1450); exit 0
+  ```
+
+  prettier 只对新增与改动文件执行。
+
+- **下一步(阶段 2,等用户确认截图)**:TopBar 的 `Brand` 改 `<Wordmark height title="Qualy">`(先试 16px capHeight)、`@qualy/ui/spinner` 内部换 `@qualy/brand/loader`、`apps/web/public/favicon.svg` + `index.html` link、`tokens.css` 加 `--q-brand-accent` / `--q-brand-track`(浅深两套,不接组件)、相关浏览器测试改按 role/name 查询,`pnpm test:browser` 与 `pnpm build` 验收。
