@@ -13307,3 +13307,25 @@ acceptance done
   prettier 只对新增与改动文件执行。
 
 - **下一步(阶段 2,等用户确认截图)**:TopBar 的 `Brand` 改 `<Wordmark height title="Qualy">`(先试 16px capHeight)、`@qualy/ui/spinner` 内部换 `@qualy/brand/loader`、`apps/web/public/favicon.svg` + `index.html` link、`tokens.css` 加 `--q-brand-accent` / `--q-brand-track`(浅深两套,不接组件)、相关浏览器测试改按 role/name 查询,`pnpm test:browser` 与 `pnpm build` 验收。
+
+### 阶段 2a:构造式字标与八段几何(2026-09-13,完成,等用户看截图后再做 2b 动画)
+
+字体链路整体离场:根 devDependencies 去掉 `fontkit` / `@types/fontkit` / `@fontsource-variable/jost` / `wawoff2`,删 `src/wordmark-paths.ts` 与 `tools/brand/{font,generate,spec,wordmark,wawoff2.d}.ts`;阶段 1 的旋转 Loader 随旧几何一起删除(`./loader` 导出暂撤,2b 以八段 + keyframes 回来)。零新增依赖。`docs/brand.md` 重写(几何、字母构造、面积法间距、画布、工具);`docs/notes/fontkit.md` 标为历史存档。
+
+- **几何**(`src/geometry.ts`,纯函数):`sectorPath(k, s, {center, innerStretch, offset})` 八段扇环,外圆 3s、内椭圆 rx 2s / ry 2.1s(`innerStretch` 1.05),内点按各自角度求径向射线与椭圆的交点;`markPaths(s)` 8s 画布、`segments[0]` 是平移 (1.0607s, 1.0607s) 的尾巴;`letterPath / letterBox / letterProfile` 四个构造式字母(cap 6s/1.03、x 高 4s、小碗 2s / s×1.05、杆宽 s);`qProfile` 环 + 尾巴(22.5° 切口线 + 外弧)的右轮廓;`whiteBetween` 64 条扫描线、单线封顶 2s 的面积法;`wordmarkLayout(s, {k, kern, innerStretch})` 逐对二分求解 + Q–u 0.5s 硬约束(尾巴两角点显式纳入采样)。
+- **面积法结果(k = 0.85,s = 16)**:目标白 0.970s;白 Qu 1.029 / ua 0.970 / al 0.970 / ly 0.970;尾巴–u 最短距离 **0.500s**(约束生效;仅按白会把 u 放在环右缘外 0.794s);环右缘到 u 左杆 **0.853s**(预期 0.6–0.9);kern 表**空**。字母起点 109.65 / 180.12 / 259.64 / 287.87,与手排估值 110 / 183.6 / 261.2 / 290.8 相差 −0.02 / −0.22 / −0.10 / −0.18 s,全在 0.3s 内。viewBox `0 -94.602 351.873 118.602`,cap 93.204。
+- **组件**:`Segments`(`src/segments.tsx`,8 个 `<path data-seg>`,标志与字标共用)、`Mark`(sector 1..7 + 尾巴)、`Wordmark`(构造式,`height` = cap 像素,字母 `<path data-letter>`;`live` 归 2b)。
+- **工具**:`pnpm brand:export`(`tools/brand/export.ts`)写 `assets/{mark,wordmark}.svg` 与 `apps/web/public/favicon.svg`(内嵌 `prefers-color-scheme` 切 `#18191D` / `#FAFAF8`;`index.html` 的 link 归阶段 3);`pnpm brand:preview` 重写:标志 / 字标各档尺寸、14px 顶栏、模糊 / 镜像 / 倒置开关、k 0.75 / 0.85 / 0.95 对照,截 浅 / 深 / 模糊 / 倒置 四张。
+- **测试**(`tests/geometry.test.ts`,15 条):sector 0 自检点、外角在圆上 / 内角在椭圆上 / 切口径向、相邻段端点逐字节相接、八段极坐标积分面积 = π(R² − rx·ry)、确定性、尾巴平移与其余七段不动、画布内、字母包围盒与角点、与 A.2 参考角点逐点相同(u 8 点、l 顶 26.8、y 底 (338.8, 144))、四对白相等且 Q–u 不小于目标、尾巴间距 ≥ 0.5s 与环–u ∈ [0.6, 0.9]、画布紧贴、kern 只作用于一对。
+- **观察(报告给用户,未处理)**:八段是八个独立填充,256px 下相邻段的共享边有极细的抗锯齿缝(深底更明显);≤ 48px 不可见。可选处理:每段加 hairline 描边,或相邻段留极小角度重叠——两者都改几何,等裁决。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm vitest run packages/web/brand/tests -> 15 passed
+  pnpm brand:export  -> assets/mark.svg, assets/wordmark.svg, apps/web/public/favicon.svg
+  pnpm brand:preview -> preview-light.png / preview-dark.png / preview-light-blur.png / preview-light-flip.png
+  pnpm typecheck     -> 19 programs, exit 0
+  pnpm test          -> Test Files 208 passed | 3 skipped (211); Tests 1443 passed | 17 skipped (1460); exit 0
+  ```
+
+  prettier 只对新增与改动文件执行。

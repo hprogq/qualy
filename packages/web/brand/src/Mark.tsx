@@ -1,13 +1,15 @@
 import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 
-import { markGeometry } from './geometry.ts'
+import { markPaths } from './geometry.ts'
 import { seatOf } from './seat.ts'
+import { Segments } from './segments.tsx'
 
-// The static mark: the ring and its tail in one colour, the ink of whatever
-// surrounds it. Decorative unless it is given a name.
+// The static mark: seven segments on the ring and the eighth slid out as
+// the tail, in one colour - the ink of whatever surrounds it. Decorative
+// unless it is given a name.
 
-const geometry = markGeometry()
+const paths = markPaths(16)
 
 const styles = stylex.create({
   mark: {
@@ -30,7 +32,7 @@ export interface MarkProps {
 export function Mark({ size = 24, title, xstyle, className, style }: MarkProps) {
   return (
     <svg
-      viewBox={geometry.viewBox}
+      viewBox={paths.viewBox}
       width={size}
       height={size}
       fill="currentColor"
@@ -38,8 +40,7 @@ export function Mark({ size = 24, title, xstyle, className, style }: MarkProps) 
       {...seatOf(stylex.props(styles.mark, xstyle), className, style)}
     >
       {title === undefined ? null : <title>{title}</title>}
-      <path d={geometry.ring} />
-      <path d={geometry.piece} />
+      <Segments paths={paths.segments} />
     </svg>
   )
 }

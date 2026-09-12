@@ -1,4 +1,4 @@
-# fontkit 实查
+# fontkit 实查(历史记录:字标已于 2026-09-13 改为构造式,fontkit 与字体依赖同日离场;本文只作实查存档)
 
 版本:fontkit 2.0.4(根 devDependency,只给 `tools/brand/*` 用),类型来自 `@types/fontkit` 2.0.9(包本身不带 d.ts)。
 

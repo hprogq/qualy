@@ -3,59 +3,49 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 
-import { markGeometry } from '../../packages/web/brand/src/geometry.ts'
-import { wordmark } from '../../packages/web/brand/src/wordmark-paths.ts'
-import { openJost, solveWeight } from './font.ts'
-import { TAIL_GAP, TRACKING, WORDMARK_S } from './spec.ts'
-import { layoutWordmark, ringOf } from './wordmark.ts'
+import {
+  markPaths,
+  wordmarkLayout,
+  type WordmarkLayout,
+} from '../../packages/web/brand/src/geometry.ts'
 
 // A page to look at the brand on, and four screenshots of it.
 //
-// The mark, the wordmark and the loader at their sizes on both grounds, a
-// bar of the kind the wordmark will actually sit in, and two switches the
-// eye needs: a blur, which shows whether ring and letters weigh the same,
-// and a mirror, which shows spacing the reading habit hides. Two rows are
-// for the tools rather than the design - the live font drawn over the
-// frozen outlines, which is the check that the outlines are the font's, and
-// the two tunable clearances at neighbouring values. The window is wide
-// enough for the 256 wordmark to sit inside its panel: an overflowing
-// panel is mirrored off the page and out of the screenshot.
+// The mark and the wordmark at their sizes on both grounds, a bar of the
+// kind the wordmark will actually sit in, and three switches the eye needs:
+// a blur, which shows whether ring and letters weigh the same; a mirror and
+// an upside-down turn, which show spacing the reading habit hides. One row
+// is for the rule rather than the design: the spacing at neighbouring
+// values of k. The window is wide enough for the 256 wordmark to sit inside
+// its panel - an overflowing panel is mirrored off the page and out of the
+// screenshot.
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const OUT = path.join(import.meta.dirname, 'out')
 fs.mkdirSync(OUT, { recursive: true })
 
-const jost = await openJost()
-const weight = solveWeight(jost.font)
-const build = { wght: weight.wght, s: WORDMARK_S, tailGap: TAIL_GAP, tracking: TRACKING }
-const layout = layoutWordmark(jost.font, build)
-const mark = markGeometry()
-
 const LIGHT = { background: '#FAFAF8', foreground: '#18191D' }
 const DARK = { background: '#18191D', foreground: '#FAFAF8' }
 const SIZES = [16, 24, 32, 48, 96, 256]
+const K_VALUES = [0.75, 0.85, 0.95]
 
-interface WordmarkData {
-  readonly viewBox: string
-  readonly s: number
-  readonly capHeight: number
-  readonly ringCenter: { readonly x: number; readonly y: number }
-  readonly letters: readonly { readonly char: string; readonly d: string }[]
-}
+const mark = markPaths(16)
+const wordmark = wordmarkLayout(16)
+
+const segments = (paths: readonly string[]) =>
+  paths.map((d, k) => `<path data-seg="${k}" d="${d}"/>`).join('')
 
 const markSvg = (size: number) =>
-  `<svg viewBox="${mark.viewBox}" width="${size}" height="${size}" fill="currentColor"><path d="${mark.ring}"/><path d="${mark.piece}"/></svg>`
+  `<svg viewBox="${mark.viewBox}" width="${size}" height="${size}" fill="currentColor">${segments(mark.segments)}</svg>`
 
-const wordmarkSvg = (capHeight: number, data: WordmarkData = wordmark, extra = '') => {
-  const [, , width = 0, height = 0] = data.viewBox.split(' ').map(Number)
-  const scale = capHeight / data.capHeight
-  const ring = ringOf(data)
-  const letters = data.letters.map((letter) => `<path d="${letter.d}"/>`).join('')
-  return `<svg viewBox="${data.viewBox}" width="${width * scale}" height="${height * scale}" fill="currentColor"><path d="${ring.ring}"/><path d="${ring.piece}"/>${letters}${extra}</svg>`
+const wordmarkSvg = (capHeight: number, layout: WordmarkLayout = wordmark) => {
+  const [, , width = 0, height = 0] = layout.viewBox.split(' ').map(Number)
+  const scale = capHeight / layout.cap
+  const letters = layout.letters
+    .map((letter) => `<path data-letter="${letter.char}" d="${letter.d}"/>`)
+    .join('')
+  return `<svg viewBox="${layout.viewBox}" width="${width * scale}" height="${height * scale}" fill="currentColor">${segments(layout.segments)}${letters}</svg>`
 }
-
-const loaderSvg = (size: number) =>
-  `<svg viewBox="${mark.viewBox}" width="${size}" height="${size}" fill="currentColor"><g class="moving"><path class="track" d="${mark.track}"/><g class="orbit"><path d="${mark.pieceHome}"/></g></g><g class="still"><path d="${mark.ring}"/><path d="${mark.piece}"/></g></svg>`
 
 const cell = (label: string, content: string) =>
   `<div class="cell">${content}<span class="label">${label}</span></div>`
@@ -65,26 +55,13 @@ const panel = (scheme: 'light' | 'dark', content: string) =>
 
 const bothGrounds = (content: string) => panel('light', content) + panel('dark', content)
 
-// the browser's own rendering of the same font, over the frozen outlines
-const fontData = fs.readFileSync(path.join(ROOT, jost.file)).toString('base64')
-const liveText = `<text x="${layout.letters[0]!.origin}" y="0" style="font-family:JostCheck;font-size:${layout.unitsPerEm * layout.scale}px;letter-spacing:${TRACKING * layout.unitsPerEm * layout.scale}px;font-variation-settings:'wght' ${weight.wght};fill:rgba(255,0,0,0.55)">ualy</text>`
+const describe = (layout: WordmarkLayout) =>
+  `k ${layout.k} · white ${layout.target.toFixed(3)}s · ring–u ${layout.ringToU.toFixed(3)}s · tail clearance ${layout.tailClearance.toFixed(3)}s`
 
-const tailGapRow = [0.35, 0.5, 0.65, 0.8]
-  .map((tailGap) =>
-    cell(
-      `tail clearance ${tailGap}s`,
-      wordmarkSvg(48, layoutWordmark(jost.font, { ...build, tailGap })),
-    ),
-  )
-  .join('')
-const trackingRow = [-0.01, -0.02, -0.03]
-  .map((tracking) =>
-    cell(
-      `tracking ${tracking}em`,
-      wordmarkSvg(48, layoutWordmark(jost.font, { ...build, tracking })),
-    ),
-  )
-  .join('')
+const kRow = K_VALUES.map((k) => {
+  const layout = wordmarkLayout(16, { k })
+  return cell(describe(layout), wordmarkSvg(48, layout))
+}).join('')
 
 const html = `<!doctype html>
 <html lang="en">
@@ -92,7 +69,6 @@ const html = `<!doctype html>
 <meta charset="utf-8">
 <title>Qualy brand preview</title>
 <style>
-  @font-face { font-family: JostCheck; src: url(data:font/woff2;base64,${fontData}) format('woff2'); font-weight: 100 900; }
   body { margin: 0; font: 13px/1.4 system-ui, sans-serif; }
   body.light { background: ${LIGHT.background}; color: ${LIGHT.foreground}; }
   body.dark { background: ${DARK.background}; color: ${DARK.foreground}; }
@@ -114,25 +90,21 @@ const html = `<!doctype html>
   .bar nav span.idle { opacity: 0.6; }
   .bar .end { margin-left: auto; width: 28px; height: 28px; border-radius: 50%; background: color-mix(in oklab, currentColor 20%, transparent); }
   .bar svg { display: block; }
-  .track { fill: color-mix(in oklab, currentColor 18%, transparent); }
-  .orbit { transform-box: view-box; transform-origin: 50% 50%; animation: orbit 1.2s linear infinite; }
-  .still { display: none; }
-  @keyframes orbit { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .moving { display: none; } .still { display: inline; } }
   body.blur .stage { filter: blur(4px); }
   body.mirror .stage { transform: scaleX(-1); }
+  body.flip .stage { transform: rotate(180deg); }
 </style>
 </head>
 <body class="light">
 <header>
-  <span>wght <b>${weight.wght}</b></span>
-  <span>s <b>${layout.s}</b> (stem ${weight.stem} font units, ${layout.scale.toFixed(4)} per unit)</span>
-  <span>ring / cap <b>${weight.ratio.toFixed(4)}</b></span>
-  <span>A tail clearance <b>${TAIL_GAP}s</b></span>
-  <span>B tracking <b>${TRACKING}em</b></span>
-  <span>whitespace in s: ${['tail-u', 'u-a', 'a-l', 'l-y'].map((pair, at) => `${pair} <b>${layout.gaps[at]!.toFixed(3)}</b>`).join(' · ')}</span>
+  <span>s <b>16</b> · cap <b>${wordmark.cap.toFixed(3)}</b> · inner stretch <b>1.05</b></span>
+  <span>k <b>${wordmark.k}</b> · target white <b>${wordmark.target.toFixed(3)}s</b></span>
+  <span>whites: ${(['Qu', 'ua', 'al', 'ly'] as const).map((pair) => `${pair} <b>${wordmark.whites[pair].toFixed(3)}</b>`).join(' · ')}</span>
+  <span>tail clearance <b>${wordmark.tailClearance.toFixed(3)}s</b> · ring–u <b>${wordmark.ringToU.toFixed(3)}s</b> (by white alone ${wordmark.ringToUByWhite.toFixed(3)}s)</span>
+  <span>kern <b>${JSON.stringify(wordmark.kern)}</b></span>
   <label><input type="checkbox" id="blur"> blur 4px</label>
   <label><input type="checkbox" id="mirror"> mirror</label>
+  <label><input type="checkbox" id="flip"> upside down</label>
   <label><input type="checkbox" id="theme"> dark page</label>
 </header>
 <main class="stage">
@@ -149,28 +121,15 @@ const html = `<!doctype html>
     <div class="bar">${wordmarkSvg(14)}<nav><span class="active">测评</span><span class="idle">工作台</span><span class="idle">资源库</span></nav><span class="end"></span></div>
   </section>
   <section>
-    <h2>Loader</h2>
-    <div class="grounds">${bothGrounds([16, 24, 32].map((size) => cell(`${size}`, loaderSvg(size))).join(''))}</div>
-  </section>
-  <section>
-    <h2>Check: the browser's Jost at wght ${weight.wght} (red) over the frozen outlines</h2>
-    <div class="grounds">${panel('light', cell('96', wordmarkSvg(96, layout, liveText)))}</div>
-  </section>
-  <section>
-    <h2>Tuning: A, tail clearance (48)</h2>
-    <div class="grounds">${bothGrounds(tailGapRow)}</div>
-  </section>
-  <section>
-    <h2>Tuning: B, tracking (48)</h2>
-    <div class="grounds">${bothGrounds(trackingRow)}</div>
+    <h2>Spacing rule at neighbouring k (48)</h2>
+    <div class="grounds">${bothGrounds(kRow)}</div>
   </section>
 </main>
 <script>
   const params = new URLSearchParams(location.search)
-  const flags = { blur: params.get('blur') === '1', mirror: params.get('mirror') === '1', theme: params.get('theme') === 'dark' }
+  const flags = { blur: params.get('blur') === '1', mirror: params.get('mirror') === '1', flip: params.get('flip') === '1', theme: params.get('theme') === 'dark' }
   const apply = () => {
-    document.body.classList.toggle('blur', flags.blur)
-    document.body.classList.toggle('mirror', flags.mirror)
+    for (const key of ['blur', 'mirror', 'flip']) document.body.classList.toggle(key, flags[key])
     document.body.classList.toggle('dark', flags.theme)
     document.body.classList.toggle('light', !flags.theme)
   }
@@ -193,7 +152,7 @@ const shots = [
   ['preview-light.png', ''],
   ['preview-dark.png', '?theme=dark'],
   ['preview-light-blur.png', '?blur=1'],
-  ['preview-light-mirror.png', '?mirror=1'],
+  ['preview-light-flip.png', '?flip=1'],
 ] as const
 const browser = await chromium.launch()
 try {
@@ -203,7 +162,6 @@ try {
   })
   for (const [file, query] of shots) {
     await tab.goto(`${pathToFileURL(page).href}${query}`)
-    await tab.waitForFunction('document.fonts.status === "loaded"')
     await tab.screenshot({ path: path.join(OUT, file), fullPage: true })
     console.log(`brand: wrote ${path.relative(ROOT, path.join(OUT, file))}`)
   }

@@ -1,19 +1,19 @@
 import type * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 
-import { fixed, markGeometry } from './geometry.ts'
+import { fixed, wordmarkLayout } from './geometry.ts'
 import { seatOf } from './seat.ts'
-import { wordmark } from './wordmark-paths.ts'
+import { Segments } from './segments.tsx'
 
-// The wordmark: the mark standing as the Q, then u a l y as frozen outlines.
-// A drawing, not text - no font is loaded and nothing is laid out - in the
-// ink of whatever surrounds it. `height` is the cap height in CSS pixels,
-// the number a bar reasons about; the drawing itself is a little taller,
-// because the ring overshoots the cap line and the l rises above it.
+// The wordmark: the mark standing as the Q, then u a l y built from the
+// same round bands and straight stems. A drawing, not text - no font is
+// involved - in the ink of whatever surrounds it. `height` is the cap
+// height in CSS pixels, the number a bar reasons about; the drawing itself
+// is a little taller, because the ring overshoots the cap line and the y
+// descends.
 
-const [, , boxWidth = 0, boxHeight = 0] = wordmark.viewBox.split(' ').map(Number)
-
-const ring = markGeometry({ s: wordmark.s, center: wordmark.ringCenter })
+const layout = wordmarkLayout(16)
+const [, , boxWidth = 0, boxHeight = 0] = layout.viewBox.split(' ').map(Number)
 
 const styles = stylex.create({
   wordmark: {
@@ -34,10 +34,10 @@ export interface WordmarkProps {
 }
 
 export function Wordmark({ height = 16, title, xstyle, className, style }: WordmarkProps) {
-  const scale = height / wordmark.capHeight
+  const scale = height / layout.cap
   return (
     <svg
-      viewBox={wordmark.viewBox}
+      viewBox={layout.viewBox}
       width={fixed(boxWidth * scale)}
       height={fixed(boxHeight * scale)}
       fill="currentColor"
@@ -45,10 +45,9 @@ export function Wordmark({ height = 16, title, xstyle, className, style }: Wordm
       {...seatOf(stylex.props(styles.wordmark, xstyle), className, style)}
     >
       {title === undefined ? null : <title>{title}</title>}
-      <path d={ring.ring} />
-      <path d={ring.piece} />
-      {wordmark.letters.map((letter) => (
-        <path key={letter.char} d={letter.d} />
+      <Segments paths={layout.segments} />
+      {layout.letters.map((letter) => (
+        <path key={letter.char} data-letter={letter.char} d={letter.d} />
       ))}
     </svg>
   )

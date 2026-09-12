@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="currentColor">
-  <title>Qualy</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <style>path{fill:#18191D}@media (prefers-color-scheme:dark){path{fill:#FAFAF8}}</style>
   <path data-seg="0" d="M125.317 99.339A48 48 0 0 1 99.339 125.317L93.733 111.783A32 33.6 0 0 0 110.738 93.301Z"/>
   <path data-seg="1" d="M82.369 108.346A48 48 0 0 1 45.631 108.346L51.237 94.812A32 33.6 0 0 0 76.763 94.812Z"/>
   <path data-seg="2" d="M45.631 108.346A48 48 0 0 1 19.654 82.369L34.233 76.33A32 33.6 0 0 0 51.237 94.812Z"/>
