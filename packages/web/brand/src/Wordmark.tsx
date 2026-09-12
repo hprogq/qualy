@@ -24,12 +24,16 @@ const styles = stylex.create({
   },
 })
 
-export interface WordmarkProps
-  extends Omit<React.ComponentProps<'svg'>, 'className' | 'style' | 'children' | 'title'> {
+export interface WordmarkProps extends Omit<
+  React.ComponentProps<'svg'>,
+  'className' | 'style' | 'children' | 'title'
+> {
   /** cap height in CSS pixels */
   height?: number
-  /** the Q's parts carry the loading loop, from 400ms in */
+  /** the Q's parts carry the loading loop */
   live?: boolean
+  /** how long the loop waits before it begins, in ms; the threshold a wait must pass */
+  liveDelay?: number
   /** the accessible name; without one the wordmark is hidden from assistive technology */
   title?: string
   /** the formal StyleX extension seat */
@@ -42,6 +46,7 @@ export interface WordmarkProps
 export function Wordmark({
   height = 16,
   live = false,
+  liveDelay = 400,
   title,
   xstyle,
   className,
@@ -64,7 +69,7 @@ export function Wordmark({
       {live ? (
         <SegmentedQ
           paths={layout.segments}
-          propsFor={(k) => stylex.props(loopStyles.dark[k], delayed)}
+          propsFor={(k) => stylex.props(loopStyles.dark[k], delayed(liveDelay))}
         />
       ) : (
         <WholeQ band={layout.band} tail={layout.segments[0]!} />

@@ -88,26 +88,29 @@ describe('the cold start', () => {
     }
   })
 
-  it('lights the loop only after 400ms, and never when the wait ends before that', async () => {
+  it('counts the threshold from the first frame, and leaves without the loop when the wait ends inside it', async () => {
     let finish!: () => void
     function Screen() {
       const [done, setDone] = useState(false)
       finish = () => setDone(true)
       return <Booting done={done} />
     }
+    // this page has been up far longer than the threshold, so on the first
+    // screen the loop is due at once; a page that reached React at 250ms
+    // would be handed 150
+    const due = Math.max(0, 400 - performance.now())
     await render(<Screen />)
     await expect.element(page.getByRole('status')).toBeInTheDocument()
     const parts = [...overlay()!.querySelectorAll<SVGElement>('[data-seg]')]
     expect(parts).toHaveLength(8)
-    // the loop is armed with the threshold as its delay: nothing has changed yet
     for (const part of parts) {
       for (const animation of part.getAnimations()) {
-        expect((animation.effect as KeyframeEffect).getTiming().delay).toBe(400)
-        expect(animation.currentTime).toBeLessThan(400)
+        const timing = (animation.effect as KeyframeEffect).getTiming()
+        expect(Number(timing.delay)).toBeGreaterThanOrEqual(0)
+        expect(Math.abs(Number(timing.delay) - due)).toBeLessThan(60)
       }
-      expect(getComputedStyle(part).opacity).toBe('1')
     }
-    // ready at 100ms: the screen settles and leaves, the loop never lit
+    // ready at 100ms: the screen settles and leaves
     await new Promise((resolve) => setTimeout(resolve, 100))
     finish()
     await expect.element(page.getByTestId('app')).toBeInTheDocument()
@@ -160,6 +163,11 @@ describe('the cold start', () => {
         // and goes without a flight
         restart()
         await vi.waitFor(() => expect(overlay()).not.toBeNull(), { timeout: 2000 })
+        for (const part of overlay()!.querySelectorAll<SVGElement>('[data-seg]')) {
+          for (const animation of part.getAnimations()) {
+            expect((animation.effect as KeyframeEffect).getTiming().delay).toBe(400)
+          }
+        }
         finish()
         await vi.waitFor(() => expect(overlay()).toBeNull(), { timeout: 2000 })
         expect(transitions).toHaveBeenCalledTimes(1)

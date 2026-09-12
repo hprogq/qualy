@@ -361,10 +361,10 @@ const loop = stylex.create({
     animationTimingFunction: 'linear',
     animationIterationCount: 'infinite',
   },
-  /** the first screen's threshold: nothing moves for the first 400ms */
-  delayed: {
-    animationDelay: '400ms',
-  },
+  /** how long the loop waits before it begins; the first screen's threshold is 400ms */
+  delayed: (ms: number) => ({
+    animationDelay: `${ms}ms`,
+  }),
 })
 
 /** the style each part wears, by polarity and by part, the tail first */

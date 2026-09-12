@@ -13385,3 +13385,20 @@ acceptance done
 - **登录后又飞一次**:登录 → `useSessionTransition` 的 `resetQueries` → manifest 重新 pending → `LoadingScreen` 再次认领 → 宿主把整套(含飞行)重跑。修法:`ColdStart` 按 episode 计数,飞行(`startViewTransition`)只在第一个 episode;之后的覆盖层退场只做 150ms 交叉淡入。
 - **承重**:`cold-start.browser.test.tsx` 加 1 条——no-preference 下 spy `document.startViewTransition`,第一次认领撤走时调用 1 次,再认领再撤走仍是 1 次(5 条全绿)。dev server 上实录(scratchpad,未入库):未登录冷启动到 `/login` 在 1007ms 字标与登录卡交叉淡入、1214ms 只剩登录卡;提交登录后 +410ms 覆盖层、+616ms 字标淡出 shell 浮现、+804ms 落定,无飞行。docs/brand.md「落位」补第 6、7 条。
 - **门禁(实际执行)**:`pnpm typecheck` 19 programs exit 0;`pnpm test:browser` Test Files 46 passed (46), Tests 320 passed (320), exit 0;`pnpm build` 通过、chunk 环 0。node 套件未受影响(改动只在 spinner.tsx、app.css、一条浏览器测试与文档)。
+
+#### 阶段 3 收尾:就绪到落位的预算(`fix(web): draw the shell in the manifest's own commit`)
+
+- **量出来的空白**(生产入口,本机,manifest 压到 300ms 应答;探针包一层 `document.startViewTransition` 记 called / ready / finished,MutationObserver 记覆盖层与顶栏,resource timing 记 chunk 与 API):manifest 325 → AppShell chunk 333–337 → **顶栏 DOM 出现 ~630** → 光消散结束 795 → `startViewTransition` 795 → 动画开始 804 → 落位 1142;就绪到落位 **817ms**。空白不是 Vite、不是网络(chunk 4ms 到达)、也不是页面数据:是 **React 对重试的 Suspense 边界的 300ms 揭示节流**(`react-dom-client.production.js` 的 `globalMostRecentFallbackTime + 300`,`lazy` 首次渲染必 suspend,fallback 提交后 300ms 内的重试一律推迟到 300ms)。布局是 `lazy`,manifest 到达那次 commit 提交了它的 fallback(`layoutLoading` 的 LoadingScreen 认领),chunk 4ms 后到了也要等满 300ms;页面(BatchListPage 372 → 内容 677)同理,但页面的指示器本来就 300ms 后才出现,不在预算里。
+- **修法**:`@qualy/web-runtime` 加 `preloadable(thunk)`——模块已在时把一个**同步回调**的 thenable 交给 `React.lazy`,`lazyInitializer` 一步读出、不 suspend、不提交 fallback;`RuntimeLoader` 在 manifest 到达后先 `preload` 它点名的全部布局(AppShell / BlankShell / WorkspaceShell,共 5KB),期间仍返回同一个 `<LoadingScreen />`(同位置同元素,认领不中断),然后布局与 manifest 同一次 commit 画出。`App.tsx` 的注册表由 `lazy(thunk)` 改为 `preloadable(thunk)`;`ComponentRegistry` 条目多一个可选 `preload`。另外去掉了最后一个认领撤走后多等的一帧 rAF(passive effect 本来就在 commit 之后跑,commit 内的先撤后认在它看到 0 之前已经抵消)。
+- **修后实测(生产入口,两次)**:
+
+  ```text
+  manifest 322 → 顶栏 DOM 345 (+23) → 光消散结束 / startViewTransition 496 (+151) → 动画开始 502 → 落位 831   就绪到落位 509ms
+  manifest 3021 → 顶栏 DOM 3042 (+21) → startViewTransition 3202 (+160) → 动画开始 3208 → 落位 3537             就绪到落位 516ms
+  ```
+
+  组成:布局渲染 ~22 + 归实心 150(规格)+ 快照 ~6 + 飞行 320(规格)+ 帧边界 ~10。规格的 150 + 320 已占 470,剩下 30ms 装不下渲染、快照与两次帧对齐,所以是 509 / 516 而不是 ≤ 500;要压进 500 只能动那两个冻结数字(归实心 130 或飞行 300),没动。
+
+- **400ms 门槛改为从首帧起算**(用户的可选项):第一个 episode 的 `animation-delay = max(0, 400 − performance.now())`,之后的 episode 仍是 400;`keyframes.ts` 的 `delayed` 变成动态样式,`Wordmark` 加 `liveDelay`,cold-start 测试改为断言 delay 与该公式一致(±60ms)、第二个 episode 为 400。
+- **下一步(独立任务,本次不做)**:**生产 smoke 必须在浏览器里真正执行一次 bundle**——CI 的 smoke job 装 chromium(或把它并进 browser job),起生产入口后用 playwright 打开壳、断言无 `pageerror`、顶栏字标在 DOM、StyleX 类在入口样式表。本阶段发现的两个生产缺陷(chunk 环、CSS 注入到懒加载样式表)都只有这样的检查能看见。
+- **门禁(实际执行)**:`pnpm typecheck` 19 programs exit 0;`pnpm test` Test Files 210 passed | 3 skipped (213), Tests 1470 passed | 17 skipped (1487), exit 0;`pnpm test:browser` Test Files 46 passed (46), Tests 320 passed (320), exit 0;`pnpm build` 通过、chunk 环 0;生产入口实测两次如上。

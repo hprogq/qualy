@@ -1,9 +1,10 @@
-import { lazy, useMemo, type ComponentType, type ReactNode } from 'react'
+import { useMemo, type ComponentType, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { BrowserRouter, Link } from 'react-router'
 import { primaryNavigation } from '@qualy/ui-contract'
 import {
   ManifestRoutes,
+  preloadable,
   RuntimeProvider,
   ThemeProvider,
   useManifest,
@@ -73,7 +74,7 @@ const styles = stylex.create({
 const registry: ComponentRegistry = Object.fromEntries(
   Object.entries(components).map(([name, thunk]) => [
     name,
-    lazy(thunk as () => Promise<{ default: ComponentType<any> }>),
+    preloadable(thunk as () => Promise<{ default: ComponentType<any> }>),
   ]),
 )
 

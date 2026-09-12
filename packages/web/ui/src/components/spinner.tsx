@@ -144,6 +144,8 @@ function LoadingScreen() {
   )
 }
 
+/** the wait a cold start may end within without the loop ever lighting */
+const THRESHOLD = 400
 const HINT_AFTER = 6000
 const STALL_AFTER = 30000
 const EXIT = 150
@@ -283,6 +285,10 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
   // the top bar is the first screen's gesture, and a screen that comes
   // back later - the manifest reloading after a sign-in - leaves by a fade
   const episodes = useRef(0)
+  // the loop's delay: on the first screen the threshold counts from the
+  // first frame index.html painted, so the time the scripts took to arrive
+  // is already spent; a later screen counts from when it goes up
+  const [delay, setDelay] = useState(THRESHOLD)
 
   useLayoutEffect(() => {
     hosts += 1
@@ -298,6 +304,7 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
   useLayoutEffect(() => {
     if (pending > 0 && phase === 'idle') {
       episodes.current += 1
+      setDelay(episodes.current === 1 ? Math.max(0, THRESHOLD - performance.now()) : THRESHOLD)
       setHint(false)
       setPhase('waiting')
     }
@@ -328,38 +335,36 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
     void settle(overlay.current)
   }, [phase])
 
-  // the last claim has gone: rest the loop, then hand the wordmark over.
-  // Checked a frame later, so a hand-over between two fallbacks - one claim
-  // released and the next made in the same commit - is not taken for the
-  // end. The snapshot the view transition takes is of the settled wordmark,
-  // which is why the transition waits for the rest to finish.
+  // The last claim has gone: rest the loop, then hand the wordmark over.
+  // A hand-over between two fallbacks is one claim released and the next
+  // made inside one commit, and this effect runs after the commit, so a
+  // count of zero here is the end and not a gap. The snapshot the view
+  // transition takes is of the settled wordmark, which is why the
+  // transition waits for the rest to finish.
   useEffect(() => {
     if (pending > 0 || (phase !== 'waiting' && phase !== 'stalled')) return
+    const root = overlay.current
+    if (root === null) return
     let cancelled = false
-    const frame = requestAnimationFrame(() => {
-      const root = overlay.current
-      if (root === null) return
-      void settle(root).then(() => {
-        if (cancelled) return
-        const leave = () => {
-          document.documentElement.removeAttribute(COLD_START)
-          flushSync(() => setPhase('idle'))
-        }
-        const flight =
-          episodes.current === 1 &&
-          typeof document.startViewTransition === 'function' &&
-          !reducedMotion()
-        if (flight) {
-          document.startViewTransition(leave)
-        } else {
-          setPhase('fading')
-          setTimeout(leave, EXIT)
-        }
-      })
+    void settle(root).then(() => {
+      if (cancelled) return
+      const leave = () => {
+        document.documentElement.removeAttribute(COLD_START)
+        flushSync(() => setPhase('idle'))
+      }
+      const flight =
+        episodes.current === 1 &&
+        typeof document.startViewTransition === 'function' &&
+        !reducedMotion()
+      if (flight) {
+        document.startViewTransition(leave)
+      } else {
+        setPhase('fading')
+        setTimeout(leave, EXIT)
+      }
     })
     return () => {
       cancelled = true
-      cancelAnimationFrame(frame)
     }
   }, [pending, phase])
 
@@ -375,6 +380,7 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
         <Wordmark
           height={CAP}
           live={phase === 'waiting' || phase === 'stalled'}
+          liveDelay={delay}
           xstyle={overlayStyles.wordmark}
         />
       </div>

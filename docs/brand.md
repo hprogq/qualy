@@ -164,6 +164,10 @@
 
 就绪到可交互 ≤ 500ms(150 + 320,内容淡入与飞行重叠)。
 
+**预算怎么守住**:React 对重试的 Suspense 边界有 300ms 的揭示节流(`globalMostRecentFallbackTime + 300`),布局 chunk 10ms 到达也要在 fallback 后面待满 300ms;页面这样等无妨(它的指示器本来 300ms 后才出现),布局这样等就把飞行拖出预算。所以 `RuntimeLoader` 在 manifest 到达后先把它点名的布局 chunk 取回(`preloadable(thunk)`:模块已在时交给 React 一个同步回调的 thenable,`React.lazy` 一步读出,不再 suspend),布局与 manifest 同一次 commit 画出,冷启动的最后一个认领在那一刻撤走。生产入口实测见 STATUS。
+
+**400ms 门槛从首帧起算**:第一个 episode 把 `animation-delay` 设为 `max(0, 400 − performance.now())`,脚本到达前已经过去的时间不再重复等;之后的 episode 从覆盖层出现起算 400ms。
+
 ### 录制
 
 `pnpm brand:record`(`tools/brand/record.ts`,手工):起真实的生产入口(需 `pnpm build`、compose 数据库与 seed、`.env` 里的 `QUALY_ADMIN_USERNAME` / `QUALY_ADMIN_PASSWORD`),管理员登录,把 `/api/app/manifest` 分别压到导航开始后 300ms 与 3000ms 才应答,用 CDP screencast 按合成器时间戳取帧,各挑 12 个时刻写 `tools/brand/out/ready-300ms-*.png` / `ready-3s-*.png` 与两张拼图。

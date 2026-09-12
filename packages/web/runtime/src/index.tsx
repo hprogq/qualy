@@ -2,8 +2,10 @@ import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tan
 import * as stylex from '@stylexjs/stylex'
 import {
   createContext,
+  lazy,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ComponentType,
@@ -74,7 +76,46 @@ const appApi = Api.local(appApiGroup)
 export type Manifest = Effect.Success<ReturnType<ClientOf<typeof appApi>['app']['getManifest']>>
 // heterogeneous by design: each page or renderer declares its own props,
 // consumers pass whatever the target component expects
-export type ComponentRegistry = Record<string, LazyExoticComponent<ComponentType<any>>>
+export type ComponentRegistry = Record<string, RegisteredComponent>
+
+/** a lazy component that can be fetched ahead of its first render */
+export type RegisteredComponent = LazyExoticComponent<ComponentType<any>> & {
+  preload?: () => Promise<void>
+}
+
+/**
+ * A lazy component whose module can be fetched ahead of time, and which
+ * then renders without suspending.
+ *
+ * React reveals a retried Suspense boundary no sooner than 300ms after the
+ * last fallback it committed, so a lazy component whose chunk takes 10ms
+ * still holds its fallback for 300. That is fine for a page, whose
+ * indicator waits 300ms before appearing anyway; it is not fine for the
+ * layout, which the cold start's flight waits on. `React.lazy` reads its
+ * thunk's result synchronously if the thenable calls back synchronously,
+ * so once the module is here the component is handed over on the spot
+ * and no fallback is ever committed.
+ */
+export function preloadable<T extends ComponentType<any>>(
+  load: () => Promise<{ default: T }>,
+): LazyExoticComponent<T> & { preload: () => Promise<void> } {
+  let loaded: { default: T } | undefined
+  let loading: Promise<{ default: T }> | undefined
+  const fetch = () =>
+    (loading ??= load().then((module) => {
+      loaded = module
+      return module
+    }))
+  const component = lazy(() =>
+    loaded === undefined
+      ? fetch()
+      : // the synchronous thenable React's initializer reads in one step
+        ({ then: (resolve: (value: { default: T }) => void) => resolve(loaded!) } as Promise<{
+          default: T
+        }>),
+  )
+  return Object.assign(component, { preload: () => fetch().then(() => undefined) })
+}
 
 /**
  * Builds the typed client for an api definition.
@@ -189,7 +230,25 @@ function RuntimeLoader({
     retry: retryManifest,
     retryDelay,
   })
-  if (manifest.isPending) return <LoadingScreen />
+  // the layouts this manifest names are fetched before the routes render,
+  // so the shell is drawn in the same commit the manifest arrives in rather
+  // than behind a fallback React holds for 300ms; the loading screen keeps
+  // standing meanwhile, the same element in the same place
+  const layouts = manifest.data?.layouts
+  const [warm, setWarm] = useState<typeof layouts>(undefined)
+  useEffect(() => {
+    if (layouts === undefined) return
+    let cancelled = false
+    void Promise.all(
+      layouts.map((layout) => registry[layout.component]?.preload?.() ?? Promise.resolve()),
+    ).then(() => {
+      if (!cancelled) setWarm(layouts)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [layouts, registry])
+  if (manifest.isPending || (manifest.isSuccess && warm !== layouts)) return <LoadingScreen />
   if (manifest.isError) {
     return (
       <div {...stylex.props(styles.failure)}>
