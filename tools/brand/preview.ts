@@ -16,27 +16,30 @@ import {
 // a blur, which shows whether ring and letters weigh the same; a mirror and
 // an upside-down turn, which show spacing the reading habit hides. One row
 // is for the rule rather than the design: the spacing at neighbouring
-// values of k. The window is wide enough for the 256 wordmark to sit inside
-// its panel - an overflowing panel is mirrored off the page and out of the
-// screenshot.
+// amounts of white. The window is wide enough for the 256 wordmark to sit
+// inside its panel - an overflowing panel is mirrored off the page and out
+// of the screenshot. The output folder is emptied first, so a picture from
+// an earlier design cannot survive next to the new ones.
 
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const OUT = path.join(import.meta.dirname, 'out')
+fs.rmSync(OUT, { recursive: true, force: true })
 fs.mkdirSync(OUT, { recursive: true })
 
 const LIGHT = { background: '#FAFAF8', foreground: '#18191D' }
 const DARK = { background: '#18191D', foreground: '#FAFAF8' }
 const SIZES = [16, 24, 32, 48, 96, 256]
-const K_VALUES = [0.75, 0.85, 0.95]
+/** the frozen white and a step either side of it, in s */
+const WHITES = [0.85, 0.97, 1.09]
 
 const mark = markPaths(16)
 const wordmark = wordmarkLayout(16)
 
-const segments = (paths: readonly string[]) =>
-  paths.map((d, k) => `<path data-seg="${k}" d="${d}"/>`).join('')
+const whole = (band: string, tail: string) =>
+  `<path data-seg="1-7" d="${band}"/><path data-seg="0" d="${tail}"/>`
 
 const markSvg = (size: number) =>
-  `<svg viewBox="${mark.viewBox}" width="${size}" height="${size}" fill="currentColor">${segments(mark.segments)}</svg>`
+  `<svg viewBox="${mark.viewBox}" width="${size}" height="${size}" fill="currentColor">${whole(mark.band, mark.tail)}</svg>`
 
 const wordmarkSvg = (capHeight: number, layout: WordmarkLayout = wordmark) => {
   const [, , width = 0, height = 0] = layout.viewBox.split(' ').map(Number)
@@ -44,7 +47,7 @@ const wordmarkSvg = (capHeight: number, layout: WordmarkLayout = wordmark) => {
   const letters = layout.letters
     .map((letter) => `<path data-letter="${letter.char}" d="${letter.d}"/>`)
     .join('')
-  return `<svg viewBox="${layout.viewBox}" width="${width * scale}" height="${height * scale}" fill="currentColor">${segments(layout.segments)}${letters}</svg>`
+  return `<svg viewBox="${layout.viewBox}" width="${width * scale}" height="${height * scale}" fill="currentColor">${whole(layout.band, layout.segments[0]!)}${letters}</svg>`
 }
 
 const cell = (label: string, content: string) =>
@@ -56,10 +59,10 @@ const panel = (scheme: 'light' | 'dark', content: string) =>
 const bothGrounds = (content: string) => panel('light', content) + panel('dark', content)
 
 const describe = (layout: WordmarkLayout) =>
-  `k ${layout.k} · white ${layout.target.toFixed(3)}s · ring–u ${layout.ringToU.toFixed(3)}s · tail clearance ${layout.tailClearance.toFixed(3)}s`
+  `white ${layout.target.toFixed(2)}s · ring–u ${layout.ringToU.toFixed(3)}s · tail clearance ${layout.tailClearance.toFixed(3)}s`
 
-const kRow = K_VALUES.map((k) => {
-  const layout = wordmarkLayout(16, { k })
+const whiteRow = WHITES.map((white) => {
+  const layout = wordmarkLayout(16, { white })
   return cell(describe(layout), wordmarkSvg(48, layout))
 }).join('')
 
@@ -98,7 +101,7 @@ const html = `<!doctype html>
 <body class="light">
 <header>
   <span>s <b>16</b> · cap <b>${wordmark.cap.toFixed(3)}</b> · inner stretch <b>1.05</b></span>
-  <span>k <b>${wordmark.k}</b> · target white <b>${wordmark.target.toFixed(3)}s</b></span>
+  <span>target white <b>${wordmark.target.toFixed(2)}s</b></span>
   <span>whites: ${(['Qu', 'ua', 'al', 'ly'] as const).map((pair) => `${pair} <b>${wordmark.whites[pair].toFixed(3)}</b>`).join(' · ')}</span>
   <span>tail clearance <b>${wordmark.tailClearance.toFixed(3)}s</b> · ring–u <b>${wordmark.ringToU.toFixed(3)}s</b> (by white alone ${wordmark.ringToUByWhite.toFixed(3)}s)</span>
   <span>kern <b>${JSON.stringify(wordmark.kern)}</b></span>
@@ -121,8 +124,8 @@ const html = `<!doctype html>
     <div class="bar">${wordmarkSvg(14)}<nav><span class="active">测评</span><span class="idle">工作台</span><span class="idle">资源库</span></nav><span class="end"></span></div>
   </section>
   <section>
-    <h2>Spacing rule at neighbouring k (48)</h2>
-    <div class="grounds">${bothGrounds(kRow)}</div>
+    <h2>Spacing rule at neighbouring whites (48)</h2>
+    <div class="grounds">${bothGrounds(whiteRow)}</div>
   </section>
 </main>
 <script>
@@ -152,6 +155,7 @@ const shots = [
   ['preview-light.png', ''],
   ['preview-dark.png', '?theme=dark'],
   ['preview-light-blur.png', '?blur=1'],
+  ['preview-light-mirror.png', '?mirror=1'],
   ['preview-light-flip.png', '?flip=1'],
 ] as const
 const browser = await chromium.launch()

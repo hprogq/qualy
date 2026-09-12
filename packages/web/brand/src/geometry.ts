@@ -16,7 +16,8 @@
 // The letters u a l y are built from the same vocabulary and nothing else:
 // round bands, straight stems, flat cuts. Their spacing is not a table but
 // a rule, applied at run time (see wordmarkLayout): the white between
-// neighbours is measured on scanlines across the x-height and made equal.
+// neighbours is measured on scanlines across the x-height and set to one
+// frozen amount.
 //
 // Everything is a fill under the non-zero rule - positive contours run
 // clockwise on screen, holes counter-clockwise, and a stem laid over a
@@ -99,6 +100,35 @@ export function sectorPath(k: number, s: number, options: RingOptions = {}): str
   ].join('')
 }
 
+/**
+ * Sectors 1 to 7 as one path: the band from 67.5 degrees the long way
+ * round to 382.5. The static mark and wordmark draw the ring with this,
+ * because seven fills that share edges leave hairlines where they meet
+ * and one fill leaves none; only the loader and the live wordmark, which
+ * need every sector to carry its own opacity, draw the sectors apart.
+ */
+export function bandPath(
+  s: number,
+  options: Pick<RingOptions, 'innerStretch' | 'center'> = {},
+): string {
+  const stretch = options.innerStretch ?? INNER_STRETCH
+  const center = options.center ?? { x: 0, y: 0 }
+  const from = SECTOR_START + SECTOR
+  const to = SECTOR_START + 360
+  const outer = OUTER * s
+  const rx = INNER * s
+  const ry = rx * stretch
+  const at = (radius: number, ryOf: number, degrees: number) =>
+    shift(onEllipse(radius, ryOf, degrees), center)
+  return [
+    `M${xy(at(outer, outer, from))}`,
+    `A${fixed(outer)} ${fixed(outer)} 0 1 1 ${xy(at(outer, outer, to))}`,
+    `L${xy(at(rx, ry, to))}`,
+    `A${fixed(rx)} ${fixed(ry)} 0 1 0 ${xy(at(rx, ry, from))}`,
+    'Z',
+  ].join('')
+}
+
 export interface MarkPaths {
   readonly s: number
   readonly center: Point
@@ -106,6 +136,10 @@ export interface MarkPaths {
   readonly viewBox: string
   /** index 0 is the tail, already displaced; 1 to 7 are the sectors left on the ring */
   readonly segments: readonly string[]
+  /** sectors 1 to 7 as one path, for the static drawing */
+  readonly band: string
+  /** the tail, the same path as segments[0] */
+  readonly tail: string
   readonly tailOffset: Point
 }
 
@@ -131,11 +165,14 @@ export function markPaths(
   options: Pick<RingOptions, 'innerStretch' | 'center'> = {},
 ): MarkPaths {
   const center = options.center ?? { x: 4 * s, y: 4 * s }
+  const segments = segmentsAround(center, s, options.innerStretch)
   return {
     s,
     center,
     viewBox: `${fixed(center.x - 4 * s)} ${fixed(center.y - 4 * s)} ${fixed(8 * s)} ${fixed(8 * s)}`,
-    segments: segmentsAround(center, s, options.innerStretch),
+    segments,
+    band: bandPath(s, { center, innerStretch: options.innerStretch }),
+    tail: segments[0]!,
     tailOffset: tailOffset(s),
   }
 }
@@ -340,8 +377,15 @@ export const PAIRS: readonly Pair[] = ['Qu', 'ua', 'al', 'ly']
 const SCANLINES = 64
 /** the most one scanline may count, in s: beyond this the eye no longer reads it as a gap */
 const GAP_CAP = 2
-/** the u-a box gap of the hand-laid reference, in s; the white there is what the rest is set against */
-const REFERENCE_UA_GAP = 0.6
+/**
+ * The white every pair is set to, in s.
+ *
+ * Frozen from the hand-laid reference: the u and the a at their reference
+ * gap of 0.6s measure 1.141s of white by this rule, and 85% of that is
+ * what the design settled on. Kept as an absolute so the spacing depends
+ * on nothing but the letters.
+ */
+export const TARGET_WHITE = 0.97
 /** what the tail must keep clear of the u on every scanline, in s */
 const TAIL_CLEARANCE = 0.5
 
@@ -394,11 +438,11 @@ export interface LetterPlacement {
 }
 
 export interface WordmarkOptions {
-  /** the target white, as a fraction of the reference u-a white */
-  readonly k?: number
   /** hand corrections added to a pair's spacing, in s */
   readonly kern?: Partial<Record<Pair, number>>
   readonly innerStretch?: number
+  /** the white to set every pair to, in s; the frozen value unless a preview is turning the knob */
+  readonly white?: number
 }
 
 export interface WordmarkLayout {
@@ -409,6 +453,8 @@ export interface WordmarkLayout {
   readonly ringCenter: Point
   /** the Q's eight segments, index 0 the tail */
   readonly segments: readonly string[]
+  /** the Q's sectors 1 to 7 as one path, for the static drawing */
+  readonly band: string
   readonly letters: readonly LetterPlacement[]
   /** the white each pair ended up with, in s */
   readonly whites: Readonly<Record<Pair, number>>
@@ -420,22 +466,16 @@ export interface WordmarkLayout {
   readonly ringToU: number
   /** where the white alone would have put the u, before the clearance rule, in s from the ring's right edge */
   readonly ringToUByWhite: number
-  readonly k: number
   readonly kern: Readonly<Partial<Record<Pair, number>>>
 }
 
 export function wordmarkLayout(s = 16, options: WordmarkOptions = {}): WordmarkLayout {
-  const k = options.k ?? 0.85
   const kern = options.kern ?? {}
   const stretch = options.innerStretch ?? INNER_STRETCH
+  const target = (options.white ?? TARGET_WHITE) * s
   const cap = CAP * s
   const ringCenter = { x: OUTER * s, y: -cap / 2 }
   const q = qProfile(ringCenter, s, stretch)
-
-  // the reference: the u-a pair at the hand-laid gap, measured the same way
-  const target =
-    k *
-    whiteBetween(letterProfile('u', 0, s), letterProfile('a', 4 * s + REFERENCE_UA_GAP * s, s), s)
 
   // the u: by white first, then no closer to the tail than the clearance
   // allows on any scanline (the tail's own extent, with its corners, so the
@@ -499,6 +539,7 @@ export function wordmarkLayout(s = 16, options: WordmarkOptions = {}): WordmarkL
     viewBox: `0 ${fixed(top)} ${fixed(right)} ${fixed(bottom - top)}`,
     ringCenter,
     segments: segmentsAround(ringCenter, s, stretch),
+    band: bandPath(s, { center: ringCenter, innerStretch: stretch }),
     letters: placements,
     whites: {
       Qu: whiteBetween(q, u, s) / s,
@@ -510,7 +551,6 @@ export function wordmarkLayout(s = 16, options: WordmarkOptions = {}): WordmarkL
     tailClearance: tailClearance / s,
     ringToU: (xu - (ringCenter.x + OUTER * s)) / s,
     ringToUByWhite: (byWhite - (ringCenter.x + OUTER * s)) / s,
-    k,
     kern,
   }
 }

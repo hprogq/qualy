@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 
 import { fixed, wordmarkLayout } from './geometry.ts'
 import { seatOf } from './seat.ts'
-import { Segments } from './segments.tsx'
+import { WholeQ } from './segments.tsx'
 
 // The wordmark: the mark standing as the Q, then u a l y built from the
 // same round bands and straight stems. A drawing, not text - no font is
@@ -45,7 +45,7 @@ export function Wordmark({ height = 16, title, xstyle, className, style }: Wordm
       {...seatOf(stylex.props(styles.wordmark, xstyle), className, style)}
     >
       {title === undefined ? null : <title>{title}</title>}
-      <Segments paths={layout.segments} />
+      <WholeQ band={layout.band} tail={layout.segments[0]!} />
       {layout.letters.map((letter) => (
         <path key={letter.char} data-letter={letter.char} d={letter.d} />
       ))}

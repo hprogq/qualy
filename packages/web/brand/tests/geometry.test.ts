@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  bandPath,
   CAP,
   INNER_STRETCH,
   letterBox,
@@ -9,6 +10,7 @@ import {
   reach,
   sectorPath,
   SEGMENTS,
+  TARGET_WHITE,
   wordmarkLayout,
 } from '../src/geometry.ts'
 
@@ -93,6 +95,18 @@ describe('the eight sectors', () => {
     expect(total).toBeCloseTo(Math.PI * (R * R - rx * ry), 3)
   })
 
+  it('are what the one-piece band is made of', () => {
+    // the band runs from where sector 1 starts to where sector 7 ends, on
+    // the same circle and the same ellipse, so the static drawing and the
+    // segmented one are the same shape
+    const [outerStart, outerEnd, innerEnd, innerStart] = landings(bandPath(s, { center }))
+    expect(outerStart).toEqual(landings(sectors[1]!)[0])
+    expect(outerEnd).toEqual(landings(sectors[7]!)[1])
+    expect(innerEnd).toEqual(landings(sectors[7]!)[2])
+    expect(innerStart).toEqual(landings(sectors[1]!)[3])
+    expect(bandPath(s, { center })).toMatch(/A48 48 0 1 1 .*A32 33.6 0 1 0 /)
+  })
+
   it('are the same string on every call', () => {
     expect(sectorPath(3, 7, { center: { x: 1, y: 2 } })).toBe(
       sectorPath(3, 7, { center: { x: 1, y: 2 } }),
@@ -117,6 +131,8 @@ describe('the mark', () => {
     for (let k = 1; k < SEGMENTS; k += 1) {
       expect(mark.segments[k]).toBe(sectorPath(k, 16, { center: mark.center }))
     }
+    expect(mark.tail).toBe(mark.segments[0])
+    expect(mark.band).toBe(bandPath(16, { center: mark.center }))
   })
 
   it('keeps every corner inside the 8s canvas', () => {
@@ -182,16 +198,17 @@ describe('the letters', () => {
 describe('the wordmark layout', () => {
   const layout = wordmarkLayout(16)
 
-  it('is the same on every call and different for a different k', () => {
+  it('is the same on every call and tighter for less white', () => {
     expect(wordmarkLayout(16)).toEqual(layout)
-    expect(wordmarkLayout(16, { k: 0.75 }).letters[1]!.x).toBeLessThan(layout.letters[1]!.x)
+    expect(wordmarkLayout(16, { white: 0.85 }).letters[1]!.x).toBeLessThan(layout.letters[1]!.x)
   })
 
-  it('gives every pair the same white, the Q-u no less', () => {
+  it('gives every pair the frozen white, the Q-u no less', () => {
+    expect(layout.target).toBe(TARGET_WHITE)
     for (const pair of ['ua', 'al', 'ly'] as const) {
-      expect(layout.whites[pair]).toBeCloseTo(layout.target, 4)
+      expect(layout.whites[pair]).toBeCloseTo(TARGET_WHITE, 4)
     }
-    expect(layout.whites.Qu).toBeGreaterThanOrEqual(layout.target - 1e-4)
+    expect(layout.whites.Qu).toBeGreaterThanOrEqual(TARGET_WHITE - 1e-4)
   })
 
   it('keeps the tail clear of the u and the u near the ring', () => {
@@ -202,6 +219,7 @@ describe('the wordmark layout', () => {
 
   it('puts the ring where a capital stands and frames the content tightly', () => {
     expect(layout.ringCenter).toEqual({ x: 48, y: -layout.cap / 2 })
+    expect(layout.band).toBe(bandPath(16, { center: layout.ringCenter }))
     const [left, top, width, height] = layout.viewBox.split(' ').map(Number)
     expect(left).toBe(0)
     expect(top).toBeCloseTo(-layout.cap / 2 - 48, 3)

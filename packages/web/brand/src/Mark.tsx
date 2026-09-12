@@ -3,11 +3,11 @@ import * as stylex from '@stylexjs/stylex'
 
 import { markPaths } from './geometry.ts'
 import { seatOf } from './seat.ts'
-import { Segments } from './segments.tsx'
+import { WholeQ } from './segments.tsx'
 
-// The static mark: seven segments on the ring and the eighth slid out as
-// the tail, in one colour - the ink of whatever surrounds it. Decorative
-// unless it is given a name.
+// The static mark: the ring with its gap and the tail slid out of it, in
+// one colour - the ink of whatever surrounds it. Decorative unless it is
+// given a name.
 
 const paths = markPaths(16)
 
@@ -40,7 +40,7 @@ export function Mark({ size = 24, title, xstyle, className, style }: MarkProps) 
       {...seatOf(stylex.props(styles.mark, xstyle), className, style)}
     >
       {title === undefined ? null : <title>{title}</title>}
-      <Segments paths={paths.segments} />
+      <WholeQ band={paths.band} tail={paths.tail} />
     </svg>
   )
 }

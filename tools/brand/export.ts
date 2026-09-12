@@ -17,27 +17,30 @@ const FAVICON = path.join(ROOT, 'apps/web/public/favicon.svg')
 const mark = markPaths(16)
 const wordmark = wordmarkLayout(16)
 
-const svg = (viewBox: string, body: readonly string[], attributes = 'fill="currentColor"') =>
+const svg = (viewBox: string, body: readonly string[], attributes = ' fill="currentColor"') =>
   [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" ${attributes}>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}"${attributes}>`,
     ...body.map((line) => `  ${line}`),
     '</svg>',
     '',
   ].join('\n')
 
-const segments = (paths: readonly string[]) =>
-  paths.map((d, k) => `<path data-seg="${k}" d="${d}"/>`)
+/** the whole drawing: the band as one path, the tail as another */
+const whole = (band: string, tail: string) => [
+  `<path data-seg="1-7" d="${band}"/>`,
+  `<path data-seg="0" d="${tail}"/>`,
+]
 
 const files: readonly [string, string][] = [
   [
     path.join(ASSETS, 'mark.svg'),
-    svg(mark.viewBox, ['<title>Qualy</title>', ...segments(mark.segments)]),
+    svg(mark.viewBox, ['<title>Qualy</title>', ...whole(mark.band, mark.tail)]),
   ],
   [
     path.join(ASSETS, 'wordmark.svg'),
     svg(wordmark.viewBox, [
       '<title>Qualy</title>',
-      ...segments(wordmark.segments),
+      ...whole(wordmark.band, wordmark.segments[0]!),
       ...wordmark.letters.map((letter) => `<path data-letter="${letter.char}" d="${letter.d}"/>`),
     ]),
   ],
@@ -49,10 +52,10 @@ const files: readonly [string, string][] = [
       mark.viewBox,
       [
         '<style>path{fill:#18191D}@media (prefers-color-scheme:dark){path{fill:#FAFAF8}}</style>',
-        ...segments(mark.segments),
+        ...whole(mark.band, mark.tail),
       ],
       '',
-    ).replace(' >', '>'),
+    ),
   ],
 ]
 
