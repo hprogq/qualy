@@ -13505,3 +13505,48 @@ acceptance done
   pnpm build        -> ✓ built in 8.10s; staged web assets -> packages/plugins/infra/web/client-dist
   smoke-production  -> /health/ready /health/live / (四个文档头) /api/…/events /api/app/manifest (no-store, nosniff) /assets/index-*.js (immutable, nosniff, 无 XFO) ok, brotli, shutdown clean (exit 0)
   ```
+
+## 响应安全头(2026-09-13,第二步:Content-Security-Policy,Report-Only)
+
+`feat(web): content security policy in report-only mode`。策略全文、逐条理由、契约与报告端点见 `docs/notes/auth-security.md`「Content-Security-Policy」。
+
+- **上游与仓库实查**:`HttpRouter.serve` 的 middleware 不能改路由响应(见第一步),CSP 头只在壳分支的 sirv `setHeaders` 设;`HttpServerRequest.text` 读体受 `MaxBodySize` fiber reference 约束(`HttpIncomingMessage.ts:133`,`NodeHttpIncomingMessage.ts:75-88` 经 `NodeStream.toString({ maxBytes })`,超限 `onError(new Error("maxBytes exceeded"))` 包成 `HttpServerError{reason: RequestParseError}`,`NodeHttpServer.ts:306-311`),报告端点按 `Effect.provideService(HttpServerRequest.MaxBodySize, FileSystem.Size(65536))` 限 64 KiB、失败信息含 `maxBytes` 即 413;装配器规则 `plugin-kit/src/assemble.ts:138-146`(无 provider 的贡献硬失败)与 `:165-175`(`Plugin.layer` 按描述器顺序叠放)决定了注册表必须由宿主提供(下条);`pnpm build` 产物 `client-dist/index.html` 的内联主题脚本与 `apps/web/index.html` **逐字节相同**(505 字节),Vite 不改写非 module 内联脚本,hash 对源文件算:`sha256-HdqH5AjGX8GVN2bn87KdsKlkYFZqAfXPZ/tHtFK1YSg=`。
+- **契约位置(对规格的偏离,理由在 docs)**:注册表 `ShellPolicy` 放 `@qualy/api-kit/shell-policy`,由宿主基座提供(`apps/server/src/runtime.ts` 与 `@qualy/api-kit/headless` 两档都 `provideMerge(shellPolicyLayer)`,与 `Readiness` / `Assembled` 同列),不归 web 插件:否则 storage-cos 必须 `dependsOn` web,headless 部署停用 web 即装配失败,且方向反了。`@qualy/ui-contract` 是进浏览器包的零 effect 组合原语,不放服务端 tag;不新建 contracts 包,因为 tag 的 provider 就是宿主基座。storage-cos 多一条 `@qualy/api-kit` 依赖(与 plugin-storage 相同),在 layer 构建期 `ShellPolicy.register({ owner, 'connect-src': [cosOrigin(settings)] })`。
+- **实现**:`packages/plugins/infra/web/src/server/shell-policy.ts`(hash 常量、固定策略、`composeShellPolicy` 白名单六指令 + 来源语法校验 + 去重、`ShellPolicyHeader` 服务 + `policyLayer` 在 boot hook `web/shell-policy` 冻结一次,非法项以 `ShellPolicyRefused` 点名贡献方硬失败);`csp-reports.ts`(`POST /csp-reports`:415 / 413 / 解析失败 204 / 正常 204,六字段 Warn 日志,`(effective-directive, blocked-uri, source-file)` 每分钟去重带 `suppressed`,不记 `script-sample`);`WebConfig.cspMode` 由 `QUALY_CSP_MODE` 读(`Schema.Literals(['report','enforce'])`,缺省 report,不进 manifest hash);web 描述器新增 `Plugin.layer(policyLayer)`;壳分支加 `Content-Security-Policy[-Report-Only]` 与 `Reporting-Endpoints: csp="/csp-reports"`;`.env.example` 加注释行。与规格的另一处偏离:`frame-src 'self' blob:`——`DocumentLightbox` 用 blob: URL 做 `<iframe src>`,`'self'` 不覆盖;另固定行多写一条 `media-src 'self'` 让贡献有处追加。raw route 不在 frozen-routes(那张表只冻结 OpenAPI 面,`effect-api-parity` 读 OpenAPI 文档),不需登记。
+- **测试**:web `shell-policy.test.ts`(11:固定串、合并去重、六指令白名单、来源语法正反例、点名贡献方、屏障只拼一次且之后注册不计、非法项以 hook 名失败、两种报告体解析、垃圾体、去重窗口语义);`csp.test.ts`(10,端口 3214/3215,经真实 `requestOriginGuard`:report 头 + Reporting-Endpoints、enforce 换头名、哈希资源无 CSP、两种 Content-Type 各一条 → 204 + 一行日志且不含 sample、415、413、垃圾体 204 无日志、3 条同键 → 1 行、cross-site / 陌生 Origin → 403);`csp-violation.test.ts`(端口 3216,**真实 Chromium**:壳带未 hash 的内联脚本,Report-Only 下脚本照跑、浏览器 POST 报告、端点记下 `script-src-elem` / `blocked-uri: inline`;vitest browser mode 的页面加不上我们的头,所以退到 playwright 直驱,测试用只含 `report-uri` 的头——CSP3 下 `report-to` 存在时浏览器忽略 `report-uri`、Reporting API 攒批约一分钟;没有浏览器可启动时 skip 并说明);storage-cos `shell-policy.test.ts`(从描述器取 `Plugin.layer`、零数据库,断言注册项恰为 COS 域名的 connect-src)+ `policy.test.ts` 加 `cosOrigin`;`index-html-sync.test.ts` 加「常量 = 源文件脚本 digest,产物存在时脚本字节相同」;`effect-web.test.ts` 桩补 `cspMode` 与冻结策略。生产 smoke 增加断言:壳带 `Reporting-Endpoints` 与含 `script-src 'self' 'sha256-…'`、以 `report-uri /csp-reports` 结尾的 Report-Only 策略。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm typecheck    -> 19 programs + client component references, exit 0
+  pnpm test         -> Test Files 218 passed | 3 skipped (221); Tests 1527 passed | 17 skipped (1544); exit 0(csp-violation 在本机真实启动 Chromium,未 skip)
+  pnpm test:browser -> Test Files 46 passed (46); Tests 320 passed (320); exit 0
+  pnpm build        -> ✓ built in 9.22s; staged web assets -> packages/plugins/infra/web/client-dist
+  smoke-production  -> /health/ready /health/live / (四个文档头 + Reporting-Endpoints + Report-Only 策略全文) /api/…/events /api/app/manifest /assets/index-*.js ok, brotli, shutdown clean (exit 0)
+  ```
+
+- **`NODE_ENV=production` 实打(curl)**:
+
+  ```text
+  GET /  (NODE_ENV=production, port 3298)
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'sha256-HdqH5AjGX8GVN2bn87KdsKlkYFZqAfXPZ/tHtFK1YSg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self' blob:; worker-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to csp; report-uri /csp-reports
+  Reporting-Endpoints: csp="/csp-reports"
+  X-Frame-Options: DENY / Cross-Origin-Opener-Policy: same-origin / X-Content-Type-Options: nosniff / Referrer-Policy: strict-origin-when-cross-origin / Cache-Control: no-cache
+  ```
+
+POST /csp-reports application/csp-report, sec-fetch-site: same-origin -> 204
+log: {"level":"Warn","source":"@qualy/plugin-web","message":"content security policy violation reported","annotations":{"documentUri":"http://127.0.0.1:3298/","effectiveDirective":"script-src-elem","blockedUri":"inline","sourceFile":"http://127.0.0.1:3298/","lineNumber":7,"disposition":"report","suppressed":0}}
+(体里的 "script-sample":"alert(1)" 没有进日志)
+POST /csp-reports 同键(line-number 换成 9) -> 204,无新日志行(一分钟内去重)
+POST /csp-reports application/reports+json, same-origin -> 204
+log: {"level":"Warn","source":"@qualy/plugin-web",…,"annotations":{"documentUri":"http://127.0.0.1:3298/batches","effectiveDirective":"connect-src","blockedUri":"https://elsewhere.example/","sourceFile":"http://127.0.0.1:3298/assets/index.js","lineNumber":1,"disposition":"report","suppressed":0}}
+POST /csp-reports sec-fetch-site: cross-site -> 403(守卫:"request refused: not from this application", path /csp-reports)
+POST /csp-reports text/plain -> 415
+POST /csp-reports 70 KiB 体 -> 413
+POST /csp-reports {not json -> 204
+SIGTERM -> exit 0
+
+```
+
+- **下一步**:**Report-Only 至少跑两周**,期间日志(来源 `@qualy/plugin-web`、消息 `content security policy violation reported`)里没有来自真实用户路径的违例(测试页面除外),再把 `QUALY_CSP_MODE` 切到 `enforce`;切换不改代码。CI 的 `ci` job 没装 chromium,`csp-violation.test.ts` 在那里 skip、只在本机与 browser job 之外跑——并进「生产 smoke 在浏览器里执行一次 bundle」那条独立欠账一起解决。Report-Only 期间若 Safari 把同源 WebSocket 报成 `connect-src` 违例,给 `connect-src` 补 `wss:` 同源写法再切强制。
+
+```

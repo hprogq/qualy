@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bucketParts, objectResource, objectWritePolicy } from '../src/server/policy.ts'
+import { bucketParts, cosOrigin, objectResource, objectWritePolicy } from '../src/server/policy.ts'
 
 // The permission a browser is handed, read back.
 //
@@ -19,6 +19,10 @@ const allow = () => objectWritePolicy(input).statement.find((s) => s.effect === 
 const denies = () => objectWritePolicy(input).statement.filter((s) => s.effect === 'deny')
 
 describe('the temporary permission a browser is given', () => {
+  it('names the one origin the browser uploads to', () => {
+    expect(cosOrigin(input)).toBe('https://qualy-dev-files-1301296774.cos.ap-beijing.myqcloud.com')
+  })
+
   it('reads the account id out of the bucket name', () => {
     expect(bucketParts('qualy-dev-files-1301296774')).toEqual({
       name: 'qualy-dev-files',

@@ -1462,6 +1462,9 @@ importers:
 
   packages/plugins/infra/storage-cos:
     dependencies:
+      '@qualy/api-kit':
+        specifier: workspace:*
+        version: link:../../../core/api-kit
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit

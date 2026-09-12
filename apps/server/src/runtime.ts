@@ -8,6 +8,7 @@ import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
 import { NodeServer } from '@qualy/api-kit/node'
 import { AssemblyInfo, assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
 import { readinessLayer } from '@qualy/api-kit/readiness'
+import { shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import { Plugin } from '@qualy/plugin-kit'
 import { lockFromResolution, type Resolution } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
@@ -204,6 +205,9 @@ export async function makeApplication(
     // reads: it belongs to the server base, not to whoever happens to own a
     // resource in this assembly
     Layer.provideMerge(readinessLayer),
+    // the sources a plugin adds to the shell's content security policy,
+    // read by the web plugin at the barrier; same reasoning as readiness
+    Layer.provideMerge(shellPolicyLayer),
     // the boot hooks those plugins registered, run by `booted` above
     Layer.provideMerge(assembledLayer),
     // the logger is the root's, installed in main.ts before anything speaks

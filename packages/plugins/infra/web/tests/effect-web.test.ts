@@ -10,6 +10,7 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer } from '@qualy/api-kit/node'
 import { WebConfig, routes } from '../src/server/index.ts'
+import { ShellPolicyHeader } from '../src/server/shell-policy.ts'
 import { viteLogger } from '../src/dev/index.ts'
 
 // The boundary between the api and the browser shell.
@@ -49,6 +50,11 @@ fs.writeFileSync(
   JSON.stringify({ resolutionHash: HASH }),
 )
 const assemblyInfo = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH }))
+// a policy already frozen: which header the shell sends is another suite's question
+const policy = Layer.succeed(
+  ShellPolicyHeader,
+  ShellPolicyHeader.of({ value: () => "default-src 'self'" }),
+)
 
 let scope: Scope.Scope
 
@@ -63,9 +69,13 @@ beforeAll(async () => {
   ).pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.succeed(WebConfig, WebConfig.of({ assetRoot, sourceRoot: assetRoot })),
+        Layer.succeed(
+          WebConfig,
+          WebConfig.of({ assetRoot, sourceRoot: assetRoot, cspMode: 'report' }),
+        ),
         Layer.sync(NodeServer, () => createServer()),
         assemblyInfo,
+        policy,
       ),
     ),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
@@ -106,9 +116,13 @@ describe('the shell against the api mount', () => {
             routes.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  Layer.succeed(WebConfig, WebConfig.of({ assetRoot: empty, sourceRoot: empty })),
+                  Layer.succeed(
+                    WebConfig,
+                    WebConfig.of({ assetRoot: empty, sourceRoot: empty, cspMode: 'report' }),
+                  ),
                   Layer.sync(NodeServer, () => createServer()),
                   assemblyInfo,
+                  policy,
                   HttpRouter.layer,
                 ),
               ),
@@ -132,9 +146,13 @@ describe('the shell against the api mount', () => {
             routes.pipe(
               Layer.provide(
                 Layer.mergeAll(
-                  Layer.succeed(WebConfig, WebConfig.of({ assetRoot: root, sourceRoot: root })),
+                  Layer.succeed(
+                    WebConfig,
+                    WebConfig.of({ assetRoot: root, sourceRoot: root, cspMode: 'report' }),
+                  ),
                   Layer.sync(NodeServer, () => createServer()),
                   info,
+                  policy,
                   HttpRouter.layer,
                 ),
               ),

@@ -4,6 +4,7 @@ import type { Assembled as AssembledLayers } from '@qualy/plugin-kit/assemble'
 import { Api } from './plugin.ts'
 import { assembledLayer } from './assembled.ts'
 import { readinessLayer } from './readiness.ts'
+import { shellPolicyLayer } from './shell-policy.ts'
 
 // The assembly's services without the server around them.
 //
@@ -47,6 +48,7 @@ export const headlessGraph = (
     Layer.provideMerge(loaded.services),
     Layer.provideMerge(loaded.prepared),
     Layer.provideMerge(readinessLayer),
+    Layer.provideMerge(shellPolicyLayer),
     Layer.provideMerge(assembledLayer),
     // merged, not only provided: a command may read a plugin's own settings
     Layer.provideMerge(loaded.configs),

@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { fixed, wordmarkLayout } from '../../packages/web/brand/src/geometry.ts'
+import { INLINE_THEME_SCRIPT_HASH } from '../../packages/plugins/infra/web/src/server/shell-policy.ts'
 
 // What index.html carries, and why, since the file itself ships to every
 // browser and explains nothing:
@@ -15,7 +17,11 @@ import { fixed, wordmarkLayout } from '../../packages/web/brand/src/geometry.ts'
 //   the same key the runtime's ThemeProvider persists under and the system
 //   preference when nothing is stored, setting the same class the tokens
 //   switch on, so the first frame is painted in the colours the application
-//   keeps;
+//   keeps - and allowed by the shell's content security policy through
+//   the hash of its exact bytes, so the constant the policy carries must
+//   be this script's digest, of the file as served (Vite leaves a
+//   non-module inline script untouched; the staged copy is compared when
+//   it exists);
 // - the first frame: the wordmark, before any script has run, in the place
 //   and at the size the loading screen takes it over at, in the
 //   application's own background and foreground tokens.
@@ -78,6 +84,20 @@ describe('the first frame in index.html', () => {
     const key = /const STORAGE_KEY = '([^']+)'/.exec(theme)?.[1]
     expect(key).toBeDefined()
     expect(html).toContain(`localStorage.getItem('${key}')`)
+  })
+
+  it('hashes the theme script exactly as the content security policy allows it', () => {
+    const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1]
+    expect(script).toBeDefined()
+    const digest = `sha256-${createHash('sha256').update(script!).digest('base64')}`
+    expect(INLINE_THEME_SCRIPT_HASH).toBe(digest)
+    // the served file is the staged one; when a build exists, its script is
+    // the same bytes, or the hash above allows a script nobody serves
+    const staged = path.join(ROOT, 'packages/plugins/infra/web/client-dist/index.html')
+    if (fs.existsSync(staged)) {
+      const served = /<script>([\s\S]*?)<\/script>/.exec(fs.readFileSync(staged, 'utf8'))?.[1]
+      expect(served).toBe(script)
+    }
   })
 
   it('names the favicon the export writes', () => {

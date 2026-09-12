@@ -86,10 +86,20 @@ await check('/', async (response) => {
     ['cross-origin-opener-policy', 'same-origin'],
     ['x-content-type-options', 'nosniff'],
     ['referrer-policy', 'strict-origin-when-cross-origin'],
+    ['reporting-endpoints', 'csp="/csp-reports"'],
   ] as const) {
     const actual = response.headers.get(name)
     if (actual !== expected) return `${name}: ${actual ?? 'absent'}, expected ${expected}`
   }
+  // the content security policy, frozen at the barrier from every plugin's
+  // contribution, reported rather than enforced until a deployment says so
+  const policy = response.headers.get('content-security-policy-report-only')
+  if (policy === null) return 'no content-security-policy-report-only'
+  if (!policy.includes("script-src 'self' 'sha256-"))
+    return `policy hashes no inline script: ${policy}`
+  if (!policy.endsWith('report-uri /csp-reports'))
+    return `policy names no report endpoint: ${policy}`
+  console.log(`smoke: / policy ${policy}`)
   return undefined
 })
 // the live channel, answered like any authenticated endpoint: no session,

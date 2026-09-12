@@ -1,7 +1,7 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Dev } from '@qualy/plugin-kit/dev'
 import { Api } from '@qualy/api-kit/plugin'
-import { config, routes } from './server/index.ts'
+import { config, layer, routes } from './server/index.ts'
 
 // The web shell, as a description: one raw-routes contribution - the browser
 // shell is a wildcard handler, not an api endpoint - the config channel the
@@ -15,6 +15,9 @@ const plugin = Plugin.define(
   '@qualy/plugin-web',
   { config },
   Api.routes(routes),
+  // the shell's content security policy, frozen at the barrier from what
+  // the other plugins registered
+  Plugin.layer(layer),
   Dev.service({ id: 'web', module: './dev' }),
 )
 

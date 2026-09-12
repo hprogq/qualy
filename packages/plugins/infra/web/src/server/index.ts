@@ -4,9 +4,19 @@ import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { AssemblyInfo } from '@qualy/api-kit/assembled'
+import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
+import type { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
 import { WebManifestConfig, rootsFrom } from '../config.ts'
+import { addReportRoute } from './csp-reports.ts'
+import {
+  CSP_HEADER,
+  policyLayer,
+  REPORT_PATH,
+  REPORTING_ENDPOINT,
+  ShellPolicyHeader,
+  type CspMode,
+} from './shell-policy.ts'
 
 // The built browser application, served beside the api.
 //
@@ -31,8 +41,17 @@ export class WebConfig extends Context.Service<
   {
     readonly sourceRoot: string
     readonly assetRoot: string
+    /**
+     * Whether the shell's content security policy is enforced or only
+     * reported. `report` until the reports have been quiet long enough
+     * (docs/notes/auth-security.md); switching is a deployment setting,
+     * never a code change.
+     */
+    readonly cspMode: CspMode
   }
 >()('@qualy/plugin-web/WebConfig') {}
+
+const CspModeSetting = Schema.Literals(['report', 'enforce'])
 
 /** the manifest block, as the two absolute roots the halves ask for */
 export const config = (
@@ -46,7 +65,12 @@ export const config = (
       const declared = yield* Schema.decodeUnknownEffect(WebManifestConfig)(manifest, {
         onExcessProperty: 'error',
       })
-      return WebConfig.of(rootsFrom(declared, context.manifestDir))
+      // an environment setting rather than a manifest key: it changes per
+      // deployment and per day, and the manifest hash must not move with it
+      const cspMode = yield* Schema.decodeUnknownEffect(CspModeSetting)(
+        yield* Config.string('QUALY_CSP_MODE').pipe(Config.withDefault('report')),
+      )
+      return WebConfig.of({ ...rootsFrom(declared, context.manifestDir), cspMode })
     }),
   )
 
@@ -59,14 +83,22 @@ export const config = (
  */
 class WebUnservable extends Data.TaggedError('WebUnservable')<{ readonly message: string }> {}
 
+const PLUGIN_ID = '@qualy/plugin-web'
+
 /** the api owns everything under its mount, matched or not */
 const insideApi = (url: string) =>
   url === QUALY_API_PREFIX ||
   url.startsWith(`${QUALY_API_PREFIX}/`) ||
   url.startsWith(`${QUALY_API_PREFIX}?`)
 
+/** the content security policy as the shell sends it: which header, what value */
+interface ShellPolicySetting {
+  readonly header: (typeof CSP_HEADER)[CspMode]
+  readonly value: string
+}
+
 /** the staged build, with the caching rules a hashed-asset bundle needs */
-const assets = (assetRoot: string): ConnectMiddleware =>
+const assets = (assetRoot: string, policy: ShellPolicySetting): ConnectMiddleware =>
   sirv(assetRoot, {
     etag: true,
     // The twins the build wrote, served when the request accepts them. Off
@@ -101,11 +133,18 @@ const assets = (assetRoot: string): ConnectMiddleware =>
         // their immutable caching.
         response.setHeader('X-Frame-Options', 'DENY')
         response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+        // the policy, frozen once at the barrier, and where to report to
+        // under the Reporting API name the policy's report-to refers to
+        response.setHeader(policy.header, policy.value)
+        response.setHeader('Reporting-Endpoints', `${REPORTING_ENDPOINT}="${REPORT_PATH}"`)
       }
     },
   })
 
-const production = Effect.fn('Web.production')(function* (assetRoot: string) {
+const production = Effect.fn('Web.production')(function* (
+  assetRoot: string,
+  policy: ShellPolicySetting,
+) {
   if (!fs.existsSync(path.join(assetRoot, 'index.html'))) {
     return yield* Effect.die(
       new WebUnservable({
@@ -138,7 +177,7 @@ const production = Effect.fn('Web.production')(function* (assetRoot: string) {
     )
   }
   yield* Effect.logInfo(`serving web assets from ${assetRoot}`)
-  return assets(assetRoot)
+  return assets(assetRoot, policy)
 })
 
 /**
@@ -152,44 +191,57 @@ const production = Effect.fn('Web.production')(function* (assetRoot: string) {
  * whose handler is an effect runs that effect per request, which would have
  * started a Vite server for every navigation.
  */
-export const routes: Layer.Layer<never, never, HttpRouter.HttpRouter | WebConfig | AssemblyInfo> =
-  HttpRouter.use(
-    Effect.fnUntraced(function* (router) {
-      const config = yield* WebConfig
-      // A development backend serves the api and nothing else: the browser is
-      // asking Vite, which proxies the api back here. Registering a wildcard
-      // would answer navigations this process is not the entry point for.
-      // a NODE_ENV that cannot be read is a broken process, not a case a
-      // caller could handle
-      const deployed = yield* Config.string('NODE_ENV').pipe(
-        Config.withDefault('development'),
-        Effect.orDie,
-      )
-      if (deployed !== 'production') {
-        yield* Effect.logInfo('serving the api only; the browser is served by the dev service')
-        return
-      }
-      const middleware = yield* production(config.assetRoot)
-      yield* router.add(
-        '*',
-        '/*',
-        Effect.gen(function* () {
-          const request = yield* HttpServerRequest.HttpServerRequest
-          // An unmatched path inside the api prefix is a 404, never the browser
-          // shell. Serving html there answers 200 to a mistyped endpoint, which
-          // is how a doubled prefix looked like a working request until the
-          // page tried to parse the shell as json.
-          if (insideApi(request.url)) return HttpServerResponse.empty({ status: 404 })
-          return yield* fromConnect(middleware)
-        }),
-      )
-    }),
-  )
+export const routes: Layer.Layer<
+  never,
+  never,
+  HttpRouter.HttpRouter | WebConfig | AssemblyInfo | ShellPolicyHeader
+> = HttpRouter.use(
+  Effect.fnUntraced(function* (router) {
+    const config = yield* WebConfig
+    // the report endpoint, in every mode: a browser only posts to it
+    // when a shell with a policy told it to, and a development backend
+    // serves no such shell
+    yield* addReportRoute(router, { source: PLUGIN_ID })
+    // A development backend serves the api and nothing else: the browser is
+    // asking Vite, which proxies the api back here. Registering a wildcard
+    // would answer navigations this process is not the entry point for.
+    // a NODE_ENV that cannot be read is a broken process, not a case a
+    // caller could handle
+    const deployed = yield* Config.string('NODE_ENV').pipe(
+      Config.withDefault('development'),
+      Effect.orDie,
+    )
+    if (deployed !== 'production') {
+      yield* Effect.logInfo('serving the api only; the browser is served by the dev service')
+      return
+    }
+    // built after the barrier, so the frozen policy is there to read
+    const policy = yield* ShellPolicyHeader
+    const middleware = yield* production(config.assetRoot, {
+      header: CSP_HEADER[config.cspMode],
+      value: policy.value(),
+    })
+    yield* router.add(
+      '*',
+      '/*',
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        // An unmatched path inside the api prefix is a 404, never the browser
+        // shell. Serving html there answers 200 to a mistyped endpoint, which
+        // is how a doubled prefix looked like a working request until the
+        // page tried to parse the shell as json.
+        if (insideApi(request.url)) return HttpServerResponse.empty({ status: 404 })
+        return yield* fromConnect(middleware)
+      }),
+    )
+  }),
+)
 
 /**
- * No services, deliberately.
+ * The one service this half runs: the shell policy, frozen at the barrier.
  *
- * Nothing here has a lifetime any more: what this half owns is a file
- * handler. The entry exists because the assembly imports the routes from it.
+ * Everything else here is a file handler with no lifetime. The policy is a
+ * service because its value is decided by every other plugin's layer having
+ * built, and the routes above read it once they build after that moment.
  */
-export const layer: Layer.Layer<never> = Layer.empty
+export const layer: Layer.Layer<ShellPolicyHeader, never, ShellPolicy | Assembled> = policyLayer

@@ -104,3 +104,13 @@ export const objectWritePolicy = (input: ObjectPolicyInput): CosPolicy => {
     ],
   }
 }
+
+/**
+ * The origin a browser talks to when it uploads straight to the bucket: the
+ * sdk's default endpoint for a bucket in a region. It is what the shell's
+ * content security policy has to allow under connect-src, and nothing else
+ * of this provider's is reached from a browser - downloads are streamed
+ * through the api.
+ */
+export const cosOrigin = (input: { readonly region: string; readonly bucket: string }): string =>
+  `https://${input.bucket}.cos.${input.region}.myqcloud.com`

@@ -87,6 +87,38 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 
 不加:`X-XSS-Protection`(已废弃且曾引入漏洞)、`Expect-CT`、HPKP、`Permissions-Policy`(暂无需要)。生产 smoke(`tools/quality/smoke-production.ts`)断言壳带 DENY / same-origin / nosniff / referrer、`/api/app/manifest` 为 `no-store` + nosniff、哈希资源仍 `immutable` 且无 `X-Frame-Options`。
 
+### Content-Security-Policy(2026-09-13,先 Report-Only)
+
+壳响应(仅壳,哈希资源不带)多两个头:`Content-Security-Policy-Report-Only: <策略>` 与 `Reporting-Endpoints: csp="/csp-reports"`。`QUALY_CSP_MODE=enforce` 时头名换成 `Content-Security-Policy`,其余不变——**切换是部署设置,不改代码**;缺省 `report`。开发态(Vite)不设:HMR 与运行时样式注入和 CSP 天然冲突,CSP 是生产壳的控制。
+
+策略(无人贡献时的全文):
+
+```text
+default-src 'self'; script-src 'self' 'sha256-HdqH5AjGX8GVN2bn87KdsKlkYFZqAfXPZ/tHtFK1YSg='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self' blob:; worker-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-to csp; report-uri /csp-reports
+```
+
+逐条理由:
+
+- `script-src` 不放 `'unsafe-inline'`。壳唯一的内联脚本是 `index.html` 里首帧前跑的主题判定,用其**精确字节**的 sha256(base64)放行。hash 是 `packages/plugins/infra/web/src/server/shell-policy.ts` 里的常量而不是启动时对产物现算——脚本一改,hash 必须跟着改,这是有意的:改壳脚本就是改策略。`tools/tests/index-html-sync.test.ts` 守「常量 = 当前 `apps/web/index.html` 内联脚本的 digest」,client-dist 存在时再守「产物脚本字节 = 源文件」。2026-09-13 实查:Vite 对非 module 内联脚本原样保留,产物与源文件逐字节相同,所以对源文件算。
+- `style-src 'self' 'unsafe-inline'`,**不加 hash**:Monaco 运行时向页面注入 `<style>`,两个内联 `<style>` 也靠它;CSP3 规定 style-src 里一旦出现 hash/nonce,`'unsafe-inline'` 被忽略,Monaco 会被拦。
+- `img-src` 的 `data:` / `blob:`:react-photo-view 与附件预览用到;Report-Only 阶段验证后可收紧。
+- `frame-src 'self' blob:`:规格写的是 `'self'`,实查 `DocumentLightbox` 是把附件字节经 API 取回、自己定类型做成 Blob 再 `<iframe src={blob:…}>`,blob: URL 不在 `'self'` 之内,少了它第一个预览就会报违例(强制时被拦)。
+- `worker-src 'self'`:Monaco 的 `?worker` 在生产构建里是独立文件。
+- `connect-src 'self'` 按 CSP3 同时覆盖同源 `ws(s):`;公式 LSP 的 WebSocket 是否被 Safari 正确归入 `'self'`,看 Report-Only 期间的报告。
+- `media-src 'self'` 是固定行里多出来的一条:`default-src` 本已覆盖,写出来是让贡献有地方追加。
+- `frame-ancestors` 在 Report-Only 下被浏览器忽略,第一步的 `X-Frame-Options: DENY` 顶着;切强制时它生效。
+- 不放 `report-sample`:报告可能带页面内容,日志不收。
+
+**贡献契约**(`@qualy/api-kit/shell-policy`):`connect-src` 必须含 COS 直传域名,它来自 storage-cos 的配置(`region`、`bucket`),所以策略是插件贡献、web 插件拼装的。可贡献的指令只有 `connect-src` / `img-src` / `frame-src` / `worker-src` / `font-src` / `media-src`;`script-src` / `style-src` / `base-uri` / `object-src` / `form-action` / `frame-ancestors` / `default-src` 归壳,贡献即拒。来源语法只认 `'self'`、`data:`、`blob:`、`https://host[:port]`、`ws(s)://host[:port]`(不认通配、路径、明文 http、`'none'`)。贡献方在自己 layer 构建期 `ShellPolicy.register({ owner, 'connect-src': [...] })`;storage-cos 读到 `CosStorageConfig` 后注册 `https://<bucket>.cos.<region>.myqcloud.com`(`cosOrigin`)。
+
+**注册表放在宿主基座而不是 web 插件**,这是对规格的一处偏离,理由是装配器的两条规则(`packages/core/plugin-kit/src/assemble.ts:138-146, 165-175`):对没有 provider 的扩展点贡献是 boot 硬失败;`Plugin.layer` 按描述器顺序叠放、只看得见前面插件导出的服务。两条都意味着「web 插件拥有注册表」要求 storage-cos `dependsOn` web——headless 部署一停用 web,storage-cos 就装不起来,而且方向反了(基础设施插件依赖壳)。`Readiness` / `Assembled` 早已是同一形状:宿主在所有插件之下提供注册表(`apps/server/src/runtime.ts` 与 `@qualy/api-kit/headless` 两个档位都提供),插件只管 register,web 插件负责解释。契约没放 `@qualy/ui-contract`:它是进浏览器包的组合原语、零 effect 依赖,一个服务端注册表 tag 不属于它;也没新建 contracts 包:tag 的 provider 就是宿主基座,与 `Assembled` 同一个家。storage-cos 因此多一条对 `@qualy/api-kit` 的依赖,与 plugin-storage 相同。
+
+**冻结**:web 插件在 Assembled 屏障处(boot hook `web/shell-policy`)把注册项拼成一个字符串,**只算一次**;未知指令、非法来源在这里硬失败,错误信息点名贡献方;之后的注册不再计入;壳路由在屏障之后构建、直接读冻结值。
+
+**报告端点** `POST /csp-reports`(web 插件 raw route,`/api` 之外,无鉴权,不进 OpenAPI 也不在 frozen-routes——那张表只冻结 OpenAPI 面):接受 `application/csp-report`(`{"csp-report":{…}}`)与 `application/reports+json`(数组,只取 `type: csp-violation`),其他 Content-Type 415;体上限 64 KiB(声明的 `content-length` 超限或实读超限)413;JSON 解析失败 204 不 500(浏览器噪声通道);正常 204。日志每条一行 Warn,来源 `@qualy/plugin-web`,只取 `document-uri` / `effective-directive`(缺则 `violated-directive`)/ `blocked-uri` / `source-file` / `line-number` / `disposition`,每字段截 512 字符,**不记 `script-sample`**;按 `(effective-directive, blocked-uri, source-file)` 每分钟去重:一分钟内同键只记第一条,后续计数,下一分钟的第一条带上 `suppressed`。来源校验沿用现有守卫:浏览器发报告是 `same-origin`(或无 Sec-Fetch 但 Origin 同源)放行,`cross-site` 403。注意 CSP3 规定同时出现 `report-to` 与 `report-uri` 时浏览器忽略 `report-uri`,走 Reporting API——Chromium 会攒批延迟投递(约一分钟),生产没问题,测试因此用只含 `report-uri` 的头。
+
+**切到强制的条件**:Report-Only 至少跑两周,期间日志里没有来自真实用户路径的违例(测试页面除外),再把 `QUALY_CSP_MODE` 切到 `enforce`;切换不改代码。
+
 ## 密码
 
 - Argon2id,参数显式固定:memoryCost 64 MiB、timeCost 3、parallelism 4
