@@ -346,7 +346,12 @@ beforeAll(async () => {
   )
   const authConfig = Layer.succeed(
     AuthConfig,
-    AuthConfig.of({ defaultTenantSlug: 'fx-lsp', sessionTtlSeconds: 3600, secureCookies: false }),
+    AuthConfig.of({
+      defaultTenantSlug: 'fx-lsp',
+      sessionTtlSeconds: 3600,
+      secureCookies: false,
+      sessionCookieName: 'qualy_session',
+    }),
   )
   const library = Layer.mergeAll(
     formulaLayer.pipe(

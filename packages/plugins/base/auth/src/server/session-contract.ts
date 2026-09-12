@@ -1,5 +1,5 @@
 import { Context, Schema } from 'effect'
-import { HttpApiMiddleware, HttpApiSecurity } from 'effect/unstable/httpapi'
+import { HttpApiMiddleware } from 'effect/unstable/httpapi'
 import type { Principal } from '@qualy/rbac-contract'
 
 // What an endpoint declares, with nothing behind it.
@@ -36,20 +36,32 @@ export class SessionExpired extends Schema.TaggedError<SessionExpired>()(
   { httpApiStatus: 401, identifier: 'SessionExpired' },
 ) {}
 
+/**
+ * The bare name of the session cookie; the server prefixes it with
+ * `__Host-` in a secure deployment (server/session-cookie.ts). This module
+ * reaches the browser and cannot know which, which is one of the reasons the
+ * middleware below declares no `security` scheme: a scheme's cookie name is
+ * static, and a process must read exactly one name.
+ */
 export const sessionCookieName = 'qualy_session'
 
-export const sessionSecurity = HttpApiSecurity.apiKey({
-  in: 'cookie',
-  key: sessionCookieName,
-})
-
+/**
+ * Declared without a `security` scheme on purpose.
+ *
+ * The builder runs a security middleware per declared scheme, in order,
+ * and a cookie scheme whose cookie is absent decodes to an empty credential
+ * rather than failing - so two schemes, one per cookie name, would have the
+ * legacy name read in a secure deployment, which is the hole the prefix
+ * closes, and the never-failing Viewer would answer anonymously from the
+ * first scheme without trying the second. The layer reads the one cookie
+ * its configuration names instead.
+ */
 export class Authenticated extends HttpApiMiddleware.Service<
   Authenticated,
   {
     provides: CurrentUser
   }
 >()('@qualy/plugin-auth/Authenticated', {
-  security: { session: sessionSecurity },
   // an array rather than a union: each member keeps its own status
   // annotation, and a union collapses them into one schema whose per-member
   // statuses are never read, which is a silent 500 for every declared failure
@@ -86,6 +98,4 @@ export class Viewer extends HttpApiMiddleware.Service<
   {
     provides: CurrentViewer
   }
->()('@qualy/plugin-auth/Viewer', {
-  security: { session: sessionSecurity },
-}) {}
+>()('@qualy/plugin-auth/Viewer') {}

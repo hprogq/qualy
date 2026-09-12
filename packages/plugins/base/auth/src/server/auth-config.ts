@@ -1,4 +1,5 @@
 import { Config, Context, Effect, Layer, Schema } from 'effect'
+import { sessionCookieNameFor } from './session-cookie.ts'
 
 // What this plugin knows about its own deployment, and how it works it out.
 //
@@ -18,6 +19,8 @@ export class AuthConfig extends Context.Service<
     readonly defaultTenantSlug: string
     readonly sessionTtlSeconds: number
     readonly secureCookies: boolean
+    /** the one cookie name this process reads and writes; `__Host-` prefixed when secure */
+    readonly sessionCookieName: string
   }
 >()('@qualy/plugin-auth/AuthConfig') {}
 
@@ -52,6 +55,10 @@ export const config = (
       yield* Schema.decodeUnknownEffect(AuthManifestConfig)(manifest, {
         onExcessProperty: 'error',
       })
+      // secure whenever the process is not a development one, which is the
+      // rule the cordis config expressed as an 'auto' setting
+      const secureCookies =
+        (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) === 'production'
       return AuthConfig.of({
         defaultTenantSlug: yield* Config.string('QUALY_DEFAULT_TENANT').pipe(
           Config.withDefault('default'),
@@ -59,11 +66,8 @@ export const config = (
         sessionTtlSeconds: yield* Config.number('QUALY_SESSION_TTL_SECONDS').pipe(
           Config.withDefault(604_800),
         ),
-        // secure whenever the process is not a development one, which is the
-        // rule the cordis config expressed as an 'auto' setting
-        secureCookies:
-          (yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))) ===
-          'production',
+        secureCookies,
+        sessionCookieName: sessionCookieNameFor(secureCookies),
       })
     }),
   )

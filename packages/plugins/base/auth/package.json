@@ -39,7 +39,6 @@
     "@qualy/web-runtime": "workspace:*",
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
-    "cookie": "catalog:",
     "effect": "catalog:",
     "kysely": "catalog:",
     "lucide-react": "^0.552.0",

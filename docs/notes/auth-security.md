@@ -33,7 +33,7 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 - RSA / HMAC 签名请求头:签名解决的是篡改与重放,不是浏览器自动附带凭据;密钥若在前端 JS 里,能跑 XSS 的人一样能签。
 - HTML 级 / 双提交 CSRF token:服务端渲染表单的方案,本项目是 SPA + JSON;双提交在兄弟子域场景下反而更弱,兄弟子域能给父域种 Cookie。
 - CORS 中间件:现在没有跨域需求,`HttpMiddleware.cors` 装上就是打开一个面。
-- `__Host-` Cookie 前缀(待办):想做过,但 `HttpApiSecurity.apiKey` 的 key 是静态的,而 `qualy-dev.hprogq.com` 走 http,`__Host-` 在那里被浏览器拒绝,要做就得按 `secureCookies` 切两套 security 声明;按「复杂度必须由已发生的问题证明」只记录不做。
+- `__Host-` Cookie 前缀:同日落地,见「Cookie 名」——不是两套 security 声明,而是去掉 security、按配置的名字读。
 
 **auth-cas / auth-oidc 落地时的硬要求**:回调必须用绑定 Cookie 的 `state` 防登录 CSRF(攻击者把自己的回调 URL 交给受害者打开,受害者会登进攻击者的账号);`state` 随机、单次、与发起登录的浏览器绑定。
 
@@ -41,12 +41,30 @@ Cookie + 不透明 session token(库存 sha256),不用 JWT/localStorage:
 
 - 原始 token = 32 字节 CSPRNG(base64url 43 字符),仅存在于 Cookie;
 - 库存 sha256(token) hex 64 位(sessions.token_hash char(64) unique);
-- Cookie:HttpOnly + SameSite=Lax + Path=/,production 加 Secure(config secureCookies=auto);
+- Cookie:HttpOnly + SameSite=Lax + Path=/,无 Domain;生产(`secureCookies`,即 `NODE_ENV === 'production'`)加 Secure 且名字带 `__Host-` 前缀——见下节「Cookie 名」;
 - TTL 默认 7 天(sessionTtlSeconds),Cookie maxAge 与之对齐;
 - last_used_at 节流 900s(touchIntervalSeconds)才写;
 - 校验链:session 存在 → 未过期(过期即删行,回 SESSION_EXPIRED)→ user.enabled
   → user_type.enabled → tenant.enabled 且未过 expires_at;
 - allowLocalLogin 只在登录入口检查,不参与已有 session 校验(撤销手段=禁用 user/type/tenant)。
+
+## Cookie 名(2026-09-13 定案)
+
+| 项         | `secureCookies = true`(生产)                                                                                              | `secureCookies = false`(开发、测试) |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| 名字       | `__Host-qualy_session`                                                                                                    | `qualy_session`                     |
+| 属性       | `HttpOnly; Secure; SameSite=Lax; Path=/`,无 Domain                                                                        | `HttpOnly; SameSite=Lax; Path=/`    |
+| 服务端读取 | 只读 `__Host-qualy_session`;请求里的 `qualy_session` 一律忽略                                                             | 只读 `qualy_session`                |
+| 登录成功   | 设新 Cookie,**并附带一次** `qualy_session=; Max-Age=0; Path=/` 清旧名(改名后的一次性卫生;父域投掷的清不掉也无妨,不再读它) | 设 Cookie                           |
+| 登出、无效 | 清 `__Host-qualy_session`                                                                                                 | 清 `qualy_session`                  |
+
+威胁:SameSite 只区分站不区分源。兄弟子域(`rec.hprogq.com` 对 `qualy-dev.hprogq.com`,学校域名下任何一个被 XSS 的系统对生产 Qualy)可以给父域种一个名叫 `qualy_session` 的 Cookie,浏览器会随请求一起发给 Qualy:塞进攻击者自己的合法 session 就是登录 CSRF 的 Cookie 版(受害者把材料提交进攻击者账号);塞一个垃圾值则服务端清 Cookie 只能清自己 host 的那个,该用户永久打不开 Qualy。`__Host-` 的浏览器语义正是堵这两条:必须 Secure、Path=/、无 Domain,任何子域都无法为父域创建同名 Cookie。
+
+**一个进程永远只认一个名字,而且不能靠两套 `security` 声明做到**(已核对 rc.111 源码,别再提议):`HttpApiBuilder.makeSecurityMiddleware` 对 `security` 记录里的每一项按声明顺序 `decode` 再调该项的 middleware,成功即返回、失败才试下一项(`HttpApiBuilder.ts:873-`);`securityDecode` 对 cookie 型 apiKey 缺 Cookie **不失败**,给出空凭据(`:492-505`)。于是同时声明两个名字,生产里被投掷的旧名仍会在某一轮被读到;而 `Viewer` 永不失败,第一项拿到空凭据就以匿名成功返回,第二项永远不会被尝试。再加上 `HttpApiSecurity.apiKey` 的 key 是静态的,而 `session-contract.ts` 被每个插件的 `api.ts` 引入、进浏览器包,名字不能在契约模块里按环境算。所以 `Authenticated` / `Viewer` 现在**不带 `security` 声明**(`provides` 与 `error` 不变;builder 对无 security 的 middleware 直接把 service 当 `(handler, options) => Effect` 调用,`HttpApiBuilder.ts:860-863`),名字由 `AuthConfig.sessionCookieName`(`sessionCookieNameFor(secureCookies)`,`server/session-cookie.ts`)决定,layer 里用 `request.cookies[name]` 按名读取,写入经同一模块的 `setSessionCookie` / `clearSessionCookie`(`HttpEffect.appendPreResponseHandler` + `HttpServerResponse.setCookie`)。`request.cookies` 对同名多值取**第一个**出现的(`Cookies.ts:946`,`Object.hasOwn`),浏览器按路径长度再按创建时间排序,只可能影响开发态的裸名。
+
+代价:OpenAPI 文档里不再有 cookie 安全方案(浏览器客户端不依赖它,Cookie 由浏览器自动携带;`effect-api-parity` 比较的是同一份运行时聚合,自然通过)。
+
+发版注意:升级当天所有已登录用户会被登出一次(Cookie 改名);生产必须是 HTTPS(`__Host-` 要求 Secure,http 下浏览器直接丢弃,登录会「无声失败」);反向代理终结 TLS 后以 http 转给后端时,`secureCookies` 仍按 `NODE_ENV` 判定,与代理协议无关。以生产入口跑的工具(`tools/quality/formula-production-smoke.ts`、`tools/benchmarks/support/dataset.ts`、`tools/brand/record.ts`)按 `sessionCookieNameFor(true)` 发 Cookie。录制工具不能用 Playwright `addCookies` 种 `__Host-` Cookie(协议要求给出 domain,前缀禁止),只能让浏览器自己在本源页面上调登录接口、由服务端 Set-Cookie 落盘;Chromium 把回环地址视为安全上下文,`http://127.0.0.1` 上照样保留 Secure Cookie。校验时用不带 URL 的 `context.cookies()`:带 URL 的过滤只豁免 `localhost` 主机名,会把 127.0.0.1 上的 Secure Cookie 滤掉。
 
 ## 密码
 

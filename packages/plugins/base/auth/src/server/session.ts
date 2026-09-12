@@ -1,6 +1,5 @@
-import { Duration, Effect, Layer, Redacted } from 'effect'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import type { HttpServerRequest } from 'effect/unstable/http'
+import { Effect, Layer } from 'effect'
+import { HttpServerRequest } from 'effect/unstable/http'
 import { bindSessionId } from '@qualy/api-kit/request'
 import { kyselyOf, query, withDatabase } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
@@ -14,8 +13,8 @@ import {
   SessionExpired,
   Viewer,
   sessionCookieName,
-  sessionSecurity,
 } from './session-contract.ts'
+import { clearSessionCookie } from './session-cookie.ts'
 
 // re-exported so existing importers keep one name for the middleware
 export {
@@ -26,8 +25,8 @@ export {
   SessionExpired,
   Viewer,
   sessionCookieName,
-  sessionSecurity,
 }
+export { clearSessionCookie, sessionCookieNameFor } from './session-cookie.ts'
 import { hashSessionToken } from '../session.ts'
 
 // The session, as a middleware rather than an enricher.
@@ -100,21 +99,17 @@ const staleness = (lastUsedAt: Date | string | null) => {
 }
 
 /**
- * Drops the cookie a request presented.
+ * The token a request presented, under the one name this process reads.
  *
- * Both dead-session branches clear it, as the cordis enricher did. Without
- * this the browser keeps re-presenting a token the server has already refused
- * until the cookie's own lifetime lapses, and on the not-usable branch the row
- * is not deleted either, so a user disabled and re-enabled resumes on it.
+ * `request.cookies` keeps the FIRST occurrence of a name when the header
+ * carries it twice (Cookies.ts:946, `Object.hasOwn`): a browser lists a
+ * host cookie and a parent-domain cookie of the same name in creation
+ * order once their paths tie, so which one wins is not this code's to say.
+ * That can only happen to the bare development name; the prefixed name a
+ * secure deployment reads cannot be created by any other host.
  */
-export const clearSessionCookie = (secure: boolean) =>
-  HttpApiBuilder.securitySetCookie(sessionSecurity, '', {
-    httpOnly: true,
-    sameSite: 'lax',
-    path: '/',
-    secure,
-    maxAge: Duration.zero,
-  })
+const presentedToken = (name: string) =>
+  Effect.map(HttpServerRequest.HttpServerRequest, (request) => request.cookies[name] ?? '')
 
 /**
  * The session behind a presented token, if there is one.
@@ -167,19 +162,23 @@ export const viewerLayer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* AuthConfig
     const withDb = yield* withDatabase
-    const clear = () => clearSessionCookie(config.secureCookies)
-    return Viewer.of({
-      session: (httpEffect, { credential }) =>
-        withDb(
-          Effect.gen(function* () {
-            const token = Redacted.value(credential)
-            const found = token === '' ? { state: 'absent' as const } : yield* resolve(clear, token)
-            return yield* Effect.provideService(httpEffect, CurrentViewer, {
-              principal: found.state === 'valid' ? found.principal : undefined,
-            })
-          }),
-        ),
-    })
+    // both dead-session branches clear the cookie, as the cordis enricher
+    // did: without this the browser keeps re-presenting a token the server
+    // has already refused until the cookie's own lifetime lapses, and on the
+    // not-usable branch the row is not deleted either, so a user disabled
+    // and re-enabled would resume on it
+    const clear = () => clearSessionCookie(config.sessionCookieName, config.secureCookies)
+    return Viewer.of((httpEffect) =>
+      withDb(
+        Effect.gen(function* () {
+          const token = yield* presentedToken(config.sessionCookieName)
+          const found = token === '' ? { state: 'absent' as const } : yield* resolve(clear, token)
+          return yield* Effect.provideService(httpEffect, CurrentViewer, {
+            principal: found.state === 'valid' ? found.principal : undefined,
+          })
+        }),
+      ),
+    )
   }),
 )
 
@@ -188,44 +187,42 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* AuthConfig
     const withDb = yield* withDatabase
-    const clear = () => clearSessionCookie(config.secureCookies)
+    const clear = () => clearSessionCookie(config.sessionCookieName, config.secureCookies)
 
-    return Authenticated.of({
-      // the handler wraps the rest of the request rather than returning a
-      // value: it decides whether to continue at all, and provides the
-      // principal into whatever runs next
-      session: (httpEffect, { credential }) =>
-        withDb(
-          Effect.gen(function* () {
-            const session = yield* sessionByToken(
-              hashSessionToken(Redacted.value(credential)),
-            ).pipe(Effect.orDie)
-            // an unknown token and no token are the same answer
-            if (!session) return yield* new AuthRequired()
-            if (session.expired) {
-              yield* deleteSession(session.id).pipe(Effect.orDie)
-              yield* clear()
-              return yield* new SessionExpired()
-            }
-            // a disabled user, a disabled type or a lapsed tenant is not a
-            // distinguishable state either: it is simply not a session
-            if (!session.usable) {
-              yield* clear()
-              return yield* new AuthRequired()
-            }
+    // the handler wraps the rest of the request rather than returning a
+    // value: it decides whether to continue at all, and provides the
+    // principal into whatever runs next
+    return Authenticated.of((httpEffect) =>
+      withDb(
+        Effect.gen(function* () {
+          const token = yield* presentedToken(config.sessionCookieName)
+          const session = yield* sessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
+          // an unknown token and no token are the same answer
+          if (!session) return yield* new AuthRequired()
+          if (session.expired) {
+            yield* deleteSession(session.id).pipe(Effect.orDie)
+            yield* clear()
+            return yield* new SessionExpired()
+          }
+          // a disabled user, a disabled type or a lapsed tenant is not a
+          // distinguishable state either: it is simply not a session
+          if (!session.usable) {
+            yield* clear()
+            return yield* new AuthRequired()
+          }
 
-            if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
-              yield* touchSession(session.id).pipe(Effect.orDie)
-            }
+          if (staleness(session.lastUsedAt) > TOUCH_INTERVAL_MS) {
+            yield* touchSession(session.id).pipe(Effect.orDie)
+          }
 
-            yield* bindSessionId(session.id)
-            return yield* Effect.provideService(httpEffect, CurrentUser, {
-              tenantId: session.tenantId,
-              userId: session.userId,
-              sessionId: session.id,
-            })
-          }),
-        ),
-    })
+          yield* bindSessionId(session.id)
+          return yield* Effect.provideService(httpEffect, CurrentUser, {
+            tenantId: session.tenantId,
+            userId: session.userId,
+            sessionId: session.id,
+          })
+        }),
+      ),
+    )
   }),
 )

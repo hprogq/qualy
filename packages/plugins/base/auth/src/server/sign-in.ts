@@ -3,7 +3,6 @@ import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { bindSessionId, currentRequestContext } from '@qualy/api-kit/request'
 import { boundedCounter } from '@qualy/telemetry/metrics'
-import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { kyselyOf, query, transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { db } from './db.ts'
 import { sql } from 'kysely'
@@ -20,7 +19,8 @@ import { createSessionToken, hashSessionToken } from '../session.ts'
 import { AuthConfig } from './auth-config.ts'
 
 export { AuthConfig }
-import { sessionCookieName, sessionSecurity } from './session.ts'
+import { sessionCookieName } from './session-contract.ts'
+import { clearSessionCookie, setSessionCookie } from './session-cookie.ts'
 
 // Signing in, and signing out.
 //
@@ -396,10 +396,7 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
   // minutes while its row still held a seven-day expiry. Verified against the
   // installed package.
   const setCookie = (value: string, maxAgeSeconds: number) =>
-    HttpApiBuilder.securitySetCookie(sessionSecurity, value, {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
+    setSessionCookie(config.sessionCookieName, value, {
       secure: config.secureCookies,
       maxAge: Duration.seconds(maxAgeSeconds),
     })
@@ -551,6 +548,12 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
         // this request now has a session, before anything else records it
         yield* bindSessionId(sessionId)
         yield* setCookie(token, config.sessionTtlSeconds)
+        // a secure deployment reads only the prefixed name; the bare one a
+        // browser may still carry from before the rename is dropped here,
+        // once, so it does not ride along for the rest of its lifetime
+        if (config.sessionCookieName !== sessionCookieName) {
+          yield* clearSessionCookie(sessionCookieName, config.secureCookies)
+        }
         return user
       }),
     ),
@@ -618,11 +621,11 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
     endSession: bound(
       Effect.fn('Auth.signIn.endSession')(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
-        const token = request.cookies[sessionCookieName]
+        const token = request.cookies[config.sessionCookieName]
         if (token) {
           yield* revokeSessionByToken(hashSessionToken(token)).pipe(Effect.orDie)
         }
-        yield* setCookie('', 0)
+        yield* clearSessionCookie(config.sessionCookieName, config.secureCookies)
       }),
     ),
   }

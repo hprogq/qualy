@@ -134,7 +134,12 @@ beforeAll(async () => {
   const infra = databaseFor(db.url, { entities: authClosure })
   const authConfig = Layer.succeed(
     AuthConfig,
-    AuthConfig.of({ defaultTenantSlug: 'default', sessionTtlSeconds: 3600, secureCookies: false }),
+    AuthConfig.of({
+      defaultTenantSlug: 'default',
+      sessionTtlSeconds: 3600,
+      secureCookies: false,
+      sessionCookieName: 'qualy_session',
+    }),
   )
   const application = HttpRouter.serve(
     HttpApiBuilder.layer(api).pipe(
@@ -231,15 +236,21 @@ describe.runIf(postgresAvailable)('the session middleware', () => {
     expect(response.status).toBe(200)
   })
 
-  it('advertises the requirement only on the endpoint that declared it', async () => {
+  it('advertises the refusals only on the endpoint that declared the middleware', async () => {
+    // The middleware declares no security scheme any more - the cookie's
+    // name is the deployment's to decide, and a scheme's is static - so the
+    // document names no cookie scheme at all. What it still says, per
+    // endpoint, is which refusals a caller can meet.
     const document = OpenApi.fromApi(api) as {
       components?: { securitySchemes?: Record<string, { type?: string; in?: string }> }
-      paths: Record<string, Record<string, { security?: unknown }>>
+      paths: Record<
+        string,
+        Record<string, { security?: unknown; responses?: Record<string, unknown> }>
+      >
     }
-    expect(Object.values(document.components?.securitySchemes ?? {})).toContainEqual(
-      expect.objectContaining({ type: 'apiKey', in: 'cookie' }),
-    )
-    expect(document.paths['/probe/me']!.get!.security).toEqual([{ session: [] }])
-    expect(document.paths['/probe/open']!.get!.security).toEqual([])
+    expect(Object.values(document.components?.securitySchemes ?? {})).toEqual([])
+    expect(document.paths['/probe/me']!.get!.security ?? []).toEqual([])
+    expect(Object.keys(document.paths['/probe/me']!.get!.responses ?? {})).toContain('401')
+    expect(Object.keys(document.paths['/probe/open']!.get!.responses ?? {})).not.toContain('401')
   })
 })

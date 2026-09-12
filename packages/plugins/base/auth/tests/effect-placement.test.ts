@@ -69,6 +69,7 @@ const stack = (url: string) =>
               defaultTenantSlug: 'default',
               sessionTtlSeconds: 604_800,
               secureCookies: false,
+              sessionCookieName: 'qualy_session',
             }),
           ),
         ),

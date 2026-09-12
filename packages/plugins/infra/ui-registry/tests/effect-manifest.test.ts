@@ -185,10 +185,9 @@ beforeAll(async () => {
         // always reports the same viewer is enough to prove the wiring
         Layer.succeed(
           Viewer,
-          Viewer.of({
-            session: (httpEffect) =>
-              Effect.provideService(httpEffect, CurrentViewer, { principal: viewer }),
-          }),
+          Viewer.of((httpEffect) =>
+            Effect.provideService(httpEffect, CurrentViewer, { principal: viewer }),
+          ),
         ),
       ),
     ),

@@ -18,6 +18,7 @@ import {
   startServer,
   type RunningServer,
 } from '../benchmarks/support/server.ts'
+import { sessionCookieNameFor } from '../../packages/plugins/base/auth/src/server/session-cookie.ts'
 
 // The formula scoring chain, in production, end to end.
 //
@@ -101,7 +102,10 @@ const loginAs = async (base: string, identifier: string, password: string): Prom
   if (response.status !== 200) {
     throw new SmokeFailure('login', `status ${response.status}\n${await response.text()}`)
   }
-  const cookie = /qualy_session=([^;]+)/.exec(response.headers.get('set-cookie') ?? '')
+  // the production entry names its cookie with the `__Host-` prefix
+  const cookie = new RegExp(`${sessionCookieNameFor(true)}=([^;]+)`).exec(
+    response.headers.get('set-cookie') ?? '',
+  )
   if (!cookie) throw new SmokeFailure('login', 'the login answered without a session cookie')
   return cookie[1]!
 }

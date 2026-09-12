@@ -197,6 +197,7 @@ const shell = (url: string) => {
             defaultTenantSlug: 'default',
             sessionTtlSeconds: 604_800,
             secureCookies: false,
+            sessionCookieName: 'qualy_session',
           }),
         ),
         // storage is assembled like everything else here; nothing in this

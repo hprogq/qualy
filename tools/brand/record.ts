@@ -3,9 +3,10 @@ import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { chromium } from 'playwright'
+import { chromium, type BrowserContext } from 'playwright'
 
 import { repoRoot } from '../lib/manifest.ts'
+import { sessionCookieNameFor } from '../../packages/plugins/base/auth/src/server/session-cookie.ts'
 
 // Two cold starts of the real product, twelve frames each.
 //
@@ -40,6 +41,8 @@ const freePort = (): Promise<string> =>
 const PORT = process.env.RECORD_PORT ?? (await freePort())
 const BASE = `http://127.0.0.1:${PORT}`
 const OUT = path.join(import.meta.dirname, 'out')
+/** the cookie a production entry reads: the prefixed name, which the browser holds to Secure and Path=/ */
+const SESSION_COOKIE = sessionCookieNameFor(true)
 const RUNS = [
   {
     name: 'ready-300ms',
@@ -92,20 +95,33 @@ const ready = async () => {
   throw new Error(`the server did not become ready\n${output.join('')}`)
 }
 
-// the same sign-in a person makes, read from the same variables the seed
-// reads, so the recording shows the shell an administrator sees
-const signIn = async (): Promise<string> => {
+/**
+ * The same sign-in a person makes, made by the browser itself on a page of
+ * this origin: a `__Host-` cookie cannot be planted from outside - the
+ * protocol names a domain for it, which the prefix forbids - but the
+ * server's own Set-Cookie is kept, Secure and all, because the browser
+ * counts 127.0.0.1 as a trustworthy origin. Credentials come from the same
+ * variables the seed reads, so the recording shows what an administrator sees.
+ */
+const signIn = async (context: BrowserContext): Promise<void> => {
   const identifier = env('QUALY_ADMIN_USERNAME')
   const password = env('QUALY_ADMIN_PASSWORD')
-  const response = await fetch(`${BASE}/api/auth/local/local/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identifier, password }),
-  })
-  if (!response.ok) throw new Error(`sign-in failed: ${response.status} ${await response.text()}`)
-  const cookie = /qualy_session=([^;]+)/.exec(response.headers.get('set-cookie') ?? '')?.[1]
-  if (cookie === undefined) throw new Error('the sign-in answered without a session cookie')
-  return cookie
+  const page = await context.newPage()
+  try {
+    await page.goto(`${BASE}/health/live`)
+    const status = await page.evaluate(
+      `fetch('/api/auth/local/local/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify({ identifier, password }))} }).then((r) => r.status)`,
+    )
+    if (status !== 200) throw new Error(`sign-in failed: ${String(status)}`)
+    // read without a url: playwright's url filter drops Secure cookies for
+    // every http host but `localhost`, while the browser itself keeps them
+    const names = (await context.cookies()).map((cookie) => cookie.name)
+    if (!names.includes(SESSION_COOKIE)) {
+      throw new Error(`the browser kept no ${SESSION_COOKIE} cookie; it holds ${names.join(', ')}`)
+    }
+  } finally {
+    await page.close()
+  }
 }
 
 // --- the recording -----------------------------------------------------------
@@ -120,11 +136,7 @@ interface Frame {
  * began, and every compositor frame is kept with the time it was painted,
  * relative to that same origin.
  */
-const record = async (
-  cookie: string,
-  readyAt: number,
-  until: number,
-): Promise<readonly Frame[]> => {
+const record = async (readyAt: number, until: number): Promise<readonly Frame[]> => {
   const browser = await chromium.launch()
   try {
     const context = await browser.newContext({
@@ -132,9 +144,7 @@ const record = async (
       deviceScaleFactor: 1,
       colorScheme: 'light',
     })
-    await context.addCookies([
-      { name: 'qualy_session', value: cookie, url: BASE, httpOnly: true, sameSite: 'Lax' },
-    ])
+    await signIn(context)
     const page = await context.newPage()
     // whatever the page reports goes into the log: a frame that shows the
     // shell failing is only useful next to the reason it gave
@@ -191,9 +201,8 @@ const strip = (title: string, cells: readonly { caption: string; png: Buffer }[]
 fs.mkdirSync(OUT, { recursive: true })
 await ready()
 try {
-  const cookie = await signIn()
   for (const run of RUNS) {
-    const frames = await record(cookie, run.readyAt, run.at[run.at.length - 1]!)
+    const frames = await record(run.readyAt, run.at[run.at.length - 1]!)
     console.log(`record: ${run.name}: ${frames.length} frames painted`)
     const cells = run.at.map((at, i) => {
       const frame = pick(frames, at)

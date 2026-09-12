@@ -87,9 +87,6 @@ catalogs:
     clsx:
       specifier: 2.1.1
       version: 2.1.1
-    cookie:
-      specifier: 2.0.1
-      version: 2.0.1
     cos-js-sdk-v5:
       specifier: 1.10.1
       version: 1.10.1
@@ -1034,9 +1031,6 @@ importers:
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.101.4(react@19.2.8)
-      cookie:
-        specifier: 'catalog:'
-        version: 2.0.1
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
@@ -2730,10 +2724,6 @@ packages:
 
   cookie-es@3.1.1:
     resolution: {integrity: sha512-UaXxwISYJPTr9hwQxMFYZ7kNhSXboMXP+Z3TRX6f1/NyaGPfuNUZOWP1pUEb75B2HjfklIYLVRfWiFZJyC6Npg==}
-
-  cookie@2.0.1:
-    resolution: {integrity: sha512-yuToqVvRrj6pfDXREyQAAv8SkAEk/8GS3jQRTiUMm66TVtBYmqQeoEjL2Lmq8Rpo6271vH76InTChTitEAm65w==}
-    engines: {node: '>=22'}
 
   core-util-is@1.0.2:
     resolution: {integrity: sha512-3lqz5YjWTYnW6dlDa5TLaTCcShfar1e40rmcJVwCBJC6mWlFuj0eCHIElmG1g5kyuJ/GD+8Wn4FFCcz4gJPfaQ==}
@@ -4687,8 +4677,6 @@ snapshots:
   convert-source-map@2.0.0: {}
 
   cookie-es@3.1.1: {}
-
-  cookie@2.0.1: {}
 
   core-util-is@1.0.2: {}
 

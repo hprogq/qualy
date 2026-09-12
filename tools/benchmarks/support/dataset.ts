@@ -6,6 +6,10 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { repoRoot } from '../../lib/manifest.ts'
 import type { Db } from './pg.ts'
 import { benchDir, cli } from './server.ts'
+import { sessionCookieNameFor } from '../../../packages/plugins/base/auth/src/server/session-cookie.ts'
+
+/** the cookie the production entry this benchmark drives reads: the `__Host-` name */
+const SESSION_COOKIE = sessionCookieNameFor(true)
 
 // The dataset the benchmark reads: a fixed recipe, built through the real
 // product paths wherever a path exists - formulas published through the
@@ -79,7 +83,7 @@ export const clientFor = (base: string, token: string): Api => ({
     const response = await fetch(`${base}/api${route}`, {
       method,
       headers: {
-        cookie: `qualy_session=${token}`,
+        cookie: `${SESSION_COOKIE}=${token}`,
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -115,7 +119,9 @@ export const login = async (base: string): Promise<string> => {
   if (response.status !== 200) {
     throw new Error(`admin login failed: status ${response.status}\n${await response.text()}`)
   }
-  const cookie = /qualy_session=([^;]+)/.exec(response.headers.get('set-cookie') ?? '')
+  const cookie = new RegExp(`${SESSION_COOKIE}=([^;]+)`).exec(
+    response.headers.get('set-cookie') ?? '',
+  )
   if (!cookie) throw new Error('the login answered without a session cookie')
   return cookie[1]!
 }
@@ -202,7 +208,7 @@ export const sessionsFor = async (db: Db, tenantId: string, userIds: readonly st
 }
 
 const sessionAlive = async (base: string, token: string): Promise<boolean> =>
-  (await fetch(`${base}/api/auth/session`, { headers: { cookie: `qualy_session=${token}` } }))
+  (await fetch(`${base}/api/auth/session`, { headers: { cookie: `${SESSION_COOKIE}=${token}` } }))
     .status === 200
 
 // --- the product paths ---------------------------------------------------

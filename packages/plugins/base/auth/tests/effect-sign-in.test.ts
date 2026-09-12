@@ -19,6 +19,7 @@ import { Api } from '@qualy/api-kit/plugin'
 import { loginDriversLayer, registerLoginDriver } from '@qualy/auth-contract/login'
 import { hashPassword } from '@qualy/plugin-auth-local/password'
 import { hashSessionToken } from '../src/session.ts'
+import { seedSignIn } from './support/sign-in-seed.ts'
 import { apiHandlers as authLocalApiHandlers } from '@qualy/plugin-auth-local'
 import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
 import { sessionApiGroup } from '../src/api.ts'
@@ -47,65 +48,6 @@ const password = 'correct horse battery staple'
 let scope: Scope.Scope
 let db: Awaited<ReturnType<typeof createTestContext>>
 
-/** one tenant with two providers: one whose driver is loaded, one whose is not */
-const seed = Effect.fn('seed')(function* (hash: string) {
-  const one = <T>(result: unknown) => (result as { rows: T[] }).rows[0]!
-  const tenant = one<{ id: string }>(
-    yield* runSql(sql`insert into tenants (slug, name) values ('default','Default') returning id`),
-  ).id
-  const orgType = one<{ id: string }>(
-    yield* runSql(
-      sql`insert into org_types (tenant_id, name) values (${tenant}, 'U') returning id`,
-    ),
-  ).id
-  const node = one<{ id: string }>(
-    yield* runSql(sql`
-      insert into org_nodes (tenant_id, org_type_id, name, path, depth)
-      values (${tenant}, ${orgType}, 'Root', 'r', 0) returning id`),
-  ).id
-  const userType = one<{ id: string }>(
-    yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, placement_mode)
-      values (${tenant},'staff','Staff', 'unrestricted') returning id`),
-  ).id
-  // a type outside the password door's audience, to prove the refusal is
-  // about who the door admits rather than about whether a credential exists
-  const ssoOnly = one<{ id: string }>(
-    yield* runSql(sql`
-      insert into user_types (tenant_id, code, name, placement_mode)
-      values (${tenant},'sso','Sso', 'unrestricted') returning id`),
-  ).id
-  const user = one<{ id: string }>(
-    yield* runSql(sql`
-      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
-      values (${tenant}, 'Ada', ${userType}, ${node}) returning id`),
-  ).id
-  const other = one<{ id: string }>(
-    yield* runSql(sql`
-      insert into users (tenant_id, display_name, user_type_id, primary_org_node_id)
-      values (${tenant}, 'Grace', ${ssoOnly}, ${node}) returning id`),
-  ).id
-  const provider = one<{ id: string }>(
-    yield* runSql(sql`
-      insert into auth_providers (tenant_id, code, type, name, enabled, sort_order, audience_mode)
-      values (${tenant}, 'password', 'local', 'Password', true, 0, 'allow-list') returning id`),
-  ).id
-  yield* runSql(sql`
-    insert into auth_provider_user_types (tenant_id, auth_provider_id, user_type_id)
-    values (${tenant}, ${provider}, ${userType})`)
-  // enabled, but its driver is not in this assembly's catalog
-  yield* runSql(sql`
-    insert into auth_providers (tenant_id, code, type, name, enabled, sort_order)
-    values (${tenant}, 'campus', 'cas', 'Campus', true, 1)`)
-  const identity = (userId: string, identifier: string) =>
-    runSql(sql`
-      insert into user_identities (tenant_id, user_id, auth_provider_id, identifier, credential_hash)
-      values (${tenant}, ${userId}, ${provider}, ${identifier}, ${hash})`)
-  yield* identity(user, 'ada')
-  yield* identity(other, 'grace')
-  return { tenant, user }
-})
-
 let userId: string
 
 beforeAll(async () => {
@@ -118,6 +60,7 @@ beforeAll(async () => {
       defaultTenantSlug: 'default',
       sessionTtlSeconds: 3600,
       secureCookies: false,
+      sessionCookieName,
     }),
   )
   // only the local driver is in the catalog, so the cas provider row has
@@ -159,7 +102,7 @@ beforeAll(async () => {
   scope = await Effect.runPromise(Scope.make())
   await Effect.runPromise(Layer.buildWithScope(application, scope))
   const hash = await hashPassword(password)
-  const seeded = await Effect.runPromise(seed(hash).pipe(Effect.provide(infra)))
+  const seeded = await Effect.runPromise(seedSignIn(hash).pipe(Effect.provide(infra)))
   userId = seeded.user
 }, 120_000)
 
@@ -258,6 +201,19 @@ describe.runIf(postgresAvailable)('signing in', () => {
     const response = await login({ identifier: 'grace', password })
     expect(response.status).toBe(401)
     expect(await response.json()).toMatchObject({ _tag: 'INVALID_CREDENTIALS' })
+  })
+
+  it('reads only the name it was configured with, never the prefixed one', async () => {
+    // a plain-http process names its cookie without the prefix; a request
+    // that carries the token under the prefixed name is a request with no
+    // session, because the process reads exactly one name
+    const response = await login({ identifier: 'ada', password })
+    const token = cookieFrom(response).slice(sessionCookieName.length + 1)
+    const prefixed = await fetch(`${base}/auth/session`, {
+      headers: { cookie: `__Host-${sessionCookieName}=${token}` },
+    })
+    expect(prefixed.status).toBe(401)
+    expect(await prefixed.json()).toMatchObject({ _tag: 'AUTH_REQUIRED' })
   })
 
   it('drops the cookie when the session it presented is dead', async () => {

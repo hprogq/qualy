@@ -13434,3 +13434,40 @@ acceptance done
   ```
 
   路由集不变(frozen-routes 等价比对通过),不新增端点;`@qualy/api-kit/origin` 只被服务端与公式插件的 server 侧引用,browser-graph 门禁在全量 node 套件里绿。浏览器里登录、改用户、登出照常(浏览器套件 320 条含 shell、login、item-chain 全绿;浏览器发出的请求天然 `same-origin`)。
+
+## Session Cookie 改用 `__Host-` 前缀(2026-09-13)
+
+`feat(auth): host-prefixed session cookie in secure deployments`。规则、威胁与源码结论见 `docs/notes/auth-security.md`「Cookie 名」。
+
+- **上游核对**(rc.111):`HttpApiBuilder.applyMiddleware` 对没有 `SecurityTypeId` 的 middleware 直接把 service 当 `(handler, { group, endpoint }) => Effect` 调用(`HttpApiBuilder.ts:860-863`),`HttpApiMiddleware.Service<Self, { provides }>()(id, { error })` 不带 `security` 时 service 类型就是 `HttpApiMiddleware<Provides, E, Requires>` 函数(`HttpApiMiddleware.ts:64-70`,`ServiceClass` 按 `[security] extends [never]` 选型);`request.cookies` 由 `Cookies.parseHeader` 解析,同名多值**取第一个**(`Cookies.ts:946`);`HttpApiBuilder.securitySetCookie` 只是 `HttpEffect.appendPreResponseHandler` + `HttpServerResponse.setCookie`(`:541-554`),自造的 `setSessionCookie` 走同一条路,不再需要 security 对象。
+- **实现**:`server/session-cookie.ts`(服务端模块):`sessionCookieNameFor(secure)`、`setSessionCookie(name, value, { secure, maxAge })`、`clearSessionCookie(name, secure)`;`AuthConfig` 增 `sessionCookieName`(由 `secureCookies` 派生);`session-contract.ts` 的 `Authenticated` / `Viewer` 去掉 `security`(`provides` / `error` 不变),`sessionSecurity` 删除,`sessionCookieName` 常量保留为基础名;`session.ts` 两个 layer 改为 `Viewer.of((httpEffect) => …)` / `Authenticated.of((httpEffect) => …)`,用 `request.cookies[config.sessionCookieName]` 读(空 / 缺 = 无 session);`sign-in.ts` 写配置里的名字,secure 且名字带前缀时登录成功附带清一次裸名,登出 / 失效清当前名;共享 `src/session.ts` 里无人用的 `sessionCookie` / `clearSessionCookie` 与 `cookie` 依赖删除(catalog 项一并去掉)。`effect-manifest.test.ts` 的 Viewer 桩改为函数形式,15 处 `AuthConfig.of` 测试桩补 `sessionCookieName`。
+- **以生产入口运行的工具必须发新名**:`tools/quality/formula-production-smoke.ts`、`tools/benchmarks/support/dataset.ts`、`tools/brand/record.ts` 都起 `run.ts production`(NODE_ENV=production → 只认 `__Host-`),改为 `sessionCookieNameFor(true)`。record.ts 原本用 Playwright `addCookies` 种 Cookie,`__Host-` 名下这条路走不通(Protocol error `Storage.setCookies: Invalid cookie fields`——协议要给 Cookie 指定 domain,前缀恰恰禁止),改为浏览器自己在本源页面上 `fetch` 登录接口、由服务端 Set-Cookie 落盘:实测 Chromium 在 `http://127.0.0.1` 与 `http://localhost` 上都保留 `__Host-` / `__Secure-` / Secure Cookie(回环地址视为安全上下文)。另一个坑:Playwright `context.cookies(url)` 的 URL 过滤只豁免 `localhost` 主机名,对 `http://127.0.0.1` 会把 Secure Cookie 滤掉(`playwright-core` 1.62.1 `filterCookies` / `isLocalHostname`),校验时要不带 URL 读。`pnpm brand:record` 两段录像重新出齐(末帧是登录后的管理员壳)。这一点规格里只提了 record.ts,另两个是同一问题。
+- **OpenAPI**:文档不再有 cookie 安全方案;`effect-session.test.ts` 的「广告」用例改为断言 `securitySchemes` 为空、`/probe/me` 仍声明 401 响应而 `/probe/open` 没有。没有冻结的 OpenAPI 快照(只有 frozen-routes)。
+- **测试**:新 `effect-secure-cookie.test.ts`(端口 3211,`secureCookies: true`,3 条):登录的 Set-Cookie 恰为 `__Host-qualy_session=<token>; Max-Age=3600; Path=/; HttpOnly; Secure; SameSite=Lax`(无 Domain)+ `qualy_session=; Max-Age=0`;带前缀名 → 200、同 token 裸名 → 401 `AUTH_REQUIRED`、两个都带且裸名是他人合法 session → 以前缀名为准;`DELETE /auth/session` 只清 `__Host-` 名(Secure)。`effect-sign-in.test.ts` 加「裸名进程不读 `__Host-` 名」。登录 seed 抽成 `tests/support/sign-in-seed.ts` 两个套件共用。
+- **`NODE_ENV=production` 实打**(端口 3212,curl,token 已遮):
+
+  ```text
+  POST /api/auth/local/local/login
+    set-cookie: __Host-qualy_session=<token>; Max-Age=604800; Path=/; HttpOnly; Secure; SameSite=Lax
+    set-cookie: qualy_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax
+  GET /api/auth/session  cookie: __Host-qualy_session=<token>   -> 200
+  GET /api/auth/session  cookie: qualy_session=<token>          -> 401 {"_tag":"AUTH_REQUIRED"}
+  DELETE /api/auth/session                                       -> set-cookie: __Host-qualy_session=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax
+  ```
+
+- **发版注意**:升级当天所有已登录用户会被登出一次(Cookie 改名);生产必须是 HTTPS(`__Host-` 要求 Secure,http 下浏览器直接丢弃,登录会无声失败);反向代理终结 TLS 后以 http 转给后端时,`secureCookies` 仍按 `NODE_ENV` 判定,与代理协议无关。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm typecheck               -> 19 programs + client component references, exit 0
+  pnpm test                    -> Test Files 213 passed | 3 skipped (216); Tests 1496 passed | 17 skipped (1513); exit 0
+                                  (含 effect-secure-cookie 3、effect-sign-in、effect-session、effect-manifest、error-codes、frozen-routes 等价比对)
+  pnpm test:browser            -> Test Files 46 passed (46); Tests 320 passed (320); exit 0
+  pnpm build                   -> ✓ built; staged web assets
+  smoke-production             -> /health/ready /health/live / /api/…/events /api/app/manifest /assets/index-*.js ok, brotli, shutdown clean (exit 0)
+  smoke:formula-production     -> PASS(以 __Host- 名登录并跑完公式链路)
+  pnpm brand:record            -> ready-300ms: 110 frames painted; ready-3s: 364 frames painted; 两张 12 帧条图重新写出
+  NODE_ENV=production curl     -> 见上一条(Set-Cookie 两行、前缀名 200、裸名 401、DELETE 清前缀名)
+  ```
+
+  开发态(`pnpm dev`,secureCookies=false)只读写 `qualy_session`,浏览器套件 320 条(shell、login、item-chain)在开发名下全绿;`cookie` 包从 auth 插件与 catalog 移除后 `pnpm install --offline` 无新增依赖。
