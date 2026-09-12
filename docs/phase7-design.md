@@ -297,7 +297,7 @@ Formula 只能知道自己的 typed input。
 7.6  Production Rollout / Performance / Final Acceptance
 ```
 
-`formula@1` writer 在 7.6 前不得默认生产开放。
+`formula@1` writer 在 7.6 前不得默认生产开放。（7.6 步骤 5C 起默认开放：Deployment B 已落地，见 §11.4。）
 
 ---
 
@@ -3658,6 +3658,8 @@ new node writes formula plan
 ```
 
 **落地记录（2026-09-11）**：Deployment B = `qualy.yml` 把 `authoring` 改为 `true` → `pnpm qualy resolve` → 提交 lock → 部署；翻开关之前必须先跑 Phase 7.6 步骤 3 的 existing-state audit（`qualy assessment audit-scoring`）且全部 accepted——审计结果不持久化为任何 flag，上线时跑一次并立即完成 B。开关翻回 `false` 同样只影响新绑定。
+
+**落地记录（2026-09-12，Phase 7.6 步骤 5C，Deployment B 已执行）**：在提交版沙箱形态（`cpus: 1` / `QUALY_SANDBOX_POOL_SIZE=1`，scoring 50/100）与空闲宿主上对整个开发库跑 `pnpm qualy assessment audit-scoring`：items 11 / plans 11 / recognitions 10 / derived grants 1，accepted 11、refused 0、execution failed 0、unavailable 0、integrity/invariant/unreadable/unprepared 全 0，`verdict: clean`、exit 0。随后 `qualy.yml` 的 `authoring` 改为 `true`，`pnpm qualy resolve` 只重写 lock 的 `manifestHash`（config 不进 `resolutionHash`，staged 资产不变），`--frozen-lockfile` 报 up to date。「Formula option 出现在 Item calculator selector」在真实装配上的证明是 formula production smoke 的 manifest 断言（`/app/manifest` 的 `assessment/calculator-authoring-options` 含 `formula@1`）；OFF 语义的承重全部经显式 `FormulaSettings` 注入保留，manifest 省略 `authoring` 仍是 disabled。
 
 **落地记录（2026-09-11，Phase 7.6 步骤 3）**：`qualy assessment audit-scoring [--tenant <id>] [--batch <id>]` 是仓库第一个 `runtime` 档 CLI 命令（宿主 `apps/cli/src/runtime.ts`，seam `@qualy/assembly/runtime` + `@qualy/api-kit/headless`）。它按 server 同一 assembly 建 prepared/services/runtime，不起 HTTP、不跑任何 boot hook（`Assembled` registry 提供、`assembledBarrier` 永不组合）、migrations 在图下方钉死 `off`（环境显式 `apply` 在加载命令之前拒绝，迁移只走 `qualy deploy`）。审计对象是每个 active 且已配置的题（含 archived 轮次）：读当前 plan → prepare 一次 → 评估每条 effective Recognition（approved 且有 current recognition）；derived 题另评一次空输入（它的 grant 本身）——不因没有 Recognition 就视为无影响。计数 accepted / refused / executionFailed / unavailable / integrityFailed / invariantFailed / unreadable / unprepared；verdict 与 exit code：clean 0、violations（refused+execution）2、inconclusive（unavailable，不计违约但不放行）3、fail-closed（integrity/invariant/unreadable/unprepared）4。只读：不写审计、不写领域历史、不计 telemetry；每条读取是单条语句，沙箱评估在行集返回之后运行，不持事务与锁。Deployment B 的硬前置就是这条命令 exit 0。
 

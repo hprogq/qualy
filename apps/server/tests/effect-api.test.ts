@@ -209,7 +209,8 @@ const shell = (url: string) => {
           LocalStorageConfig,
           LocalStorageConfig.of({ root: path.join(tmpdir(), 'qualy-effect-api-storage') }),
         ),
-        // the formula writer stays closed here, as the committed manifest has it
+        // the formula writer is pinned closed here on purpose: this suite's
+        // subject is the api aggregate, not the rollout
         Layer.succeed(FormulaSettings, FormulaSettings.of({ authoring: false })),
       ),
     ),

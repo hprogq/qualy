@@ -44,6 +44,7 @@ plugins:
   '@qualy/plugin-sandbox': {}
   '@qualy/plugin-assessment-formula':
     config:
-      # new formula bindings stay closed until the existing-state audit is
-      # green; flip to true, `pnpm qualy resolve`, commit the lock
-      authoring: false
+      # Deployment B (2026-09-12): new formula bindings are open; the writer
+      # was enabled after the existing-state audit came back clean. Set to
+      # false to close it again - questions already bound keep running.
+      authoring: true

@@ -120,6 +120,19 @@ const chain = async (base: string, databaseUrl: string): Promise<{ tenantId: str
     'admin session',
   )
   const tenantId = session.user.tenant.id
+  // the writer is on: the assembly projects the formula calculator to a
+  // principal who may manage a round, which is what the chooser is built from
+  const manifest = must(
+    await admin.call<{ collections: Record<string, { ref?: string }[]> }>('GET', '/app/manifest'),
+    'manifest',
+  )
+  const calculators = manifest.collections['assessment/calculator-authoring-options'] ?? []
+  expectThat(
+    calculators.some((option) => option.ref === 'formula@1'),
+    'manifest',
+    `the calculator chooser offers ${JSON.stringify(calculators.map((option) => option.ref))}; formula@1 is not among them`,
+  )
+  say('the assembly offers the formula calculator')
   const tree = must(await admin.call<{ roots: string[] }>('GET', '/org/tree'), 'org tree')
   const rootNodeId = tree.roots[0]
   expectThat(rootNodeId !== undefined, 'org tree', 'the organisation has no root')

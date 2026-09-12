@@ -1,6 +1,6 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:9e66afa58bf7eadf28c5c044a9894800812a9da9fd3bafb5d7d1cfb7d607e838",
+  "manifestHash": "sha256:1e7df6cf82f7d2526cc647722d75d3322df4e995d6278cda192cc5e2579d8b56",
   "resolutionHash": "sha256:c9aa58c7d21dbcff05540f30ad0540dbe099f05b892f1fcb1e2595a5c01e0306",
   "plugins": {
     "@qualy/plugin-assessment": {
