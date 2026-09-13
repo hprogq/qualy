@@ -532,7 +532,7 @@ const i18n = definePluginMessages({
     },
     remoteMovedTitle: {
       id: 'assessment-formula/editor/remote-moved',
-      defaultMessage: 'The draft changed on the server',
+      defaultMessage: 'The draft was changed elsewhere',
     },
     remoteMovedHint: {
       id: 'assessment-formula/editor/remote-moved-hint',

@@ -132,7 +132,7 @@ export default {
   'assessment-formula/sharing/remove': '停止共享给{name}',
   'assessment-formula/editor/versions': '已发布版本',
   'assessment-formula/editor/versions-empty': '还没有发布过版本。',
-  'assessment-formula/editor/remote-moved': '服务器上的草稿已更新',
+  'assessment-formula/editor/remote-moved': '草稿已在别处更新',
   'assessment-formula/editor/remote-moved-hint':
     '编辑期间有其他人保存了这份草稿。你的内容未被改动，放弃本地修改后即可载入对方的版本。',
   'assessment-formula/editor/discard-local': '放弃本地修改并刷新',
@@ -155,5 +155,5 @@ export default {
   'assessment-formula/error/bundle-failed': '源码打包失败，请查看下方的打包器信息。',
   'assessment-formula/error/execution-limit': '编译或提取合同超出了允许的资源，请精简公式后再试。',
   'assessment-formula/error/test-failed': '发布前需要全部示例通过，且至少有一条示例。',
-  'assessment-formula/error/compile-unavailable': '发布服务暂时不可用，请稍后再试。',
+  'assessment-formula/error/compile-unavailable': '暂时无法发布，请稍后再试。',
 } satisfies MessageCatalog

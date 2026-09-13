@@ -1,4 +1,4 @@
-import { useMemo, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, type ComponentType, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { BrowserRouter, Link } from 'react-router'
 import { primaryNavigation } from '@qualy/ui-contract'
@@ -154,7 +154,7 @@ function ManifestRouter() {
         <Failure message={format(commonMessages.layoutFailed)} onRetry={retry} fullscreen />
       ),
       componentMissing: (component) => (
-        <Failure message={format(commonMessages.componentMissing, { component })} />
+        <MissingComponent component={component} message={format(commonMessages.componentMissing)} />
       ),
       // the way out of a mistyped address is the home the route builder
       // resolved - one resolution, the same one the origin redirects to - so
@@ -224,6 +224,16 @@ function Notice({
       )}
     </div>
   )
+}
+
+// a page's module is not in the bundle: the reader is told the page cannot
+// open, and the console is told which module and in which release it was
+// looked for - a fact for whoever ships the bundle, never for the screen
+function MissingComponent({ component, message }: { component: string; message: string }) {
+  useEffect(() => {
+    console.error(`[qualy] component missing: ${component} (release ${webRelease.releaseId})`)
+  }, [component])
+  return <Failure message={message} />
 }
 
 // a plugin component failed: the user gets a localized message and a retry,

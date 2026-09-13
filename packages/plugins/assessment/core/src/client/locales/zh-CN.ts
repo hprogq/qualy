@@ -188,7 +188,7 @@ export default {
   'assessment/result/hint': '当前成绩根据已通过的申报计算，最终以公示结果为准。',
   'assessment/result/provisional': '当前成绩',
   'assessment/result/total': '合计',
-  'assessment/result/unavailable-title': '计分服务暂时不可用',
+  'assessment/result/unavailable-title': '暂时无法计分',
   'assessment/result/unavailable-hint': '当前成绩暂时无法计算，请稍后重试。',
   'assessment/result/recalculate': '重新计算',
   'assessment/result/full': '本批次满分 {value}',
@@ -1389,7 +1389,7 @@ export default {
   'assessment/error/score-group-invalid': '分组保存失败，请根据提示修改后重试。',
   'assessment/error/score-group-version-conflict': '分组已被其他人员修改，请刷新后重新操作。',
   'assessment/error/determination-refused': '该认定不符合当前计分规则：{reason}',
-  'assessment/error/scoring-unavailable': '计分服务暂时不可用，请稍后重试。',
+  'assessment/error/scoring-unavailable': '暂时无法计分，请稍后重试。',
   'assessment/error/item-scoring-incompatible':
     '新的计分规则无法处理 {affected} 条已生效认定（{refused} 条被规则拒绝，{executionFailed} 条计算失败），请修正计分规则后重试。',
   'assessment/error/access-invalid': '权限变更失败，请检查相关设置后重试。',

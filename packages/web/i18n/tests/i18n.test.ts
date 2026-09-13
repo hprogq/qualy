@@ -2,6 +2,7 @@ import { setupI18n } from '@lingui/core'
 import { compileMessage } from '@lingui/message-utils/compileMessage'
 import { Schema } from 'effect'
 import {
+  defineMessage,
   supportedLocales,
   UiTextSchema,
   literal,
@@ -50,9 +51,7 @@ describe('web i18n runtime', () => {
   it('translates through the catalog and falls back to the english default', () => {
     const formatter = formatterFor(zhCN)
     expect(formatter.format(commonMessages.retry)).toBe('重试')
-    expect(formatter.format(commonMessages.componentMissing, { component: 'org/OrgPage' })).toBe(
-      '渲染器缺失：org/OrgPage',
-    )
+    expect(formatter.format(commonMessages.componentMissing)).toBe('该页面暂时无法打开。')
     // an untranslated id renders its english default, never an empty string
     expect(formatter.format({ id: 'x/untranslated', defaultMessage: 'Plain default' })).toBe(
       'Plain default',
@@ -127,13 +126,18 @@ describe('web i18n runtime', () => {
 
   it('demands the values an interpolating message declares', () => {
     const formatter = formatterFor(zhCN)
-    // @ts-expect-error componentMissing declares {component}
-    formatter.format(commonMessages.componentMissing)
-    // @ts-expect-error the placeholder is named component, not name
-    formatter.format(commonMessages.componentMissing, { name: 'x' })
-    expect(formatter.format(commonMessages.componentMissing, { component: 'org/OrgPage' })).toBe(
-      '渲染器缺失：org/OrgPage',
-    )
+    // the shell's own messages carry no placeholders any more - what a
+    // reader is told never includes a module name - so the demand is shown
+    // on a message declared here
+    const greeting = defineMessage<{ name: string }>()({
+      id: 'common/test/greeting',
+      defaultMessage: 'Hello {name}',
+    })
+    // @ts-expect-error greeting declares {name}
+    formatter.format(greeting)
+    // @ts-expect-error the placeholder is named name, not who
+    formatter.format(greeting, { who: 'x' })
+    expect(formatter.format(greeting, { name: 'Qualy' })).toBe('Hello Qualy')
     // a message without declared placeholders needs no values
     expect(formatter.format(commonMessages.retry)).toBe('重试')
   })

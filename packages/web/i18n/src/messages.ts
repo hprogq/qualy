@@ -1,17 +1,26 @@
-import { defineMessage, type MessageDescriptor } from '@qualy/i18n-contract'
+import type { MessageDescriptor } from '@qualy/i18n-contract'
 
-// shell copy owned by the runtime itself; plugins declare their own. The
-// two interpolating messages declare their placeholders, so a call site
-// that forgets the value fails typecheck.
-export const componentMissingMessage = defineMessage<{ component: string }>()({
+// Shell copy owned by the runtime itself; plugins declare their own. Every
+// sentence here is what the reader sees when something did not work, so it
+// names the reader's situation and the reader's move - never the manifest,
+// the renderer, the deployment or the server that failed, which are the
+// console's and the telemetry's to name. The release notices say three
+// things whatever the page found out: a newer Qualy is there and the page
+// still works; the page must be reloaded to go on (a chunk gone with a
+// newer release, a server that no longer speaks this page - the reader's
+// move is the same); the page could not be loaded at all. The ids keep the
+// distinction the code and the telemetry make; the words do not.
+// Said to the reader when a page's module is not in the bundle; which
+// module is a fact for the console and the telemetry, never for the screen
+export const componentMissingMessage = {
   id: 'common/component/missing',
-  defaultMessage: 'Missing renderer: {component}',
-})
+  defaultMessage: 'This page cannot be opened right now.',
+} as const satisfies MessageDescriptor
 
-export const layoutMissingMessage = defineMessage<{ component: string }>()({
+export const layoutMissingMessage = {
   id: 'common/layout/missing',
-  defaultMessage: 'Missing layout renderer: {component}',
-})
+  defaultMessage: 'Qualy cannot be displayed right now. Try again.',
+} as const satisfies MessageDescriptor
 
 export const commonMessages = {
   retry: { id: 'common/action/retry', defaultMessage: 'Retry' },
@@ -39,14 +48,14 @@ export const commonMessages = {
   },
   later: { id: 'common/action/later', defaultMessage: 'Later' },
   reloadNow: { id: 'common/action/reload', defaultMessage: 'Reload' },
-  releaseSkewTitle: { id: 'common/release/skew-title', defaultMessage: 'Qualy has been updated' },
+  releaseSkewTitle: { id: 'common/release/skew-title', defaultMessage: 'Reload needed' },
   releaseSkewHint: {
     id: 'common/release/skew-hint',
-    defaultMessage: 'This version can no longer load the page. Reload to continue.',
+    defaultMessage: 'Reload the page to continue.',
   },
   assetFailedTitle: {
     id: 'common/release/asset-failed-title',
-    defaultMessage: 'The page could not load its files',
+    defaultMessage: 'The page could not be loaded',
   },
   assetFailedHint: {
     id: 'common/release/asset-failed-hint',
@@ -54,12 +63,11 @@ export const commonMessages = {
   },
   clientProtocolTitle: {
     id: 'common/release/client-protocol-title',
-    defaultMessage: 'Qualy needs to be updated',
+    defaultMessage: 'Reload needed',
   },
   clientProtocolHint: {
     id: 'common/release/client-protocol-hint',
-    defaultMessage:
-      'This version of the page can no longer talk to the server. Reload to continue.',
+    defaultMessage: 'Reload the page to continue.',
   },
   reloadPage: { id: 'common/action/reload-page', defaultMessage: 'Reload the page' },
   // the calendar's caption pickers, named for whoever cannot see them
@@ -76,7 +84,7 @@ export const commonMessages = {
   },
   manifestLoadFailed: {
     id: 'common/manifest/load-failed',
-    defaultMessage: 'Could not load the interface manifest. Check your connection.',
+    defaultMessage: 'Qualy could not be loaded. Check your connection and try again.',
   },
   componentMissing: componentMissingMessage,
   layoutMissing: layoutMissingMessage,
@@ -87,7 +95,7 @@ export const commonMessages = {
   // go edit a configuration file
   emptyPagesHint: {
     id: 'common/page/empty-hint',
-    defaultMessage: 'No page in this deployment is available to your account.',
+    defaultMessage: 'Nothing is available to your account yet.',
   },
   goHome: { id: 'common/action/go-home', defaultMessage: 'Go to the home page' },
   notFoundTitle: { id: 'common/page/not-found-title', defaultMessage: 'Page not found' },
@@ -97,13 +105,13 @@ export const commonMessages = {
   },
   layoutFailed: {
     id: 'common/component/layout-failed',
-    defaultMessage: 'The application shell could not be displayed.',
+    defaultMessage: 'Qualy cannot be displayed right now. Try again.',
   },
   // the manifest is an authorization projection, so the shell cannot tell
   // "no such page" from "not yours to see", and must not, since answering
   // differently would leak which pages exist
   notFoundHint: {
     id: 'common/page/not-found-hint',
-    defaultMessage: 'This address does not match any page available to you.',
+    defaultMessage: 'This address cannot be opened. Check it and try again.',
   },
 } as const satisfies Record<string, MessageDescriptor>
