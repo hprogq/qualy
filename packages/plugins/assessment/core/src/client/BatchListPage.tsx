@@ -114,10 +114,14 @@ const styles = stylex.create({
   createButton: {
     flexShrink: 0,
   },
-  fetchSpinner: {
+  refreshing: {
     width: 16,
     height: 16,
+    flexShrink: 0,
   },
+  // a filter changes the question and the answer replaces the old one in
+  // place, which is what keeping the previous data is for; nothing here
+  // dims meanwhile - a dimming that a fast answer cut short read as a flash
   results: {
     display: 'flex',
     flexDirection: 'column',
@@ -125,15 +129,15 @@ const styles = stylex.create({
       default: 28,
       [breakpoints.phone]: 20,
     },
-    transitionProperty: 'opacity',
-    transitionDuration: '300ms',
-  },
-  resultsStale: {
-    opacity: 0.5,
   },
   list: {
     display: 'flex',
     flexDirection: 'column',
+    gap: 12,
+  },
+  listHead: {
+    display: 'flex',
+    alignItems: 'center',
     gap: 12,
   },
   // one line whatever the width: on a phone the pills scroll sideways
@@ -277,6 +281,27 @@ type StatusFilter = 'all' | 'draft' | 'active' | 'archived'
 
 /** a chip's number, said only once the server has counted */
 const chipCount = (count: number | undefined) => <Count>{count}</Count>
+
+/** how long a refresh may take before the page says it is refreshing */
+const REFRESH_NOTICE_AFTER = 180
+
+/**
+ * True once `active` has held for `ms`; false the moment it drops. For a
+ * signal a fast answer would otherwise flash: a spinner that appears and
+ * leaves inside eighty milliseconds says nothing but "something happened".
+ */
+function useHeld(active: boolean, ms: number): boolean {
+  const [held, setHeld] = useState(false)
+  useEffect(() => {
+    if (!active) {
+      setHeld(false)
+      return
+    }
+    const timer = window.setTimeout(() => setHeld(true), ms)
+    return () => window.clearTimeout(timer)
+  }, [active, ms])
+  return held
+}
 
 /**
  * The stage column: where the batch is, or what it has of a plan. A batch
@@ -469,6 +494,9 @@ export default function BatchListPage() {
   } as const
 
   const paged = nextCursor !== null || pageIndex > 0
+  // the list is being asked again - a filter, a search, a page - and the
+  // answer is slow enough to be worth saying so
+  const refreshing = useHeld(batches.isFetching && !batches.isPending, REFRESH_NOTICE_AFTER)
   // the card's question is open until the running rounds are known; its
   // room is kept meanwhile, so the answer does not push the list down
   const heroPending = runningQuery.isPending && !searching
@@ -479,12 +507,6 @@ export default function BatchListPage() {
         <div {...stylex.props(styles.masthead)}>
           <h1 {...stylex.props(styles.title)}>{format(m.batchesTitle)}</h1>
           <div {...stylex.props(styles.mastheadTools)}>
-            {batches.isFetching && !batches.isPending && (
-              <Spinner
-                aria-label={format(commonMessages.loading)}
-                className={stylex.props(styles.fetchSpinner).className}
-              />
-            )}
             <Input
               name="batches-search"
               value={search}
@@ -521,7 +543,7 @@ export default function BatchListPage() {
             </div>
           }
         >
-          <div {...stylex.props(styles.results, batches.isFetching && styles.resultsStale)}>
+          <div {...stylex.props(styles.results)}>
             {heroPending ? (
               <HeroSkeleton />
             ) : (
@@ -540,8 +562,11 @@ export default function BatchListPage() {
 
             <section {...stylex.props(styles.list)}>
               {/* the pills are the section's title: they say what the table
-                  below is scoped to, and a label beside them said it twice */}
-              <div {...stylex.props(styles.pillScroller)}>
+                  below is scoped to, and a label beside them said it twice;
+                  a refresh that runs long is said beside them, since it is
+                  the table that is being asked again */}
+              <div {...stylex.props(styles.listHead)}>
+                <div {...stylex.props(styles.pillScroller)}>
                 <ToggleGroup
                   className={stylex.props(styles.wide).className}
                   value={statusFilter}
@@ -574,6 +599,13 @@ export default function BatchListPage() {
                     {chipCount(counts?.archived)}
                   </ToggleGroupItem>
                 </ToggleGroup>
+                </div>
+                {refreshing && (
+                  <Spinner
+                    aria-label={format(commonMessages.loading)}
+                    className={stylex.props(styles.refreshing).className}
+                  />
+                )}
               </div>
 
               <div {...stylex.props(styles.sheet)}>
