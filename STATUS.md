@@ -13660,3 +13660,12 @@ SIGTERM -> exit 0
 - **页面底色单一来源**:`theme.css` 的 `background-color: var(--q-background)` 从 `body` 挪到 `html`;`index.html` 的 `#qualy-boot` 不再自带底色(只留字色,`html { background }` 那两条字面量仍在,`index-html.test` 钉着);`AppShell` / `WorkspaceShell` 根节点的 `backgroundColor: tokens.background` 删除。实测 body 仍经 widget 层的 `--mantine-color-body` 指向同一 token,值同源。
 - **测试**:`batch-admin` 的空态用例改为断 `data-empty` 钩子(`none` → 搜索后 `filtered` → 清空搜索框回 `none`),不再点「清除筛选」。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests/{catalogs,index-html,client-paths,semantic-tokens}` 4 / 24;`pnpm build` ok;`pnpm test:browser` 第一遍 1 红——baseline 快照里 `html` 行的 `backgroundColor` 由透明变为 `oklch(0.99 0.001 80)`(底色挪到 html 的预期结果,逐属性比对只有这一项),`-u` 更新后 Test Files 46 passed (46); Tests 325 passed (325);`vitest tools/tests` Test Files 36 passed (36); Tests 235 passed (235); exit 0。截图(1440 宽,生产入口,列表接口打桩):六阶段列表页、隐去标签的 tooltip、筛「已结束」hero 仍在、搜索收起 hero、空搜索一行、零草稿 pill 置灰、首帧。
+
+## CI 修复:ping 示例插件离开清单后的两条 node 套件(2026-09-13)
+
+`test(repo): follow the ping demo plugin out of the manifest`。IA 那次提交把 `@qualy/plugin-ping` 从 `qualy.yml` 拿掉(lock 里转 `detached`、由 database 能力保留,`ping_logs` 表仍在 lineage),当时只跑了 typecheck 与浏览器套件,node 套件里两处按「ping 在装配里」写的断言没跟上,推上去 CI 红了 4 条(本地 `pnpm test` 同样复现,不是环境差异)。
+
+- **`apps/server/tests/effect-api.test.ts`**(3 条):这组用例的主角就是 ping——一个包定义、一个包实现、handler 经宿主提供的数据库层写 `ping_logs`,还有 `ping/page` 公共页与 `Api.local` 类型化客户端。主角不换,装配换来源:把产品清单原文加一行 `'@qualy/plugin-ping': {}` 写到临时目录,`resolveAssembly({ manifestPath: 临时清单, hostDir: hostDirFor(产品清单), previousLock: 产品 lock })`——其余插件与产品逐一相同,ping 从 lock 的 detached 回到 active。产品清单、lock、frozen-routes 都不动。
+- **`packages/plugins/infra/database/tests/clean-room-parity.test.ts`**(1 条):「只凭插件重建的 lineage 与提交的 lineage 一致」的 `productSelection()` 原来只读清单键,漏了 lock 里 detached 的插件,重建出的库自然少 `ping_logs`。改为清单键 ∪ lock 中 `state === 'detached'` 的插件——这正是生产 `generate` 读的 retained 集。
+- **门禁(实际执行)**:两文件单跑 2 / 6 通过;`pnpm typecheck` exit 0;`pnpm test` Test Files 219 passed | 3 skipped (222); Tests 1531 passed | 17 skipped (1548); exit 0。
+- **教训**:清单或 lock 一动,node 套件必须整跑;那次收场没跑 `pnpm test` 是漏项,不是套件盲区。

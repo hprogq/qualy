@@ -2,7 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { capabilityWorkContext, commitLock, createWorkspace } from '@qualy/assembly/testkit'
-import { readManifest } from '@qualy/assembly'
+import { lockPathFor, readLock, readManifest } from '@qualy/assembly'
 import type { CapabilityWorkContext } from '@qualy/assembly-contract'
 import provider, { type DatabaseContribution, type DatabaseState } from '../src/assembly/index.ts'
 import { createTestContext, postgresAvailable } from '../src/testkit.ts'
@@ -30,10 +30,19 @@ import { createTestContext, postgresAvailable } from '../src/testkit.ts'
 const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../../..')
 const committedLineage = path.join(repoRoot, 'db/migrations')
 
-/** the product's own selection, read rather than restated so it cannot drift */
+/**
+ * The plugins whose schema the product carries, read rather than restated
+ * so it cannot drift: the manifest's, and the ones the lock keeps after they
+ * left it - a detached plugin's tables stay in the lineage, so a rebuild
+ * that forgot it would report every one of them as carried by nobody.
+ */
 const productSelection = (): string[] => {
-  const manifest = readManifest(path.join(repoRoot, 'qualy.yml'))
-  return [...manifest.plugins.keys()]
+  const manifestFile = path.join(repoRoot, 'qualy.yml')
+  const manifest = readManifest(manifestFile)
+  const kept = Object.entries(readLock(lockPathFor(manifestFile))?.plugins ?? {})
+    .filter(([, plugin]) => plugin.state === 'detached')
+    .map(([id]) => id)
+  return [...manifest.plugins.keys(), ...kept]
 }
 
 // The migrator's own ledger is not part of anybody's schema, and it is in

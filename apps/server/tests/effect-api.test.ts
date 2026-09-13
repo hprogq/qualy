@@ -5,6 +5,7 @@ import { NodeHttpServer } from '@effect/platform-node'
 import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiClient } from 'effect/unstable/httpapi'
 import { FetchHttpClient } from 'effect/unstable/http'
+import fs from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -19,7 +20,7 @@ import { FormulaSettings } from '@qualy/plugin-assessment-formula/config'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Plugin } from '@qualy/plugin-kit'
-import { readLock, lockPathFor, resolveAssembly } from '@qualy/assembly'
+import { hostDirFor, lockPathFor, readLock, readManifest, resolveAssembly } from '@qualy/assembly'
 import { clientFor } from '@qualy/web-runtime/api'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { manifestPath } from '../src/manifest.ts'
@@ -133,12 +134,25 @@ const teardownStaged = async (
   }
 }
 
-// the production assembler over the production resolution, minus the web
-// plugin: its raw routes would mount vite, which this suite is not about
+// The production assembler over the production manifest plus the ping demo
+// plugin, minus the web plugin. Ping is this suite's subject - a group
+// defined in one package, implemented in another, whose handler writes
+// through the host's database layer - and it has left the product's
+// manifest, so the suite puts it back on a scratch copy of that manifest,
+// resolved against the same host so every other plugin is exactly the
+// product's. The web plugin's raw routes would mount vite, which this
+// suite is not about.
 const assembled = await (async () => {
   const manifest = manifestPath()
+  const scratch = path.join(fs.mkdtempSync(path.join(tmpdir(), 'qualy-effect-api-')), 'qualy.yml')
+  const withPing = fs
+    .readFileSync(manifest, 'utf8')
+    .replace(/^plugins:\n/m, "plugins:\n  '@qualy/plugin-ping': {}\n")
+  if (!withPing.includes('@qualy/plugin-ping')) throw new Error('the manifest has no plugins block')
+  fs.writeFileSync(scratch, withPing)
   const resolution = await resolveAssembly({
-    manifestPath: manifest,
+    manifestPath: scratch,
+    hostDir: hostDirFor(readManifest(manifest)),
     previousLock: readLock(lockPathFor(manifest)),
   })
   resolution.runtimePlugins = resolution.runtimePlugins.filter((id) => id !== '@qualy/plugin-web')
