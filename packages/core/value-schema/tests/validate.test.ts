@@ -1,13 +1,22 @@
 import { Ajv2020 } from 'ajv/dist/2020.js'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import {
+  compareDecimal,
+  fractionalDigits,
+  isDecimalString,
+  parseDecimal,
+  type DecimalParts,
+} from '../src/decimal.ts'
 import { parameterSchemaAt } from '../src/diagnose.ts'
 import {
+  isDateString,
   normalizeAtomicSchema,
   normalizeInputSchema,
   type AtomicSchema,
   type InputSchema,
 } from '../src/profile.ts'
-import { validateValue } from '../src/validate.ts'
+import { compilePattern } from '../src/regex.ts'
+import { validateValue, type ValueIssue } from '../src/validate.ts'
 
 // the validator takes NORMALIZED schemas only: the brand is what lets its
 // compile cache key by identity, so every fixture goes through the factory
@@ -72,12 +81,10 @@ describe('instance validation', () => {
 
 describe('prototype names as parameters, judged fail-closed', () => {
   // A parameter may legally be called `constructor` or `toString` (only
-  // `__proto__` is refused by the profile). Ajv's required check reads
-  // through the prototype - `({}).constructor` is not undefined - but the
-  // type check then meets a function and refuses it, so a missing value
-  // NEVER passes. This suite pins that end-to-end behaviour: if an ajv
-  // upgrade or option change ever lets a prototype member through as a
-  // value, this goes red before any caller does.
+  // `__proto__` is refused by the profile). The interpreter reads own
+  // properties only, so a name that spells a prototype member is neither
+  // present nor a value: a missing value NEVER passes. Pinned end to end,
+  // so a change of reading goes red before any caller does.
   const contract = (name: string) =>
     normalizeInputSchema({
       type: 'object',
@@ -110,11 +117,8 @@ describe('prototype names as parameters, judged fail-closed', () => {
   })
 })
 
-describe('the frozen pattern engine inside ajv', () => {
-  it('compiles each pattern once and never crosses instances', () => {
-    // pinned because ajv keys its codegen scope by the engine result's
-    // toString(): a shared key silently reuses the FIRST compiled pattern
-    // for every later one (measured before the unique key existed)
+describe('the frozen pattern engine', () => {
+  it('keeps each pattern its own', () => {
     const plates = atomic({ type: 'string', pattern: '^[A-Z][0-9]{6}$' })
     const beads = atomic({ type: 'string', pattern: '^b+$' })
     expect(validateValue(plates, 'A123456')).toEqual([])
@@ -133,71 +137,192 @@ describe('the frozen pattern engine inside ajv', () => {
   })
 })
 
-describe('one validator per meaning, in bounded generations', () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('compiles once for every object that spells the same schema', () => {
-    const compile = vi.spyOn(Ajv2020.prototype, 'compile')
-    // three objects, one meaning: what a caller that decodes its plan per
-    // request hands over
-    const spelled = [1, 2, 3].map(() => atomic({ type: 'string', pattern: '^plate-[a-z]{3}$' }))
-    expect(spelled[0]).not.toBe(spelled[1])
-    expect(reasons(spelled[0]!, 'plate-abc')).toEqual([])
-    expect(reasons(spelled[1]!, 'plate-abc')).toEqual([])
-    expect(reasons(spelled[2]!, 'PLATE')).toEqual(['pattern'])
-    expect(compile).toHaveBeenCalledTimes(1)
-    // the people-facing layer never moves the meaning: words, locales,
-    // labels and the order choices are offered in
-    const choice = atomic({ type: 'string', enum: ['sea', 'sky'] })
-    const relabeled = atomic({
-      type: 'string',
-      enum: ['sky', 'sea'],
-      title: 'Where',
-      description: 'The element to report',
-      'x-qualy-enumLabels': { sea: 'Sea', sky: 'Sky' },
-      'x-qualy-i18n': { 'en-GB': { title: 'Whereabouts' } },
+describe('against draft 2020-12, on the oracle', () => {
+  // ajv, configured exactly as the validator was when it compiled schemas
+  // through `Function`: the keywords, the formats, the frozen pattern
+  // engine. It is not in the bundle any more - a browser policy that
+  // forbids code from strings is why - but every verdict of the
+  // interpreter is held equal to it here, keywords, paths and all.
+  const oracle = (() => {
+    const ajv = new Ajv2020({
+      strict: true,
+      allErrors: true,
+      coerceTypes: false,
+      useDefaults: false,
+      removeAdditional: false,
+      validateFormats: true,
+      code: {
+        regExp: Object.assign(
+          (pattern: string, _u: string) => {
+            const compiled = compilePattern(pattern)
+            if (!compiled.ok) throw new Error(`pattern outside the regex profile: ${pattern}`)
+            return {
+              test: (value: string) => compiled.pattern.test(value),
+              toString: () => `qualy-pattern:${pattern}`,
+            }
+          },
+          { code: 'qualyPattern' },
+        ),
+      },
     })
-    expect(reasons(choice, 'sea')).toEqual([])
-    expect(reasons(relabeled, 'sea')).toEqual([])
-    expect(reasons(relabeled, 'land')).toEqual(['enum'])
-    expect(compile).toHaveBeenCalledTimes(2)
-    // an input contract likewise, whatever order its parameters are shown in
-    const contract = (order: readonly string[]) =>
-      input({
-        type: 'object',
-        properties: { hours: { type: 'integer', minimum: 0, maximum: 24 }, where: choice },
-        required: ['hours', 'where'],
-        additionalProperties: false,
-        'x-qualy-order': order,
+    ajv.addFormat('date', { type: 'string', validate: isDateString })
+    ajv.addFormat('qualy-decimal', { type: 'string', validate: isDecimalString })
+    ajv.addKeyword({
+      keyword: 'x-qualy-maxScale',
+      type: 'string',
+      schemaType: 'number',
+      compile: (maxScale: number) => (value: string) => {
+        const parts = parseDecimal(value)
+        return parts === null || fractionalDigits(parts) <= maxScale
+      },
+    })
+    const bound = (keyword: string, holds: (edge: DecimalParts, value: DecimalParts) => boolean) =>
+      ajv.addKeyword({
+        keyword,
+        type: 'string',
+        schemaType: 'string',
+        compile: (edge: string) => (value: string) => {
+          const parts = parseDecimal(value)
+          return parts === null || holds(parseDecimal(edge)!, parts)
+        },
       })
-    expect(reasons(contract(['hours', 'where']), { hours: 3, where: 'sea' })).toEqual([])
-    expect(reasons(contract(['where', 'hours']), { hours: 3, where: 'sea' })).toEqual([])
-    expect(reasons(contract(['where', 'hours']), { hours: 25, where: 'sea' })).toEqual(['maximum'])
-    expect(compile).toHaveBeenCalledTimes(3)
-    // a different meaning is a different validator, and neither answers for the other
-    const other = atomic({ type: 'string', pattern: '^plate-[0-9]{3}$' })
-    expect(reasons(other, 'plate-123')).toEqual([])
-    expect(reasons(other, 'plate-abc')).toEqual(['pattern'])
-    expect(reasons(spelled[0]!, 'plate-123')).toEqual(['pattern'])
-    expect(compile).toHaveBeenCalledTimes(4)
+    bound('x-qualy-minimum', (edge, value) => compareDecimal(value, edge) >= 0)
+    bound('x-qualy-maximum', (edge, value) => compareDecimal(value, edge) <= 0)
+    ajv.addKeyword({ keyword: 'x-qualy-enumLabels', schemaType: 'object' })
+    ajv.addKeyword({ keyword: 'x-qualy-i18n', schemaType: 'object' })
+    ajv.addKeyword({ keyword: 'x-qualy-inputOrder', schemaType: 'array' })
+    return (schema: object, value: unknown): ValueIssue[] => {
+      const validator = ajv.compile(schema)
+      if (validator(value)) return []
+      return (validator.errors ?? []).map((error) => {
+        const named =
+          (error.params as { missingProperty?: string; additionalProperty?: string } | undefined) ??
+          {}
+        const property = named.missingProperty ?? named.additionalProperty
+        return {
+          path: property === undefined ? error.instancePath : `${error.instancePath}/${property}`,
+          reason: error.keyword,
+        }
+      })
+    }
+  })()
+
+  const sorted = (issues: readonly ValueIssue[]) =>
+    [...issues].sort((a, b) => `${a.path}|${a.reason}`.localeCompare(`${b.path}|${b.reason}`))
+
+  const atomics: AtomicSchema[] = [
+    { type: 'string' },
+    { type: 'string', minLength: 2, maxLength: 4 },
+    { type: 'string', pattern: '^[a-z]+-[0-9]{2}$' },
+    { type: 'string', minLength: 1, pattern: '^\\p{L}+$' },
+    { type: 'integer', minimum: -2, maximum: 5 },
+    { type: 'string', format: 'qualy-decimal', 'x-qualy-maxScale': 2 },
+    {
+      type: 'string',
+      format: 'qualy-decimal',
+      'x-qualy-maxScale': 1,
+      'x-qualy-minimum': '0.5',
+      'x-qualy-maximum': '9.5',
+    },
+    { type: 'string', enum: ['a', 'b', 'c'] },
+    { type: 'boolean' },
+    { type: 'string', format: 'date' },
+  ]
+  const values: unknown[] = [
+    undefined,
+    null,
+    true,
+    false,
+    0,
+    -3,
+    2.5,
+    5,
+    6,
+    '',
+    'a',
+    'ab',
+    'abcd',
+    'abcde',
+    'ok-12',
+    'OK-12',
+    '中文',
+    'é',
+    '\u{1F600}\u{1F600}',
+    '0.5',
+    '0.50',
+    '0.499',
+    '3.14',
+    '3.145',
+    '9.5',
+    '9.51',
+    '10',
+    '03',
+    '-1',
+    'c',
+    'd',
+    '2026-02-28',
+    '2026-02-29',
+    '2024-02-29',
+    '2026-13-01',
+    [],
+    ['a'],
+    {},
+    { a: 1 },
+  ]
+
+  it('judges every atomic kind as the oracle does, keyword for keyword', () => {
+    let compared = 0
+    for (const raw of atomics) {
+      const schema = atomic(raw)
+      for (const value of values) {
+        expect(sorted(validateValue(schema, value)), JSON.stringify({ raw, value })).toEqual(
+          sorted(oracle(schema, value)),
+        )
+        compared += 1
+      }
+    }
+    expect(compared).toBe(atomics.length * values.length)
   })
 
-  it('starts a fresh ajv when a generation is full, and lets the old one go', () => {
-    // build() registers two formats on every new instance: each pair is a generation
-    const built = vi.spyOn(Ajv2020.prototype, 'addFormat')
-    const compile = vi.spyOn(Ajv2020.prototype, 'compile')
-    // more meanings than two generations hold, each compiled exactly once
-    const meaning = (n: number) => atomic({ type: 'integer', minimum: 0, maximum: n })
-    for (let n = 1; n <= 600; n++) expect(reasons(meaning(n), 0)).toEqual([])
-    expect(compile).toHaveBeenCalledTimes(600)
-    expect(built.mock.calls.length / 2).toBeGreaterThanOrEqual(2)
-    // the first meaning went with its generation and compiles again in the
-    // current one; the last is still held
-    expect(reasons(meaning(1), 0)).toEqual([])
-    expect(compile).toHaveBeenCalledTimes(601)
-    expect(reasons(meaning(600), 0)).toEqual([])
-    expect(compile).toHaveBeenCalledTimes(601)
+  it('judges input objects as the oracle does, paths included', () => {
+    const shape = input({
+      type: 'object',
+      properties: {
+        name: { type: 'string', minLength: 1, maxLength: 3 },
+        n: { type: 'integer', minimum: 0, maximum: 9 },
+        share: {
+          type: 'string',
+          format: 'qualy-decimal',
+          'x-qualy-maxScale': 2,
+          'x-qualy-maximum': '1',
+        },
+        kind: { type: 'string', enum: ['x', 'y'] },
+        on: { type: 'boolean' },
+        when: { type: 'string', format: 'date' },
+      },
+      required: ['name', 'n', 'share', 'kind', 'on', 'when'],
+      additionalProperties: false,
+    })
+    const objects: unknown[] = [
+      {},
+      { name: 'ab', n: 3 },
+      { name: '', n: 3 },
+      { name: 'abcd', n: 10 },
+      { name: 'ab' },
+      { n: 3 },
+      { name: 'ab', n: 3, stray: true, other: null },
+      { name: 'ab', n: 3, share: '1.5', kind: 'z', on: 'yes', when: '2026-00-01' },
+      { name: 'ab', n: 3, share: '0.25', kind: 'x', on: false, when: '2026-09-14' },
+      { name: 3, n: 'three' },
+      Object.assign(Object.create(null), { name: 'ab', n: 3 }),
+      null,
+      [],
+      'ab',
+    ]
+    for (const value of objects) {
+      expect(sorted(validateValue(shape, value)), JSON.stringify(value)).toEqual(
+        sorted(oracle(shape, value)),
+      )
+    }
   })
 })

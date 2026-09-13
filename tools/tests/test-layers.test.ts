@@ -42,6 +42,9 @@ const SCRIPTS_MAY_CONNECT = new Set([
   // boots the real production entry, which refuses to assume a database; the
   // script hands the spawned process the compose stack's url
   'tools/quality/smoke-production.ts',
+  // the same production entry, booted under an enforced content security
+  // policy for a browser to open; the url is handed to the process the same way
+  'tools/quality/check-csp-enforce.ts',
   // the benchmark's one database seam: it owns the benchmark database's
   // lifetime and bulk-writes the dataset the production server is measured
   // against; every other benchmark file reaches the database through it

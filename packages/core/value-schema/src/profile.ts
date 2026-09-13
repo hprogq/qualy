@@ -175,7 +175,9 @@ const wordIssues = (
 ): readonly ProfileIssue[] => {
   if (value === undefined) return []
   const limit =
-    key === 'title' ? PROFILE_LIMITS.annotationTitleLength : PROFILE_LIMITS.annotationDescriptionLength
+    key === 'title'
+      ? PROFILE_LIMITS.annotationTitleLength
+      : PROFILE_LIMITS.annotationDescriptionLength
   if (typeof value !== 'string') return [issue(`${path}.${key}`, 'annotation-not-a-string')]
   if (value.length > limit) return [issue(`${path}.${key}`, 'annotation-too-long')]
   return []

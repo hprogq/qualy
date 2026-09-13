@@ -14,8 +14,10 @@
     "./hash": "./src/hash.ts",
     "./regex": "./src/regex.ts"
   },
+  "devDependencies": {
+    "ajv": "catalog:"
+  },
   "dependencies": {
-    "ajv": "catalog:",
     "re2js": "catalog:"
   }
 }
