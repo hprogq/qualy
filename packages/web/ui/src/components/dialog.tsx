@@ -8,6 +8,7 @@ import { FocusTrap, Modal as MModal } from '@mantine/core'
 import { tokens } from '../theme/tokens.stylex.ts'
 import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
+import { veil } from '../lib/veil.ts'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
@@ -69,30 +70,17 @@ function useExit(open: boolean): { shown: boolean; closing: boolean } {
 }
 
 const styles = stylex.create({
-  // One veil for the whole overlay family: the page behind goes out of
-  // focus and a little dimmer, at once and for good. Nothing on it
-  // animates - a backdrop blur under anything that animates is re-run by
-  // WebKit on every frame, and that was the stutter a modal opened with
-  // on an iPhone. The colour is here as well as the blur, so the browser's
-  // chrome has a colour to read off the page's edge.
-  overlay: {
-    isolation: 'isolate',
-    backgroundColor: tokens.scrim,
-    backdropFilter: 'blur(10px)',
-    WebkitBackdropFilter: 'blur(10px)',
-  },
-  // the panel rises and fades in, on its own; the veil is already there
+  // the veil is the family's, in lib/veil.ts: a blur that never moves and
+  // a dimming that fades. The panel rises and fades in, on its own
   entrance: {
     animationName: { default: 'q-dialog-in', [REDUCE]: 'none' },
     animationDuration: { default: '170ms', [REDUCE]: '0s' },
     animationTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
   },
   // the way out: the panel fades and settles a little lower - a little
-  // faster and a little less far than it came - while the veil stands as
-  // it is until both are gone. The veil carries the blur, and a blur
-  // under an animating opacity is re-run by WebKit on every frame; the
-  // page coming back into focus the instant the panel has gone reads as
-  // the page being given back, not as a cut
+  // faster and a little less far than it came - and the veil's dimming
+  // fades with it; its blur stands until both are gone, and the page
+  // coming back into focus then reads as the page being given back
   panelClosing: {
     opacity: 0,
     transform: 'translateY(4px)',
@@ -365,10 +353,12 @@ function DialogContent({
       transitionProps={{ duration: 0 }}
       size={size}
     >
-      <MModal.Overlay
-        data-slot="dialog-overlay"
-        {...stylex.props(styles.overlay)}
-      />
+      <MModal.Overlay data-slot="dialog-overlay" {...stylex.props(veil.blur)}>
+        <div
+          aria-hidden
+          {...stylex.props(veil.tint, closing && veil.tintClosing, closing && veil.tintExit(EXIT_MS))}
+        />
+      </MModal.Overlay>
       <MModal.Content
         data-slot="dialog-content"
         ref={applyA11y}

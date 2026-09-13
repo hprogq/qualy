@@ -8,6 +8,7 @@ import { Modal as MModal } from '@mantine/core'
 import { tokens } from '../theme/tokens.stylex.ts'
 import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
+import { veil } from '../lib/veil.ts'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
 
@@ -62,13 +63,8 @@ function useExit(open: boolean): { shown: boolean; closing: boolean } {
 }
 
 const styles = stylex.create({
-  // the same veil and the same material as the dialog's; see that file
-  overlay: {
-    isolation: 'isolate',
-    backgroundColor: tokens.scrim,
-    backdropFilter: 'blur(10px)',
-    WebkitBackdropFilter: 'blur(10px)',
-  },
+  // the same veil (lib/veil.ts) and the same material as the dialog's; see
+  // that file
   entrance: {
     animationName: { default: 'q-dialog-in', [REDUCE]: 'none' },
     animationDuration: { default: '170ms', [REDUCE]: '0s' },
@@ -325,10 +321,12 @@ function AlertDialogContent({
       transitionProps={{ duration: 0 }}
       size={size === 'default' ? '28rem' : '20rem'}
     >
-      <MModal.Overlay
-        data-slot="alert-dialog-overlay"
-        {...stylex.props(styles.overlay)}
-      />
+      <MModal.Overlay data-slot="alert-dialog-overlay" {...stylex.props(veil.blur)}>
+        <div
+          aria-hidden
+          {...stylex.props(veil.tint, closing && veil.tintClosing, closing && veil.tintExit(EXIT_MS))}
+        />
+      </MModal.Overlay>
       <MModal.Content
         data-slot="alert-dialog-content"
         data-size={size}

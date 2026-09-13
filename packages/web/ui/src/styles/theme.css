@@ -216,6 +216,16 @@
      scaled panel is a texture on the compositor for the length of the
      animation, and WebKit draws its text and edges soft until the frame
      it ends - the panel would appear to sharpen as it settled */
+  /* the veil's dimming, a plain colour above the blur, fades in on its
+     own; the blur itself never animates */
+  @keyframes q-tint-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
   @keyframes q-dialog-in {
     from {
       opacity: 0;

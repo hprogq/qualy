@@ -9,6 +9,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../theme/tokens.stylex.ts'
 import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
+import { veil } from '../lib/veil.ts'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
@@ -36,25 +37,8 @@ const SLIDE_IN = {
 } as const
 
 const styles = stylex.create({
-  // the same veil as the dialog's, at once and for good; see that file
-  overlay: {
-    // a reader who asked for less motion is answered on the way in and on
-    // the way out alike, whether or not this panel is currently leaving
-    transitionProperty: { default: null, [REDUCE]: 'none' },
-    isolation: 'isolate',
-    backgroundColor: tokens.scrim,
-    backdropFilter: 'blur(10px)',
-    WebkitBackdropFilter: 'blur(10px)',
-  },
-  // both layers leave the way they came, and neither answers the pointer on
-  // the way out
-  overlayClosing: {
-    opacity: 0,
-    transitionProperty: { default: 'opacity', [REDUCE]: 'none' },
-    transitionDuration: { default: '200ms', [REDUCE]: '0s' },
-    transitionTimingFunction: 'ease',
-    pointerEvents: 'none',
-  },
+  // the veil is the family's, in lib/veil.ts; on the way out the panel
+  // slides while the veil's dimming fades, and neither answers the pointer
   panelClosing: {
     transitionProperty: { default: 'transform', [REDUCE]: 'none' },
     transitionDuration: { default: '200ms', [REDUCE]: '0s' },
@@ -446,8 +430,13 @@ function SheetContent({
       <MDrawer.Overlay
         data-slot="sheet-overlay"
         {...(closing ? { 'data-closing': '' } : {})}
-        {...stylex.props(styles.overlay, closing && styles.overlayClosing)}
-      />
+        {...stylex.props(veil.blur)}
+      >
+        <div
+          aria-hidden
+          {...stylex.props(veil.tint, closing && veil.tintClosing, closing && veil.tintExit(EXIT_MS))}
+        />
+      </MDrawer.Overlay>
       <MDrawer.Content
         data-slot="sheet-content"
         data-side={side}
