@@ -27,6 +27,11 @@ const styles = stylex.create({
     animationTimingFunction: 'ease',
     isolation: 'isolate',
     willChange: 'opacity',
+    // the page behind goes dark and out of focus: the panel is then the
+    // one white thing in the viewport without needing a colour of its own
+    backgroundColor: tokens.scrim,
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
   },
   entrance: {
     animationName: { default: 'q-pop-in', [REDUCE]: 'none' },
@@ -38,6 +43,7 @@ const styles = stylex.create({
     display: 'grid',
     gap: 24,
     padding: 24,
+    boxShadow: tokens.elevation3,
     outlineStyle: 'none',
   },
   // The measure is the widget's `size` prop, because it sizes the panel with
@@ -264,7 +270,7 @@ function AlertDialogContent({
       transitionProps={{ duration: 100 }}
       size={size === 'default' ? '28rem' : '20rem'}
     >
-      <MModal.Overlay data-slot="alert-dialog-overlay" blur={2} {...stylex.props(styles.overlay)} />
+      <MModal.Overlay data-slot="alert-dialog-overlay" blur={8} {...stylex.props(styles.overlay)} />
       <MModal.Content
         data-slot="alert-dialog-content"
         data-size={size}

@@ -13628,3 +13628,18 @@ SIGTERM -> exit 0
 - **测试**:`batch-admin.browser.test.tsx` 只改一处——「不管理任何东西的人」那条用 active 批次,名称现在同时出现在 hero 的 h2 与表格链接里,`getByText` 严格模式会报两个匹配,改为分别断 heading 与 link。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm build` ok;`vitest tools/tests/{catalogs,client-paths,semantic-tokens}` 3 / 16;`pnpm test:browser` Test Files 46 passed (46); Tests 325 passed (325); exit 0;`vitest tools/tests` Test Files 36 passed (36); Tests 235 passed (235); exit 0。截图(生产入口 1280,`listBatches` 在 playwright 网络层打桩,其余全真):1 / 3 / 5 个进行中、3 个按「下一个批次」后、0 个进行中(hero 消失、列表上移)、草稿筛选、空搜索、页面加载失败态。
 - **待办(P5)**:hero 右栏的待办数据接口(审核队列数、本人待修改数,以及「是否审核者」决定审核行是否出现);`PLACEHOLDER_AGENDA` 届时删除。
+
+## 前端重做:近白画布,分层改走描边与投影(2026-09-13,完成)
+
+`feat(web): near-white canvas layered by edge and shadow`。起因:0.955 / 0.005 的暖底在稿子里是卡片之间的缝,在真实产品里是画布(首帧、空态、宽屏两侧、数据少的整页),大面积时读作旧纸;对照 Linear `#F8F8F9`(L 0.979)、Notion `#FAFAFA`、Claude 应用 `#FCFCFB`,产品画布都在 L ≥ 0.97、C ≤ 0.003。底推近白之后「灰底衬白卡」的分层失效,改成 GitHub / Linear 式的描边 + 投影分层,token 整体跟着走。
+
+- **画布与面**:`--q-background` 0.99 / 0.001;`--q-surface-muted` 0.93 / 0.005 → 0.96 / 0.002,只用于小面积(pill 轨道、hero 待办栏的底、行 hover)——hero 右栏原来是 surfaceMuted 40% 混白,现在直接站在 surfaceMuted 上。
+- **线分两档**:`--q-border` 0.06 → 0.10(卡与表的外沿);新增 `--q-divider` 0.06(表格行、卡内分隔:`Table` 的行线与 footer 线、hero 的待办行与左右栏分界、表脚线)。
+- **文字灰去彩**:muted 0.54 / 0.006 → 0.52 / 0.003,surface-muted-foreground 0.45 → 0.40 / 0.003;墨保留 0.006——暖黑是品牌,暖灰在白纸上是 sepia。
+- **焦点环**:0.708 浅灰(白底上不可见)→ 墨 50%(`oklch(0.21 0.006 80 / 0.5)`);alpha 归 token 自己,theme.css 的 reset 不再二次混 50%(否则 25%);深色 ring 随之补 `/ 0.5`,深色下与原来等值。
+- **elevation 三档**:ring 全部提到描边的 0.10(e1 `0 1px 2px / 0.04`,e2 加 `0 12px 24px -8px / 0.10`),新增 `--q-elevation-3`(模态面板,`0 24px 48px -12px / 0.25`)与 `--q-scrim`(0.45,深色 0.6);深色三档退化为 ring 0.08 / 0.10 / 0.12。`tokens.stylex.ts` 加 `divider` / `elevation3` / `scrim`。
+- **模态框**:Dialog / AlertDialog / Sheet 的 overlay 由 widget 默认 `rgba(0 0 0 / 0.6)` + blur 2 改成 `tokens.scrim` + blur 8(StyleX 在 priority 层,压过 `@layer mantine` 的 `--overlay-bg`);Dialog / AlertDialog 面板 `boxShadow: tokens.elevation3`。注意 scrim 0.45 比原来的 0.6 **更浅**,靠 blur 8 与 e3 长投影把面板分出来——截图核对成立;嫌淡就只动 `--q-scrim`。
+- **表格易读性**:阶段列改墨色(它是信息,不是元数据),时间列仍 muted;一行两墨两灰。
+- **首帧**:`index.html` 两处底色跟 token(`index-html.test` 钉住,脚本 hash 未动);`docs/brand.md` 值同步。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests/{semantic-tokens,index-html}` 2 / 14;`pnpm build` ok;`pnpm test:browser` 第一遍 1 红——baseline 快照的 `borderColor` 0.06 → 0.1、`outlineColor` 由 color-mix 的 oklab 值变为 `oklch(0.21 0.006 80 / 0.5)`,逐属性比对确认只有这两项变动,`-u` 更新后 Test Files 46 passed (46); Tests 325 passed (325);`vitest tools/tests` Test Files 36 passed (36); Tests 235 passed (235); exit 0。截图(1440 宽,生产入口,列表接口打桩):列表页、新建批次模态框、草稿筛选空态。
+- **未做(顾问同一轮里提的,等定夺)**:hero 自己查 `status=active`、搜索时收起 hero、阶段标签按段宽显隐 + tooltip、全站点分日期 formatter、右栏「截止 + 剩余」优先、草稿行两列文案、pill 靠左去「全部批次」标签、零计数 pill 置灰、空态收进白卡、表脚只在有翻页时渲染、`html { background }` 单一来源。

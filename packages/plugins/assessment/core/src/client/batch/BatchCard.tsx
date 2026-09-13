@@ -273,8 +273,8 @@ const styles = stylex.create({
       [breakpoints.phone]: 1,
     },
     borderStyle: 'solid',
-    borderColor: tokens.border,
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, ${tokens.surface})`,
+    borderColor: tokens.divider,
+    backgroundColor: tokens.surfaceMuted,
   },
   stage: {
     display: 'flex',
@@ -307,7 +307,7 @@ const styles = stylex.create({
     paddingBlock: 14,
     borderTopWidth: 1,
     borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
+    borderTopColor: tokens.divider,
   },
   agendaWords: {
     display: 'flex',

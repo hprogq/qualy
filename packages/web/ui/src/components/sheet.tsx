@@ -48,6 +48,9 @@ const styles = stylex.create({
     transitionProperty: { default: null, [REDUCE]: 'none' },
     isolation: 'isolate',
     willChange: 'opacity',
+    backgroundColor: tokens.scrim,
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
   },
   // both layers leave the way they came, and neither answers the pointer on
   // the way out
@@ -448,7 +451,7 @@ function SheetContent({
     >
       <MDrawer.Overlay
         data-slot="sheet-overlay"
-        blur={2}
+        blur={8}
         {...(closing ? { 'data-closing': '' } : {})}
         {...stylex.props(styles.overlay, closing && styles.overlayClosing)}
       />

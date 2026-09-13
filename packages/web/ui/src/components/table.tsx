@@ -30,14 +30,14 @@ const styles = stylex.create({
   footer: {
     borderTopWidth: 1,
     borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
+    borderTopColor: tokens.divider,
     backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
     fontWeight: 500,
   },
   row: {
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
+    borderBottomColor: tokens.divider,
     transitionProperty: 'color, background-color, border-color',
     transitionDuration: '150ms',
     transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',

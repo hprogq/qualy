@@ -63,7 +63,7 @@
     padding: 0;
     border: 0 solid;
     border-color: var(--q-border);
-    outline-color: color-mix(in oklab, var(--q-focus-ring) 50%, transparent);
+    outline-color: var(--q-focus-ring);
   }
   /* a heading names a section; its size is the screen's business */
   h1,

@@ -1,22 +1,33 @@
 /* Qualy semantic tokens: the single source every styling system reads.
  * Tailwind consumes them through the shadcn variable aliases in theme.css,
  * StyleX through theme/tokens.stylex.ts, and the widget library theme
- * bridge reads the same names. The palette is the redesign's: every
- * neutral sits on hue 80 at a chroma of 0.003-0.006 (a warm grey, never a
- * blue one), the page is a shade below white so that white cards stand on
- * it, ink is a warm near-black, and the only saturation on a page is a
- * standing colour. Dark mode flips on the .dark root class as before. */
+ * bridge reads the same names. The palette is the redesign's: ink is a
+ * warm near-black on hue 80, the page is near white with the faintest
+ * trace of the same hue, and the only saturation on a page is a standing
+ * colour. A warm neutral reads as paper only while it is bright: darkened
+ * or on a large area it reads as old paper, which is why the canvas sits
+ * at 0.99 and the one grey below it keeps to small areas. Surfaces are
+ * told apart from the canvas by their edge and their shadow, not by
+ * lightness - the border and elevation tokens carry that. Dark mode flips
+ * on the .dark root class as before. */
 :root {
   color-scheme: light;
-  --q-background: oklch(0.955 0.005 80);
+  --q-background: oklch(0.99 0.001 80);
   --q-foreground: oklch(0.21 0.006 80);
   --q-surface: oklch(1 0 0);
-  --q-surface-muted: oklch(0.93 0.005 80);
+  /* the one grey of the light scheme, for small areas only: a segmented
+     control's track, a card's aside, a row under the pointer */
+  --q-surface-muted: oklch(0.96 0.002 80);
   --q-surface-elevated: oklch(1 0 0);
-  /* lines are alpha black, so they read the same on the page and on a card */
-  --q-border: oklch(0 0 0 / 0.06);
+  /* lines are alpha black, so they read the same on the page and on a
+     card; two weights, because the lines do the layering now - the edge
+     of a card or a table, and the lighter rule between its rows */
+  --q-border: oklch(0 0 0 / 0.1);
+  --q-divider: oklch(0 0 0 / 0.06);
   --q-input: oklch(1 0 0);
-  --q-focus-ring: oklch(0.708 0.005 80);
+  /* a monochrome system's focus ring is its ink; the alpha is the ring's
+     own, and nothing else dilutes it */
+  --q-focus-ring: oklch(0.21 0.006 80 / 0.5);
   /* the primary is ink: a filled control is the page's own text colour */
   --q-primary: oklch(0.21 0.006 80);
   --q-primary-foreground: oklch(0.985 0.003 80);
@@ -28,11 +39,12 @@
   --q-warning-foreground: oklch(0.555 0.163 48.998);
   --q-success: oklch(0.696 0.17 162.48);
   --q-success-foreground: oklch(0.508 0.118 165.612);
-  /* three greys for text and no more: ink, the secondary at 0.54 (clears
+  /* three greys for text and no more: ink, the secondary at 0.52 (clears
      4.5:1 on every surface here), and the shade between them for a row
-     the pointer has warmed */
-  --q-muted-foreground: oklch(0.54 0.006 80);
-  --q-surface-muted-foreground: oklch(0.45 0.006 80);
+     the pointer has warmed. Only the ink keeps the hue's full chroma: a
+     warm black is the brand, a warm grey on white paper is sepia */
+  --q-muted-foreground: oklch(0.52 0.003 80);
+  --q-surface-muted-foreground: oklch(0.4 0.003 80);
   /* the tint a chosen option wears: a whisper of the primary, stronger on
      the edge than the fill, re-balanced for dark where 5% vanishes */
   --q-selected-border: color-mix(in oklab, var(--q-primary) 30%, transparent);
@@ -40,13 +52,20 @@
   /* the ground a row that removes something takes under the pointer; it
      carries further in the dark, where a 10% wash disappears */
   --q-danger-surface: color-mix(in oklab, var(--q-danger) 10%, transparent);
-  /* how far a surface stands off the page: a contact shadow with a
-     hairline for a card at rest, a deeper one for the card that leads a
-     page. In the dark a shadow is invisible, so the same two tokens
-     degrade to a rim - which is why they are tokens at all */
-  --q-elevation-1: 0 0 0 1px oklch(0 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.06);
+  /* how far a surface stands off the page: the ring is the border's own
+     weight, the shadow says the distance - a card at rest, the card that
+     leads a page, a panel over the page. In the dark a shadow is
+     invisible, so the same tokens degrade to a rim - which is why they
+     are tokens at all */
+  --q-elevation-1: 0 0 0 1px oklch(0 0 0 / 0.1), 0 1px 2px oklch(0 0 0 / 0.04);
   --q-elevation-2:
-    0 0 0 1px oklch(0 0 0 / 0.05), 0 1px 3px oklch(0 0 0 / 0.07), 0 6px 16px oklch(0 0 0 / 0.04);
+    0 0 0 1px oklch(0 0 0 / 0.1), 0 2px 4px oklch(0 0 0 / 0.04),
+    0 12px 24px -8px oklch(0 0 0 / 0.1);
+  --q-elevation-3: 0 0 0 1px oklch(0 0 0 / 0.08), 0 24px 48px -12px oklch(0 0 0 / 0.25);
+  /* the veil behind a modal panel: the page goes dark and out of focus, so
+     the panel is the one white thing in the viewport without a colour of
+     its own */
+  --q-scrim: oklch(0 0 0 / 0.45);
   /* three radii and a pill: a small badge, a control, a card or a table */
   --q-radius-sm: 4px;
   --q-radius-md: 8px;
@@ -61,9 +80,10 @@
   --q-surface: oklch(0.21 0.006 80);
   --q-surface-muted: oklch(0.25 0.006 80);
   --q-surface-elevated: oklch(0.24 0.006 80);
-  --q-border: oklch(1 0 0 / 0.08);
+  --q-border: oklch(1 0 0 / 0.1);
+  --q-divider: oklch(1 0 0 / 0.06);
   --q-input: oklch(1 0 0 / 15%);
-  --q-focus-ring: oklch(0.556 0.005 80);
+  --q-focus-ring: oklch(0.556 0.005 80 / 0.5);
   /* ink and paper trade places */
   --q-primary: oklch(0.93 0.004 80);
   --q-primary-foreground: oklch(0.17 0.006 80);
@@ -78,6 +98,8 @@
   --q-selected-border: color-mix(in oklab, var(--q-primary) 20%, transparent);
   --q-selected-surface: color-mix(in oklab, var(--q-primary) 10%, transparent);
   --q-danger-surface: color-mix(in oklab, var(--q-danger) 20%, transparent);
-  --q-elevation-1: 0 0 0 1px oklch(1 0 0 / 0.06);
-  --q-elevation-2: 0 0 0 1px oklch(1 0 0 / 0.08);
+  --q-elevation-1: 0 0 0 1px oklch(1 0 0 / 0.08);
+  --q-elevation-2: 0 0 0 1px oklch(1 0 0 / 0.1);
+  --q-elevation-3: 0 0 0 1px oklch(1 0 0 / 0.12);
+  --q-scrim: oklch(0 0 0 / 0.6);
 }

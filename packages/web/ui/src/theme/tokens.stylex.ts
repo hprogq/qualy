@@ -12,6 +12,7 @@ export const tokens = stylex.defineVars({
   surfaceMuted: 'var(--q-surface-muted)',
   surfaceElevated: 'var(--q-surface-elevated)',
   border: 'var(--q-border)',
+  divider: 'var(--q-divider)',
   input: 'var(--q-input)',
   focusRing: 'var(--q-focus-ring)',
   primary: 'var(--q-primary)',
@@ -32,4 +33,6 @@ export const tokens = stylex.defineVars({
   radiusPill: 'var(--q-radius-pill)',
   elevation1: 'var(--q-elevation-1)',
   elevation2: 'var(--q-elevation-2)',
+  elevation3: 'var(--q-elevation-3)',
+  scrim: 'var(--q-scrim)',
 })

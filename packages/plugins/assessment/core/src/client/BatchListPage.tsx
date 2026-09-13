@@ -252,6 +252,12 @@ const styles = stylex.create({
     fontSize: 13,
     color: tokens.mutedForeground,
   },
+  // the stage is what the row says about the batch, the time is when: a
+  // row of one ink cell and three grey ones read as a row of nothing
+  stage: {
+    fontSize: 13,
+    color: tokens.foreground,
+  },
   time: {
     fontVariantNumeric: 'tabular-nums',
   },
@@ -270,7 +276,7 @@ const styles = stylex.create({
     paddingInline: 20,
     borderTopWidth: 1,
     borderTopStyle: 'solid',
-    borderTopColor: tokens.border,
+    borderTopColor: tokens.divider,
   },
   pagerNote: {
     fontSize: 13,
@@ -688,7 +694,7 @@ export default function BatchListPage() {
                                   )}
                                 </span>
                               </TableCell>
-                              <TableCell xstyle={[styles.cell, styles.quiet]}>
+                              <TableCell xstyle={[styles.cell, styles.stage]}>
                                 {stageOf(row, format)}
                               </TableCell>
                               <TableCell xstyle={[styles.cell, styles.quiet, styles.time]}>

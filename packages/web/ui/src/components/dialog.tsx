@@ -38,19 +38,25 @@ const styles = stylex.create({
     animationTimingFunction: 'ease',
     isolation: 'isolate',
     willChange: 'opacity',
+    // the page behind goes dark and out of focus: the panel is then the
+    // one white thing in the viewport without needing a colour of its own
+    backgroundColor: tokens.scrim,
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
   },
   entrance: {
     animationName: { default: 'q-pop-in', [REDUCE]: 'none' },
     animationDuration: { default: '150ms', [REDUCE]: '0s' },
     animationTimingFunction: 'ease',
   },
-  // structure only - the rows a dialog is made of; the surface (colour,
-  // radius, shadow) is the widget's own under the product theme
+  // the rows a dialog is made of, and how far it stands over the page;
+  // colour and radius are the widget's own under the product theme
   content: {
     position: 'relative',
     display: 'grid',
     gap: 24,
     padding: 24,
+    boxShadow: tokens.elevation3,
     // size and leading travel together: the utility this replaces set both,
     // and stating only the size left the panel a fraction taller
     fontSize: 14,
@@ -296,7 +302,7 @@ function DialogContent({
       transitionProps={{ duration: 100 }}
       size={size}
     >
-      <MModal.Overlay data-slot="dialog-overlay" blur={2} {...stylex.props(styles.overlay)} />
+      <MModal.Overlay data-slot="dialog-overlay" blur={8} {...stylex.props(styles.overlay)} />
       <MModal.Content
         data-slot="dialog-content"
         ref={applyA11y}
