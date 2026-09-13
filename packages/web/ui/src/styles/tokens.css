@@ -79,6 +79,10 @@
   --q-radius-pill: 9999px;
 }
 
+/* the dark scheme answers to either of the two marks the root carries for
+   it, so the first frame's mark and the theme's class can never disagree
+   about which tokens apply */
+:root[data-mode='dark'],
 .dark {
   color-scheme: dark;
   --q-background: oklch(0.17 0.006 80);
