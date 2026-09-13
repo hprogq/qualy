@@ -2,7 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { lockPathFor, readLock } from '@qualy/assembly'
+import { parseWebReleaseIdentity } from '@qualy/release-contract'
 import { manifestPath, repoRoot } from './manifest.ts'
+import { WEB_BUILD_METADATA } from './release-vite.ts'
 
 // the web build stays in apps/web (composition root), the runtime artifact
 // belongs to the web plugin: stage dist into its package directory
@@ -12,6 +14,16 @@ const target = path.join(repoRoot, 'packages/plugins/infra/web/client-dist')
 
 if (!fs.existsSync(path.join(source, 'index.html'))) {
   throw new Error(`${source} is missing; run the web build first`)
+}
+// The build names itself: the release plugin writes the identity beside the
+// bundle, and a build without it is not a release and is not staged.
+const metadata = path.join(source, WEB_BUILD_METADATA)
+if (!fs.existsSync(metadata)) {
+  throw new Error(`${metadata} is missing; the web build did not run the release plugin`)
+}
+const release = parseWebReleaseIdentity(JSON.parse(fs.readFileSync(metadata, 'utf8')))
+if (release.mode !== 'production') {
+  throw new Error(`${metadata} names a ${release.mode} release; stage a production build`)
 }
 // The bundle carries the hash of the assembly it was built from. A dotfile,
 // so the static server never serves it; production boot compares it against
@@ -79,7 +91,7 @@ const compress = (dir: string) => {
 }
 compress(target)
 
-console.log(`staged web assets -> ${path.relative(process.cwd(), target)}`)
+console.log(`staged web release ${release.releaseId} -> ${path.relative(process.cwd(), target)}`)
 console.log(
   `  precompressed ${compressed} file(s), ${(saved / 1048576).toFixed(2)} MB saved on the wire`,
 )

@@ -17,6 +17,7 @@
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*"
   },
   "devDependencies": {

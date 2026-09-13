@@ -5,7 +5,7 @@ import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
-import { qualyBootFrame, qualyPlugins } from '@qualy/web-build/vite'
+import { qualyBootFrame, qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 
 const stylexUnplugin =
@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => ({
   // StyleX must transform the file before the React plugin sees it; Tailwind
   // stays until the last migration phase (docs/ui-platform-migration-mantine.md)
   plugins: [
+    // the release this build or dev session is: named once, written into
+    // the bundle and beside it, answered at /__qualy/release in dev
+    qualyRelease(),
     qualyPlugins(),
     // the first frame, and beside it what the shell says when nothing of the
     // application ever runs - from the same table the cold start reads

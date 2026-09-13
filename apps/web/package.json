@@ -22,6 +22,7 @@
     "@qualy/plugin-storage": "workspace:*",
     "@qualy/plugin-storage-cos": "workspace:*",
     "@qualy/plugin-storage-local": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
     "@qualy/web-i18n": "workspace:*",

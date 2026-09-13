@@ -20,7 +20,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 ## 目录布局(2026-08-07 物理重组后)
 
 - `apps/server` 后端宿主(boot 入口 src/main.ts、运行 runner src/run.ts);`apps/web` 浏览器组合根(@qualy/web-app);`apps/cli` 装配 CLI(`pnpm qualy` 即 `node apps/cli/src/main.ts`)。
-- `packages/core/` = plugin-kit、assembly(子路径 `/host` 宿主解析、`/testkit` 测试装配)、api-kit;`packages/contracts/` = assembly、auth、rbac、ui、i18n(**包名不变**,仍是 @qualy/\*-contract);`packages/web/` = runtime(含 `./api` typed client,原 api-client 已并入)、i18n、ui;`packages/build/web` = @qualy/web-build(vite 插件、组件收集、产物 staging);`packages/plugins/{infra,base,demo}/*` 插件。
+- `packages/core/` = plugin-kit、assembly(子路径 `/host` 宿主解析、`/testkit` 测试装配)、api-kit;`packages/contracts/` = assembly、auth、rbac、ui、i18n、release(**包名不变**,仍是 @qualy/\*-contract);`packages/web/` = runtime(含 `./api` typed client,原 api-client 已并入)、i18n、ui;`packages/build/web` = @qualy/web-build(vite 插件、组件收集、产物 staging);`packages/plugins/{infra,base,demo}/*` 插件。
 - `tools/` = fixtures(seed)、quality(typecheck、check-client-components、smoke-production)、repo(plugin-add、vendor-sync)、tests(仓库级门禁套件)、lib。根 scripts 只是转发,不放逻辑。
 - **零 codegen**:仓库唯一生成物是 `db/migrations/` 的 SQL。浏览器聚合是 vite 期 virtual module(`virtual:qualy/plugins`,@qualy/web-build 从 resolution 现算,物化到 `apps/web/.qualy/`,gitignored);类型聚合不存在——插件 client 直接 import 本插件 `src/client/api.ts`。生成的模块内 import 一律**相对路径**并配静态 import 的 scan 孪生文件:绝对文件路径在 vite 里是 root 相对 URL,扫描器与 dev server 都不跟进,曾以「冷缓存双 React」形式炸掉整个浏览器套件。
 

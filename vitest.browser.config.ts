@@ -7,7 +7,7 @@ import { playwright } from '@vitest/browser-playwright'
 import type { BrowserCommand } from 'vitest/node'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
-import { qualyPlugins } from '@qualy/web-build/vite'
+import { qualyPlugins, qualyRelease } from '@qualy/web-build/vite'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
@@ -39,6 +39,9 @@ export default defineConfig({
   // pipeline - a test run that skipped the compiler would assert against
   // unstyled markup and pass vacuously
   plugins: [
+    // the suite runs under a development release of its own, and the
+    // vitest server answers for it, as the app's dev server does
+    qualyRelease(),
     qualyPlugins(),
     stylexUnplugin({
       useCSSLayers: true,

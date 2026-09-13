@@ -15,6 +15,7 @@
     "packages/contracts/*/src",
     "packages/contracts/*/tests",
     "packages/build/*/src",
+    "packages/build/*/tests",
     "packages/plugins/*/*/src",
     "packages/plugins/*/*/tests"
   ],

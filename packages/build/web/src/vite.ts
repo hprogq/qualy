@@ -5,6 +5,15 @@ import { BOOT_COPY_ID, BOOT_PLACEHOLDER, bootFrame } from '@qualy/brand/boot'
 import { repoRoot } from './manifest.ts'
 import { buildPluginModuleSource, buildPluginScanSource } from './collect.ts'
 
+export {
+  RELEASE_ID_VARIABLE,
+  RELEASE_MODULE_ID,
+  WEB_BUILD_METADATA,
+  qualyRelease,
+  releaseIdFor,
+  type ReleaseIdSource,
+} from './release-vite.ts'
+
 // The plugin aggregate as `virtual:qualy/plugins`, materialised into a cache
 // file under apps/web rather than served from memory.
 //
