@@ -18,7 +18,7 @@ const slots: RouteSlots = {
   pageError: () => 'page-error',
   layoutError: () => 'layout-error',
   componentMissing: (id) => `missing:${id}`,
-  notFound: 'NOT_FOUND',
+  notFound: () => 'NOT_FOUND',
   empty: 'EMPTY',
 }
 

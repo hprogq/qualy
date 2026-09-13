@@ -16,7 +16,12 @@ export interface RouteSlots {
   pageError: (retry: () => void) => ReactNode
   layoutError: (retry: () => void) => ReactNode
   componentMissing: (componentId: string) => ReactNode
-  notFound: ReactNode
+  /**
+   * the screen for an address that leads nowhere, told the way home as the
+   * builder resolved it - the host's preferred page when that is routable,
+   * else the first routable one - and whether it stands in a shell or alone
+   */
+  notFound: (context: { homePath?: string; standalone: boolean }) => ReactNode
   empty: ReactNode
 }
 
@@ -66,7 +71,10 @@ export function buildManifestRoutes({
     index: true,
     element: home ? <Navigate to={home.path} replace /> : slots.empty,
   }
-  const catchAll: RouteObject = { path: '*', element: slots.notFound }
+  const catchAll: RouteObject = {
+    path: '*',
+    element: slots.notFound({ homePath: home?.path, standalone: shell === undefined }),
+  }
 
   const routes: RouteObject[] = manifest.layouts.map((layout) => ({
     element: (

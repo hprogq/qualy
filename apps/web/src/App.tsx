@@ -25,15 +25,23 @@ import { catalogs, components, errorMessages } from 'virtual:qualy/plugins'
 // what the host draws when there is no page to draw: a route that leads
 // nowhere, and a plugin component that failed to load
 const styles = stylex.create({
+  // the whole of the content area, not a band of it: in a shell the page
+  // seat is a growing flex column and this grows with it; standing alone
+  // it is the viewport. A notice that took 60vh left the rest of the page
+  // to the ground behind it, which need not be the same colour
   notice: {
     display: 'flex',
-    minHeight: '60vh',
+    flexGrow: 1,
+    minHeight: 0,
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
     paddingInline: 24,
     textAlign: 'center',
+  },
+  noticeStandalone: {
+    minHeight: '100dvh',
   },
   noticeTitle: {
     fontSize: 24,
@@ -51,7 +59,7 @@ const styles = stylex.create({
   },
   failureFull: {
     display: 'flex',
-    minHeight: '100vh',
+    minHeight: '100dvh',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
@@ -61,7 +69,8 @@ const styles = stylex.create({
   // the shell's content, not stacked in its corner like a caption of nothing
   failureInline: {
     display: 'flex',
-    minHeight: '60vh',
+    flexGrow: 1,
+    minHeight: 0,
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
@@ -143,25 +152,30 @@ function ManifestRouter() {
       componentMissing: (component) => (
         <Failure message={format(commonMessages.componentMissing, { component })} />
       ),
-      notFound: (
+      // the way out of a mistyped address is the home the route builder
+      // resolved - one resolution, the same one the origin redirects to - so
+      // a viewer with any page to open is always offered it; one with none
+      // has nowhere to be sent, and the shell's own header still offers
+      // whatever the session allows
+      notFound: ({ homePath, standalone }) => (
         <Notice
           title={format(commonMessages.notFoundTitle)}
           hint={format(commonMessages.notFoundHint)}
-          // the way out of a mistyped address; a viewer with no home page
-          // has nowhere to be sent, and the shell's own header still offers
-          // whatever the session allows
-          action={home?.target.kind === 'page' ? home.target.path : undefined}
+          action={homePath}
           actionLabel={format(commonMessages.goHome)}
+          standalone={standalone}
         />
       ),
+      // no page to open at all: there is no shell either, so this is the screen
       empty: (
         <Notice
           title={format(commonMessages.emptyPagesTitle)}
           hint={format(commonMessages.emptyPagesHint)}
+          standalone
         />
       ),
     }),
-    [format, home],
+    [format],
   )
   return (
     <ManifestRoutes
@@ -181,14 +195,17 @@ function Notice({
   hint,
   action,
   actionLabel,
+  standalone = false,
 }: {
   title: string
   hint: string
   action?: string
   actionLabel?: string
+  /** no shell around it: the notice is the viewport */
+  standalone?: boolean
 }) {
   return (
-    <div {...stylex.props(styles.notice)}>
+    <div {...stylex.props(styles.notice, standalone && styles.noticeStandalone)}>
       <h2 {...stylex.props(styles.noticeTitle)}>{title}</h2>
       <p {...stylex.props(styles.noticeHint)}>{hint}</p>
       {action && (
