@@ -11,13 +11,23 @@ import { layoutMessages as m } from './i18n.ts'
 // nothing else - a workspace somebody has entered does not sign every
 // screen - and it sits at the foot of the viewport when the page is short,
 // after the page when it is not.
+//
+// The foot takes no share of the shell's height: the page above it is the
+// one thing that grows. It was once a page container itself, and a page
+// container grows - so a short page and its foot split the viewport
+// between them, and the foot stood in the middle of the screen. Its line
+// and its words keep to the page's own measure, like everything above.
 
 const styles = stylex.create({
-  seat: {
+  foot: {
+    flexShrink: 0,
+    width: '100%',
     paddingTop: 22,
     paddingBottom: 24,
+    fontSize: 12,
+    color: tokens.mutedForeground,
   },
-  foot: {
+  row: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -27,8 +37,6 @@ const styles = stylex.create({
     borderTopWidth: 1,
     borderTopStyle: 'solid',
     borderTopColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
-    fontSize: 12,
-    color: tokens.mutedForeground,
   },
   brand: {
     display: 'flex',
@@ -66,22 +74,24 @@ const LINKS = [
 export function AppFooter() {
   const { format } = useI18n()
   return (
-    <PageContainer xstyle={styles.seat}>
-      <footer data-shell-foot="" {...stylex.props(styles.foot)}>
-        <div {...stylex.props(styles.brand)}>
-          <Wordmark height={12} title="Qualy" />
-          <span {...stylex.props(styles.tagline)}>{format(m.tagline)}</span>
+    <footer data-shell-foot="" {...stylex.props(styles.foot)}>
+      <PageContainer>
+        <div {...stylex.props(styles.row)}>
+          <div {...stylex.props(styles.brand)}>
+            <Wordmark height={12} title="Qualy" />
+            <span {...stylex.props(styles.tagline)}>{format(m.tagline)}</span>
+          </div>
+          <ul {...stylex.props(styles.links)}>
+            {LINKS.map(([id, label]) => (
+              <li key={id}>
+                <a href="#" {...stylex.props(styles.link)}>
+                  {format(label)}
+                </a>
+              </li>
+            ))}
+          </ul>
         </div>
-        <ul {...stylex.props(styles.links)}>
-          {LINKS.map(([id, label]) => (
-            <li key={id}>
-              <a href="#" {...stylex.props(styles.link)}>
-                {format(label)}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </footer>
-    </PageContainer>
+      </PageContainer>
+    </footer>
   )
 }

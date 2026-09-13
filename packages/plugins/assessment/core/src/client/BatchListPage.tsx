@@ -21,7 +21,6 @@ import { EmptyRow } from '@qualy/ui/empty-row'
 import { Reveal } from '@qualy/ui/reveal'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Input } from '@qualy/ui/input'
-import { Skeleton } from '@qualy/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { Count } from '@qualy/ui/count'
@@ -31,6 +30,7 @@ import { assessmentApi } from './api.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
 import { standingOf, type BatchStanding } from './batch/standing.ts'
 import { dotDay } from './batch/dates.ts'
+import { HeroSkeleton, ListSkeleton } from './batch/ListSkeleton.tsx'
 import { BatchCard, type BatchAgenda, type BatchCardRow, type HeroFrame } from './batch/BatchCard.tsx'
 
 // Every batch there is, and the way into one.
@@ -61,8 +61,15 @@ const ARROWS_UP_TO = 4
 
 const styles = stylex.create({
   wide: { width: 'max-content' },
+  // the container takes the shell's height and stacks; the page inside it
+  // is what arrives, and grows to fill it
+  column: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
   page: {
     display: 'flex',
+    flexGrow: 1,
     flexDirection: 'column',
     gap: {
       default: 24,
@@ -110,15 +117,6 @@ const styles = stylex.create({
   fetchSpinner: {
     width: 16,
     height: 16,
-  },
-  skeletonColumn: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
-  skeletonLine: {
-    height: 40,
-    width: '100%',
   },
   results: {
     display: 'flex',
@@ -471,10 +469,13 @@ export default function BatchListPage() {
   } as const
 
   const paged = nextCursor !== null || pageIndex > 0
+  // the card's question is open until the running rounds are known; its
+  // room is kept meanwhile, so the answer does not push the list down
+  const heroPending = runningQuery.isPending && !searching
 
   return (
-    <Reveal>
-      <PageContainer xstyle={styles.page}>
+    <PageContainer xstyle={styles.column}>
+      <Reveal className={stylex.props(styles.page).className}>
         <div {...stylex.props(styles.masthead)}>
           <h1 {...stylex.props(styles.title)}>{format(m.batchesTitle)}</h1>
           <div {...stylex.props(styles.mastheadTools)}>
@@ -514,24 +515,27 @@ export default function BatchListPage() {
           retryLabel={format(commonMessages.retry)}
           onRetry={() => void batches.refetch()}
           skeleton={
-            <div {...stylex.props(styles.skeletonColumn)}>
-              <Skeleton className={stylex.props(styles.skeletonLine).className} />
-              <Skeleton className={stylex.props(styles.skeletonLine).className} />
-              <Skeleton className={stylex.props(styles.skeletonLine).className} />
+            <div {...stylex.props(styles.results)}>
+              {heroPending && <HeroSkeleton />}
+              <ListSkeleton />
             </div>
           }
         >
           <div {...stylex.props(styles.results, batches.isFetching && styles.resultsStale)}>
-            {shown !== undefined && (
-              // keyed by the batch, so a change of batch is a new card
-              // arriving rather than the old one's words swapped in place
-              <BatchCard
-                key={shown.id}
-                row={shown}
-                agenda={PLACEHOLDER_AGENDA}
-                frame={frame}
-                entered={hero.entered}
-              />
+            {heroPending ? (
+              <HeroSkeleton />
+            ) : (
+              shown !== undefined && (
+                // keyed by the batch, so a change of batch is a new card
+                // arriving rather than the old one's words swapped in place
+                <BatchCard
+                  key={shown.id}
+                  row={shown}
+                  agenda={PLACEHOLDER_AGENDA}
+                  frame={frame}
+                  entered={hero.entered}
+                />
+              )
             )}
 
             <section {...stylex.props(styles.list)}>
@@ -726,7 +730,7 @@ export default function BatchListPage() {
             open(batchId)
           }}
         />
-      </PageContainer>
-    </Reveal>
+      </Reveal>
+    </PageContainer>
   )
 }
