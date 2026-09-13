@@ -26,7 +26,7 @@ import { Toaster } from '@qualy/ui/toast'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
-import { clientFor, type ClientOf } from './api.ts'
+import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
 import {
   createQueryUtils,
   retryDelay,
@@ -134,16 +134,19 @@ export function preloadable<T extends ComponentType<any>>(
  */
 export type ClientProvider = (api: HttpApi.Constraint) => unknown
 
-const defaultClientFor: ClientProvider = (() => {
+/** real clients, one per definition, over one transport carrying the page's identity */
+const clientProviderFor = (transport: TransportOptions): ClientProvider => {
   const cache = new WeakMap<object, unknown>()
   return (api: HttpApi.Constraint) => {
     const cached = cache.get(api)
     if (cached) return cached
-    const client = Effect.runSync(clientFor(api as Parameters<typeof clientFor>[0]))
+    const client = Effect.runSync(
+      clientFor(api as Parameters<typeof clientFor>[0], undefined, transport),
+    )
     cache.set(api, client)
     return client
   }
-})()
+}
 
 export interface Runtime {
   clientFor: ClientProvider
@@ -157,6 +160,14 @@ const RuntimeContext = createContext<Runtime | null>(null)
 export interface RuntimeProviderProps {
   /** replaced by harnesses; production derives real clients per definition */
   clientFor?: ClientProvider
+  /**
+   * who the page is, named on every api request. The composition root hands
+   * it in from the bundle's own identity; this package imports no virtual
+   * module. A harness may leave it out.
+   */
+  clientIdentity?: ClientIdentity
+  /** the server refused this page's protocol: told to whoever blocks the page */
+  onClientUnsupported?: () => void
   registry: ComponentRegistry
   children: ReactNode
 }
@@ -181,7 +192,13 @@ const styles = stylex.create({
   },
 })
 
-export function RuntimeProvider({ clientFor: provided, registry, children }: RuntimeProviderProps) {
+export function RuntimeProvider({
+  clientFor: provided,
+  clientIdentity,
+  onClientUnsupported,
+  registry,
+  children,
+}: RuntimeProviderProps) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -197,7 +214,12 @@ export function RuntimeProvider({ clientFor: provided, registry, children }: Run
       }),
   )
   const [runtime] = useState(() => {
-    const provider = provided ?? defaultClientFor
+    const provider =
+      provided ??
+      clientProviderFor({
+        ...(clientIdentity === undefined ? {} : { identity: clientIdentity }),
+        ...(onClientUnsupported === undefined ? {} : { onClientUnsupported }),
+      })
     const utils = new WeakMap<object, unknown>()
     return {
       clientFor: provider,

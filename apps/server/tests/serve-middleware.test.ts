@@ -3,6 +3,12 @@ import { Effect, Exit, Layer, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import { createServer } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import {
+  QUALY_CLIENT_PROTOCOL_HEADER,
+  QUALY_CLIENT_UNSUPPORTED_HEADER,
+} from '@qualy/release-contract'
+import { CLIENT_PROTOCOL_UNSUPPORTED } from '../src/client-compatibility.ts'
 import { serveMiddleware } from '../src/serve-middleware.ts'
 
 // The chain in front of the router, served in front of a router of two
@@ -11,6 +17,9 @@ import { serveMiddleware } from '../src/serve-middleware.ts'
 
 const port = 3210
 const base = `http://127.0.0.1:${port}`
+/** a second chain, serving a wider protocol window: the expand step of a breaking change */
+const widerPort = 3217
+const wider = `http://127.0.0.1:${widerPort}`
 
 let scope: Scope.Closeable
 
@@ -19,20 +28,83 @@ beforeAll(async () => {
   const routes = Layer.mergeAll(
     HttpRouter.add('GET', '/echo', echo),
     HttpRouter.add('POST', '/echo', echo),
+    HttpRouter.add('GET', `${QUALY_API_PREFIX}/echo`, echo),
+    HttpRouter.add('POST', `${QUALY_API_PREFIX}/echo`, echo),
   )
-  const application = HttpRouter.serve(routes, {
-    disableLogger: true,
-    middleware: serveMiddleware({
-      trustedProxies: [],
-      access: { mode: 'off', level: 'Debug', exclude: [] },
-    }),
-  }).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port })))
+  const serve = (at: number, clientProtocol?: { min: number; max: number }) =>
+    HttpRouter.serve(routes, {
+      disableLogger: true,
+      middleware: serveMiddleware({
+        trustedProxies: [],
+        access: { mode: 'off', level: 'Debug', exclude: [] },
+        ...(clientProtocol === undefined ? {} : { clientProtocol }),
+      }),
+    }).pipe(Layer.provide(NodeHttpServer.layer(createServer, { port: at })))
   scope = await Effect.runPromise(Scope.make())
-  await Effect.runPromise(Layer.buildWithScope(application, scope))
+  await Effect.runPromise(
+    Layer.buildWithScope(Layer.mergeAll(serve(port), serve(widerPort, { min: 1, max: 2 })), scope),
+  )
 })
 
 afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
+})
+
+describe('the web client protocol', () => {
+  const api = (headers: Record<string, string>, origin = base) =>
+    fetch(`${origin}${QUALY_API_PREFIX}/echo`, { headers })
+
+  it('serves a request that names no protocol: the api is not the web page alone', async () => {
+    expect((await api({})).status).toBe(200)
+  })
+
+  it('serves the generation it speaks', async () => {
+    expect((await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: '1' })).status).toBe(200)
+  })
+
+  it('refuses a generation outside the window, at once, with the signal the page reads', async () => {
+    for (const declared of ['0', '2', 'one', '-1', '1.0']) {
+      const response = await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: declared })
+      expect(response.status, declared).toBe(409)
+      expect(response.headers.get(QUALY_CLIENT_UNSUPPORTED_HEADER)).toBe('1')
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(response.headers.get('content-type')).toContain('application/json')
+      expect(await response.json()).toEqual({
+        code: CLIENT_PROTOCOL_UNSUPPORTED,
+        received: /^\d+$/.test(declared) ? Number(declared) : declared,
+        supported: { min: 1, max: 1 },
+      })
+    }
+  })
+
+  it('judges only the api mount: the shell, probes and the release endpoint answer anyone', async () => {
+    const response = await fetch(`${base}/echo`, {
+      headers: { [QUALY_CLIENT_PROTOCOL_HEADER]: '0' },
+    })
+    expect(response.status).toBe(200)
+  })
+
+  it('speaks two generations while a breaking change rolls out', async () => {
+    for (const declared of ['1', '2']) {
+      expect((await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: declared }, wider)).status).toBe(200)
+    }
+    expect((await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: '3' }, wider)).status).toBe(409)
+  })
+
+  it('sits inside the origin guard: a request from elsewhere learns nothing about the window', async () => {
+    const response = await fetch(`${base}${QUALY_API_PREFIX}/echo`, {
+      method: 'POST',
+      headers: { 'sec-fetch-site': 'cross-site', [QUALY_CLIENT_PROTOCOL_HEADER]: '0' },
+    })
+    expect(response.status).toBe(403)
+    expect(response.headers.get(QUALY_CLIENT_UNSUPPORTED_HEADER)).toBeNull()
+    // and a same-origin request outside the window is refused before any handler
+    const refused = await fetch(`${base}${QUALY_API_PREFIX}/echo`, {
+      method: 'POST',
+      headers: { 'sec-fetch-site': 'same-origin', [QUALY_CLIENT_PROTOCOL_HEADER]: '0' },
+    })
+    expect(refused.status).toBe(409)
+  })
 })
 
 const post = (headers: Record<string, string>) => fetch(`${base}/echo`, { method: 'POST', headers })

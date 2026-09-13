@@ -8,6 +8,7 @@ import {
   type RequestContext,
 } from '@qualy/api-kit/request'
 import { accessLog } from './access-log.ts'
+import { clientCompatibility, type ProtocolWindow } from './client-compatibility.ts'
 import type { LoggingSettings } from './logging.ts'
 import { responseHeaders } from './response-headers.ts'
 
@@ -21,17 +22,24 @@ import { responseHeaders } from './response-headers.ts'
 // both of which read the route template that routeSpanNames writes onto
 // the span from innermost - which is why that one sits last but one. The
 // response headers sit just outside the origin guard, so a refusal carries
-// them like any other api answer. The origin guard is the innermost of all:
-// a refusal is still a request line in the log and a 403 in the histogram,
-// and it needs no route to decide.
+// them like any other api answer. The origin guard sits inside them: a
+// refusal is still a request line in the log and a 403 in the histogram,
+// and it needs no route to decide. Innermost of all is the web client's
+// protocol check, inside the origin guard so that a request from elsewhere
+// learns nothing about the window before it is refused, and outside the
+// router so that a page this api no longer speaks to never reaches a
+// handler.
 
 export const serveMiddleware = (options: {
   readonly trustedProxies: readonly string[]
   readonly access: LoggingSettings['access']
+  /** the generations of web client this api speaks; the contract's unless a test says otherwise */
+  readonly clientProtocol?: ProtocolWindow
 }) => {
   const withRequestContext = requestContext({ trustedProxies: options.trustedProxies })
   const withAccessLog = accessLog(options.access)
   const guard = requestOriginGuard({ trustedProxies: options.trustedProxies })
+  const compatible = clientCompatibility(options.clientProtocol)
   return <E, R>(
     httpApp: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
   ): Effect.Effect<
@@ -39,5 +47,7 @@ export const serveMiddleware = (options: {
     E,
     Exclude<R, RequestContext> | HttpServerRequest.HttpServerRequest
   > =>
-    withRequestContext(withAccessLog(httpMetrics(routeSpanNames(responseHeaders(guard(httpApp))))))
+    withRequestContext(
+      withAccessLog(httpMetrics(routeSpanNames(responseHeaders(guard(compatible(httpApp)))))),
+    )
 }

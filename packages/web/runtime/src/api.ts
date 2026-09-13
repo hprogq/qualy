@@ -1,6 +1,11 @@
-import { Effect } from 'effect'
-import { FetchHttpClient, HttpClient } from 'effect/unstable/http'
+import { Effect, identity } from 'effect'
+import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/unstable/http'
 import { HttpApiClient, type HttpApi, type HttpApiGroup } from 'effect/unstable/httpapi'
+import {
+  QUALY_CLIENT_PROTOCOL_HEADER,
+  QUALY_CLIENT_RELEASE_HEADER,
+  QUALY_CLIENT_UNSUPPORTED_HEADER,
+} from '@qualy/release-contract'
 
 // A client is derived from an api DEFINITION, and every plugin holds its own:
 // the global aggregate this module used to wrap was the last generated
@@ -30,6 +35,57 @@ const withoutTracePropagation = HttpClient.transformResponse(
   Effect.provideService(HttpClient.TracerPropagationEnabled, false),
 )
 
+/** who the browser says it is: the release it runs and the protocol generation it speaks */
+export interface ClientIdentity {
+  readonly releaseId: string
+  readonly clientProtocol: number
+}
+
+export interface TransportOptions {
+  /** named on every request, here and nowhere else; a harness may leave it out */
+  readonly identity?: ClientIdentity
+  /** the server has refused this page's protocol: the release coordinator's to hear */
+  readonly onClientUnsupported?: () => void
+}
+
+/**
+ * The browser's identity on every request, and the server's verdict on it.
+ *
+ * Put on the transport rather than by any page: every typed client goes
+ * through here, so no plugin names the headers, and a refusal - 409 with
+ * the header the contract names - is read off the raw response before the
+ * typed decoding sees it. The request itself goes on to fail the way it
+ * would have; the refusal is an infrastructure signal, not a domain error
+ * for every plugin's union to carry.
+ */
+const withIdentity = (options: TransportOptions) => {
+  const named =
+    options.identity === undefined
+      ? identity
+      : HttpClient.mapRequest(
+          HttpClientRequest.setHeaders({
+            [QUALY_CLIENT_RELEASE_HEADER]: options.identity.releaseId,
+            [QUALY_CLIENT_PROTOCOL_HEADER]: String(options.identity.clientProtocol),
+          }),
+        )
+  const heard = options.onClientUnsupported
+  const judged =
+    heard === undefined
+      ? identity
+      : HttpClient.tap((response) =>
+          Effect.sync(() => {
+            if (
+              response.status === 409 &&
+              response.headers[QUALY_CLIENT_UNSUPPORTED_HEADER] === '1'
+            ) {
+              heard()
+            }
+          }),
+        )
+  return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>
+    judged(named(withoutTracePropagation(client)))
+}
+
 /**
  * A client for one api definition.
  *
@@ -41,10 +97,11 @@ const withoutTracePropagation = HttpClient.transformResponse(
 export const clientFor = <ApiId extends string, Groups extends HttpApiGroup.Constraint>(
   api: HttpApi.HttpApi<ApiId, Groups>,
   baseUrl?: string,
+  options: TransportOptions = {},
 ) =>
   HttpApiClient.make(api, {
     ...(baseUrl === undefined ? {} : { baseUrl }),
-    transformClient: withoutTracePropagation,
+    transformClient: withIdentity(options),
   }).pipe(Effect.provide(FetchHttpClient.layer))
 
 /** the typed client an api definition derives to */

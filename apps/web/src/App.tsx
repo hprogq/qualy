@@ -20,6 +20,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
 import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
 import { catalogs, components, errorMessages } from 'virtual:qualy/plugins'
+import { releases, webRelease } from './release.ts'
 
 // There is no global client to build: each plugin derives its own from the
 // api definitions it calls, through the runtime's per-definition cache.
@@ -111,7 +112,11 @@ export default function App() {
       <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
         <ThemeProvider>
           <WidgetBridge>
-            <RuntimeProvider registry={registry}>
+            <RuntimeProvider
+              registry={registry}
+              clientIdentity={webRelease}
+              onClientUnsupported={() => releases.notifyClientUnsupported()}
+            >
               <BrowserRouter>
                 <ManifestRouter />
               </BrowserRouter>

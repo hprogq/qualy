@@ -387,6 +387,9 @@ importers:
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:../../packages/contracts/rbac
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../packages/contracts/release
       '@qualy/telemetry':
         specifier: workspace:*
         version: link:../../packages/core/telemetry
