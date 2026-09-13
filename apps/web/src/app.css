@@ -47,15 +47,20 @@
 ::view-transition-new(qualy-wordmark):only-child {
   animation: q-cold-start-in 150ms ease-out both;
 }
-/* the old root is the loading screen's ground and nothing else, and the
-   page's own ground is the same colour: it is dropped rather than faded,
-   which is one full-screen layer fewer under the flight */
+/* Neither root moves. The old one is the loading screen's ground and
+   nothing else, and the page's own ground is the same colour, so it is
+   dropped rather than faded; the new one is the page as it already
+   stands, and a fade of it would be a second entrance under the flight -
+   the one the wordmark makes is the hand-over. A page that has been
+   painted, then dimmed by its own incoming snapshot, then faded back in,
+   is what WebKit showed of that second entrance. */
 ::view-transition-old(root) {
   animation: none;
   opacity: 0;
 }
 ::view-transition-new(root) {
-  animation: q-cold-start-in 260ms ease-out 60ms both;
+  animation: none;
+  opacity: 1;
 }
 html[data-cold-start] [data-brand-wordmark] {
   view-transition-name: none;

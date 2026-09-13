@@ -13698,3 +13698,11 @@ SIGTERM -> exit 0
 - **②**:上一轮已做(本机 commit 0b5913ee):`Reveal` 在冷启动交接下 `initial={false}`,hero 卡首挂不滑,旧 root 不淡出、只飞新字标。这轮把 `Reveal` 的判断从读 `data-cold-start` 属性改成宿主经 `HandoffContext` 给的 React 状态(`useColdStartHandoff()`),按审计要的「明确机制」。
 - **未做**:浏览器套件加 WebKit leg。46 个文件整套跑 WebKit 会先撞一批与本题无关的差异,CI 还要装 WebKit 与系统依赖,是单独一件事;本轮的证据链靠的是 WebKit 26.5 的录屏与探针。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm build` ok;探针改前 / 改后各两引擎;`pnpm test:browser` Test Files 46 passed (46); Tests 326 passed (326); exit 0(+1 新用例);`vitest tools/tests` 36 / 235;exit 0。
+
+## 冷启动:root 不再淡入;WebKit 冒烟腿(2026-09-13)
+
+审计第二轮(按 1fc3f12c)把「内容区出现 → 变淡 → 再出现」的第一嫌疑放在 `::view-transition-new(root)` 那次 260ms 淡入上:页面已在覆盖层后以终态渲染完,VT 开始时新 root 快照从 0 淡到 1,WebKit 在真实 DOM 与快照层交接处有已知的 flash。两个 commit:
+
+- **`fix(web): no fade of the root under the wordmark's flight`**:`::view-transition-new(root) { animation: none; opacity: 1 }`,旧 root 仍直接去掉;交接只剩字标 320ms 的飞行,不再叠一次整页淡入——两个引擎的状态机都简单了,也不是给 Safari 打补丁。**实测边界**:用录屏 + `signalstats` 逐帧量内容区亮度(900×400 区域),WebKit 26.5(Playwright 无头)改前是一次 ~400ms 的渐入、没有「先亮后暗再亮」的凹陷,改后 VT 一开始内容就在。也就是说真机 Safari 上那次「又淡一遍」在这里**没复现**,这次改动靠的是「一次入场」的设计理由和审计的 WebKit 已知问题,不是本机证据;真机清缓存刷新后若只剩一个极短 flash,下一步按审计升级为 WAAPI/FLIP 飞行、绕开 document view transition。探针顺带记了字体:`document.fonts.check('14px Inter Variable')` 在 ~95ms 就为 true,早于页面渲染,Inter 不动。
+- **`test(web): a WebKit smoke leg for the cold start`**:`vitest.browser.webkit.config.ts` 继承基础配置、`instances: webkit`、只跑 `cold-start` 与 `brand` 两个文件;`pnpm test:browser:webkit`;CI 加 `browser-webkit` job(单独缓存键、`playwright install --with-deps webkit`)。不整套跑 WebKit——46 个文件的引擎差异与本题无关。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm build` ok;`pnpm test:browser:webkit` Test Files 2 passed (2); Tests 12 passed (12);`pnpm test:browser` 46 / 326;`vitest tools/tests` 36 / 235;exit 0。
