@@ -132,3 +132,27 @@ jobs:
       - name: install chromium
         run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:browser
+
+  # The cold start and the brand once more in WebKit: the two screens whose
+  # defects were engine timing, not logic, and which Chromium hid. A smoke
+  # leg of two files, not the suite - see vitest.browser.webkit.config.ts.
+  browser-webkit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.20.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: resolve playwright version
+        id: playwright
+        run: echo "version=$(node -e "console.log(require('playwright/package.json').version)")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ steps.playwright.outputs.version }}
+      - name: install webkit
+        run: pnpm exec playwright install --with-deps webkit
+      - run: pnpm test:browser:webkit
