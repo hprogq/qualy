@@ -66,6 +66,13 @@ export {
 } from './route-builder.tsx'
 export { useApiStream } from './api-stream.ts'
 export { PageLink } from './links.tsx'
+export {
+  PENDING_INDICATOR_AFTER,
+  useIdlePagePrefetch,
+  usePagePrefetch,
+  usePendingNavigation,
+  type PendingNavigation,
+} from './navigation.tsx'
 export { ThemeProvider, useTheme, type ThemeChoice } from './theme.tsx'
 
 // The shell's own api: the manifest endpoint, imported as the contract leaf

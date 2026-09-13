@@ -13550,3 +13550,22 @@ SIGTERM -> exit 0
 - **下一步**:**Report-Only 至少跑两周**,期间日志(来源 `@qualy/plugin-web`、消息 `content security policy violation reported`)里没有来自真实用户路径的违例(测试页面除外),再把 `QUALY_CSP_MODE` 切到 `enforce`;切换不改代码。CI 的 `ci` job 没装 chromium,`csp-violation.test.ts` 在那里 skip、只在本机与 browser job 之外跑——并进「生产 smoke 在浏览器里执行一次 bundle」那条独立欠账一起解决。Report-Only 期间若 Safari 把同源 WebSocket 报成 `connect-src` 违例,给 `connect-src` 补 `wss:` 同源写法再切强制。
 
 ```
+
+## 慢网络下的导航反馈(2026-09-13)
+
+`feat(web): answer a press before its page arrives`。用户在 3G 下点批次侧边栏,三秒内右侧不变、无动画、选中态不动,像没点上。
+
+- **成因(实查)**:react-router 8.3 的 `BrowserRouter` / `MemoryRouter` 把路由 setState 包在 `React.startTransition` 里(`components.js:346-348`,除非 `useTransitions === false`),而每个页面的 `PluginComponent` 在同一树位置、`<Suspense>` 边界跨页面复用,所以 transition 期间旧页面保持、新页面的 chunk 到了才提交——语义正确(不整页闪 spinner),但 URL 在提交前不变,`NavLink` 的 `isActive` 跟 URL 走,`isPending` 只在 data router 下有值(`lib/dom/lib.js:389`,`nextLocationPathname` 来自 `DataRouterStateContext`,这里为 null)。三秒内什么都不变。
+- **第一层(即时反馈)**:`@qualy/web-runtime` 新增 `usePendingNavigation(to)`——在点击处用自己的 `useTransition` 启动导航,`pending` 从按下持续到提交,`indicating` 在 150ms 后为真;纯左键才接管(修饰键、中键、带 target 的链接交给浏览器),pending 中再按不重复导航,按已打开的项 replace 不 push。工作区侧边栏 `RailEntry`:pending 即用选中样式高亮,150ms 后图标位置换成 16px `@qualy/brand/loader`(无图标的项只高亮,不改形状),`aria-busy` 同步;抽屉项、顶栏应用 tab 与分区链接(`TopBar` 的 `BarLink`)同样高亮,不加 loader(纯文字,加了会挤动布局)。
+- **让等待不存在**:`usePagePrefetch()`(manifest 页面 → 注册表 `preloadable` 的 `preload`)与 `useIdlePagePrefetch(pageIds)`(`requestIdleCallback`,无则 200ms 后)。工作区壳挂载后把当前批次侧边栏全部可达页面的 chunk 静默预取;侧边栏项、抽屉项、顶栏链接 hover / focus 时预取各自页面。
+- **未做**:①第二层 2px 顶部横条(可选,第一层已够);②代码与数据并行(manifest 声明页面主查询、点击即发请求)——架构改动,等预取上线后看还剩多少等待再定;③skeleton 三条纪律(静态部分随 chunk 立刻渲染、骨架形状与终态一致、超 10s 转行内错误与重试)是各页面的事,本笔不动页面。
+- **测试**:`apps/web/tests/shell.browser.test.tsx` 加两条:①两个地址同一树形(壳 + 同位 `<Suspense>`),目标页 chunk 由测试放行——按下后 `data-pending` / `aria-busy` 立即为真、旧页面仍在、无 fallback,150ms 后 `data-indicating` 且图标座里出现 loader,放行后目标页出现、`aria-current="page"`、pending 与 loader 消失;②注册表 preload 打桩——壳挂载后侧边栏页面的 preload 被调用,应用 tab 的页面 hover 时才调用。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm typecheck    -> exit 0
+  pnpm test         -> Test Files 218 passed | 3 skipped (221); Tests 1527 passed | 17 skipped (1544); exit 0
+                       (第一遍与 pnpm build 并行跑时 formula binding-catalog 的 300ms 竞态用例红了一次,单独 2/2 绿,整套无并行重跑绿——本笔不碰服务端)
+  pnpm test:browser -> Test Files 46 passed (46); Tests 322 passed (322); exit 0(shell 套件 +2)
+  pnpm build        -> ✓ built in 12.11s; staged web assets -> packages/plugins/infra/web/client-dist
+  ```

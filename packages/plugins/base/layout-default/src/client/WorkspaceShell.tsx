@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { PanelLeftIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
+import { Loader } from '@qualy/brand/loader'
 import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import {
@@ -12,11 +13,15 @@ import {
   workspaceContext,
   workspaceNavigation,
   workspaceNavigationBadge,
+  type NamespacedId,
   type ResolvedNavigationItem,
 } from '@qualy/ui-contract'
 import {
   ScreenFootScope,
   UiSlot,
+  useIdlePagePrefetch,
+  usePagePrefetch,
+  usePendingNavigation,
   useUiCollection,
   useScreenFootClaimed,
   WorkspaceCapabilityScope,
@@ -503,6 +508,7 @@ function RailEntry({
   label,
   icon,
   to,
+  page,
   exact,
 }: {
   /** the entry's own id, so whoever counts for it can find its badge */
@@ -510,6 +516,8 @@ function RailEntry({
   label: ResolvedNavigationItem['label']
   icon?: string
   to: string
+  /** the page behind the entry, for fetching its code ahead of the press */
+  page?: NamespacedId
   /**
    * Whether only this exact path counts as being here.
    *
@@ -521,17 +529,38 @@ function RailEntry({
    */
   exact: boolean
 }) {
+  // The press answers at once, before the address has moved: the entry
+  // lights, and after a beat its icon gives way to the loader for as long
+  // as the page's code is on its way. An entry drawn without an icon keeps
+  // its shape and only lights. Pointing at it or reaching it with the
+  // keyboard fetches the code already, so the press usually waits for
+  // nothing at all.
+  const navigation = usePendingNavigation(to)
+  const prefetch = usePagePrefetch()
+  const warm = page === undefined ? undefined : () => prefetch(page)
   return (
     <li>
       <NavLink
         end={exact}
         to={to}
+        onClick={navigation.onClick}
+        onPointerEnter={warm}
+        onFocus={warm}
+        aria-busy={navigation.pending || undefined}
+        data-pending={navigation.pending ? '' : undefined}
+        data-indicating={navigation.indicating ? '' : undefined}
         className={({ isActive }) =>
-          stylex.props(styles.entry, isActive ? styles.entryActive : styles.entryIdle).className ??
-          ''
+          stylex.props(
+            styles.entry,
+            isActive || navigation.pending ? styles.entryActive : styles.entryIdle,
+          ).className ?? ''
         }
       >
-        <NavIcon name={icon} className={stylex.props(styles.entryIcon).className} />
+        {icon !== undefined && navigation.indicating ? (
+          <Loader size={16} xstyle={styles.entryIcon} />
+        ) : (
+          <NavIcon name={icon} className={stylex.props(styles.entryIcon).className} />
+        )}
         <span {...stylex.props(styles.entryLabel)}>
           <LocalizedText value={label} />
         </span>
@@ -548,19 +577,32 @@ function DrawerEntry({
   id,
   label,
   to,
+  page,
   exact,
 }: {
   id: string
   label: ResolvedNavigationItem['label']
   to: string
+  page?: NamespacedId
   exact: boolean
 }) {
+  const navigation = usePendingNavigation(to)
+  const prefetch = usePagePrefetch()
+  const warm = page === undefined ? undefined : () => prefetch(page)
   return (
     <NavLink
       end={exact}
       to={to}
+      onClick={navigation.onClick}
+      onPointerEnter={warm}
+      onFocus={warm}
+      aria-busy={navigation.pending || undefined}
+      data-pending={navigation.pending ? '' : undefined}
       className={({ isActive }) =>
-        stylex.props(styles.drawerEntry, isActive && styles.drawerEntryActive).className ?? ''
+        stylex.props(
+          styles.drawerEntry,
+          (isActive || navigation.pending) && styles.drawerEntryActive,
+        ).className ?? ''
       }
     >
       <span {...stylex.props(styles.entryLabel)}>
@@ -609,6 +651,12 @@ function CapableWorkspaceShell() {
   })
   const registered = new Set(groups.map((group) => group.id))
   const paths = addressable.map((item) => item.to)
+  // every page the rail can reach, fetched while the reader looks at this
+  // one: the chunks are small, and a press that finds its code here waits
+  // for nothing
+  useIdlePagePrefetch(
+    addressable.flatMap((item) => (item.target.kind === 'page' ? [item.target.pageId] : [])),
+  )
   const loose = addressable
     .filter((item) => item.group === undefined || !registered.has(item.group))
     .sort(byOrder)
@@ -657,6 +705,7 @@ function CapableWorkspaceShell() {
                 label={item.label}
                 icon={item.icon}
                 to={item.to}
+                page={item.target.kind === 'page' ? item.target.pageId : undefined}
                 exact={hasEntriesBelow(item.to, paths)}
               />
             ))}
@@ -675,6 +724,7 @@ function CapableWorkspaceShell() {
                   label={item.label}
                   icon={item.icon}
                   to={item.to}
+                  page={item.target.kind === 'page' ? item.target.pageId : undefined}
                   exact={hasEntriesBelow(item.to, paths)}
                 />
               ))}
@@ -818,6 +868,7 @@ function CapableWorkspaceShell() {
                     id={item.id}
                     label={item.label}
                     to={item.to}
+                    page={item.target.kind === 'page' ? item.target.pageId : undefined}
                     exact={hasEntriesBelow(item.to, paths)}
                   />
                 ))}
@@ -835,6 +886,7 @@ function CapableWorkspaceShell() {
                       id={item.id}
                       label={item.label}
                       to={item.to}
+                      page={item.target.kind === 'page' ? item.target.pageId : undefined}
                       exact={hasEntriesBelow(item.to, paths)}
                     />
                   ))}

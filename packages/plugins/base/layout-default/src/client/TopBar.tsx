@@ -1,9 +1,15 @@
+import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
-import { headerActions, sidebarUser, type ResolvedNavigationItem } from '@qualy/ui-contract'
-import { UiSlot } from '@qualy/web-runtime'
+import {
+  headerActions,
+  sidebarUser,
+  type NamespacedId,
+  type ResolvedNavigationItem,
+} from '@qualy/ui-contract'
+import { UiSlot, usePagePrefetch, usePendingNavigation } from '@qualy/web-runtime'
 import { LocalizedText } from '@qualy/web-i18n'
 
 // The one bar that never changes: which applications there are, which one is
@@ -142,6 +148,62 @@ function Brand({ to }: { to?: string }) {
   )
 }
 
+/** the page an application's tab leads to, which is its first entry's */
+const firstPageOf = (app: AppEntry): NamespacedId | undefined => {
+  for (const item of app.items) {
+    if (item.target.kind === 'page') return item.target.pageId
+  }
+  return undefined
+}
+
+/**
+ * A link of the bars: lit from the press until the page it leads to has
+ * arrived, and its page's code fetched as soon as it is pointed at. Text
+ * only, so no indicator takes an icon's place; the entry lighting is what
+ * says the press was heard.
+ */
+function BarLink({
+  to,
+  page,
+  active,
+  end,
+  idle,
+  lit,
+  base,
+  children,
+}: {
+  to: string
+  page: NamespacedId | undefined
+  /** the bar's own notion of which entry is open, when it has one */
+  active?: boolean
+  end?: boolean
+  idle: stylex.StyleXStyles
+  lit: stylex.StyleXStyles
+  base: stylex.StyleXStyles
+  children: ReactNode
+}) {
+  const navigation = usePendingNavigation(to)
+  const prefetch = usePagePrefetch()
+  const warm = page === undefined ? undefined : () => prefetch(page)
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={navigation.onClick}
+      onPointerEnter={warm}
+      onFocus={warm}
+      aria-busy={navigation.pending || undefined}
+      data-pending={navigation.pending ? '' : undefined}
+      {...(active === undefined ? {} : { 'aria-current': active ? 'page' : undefined })}
+      className={({ isActive }) =>
+        stylex.props(base, (active ?? isActive) || navigation.pending ? lit : idle).className ?? ''
+      }
+    >
+      {children}
+    </NavLink>
+  )
+}
+
 export function TopBar({ apps, activeApp }: { apps: readonly AppEntry[]; activeApp?: string }) {
   return (
     <div {...stylex.props(styles.bar)}>
@@ -153,16 +215,16 @@ export function TopBar({ apps, activeApp }: { apps: readonly AppEntry[]; activeA
         <ul {...stylex.props(styles.tabsList)}>
           {apps.map((app) => (
             <li key={app.id}>
-              <NavLink
+              <BarLink
                 to={app.path}
-                aria-current={app.id === activeApp ? 'page' : undefined}
-                className={
-                  stylex.props(styles.tab, app.id === activeApp ? styles.tabActive : styles.tabIdle)
-                    .className
-                }
+                page={firstPageOf(app)}
+                active={app.id === activeApp}
+                base={styles.tab}
+                lit={styles.tabActive}
+                idle={styles.tabIdle}
               >
                 <LocalizedText value={app.label} />
-              </NavLink>
+              </BarLink>
             </li>
           ))}
         </ul>
@@ -185,17 +247,15 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
           {items.map((item) => (
             <li key={item.id}>
               {item.target.kind === 'page' ? (
-                <NavLink
+                <BarLink
                   to={item.target.path}
-                  className={({ isActive }) =>
-                    stylex.props(
-                      styles.sectionLink,
-                      isActive ? styles.sectionActive : styles.sectionIdle,
-                    ).className ?? ''
-                  }
+                  page={item.target.pageId}
+                  base={styles.sectionLink}
+                  lit={styles.sectionActive}
+                  idle={styles.sectionIdle}
                 >
                   <LocalizedText value={item.label} />
-                </NavLink>
+                </BarLink>
               ) : (
                 <a
                   {...stylex.props(styles.sectionLink, styles.sectionIdle)}

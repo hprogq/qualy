@@ -1,5 +1,5 @@
-import { lazy } from 'react'
-import { describe, expect, it } from 'vitest'
+import { lazy, Suspense, type ReactNode } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { components } from 'virtual:qualy/plugins'
@@ -85,6 +85,18 @@ const manifest = () => ({
         group: 'batch/admin',
         order: 15,
         capability: 'assessment/review',
+      },
+      {
+        id: 'rail/entries',
+        label: text('参评名单'),
+        icon: 'users',
+        target: {
+          kind: 'page',
+          pageId: 'assessment/batch-entries',
+          path: '/assessment/batches/:batchId/entries',
+        },
+        group: 'batch/admin',
+        order: 12,
       },
       {
         id: 'rail/elsewhere',
@@ -430,5 +442,127 @@ describe('the workspace shell', () => {
     expect(page.getByRole('button', { name: '收起或展开侧边栏' }).elements()).toHaveLength(1)
     await page.getByRole('button', { name: '收起或展开侧边栏' }).click()
     await expect.element(page.getByRole('link', { name: '阶段安排' })).toBeVisible()
+  })
+})
+
+// --- the press, heard before the address moves --------------------------------
+
+/** a page whose code arrives when the test says so */
+const slowPage = () => {
+  let release!: () => void
+  const Page = lazy(
+    () =>
+      new Promise<{ default: () => ReactNode }>((resolve) => {
+        release = () => resolve({ default: () => <main data-testid="page-entries" /> })
+      }),
+  )
+  return { Page, release: () => release() }
+}
+
+describe('a press on the rail', () => {
+  it('lights the entry at once and marks it busy after a beat, while the open page stays', async () => {
+    await page.viewport(1280, 800)
+    const slow = slowPage()
+    // the same tree at both addresses, so the boundary the next page
+    // suspends in is the one the open page already fills: that is what
+    // holds the open page up, in the product and here
+    const screen = (content: ReactNode) => (
+      <>
+        <WorkspaceShell />
+        <Suspense fallback={<div data-testid="page-fallback" />}>{content}</Suspense>
+      </>
+    )
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      routes: [
+        {
+          path: '/assessment/batches/:batchId/phases',
+          element: screen(<main data-testid="page-phases" />),
+        },
+        { path: '/assessment/batches/:batchId/entries', element: screen(<slow.Page />) },
+      ],
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+    })
+    await expect.element(page.getByTestId('page-phases')).toBeInTheDocument()
+
+    const entry = page.getByRole('link', { name: '参评名单' })
+    await entry.click()
+    // heard: pending before the address has moved, the open page still up
+    await expect.element(entry).toHaveAttribute('data-pending', '')
+    await expect.element(entry).toHaveAttribute('aria-busy', 'true')
+    await expect.element(page.getByTestId('page-phases')).toBeInTheDocument()
+    expect(await page.getByTestId('page-fallback').elements()).toHaveLength(0)
+    // and after a beat, busy: the loader stands in the icon's seat
+    await expect.element(entry).toHaveAttribute('data-indicating', '')
+    expect(entry.element().querySelector('[data-seg]')).not.toBeNull()
+
+    slow.release()
+    await expect.element(page.getByTestId('page-entries')).toBeInTheDocument()
+    await expect.element(entry).toHaveAttribute('aria-current', 'page')
+    await expect.element(entry).not.toHaveAttribute('data-pending')
+    await expect.element(entry).not.toHaveAttribute('aria-busy')
+    expect(entry.element().querySelector('[data-seg]')).toBeNull()
+  })
+
+  it('fetches the rail pages while idle, and a bar link on hover', async () => {
+    await page.viewport(1280, 800)
+    const preloads = {
+      phases: vi.fn(() => Promise.resolve()),
+      entries: vi.fn(() => Promise.resolve()),
+      users: vi.fn(() => Promise.resolve()),
+    }
+    const registered = (preload: () => Promise<void>) =>
+      Object.assign(
+        lazy(() => Promise.resolve({ default: () => null })),
+        { preload },
+      )
+    renderScreen({
+      client: fakeClient({
+        app: {
+          getManifest: () =>
+            Effect.succeed({
+              ...manifest(),
+              pages: [
+                {
+                  id: 'assessment/batch-phases',
+                  path: '/assessment/batches/:batchId/phases',
+                  component: 'x/Phases',
+                  layout: 'workspace-shell/v1',
+                },
+                {
+                  id: 'assessment/batch-entries',
+                  path: '/assessment/batches/:batchId/entries',
+                  component: 'x/Entries',
+                  layout: 'workspace-shell/v1',
+                },
+                {
+                  id: 'auth/users',
+                  path: '/organization/users',
+                  component: 'x/Users',
+                  layout: 'app-shell/v1',
+                },
+              ],
+            }),
+        },
+      }),
+      registry: {
+        'x/Phases': registered(preloads.phases),
+        'x/Entries': registered(preloads.entries),
+        'x/Users': registered(preloads.users),
+      },
+      routes: [{ path: '/assessment/batches/:batchId/phases', element: <WorkspaceShell /> }],
+      route: `/assessment/batches/${BATCH_ID}/phases`,
+    })
+    await expect.element(page.getByRole('link', { name: '参评名单' })).toBeVisible()
+    // the rail's pages, fetched once the shell has painted
+    await vi.waitFor(() => {
+      expect(preloads.phases).toHaveBeenCalled()
+      expect(preloads.entries).toHaveBeenCalled()
+    })
+    // an application's first page is nobody's rail entry: fetched when
+    // the tab is pointed at
+    expect(preloads.users).not.toHaveBeenCalled()
+    await page.getByRole('link', { name: '组织与权限' }).hover()
+    await vi.waitFor(() => expect(preloads.users).toHaveBeenCalled())
   })
 })
