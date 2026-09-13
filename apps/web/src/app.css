@@ -13,65 +13,13 @@
 
 @import '@qualy/ui/theme.css';
 
-/* The cold start's landing: the loading screen's wordmark and the top bar's
-   share one view-transition-name, so the browser flies the one onto the
-   other while the application fades in underneath. The name is held off
-   the top bar's wordmark while the loading screen is up - two elements
-   with one name would make the browser skip the transition - and comes
-   back in the same update that removes the screen. Pseudo-elements on the
-   root are the only place these rules can live. */
-::view-transition-group(qualy-wordmark) {
-  animation-duration: 320ms;
-  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-/* The same drawing at both ends, so only ONE of the two images flies: the
-   new one. Both images fully opaque looked the same in Chromium, which
-   scales the pair to the group as one, and doubled in WebKit, which does
-   not keep them aligned while the group changes size - a second wordmark
-   a few pixels off the first, for the length of the flight. */
-::view-transition-old(qualy-wordmark) {
-  animation: none;
-  opacity: 0;
-}
-::view-transition-new(qualy-wordmark) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-/* a screen with no top bar - the sign-in page - gives the wordmark nowhere
-   to fly to; an old image with no new one beside it fades out with the
-   screen instead of holding its place for the flight's duration */
-::view-transition-old(qualy-wordmark):only-child {
-  opacity: 1;
-  animation: q-cold-start-out 150ms ease-out both;
-}
-::view-transition-new(qualy-wordmark):only-child {
-  animation: q-cold-start-in 150ms ease-out both;
-}
-/* Neither root moves. The old one is the loading screen's ground and
-   nothing else, and the page's own ground is the same colour, so it is
-   dropped rather than faded; the new one is the page as it already
-   stands, and a fade of it would be a second entrance under the flight -
-   the one the wordmark makes is the hand-over. A page that has been
-   painted, then dimmed by its own incoming snapshot, then faded back in,
-   is what WebKit showed of that second entrance. */
-::view-transition-old(root) {
-  animation: none;
-  opacity: 0;
-}
-::view-transition-new(root) {
-  animation: none;
-  opacity: 1;
-}
-html[data-cold-start] [data-brand-wordmark] {
-  view-transition-name: none;
-}
-@keyframes q-cold-start-out {
-  to {
-    opacity: 0;
-  }
-}
-@keyframes q-cold-start-in {
-  from {
-    opacity: 0;
-  }
+/* While the wordmark flies from the loading screen into the top bar, the
+   top bar's own stands hidden under the copy in flight. The flight itself
+   is the loading screen's (ColdStart in @qualy/ui), made with the drawing
+   and the Web Animations API rather than the browser's view transition:
+   WebKit captured that wrongly at every page zoom but one - the root at
+   the wrong scale, the wordmark doubled, its landing snapped - and there
+   is nothing to capture in a copy that is simply moved. */
+html[data-cold-start-flight] [data-brand-wordmark] {
+  visibility: hidden;
 }

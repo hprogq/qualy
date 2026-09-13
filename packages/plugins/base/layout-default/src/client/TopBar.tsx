@@ -59,10 +59,6 @@ const styles = stylex.create({
     alignItems: 'center',
     color: tokens.foreground,
   },
-  // the cold start's loading screen flies its wordmark onto this one
-  wordmark: {
-    viewTransitionName: 'qualy-wordmark',
-  },
   tabsNav: {
     minWidth: 0,
     flexGrow: 1,
@@ -187,9 +183,8 @@ export interface AppEntry {
 // the wordmark, never live here: the loop belongs to the loading screen.
 // Its title names the link, so nothing else has to
 function Brand({ to }: { to?: string }) {
-  const mark = (
-    <Wordmark height={14} title="Qualy" xstyle={styles.wordmark} data-brand-wordmark="" />
-  )
+  // marked as the place the cold start's loading screen flies its wordmark to
+  const mark = <Wordmark height={14} title="Qualy" data-brand-wordmark="" />
   return to === undefined ? (
     <span {...stylex.props(styles.brand)}>{mark}</span>
   ) : (

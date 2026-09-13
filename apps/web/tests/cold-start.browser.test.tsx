@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { bootFrame } from '@qualy/brand/boot'
+import { Wordmark } from '@qualy/brand/wordmark'
 import { ColdStart, LoadingScreen } from '@qualy/ui/spinner'
 import '../src/app.css'
 
@@ -51,10 +52,18 @@ const runBootScript = async () => {
 const firstPaintedAt = () =>
   performance.getEntriesByName('first-contentful-paint')[0]?.startTime ?? 0
 
-/** a tree that claims the loading screen until told it is done */
+/** a tree that claims the loading screen until told it is done, then shows a top bar's wordmark */
 function Booting({ done }: { done: boolean }) {
   return (
-    <ColdStart copy={copy}>{done ? <main data-testid="app" /> : <LoadingScreen />}</ColdStart>
+    <ColdStart copy={copy}>
+      {done ? (
+        <main data-testid="app">
+          <Wordmark height={14} title="Qualy" data-brand-wordmark="" />
+        </main>
+      ) : (
+        <LoadingScreen />
+      )}
+    </ColdStart>
   )
 }
 
@@ -154,9 +163,21 @@ describe('the cold start', () => {
     })
   })
 
-  it('flies only on the first screen; a later screen leaves by a fade', async () =>
+  it('flies the wordmark itself on the first screen, and never hands the page to the browser', async () =>
     withMotion(async () => {
       const transitions = vi.spyOn(document, 'startViewTransition')
+      // every layer that carries a wordmark in flight, as it is added
+      const flights: HTMLElement[] = []
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (node instanceof HTMLElement && node.hasAttribute('data-cold-start-flight-layer')) {
+              flights.push(node)
+            }
+          }
+        }
+      })
+      observer.observe(document.body, { childList: true })
       try {
         let finish!: () => void
         let restart!: () => void
@@ -168,9 +189,27 @@ describe('the cold start', () => {
         }
         await render(<Screen />)
         await expect.element(page.getByRole('status')).toBeInTheDocument()
+        const drawn = rectOf(overlay()!.querySelector('svg')!)
         finish()
-        await vi.waitFor(() => expect(overlay()).toBeNull(), { timeout: 2000 })
-        expect(transitions).toHaveBeenCalledTimes(1)
+        await vi.waitFor(() => expect(flights).toHaveLength(1), { timeout: 2000 })
+        const [layer] = flights
+        // the copy takes off from exactly where the screen drew the wordmark
+        expect(parseFloat(layer!.style.left)).toBeCloseTo(drawn.left, 1)
+        expect(parseFloat(layer!.style.top)).toBeCloseTo(drawn.top, 1)
+        expect(parseFloat(layer!.style.width)).toBeCloseTo(drawn.width, 1)
+        // moved by an animation of its own, over the page, with the top
+        // bar's wordmark hidden under it; the screen itself is already gone
+        expect(layer!.getAnimations()).toHaveLength(1)
+        expect(document.documentElement.hasAttribute('data-cold-start-flight')).toBe(true)
+        expect(overlay()).toBeNull()
+        await vi.waitFor(
+          () => expect(document.documentElement.hasAttribute('data-cold-start-flight')).toBe(false),
+          { timeout: 2000 },
+        )
+        expect(layer!.isConnected).toBe(false)
+        // and the browser's own transition machinery is never handed the
+        // page: what it captured of it was wrong at every zoom but one
+        expect(transitions).not.toHaveBeenCalled()
 
         // the manifest reloading after a sign-in: the screen comes back,
         // and goes without a flight
@@ -183,8 +222,10 @@ describe('the cold start', () => {
         }
         finish()
         await vi.waitFor(() => expect(overlay()).toBeNull(), { timeout: 2000 })
-        expect(transitions).toHaveBeenCalledTimes(1)
+        expect(flights).toHaveLength(1)
+        expect(transitions).not.toHaveBeenCalled()
       } finally {
+        observer.disconnect()
         transitions.mockRestore()
       }
     }))

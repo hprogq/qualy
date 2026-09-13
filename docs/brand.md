@@ -159,13 +159,13 @@
 
 1. 最后一个认领撤走 → 下一帧确认没有新的认领(fallback 之间的交接是同一次 commit 里的先撤后认,不会被当成结束)。
 2. 先暂停八条循环动画,读各段当前 `opacity` 与尾巴的 `transform`,WAAPI 150ms 过渡到 1 / 归位并保持。
-3. **然后**才 `document.startViewTransition(() => { 去掉 html[data-cold-start]; flushSync(卸载覆盖层) })`——快照是实心字标。覆盖层的字标与顶栏的字标共用 `view-transition-name: qualy-wordmark`;顶栏那个在覆盖层在场时被 `html[data-cold-start] [data-brand-wordmark] { view-transition-name: none }` 压掉,否则同名两元素会让浏览器跳过过渡。`::view-transition-group(qualy-wordmark)` 320ms `cubic-bezier(.2,.8,.2,1)`,old/new 图像不交叉淡化(同一张画);`::view-transition-new(root)` 从 60ms 起 260ms 淡入,`::view-transition-old(root)` 150ms 淡出。规则在 `apps/web/src/app.css`(根伪元素只能写在那里)。
-4. 不支持 View Transitions 或 `prefers-reduced-motion: reduce`:覆盖层 150ms 淡出后卸载,不做 FLIP。
+3. **然后**才飞:量覆盖层字标与顶栏字标(`[data-brand-wordmark]`)的 `getBoundingClientRect()`,把首帧那张静态字标(`bootFrame(28).svg`)放进一个 `position: fixed` 的层、按覆盖层字标的位置与尺寸铺好,给 `html` 加 `data-cold-start-flight`(顶栏字标 `visibility: hidden`),同一个任务里去掉 `html[data-cold-start]`、`flushSync` 卸载覆盖层,再用 WAAPI 把这层 `translate + scale` 到顶栏字标的矩形,320ms `cubic-bezier(.2,.8,.2,1)`,`finished` 后删层、撤属性。**不用 `document.startViewTransition()`**:它要浏览器截图,而 WebKit 在 100% 以外的页面缩放下每一张都截错——root 快照按错误比例盖在活页面上(过渡结束整页「突然放大」)、字标 old/new 两张叠影、只飞 new 一张时落地那一下缩放跳变。矩形和 transform 都在同一套 CSS 像素坐标里,缩放、设备像素比、截图都不再参与。
+4. `prefers-reduced-motion: reduce`,或没有 WAAPI:覆盖层 150ms 淡出后卸载,不飞。
 5. 落位后顶栏的字标是唯一的字标。
 6. **飞行只属于第一屏**:宿主按 episode 计数,同一页面里覆盖层第二次以后出现(登录后 manifest 重载、切换布局)只做 150ms 交叉淡入。
-7. **目的地不存在时**(登录页用的是无顶栏的 blank shell):`::view-transition-old(qualy-wordmark):only-child` 让旧图像随覆盖层 150ms 淡出,而不是原地停满 320ms 再消失。
+7. **目的地不存在时**(登录页用的是无顶栏的 blank shell):没有可飞往的字标,覆盖层走 150ms 淡出。
 
-就绪到可交互 ≤ 500ms(150 + 320,内容淡入与飞行重叠)。
+就绪到可交互 ≤ 500ms(150 + 320;页面在覆盖层卸载那一刻就是终态,飞行在它之上)。
 
 **预算怎么守住**:React 对重试的 Suspense 边界有 300ms 的揭示节流(`globalMostRecentFallbackTime + 300`),布局 chunk 10ms 到达也要在 fallback 后面待满 300ms;页面这样等无妨(它的指示器本来 300ms 后才出现),布局这样等就把飞行拖出预算。所以 `RuntimeLoader` 在 manifest 到达后先把它点名的布局 chunk 取回(`preloadable(thunk)`:模块已在时交给 React 一个同步回调的 thenable,`React.lazy` 一步读出,不再 suspend),布局与 manifest 同一次 commit 画出,冷启动的最后一个认领在那一刻撤走。生产入口实测见 STATUS。
 

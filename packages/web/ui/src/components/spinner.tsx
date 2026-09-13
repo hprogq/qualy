@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import * as stylex from '@stylexjs/stylex'
-import { bootPlacement } from '@qualy/brand/boot'
+import { bootFrame, bootPlacement } from '@qualy/brand/boot'
 import { Loader } from '@qualy/brand/loader'
 import { Wordmark } from '@qualy/brand/wordmark'
 
@@ -112,8 +112,9 @@ function PageLoading() {
 // by a host mounted once at the root, above every provider. The host keeps
 // the wordmark up while any claim stands, times the threshold and the
 // hints from the first claim, and when the last claim goes it fades the
-// loop to solid and hands the wordmark to the top bar through a view
-// transition. A LoadingScreen in a tree with no host draws a plain screen
+// loop to solid and flies the wordmark into the top bar - with the drawing
+// itself, not the browser's view transition, which WebKit captured wrongly
+// at every zoom but one. A LoadingScreen in a tree with no host draws a plain screen
 // of its own, so it never renders nothing by mistake.
 //
 // Whether a screen is hosted is a fact of the tree, told by context, so a
@@ -179,9 +180,16 @@ const HINT_AFTER = 6000
 const STALL_AFTER = 30000
 const EXIT = 150
 const CAP = 28
-const NAME = 'qualy-wordmark'
 /** the placeholder index.html paints before any script runs */
 const PLACEHOLDER = 'qualy-boot'
+/** the wordmark the flight lands on: the top bar's, which marks itself */
+const DESTINATION = '[data-brand-wordmark]'
+/** on the root while the wordmark is in flight; the destination hides under it */
+const FLIGHT = 'data-cold-start-flight'
+/** the layer carrying the wordmark in flight */
+const FLIGHT_LAYER = 'data-cold-start-flight-layer'
+const FLIGHT_MS = 320
+const FLIGHT_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
 /**
  * When the first frame was painted, on the performance clock.
@@ -229,9 +237,6 @@ const overlayStyles = stylex.create({
     display: 'flex',
     justifyContent: 'center',
   }),
-  wordmark: {
-    viewTransitionName: NAME,
-  },
   below: (top: string) => ({
     position: 'absolute',
     top,
@@ -276,6 +281,84 @@ export interface ColdStartCopy {
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/** the two ends of the flight: where the screen drew the wordmark, and the top bar's */
+interface Flight {
+  readonly from: DOMRect
+  readonly to: DOMRect
+  /** the ink the screen drew it in */
+  readonly ink: string
+}
+
+/** the flight there is to make, or none: no top bar to land on, or no way to animate */
+const flightFrom = (screen: HTMLElement): Flight | null => {
+  const source = screen.querySelector('svg')
+  const destination = document.querySelector(DESTINATION)
+  if (source === null || destination === null) return null
+  if (typeof Element.prototype.animate !== 'function') return null
+  const from = source.getBoundingClientRect()
+  const to = destination.getBoundingClientRect()
+  if (from.width === 0 || to.width === 0) return null
+  return { from, to, ink: getComputedStyle(screen).color }
+}
+
+/**
+ * The wordmark's flight from the screen into the top bar, made with the
+ * drawing itself.
+ *
+ * A still copy of the wordmark is laid over the screen's own, at the place
+ * and size the screen drew it; the top bar's is hidden; the screen leaves;
+ * the copy is moved and scaled onto the top bar's place; the copy leaves
+ * and the top bar's stands. Every measure is a rectangle of the live
+ * layout and every motion a transform in the same coordinates, so nothing
+ * here asks the browser to capture anything. The view transition this
+ * replaces did, and WebKit answered each capture wrongly at some zoom: a
+ * root snapshot at the wrong scale under the flight, two images of the
+ * wordmark in flight, a scale that snapped on landing.
+ */
+const fly = ({ from, to, ink }: Flight, leave: () => void) => {
+  const layer = document.createElement('div')
+  layer.setAttribute(FLIGHT_LAYER, '')
+  layer.setAttribute('aria-hidden', 'true')
+  Object.assign(layer.style, {
+    position: 'fixed',
+    left: `${String(from.left)}px`,
+    top: `${String(from.top)}px`,
+    width: `${String(from.width)}px`,
+    height: `${String(from.height)}px`,
+    color: ink,
+    pointerEvents: 'none',
+    zIndex: '1000',
+    transformOrigin: '0 0',
+    willChange: 'transform',
+  } satisfies Partial<CSSStyleDeclaration>)
+  // the first frame's drawing: the same geometry, at rest, sized to the seat
+  layer.innerHTML = bootFrame(CAP).svg
+  const drawing = layer.firstElementChild
+  if (drawing instanceof SVGElement) {
+    drawing.setAttribute('width', '100%')
+    drawing.setAttribute('height', '100%')
+  }
+  // one task, no frame between: the copy is on before the screen is off,
+  // and the top bar's wordmark is hidden before either
+  document.documentElement.setAttribute(FLIGHT, '')
+  document.body.append(layer)
+  leave()
+  const land = () => {
+    layer.remove()
+    document.documentElement.removeAttribute(FLIGHT)
+  }
+  const animation = layer.animate(
+    [
+      { transform: 'translate(0px, 0px) scale(1, 1)' },
+      {
+        transform: `translate(${String(to.left - from.left)}px, ${String(to.top - from.top)}px) scale(${String(to.width / from.width)}, ${String(to.height / from.height)})`,
+      },
+    ],
+    { duration: FLIGHT_MS, easing: FLIGHT_EASE, fill: 'forwards' },
+  )
+  animation.finished.then(land, land)
+}
 
 /**
  * The loop brought to rest: the eight parts paused where they are, then
@@ -363,9 +446,8 @@ function ColdStart({ copy, children }: { copy: ColdStartCopy; children?: React.R
   // The last claim has gone: rest the loop, then hand the wordmark over.
   // A hand-over between two fallbacks is one claim released and the next
   // made inside one commit, and this effect runs after the commit, so a
-  // count of zero here is the end and not a gap. The snapshot the view
-  // transition takes is of the settled wordmark, which is why the
-  // transition waits for the rest to finish.
+  // count of zero here is the end and not a gap. The copy that flies is
+  // of the settled wordmark, which is why the flight waits for the rest.
   useEffect(() => {
     if (pending > 0 || (phase !== 'waiting' && phase !== 'stalled')) return
     const root = overlay.current
@@ -377,12 +459,11 @@ function ColdStart({ copy, children }: { copy: ColdStartCopy; children?: React.R
         document.documentElement.removeAttribute(COLD_START)
         flushSync(() => setPhase('idle'))
       }
-      const flight =
-        episodes.current === 1 &&
-        typeof document.startViewTransition === 'function' &&
-        !reducedMotion()
-      if (flight) {
-        document.startViewTransition(leave)
+      // the flight is the first screen's gesture; a screen that comes back
+      // later leaves by a fade, and so does one with nowhere to fly to
+      const flight = episodes.current === 1 && !reducedMotion() ? flightFrom(root) : null
+      if (flight !== null) {
+        fly(flight, leave)
       } else {
         setPhase('fading')
         setTimeout(leave, EXIT)
@@ -409,12 +490,7 @@ function ColdStart({ copy, children }: { copy: ColdStartCopy; children?: React.R
         {...stylex.props(overlayStyles.overlay, phase === 'fading' && overlayStyles.fading)}
       >
       <div {...stylex.props(overlayStyles.seat(seatTop))}>
-        <Wordmark
-          height={CAP}
-          live={phase === 'waiting' || phase === 'stalled'}
-          liveDelay={delay}
-          xstyle={overlayStyles.wordmark}
-        />
+        <Wordmark height={CAP} live={phase === 'waiting' || phase === 'stalled'} liveDelay={delay} />
       </div>
       <VisuallyHidden>{copy.loading}</VisuallyHidden>
       {hint || phase === 'stalled' ? (
