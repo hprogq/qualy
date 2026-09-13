@@ -30,17 +30,22 @@ import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
 import { standingOf, type BatchStanding } from './batch/standing.ts'
+import { dotDay } from './batch/dates.ts'
 import { BatchCard, type BatchAgenda, type BatchCardRow, type HeroFrame } from './batch/BatchCard.tsx'
 
 // Every batch there is, and the way into one.
 //
 // The page leads with what is running: one card for the batch under way,
-// or one of several with a way to the others. Under it every batch, running
-// ones included, as a table - the card says what to do, the table says
-// what there is. Opening a batch is a link to the batch, not a selection
-// this screen keeps: the address names the batch and the section, so it
-// survives a reload and can be sent to somebody. Creation happens in a
-// dialog on top of the list.
+// or one of several with a way to the others. The card asks the server its
+// own question - the running batches, whatever the list below is filtered
+// or paged to - because a filter narrows the list and the running round
+// is not in the list's second page any less. Typing a name folds the card
+// away: a search is looking for one batch, and the card would only push
+// the answer down. Under it every batch, running ones included, as a table
+// - the card says what to do, the table says what there is. Opening a
+// batch is a link to the batch, not a selection this screen keeps: the
+// address names the batch and the section, so it survives a reload and can
+// be sent to somebody. Creation happens in a dialog on top of the list.
 
 /** rows per page; the page indicator divides the total by it */
 const PAGE_SIZE = 20
@@ -134,19 +139,6 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 12,
   },
-  listHead: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  listTitle: {
-    margin: 0,
-    fontSize: 13,
-    fontWeight: 500,
-    color: tokens.mutedForeground,
-  },
   // one line whatever the width: on a phone the pills scroll sideways
   // rather than stacking under each other
   pillScroller: {
@@ -159,12 +151,6 @@ const styles = stylex.create({
       [breakpoints.phone]: 'auto',
     },
   },
-  emptyFrame: {
-    borderRadius: tokens.radiusLg,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: tokens.border,
-  },
   sheet: {
     overflow: 'hidden',
     borderRadius: tokens.radiusLg,
@@ -173,6 +159,17 @@ const styles = stylex.create({
   },
   sheetScroller: {
     overflowX: 'auto',
+  },
+  // a question the table has no rows for: one line where the rows would be
+  emptyLine: {
+    display: 'flex',
+    minHeight: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingInline: 20,
+    fontSize: 13,
+    color: tokens.mutedForeground,
+    textAlign: 'center',
   },
   table: {
     minWidth: 640,
@@ -325,57 +322,59 @@ const styles = stylex.create({
   },
 })
 
+type StatusFilter = 'all' | 'draft' | 'active' | 'archived'
+
 /** a chip's number, said only once the server has counted */
 const chipCount = (count: number | undefined) => <Count>{count}</Count>
 
-const dayOf = (at: string, locale: string) => new Date(at).toLocaleDateString(locale)
-
-/** the stage column: where the batch is, or how much of a plan it has */
+/**
+ * The stage column: where the batch is, or what it has of a plan. A batch
+ * with no stages at all is one whose setting up is not finished.
+ */
 function stageOf(row: BatchCardRow, format: ReturnType<typeof useI18n>['format']) {
   if (row.currentPhaseName !== null) return row.currentPhaseName
   return row.timeline.length > 0
     ? format(m.stageCount, { total: row.timeline.length })
-    : format(m.noStagesYet)
+    : format(m.stageIncomplete)
 }
 
 /**
  * The time column, one date per standing: when the stage under way gives
- * way, when a scheduled or drafted batch begins, when an ended one ended.
+ * way, when a scheduled batch begins, when an ended one ended - and for a
+ * batch nobody has scheduled, that its time is not set.
  */
 function timeOf(
   row: BatchCardRow & { createdAt: string },
   standing: BatchStanding,
   format: ReturnType<typeof useI18n>['format'],
-  locale: string,
 ) {
   const timeline = row.timeline
   if (standing === 'archived') {
     // the last stage that was entered is the closest thing to a close the
     // plan records; a batch that never ran a stage ended when it was made
     const last = [...timeline].reverse().find((entry) => entry.entry.kind === 'entered')
-    return format(m.endedOn, { date: dayOf(last?.entry.at ?? row.createdAt, locale) })
+    return format(m.endedOn, { date: dotDay(last?.entry.at ?? row.createdAt) })
   }
   if (standing === 'active') {
     const at = timeline.findIndex((entry) => entry.status === 'current')
     const next = timeline[at + 1]
     return next?.entry.kind === 'planned' && next.entry.at !== null
-      ? format(m.stageUntil, { date: dayOf(next.entry.at, locale) })
+      ? format(m.stageUntil, { date: dotDay(next.entry.at) })
       : format(m.flowEndPending)
   }
   const first = timeline.find((entry) => entry.entry.kind === 'planned' && entry.entry.at !== null)
-  if (first?.entry.at) return format(m.startsOn, { date: dayOf(first.entry.at, locale) })
-  return timeline.length > 0 ? format(m.notScheduled) : format(m.noStagesYet)
+  return first?.entry.at ? format(m.startsOn, { date: dotDay(first.entry.at) }) : format(m.timeUnset)
 }
 
 export default function BatchListPage() {
   const query = useApiQuery(assessmentApi)
-  const { format, formatError, locale } = useI18n()
+  const { format, formatError } = useI18n()
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
   // 'all' rather than '': a single-choice toggle group treats the empty
   // string as "nothing selected", so an item carrying it can never light up
-  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'active' | 'archived'>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   // typing filters the list, but not on every keystroke: the query the table
   // reads settles a moment after the person stops
@@ -412,6 +411,15 @@ export default function BatchListPage() {
     placeholderData: keepPreviousData,
   })
 
+  // the card's own question, untouched by the filter and the page: the
+  // running batches, first page - past twenty running rounds the card's
+  // picker is the wrong control anyway
+  const runningQuery = useQuery(
+    query.assessment.listBatches.queryOptions({
+      query: { status: 'active', limit: String(PAGE_SIZE) },
+    }),
+  )
+
   // said by the server, not guessed here: a control the api would refuse is
   // not drawn, and this reader's own list is still theirs to read
   const canCreate = batches.data?.capabilities.create ?? false
@@ -431,10 +439,14 @@ export default function BatchListPage() {
   const standing = (row: (typeof rows)[number]) => standingOf(row.status, row.currentPhaseId)
 
   // Which running batch the card shows. Remembered against the set it was
-  // chosen from: a different set - another page, another filter - starts
-  // again at the first, rather than at a position that meant something
-  // only in the old one.
-  const running = rows.filter((row) => standing(row) === 'active')
+  // chosen from: a different set starts again at the first, rather than at
+  // a position that meant something only in the old one. A batch whose
+  // status is running but whose first stage has not arrived is scheduled,
+  // not running, and is not the card's.
+  const searching = search.trim() !== ''
+  const running = searching
+    ? []
+    : (runningQuery.data?.items ?? []).filter((row) => standing(row) === 'active')
   const runningKey = running.map((row) => row.id).join('\n')
   const [hero, setHero] = useState<{
     key: string
@@ -481,6 +493,22 @@ export default function BatchListPage() {
     open(batchId)
   }
 
+  // a pill that would answer with an empty table is not offered - unless it
+  // is the one already chosen, which has to stay pressable to be read
+  const offered = (status: Exclude<StatusFilter, 'all'>) =>
+    counts === undefined || counts[status] > 0 || statusFilter === status
+
+  // what the empty table says: the search it matched nothing for, or the
+  // standing it found nothing in
+  const emptyLine = () => {
+    if (settledSearch !== '') return format(m.emptySearch, { q: settledSearch })
+    return format(
+      { all: m.batchesEmpty, active: m.emptyActive, draft: m.emptyDraft, archived: m.emptyArchived }[
+        statusFilter
+      ],
+    )
+  }
+
   const standingStyle = {
     draft: null,
     pending: styles.standingPending,
@@ -493,6 +521,8 @@ export default function BatchListPage() {
     active: styles.dotActive,
     archived: null,
   } as const
+
+  const paged = nextCursor !== null || pageIndex > 0
 
   return (
     <Reveal>
@@ -557,87 +587,77 @@ export default function BatchListPage() {
             )}
 
             <section {...stylex.props(styles.list)}>
-              <div {...stylex.props(styles.listHead)}>
-                <h2 {...stylex.props(styles.listTitle)}>{format(m.allBatches)}</h2>
-                <div {...stylex.props(styles.pillScroller)}>
-                  <ToggleGroup
-                    className={stylex.props(styles.wide).className}
-                    value={statusFilter}
-                    aria-label={format(m.filterStatus)}
-                    // a filter group always has an answer: clicking the active
-                    // item would otherwise clear the group and mean nothing
-                    onValueChange={(next) =>
-                      next !== '' && setStatusFilter(next as typeof statusFilter)
-                    }
-                  >
-                    <ToggleGroupItem value="all">
-                      {format(m.filterAll)}
-                      {chipCount(counts && counts.draft + counts.active + counts.archived)}
+              {/* the pills are the section's title: they say what the table
+                  below is scoped to, and a label beside them said it twice */}
+              <div {...stylex.props(styles.pillScroller)}>
+                <ToggleGroup
+                  className={stylex.props(styles.wide).className}
+                  value={statusFilter}
+                  aria-label={format(m.filterStatus)}
+                  // a filter group always has an answer: clicking the active
+                  // item would otherwise clear the group and mean nothing
+                  onValueChange={(next) => next !== '' && setStatusFilter(next as StatusFilter)}
+                >
+                  <ToggleGroupItem value="all">
+                    {format(m.filterAll)}
+                    {chipCount(counts && counts.draft + counts.active + counts.archived)}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="active" disabled={!offered('active')}>
+                    {format(m.statusActive)}
+                    {chipCount(counts?.active)}
+                  </ToggleGroupItem>
+                  {/* a draft is a round being set up, and it is only ever
+                      listed for whoever sets rounds up: offered to a
+                      participant the filter is a promise of an empty page */}
+                  {canCreate && (
+                    <ToggleGroupItem value="draft" disabled={!offered('draft')}>
+                      {format(m.statusDraft)}
+                      {chipCount(counts?.draft)}
                     </ToggleGroupItem>
-                    <ToggleGroupItem value="active">
-                      {format(m.statusActive)}
-                      {chipCount(counts?.active)}
-                    </ToggleGroupItem>
-                    {/* a draft is a round being set up, and it is only ever
-                        listed for whoever sets rounds up: offered to a
-                        participant the filter is a promise of an empty page */}
-                    {canCreate && (
-                      <ToggleGroupItem value="draft">
-                        {format(m.statusDraft)}
-                        {chipCount(counts?.draft)}
-                      </ToggleGroupItem>
-                    )}
-                    {/* "archived" is the word the column stores; what a reader
-                        recognises is that the assessment is over */}
-                    <ToggleGroupItem value="archived">
-                      {format(m.filterEnded)}
-                      {chipCount(counts?.archived)}
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </div>
+                  )}
+                  {/* "archived" is the word the column stores; what a reader
+                      recognises is that the assessment is over */}
+                  <ToggleGroupItem value="archived" disabled={!offered('archived')}>
+                    {format(m.filterEnded)}
+                    {chipCount(counts?.archived)}
+                  </ToggleGroupItem>
+                </ToggleGroup>
               </div>
 
-              {rows.length === 0 ? (
-                // an empty list and an empty result set are different
-                // situations, and only one of them is answered by clearing
-                // a filter
-                <Empty
-                  data-testid="batch-list-empty"
-                  data-empty={filtered ? 'filtered' : 'none'}
-                  xstyle={styles.emptyFrame}
-                >
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      {filtered ? <SearchIcon /> : <LayersIcon />}
-                    </EmptyMedia>
-                    <EmptyTitle>{format(filtered ? m.noMatchTitle : m.batchesEmpty)}</EmptyTitle>
-                    <EmptyDescription>
-                      {format(filtered ? m.noMatchHint : m.batchesEmptyHint)}
-                    </EmptyDescription>
-                  </EmptyHeader>
-                  <EmptyContent>
-                    {filtered ? (
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setSearch('')
-                          setStatusFilter('all')
-                        }}
-                      >
-                        {format(m.clearFilters)}
-                      </Button>
-                    ) : (
-                      canCreate && (
-                        <Button variant="outline" onClick={() => setCreating(true)}>
-                          <PlusIcon />
-                          {format(m.newBatch)}
-                        </Button>
-                      )
-                    )}
-                  </EmptyContent>
-                </Empty>
-              ) : (
-                <div {...stylex.props(styles.sheet)}>
+              <div {...stylex.props(styles.sheet)}>
+                {rows.length === 0 ? (
+                  // an empty list and an empty result set are different
+                  // situations: the first is answered by creating a batch,
+                  // the second by the search box and the pills already on
+                  // the page, so it is one line where the rows would be
+                  filtered ? (
+                    <p
+                      data-testid="batch-list-empty"
+                      data-empty="filtered"
+                      {...stylex.props(styles.emptyLine)}
+                    >
+                      {emptyLine()}
+                    </p>
+                  ) : (
+                    <Empty data-testid="batch-list-empty" data-empty="none">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <LayersIcon />
+                        </EmptyMedia>
+                        <EmptyTitle>{format(m.batchesEmpty)}</EmptyTitle>
+                        <EmptyDescription>{format(m.batchesEmptyHint)}</EmptyDescription>
+                      </EmptyHeader>
+                      {canCreate && (
+                        <EmptyContent>
+                          <Button variant="outline" onClick={() => setCreating(true)}>
+                            <PlusIcon />
+                            {format(m.newBatch)}
+                          </Button>
+                        </EmptyContent>
+                      )}
+                    </Empty>
+                  )
+                ) : (
                   <div {...stylex.props(styles.sheetScroller)}>
                     <Table xstyle={styles.table}>
                       <TableHeader>
@@ -698,7 +718,7 @@ export default function BatchListPage() {
                                 {stageOf(row, format)}
                               </TableCell>
                               <TableCell xstyle={[styles.cell, styles.quiet, styles.time]}>
-                                {timeOf(row, at, format, locale)}
+                                {timeOf(row, at, format)}
                               </TableCell>
                               <TableCell xstyle={[styles.cell, styles.trailing]}>
                                 <span aria-hidden {...stylex.props(styles.openGlyph)}>
@@ -711,6 +731,10 @@ export default function BatchListPage() {
                       </TableBody>
                     </Table>
                   </div>
+                )}
+                {/* the foot exists only when there is somewhere to page to:
+                    how many there are is on the pills already */}
+                {paged && (
                   <div {...stylex.props(styles.pagerRow)}>
                     <span
                       data-testid="batch-pager"
@@ -718,38 +742,34 @@ export default function BatchListPage() {
                       data-pages={String(pageCount)}
                       {...stylex.props(styles.pagerNote)}
                     >
-                      {pageCount > 1
-                        ? format(m.pageOfTotal, { page: pageIndex + 1, pages: pageCount })
-                        : format(m.totalCount, { count: total })}
+                      {format(m.pageOfTotal, { page: pageIndex + 1, pages: pageCount })}
                     </span>
                     {/* buttons, not anchors: these move client-side state,
                         and an anchor with no href is neither focusable nor
                         disableable */}
-                    {(pageCount > 1 || pageIndex > 0) && (
-                      <nav aria-label="pagination" {...stylex.props(styles.pager)}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={pageIndex === 0}
-                          onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
-                        >
-                          <ChevronLeftIcon />
-                          {format(m.previousPage)}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={nextCursor === null}
-                          onClick={() => setPageIndex((index) => index + 1)}
-                        >
-                          {format(m.nextPage)}
-                          <ChevronRightIcon />
-                        </Button>
-                      </nav>
-                    )}
+                    <nav aria-label="pagination" {...stylex.props(styles.pager)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={pageIndex === 0}
+                        onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
+                      >
+                        <ChevronLeftIcon />
+                        {format(m.previousPage)}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={nextCursor === null}
+                        onClick={() => setPageIndex((index) => index + 1)}
+                      >
+                        {format(m.nextPage)}
+                        <ChevronRightIcon />
+                      </Button>
+                    </nav>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </section>
           </div>
         </AsyncSection>

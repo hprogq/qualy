@@ -34,7 +34,6 @@ const styles = stylex.create({
     width: '100%',
     flexDirection: 'column',
     overflow: 'hidden',
-    backgroundColor: tokens.background,
   },
   main: {
     minHeight: 0,

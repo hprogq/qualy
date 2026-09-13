@@ -146,11 +146,6 @@ const pageOfTotal = defineMessage<{ page: number; pages: number }>()({
   defaultMessage: 'Page {page} of {pages}',
 })
 
-const totalCount = defineMessage<{ count: number }>()({
-  id: 'assessment/batch/total-count',
-  defaultMessage: '{count, plural, one {# item} other {# items}}',
-})
-
 const leftDays = defineMessage<{ count: number }>()({
   id: 'assessment/progress/left-days',
   defaultMessage: '{count, plural, one {# day remaining} other {# days remaining}}',
@@ -313,6 +308,12 @@ const startsOn = defineMessage<{ date: string }>()({
   defaultMessage: 'Starts {date}',
 })
 
+// the list with nothing in it, said for the question that was asked
+const emptySearch = defineMessage<{ q: string }>()({
+  id: 'assessment/batch/empty-search',
+  defaultMessage: 'No batches match \u201c{q}\u201d',
+})
+
 const enrolled = defineMessage<{ count: number }>()({
   id: 'assessment/batch/enrolled',
   defaultMessage: '{count, plural, one {# participant} other {# participants}}',
@@ -388,15 +389,14 @@ const i18n = definePluginMessages({
     filterStatus: { id: 'assessment/batch/filter-status', defaultMessage: 'Status' },
     filterAll: { id: 'assessment/batch/filter-all', defaultMessage: 'All' },
     noMatchTitle: { id: 'assessment/batch/no-match', defaultMessage: 'No matching batches' },
+    emptySearch,
+    emptyActive: { id: 'assessment/batch/empty-active', defaultMessage: 'No batches in progress' },
+    emptyDraft: { id: 'assessment/batch/empty-draft', defaultMessage: 'No draft batches' },
+    emptyArchived: { id: 'assessment/batch/empty-ended', defaultMessage: 'No ended batches' },
     switcherOnlyThis: {
       id: 'assessment/batch/switcher-only-this',
       defaultMessage: 'This is the only batch you are in.',
     },
-    noMatchHint: {
-      id: 'assessment/batch/no-match-hint',
-      defaultMessage: 'Try another keyword or clear the status filter.',
-    },
-    clearFilters: { id: 'assessment/batch/clear-filters', defaultMessage: 'Clear filters' },
     previousPage: { id: 'assessment/action/previous-page', defaultMessage: 'Previous' },
     nextPage: { id: 'assessment/action/next-page', defaultMessage: 'Next' },
     pageOfTotal,
@@ -405,7 +405,6 @@ const i18n = definePluginMessages({
     stageDeadline,
     stageUntil,
     startsOn,
-    allBatches: { id: 'assessment/batch/all', defaultMessage: 'All batches' },
     previousBatch: { id: 'assessment/batch/previous', defaultMessage: 'Previous batch' },
     nextBatch: { id: 'assessment/batch/next', defaultMessage: 'Next batch' },
     pickBatch: { id: 'assessment/batch/pick', defaultMessage: 'Choose a batch' },
@@ -417,6 +416,12 @@ const i18n = definePluginMessages({
     columnBatch: { id: 'assessment/batch/column-batch', defaultMessage: 'Batch' },
     columnStage: { id: 'assessment/batch/column-stage', defaultMessage: 'Stage' },
     columnTime: { id: 'assessment/batch/column-time', defaultMessage: 'Time' },
+    // a draft's two cells: what it lacks, and that its time is not a time yet
+    stageIncomplete: {
+      id: 'assessment/batch/stage-incomplete',
+      defaultMessage: 'Stages not fully configured',
+    },
+    timeUnset: { id: 'assessment/batch/time-unset', defaultMessage: 'Not set' },
     tagline: {
       id: 'assessment/batch/tagline',
       defaultMessage: 'Let assessment return to growth itself.',
@@ -425,7 +430,6 @@ const i18n = definePluginMessages({
     footContact: { id: 'assessment/batch/foot-contact', defaultMessage: 'Contact us' },
     footPrivacy: { id: 'assessment/batch/foot-privacy', defaultMessage: 'Privacy policy' },
     footTerms: { id: 'assessment/batch/foot-terms', defaultMessage: 'Terms of service' },
-    totalCount,
     stagePosition,
     stageCount,
     materialWindow,

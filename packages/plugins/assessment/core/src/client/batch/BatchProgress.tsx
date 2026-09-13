@@ -183,6 +183,7 @@ export function BatchProgress({
   timeline,
   showStage = false,
   dense = false,
+  single = false,
   xstyle,
 }: {
   timeline: readonly TimelineLike[]
@@ -190,6 +191,8 @@ export function BatchProgress({
   showStage?: boolean
   /** one unit, whatever the window: the row it sits in is out of room */
   dense?: boolean
+  /** the larger unit alone, in a sentence: "12 days left", never the hours */
+  single?: boolean
   xstyle?: stylex.StyleXStyles
 }) {
   const { format, locale } = useI18n()
@@ -197,7 +200,7 @@ export function BatchProgress({
   // stage goes and the clock takes its name instead - "3 hours left in stage"
   // rather than a number beside nothing.
   const tight = useIsBelow(768)
-  const form = dense || tight ? 'bare' : 'full'
+  const form = dense || tight ? 'bare' : single ? 'single' : 'full'
   const [now, setNow] = useState(() => Date.now())
   const progress = progressOf(timeline, now)
   const tick = tickOf(progress)

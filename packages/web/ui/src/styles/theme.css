@@ -140,11 +140,15 @@
     resize: vertical;
   }
   body {
-    background-color: var(--q-background);
     color: var(--q-foreground);
     line-height: inherit;
   }
+  /* the page's ground is painted once, here, on the root: the boot style
+     paints the same value before this sheet arrives, and nothing below the
+     root paints it again - two sources of one colour is how a first frame
+     comes to differ from the frame after it */
   html {
+    background-color: var(--q-background);
     font-family: 'Inter Variable', sans-serif;
     line-height: 1.5;
     tab-size: 4;

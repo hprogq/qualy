@@ -13643,3 +13643,20 @@ SIGTERM -> exit 0
 - **首帧**:`index.html` 两处底色跟 token(`index-html.test` 钉住,脚本 hash 未动);`docs/brand.md` 值同步。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests/{semantic-tokens,index-html}` 2 / 14;`pnpm build` ok;`pnpm test:browser` 第一遍 1 红——baseline 快照的 `borderColor` 0.06 → 0.1、`outlineColor` 由 color-mix 的 oklab 值变为 `oklch(0.21 0.006 80 / 0.5)`,逐属性比对确认只有这两项变动,`-u` 更新后 Test Files 46 passed (46); Tests 325 passed (325);`vitest tools/tests` Test Files 36 passed (36); Tests 235 passed (235); exit 0。截图(1440 宽,生产入口,列表接口打桩):列表页、新建批次模态框、草稿筛选空态。
 - **未做(顾问同一轮里提的,等定夺)**:hero 自己查 `status=active`、搜索时收起 hero、阶段标签按段宽显隐 + tooltip、全站点分日期 formatter、右栏「截止 + 剩余」优先、草稿行两列文案、pill 靠左去「全部批次」标签、零计数 pill 置灰、空态收进白卡、表脚只在有翻页时渲染、`html { background }` 单一来源。
+
+## 前端重做:批次列表页跟进轮(2026-09-13,完成)
+
+`fix(web): the batch list answers its filters, its widths and its dates`。顾问在近白画布那轮之前提的一批页面改动,一次做完;只碰列表页、hero 卡、进度条、页面底色的来源与配套测试。
+
+- **hero 自己发查询**:`listBatches?status=active&limit=20`,与列表的筛选 / 分页 / 搜索无关(进行中的批次落在列表第二页也不再空);客户端再按 standing 过滤掉「已排期未开始」的。筛选 pill 因此碰不到它;**搜索框非空时 hero 收起**(读的是输入框即时值,不等 300ms 防抖)。
+- **阶段标签按段宽显隐**:`useLaneFit` 用 `ResizeObserver` 量每条 lane 的 `clientWidth` 与标签的 `scrollWidth`;当前阶段标签必显、加粗、完整(`overflow: visible`),其他标签放不下就 `opacity: 0`(留在无障碍树里),整条 lane 包一层 `Tooltip` hover 出全名。
+- **一个日期格式**:新增 `batch/dates.ts` 的 `dotDay`(`2026.03.01`;`YYYY-MM-DD` 字符串直接改写不解析,免得西半球差一天)与 `dotMoment`(`03.01 23:59`),材料时间、进度条轴、右栏截止、表格时间列全部改用;`locale` 不再参与。
+- **右栏「截止 + 剩余」**:`BatchProgress` 新增 `single`(一个单位的整句),右栏读作「09.23 21:55 截止 · 剩余 9 天」;没有结束时间的阶段退到「已进行 n 天」。
+- **草稿行两列**:阶段列无阶段时「阶段未配置完整」,时间列未排期「未设置」;新增消息 `stageIncomplete` / `timeUnset`。
+- **pill 靠左、去标签**:「全部批次」标题删掉,pill 组自己是这一段的标题;`allBatches` 消息删除。
+- **零计数 pill 置灰**:`statusCounts` 到了且该状态为 0 的 pill `disabled`(已选中的除外,选中态必须还能读);`all` 永不置灰。
+- **空态收进白卡**:筛选 / 搜索结果为空时,表格那张白卡里一行 96px 居中文字——「没有匹配「xxx」的批次」或「没有进行中 / 草稿 / 已结束的批次」,无图标、无虚线、无「清除筛选」(清除的手段就是搜索框和旁边的 pill);一个批次都没有时仍是带「新建批次」的 Empty,只是同样站在白卡里,虚线框退场。`noMatchHint` / `clearFilters` 消息删除(`noMatchTitle` 批次切换器还在用,留)。
+- **表脚只在有翻页时渲染**:`nextCursor` 非空或不在第一页才有表脚(「第 x / n 页」+ 上一页 / 下一页);「共 n 条」删除(数字在 pill 上),`totalCount` 消息删除。
+- **页面底色单一来源**:`theme.css` 的 `background-color: var(--q-background)` 从 `body` 挪到 `html`;`index.html` 的 `#qualy-boot` 不再自带底色(只留字色,`html { background }` 那两条字面量仍在,`index-html.test` 钉着);`AppShell` / `WorkspaceShell` 根节点的 `backgroundColor: tokens.background` 删除。实测 body 仍经 widget 层的 `--mantine-color-body` 指向同一 token,值同源。
+- **测试**:`batch-admin` 的空态用例改为断 `data-empty` 钩子(`none` → 搜索后 `filtered` → 清空搜索框回 `none`),不再点「清除筛选」。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests/{catalogs,index-html,client-paths,semantic-tokens}` 4 / 24;`pnpm build` ok;`pnpm test:browser` 第一遍 1 红——baseline 快照里 `html` 行的 `backgroundColor` 由透明变为 `oklch(0.99 0.001 80)`(底色挪到 html 的预期结果,逐属性比对只有这一项),`-u` 更新后 Test Files 46 passed (46); Tests 325 passed (325);`vitest tools/tests` Test Files 36 passed (36); Tests 235 passed (235); exit 0。截图(1440 宽,生产入口,列表接口打桩):六阶段列表页、隐去标签的 tooltip、筛「已结束」hero 仍在、搜索收起 hero、空搜索一行、零草稿 pill 置灰、首帧。

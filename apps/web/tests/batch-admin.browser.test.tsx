@@ -310,13 +310,16 @@ describe('the batch list', () => {
       '/assessment/batches',
     )
     // nothing has been created yet: the answer is to create one
-    await expect.element(page.getByText('暂无测评批次。')).toBeVisible()
+    const empty = page.getByTestId('batch-list-empty')
+    await expect.element(empty).toHaveAttribute('data-empty', 'none')
+    await expect.element(page.getByRole('button', { name: '新建批次' }).nth(1)).toBeVisible()
 
     await page.getByRole('textbox', { name: '搜索批次名称' }).fill('不存在的名字')
-    // now the same emptiness means the filter matched nothing
-    await expect.element(page.getByText('未找到匹配的批次')).toBeVisible()
-    await page.getByRole('button', { name: '清除筛选' }).click()
-    await expect.element(page.getByText('暂无测评批次。')).toBeVisible()
+    // now the same emptiness means the search matched nothing, and the way
+    // back is the search box itself - nothing else is offered
+    await expect.element(empty).toHaveAttribute('data-empty', 'filtered')
+    await page.getByRole('textbox', { name: '搜索批次名称' }).fill('')
+    await expect.element(empty).toHaveAttribute('data-empty', 'none')
   })
 
   it('opens a batch from the table and comes back', async () => {

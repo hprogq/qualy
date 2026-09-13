@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { PageLink } from '@qualy/web-runtime'
@@ -7,7 +7,9 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentMessages as m } from '../i18n.ts'
+import { dotDay, dotMoment } from './dates.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import type { TimelineLike } from './progress.ts'
@@ -193,13 +195,21 @@ const styles = stylex.create({
     flexBasis: '0%',
   }),
   laneName: {
+    display: 'block',
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 11,
     color: tokens.mutedForeground,
   },
+  // a name its lane cannot hold is not cut short - it goes, and the lane
+  // says it on request; it stays in the tree for whoever reads without eyes
+  laneNameHidden: {
+    opacity: 0,
+    pointerEvents: 'none',
+  },
+  // the current stage is always named, whole, whatever its lane's width
   laneNameCurrent: {
+    overflow: 'visible',
     fontWeight: 600,
     color: tokens.foreground,
   },
@@ -333,9 +343,6 @@ const styles = stylex.create({
   },
 })
 
-/** a day with its year, in the reader's own notation */
-const dayOf = (at: number, locale: string) => new Date(at).toLocaleDateString(locale)
-
 /**
  * The plan as lanes: one per stage, as wide as the stage is long.
  *
@@ -380,41 +387,98 @@ function planOf(timeline: readonly TimelineLike[], now: number) {
   return { weights: weights.map((weight) => weight / total), start, end, today }
 }
 
+/**
+ * Whether each lane is wide enough for its name.
+ *
+ * Measured, not guessed: a lane's width is the stage's share of the bar,
+ * and a six-stage plan with a two-day stage gives that stage a lane no
+ * name fits. Re-read whenever the bar is resized.
+ */
+function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number) {
+  const [fits, setFits] = useState<readonly boolean[]>([])
+  useLayoutEffect(() => {
+    const root = lanes.current
+    if (root === null) return
+    const measure = () => {
+      const next = [...root.querySelectorAll<HTMLElement>('[data-lane]')].map((lane) => {
+        const name = lane.querySelector<HTMLElement>('[data-lane-name]')
+        return name === null || name.scrollWidth <= lane.clientWidth
+      })
+      setFits((prev) =>
+        prev.length === next.length && prev.every((fit, index) => fit === next[index]) ? prev : next,
+      )
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [lanes, count])
+  return fits
+}
+
 function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
-  const { locale, format } = useI18n()
+  const { format } = useI18n()
   const plan = planOf(timeline, now)
   const at = (fraction: number) => `${(Math.min(1, Math.max(0, fraction)) * 100).toFixed(2)}%`
+  const lanesRef = useRef<HTMLDivElement>(null)
+  const fits = useLaneFit(lanesRef, timeline.length)
   return (
     <div {...stylex.props(styles.plan)}>
-      <div {...stylex.props(styles.lanes)}>
-        {timeline.map((entry, index) => (
-          <div key={entry.displayName + String(index)} {...stylex.props(styles.lane(plan.weights[index]!))}>
-            <span
-              {...stylex.props(styles.laneName, entry.status === 'current' && styles.laneNameCurrent)}
-            >
-              {entry.displayName}
-            </span>
-            <span
-              data-stage-status={entry.status}
-              {...stylex.props(
-                styles.segment,
-                entry.status === 'ended' && styles.segmentEnded,
-                entry.status === 'current' && styles.segmentCurrent,
-                entry.status === 'future' && styles.segmentFuture,
-              )}
-            />
-          </div>
-        ))}
-        {plan.today !== null && <span aria-hidden {...stylex.props(styles.todayMark(at(plan.today)))} />}
-      </div>
+      <TooltipProvider>
+        <div ref={lanesRef} {...stylex.props(styles.lanes)}>
+          {timeline.map((entry, index) => {
+            const current = entry.status === 'current'
+            const named = current || (fits[index] ?? true)
+            const lane = (
+              <div
+                key={entry.displayName + String(index)}
+                data-lane
+                data-stage-status={entry.status}
+                data-named={named ? '' : undefined}
+                {...stylex.props(styles.lane(plan.weights[index]!))}
+              >
+                <span
+                  data-lane-name
+                  {...stylex.props(
+                    styles.laneName,
+                    current && styles.laneNameCurrent,
+                    !named && styles.laneNameHidden,
+                  )}
+                >
+                  {entry.displayName}
+                </span>
+                <span
+                  {...stylex.props(
+                    styles.segment,
+                    entry.status === 'ended' && styles.segmentEnded,
+                    current && styles.segmentCurrent,
+                    entry.status === 'future' && styles.segmentFuture,
+                  )}
+                />
+              </div>
+            )
+            return named ? (
+              lane
+            ) : (
+              <Tooltip key={entry.displayName + String(index)}>
+                <TooltipTrigger asChild>{lane}</TooltipTrigger>
+                <TooltipContent>{entry.displayName}</TooltipContent>
+              </Tooltip>
+            )
+          })}
+          {plan.today !== null && (
+            <span aria-hidden {...stylex.props(styles.todayMark(at(plan.today)))} />
+          )}
+        </div>
+      </TooltipProvider>
       {plan.start !== null && (
         <div {...stylex.props(styles.axis)}>
-          <span {...stylex.props(styles.axisStart)}>{dayOf(plan.start, locale)}</span>
+          <span {...stylex.props(styles.axisStart)}>{dotDay(plan.start)}</span>
           {plan.today !== null && (
             <span {...stylex.props(styles.axisToday(at(plan.today)))}>{format(m.today)}</span>
           )}
           {plan.end !== null && plan.end > plan.start && (
-            <span {...stylex.props(styles.axisEnd)}>{dayOf(plan.end, locale)}</span>
+            <span {...stylex.props(styles.axisEnd)}>{dotDay(plan.end)}</span>
           )}
         </div>
       )}
@@ -513,7 +577,7 @@ export function BatchCard({
   /** the clock, for a test that wants to hold it still */
   now?: number
 }): ReactNode {
-  const { format, locale } = useI18n()
+  const { format } = useI18n()
   const at = row.timeline.findIndex((entry) => entry.status === 'current')
   const next = at === -1 ? undefined : row.timeline[at + 1]
   const closes = next?.entry.kind === 'planned' && next.entry.at !== null ? Date.parse(next.entry.at) : null
@@ -537,8 +601,8 @@ export function BatchCard({
           <div {...stylex.props(styles.facts)}>
             <span>
               {format(m.materialWindow, {
-                from: row.materialRange.start,
-                until: row.materialRange.end,
+                from: dotDay(row.materialRange.start),
+                until: dotDay(row.materialRange.end),
               })}
             </span>
             {row.timeline.length > 0 && (
@@ -570,19 +634,11 @@ export function BatchCard({
             {row.currentPhaseName ?? format(m.notScheduled)}
           </span>
           <span {...stylex.props(styles.stageClock)}>
-            {closes !== null && (
-              <span>
-                {format(m.stageDeadline, {
-                  when: new Date(closes).toLocaleString(locale, {
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }),
-                })}
-              </span>
-            )}
-            <BatchProgress timeline={row.timeline} />
+            {/* the close and what is left to it, one unit: "03.01 23:59
+                截止 · 12 days left"; a stage with no close only says how
+                long it has run */}
+            {closes !== null && <span>{format(m.stageDeadline, { when: dotMoment(closes) })}</span>}
+            <BatchProgress timeline={row.timeline} single />
           </span>
         </div>
         {/* other people's work first: it blocks them, one's own blocks only oneself */}
