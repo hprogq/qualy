@@ -25,6 +25,10 @@ const glyphShowing = (name: string): boolean => {
   return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.01
 }
 
+/** a token's value as the sheet declares it, so the case follows the palette rather than pinning one */
+const token = (name: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+
 describe('the checkbox says its state with the glyph', () => {
   it('shows no mark unticked, a mark ticked, a mark for the mixed state', async () => {
     mount(
@@ -61,9 +65,9 @@ describe('the badge palette carries no chroma', () => {
       const badge = page.getByText(text).element().closest('[data-slot="badge"]')
       return badge === null ? 'missing' : getComputedStyle(badge).backgroundColor
     }
-    await expect.poll(() => paint('plain'), { timeout: 5000 }).toBe('oklch(0.205 0 0)')
+    await expect.poll(() => paint('plain'), { timeout: 5000 }).toBe(token('--q-primary'))
     // the exact product grey, not a slate tint
-    expect(paint('quiet')).toBe('oklch(0.97 0 0)')
+    expect(paint('quiet')).toBe(token('--q-surface-muted'))
   })
 })
 
@@ -125,7 +129,9 @@ describe('the disabled state carries no chroma', () => {
     const stuck = page.getByRole('button', { name: 'stuck' })
     const paint = () => getComputedStyle(stuck.element())
     // --q-surface-muted and --q-muted-foreground, not a slate tint
-    await expect.poll(() => paint().backgroundColor, { timeout: 5000 }).toBe('oklch(0.97 0 0)')
-    expect(paint().color).toBe('oklch(0.54 0 0)')
+    await expect
+      .poll(() => paint().backgroundColor, { timeout: 5000 })
+      .toBe(token('--q-surface-muted'))
+    expect(paint().color).toBe(token('--q-muted-foreground'))
   })
 })

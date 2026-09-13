@@ -1,34 +1,38 @@
 /* Qualy semantic tokens: the single source every styling system reads.
  * Tailwind consumes them through the shadcn variable aliases in theme.css,
  * StyleX through theme/tokens.stylex.ts, and the widget library theme
- * bridge reads the same names. Values are today's palette moved verbatim,
- * not a redesign; dark mode flips on the .dark root class as before. */
+ * bridge reads the same names. The palette is the redesign's: every
+ * neutral sits on hue 80 at a chroma of 0.003-0.006 (a warm grey, never a
+ * blue one), the page is a shade below white so that white cards stand on
+ * it, ink is a warm near-black, and the only saturation on a page is a
+ * standing colour. Dark mode flips on the .dark root class as before. */
 :root {
-  --q-background: oklch(1 0 0);
-  --q-foreground: oklch(0.145 0 0);
+  color-scheme: light;
+  --q-background: oklch(0.955 0.005 80);
+  --q-foreground: oklch(0.21 0.006 80);
   --q-surface: oklch(1 0 0);
-  --q-surface-muted: oklch(0.97 0 0);
+  --q-surface-muted: oklch(0.93 0.005 80);
   --q-surface-elevated: oklch(1 0 0);
-  --q-border: oklch(0.922 0 0);
-  --q-input: oklch(0.922 0 0);
-  --q-focus-ring: oklch(0.708 0 0);
-  --q-primary: oklch(0.205 0 0);
-  --q-primary-foreground: oklch(0.985 0 0);
+  /* lines are alpha black, so they read the same on the page and on a card */
+  --q-border: oklch(0 0 0 / 0.06);
+  --q-input: oklch(1 0 0);
+  --q-focus-ring: oklch(0.708 0.005 80);
+  /* the primary is ink: a filled control is the page's own text colour */
+  --q-primary: oklch(0.21 0.006 80);
+  --q-primary-foreground: oklch(0.985 0.003 80);
   --q-danger: oklch(0.577 0.245 27.325);
-  /* standing colours: the hue carries the meaning (about to change, under
-     way), the foreground pair is the darker shade that reads on the 15%
-     tint the badges put it on; dark mode only swaps the foregrounds */
+  /* standing colours: the dot carries the hue at full strength, the
+     foreground is the darker shade of the same hue that reads as text on
+     the 15% tint the badges put it on; two tokens, never one */
   --q-warning: oklch(0.769 0.188 70.08);
   --q-warning-foreground: oklch(0.555 0.163 48.998);
   --q-success: oklch(0.696 0.17 162.48);
   --q-success-foreground: oklch(0.508 0.118 165.612);
-  /* 0.556 was shadcn's default and misses WCAG AA on the tinted panels this
-     product puts secondary text on; 0.54 clears 4.5:1 on every surface here */
-  --q-muted-foreground: oklch(0.54 0 0);
-  /* the ink a row takes when the pointer warms its ground; a step darker
-     than the body text, which is what keeps a hovered row legible without
-     it reading as selected */
-  --q-surface-muted-foreground: oklch(0.205 0 0);
+  /* three greys for text and no more: ink, the secondary at 0.54 (clears
+     4.5:1 on every surface here), and the shade between them for a row
+     the pointer has warmed */
+  --q-muted-foreground: oklch(0.54 0.006 80);
+  --q-surface-muted-foreground: oklch(0.45 0.006 80);
   /* the tint a chosen option wears: a whisper of the primary, stronger on
      the edge than the fill, re-balanced for dark where 5% vanishes */
   --q-selected-border: color-mix(in oklab, var(--q-primary) 30%, transparent);
@@ -36,28 +40,44 @@
   /* the ground a row that removes something takes under the pointer; it
      carries further in the dark, where a 10% wash disappears */
   --q-danger-surface: color-mix(in oklab, var(--q-danger) 10%, transparent);
-  --q-radius-lg: 0.625rem;
-  --q-radius-md: calc(var(--q-radius-lg) - 2px);
-  --q-radius-sm: calc(var(--q-radius-lg) - 4px);
+  /* how far a surface stands off the page: a contact shadow with a
+     hairline for a card at rest, a deeper one for the card that leads a
+     page. In the dark a shadow is invisible, so the same two tokens
+     degrade to a rim - which is why they are tokens at all */
+  --q-elevation-1: 0 0 0 1px oklch(0 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.06);
+  --q-elevation-2:
+    0 0 0 1px oklch(0 0 0 / 0.05), 0 1px 3px oklch(0 0 0 / 0.07), 0 6px 16px oklch(0 0 0 / 0.04);
+  /* three radii and a pill: a small badge, a control, a card or a table */
+  --q-radius-sm: 4px;
+  --q-radius-md: 8px;
+  --q-radius-lg: 14px;
+  --q-radius-pill: 9999px;
 }
 
 .dark {
-  --q-background: oklch(0.145 0 0);
-  --q-foreground: oklch(0.985 0 0);
-  --q-surface: oklch(0.205 0 0);
-  --q-surface-muted: oklch(0.269 0 0);
-  --q-surface-elevated: oklch(0.205 0 0);
-  --q-border: oklch(1 0 0 / 10%);
+  color-scheme: dark;
+  --q-background: oklch(0.17 0.006 80);
+  --q-foreground: oklch(0.93 0.004 80);
+  --q-surface: oklch(0.21 0.006 80);
+  --q-surface-muted: oklch(0.25 0.006 80);
+  --q-surface-elevated: oklch(0.24 0.006 80);
+  --q-border: oklch(1 0 0 / 0.08);
   --q-input: oklch(1 0 0 / 15%);
-  --q-focus-ring: oklch(0.556 0 0);
-  --q-primary: oklch(0.922 0 0);
-  --q-primary-foreground: oklch(0.205 0 0);
+  --q-focus-ring: oklch(0.556 0.005 80);
+  /* ink and paper trade places */
+  --q-primary: oklch(0.93 0.004 80);
+  --q-primary-foreground: oklch(0.17 0.006 80);
   --q-danger: oklch(0.704 0.191 22.216);
-  --q-warning-foreground: oklch(0.879 0.169 91.605);
-  --q-success-foreground: oklch(0.845 0.143 164.978);
-  --q-muted-foreground: oklch(0.708 0 0);
-  --q-surface-muted-foreground: oklch(0.985 0 0);
+  /* the same hues lifted to read on the dark ground, no chroma added */
+  --q-warning: oklch(0.75 0.188 70.08);
+  --q-warning-foreground: oklch(0.75 0.163 48.998);
+  --q-success: oklch(0.75 0.17 162.48);
+  --q-success-foreground: oklch(0.75 0.118 165.612);
+  --q-muted-foreground: oklch(0.65 0.005 80);
+  --q-surface-muted-foreground: oklch(0.93 0.004 80);
   --q-selected-border: color-mix(in oklab, var(--q-primary) 20%, transparent);
   --q-selected-surface: color-mix(in oklab, var(--q-primary) 10%, transparent);
   --q-danger-surface: color-mix(in oklab, var(--q-danger) 20%, transparent);
+  --q-elevation-1: 0 0 0 1px oklch(1 0 0 / 0.06);
+  --q-elevation-2: 0 0 0 1px oklch(1 0 0 / 0.08);
 }

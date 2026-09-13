@@ -38,6 +38,10 @@ function SchemeHarness() {
 const root = () => document.documentElement
 const widgetScheme = () => root().getAttribute('data-mantine-color-scheme')
 
+/** a token's value as the sheet declares it, so the case follows the palette rather than pinning one */
+const token = (name: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+
 describe('the theme bridge keeps one source of truth', () => {
   it('choice drives both the product class and the widget attribute', async () => {
     localStorage.removeItem('qualy.theme')
@@ -92,7 +96,7 @@ describe('StyleX sits above the widget layer', () => {
       getComputedStyle(page.getByRole('button', { name }).element()).backgroundColor
     // the widget baseline actually painted the stock one - the override test
     // is vacuous if the baseline is missing
-    await expect.poll(() => paint('stock'), { timeout: 5000 }).toBe('oklch(0.205 0 0)')
+    await expect.poll(() => paint('stock'), { timeout: 5000 }).toBe(token('--q-primary'))
     // the dev runtime injects the aggregated stylex sheet asynchronously
     await expect.poll(() => paint('repainted'), { timeout: 5000 }).toBe('rgb(18, 52, 86)')
   })

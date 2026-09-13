@@ -29,4 +29,7 @@ export const tokens = stylex.defineVars({
   radiusSm: 'var(--q-radius-sm)',
   radiusMd: 'var(--q-radius-md)',
   radiusLg: 'var(--q-radius-lg)',
+  radiusPill: 'var(--q-radius-pill)',
+  elevation1: 'var(--q-elevation-1)',
+  elevation2: 'var(--q-elevation-2)',
 })

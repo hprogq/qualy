@@ -33,6 +33,10 @@ const mount = (ui: React.ReactNode) =>
 
 const atRest = () => userEvent.hover(page.getByTestId('pointer-rest'))
 
+/** a token's value as the sheet declares it, so the case follows the palette rather than pinning one */
+const token = (name: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+
 describe('the button keeps its product contract', () => {
   it('sizes follow the product rhythm', async () => {
     mount(
@@ -68,7 +72,7 @@ describe('the button keeps its product contract', () => {
     await atRest()
     const primary = page.getByRole('button', { name: 'primary' })
     // --q-primary, light scheme
-    await expect.poll(() => box(primary).bg, { timeout: 5000 }).toBe('oklch(0.205 0 0)')
+    await expect.poll(() => box(primary).bg, { timeout: 5000 }).toBe(token('--q-primary'))
     const remove = page.getByRole('button', { name: 'remove' })
     const removed = remove.element() as HTMLElement
     // soft destructive: a tint, not a solid block and not transparent

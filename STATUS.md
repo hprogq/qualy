@@ -13604,3 +13604,14 @@ SIGTERM -> exit 0
 ## @stylexjs/unplugin 补丁:常量晚到的样式表(2026-09-13)
 
 `chore(repo): patch @stylexjs/unplugin for constants collected late`,单独一笔以便升级 StyleX 时一眼找到、单独回退或删掉。缘由、两种模式(dev 的 CSS 端点跳过、build 拒绝并点名)、启发式的局限与上游应有的修法都在 `docs/notes/stylexjs-unplugin.md`;护栏 `tools/tests/stylex-unplugin-patch.test.ts`(3 条:build 语义抛错、dev 语义跳过、定义到齐后写出真正的 at-rule)。patch 文件改为 pnpm 的版本化命名 `patches/@stylexjs__unplugin@0.19.0.patch`(原 unref hunk 一并在内)。门禁:`pnpm build` ok、`vitest tools/tests` 36 / 235、org-admin + shell 浏览器套件 17 / 17、root tsc 0 错误。待办:把常量收集顺序的问题报给上游(依赖层修法,见 note)。
+
+## 前端重做 P3:暖中性色 token(2026-09-13,完成)
+
+`feat(web): warm neutral palette, elevation and status tokens`。只改 `packages/web/ui/src/styles/tokens.css` 的值(+ 两个新 token 同步到 `tokens.stylex.ts`),token 名不变,组件零改动;P2 的玻璃底色与发丝线走 token,顶栏随之变暖,未回头改。
+
+- **浅色**:底 `oklch(0.955 0.005 80)`、卡纯白、muted 面 0.93、墨 0.21、次级字 0.54、行 hover 字 0.45——设计稿里 0.16 / 0.3 / 0.35 → foreground,0.5 → muted-foreground,文字灰收敛为三档;分隔线 `oklch(0 0 0 / 0.06)`(alpha 黑,页面与卡片上一致);input 面纯白;primary = 墨、primary-foreground 0.985;中性色全部 hue 80、chroma 0.003–0.006(focus-ring 也从 `0 0` 挪到 `0.005 80`,原值无色相)。
+- **深色**:底 0.17、卡 0.21、elevated 0.24、muted 0.25、字 0.93、次级 0.65、线 `oklch(1 0 0 / 0.08)`、墨与纸翻转(primary 0.93 / primary-foreground 0.17);success / warning 同色相 L 提到 0.75、chroma 不加。截图核对:深色下表格行分隔线与卡片边缘均可见。
+- **状态色按稿**:点 / 文字各一 token——success `oklch(0.696 0.17 162)` / `oklch(0.508 0.118 166)`,warning `oklch(0.769 0.188 70)` / `oklch(0.555 0.163 49)`(与"保持现在的绿但 C≤0.16"那句冲突,按更具体的"按参考稿"执行,现值本就是这两组数)。
+- **新增**:`--q-elevation-1`(浅 `0 0 0 1px …/0.04, 0 1px 2px …/0.06`,深 `0 0 0 1px oklch(1 0 0 / 0.06)`)、`--q-elevation-2`(浅 hero 卡三层阴影,深 `…/0.08` 描边)——深色下阴影不可见,退化成描边,所以要单独成 token;`--q-radius-pill: 9999px`(圆角收敛 sm 4 / md 8 / lg 14 / pill);`:root { color-scheme: light }` / `.dark { color-scheme: dark }`。
+- **顺带**:`apps/web/index.html` 首帧的四个颜色值跟着 token 走(`index-html.test.ts` 钉住,脚本 hash 未变),`docs/brand.md` 里的值同步。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests` 36 / 235(semantic-tokens、index-html 在内);`pnpm build` ok;`pnpm test:browser` Test Files 46 passed (46); Tests 325 passed (325); exit 0——第一遍 5 条红:baseline 快照(分隔线与焦点环的序列化值)与 button / commodity / widget-platform 里写死的旧灰阶字面量(`oklch(0.205 0 0)` 等);后三者改为从 `:root` 读 token 值断言(`token('--q-primary')`),以后换值不再红,快照按新值更新(差异只有 `--q-border` 与 `--q-focus-ring`)。截图:浅 / 深 × `/assessment/batches`、`/organization/users`,生产入口 1280。
