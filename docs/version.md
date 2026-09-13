@@ -1,5 +1,7 @@
 # Qualy Web Release Protocol 与运行中版本漂移恢复机制实施方案
 
+> 状态:Phase A–F 已于 2026-09-14 落地,实现形态与运维要点见 docs/web-release.md;本文保留为设计依据。
+
 ## 0. 任务目标
 
 为 Qualy 建立一套正式的 Web Release Protocol，解决以下问题：
