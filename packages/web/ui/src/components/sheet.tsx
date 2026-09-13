@@ -36,23 +36,15 @@ const SLIDE_IN = {
 } as const
 
 const styles = stylex.create({
-  // the same veil the dialogs draw, fading on its own compositing layer: a
-  // backdrop-filter under an animating opacity made mobile Safari
-  // re-rasterize the page behind it on every frame
+  // the same veil as the dialog's, at once and for good; see that file
   overlay: {
-    // the colour comes in, not the opacity: a backdrop blur under an
-    // opacity that animates is re-run by WebKit on every frame of it, and
-    // at this radius that is the stutter a modal opens with on Safari
-    animationName: { default: 'q-veil-in', [REDUCE]: 'none' },
-    animationDuration: { default: '150ms', [REDUCE]: '0s' },
-    animationTimingFunction: 'ease',
     // a reader who asked for less motion is answered on the way in and on
     // the way out alike, whether or not this panel is currently leaving
     transitionProperty: { default: null, [REDUCE]: 'none' },
     isolation: 'isolate',
     backgroundColor: tokens.scrim,
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
   },
   // both layers leave the way they came, and neither answers the pointer on
   // the way out
@@ -453,7 +445,6 @@ function SheetContent({
     >
       <MDrawer.Overlay
         data-slot="sheet-overlay"
-        blur={8}
         {...(closing ? { 'data-closing': '' } : {})}
         {...stylex.props(styles.overlay, closing && styles.overlayClosing)}
       />

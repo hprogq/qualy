@@ -20,35 +20,35 @@ import { Button } from './button.tsx'
 // is; see that file
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
+/** the way out, as the dialog's */
+const leaving = {
+  in: { opacity: 1, transform: 'translateY(0)' },
+  out: { opacity: 0, transform: 'translateY(4px)' },
+  transitionProperty: 'opacity, transform',
+}
+
 const styles = stylex.create({
+  // the same veil and the same material as the dialog's; see that file
   overlay: {
-    // the colour comes in, not the opacity: a backdrop blur under an
-    // opacity that animates is re-run by WebKit on every frame of it, and
-    // at this radius that is the stutter a modal opens with on Safari
-    animationName: { default: 'q-veil-in', [REDUCE]: 'none' },
-    animationDuration: { default: '150ms', [REDUCE]: '0s' },
-    animationTimingFunction: 'ease',
     isolation: 'isolate',
-    // the page behind goes dark and out of focus: the panel is then the
-    // one white thing in the viewport without needing a colour of its own
     backgroundColor: tokens.scrim,
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
   },
   entrance: {
-    animationName: { default: 'q-pop-in', [REDUCE]: 'none' },
-    animationDuration: { default: '150ms', [REDUCE]: '0s' },
-    animationTimingFunction: 'ease',
-    // its own layer for the scale: the panel and its long shadow are
-    // rasterised once and moved, not repainted per frame
-    willChange: 'transform',
+    animationName: { default: 'q-dialog-in', [REDUCE]: 'none' },
+    animationDuration: { default: '170ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
   },
-  // structure only; the surface is the widget's own under the theme
   content: {
     display: 'grid',
     gap: 24,
     padding: 24,
-    boxShadow: tokens.elevation3,
+    backgroundColor: `color-mix(in oklch, ${tokens.surface} 96%, transparent)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
+    boxShadow: `${tokens.elevation3}, inset 0 1px 0 color-mix(in oklch, ${tokens.surface} 35%, transparent)`,
     outlineStyle: 'none',
   },
   // The measure is the widget's `size` prop, because it sizes the panel with
@@ -272,10 +272,10 @@ function AlertDialogContent({
       closeOnEscape
       // an alert is answered, not dismissed by a stray click on the page
       closeOnClickOutside={false}
-      transitionProps={{ duration: 100 }}
+      transitionProps={{ transition: leaving, duration: 0, exitDuration: 120 }}
       size={size === 'default' ? '28rem' : '20rem'}
     >
-      <MModal.Overlay data-slot="alert-dialog-overlay" blur={8} {...stylex.props(styles.overlay)} />
+      <MModal.Overlay data-slot="alert-dialog-overlay" {...stylex.props(styles.overlay)} />
       <MModal.Content
         data-slot="alert-dialog-content"
         data-size={size}

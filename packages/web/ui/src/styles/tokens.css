@@ -66,10 +66,12 @@
     0 0 0 1px oklch(0 0 0 / 0.1), 0 2px 4px oklch(0 0 0 / 0.04),
     0 12px 24px -8px oklch(0 0 0 / 0.1);
   --q-elevation-3: 0 0 0 1px oklch(0 0 0 / 0.08), 0 24px 48px -12px oklch(0 0 0 / 0.25);
-  /* the veil behind a modal panel: the page goes dark and out of focus, so
-     the panel is the one white thing in the viewport without a colour of
-     its own */
-  --q-scrim: oklch(0 0 0 / 0.45);
+  /* the veil behind a modal panel: the page goes out of focus, and this
+     dims it just enough for the panel to be the one thing in focus - a
+     light touch, because the blur is the material and the dimming only
+     its contrast; it also gives the browser's chrome a colour to read
+     off the page's edge, which a blur alone does not */
+  --q-scrim: oklch(0 0 0 / 0.18);
   /* three radii and a pill: a small badge, a control, a card or a table */
   --q-radius-sm: 4px;
   --q-radius-md: 8px;
@@ -106,5 +108,5 @@
   --q-elevation-1: 0 0 0 1px oklch(1 0 0 / 0.08);
   --q-elevation-2: 0 0 0 1px oklch(1 0 0 / 0.1);
   --q-elevation-3: 0 0 0 1px oklch(1 0 0 / 0.12);
-  --q-scrim: oklch(0 0 0 / 0.6);
+  --q-scrim: oklch(0 0 0 / 0.28);
 }

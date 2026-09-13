@@ -212,15 +212,18 @@
  * declared here once and behaves identically for first mounts and reopens.
  * Exits stay with the library's transitions. */
 @layer components {
-  @keyframes q-veil-in {
-    from {
-      background-color: transparent;
-    }
-  }
-  @keyframes q-pop-in {
+  /* a panel rises a little and fades in; it is never scaled, because a
+     scaled panel is a texture on the compositor for the length of the
+     animation, and WebKit draws its text and edges soft until the frame
+     it ends - the panel would appear to sharpen as it settled */
+  @keyframes q-dialog-in {
     from {
       opacity: 0;
-      transform: scale(0.97);
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
   @keyframes q-slide-in-right {

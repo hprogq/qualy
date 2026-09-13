@@ -27,41 +27,46 @@ import { XIcon } from 'lucide-react'
 // one of them is still shared with a component this batch did not touch.
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
+/** the way out: down a little and gone, by the widget's own transition */
+const leaving = {
+  in: { opacity: 1, transform: 'translateY(0)' },
+  out: { opacity: 0, transform: 'translateY(4px)' },
+  transitionProperty: 'opacity, transform',
+}
+
 const styles = stylex.create({
-  // One veil for the whole overlay family. The fade is promoted to its own
-  // layer: a backdrop-filter whose opacity animates on the page's layer makes
-  // mobile Safari re-rasterize everything behind it on every frame, which
-  // reads as the background flashing while the panel opens.
+  // One veil for the whole overlay family: the page behind goes out of
+  // focus and a little dimmer, at once and for good. Nothing on it
+  // animates - a backdrop blur under anything that animates is re-run by
+  // WebKit on every frame, and that was the stutter a modal opened with
+  // on an iPhone. The colour is here as well as the blur, so the browser's
+  // chrome has a colour to read off the page's edge.
   overlay: {
-    // the colour comes in, not the opacity: a backdrop blur under an
-    // opacity that animates is re-run by WebKit on every frame of it, and
-    // at this radius that is the stutter a modal opens with on Safari
-    animationName: { default: 'q-veil-in', [REDUCE]: 'none' },
-    animationDuration: { default: '150ms', [REDUCE]: '0s' },
-    animationTimingFunction: 'ease',
     isolation: 'isolate',
-    // the page behind goes dark and out of focus: the panel is then the
-    // one white thing in the viewport without needing a colour of its own
     backgroundColor: tokens.scrim,
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
   },
+  // the panel rises and fades in, on its own; the veil is already there
   entrance: {
-    animationName: { default: 'q-pop-in', [REDUCE]: 'none' },
-    animationDuration: { default: '150ms', [REDUCE]: '0s' },
-    animationTimingFunction: 'ease',
-    // its own layer for the scale: the panel and its long shadow are
-    // rasterised once and moved, not repainted per frame
-    willChange: 'transform',
+    animationName: { default: 'q-dialog-in', [REDUCE]: 'none' },
+    animationDuration: { default: '170ms', [REDUCE]: '0s' },
+    animationTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
   },
-  // the rows a dialog is made of, and how far it stands over the page;
-  // colour and radius are the widget's own under the product theme
+  // The rows a dialog is made of, and its material: a surface that is
+  // all but solid, letting a trace of the softened page through, a
+  // hairline edge, a deep soft shadow, and a thread of light along the
+  // top. The radius is the widget's own under the product theme.
   content: {
     position: 'relative',
     display: 'grid',
     gap: 24,
     padding: 24,
-    boxShadow: tokens.elevation3,
+    backgroundColor: `color-mix(in oklch, ${tokens.surface} 96%, transparent)`,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
+    boxShadow: `${tokens.elevation3}, inset 0 1px 0 color-mix(in oklch, ${tokens.surface} 35%, transparent)`,
     // size and leading travel together: the utility this replaces set both,
     // and stating only the size left the panel a fraction taller
     fontSize: 14,
@@ -304,10 +309,12 @@ function DialogContent({
       lockScroll
       closeOnEscape
       closeOnClickOutside
-      transitionProps={{ duration: 100 }}
+      // the entrance is the stylesheet's (above); the widget's transition
+      // only sees the panel out, a little faster and a little less far
+      transitionProps={{ transition: leaving, duration: 0, exitDuration: 120 }}
       size={size}
     >
-      <MModal.Overlay data-slot="dialog-overlay" blur={8} {...stylex.props(styles.overlay)} />
+      <MModal.Overlay data-slot="dialog-overlay" {...stylex.props(styles.overlay)} />
       <MModal.Content
         data-slot="dialog-content"
         ref={applyA11y}
