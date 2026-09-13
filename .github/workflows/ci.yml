@@ -88,8 +88,8 @@ jobs:
       - run: pnpm test
       - name: build web superset and stage assets
         run: pnpm build
-      - name: staged web assets must exist
-        run: test -f packages/plugins/infra/web/client-dist/index.html
+      - name: the staged web release is whole
+        run: node tools/quality/check-staged-web.ts
       - name: plugin chunk sentinel
         run: node apps/web/scripts/check-chunks.ts
       # The descriptor model gave up the compile-time closure proof; a real

@@ -76,6 +76,17 @@ export const installedWebReleaseSchema = webReleaseIdentitySchema.extend({
 
 export type InstalledWebRelease = z.infer<typeof installedWebReleaseSchema>
 
+/** the store's pointer to the release a host starting now should pin */
+export const currentReleasePointerSchema = z.object({
+  schema: z.literal(RELEASE_SCHEMA),
+  releaseId: releaseIdSchema,
+})
+
+export type CurrentReleasePointer = z.infer<typeof currentReleasePointerSchema>
+
+export const parseCurrentReleasePointer = (value: unknown): CurrentReleasePointer =>
+  currentReleasePointerSchema.parse(value)
+
 /** what a host answers at the release endpoint */
 export const releaseProbeSchema = z.object({
   schema: z.literal(RELEASE_SCHEMA),

@@ -8,6 +8,7 @@
     "./vite": "./src/vite.ts",
     "./collect": "./src/collect.ts",
     "./stage": "./src/stage.ts",
+    "./release-store": "./src/release-store.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
