@@ -16,6 +16,9 @@ export const BOOT_ID = 'qualy-boot'
 /** the marker index.html carries for the build to replace with the frame */
 export const BOOT_PLACEHOLDER = '<!-- qualy-boot -->'
 
+/** the data block beside the frame holding what the shell's watchdog says, per locale */
+export const BOOT_COPY_ID = 'qualy-boot-copy'
+
 export interface BootPlacement {
   /** cap height of the wordmark in CSS pixels */
   readonly cap: number

@@ -110,6 +110,9 @@ export function renderScreen({
   // layouts genuinely hide things in a remembered mode)
   localStorage.clear()
   localStorage.setItem('qualy.locale', locale)
+  // the shell's boot script marks the root with the locale it resolved and
+  // the runtime takes the mark; here the harness stands in for the script
+  document.documentElement.dataset['locale'] = locale
   // the toast queue is module-global: a success said in one test would
   // replay into the next screen's toaster and stand over its top bar
   toast.dismiss()

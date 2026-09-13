@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
-import { bootFrame } from '@qualy/brand/boot'
+import { BOOT_COPY_ID, bootFrame } from '@qualy/brand/boot'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { ColdStart, LoadingScreen } from '@qualy/ui/spinner'
+import { resolveInitialLocale, resolveLocale } from '@qualy/web-i18n'
+import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import '../src/app.css'
 
 // The cold start as the browser runs it: the first frame index.html paints
@@ -33,13 +35,28 @@ const firstFrame = async () => {
   sheet.textContent = style
   document.head.append(sheet)
   const host = document.createElement('div')
-  host.innerHTML = bootFrame().markup
-  document.body.prepend(host.firstElementChild!)
+  // the frame and, beside it, the watchdog's words, which the build writes
+  // from the same table the application reads
+  host.innerHTML =
+    bootFrame().markup +
+    `<script type="application/json" id="${BOOT_COPY_ID}">${JSON.stringify(bootstrapMessages)}</script>`
+  document.body.prepend(...host.children)
+  const lang = document.documentElement.lang
   return () => {
     sheet.remove()
     document.getElementById('qualy-boot')?.remove()
+    document.getElementById(BOOT_COPY_ID)?.remove()
+    // the boot script marks the root; the next test starts unmarked
+    document.documentElement.lang = lang
+    delete document.documentElement.dataset['locale']
+    localStorage.removeItem('qualy.locale')
   }
 }
+
+/** what the watchdog's link says in the locale the boot script marked the root with */
+const reloadName = () =>
+  bootstrapMessages[document.documentElement.dataset['locale'] as keyof typeof bootstrapMessages]
+    .reload
 
 /** the boot script as the source holds it, run in this page */
 const runBootScript = async () => {
@@ -254,9 +271,9 @@ describe('the cold start', () => {
       await runBootScript()
       // the watchdog says nothing while the application may still arrive
       vi.advanceTimersByTime(19_000)
-      expect(await page.getByRole('link', { name: '刷新页面' }).elements()).toHaveLength(0)
+      expect(await page.getByRole('link', { name: reloadName() }).elements()).toHaveLength(0)
       vi.advanceTimersByTime(1_000)
-      const reload = page.getByRole('link', { name: '刷新页面' })
+      const reload = page.getByRole('link', { name: reloadName() })
       await expect.element(reload).toBeVisible()
       // under the wordmark, inside the frame the application would have removed
       expect(document.querySelector('#qualy-boot p a')).toBe(reload.element())
@@ -272,7 +289,35 @@ describe('the cold start', () => {
       await runBootScript()
       document.getElementById('qualy-boot')?.remove()
       vi.advanceTimersByTime(20_000)
-      expect(await page.getByRole('link', { name: '刷新页面' }).elements()).toHaveLength(0)
+      expect(await page.getByRole('link', { name: reloadName() }).elements()).toHaveLength(0)
+    } finally {
+      restore()
+    }
+  })
+
+  it('resolves the locale once, before the first frame, and the application takes it from the root', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const restore = await firstFrame()
+    try {
+      // a stored preference: applied by the script, taken by the runtime
+      localStorage.setItem('qualy.locale', 'en-US')
+      await runBootScript()
+      expect(document.documentElement.dataset['locale']).toBe('en-US')
+      expect(document.documentElement.lang).toBe('en-US')
+      expect(resolveInitialLocale()).toBe('en-US')
+      // the mark is the answer, not the key: the runtime does not decide again
+      localStorage.setItem('qualy.locale', 'zh-CN')
+      expect(resolveInitialLocale()).toBe('en-US')
+      // nothing stored: the browser's own languages, through the chain the
+      // runtime would have walked
+      localStorage.removeItem('qualy.locale')
+      delete document.documentElement.dataset['locale']
+      await runBootScript()
+      expect(document.documentElement.dataset['locale']).toBe(
+        resolveLocale({ preferred: navigator.languages }),
+      )
+      expect(document.documentElement.lang).toBe(document.documentElement.dataset['locale'])
+      expect(resolveInitialLocale()).toBe(document.documentElement.dataset['locale'])
     } finally {
       restore()
     }

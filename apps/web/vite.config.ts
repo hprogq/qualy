@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { qualyBootFrame, qualyPlugins } from '@qualy/web-build/vite'
+import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
@@ -17,7 +18,9 @@ export default defineConfig(({ mode }) => ({
   // stays until the last migration phase (docs/ui-platform-migration-mantine.md)
   plugins: [
     qualyPlugins(),
-    qualyBootFrame(),
+    // the first frame, and beside it what the shell says when nothing of the
+    // application ever runs - from the same table the cold start reads
+    qualyBootFrame({ copy: bootstrapMessages }),
     stylexUnplugin({
       useCSSLayers: true,
       dev: mode !== 'production',

@@ -1,8 +1,16 @@
 import { setupI18n } from '@lingui/core'
 import { compileMessage } from '@lingui/message-utils/compileMessage'
-import { uiTextSchema, literal, message, type MessageCatalog } from '@qualy/i18n-contract'
+import {
+  supportedLocales,
+  uiTextSchema,
+  literal,
+  message,
+  type MessageCatalog,
+  type MessageDescriptor,
+} from '@qualy/i18n-contract'
 import { describe, expect, it } from 'vitest'
 import { loadCatalogs, resolveLocale } from '../src/index.tsx'
+import { bootstrapMessages } from '../src/bootstrap.ts'
 import zhCN from '../src/catalogs/zh-CN.ts'
 import { commonMessages } from '../src/messages.ts'
 import {
@@ -159,6 +167,28 @@ describe('web i18n runtime', () => {
     // nothing usable falls back to the deployment default
     expect(resolveLocale({ preferred: ['fr-FR', 'de-DE'] })).toBe('zh-CN')
     expect(resolveLocale({})).toBe('zh-CN')
+  })
+
+  it('keeps the words said before the catalogs in step with the catalogs', () => {
+    // three of the bootstrap lines are also common messages: the same words
+    // in both places, or the screen would change its wording when the
+    // catalogs arrive
+    const said = {
+      loading: commonMessages.loading,
+      stillLoading: commonMessages.stillLoading,
+      retry: commonMessages.retry,
+    } as const
+    for (const [key, descriptor] of Object.entries(said) as [
+      keyof typeof said,
+      MessageDescriptor,
+    ][]) {
+      expect(bootstrapMessages['zh-CN'][key]).toBe((zhCN as MessageCatalog)[descriptor.id])
+      expect(bootstrapMessages['en-US'][key]).toBe(descriptor.defaultMessage)
+    }
+    // every locale says every line
+    for (const locale of supportedLocales) {
+      for (const line of Object.values(bootstrapMessages[locale])) expect(line.trim()).not.toBe('')
+    }
   })
 
   it('surfaces a failing catalog chunk instead of swallowing it', async () => {

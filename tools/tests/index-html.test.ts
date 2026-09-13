@@ -3,7 +3,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { BOOT_PLACEHOLDER, bootFrame } from '../../packages/web/brand/src/boot.ts'
+import { defaultLocale, supportedLocales } from '@qualy/i18n-contract'
+import { BOOT_COPY_ID, BOOT_PLACEHOLDER, bootFrame } from '../../packages/web/brand/src/boot.ts'
+import { bootstrapMessages } from '../../packages/web/i18n/src/bootstrap.ts'
 import { INLINE_BOOT_SCRIPT_HASH } from '../../packages/plugins/infra/web/src/server/shell-policy.ts'
 import { injectBootFrame } from '../../packages/build/web/src/vite.ts'
 
@@ -17,8 +19,11 @@ import { injectBootFrame } from '../../packages/build/web/src/vite.ts'
 // - the boot script: it resolves the colour scheme before anything paints,
 //   from the same key the runtime's ThemeProvider persists under and the
 //   system preference when nothing is stored, setting the same class the
-//   tokens switch on; and it is the watchdog that offers a reload when the
-//   application never takes over. The shell's content security policy
+//   tokens switch on; it resolves the locale the same way the runtime does
+//   and marks the root with it, so the runtime need not decide again; and
+//   it is the watchdog that offers a reload when the application never
+//   takes over, in words it reads from a data block the build writes
+//   beside the frame, never from this file. The shell's content security policy
 //   allows it by the hash of its exact bytes, so the constant the policy
 //   carries must be this script's digest, of the file as served (Vite
 //   leaves a non-module inline script untouched; the staged copy is
@@ -33,6 +38,7 @@ import { injectBootFrame } from '../../packages/build/web/src/vite.ts'
 const ROOT = path.resolve(import.meta.dirname, '../..')
 const html = fs.readFileSync(path.join(ROOT, 'apps/web/index.html'), 'utf8')
 const theme = fs.readFileSync(path.join(ROOT, 'packages/web/runtime/src/theme.tsx'), 'utf8')
+const i18n = fs.readFileSync(path.join(ROOT, 'packages/web/i18n/src/index.tsx'), 'utf8')
 const tokens = fs.readFileSync(path.join(ROOT, 'packages/web/ui/src/styles/tokens.css'), 'utf8')
 
 const scriptOf = (source: string) => /<script>([\s\S]*?)<\/script>/.exec(source)?.[1]
@@ -65,6 +71,32 @@ describe('the shell source', () => {
     expect(html).toContain(`localStorage.getItem('${key}')`)
   })
 
+  it('resolves the locale the way the runtime does, once, and marks the root with it', () => {
+    const script = scriptOf(html)!
+    const key = /const STORAGE_KEY = '([^']+)'/.exec(i18n)?.[1]
+    expect(key).toBeDefined()
+    expect(script).toContain(`localStorage.getItem('${key}')`)
+    // the same locales, the same default, the same chain: a stored
+    // preference, then each of the browser's languages exactly and then by
+    // its language subtag, then the deployment's default
+    expect(script).toContain(`var locales = [${supportedLocales.map((l) => `'${l}'`).join(', ')}]`)
+    expect(script).toContain(`if (locale === null) locale = '${defaultLocale}'`)
+    expect(script).toContain('root.lang = locale')
+    expect(script).toContain(`root.setAttribute('data-locale', locale)`)
+    // the document's own language is the default, until the script says otherwise
+    expect(html).toContain(`<html lang="${defaultLocale}">`)
+    // and the runtime takes the mark rather than deciding a second time
+    const mark = /const ROOT_MARK = '([^']+)'/.exec(i18n)?.[1]
+    expect(mark).toBe('locale')
+    expect(i18n).toContain('document.documentElement.dataset[ROOT_MARK]')
+  })
+
+  it('types no words of its own: the watchdog reads them from the frame', () => {
+    const script = scriptOf(html)!
+    expect(script).toContain(`getElementById('${BOOT_COPY_ID}')`)
+    expect(html).not.toMatch(/[\u4e00-\u9fff]/)
+  })
+
   it('paints the application’s own colours', () => {
     const token = (block: string, name: string) =>
       new RegExp(`${block} \\{[^}]*--q-${name}: ([^;]+);`).exec(tokens)?.[1]
@@ -77,8 +109,12 @@ describe('the shell source', () => {
     // scheme the reader chose, resets both to the one that applies
     const light = token(':root', 'background')!
     const dark = token('.dark', 'background')!
-    expect(html).toContain(`<meta name="theme-color" content="${light}" media="(prefers-color-scheme: light)" />`)
-    expect(html).toContain(`<meta name="theme-color" content="${dark}" media="(prefers-color-scheme: dark)" />`)
+    expect(html).toContain(
+      `<meta name="theme-color" content="${light}" media="(prefers-color-scheme: light)" />`,
+    )
+    expect(html).toContain(
+      `<meta name="theme-color" content="${dark}" media="(prefers-color-scheme: dark)" />`,
+    )
     expect(scriptOf(html)).toContain(`dark ? '${dark}' : '${light}'`)
   })
 
@@ -101,7 +137,7 @@ describe('the shell source', () => {
 })
 
 describe('the shell as built', () => {
-  const built = injectBootFrame(html)
+  const built = injectBootFrame(html, bootstrapMessages)
 
   it('carries the generated first frame where the marker was, and no comment', () => {
     expect(built).not.toContain(BOOT_PLACEHOLDER)
@@ -119,7 +155,36 @@ describe('the shell as built', () => {
     expect(html).toContain('margin: var(--boot-hint-gap) 0 0;')
   })
 
+  it('carries what the watchdog says beside the frame, per locale, and only its two lines', () => {
+    const block = new RegExp(
+      `<script type="application/json" id="${BOOT_COPY_ID}">([\\s\\S]*?)</script>`,
+    ).exec(built)?.[1]
+    expect(block).toBeDefined()
+    const copy = JSON.parse(block!) as Record<string, Record<string, string>>
+    expect(Object.keys(copy)).toEqual([...supportedLocales])
+    for (const locale of supportedLocales) {
+      expect(copy[locale]).toEqual({
+        reloadLead: bootstrapMessages[locale].reloadLead,
+        reload: bootstrapMessages[locale].reload,
+      })
+    }
+    // beside the frame, not inside the script the policy hashes
+    expect(scriptOf(built)).toBe(scriptOf(html))
+    expect(built.indexOf(`id="${BOOT_COPY_ID}"`)).toBeGreaterThan(built.indexOf('id="qualy-boot"'))
+  })
+
+  it('cannot have its data block ended early by a line it carries', () => {
+    const hostile = injectBootFrame(html, { 'x-X': { reloadLead: '</script><b>', reload: '' } })
+    expect(hostile).not.toContain('</script><b>')
+    const block = new RegExp(`id="${BOOT_COPY_ID}">([\\s\\S]*?)</script>`).exec(hostile)?.[1]
+    expect((JSON.parse(block!) as Record<string, { reloadLead: string }>)['x-X']?.reloadLead).toBe(
+      '</script><b>',
+    )
+  })
+
   it('refuses a source without the marker', () => {
-    expect(() => injectBootFrame(html.replace(BOOT_PLACEHOLDER, ''))).toThrow(/marker/)
+    expect(() => injectBootFrame(html.replace(BOOT_PLACEHOLDER, ''), bootstrapMessages)).toThrow(
+      /marker/,
+    )
   })
 })

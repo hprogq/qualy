@@ -14,7 +14,8 @@ import {
   type RouteSlots,
 } from '@qualy/web-runtime'
 import { UiProvider } from '@qualy/ui/provider'
-import { I18nProvider, useI18n } from '@qualy/web-i18n'
+import { I18nProvider, resolveInitialLocale, useI18n } from '@qualy/web-i18n'
+import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
 import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
@@ -92,14 +93,12 @@ const registry: ComponentRegistry = Object.fromEntries(
   ]),
 )
 
-// The cold start's own copy, in the fallback language: the host stands above
-// the catalogs, which is the point of it, so it is handed the english
-// defaults of the same messages the rest of the shell formats.
-const coldStartCopy = {
-  loading: commonMessages.loading.defaultMessage,
-  stillLoading: commonMessages.stillLoading.defaultMessage,
-  retry: commonMessages.retry.defaultMessage,
-}
+// The cold start's own copy, in the reader's language: the host stands above
+// the catalogs, which is the point of it, so it reads the small table the
+// runtime keeps for before them - in the locale the shell's boot script
+// resolved and marked on the root before the first frame, which is the one
+// the catalogs will arrive in.
+const coldStartCopy = bootstrapMessages[resolveInitialLocale()]
 
 export default function App() {
   // localization wraps everything: even the manifest loading and error

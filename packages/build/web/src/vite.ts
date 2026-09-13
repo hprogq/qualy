@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Plugin } from 'vite'
-import { BOOT_PLACEHOLDER, bootFrame } from '@qualy/brand/boot'
+import { BOOT_COPY_ID, BOOT_PLACEHOLDER, bootFrame } from '@qualy/brand/boot'
 import { repoRoot } from './manifest.ts'
 import { buildPluginModuleSource, buildPluginScanSource } from './collect.ts'
 
@@ -65,27 +65,53 @@ export const qualyPlugins = (): Plugin => {
   }
 }
 
+/** what the shell's watchdog says in one locale, when no script of the application ever ran */
+export interface BootCopy {
+  readonly reloadLead: string
+  readonly reload: string
+}
+
+/**
+ * The watchdog's copy as a data block the boot script reads at the time it
+ * speaks, keyed by locale: the script itself is static, allowed by the
+ * content security policy through the hash of its bytes, so what it says
+ * travels beside it rather than in it. Only the two lines it needs, since
+ * the shell ships to every browser. A data block is never run, so no
+ * escaping matters but the one sequence that would end it early.
+ */
+export const bootCopyBlock = (copy: Readonly<Record<string, BootCopy>>): string => {
+  const lines = Object.fromEntries(
+    Object.entries(copy).map(([locale, { reloadLead, reload }]) => [
+      locale,
+      { reloadLead, reload },
+    ]),
+  )
+  const json = JSON.stringify(lines).replaceAll('<', '\\u003c')
+  return `<script type="application/json" id="${BOOT_COPY_ID}">${json}</script>`
+}
+
 /**
  * index.html with its first frame in place of the marker.
  *
  * The wordmark the shell paints before any script runs is drawn from the
  * brand's geometry at build time, never by hand: one marker in the source,
  * the generated element in what is served, and the loading screen that
- * takes the frame over reads the same placement. A source without the
+ * takes the frame over reads the same placement. The watchdog's copy
+ * stands beside it, from the host's own table. A source without the
  * marker is refused rather than served without a first frame.
  */
-export const injectBootFrame = (html: string): string => {
+export const injectBootFrame = (html: string, copy: Readonly<Record<string, BootCopy>>): string => {
   if (!html.includes(BOOT_PLACEHOLDER)) {
     throw new Error(`index.html carries no ${BOOT_PLACEHOLDER} marker for the first frame`)
   }
-  return html.replace(BOOT_PLACEHOLDER, bootFrame().markup)
+  return html.replace(BOOT_PLACEHOLDER, bootFrame().markup + bootCopyBlock(copy))
 }
 
 /** the vite plugin writing the first frame into the shell, in dev and in a build alike */
-export const qualyBootFrame = (): Plugin => ({
+export const qualyBootFrame = (options: { copy: Readonly<Record<string, BootCopy>> }): Plugin => ({
   name: 'qualy-boot-frame',
   transformIndexHtml: {
     order: 'pre',
-    handler: (html) => injectBootFrame(html),
+    handler: (html) => injectBootFrame(html, options.copy),
   },
 })

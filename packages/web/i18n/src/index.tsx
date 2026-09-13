@@ -85,7 +85,18 @@ export function resolveLocale(input: {
   return defaultLocale
 }
 
+// The locale is resolved once, before the first frame: the shell's boot
+// script walks the same chain and marks the root with its answer, and the
+// application takes the mark rather than deciding again - two deciders
+// were, for the theme, a frame in which the two disagreed. The chain is
+// walked here only where no script marked the root: a test, a document
+// that is not the shell.
+const ROOT_MARK = 'locale'
+
 export function resolveInitialLocale(): SupportedLocale {
+  const marked =
+    typeof document === 'undefined' ? undefined : document.documentElement.dataset[ROOT_MARK]
+  if (isSupported(marked)) return marked
   return resolveLocale({
     stored: typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY),
     preferred: typeof navigator === 'undefined' ? [] : (navigator.languages ?? []),
@@ -148,7 +159,10 @@ export function I18nProvider({
       if (cancelled) return
       i18n.load(locale, messages)
       i18n.activate(locale)
+      // the root's two marks follow the catalog, together: the language the
+      // page is read in, and the one anything before the catalogs speaks
       document.documentElement.lang = locale
+      document.documentElement.dataset[ROOT_MARK] = locale
       setActivated(locale)
     }
     void loadCatalogs(locale, catalogs)

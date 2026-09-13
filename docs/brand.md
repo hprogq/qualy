@@ -140,9 +140,9 @@
 
 `apps/web/index.html` 只带一个标记 `<!-- qualy-boot -->`;构建(与 dev server、浏览器套件同一条 Vite 管线)用 `@qualy/web-build/vite` 的 `qualyBootFrame()` 在 `transformIndexHtml` 里换成 `@qualy/brand/boot` 的 `bootFrame()` 生成的字标 SVG——cap 28px,环心所在的水平线在 `44vh`,水平居中——定位经元素上的两个自定义属性(`--boot-top`、`--boot-hint-gap`)交给 index.html 的静态样式读。运行时零 JS、零 React、零外部请求,和以前一样;变的是开发层:几何只有 `geometry.ts` 一份,`ColdStart` 的 `coldStartPlacement` 读的是同一个 `bootPlacement(28)`,两边不可能再各存一份数字。这不违反零 codegen:产物不进仓库,和 Vite 往 HTML 注入 `<script src=/assets/…>` 是同一类事;源码没有标记时构建直接失败。
 
-颜色仍是手写的:用应用自己的前景 / 背景 token 值(`oklch(0.21 0.006 80)` / `oklch(0.99 0.001 80)`,深色 `oklch(0.93 0.004 80)` / `oklch(0.17 0.006 80)`),不用预览页的 `#18191D` / `#FAFAF8`——接管那一帧覆盖层用的是同一组 token,两者必须逐值相同,`tools/tests/index-html.test.ts` 钉住;不让 bootstrap 等 tokens.css,那会破坏 boot 的独立性。一段内联脚本按 `ThemeProvider` 持久化的同一个键 `qualy.theme` 读取用户偏好(`packages/web/runtime/src/theme.tsx`),没有持久化就只看 `prefers-color-scheme`,设 `data-mode` 并提前加上 token 切换用的 `.dark` 类,页面背景同理。首帧不淡入。index.html 里不放任何注释(它原样发给每个浏览器;标记是唯一例外,构建把它换掉,生产 smoke 断言产物里没有注释),说明在 `tools/tests/index-html.test.ts`。
+颜色仍是手写的:用应用自己的前景 / 背景 token 值(`oklch(0.21 0.006 80)` / `oklch(0.99 0.001 80)`,深色 `oklch(0.93 0.004 80)` / `oklch(0.17 0.006 80)`),不用预览页的 `#18191D` / `#FAFAF8`——接管那一帧覆盖层用的是同一组 token,两者必须逐值相同,`tools/tests/index-html.test.ts` 钉住;不让 bootstrap 等 tokens.css,那会破坏 boot 的独立性。一段内联脚本按 `ThemeProvider` 持久化的同一个键 `qualy.theme` 读取用户偏好(`packages/web/runtime/src/theme.tsx`),没有持久化就只看 `prefers-color-scheme`,设 `data-mode` 并提前加上 token 切换用的 `.dark` 类,页面背景同理。同一段脚本把 locale 也解析一次——`qualy.locale` → `navigator.languages`(每个候选先精确匹配再按语言子标签)→ 默认 `zh-CN`,与运行时 `resolveLocale` 同一条链——写到 `<html lang>` 与 `data-locale`;运行时的 `resolveInitialLocale()` 只读这个标记,不再算第二遍(语言与主题一样只有一个决定者),屏幕阅读器从首帧起就按正确语言读。首帧不淡入。index.html 里不放任何注释(它原样发给每个浏览器;标记是唯一例外,构建把它换掉,生产 smoke 断言产物里没有注释),说明在 `tools/tests/index-html.test.ts`。
 
-同一段脚本还是原生的 **watchdog**:20 秒后 `#qualy-boot` 还在(index.html 到了但 JS 404、chunk 版本错位、初始化直接抛错——React 永远不会挂载,React 侧的 6s / 30s 一个都覆盖不到),就在字标下方补一行「加载时间较长,刷新页面」,链接经 `addEventListener` 触发 `location.reload()`(内联 `onclick` 会被 CSP 拦);React 正常接管时 `#qualy-boot` 被删,定时器自然作废。脚本是 CSP `script-src` 里唯一放行的 hash,改一个字节就要同步 `shell-policy.ts` 的常量(测试守)。
+同一段脚本还是原生的 **watchdog**:20 秒后 `#qualy-boot` 还在(index.html 到了但 JS 404、chunk 版本错位、初始化直接抛错——React 永远不会挂载,React 侧的 6s / 30s 一个都覆盖不到),就在字标下方补一行「加载时间较长,刷新页面」/ "Taking longer than expected. Reload"——按已解析的 locale 取:两行文字不写在 HTML 里,构建把 `@qualy/web-i18n/bootstrap` 的 `bootstrapMessages` 裁成这两行、按 locale 写成首帧旁的一个 `application/json` 数据块 `#qualy-boot-copy`,脚本到点才读(数据块不执行,不占 CSP hash;脚本本身保持静态)。链接经 `addEventListener` 触发 `location.reload()`(内联 `onclick` 会被 CSP 拦);React 正常接管时 `#qualy-boot` 被删,定时器自然作废。脚本是 CSP `script-src` 里唯一放行的 hash,改一个字节就要同步 `shell-policy.ts` 的常量(测试守)。
 
 ### 接管(React 挂载后)
 
@@ -152,7 +152,7 @@
 
 - 400ms 内就绪:循环从未开始(delay 未过),直接落位。
 - 超过 400ms:循环从探身开始(关键帧 0%)。
-- 6000ms 未就绪:字标下方 40px 淡入一行 muted 小字(英文 fallback "Still loading"),400ms。
+- 6000ms 未就绪:字标下方 40px 淡入一行 muted 小字,400ms。文案取 `bootstrapMessages[data-locale].stillLoading`(「加载时间较长,请稍候…」/ "Taking longer than expected…")——`ColdStart` 站在 catalog 之上,读的是这张启动期小表,不是 `defaultMessage`;它与 common catalog 的 `common/state/still-loading` 同文,`packages/web/i18n/tests` 守。
 - 30000ms 未就绪:停止循环(八段 150ms 归 1、尾巴退回,WAAPI 保持),显示重试按钮(刷新页面)。请求失败时,失败的加载器撤走认领,覆盖层照常退场,露出运行时自己的失败界面(带重试)——失败时不会还在转。
 
 ### 落位(就绪后)

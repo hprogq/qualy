@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.tsx",
     "./format": "./src/format.ts",
+    "./bootstrap": "./src/bootstrap.ts",
     "./messages": "./src/messages.ts"
   },
   "peerDependencies": {
