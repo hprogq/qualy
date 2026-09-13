@@ -27,6 +27,24 @@ export interface BootstrapMessages {
   readonly reloadLead: string
   /** the watchdog's link */
   readonly reload: string
+  /** the watchdog's line when the page's own files failed to load, up to the link */
+  readonly assetFailedLead: string
+  /** a newer release is on the server; the page goes on working */
+  readonly updateAvailableTitle: string
+  readonly updateAvailableHint: string
+  readonly later: string
+  readonly reloadNow: string
+  /** a chunk this release needs is gone because a newer release replaced it */
+  readonly releaseSkewTitle: string
+  readonly releaseSkewHint: string
+  /** a chunk failed to load and the server has not changed */
+  readonly assetFailedTitle: string
+  readonly assetFailedHint: string
+  /** the server no longer speaks this page's protocol */
+  readonly clientProtocolTitle: string
+  readonly clientProtocolHint: string
+  /** the one way out of any of the three */
+  readonly reloadPage: string
 }
 
 export const bootstrapMessages = {
@@ -36,6 +54,18 @@ export const bootstrapMessages = {
     retry: '重试',
     reloadLead: '加载时间较长，',
     reload: '刷新页面',
+    assetFailedLead: '页面资源加载失败，',
+    updateAvailableTitle: 'Qualy 已更新',
+    updateAvailableHint: '刷新后即可使用最新版本。',
+    later: '稍后',
+    reloadNow: '刷新',
+    releaseSkewTitle: 'Qualy 已更新',
+    releaseSkewHint: '当前版本无法继续加载该页面。刷新后即可继续使用。',
+    assetFailedTitle: '页面资源加载失败',
+    assetFailedHint: '请检查网络后刷新页面。',
+    clientProtocolTitle: 'Qualy 需要更新',
+    clientProtocolHint: '当前页面版本已无法与服务器继续通信。刷新后即可继续使用。',
+    reloadPage: '刷新页面',
   },
   'en-US': {
     loading: 'Loading',
@@ -43,5 +73,18 @@ export const bootstrapMessages = {
     retry: 'Retry',
     reloadLead: 'Taking longer than expected. ',
     reload: 'Reload',
+    assetFailedLead: 'The page could not load its files. ',
+    updateAvailableTitle: 'Qualy has been updated',
+    updateAvailableHint: 'Reload to use the latest version.',
+    later: 'Later',
+    reloadNow: 'Reload',
+    releaseSkewTitle: 'Qualy has been updated',
+    releaseSkewHint: 'This version can no longer load the page. Reload to continue.',
+    assetFailedTitle: 'The page could not load its files',
+    assetFailedHint: 'Check your connection and reload the page.',
+    clientProtocolTitle: 'Qualy needs to be updated',
+    clientProtocolHint:
+      'This version of the page can no longer talk to the server. Reload to continue.',
+    reloadPage: 'Reload the page',
   },
 } as const satisfies Record<SupportedLocale, BootstrapMessages>

@@ -97,6 +97,10 @@ describe('the shell source', () => {
   it('types no words of its own: the watchdog reads them from the frame', () => {
     const script = scriptOf(html)!
     expect(script).toContain(`getElementById('${BOOT_COPY_ID}')`)
+    // and it answers a file of the page's own failing to load at once, in
+    // the capture phase, where an element's error event can be heard
+    expect(script).toMatch(/addEventListener\(\s*'error'/)
+    expect(script).toContain('showRecovery(')
     expect(html).not.toMatch(/[\u4e00-\u9fff]/)
   })
 
@@ -169,6 +173,7 @@ describe('the shell as built', () => {
       expect(copy[locale]).toEqual({
         reloadLead: bootstrapMessages[locale].reloadLead,
         reload: bootstrapMessages[locale].reload,
+        assetFailedLead: bootstrapMessages[locale].assetFailedLead,
       })
     }
     // beside the frame, not inside the script the policy hashes
@@ -177,7 +182,9 @@ describe('the shell as built', () => {
   })
 
   it('cannot have its data block ended early by a line it carries', () => {
-    const hostile = injectBootFrame(html, { 'x-X': { reloadLead: '</script><b>', reload: '' } })
+    const hostile = injectBootFrame(html, {
+      'x-X': { reloadLead: '</script><b>', reload: '', assetFailedLead: '' },
+    })
     expect(hostile).not.toContain('</script><b>')
     const block = new RegExp(`id="${BOOT_COPY_ID}">([\\s\\S]*?)</script>`).exec(hostile)?.[1]
     expect((JSON.parse(block!) as Record<string, { reloadLead: string }>)['x-X']?.reloadLead).toBe(

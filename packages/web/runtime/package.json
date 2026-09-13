@@ -7,7 +7,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.tsx",
-    "./api": "./src/api.ts"
+    "./api": "./src/api.ts",
+    "./release": "./src/release.ts"
   },
   "peerDependencies": {
     "react": "catalog:"
@@ -18,6 +19,7 @@
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",

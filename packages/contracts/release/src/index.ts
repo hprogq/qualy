@@ -101,6 +101,20 @@ export const releaseProbeSchema = z.object({
 
 export type ReleaseProbe = z.infer<typeof releaseProbeSchema>
 
+/** the channel tabs of one origin tell each other about a release they saw */
+export const QUALY_RELEASE_CHANNEL = 'qualy:release'
+
+/** what a tab posts on the channel: the probe it read, nothing of its own */
+export const releaseObservedSchema = z.object({
+  type: z.literal('release-observed'),
+  probe: releaseProbeSchema,
+})
+
+export type ReleaseObserved = z.infer<typeof releaseObservedSchema>
+
+export const isReleaseObserved = (value: unknown): value is ReleaseObserved =>
+  releaseObservedSchema.safeParse(value).success
+
 /** the probe a host answers for the release it is serving, with the protocol window it accepts */
 export const releaseProbeOf = (
   identity: WebReleaseIdentity,

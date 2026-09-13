@@ -48,14 +48,17 @@
         if (locale === null) locale = 'zh-CN'
         root.lang = locale
         root.setAttribute('data-locale', locale)
-        setTimeout(function () {
+        var shown = false
+        function showRecovery(kind) {
+          if (shown) return
           var boot = document.getElementById('qualy-boot')
           var seat = boot && boot.firstElementChild
           var source = document.getElementById('qualy-boot-copy')
           if (!seat || !source) return
+          shown = true
           var copy = JSON.parse(source.textContent)[locale]
           var note = document.createElement('p')
-          note.textContent = copy.reloadLead
+          note.textContent = kind === 'asset' ? copy.assetFailedLead : copy.reloadLead
           var reload = document.createElement('a')
           reload.href = location.href
           reload.textContent = copy.reload
@@ -65,7 +68,27 @@
           })
           note.appendChild(reload)
           seat.appendChild(note)
+        }
+        setTimeout(function () {
+          showRecovery('slow')
         }, 20000)
+        window.addEventListener(
+          'error',
+          function (event) {
+            var target = event.target
+            if (!target || target === window || !target.tagName) return
+            var tag = target.tagName
+            var url =
+              tag === 'SCRIPT'
+                ? target.src
+                : tag === 'LINK' && target.rel === 'stylesheet'
+                  ? target.href
+                  : ''
+            if (!url || url.indexOf(location.origin + '/') !== 0) return
+            showRecovery('asset')
+          },
+          true,
+        )
       })()
     </script>
     <style id="qualy-boot-style">

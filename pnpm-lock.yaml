@@ -1638,6 +1638,9 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../plugins/infra/ui-registry
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../contracts/release
       '@qualy/ui':
         specifier: workspace:*
         version: link:../ui

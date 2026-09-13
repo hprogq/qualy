@@ -295,6 +295,38 @@ describe('the cold start', () => {
     }
   })
 
+  it('offers a reload at once when a file of the page fails to load before the application runs', async () => {
+    const restore = await firstFrame()
+    try {
+      await runBootScript()
+      const locale = document.documentElement.dataset['locale'] as keyof typeof bootstrapMessages
+      // the entry script of a shell the browser cached, gone from the server
+      // since: the error reaches the window in the capture phase
+      const missing = document.createElement('script')
+      missing.src = '/assets/index-gone.js'
+      document.body.append(missing)
+      try {
+        const reload = page.getByRole('link', { name: bootstrapMessages[locale].reload })
+        await expect.element(reload).toBeVisible()
+        const note = document.querySelector('#qualy-boot p')
+        expect(note?.textContent).toBe(
+          bootstrapMessages[locale].assetFailedLead + bootstrapMessages[locale].reload,
+        )
+        // a second failure says nothing more
+        document.body.append(
+          Object.assign(document.createElement('script'), { src: '/assets/also-gone.js' }),
+        )
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        expect(document.querySelectorAll('#qualy-boot p')).toHaveLength(1)
+      } finally {
+        missing.remove()
+        document.querySelector('script[src="/assets/also-gone.js"]')?.remove()
+      }
+    } finally {
+      restore()
+    }
+  })
+
   it('resolves the locale once, before the first frame, and the application takes it from the root', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const restore = await firstFrame()

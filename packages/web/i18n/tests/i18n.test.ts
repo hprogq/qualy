@@ -177,6 +177,17 @@ describe('web i18n runtime', () => {
       loading: commonMessages.loading,
       stillLoading: commonMessages.stillLoading,
       retry: commonMessages.retry,
+      updateAvailableTitle: commonMessages.updateAvailableTitle,
+      updateAvailableHint: commonMessages.updateAvailableHint,
+      later: commonMessages.later,
+      reloadNow: commonMessages.reloadNow,
+      releaseSkewTitle: commonMessages.releaseSkewTitle,
+      releaseSkewHint: commonMessages.releaseSkewHint,
+      assetFailedTitle: commonMessages.assetFailedTitle,
+      assetFailedHint: commonMessages.assetFailedHint,
+      clientProtocolTitle: commonMessages.clientProtocolTitle,
+      clientProtocolHint: commonMessages.clientProtocolHint,
+      reloadPage: commonMessages.reloadPage,
     } as const
     for (const [key, descriptor] of Object.entries(said) as [
       keyof typeof said,

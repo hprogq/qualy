@@ -27,6 +27,41 @@ export const commonMessages = {
     id: 'common/state/still-loading',
     defaultMessage: 'Taking longer than expected…',
   },
+  // the release recovery notices, said again in bootstrap.ts for the gate
+  // that stands above the catalogs, and held in step by a test
+  updateAvailableTitle: {
+    id: 'common/release/update-available-title',
+    defaultMessage: 'Qualy has been updated',
+  },
+  updateAvailableHint: {
+    id: 'common/release/update-available-hint',
+    defaultMessage: 'Reload to use the latest version.',
+  },
+  later: { id: 'common/action/later', defaultMessage: 'Later' },
+  reloadNow: { id: 'common/action/reload', defaultMessage: 'Reload' },
+  releaseSkewTitle: { id: 'common/release/skew-title', defaultMessage: 'Qualy has been updated' },
+  releaseSkewHint: {
+    id: 'common/release/skew-hint',
+    defaultMessage: 'This version can no longer load the page. Reload to continue.',
+  },
+  assetFailedTitle: {
+    id: 'common/release/asset-failed-title',
+    defaultMessage: 'The page could not load its files',
+  },
+  assetFailedHint: {
+    id: 'common/release/asset-failed-hint',
+    defaultMessage: 'Check your connection and reload the page.',
+  },
+  clientProtocolTitle: {
+    id: 'common/release/client-protocol-title',
+    defaultMessage: 'Qualy needs to be updated',
+  },
+  clientProtocolHint: {
+    id: 'common/release/client-protocol-hint',
+    defaultMessage:
+      'This version of the page can no longer talk to the server. Reload to continue.',
+  },
+  reloadPage: { id: 'common/action/reload-page', defaultMessage: 'Reload the page' },
   // the calendar's caption pickers, named for whoever cannot see them
   clockHour: { id: 'common/clock/hour', defaultMessage: 'Hour' },
   clockMinute: { id: 'common/clock/minute', defaultMessage: 'Minute' },

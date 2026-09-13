@@ -78,6 +78,7 @@ export const qualyPlugins = (): Plugin => {
 export interface BootCopy {
   readonly reloadLead: string
   readonly reload: string
+  readonly assetFailedLead: string
 }
 
 /**
@@ -90,9 +91,9 @@ export interface BootCopy {
  */
 export const bootCopyBlock = (copy: Readonly<Record<string, BootCopy>>): string => {
   const lines = Object.fromEntries(
-    Object.entries(copy).map(([locale, { reloadLead, reload }]) => [
+    Object.entries(copy).map(([locale, { reloadLead, reload, assetFailedLead }]) => [
       locale,
-      { reloadLead, reload },
+      { reloadLead, reload, assetFailedLead },
     ]),
   )
   const json = JSON.stringify(lines).replaceAll('<', '\\u003c')
