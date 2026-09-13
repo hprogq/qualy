@@ -78,7 +78,7 @@ const plugin = Plugin.define(
   Api.group(formulaApiGroup, formulaApiHandlers),
   Ui.page({
     id: 'assessment-formula/list',
-    path: '/assessment/formulas',
+    path: '/library/formulas',
     component: Ui.react('./client/FormulaListPage.tsx'),
     layout: APP_SHELL,
     title: message('assessment-formula/list/title', 'Scoring formulas'),
@@ -86,12 +86,12 @@ const plugin = Plugin.define(
     navigation: {
       label: message('assessment-formula/navigation/formulas', 'Scoring formulas'),
       order: 20,
-      group: 'assessment/main',
+      group: 'library/main',
     },
   }),
   Ui.page({
     id: 'assessment-formula/templates',
-    path: '/assessment/formula-templates',
+    path: '/library/formula-templates',
     component: Ui.react('./client/FormulaTemplatesPage.tsx'),
     layout: APP_SHELL,
     title: message('assessment-formula/templates/title', 'Formula templates'),
@@ -101,14 +101,14 @@ const plugin = Plugin.define(
     navigation: {
       label: message('assessment-formula/navigation/templates', 'Formula templates'),
       order: 30,
-      group: 'assessment/main',
+      group: 'library/main',
     },
   }),
   Ui.page({
     // reached from the library rather than from the navigation, so it
     // declares no entry of its own
     id: 'assessment-formula/template',
-    path: '/assessment/formula-templates/:versionId',
+    path: '/library/formula-templates/:versionId',
     component: Ui.react('./client/FormulaTemplatePage.tsx'),
     layout: APP_SHELL,
     title: message('assessment-formula/templates/title', 'Formula templates'),
@@ -116,7 +116,7 @@ const plugin = Plugin.define(
   }),
   Ui.page({
     id: 'assessment-formula/editor',
-    path: '/assessment/formulas/:functionId',
+    path: '/library/formulas/:functionId',
     component: Ui.react('./client/FormulaEditorPage.tsx'),
     layout: APP_SHELL,
     title: message('assessment-formula/list/title', 'Scoring formulas'),

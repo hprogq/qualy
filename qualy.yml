@@ -37,7 +37,6 @@ plugins:
       region: ap-beijing
       bucket: qualy-dev-files-1301296774
 
-  '@qualy/plugin-ping': {}
   '@qualy/plugin-assessment': {}
   '@qualy/plugin-assessment-evidence': {}
   '@qualy/plugin-audit': {}

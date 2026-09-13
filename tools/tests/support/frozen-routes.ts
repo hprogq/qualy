@@ -159,6 +159,4 @@ export const FROZEN_ROUTES = [
   'DELETE /org/nodes/{nodeId}',
   'PUT /org/nodes/{nodeId}/placement',
   'PUT /org/nodes/{nodeId}/type',
-
-  'GET /ping/hello',
 ]

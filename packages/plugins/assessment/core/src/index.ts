@@ -128,6 +128,22 @@ const plugin = Plugin.define(
         },
         visibility: PUBLIC,
       },
+      // The library: what is made once and used by many rounds - formulas
+      // and their templates today, policies and item types when they have a
+      // page. An application with no page this viewer may open is not shown
+      // (useAppNavigation), so declaring it ahead of most of its pages costs
+      // nothing.
+      {
+        key: navigationGroups.key,
+        id: 'library/main',
+        value: {
+          id: 'library/main',
+          label: message('assessment/nav-group/library', 'Library'),
+          order: 30,
+          icon: 'library',
+        },
+        visibility: PUBLIC,
+      },
       // Running an assessment: the rounds themselves and the templates they
       // are built from. The other three clusters the product is heading for -
       // submissions, reviews, and what a participant sees of their own - are

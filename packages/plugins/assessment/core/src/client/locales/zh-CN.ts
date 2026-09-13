@@ -4,6 +4,7 @@ export default {
   'assessment/audit/batch-create': '新建测评批次',
   'assessment/audit/batch-delete': '删除测评批次',
   'assessment/nav-group/main': '测评',
+  'assessment/nav-group/library': '资源库',
   'assessment/nav-group/batch-admin': '管理',
   'assessment/navigation/batches': '全部测评',
   'assessment/navigation/phases': '阶段安排',
