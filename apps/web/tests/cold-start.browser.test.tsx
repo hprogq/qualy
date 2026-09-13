@@ -163,21 +163,9 @@ describe('the cold start', () => {
     })
   })
 
-  it('flies the wordmark itself on the first screen, and never hands the page to the browser', async () =>
+  it('flies the top bar\u2019s own wordmark on the first screen, and never hands the page to the browser', async () =>
     withMotion(async () => {
       const transitions = vi.spyOn(document, 'startViewTransition')
-      // every layer that carries a wordmark in flight, as it is added
-      const flights: HTMLElement[] = []
-      const observer = new MutationObserver((records) => {
-        for (const record of records) {
-          for (const node of record.addedNodes) {
-            if (node instanceof HTMLElement && node.hasAttribute('data-cold-start-flight-layer')) {
-              flights.push(node)
-            }
-          }
-        }
-      })
-      observer.observe(document.body, { childList: true })
       try {
         let finish!: () => void
         let restart!: () => void
@@ -191,24 +179,38 @@ describe('the cold start', () => {
         await expect.element(page.getByRole('status')).toBeInTheDocument()
         const drawn = rectOf(overlay()!.querySelector('svg')!)
         finish()
-        await vi.waitFor(() => expect(flights).toHaveLength(1), { timeout: 2000 })
-        const [layer] = flights
-        // the copy takes off from exactly where the screen drew the wordmark
-        expect(parseFloat(layer!.style.left)).toBeCloseTo(drawn.left, 1)
-        expect(parseFloat(layer!.style.top)).toBeCloseTo(drawn.top, 1)
-        expect(parseFloat(layer!.style.width)).toBeCloseTo(drawn.width, 1)
-        // moved by an animation of its own, over the page, with the top
-        // bar's wordmark hidden under it; the screen itself is already gone
-        expect(layer!.getAnimations()).toHaveLength(1)
-        expect(document.documentElement.hasAttribute('data-cold-start-flight')).toBe(true)
+        const destination = () => document.querySelector<SVGElement>('[data-brand-wordmark]')!
+        await vi.waitFor(() => expect(destination().getAnimations()).toHaveLength(1), {
+          timeout: 2000,
+        })
+        // the element in flight is the element that stands at the end: one
+        // animation, on the top bar's own wordmark, and no copy anywhere
+        const [flight] = destination().getAnimations()
+        expect(document.querySelector('[data-cold-start-flight-layer]')).toBeNull()
         expect(overlay()).toBeNull()
-        await vi.waitFor(
-          () => expect(document.documentElement.hasAttribute('data-cold-start-flight')).toBe(false),
-          { timeout: 2000 },
-        )
-        expect(layer!.isConnected).toBe(false)
-        // and the browser's own transition machinery is never handed the
-        // page: what it captured of it was wrong at every zoom but one
+        const keyframes = (flight!.effect as KeyframeEffect).getKeyframes()
+        // it ends at an explicit identity, never at `none` - WebKit gives the
+        // keyframe back with the translation's second zero dropped
+        expect(keyframes.at(-1)!['transform']).toMatch(/^translate\(0px(, 0px)?\) scale\(1, 1\)$/)
+        // the hold outlives the finish: the identity is painted before the
+        // effect is released, so the last frame drawn is the state kept
+        await flight!.finished
+        expect(destination().getAnimations()).toHaveLength(1)
+        await vi.waitFor(() => expect(destination().getAnimations()).toHaveLength(0), {
+          timeout: 1000,
+        })
+        // and it took off from exactly where the screen drew the wordmark:
+        // the first keyframe moves the untransformed element onto that
+        // rectangle, in size as well as place
+        const at = rectOf(destination())
+        const numbers = String(keyframes[0]!['transform'])
+          .match(/-?[\d.]+/g)!
+          .map(Number)
+        expect(numbers[0]).toBeCloseTo(drawn.left - at.left, 1)
+        expect(numbers[1]).toBeCloseTo(drawn.top - at.top, 1)
+        expect(numbers[2]).toBeCloseTo(drawn.width / at.width, 2)
+        // the browser's own transition machinery is never handed the page:
+        // what it captured of it was wrong at every zoom but one
         expect(transitions).not.toHaveBeenCalled()
 
         // the manifest reloading after a sign-in: the screen comes back,
@@ -222,10 +224,9 @@ describe('the cold start', () => {
         }
         finish()
         await vi.waitFor(() => expect(overlay()).toBeNull(), { timeout: 2000 })
-        expect(flights).toHaveLength(1)
+        expect(destination().getAnimations()).toHaveLength(0)
         expect(transitions).not.toHaveBeenCalled()
       } finally {
-        observer.disconnect()
         transitions.mockRestore()
       }
     }))

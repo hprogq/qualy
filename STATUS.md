@@ -13715,3 +13715,13 @@ SIGTERM -> exit 0
 - **`fix(web): tell the browser's chrome the page's colour before any sheet`**:`index.html` 的 `<head>` 重排——charset、viewport、`<meta name="color-scheme" content="light dark">`、两条带 media 的 `theme-color`(值就是 tokens 的 `--q-background`,浅 `oklch(0.99 0.001 80)` / 深 `oklch(0.17 0.006 80)`)都在 `@layer` 那条 `<style>` 之前;boot 脚本按 `qualy.theme` 算出的实际主题把两条 meta 都改成对应的底色(用户强制 light 而系统 dark 时首帧前就纠正),脚本 hash 随之更新(`INLINE_BOOT_SCRIPT_HASH`,index-html 门禁钉);`ThemeProvider` 切换时读计算后的 `--q-background` 写回 meta,颜色单源在 token。顶栏静止态底色从 `transparent` 改为 `tokens.background`——肉眼一样,但 Safari 读顶边 surface 的颜色进自己的 chrome,`transparent` 让它去猜、页面出现时再猜一次;滚动后的玻璃态不变(`AppShell.head` 不加实底,否则挡住 backdrop-filter)。`index-html.test` 新增:两条 theme-color 与脚本里的字面量钉在 tokens 上,color-scheme meta 在任何 `<style>` 之前。
 - **「改完 1 有什么影响」**:root 不参与过渡本身没有产品影响(页面全程是活 DOM);它暴露出的是字标快照在缩放下的落地跳变,所以这轮整体撤掉 view transition,而不是继续调 `::view-transition-group`。`Reveal` / `HandoffContext` / boundary 不动。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests/{index-html,semantic-tokens}` 2 / 15;`pnpm build` ok(第一遍 app.css 多了一个 `}`,postcss 报 `Unexpected }`,修掉重来);WebKit 飞行录屏 + rAF 矩形日志;`pnpm test:browser:webkit` 2 / 12;`pnpm test:browser` Test Files 46 passed (46); Tests 326 passed (326);`vitest tools/tests` 36 / 236;exit 0。
+
+## 冷启动:飞的是顶栏字标本身,完整的 FLIP(2026-09-14)
+
+审计第四轮:副本飞到位再换真身,Safari 在最后一帧有可见的吸附——106×36 的副本缩到 0.5 的合成层,换成 53×18 按自身尺寸栅格化的真 SVG,这道 seam 就是那一下。修法按审计:不飞副本,直接飞顶栏字标本身。`fix(web): fly the top bar's own wordmark, whole`。
+
+- **实现**:`ColdStart` settle 之后量两个矩形,给 `[data-brand-wordmark]` 一条 WAAPI 动画——首帧 `translate(from − to) scale(from / to)` + `transform-origin: 0 0`(正好盖在覆盖层字标上),末帧显式 `translate(0px, 0px) scale(1, 1)`(不写 `none`),`fill: both`;同一任务里卸载覆盖层;`finished` 后等两帧 rAF 才 `cancel()`,让 identity 先被合成器画出来。删掉:飞行层、`bootFrame` 副本、`will-change`、`data-cold-start-flight` 属性与 `visibility: hidden` 规则——`app.css` 里已没有任何冷启动规则。
+- **实测**(WebKit 26.5,rAF 逐帧记顶栏字标矩形):覆盖层在时 24,18.6 / 52.8×17.8(未变换);覆盖层卸载那帧 587.1,337.6 / 105.7×35.6(= 覆盖层字标矩形),animations 1 running;之后每帧连续位移缩放;647ms 起矩形回到 24,18.6 / 52.8×17.8 仍在 running,669ms finished 同矩形,698ms cancel 同矩形。**同一个元素,没有换过**。
+- **回归用例**改写为不变量:飞行中顶栏字标自己恰有一条动画、页面里没有飞行层、末帧 keyframe 是显式 identity(WebKit 回给的是 `translate(0px) scale(1, 1)`,正则接受两种写法)、`finished` 之后动画仍在(hold 跨过一次绘制)、cancel 后消失、首帧 keyframe 的位移与缩放等于「覆盖层字标矩形 − 顶栏字标矩形」、`startViewTransition` 全程不被调用。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm build` ok;WebKit 飞行录屏 + 矩形日志;`pnpm test:browser` Test Files 46 passed (46); Tests 326 passed (326);`vitest tools/tests` 36 / 236;`pnpm test:browser:webkit` 第一遍 1 红(末帧 keyframe 的序列化差异,见上),放宽为正则后 2 / 12;exit 0。
+- **若真机 Safari 仍有位置吸附**:按审计,下一步放弃加速 transform,改动 fixed SVG 的 `left/top/width/height`。

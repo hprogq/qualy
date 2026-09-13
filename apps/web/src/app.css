@@ -12,14 +12,3 @@
 @layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;
 
 @import '@qualy/ui/theme.css';
-
-/* While the wordmark flies from the loading screen into the top bar, the
-   top bar's own stands hidden under the copy in flight. The flight itself
-   is the loading screen's (ColdStart in @qualy/ui), made with the drawing
-   and the Web Animations API rather than the browser's view transition:
-   WebKit captured that wrongly at every page zoom but one - the root at
-   the wrong scale, the wordmark doubled, its landing snapped - and there
-   is nothing to capture in a copy that is simply moved. */
-html[data-cold-start-flight] [data-brand-wordmark] {
-  visibility: hidden;
-}

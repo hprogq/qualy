@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import * as stylex from '@stylexjs/stylex'
-import { bootFrame, bootPlacement } from '@qualy/brand/boot'
+import { bootPlacement } from '@qualy/brand/boot'
 import { Loader } from '@qualy/brand/loader'
 import { Wordmark } from '@qualy/brand/wordmark'
 
@@ -182,12 +182,8 @@ const EXIT = 150
 const CAP = 28
 /** the placeholder index.html paints before any script runs */
 const PLACEHOLDER = 'qualy-boot'
-/** the wordmark the flight lands on: the top bar's, which marks itself */
+/** the wordmark that flies: the top bar's, which marks itself */
 const DESTINATION = '[data-brand-wordmark]'
-/** on the root while the wordmark is in flight; the destination hides under it */
-const FLIGHT = 'data-cold-start-flight'
-/** the layer carrying the wordmark in flight */
-const FLIGHT_LAYER = 'data-cold-start-flight-layer'
 const FLIGHT_MS = 320
 const FLIGHT_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
@@ -282,12 +278,13 @@ export interface ColdStartCopy {
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-/** the two ends of the flight: where the screen drew the wordmark, and the top bar's */
+/** the flight there is to make: the wordmark that flies, where from, and where it stands */
 interface Flight {
+  readonly destination: Element
+  /** where the screen drew the wordmark */
   readonly from: DOMRect
+  /** where the top bar's stands, untransformed */
   readonly to: DOMRect
-  /** the ink the screen drew it in */
-  readonly ink: string
 }
 
 /** the flight there is to make, or none: no top bar to land on, or no way to animate */
@@ -295,69 +292,57 @@ const flightFrom = (screen: HTMLElement): Flight | null => {
   const source = screen.querySelector('svg')
   const destination = document.querySelector(DESTINATION)
   if (source === null || destination === null) return null
-  if (typeof Element.prototype.animate !== 'function') return null
+  if (typeof destination.animate !== 'function') return null
   const from = source.getBoundingClientRect()
   const to = destination.getBoundingClientRect()
   if (from.width === 0 || to.width === 0) return null
-  return { from, to, ink: getComputedStyle(screen).color }
+  return { destination, from, to }
 }
 
 /**
- * The wordmark's flight from the screen into the top bar, made with the
- * drawing itself.
+ * The wordmark's flight from the screen into the top bar: the top bar's
+ * own wordmark, moved.
  *
- * A still copy of the wordmark is laid over the screen's own, at the place
- * and size the screen drew it; the top bar's is hidden; the screen leaves;
- * the copy is moved and scaled onto the top bar's place; the copy leaves
- * and the top bar's stands. Every measure is a rectangle of the live
- * layout and every motion a transform in the same coordinates, so nothing
- * here asks the browser to capture anything. The view transition this
- * replaces did, and WebKit answered each capture wrongly at some zoom: a
- * root snapshot at the wrong scale under the flight, two images of the
- * wordmark in flight, a scale that snapped on landing.
+ * FLIP, whole: the top bar's wordmark is put, by a transform, exactly
+ * where the screen drew the wordmark, at that size; the screen leaves in
+ * the same task; the transform plays back to identity. Nothing is copied
+ * and nothing is handed over - the element in flight is the element that
+ * stands at the end, so there is no last frame in which one drawing is
+ * swapped for another. A copy that flew and was then replaced by the real
+ * one landed with a snap on Safari: the copy was a larger drawing scaled
+ * down on its own layer, the real one a smaller drawing rasterised at its
+ * own size, and the seam between the two showed as the wordmark settling.
+ * Every measure is a rectangle of the live layout and every motion a
+ * transform in the same coordinates, so page zoom, device scale and the
+ * engine's capture machinery take no part; the view transition this all
+ * replaces asked each of those and was answered wrongly at every zoom but
+ * one.
+ *
+ * The end is written as an identity transform rather than `none`, which
+ * WebKit's accelerated path has drawn differently, and the effect is kept
+ * for two frames after it finishes before it is cancelled, so the
+ * identity is what the compositor has painted before the animation's
+ * hold is released.
  */
-const fly = ({ from, to, ink }: Flight, leave: () => void) => {
-  const layer = document.createElement('div')
-  layer.setAttribute(FLIGHT_LAYER, '')
-  layer.setAttribute('aria-hidden', 'true')
-  Object.assign(layer.style, {
-    position: 'fixed',
-    left: `${String(from.left)}px`,
-    top: `${String(from.top)}px`,
-    width: `${String(from.width)}px`,
-    height: `${String(from.height)}px`,
-    color: ink,
-    pointerEvents: 'none',
-    zIndex: '1000',
-    transformOrigin: '0 0',
-    willChange: 'transform',
-  } satisfies Partial<CSSStyleDeclaration>)
-  // the first frame's drawing: the same geometry, at rest, sized to the seat
-  layer.innerHTML = bootFrame(CAP).svg
-  const drawing = layer.firstElementChild
-  if (drawing instanceof SVGElement) {
-    drawing.setAttribute('width', '100%')
-    drawing.setAttribute('height', '100%')
-  }
-  // one task, no frame between: the copy is on before the screen is off,
-  // and the top bar's wordmark is hidden before either
-  document.documentElement.setAttribute(FLIGHT, '')
-  document.body.append(layer)
-  leave()
-  const land = () => {
-    layer.remove()
-    document.documentElement.removeAttribute(FLIGHT)
-  }
-  const animation = layer.animate(
+const fly = ({ destination, from, to }: Flight, leave: () => void) => {
+  const animation = destination.animate(
     [
-      { transform: 'translate(0px, 0px) scale(1, 1)' },
       {
-        transform: `translate(${String(to.left - from.left)}px, ${String(to.top - from.top)}px) scale(${String(to.width / from.width)}, ${String(to.height / from.height)})`,
+        transform: `translate(${String(from.left - to.left)}px, ${String(from.top - to.top)}px) scale(${String(from.width / to.width)}, ${String(from.height / to.height)})`,
+        transformOrigin: '0 0',
       },
+      { transform: 'translate(0px, 0px) scale(1, 1)', transformOrigin: '0 0' },
     ],
-    { duration: FLIGHT_MS, easing: FLIGHT_EASE, fill: 'forwards' },
+    { duration: FLIGHT_MS, easing: FLIGHT_EASE, fill: 'both' },
   )
-  animation.finished.then(land, land)
+  // one task, no frame between: the wordmark is over the screen's before
+  // the screen is off
+  leave()
+  const settled = () =>
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => animation.cancel())
+    })
+  animation.finished.then(settled, settled)
 }
 
 /**

@@ -159,7 +159,7 @@
 
 1. 最后一个认领撤走 → 下一帧确认没有新的认领(fallback 之间的交接是同一次 commit 里的先撤后认,不会被当成结束)。
 2. 先暂停八条循环动画,读各段当前 `opacity` 与尾巴的 `transform`,WAAPI 150ms 过渡到 1 / 归位并保持。
-3. **然后**才飞:量覆盖层字标与顶栏字标(`[data-brand-wordmark]`)的 `getBoundingClientRect()`,把首帧那张静态字标(`bootFrame(28).svg`)放进一个 `position: fixed` 的层、按覆盖层字标的位置与尺寸铺好,给 `html` 加 `data-cold-start-flight`(顶栏字标 `visibility: hidden`),同一个任务里去掉 `html[data-cold-start]`、`flushSync` 卸载覆盖层,再用 WAAPI 把这层 `translate + scale` 到顶栏字标的矩形,320ms `cubic-bezier(.2,.8,.2,1)`,`finished` 后删层、撤属性。**不用 `document.startViewTransition()`**:它要浏览器截图,而 WebKit 在 100% 以外的页面缩放下每一张都截错——root 快照按错误比例盖在活页面上(过渡结束整页「突然放大」)、字标 old/new 两张叠影、只飞 new 一张时落地那一下缩放跳变。矩形和 transform 都在同一套 CSS 像素坐标里,缩放、设备像素比、截图都不再参与。
+3. **然后**才飞,飞的是顶栏字标本身(完整的 FLIP):量覆盖层字标与顶栏字标(`[data-brand-wordmark]`)的 `getBoundingClientRect()`,给顶栏字标一条 WAAPI 动画——第一帧 `translate(from − to) scale(from / to)`(正好盖在覆盖层字标上),末帧 `translate(0px, 0px) scale(1, 1)`(写显式 identity 不写 `none`,WebKit 加速路径对两者画法不同),`fill: both`,320ms `cubic-bezier(.2,.8,.2,1)`;同一个任务里去掉 `html[data-cold-start]`、`flushSync` 卸载覆盖层。`finished` 后再等两帧 rAF 才 `cancel()`,让 identity 状态先被合成器画出来。**没有副本、没有飞行层、没有交接**:飞的元素就是最后站着的元素,所以不存在「大图缩到 0.5 的层 → 原尺寸小图」那一帧的切换——之前飞副本再换真身,Safari 在落地那一下有可见的吸附。**不用 `document.startViewTransition()`**:它要浏览器截图,而 WebKit 在 100% 以外的页面缩放下每一张都截错——root 快照按错误比例盖在活页面上(过渡结束整页「突然放大」)、字标 old/new 两张叠影、只飞 new 一张时落地缩放跳变。矩形和 transform 都在同一套 CSS 像素坐标里,缩放、设备像素比、截图都不参与;也不加 `will-change`。
 4. `prefers-reduced-motion: reduce`,或没有 WAAPI:覆盖层 150ms 淡出后卸载,不飞。
 5. 落位后顶栏的字标是唯一的字标。
 6. **飞行只属于第一屏**:宿主按 episode 计数,同一页面里覆盖层第二次以后出现(登录后 manifest 重载、切换布局)只做 150ms 交叉淡入。
