@@ -24,8 +24,31 @@
 timer 压住事件循环:每次 `pnpm test:browser` 结束都挂 10 秒后被 vitest 强制关闭并打
 "close timed out / something prevents the main process from exiting" 告警(已实测:去掉插件即干净退出)。
 
-patch(`patches/@stylexjs__unplugin@0.19.0.patch`)在 setInterval 后补一行 `interval.unref?.()`,
-两个构建产物(esm/cjs)各一处。移除条件:上游修复该 timer 泄漏并升级到含修复的版本。
+patch(`patches/@stylexjs__unplugin@0.19.0.patch`,pnpm 的版本化命名)在 setInterval 后补一行
+`interval.unref?.()`,两个构建产物(esm/cjs)各一处。移除条件:上游修复该 timer 泄漏并升级到含修复的版本。
+
+同一份 patch 的第二组 hunk(2026-09-13,断点常量接入时实查):`defineConsts` 的消费方编译成
+`var(--<constKey>){…}` 占位规则,由 `processStylexRules` 在**聚合**时用常量模块自己的规则
+(`constKey` / `constVal`)替换成真正的 `@media …`。production build 在 `generateBundle` 里一次性
+聚合全部模块,没问题;dev(含 vitest browser)在**每个模块 transform 之后**都重新生成整张样式表,
+消费方常常先于常量模块被 transform,此时占位规则解析不到,lightningcss 对 `var(--x){…}` 报
+`Invalid empty selector`,整张表 500,Vite 错误遮罩盖住页面——浏览器套件里表现为对话框"找不到"、
+点击超时,一整批用例连锁失败(已实测:去掉常量导入即恢复)。
+
+hunk 给 `processCollectedRulesToCSS` 加了 `unresolvedConstants: 'skip' | 'throw'`(缺省 `throw`),
+`collectCss(mode)` 透传:**只有 dev 的 CSS 端点**(`vite.mjs` / `vite.js` 里 `DEV_CSS_PATH` 那条
+middleware)传 `'skip'`,引用了尚未收集的常量的规则暂时排除,常量模块到达后下一次聚合自然补上;
+`generateBundle` / `writeBundle`(vite 与 rollup 适配器)走缺省 `'throw'`——build 期还有常量没解析到
+就抛错点名 `--<key>`,而不是让一条 `@media` 规则在线上悄悄消失、门禁却全绿。esm/cjs 各一处。
+护栏:`tools/tests/stylex-unplugin-patch.test.ts` 直接往共享规则表里放一条引用不存在常量的规则,
+断言 build 语义抛错、dev 语义跳过、定义到齐后写出真正的 at-rule。
+
+这是绕上游缺陷的临时方案,不是最终修法:它靠 `/^var\(--([^)]+)\)/` 从**生成结果字符串**猜"这是一条
+未解析的常量引用"——只看 `ltr`、只看开头第一个 `var()`、`known` 只说明定义规则出现过、
+rule metadata 结构一变就失效;而且 dev 下的"跳过"会把真正的解析 bug 也暂时变成"CSS 消失"。
+上游正确的修法应在规则收集 / 依赖层:transform 时记下"规则 A 依赖常量 X",X 未到就标 pending,
+定义 X 的模块 transform 后解析 pending 规则再重生成样式表,而不是事后解析字符串。
+移除条件:上游在依赖层处理常量的收集顺序(或改为 transform 期内联)并升级到含修复的版本。
 
 ## 条件键的实查边界(2026-08-28,编译产物验证)
 

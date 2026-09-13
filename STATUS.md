@@ -13600,3 +13600,7 @@ SIGTERM -> exit 0
 - **测试**:shell 浏览器套件加「页面滚过头后打 `data-scrolled`、头仍贴顶、滚回去消失」。截图(生产入口,1280):静止、滚到卡片中部(顶栏玻璃,卡片标题成模糊影子,导航清晰)、`/library/formulas` 分区栏、375 宽无横向溢出。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test:browser` 46 files / 325 passed;`vitest tools/tests` 35 / 232;`pnpm build` ok(产物 CSS 里断点规则已被 lightningcss 改写成 `(width >= 768px)` 区间语法)。
 - **待办**:仓库里剩下的 768 / 1024 / 1280 / 84rem 本地媒体查询常量(`md` / `lg` / `xl` / `wide` / `belowLg` 等,review、items、entry、iam、org 各页)在 P6 做手机端时一并迁到 breakpoints 常量上,届时会逐个碰到;现在不动。
+
+## @stylexjs/unplugin 补丁:常量晚到的样式表(2026-09-13)
+
+`chore(repo): patch @stylexjs/unplugin for constants collected late`,单独一笔以便升级 StyleX 时一眼找到、单独回退或删掉。缘由、两种模式(dev 的 CSS 端点跳过、build 拒绝并点名)、启发式的局限与上游应有的修法都在 `docs/notes/stylexjs-unplugin.md`;护栏 `tools/tests/stylex-unplugin-patch.test.ts`(3 条:build 语义抛错、dev 语义跳过、定义到齐后写出真正的 at-rule)。patch 文件改为 pnpm 的版本化命名 `patches/@stylexjs__unplugin@0.19.0.patch`(原 unref hunk 一并在内)。门禁:`pnpm build` ok、`vitest tools/tests` 36 / 235、org-admin + shell 浏览器套件 17 / 17、root tsc 0 错误。待办:把常量收集顺序的问题报给上游(依赖层修法,见 note)。

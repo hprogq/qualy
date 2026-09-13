@@ -98,7 +98,7 @@ catalog:
   qcloud-cos-sts: 3.1.3
   cos-js-sdk-v5: 1.10.1
 patchedDependencies:
-  '@stylexjs/unplugin': patches/@stylexjs__unplugin.patch
+  '@stylexjs/unplugin@0.19.0': patches/@stylexjs__unplugin@0.19.0.patch
 minimumReleaseAgeExclude:
   - effect@4.0.0-rc.111
   - '@effect/vitest@4.0.0-rc.111'
