@@ -39,8 +39,8 @@ const EXIT_MS = 120
  * would remount both layers to play it - a fresh panel replaying its
  * entrance while the veil faded out, which is what a close looked like.
  * So the adapter holds the dialog mounted for one exit beat after `open`
- * turns false - however the close arrived - and marks both layers
- * `data-closing` for the styles below to fade and lower them.
+ * turns false - however the close arrived - and marks the panel closing
+ * for the style below to fade and lower it; the veil stands until both go.
  */
 function useExit(open: boolean): { shown: boolean; closing: boolean } {
   const [shown, setShown] = React.useState(open)
@@ -87,15 +87,12 @@ const styles = stylex.create({
     animationDuration: { default: '170ms', [REDUCE]: '0s' },
     animationTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
   },
-  // the way out: the veil fades, the panel fades and settles a little
-  // lower - a little faster and a little less far than it came
-  overlayClosing: {
-    opacity: 0,
-    transitionProperty: { default: 'opacity', [REDUCE]: 'none' },
-    transitionDuration: { default: '120ms', [REDUCE]: '0s' },
-    transitionTimingFunction: 'ease',
-    pointerEvents: 'none',
-  },
+  // the way out: the panel fades and settles a little lower - a little
+  // faster and a little less far than it came - while the veil stands as
+  // it is until both are gone. The veil carries the blur, and a blur
+  // under an animating opacity is re-run by WebKit on every frame; the
+  // page coming back into focus the instant the panel has gone reads as
+  // the page being given back, not as a cut
   panelClosing: {
     opacity: 0,
     transform: 'translateY(4px)',
@@ -346,11 +343,12 @@ function DialogContent({
     else node.removeAttribute('aria-describedby')
   }, [])
   React.useEffect(() => applyA11y())
-  // the page behind a modal leaves the conversation entirely
+  // the page behind a modal leaves the conversation entirely, for as long
+  // as the modal is on the page - which is one beat longer than it is open
   React.useEffect(() => {
-    if (!open) return
+    if (!shown) return
     return retainInertBackground(() => contentRef.current)
-  }, [open])
+  }, [shown])
   return (
     <MModal.Root
       opened={shown}
@@ -369,8 +367,7 @@ function DialogContent({
     >
       <MModal.Overlay
         data-slot="dialog-overlay"
-        {...(closing ? { 'data-closing': '' } : {})}
-        {...stylex.props(styles.overlay, closing && styles.overlayClosing)}
+        {...stylex.props(styles.overlay)}
       />
       <MModal.Content
         data-slot="dialog-content"
