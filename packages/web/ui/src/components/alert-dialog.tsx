@@ -20,11 +20,45 @@ import { Button } from './button.tsx'
 // is; see that file
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
-/** the way out, as the dialog's */
-const leaving = {
-  in: { opacity: 1, transform: 'translateY(0)' },
-  out: { opacity: 0, transform: 'translateY(4px)' },
-  transitionProperty: 'opacity, transform',
+/** how long the exit plays; the closing styles below match it */
+const EXIT_MS = 120
+
+/**
+ * The panel's presence, owning the exit, as the dialog's; see that file.
+ *
+ * The library's transition machine never runs here: entrances are CSS
+ * insertion animations, so they also play for a dialog that mounts already
+ * open, and the library's duration is zero. Handed an exit duration it
+ * would remount both layers to play it - a fresh panel replaying its
+ * entrance while the veil faded out, which is what a close looked like.
+ * So the adapter holds the dialog mounted for one exit beat after `open`
+ * turns false - however the close arrived - and marks both layers
+ * `data-closing` for the styles below to fade and lower them.
+ */
+function useExit(open: boolean): { shown: boolean; closing: boolean } {
+  const [shown, setShown] = React.useState(open)
+  const [closing, setClosing] = React.useState(false)
+  React.useEffect(() => {
+    if (open) {
+      setClosing(false)
+      setShown(true)
+      return
+    }
+    if (!shown) return
+    // a reader who asked for less motion gets the instant close
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setShown(false)
+      return
+    }
+    setClosing(true)
+    const timer = window.setTimeout(() => {
+      setClosing(false)
+      setShown(false)
+    }, EXIT_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+  return { shown, closing }
 }
 
 const styles = stylex.create({
@@ -39,6 +73,23 @@ const styles = stylex.create({
     animationName: { default: 'q-dialog-in', [REDUCE]: 'none' },
     animationDuration: { default: '170ms', [REDUCE]: '0s' },
     animationTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+  },
+  // the way out: the veil fades, the panel fades and settles a little
+  // lower - a little faster and a little less far than it came
+  overlayClosing: {
+    opacity: 0,
+    transitionProperty: { default: 'opacity', [REDUCE]: 'none' },
+    transitionDuration: { default: '120ms', [REDUCE]: '0s' },
+    transitionTimingFunction: 'ease',
+    pointerEvents: 'none',
+  },
+  panelClosing: {
+    opacity: 0,
+    transform: 'translateY(4px)',
+    transitionProperty: { default: 'opacity, transform', [REDUCE]: 'none' },
+    transitionDuration: { default: '120ms', [REDUCE]: '0s' },
+    transitionTimingFunction: 'ease',
+    pointerEvents: 'none',
   },
   content: {
     display: 'grid',
@@ -227,6 +278,7 @@ function AlertDialogContent({
   size?: 'default' | 'sm'
 }) {
   const { open, setOpen, descriptionId, hasDescription } = useAlert()
+  const { shown, closing } = useExit(open)
   const [hasMedia, setHasMedia] = React.useState(false)
   const layout = React.useMemo<AlertLayout>(
     () => ({ roomy: size === 'default', hasMedia, setHasMedia }),
@@ -263,19 +315,23 @@ function AlertDialogContent({
   }, [open])
   return (
     <MModal.Root
-      opened={open}
+      opened={shown}
       onClose={() => setOpen(false)}
       centered
       trapFocus
       returnFocus
       lockScroll
-      closeOnEscape
+      closeOnEscape={!closing}
       // an alert is answered, not dismissed by a stray click on the page
       closeOnClickOutside={false}
-      transitionProps={{ transition: leaving, duration: 0, exitDuration: 120 }}
+      transitionProps={{ duration: 0 }}
       size={size === 'default' ? '28rem' : '20rem'}
     >
-      <MModal.Overlay data-slot="alert-dialog-overlay" {...stylex.props(styles.overlay)} />
+      <MModal.Overlay
+        data-slot="alert-dialog-overlay"
+        {...(closing ? { 'data-closing': '' } : {})}
+        {...stylex.props(styles.overlay, closing && styles.overlayClosing)}
+      />
       <MModal.Content
         data-slot="alert-dialog-content"
         data-size={size}
@@ -283,10 +339,15 @@ function AlertDialogContent({
         // classNames.content, not className: the widget duplicates className
         // onto its positioning inner element. The slot takes a string, which
         // these compiled styles are - they carry no dynamic value.
+        {...(closing ? { 'data-closing': '' } : {})}
         classNames={{
           content: clsx(
-            stylex.props(styles.content, styles.entrance, size === 'default' && styles.narrowCap)
-              .className,
+            stylex.props(
+              styles.content,
+              styles.entrance,
+              size === 'default' && styles.narrowCap,
+              closing && styles.panelClosing,
+            ).className,
             className,
           ),
         }}
