@@ -12,6 +12,7 @@ import { NodeServer } from '@qualy/api-kit/node'
 import { requestOriginGuard } from '@qualy/api-kit/origin'
 import { WebConfig, routes } from '../src/server/index.ts'
 import { composeShellPolicy, ShellPolicyHeader } from '../src/server/shell-policy.ts'
+import { installTestRelease } from './support/store.ts'
 
 // One real violation, end to end: a browser loads a shell served with the
 // policy, the shell carries an inline script the policy does not hash, the
@@ -44,19 +45,15 @@ let unavailable: string | undefined
 
 const HASH = 'sha256:test'
 const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-violation-'))
-fs.writeFileSync(
-  path.join(assetRoot, 'index.html'),
-  [
+installTestRelease(assetRoot, {
+  hash: HASH,
+  shell: [
     '<!doctype html>',
     '<html><head><meta charset="utf-8"><title>violation</title>',
     "<script>document.title = 'the inline script ran'</script>",
     '</head><body>shell</body></html>',
   ].join('\n'),
-)
-fs.writeFileSync(
-  path.join(assetRoot, '.qualy-assembly.json'),
-  JSON.stringify({ resolutionHash: HASH }),
-)
+})
 
 interface Logged {
   readonly message: string

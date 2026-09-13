@@ -1575,6 +1575,12 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/release
+      '@qualy/web-build':
+        specifier: workspace:*
+        version: link:../../../build/web
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111

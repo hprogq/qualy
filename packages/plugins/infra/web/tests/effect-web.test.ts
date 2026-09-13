@@ -12,6 +12,7 @@ import { NodeServer } from '@qualy/api-kit/node'
 import { WebConfig, routes } from '../src/server/index.ts'
 import { ShellPolicyHeader } from '../src/server/shell-policy.ts'
 import { viteLogger } from '../src/dev/index.ts'
+import { installTestRelease, TEST_HASH } from './support/store.ts'
 
 // The boundary between the api and the browser shell.
 //
@@ -33,22 +34,19 @@ process.env.NODE_ENV = 'production'
 const port = 3191
 const base = `http://127.0.0.1:${port}`
 
-// A shell of its own, not the staged build.
+// A store of its own, not the staged build.
 //
-// Every property here is about which side of the api mount a path falls on,
-// and none of them reads the bundle. Pointing at client-dist made the suite
-// depend on `pnpm build` having run, which on CI it has not: the whole file
-// died with WebUnservable, in a job where the build step comes after the
-// tests. It also meant these assertions could only run after a full frontend
-// build, for no gain.
+// Every property here is about which side of the api mount a path falls on
+// and what each side is cached as, and none of them reads the bundle.
+// Pointing at client-dist made the suite depend on `pnpm build` having run,
+// which on CI it has not: the whole file died with WebUnservable, in a job
+// where the build step comes after the tests. It also meant these assertions
+// could only run after a full frontend build, for no gain.
+const HASH = TEST_HASH
+const installFixture = installTestRelease
+
 const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-assets-'))
-fs.writeFileSync(path.join(assetRoot, 'index.html'), '<!doctype html><title>shell</title>')
-// the fingerprint stage writes, matching the assembly the fake host declares
-const HASH = 'sha256:test'
-fs.writeFileSync(
-  path.join(assetRoot, '.qualy-assembly.json'),
-  JSON.stringify({ resolutionHash: HASH }),
-)
+installFixture(assetRoot)
 const assemblyInfo = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH }))
 // a policy already frozen: which header the shell sends is another suite's question
 const policy = Layer.succeed(
@@ -136,8 +134,8 @@ describe('the shell against the api mount', () => {
     }
   })
 
-  it('refuses assets built from a different assembly, and unstamped assets', async () => {
-    // the bundle and the process each name their assembly; a mismatch means
+  it('refuses a release built from a different assembly, and one without metadata', async () => {
+    // the release and the process each name their assembly; a mismatch means
     // the browser registry and the served api are different selections
     const buildAt = (root: string, info: Layer.Layer<AssemblyInfo>) =>
       Effect.runPromiseExit(
@@ -165,10 +163,55 @@ describe('the shell against the api mount', () => {
 
     const unstamped = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-unstamped-'))
     try {
-      fs.writeFileSync(path.join(unstamped, 'index.html'), '<!doctype html><title>shell</title>')
+      installFixture(unstamped, { metadata: false })
       expect(Exit.isFailure(await buildAt(unstamped, assemblyInfo))).toBe(true)
     } finally {
       fs.rmSync(unstamped, { recursive: true, force: true })
+    }
+  })
+
+  it('serves the shell and its public files uncached, and the hashed assets immutable', async () => {
+    // the shell's name never changes and its bytes do at every release
+    const page = await fetch(`${base}/`)
+    expect(page.status).toBe(200)
+    expect(page.headers.get('cache-control')).toBe('no-cache')
+    expect(page.headers.get('x-frame-options')).toBe('DENY')
+    expect(page.headers.get('content-security-policy-report-only')).toBe("default-src 'self'")
+    // an icon is a public file of the release, not a hashed asset: the same
+    // rule as the shell, and none of the document-only headers
+    const icon = await fetch(`${base}/favicon.svg`)
+    expect(icon.status).toBe(200)
+    expect(icon.headers.get('cache-control')).toBe('no-cache')
+    expect(icon.headers.get('x-frame-options')).toBeNull()
+    expect(icon.headers.get('x-content-type-options')).toBe('nosniff')
+    // a hashed asset's name promises its bytes
+    const asset = await fetch(`${base}/assets/index-current.js`)
+    expect(asset.status).toBe(200)
+    expect(asset.headers.get('cache-control')).toBe('public,max-age=31536000,immutable')
+    expect(asset.headers.get('x-frame-options')).toBeNull()
+  })
+
+  it('keeps serving an asset the current release does not name, for the tab that still needs it', async () => {
+    const asset = await fetch(`${base}/assets/page-old.js`)
+    expect(asset.status).toBe(200)
+    expect(asset.headers.get('cache-control')).toBe('public,max-age=31536000,immutable')
+    expect(await asset.text()).toContain('old')
+  })
+
+  it('answers a missing asset with a 404 and never with the shell', async () => {
+    for (const missing of ['/assets/nope.js', '/assets/', '/assets']) {
+      const response = await fetch(`${base}${missing}`)
+      expect(response.status, missing).toBe(404)
+      expect(response.headers.get('content-type') ?? '').not.toContain('text/html')
+    }
+    // and nothing of the store's own is reachable through the shell
+    for (const internal of [
+      '/.qualy-release.json',
+      '/current.json',
+      '/releases/test-release/index.html',
+    ]) {
+      const response = await fetch(`${base}${internal}`)
+      expect(response.status, internal).toBe(404)
     }
   })
 

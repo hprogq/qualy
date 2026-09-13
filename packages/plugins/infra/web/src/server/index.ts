@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import type { ServerResponse } from 'node:http'
 import path from 'node:path'
 import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
@@ -7,6 +8,13 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
 import type { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
+import {
+  SHARED_ASSETS,
+  readCurrentWebRelease,
+  storeAt,
+  type CurrentWebRelease,
+  type ReleaseStore,
+} from '@qualy/web-build/release-store'
 import { WebManifestConfig, rootsFrom } from '../config.ts'
 import { addReportRoute } from './csp-reports.ts'
 import {
@@ -97,9 +105,45 @@ interface ShellPolicySetting {
   readonly value: string
 }
 
-/** the staged build, with the caching rules a hashed-asset bundle needs */
-const assets = (assetRoot: string, policy: ShellPolicySetting): ConnectMiddleware =>
-  sirv(assetRoot, {
+/** the document-only headers: the shell is a page, the assets are not */
+const documentHeaders = (response: ServerResponse, policy: ShellPolicySetting) => {
+  // no other site may frame it (clickjacking), and a page that opens it
+  // from another origin gets no handle back on its window (the repository
+  // opens no windows itself, so the isolation costs nothing)
+  response.setHeader('X-Frame-Options', 'DENY')
+  response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  // the policy, frozen once at the barrier, and where to report to under
+  // the Reporting API name the policy's report-to refers to
+  response.setHeader(policy.header, policy.value)
+  response.setHeader('Reporting-Endpoints', `${REPORTING_ENDPOINT}="${REPORT_PATH}"`)
+}
+
+/** on everything served: a script is a script and an image an image, never sniffed; a link out says no more than the origin */
+const commonHeaders = (response: ServerResponse) => {
+  response.setHeader('X-Content-Type-Options', 'nosniff')
+  response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+}
+
+/**
+ * The pinned release, served: two file servers behind one middleware.
+ *
+ * The hashed assets come from the store's shared directory, where every
+ * retained release's assets live side by side, so a browser on an earlier
+ * release keeps finding its chunks; their names promise their bytes, so
+ * they are cached for a year, immutable, and a name the store lacks is a
+ * 404 and never the shell. Everything else - the shell for any navigation,
+ * the icons, the public files - comes from the pinned release's own
+ * directory and is never cached: those names do not change when their
+ * bytes do. The static middleware writes the node response itself, so the
+ * serve chain's headers never reach these bytes: whatever the shell and
+ * the assets carry is set here, and only here.
+ */
+const serve = (
+  store: ReleaseStore,
+  current: CurrentWebRelease,
+  policy: ShellPolicySetting,
+): ConnectMiddleware => {
+  const assets = sirv(path.join(store.root, SHARED_ASSETS), {
     etag: true,
     // The twins the build wrote, served when the request accepts them. Off
     // by default, and the default is what shipped: every visitor downloaded
@@ -107,77 +151,89 @@ const assets = (assetRoot: string, policy: ShellPolicySetting): ConnectMiddlewar
     // A request that accepts neither still gets the original.
     brotli: true,
     gzip: true,
-    // spa fallback: extension-less GET/HEAD navigations get index.html,
-    // missing assets with extensions stay 404
-    single: true,
+    single: false,
     maxAge: 31_536_000,
     immutable: true,
+    setHeaders: (response) => commonHeaders(response),
+  })
+  const shell = sirv(current.root, {
+    etag: true,
+    brotli: true,
+    gzip: true,
+    // spa fallback: extension-less GET/HEAD navigations get index.html,
+    // missing files with extensions stay 404
+    single: true,
     setHeaders: (response, pathname) => {
-      // The static middleware writes the node response itself, so the serve
-      // chain's headers never reach these bytes: whatever the shell and the
-      // assets carry is set here, and only here.
-      // a script is served as a script and an image as an image, never
-      // sniffed into something else; and a link out of any page says no
-      // more than the origin to the other side
-      response.setHeader('X-Content-Type-Options', 'nosniff')
-      response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
-      // pathname is the request path, so spa navigations ('/', '/ping') have no
-      // extension: those serve the html shell, which must not be cached
+      commonHeaders(response)
+      response.setHeader('Cache-Control', 'no-cache')
+      // pathname is the request path, so spa navigations ('/', '/ping')
+      // have no extension: those serve the html shell, a document
       if (pathname.endsWith('.html') || !path.posix.extname(pathname)) {
-        response.setHeader('Cache-Control', 'no-cache')
-        // The shell is a document and gets the document-only headers: no
-        // other site may frame it (clickjacking), and a page that opens it
-        // from another origin gets no handle back on its window (the
-        // repository opens no windows itself, so the isolation costs
-        // nothing). The hashed assets are not documents and are left with
-        // their immutable caching.
-        response.setHeader('X-Frame-Options', 'DENY')
-        response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
-        // the policy, frozen once at the barrier, and where to report to
-        // under the Reporting API name the policy's report-to refers to
-        response.setHeader(policy.header, policy.value)
-        response.setHeader('Reporting-Endpoints', `${REPORTING_ENDPOINT}="${REPORT_PATH}"`)
+        documentHeaders(response, policy)
       }
     },
   })
+  const mount = `/${SHARED_ASSETS}`
+  return (request, response, next) => {
+    const url = request.url ?? '/'
+    if (url === mount || url.startsWith(`${mount}/`) || url.startsWith(`${mount}?`)) {
+      // under the mount, rooted at the shared directory; a miss is a miss
+      request.url = url.slice(mount.length) || '/'
+      assets(request, response, () => {
+        response.statusCode = 404
+        response.end()
+      })
+      return
+    }
+    shell(request, response, next)
+  }
+}
 
 const production = Effect.fn('Web.production')(function* (
   assetRoot: string,
   policy: ShellPolicySetting,
 ) {
-  if (!fs.existsSync(path.join(assetRoot, 'index.html'))) {
+  // The store's pointer is read once, here, and the release it names is
+  // pinned for the life of this process: an installer moving the pointer
+  // later changes nothing a running host serves. One process is one api
+  // assembly and one web shell, until it is replaced.
+  const store = storeAt(assetRoot)
+  const current = yield* Effect.try({
+    try: () => readCurrentWebRelease(store),
+    catch: (error) =>
+      new WebUnservable({
+        message: `the web release store at ${assetRoot} is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+  }).pipe(Effect.orDie)
+  if (current === undefined) {
     return yield* Effect.die(
       new WebUnservable({
-        message: `web assets missing at ${assetRoot}; run 'pnpm build' first, or disable @qualy/plugin-web for a headless deployment`,
+        message: `no web release is installed at ${assetRoot}; run 'pnpm build' first, or disable @qualy/plugin-web for a headless deployment`,
       }),
     )
   }
-  // The bundle names the assembly it was built from; this process knows the
+  if (!fs.existsSync(path.join(current.root, 'index.html'))) {
+    return yield* Effect.die(
+      new WebUnservable({
+        message: `web release ${current.releaseId} at ${current.root} has no index.html`,
+      }),
+    )
+  }
+  // The release names the assembly it was built from; this process knows the
   // assembly it runs. Serving assets built from a different one means the
   // browser registry, the typed client and the served api may each be a
   // different selection - a mismatch neither half can notice alone, so it is
   // refused before the port binds.
-  const fingerprintFile = path.join(assetRoot, '.qualy-assembly.json')
-  if (!fs.existsSync(fingerprintFile)) {
-    return yield* Effect.die(
-      new WebUnservable({
-        message: `${assetRoot} carries no .qualy-assembly.json, so nothing says which assembly built it; run 'pnpm build' to stage assets with their fingerprint`,
-      }),
-    )
-  }
-  const staged = JSON.parse(fs.readFileSync(fingerprintFile, 'utf8')) as {
-    resolutionHash?: string
-  }
   const info = yield* AssemblyInfo
-  if (staged.resolutionHash !== info.resolutionHash) {
+  if (current.release.resolutionHash !== info.resolutionHash) {
     return yield* Effect.die(
       new WebUnservable({
-        message: `web assets were built from assembly ${staged.resolutionHash}, but this process runs ${info.resolutionHash}; run 'pnpm build' so the bundle matches the assembly`,
+        message: `web release ${current.releaseId} was built from assembly ${current.release.resolutionHash}, but this process runs ${info.resolutionHash}; run 'pnpm build' so the bundle matches the assembly`,
       }),
     )
   }
-  yield* Effect.logInfo(`serving web assets from ${assetRoot}`)
-  return assets(assetRoot, policy)
+  yield* Effect.logInfo(`serving web release ${current.releaseId} from ${current.root}`)
+  return serve(store, current, policy)
 })
 
 /**
