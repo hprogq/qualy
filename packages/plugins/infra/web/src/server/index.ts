@@ -5,6 +5,7 @@ import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { QUALY_RELEASE_ENDPOINT, releaseProbeOf } from '@qualy/release-contract'
 import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
 import type { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
@@ -143,7 +144,13 @@ const serve = (
   current: CurrentWebRelease,
   policy: ShellPolicySetting,
 ): ConnectMiddleware => {
+  // Looked up on disk per request, not from a table taken at boot. The
+  // store changes under a running host: an installer's collection removes
+  // an asset no retained release names, and a host that had listed it at
+  // boot went on to open it, and died of the stream's unhandled ENOENT on
+  // the next request for it. A file that is not there is a 404.
   const assets = sirv(path.join(store.root, SHARED_ASSETS), {
+    dev: true,
     etag: true,
     // The twins the build wrote, served when the request accepts them. Off
     // by default, and the default is what shipped: every visitor downloaded
@@ -152,11 +159,14 @@ const serve = (
     brotli: true,
     gzip: true,
     single: false,
-    maxAge: 31_536_000,
-    immutable: true,
-    setHeaders: (response) => commonHeaders(response),
+    setHeaders: (response) => {
+      commonHeaders(response)
+      // a hashed name promises its bytes: cached for a year, never revalidated
+      response.setHeader('Cache-Control', 'public,max-age=31536000,immutable')
+    },
   })
   const shell = sirv(current.root, {
+    dev: true,
     etag: true,
     brotli: true,
     gzip: true,
@@ -174,15 +184,22 @@ const serve = (
     },
   })
   const mount = `/${SHARED_ASSETS}`
+  const notFound = (response: ServerResponse) => {
+    response.statusCode = 404
+    response.end()
+  }
   return (request, response, next) => {
     const url = request.url ?? '/'
+    // nothing hidden is served: the release's own metadata sits beside its
+    // shell, and the per-request lookup does not know a dotfile from a file
+    if (/\/\./.test(url.split('?')[0]!)) {
+      notFound(response)
+      return
+    }
     if (url === mount || url.startsWith(`${mount}/`) || url.startsWith(`${mount}?`)) {
       // under the mount, rooted at the shared directory; a miss is a miss
       request.url = url.slice(mount.length) || '/'
-      assets(request, response, () => {
-        response.statusCode = 404
-        response.end()
-      })
+      assets(request, response, () => notFound(response))
       return
     }
     shell(request, response, next)
@@ -233,7 +250,7 @@ const production = Effect.fn('Web.production')(function* (
     )
   }
   yield* Effect.logInfo(`serving web release ${current.releaseId} from ${current.root}`)
-  return serve(store, current, policy)
+  return { current, middleware: serve(store, current, policy) }
 })
 
 /**
@@ -273,10 +290,29 @@ export const routes: Layer.Layer<
     }
     // built after the barrier, so the frozen policy is there to read
     const policy = yield* ShellPolicyHeader
-    const middleware = yield* production(config.assetRoot, {
+    const { current, middleware } = yield* production(config.assetRoot, {
       header: CSP_HEADER[config.cspMode],
       value: policy.value(),
     })
+    // Which release this process serves, for the page asking whether the
+    // server has moved on. Outside the api mount on purpose: it is the
+    // page's way of recovering when the api may already refuse it, so it
+    // depends on nothing typed. The answer is the pinned release, read
+    // once at boot, never the pointer on disk; it is public, and it is
+    // never cached.
+    const probe = JSON.stringify(releaseProbeOf(current.release))
+    yield* router.add(
+      'GET',
+      QUALY_RELEASE_ENDPOINT,
+      HttpServerResponse.text(probe, {
+        contentType: 'application/json; charset=utf-8',
+        headers: {
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          'cross-origin-resource-policy': 'same-origin',
+        },
+      }),
+    )
     yield* router.add(
       '*',
       '/*',

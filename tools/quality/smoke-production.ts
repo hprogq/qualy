@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { repoRoot } from '../lib/manifest.ts'
+import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/release-store.ts'
 
 // The production boot, actually booted - through the same runner `pnpm
 // start` uses, so the command people deploy with is the path being tested.
@@ -85,6 +86,10 @@ await check('/', async (response) => {
     return 'the shell carries no generated first frame'
   }
   if (shell.includes('<!--')) return 'the shell carries a comment'
+  // the shell's name never changes and its bytes do at every release
+  if (response.headers.get('cache-control') !== 'no-cache') {
+    return `cache-control: ${response.headers.get('cache-control') ?? 'absent'}, expected no-cache`
+  }
   // the document-only headers, set by the static middleware rather than
   // the serve chain, which never sees these bytes
   for (const [name, expected] of [
@@ -129,6 +134,33 @@ await check('/api/app/manifest', async (response) => {
   if (response.headers.get('x-content-type-options') !== 'nosniff') return 'not nosniff'
   const body = (await response.json()) as { pages?: unknown[] }
   return Array.isArray(body.pages) ? undefined : 'no pages in the manifest'
+})
+// an icon is a public file of the release, not a hashed asset: never cached
+// as immutable (it was, by the single server this replaced)
+await check('/favicon.svg', async (response) => {
+  if (response.status !== 200) return `status ${response.status}`
+  const caching = response.headers.get('cache-control') ?? ''
+  if (caching !== 'no-cache') return `cache-control: ${caching || 'absent'}, expected no-cache`
+  return undefined
+})
+// the release this process pinned is the one the store points at: the
+// process started after the install, and read the pointer then
+const staged = readCurrentWebRelease(
+  storeAt(path.join(repoRoot, 'packages/plugins/infra/web/client-dist')),
+)
+if (staged === undefined) fail('no web release is installed; the build did not stage one')
+await check('/__qualy/release', async (response) => {
+  if (response.status !== 200) return `status ${response.status}`
+  if (response.headers.get('cache-control') !== 'no-store') {
+    return `cache-control: ${response.headers.get('cache-control') ?? 'absent'}, expected no-store`
+  }
+  const probe = (await response.json()) as { releaseId?: string; mode?: string }
+  if (probe.releaseId !== staged!.releaseId) {
+    return `release ${probe.releaseId ?? 'absent'}, the store points at ${staged!.releaseId}`
+  }
+  if (probe.mode !== 'production') return `mode ${probe.mode ?? 'absent'}`
+  console.log(`smoke: /__qualy/release ${probe.releaseId}`)
+  return undefined
 })
 // one hashed asset out of the shell it actually served, so the check follows
 // the build instead of hardcoding a chunk name
