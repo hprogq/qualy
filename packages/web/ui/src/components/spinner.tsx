@@ -44,11 +44,18 @@ const vanish = stylex.keyframes({
 })
 
 const styles = stylex.create({
+  // the whole of the page seat, not a band of it: the shell's seat is a
+  // growing flex column, and this grows with it, so the loader sits at
+  // the centre of the room the page will take - between the bars and the
+  // foot, not of the viewport
   page: {
     display: 'flex',
+    flexGrow: 1,
+    minHeight: 0,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBlock: 96,
+    paddingBlock: 24,
   },
   // opacity from 0, with the delay counted in: a page that comes in under
   // 300ms never shows this at all
