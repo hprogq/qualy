@@ -1,7 +1,7 @@
 import type { UiText } from '@qualy/i18n-contract'
 import type { ClientComponentRef } from './components.ts'
 import type { NamespacedId } from './ids.ts'
-import type { LayoutContractId } from './surfaces.ts'
+import type { UiCollectionToken, LayoutContractId } from './surfaces.ts'
 import type { PageRef } from './pages.ts'
 import type { UiVisibility } from './visibility.ts'
 
@@ -61,10 +61,16 @@ export interface LayoutDeclaration {
   readonly component: ClientComponentRef
 }
 
-export interface CollectionDeclaration {
-  readonly key: string
+/**
+ * One item of a collection surface. It names the collection by its token,
+ * not by its key: the token carries the item's schema, and the registry
+ * decodes the value against it when the plugin contributes, so a malformed
+ * item stops the boot at its plugin rather than reaching the browser.
+ */
+export interface CollectionDeclaration<TContribution = unknown> {
+  readonly collection: UiCollectionToken<TContribution, any>
   readonly id: NamespacedId
-  readonly value: unknown
+  readonly value: TContribution
   readonly visibility: UiVisibility
   readonly order?: number
 }

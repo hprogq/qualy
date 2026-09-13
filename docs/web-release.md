@@ -10,7 +10,7 @@
 | `releaseId`      | 一次具体 Web build 或一次 dev Vite 会话       | `qualyRelease()` 插件铸造(`QUALY_RELEASE_ID` 或本地名) | 只比较相等:更新检测、诊断、日志  |
 | `clientProtocol` | 浏览器与 API 的兼容代际(小整数)              | `@qualy/release-contract`                               | 兼容窗口 `min..max`,不兼容 409   |
 
-契约包 `@qualy/release-contract`:常量、三种文档的 zod schema(`WebReleaseIdentity` / `InstalledWebRelease` / `ReleaseProbe`)、`RELEASE_ID_PATTERN`、跨 tab 消息 schema。
+契约包 `@qualy/release-contract`:常量、三种文档的 Effect Schema(`WebReleaseIdentity` / `InstalledWebRelease` / `ReleaseProbe`)、`RELEASE_ID_PATTERN`、跨 tab 消息 schema。
 
 ## 构建与安装
 

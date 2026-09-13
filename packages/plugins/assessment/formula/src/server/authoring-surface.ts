@@ -32,7 +32,7 @@ export const formulaAuthoringSurfaceLayer: Layer.Layer<never, never, Ui | Formul
       if (!settings.authoring) return
       const ui = yield* Ui
       yield* ui.contribute({
-        key: calculatorAuthoringOptions.key,
+        collection: calculatorAuthoringOptions,
         id: 'assessment-formula/calculator',
         value: {
           ref: 'formula@1',

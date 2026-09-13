@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { Schema } from 'effect'
 
 // the serializable text protocol between server-side plugins and the web
 // runtime: plugins never pick the display language. A MessageRef names a
@@ -84,17 +84,21 @@ export const plainText = (text: UiText): string =>
 // <plugin>/<segment>(/<segment>)*, lowercase kebab-case segments
 const messageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+$/
 
-// registration-time validation for text carried through manifests: a bad
-// contribution fails at the plugin, not in the browser
-export const uiTextSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('message'),
-    id: z.string().regex(messageIdPattern, 'message id must be namespaced kebab-case'),
-    defaultMessage: z.string().min(1),
+// The one runtime schema of UiText, for every boundary a text crosses: a
+// plugin's contribution at registration, an api response, a manifest. A
+// bad contribution fails at the plugin, not in the browser. Effect Schema,
+// as every other contract's runtime schema is - the api layer declares its
+// shapes in it, and a second schema language for the same type is what the
+// migration set out to end.
+export const UiTextSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal('message'),
+    id: Schema.String.check(Schema.isPattern(messageIdPattern)),
+    defaultMessage: Schema.String.check(Schema.isMinLength(1)),
   }),
-  z.object({
-    kind: z.literal('literal'),
-    value: z.string(),
+  Schema.Struct({
+    kind: Schema.Literal('literal'),
+    value: Schema.String,
   }),
 ])
 
@@ -144,7 +148,8 @@ export interface PluginCatalogs {
  * declared anywhere else.
  *
  * There used to be a second table - the same codes, statuses and messages
- * written again in zod, for the contract layer that no longer exists - and by
+ * written again in a second schema language, for the contract layer that no
+ * longer exists - and by
  * the time it was only feeding these types it had drifted: two codes nothing
  * could raise were still being translated into two languages.
  *

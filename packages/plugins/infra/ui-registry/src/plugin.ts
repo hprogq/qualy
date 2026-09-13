@@ -11,6 +11,8 @@ import {
   type SlotDeclaration,
   type UiSurfaces,
   type UiVisibility,
+  type CollectionDeclaration,
+  type UiCollectionToken,
 } from '@qualy/ui-contract'
 import { ExtensionPoint, Plugin, type PluginFeature } from '@qualy/plugin-kit'
 import { registerSurfaces, uiLayer } from './server/registry.ts'
@@ -112,6 +114,17 @@ export const Ui = {
   /** a renderer for a named slot */
   slot: (declaration: SlotDeclaration): PluginFeature =>
     Plugin.contribute(UiSurfaceDeclarations, { slots: [declaration] }),
+
+  /**
+   * One item of a collection, typed by the token it names: the token carries
+   * the item's schema, and the registry decodes the item against it when
+   * this plugin's surfaces are registered.
+   */
+  collection: <TContribution>(
+    token: UiCollectionToken<TContribution, any>,
+    item: Omit<CollectionDeclaration<TContribution>, 'collection'>,
+  ): PluginFeature =>
+    Plugin.contribute(UiSurfaceDeclarations, { collections: [{ ...item, collection: token }] }),
 
   /** the bulk form, for collections and anything the sugar above does not say */
   surfaces: (surfaces: UiSurfaces): PluginFeature =>

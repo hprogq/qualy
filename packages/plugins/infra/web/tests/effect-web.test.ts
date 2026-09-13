@@ -1,5 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Logger, Scope } from 'effect'
+import { Effect, Exit, Layer, Logger, Schema, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
-import { QUALY_RELEASE_ENDPOINT, releaseProbeSchema } from '@qualy/release-contract'
+import { QUALY_RELEASE_ENDPOINT, ReleaseProbeSchema } from '@qualy/release-contract'
 import { AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer } from '@qualy/api-kit/node'
 import { WebConfig, routes } from '../src/server/index.ts'
@@ -206,7 +206,7 @@ describe('the shell against the api mount', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin')
-    const probe = releaseProbeSchema.parse(await response.json())
+    const probe = Schema.decodeUnknownSync(ReleaseProbeSchema)(await response.json())
     expect(probe).toEqual({
       schema: 1,
       releaseId: 'test-release',
@@ -229,7 +229,7 @@ describe('the shell against the api mount', () => {
     })
     const page = await fetch(`${base}/`)
     expect(await page.text()).toContain('<title>shell</title>')
-    const probe = releaseProbeSchema.parse(
+    const probe = Schema.decodeUnknownSync(ReleaseProbeSchema)(
       await (await fetch(`${base}${QUALY_RELEASE_ENDPOINT}`)).json(),
     )
     expect(probe.releaseId).toBe('test-release')

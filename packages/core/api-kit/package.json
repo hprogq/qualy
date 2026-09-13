@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
+    "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "effect": "catalog:"
   }

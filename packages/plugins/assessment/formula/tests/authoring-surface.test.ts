@@ -15,7 +15,9 @@ import { formulaAuthoringSurfaceLayer } from '../src/server/authoring-surface.ts
 const KEY = calculatorAuthoringOptions.key
 
 const offered = (ui: Ui['Service']) =>
-  Effect.map(ui.surfaces, (surfaces) => surfaces.collections.filter((item) => item.key === KEY))
+  Effect.map(ui.surfaces, (surfaces) =>
+    surfaces.collections.filter((item) => item.collection.key === KEY),
+  )
 
 const under = (authoring: boolean) =>
   Effect.runPromise(
@@ -47,7 +49,7 @@ describe('the formula option in the calculator chooser', () => {
     const { during, after } = await under(true)
     expect(during).toHaveLength(1)
     expect(during[0]).toMatchObject({
-      key: KEY,
+      collection: { key: KEY },
       id: 'assessment-formula/calculator',
       value: { ref: 'formula@1', order: 20 },
       visibility: permissionOf('assessment.batch.manage'),

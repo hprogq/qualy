@@ -27,8 +27,7 @@
     "@qualy/plugin-kit": "workspace:*",
     "effect": "catalog:",
     "kysely": "catalog:",
-    "pg": "catalog:",
-    "zod": "catalog:"
+    "pg": "catalog:"
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:",

@@ -45,9 +45,6 @@ catalogs:
     '@mikro-orm/postgresql':
       specifier: 7.1.13
       version: 7.1.13
-    '@standard-schema/spec':
-      specifier: 1.1.0
-      version: 1.1.0
     '@stylexjs/stylex':
       specifier: 0.19.0
       version: 0.19.0
@@ -153,9 +150,6 @@ catalogs:
     yaml:
       specifier: 2.9.0
       version: 2.9.0
-    zod:
-      specifier: 4.4.3
-      version: 4.4.3
 
 patchedDependencies:
   '@stylexjs/unplugin@0.19.0': 5c4b92159415a693d0fd58c286da573c9243f6a43b3cfc447664bd4ed4f4fe31
@@ -258,9 +252,6 @@ importers:
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
 
   apps/cli:
     dependencies:
@@ -572,9 +563,9 @@ importers:
 
   packages/contracts/i18n:
     dependencies:
-      zod:
+      effect:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.0.0-rc.111
 
   packages/contracts/rbac:
     dependencies:
@@ -600,28 +591,27 @@ importers:
 
   packages/contracts/release:
     dependencies:
-      zod:
+      effect:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.0.0-rc.111
 
   packages/contracts/ui:
     dependencies:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../i18n
-      zod:
+      effect:
         specifier: 'catalog:'
-        version: 4.4.3
-    devDependencies:
-      '@standard-schema/spec':
-        specifier: 'catalog:'
-        version: 1.1.0
+        version: 4.0.0-rc.111
 
   packages/core/api-kit:
     dependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
+      '@qualy/i18n-contract':
+        specifier: workspace:*
+        version: link:../../contracts/i18n
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../plugin-kit
@@ -710,12 +700,13 @@ importers:
 
   packages/core/value-schema:
     dependencies:
-      ajv:
-        specifier: 'catalog:'
-        version: 8.20.0
       re2js:
         specifier: 'catalog:'
         version: 2.8.6
+    devDependencies:
+      ajv:
+        specifier: 'catalog:'
+        version: 8.20.0
 
   packages/plugins/assessment/core:
     dependencies:
@@ -1067,9 +1058,6 @@ importers:
       react-router:
         specifier: 'catalog:'
         version: 8.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
@@ -1125,9 +1113,6 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@qualy/plugin-database':
         specifier: workspace:*
@@ -1247,9 +1232,6 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@qualy/plugin-audit':
         specifier: workspace:*
@@ -1329,9 +1311,6 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@qualy/plugin-audit':
         specifier: workspace:*
@@ -1384,9 +1363,6 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@types/react':
         specifier: 'catalog:'
@@ -1421,9 +1397,6 @@ importers:
       pg:
         specifier: 'catalog:'
         version: 8.22.0
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@electric-sql/pglite':
         specifier: 'catalog:'
@@ -1559,16 +1532,10 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
         version: 4.0.0-rc.111(effect@4.0.0-rc.111)(redis@6.2.1)
-      '@standard-schema/spec':
-        specifier: 'catalog:'
-        version: 1.1.0
 
   packages/plugins/infra/web:
     dependencies:
@@ -1590,9 +1557,6 @@ importers:
       sirv:
         specifier: 'catalog:'
         version: 3.0.2
-      zod:
-        specifier: 'catalog:'
-        version: 4.4.3
     devDependencies:
       '@effect/platform-node':
         specifier: 'catalog:'
@@ -3828,9 +3792,6 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
-
 snapshots:
 
   '@babel/code-frame@7.29.7':
@@ -5668,5 +5629,3 @@ snapshots:
   yallist@3.1.1: {}
 
   yaml@2.9.0: {}
-
-  zod@4.4.3: {}

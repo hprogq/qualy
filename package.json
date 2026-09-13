@@ -40,8 +40,7 @@
     "vite": "catalog:",
     "vitest": "catalog:",
     "vitest-browser-react": "catalog:",
-    "yaml": "catalog:",
-    "zod": "catalog:"
+    "yaml": "catalog:"
   },
   "scripts": {
     "build": "pnpm --filter @qualy/web-app build && node packages/build/web/src/stage.ts",

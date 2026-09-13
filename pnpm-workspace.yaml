@@ -14,7 +14,6 @@ catalog:
   '@types/node': 24.13.3
   chokidar: 5.0.0
   typescript: 7.0.2
-  zod: 4.4.3
   # instance validation for the value-schema scoring contracts (json schema
   # 2020-12 plus the x-qualy-* keywords); the assignability prover next to it
   # is hand-written, ajv only judges single values
@@ -59,7 +58,6 @@ catalog:
   vitest: 4.1.10
   prettier: 3.9.6
   '@lingui/core': 6.6.0
-  '@standard-schema/spec': 1.1.0
   '@lingui/message-utils': 6.6.0
   react: 19.2.8
   react-dom: 19.2.8

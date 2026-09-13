@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { Schema } from 'effect'
 
 // The web release protocol: what a browser is running, what a server is
 // serving, and whether the two may still talk.
@@ -15,8 +15,8 @@ import { z } from 'zod'
 //
 // This package is framework-free: the browser reads the probe before its
 // runtime is up, the build tool writes the metadata, the server pins it.
-// The validators are zod, as the sibling contracts' are - a value read off
-// disk or off the wire is parsed, never trusted.
+// The schemas are Effect Schema, as every contract's are - a value read off
+// disk or off the wire is decoded, never trusted.
 
 export const RELEASE_SCHEMA = 1 as const
 
@@ -45,75 +45,73 @@ export const RELEASE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 export const isReleaseId = (value: unknown): value is string =>
   typeof value === 'string' && RELEASE_ID_PATTERN.test(value)
 
-export const releaseIdSchema = z
-  .string()
-  .regex(
-    RELEASE_ID_PATTERN,
-    'a release id is 1-128 of [A-Za-z0-9._-], starting with a letter or digit',
-  )
+export const ReleaseIdSchema = Schema.String.check(Schema.isPattern(RELEASE_ID_PATTERN))
 
-export const releaseModeSchema = z.enum(['development', 'production'])
+export const ReleaseModeSchema = Schema.Literals(['development', 'production'])
 
 /** a protocol generation: a small non-negative integer */
-export const clientProtocolSchema = z.number().int().min(0).max(1_000_000)
+export const ClientProtocolSchema = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(1_000_000),
+)
+
+/** an instant as JSON carries it: the ISO 8601 form `Date.toISOString` writes, kept a string */
+const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
+export const InstantSchema = Schema.String.check(Schema.isPattern(INSTANT))
 
 /** what the browser is running: written into the bundle at build time */
-export const webReleaseIdentitySchema = z.object({
-  schema: z.literal(RELEASE_SCHEMA),
-  releaseId: releaseIdSchema,
-  mode: releaseModeSchema,
-  clientProtocol: clientProtocolSchema,
+export const WebReleaseIdentitySchema = Schema.Struct({
+  schema: Schema.Literal(RELEASE_SCHEMA),
+  releaseId: ReleaseIdSchema,
+  mode: ReleaseModeSchema,
+  clientProtocol: ClientProtocolSchema,
 })
 
-export type WebReleaseIdentity = z.infer<typeof webReleaseIdentitySchema>
+export type WebReleaseIdentity = typeof WebReleaseIdentitySchema.Type
 
 /** a release installed into a production store, as its own metadata records it */
-export const installedWebReleaseSchema = webReleaseIdentitySchema.extend({
-  resolutionHash: z.string().min(1),
-  installedAt: z.iso.datetime(),
-  assets: z.array(z.string().min(1)),
+export const InstalledWebReleaseSchema = Schema.Struct({
+  ...WebReleaseIdentitySchema.fields,
+  resolutionHash: Schema.String.check(Schema.isMinLength(1)),
+  installedAt: InstantSchema,
+  assets: Schema.Array(Schema.String.check(Schema.isMinLength(1))),
 })
 
-export type InstalledWebRelease = z.infer<typeof installedWebReleaseSchema>
+export type InstalledWebRelease = typeof InstalledWebReleaseSchema.Type
 
 /** the store's pointer to the release a host starting now should pin */
-export const currentReleasePointerSchema = z.object({
-  schema: z.literal(RELEASE_SCHEMA),
-  releaseId: releaseIdSchema,
+export const CurrentReleasePointerSchema = Schema.Struct({
+  schema: Schema.Literal(RELEASE_SCHEMA),
+  releaseId: ReleaseIdSchema,
 })
 
-export type CurrentReleasePointer = z.infer<typeof currentReleasePointerSchema>
-
-export const parseCurrentReleasePointer = (value: unknown): CurrentReleasePointer =>
-  currentReleasePointerSchema.parse(value)
+export type CurrentReleasePointer = typeof CurrentReleasePointerSchema.Type
 
 /** what a host answers at the release endpoint */
-export const releaseProbeSchema = z.object({
-  schema: z.literal(RELEASE_SCHEMA),
-  releaseId: releaseIdSchema,
-  mode: releaseModeSchema,
-  clientProtocol: clientProtocolSchema,
-  serverProtocol: z.object({
-    min: clientProtocolSchema,
-    max: clientProtocolSchema,
+export const ReleaseProbeSchema = Schema.Struct({
+  schema: Schema.Literal(RELEASE_SCHEMA),
+  releaseId: ReleaseIdSchema,
+  mode: ReleaseModeSchema,
+  clientProtocol: ClientProtocolSchema,
+  serverProtocol: Schema.Struct({
+    min: ClientProtocolSchema,
+    max: ClientProtocolSchema,
   }),
 })
 
-export type ReleaseProbe = z.infer<typeof releaseProbeSchema>
+export type ReleaseProbe = typeof ReleaseProbeSchema.Type
 
 /** the channel tabs of one origin tell each other about a release they saw */
 export const QUALY_RELEASE_CHANNEL = 'qualy:release'
 
 /** what a tab posts on the channel: the probe it read, nothing of its own */
-export const releaseObservedSchema = z.object({
-  type: z.literal('release-observed'),
-  probe: releaseProbeSchema,
+export const ReleaseObservedSchema = Schema.Struct({
+  type: Schema.Literal('release-observed'),
+  probe: ReleaseProbeSchema,
 })
 
-export type ReleaseObserved = z.infer<typeof releaseObservedSchema>
-
-export const isReleaseObserved = (value: unknown): value is ReleaseObserved =>
-  releaseObservedSchema.safeParse(value).success
+export type ReleaseObserved = typeof ReleaseObservedSchema.Type
 
 /** the probe a host answers for the release it is serving, with the protocol window it accepts */
 export const releaseProbeOf = (
@@ -130,13 +128,21 @@ export const releaseProbeOf = (
   serverProtocol: { min: serverProtocol.min, max: serverProtocol.max },
 })
 
-/** parse an identity read off disk or off the wire; throws with the reason */
-export const parseWebReleaseIdentity = (value: unknown): WebReleaseIdentity =>
-  webReleaseIdentitySchema.parse(value)
+// The readers: a parse throws with the reason, for a value off disk that a
+// tool or a host must refuse loudly; a guard answers yes or no, for a
+// value off the wire that a page reads and would not throw at.
 
-export const parseInstalledWebRelease = (value: unknown): InstalledWebRelease =>
-  installedWebReleaseSchema.parse(value)
+export const parseWebReleaseIdentity: (value: unknown) => WebReleaseIdentity =
+  Schema.decodeUnknownSync(WebReleaseIdentitySchema)
 
-/** a probe as the browser reads it: a guard, since a bad answer is not an error to throw at a reader */
-export const isReleaseProbe = (value: unknown): value is ReleaseProbe =>
-  releaseProbeSchema.safeParse(value).success
+export const parseInstalledWebRelease: (value: unknown) => InstalledWebRelease =
+  Schema.decodeUnknownSync(InstalledWebReleaseSchema)
+
+export const parseCurrentReleasePointer: (value: unknown) => CurrentReleasePointer =
+  Schema.decodeUnknownSync(CurrentReleasePointerSchema)
+
+export const isReleaseProbe: (value: unknown) => value is ReleaseProbe =
+  Schema.is(ReleaseProbeSchema)
+
+export const isReleaseObserved: (value: unknown) => value is ReleaseObserved =
+  Schema.is(ReleaseObservedSchema)

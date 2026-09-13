@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Scope } from 'effect'
+import { Context, Effect, Layer, Schema, Scope } from 'effect'
 import type {
   CollectionDeclaration,
   LayoutDeclaration,
@@ -55,6 +55,7 @@ export class Ui extends Context.Service<
     /** an item in a collection the layout renders, navigation being the one everybody uses */
     readonly contribute: (
       declaration: CollectionDeclaration,
+      owner?: string,
     ) => Effect.Effect<void, never, Scope.Scope>
     /** a renderer for a named slot */
     readonly fillSlot: (
@@ -92,6 +93,24 @@ export const uiLayer: Layer.Layer<Ui> = Layer.sync(Ui, () => {
         Effect.sync(() => add(declaration)),
         () => Effect.sync(() => remove(declaration)),
       ).pipe(Effect.orDie, Effect.asVoid)
+
+  // The token's schema, if it carries one, judges the item as it arrives:
+  // a malformed contribution stops the boot at its plugin, naming the
+  // collection, the item and the plugin, rather than reaching the browser
+  // in a manifest and failing where nothing says whose it was.
+  const admit = (declaration: CollectionDeclaration, owner: string) => {
+    const schema = declaration.collection.schema
+    if (schema === undefined) return
+    try {
+      Schema.decodeUnknownSync(schema as Schema.Codec<unknown>)(declaration.value, {
+        onExcessProperty: 'error',
+      })
+    } catch (error) {
+      throw new Error(
+        `collection ${declaration.collection.key} item ${declaration.id} from ${owner} is malformed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
 
   const addPage = (page: PageDeclaration, owner: string) => {
     const previous = pages.get(page.page.id)
@@ -134,13 +153,18 @@ export const uiLayer: Layer.Layer<Ui> = Layer.sync(Ui, () => {
         }),
         () => Effect.sync(() => layouts.delete(declaration.contract)),
       ).pipe(Effect.orDie, Effect.asVoid),
-    contribute: scoped(
-      (item: CollectionDeclaration) => collections.push(item),
-      (item) => {
-        const at = collections.indexOf(item)
-        if (at >= 0) collections.splice(at, 1)
-      },
-    ),
+    contribute: (declaration, owner) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          admit(declaration, owner ?? 'an unnamed contributor')
+          collections.push(declaration)
+        }),
+        () =>
+          Effect.sync(() => {
+            const at = collections.indexOf(declaration)
+            if (at >= 0) collections.splice(at, 1)
+          }),
+      ).pipe(Effect.orDie, Effect.asVoid),
     fillSlot: (declaration, owner) =>
       Effect.acquireRelease(
         Effect.sync(() => {
@@ -177,7 +201,7 @@ export const registerSurfaces = (
       const ui = yield* Ui
       for (const layout of surfaces.layouts ?? []) yield* ui.registerLayout(layout, owner)
       for (const page of surfaces.pages ?? []) yield* ui.addPage(page, owner)
-      for (const item of surfaces.collections ?? []) yield* ui.contribute(item)
+      for (const item of surfaces.collections ?? []) yield* ui.contribute(item, owner)
       for (const item of surfaces.slots ?? []) yield* ui.fillSlot(item, owner)
     }),
   )

@@ -277,7 +277,7 @@ const i18n = definePluginMessages({
     },
     ORG_NODE_ASSIGNMENT_INCOMPATIBLE: {
       message: assignmentIncompatible,
-      // data is typed straight from the error definition's zod schema
+      // data is typed straight from the error definition's schema
       values: (data) => ({ assignmentCount: data.assignmentCount }),
     },
     ORG_RULE_INVALID: {

@@ -21,11 +21,9 @@
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*",
-    "effect": "catalog:",
-    "zod": "catalog:"
+    "effect": "catalog:"
   },
   "devDependencies": {
-    "@effect/platform-node": "catalog:",
-    "@standard-schema/spec": "catalog:"
+    "@effect/platform-node": "catalog:"
   }
 }

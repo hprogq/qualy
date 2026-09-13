@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+import { UiTextSchema } from '@qualy/i18n-contract'
 import { MAX_PAGE_SIZE } from './index.ts'
 
 // The page shape, as schemas. Its own module because the kit's root is
@@ -18,14 +19,7 @@ import { MAX_PAGE_SIZE } from './index.ts'
  * not be translated at all. Shared, because a second copy of these two
  * shapes is a second thing to keep in step with the i18n contract.
  */
-export const uiText = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal('message'),
-    id: Schema.String,
-    defaultMessage: Schema.String,
-  }),
-  Schema.Struct({ kind: Schema.Literal('literal'), value: Schema.String }),
-])
+export const uiText = UiTextSchema
 
 export const pageQuery = {
   cursor: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
@@ -103,7 +97,7 @@ export const pageSize = (limit: string | undefined, fallback: number): number =>
 
 // --- the primitives every plugin's payloads are built from ---
 //
-// Mirrors of the zod constants the oRPC contracts declare. They live here
+// The payload constants every api declares. They live here
 // rather than per plugin because the failure they prevent is systemic: an
 // input schema that accepts more than the contract did does not fail at the
 // boundary, it fails at the database, where a check violation is not a
@@ -139,7 +133,7 @@ export const codeFrom = (name: string, prefix: string): string => {
 /**
  * A human-readable name, trimmed on the way in.
  *
- * `Schema.Trim` is a decode-time transform, matching zod's `.trim()`.
+ * `Schema.Trim` is a decode-time transform: the stored value is the trimmed one.
  * `Schema.isTrimmed` would instead REFUSE padded input, which the oRPC side
  * accepts and normalizes: that would be a new divergence in the other
  * direction, and would leave the two runtimes storing different rows for the

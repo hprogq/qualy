@@ -1,7 +1,6 @@
-import { z } from 'zod'
-import { uiTextSchema, type UiText } from '@qualy/i18n-contract'
+import { Schema } from 'effect'
+import { UiTextSchema, type UiText } from '@qualy/i18n-contract'
 import { NAMESPACED_ID, type NamespacedId } from './ids.ts'
-import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 export type LayoutContractId = NamespacedId
 
@@ -35,9 +34,11 @@ export const BLANK_SHELL: LayoutContractId = 'blank-shell/v1'
 export interface UiCollectionToken<TContribution, TResolved = TContribution> {
   readonly kind: 'collection'
   readonly key: NamespacedId
-  // optional item validation, enforced by the registry at contribution
-  // time so a malformed payload fails at its plugin, not in the browser
-  readonly schema?: StandardSchemaV1
+  // the item's runtime schema, decoded by the registry when a plugin
+  // contributes: a malformed item fails at its plugin, at boot, not in the
+  // browser once the manifest has carried it there. A contribution names
+  // the token, not the key, so the schema travels with it
+  readonly schema?: Schema.Top
   // phantom members so both types survive inference; never assigned
   readonly __item?: TContribution
   readonly __resolved?: TResolved
@@ -51,9 +52,13 @@ export interface UiSlotToken {
 
 export function defineUiCollection<TContribution, TResolved = TContribution>(options: {
   key: NamespacedId
-  schema?: StandardSchemaV1
+  schema?: Schema.Top
 }): UiCollectionToken<TContribution, TResolved> {
-  return { kind: 'collection', key: options.key, schema: options.schema }
+  return {
+    kind: 'collection',
+    key: options.key,
+    ...(options.schema === undefined ? {} : { schema: options.schema }),
+  }
 }
 
 export function defineUiSlot(options: {
@@ -124,29 +129,31 @@ export interface ResolvedNavigationItem extends Omit<NavigationItem, 'target'> {
 // classic injection vectors and never legitimate navigation
 const EXTERNAL_HREF = /^(https?:\/\/|mailto:|tel:)/
 
-const navigationItemSchema = z.object({
-  id: z.string().regex(NAMESPACED_ID),
-  label: uiTextSchema,
-  target: z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('page'), pageId: z.string().regex(NAMESPACED_ID) }),
-    z.object({
-      kind: z.literal('external'),
-      href: z.string().regex(EXTERNAL_HREF, 'external links must be http(s), mailto or tel'),
-      newWindow: z.boolean().optional(),
+const namespaced = Schema.String.check(Schema.isPattern(NAMESPACED_ID))
+
+const navigationItemSchema = Schema.Struct({
+  id: namespaced,
+  label: UiTextSchema,
+  target: Schema.Union([
+    Schema.Struct({ kind: Schema.Literal('page'), pageId: namespaced }),
+    Schema.Struct({
+      kind: Schema.Literal('external'),
+      href: Schema.String.check(Schema.isPattern(EXTERNAL_HREF)),
+      newWindow: Schema.optional(Schema.Boolean),
     }),
   ]),
-  icon: z.string().optional(),
-  order: z.number().optional(),
-  group: z.string().regex(NAMESPACED_ID).optional(),
-  capability: z.string().regex(NAMESPACED_ID).optional(),
+  icon: Schema.optional(Schema.String),
+  order: Schema.optional(Schema.Number),
+  group: Schema.optional(namespaced),
+  capability: Schema.optional(namespaced),
 })
 
-const navigationGroupSchema = z.object({
-  id: z.string().regex(NAMESPACED_ID),
-  label: uiTextSchema,
-  order: z.number().optional(),
-  parent: z.string().regex(NAMESPACED_ID).optional(),
-  icon: z.string().optional(),
+const navigationGroupSchema = Schema.Struct({
+  id: namespaced,
+  label: UiTextSchema,
+  order: Schema.optional(Schema.Number),
+  parent: Schema.optional(namespaced),
+  icon: Schema.optional(Schema.String),
 })
 
 /** what the whole product offers: applications, and the sections inside one */

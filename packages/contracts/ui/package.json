@@ -10,9 +10,6 @@
   },
   "dependencies": {
     "@qualy/i18n-contract": "workspace:*",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@standard-schema/spec": "catalog:"
+    "effect": "catalog:"
   }
 }

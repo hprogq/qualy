@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+import { UiTextSchema } from '@qualy/i18n-contract'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { Viewer } from '@qualy/plugin-auth/server/session-contract'
 
@@ -17,16 +18,9 @@ const layout = Schema.Struct({
   component: Schema.String,
 })
 
-// the same two shapes the i18n contract calls UiText: a message the browser
-// translates, or business data that must not be translated at all
-const uiText = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal('message'),
-    id: Schema.String,
-    defaultMessage: Schema.String,
-  }),
-  Schema.Struct({ kind: Schema.Literal('literal'), value: Schema.String }),
-])
+// a message the browser translates, or business data that must not be
+// translated at all: the i18n contract's own schema of it
+const uiText = UiTextSchema
 
 const page = Schema.Struct({
   id: namespaced,

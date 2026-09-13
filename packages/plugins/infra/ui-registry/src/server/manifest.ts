@@ -73,12 +73,12 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
         const id = `${page.page.id}/nav` as NamespacedId
         return [
           {
-            key: primaryNavigation.key,
+            collection: primaryNavigation,
             id,
             // Absent keys are omitted rather than set to undefined. A key whose
             // value is undefined is still a key, and it is not a JSON value, so
-            // encoding the response fails on it. zod and JSON.stringify both
-            // swallowed that, which is why the oRPC path never noticed.
+            // encoding the response fails on it. The old contract layer and
+            // JSON.stringify both swallowed that, which is why it went unnoticed.
             value: {
               id,
               label: navigation.label,
@@ -140,7 +140,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
       const projectedCollections: Record<string, unknown[]> = {}
       for (const item of sorted(collections.filter((item) => visible(item.visibility, viewer)))) {
         let value = item.value
-        if (navigationCollections.includes(item.key as NamespacedId)) {
+        if (navigationCollections.includes(item.collection.key)) {
           const navigation = value as NavigationItem
           if (navigation.target.kind === 'page') {
             // a page target resolves to the path the router mounts, and drops
@@ -157,7 +157,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
             } satisfies ResolvedNavigationItem
           }
         }
-        ;(projectedCollections[item.key] ??= []).push(value)
+        ;(projectedCollections[item.collection.key] ??= []).push(value)
       }
 
       // A section nothing files under is not a section.

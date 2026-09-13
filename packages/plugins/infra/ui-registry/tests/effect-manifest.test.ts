@@ -100,13 +100,13 @@ const surfaces = [
     collections: [
       // a section the gated page files under, and one nothing files under
       {
-        key: navigationGroups.key,
+        collection: navigationGroups,
         id: 'test/restricted',
         value: { id: 'test/restricted', label, order: 1 },
         visibility: AUTHENTICATED,
       },
       {
-        key: navigationGroups.key,
+        collection: navigationGroups,
         id: 'test/empty',
         value: { id: 'test/empty', label, order: 2 },
         visibility: AUTHENTICATED,
@@ -286,6 +286,36 @@ describe('the manifest a viewer receives', () => {
     // something the browser is told
     expect(JSON.stringify(manifest)).not.toContain('visibility')
     expect(JSON.stringify(manifest)).not.toContain('test.thing.read')
+  })
+
+  it('refuses a malformed collection item at its plugin, before any manifest carries it', async () => {
+    // the token carries the item's schema and the registry judges the item
+    // as it is contributed: a navigation entry pointing nowhere, or with a
+    // key nobody declared, stops the boot naming the collection, the item
+    // and the plugin - not the browser, later, with nothing to name
+    const malformed = defineSurfaces({
+      collections: [
+        {
+          collection: primaryNavigation,
+          id: 'test/broken',
+          value: { id: 'test/broken', label, target: { kind: 'page' }, extra: true } as never,
+          visibility: PUBLIC,
+        },
+      ],
+    })
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Layer.build(
+          registerSurfaces(malformed, '@qualy/plugin-test').pipe(Layer.provideMerge(uiLayer)),
+        ),
+      ),
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      const said = Cause.pretty(exit.cause)
+      expect(said).toContain('collection app-shell/navigation-primary item test/broken')
+      expect(said).toContain('@qualy/plugin-test')
+    }
   })
 
   it('drops a page whose layout contract nobody provides', async () => {

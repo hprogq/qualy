@@ -17,8 +17,7 @@
     "@qualy/release-contract": "workspace:*",
     "@qualy/web-build": "workspace:*",
     "effect": "catalog:",
-    "sirv": "catalog:",
-    "zod": "catalog:"
+    "sirv": "catalog:"
   },
   "devDependencies": {
     "@effect/platform-node": "catalog:",

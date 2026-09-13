@@ -1,8 +1,9 @@
 import { setupI18n } from '@lingui/core'
 import { compileMessage } from '@lingui/message-utils/compileMessage'
+import { Schema } from 'effect'
 import {
   supportedLocales,
-  uiTextSchema,
+  UiTextSchema,
   literal,
   message,
   type MessageCatalog,
@@ -138,21 +139,19 @@ describe('web i18n runtime', () => {
   })
 
   it('validates ui text references at the contract boundary', () => {
-    expect(uiTextSchema.parse(message('org/navigation/organization', 'Organization'))).toEqual({
+    const decode = Schema.decodeUnknownSync(UiTextSchema)
+    const admits = Schema.is(UiTextSchema)
+    expect(decode(message('org/navigation/organization', 'Organization'))).toEqual({
       kind: 'message',
       id: 'org/navigation/organization',
       defaultMessage: 'Organization',
     })
     // business data passes through untranslated
-    expect(uiTextSchema.parse(literal('软件学院'))).toEqual({ kind: 'literal', value: '软件学院' })
+    expect(decode(literal('软件学院'))).toEqual({ kind: 'literal', value: '软件学院' })
     // a bare string, an unnamespaced id or an empty default are rejected
-    expect(uiTextSchema.safeParse('组织架构').success).toBe(false)
-    expect(
-      uiTextSchema.safeParse({ kind: 'message', id: 'organization', defaultMessage: 'x' }).success,
-    ).toBe(false)
-    expect(
-      uiTextSchema.safeParse({ kind: 'message', id: 'org/nav', defaultMessage: '' }).success,
-    ).toBe(false)
+    expect(admits('组织架构')).toBe(false)
+    expect(admits({ kind: 'message', id: 'organization', defaultMessage: 'x' })).toBe(false)
+    expect(admits({ kind: 'message', id: 'org/nav', defaultMessage: '' })).toBe(false)
   })
 
   it('resolves the locale through the documented preference chain', () => {

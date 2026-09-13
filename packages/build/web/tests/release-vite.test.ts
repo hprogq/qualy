@@ -1,3 +1,4 @@
+import { Schema } from 'effect'
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -10,7 +11,7 @@ import {
   RELEASE_ID_PATTERN,
   isReleaseId,
   parseWebReleaseIdentity,
-  releaseProbeSchema,
+  ReleaseProbeSchema,
 } from '@qualy/release-contract'
 import {
   RELEASE_ID_VARIABLE,
@@ -184,7 +185,7 @@ describe('a development server', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin')
-    const probe = releaseProbeSchema.parse(await response.json())
+    const probe = Schema.decodeUnknownSync(ReleaseProbeSchema)(await response.json())
     expect(probe.mode).toBe('development')
     expect(probe.releaseId).toMatch(/^dev-[0-9a-f]{8}$/)
     expect(probe.serverProtocol).toEqual({ min: 1, max: 1 })
@@ -193,7 +194,7 @@ describe('a development server', () => {
     expect(served?.code).toContain(probe.releaseId)
     // and the same one for as long as the server lives: a second look
     // reads the same id, since no restart happened
-    const again = releaseProbeSchema.parse(
+    const again = Schema.decodeUnknownSync(ReleaseProbeSchema)(
       await (await fetch(`${origin}${QUALY_RELEASE_ENDPOINT}`)).json(),
     )
     expect(again.releaseId).toBe(probe.releaseId)
@@ -222,7 +223,9 @@ describe('a development server', () => {
     const second = await serve()
     const [a, b] = await Promise.all(
       [first, second].map(async ({ origin }) =>
-        releaseProbeSchema.parse(await (await fetch(`${origin}${QUALY_RELEASE_ENDPOINT}`)).json()),
+        Schema.decodeUnknownSync(ReleaseProbeSchema)(
+          await (await fetch(`${origin}${QUALY_RELEASE_ENDPOINT}`)).json(),
+        ),
       ),
     )
     expect(a!.releaseId).not.toBe(b!.releaseId)

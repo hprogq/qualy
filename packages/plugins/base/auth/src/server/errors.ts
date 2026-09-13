@@ -5,7 +5,7 @@ import { Schema } from 'effect'
 // These classes are the only declaration of them: the code, the status and the
 // fields all live here, and the client's translation table is typed from this
 // module, so a code it cannot raise cannot be translated. There used to be a
-// second table saying the same things in zod, for the contract layer this
+// second table saying the same things in another schema language, for the contract layer this
 // replaced, and it had drifted by the time it was deleted.
 
 export class UserTypeNotFound extends Schema.TaggedError<UserTypeNotFound>()(

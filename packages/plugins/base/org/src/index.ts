@@ -47,7 +47,7 @@ const plugin = Plugin.define(
   Ui.surfaces({
     collections: [
       {
-        key: navigationGroups.key,
+        collection: navigationGroups,
         id: 'org/organization',
         value: {
           id: 'org/organization',

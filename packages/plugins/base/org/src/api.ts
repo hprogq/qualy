@@ -36,7 +36,7 @@ import {
 // 404. The oRPC contract has always done this; the port had let it through as
 // a plain string.
 const id = Schema.String.check(Schema.isUUID())
-// Payload primitives only, mirroring the zod constants in contract.ts. A
+// Payload primitives only, the constants the contract declares. A
 // response DTO keeps a bare String: it describes what is stored, and putting an
 // input constraint there would refuse to encode a legitimate row written before
 // the rule tightened.

@@ -95,7 +95,7 @@ const plugin = Plugin.define(
   Ui.surfaces({
     collections: [
       {
-        key: calculatorAuthoringOptions.key,
+        collection: calculatorAuthoringOptions,
         id: 'assessment/fixed-calculator',
         value: {
           ref: 'fixed@1',
@@ -118,7 +118,7 @@ const plugin = Plugin.define(
   Ui.surfaces({
     collections: [
       {
-        key: navigationGroups.key,
+        collection: navigationGroups,
         id: 'assessment/main',
         value: {
           id: 'assessment/main',
@@ -134,7 +134,7 @@ const plugin = Plugin.define(
       // (useAppNavigation), so declaring it ahead of most of its pages costs
       // nothing.
       {
-        key: navigationGroups.key,
+        collection: navigationGroups,
         id: 'library/main',
         value: {
           id: 'library/main',
@@ -153,7 +153,7 @@ const plugin = Plugin.define(
       // that name who is doing it rather than what the software calls it:
       // taking part, handling other people's work, running the batch.
       {
-        key: navigationGroups.key,
+        collection: navigationGroups,
         id: 'assessment/batch-personal',
         value: {
           id: 'assessment/batch-personal',
@@ -163,7 +163,7 @@ const plugin = Plugin.define(
         visibility: PUBLIC,
       },
       {
-        key: navigationGroups.key,
+        collection: navigationGroups,
         id: 'assessment/batch-work',
         value: {
           id: 'assessment/batch-work',
@@ -173,7 +173,7 @@ const plugin = Plugin.define(
         visibility: PUBLIC,
       },
       {
-        key: navigationGroups.key,
+        collection: navigationGroups,
         id: 'assessment/batch-admin',
         value: {
           id: 'assessment/batch-admin',
@@ -304,7 +304,7 @@ const plugin = Plugin.define(
         // above the sections rather than in one: it is where a batch opens,
         // and it belongs to whoever opened it - a participant, a reviewer or
         // whoever runs the round
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-overview/rail',
         value: {
           id: 'assessment/batch-overview/rail',
@@ -316,7 +316,7 @@ const plugin = Plugin.define(
         visibility: AUTHENTICATED,
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-my-entries/rail',
         value: {
           id: 'assessment/batch-my-entries/rail',
@@ -330,7 +330,7 @@ const plugin = Plugin.define(
         visibility: AUTHENTICATED,
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-my-result/rail',
         value: {
           id: 'assessment/batch-my-result/rail',
@@ -344,7 +344,7 @@ const plugin = Plugin.define(
         visibility: AUTHENTICATED,
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-reviews/rail',
         value: {
           id: 'assessment/batch-reviews/rail',
@@ -358,7 +358,7 @@ const plugin = Plugin.define(
         visibility: permissionOf('assessment.review.process'),
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-record/rail',
         value: {
           id: 'assessment/batch-record/rail',
@@ -372,7 +372,7 @@ const plugin = Plugin.define(
         visibility: permissionOf('assessment.entry.record'),
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-items/rail',
         value: {
           id: 'assessment/batch-items/rail',
@@ -386,7 +386,7 @@ const plugin = Plugin.define(
         visibility: permissionOf('assessment.batch.manage'),
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-phases/rail',
         value: {
           id: 'assessment/batch-phases/rail',
@@ -400,7 +400,7 @@ const plugin = Plugin.define(
         visibility: permissionOf('assessment.batch.manage'),
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-participants/rail',
         value: {
           id: 'assessment/batch-participants/rail',
@@ -414,7 +414,7 @@ const plugin = Plugin.define(
         visibility: permissionOf('assessment.batch.manage'),
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-access/rail',
         value: {
           id: 'assessment/batch-access/rail',
@@ -428,7 +428,7 @@ const plugin = Plugin.define(
         visibility: permissionOf('assessment.batch.manage'),
       },
       {
-        key: workspaceNavigation.key,
+        collection: workspaceNavigation,
         id: 'assessment/batch-settings/rail',
         value: {
           id: 'assessment/batch-settings/rail',

@@ -27,8 +27,7 @@
     "@stylexjs/stylex": "catalog:",
     "@tanstack/react-query": "catalog:",
     "effect": "catalog:",
-    "kysely": "catalog:",
-    "zod": "catalog:"
+    "kysely": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:"
