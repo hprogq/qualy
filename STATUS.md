@@ -13725,3 +13725,11 @@ SIGTERM -> exit 0
 - **回归用例**改写为不变量:飞行中顶栏字标自己恰有一条动画、页面里没有飞行层、末帧 keyframe 是显式 identity(WebKit 回给的是 `translate(0px) scale(1, 1)`,正则接受两种写法)、`finished` 之后动画仍在(hold 跨过一次绘制)、cancel 后消失、首帧 keyframe 的位移与缩放等于「覆盖层字标矩形 − 顶栏字标矩形」、`startViewTransition` 全程不被调用。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm build` ok;WebKit 飞行录屏 + 矩形日志;`pnpm test:browser` Test Files 46 passed (46); Tests 326 passed (326);`vitest tools/tests` 36 / 236;`pnpm test:browser:webkit` 第一遍 1 红(末帧 keyframe 的序列化差异,见上),放宽为正则后 2 / 12;exit 0。
 - **若真机 Safari 仍有位置吸附**:按审计,下一步放弃加速 transform,改动 fixed SVG 的 `left/top/width/height`。
+
+## 冷启动按几何飞;页脚与页面容器的 flex;列表页骨架(2026-09-14)
+
+审计第五轮(用户把动画放慢到 0.05 倍速看出:几何是对的,「吸附感」是 transform 动画期间与结束后两套栅格化方式的切换)。三个 commit,模态框材质单独在后。
+
+- **`fix(web): fly the wordmark by its geometry, not a transform`**:飞的仍是首帧那张静态字标的副本(`position: fixed; contain: layout paint`,取顶栏字标的计算色),但动的是 `left / top / width / height`,不再 `translate + scale`——每一帧都在该尺寸上重新布局与绘制,落地那一张与顶栏自己画的是同一张图;`finished` 后等两帧 rAF 再删层撤属性。`data-cold-start-flight` 与 `visibility: hidden` 规则回来。**实测**(WebKit 26.5,rAF 逐帧记飞行层矩形):587.1,337.6 / 105.7×35.6 → 每帧连续 → 664ms 起 24,18.6 / 52.8×17.8,全程 `transform: none`,finished 后顶栏字标同矩形 visible。回归用例断言:飞行层起点等于覆盖层画字标的矩形、keyframes 里没有 `transform`、末帧几何等于顶栏字标矩形、飞行中顶栏字标 hidden、落地后 visible、`startViewTransition` 不被调用。
+- **`fix(web): the foot stands at the foot, the page fills the shell, and waits in its own shape`**:① `AppFooter` 原来外层就是 `PageContainer`,而 `PageContainer` 自带 `flex-grow: 1`——短页面时页面与页脚平分剩余高度,页脚站在屏幕中间;改成外层 `<footer>` 全宽、`flex-shrink: 0`、发丝线全宽,内层 `PageContainer` 只管内容宽度。② `BatchListPage` 把 `PageContainer` 提到 `Reveal` 外面:原来 `Reveal` 的普通 `motion.div` 隔断了 `flex-grow`,页面容器吃不到 shell 的剩余高度;现在容器 flex column 占满,`Reveal` 只动内容。③ 骨架改成页面自己的形状(`batch/ListSkeleton.tsx`):hero 卡(左栏 pill / 标题 / 事实行 / 五条 lane / 轴 / 按钮,右栏 inset 底上的阶段块与两条待办)、pill 轨道、表格白卡(表头 + 四行,列宽与真表一致);三条 40px 灰条删除。hero 的问题(`runningQuery`)与列表分开答,`heroPending` 时无论列表是否已到都先占着卡的位置,进行中批次晚到不再把列表顶下去。`@qualy/ui/skeleton` 放开 Mantine 的 `height / width / radius / circle / animate / visible` 类型(运行时本来就透传)。
+- **门禁(实际执行)**:`pnpm typecheck` 第一遍 6 红(Skeleton 尺寸 props 未在类型上放开),放开后 exit 0;`pnpm build` ok;WebKit 飞行矩形日志;`pnpm test:browser:webkit` 2 / 12;`pnpm test:browser` 46 / 326(pill 轨道 `align-self` 微调后重跑一遍仍 46 / 326);`vitest tools/tests` 36 / 236;exit 0。截图(1440):骨架态、列表、草稿单行页(页脚贴底、发丝线全宽)。

@@ -12,3 +12,12 @@
 @layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;
 
 @import '@qualy/ui/theme.css';
+
+/* While the wordmark flies from the loading screen into the top bar, the
+   top bar's own stands hidden under the copy in flight. The flight itself
+   is the loading screen's (ColdStart in @qualy/ui), made with the drawing
+   and the Web Animations API on its geometry, not the browser's view
+   transition and not a transform: see that file. */
+html[data-cold-start-flight] [data-brand-wordmark] {
+  visibility: hidden;
+}
