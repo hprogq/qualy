@@ -25,6 +25,22 @@
         root.setAttribute('data-mode', dark ? 'dark' : 'light')
         if (dark) root.classList.add('dark')
         root.style.colorScheme = dark ? 'dark' : 'light'
+        setTimeout(function () {
+          var boot = document.getElementById('qualy-boot')
+          var seat = boot && boot.firstElementChild
+          if (!seat) return
+          var note = document.createElement('p')
+          note.textContent = '加载时间较长，'
+          var reload = document.createElement('a')
+          reload.href = location.href
+          reload.textContent = '刷新页面'
+          reload.addEventListener('click', function (event) {
+            event.preventDefault()
+            location.reload()
+          })
+          note.appendChild(reload)
+          seat.appendChild(note)
+        }, 20000)
       })()
     </script>
     <style id="qualy-boot-style">
@@ -46,52 +62,30 @@
       }
       #qualy-boot > div {
         position: absolute;
-        top: calc(44vh - 14.42px);
+        top: var(--boot-top);
         left: 0;
         right: 0;
         display: flex;
-        justify-content: center;
+        flex-direction: column;
+        align-items: center;
       }
       #qualy-boot svg {
         display: block;
         flex-shrink: 0;
       }
+      #qualy-boot p {
+        margin: var(--boot-hint-gap) 0 0;
+        font:
+          14px/1.25rem system-ui,
+          sans-serif;
+      }
+      #qualy-boot a {
+        color: inherit;
+      }
     </style>
   </head>
   <body>
-    <div id="qualy-boot" role="status" aria-label="Loading">
-      <div>
-        <svg
-          viewBox="0 -94.602 351.88 118.602"
-          width="105.711"
-          height="35.63"
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path
-            data-seg="1-7"
-            d="M66.369 -2.256A48 48 0 1 1 92.346 -28.233L77.767 -34.272A32 33.6 0 1 0 60.763 -15.79Z"
-          />
-          <path
-            data-seg="0"
-            d="M109.317 -11.263A48 48 0 0 1 83.339 14.715L77.733 1.181A32 33.6 0 0 0 94.738 -17.301Z"
-          />
-          <path
-            data-letter="u"
-            d="M109.654 -64L125.654 -64L125.654 -32A16 16.8 0 0 0 157.654 -32L157.654 -64L173.654 -64L173.654 -32A32 32 0 0 1 109.654 -32Z"
-          />
-          <path
-            data-letter="a"
-            d="M244.123 -32A32 32 0 1 1 180.123 -32A32 32 0 1 1 244.123 -32ZM228.123 -32A16 16.8 0 1 0 196.123 -32A16 16.8 0 1 0 228.123 -32ZM228.123 -64L244.123 -64L244.123 0L228.123 0Z"
-          />
-          <path data-letter="l" d="M259.643 -93.204L275.643 -93.204L275.643 0L259.643 0Z" />
-          <path
-            data-letter="y"
-            d="M287.88 -64L303.88 -64L303.88 -32A16 16.8 0 0 0 335.88 -32L335.88 -64L351.88 -64L351.88 -32A32 32 0 0 1 287.88 -32ZM335.88 -64L351.88 -64L351.88 24L335.88 24Z"
-          />
-        </svg>
-      </div>
-    </div>
+    <!-- qualy-boot -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

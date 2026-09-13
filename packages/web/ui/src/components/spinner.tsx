@@ -2,7 +2,7 @@ import type * as React from 'react'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 import * as stylex from '@stylexjs/stylex'
-import { fixed, wordmarkLayout } from '@qualy/brand/geometry'
+import { bootPlacement } from '@qualy/brand/boot'
 import { Loader } from '@qualy/brand/loader'
 import { Wordmark } from '@qualy/brand/wordmark'
 
@@ -153,27 +153,26 @@ const CAP = 28
 const NAME = 'qualy-wordmark'
 /** the placeholder index.html paints before any script runs */
 const PLACEHOLDER = 'qualy-boot'
+
+/**
+ * When the first frame was painted, on the performance clock.
+ *
+ * The threshold is about how long the reader has looked at a still
+ * wordmark, and that starts at the first contentful paint, not at the
+ * navigation: with a slow stylesheet the frame appears late, and counting
+ * from the navigation would set the loop going on a wordmark the reader
+ * had seen for a moment. A browser that has not reported the paint counts
+ * from the navigation, the earlier of the two.
+ */
+const firstFramePaintedAt = (): number =>
+  performance.getEntriesByName('first-contentful-paint')[0]?.startTime ?? 0
 const COLD_START = 'data-cold-start'
 
 // The ring's centre line sits at 44vh, so the wordmark's top is that much
-// higher; the hint sits 40px under its bottom. The same three numbers,
-// from the same geometry, are written into index.html by hand, and a test
-// holds the two together.
-const geometry = wordmarkLayout(16)
-const [, boxTop = 0, , boxHeight = 0] = geometry.viewBox.split(' ').map(Number)
-const scale = CAP / geometry.cap
-export const coldStartPlacement = {
-  /** cap height of the wordmark in CSS pixels */
-  cap: CAP,
-  /** from the wordmark's top edge down to the ring's centre line, in CSS pixels */
-  ringDrop: fixed((geometry.ringCenter.y - boxTop) * scale),
-  /** the wordmark's rendered height, in CSS pixels */
-  height: fixed(boxHeight * scale),
-  /** the ring's centre line, as a share of the viewport height */
-  line: '44vh',
-  /** from the wordmark's bottom edge to the hint */
-  hintGap: 40,
-}
+// higher; the hint sits 40px under its bottom. The same numbers position
+// the first frame the build writes into index.html: both read them from
+// the brand's boot placement, so neither can drift from the other.
+export const coldStartPlacement = bootPlacement(CAP)
 // the two offsets, resolved here and handed to the dynamic styles below:
 // the compiler reads a stylesheet's values from the file itself and will
 // not follow a number computed from an import
@@ -304,7 +303,11 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
   useLayoutEffect(() => {
     if (pending > 0 && phase === 'idle') {
       episodes.current += 1
-      setDelay(episodes.current === 1 ? Math.max(0, THRESHOLD - performance.now()) : THRESHOLD)
+      setDelay(
+        episodes.current === 1
+          ? Math.max(0, THRESHOLD - (performance.now() - firstFramePaintedAt()))
+          : THRESHOLD,
+      )
       setHint(false)
       setPhase('waiting')
     }

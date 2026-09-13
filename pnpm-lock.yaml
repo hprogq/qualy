@@ -515,6 +515,9 @@ importers:
       '@qualy/auth-contract':
         specifier: workspace:*
         version: link:../../contracts/auth
+      '@qualy/brand':
+        specifier: workspace:*
+        version: link:../../web/brand
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../contracts/i18n

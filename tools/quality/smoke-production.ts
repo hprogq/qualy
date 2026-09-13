@@ -79,6 +79,12 @@ await check('/', async (response) => {
   shell = await response.text()
   if (response.status !== 200) return `status ${response.status}`
   if (!shell.includes('<!doctype html')) return 'no html shell'
+  // the first frame the build wrote in place of the source's marker, and
+  // no comment left for a browser to download
+  if (!shell.includes('id="qualy-boot"') || !shell.includes('data-seg="1-7"')) {
+    return 'the shell carries no generated first frame'
+  }
+  if (shell.includes('<!--')) return 'the shell carries a comment'
   // the document-only headers, set by the static middleware rather than
   // the serve chain, which never sees these bytes
   for (const [name, expected] of [

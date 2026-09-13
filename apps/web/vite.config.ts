@@ -5,7 +5,7 @@ import * as stylexUnpluginModule from '@stylexjs/unplugin/vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
-import { qualyPlugins } from '@qualy/web-build/vite'
+import { qualyBootFrame, qualyPlugins } from '@qualy/web-build/vite'
 
 const stylexUnplugin =
   stylexUnpluginModule.default as unknown as (typeof stylexUnpluginModule)['default']['default']
@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => ({
   // stays until the last migration phase (docs/ui-platform-migration-mantine.md)
   plugins: [
     qualyPlugins(),
+    qualyBootFrame(),
     stylexUnplugin({
       useCSSLayers: true,
       dev: mode !== 'production',

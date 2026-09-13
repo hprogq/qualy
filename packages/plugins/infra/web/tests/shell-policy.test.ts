@@ -4,7 +4,7 @@ import { assembledLayer, runBootHooks } from '@qualy/api-kit/assembled'
 import { ShellPolicy, shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import {
   composeShellPolicy,
-  INLINE_THEME_SCRIPT_HASH,
+  INLINE_BOOT_SCRIPT_HASH,
   policyLayer,
   ShellPolicyHeader,
   ShellPolicyRefused,
@@ -17,7 +17,7 @@ import { makeReportDeduper, parseReports } from '../src/server/csp-reports.ts'
 
 const FIXED = [
   "default-src 'self'",
-  `script-src 'self' '${INLINE_THEME_SCRIPT_HASH}'`,
+  `script-src 'self' '${INLINE_BOOT_SCRIPT_HASH}'`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",

@@ -13569,3 +13569,23 @@ SIGTERM -> exit 0
   pnpm test:browser -> Test Files 46 passed (46); Tests 322 passed (322); exit 0(shell 套件 +2)
   pnpm build        -> ✓ built in 12.11s; staged web assets -> packages/plugins/infra/web/client-dist
   ```
+
+## 首帧的 boot 层:watchdog、FCP 时钟、构建时生成字标(2026-09-13)
+
+`feat(web): a first frame that is generated, timed from its paint and never silent`。用户拿一份关于 index.html 的外部分析来讨论,结论:保持「HTML 静态字标 → React 接管动画」,不把动画复制进 HTML;要修的四件按失败路径优先:watchdog、FCP 时钟、构建时生成 boot 标记并删 sync 测试、颜色测试。
+
+- **watchdog(原生失败兜底)**:`index.html` 的内联脚本在主题判定之后加 20 秒定时器——`#qualy-boot` 还在(index.html 到了但 `index-*.js` 404、chunk 版本错位、初始化直接抛错,React 永远不会挂载,React 侧的 6s / 30s 都覆盖不到)就在字标下方补一行「加载时间较长,刷新页面」,链接经 `addEventListener` 触发 `location.reload()`(内联 `onclick` 会被 CSP 拦,即便 Report-Only 也会报);React 正常接管时 `#qualy-boot` 被删,定时器什么也不做。脚本变了,CSP 的 hash 常量同步更新为 `sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuOwx7/FCaS4=`(`INLINE_THEME_SCRIPT_HASH` 改名 `INLINE_BOOT_SCRIPT_HASH`),`tools/tests/index-html.test.ts` 守。
+- **FCP 时钟**:`ColdStart` 首屏的 400ms 门槛改从 `performance.getEntriesByName('first-contentful-paint')[0].startTime` 起算(取不到退回导航起点),不再从 `performance.now()` 的零点算——render-blocking 的 `index-*.css` 慢时字标出现得晚,旧算法会让读者才看了 80ms 静止字标就动起来。冷启动浏览器测试的 `due` 同步改算法。
+- **构建时生成 boot 标记**:`@qualy/brand/boot` 新增 `bootPlacement(cap)`(cap、44vh、ringDrop、宽高、hintGap、`top`)与 `bootFrame(cap)`(SVG 与整个 `#qualy-boot` 元素,定位经 `--boot-top` / `--boot-hint-gap` 两个自定义属性);`@qualy/web-build/vite` 新增 `injectBootFrame(html)` 与 `qualyBootFrame()` 插件(`transformIndexHtml` order pre,dev / build / 浏览器套件同一管线),`apps/web/index.html` 只留标记 `<!-- qualy-boot -->`,源码没有标记构建硬失败;`ColdStart` 的 `coldStartPlacement` 改读同一个 `bootPlacement(28)`。不违反零 codegen:产物不进仓库,与 Vite 注入 `<script src>` 同类。`index-html-sync.test.ts` 删除,换 `index-html.test.ts`:标记在、源码无 SVG、唯一注释就是标记、脚本 hash = CSP 常量(产物存在时脚本字节相同)、主题键、颜色 = tokens、favicon;`injectBootFrame` 的产物含生成帧且无注释、定位属性与样式表读法对应、无标记即拒绝。生产 smoke 断言产物壳含 `id="qualy-boot"` / `data-seg="1-7"` 且没有 `<!--`。
+- **颜色测试**:原 sync 测试里已经有(外部分析漏看了),迁到新测试里保留:首帧的浅深两套 background / color 值 = `tokens.css` 的 `--q-background` / `--q-foreground`。
+- **浏览器测试**:冷启动套件的首帧片段改由 `bootFrame().markup` + index.html 静态样式注入;新增两条 watchdog 用例——源码里的 boot 脚本经 `new Function` 在测试页运行,假定时器推进 19s 无链接、20s 出现「刷新页面」链接且位于 `#qualy-boot p` 内;`#qualy-boot` 先被移除则 20s 后什么也没有。
+- **没做的**:HTML 原生动画(相位跳变论证成立,等 RUM 证明 React 常在 FCP 后 1–2s 才起再考虑,届时由 brand 构建时生成分段 SVG + boot-only 关键帧并同步 animation epoch);render-blocking CSS 的 preload + React 等样式表 load(现在不做,做的话是这个形状,不是简单异步)。
+- **门禁(实际执行)**:
+
+  ```text
+  pnpm typecheck    -> 19 programs + client component references, exit 0
+  pnpm test         -> Test Files 218 passed | 3 skipped (221); Tests 1529 passed | 17 skipped (1546); exit 0(index-html 8 条,含产物脚本字节 = 源码)
+  pnpm test:browser -> Test Files 46 passed (46); Tests 324 passed (324); exit 0(cold-start 7 条,含 watchdog 两条)
+  pnpm build        -> ✓ built in 5.29s; staged web assets;client-dist/index.html 含 id="qualy-boot",0 个注释;vite dev(:5199)同样注入(实查 curl)
+  smoke-production  -> /health/ready /health/live /(生成首帧、无注释、四个文档头 + Report-Only 策略含新 hash) /api/…/events /api/app/manifest /assets/index-*.js ok, brotli, shutdown clean (exit 0)
+  ```

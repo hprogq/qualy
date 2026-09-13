@@ -14,14 +14,16 @@ import {
 // short form:
 //
 // - script-src carries no 'unsafe-inline'. The one inline script the shell
-//   has - the theme resolver in index.html, which must run before the
-//   first paint - is allowed by the hash of its exact bytes. The hash is a
-//   constant here rather than computed from the served file so that a
-//   change to that script is a deliberate change to the policy: the
-//   repository gate (tools/tests/index-html-sync.test.ts) fails the moment
-//   the two drift. Vite leaves a non-module inline script untouched, and
-//   the staged index.html was compared byte for byte with the source
-//   (2026-09-13: identical), so the hash is taken from the source file.
+//   has - the boot script in index.html: the theme resolver that must run
+//   before the first paint, and the watchdog that offers a reload when the
+//   application never takes over - is allowed by the hash of its exact
+//   bytes. The hash is a constant here rather than computed from the
+//   served file so that a change to that script is a deliberate change to
+//   the policy: the repository gate (tools/tests/index-html.test.ts) fails
+//   the moment the two drift. Vite leaves a non-module inline script
+//   untouched, and the staged index.html was compared byte for byte with
+//   the source (2026-09-13: identical), so the hash is taken from the
+//   source file.
 // - style-src keeps 'unsafe-inline' and NO hash: the editor injects
 //   <style> elements at run time, and a hash or nonce anywhere in
 //   style-src makes a browser ignore 'unsafe-inline' (CSP3), which would
@@ -34,7 +36,7 @@ import {
 //   policy is enforced.
 
 /** sha256, base64, of the bytes between the shell's `<script>` and `</script>` */
-export const INLINE_THEME_SCRIPT_HASH = 'sha256-HdqH5AjGX8GVN2bn87KdsKlkYFZqAfXPZ/tHtFK1YSg='
+export const INLINE_BOOT_SCRIPT_HASH = 'sha256-pKAg+of2SxxrkLJX27pRnCgcyN5Ud1dmuOwx7/FCaS4='
 
 /** the report endpoint, in the shell's own namespace outside the api mount */
 export const REPORT_PATH = '/csp-reports'
@@ -57,7 +59,7 @@ type Line = readonly [directive: string, sources: readonly string[]]
  */
 const FIXED: readonly Line[] = [
   ['default-src', ["'self'"]],
-  ['script-src', ["'self'", `'${INLINE_THEME_SCRIPT_HASH}'`]],
+  ['script-src', ["'self'", `'${INLINE_BOOT_SCRIPT_HASH}'`]],
   ['style-src', ["'self'", "'unsafe-inline'"]],
   ['img-src', ["'self'", 'data:', 'blob:']],
   ['font-src', ["'self'"]],

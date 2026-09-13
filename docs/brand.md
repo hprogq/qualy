@@ -137,13 +137,15 @@
 
 ### 首帧(0ms,JS 之前)
 
-`apps/web/index.html` 内联字标 SVG:cap 28px,环心所在的水平线在 `44vh`,水平按包围盒居中;颜色用应用自己的前景 / 背景 token 值(`oklch(0.145 0 0)` / `oklch(1 0 0)`,深色 `oklch(0.985 0 0)` / `oklch(0.145 0 0)`),不用预览页的 `#18191D` / `#FAFAF8`——接管那一帧覆盖层用的是同一组 token,两者必须逐值相同。一段内联脚本按 `ThemeProvider` 持久化的同一个键 `qualy.theme` 读取用户偏好(`packages/web/runtime/src/theme.tsx`),没有持久化就只看 `prefers-color-scheme`,设 `data-mode` 并提前加上 token 切换用的 `.dark` 类,页面背景同理。首帧不淡入。index.html 里不放任何注释(它原样发给每个浏览器),说明在 `tools/tests/index-html-sync.test.ts`。
+`apps/web/index.html` 只带一个标记 `<!-- qualy-boot -->`;构建(与 dev server、浏览器套件同一条 Vite 管线)用 `@qualy/web-build/vite` 的 `qualyBootFrame()` 在 `transformIndexHtml` 里换成 `@qualy/brand/boot` 的 `bootFrame()` 生成的字标 SVG——cap 28px,环心所在的水平线在 `44vh`,水平居中——定位经元素上的两个自定义属性(`--boot-top`、`--boot-hint-gap`)交给 index.html 的静态样式读。运行时零 JS、零 React、零外部请求,和以前一样;变的是开发层:几何只有 `geometry.ts` 一份,`ColdStart` 的 `coldStartPlacement` 读的是同一个 `bootPlacement(28)`,两边不可能再各存一份数字。这不违反零 codegen:产物不进仓库,和 Vite 往 HTML 注入 `<script src=/assets/…>` 是同一类事;源码没有标记时构建直接失败。
 
-路径字符串手写在 index.html 里;`tools/tests/index-html-sync.test.ts` 用 `geometry.ts` 在同一 s 下重算 viewBox、宽高、六条路径、44vh 偏移、颜色值与主题键逐一比对——这是测试,不是 codegen。
+颜色仍是手写的:用应用自己的前景 / 背景 token 值(`oklch(0.145 0 0)` / `oklch(1 0 0)`,深色 `oklch(0.985 0 0)` / `oklch(0.145 0 0)`),不用预览页的 `#18191D` / `#FAFAF8`——接管那一帧覆盖层用的是同一组 token,两者必须逐值相同,`tools/tests/index-html.test.ts` 钉住;不让 bootstrap 等 tokens.css,那会破坏 boot 的独立性。一段内联脚本按 `ThemeProvider` 持久化的同一个键 `qualy.theme` 读取用户偏好(`packages/web/runtime/src/theme.tsx`),没有持久化就只看 `prefers-color-scheme`,设 `data-mode` 并提前加上 token 切换用的 `.dark` 类,页面背景同理。首帧不淡入。index.html 里不放任何注释(它原样发给每个浏览器;标记是唯一例外,构建把它换掉,生产 smoke 断言产物里没有注释),说明在 `tools/tests/index-html.test.ts`。
+
+同一段脚本还是原生的 **watchdog**:20 秒后 `#qualy-boot` 还在(index.html 到了但 JS 404、chunk 版本错位、初始化直接抛错——React 永远不会挂载,React 侧的 6s / 30s 一个都覆盖不到),就在字标下方补一行「加载时间较长,刷新页面」,链接经 `addEventListener` 触发 `location.reload()`(内联 `onclick` 会被 CSP 拦);React 正常接管时 `#qualy-boot` 被删,定时器自然作废。脚本是 CSP `script-src` 里唯一放行的 hash,改一个字节就要同步 `shell-policy.ts` 的常量(测试守)。
 
 ### 接管(React 挂载后)
 
-`ColdStart` 用完全相同的几何与位置渲染 `<Wordmark height={28} live>`(循环带 400ms delay),在它自己的 `useLayoutEffect` 里**同帧**移除 `#qualy-boot`,不出现双字标或空白帧。浏览器测试把 index.html 的首帧片段注入页面,比对两者的 `getBoundingClientRect`,逐像素一致。
+`ColdStart` 用完全相同的几何与位置渲染 `<Wordmark height={28} live>`(循环带 400ms delay),在它自己的 `useLayoutEffect` 里**同帧**移除 `#qualy-boot`,不出现双字标或空白帧。浏览器测试把 `bootFrame()` 生成的首帧片段(加 index.html 的静态样式)注入页面,比对两者的 `getBoundingClientRect`,逐像素一致。400ms 门槛的起点是 `performance.getEntriesByName('first-contentful-paint')` 的首帧时刻(取不到退回导航起点),不是导航:样式表慢时字标出现得晚,按导航算会让读者才看了 80ms 的静止字标就动起来。
 
 ### 等待
 

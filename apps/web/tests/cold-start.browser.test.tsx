@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { commands, page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
+import { bootFrame } from '@qualy/brand/boot'
 import { ColdStart, LoadingScreen } from '@qualy/ui/spinner'
 import '../src/app.css'
 
@@ -15,25 +16,40 @@ import '../src/app.css'
 
 const copy = { loading: 'Loading', stillLoading: 'Still loading', retry: 'Retry' }
 
-/** index.html's first frame, as a fragment this page can carry */
+/** index.html as the source holds it, resolved against the suite's root, which is the app */
+const shellSource = () => commands.readFile('index.html')
+
+/**
+ * index.html's first frame, as a fragment this page can carry: the static
+ * style the source holds, and the element the build writes in place of the
+ * source's marker, generated here from the same brand module the build uses
+ */
 const firstFrame = async () => {
-  // resolved against the suite's root, which is the app
-  const html = await commands.readFile('index.html')
-  const style = /<style id="qualy-boot-style">([\s\S]*?)<\/style>/.exec(html)?.[1]
-  const boot = /(<div id="qualy-boot"[\s\S]*?<\/svg>\s*<\/div>\s*<\/div>)/.exec(html)?.[1]
-  if (style === undefined || boot === undefined) throw new Error('index.html has no first frame')
+  const style = /<style id="qualy-boot-style">([\s\S]*?)<\/style>/.exec(await shellSource())?.[1]
+  if (style === undefined) throw new Error('index.html has no boot style')
   const sheet = document.createElement('style')
   sheet.id = 'qualy-boot-style'
   sheet.textContent = style
   document.head.append(sheet)
   const host = document.createElement('div')
-  host.innerHTML = boot
+  host.innerHTML = bootFrame().markup
   document.body.prepend(host.firstElementChild!)
   return () => {
     sheet.remove()
     document.getElementById('qualy-boot')?.remove()
   }
 }
+
+/** the boot script as the source holds it, run in this page */
+const runBootScript = async () => {
+  const script = /<script>([\s\S]*?)<\/script>/.exec(await shellSource())?.[1]
+  if (script === undefined) throw new Error('index.html has no boot script')
+  new Function(script)()
+}
+
+/** when this page first painted, which is where the threshold counts from */
+const firstPaintedAt = () =>
+  performance.getEntriesByName('first-contentful-paint')[0]?.startTime ?? 0
 
 /** a tree that claims the loading screen until told it is done */
 function Booting({ done }: { done: boolean }) {
@@ -95,10 +111,10 @@ describe('the cold start', () => {
       finish = () => setDone(true)
       return <Booting done={done} />
     }
-    // this page has been up far longer than the threshold, so on the first
-    // screen the loop is due at once; a page that reached React at 250ms
-    // would be handed 150
-    const due = Math.max(0, 400 - performance.now())
+    // this page has been painted for far longer than the threshold, so on
+    // the first screen the loop is due at once; a page whose scripts reached
+    // React 250ms after its first paint would be handed 150
+    const due = Math.max(0, 400 - (performance.now() - firstPaintedAt()))
     await render(<Screen />)
     await expect.element(page.getByRole('status')).toBeInTheDocument()
     const parts = [...overlay()!.querySelectorAll<SVGElement>('[data-seg]')]
@@ -175,6 +191,37 @@ describe('the cold start', () => {
         transitions.mockRestore()
       }
     }))
+
+  it('offers a reload from the first frame when nothing takes it over in time', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const restore = await firstFrame()
+    try {
+      await runBootScript()
+      // the watchdog says nothing while the application may still arrive
+      vi.advanceTimersByTime(19_000)
+      expect(await page.getByRole('link', { name: '刷新页面' }).elements()).toHaveLength(0)
+      vi.advanceTimersByTime(1_000)
+      const reload = page.getByRole('link', { name: '刷新页面' })
+      await expect.element(reload).toBeVisible()
+      // under the wordmark, inside the frame the application would have removed
+      expect(document.querySelector('#qualy-boot p a')).toBe(reload.element())
+    } finally {
+      restore()
+    }
+  })
+
+  it('says nothing once the application has taken the first frame down', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const restore = await firstFrame()
+    try {
+      await runBootScript()
+      document.getElementById('qualy-boot')?.remove()
+      vi.advanceTimersByTime(20_000)
+      expect(await page.getByRole('link', { name: '刷新页面' }).elements()).toHaveLength(0)
+    } finally {
+      restore()
+    }
+  })
 
   it('draws a plain screen when no host is mounted', async () => {
     await render(<LoadingScreen />)

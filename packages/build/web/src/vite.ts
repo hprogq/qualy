@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Plugin } from 'vite'
+import { BOOT_PLACEHOLDER, bootFrame } from '@qualy/brand/boot'
 import { repoRoot } from './manifest.ts'
 import { buildPluginModuleSource, buildPluginScanSource } from './collect.ts'
 
@@ -63,3 +64,28 @@ export const qualyPlugins = (): Plugin => {
     },
   }
 }
+
+/**
+ * index.html with its first frame in place of the marker.
+ *
+ * The wordmark the shell paints before any script runs is drawn from the
+ * brand's geometry at build time, never by hand: one marker in the source,
+ * the generated element in what is served, and the loading screen that
+ * takes the frame over reads the same placement. A source without the
+ * marker is refused rather than served without a first frame.
+ */
+export const injectBootFrame = (html: string): string => {
+  if (!html.includes(BOOT_PLACEHOLDER)) {
+    throw new Error(`index.html carries no ${BOOT_PLACEHOLDER} marker for the first frame`)
+  }
+  return html.replace(BOOT_PLACEHOLDER, bootFrame().markup)
+}
+
+/** the vite plugin writing the first frame into the shell, in dev and in a build alike */
+export const qualyBootFrame = (): Plugin => ({
+  name: 'qualy-boot-frame',
+  transformIndexHtml: {
+    order: 'pre',
+    handler: (html) => injectBootFrame(html),
+  },
+})
