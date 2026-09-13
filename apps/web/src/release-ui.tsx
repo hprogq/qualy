@@ -38,8 +38,8 @@ const styles = stylex.create({
   },
   title: {
     margin: 0,
-    fontSize: 20,
-    lineHeight: '1.75rem',
+    fontSize: 24,
+    lineHeight: '2rem',
     fontWeight: 600,
   },
   hint: {
@@ -95,19 +95,31 @@ const styles = stylex.create({
     gap: 8,
     marginTop: 4,
   },
+  // the outline button, small, as the widget library draws it (theme/mantine.tsx)
   button: {
     appearance: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 32,
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: tokens.border,
     borderRadius: tokens.radiusMd,
-    backgroundColor: tokens.surface,
+    backgroundColor: {
+      default: `color-mix(in oklch, ${tokens.input} 30%, transparent)`,
+      ':hover': `color-mix(in oklch, ${tokens.input} 50%, transparent)`,
+    },
     color: tokens.foreground,
     paddingInline: 12,
-    paddingBlock: 6,
+    paddingBlock: 0,
     fontSize: 14,
     lineHeight: '1.25rem',
+    fontWeight: 500,
     cursor: 'pointer',
+  },
+  // the way out sits a little apart from the words, as on the not-found screen
+  action: {
+    marginTop: 8,
   },
   primary: {
     borderColor: tokens.foreground,
@@ -165,7 +177,7 @@ export function ReleaseRecoveryGate({
         <p {...stylex.props(styles.hint)}>{hint}</p>
         <button
           type="button"
-          {...stylex.props(styles.button, styles.primary)}
+          {...stylex.props(styles.button, styles.action)}
           onClick={() => coordinator.reload()}
         >
           {copy.reloadPage}
