@@ -40,14 +40,16 @@ const styles = stylex.create({
   // backdrop-filter under an animating opacity made mobile Safari
   // re-rasterize the page behind it on every frame
   overlay: {
-    animationName: { default: 'q-overlay-in', [REDUCE]: 'none' },
+    // the colour comes in, not the opacity: a backdrop blur under an
+    // opacity that animates is re-run by WebKit on every frame of it, and
+    // at this radius that is the stutter a modal opens with on Safari
+    animationName: { default: 'q-veil-in', [REDUCE]: 'none' },
     animationDuration: { default: '150ms', [REDUCE]: '0s' },
     animationTimingFunction: 'ease',
     // a reader who asked for less motion is answered on the way in and on
     // the way out alike, whether or not this panel is currently leaving
     transitionProperty: { default: null, [REDUCE]: 'none' },
     isolation: 'isolate',
-    willChange: 'opacity',
     backgroundColor: tokens.scrim,
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',

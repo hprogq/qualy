@@ -24,9 +24,16 @@
   animation-duration: 320ms;
   animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-::view-transition-old(qualy-wordmark),
+/* The same drawing at both ends, so only ONE of the two images flies: the
+   new one. Both images fully opaque looked the same in Chromium, which
+   scales the pair to the group as one, and doubled in WebKit, which does
+   not keep them aligned while the group changes size - a second wordmark
+   a few pixels off the first, for the length of the flight. */
+::view-transition-old(qualy-wordmark) {
+  animation: none;
+  opacity: 0;
+}
 ::view-transition-new(qualy-wordmark) {
-  /* the same drawing at both ends: no cross-fade, only the flight */
   animation: none;
   mix-blend-mode: normal;
 }
@@ -34,13 +41,18 @@
    to fly to; an old image with no new one beside it fades out with the
    screen instead of holding its place for the flight's duration */
 ::view-transition-old(qualy-wordmark):only-child {
+  opacity: 1;
   animation: q-cold-start-out 150ms ease-out both;
 }
 ::view-transition-new(qualy-wordmark):only-child {
   animation: q-cold-start-in 150ms ease-out both;
 }
+/* the old root is the loading screen's ground and nothing else, and the
+   page's own ground is the same colour: it is dropped rather than faded,
+   which is one full-screen layer fewer under the flight */
 ::view-transition-old(root) {
-  animation: q-cold-start-out 150ms ease-out both;
+  animation: none;
+  opacity: 0;
 }
 ::view-transition-new(root) {
   animation: q-cold-start-in 260ms ease-out 60ms both;

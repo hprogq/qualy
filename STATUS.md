@@ -13669,3 +13669,22 @@ SIGTERM -> exit 0
 - **`packages/plugins/infra/database/tests/clean-room-parity.test.ts`**(1 条):「只凭插件重建的 lineage 与提交的 lineage 一致」的 `productSelection()` 原来只读清单键,漏了 lock 里 detached 的插件,重建出的库自然少 `ping_logs`。改为清单键 ∪ lock 中 `state === 'detached'` 的插件——这正是生产 `generate` 读的 retained 集。
 - **门禁(实际执行)**:两文件单跑 2 / 6 通过;`pnpm typecheck` exit 0;`pnpm test` Test Files 219 passed | 3 skipped (222); Tests 1531 passed | 17 skipped (1548); exit 0。
 - **教训**:清单或 lock 一动,node 套件必须整跑;那次收场没跑 `pnpm test` 是漏项,不是套件盲区。
+
+## 前端重做:Safari 的冷启动与模态、等宽阶段条、shell 页脚、图标(2026-09-13)
+
+三个 commit,按主题分开;门禁一次跑完。
+
+**Safari(实证部分)**。装了 Playwright 的 WebKit 26.5,经自签 https 代理录制生产入口的冷启动(WebKit 在 http 回环上不收 `__Host-` Secure cookie——Chromium 豁免回环、WebKit 不豁免,所以录制要走 https;线上是 https,用户不受影响),按 25fps 抽帧对比:
+- **字标「一屏两个、上下跳」**:接管那 200ms 里飞行的字标是叠影——`::view-transition-old/new(qualy-wordmark)` 两张快照都 `animation: none` 全不透明,Chromium 把两张一起按 group 缩放所以重合,WebKit 在 group 改尺寸时没对齐,于是两个字标错开几像素同飞。改成只飞新的一张(old `opacity: 0`,`:only-child` 的登录页情形保留淡出);同时旧 root(只是加载屏的底色)不再淡出而是直接去掉——飞行下面少一层全屏合成。改后逐帧只剩一张字标,每帧位置都在推进(截图两张已发)。
+- **内容区闪动**:录制里没复现出「跳」,按机制排掉两处:`Reveal` 在 `data-cold-start` 下不再自己做入场(应用整体的淡入已是入场,WebKit 若把新页面按静帧截取,里面再跑一个位移动画就会在过渡结束时跳一下);hero 卡首次挂载不再滑入(`entered` 初值 `null`,只有按箭头切换才滑)。**还剩一个未证实的候选**:Inter Variable 经 @fontsource 以 `font-display: swap` 加载,冷缓存下 Safari 先用系统字体再换,数字与拉丁文本会回流;Chrome 大概率是缓存命中。若 Safari 清缓存后仍闪,就是它——处理要么预加载 latin 子集,要么 `optional`,那是产品决定,先不动。
+- **模态框掉帧**:没有帧率测量手段,按已知机制改:遮罩从「动 opacity」改为「动 background-color」(`q-veil-in`,替换 `q-overlay-in`),模糊 8px 静止不再随 opacity 每帧重算——dialog.tsx 里原注释记的就是这条 mobile Safari 事故,只是当时 blur 2;面板 `will-change: transform`,缩放时面板与长投影栅格化一次后位移。Dialog / AlertDialog / Sheet 三处同改。
+
+**页面**(顾问那轮的决定):
+- `--q-surface-inset: oklch(0.985 0.002 80)`(深色 0.19),专管卡内凹进去的大块;hero 右栏改站在它上面,`surface-muted` 回到小面积。
+- 绿 / 橙收两成:success `oklch(0.7 0.14 160)`、warning `oklch(0.77 0.15 70)`(深色 0.75 同 chroma);文字色不动。
+- **阶段条改等宽 stepper**:六段各 1/6,「今天」按当前阶段内已过比例落在当前段(无结束时间取一半);轴首尾日期不变。标签规则:当前标签必显、完整、加粗(`overflow: visible`,`Range.getBoundingClientRect` 量它的实际文本宽);非当前标签放不下就省略号 + tooltip;被当前标签压到的相邻标签隐去(`opacity: 0`,留在无障碍树)+ tooltip。截图:六阶段里「第一次公示(申诉期)」完整,右邻「结果公示」隐去、hover 出。
+- **「已结束 0」恢复可点**(上一轮禁用是顾问的话,现收回:禁用一个筛选器比空态更迷惑):空态是新的 `@qualy/ui/empty-row`——白卡里一行 96px,Lucide inbox 16px + 一句话,无插画;搜索无结果同用。文案改为「还没有已结束 / 进行中 / 草稿批次」。
+- **页脚归 shell**:`AppShell` 的 `main` 改 flex column,页面槽 `flex-grow: 1`,`AppFooter`(字标 + 「让评价回归成长本身。」+ 四个 `#` 链接)跟在后面——内容少时贴视口底,多时跟在内容后。规则:页脚只在 app-shell 页面,workspace-shell 没有。文案挪到 layout-default 的 catalog(`layout/footer/*`),assessment 里的删除。不做 Mantine 那种内容盖在 footer 上滚出来的 reveal。
+- **图标两层**:svg favicon 已有 `prefers-color-scheme` 切墨(保留);Safari 不认 svg favicon,深色标签栏上裸黑 Q 会消失——`brand:export` 新增经 playwright 栅格化的 `favicon.png`(32)与 `apple-touch-icon.png`(180):白底 22% 圆角方上放黑 Q。`index.html` 里 png 在 svg 之前(认 svg 的浏览器取后者);`index-html.test` 钉三个文件与顺序;`docs/brand.md` 同步。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests/{catalogs,index-html,client-paths,semantic-tokens}` 4 / 24;`pnpm build` ok;`pnpm test:browser` Test Files 46 passed (46); Tests 325 passed (325); exit 0;`vitest tools/tests` Test Files 36 passed (36); Tests 235 passed (235); exit 0;`pnpm brand:export` 写出 5 个文件(svg 三个与提交版逐字节相同)。截图(1440):列表页、标签 tooltip、已结束空态、草稿单行页(页脚贴底)、模态框;WebKit 逐帧改前 / 改后。
+- **下一步**:P5(hero 右栏的待办接口)可以开始。

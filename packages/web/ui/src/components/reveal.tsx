@@ -8,6 +8,13 @@ import { tokens } from '../theme/tokens.stylex.ts'
 
 // The entrance a screen makes: a short fade and lift, once, on mount.
 // Deliberately subtle - page content should arrive, not perform.
+//
+// Not under the cold start: there the application's own fade-in is the
+// entrance, and a second one playing inside it is a jump on a browser that
+// captures the incoming page as a still rather than painting it live.
+const underColdStart = () =>
+  typeof document !== 'undefined' && document.documentElement.hasAttribute('data-cold-start')
+
 export function Reveal({
   className,
   delay = 0,
@@ -17,10 +24,11 @@ export function Reveal({
   delay?: number
   children: ReactNode
 }) {
+  const [still] = useState(underColdStart)
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y: 8 }}
+      initial={still ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.24, delay, ease: 'easeOut' }}
     >

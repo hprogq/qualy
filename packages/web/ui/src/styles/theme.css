@@ -212,9 +212,9 @@
  * declared here once and behaves identically for first mounts and reopens.
  * Exits stay with the library's transitions. */
 @layer components {
-  @keyframes q-overlay-in {
+  @keyframes q-veil-in {
     from {
-      opacity: 0;
+      background-color: transparent;
     }
   }
   @keyframes q-pop-in {

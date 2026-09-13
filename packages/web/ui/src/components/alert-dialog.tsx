@@ -22,11 +22,13 @@ const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
 const styles = stylex.create({
   overlay: {
-    animationName: { default: 'q-overlay-in', [REDUCE]: 'none' },
+    // the colour comes in, not the opacity: a backdrop blur under an
+    // opacity that animates is re-run by WebKit on every frame of it, and
+    // at this radius that is the stutter a modal opens with on Safari
+    animationName: { default: 'q-veil-in', [REDUCE]: 'none' },
     animationDuration: { default: '150ms', [REDUCE]: '0s' },
     animationTimingFunction: 'ease',
     isolation: 'isolate',
-    willChange: 'opacity',
     // the page behind goes dark and out of focus: the panel is then the
     // one white thing in the viewport without needing a colour of its own
     backgroundColor: tokens.scrim,
@@ -37,6 +39,9 @@ const styles = stylex.create({
     animationName: { default: 'q-pop-in', [REDUCE]: 'none' },
     animationDuration: { default: '150ms', [REDUCE]: '0s' },
     animationTimingFunction: 'ease',
+    // its own layer for the scale: the panel and its long shadow are
+    // rasterised once and moved, not repainted per frame
+    willChange: 'transform',
   },
   // structure only; the surface is the widget's own under the theme
   content: {
