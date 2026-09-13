@@ -55,6 +55,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement
     root.classList.toggle('dark', resolved === 'dark')
     root.style.colorScheme = resolved
+    // the browser's own chrome - Safari's tab bar, iOS's status bar - takes
+    // the page's colour from here; it follows the ground token, whichever
+    // scheme is on, so a switch made in the page reaches the chrome too
+    const ground = getComputedStyle(root).getPropertyValue('--q-background').trim()
+    if (ground !== '') {
+      for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+        meta.setAttribute('content', ground)
+      }
+    }
   }, [resolved])
 
   const setChoice = useCallback((next: ThemeChoice) => {

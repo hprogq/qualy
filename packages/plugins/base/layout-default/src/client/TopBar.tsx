@@ -20,9 +20,12 @@ import { LocalizedText } from '@qualy/web-i18n'
 // application the viewer has. Entries that name no group are applications of
 // one page and stand beside them.
 //
-// At rest the bar is nothing but its words on the page's own ground. Once
-// the page has moved under it - the shell says so with `scrolled` - it turns
-// to glass: the page's colour at 62%, blurred, with a hairline under it, so
+// At rest the bar paints the page's own ground under its words - the same
+// colour as everything below, so nothing shows, but a colour of its own:
+// Safari reads the colour of a surface at the top edge into its own chrome,
+// and a surface with none to read is guessed at, and guessed again as the
+// page arrives. Once the page has moved under it - the shell says so with
+// `scrolled` - it turns to glass: the page's colour at 62%, blurred, with a hairline under it, so
 // what passes beneath reads as a shadow of something while the words above
 // stay sharp. Which entry is open is said by weight and by the ink under its
 // word: as wide as the word, two pixels, square, six under the text box, and
@@ -42,7 +45,7 @@ const styles = stylex.create({
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: 'transparent',
-    backgroundColor: 'transparent',
+    backgroundColor: tokens.background,
     transitionProperty: 'background-color, border-color',
     transitionDuration: '180ms',
     transitionTimingFunction: 'ease',

@@ -72,6 +72,19 @@ describe('the shell source', () => {
     expect(html).toContain(`color: ${token(':root', 'foreground')};`)
     expect(html).toContain(`background: ${token('.dark', 'background')};`)
     expect(html).toContain(`color: ${token('.dark', 'foreground')};`)
+    // the browser's own chrome is told the same ground, for both schemes,
+    // before any sheet arrives - and the boot script, which knows the
+    // scheme the reader chose, resets both to the one that applies
+    const light = token(':root', 'background')!
+    const dark = token('.dark', 'background')!
+    expect(html).toContain(`<meta name="theme-color" content="${light}" media="(prefers-color-scheme: light)" />`)
+    expect(html).toContain(`<meta name="theme-color" content="${dark}" media="(prefers-color-scheme: dark)" />`)
+    expect(scriptOf(html)).toContain(`dark ? '${dark}' : '${light}'`)
+  })
+
+  it('declares its colour schemes before any style', () => {
+    expect(html).toContain('<meta name="color-scheme" content="light dark" />')
+    expect(html.indexOf('name="color-scheme"')).toBeLessThan(html.indexOf('<style'))
   })
 
   it('names the icons the export writes, the svg after the png it stands in for', () => {

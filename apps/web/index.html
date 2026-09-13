@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
-    <style>
-      @layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;
-    </style>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="oklch(0.99 0.001 80)" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="oklch(0.17 0.006 80)" media="(prefers-color-scheme: dark)" />
     <meta
       name="description"
       content="Qualy: Plugin based comprehensive quality evaluation system"
@@ -14,6 +14,9 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <style>
+      @layer theme, base, mantine, components, priority1, priority2, priority3, priority4, priority5;
+    </style>
     <script>
       ;(function () {
         var choice = null
@@ -27,6 +30,9 @@
         root.setAttribute('data-mode', dark ? 'dark' : 'light')
         if (dark) root.classList.add('dark')
         root.style.colorScheme = dark ? 'dark' : 'light'
+        var ground = dark ? 'oklch(0.17 0.006 80)' : 'oklch(0.99 0.001 80)'
+        var chrome = document.querySelectorAll('meta[name="theme-color"]')
+        for (var i = 0; i < chrome.length; i++) chrome[i].setAttribute('content', ground)
         setTimeout(function () {
           var boot = document.getElementById('qualy-boot')
           var seat = boot && boot.firstElementChild
