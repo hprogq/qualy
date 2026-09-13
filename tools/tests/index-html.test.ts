@@ -74,9 +74,16 @@ describe('the shell source', () => {
     expect(html).toContain(`color: ${token('.dark', 'foreground')};`)
   })
 
-  it('names the favicon the export writes', () => {
-    expect(html).toContain('href="/favicon.svg"')
-    expect(fs.existsSync(path.join(ROOT, 'apps/web/public/favicon.svg'))).toBe(true)
+  it('names the icons the export writes, the svg after the png it stands in for', () => {
+    // the svg carries both inks and is what a browser that takes one picks;
+    // Safari takes none and falls back to the png, and the home screen
+    // takes the larger one - all three from the same export
+    for (const file of ['favicon.svg', 'favicon.png', 'apple-touch-icon.png']) {
+      expect(html).toContain(`href="/${file}"`)
+      expect(fs.existsSync(path.join(ROOT, 'apps/web/public', file))).toBe(true)
+    }
+    // listed after the png: a browser that takes both prefers the later one
+    expect(html.indexOf('href="/favicon.png"')).toBeLessThan(html.indexOf('href="/favicon.svg"'))
   })
 })
 

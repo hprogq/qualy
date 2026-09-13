@@ -2,7 +2,7 @@
 
 标志是一个由八段同形扇环组成的圆环,其中一段——尾巴——沿它所朝的方向滑出到环外,于是环有了豁口、Q 有了尾巴,两者是同一个零件。字标 "Qualy" 里的 Q 由标志本身充当,后面四个字母 `ualy` 用与环相同的词汇(正圆环带、直杆、平切)构造,**没有字体、没有导出、没有生成物**:几何全部在 `packages/web/brand/src/geometry.ts` 里运行时计算。
 
-代码在 `packages/web/brand`(`@qualy/brand`),叶子子路径 `./mark` `./wordmark` `./loader` `./geometry`,无 barrel。静态素材在该包 `assets/mark.svg` 与 `assets/wordmark.svg`,favicon 在 `apps/web/public/favicon.svg`,三者由 `pnpm brand:export` 从几何写出。
+代码在 `packages/web/brand`(`@qualy/brand`),叶子子路径 `./mark` `./wordmark` `./loader` `./geometry`,无 barrel。静态素材在该包 `assets/mark.svg` 与 `assets/wordmark.svg`,favicon 在 `apps/web/public/favicon.svg`(另有 Safari 与主屏用的 `favicon.png` 32 / `apple-touch-icon.png` 180,白底圆角方上放黑 Q),全部由 `pnpm brand:export` 从几何写出。
 
 ## 几何(冻结)
 
@@ -124,6 +124,7 @@
 | 按钮内、行内、提交态             | `Spinner`                              | `<Loader size={16}>`(浅极性),`role="status"` + `aria-label`,点击即显示、完成即消失                           |
 | 顶栏                             | `layout-default/TopBar.tsx` 的 `Brand` | `<Wordmark height={14} title="Qualy">`,永不 `live`;链接的可访问名称就是 `<title>`,不再另加 aria-label        |
 | favicon                          | `apps/web/public/favicon.svg`          | 静态标志,内嵌 `prefers-color-scheme` 切 `#18191D` / `#FAFAF8`;`index.html` 的 `<link rel="icon">`            |
+| 位图图标                         | `apps/web/public/favicon.png`、`apple-touch-icon.png` | Safari 不认 svg favicon,深色标签栏上裸黑 Q 会消失:白底圆角方(22% 圆角)上放黑 Q,32 与 180 两档;`index.html` 里 png 在 svg 之前,认 svg 的浏览器取后者 |
 
 `Spinner` / `LoadingScreen` / `PageLoading` 三个导出名与 props 不变,lucide 的 `Loader2Icon` 不再被引用。加载类元素带 `role="status"`,视觉隐藏文案用 `@qualy/ui/visually-hidden`;冷启动的文案由宿主(`apps/web/src/App.tsx`)从 `commonMessages` 的英文 `defaultMessage` 取出交给宿主组件——它运行在 catalog 之前,而 `@qualy/ui` 保持零文案。
 
@@ -184,7 +185,7 @@
 ## 工具
 
 ```sh
-pnpm brand:export    # tools/brand/export.ts:从 geometry 写 packages/web/brand/assets/{mark,wordmark}.svg 与 apps/web/public/favicon.svg
+pnpm brand:export    # tools/brand/export.ts:从 geometry 写 packages/web/brand/assets/{mark,wordmark}.svg、apps/web/public/favicon.svg,并经 playwright 栅格化 favicon.png / apple-touch-icon.png
 pnpm brand:preview   # tools/brand/preview.ts:清空 out/,写 preview.html,playwright 截 浅色 / 深色 / 模糊 / 镜像 / 倒置 五张图
 ```
 
