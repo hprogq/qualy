@@ -185,33 +185,41 @@ const styles = stylex.create({
     alignItems: 'flex-end',
     gap: 6,
   },
-  lane: (weight: number) => ({
+  // one lane per stage, all the same width: the bar counts steps, it does
+  // not measure days - the days are said in words beside it
+  lane: {
     display: 'flex',
     minWidth: 0,
     flexDirection: 'column',
     gap: 7,
-    flexGrow: weight,
+    flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
-  }),
+  },
+  // a name its lane cannot hold is cut short with an ellipsis, and the lane
+  // says the whole of it on request
   laneName: {
     display: 'block',
     overflow: 'hidden',
+    textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontSize: 11,
     color: tokens.mutedForeground,
   },
-  // a name its lane cannot hold is not cut short - it goes, and the lane
-  // says it on request; it stays in the tree for whoever reads without eyes
-  laneNameHidden: {
-    opacity: 0,
-    pointerEvents: 'none',
-  },
-  // the current stage is always named, whole, whatever its lane's width
+  // the current stage is always named, whole, whatever its lane's width -
+  // it may run over the lanes beside it, whose names then stand down
   laneNameCurrent: {
+    position: 'relative',
+    zIndex: 1,
     overflow: 'visible',
     fontWeight: 600,
     color: tokens.foreground,
+  },
+  // a name the current one runs over: kept in the tree for whoever reads
+  // without eyes, out of the picture for everyone else
+  laneNameCovered: {
+    opacity: 0,
+    pointerEvents: 'none',
   },
   segment: {
     height: 6,
@@ -284,7 +292,7 @@ const styles = stylex.create({
     },
     borderStyle: 'solid',
     borderColor: tokens.divider,
-    backgroundColor: tokens.surfaceMuted,
+    backgroundColor: tokens.surfaceInset,
   },
   stage: {
     display: 'flex',
@@ -344,68 +352,74 @@ const styles = stylex.create({
 })
 
 /**
- * The plan as lanes: one per stage, as wide as the stage is long.
+ * The plan along the bar: where today falls, and the dates at its ends.
  *
- * A stage's length is the time between its entry and the next one's; a
- * stage without dates on both sides takes the middle length of the ones
- * that have them, so an unscheduled tail still has a lane. Today's mark is
- * placed along the same scale, which is what makes the bar a calendar
- * rather than a count.
+ * The lanes are equal, so today's place is the current stage's index plus
+ * how far through that stage the clock is - measured against the next
+ * stage's planned start when there is one, and taken as halfway when
+ * nothing after it has a date yet. A plan that has not begun has no today.
  */
 function planOf(timeline: readonly TimelineLike[], now: number) {
   const dates = timeline.map((entry) => (entry.entry.at === null ? null : Date.parse(entry.entry.at)))
-  const spans = timeline.map((_, index) => {
-    const from = dates[index] ?? null
-    const until = dates[index + 1] ?? null
-    return from !== null && until !== null && until > from ? until - from : null
-  })
-  const known = spans.filter((span): span is number => span !== null).sort((a, b) => a - b)
-  const typical = known.length === 0 ? 1 : known[Math.floor(known.length / 2)]!
-  const weights = spans.map((span) => (span === null ? typical : span))
-  const total = weights.reduce((sum, weight) => sum + weight, 0)
-  const start = dates[0] ?? null
   const dated = dates.filter((date): date is number => date !== null)
+  const start = dates[0] ?? null
   const end = dated.length > 0 ? dated[dated.length - 1]! : null
-  // where today falls along the lanes: inside a dated stage by its share
-  // of that stage, and in the middle of an undated one
+  const current = timeline.findIndex((entry) => entry.status === 'current')
   let today: number | null = null
-  if (start !== null && now >= start) {
-    let before = 0
-    for (let index = 0; index < timeline.length; index += 1) {
-      const from = dates[index] ?? null
-      const until = dates[index + 1] ?? null
-      const lane = weights[index]!
-      const inside = from !== null && now >= from && (until === null || now < until)
-      if (inside) {
-        const share = until !== null && until > from ? (now - from) / (until - from) : 0.5
-        today = (before + lane * share) / total
-        break
-      }
-      before += lane
-    }
+  if (current !== -1 && timeline.length > 0) {
+    const from = dates[current] ?? null
+    const until = dates[current + 1] ?? null
+    const share =
+      from !== null && until !== null && until > from
+        ? Math.min(1, Math.max(0, (now - from) / (until - from)))
+        : 0.5
+    today = (current + share) / timeline.length
   }
-  return { weights: weights.map((weight) => weight / total), start, end, today }
+  return { start, end, today }
+}
+
+interface LaneFit {
+  /** the name is no wider than its lane */
+  readonly fits: readonly boolean[]
+  /** the current stage's name runs over this lane */
+  readonly covered: readonly boolean[]
 }
 
 /**
- * Whether each lane is wide enough for its name.
+ * Which names their lanes can hold, and which the current name runs over.
  *
- * Measured, not guessed: a lane's width is the stage's share of the bar,
- * and a six-stage plan with a two-day stage gives that stage a lane no
- * name fits. Re-read whenever the bar is resized.
+ * Measured, not guessed: six lanes on a tablet are narrower than a
+ * six-character name, and the current name is drawn whole whatever its
+ * lane's width. Its extent is read from a range over its text, because
+ * with overflow visible the element's own box is still only the lane.
+ * Re-read whenever the bar is resized.
  */
-function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number) {
-  const [fits, setFits] = useState<readonly boolean[]>([])
+function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number): LaneFit {
+  const [fit, setFit] = useState<LaneFit>({ fits: [], covered: [] })
   useLayoutEffect(() => {
     const root = lanes.current
     if (root === null) return
     const measure = () => {
-      const next = [...root.querySelectorAll<HTMLElement>('[data-lane]')].map((lane) => {
-        const name = lane.querySelector<HTMLElement>('[data-lane-name]')
-        return name === null || name.scrollWidth <= lane.clientWidth
+      const names = [...root.querySelectorAll<HTMLElement>('[data-lane-name]')]
+      const fits = names.map((name) => name.scrollWidth <= name.clientWidth + 1)
+      const current = names.find((name) => name.hasAttribute('data-current'))
+      let reach: DOMRect | null = null
+      if (current !== undefined) {
+        const range = document.createRange()
+        range.selectNodeContents(current)
+        reach = range.getBoundingClientRect()
+      }
+      const covered = names.map((name) => {
+        if (reach === null || name === current) return false
+        const box = name.getBoundingClientRect()
+        return box.left < reach.right + 4 && box.right > reach.left - 4
       })
-      setFits((prev) =>
-        prev.length === next.length && prev.every((fit, index) => fit === next[index]) ? prev : next,
+      setFit((prev) =>
+        prev.fits.length === fits.length &&
+        prev.fits.every((value, index) => value === fits[index]) &&
+        prev.covered.every((value, index) => value === covered[index])
+          ? prev
+          : { fits, covered },
       )
     }
     measure()
@@ -413,7 +427,7 @@ function useLaneFit(lanes: RefObject<HTMLDivElement | null>, count: number) {
     observer.observe(root)
     return () => observer.disconnect()
   }, [lanes, count])
-  return fits
+  return fit
 }
 
 function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
@@ -421,28 +435,30 @@ function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now:
   const plan = planOf(timeline, now)
   const at = (fraction: number) => `${(Math.min(1, Math.max(0, fraction)) * 100).toFixed(2)}%`
   const lanesRef = useRef<HTMLDivElement>(null)
-  const fits = useLaneFit(lanesRef, timeline.length)
+  const fit = useLaneFit(lanesRef, timeline.length)
   return (
     <div {...stylex.props(styles.plan)}>
       <TooltipProvider>
         <div ref={lanesRef} {...stylex.props(styles.lanes)}>
           {timeline.map((entry, index) => {
             const current = entry.status === 'current'
-            const named = current || (fits[index] ?? true)
+            const covered = !current && (fit.covered[index] ?? false)
+            const whole = current || ((fit.fits[index] ?? true) && !covered)
             const lane = (
               <div
                 key={entry.displayName + String(index)}
                 data-lane
                 data-stage-status={entry.status}
-                data-named={named ? '' : undefined}
-                {...stylex.props(styles.lane(plan.weights[index]!))}
+                data-named={whole ? '' : undefined}
+                {...stylex.props(styles.lane)}
               >
                 <span
                   data-lane-name
+                  data-current={current ? '' : undefined}
                   {...stylex.props(
                     styles.laneName,
                     current && styles.laneNameCurrent,
-                    !named && styles.laneNameHidden,
+                    covered && styles.laneNameCovered,
                   )}
                 >
                   {entry.displayName}
@@ -457,7 +473,7 @@ function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now:
                 />
               </div>
             )
-            return named ? (
+            return whole ? (
               lane
             ) : (
               <Tooltip key={entry.displayName + String(index)}>
@@ -566,14 +582,15 @@ export function BatchCard({
   row,
   agenda,
   frame,
-  entered = 'forward',
+  entered = null,
   now = Date.now(),
 }: {
   row: BatchCardRow
   agenda: BatchAgenda
   frame: HeroFrame
-  /** which way the card came in, for the slide that says so */
-  entered?: 'forward' | 'backward'
+  /** which way the card was stepped to, for the slide that says so; a card
+   * the page opened with arrives with the page and does not slide */
+  entered?: 'forward' | 'backward' | null
   /** the clock, for a test that wants to hold it still */
   now?: number
 }): ReactNode {
@@ -588,7 +605,8 @@ export function BatchCard({
       data-batch={row.id}
       {...stylex.props(
         styles.card,
-        entered === 'forward' ? styles.arriveForward : styles.arriveBackward,
+        entered === 'forward' && styles.arriveForward,
+        entered === 'backward' && styles.arriveBackward,
       )}
     >
       <div {...stylex.props(styles.main)}>

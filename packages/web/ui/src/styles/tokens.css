@@ -18,6 +18,10 @@
   /* the one grey of the light scheme, for small areas only: a segmented
      control's track, a card's aside, a row under the pointer */
   --q-surface-muted: oklch(0.96 0.002 80);
+  /* a part of a card set back from the rest - an aside, a read-only block:
+     large enough an area that the muted grey would weigh on it, so it is
+     the faintest step below white that still reads as a step */
+  --q-surface-inset: oklch(0.985 0.002 80);
   --q-surface-elevated: oklch(1 0 0);
   /* lines are alpha black, so they read the same on the page and on a
      card; two weights, because the lines do the layering now - the edge
@@ -35,9 +39,9 @@
   /* standing colours: the dot carries the hue at full strength, the
      foreground is the darker shade of the same hue that reads as text on
      the 15% tint the badges put it on; two tokens, never one */
-  --q-warning: oklch(0.769 0.188 70.08);
+  --q-warning: oklch(0.77 0.15 70);
   --q-warning-foreground: oklch(0.555 0.163 48.998);
-  --q-success: oklch(0.696 0.17 162.48);
+  --q-success: oklch(0.7 0.14 160);
   --q-success-foreground: oklch(0.508 0.118 165.612);
   /* three greys for text and no more: ink, the secondary at 0.52 (clears
      4.5:1 on every surface here), and the shade between them for a row
@@ -79,6 +83,7 @@
   --q-foreground: oklch(0.93 0.004 80);
   --q-surface: oklch(0.21 0.006 80);
   --q-surface-muted: oklch(0.25 0.006 80);
+  --q-surface-inset: oklch(0.19 0.006 80);
   --q-surface-elevated: oklch(0.24 0.006 80);
   --q-border: oklch(1 0 0 / 0.1);
   --q-divider: oklch(1 0 0 / 0.06);
@@ -89,9 +94,9 @@
   --q-primary-foreground: oklch(0.17 0.006 80);
   --q-danger: oklch(0.704 0.191 22.216);
   /* the same hues lifted to read on the dark ground, no chroma added */
-  --q-warning: oklch(0.75 0.188 70.08);
+  --q-warning: oklch(0.75 0.15 70);
   --q-warning-foreground: oklch(0.75 0.163 48.998);
-  --q-success: oklch(0.75 0.17 162.48);
+  --q-success: oklch(0.75 0.14 160);
   --q-success-foreground: oklch(0.75 0.118 165.612);
   --q-muted-foreground: oklch(0.65 0.005 80);
   --q-surface-muted-foreground: oklch(0.93 0.004 80);

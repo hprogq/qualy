@@ -19,6 +19,15 @@ const i18n = definePluginMessages({
       id: 'layout/shell/other-modules',
       defaultMessage: 'Other modules',
     },
+    // the foot of an application's page
+    tagline: {
+      id: 'layout/footer/tagline',
+      defaultMessage: 'Let assessment return to growth itself.',
+    },
+    footHelp: { id: 'layout/footer/help', defaultMessage: 'Help centre' },
+    footContact: { id: 'layout/footer/contact', defaultMessage: 'Contact us' },
+    footPrivacy: { id: 'layout/footer/privacy', defaultMessage: 'Privacy policy' },
+    footTerms: { id: 'layout/footer/terms', defaultMessage: 'Terms of service' },
   },
   locales: {
     'zh-CN': () => import('./locales/zh-CN.ts'),

@@ -10,6 +10,7 @@ export const tokens = stylex.defineVars({
   foreground: 'var(--q-foreground)',
   surface: 'var(--q-surface)',
   surfaceMuted: 'var(--q-surface-muted)',
+  surfaceInset: 'var(--q-surface-inset)',
   surfaceElevated: 'var(--q-surface-elevated)',
   border: 'var(--q-border)',
   divider: 'var(--q-divider)',

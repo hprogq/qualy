@@ -4,7 +4,6 @@ import * as stylex from '@stylexjs/stylex'
 import { PageLink, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -18,6 +17,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@qualy/ui/empty'
+import { EmptyRow } from '@qualy/ui/empty-row'
 import { Reveal } from '@qualy/ui/reveal'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Input } from '@qualy/ui/input'
@@ -63,7 +63,6 @@ const styles = stylex.create({
   wide: { width: 'max-content' },
   page: {
     display: 'flex',
-    minHeight: '100%',
     flexDirection: 'column',
     gap: {
       default: 24,
@@ -159,17 +158,6 @@ const styles = stylex.create({
   },
   sheetScroller: {
     overflowX: 'auto',
-  },
-  // a question the table has no rows for: one line where the rows would be
-  emptyLine: {
-    display: 'flex',
-    minHeight: 96,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingInline: 20,
-    fontSize: 13,
-    color: tokens.mutedForeground,
-    textAlign: 'center',
   },
   table: {
     minWidth: 640,
@@ -284,41 +272,6 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     gap: 4,
-  },
-  foot: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-    marginTop: 'auto',
-    paddingTop: 22,
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
-    fontSize: 12,
-    color: tokens.mutedForeground,
-  },
-  footBrand: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    color: tokens.foreground,
-  },
-  footLinks: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 20,
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-  },
-  footLink: {
-    color: {
-      default: tokens.mutedForeground,
-      ':hover': tokens.foreground,
-    },
-    textDecoration: 'none',
   },
 })
 
@@ -451,8 +404,8 @@ export default function BatchListPage() {
   const [hero, setHero] = useState<{
     key: string
     index: number
-    entered: 'forward' | 'backward'
-  }>({ key: '', index: 0, entered: 'forward' })
+    entered: 'forward' | 'backward' | null
+  }>({ key: '', index: 0, entered: null })
   const heroIndex = hero.key === runningKey ? Math.min(hero.index, running.length - 1) : 0
   const shown = running[heroIndex]
   const step = (by: 1 | -1) =>
@@ -492,11 +445,6 @@ export default function BatchListPage() {
     if ((event.target as HTMLElement).closest('a') !== null) return
     open(batchId)
   }
-
-  // a pill that would answer with an empty table is not offered - unless it
-  // is the one already chosen, which has to stay pressable to be read
-  const offered = (status: Exclude<StatusFilter, 'all'>) =>
-    counts === undefined || counts[status] > 0 || statusFilter === status
 
   // what the empty table says: the search it matched nothing for, or the
   // standing it found nothing in
@@ -602,7 +550,7 @@ export default function BatchListPage() {
                     {format(m.filterAll)}
                     {chipCount(counts && counts.draft + counts.active + counts.archived)}
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="active" disabled={!offered('active')}>
+                  <ToggleGroupItem value="active">
                     {format(m.statusActive)}
                     {chipCount(counts?.active)}
                   </ToggleGroupItem>
@@ -610,14 +558,14 @@ export default function BatchListPage() {
                       listed for whoever sets rounds up: offered to a
                       participant the filter is a promise of an empty page */}
                   {canCreate && (
-                    <ToggleGroupItem value="draft" disabled={!offered('draft')}>
+                    <ToggleGroupItem value="draft">
                       {format(m.statusDraft)}
                       {chipCount(counts?.draft)}
                     </ToggleGroupItem>
                   )}
                   {/* "archived" is the word the column stores; what a reader
                       recognises is that the assessment is over */}
-                  <ToggleGroupItem value="archived" disabled={!offered('archived')}>
+                  <ToggleGroupItem value="archived">
                     {format(m.filterEnded)}
                     {chipCount(counts?.archived)}
                   </ToggleGroupItem>
@@ -631,13 +579,9 @@ export default function BatchListPage() {
                   // the second by the search box and the pills already on
                   // the page, so it is one line where the rows would be
                   filtered ? (
-                    <p
-                      data-testid="batch-list-empty"
-                      data-empty="filtered"
-                      {...stylex.props(styles.emptyLine)}
-                    >
+                    <EmptyRow data-testid="batch-list-empty" data-empty="filtered">
                       {emptyLine()}
-                    </p>
+                    </EmptyRow>
                   ) : (
                     <Empty data-testid="batch-list-empty" data-empty="none">
                       <EmptyHeader>
@@ -773,29 +717,6 @@ export default function BatchListPage() {
             </section>
           </div>
         </AsyncSection>
-
-        <footer {...stylex.props(styles.foot)}>
-          <div {...stylex.props(styles.footBrand)}>
-            <Wordmark height={12} title="Qualy" />
-            <span>{format(m.tagline)}</span>
-          </div>
-          <ul {...stylex.props(styles.footLinks)}>
-            {(
-              [
-                ['help', m.footHelp],
-                ['contact', m.footContact],
-                ['privacy', m.footPrivacy],
-                ['terms', m.footTerms],
-              ] as const
-            ).map(([id, label]) => (
-              <li key={id}>
-                <a href="#" {...stylex.props(styles.footLink)}>
-                  {format(label)}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </footer>
 
         <NewBatchDialog
           open={creating}

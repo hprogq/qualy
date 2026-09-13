@@ -3,6 +3,7 @@ import { Outlet } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { SectionBar, TopBar } from './TopBar.tsx'
+import { AppFooter } from './AppFooter.tsx'
 import { useAppNavigation } from './useAppNavigation.ts'
 
 // app-shell/v1 provider: applications across the top, the sections of the
@@ -36,7 +37,9 @@ const styles = stylex.create({
     overflow: 'hidden',
   },
   main: {
+    display: 'flex',
     minHeight: 0,
+    flexDirection: 'column',
     flexGrow: 1,
     flexShrink: 1,
     flexBasis: '0%',
@@ -49,9 +52,18 @@ const styles = stylex.create({
   },
   // occupies the band the page scrolls out of first, and no room in the flow
   sentinel: {
+    flexShrink: 0,
     height: SCROLLED_AFTER,
     marginBottom: -SCROLLED_AFTER,
     pointerEvents: 'none',
+  },
+  // the page takes whatever height the bars and the foot leave, so a short
+  // page still puts the foot at the bottom of the viewport
+  page: {
+    display: 'flex',
+    flexDirection: 'column',
+    flexGrow: 1,
+    flexShrink: 0,
   },
 })
 
@@ -95,7 +107,10 @@ export default function AppShell() {
           <SectionBar items={sections} />
         </div>
         <div ref={sentinel} aria-hidden {...stylex.props(styles.sentinel)} />
-        <Outlet />
+        <div {...stylex.props(styles.page)}>
+          <Outlet />
+        </div>
+        <AppFooter />
       </main>
     </div>
   )
