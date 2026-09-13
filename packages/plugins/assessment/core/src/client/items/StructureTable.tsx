@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import {
   DropdownMenu,
@@ -36,8 +37,6 @@ import type { StructureRow } from './structure.ts'
 // the columns. Only groups are numbered, because a number on every row makes
 // the column noise rather than a map.
 
-const sm = '@media (min-width: 640px)'
-const maxSm = '@media (max-width: 639.98px)'
 const md = '@media (min-width: 768px)'
 
 /** the eight columns every row lines up against, groups included */
@@ -77,7 +76,7 @@ const styles = stylex.create({
     position: 'relative',
     width: {
       default: null,
-      [maxSm]: '100%',
+      [breakpoints.phone]: '100%',
     },
   },
   searchIcon: {
@@ -93,9 +92,8 @@ const styles = stylex.create({
   searchInput: {
     paddingLeft: 32,
     width: {
-      default: null,
-      [maxSm]: '100%',
-      [sm]: 224,
+      default: 224,
+      [breakpoints.phone]: '100%',
     },
   },
   chevronDim: {

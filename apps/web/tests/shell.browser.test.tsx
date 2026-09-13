@@ -1,4 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react'
+import { Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
@@ -139,6 +140,35 @@ describe('the application shell', () => {
       .toHaveAttribute('aria-current', 'page')
     // the assessment application has a single section, so no second row
     expect(await page.getByRole('link', { name: '全部测评' }).elements()).toHaveLength(0)
+  })
+
+  it('says when the page has moved under its bars, and only then', async () => {
+    // the bars sit inside the scrolling element; a page taller than it
+    // puts them to the test
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      route: '/organization/users',
+      children: (
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route
+              path="/organization/users"
+              element={<div data-testid="tall" style={{ height: 3000 }} />}
+            />
+          </Route>
+        </Routes>
+      ),
+    })
+    await expect.element(page.getByTestId('tall')).toBeInTheDocument()
+    const head = document.querySelector('[data-shell-head]')!
+    await vi.waitFor(() => expect(head.hasAttribute('data-scrolled')).toBe(false))
+    const main = document.querySelector('main')!
+    main.scrollTo({ top: 400 })
+    await vi.waitFor(() => expect(head.hasAttribute('data-scrolled')).toBe(true))
+    // the bars are still where they were: stuck to the top of the scrollport
+    expect(head.getBoundingClientRect().top).toBeCloseTo(main.getBoundingClientRect().top, 0)
+    main.scrollTo({ top: 0 })
+    await vi.waitFor(() => expect(head.hasAttribute('data-scrolled')).toBe(false))
   })
 
   it('sends an application tab to its first page', async () => {

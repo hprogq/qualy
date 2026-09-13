@@ -5,6 +5,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Loader } from '@qualy/brand/loader'
 import { a11yStyles } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import {
   drawerAccount,
   drawerIdentity,
@@ -89,8 +90,8 @@ const styles = stylex.create({
     borderBottomColor: tokens.border,
     backgroundColor: tokens.background,
     paddingInline: {
-      default: 8,
-      '@media (min-width: 640px)': 16,
+      default: 16,
+      [breakpoints.phone]: 8,
     },
   },
   contextSeat: {

@@ -6,6 +6,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Modal as MModal } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { retainInertBackground } from '../lib/inert-background.ts'
 import { Button } from './button.tsx'
@@ -14,8 +15,6 @@ import { Button } from './button.tsx'
 // dialog, but with alertdialog semantics, no dismissal by clicking outside,
 // and initial focus resting on the cancelling button - the safe answer is
 // the one a stray Enter lands on.
-
-const WIDE = '@media (min-width: 640px)'
 
 // the entrance is a CSS insertion animation for the same reason the dialog's
 // is; see that file
@@ -45,7 +44,7 @@ const styles = stylex.create({
   // flex-basis and a max-width can only narrow that. What stays here is the
   // narrow-screen cap, which the prop cannot express: a phone gets the small
   // alert's measure whichever size was asked for.
-  narrowCap: { maxWidth: { default: '20rem', [WIDE]: 'none' } },
+  narrowCap: { maxWidth: { default: 'none', [breakpoints.phone]: '20rem' } },
   header: {
     display: 'grid',
     gridTemplateRows: 'auto 1fr',
@@ -54,20 +53,24 @@ const styles = stylex.create({
     textAlign: 'center',
   },
   headerRoomy: {
-    placeItems: { default: 'center', [WIDE]: 'start' },
-    textAlign: { default: 'center', [WIDE]: 'left' },
+    placeItems: { default: 'start', [breakpoints.phone]: 'center' },
+    textAlign: { default: 'left', [breakpoints.phone]: 'center' },
   },
   headerWithMedia: {
     gridTemplateRows: 'auto auto 1fr',
     columnGap: 24,
   },
   headerRoomyWithMedia: {
-    gridTemplateRows: { default: 'auto auto 1fr', [WIDE]: 'auto 1fr' },
+    gridTemplateRows: { default: 'auto 1fr', [breakpoints.phone]: 'auto auto 1fr' },
   },
   footer: {
     display: 'flex',
-    flexDirection: { default: 'column-reverse', [WIDE]: 'row' },
-    justifyContent: { default: null, [WIDE]: 'flex-end' },
+    flexDirection: { default: 'row', [breakpoints.phone]: 'column-reverse' },
+    justifyContent: {
+      default: null,
+      [breakpoints.tablet]: 'flex-end',
+      [breakpoints.desktop]: 'flex-end',
+    },
     gap: 8,
   },
   footerPaired: {
@@ -84,7 +87,9 @@ const styles = stylex.create({
     borderRadius: 9999,
     backgroundColor: tokens.surfaceMuted,
   },
-  mediaRoomy: { gridRow: { default: null, [WIDE]: 'span 2' } },
+  mediaRoomy: {
+    gridRow: { default: null, [breakpoints.tablet]: 'span 2', [breakpoints.desktop]: 'span 2' },
+  },
   title: {
     // size and leading travel together, as the utility this replaces did
     fontSize: 18,
@@ -92,11 +97,13 @@ const styles = stylex.create({
     fontWeight: 500,
   },
   // the title steps aside for the media column once there is room for both
-  titleBeside: { gridColumnStart: { default: null, [WIDE]: 2 } },
+  titleBeside: {
+    gridColumnStart: { default: null, [breakpoints.tablet]: 2, [breakpoints.desktop]: 2 },
+  },
   description: {
     fontSize: 14,
     lineHeight: '1.25rem',
-    textWrap: { default: 'balance', '@media (min-width: 768px)': 'pretty' },
+    textWrap: { default: 'pretty', [breakpoints.phone]: 'balance' },
     color: tokens.mutedForeground,
   },
 })

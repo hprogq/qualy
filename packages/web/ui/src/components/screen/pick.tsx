@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { a11yStyles } from '../../lib/visually-hidden.tsx'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
+import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { Checkbox } from '../checkbox.tsx'
 
 const styles = stylex.create({
@@ -21,15 +22,15 @@ const styles = stylex.create({
   },
   gridTwo: {
     gridTemplateColumns: {
-      default: 'none',
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      default: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.phone]: 'none',
     },
   },
   gridThree: {
     gridTemplateColumns: {
-      default: 'none',
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
-      '@media (min-width: 1024px)': 'repeat(3, minmax(0, 1fr))',
+      default: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.phone]: 'none',
+      [breakpoints.desktop]: 'repeat(3, minmax(0, 1fr))',
     },
   },
   cell: {

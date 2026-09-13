@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
+import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { Checkbox } from '../checkbox.tsx'
 import {
   Field as FormField,
@@ -24,7 +25,8 @@ const styles = stylex.create({
     gap: 4,
     gridTemplateColumns: {
       default: null,
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.tablet]: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.desktop]: 'repeat(2, minmax(0, 1fr))',
     },
   },
   requiredMark: {
@@ -54,8 +56,8 @@ const styles = stylex.create({
     display: 'grid',
     gap: 4,
     gridTemplateColumns: {
-      default: 'none',
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      default: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.phone]: 'none',
     },
   },
   optionRow: {

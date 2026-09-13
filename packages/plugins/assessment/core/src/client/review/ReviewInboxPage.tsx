@@ -16,6 +16,7 @@ import { Skeleton } from '@qualy/ui/skeleton'
 import { DoneMark, Stagger } from '@qualy/ui/reveal'
 import { Tabs, TabsList, TabsTrigger } from '@qualy/ui/tabs'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { useBatchLive } from '../live.ts'
@@ -40,8 +41,6 @@ import {
 // same workbench; the layout only decides which rows it walks in a run.
 
 const md = '@media (min-width: 768px)'
-const belowSm = '@media (max-width: 639.98px)'
-const belowMd = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
   // on a phone the four views share the row rather than scrolling it
@@ -255,7 +254,7 @@ const styles = stylex.create({
   head: {
     display: {
       default: 'grid',
-      [belowMd]: 'none',
+      [breakpoints.phone]: 'none',
     },
     alignItems: 'center',
     gap: 12,
@@ -284,26 +283,27 @@ const styles = stylex.create({
   row: {
     display: {
       default: 'grid',
-      [belowMd]: 'flex',
+      [breakpoints.phone]: 'flex',
     },
     width: '100%',
     cursor: 'pointer',
     alignItems: 'center',
     gap: {
-      default: 12,
-      [belowMd]: null,
+      default: null,
+      [breakpoints.tablet]: 12,
+      [breakpoints.desktop]: 12,
     },
     flexWrap: {
       default: null,
-      [belowMd]: 'wrap',
+      [breakpoints.phone]: 'wrap',
     },
     columnGap: {
       default: null,
-      [belowMd]: 8,
+      [breakpoints.phone]: 8,
     },
     rowGap: {
       default: null,
-      [belowMd]: 4,
+      [breakpoints.phone]: 4,
     },
     borderBottomWidth: {
       default: 1,
@@ -325,11 +325,11 @@ const styles = stylex.create({
   wraps: {
     order: {
       default: null,
-      [belowMd]: 9999,
+      [breakpoints.phone]: 9999,
     },
     flexBasis: {
       default: null,
-      [belowMd]: '100%',
+      [breakpoints.phone]: '100%',
     },
   },
   who: {
@@ -339,7 +339,7 @@ const styles = stylex.create({
     gap: 8,
     flexGrow: {
       default: null,
-      [belowMd]: 1,
+      [breakpoints.phone]: 1,
     },
   },
   whoName: {
@@ -384,7 +384,7 @@ const styles = stylex.create({
   titleCellGrows: {
     flexGrow: {
       default: null,
-      [belowMd]: 1,
+      [breakpoints.phone]: 1,
     },
   },
   titleCellStrong: {
@@ -422,7 +422,7 @@ const styles = stylex.create({
     width: 288,
     flexGrow: {
       default: null,
-      [belowSm]: 1,
+      [breakpoints.phone]: 1,
     },
   },
   skFilter: {
@@ -430,7 +430,7 @@ const styles = stylex.create({
     width: 112,
     display: {
       default: 'block',
-      [belowSm]: 'none',
+      [breakpoints.phone]: 'none',
     },
   },
   skSpacer: {
@@ -439,7 +439,7 @@ const styles = stylex.create({
     flexBasis: '0%',
     display: {
       default: 'block',
-      [belowSm]: 'none',
+      [breakpoints.phone]: 'none',
     },
   },
   skStats: {
@@ -447,7 +447,7 @@ const styles = stylex.create({
     width: 160,
     display: {
       default: 'block',
-      [belowSm]: 'none',
+      [breakpoints.phone]: 'none',
     },
   },
   skFrame: {
@@ -487,7 +487,7 @@ const styles = stylex.create({
     flexShrink: 0,
     display: {
       default: 'block',
-      [belowSm]: 'none',
+      [breakpoints.phone]: 'none',
     },
   },
   skChip: {

@@ -6,6 +6,7 @@ import * as stylex from '@stylexjs/stylex'
 import { FocusTrap, Modal as MModal } from '@mantine/core'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { retainInertBackground } from '../lib/inert-background.ts'
@@ -86,8 +87,12 @@ const styles = stylex.create({
   },
   footer: {
     display: 'flex',
-    flexDirection: { default: 'column-reverse', '@media (min-width: 640px)': 'row' },
-    justifyContent: { default: null, '@media (min-width: 640px)': 'flex-end' },
+    flexDirection: { default: 'row', [breakpoints.phone]: 'column-reverse' },
+    justifyContent: {
+      default: null,
+      [breakpoints.tablet]: 'flex-end',
+      [breakpoints.desktop]: 'flex-end',
+    },
     gap: 8,
   },
   title: {

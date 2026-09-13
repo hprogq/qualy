@@ -4,6 +4,7 @@ import { CheckIcon, ChevronDownIcon, GripVerticalIcon, PlusIcon, XIcon } from 'l
 import { useI18n } from '@qualy/web-i18n'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Field } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -74,8 +75,6 @@ const retypeDraft = (field: FieldDraft, type: FieldDraft['type']): FieldDraft =>
   }
 }
 
-const sm = '@media (min-width: 640px)'
-
 const MONO =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
 
@@ -132,18 +131,18 @@ const styles = stylex.create({
     },
     display: 'grid',
     gridTemplateColumns: {
-      default: '2.25rem minmax(0, 1fr) 1.5rem',
-      [sm]: '2.25rem minmax(0, 1fr) 6.25rem 12.5rem 1.5rem',
+      default: '2.25rem minmax(0, 1fr) 6.25rem 12.5rem 1.5rem',
+      [breakpoints.phone]: '2.25rem minmax(0, 1fr) 1.5rem',
     },
     alignItems: 'center',
     columnGap: 12,
     rowGap: {
-      default: 2,
-      [sm]: 0,
+      default: 0,
+      [breakpoints.phone]: 2,
     },
     paddingBlock: {
-      default: 8,
-      [sm]: 6,
+      default: 6,
+      [breakpoints.phone]: 8,
     },
   },
   markBefore: {
@@ -191,15 +190,15 @@ const styles = stylex.create({
   },
   typeCell: {
     display: {
-      default: 'none',
-      [sm]: 'block',
+      default: 'block',
+      [breakpoints.phone]: 'none',
     },
     fontSize: 14,
   },
   limitCell: {
     display: {
-      default: 'none',
-      [sm]: 'block',
+      default: 'block',
+      [breakpoints.phone]: 'none',
     },
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -226,7 +225,8 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     display: {
       default: null,
-      [sm]: 'none',
+      [breakpoints.tablet]: 'none',
+      [breakpoints.desktop]: 'none',
     },
   },
   addSeat: {
@@ -254,7 +254,8 @@ const styles = stylex.create({
     paddingBlock: 14,
     gridTemplateColumns: {
       default: null,
-      [sm]: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.tablet]: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.desktop]: 'repeat(2, minmax(0, 1fr))',
     },
   },
   onBackground: {
@@ -271,7 +272,8 @@ const styles = stylex.create({
   span2: {
     gridColumn: {
       default: null,
-      [sm]: 'span 2 / span 2',
+      [breakpoints.tablet]: 'span 2 / span 2',
+      [breakpoints.desktop]: 'span 2 / span 2',
     },
   },
   dateNote: {
@@ -307,7 +309,8 @@ const styles = stylex.create({
     gap: 8,
     gridTemplateColumns: {
       default: null,
-      [sm]: 'repeat(3, minmax(0, 1fr))',
+      [breakpoints.tablet]: 'repeat(3, minmax(0, 1fr))',
+      [breakpoints.desktop]: 'repeat(3, minmax(0, 1fr))',
     },
   },
   kindButton: {

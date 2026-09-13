@@ -4,6 +4,7 @@ import * as React from 'react'
 import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 
 // Events in the order they happen: a rail, a marker per event, and whatever
@@ -70,7 +71,7 @@ const styles = stylex.create({
   },
   // a date that wraps in a narrow upright rail still leaves its item the same
   // height as its neighbours
-  dateUpright: { height: { default: null, '@media (max-width: 639.98px)': 16 } },
+  dateUpright: { height: { default: null, [breakpoints.phone]: 16 } },
   title: { fontSize: 14, lineHeight: '1.25rem', fontWeight: 500 },
   content: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   marker: {

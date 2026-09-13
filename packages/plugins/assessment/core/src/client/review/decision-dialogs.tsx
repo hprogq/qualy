@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Textarea } from '@qualy/ui/textarea'
 import { Chip, ChipGroup } from '@qualy/ui/chip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { displayValueOf, fieldsOf } from '../entry/model.ts'
 import type { EvidenceFieldSpec } from '../entry/EvidenceForm.tsx'
@@ -28,8 +29,6 @@ import type { ReviewDto } from './model.ts'
 // dialog collects the word (and the picked reason when the batch configured
 // a list), and hands one staged decision back to the workbench - the same
 // undo window applies to these as to a plain approval.
-
-const sm = '@media (min-width: 640px)'
 
 /**
  * Each verdict key's resting ground, named once.
@@ -252,12 +251,12 @@ const styles = stylex.create({
   stageList: {
     display: 'flex',
     flexDirection: {
-      default: 'column',
-      [sm]: 'row',
+      default: 'row',
+      [breakpoints.phone]: 'column',
     },
     gap: {
-      default: 8,
-      [sm]: 12,
+      default: 12,
+      [breakpoints.phone]: 8,
     },
   },
   stage: {

@@ -7,6 +7,7 @@ import clsx from 'clsx'
 import * as stylex from '@stylexjs/stylex'
 
 import { tokens } from '../theme/tokens.stylex.ts'
+import { breakpoints } from '../theme/breakpoints.stylex.ts'
 import { seatOf } from '../lib/xstyle.ts'
 import { VisuallyHidden } from '../lib/visually-hidden.tsx'
 import { retainInertBackground } from '../lib/inert-background.ts'
@@ -108,7 +109,7 @@ const styles = stylex.create({
   contentBeside: {
     height: '100%',
     width: '75%',
-    maxWidth: { default: null, '@media (min-width: 640px)': '24rem' },
+    maxWidth: { default: null, [breakpoints.tablet]: '24rem', [breakpoints.desktop]: '24rem' },
   },
   // one that comes from above or below takes the width and is as tall as it
   // needs to be

@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
+import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { Skeleton } from '../skeleton.tsx'
 
 const styles = stylex.create({
@@ -112,9 +113,9 @@ const styles = stylex.create({
     display: 'grid',
     gap: 8,
     gridTemplateColumns: {
-      default: 'none',
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
-      '@media (min-width: 1024px)': 'repeat(3, minmax(0, 1fr))',
+      default: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.phone]: 'none',
+      [breakpoints.desktop]: 'repeat(3, minmax(0, 1fr))',
     },
   },
   editorCell: { height: 44, width: '100%', borderRadius: tokens.radiusLg },

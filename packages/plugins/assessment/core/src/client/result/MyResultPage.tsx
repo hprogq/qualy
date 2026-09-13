@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { BarChart3Icon } from 'lucide-react'
 import { useApiQuery, usePageNavigate, usePageRouteParams } from '@qualy/web-runtime'
 import { isApiErrorCode, useI18n } from '@qualy/web-i18n'
@@ -103,8 +104,12 @@ const styles = stylex.create({
   // the total, how it divides, and what is not in it - one band
   band: {
     display: 'flex',
-    flexDirection: { default: 'column', '@media (min-width: 640px)': 'row' },
-    alignItems: { default: null, '@media (min-width: 640px)': 'stretch' },
+    flexDirection: { default: 'row', [breakpoints.phone]: 'column' },
+    alignItems: {
+      default: null,
+      [breakpoints.tablet]: 'stretch',
+      [breakpoints.desktop]: 'stretch',
+    },
     gap: 20,
     borderRadius: `calc(${tokens.radiusLg} * 1.8)`,
     borderWidth: 1,
@@ -138,7 +143,7 @@ const styles = stylex.create({
   },
   // the band's parts stand apart only where there is room for a rule
   rule: {
-    display: { default: 'none', '@media (min-width: 640px)': 'block' },
+    display: { default: 'block', [breakpoints.phone]: 'none' },
     width: 1,
     flexShrink: 0,
     backgroundColor: tokens.border,

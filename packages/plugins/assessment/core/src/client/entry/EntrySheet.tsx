@@ -15,6 +15,7 @@ import { ScrollArea } from '@qualy/ui/scroll-area'
 import { Sheet, SheetContent, SheetTitle } from '@qualy/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Count } from '@qualy/ui/count'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -48,7 +49,7 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 0,
     padding: 0,
-    maxWidth: { default: null, '@media (min-width: 640px)': '48rem' },
+    maxWidth: { default: null, [breakpoints.tablet]: '48rem', [breakpoints.desktop]: '48rem' },
   },
   sheetTitle: { flexShrink: 0, fontSize: 16, lineHeight: '1.5rem', fontWeight: 600 },
   crumbHere: {

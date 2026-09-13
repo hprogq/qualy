@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import type { PeoplePickerContext } from '@qualy/ui-contract'
@@ -48,7 +49,8 @@ const styles = stylex.create({
     gap: 16,
     gridTemplateColumns: {
       default: null,
-      '@media (min-width: 640px)': 'minmax(0, 1fr) minmax(0, 1.4fr)',
+      [breakpoints.tablet]: 'minmax(0, 1fr) minmax(0, 1.4fr)',
+      [breakpoints.desktop]: 'minmax(0, 1fr) minmax(0, 1.4fr)',
     },
   },
   side: { display: 'flex', minHeight: 0, minWidth: 0, flexDirection: 'column', gap: 8 },

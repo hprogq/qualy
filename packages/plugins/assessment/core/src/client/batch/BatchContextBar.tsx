@@ -9,6 +9,7 @@ import {
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { assessmentApi } from '../api.ts'
@@ -24,12 +25,13 @@ const styles = stylex.create({
   // narrow screen the switch starts where every other line of the page does.
   bar: {
     display: {
-      default: 'flex',
-      '@media (min-width: 640px)': 'grid',
+      default: 'grid',
+      [breakpoints.phone]: 'flex',
     },
     gridTemplateColumns: {
       default: null,
-      '@media (min-width: 640px)': '1fr auto 1fr',
+      [breakpoints.tablet]: '1fr auto 1fr',
+      [breakpoints.desktop]: '1fr auto 1fr',
     },
     minWidth: 0,
     alignItems: 'center',
@@ -37,8 +39,8 @@ const styles = stylex.create({
   },
   start: {
     display: {
-      default: 'none',
-      '@media (min-width: 640px)': 'flex',
+      default: 'flex',
+      [breakpoints.phone]: 'none',
     },
     minWidth: 0,
     alignItems: 'center',
@@ -60,20 +62,20 @@ const styles = stylex.create({
     minWidth: 0,
     maxWidth: 'min(70vw, 40rem)',
     flexGrow: {
-      default: 1,
-      '@media (min-width: 640px)': 0,
+      default: 0,
+      [breakpoints.phone]: 1,
     },
     flexShrink: {
-      default: 1,
-      '@media (min-width: 640px)': 0,
+      default: 0,
+      [breakpoints.phone]: 1,
     },
     flexBasis: {
-      default: '0%',
-      '@media (min-width: 640px)': 'auto',
+      default: 'auto',
+      [breakpoints.phone]: '0%',
     },
     justifyContent: {
-      default: 'flex-start',
-      '@media (min-width: 640px)': 'center',
+      default: 'center',
+      [breakpoints.phone]: 'flex-start',
     },
   },
   nameSkeleton: {

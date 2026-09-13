@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
+import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,8 +35,8 @@ import {
 
 const styles = stylex.create({
   panel: {
-    width: { default: '100%', '@media (min-width: 640px)': null },
-    maxWidth: { default: null, '@media (min-width: 640px)': '36rem' },
+    width: { default: null, [breakpoints.phone]: '100%' },
+    maxWidth: { default: null, [breakpoints.tablet]: '36rem', [breakpoints.desktop]: '36rem' },
   },
   panelFooter: {
     flexDirection: 'row',

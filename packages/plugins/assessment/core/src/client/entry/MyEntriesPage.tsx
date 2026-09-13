@@ -15,6 +15,7 @@ import { commonMessages } from '@qualy/web-i18n/messages'
 import { RefreshCwIcon, TableOfContentsIcon } from 'lucide-react'
 import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Appear, Glide, Sift, SiftRow, Swap } from '@qualy/ui/reveal'
 import { Button } from '@qualy/ui/button'
@@ -51,7 +52,6 @@ import { trimAmount, type EntryDto, type FilingGateDto, type ItemDto } from './m
 const md = '@media (min-width: 768px)'
 const lg = '@media (min-width: 1024px)'
 const xl = '@media (min-width: 1280px)'
-const belowSm = '@media (max-width: 639.98px)'
 const belowLg = '@media (max-width: 1023.98px)'
 
 const spin = stylex.keyframes({
@@ -289,8 +289,8 @@ const styles = stylex.create({
   },
   statChip: {
     display: {
-      default: 'none',
-      '@media (min-width: 640px)': 'inline-flex',
+      default: 'inline-flex',
+      [breakpoints.phone]: 'none',
     },
     flexShrink: 0,
     alignItems: 'center',

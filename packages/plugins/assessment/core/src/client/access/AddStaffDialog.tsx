@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { UiSlot, useApiQuery } from '@qualy/web-runtime'
 import { orgNodePicker, peoplePicker } from '@qualy/ui-contract'
@@ -48,7 +49,13 @@ const styles = stylex.create({
   quiet: { fontSize: 14, lineHeight: '1.25rem', color: tokens.mutedForeground },
   waitingFill: { minHeight: 0, width: '100%', flexGrow: 1, flexShrink: 1, flexBasis: '0%' },
   waitingTree: { height: '42vh', width: '100%' },
-  foot: { justifyContent: { default: null, '@media (min-width: 640px)': 'space-between' } },
+  foot: {
+    justifyContent: {
+      default: null,
+      [breakpoints.tablet]: 'space-between',
+      [breakpoints.desktop]: 'space-between',
+    },
+  },
   footSide: { display: 'flex', alignItems: 'center', gap: 8 },
 })
 

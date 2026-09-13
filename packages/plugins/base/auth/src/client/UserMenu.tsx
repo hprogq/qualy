@@ -4,6 +4,7 @@ import { PageLink, useApi, useApiQuery, useRunApi, useSessionTransition } from '
 import { isAuthenticationError, useI18n } from '@qualy/web-i18n'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -93,8 +94,8 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     fontWeight: 500,
     display: {
-      default: 'none',
-      '@media (min-width: 640px)': 'block',
+      default: 'block',
+      [breakpoints.phone]: 'none',
     },
   },
   menu: {

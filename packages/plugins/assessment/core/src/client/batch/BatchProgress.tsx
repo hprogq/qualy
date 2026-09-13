@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Ticker } from '@qualy/ui/ticker'
@@ -43,13 +44,13 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: {
       default: 12,
-      '@media (max-width: 639.98px)': 6,
+      [breakpoints.phone]: 6,
     },
   },
   stageSeat: {
     display: {
       default: 'inline-flex',
-      '@media (max-width: 767.98px)': 'none',
+      [breakpoints.phone]: 'none',
     },
     minWidth: 0,
     alignItems: 'baseline',
@@ -99,7 +100,7 @@ const styles = stylex.create({
   rule: {
     display: {
       default: 'block',
-      '@media (max-width: 767.98px)': 'none',
+      [breakpoints.phone]: 'none',
     },
     height: 14,
     width: 1,

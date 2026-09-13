@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { tokens } from '../theme/tokens.stylex.ts'
+import { breakpoints } from '../theme/breakpoints.stylex.ts'
 
 // the description tints with the alert's tone; context says which tone,
 // so the child styles by state instead of a stylesheet digging by variant
@@ -54,8 +55,8 @@ const styles = stylex.create({
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
     textWrap: {
-      default: 'balance',
-      '@media (min-width: 768px)': 'pretty',
+      default: 'pretty',
+      [breakpoints.phone]: 'balance',
     },
     color: tokens.mutedForeground,
   },

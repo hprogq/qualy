@@ -15,6 +15,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, ConfirmDialog, Feedback } from '@qualy/ui/admin'
 import {
   Barred,
@@ -440,8 +441,8 @@ const styles = stylex.create({
     minWidth: 0,
     gap: 8,
     gridTemplateColumns: {
-      default: 'none',
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      default: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.phone]: 'none',
     },
   },
   ruleCell: {

@@ -5,6 +5,7 @@ import { PageLink, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
 import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Spinner } from '@qualy/ui/spinner'
 import { Button } from '@qualy/ui/button'
@@ -39,7 +40,8 @@ const styles = stylex.create({
     width: '100%',
     maxWidth: {
       default: null,
-      '@media (min-width: 640px)': 320,
+      [breakpoints.tablet]: 320,
+      [breakpoints.desktop]: 320,
     },
   },
   searchGlyph: {
@@ -56,8 +58,8 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: {
-      default: 16,
-      '@media (min-width: 640px)': 20,
+      default: 20,
+      [breakpoints.phone]: 16,
     },
   },
   masthead: {
@@ -96,8 +98,8 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: {
-      default: 16,
-      '@media (min-width: 640px)': 20,
+      default: 20,
+      [breakpoints.phone]: 16,
     },
   },
   filterBar: {
@@ -106,8 +108,8 @@ const styles = stylex.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: {
-      default: 10,
-      '@media (min-width: 640px)': 12,
+      default: 12,
+      [breakpoints.phone]: 10,
     },
   },
   fetchSpinner: {
@@ -120,11 +122,11 @@ const styles = stylex.create({
   chipScroller: {
     width: {
       default: null,
-      '@media (max-width: 639.98px)': '100%',
+      [breakpoints.phone]: '100%',
     },
     overflowX: {
       default: null,
-      '@media (max-width: 639.98px)': 'auto',
+      [breakpoints.phone]: 'auto',
     },
   },
   skeletonColumn: {
@@ -212,7 +214,8 @@ const styles = stylex.create({
     gap: 12,
     gridTemplateColumns: {
       default: null,
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.tablet]: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.desktop]: 'repeat(2, minmax(0, 1fr))',
     },
   },
   pagerRow: {

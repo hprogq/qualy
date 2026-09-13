@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
 import { useApiQuery } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
@@ -52,7 +53,13 @@ const styles = stylex.create({
     borderStyle: 'solid',
     borderColor: tokens.border,
   },
-  foot: { justifyContent: { default: null, '@media (min-width: 640px)': 'space-between' } },
+  foot: {
+    justifyContent: {
+      default: null,
+      [breakpoints.tablet]: 'space-between',
+      [breakpoints.desktop]: 'space-between',
+    },
+  },
   footSide: { display: 'flex', alignItems: 'center', gap: 8 },
   row: {
     display: 'flex',

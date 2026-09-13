@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { ClockIcon, RouteIcon } from 'lucide-react'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { useIsBelow } from '@qualy/ui/use-mobile'
@@ -25,15 +26,17 @@ const DEADLINE = 150
 const LABEL = 64
 
 const styles = stylex.create({
-  panel: { maxWidth: { default: null, '@media (min-width: 640px)': '24rem' } },
+  panel: {
+    maxWidth: { default: null, [breakpoints.tablet]: '24rem', [breakpoints.desktop]: '24rem' },
+  },
   // one line, whatever the width: this sits above somebody's work and a
   // second row of it would push the work down the page
   bar: {
     display: 'flex',
     alignItems: 'center',
     gap: {
-      default: 8,
-      '@media (min-width: 640px)': 12,
+      default: 12,
+      [breakpoints.phone]: 8,
     },
     overflow: 'hidden',
     borderRadius: tokens.radiusLg,
@@ -53,8 +56,8 @@ const styles = stylex.create({
     flexBasis: '0%',
     alignItems: 'center',
     gap: {
-      default: 8,
-      '@media (min-width: 640px)': 12,
+      default: 12,
+      [breakpoints.phone]: 8,
     },
   },
   label: {
@@ -88,8 +91,8 @@ const styles = stylex.create({
     flexShrink: 0,
     alignItems: 'center',
     gap: {
-      default: 8,
-      '@media (min-width: 640px)': 12,
+      default: 12,
+      [breakpoints.phone]: 8,
     },
   },
   progressText: {

@@ -3,6 +3,7 @@ import { CheckIcon, XIcon } from 'lucide-react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { tokens } from '../../theme/tokens.stylex.ts'
+import { breakpoints } from '../../theme/breakpoints.stylex.ts'
 import { Badge } from '../badge.tsx'
 import { RadioGroup, RadioGroupItem } from '../radio-group.tsx'
 
@@ -55,14 +56,14 @@ const styles = stylex.create({
   },
   factsThree: {
     gridTemplateColumns: {
-      default: 'repeat(2, minmax(0, 1fr))',
-      '@media (min-width: 640px)': 'repeat(3, minmax(0, 1fr))',
+      default: 'repeat(3, minmax(0, 1fr))',
+      [breakpoints.phone]: 'repeat(2, minmax(0, 1fr))',
     },
   },
   factsFour: {
     gridTemplateColumns: {
-      default: 'repeat(2, minmax(0, 1fr))',
-      '@media (min-width: 640px)': 'repeat(4, minmax(0, 1fr))',
+      default: 'repeat(4, minmax(0, 1fr))',
+      [breakpoints.phone]: 'repeat(2, minmax(0, 1fr))',
     },
   },
   fact: {

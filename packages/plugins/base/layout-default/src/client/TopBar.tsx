@@ -19,6 +19,17 @@ import { LocalizedText } from '@qualy/web-i18n'
 // section, because an application without a page to open is not an
 // application the viewer has. Entries that name no group are applications of
 // one page and stand beside them.
+//
+// At rest the bar is nothing but its words on the page's own ground. Once
+// the page has moved under it - the shell says so with `scrolled` - it turns
+// to glass: the page's colour at 62%, blurred, with a hairline under it, so
+// what passes beneath reads as a shadow of something while the words above
+// stay sharp. Which entry is open is said by weight and by the ink under its
+// word: as wide as the word, two pixels, square, six under the text box, and
+// it does not move with the scroll. A pointed-at entry shows the same line
+// in a lighter ink, grown from the centre.
+
+const INK_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
 const styles = stylex.create({
   bar: {
@@ -26,12 +37,21 @@ const styles = stylex.create({
     height: 56,
     flexShrink: 0,
     alignItems: 'center',
-    gap: 24,
+    gap: 32,
+    paddingInline: 24,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
-    backgroundColor: tokens.background,
-    paddingInline: 16,
+    borderBottomColor: 'transparent',
+    backgroundColor: 'transparent',
+    transitionProperty: 'background-color, border-color',
+    transitionDuration: '180ms',
+    transitionTimingFunction: 'ease',
+  },
+  barScrolled: {
+    backgroundColor: `color-mix(in oklch, ${tokens.background} 62%, transparent)`,
+    backdropFilter: 'blur(18px)',
+    WebkitBackdropFilter: 'blur(18px)',
+    borderBottomColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
   },
   brand: {
     display: 'flex',
@@ -52,34 +72,62 @@ const styles = stylex.create({
   tabsList: {
     display: 'flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 24,
     overflowX: 'auto',
   },
   tab: {
-    display: 'block',
-    borderRadius: tokens.radiusMd,
-    paddingInline: 12,
+    display: 'inline-flex',
+    alignItems: 'center',
+    paddingInline: 0,
     paddingBlock: 6,
-    fontSize: '0.875rem',
+    fontSize: 14,
     lineHeight: '1.25rem',
     whiteSpace: 'nowrap',
-    transitionProperty: 'color, background-color',
+    transitionProperty: 'color',
     transitionDuration: '150ms',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    transitionTimingFunction: 'ease',
   },
   tabActive: {
-    backgroundColor: tokens.surfaceMuted,
-    fontWeight: 500,
+    fontWeight: 600,
     color: tokens.foreground,
   },
   tabIdle: {
+    fontWeight: 450,
     color: {
       default: tokens.mutedForeground,
       ':hover': tokens.foreground,
     },
-    backgroundColor: {
-      default: null,
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 60%, transparent)`,
+  },
+  // the word itself carries the ink, so the ink is exactly as wide as the word
+  word: {
+    position: 'relative',
+    display: 'inline-block',
+    '::after': {
+      content: '""',
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: -6,
+      height: 2,
+      backgroundColor: tokens.foreground,
+      transformOrigin: 'center',
+      transitionProperty: 'transform',
+      transitionDuration: '180ms',
+      transitionTimingFunction: INK_EASE,
+    },
+  },
+  wordActive: {
+    '::after': {
+      transform: 'scaleX(1)',
+    },
+  },
+  wordIdle: {
+    '::after': {
+      backgroundColor: `color-mix(in oklch, ${tokens.foreground} 26%, transparent)`,
+      transform: {
+        default: 'scaleX(0)',
+        [stylex.when.ancestor(':hover')]: 'scaleX(1)',
+      },
     },
   },
   end: {
@@ -90,36 +138,39 @@ const styles = stylex.create({
   },
   sectionBar: {
     display: 'flex',
-    height: 44,
+    height: 40,
     flexShrink: 0,
     alignItems: 'center',
-    gap: 4,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: tokens.border,
     backgroundColor: tokens.background,
-    paddingInline: 16,
+    paddingInline: 24,
   },
   sectionLink: {
-    display: 'block',
-    borderRadius: tokens.radiusMd,
-    paddingInline: 10,
+    display: 'inline-flex',
+    alignItems: 'center',
+    paddingInline: 0,
     paddingBlock: 4,
-    fontSize: '0.875rem',
-    lineHeight: '1.25rem',
+    fontSize: 13,
+    lineHeight: '1.125rem',
     whiteSpace: 'nowrap',
     transitionProperty: 'color',
     transitionDuration: '150ms',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    transitionTimingFunction: 'ease',
   },
   sectionActive: {
-    fontWeight: 500,
+    fontWeight: 550,
     color: tokens.foreground,
   },
   sectionIdle: {
+    fontWeight: 450,
     color: {
       default: tokens.mutedForeground,
       ':hover': tokens.foreground,
+    },
+  },
+  sectionWord: {
+    '::after': {
+      bottom: -4,
+      height: 1.5,
     },
   },
 })
@@ -158,9 +209,9 @@ const firstPageOf = (app: AppEntry): NamespacedId | undefined => {
 
 /**
  * A link of the bars: lit from the press until the page it leads to has
- * arrived, and its page's code fetched as soon as it is pointed at. Text
- * only, so no indicator takes an icon's place; the entry lighting is what
- * says the press was heard.
+ * arrived, and its page's code fetched as soon as it is pointed at. The
+ * entry lighting is what says the press was heard; the ink under the word
+ * says which entry is open.
  */
 function BarLink({
   to,
@@ -170,6 +221,7 @@ function BarLink({
   idle,
   lit,
   base,
+  word,
   children,
 }: {
   to: string
@@ -180,11 +232,13 @@ function BarLink({
   idle: stylex.StyleXStyles
   lit: stylex.StyleXStyles
   base: stylex.StyleXStyles
+  word?: stylex.StyleXStyles
   children: ReactNode
 }) {
   const navigation = usePendingNavigation(to)
   const prefetch = usePagePrefetch()
   const warm = page === undefined ? undefined : () => prefetch(page)
+  const open = (isActive: boolean) => (active ?? isActive) || navigation.pending
   return (
     <NavLink
       to={to}
@@ -196,17 +250,32 @@ function BarLink({
       data-pending={navigation.pending ? '' : undefined}
       {...(active === undefined ? {} : { 'aria-current': active ? 'page' : undefined })}
       className={({ isActive }) =>
-        stylex.props(base, (active ?? isActive) || navigation.pending ? lit : idle).className ?? ''
+        stylex.props(base, open(isActive) ? lit : idle, stylex.defaultMarker()).className ?? ''
       }
     >
-      {children}
+      {({ isActive }) => (
+        <span
+          {...stylex.props(styles.word, open(isActive) ? styles.wordActive : styles.wordIdle, word)}
+        >
+          {children}
+        </span>
+      )}
     </NavLink>
   )
 }
 
-export function TopBar({ apps, activeApp }: { apps: readonly AppEntry[]; activeApp?: string }) {
+export function TopBar({
+  apps,
+  activeApp,
+  scrolled = false,
+}: {
+  apps: readonly AppEntry[]
+  activeApp?: string
+  /** the page has moved under the bar: it turns to glass */
+  scrolled?: boolean
+}) {
   return (
-    <div {...stylex.props(styles.bar)}>
+    <div {...stylex.props(styles.bar, scrolled && styles.barScrolled)}>
       {/* the mark leads to the first application this viewer has, rather
           than to a literal origin: where "home" is depends on who is
           reading, and only the manifest knows */}
@@ -253,6 +322,7 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
                   base={styles.sectionLink}
                   lit={styles.sectionActive}
                   idle={styles.sectionIdle}
+                  word={styles.sectionWord}
                 >
                   <LocalizedText value={item.label} />
                 </BarLink>

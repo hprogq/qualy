@@ -21,6 +21,7 @@ import { VisuallyHidden } from '@qualy/ui/visually-hidden'
 import { Feedback, Field, PageHeader } from '@qualy/ui/admin'
 import { useLingering } from '@qualy/ui/use-lingering'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@qualy/ui/empty'
 import { Checkbox } from '@qualy/ui/checkbox'
@@ -48,7 +49,6 @@ import type { ItemOptions } from './options.ts'
 import type { Placement } from './paper.ts'
 import { countedEntries, type Folding } from './structure.ts'
 
-const sm = '@media (min-width: 640px)'
 const md = '@media (min-width: 768px)'
 const xl = '@media (min-width: 1280px)'
 
@@ -367,7 +367,8 @@ const styles = stylex.create({
     gap: 16,
     gridTemplateColumns: {
       default: null,
-      [sm]: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.tablet]: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.desktop]: 'repeat(2, minmax(0, 1fr))',
     },
   },
   statBand: {
@@ -493,7 +494,8 @@ const styles = stylex.create({
     gap: 10,
     gridTemplateColumns: {
       default: null,
-      [sm]: 'repeat(3, minmax(0, 1fr))',
+      [breakpoints.tablet]: 'repeat(3, minmax(0, 1fr))',
+      [breakpoints.desktop]: 'repeat(3, minmax(0, 1fr))',
     },
   },
   kindCard: {

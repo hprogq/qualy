@@ -47,7 +47,6 @@ import {
 const md = '@media (min-width: 768px)'
 const lg = '@media (min-width: 1024px)'
 const xl = '@media (min-width: 1280px)'
-const belowMd = '@media (max-width: 767.98px)'
 
 const styles = stylex.create({
   // Rules run edge to edge while the writing stays inside one measure: the

@@ -54,6 +54,7 @@ import { Appear, CountdownRing, DoneMark, Drill, GlideAcross, Stagger } from '@q
 import { useFinePointer, useMedia } from './pointer.ts'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 
 // The workbench: one submission a screen, walked in a run.
 //
@@ -67,7 +68,6 @@ import { tokens } from '@qualy/ui/theme/tokens.stylex'
 // The decision surface's own styles; the reading workbench around it keeps
 // its utility classes until its own migration pass.
 const lg = '@media (min-width: 1024px)'
-const belowSm = '@media (max-width: 639.98px)'
 
 const styles = stylex.create({
   siblingTitle: {
@@ -340,11 +340,11 @@ const styles = stylex.create({
   decisionRow: {
     display: {
       default: 'flex',
-      [belowSm]: 'grid',
+      [breakpoints.phone]: 'grid',
     },
     gridTemplateColumns: {
       default: null,
-      [belowSm]: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.phone]: 'repeat(2, minmax(0, 1fr))',
     },
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -356,31 +356,31 @@ const styles = stylex.create({
     flexBasis: '0%',
     display: {
       default: 'block',
-      [belowSm]: 'none',
+      [breakpoints.phone]: 'none',
     },
   },
   phoneRouting: {
     height: {
       default: null,
-      [belowSm]: 36,
+      [breakpoints.phone]: 36,
     },
     width: {
       default: null,
-      [belowSm]: '100%',
+      [breakpoints.phone]: '100%',
     },
   },
   phoneVerdict: {
     height: {
       default: null,
-      [belowSm]: 44,
+      [breakpoints.phone]: 44,
     },
     width: {
       default: null,
-      [belowSm]: '100%',
+      [breakpoints.phone]: '100%',
     },
     fontSize: {
       default: null,
-      [belowSm]: 15,
+      [breakpoints.phone]: 15,
     },
   },
   // the verdict keys wear their standing colours, mixed over the scheme's

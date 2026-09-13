@@ -6,6 +6,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { AsyncSection, Feedback } from '@qualy/ui/admin'
 import { Blank, RailSkeleton, Screen, SectionHead, Segmented } from '@qualy/ui/screen'
 import { Avatar, AvatarFallback } from '@qualy/ui/avatar'
@@ -90,8 +91,8 @@ const styles = stylex.create({
   rosterSearch: {
     width: '100%',
     maxWidth: {
-      default: 'none',
-      '@media (min-width: 640px)': '13rem',
+      default: '13rem',
+      [breakpoints.phone]: 'none',
     },
   },
   awaySpinner: {

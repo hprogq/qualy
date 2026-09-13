@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useQuery } from '@tanstack/react-query'
 import type { PersonCardContext } from '@qualy/ui-contract'
 import { useApiQuery } from '@qualy/web-runtime'
@@ -61,7 +62,8 @@ const styles = stylex.create({
     lineHeight: '1.25rem',
     gridTemplateColumns: {
       default: null,
-      '@media (min-width: 640px)': 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.tablet]: 'repeat(2, minmax(0, 1fr))',
+      [breakpoints.desktop]: 'repeat(2, minmax(0, 1fr))',
     },
   },
   section: { display: 'flex', flexDirection: 'column', gap: 8 },

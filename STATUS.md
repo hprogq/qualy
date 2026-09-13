@@ -13589,3 +13589,14 @@ SIGTERM -> exit 0
   pnpm build        -> ✓ built in 5.29s; staged web assets;client-dist/index.html 含 id="qualy-boot",0 个注释;vite dev(:5199)同样注入(实查 curl)
   smoke-production  -> /health/ready /health/live /(生成首帧、无注释、四个文档头 + Report-Only 策略含新 hash) /api/…/events /api/app/manifest /assets/index-*.js ok, brotli, shutdown clean (exit 0)
   ```
+
+## 前端重做 P2:顶栏 / 分区栏与全仓断点(2026-09-13,完成)
+
+`feat(web): glass top bar, word-wide ink and one set of breakpoints`。设计稿 `测评批次页 定稿.dc.html` 的 `1a` / `1a-scrolled` 两个 frame 提供数值(经 claude_design MCP 读取),token 名以 tokens.stylex 为准。
+
+- **断点**:`packages/web/ui/src/theme/breakpoints.stylex.ts`(`defineConsts`:phone ≤767.98 / tablet 768–1023.98 / desktop ≥1024),`use-mobile.ts` 的 768 与之一致。全仓 640 边界的媒体查询(字面量与各文件的 `sm` / `belowSm` / `maxSm` / `belowMd` 本地常量)30 个文件 72 处迁到常量上;**StyleX 条件值 `null` 是"不声明"不是"重置"**,原 `default: null` 的"桌面才有"规则写成 `{ default: null, [tablet]: X, [desktop]: X }`(32 处),文件顶部注释已写明,别再写 `[phone]: null`。
+- **AppShell**:TopBar + SectionBar 移进 `<main>` 顶端 sticky(`zIndex 50`:高于页面 sticky 的 10 / 40,低于弹层 200);头下 12px sentinel + `IntersectionObserver`(root = main,rootMargin 扣头高)打 `data-scrolled`,无 scroll 监听。
+- **TopBar**:静止透明无底线;滚动后 `color-mix(in oklch, background 62%, transparent)` + blur 18px(含 -webkit-)+ 8% 前景发丝线,180ms 只过渡 background-color / border-color。tab 去 pill:active 600 / foreground,inactive 450 / muted;ink 在文字 span 的 `::after`(宽 = 字宽、2px、方角、距字底 6px,不随滚动动),inactive 的 ink `scaleX(0)` 居中原点、hover `scaleX(1)`(180ms `cubic-bezier(0.2,0.8,0.2,1)`,26% 前景);gap 24,padding 仅纵向。**SectionBar**:高 40、13px、active 550、ink 1.5px 距字底 4px,背景同页面无底线。`WorkspaceShell` 只拿到新样式,布局未动。`library: LibraryIcon` 补进图标表。
+- **测试**:shell 浏览器套件加「页面滚过头后打 `data-scrolled`、头仍贴顶、滚回去消失」。截图(生产入口,1280):静止、滚到卡片中部(顶栏玻璃,卡片标题成模糊影子,导航清晰)、`/library/formulas` 分区栏、375 宽无横向溢出。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test:browser` 46 files / 325 passed;`vitest tools/tests` 35 / 232;`pnpm build` ok(产物 CSS 里断点规则已被 lightningcss 改写成 `(width >= 768px)` 区间语法)。
+- **待办**:仓库里剩下的 768 / 1024 / 1280 / 84rem 本地媒体查询常量(`md` / `lg` / `xl` / `wide` / `belowLg` 等,review、items、entry、iam、org 各页)在 P6 做手机端时一并迁到 breakpoints 常量上,届时会逐个碰到;现在不动。

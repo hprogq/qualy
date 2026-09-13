@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@qualy/ui/sheet'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { useIsBelow } from '@qualy/ui/use-mobile'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { assessmentMessages as m } from '../i18n.ts'
 import { reviewOutcomeMessage } from './events.ts'
 import { timeLabel, useEntryHistory, type HistoryRevision } from './model.ts'
@@ -42,8 +43,6 @@ type History = {
   }[]
 }
 
-const sm = '@media (min-width: 640px)'
-
 const styles = stylex.create({
   panel: {
     display: 'flex',
@@ -53,7 +52,9 @@ const styles = stylex.create({
     padding: 0,
   },
   panelUp: { maxHeight: '85vh' },
-  panelBeside: { maxWidth: { default: null, '@media (min-width: 640px)': '28rem' } },
+  panelBeside: {
+    maxWidth: { default: null, [breakpoints.tablet]: '28rem', [breakpoints.desktop]: '28rem' },
+  },
   head: { borderBottomWidth: 1, borderBottomStyle: 'solid', borderBottomColor: tokens.border },
   headTitle: { fontSize: 14, lineHeight: '1.25rem' },
   subtitle: {
@@ -171,16 +172,17 @@ const styles = stylex.create({
   foot: {
     display: 'flex',
     flexDirection: {
-      default: 'column',
-      [sm]: 'row',
+      default: 'row',
+      [breakpoints.phone]: 'column',
     },
     alignItems: {
       default: null,
-      [sm]: 'center',
+      [breakpoints.tablet]: 'center',
+      [breakpoints.desktop]: 'center',
     },
     gap: {
-      default: 8,
-      [sm]: 12,
+      default: 12,
+      [breakpoints.phone]: 8,
     },
     borderTopWidth: 1,
     borderTopStyle: 'solid',
@@ -193,37 +195,40 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     flexGrow: {
       default: null,
-      [sm]: 1,
+      [breakpoints.tablet]: 1,
+      [breakpoints.desktop]: 1,
     },
     flexShrink: {
       default: null,
-      [sm]: 1,
+      [breakpoints.tablet]: 1,
+      [breakpoints.desktop]: 1,
     },
     flexBasis: {
       default: null,
-      [sm]: '0%',
+      [breakpoints.tablet]: '0%',
+      [breakpoints.desktop]: '0%',
     },
   },
   footActs: {
     display: 'flex',
     alignItems: 'center',
     gap: {
-      default: 8,
-      [sm]: 12,
+      default: 12,
+      [breakpoints.phone]: 8,
     },
   },
   footButton: {
     flexGrow: {
-      default: 1,
-      [sm]: 0,
+      default: 0,
+      [breakpoints.phone]: 1,
     },
     flexShrink: {
-      default: 1,
-      [sm]: 0,
+      default: 0,
+      [breakpoints.phone]: 1,
     },
     flexBasis: {
-      default: '0%',
-      [sm]: 'auto',
+      default: 'auto',
+      [breakpoints.phone]: '0%',
     },
   },
 })
