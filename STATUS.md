@@ -13675,11 +13675,13 @@ SIGTERM -> exit 0
 三个 commit,按主题分开;门禁一次跑完。
 
 **Safari(实证部分)**。装了 Playwright 的 WebKit 26.5,经自签 https 代理录制生产入口的冷启动(WebKit 在 http 回环上不收 `__Host-` Secure cookie——Chromium 豁免回环、WebKit 不豁免,所以录制要走 https;线上是 https,用户不受影响),按 25fps 抽帧对比:
+
 - **字标「一屏两个、上下跳」**:接管那 200ms 里飞行的字标是叠影——`::view-transition-old/new(qualy-wordmark)` 两张快照都 `animation: none` 全不透明,Chromium 把两张一起按 group 缩放所以重合,WebKit 在 group 改尺寸时没对齐,于是两个字标错开几像素同飞。改成只飞新的一张(old `opacity: 0`,`:only-child` 的登录页情形保留淡出);同时旧 root(只是加载屏的底色)不再淡出而是直接去掉——飞行下面少一层全屏合成。改后逐帧只剩一张字标,每帧位置都在推进(截图两张已发)。
 - **内容区闪动**:录制里没复现出「跳」,按机制排掉两处:`Reveal` 在 `data-cold-start` 下不再自己做入场(应用整体的淡入已是入场,WebKit 若把新页面按静帧截取,里面再跑一个位移动画就会在过渡结束时跳一下);hero 卡首次挂载不再滑入(`entered` 初值 `null`,只有按箭头切换才滑)。**还剩一个未证实的候选**:Inter Variable 经 @fontsource 以 `font-display: swap` 加载,冷缓存下 Safari 先用系统字体再换,数字与拉丁文本会回流;Chrome 大概率是缓存命中。若 Safari 清缓存后仍闪,就是它——处理要么预加载 latin 子集,要么 `optional`,那是产品决定,先不动。
 - **模态框掉帧**:没有帧率测量手段,按已知机制改:遮罩从「动 opacity」改为「动 background-color」(`q-veil-in`,替换 `q-overlay-in`),模糊 8px 静止不再随 opacity 每帧重算——dialog.tsx 里原注释记的就是这条 mobile Safari 事故,只是当时 blur 2;面板 `will-change: transform`,缩放时面板与长投影栅格化一次后位移。Dialog / AlertDialog / Sheet 三处同改。
 
 **页面**(顾问那轮的决定):
+
 - `--q-surface-inset: oklch(0.985 0.002 80)`(深色 0.19),专管卡内凹进去的大块;hero 右栏改站在它上面,`surface-muted` 回到小面积。
 - 绿 / 橙收两成:success `oklch(0.7 0.14 160)`、warning `oklch(0.77 0.15 70)`(深色 0.75 同 chroma);文字色不动。
 - **阶段条改等宽 stepper**:六段各 1/6,「今天」按当前阶段内已过比例落在当前段(无结束时间取一半);轴首尾日期不变。标签规则:当前标签必显、完整、加粗(`overflow: visible`,`Range.getBoundingClientRect` 量它的实际文本宽);非当前标签放不下就省略号 + tooltip;被当前标签压到的相邻标签隐去(`opacity: 0`,留在无障碍树)+ tooltip。截图:六阶段里「第一次公示(申诉期)」完整,右邻「结果公示」隐去、hover 出。
@@ -13862,3 +13864,14 @@ docs/version.md 的 Phase E + F。两个 commit:`feat(server): gate incompatible
 - **插件**:formula `editor/remote-moved` → 「草稿已在别处更新」(en "The draft was changed elsewhere"),`error/compile-unavailable` → 「暂时无法发布,请稍后再试。」;assessment `result/unavailable-title` → 「暂时无法计分」,`error/scoring-unavailable` → 「暂时无法计分,请稍后重试。」。公式编辑器的「源码 / 编译结果 / JSON / 正则 / 测试用例」保留——那是公式作者的工具概念。
 - **i18n 测试**:`componentMissing` 不再插值,「占位符必须给值」的用例改用测试内声明的消息。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests packages/web packages/plugins/assessment/formula/tests` Test Files 72 passed (72); Tests 433 passed (433)(含 catalogs 门禁与 bootstrap 一致性);`vitest --config vitest.browser.config.ts release-recovery cold-start localization` 3 / 23。
+
+## API 错误形状统一、请求 id 回传(2026-09-14)
+
+审计裁决:不引入 RFC 9457 Problem Details 做第二套错误协议,`Schema.TaggedError` 的 `{ _tag, … }` 是 `/api/*` 唯一 JSON 错误词汇,HTTP status 表达传输语义;requestId 只进 header 不进 body。commit:`feat(server): one error shape for the api, and the request named in every answer`。
+
+- **`API_ROUTE_NOT_FOUND`**(`packages/core/api-kit/src/schema.ts` 的 `ApiRouteNotFound`,404,`{ message }`):mount 内无路由时的答案,由 `HttpServerResponse.schemaJson` 编码,与 `RequestOriginRefused` 同一做法。**实查**:先按 serve middleware 做(`Effect.catchIf` 抓 router 的 `RouteNotFound`),能抓到错误却改不了响应——`HttpEffect.toHandled`(repos/effect `unstable/http/HttpEffect.ts` 36–100)在 serve middleware 之外**先**把 cause 写成空 404 再把 cause 重新 fail 出来,middleware 拿到的是已发送之后的错误。改为 `apiRouteFallback` layer:`router.add('*', '/api/*', …)`,靠路由 specificity 让所有声明的端点赢过它、又赢过 shell 的 `/*`;host `runtime.ts` 把它 merge 进 routes,headless 部署也有。web 插件 catch-all 里 mount 内的分支同样答这个 tagged 404(原来 `HttpServerResponse.empty`)。`insideApi` 收成 api-kit route-fallback 的单一导出。
+- **`QUALY_CLIENT_PROTOCOL_UNSUPPORTED`** 改为 `ClientProtocolUnsupported` TaggedError(409,`{ received, supported }`),body 从 `{ code }` 换成 `{ _tag }`;`X-Qualy-Client-Unsupported: 1` 保留给浏览器 transport 的快速信号。
+- **`X-Qualy-Request-Id`**:`responseHeaders` 从 fiber 上下文 `Context.getOption(RequestContext)` 取 requestId 写进每个 api / health 响应(含拒绝、含 pre-response 路径);静态资源与 shell 不带(hashed asset 会被缓存,上面的 correlation 头指向错误的请求);不用 `X-Request-Id` 是为了和前置代理的 id 区分;traceId 暂不对外。
+- **浏览器**:`commonErrorMessages` 新增两码(都译为「页面需要刷新后才能继续使用。」),error-codes 门禁的 common 表随之更新。
+- **测试**:serve-middleware 新增「api 与 probes 带 request id、每次不同、拒绝也带、mount 外不带」「`/api/nope` → JSON `_tag: API_ROUTE_NOT_FOUND` + no-store + request id,`/nope` 仍是 router 空 404」,协议 409 的 body 断言改 `_tag`;effect-web 的 mount 内未匹配用例加 `_tag` 断言;smoke 加 `/api/nope`(404、tag、request id)。
+- **门禁(实际执行)**:`pnpm typecheck` 第一遍 1 红(zh-CN catalog 的 `CatalogFor` 键集未登记两条新译文),补 `runtimeMessages` 后 exit 0;`pnpm test` Test Files 225 passed | 3 skipped (228); Tests 1603 passed | 17 skipped (1620);`pnpm build` ok;`check-staged-web`、`check-csp-build` exit 0;`smoke-production` 全 ok 含 `/api/nope`(404、`_tag`、request id);`pnpm test:browser` 48 / 339;`pnpm test:browser:webkit` 2 / 14。

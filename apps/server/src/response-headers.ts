@@ -1,6 +1,7 @@
-import { Context, Effect } from 'effect'
+import { Context, Effect, Option } from 'effect'
 import { Headers, HttpEffect, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { RequestContext } from '@qualy/api-kit/request'
 
 // The headers every api and health response carries, unless the handler
 // already said otherwise.
@@ -52,11 +53,19 @@ const isEventStream = (response: HttpServerResponse.HttpServerResponse): boolean
 /** the response with the headers it lacks, and only those */
 export const withResponseHeaders = (
   response: HttpServerResponse.HttpServerResponse,
+  requestId?: string,
 ): HttpServerResponse.HttpServerResponse => {
   const absent: Record<string, string> = {}
   const missing = (name: string, value: string) => {
     if (!Headers.has(response.headers, name)) absent[name] = value
   }
+  // The id this host minted for the request, told back to the caller: the
+  // one thing a reader can quote that finds the request in the logs and
+  // the audit trail. On the api and the probes only - a hashed asset is
+  // cached by name and a correlation header on it would name the wrong
+  // request - and in a header, never in a body: it is transport metadata,
+  // and every endpoint's schema stays the schema of its own answer.
+  if (requestId !== undefined) missing('x-qualy-request-id', requestId)
   missing('cache-control', isEventStream(response) ? 'no-cache' : 'no-store')
   missing('x-content-type-options', 'nosniff')
   missing('cross-origin-resource-policy', 'same-origin')
@@ -68,8 +77,9 @@ export const withResponseHeaders = (
 
 const unlessUpgrade = (
   response: HttpServerResponse.HttpServerResponse,
+  requestId?: string,
 ): HttpServerResponse.HttpServerResponse =>
-  response.status === 101 ? response : withResponseHeaders(response)
+  response.status === 101 ? response : withResponseHeaders(response, requestId)
 
 /** serve middleware: the headers above on every api and health response */
 export const responseHeaders = <E, R>(
@@ -87,8 +97,14 @@ export const responseHeaders = <E, R>(
     const request = Context.getUnsafe(fiber.context, HttpServerRequest.HttpServerRequest)
     if (!PREFIXES.some((prefix) => under(request.url, prefix))) return httpApp
     if ((request.headers['upgrade'] ?? '').toLowerCase() === 'websocket') return httpApp
+    // the request context is outermost in the chain, so it is here; a chain
+    // built without it (a test of these headers alone) just tells no id
+    const requestId = Context.getOption(fiber.context, RequestContext).pipe(
+      Option.map((context) => context.requestId),
+      Option.getOrUndefined,
+    )
     return HttpEffect.withPreResponseHandler(
-      Effect.map(httpApp, unlessUpgrade),
-      (_request, response) => Effect.succeed(unlessUpgrade(response)),
+      Effect.map(httpApp, (response) => unlessUpgrade(response, requestId)),
+      (_request, response) => Effect.succeed(unlessUpgrade(response, requestId)),
     )
   })

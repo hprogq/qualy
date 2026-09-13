@@ -82,6 +82,36 @@ export class RequestOriginRefused extends Schema.TaggedError<RequestOriginRefuse
 ) {}
 
 /**
+ * A request inside the api mount that names no route.
+ *
+ * Raised by the host's fallback, never by a handler: the router matched
+ * nothing, and the answer is the same tagged shape every other refusal has,
+ * so the browser reads it the way it reads the rest - by its tag - rather
+ * than meeting an empty body or the html shell.
+ */
+export class ApiRouteNotFound extends Schema.TaggedError<ApiRouteNotFound>()(
+  'API_ROUTE_NOT_FOUND',
+  { message: Schema.String },
+  { httpApiStatus: 404, identifier: 'ApiRouteNotFound' },
+) {}
+
+/**
+ * A web page whose protocol generation this api no longer speaks.
+ *
+ * Raised by the host's compatibility check in front of the router; the
+ * browser's transport reads the header beside it and blocks the page, and
+ * the body says which generation came and which the server serves.
+ */
+export class ClientProtocolUnsupported extends Schema.TaggedError<ClientProtocolUnsupported>()(
+  'QUALY_CLIENT_PROTOCOL_UNSUPPORTED',
+  {
+    received: Schema.Union([Schema.Number, Schema.String]),
+    supported: Schema.Struct({ min: Schema.Number, max: Schema.Number }),
+  },
+  { httpApiStatus: 409, identifier: 'ClientProtocolUnsupported' },
+) {}
+
+/**
  * The page size a request asked for.
  *
  * A limit that is not a usable number is treated as absent rather than

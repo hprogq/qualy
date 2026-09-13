@@ -277,6 +277,11 @@ describe('the shell against the api mount', () => {
       const response = await fetch(`${base}${path}`)
       expect(response.status, `${path} should not be answered by the shell`).toBe(404)
       expect(response.headers.get('content-type') ?? '').not.toContain('text/html')
+      // the api's own tagged 404, read by its tag like every other refusal
+      expect(await response.json()).toEqual({
+        _tag: 'API_ROUTE_NOT_FOUND',
+        message: expect.any(String),
+      })
     }
   })
 })

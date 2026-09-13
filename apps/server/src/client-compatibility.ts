@@ -1,6 +1,7 @@
 import { Context, Effect } from 'effect'
 import { HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
-import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { insideApi } from '@qualy/api-kit/route-fallback'
+import { ClientProtocolUnsupported } from '@qualy/api-kit/schema'
 import {
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_UNSUPPORTED_HEADER,
@@ -13,9 +14,9 @@ import {
 // A Qualy web page names its protocol generation on every api request; a
 // server serves a window of generations, widened before a breaking change
 // ships and narrowed once the old pages have drained. A page outside the
-// window is told so at once, in an infrastructure answer that no handler
-// ever sees and no plugin's error union has to carry: 409, a header the
-// browser transport reads, and a body naming the window. A request that
+// window is told so at once, in an answer that no handler ever sees and no
+// plugin's error union has to carry: 409, a header the browser transport
+// reads, and a body in the api's one error shape - a tag and the window. A request that
 // names no protocol passes - the api is not the web page's alone; the cli,
 // a test client and an integration ask it too - and only the api mount is
 // judged: the shell, the health probes and the release endpoint are how a
@@ -25,6 +26,7 @@ import {
 // a newer server are meant to work together inside the window, and the id
 // is for diagnostics and logs.
 
+/** the tag the refusal carries, for whoever reads the body rather than the header */
 export const CLIENT_PROTOCOL_UNSUPPORTED = 'QUALY_CLIENT_PROTOCOL_UNSUPPORTED'
 
 export interface ProtocolWindow {
@@ -37,32 +39,26 @@ export const SERVER_PROTOCOL_WINDOW: ProtocolWindow = {
   max: SERVER_MAX_CLIENT_PROTOCOL,
 }
 
-const insideApi = (url: string) =>
-  url === QUALY_API_PREFIX ||
-  url.startsWith(`${QUALY_API_PREFIX}/`) ||
-  url.startsWith(`${QUALY_API_PREFIX}?`)
-
 /** the header's value as a generation, or nothing where it is not one */
 const generationOf = (declared: string): number | undefined =>
   /^\d{1,7}$/.test(declared) ? Number(declared) : undefined
 
+/** the refusal, encoded by the same schema the api's errors are, with the signal the transport reads */
 const refusal = (declared: string, window: ProtocolWindow) =>
-  HttpServerResponse.text(
-    JSON.stringify({
-      code: CLIENT_PROTOCOL_UNSUPPORTED,
+  HttpServerResponse.schemaJson(ClientProtocolUnsupported)(
+    new ClientProtocolUnsupported({
       received: generationOf(declared) ?? declared,
       supported: { min: window.min, max: window.max },
     }),
     {
       status: 409,
-      contentType: 'application/json; charset=utf-8',
       headers: {
         [QUALY_CLIENT_UNSUPPORTED_HEADER]: '1',
         'cache-control': 'no-store',
         'x-content-type-options': 'nosniff',
       },
     },
-  )
+  ).pipe(Effect.orDie)
 
 export const clientCompatibility = (window: ProtocolWindow = SERVER_PROTOCOL_WINDOW) => {
   if (!Number.isInteger(window.min) || !Number.isInteger(window.max) || window.min > window.max) {
@@ -91,7 +87,7 @@ export const clientCompatibility = (window: ProtocolWindow = SERVER_PROTOCOL_WIN
           min: window.min,
           max: window.max,
         }),
-        Effect.andThen(Effect.succeed(refusal(declared, window))),
+        Effect.andThen(refusal(declared, window)),
       )
     })
 }

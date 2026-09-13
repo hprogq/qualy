@@ -124,6 +124,16 @@ await check('/api/assessment/batches/00000000-0000-4000-8000-000000000000/events
   ),
 )
 
+// a request inside the api mount that names no route: the api's tagged
+// 404, never the shell, and the request it answered named in a header
+await check('/api/nope', async (response) => {
+  if (response.status !== 404) return `status ${response.status}`
+  if (!/^[0-9a-f-]{36}$/.test(response.headers.get('x-qualy-request-id') ?? '')) {
+    return `x-qualy-request-id: ${response.headers.get('x-qualy-request-id') ?? 'absent'}`
+  }
+  const body = (await response.json()) as { _tag?: string }
+  return body._tag === 'API_ROUTE_NOT_FOUND' ? undefined : `tag ${body._tag ?? 'absent'}`
+})
 await check('/api/app/manifest', async (response) => {
   if (response.status !== 200) return `status ${response.status}`
   // an api answer is never cached and never sniffed; set by the serve

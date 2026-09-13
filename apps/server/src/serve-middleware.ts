@@ -28,7 +28,9 @@ import { responseHeaders } from './response-headers.ts'
 // protocol check, inside the origin guard so that a request from elsewhere
 // learns nothing about the window before it is refused, and outside the
 // router so that a page this api no longer speaks to never reaches a
-// handler.
+// handler. The api's own not-found is not here: the platform writes the
+// router's empty 404 before any serve middleware runs, so that answer is a
+// catch-all route of the mount instead (api-kit's route fallback).
 
 export const serveMiddleware = (options: {
   readonly trustedProxies: readonly string[]

@@ -161,6 +161,20 @@ export const commonErrorMessages = {
       defaultMessage: 'This request did not come from Qualy. Reload the page and try again.',
     },
   },
+  // both mean the page and the api have drifted apart: the reader's move
+  // is a reload, and the release coordinator blocks the page on the second
+  API_ROUTE_NOT_FOUND: {
+    message: {
+      id: 'common/error/api-route-not-found',
+      defaultMessage: 'Reload the page to continue.',
+    },
+  },
+  QUALY_CLIENT_PROTOCOL_UNSUPPORTED: {
+    message: {
+      id: 'common/error/client-protocol-unsupported',
+      defaultMessage: 'Reload the page to continue.',
+    },
+  },
 } as const satisfies ErrorMessageMap
 
 export const networkErrorMessage = {

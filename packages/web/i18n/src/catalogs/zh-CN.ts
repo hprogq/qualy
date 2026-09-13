@@ -13,6 +13,8 @@ const runtimeMessages = {
   accessDenied: commonErrorMessages.ACCESS_DENIED.message,
   badRequest: commonErrorMessages.BAD_REQUEST.message,
   requestOriginRefused: commonErrorMessages.REQUEST_ORIGIN_REFUSED.message,
+  apiRouteNotFound: commonErrorMessages.API_ROUTE_NOT_FOUND.message,
+  clientProtocolUnsupported: commonErrorMessages.QUALY_CLIENT_PROTOCOL_UNSUPPORTED.message,
 } as const
 
 // common/* messages: shared shell copy and transport-level api errors.
@@ -28,6 +30,8 @@ export default {
   'common/error/access-denied': '你没有执行该操作的权限。',
   'common/error/bad-request': '输入内容有误。',
   'common/error/request-origin-refused': '当前页面无法完成该操作，请刷新后重试。',
+  'common/error/api-route-not-found': '页面需要刷新后才能继续使用。',
+  'common/error/client-protocol-unsupported': '页面需要刷新后才能继续使用。',
   'common/error/network': '暂时无法连接 Qualy，请检查网络后重试。',
   'common/error/unexpected': '操作失败，请重试。',
   'common/clock/hour': '小时',

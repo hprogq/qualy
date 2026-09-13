@@ -13,6 +13,7 @@ import { Plugin } from '@qualy/plugin-kit'
 import { lockFromResolution, type Resolution } from '@qualy/assembly'
 import { loadAssembly } from '@qualy/assembly/runtime'
 import { ServerConfig, apiReferenceEnabled } from './config.ts'
+import { apiRouteFallback } from '@qualy/api-kit/route-fallback'
 import { serveMiddleware } from './serve-middleware.ts'
 import type { LoggingSettings } from './logging.ts'
 import { healthApi, healthHandlers } from './health.ts'
@@ -170,7 +171,12 @@ export async function makeApplication(
       // discharges request-time requirements only for layers inside its
       // argument, and requests find their services in the built context
       return HttpRouter.serve(
-        routes.pipe(Layer.provide(runtimeGraph), Layer.provide(services), Layer.provide(prepared)),
+        // every plugin's routes, and the mount's own not-found under them
+        Layer.mergeAll(routes, apiRouteFallback).pipe(
+          Layer.provide(runtimeGraph),
+          Layer.provide(services),
+          Layer.provide(prepared),
+        ),
         {
           // the upstream logger prints every response at Info and every failed
           // exit's cause - interrupted requests included; ours speaks in levels

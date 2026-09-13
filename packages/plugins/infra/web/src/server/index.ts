@@ -4,7 +4,7 @@ import path from 'node:path'
 import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
-import { QUALY_API_PREFIX } from '@qualy/api-kit'
+import { apiRouteNotFound, insideApi } from '@qualy/api-kit/route-fallback'
 import { QUALY_RELEASE_ENDPOINT, releaseProbeOf } from '@qualy/release-contract'
 import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
 import type { ShellPolicy } from '@qualy/api-kit/shell-policy'
@@ -93,12 +93,6 @@ export const config = (
 class WebUnservable extends Data.TaggedError('WebUnservable')<{ readonly message: string }> {}
 
 const PLUGIN_ID = '@qualy/plugin-web'
-
-/** the api owns everything under its mount, matched or not */
-const insideApi = (url: string) =>
-  url === QUALY_API_PREFIX ||
-  url.startsWith(`${QUALY_API_PREFIX}/`) ||
-  url.startsWith(`${QUALY_API_PREFIX}?`)
 
 /** the content security policy as the shell sends it: which header, what value */
 interface ShellPolicySetting {
@@ -318,11 +312,11 @@ export const routes: Layer.Layer<
       '/*',
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
-        // An unmatched path inside the api prefix is a 404, never the browser
-        // shell. Serving html there answers 200 to a mistyped endpoint, which
-        // is how a doubled prefix looked like a working request until the
-        // page tried to parse the shell as json.
-        if (insideApi(request.url)) return HttpServerResponse.empty({ status: 404 })
+        // An unmatched path inside the api prefix is the api's tagged 404,
+        // never the browser shell. Serving html there answers 200 to a
+        // mistyped endpoint, which is how a doubled prefix looked like a
+        // working request until the page tried to parse the shell as json.
+        if (insideApi(request.url)) return yield* apiRouteNotFound
         return yield* fromConnect(middleware)
       }),
     )

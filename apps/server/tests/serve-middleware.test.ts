@@ -8,6 +8,7 @@ import {
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_UNSUPPORTED_HEADER,
 } from '@qualy/release-contract'
+import { apiRouteFallback } from '@qualy/api-kit/route-fallback'
 import { CLIENT_PROTOCOL_UNSUPPORTED } from '../src/client-compatibility.ts'
 import { serveMiddleware } from '../src/serve-middleware.ts'
 
@@ -30,6 +31,8 @@ beforeAll(async () => {
     HttpRouter.add('POST', '/echo', echo),
     HttpRouter.add('GET', `${QUALY_API_PREFIX}/echo`, echo),
     HttpRouter.add('POST', `${QUALY_API_PREFIX}/echo`, echo),
+    // the mount's own not-found, as the host serves it
+    apiRouteFallback,
   )
   const serve = (at: number, clientProtocol?: { min: number; max: number }) =>
     HttpRouter.serve(routes, {
@@ -48,6 +51,43 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Effect.runPromise(Scope.close(scope, Exit.void))
+})
+
+describe('what every api answer carries', () => {
+  it('names the request it answered, on the api and the probes, never elsewhere', async () => {
+    const api = await fetch(`${base}${QUALY_API_PREFIX}/echo`)
+    const id = api.headers.get('x-qualy-request-id')
+    expect(id).toMatch(/^[0-9a-f-]{36}$/)
+    // one id per request: the next answer names another
+    const again = await fetch(`${base}${QUALY_API_PREFIX}/echo`)
+    expect(again.headers.get('x-qualy-request-id')).not.toBe(id)
+    // a refusal is an answer too
+    const refused = await fetch(`${base}${QUALY_API_PREFIX}/echo`, {
+      method: 'POST',
+      headers: { 'sec-fetch-site': 'cross-site' },
+    })
+    expect(refused.status).toBe(403)
+    expect(refused.headers.get('x-qualy-request-id')).toMatch(/^[0-9a-f-]{36}$/)
+    // outside the mount and the probes, nothing is named
+    const page = await fetch(`${base}/echo`)
+    expect(page.headers.get('x-qualy-request-id')).toBeNull()
+  })
+
+  it('answers an unmatched route inside the mount with the tagged 404', async () => {
+    const response = await fetch(`${base}${QUALY_API_PREFIX}/nope`)
+    expect(response.status).toBe(404)
+    expect(response.headers.get('content-type')).toContain('application/json')
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('x-qualy-request-id')).toMatch(/^[0-9a-f-]{36}$/)
+    expect(await response.json()).toEqual({
+      _tag: 'API_ROUTE_NOT_FOUND',
+      message: expect.any(String),
+    })
+    // outside the mount the router's own answer stands
+    const elsewhere = await fetch(`${base}/nope`)
+    expect(elsewhere.status).toBe(404)
+    expect(await elsewhere.text()).toBe('')
+  })
 })
 
 describe('the web client protocol', () => {
@@ -70,7 +110,7 @@ describe('the web client protocol', () => {
       expect(response.headers.get('cache-control')).toBe('no-store')
       expect(response.headers.get('content-type')).toContain('application/json')
       expect(await response.json()).toEqual({
-        code: CLIENT_PROTOCOL_UNSUPPORTED,
+        _tag: CLIENT_PROTOCOL_UNSUPPORTED,
         received: /^\d+$/.test(declared) ? Number(declared) : declared,
         supported: { min: 1, max: 1 },
       })
