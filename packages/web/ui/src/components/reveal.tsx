@@ -5,16 +5,15 @@ import * as stylex from '@stylexjs/stylex'
 import type { StyleXStyles } from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { tokens } from '../theme/tokens.stylex.ts'
+import { useColdStartHandoff } from './spinner.tsx'
 
 // The entrance a screen makes: a short fade and lift, once, on mount.
 // Deliberately subtle - page content should arrive, not perform.
 //
 // Not under the cold start: there the application's own fade-in is the
 // entrance, and a second one playing inside it is a jump on a browser that
-// captures the incoming page as a still rather than painting it live.
-const underColdStart = () =>
-  typeof document !== 'undefined' && document.documentElement.hasAttribute('data-cold-start')
-
+// captures the incoming page as a still rather than painting it live. Read
+// once, at mount: what matters is the screen this one arrived under.
 export function Reveal({
   className,
   delay = 0,
@@ -24,7 +23,8 @@ export function Reveal({
   delay?: number
   children: ReactNode
 }) {
-  const [still] = useState(underColdStart)
+  const handoff = useColdStartHandoff()
+  const [still] = useState(handoff)
   return (
     <motion.div
       className={className}

@@ -1,5 +1,13 @@
 import type * as React from 'react'
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { flushSync } from 'react-dom'
 import * as stylex from '@stylexjs/stylex'
 import { bootPlacement } from '@qualy/brand/boot'
@@ -107,11 +115,17 @@ function PageLoading() {
 // loop to solid and hands the wordmark to the top bar through a view
 // transition. A LoadingScreen in a tree with no host draws a plain screen
 // of its own, so it never renders nothing by mistake.
+//
+// Whether a screen is hosted is a fact of the tree, told by context, so a
+// screen knows it in the render that mounts it. It was once a counter the
+// host raised in a layout effect, which left every first render believing
+// it stood alone: the standalone screen was committed under the first
+// frame and taken back a commit later - and that commit was painted, in
+// every engine, as a second wordmark under the first for one frame.
 
 type Listener = () => void
 const listeners = new Set<Listener>()
 let claims = 0
-let hosts = 0
 const notify = () => {
   for (const listener of listeners) listener()
 }
@@ -122,11 +136,26 @@ const subscribe = (listener: Listener) => {
   }
 }
 const claimsNow = () => claims
-const hostsNow = () => hosts
+
+/** true inside a cold-start host's tree */
+const HostContext = createContext(false)
+/** true while the host's screen is up: the application is arriving under it */
+const HandoffContext = createContext(false)
+
+/**
+ * Whether the screen mounting now arrives under the cold start.
+ *
+ * For an entrance that would otherwise play inside the hand-over: the
+ * application's own fade-in is the entrance there, and a second one under
+ * it is a jump on a browser that captures the incoming page as a still.
+ */
+function useColdStartHandoff(): boolean {
+  return useContext(HandoffContext)
+}
 
 /** a claim on the cold-start overlay; on its own, a plain loading screen */
 function LoadingScreen() {
-  const hosted = useSyncExternalStore(subscribe, hostsNow, hostsNow) > 0
+  const hosted = useContext(HostContext)
   useLayoutEffect(() => {
     claims += 1
     notify()
@@ -272,10 +301,12 @@ const settle = (root: HTMLElement): Promise<void> => {
 }
 
 /**
- * The host of the cold-start overlay: mounted once, at the root, above
- * every provider, with the copy the fallbacks cannot fetch yet.
+ * The host of the cold-start overlay: mounted once, at the root, around
+ * every provider, with the copy the fallbacks cannot fetch yet. Its
+ * children are the hosted tree: every loading screen in it is a claim on
+ * the one overlay, and knows so from its first render.
  */
-function ColdStart({ copy }: { copy: ColdStartCopy }) {
+function ColdStart({ copy, children }: { copy: ColdStartCopy; children?: React.ReactNode }) {
   const pending = useSyncExternalStore(subscribe, claimsNow, claimsNow)
   const [phase, setPhase] = useState<Phase>('idle')
   const [hint, setHint] = useState(false)
@@ -288,15 +319,6 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
   // first frame index.html painted, so the time the scripts took to arrive
   // is already spent; a later screen counts from when it goes up
   const [delay, setDelay] = useState(THRESHOLD)
-
-  useLayoutEffect(() => {
-    hosts += 1
-    notify()
-    return () => {
-      hosts -= 1
-      notify()
-    }
-  }, [])
 
   // a claim while nothing is up: the overlay goes up, in the placeholder's
   // place, its loop set to begin 400ms from now
@@ -371,14 +393,21 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
     }
   }, [pending, phase])
 
-  if (phase === 'idle') return null
+  const hosted = (
+    <HostContext value={true}>
+      <HandoffContext value={phase !== 'idle'}>{children}</HandoffContext>
+    </HostContext>
+  )
+  if (phase === 'idle') return hosted
   return (
-    <div
-      ref={overlay}
-      role="status"
-      data-cold-start-phase={phase}
-      {...stylex.props(overlayStyles.overlay, phase === 'fading' && overlayStyles.fading)}
-    >
+    <>
+      {hosted}
+      <div
+        ref={overlay}
+        role="status"
+        data-cold-start-phase={phase}
+        {...stylex.props(overlayStyles.overlay, phase === 'fading' && overlayStyles.fading)}
+      >
       <div {...stylex.props(overlayStyles.seat(seatTop))}>
         <Wordmark
           height={CAP}
@@ -402,8 +431,9 @@ function ColdStart({ copy }: { copy: ColdStartCopy }) {
           ) : null}
         </div>
       ) : null}
-    </div>
+      </div>
+    </>
   )
 }
 
-export { Spinner, LoadingScreen, PageLoading, ColdStart }
+export { Spinner, LoadingScreen, PageLoading, ColdStart, useColdStartHandoff }

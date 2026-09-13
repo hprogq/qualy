@@ -54,10 +54,7 @@ const firstPaintedAt = () =>
 /** a tree that claims the loading screen until told it is done */
 function Booting({ done }: { done: boolean }) {
   return (
-    <>
-      <ColdStart copy={copy} />
-      {done ? <main data-testid="app" /> : <LoadingScreen />}
-    </>
+    <ColdStart copy={copy}>{done ? <main data-testid="app" /> : <LoadingScreen />}</ColdStart>
   )
 }
 
@@ -220,6 +217,43 @@ describe('the cold start', () => {
       expect(await page.getByRole('link', { name: '刷新页面' }).elements()).toHaveLength(0)
     } finally {
       restore()
+    }
+  })
+
+  it('never draws a screen of its own inside a host, not even in its first render', async () => {
+    // Every element added to the page while the tree mounts, read as it
+    // lands: a screen that drew its own wordmark in its first render and
+    // took it back a commit later was painted, for one frame, as a second
+    // wordmark under the first - the host has to be known before the
+    // first commit, not discovered after it.
+    const strays: Element[] = []
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue
+          const screens = node.matches('[role="status"]')
+            ? [node]
+            : [...node.querySelectorAll('[role="status"]')]
+          for (const screen of screens) {
+            if (
+              !screen.hasAttribute('data-cold-start-phase') &&
+              screen.querySelector('svg [data-seg]') !== null
+            ) {
+              strays.push(screen)
+            }
+          }
+        }
+      }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    try {
+      await render(<Booting done={false} />)
+      await expect.element(page.getByRole('status')).toBeInTheDocument()
+      observer.takeRecords()
+      expect(strays).toEqual([])
+      expect(overlay()).not.toBeNull()
+    } finally {
+      observer.disconnect()
     }
   })
 

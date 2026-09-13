@@ -134,7 +134,7 @@
 
 ### 结构:一个宿主,多个认领
 
-到第一屏之前有三段串联的等待——catalog、manifest、布局 chunk——每一段都渲染 `<LoadingScreen />`。如果每个自己画字标,循环会在每次交接时重启,而且没有谁能动画退场:画它的那个 fallback 在后面的画面出现时已经卸载了。所以 `LoadingScreen` 是对一块共享覆盖层的**认领**(`useLayoutEffect` 里计数),覆盖层由挂在根上、位于所有 provider 之上的 `<ColdStart copy>` 画:只要有认领就在,最后一个认领撤走一帧之后退场。没有宿主的树里,`LoadingScreen` 画一个普通的静态屏。
+到第一屏之前有三段串联的等待——catalog、manifest、布局 chunk——每一段都渲染 `<LoadingScreen />`。如果每个自己画字标,循环会在每次交接时重启,而且没有谁能动画退场:画它的那个 fallback 在后面的画面出现时已经卸载了。所以 `LoadingScreen` 是对一块共享覆盖层的**认领**(`useLayoutEffect` 里计数),覆盖层由包在根上、位于所有 provider 之外的 `<ColdStart copy>…</ColdStart>` 画:只要有认领就在,最后一个认领撤走一帧之后退场。「有没有宿主」经 context 告诉子树,认领方在挂载它的那次 render 就知道——曾经是宿主在 layout effect 里抬一个计数器,于是每个首次 render 都以为自己没有宿主,独立屏先提交再撤回,而那一次提交在所有引擎里都被画了一帧:首帧之下多出第二个字标(rAF 探针实测,Chromium 与 WebKit 皆然)。没有宿主的树里,`LoadingScreen` 画一个普通的静态屏。
 
 ### 首帧(0ms,JS 之前)
 
@@ -146,7 +146,7 @@
 
 ### 接管(React 挂载后)
 
-`ColdStart` 用完全相同的几何与位置渲染 `<Wordmark height={28} live>`(循环带 400ms delay),在它自己的 `useLayoutEffect` 里**同帧**移除 `#qualy-boot`,不出现双字标或空白帧。浏览器测试把 `bootFrame()` 生成的首帧片段(加 index.html 的静态样式)注入页面,比对两者的 `getBoundingClientRect`,逐像素一致。400ms 门槛的起点是 `performance.getEntriesByName('first-contentful-paint')` 的首帧时刻(取不到退回导航起点),不是导航:样式表慢时字标出现得晚,按导航算会让读者才看了 80ms 的静止字标就动起来。
+`ColdStart` 用完全相同的几何与位置渲染 `<Wordmark height={28} live>`(循环带 400ms delay),在它自己的 `useLayoutEffect` 里**同帧**移除 `#qualy-boot`,覆盖层与首帧之间不出现双字标或空白帧(首帧之下的第二个字标是另一件事,见上一段)。浏览器测试把 `bootFrame()` 生成的首帧片段(加 index.html 的静态样式)注入页面,比对两者的 `getBoundingClientRect`,逐像素一致。400ms 门槛的起点是 `performance.getEntriesByName('first-contentful-paint')` 的首帧时刻(取不到退回导航起点),不是导航:样式表慢时字标出现得晚,按导航算会让读者才看了 80ms 的静止字标就动起来。
 
 ### 等待
 

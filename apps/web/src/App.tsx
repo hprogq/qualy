@@ -95,11 +95,11 @@ const coldStartCopy = {
 export default function App() {
   // localization wraps everything: even the manifest loading and error
   // states are localized, so the shell never renders untranslated copy.
-  // The cold-start host stands beside it, above every provider, and draws
-  // the one loading screen the fallbacks below claim in turn.
+  // The cold-start host wraps it all, above every provider, and draws the
+  // one loading screen the fallbacks below claim in turn - each of them
+  // told by the tree, from its first render, that it is a claim.
   return (
-    <>
-      <ColdStart copy={coldStartCopy} />
+    <ColdStart copy={coldStartCopy}>
       <I18nProvider catalogs={catalogs} errorMessages={errorMessages} fallback={<LoadingScreen />}>
         <ThemeProvider>
           <WidgetBridge>
@@ -111,7 +111,7 @@ export default function App() {
           </WidgetBridge>
         </ThemeProvider>
       </I18nProvider>
-    </>
+    </ColdStart>
   )
 }
 

@@ -13688,3 +13688,13 @@ SIGTERM -> exit 0
 - **图标两层**:svg favicon 已有 `prefers-color-scheme` 切墨(保留);Safari 不认 svg favicon,深色标签栏上裸黑 Q 会消失——`brand:export` 新增经 playwright 栅格化的 `favicon.png`(32)与 `apple-touch-icon.png`(180):白底 22% 圆角方上放黑 Q。`index.html` 里 png 在 svg 之前(认 svg 的浏览器取后者);`index-html.test` 钉三个文件与顺序;`docs/brand.md` 同步。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests/{catalogs,index-html,client-paths,semantic-tokens}` 4 / 24;`pnpm build` ok;`pnpm test:browser` Test Files 46 passed (46); Tests 325 passed (325); exit 0;`vitest tools/tests` Test Files 36 passed (36); Tests 235 passed (235); exit 0;`pnpm brand:export` 写出 5 个文件(svg 三个与提交版逐字节相同)。截图(1440):列表页、标签 tooltip、已结束空态、草稿单行页(页脚贴底)、模态框;WebKit 逐帧改前 / 改后。
 - **下一步**:P5(hero 右栏的待办接口)可以开始。
+
+## 冷启动:认领方在首次 render 就知道宿主(2026-09-13)
+
+`fix(web): a loading screen knows its host from its first render`。审计(读的是推上去的 main,不含本机前三个 commit)指出两处:① `LoadingScreen` 靠 `hosts` 计数器判断有没有 `ColdStart` 宿主,而计数器在宿主的 layout effect 里才抬,首次 render 时永远是 0——独立屏先提交、下一次 commit 再撤;② 页面 `Reveal` 的 Motion 入场与 `::view-transition-new(root)` 的淡入是两套,且 `settle()` 的 150ms 里 Motion 还在跑,WebKit 截快照截到半程。
+
+- **①实证**:写了 rAF 探针(`addInitScript`,每帧 rAF 里记 DOM 状态——rAF 回调在该帧绘制之前跑,它看到的就是要画的),生产入口经自签 https 代理在 WebKit 26.5 与 Chromium 各跑一遍。改前两边都有一帧同时含 `#qualy-boot` 与独立屏字标(WebKit 101→108ms,Chromium 67→76ms)——**不是 Safari 特有,是两个引擎都画了一帧的中间 commit**,只是一帧 8ms 在 Chrome 上不易察觉。React「layout effect 里的更新在 paint 前冲刷」在这条链上不成立:store 通知 → 认领 → 宿主再 render 是三次相连的 commit,中间被画了。
+- **①修法**:按审计做成 boundary——`<ColdStart copy>{tree}</ColdStart>` 包住所有 provider,经 `HostContext` 告诉子树「你在宿主里」,`LoadingScreen` 在挂载它的那次 render 直接 `return null`(仍经 effect 认领);无宿主的树照旧画独立屏。`hosts` 计数器删除。改后探针两引擎都是 首帧 → 覆盖层,中间态在 DOM 里都不再出现。新增回归用例:MutationObserver 记下挂载期间加进页面的每个 `[role=status]`,断言从未出现过覆盖层之外带字标的屏——改前这条就红。
+- **②**:上一轮已做(本机 commit 0b5913ee):`Reveal` 在冷启动交接下 `initial={false}`,hero 卡首挂不滑,旧 root 不淡出、只飞新字标。这轮把 `Reveal` 的判断从读 `data-cold-start` 属性改成宿主经 `HandoffContext` 给的 React 状态(`useColdStartHandoff()`),按审计要的「明确机制」。
+- **未做**:浏览器套件加 WebKit leg。46 个文件整套跑 WebKit 会先撞一批与本题无关的差异,CI 还要装 WebKit 与系统依赖,是单独一件事;本轮的证据链靠的是 WebKit 26.5 的录屏与探针。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm build` ok;探针改前 / 改后各两引擎;`pnpm test:browser` Test Files 46 passed (46); Tests 326 passed (326); exit 0(+1 新用例);`vitest tools/tests` 36 / 235;exit 0。
