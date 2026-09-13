@@ -57,12 +57,17 @@ const styles = stylex.create({
     justifyContent: 'center',
     gap: 16,
   },
+  // the page's own failure sits where the page would have been - centred in
+  // the shell's content, not stacked in its corner like a caption of nothing
   failureInline: {
     display: 'flex',
+    minHeight: '60vh',
     flexDirection: 'column',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
-    paddingBlock: 32,
+    paddingInline: 24,
+    textAlign: 'center',
   },
   quiet: {
     fontSize: 14,
