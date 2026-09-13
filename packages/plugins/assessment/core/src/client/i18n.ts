@@ -288,6 +288,31 @@ const coversUnits = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, one {# unit} other {# units}}',
 })
 
+const submissionsCount = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/submissions-count',
+  defaultMessage: '{count, plural, one {# submission} other {# submissions}}',
+})
+
+const toRevise = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/to-revise',
+  defaultMessage: '{count, plural, one {# to revise} other {# to revise}}',
+})
+
+const stageDeadline = defineMessage<{ when: string }>()({
+  id: 'assessment/batch/stage-deadline',
+  defaultMessage: 'Closes {when}',
+})
+
+const stageUntil = defineMessage<{ date: string }>()({
+  id: 'assessment/batch/stage-until',
+  defaultMessage: 'This stage until {date}',
+})
+
+const startsOn = defineMessage<{ date: string }>()({
+  id: 'assessment/batch/starts-on',
+  defaultMessage: 'Starts {date}',
+})
+
 const enrolled = defineMessage<{ count: number }>()({
   id: 'assessment/batch/enrolled',
   defaultMessage: '{count, plural, one {# participant} other {# participants}}',
@@ -375,6 +400,31 @@ const i18n = definePluginMessages({
     previousPage: { id: 'assessment/action/previous-page', defaultMessage: 'Previous' },
     nextPage: { id: 'assessment/action/next-page', defaultMessage: 'Next' },
     pageOfTotal,
+    submissionsCount,
+    toRevise,
+    stageDeadline,
+    stageUntil,
+    startsOn,
+    allBatches: { id: 'assessment/batch/all', defaultMessage: 'All batches' },
+    previousBatch: { id: 'assessment/batch/previous', defaultMessage: 'Previous batch' },
+    nextBatch: { id: 'assessment/batch/next', defaultMessage: 'Next batch' },
+    pickBatch: { id: 'assessment/batch/pick', defaultMessage: 'Choose a batch' },
+    awaitingReview: { id: 'assessment/batch/awaiting-review', defaultMessage: 'Awaiting your review' },
+    startReview: { id: 'assessment/batch/start-review', defaultMessage: 'Start reviewing' },
+    myEntries: { id: 'assessment/batch/my-entries', defaultMessage: 'My entries' },
+    continueEntries: { id: 'assessment/batch/continue-entries', defaultMessage: 'Continue' },
+    today: { id: 'assessment/batch/today', defaultMessage: 'Today' },
+    columnBatch: { id: 'assessment/batch/column-batch', defaultMessage: 'Batch' },
+    columnStage: { id: 'assessment/batch/column-stage', defaultMessage: 'Stage' },
+    columnTime: { id: 'assessment/batch/column-time', defaultMessage: 'Time' },
+    tagline: {
+      id: 'assessment/batch/tagline',
+      defaultMessage: 'Let assessment return to growth itself.',
+    },
+    footHelp: { id: 'assessment/batch/foot-help', defaultMessage: 'Help centre' },
+    footContact: { id: 'assessment/batch/foot-contact', defaultMessage: 'Contact us' },
+    footPrivacy: { id: 'assessment/batch/foot-privacy', defaultMessage: 'Privacy policy' },
+    footTerms: { id: 'assessment/batch/foot-terms', defaultMessage: 'Terms of service' },
     totalCount,
     stagePosition,
     stageCount,

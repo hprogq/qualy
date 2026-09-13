@@ -13615,3 +13615,16 @@ SIGTERM -> exit 0
 - **新增**:`--q-elevation-1`(浅 `0 0 0 1px …/0.04, 0 1px 2px …/0.06`,深 `0 0 0 1px oklch(1 0 0 / 0.06)`)、`--q-elevation-2`(浅 hero 卡三层阴影,深 `…/0.08` 描边)——深色下阴影不可见,退化成描边,所以要单独成 token;`--q-radius-pill: 9999px`(圆角收敛 sm 4 / md 8 / lg 14 / pill);`:root { color-scheme: light }` / `.dark { color-scheme: dark }`。
 - **顺带**:`apps/web/index.html` 首帧的四个颜色值跟着 token 走(`index-html.test.ts` 钉住,脚本 hash 未变),`docs/brand.md` 里的值同步。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`vitest tools/tests` 36 / 235(semantic-tokens、index-html 在内);`pnpm build` ok;`pnpm test:browser` Test Files 46 passed (46); Tests 325 passed (325); exit 0——第一遍 5 条红:baseline 快照(分隔线与焦点环的序列化值)与 button / commodity / widget-platform 里写死的旧灰阶字面量(`oklch(0.205 0 0)` 等);后三者改为从 `:root` 读 token 值断言(`token('--q-primary')`),以后换值不再红,快照按新值更新(差异只有 `--q-border` 与 `--q-focus-ring`)。截图:浅 / 深 × `/assessment/batches`、`/organization/users`,生产入口 1280。
+
+## 前端重做 P4:批次列表页与 hero 卡(2026-09-13,完成)
+
+`feat(web): lead the batch list with the running round`。只改 `BatchListPage.tsx`、`batch/BatchCard.tsx` 两个组件(+ i18n / zh-CN 文案、assessment 插件补 `@qualy/brand` 依赖取字标);IA、路由、契约、`listBatches` 查询参数与 keyset 游标逻辑不变。
+
+- **masthead**:h1 左;右侧搜索框(max 320)+「新建批次」主按钮;总数 badge 撤掉,数字进筛选 pill(`statusCounts`,全部 = 三者之和,草稿 pill 仍只对 `capabilities.create` 的人出现;stub 不带 `statusCounts` 时 `Count` 空着)。
+- **hero 区**:只取本页 `standing === 'active'` 的批次。1 个 → 整宽卡;2–4 个 → 「1 / n」+ 两侧 28px 箭头座,`key={row.id}` 换卡,180ms 淡入 + 8px 位移(方向随箭头,`prefers-reduced-motion` 下不动),**不自动轮播**;≥5 个 → `Select` 按名称挑。选中位置记在「当前活动集合」上(id 串成 key),换页 / 换筛选即回到第一个。卡左:状态 pill、h2、材料时间 + 第 x / n 个阶段、按阶段时长加权的分段进度条(当前段 h8 `tokens.success`,已结束段 muted 30% 混色,未来段 surfaceMuted;段名在上、当前加粗;轴行首尾日期 + 「今天」刻度落在已过比例处)、「进入测评 →」主按钮。卡右:当前阶段 / `{when} 截止` + `BatchProgress` 倒计时;两条待办固定顺序「等待你审核 · n 份申报 → 开始审核」在「我的申报 · n 份待修改 → 继续处理」之上,分别链去 `assessment/batch-reviews` / `assessment/batch-my-entries`;`agenda.review === null` 时审核行不画,两者都 null 只剩阶段信息。**右栏数据是 `PLACEHOLDER_AGENDA`(12 / 2)占位,接口在 P5 接上**——已在代码里点名。
+- **列表**:「全部批次」13px muted 标题 + pill 组(仍是 `ToggleGroup`,radio 语义与测试不变);白底 `radiusLg` + `elevation1` 的平铺表(批次 / 状态(色点)/ 阶段 / 时间 / ›),进行中批次也在表里;整行可点(点在名称链接上的由链接自己走,不双跳),名称仍是 `PageLink`;时间列按 standing 取词:进行中 `本阶段至 {date}`、待开始 / 草稿 `{date} 开始` 或 `尚未安排阶段`、已归档 `{date} 结束`(取最后一个已进入阶段的时间,退化到 createdAt);keyset 分页留在表底右侧(单页时写「共 n 条」)。空态两种不变(`data-empty` 钩子未动)。
+- **页脚**:8% 前景发丝线,`Wordmark height={12}` + 「让评价回归成长本身。」,四个 `#` 链接(帮助中心 / 联系我们 / 隐私政策 / 服务条款)。
+- **顺带(用户点名)**:`apps/web/src/App.tsx` 的 `failureInline`——页面级失败原先左上角堆着「该页面无法显示。重试」,改成与 `Notice` 同几何(60vh 内居中、居中对齐);颜色未动。
+- **测试**:`batch-admin.browser.test.tsx` 只改一处——「不管理任何东西的人」那条用 active 批次,名称现在同时出现在 hero 的 h2 与表格链接里,`getByText` 严格模式会报两个匹配,改为分别断 heading 与 link。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm build` ok;`vitest tools/tests/{catalogs,client-paths,semantic-tokens}` 3 / 16;`pnpm test:browser` Test Files 46 passed (46); Tests 325 passed (325); exit 0;`vitest tools/tests` Test Files 36 passed (36); Tests 235 passed (235); exit 0。截图(生产入口 1280,`listBatches` 在 playwright 网络层打桩,其余全真):1 / 3 / 5 个进行中、3 个按「下一个批次」后、0 个进行中(hero 消失、列表上移)、草稿筛选、空搜索、页面加载失败态。
+- **待办(P5)**:hero 右栏的待办数据接口(审核队列数、本人待修改数,以及「是否审核者」决定审核行是否出现);`PLACEHOLDER_AGENDA` 届时删除。

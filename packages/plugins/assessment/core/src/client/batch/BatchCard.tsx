@@ -1,27 +1,32 @@
-import { useState } from 'react'
-import * as stylex from '@stylexjs/stylex'
-import { ArrowRightIcon, CalendarRangeIcon, LayersIcon, UsersIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import * as stylex from '@stylexjs/stylex'
+import { ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { PageLink } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { Button } from '@qualy/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { assessmentMessages as m } from '../i18n.ts'
 import { StatusBadge } from './StatusBadge.tsx'
-import { standingOf } from './standing.ts'
 import { BatchProgress } from './BatchProgress.tsx'
 import type { TimelineLike } from './progress.ts'
 
-// One batch, as somebody choosing between them reads it.
+// The batch that is running, as the thing the page leads with.
 //
-// The question a card answers is which assessment this is, how far along it
-// is, and whether anything is about to happen. It is deliberately narrow -
-// two to a row on a desktop - because a card the width of the window is a
-// line of six words with half a metre of nothing after them, and because the
-// eye compares things that stand side by side.
+// One card, the width of the page, in two columns. The left says which
+// round this is and how far along: the name, the material window, the run
+// of stages as a bar with the current one lit and a mark for today, and
+// the way in. The right says what this reader has to do about it: the
+// stage that is open and when it closes, then at most two lines of work -
+// what is waiting on them for other people first, their own second,
+// because a queue that blocks somebody else outranks one that blocks only
+// oneself. A reader with nothing to do sees the stage alone.
 //
-// Who takes part and which materials count are facts about the round rather
-// than about the reader, so they sit as a quiet line of three; a person's own
-// role in it belongs inside the batch, not on every card in a list.
+// When several rounds run at once the card shows one of them and says
+// which: arrows for a few, a name to pick from once there are many. It
+// never turns on its own - a page that rearranges itself while somebody
+// reads it is a page nobody trusts.
 
 export interface BatchCardRow {
   id: string
@@ -34,51 +39,129 @@ export interface BatchCardRow {
   timeline: readonly TimelineLike[]
 }
 
+/**
+ * What this reader has to do in the round.
+ *
+ * `review` is other people's work waiting on them and is only ever present
+ * for somebody who reviews here; `own` is their own filing. The api that
+ * answers this arrives with the next step; until then a page hands the card
+ * `NO_AGENDA` and the right column says only where the round stands.
+ */
+export interface BatchAgenda {
+  readonly review: { readonly count: number } | null
+  readonly own: { readonly count: number } | null
+}
+
+export const NO_AGENDA: BatchAgenda = { review: null, own: null }
+
+/** how the card says which of several running rounds it is showing */
+export type HeroFrame =
+  | { readonly kind: 'single' }
+  | {
+      readonly kind: 'arrows'
+      readonly index: number
+      readonly total: number
+      readonly onPrevious: () => void
+      readonly onNext: () => void
+    }
+  | {
+      readonly kind: 'picker'
+      readonly options: readonly { readonly id: string; readonly name: string }[]
+      readonly onPick: (id: string) => void
+    }
+
+const arrive = stylex.keyframes({
+  from: { opacity: 0, transform: 'translateX(8px)' },
+  to: { opacity: 1, transform: 'translateX(0)' },
+})
+
+const arriveBack = stylex.keyframes({
+  from: { opacity: 0, transform: 'translateX(-8px)' },
+  to: { opacity: 1, transform: 'translateX(0)' },
+})
+
+const REDUCE = '@media (prefers-reduced-motion: reduce)'
+
 const styles = stylex.create({
   card: {
-    position: 'relative',
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'minmax(0, 1.7fr) minmax(0, 1fr)',
+      [breakpoints.phone]: 'minmax(0, 1fr)',
+    },
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation2,
+    animationDuration: '180ms',
+    animationTimingFunction: 'ease-out',
+    animationFillMode: 'both',
+  },
+  arriveForward: {
+    animationName: { default: arrive, [REDUCE]: 'none' },
+  },
+  arriveBackward: {
+    animationName: { default: arriveBack, [REDUCE]: 'none' },
+  },
+  main: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
-    borderRadius: `calc(${tokens.radiusLg} + 4px)`,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: {
-      default: tokens.border,
-      ':hover': `color-mix(in oklab, ${tokens.foreground} 12%, transparent)`,
+    gap: 18,
+    paddingBlock: 22,
+    paddingInline: {
+      default: 26,
+      [breakpoints.phone]: 20,
     },
-    backgroundColor: {
-      default: tokens.background,
-      ':hover': `color-mix(in oklab, ${tokens.surfaceMuted} 10%, transparent)`,
-    },
-    boxShadow: {
-      default: '0 0 rgb(0 0 0 / 0)',
-      ':hover': '0 1px 2px 0 rgb(0 0 0 / 0.05)',
-    },
-    padding: 20,
-    transitionProperty: 'color, background-color, border-color, box-shadow',
   },
-  header: {
+  head: {
     display: 'flex',
-    alignItems: 'flex-start',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  headRow: {
+    display: 'flex',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
-  title: {
-    minWidth: 0,
-    fontSize: 16,
-    lineHeight: 1.375,
-    fontWeight: 600,
+  frame: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 2,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
   },
-  titleLink: {
-    '::before': {
-      content: '""',
-      position: 'absolute',
-      inset: 0,
+  frameCount: {
+    paddingInline: 4,
+    color: tokens.surfaceMutedForeground,
+  },
+  frameArrow: {
+    display: 'inline-flex',
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: tokens.radiusMd,
+    borderWidth: 0,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': tokens.surfaceMuted,
     },
+    color: 'inherit',
+    cursor: 'pointer',
+    transitionProperty: 'background-color',
+    transitionDuration: '150ms',
   },
-  badgeSeat: {
-    flexShrink: 0,
+  picker: {
+    width: 240,
+  },
+  title: {
+    margin: 0,
+    fontSize: 20,
+    lineHeight: 1.35,
+    fontWeight: 600,
+    letterSpacing: '-0.02em',
   },
   facts: {
     display: 'flex',
@@ -87,352 +170,441 @@ const styles = stylex.create({
     rowGap: 4,
     fontSize: 12,
     color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
   },
-  fact: {
+  plan: {
     display: 'flex',
-    minWidth: 0,
-    alignItems: 'center',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  lanes: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'flex-end',
     gap: 6,
   },
-  factIcon: {
+  lane: (weight: number) => ({
     display: 'flex',
-    flexShrink: 0,
-    color: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
-  },
-  truncate: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  band: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    columnGap: 16,
-    rowGap: 4,
-    borderRadius: tokens.radiusLg,
-    paddingInline: 12,
-    paddingBlock: 10,
-  },
-  bandActive: {
-    backgroundColor: `color-mix(in oklab, ${tokens.success} 8%, transparent)`,
-  },
-  bandQuiet: {
-    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 50%, transparent)`,
-  },
-  lead: {
     minWidth: 0,
-  },
-  leadLabel: {
-    fontSize: 11,
-    letterSpacing: '0.025em',
-    color: tokens.mutedForeground,
-    textTransform: 'uppercase',
-  },
-  leadValue: {
+    flexDirection: 'column',
+    gap: 7,
+    flexGrow: weight,
+    flexShrink: 1,
+    flexBasis: '0%',
+  }),
+  laneName: {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    fontSize: 14,
+    fontSize: 11,
+    color: tokens.mutedForeground,
+  },
+  laneNameCurrent: {
+    fontWeight: 600,
+    color: tokens.foreground,
+  },
+  segment: {
+    height: 6,
+    borderRadius: 3,
+  },
+  segmentEnded: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  },
+  segmentCurrent: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: tokens.success,
+  },
+  segmentFuture: {
+    backgroundColor: tokens.surfaceMuted,
+  },
+  todayMark: (left: string) => ({
+    position: 'absolute',
+    left,
+    bottom: -3,
+    height: 14,
+    width: 2,
+    borderRadius: 1,
+    backgroundColor: tokens.foreground,
+  }),
+  axis: {
+    position: 'relative',
+    height: 16,
+    fontSize: 11,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  axisStart: {
+    position: 'absolute',
+    left: 0,
+    top: 3,
+  },
+  axisEnd: {
+    position: 'absolute',
+    right: 0,
+    top: 3,
+  },
+  axisToday: (left: string) => ({
+    position: 'absolute',
+    left,
+    top: 3,
+    transform: 'translateX(-50%)',
     fontWeight: 500,
+    color: tokens.foreground,
+  }),
+  actions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 'auto',
   },
-  progressText: {
-    fontSize: 14,
+  side: {
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    paddingBlock: 8,
+    paddingInline: 26,
+    borderLeftWidth: {
+      default: 1,
+      [breakpoints.phone]: 0,
+    },
+    borderTopWidth: {
+      default: 0,
+      [breakpoints.phone]: 1,
+    },
+    borderStyle: 'solid',
+    borderColor: tokens.border,
+    backgroundColor: `color-mix(in oklab, ${tokens.surfaceMuted} 40%, ${tokens.surface})`,
   },
-  draftHint: {
+  stage: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    paddingBlock: 16,
+  },
+  stageLabel: {
     fontSize: 12,
     color: tokens.mutedForeground,
   },
-  footer: {
-    marginTop: 'auto',
+  stageName: {
+    fontSize: 18,
+    fontWeight: 600,
+  },
+  stageClock: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: 6,
+    fontSize: 13,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  agendaRow: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 4,
-    fontSize: 14,
-    color: tokens.mutedForeground,
-    transitionProperty: 'color',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingBlock: 14,
+    borderTopWidth: 1,
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.border,
   },
-  footerNear: {
-    color: tokens.foreground,
-  },
-  arrow: {
-    width: 14,
-    height: 14,
-    transitionProperty: 'transform',
-  },
-  arrowNudged: {
-    transform: 'translateX(2px)',
-  },
-  stageLink: {
-    position: 'relative',
-    zIndex: 10,
-    display: 'block',
-  },
-  bar: {
+  agendaWords: {
     display: 'flex',
-    height: 4,
-    alignItems: 'flex-end',
-    gap: 4,
+    flexDirection: 'column',
+    gap: 2,
   },
-  // The strip itself is four pixels tall with four between them, so a
-  // pointer crossing it enters and leaves a dozen times on the way: every
-  // crossing restarts two transitions, and the flicker that comes of it is
-  // what reads as stutter. The hit area is a band around the segment, half
-  // the gap wide, so one pass over the bar is one hover.
-  segment: {
-    position: 'relative',
-    height: 4,
-    minWidth: 0,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-    '::before': {
-      content: '""',
-      position: 'absolute',
-      insetInline: -2,
-      top: -16,
-      bottom: -8,
-    },
-  },
-  // wider than the segment it belongs to and centred on it, so a
-  // four-character name is legible over a bar six pixels wide. The transform
-  // is one declaration for both axes: a transition animates only properties
-  // it names, and splitting the translate across two would move one axis in
-  // a step. No will-change either - switching it on with the hover and off
-  // again drops the layer as the way back begins.
-  segmentName: {
-    pointerEvents: 'none',
-    position: 'absolute',
-    bottom: '100%',
-    left: '50%',
-    marginBottom: 4,
-    maxWidth: 160,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    fontSize: 10,
-    lineHeight: 1,
+  agendaLabel: {
+    fontSize: 12,
     color: tokens.mutedForeground,
-    opacity: 0,
-    transform: 'translate(-50%, 4px)',
-    transitionProperty: 'opacity, transform',
-    transitionDuration: '200ms',
-    transitionTimingFunction: 'ease-out',
   },
-  segmentNameShown: {
-    opacity: 1,
-    transform: 'translate(-50%, 0)',
+  agendaValue: {
+    fontSize: 14,
+    fontWeight: 500,
   },
-  // Height rather than a scale: two pixels of growth scaled out of four
-  // leaves the rounded ends landing between pixels, and the shimmer of that
-  // is worse than the layout this costs - the bar is absolutely positioned,
-  // so nothing else moves.
-  segmentFill: {
-    position: 'absolute',
-    insetInline: 0,
-    bottom: 0,
-    height: 4,
-    borderRadius: 2,
-    transitionProperty: 'height, background-color',
-    transitionDuration: '200ms',
-    transitionTimingFunction: 'ease-out',
-  },
-  fillTall: {
-    height: 6,
-  },
-  fillEnded: {
-    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 40%, transparent)`,
-  },
-  fillEndedNear: {
-    height: 6,
-    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 70%, transparent)`,
-  },
-  fillCurrent: {
-    backgroundColor: tokens.success,
-  },
-  fillFuture: {
-    backgroundColor: tokens.surfaceMuted,
-  },
-  fillFutureNear: {
-    height: 6,
-    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  agendaAction: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 13,
+    fontWeight: 500,
+    color: tokens.foreground,
   },
 })
 
-const FILLS = {
-  ended: styles.fillEnded,
-  current: styles.fillCurrent,
-  future: styles.fillFuture,
-} as const
-
-const NEAR_FILLS = {
-  ended: styles.fillEndedNear,
-  current: styles.fillTall,
-  future: styles.fillFutureNear,
-} as const
-
-function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
-  return (
-    <span {...stylex.props(styles.fact)}>
-      <span aria-hidden {...stylex.props(styles.factIcon)}>
-        {icon}
-      </span>
-      <span {...stylex.props(styles.truncate)}>{children}</span>
-    </span>
-  )
-}
+/** a day with its year, in the reader's own notation */
+const dayOf = (at: number, locale: string) => new Date(at).toLocaleDateString(locale)
 
 /**
- * The plan as a bar of segments, one per stage.
+ * The plan as lanes: one per stage, as wide as the stage is long.
  *
- * Names would need a card twice this wide and would be truncated to
- * uselessness at six stages, so the shape carries the meaning - how much is
- * behind, where it is now, how much is left - and the current stage's name is
- * said in full above it.
- *
- * A segment gives its own name when the pointer rests on it: the segment
- * itself only thickens, and the name appears above it as a line of small
- * text. Neither costs the card a pixel of height - the row is one line of
- * cards, and a card that grows on hover moves its neighbours.
- *
- * Nothing of this happens without a pointer. A touch screen has nowhere to
- * rest one, and the stage the batch is in is already named in full higher up
- * the card, so a phone gets the plain bar.
+ * A stage's length is the time between its entry and the next one's; a
+ * stage without dates on both sides takes the middle length of the ones
+ * that have them, so an unscheduled tail still has a lane. Today's mark is
+ * placed along the same scale, which is what makes the bar a calendar
+ * rather than a count.
  */
-function StageBar({ timeline, batchId }: { timeline: readonly TimelineLike[]; batchId: string }) {
-  // which segment the pointer rests on, held as state rather than asked of a
-  // selector: the name and the fill answer to the same crossing
-  const [near, setNear] = useState<number | null>(null)
+function planOf(timeline: readonly TimelineLike[], now: number) {
+  const dates = timeline.map((entry) => (entry.entry.at === null ? null : Date.parse(entry.entry.at)))
+  const spans = timeline.map((_, index) => {
+    const from = dates[index] ?? null
+    const until = dates[index + 1] ?? null
+    return from !== null && until !== null && until > from ? until - from : null
+  })
+  const known = spans.filter((span): span is number => span !== null).sort((a, b) => a - b)
+  const typical = known.length === 0 ? 1 : known[Math.floor(known.length / 2)]!
+  const weights = spans.map((span) => (span === null ? typical : span))
+  const total = weights.reduce((sum, weight) => sum + weight, 0)
+  const start = dates[0] ?? null
+  const dated = dates.filter((date): date is number => date !== null)
+  const end = dated.length > 0 ? dated[dated.length - 1]! : null
+  // where today falls along the lanes: inside a dated stage by its share
+  // of that stage, and in the middle of an undated one
+  let today: number | null = null
+  if (start !== null && now >= start) {
+    let before = 0
+    for (let index = 0; index < timeline.length; index += 1) {
+      const from = dates[index] ?? null
+      const until = dates[index + 1] ?? null
+      const lane = weights[index]!
+      const inside = from !== null && now >= from && (until === null || now < until)
+      if (inside) {
+        const share = until !== null && until > from ? (now - from) / (until - from) : 0.5
+        today = (before + lane * share) / total
+        break
+      }
+      before += lane
+    }
+  }
+  return { weights: weights.map((weight) => weight / total), start, end, today }
+}
+
+function StageLanes({ timeline, now }: { timeline: readonly TimelineLike[]; now: number }) {
+  const { locale, format } = useI18n()
+  const plan = planOf(timeline, now)
+  const at = (fraction: number) => `${(Math.min(1, Math.max(0, fraction)) * 100).toFixed(2)}%`
   return (
-    // above the card's own overlay so the pointer reaches a segment at all,
-    // and a link of its own so that reaching it costs nothing: a strip in the
-    // middle of a card that swallows clicks reads as broken
-    <PageLink
-      page="assessment/batch"
-      params={{ batchId }}
-      tabIndex={-1}
-      aria-hidden
-      className={stylex.props(styles.stageLink).className}
-    >
-      <div {...stylex.props(styles.bar)}>
+    <div {...stylex.props(styles.plan)}>
+      <div {...stylex.props(styles.lanes)}>
         {timeline.map((entry, index) => (
-          <span
-            key={entry.displayName + String(index)}
-            {...stylex.props(styles.segment)}
-            onMouseEnter={() => setNear(index)}
-            onMouseLeave={() => setNear((rested) => (rested === index ? null : rested))}
-          >
-            <span {...stylex.props(styles.segmentName, near === index && styles.segmentNameShown)}>
+          <div key={entry.displayName + String(index)} {...stylex.props(styles.lane(plan.weights[index]!))}>
+            <span
+              {...stylex.props(styles.laneName, entry.status === 'current' && styles.laneNameCurrent)}
+            >
               {entry.displayName}
             </span>
             <span
+              data-stage-status={entry.status}
               {...stylex.props(
-                styles.segmentFill,
-                FILLS[entry.status],
-                near === index && NEAR_FILLS[entry.status],
+                styles.segment,
+                entry.status === 'ended' && styles.segmentEnded,
+                entry.status === 'current' && styles.segmentCurrent,
+                entry.status === 'future' && styles.segmentFuture,
               )}
             />
-          </span>
+          </div>
         ))}
+        {plan.today !== null && <span aria-hidden {...stylex.props(styles.todayMark(at(plan.today)))} />}
       </div>
-    </PageLink>
+      {plan.start !== null && (
+        <div {...stylex.props(styles.axis)}>
+          <span {...stylex.props(styles.axisStart)}>{dayOf(plan.start, locale)}</span>
+          {plan.today !== null && (
+            <span {...stylex.props(styles.axisToday(at(plan.today)))}>{format(m.today)}</span>
+          )}
+          {plan.end !== null && plan.end > plan.start && (
+            <span {...stylex.props(styles.axisEnd)}>{dayOf(plan.end, locale)}</span>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
-export function BatchCard({ row }: { row: BatchCardRow }) {
-  const { format, locale } = useI18n()
-  const standing = standingOf(row.status, row.currentPhaseId)
-  const starting = row.timeline.find((entry) => entry.entry.kind === 'planned')
-  const at = row.timeline.findIndex((entry) => entry.status === 'current')
-  // whether the pointer is anywhere on the card: the footer brightens and
-  // its arrow leans with it, and both read that from here rather than from a
-  // selector on an ancestor
-  const [rested, setRested] = useState(false)
+function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
+  const { format } = useI18n()
+  if (frame.kind === 'single') return null
+  if (frame.kind === 'picker') {
+    return (
+      <Select value={current} onValueChange={frame.onPick}>
+        <SelectTrigger aria-label={format(m.pickBatch)} xstyle={styles.picker}>
+          <SelectValue placeholder={format(m.pickBatch)} />
+        </SelectTrigger>
+        <SelectContent>
+          {frame.options.map((option) => (
+            <SelectItem key={option.id} value={option.id}>
+              {option.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )
+  }
+  return (
+    <div {...stylex.props(styles.frame)}>
+      <button
+        type="button"
+        aria-label={format(m.previousBatch)}
+        onClick={frame.onPrevious}
+        {...stylex.props(styles.frameArrow)}
+      >
+        <ChevronLeftIcon size={14} aria-hidden />
+      </button>
+      <span data-testid="hero-position" data-index={String(frame.index + 1)} data-total={String(frame.total)} {...stylex.props(styles.frameCount)}>
+        {`${String(frame.index + 1)} / ${String(frame.total)}`}
+      </span>
+      <button
+        type="button"
+        aria-label={format(m.nextBatch)}
+        onClick={frame.onNext}
+        {...stylex.props(styles.frameArrow)}
+      >
+        <ChevronRightIcon size={14} aria-hidden />
+      </button>
+    </div>
+  )
+}
 
-  // the one thing this card is mostly about: which stage, or when it begins,
-  // or that nobody has arranged it yet
-  const lead =
-    standing === 'active'
-      ? { label: format(m.currentStage), value: row.currentPhaseName ?? format(m.notScheduled) }
-      : starting?.entry.at != null
-        ? {
-            label: format(m.plannedStart),
-            value: new Date(starting.entry.at).toLocaleString(locale, {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-            }),
-          }
-        : { label: null, value: format(m.noStagesYet) }
+function AgendaRow({
+  label,
+  value,
+  action,
+  page,
+  batchId,
+}: {
+  label: string
+  value: string
+  action: string
+  page: 'assessment/batch-reviews' | 'assessment/batch-my-entries'
+  batchId: string
+}) {
+  return (
+    <div data-testid="hero-agenda" data-agenda={page} {...stylex.props(styles.agendaRow)}>
+      <div {...stylex.props(styles.agendaWords)}>
+        <span {...stylex.props(styles.agendaLabel)}>{label}</span>
+        <span {...stylex.props(styles.agendaValue)}>{value}</span>
+      </div>
+      <PageLink
+        page={page}
+        params={{ batchId }}
+        className={stylex.props(styles.agendaAction).className}
+        unavailable={<span {...stylex.props(styles.agendaAction)}>{action}</span>}
+      >
+        {action}
+        <ArrowRightIcon size={13} aria-hidden />
+      </PageLink>
+    </div>
+  )
+}
+
+export function BatchCard({
+  row,
+  agenda,
+  frame,
+  entered = 'forward',
+  now = Date.now(),
+}: {
+  row: BatchCardRow
+  agenda: BatchAgenda
+  frame: HeroFrame
+  /** which way the card came in, for the slide that says so */
+  entered?: 'forward' | 'backward'
+  /** the clock, for a test that wants to hold it still */
+  now?: number
+}): ReactNode {
+  const { format, locale } = useI18n()
+  const at = row.timeline.findIndex((entry) => entry.status === 'current')
+  const next = at === -1 ? undefined : row.timeline[at + 1]
+  const closes = next?.entry.kind === 'planned' && next.entry.at !== null ? Date.parse(next.entry.at) : null
 
   return (
-    <li
-      {...stylex.props(styles.card)}
-      onMouseEnter={() => setRested(true)}
-      onMouseLeave={() => setRested(false)}
+    <article
+      data-testid="batch-hero"
+      data-batch={row.id}
+      {...stylex.props(
+        styles.card,
+        entered === 'forward' ? styles.arriveForward : styles.arriveBackward,
+      )}
     >
-      <div {...stylex.props(styles.header)}>
-        {/* the whole card is the target; the link carries the name so it is
-            also reachable by keyboard and readable out of context */}
-        <h3 {...stylex.props(styles.title)}>
-          <PageLink
-            page="assessment/batch"
-            params={{ batchId: row.id }}
-            className={stylex.props(styles.titleLink).className}
-          >
-            {row.name}
-          </PageLink>
-        </h3>
-        <StatusBadge
-          status={row.status}
-          currentPhaseId={row.currentPhaseId}
-          xstyle={styles.badgeSeat}
-        />
-      </div>
-
-      <div {...stylex.props(styles.facts)}>
-        <Fact icon={<CalendarRangeIcon size={14} />}>
-          {format(m.materialWindow, {
-            from: row.materialRange.start,
-            until: row.materialRange.end,
-          })}
-        </Fact>
-        <Fact icon={<UsersIcon size={14} />}>
-          {format(m.enrolled, { count: row.participantCount })}
-        </Fact>
-        {row.timeline.length > 0 && (
-          <Fact icon={<LayersIcon size={14} />}>
-            {at === -1
-              ? format(m.stageCount, { total: row.timeline.length })
-              : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
-          </Fact>
-        )}
-      </div>
-
-      <div
-        {...stylex.props(styles.band, standing === 'active' ? styles.bandActive : styles.bandQuiet)}
-      >
-        <div {...stylex.props(styles.lead)}>
-          {lead.label !== null && <p {...stylex.props(styles.leadLabel)}>{lead.label}</p>}
-          <p {...stylex.props(styles.leadValue)}>{lead.value}</p>
+      <div {...stylex.props(styles.main)}>
+        <div {...stylex.props(styles.head)}>
+          <div {...stylex.props(styles.headRow)}>
+            <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
+            <Frame frame={frame} current={row.id} />
+          </div>
+          <h2 {...stylex.props(styles.title)}>{row.name}</h2>
+          <div {...stylex.props(styles.facts)}>
+            <span>
+              {format(m.materialWindow, {
+                from: row.materialRange.start,
+                until: row.materialRange.end,
+              })}
+            </span>
+            {row.timeline.length > 0 && (
+              <span>
+                {at === -1
+                  ? format(m.stageCount, { total: row.timeline.length })
+                  : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
+              </span>
+            )}
+          </div>
         </div>
-        {standing === 'active' ? (
-          <BatchProgress timeline={row.timeline} xstyle={styles.progressText} />
-        ) : (
-          standing === 'draft' && <p {...stylex.props(styles.draftHint)}>{format(m.draftHint)}</p>
-        )}
+
+        {row.timeline.length > 0 && <StageLanes timeline={row.timeline} now={now} />}
+
+        <div {...stylex.props(styles.actions)}>
+          <Button asChild>
+            <PageLink page="assessment/batch" params={{ batchId: row.id }}>
+              {format(m.enterBatch)}
+              <ArrowRightIcon aria-hidden />
+            </PageLink>
+          </Button>
+        </div>
       </div>
 
-      {row.timeline.length > 0 && <StageBar timeline={row.timeline} batchId={row.id} />}
-
-      <p {...stylex.props(styles.footer, rested && styles.footerNear)}>
-        {format(standing === 'draft' ? m.configureBatch : m.enterBatch)}
-        <ArrowRightIcon
-          aria-hidden
-          className={stylex.props(styles.arrow, rested && styles.arrowNudged).className}
-        />
-      </p>
-    </li>
+      <aside {...stylex.props(styles.side)}>
+        <div {...stylex.props(styles.stage)}>
+          <span {...stylex.props(styles.stageLabel)}>{format(m.currentStage)}</span>
+          <span {...stylex.props(styles.stageName)}>
+            {row.currentPhaseName ?? format(m.notScheduled)}
+          </span>
+          <span {...stylex.props(styles.stageClock)}>
+            {closes !== null && (
+              <span>
+                {format(m.stageDeadline, {
+                  when: new Date(closes).toLocaleString(locale, {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                })}
+              </span>
+            )}
+            <BatchProgress timeline={row.timeline} />
+          </span>
+        </div>
+        {/* other people's work first: it blocks them, one's own blocks only oneself */}
+        {agenda.review !== null && (
+          <AgendaRow
+            label={format(m.awaitingReview)}
+            value={format(m.submissionsCount, { count: agenda.review.count })}
+            action={format(m.startReview)}
+            page="assessment/batch-reviews"
+            batchId={row.id}
+          />
+        )}
+        {agenda.own !== null && (
+          <AgendaRow
+            label={format(m.myEntries)}
+            value={format(m.toRevise, { count: agenda.own.count })}
+            action={format(m.continueEntries)}
+            page="assessment/batch-my-entries"
+            batchId={row.id}
+          />
+        )}
+      </aside>
+    </article>
   )
 }

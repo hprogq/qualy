@@ -292,7 +292,9 @@ describe('the batch list', () => {
       '/assessment/batches',
     )
 
-    await expect.element(page.getByText('2026 春季综测')).toBeVisible()
+    // a running round leads the page as its card, and sits in the table too
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    await expect.element(page.getByRole('link', { name: '2026 春季综测' })).toBeVisible()
     // the rounds they take part in are still theirs to read
     expect(await page.getByRole('button', { name: '新建批次' }).elements()).toHaveLength(0)
     // and a filter that could only ever answer with an empty page is not offered
