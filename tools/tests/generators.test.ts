@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createWorkspace, resolveWorkspace } from '@qualy/assembly/testkit'
-import { buildPluginModuleSource } from '@qualy/web-build/collect'
+import { buildPluginModuleSource, buildPluginScanSource } from '@qualy/web-build/collect'
 
 // There is no generator left: the browser aggregate is a virtual module the
 // Vite plugin computes from the verified resolution, and the typed clients
@@ -9,7 +9,7 @@ import { buildPluginModuleSource } from '@qualy/web-build/collect'
 // suite pinned.
 
 describe('the browser aggregate', () => {
-  it('drops disabled plugins from the active set but keeps them under all', async () => {
+  it('carries the active selection and nothing else, whoever is building', async () => {
     // ping owns tables, so the selection has to include the capability that
     // accepts them or resolution refuses the manifest
     const workspace = createWorkspace(
@@ -18,14 +18,28 @@ describe('the browser aggregate', () => {
     )
     try {
       // by the surface it contributes, which is what the aggregate keys on
-      expect(await buildPluginModuleSource({ ymlPath: workspace.manifestPath })).not.toContain(
-        'ping/page',
+      const aggregate = await buildPluginModuleSource({ ymlPath: workspace.manifestPath })
+      expect(aggregate).not.toContain('ping/page')
+      // and it is not reachable another way: a release build used to carry
+      // the superset of everything INSTALLED, so a disabled plugin's browser
+      // code shipped to every visitor and was merely not executed. There is
+      // no second mode to ask for any more - the scan twin follows the same
+      // selection, because a module it named would be in the graph.
+      expect(await buildPluginScanSource({ ymlPath: workspace.manifestPath })).not.toContain(
+        'PingPage',
       )
-      // the superset a release build carries, so enabling a plugin needs no
-      // rebuild of the assets
-      expect(
-        await buildPluginModuleSource({ all: true, ymlPath: workspace.manifestPath }),
-      ).toContain('ping/page')
+      const active = createWorkspace([
+        '@qualy/plugin-database',
+        '@qualy/plugin-ui-registry',
+        '@qualy/plugin-ping',
+      ])
+      try {
+        expect(await buildPluginModuleSource({ ymlPath: active.manifestPath })).toContain(
+          'ping/page',
+        )
+      } finally {
+        active.dispose()
+      }
     } finally {
       workspace.dispose()
     }

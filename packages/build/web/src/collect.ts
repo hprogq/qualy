@@ -27,11 +27,16 @@ import { manifestPath, repoRoot } from './manifest.ts'
 // would have shipped the wrong renderer before any server started - and the
 // browser tests never start one.
 //
-// The registry follows the ACTIVE set: a disabled plugin's modules never
-// enter the graph, so its chunks tree-shake away; release builds pass `all`
-// for the superset. Localisation assets still come from the declared i18n
-// module, and every other identity - catalog namespace, message id, error
-// code - is claimed here for the same reason.
+// The registry follows the ACTIVE set, and the aggregate has no other mode:
+// a disabled plugin's modules never enter the graph, in development or in a
+// release, so nothing of it reaches a browser. `all` stays on the collector
+// itself because tooling genuinely asks the other question - which module
+// WOULD have implemented a surface nobody built - and answering it by
+// guessing is what the chunk sentinel stopped doing.
+//
+// Localisation assets still come from the declared i18n module, and every
+// other identity - catalog namespace, message id, error code - is claimed
+// here for the same reason.
 
 /** one public surface and the module this build resolved behind it */
 export interface SurfaceBinding {
@@ -231,7 +236,7 @@ const loader = (key: string, file: string, fromDir: string | undefined, indent =
  * browser runs, and they are erased by the bundler into chunk urls.
  */
 export async function buildPluginModuleSource(
-  options: { all?: boolean; ymlPath?: string; fromDir?: string } = {},
+  options: { ymlPath?: string; fromDir?: string } = {},
 ): Promise<string> {
   const imports: string[] = []
   const pageEntries: string[] = []
@@ -317,9 +322,7 @@ export async function buildPluginModuleSource(
  * answer down beside its output, under the same rule as a source map:
  * archived with the build, never installed into a release, never served.
  */
-export async function buildSurfaceMapSource(
-  options: { all?: boolean; ymlPath?: string } = {},
-): Promise<string> {
+export async function buildSurfaceMapSource(options: { ymlPath?: string } = {}): Promise<string> {
   const map: Record<string, { owner: string; module: string; export: string }> = {}
   for (const entry of await collectWebPlugins(options)) {
     for (const binding of entry.surfaces) {
@@ -344,7 +347,7 @@ export async function buildSurfaceMapSource(
  * scanner sees the whole component tree before anything runs.
  */
 export async function buildPluginScanSource(
-  options: { all?: boolean; ymlPath?: string; fromDir?: string } = {},
+  options: { ymlPath?: string; fromDir?: string } = {},
 ): Promise<string> {
   const modules = new Set<string>()
   for (const entry of await collectWebPlugins(options)) {

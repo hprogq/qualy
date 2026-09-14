@@ -21,6 +21,14 @@ export {
 // The plugin aggregate as `virtual:qualy/plugins`, materialised into a cache
 // file under apps/web rather than served from memory.
 //
+// ONE SELECTION, decided by the assembly: what qualy.yml and the resolution
+// say is active, for `vite dev`, `vite build` and the browser runner alike. A
+// build used to switch itself to the superset of everything INSTALLED, so a
+// disabled plugin's browser code shipped to every visitor and was merely not
+// executed - and a build tool's command was quietly deciding an assembly
+// question. Turning a plugin on is a deployment that rebuilds, which is the
+// honest price and the one a deployment already pays for everything else.
+//
 // The browser build must see a statically analysable import for every module
 // that may become a chunk, so the aggregation is build-time by nature - but
 // it is the FRONTEND's build-time: one logic serves `vite dev`, `vite build`
@@ -34,25 +42,12 @@ export {
 // the aggregate that declares every one of them.
 export const qualyPlugins = (): Plugin => {
   const virtualId = 'virtual:qualy/plugins'
-  // One file per SET, not one file per path. dev and the browser runner write
-  // the active set; a release build writes the superset - to the same names,
-  // once, so a `pnpm build` in a second terminal rewrote the file sitting in
-  // the running dev server's module graph and it started serving the superset
-  // after a full reload nobody asked for.
-  let all = false
-  const at = (name: string) =>
-    path.join(repoRoot, 'apps/web/.qualy', all ? `${name}.all.ts` : `${name}.ts`)
-  let cacheFile = at('plugins')
-  let scanFile = at('scan')
+  const at = (name: string) => path.join(repoRoot, 'apps/web/.qualy', `${name}.ts`)
+  const cacheFile = at('plugins')
+  const scanFile = at('scan')
   return {
     name: 'qualy-plugins',
-    async config(_config, environment) {
-      // dev follows the active set so disabled plugins tree-shake away; a
-      // release build carries the superset, so toggling a plugin on does not
-      // require rebuilding the assets
-      all = environment.command === 'build'
-      cacheFile = at('plugins')
-      scanFile = at('scan')
+    async config() {
       // The cache is written HERE, before the dependency scanner runs, and
       // only when its content changed: a mid-run rewrite bumps the mtime and
       // the optimizer answers with a reload that killed seven browser tests;
@@ -66,10 +61,10 @@ export const qualyPlugins = (): Plugin => {
         fs.writeFileSync(file, source)
       }
       const fromDir = path.dirname(cacheFile)
-      writeIfChanged(cacheFile, await buildPluginModuleSource({ all, fromDir }))
+      writeIfChanged(cacheFile, await buildPluginModuleSource({ fromDir }))
       // the scanner does not follow the aggregate's dynamic imports, so a
       // static-import twin walks the same tree for it (see collect.ts)
-      writeIfChanged(scanFile, await buildPluginScanSource({ all, fromDir }))
+      writeIfChanged(scanFile, await buildPluginScanSource({ fromDir }))
       return { optimizeDeps: { entries: [cacheFile, scanFile] } }
     },
     resolveId(id) {
@@ -83,7 +78,7 @@ export const qualyPlugins = (): Plugin => {
       this.emitFile({
         type: 'asset',
         fileName: BROWSER_SURFACE_MAP,
-        source: await buildSurfaceMapSource({ all }),
+        source: await buildSurfaceMapSource(),
       })
     },
   }

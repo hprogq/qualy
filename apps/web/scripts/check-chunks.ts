@@ -2,21 +2,28 @@ import fs from 'node:fs'
 import { collectWebPlugins } from '@qualy/web-build/collect'
 import { surfaceLabel } from '@qualy/ui-contract'
 
-// tree-shaking sentinel: every surface's renderer must be an independent
-// chunk in the web build; `--expect-absent <surface>` additionally asserts a
-// renderer was shaken away entirely. The surfaces come from the same
-// collection the virtual module is built from - a release build carries the
-// superset, so the sentinel reads it with `all` too.
+// Tree-shaking sentinel: every surface's renderer is an independent chunk in
+// the web build, and `--expect-absent <surface>` asserts that one is not
+// there at all.
+//
+// Both halves read the same two collections and never guess. The ACTIVE set
+// is what the build carries, so it is what the positive half expects; the
+// SUPERSET is only how a surface that is deliberately not built is looked up
+// - a disabled plugin has no binding in the active set, and the question
+// "which module would have implemented it" has no other answer. Deriving a
+// chunk name from a surface address was possible while an address WAS the
+// source file (`assessment/ReviewPage`); it would now look for a chunk called
+// `batches`.
+//
 // NOTE: relies on the bundler's default [name]-[hash] chunk naming;
 // configuring manualChunks/chunkFileNames would silently break this.
 
-// A chunk is named after the MODULE, and a surface is named after the
-// product, so the two are related only through the binding the collector
-// resolved. Reading the basename out of a surface address was possible while
-// an address was `<plugin>/<SourceFile>`, and would now look for a chunk
-// called `batches`.
-const bindings = (await collectWebPlugins({ all: true })).flatMap((entry) => entry.surfaces)
-const surfaces = bindings.map((binding) => surfaceLabel(binding.surface))
+const bindingsOf = async (all: boolean) =>
+  (await collectWebPlugins(all ? { all: true } : {})).flatMap((entry) => entry.surfaces)
+
+const built = await bindingsOf(false)
+const installed = await bindingsOf(true)
+const surfaces = new Set(built.map((binding) => surfaceLabel(binding.surface)))
 
 const distDir = new URL('../dist/assets', import.meta.url).pathname
 const files = fs.existsSync(distDir) ? fs.readdirSync(distDir) : []
@@ -36,11 +43,12 @@ const chunkName = (file: string) =>
     .replace(/\.[^.]+$/, '')
 const chunksNamed = (base: string) => files.filter((file) => file.startsWith(`${base}-`)).length
 
+/** how many distinct modules the BUILT set puts under one chunk basename */
 const modulesOf = (base: string) =>
-  new Set(bindings.filter((binding) => chunkName(binding.file) === base).map((b) => b.file)).size
+  new Set(built.filter((binding) => chunkName(binding.file) === base).map((b) => b.file)).size
 
 const expected = new Map<string, string[]>()
-for (const binding of bindings) {
+for (const binding of built) {
   const base = chunkName(binding.file)
   expected.set(base, [...(expected.get(base) ?? []), surfaceLabel(binding.surface)])
 }
@@ -55,17 +63,23 @@ for (const [base, named] of expected) {
   if (!enough) failed = true
 }
 if (expectAbsent) {
-  if (surfaces.includes(expectAbsent)) {
-    console.log(`${expectAbsent}: still registered, regenerate first`)
+  if (surfaces.has(expectAbsent)) {
+    console.log(`${expectAbsent}: still built, disable its plugin first`)
     failed = true
   }
-  // absent means no chunk of its own: what is left is exactly what the
-  // modules still bound to a surface under that basename account for
-  const gone = bindings.find((binding) => surfaceLabel(binding.surface) === expectAbsent)
-  const base = gone === undefined ? expectAbsent.split(':').pop()! : chunkName(gone.file)
-  const found = chunksNamed(base)
-  const others = modulesOf(base)
-  console.log(`${expectAbsent}: ${found > others ? 'UNEXPECTED CHUNK' : 'absent as expected'}`)
-  if (found > others) failed = true
+  // The module that WOULD have implemented it, read out of the installed
+  // set rather than guessed from the address. A surface nothing installed
+  // declares is a typo, and saying so beats reporting it absent.
+  const gone = installed.find((binding) => surfaceLabel(binding.surface) === expectAbsent)
+  if (gone === undefined) {
+    console.log(`${expectAbsent}: no installed plugin declares this surface`)
+    failed = true
+  } else {
+    const base = chunkName(gone.file)
+    const found = chunksNamed(base)
+    const others = modulesOf(base)
+    console.log(`${expectAbsent}: ${found > others ? 'UNEXPECTED CHUNK' : 'absent as expected'}`)
+    if (found > others) failed = true
+  }
 }
 process.exit(failed ? 1 : 0)
