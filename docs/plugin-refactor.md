@@ -25,6 +25,13 @@
 > 查不到则 409 `release`;判断经 `@qualy/api-kit/client-assembly` 单槽注册表倒置,host 不点名插件),
 > 409 body 去掉 `received`/`supported`,`check-chunks --expect-absent` 按 binding 判定。
 > §111 的旧 tab 矩阵进了 production smoke,对真实 store 跑。
+>
+> 进度:**D1.1(复审补丁)**——旧 tab 判定补上 `browserContractHash`(surface 身份指纹,安装时从私有
+> surface map 的键算),`resolutionHash` 一个人不够:surface 声明不在 lock 里。
+>
+> 进度:**Phase D2 已落地(2026-09-15)**——collector 不再把 apps/web 的依赖当作「这个插件能否构建」
+> 的依据,`apps/web/package.json` 的插件清单随之删除(生产依赖只剩 `@qualy/plugin-rum`,归 Phase E;
+> 五个测试用依赖归 Phase G),`plugin:add` 不再写这份清单。两者都由 `plugin-isolation` 具名钉住。
 
 ## 1. 背景与目标
 

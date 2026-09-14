@@ -27,6 +27,13 @@ import { manifestPath, repoRoot } from './manifest.ts'
 // would have shipped the wrong renderer before any server started - and the
 // browser tests never start one.
 //
+// Where a plugin's modules come from is the ASSEMBLY's answer, not a
+// dependency of the composition root. The collector resolves each package
+// through the host resolver, from the workspace the manifest names, and
+// writes relative imports into the aggregate - so apps/web never had to
+// name a plugin for one to be built, and the check that made it name them
+// only ever enforced a second list of the same facts.
+//
 // The registry follows the ACTIVE set, and the aggregate has no other mode:
 // a disabled plugin's modules never enter the graph, in development or in a
 // release, so nothing of it reaches a browser. `all` stays on the collector
@@ -93,16 +100,6 @@ const declaredSurfaces = (
 export async function collectWebPlugins(
   options: { all?: boolean; ymlPath?: string } = {},
 ): Promise<WebPluginEntry[]> {
-  const webDeps = new Set(
-    Object.keys(
-      (
-        JSON.parse(fs.readFileSync(path.join(repoRoot, 'apps/web/package.json'), 'utf8')) as {
-          dependencies?: Record<string, string>
-        }
-      ).dependencies ?? {},
-    ),
-  )
-
   const manifest = manifestPath(options.ymlPath)
   const resolution = await currentResolution(manifest)
   const found: WebPluginEntry[] = []
@@ -132,11 +129,6 @@ export async function collectWebPlugins(
       }
       claim(claimedSurfaces, surfaceLabel(surface), entry.name, 'surface')
       surfaces.push({ surface, module: ref.module, export: ref.export, file })
-    }
-    if (surfaces.length > 0 && !webDeps.has(entry.name)) {
-      throw new Error(
-        `${entry.name} contributes components but apps/web does not declare it; run pnpm plugin:add`,
-      )
     }
 
     // localization assets are optional per plugin: a plugin without user

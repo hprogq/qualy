@@ -72,26 +72,12 @@ const pluginManifest = (() => {
   return {}
 })()
 
-// Aggregators own their inputs: the browser collector hard-fails on a plugin
-// that contributes components without apps/web declaring it. A brand new
-// plugin declares no component yet, so the signal available here is whether it
-// ships browser code at all - and running this command again on an existing
-// plugin is what fixes up the dependency later, which is exactly what the
-// collector's own error tells the author to do.
-const pluginName: string = name
-function declareIn(manifestPath: string) {
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-  manifest.dependencies = Object.fromEntries(
-    Object.entries({ ...manifest.dependencies, [pluginName]: 'workspace:*' }).sort(([a], [b]) =>
-      a.localeCompare(b),
-    ),
-  )
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
-}
-const shipsBrowserCode = Object.keys(pluginManifest.exports ?? {}).some((entry) =>
-  entry.startsWith('./client'),
-)
-if (shipsBrowserCode) declareIn('apps/web/package.json')
+// The browser half needs no declaration anywhere. A plugin's modules are
+// found through the assembly - the manifest names a workspace, the resolver
+// finds the package, the collector writes relative imports - so the
+// composition root never has to name a plugin for one to be built. It used
+// to, and that list was a second copy of what the resolution already knew.
+void pluginManifest
 
 execSync('pnpm install', { stdio: 'inherit' })
 execSync(`pnpm exec tsx ${CLI} resolve`, { stdio: 'inherit' })

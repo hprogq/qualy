@@ -204,6 +204,64 @@ describe('the platform depends on no plugin implementation', () => {
   })
 })
 
+/**
+ * The composition root, and the plugins it is allowed to name.
+ *
+ * It named seventeen, because the collector refused to build a plugin's
+ * browser half unless apps/web declared it - a second list of what the
+ * resolution already knew, kept in step by hand and by an error message.
+ * Nothing needed it: the aggregate imports each module by a path the
+ * assembly resolver produced, so the shell was never the one resolving them.
+ *
+ * What is left is named one package at a time, with the phase that removes
+ * it, for the same reason the platform's list is: a rule that exempts a
+ * category cannot shrink.
+ */
+const WEB_APP = 'apps/web/package.json'
+
+/** imported by production source; Phase E gives browser plugins a lifecycle to start in */
+const WEB_APP_RUNTIME = ['@qualy/plugin-rum']
+
+/** imported by browser tests that still live here; Phase G moves them to their owners */
+const WEB_APP_TESTS = [
+  '@qualy/plugin-assessment',
+  '@qualy/plugin-assessment-formula',
+  '@qualy/plugin-auth',
+  '@qualy/plugin-rbac',
+  '@qualy/plugin-rum-tencent',
+]
+
+describe('the composition root names no plugin it does not import', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, WEB_APP), 'utf8')) as {
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+  const pluginsIn = (deps: Record<string, string> | undefined) =>
+    Object.keys(deps ?? {})
+      .filter((name) => name.startsWith('@qualy/plugin-'))
+      .sort()
+
+  it('ships with only the plugin its own source still starts', () => {
+    expect(pluginsIn(manifest.dependencies)).toEqual(WEB_APP_RUNTIME)
+  })
+
+  it('declares for its tests only what those tests import', () => {
+    expect(pluginsIn(manifest.devDependencies)).toEqual([...WEB_APP_TESTS].sort())
+  })
+
+  it('is not what the collector asks whether a plugin may be built', () => {
+    // The check that made the list necessary. A plugin's browser half is
+    // found through the assembly - manifest, resolver, package - and asking
+    // the shell's dependencies instead made a third-party plugin impossible
+    // to build without editing the host.
+    const collector = fs
+      .readFileSync(path.join(repoRoot, 'packages/build/web/src/collect.ts'), 'utf8')
+      // comments may still explain why it does not; code may not do it
+      .replaceAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '')
+    expect(collector).not.toContain('apps/web')
+  })
+})
+
 // concurrent: each case compiles one plugin in its own subprocess, and they
 // share nothing but the disk. Run in sequence this file was the whole suite's
 // critical path, since vitest parallelises files and not the cases inside one.

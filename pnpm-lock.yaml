@@ -427,48 +427,9 @@ importers:
       '@qualy/browser-observability':
         specifier: workspace:*
         version: link:../../packages/web/observability
-      '@qualy/plugin-assessment':
-        specifier: workspace:*
-        version: link:../../packages/plugins/assessment/core
-      '@qualy/plugin-assessment-formula':
-        specifier: workspace:*
-        version: link:../../packages/plugins/assessment/formula
-      '@qualy/plugin-audit':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/audit
-      '@qualy/plugin-auth':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/auth
-      '@qualy/plugin-auth-local':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/auth-local
-      '@qualy/plugin-layout-default':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/layout-default
-      '@qualy/plugin-org':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/org
-      '@qualy/plugin-ping':
-        specifier: workspace:*
-        version: link:../../packages/plugins/demo/ping
-      '@qualy/plugin-rbac':
-        specifier: workspace:*
-        version: link:../../packages/plugins/base/rbac
       '@qualy/plugin-rum':
         specifier: workspace:*
         version: link:../../packages/plugins/infra/rum
-      '@qualy/plugin-rum-tencent':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/rum-tencent
-      '@qualy/plugin-storage':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/storage
-      '@qualy/plugin-storage-cos':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/storage-cos
-      '@qualy/plugin-storage-local':
-        specifier: workspace:*
-        version: link:../../packages/plugins/infra/storage-local
       '@qualy/release-contract':
         specifier: workspace:*
         version: link:../../packages/contracts/release
@@ -503,6 +464,21 @@ importers:
       '@qualy/i18n-contract':
         specifier: workspace:*
         version: link:../../packages/contracts/i18n
+      '@qualy/plugin-assessment':
+        specifier: workspace:*
+        version: link:../../packages/plugins/assessment/core
+      '@qualy/plugin-assessment-formula':
+        specifier: workspace:*
+        version: link:../../packages/plugins/assessment/formula
+      '@qualy/plugin-auth':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/auth
+      '@qualy/plugin-rbac':
+        specifier: workspace:*
+        version: link:../../packages/plugins/base/rbac
+      '@qualy/plugin-rum-tencent':
+        specifier: workspace:*
+        version: link:../../packages/plugins/infra/rum-tencent
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:../../packages/build/tsconfig

@@ -14553,3 +14553,34 @@ schema 里该字段 optional:改动之前装好的 store 仍能读出来,而「�
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;release-store 31 例、plugin-web 39 例全过;
 `pnpm build` ×2 exit 0;`check-staged-web` exit 0;`smoke-production` 四条旧 tab 用例全部命中并通过。
+
+## 插件重构 Phase D2:组合根不再点名插件(2026-09-15)
+
+`apps/web/package.json` 曾经列着 **17 个** `@qualy/plugin-*`,原因只有一个:collector 会拒绝构建
+「贡献了组件但 apps/web 没声明」的插件。**那份清单从来没有被需要过**——聚合里每个 import 都是
+collector 经 assembly resolver 拿到包目录后写出的**相对路径**,组合根根本不参与解析。
+它只是 resolution 已知事实的第二份手抄,靠一句错误提示维持同步,而且让第三方插件「必须改宿主源码
+才能构建」。
+
+**改动**:collector 删掉 `webDeps` 检查与对 `apps/web/package.json` 的读取;`pnpm plugin:add`
+不再往里写;清单随之删除。
+
+**剩下的两笔,具名钉住**(与平台那张表同一形状,只会变短):
+
+- `dependencies` 只剩 `@qualy/plugin-rum`——`main.tsx` 还要调 `startBrowserRum`,**归 Phase E**
+  (浏览器插件还没有可运行的生命周期)。
+- `devDependencies` 五个,是仍住在 `apps/web/tests` 里的浏览器测试 import 的,**归 Phase G**。
+  没有藏进 root package.json / vite config / 脚本常量,也没有新开一份清单;
+  `workspace-deps` 门禁本来就要求「import 了就得声明」,所以它们必须留在某处,直到测试搬家。
+
+**新增门禁**(`tools/tests/plugin-isolation.test.ts`,三例):生产依赖必须**恰好等于**
+`['@qualy/plugin-rum']`;开发依赖必须**恰好等于**那五个;**collector 源码里不得出现 `apps/web`**
+(注释除外——门禁先剥注释再判,所以「解释为什么不这么做」允许,「这么做」不允许)。
+往 collector 里加一行读 apps/web 的代码,门禁当场红(已实测)。
+
+**实测**:删干净后 `pnpm build` 照常产出 111 个 JS asset、chunk 哨兵全过、staged 121 assets——
+证明相对路径 import 从来不需要那份声明。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 231 passed | 3 skipped,
+Tests 1665 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0;
+`check-chunks` exit 0;`check-staged-web` exit 0。

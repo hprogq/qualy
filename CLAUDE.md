@@ -61,7 +61,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 
 ## 角色与隔离
 
-- 宿主 = apps/server(后端)与 apps/web(前端),是部署单元;基础设施插件 = plugins/infra/\*;业务插件 = 其余 @qualy/plugin-\*;共享库 = packages/web/\*、packages/core/\*(零后端插件依赖)。纪律一:**根脚本与根配置禁止枚举可选业务插件**(chunk 哨兵与浏览器聚合都从 resolution 现算键集、typecheck 以 glob 发现 client tsconfig);引用稳定组合根(apps/web、apps/server)不受此限。纪律二:**宿主与聚合方拥有插件依赖**——清单插件按 `application.workspace`(apps/server)的依赖解析;贡献组件的插件必须出现在 apps/web 依赖里(收集器对未声明输入硬失败)。
+- 宿主 = apps/server(后端)与 apps/web(前端),是部署单元;基础设施插件 = plugins/infra/\*;业务插件 = 其余 @qualy/plugin-\*;共享库 = packages/web/\*、packages/core/\*(零后端插件依赖)。纪律一:**根脚本与根配置禁止枚举可选业务插件**(chunk 哨兵与浏览器聚合都从 resolution 现算键集、typecheck 以 glob 发现 client tsconfig);引用稳定组合根(apps/web、apps/server)不受此限。纪律二:**插件依赖归宿主**——清单插件按 `application.workspace`(apps/server)的依赖解析。**apps/web 不声明任何插件**:浏览器聚合由 collector 经 assembly resolver 找到包、写相对 import,组合根从不需要点名一个插件;曾经的「贡献组件必须出现在 apps/web 依赖里」是 resolution 已知事实的第二份手抄清单,已删除(`plugin-isolation` 门禁守住不回潮)。
 - 新增插件一律 `pnpm plugin:add <名>`:自动写 apps/server 依赖 + qualy.yml 条目 + `qualy resolve`,按 exports 声明补 apps/web 依赖。新包 package.json 一律带 `"license": "AGPL-3.0-only"`。
 - **Web 产物 = active assembly 的浏览器投影**(不是 installed 超集):`qualyPlugins()` 一律读 active,
   `vite build` 不再切超集;插件启停 → resolution 变 → **部署必须重建 Web release**。旧 tab 由服务端
