@@ -248,6 +248,29 @@ const Aegis = loaded.default as unknown as (typeof import('aegis-web-sdk'))['def
 `import('aegis-web-sdk')` 打出来是独立 chunk(生产构建实测 128 KB / gzip 41 KB),
 入口只在动态 `import()` 里出现它的文件名,与旁边的 `cos-js-sdk-v5` 同型。
 
+## 平台可以在运行时把采样率改成 0(Phase 1 真机实测)
+
+第一次真的把上报打向 `rumt-zh.com` 时,一条日志都没出去,而客户端一切正常(0 条 CSP violation,
+页面无任何异常)。链条从产物里读出来,是闭合的:
+
+```text
+GET /collect/whitelist
+  → {"retcode":0,"result":{"is_in_white_list":false,"rate":0,"shutdown":true}}
+        ↓  retcode===0 时:config.random = result.rate
+sendPipeline 第一节:Math.random() < config.random
+        ↓  random 为 0 时恒为 false
+isHidden = true,整页此后不再发送任何东西
+```
+
+所以 **`random` / `sampleRate` 是一个上限,不是保证**:whitelist 接口返回的 `rate` 会直接覆盖
+我们配置的值,平台可以随时把它压到 0。运维上要知道「配置了全量」不等于「全量到达」。
+
+另外实测:`/collect/whitelist` 对**任何 id 都返回同一段内容**(试过两个不可能存在的 id,答复逐字相同),
+所以这段答复本身**不能用来判断 id 是否已注册**。当时那个项目侧处于不收数据的状态,
+`/speed/performance` 同时返回 `403 forbidden`。
+
+这也顺带验证了一条设计要求:上报端完全不工作时,应用毫发无损。
+
 ## Phase 1 据此应写的配置
 
 在 docs/rum.md §39 基础上的修订:
