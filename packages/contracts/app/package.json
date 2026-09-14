@@ -1,0 +1,19 @@
+{
+  "name": "@qualy/app-contract",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
+  },
+  "dependencies": {
+    "@qualy/auth-contract": "workspace:*",
+    "@qualy/i18n-contract": "workspace:*"
+  }
+}

@@ -7,15 +7,16 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./server": "./src/server/index.ts",
-    "./api": "./src/api.ts",
-    "./server/authorizer": "./src/server/authorizer.ts",
-    "./server/registry": "./src/server/registry.ts",
     "./package.json": "./package.json",
-    "./plugin": "./src/plugin.ts"
+    "./plugin": "./src/plugin.ts",
+    "./server": "./src/server/index.ts",
+    "./server/authorizer": "./src/server/authorizer.ts",
+    "./server/registry": "./src/server/registry.ts"
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
+    "@qualy/app-contract": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",

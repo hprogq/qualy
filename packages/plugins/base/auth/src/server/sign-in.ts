@@ -18,7 +18,7 @@ import { createSessionToken, hashSessionToken } from '../session.ts'
 import { AuthConfig } from './auth-config.ts'
 
 export { AuthConfig }
-import { sessionCookieName } from './session-contract.ts'
+import { sessionCookieName } from '@qualy/auth-contract/session'
 import { clearSessionCookie, setSessionCookie } from './session-cookie.ts'
 
 // Signing in, and signing out.

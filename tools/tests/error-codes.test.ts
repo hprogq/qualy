@@ -7,7 +7,7 @@ import { walkFiles } from '../lib/walk.ts'
 // case walks, and a subpath export would let one drift from the other
 import { commonErrorMessages } from '../../packages/web/i18n/src/format.ts'
 import * as apiKit from '../../packages/core/api-kit/src/schema.ts'
-import * as session from '../../packages/plugins/base/auth/src/server/session-contract.ts'
+import * as session from '../../packages/contracts/auth/src/session.ts'
 import * as shared from '../../packages/contracts/rbac/src/effect.ts'
 import * as auth from '../../packages/plugins/base/auth/src/server/errors.ts'
 import * as org from '../../packages/plugins/base/org/src/server/errors.ts'
@@ -45,7 +45,7 @@ const SOURCES = [
   {
     module: session,
     owner: 'common',
-    file: 'packages/plugins/base/auth/src/server/session-contract.ts',
+    file: 'packages/contracts/auth/src/session.ts',
   },
   {
     module: shared,

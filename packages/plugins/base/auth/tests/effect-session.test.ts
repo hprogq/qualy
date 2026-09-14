@@ -19,12 +19,8 @@ import {
 } from '@qualy/plugin-database/testkit'
 import { QUALY_API_ID } from '@qualy/api-kit'
 import { hashSessionToken } from '../src/session.ts'
-import {
-  Authenticated,
-  CurrentUser,
-  sessionCookieName,
-  layer as sessionLayer,
-} from '../src/server/session.ts'
+import { Authenticated, CurrentUser, sessionCookieName } from '@qualy/auth-contract/session'
+import { layer as sessionLayer } from '../src/server/session.ts'
 import { AuthConfig } from '../src/server/auth-config.ts'
 import { authClosure } from './support/closure.ts'
 

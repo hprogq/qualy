@@ -1,12 +1,18 @@
 import { Schema } from 'effect'
 import { UiTextSchema } from '@qualy/i18n-contract'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
-import { Viewer } from '@qualy/plugin-auth/server/session-contract'
+import { Viewer } from '@qualy/auth-contract/session'
 
 // The authorized projection of the application shell for one viewer.
 //
 // /app rather than /ui-registry or /ui: the registry is how it is built, but
 // what a browser asks for here is the application it may see.
+//
+// A CONTRACT rather than the plugin that serves it. The shell's runtime reads
+// this endpoint on every page - it is how a browser learns what it may open -
+// and reaching it through the plugin that happens to implement it made the
+// platform depend on an optional plugin. The plugin implements this; the
+// runtime consumes it; neither imports the other.
 //
 // Every identity here is a product one - a page id, a layout contract, a slot
 // and the item under it - and the browser resolves its renderer from that.

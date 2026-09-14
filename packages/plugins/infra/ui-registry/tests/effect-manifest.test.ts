@@ -21,12 +21,12 @@ import {
 import { message } from '@qualy/i18n-contract'
 import type { Principal } from '@qualy/rbac-contract'
 import { Api } from '@qualy/api-kit/plugin'
-import { CurrentViewer, Viewer } from '@qualy/plugin-auth/server/session-contract'
+import { CurrentViewer, Viewer } from '@qualy/auth-contract/session'
 import { appApiHandlers } from '../src/server/index.ts'
 import { UiAuthorizer } from '../src/server/authorizer.ts'
 import { UiManifest, layer as manifestLayer } from '../src/server/manifest.ts'
 import { registerSurfaces, uiLayer } from '../src/server/registry.ts'
-import { appApiGroup } from '../src/api.ts'
+import { appApiGroup } from '@qualy/app-contract'
 
 // The manifest is an authorized projection, and this is where that is stated.
 //

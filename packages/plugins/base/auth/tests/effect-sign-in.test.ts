@@ -25,7 +25,8 @@ import { authLocalApiGroup } from '@qualy/plugin-auth-local/api'
 import { sessionApiGroup } from '../src/api.ts'
 import { sessionApiHandlers } from '../src/server/index.ts'
 import { AuthConfig, layer as signInLayer } from '../src/server/sign-in.ts'
-import { layer as sessionLayer, sessionCookieName } from '../src/server/session.ts'
+import { sessionCookieName } from '@qualy/auth-contract/session'
+import { layer as sessionLayer } from '../src/server/session.ts'
 import { authClosure } from './support/closure.ts'
 
 // The whole sign-in cycle, over a real server: no method, a password, the

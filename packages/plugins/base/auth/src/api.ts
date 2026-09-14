@@ -14,7 +14,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 
-import { Authenticated, AuthRequired } from './server/session-contract.ts'
+import { Authenticated, AuthRequired } from '@qualy/auth-contract/session'
 import {
   GrantIncompatible,
   PlacementNotAllowed,

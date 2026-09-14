@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
-import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
+import { Authenticated } from '@qualy/auth-contract/session'
 import {
   BadRequest,
   boundedText,

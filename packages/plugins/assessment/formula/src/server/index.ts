@@ -9,7 +9,7 @@ import { DEFAULT_PAGE_SIZE, encodeQueryCursor, readQueryCursor } from '@qualy/ap
 import { BadRequest, cursorUnusable, pageSize } from '@qualy/api-kit/schema'
 import { originMatchesHost } from '@qualy/api-kit/origin'
 import { currentRequestContext } from '@qualy/api-kit/request'
-import { CurrentUser } from '@qualy/plugin-auth/server/session'
+import { CurrentUser } from '@qualy/auth-contract/session'
 import { transaction, withDatabase, type Orm } from '@qualy/plugin-database/server'
 import { AccessDenied, Rbac } from '@qualy/rbac-contract/effect'
 import type { Principal } from '@qualy/rbac-contract'

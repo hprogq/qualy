@@ -1,8 +1,8 @@
 import { Effect, Layer } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Api } from '@qualy/api-kit/plugin'
-import { CurrentViewer } from '@qualy/plugin-auth/server/session-contract'
-import { appApiGroup } from '../api.ts'
+import { CurrentViewer } from '@qualy/auth-contract/session'
+import { appApiGroup } from '@qualy/app-contract'
 import { UiManifest, layer as manifestLayer } from './manifest.ts'
 import { Ui, uiLayer } from './registry.ts'
 

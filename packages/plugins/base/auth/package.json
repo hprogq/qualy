@@ -30,7 +30,6 @@
     "./permissions": "./src/permissions.ts",
     "./server": "./src/server/index.ts",
     "./server/session": "./src/server/session.ts",
-    "./server/session-contract": "./src/server/session-contract.ts",
     "./server/sign-in": "./src/server/sign-in.ts"
   },
   "peerDependencies": {

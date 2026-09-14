@@ -20,8 +20,8 @@
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
+    "@qualy/app-contract": "workspace:*",
     "@qualy/browser-observability": "workspace:*",
-    "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/release-contract": "workspace:*",
     "@qualy/ui": "workspace:*",
     "@qualy/ui-contract": "workspace:*",

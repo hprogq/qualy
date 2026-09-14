@@ -40,7 +40,7 @@ import {
   uuidInput,
 } from '@qualy/api-kit/schema'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
-import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
+import { Authenticated } from '@qualy/auth-contract/session'
 
 // The access api, as definitions only. Paths are frozen.
 //

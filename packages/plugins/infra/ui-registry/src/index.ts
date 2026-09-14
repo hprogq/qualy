@@ -1,7 +1,7 @@
 import { Plugin } from '@qualy/plugin-kit'
 import { Api } from '@qualy/api-kit/plugin'
 import { Ui } from './plugin.ts'
-import { appApiGroup } from './api.ts'
+import { appApiGroup } from '@qualy/app-contract'
 import { appApiHandlers, layer as serviceLayer } from './server/index.ts'
 
 // The registry-and-manifest plugin, as a description: it owns the surface

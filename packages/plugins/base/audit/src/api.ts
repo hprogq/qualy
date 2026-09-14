@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { BadRequest, pageOf, pageQuery, uiText, uuidInput } from '@qualy/api-kit/schema'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
-import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
+import { Authenticated } from '@qualy/auth-contract/session'
 
 // The audit api, as definitions only. Paths are frozen.
 //

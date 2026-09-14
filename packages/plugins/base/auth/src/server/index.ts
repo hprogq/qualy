@@ -14,10 +14,10 @@ import { makeProviders } from './providers.ts'
 import { identityApiGroup, sessionApiGroup } from '../api.ts'
 import { LoginDrivers, LoginSessions } from '@qualy/auth-contract/login'
 import { AuthConfig, SignIn, layer as signInLayer } from './sign-in.ts'
-import { AuthRequired, CurrentUser } from './session.ts'
+import { AuthRequired, Authenticated, CurrentUser, Viewer } from '@qualy/auth-contract/session'
 import { make as makeUserTypes, type UserTypeRow } from './user-types.ts'
 import { make as makeUsers, type UserProjection } from './users.ts'
-import { Authenticated, Viewer, layer as sessionLayer, viewerLayer } from './session.ts'
+import { layer as sessionLayer, viewerLayer } from './session.ts'
 
 // auth as an Effect layer.
 //

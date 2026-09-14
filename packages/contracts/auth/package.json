@@ -8,13 +8,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./login": "./src/login.ts",
-    "./plugin": "./src/plugin.ts"
+    "./plugin": "./src/plugin.ts",
+    "./session": "./src/session.ts"
   },
   "peerDependencies": {
     "effect": "catalog:"
   },
   "dependencies": {
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/rbac-contract": "workspace:*",
     "@qualy/ui-contract": "workspace:*"
   }
 }

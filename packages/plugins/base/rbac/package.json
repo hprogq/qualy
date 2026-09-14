@@ -26,6 +26,7 @@
     "@qualy/api-kit": "workspace:*",
     "@qualy/assembly-contract": "workspace:*",
     "@qualy/audit-contract": "workspace:*",
+    "@qualy/auth-contract": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",

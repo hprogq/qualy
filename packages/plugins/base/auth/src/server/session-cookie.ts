@@ -1,6 +1,6 @@
 import { Duration, Effect } from 'effect'
 import { HttpEffect, HttpServerResponse, type HttpServerRequest } from 'effect/unstable/http'
-import { sessionCookieName } from './session-contract.ts'
+import { sessionCookieName } from '@qualy/auth-contract/session'
 
 // The session cookie's name and attributes, decided in one place on the
 // server side.

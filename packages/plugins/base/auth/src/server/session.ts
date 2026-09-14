@@ -13,19 +13,14 @@ import {
   SessionExpired,
   Viewer,
   sessionCookieName,
-} from './session-contract.ts'
+} from '@qualy/auth-contract/session'
 import { clearSessionCookie } from './session-cookie.ts'
 
-// re-exported so existing importers keep one name for the middleware
-export {
-  AuthRequired,
-  Authenticated,
-  CurrentUser,
-  CurrentViewer,
-  SessionExpired,
-  Viewer,
-  sessionCookieName,
-}
+// Deliberately NOT re-exported any more. The middleware, its errors and the
+// principal are the contract, and they live in `@qualy/auth-contract/session`
+// where anyone may depend on them; reaching them through this module made
+// every plugin that needs to know who is asking an importer of this plugin's
+// server implementation.
 export { clearSessionCookie, sessionCookieNameFor } from './session-cookie.ts'
 import { hashSessionToken } from '../session.ts'
 

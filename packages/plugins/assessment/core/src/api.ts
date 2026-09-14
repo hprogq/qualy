@@ -12,7 +12,7 @@ import {
   trimmedName,
   uuidInput,
 } from '@qualy/api-kit/schema'
-import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
+import { Authenticated } from '@qualy/auth-contract/session'
 
 /**
  * One wake-up on a batch's live stream.

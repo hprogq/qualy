@@ -44,7 +44,7 @@ import {
   type QueryUtils,
 } from './api-query.ts'
 import { Api } from '@qualy/api-kit/local'
-import { appApiGroup } from '@qualy/plugin-ui-registry/api'
+import { appApiGroup } from '@qualy/app-contract'
 import type { HttpApi } from 'effect/unstable/httpapi'
 import type { NamespacedId } from '@qualy/ui-contract'
 import {

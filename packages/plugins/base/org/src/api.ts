@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import { boundedInt, changed, trimmedName, uuidInput } from '@qualy/api-kit/schema'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
-import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
+import { Authenticated } from '@qualy/auth-contract/session'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import {
   InvalidMove,

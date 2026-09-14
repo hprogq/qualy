@@ -14705,3 +14705,46 @@ setup 抛错的插件不被 start 且不影响别人、disposer 抛错不拖累�
 Tests 1679 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0 →
 `staged web release r_TGtgSnakIeX-lbn24iwE6A (123 assets)`——比 D4 多两个 chunk,正是 api client
 从冷启路径移到自己的 chunk;`check-chunks`、`check-staged-web`、`smoke-production` 全过。
+
+## 插件重构 Phase F:契约与实现分家(2026-09-15)
+
+两条边留到这里,现在清空。
+
+**`@qualy/auth-contract/session`**:`session-contract.ts` 整个移出 `plugin-auth`——
+`Viewer` / `Authenticated` / `CurrentUser` / `CurrentViewer` / `AuthRequired` / `SessionExpired` /
+cookie 名。它本来就只依赖 Context、Schema、HttpApiMiddleware 与 rbac-contract,是一份纯契约,
+只是住在实现包里。8 个插件的 `api.ts` 与 7 处 `server/index.ts` 改指契约包。
+
+**顺带堵掉一条便利通道**:`plugin-auth/src/server/session.ts` 原本把契约名再导出一遍
+(「让 importer 只用一个名字」),于是每个只想知道「谁在请求」的插件都成了 auth **服务端实现**的
+importer。转出删除,注释写明原因。
+
+**`@qualy/app-contract`**:`plugin-ui-registry/src/api.ts` 整个移出去成为新包——manifest 的 wire
+形状与 `appApiGroup`。shell 的 runtime 每页都要读这个端点,经实现插件去拿它,就是平台依赖可选插件。
+现在:插件 implements,runtime consumes,**两边互不 import**。
+
+**`plugin-isolation` 的两条具名例外清空**,不是放宽:
+
+```text
+packages/web/runtime/src/index.tsx -> @qualy/plugin-ui-registry/api   ← 删除
+packages/web/runtime/package.json  -> @qualy/plugin-ui-registry       ← 删除
+```
+
+清单本身保留(空的),因为**正是它的形状让上一条边缩掉的**:一条边是「文件 + specifier」,
+只能靠删掉那一行 import 来消除,新增一条就得把它连同「哪个阶段拿掉它」一起写下来。
+
+**新增门禁:一个插件只能经 owner 发布的表面触到另一个插件**。逐文件扫 `packages/plugins/*/*/src`,
+`@qualy/plugin-kit` 与 `/plugin` facade(§79 过渡期允许)不算,其余必须在**具名表面清单**里:
+基础设施能力的 service 表面(database/storage/rum/sandbox/ui-registry authorizer)、
+契约叶子(`/api`、`/db` 表闭包、`/surfaces`)。**两条仍是实现的边被具名标出**
+(`assessment/server/errors`、`ui-registry/server/registry`,都在同一产品域内、契约包还不存在),
+并有第二条用例钉住「清单里带 `/server/` 的恰好是这四条」,防止它悄悄变长。
+`/db` 表闭包是**故意允许**的:那是 schema 依赖图,与运行时依赖是两张图(§28),
+本轮不动 DB 实体关系。
+
+**门禁验证过会红**:让 org 去 import `@qualy/plugin-auth/session` → 门禁点名该文件
+(同时 `org` 的独立 typecheck 也红,两条防线各自生效)。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 234 passed | 3 skipped,
+Tests 1681 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0;
+`check-staged-web` exit 0。

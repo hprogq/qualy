@@ -1,0 +1,4 @@
+{
+  "extends": "@qualy/tsconfig/base.json",
+  "include": ["src", "tests"]
+}

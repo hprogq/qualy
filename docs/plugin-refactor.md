@@ -50,6 +50,12 @@
 > rum-tencent、storage-local、storage-cos 迁为 `setup` + disposer,RUM 能力自己用 `start` 起
 > (`./start.ts` 改**动态** import——静态会把 128 KB api client 拉回冷启,browser-graph 门禁当场抓到);
 > `apps/web` 最后一条插件实现 import 删除。
+>
+> 进度:**Phase F 已落地(2026-09-15)**——`@qualy/auth-contract/session`(Viewer/Authenticated/
+> CurrentUser/CurrentViewer/公共 auth 错误/cookie 名)与新包 `@qualy/app-contract`(manifest wire +
+> `appApiGroup`)建立;`plugin-auth/server/session.ts` 不再转出契约名;`web-runtime` 与
+> `plugin-ui-registry` 互不 import。`plugin-isolation` 的两条具名例外**清空**,并新增
+> 「一个插件只能经 owner 发布的表面触到另一个插件」门禁(24 条具名表面,其中 2 条标为仍是实现)。
 
 ## 1. 背景与目标
 

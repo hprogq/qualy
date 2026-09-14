@@ -94,31 +94,20 @@ const PLUGIN_KIT = /^@qualy\/plugin-kit(\/|$)/
 const CAPABILITY_FACADE = /^@qualy\/plugin-[a-z-]+\/plugin$/
 
 /**
- * What still crosses, named one edge at a time.
+ * What still crosses: nothing.
  *
- * A package-level exemption would have been a hole rather than a record: it
- * would let any platform file import any subpath of that plugin, and the
- * list would still read as one exception. An edge is a file and a specifier,
- * so removing it in Phase F is removing exactly these, and a new edge to the
- * same plugin is a failure like any other.
+ * The list is kept rather than deleted, because its shape is what made the
+ * last one shrink - an edge is a file and a specifier, so it can only go by
+ * removing exactly that import, and adding one means writing it down beside
+ * the work that takes it away. There is none to write.
  */
-const REMAINING_IMPORTS = [
-  {
-    importer: 'packages/web/runtime/src/index.tsx',
-    specifier: '@qualy/plugin-ui-registry/api',
-    // the shell manifest's own contract, which the runtime consumes and this
-    // plugin happens to hold; Phase F moves it to @qualy/app-contract
-    why: 'the app manifest contract has not moved out of the plugin yet',
-  },
-] as const
+const REMAINING_IMPORTS: readonly { importer: string; specifier: string; why: string }[] = []
 
-const REMAINING_DEPENDENCIES = [
-  {
-    manifest: 'packages/web/runtime/package.json',
-    dependency: '@qualy/plugin-ui-registry',
-    why: 'the same edge, declared',
-  },
-] as const
+const REMAINING_DEPENDENCIES: readonly {
+  manifest: string
+  dependency: string
+  why: string
+}[] = []
 
 const allowedImport = (importer: string, specifier: string) =>
   REMAINING_IMPORTS.some((edge) => edge.importer === importer && edge.specifier === specifier)
@@ -191,16 +180,10 @@ describe('the platform depends on no plugin implementation', () => {
     expect(offenders).toEqual([])
   })
 
-  it('names every edge that is left, so the list shrinks on purpose', () => {
-    // two entries today, one edge stated twice: the import and the manifest
-    // line that declares it. Phase F deletes both, and the two cases above
-    // become the plain statement they read as.
-    expect(REMAINING_IMPORTS.map((edge) => `${edge.importer} -> ${edge.specifier}`)).toEqual([
-      'packages/web/runtime/src/index.tsx -> @qualy/plugin-ui-registry/api',
-    ])
-    expect(REMAINING_DEPENDENCIES.map((edge) => `${edge.manifest} -> ${edge.dependency}`)).toEqual([
-      'packages/web/runtime/package.json -> @qualy/plugin-ui-registry',
-    ])
+  it('has nothing left to name', () => {
+    // the two cases above are now the plain statement they always read as
+    expect(REMAINING_IMPORTS).toEqual([])
+    expect(REMAINING_DEPENDENCIES).toEqual([])
   })
 })
 
@@ -266,6 +249,90 @@ describe('the composition root names no plugin it does not import', () => {
       // comments may still explain why it does not; code may not do it
       .replaceAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '')
     expect(collector).not.toContain('apps/web')
+  })
+})
+
+/**
+ * What one plugin may reach for in another.
+ *
+ * A capability is consumed through a surface its owner publishes: the
+ * declaration facade (`/plugin`), the contract leaves a plugin exports for
+ * its neighbours - an api group, a table closure, a permission catalog - and
+ * the service surface of an infrastructure capability. What is refused is
+ * everything else: an implementation module of somebody else's plugin, which
+ * is a coupling neither package declared and neither can change.
+ *
+ * Named rather than pattern-matched, for the reason the platform's list is:
+ * a rule that exempts `/server` exempts every server module anybody writes,
+ * and nobody would notice the next one. `/plugin` is the one pattern, because
+ * §79 of the refactor keeps it allowed for every capability until those
+ * facades move to their contract packages.
+ */
+const CAPABILITY_FACADE_ANY = /^@qualy\/plugin-[a-z-]+\/plugin$/
+
+/** the workspace package a specifier names: `@qualy/plugin-x/api` -> `@qualy/plugin-x` */
+const packageOf = (specifier: string) => specifier.split('/').slice(0, 2).join('/')
+
+const CROSS_PLUGIN_SURFACES: Readonly<Record<string, string>> = {
+  // infrastructure capabilities, consumed through the service surface their
+  // owner publishes for exactly that
+  '@qualy/plugin-database/server': 'the database capability, as every table owner uses it',
+  '@qualy/plugin-database/server/constraints': 'naming a constraint the owner declared',
+  '@qualy/plugin-storage/server': 'the storage capability',
+  '@qualy/plugin-storage/client': 'the upload registry a provider registers into',
+  '@qualy/plugin-storage/backend': 'what a storage provider implements',
+  '@qualy/plugin-storage/errors': 'the failures that capability defines',
+  '@qualy/plugin-storage/upload': 'the ticket a screen spends',
+  '@qualy/plugin-rum/server': 'the reporting capability',
+  '@qualy/plugin-rum/client': 'the provider registry a reporting provider registers into',
+  '@qualy/plugin-sandbox/service': 'the sandbox capability',
+  '@qualy/plugin-ui-registry/server/authorizer':
+    'the single authorizer slot rbac fills; the shell fails closed without it',
+
+  // contract leaves: what a plugin publishes FOR its neighbours
+  '@qualy/plugin-auth/api': 'a neighbour api group, which is a contract leaf',
+  '@qualy/plugin-rbac/api': 'a neighbour api group',
+  '@qualy/plugin-auth/db': 'a table closure, which is the schema graph and not the runtime one',
+  '@qualy/plugin-org/db': 'a table closure',
+  '@qualy/plugin-rbac/db': 'a table closure',
+  '@qualy/plugin-assessment/surfaces': 'the slot tokens assessment publishes',
+
+  // still implementation, and named so it can be taken away rather than
+  // forgotten: both are inside one product area whose contract package does
+  // not exist yet
+  '@qualy/plugin-assessment/server/errors': 'formula raises assessment’s own failures',
+  '@qualy/plugin-ui-registry/server/registry': 'formula reads the surface registry directly',
+}
+
+describe('one plugin reaching into another', () => {
+  it('only through a surface its owner publishes', () => {
+    const offenders: string[] = []
+    for (const dir of pluginDirs) {
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(repoRoot, dir, 'package.json'), 'utf8'),
+      ) as { name?: string }
+      for (const file of walkSources(path.join(repoRoot, dir, 'src'))) {
+        for (const specifier of importsOf(fs.readFileSync(file, 'utf8'))) {
+          if (!specifier.startsWith('@qualy/plugin-')) continue
+          if (PLUGIN_KIT.test(specifier) || CAPABILITY_FACADE_ANY.test(specifier)) continue
+          if (packageOf(specifier) === manifest.name) continue
+          if (specifier in CROSS_PLUGIN_SURFACES) continue
+          offenders.push(`${relative(file)} imports ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('names the surfaces it allows, so the list cannot grow by accident', () => {
+    // two of these are implementation and say so; the rest are how a
+    // capability is consumed at all
+    expect(Object.keys(CROSS_PLUGIN_SURFACES).filter((one) => one.includes('/server/'))).toEqual([
+      '@qualy/plugin-database/server/constraints',
+      '@qualy/plugin-ui-registry/server/authorizer',
+      '@qualy/plugin-assessment/server/errors',
+      '@qualy/plugin-ui-registry/server/registry',
+    ])
   })
 })
 
