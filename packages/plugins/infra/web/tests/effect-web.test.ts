@@ -59,6 +59,13 @@ const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-assets-'))
 // names it again.
 installFixture(assetRoot, { releaseId: 'kept-release' })
 installFixture(assetRoot, { releaseId: 'foreign-release', hash: 'sha256:another-assembly' })
+// the same plugins, and a browser half that offers different surfaces: a
+// page added, renamed or removed in ordinary code, which the assembly hash
+// cannot see because page ids are not part of what a lock records
+installFixture(assetRoot, {
+  releaseId: 'other-surfaces-release',
+  browserContract: 'sha256:other-surfaces',
+})
 installFixture(assetRoot)
 const assemblyInfo = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH }))
 // a policy already frozen: which header the shell sends is another suite's question
@@ -250,6 +257,10 @@ describe('the shell against the api mount', () => {
     expect(standingOf('test-release')).toBe('compatible')
     expect(standingOf('kept-release')).toBe('compatible')
     expect(standingOf('foreign-release')).toBe('other-assembly')
+    // the assembly matches and the browser contract does not, which is the
+    // case the assembly hash alone could not catch: same plugins, different
+    // surfaces, and a manifest this page's own bundle cannot render
+    expect(standingOf('other-surfaces-release')).toBe('other-assembly')
     // collected, or never here at all: nothing to compare, so nothing to allow
     expect(standingOf('r_collectedLongAgo')).toBe('unknown')
   })

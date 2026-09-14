@@ -137,10 +137,30 @@ export const WebBuildMetadataSchema = Schema.Struct({
 
 export type WebBuildMetadata = typeof WebBuildMetadataSchema.Type
 
+/**
+ * Which browser surfaces a build carries, as one value.
+ *
+ * The assembly hash says which plugins were selected; it does not say what
+ * their browser halves offer, because a plugin's page ids and slot keys are
+ * not part of what a lock records. So two releases of the same selection can
+ * disagree about what the shell manifest may name - a page added, renamed or
+ * removed by ordinary code - and an older tab asking for its manifest would
+ * be handed a surface its own bundle has no renderer for.
+ *
+ * It is a fingerprint of the surface IDENTITIES alone, which is why ordinary
+ * implementation changes leave it alone and an older tab keeps working. It
+ * lives in the store beside the release and never goes near a browser: a page
+ * is told to reload, never why.
+ */
+export const BrowserContractHashSchema = Schema.String.check(Schema.isMinLength(1))
+
 /** a release installed into a production store, as its own metadata records it */
 export const InstalledWebReleaseSchema = Schema.Struct({
   ...WebBuildMetadataSchema.fields,
   resolutionHash: Schema.String.check(Schema.isMinLength(1)),
+  // optional so a store written before this existed still parses; a release
+  // without one cannot be shown to be compatible, which is the safe reading
+  browserContractHash: Schema.optional(BrowserContractHashSchema),
   installedAt: InstantSchema,
   assets: Schema.Array(Schema.String.check(Schema.isMinLength(1))),
 })

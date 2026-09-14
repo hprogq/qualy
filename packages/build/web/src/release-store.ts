@@ -10,7 +10,12 @@ import {
   parseWebBuildMetadata,
   type InstalledWebRelease,
 } from '@qualy/release-contract'
-import { PRIVATE_BUILD_FILES, WEB_BUILD_METADATA } from './release-vite.ts'
+import {
+  BROWSER_SURFACE_MAP,
+  PRIVATE_BUILD_FILES,
+  WEB_BUILD_METADATA,
+  browserContractHashOf,
+} from './release-vite.ts'
 
 // The release store: where web builds are installed, and how they are kept.
 //
@@ -343,6 +348,7 @@ const sameRelease = (a: InstalledWebRelease, b: InstalledWebRelease) =>
   a.clientProtocol === b.clientProtocol &&
   a.revision === b.revision &&
   a.resolutionHash === b.resolutionHash &&
+  a.browserContractHash === b.browserContractHash &&
   a.assets.length === b.assets.length &&
   a.assets.every((asset, index) => asset === b.assets[index])
 
@@ -364,6 +370,19 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
   if (!fs.existsSync(path.join(source, 'index.html'))) {
     throw new Error(`${source} has no index.html; run the web build first`)
   }
+  // The surfaces this build carries, from the private map the build wrote
+  // beside its output - the keys only, never the modules. Required rather
+  // than optional: a release installed without its browser contract cannot
+  // be shown to be compatible with any other, and silently losing the
+  // fingerprint would quietly turn the old-tab judgement back into an
+  // assembly-only one.
+  const surfaceMap = path.join(source, BROWSER_SURFACE_MAP)
+  if (!fs.existsSync(surfaceMap)) {
+    throw new Error(`${surfaceMap} is missing; the web build did not run the plugin aggregate`)
+  }
+  const browserContractHash = browserContractHashOf(
+    Object.keys(readJson(surfaceMap) as Record<string, unknown>),
+  )
   const assetFiles = walk(path.join(source, SHARED_ASSETS)).filter(
     (file) => !isTwin(file) && !isDebugArtifact(file),
   )
@@ -377,6 +396,7 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
   const release: InstalledWebRelease = {
     ...built,
     resolutionHash: options.resolutionHash,
+    browserContractHash,
     installedAt: now().toISOString(),
     assets: assetFiles.map((file) => `${SHARED_ASSETS}/${file}`),
   }

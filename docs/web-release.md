@@ -53,10 +53,20 @@ access log → metrics → response headers → origin guard → client compatib
 无 X-Qualy-Web-Release        → 不是网页(CLI/集成/测试),不判
 release == 本进程 pin 的那个   → 放行
 其他 release                   → 查 store 里那个 release 自己的 metadata
-    resolutionHash 相同        → 放行(这正是保留旧 release 的目的:旧 tab 继续工作)
-    resolutionHash 不同        → 409 + X-Qualy-Client-Unsupported: assembly
-    查不到(已回收/不是合法 id)→ 409 + X-Qualy-Client-Unsupported: release
+    resolutionHash 与 browserContractHash 都相同 → 放行(保留旧 release 的目的)
+    任一不同                                     → 409 + X-Qualy-Client-Unsupported: assembly
+    查不到(已回收/不是合法 id)                  → 409 + X-Qualy-Client-Unsupported: release
 ```
+
+**两个 hash 回答两件不同的事,`resolutionHash` 一个人不够**。它证明的是「同一套插件被选中」;
+而 UI 的 page/layout/slot/login **surface 声明不属于 lock 记录的内容**,内部插件版本又都是 `0.0.0`,
+所以同一 active 插件集下,普通代码增删改一个 surface 完全可能得到相同的 `resolutionHash`——
+旧 tab 之后重新 fetch manifest,就会拿到自己 bundle 里没有渲染器的 surface。
+`browserContractHash` 补的正是这一半:安装时从**私有**的 `.qualy-browser-surfaces.json` 的
+**键**(`page:<id>` / `layout:<contract>` / `slot:<slot>:<id>` / `login:<type>`,排序后带版本号)
+算 canonical sha256,写进 release 自己的 metadata。**只含 surface 身份,不含模块/源文件/包名**——
+所以「把每个组件都重写一遍但 surface 不变」的发布照样让旧 tab 继续工作。私有 map 本身仍然不进 store。
+两个 hash 任一不同都统一答 `assembly`,不新增浏览器可见的原因,也不向浏览器透露任何 hash。
 
 判断只发生在服务端,**浏览器永远不知道任何 hash**,也不知道「装配」这个概念存在。
 谁能回答这个问题也不由 host 决定:store 归 `@qualy/plugin-web`,它在建层时把判断注册进

@@ -9,10 +9,13 @@ import path from 'node:path'
 // half is tested against the layout it reads and not against the installer.
 
 export const TEST_HASH = 'sha256:test'
+export const TEST_CONTRACT = 'sha256:test-surfaces'
 
 export interface TestRelease {
   readonly releaseId?: string
   readonly hash?: string
+  /** the surfaces this release's bundle can render, as the installer fingerprints them */
+  readonly browserContract?: string
   /** the shell's bytes; a plain page unless the test is about its content */
   readonly shell?: string
   /** hashed assets, by name under assets/ */
@@ -49,6 +52,7 @@ export const installTestRelease = (root: string, options: TestRelease = {}): voi
         mode: 'production',
         clientProtocol: 1,
         resolutionHash: options.hash ?? TEST_HASH,
+        browserContractHash: options.browserContract ?? TEST_CONTRACT,
         installedAt: '2026-09-14T09:00:00.000Z',
         assets: Object.keys(assets).map((name) => `assets/${name}`),
       }),

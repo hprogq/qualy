@@ -188,12 +188,18 @@ await check('/__qualy/release', async (response) => {
 // current release and an unknown one are always there to ask about.
 {
   const releasesDir = path.join(repoRoot, 'packages/plugins/infra/web/client-dist', 'releases')
-  const assemblyOf = (releaseId: string): string | undefined => {
+  // Both halves of what makes an old tab safe: the same plugins (the
+  // assembly) AND the same browser surfaces (the contract). A release of the
+  // same selection can still have added or renamed a page in ordinary code,
+  // and that page's manifest would name a surface the older bundle cannot
+  // render.
+  const contractOf = (releaseId: string): string | undefined => {
     try {
       const metadata = JSON.parse(
         fs.readFileSync(path.join(releasesDir, releaseId, '.qualy-release.json'), 'utf8'),
-      ) as { resolutionHash?: string }
-      return metadata.resolutionHash
+      ) as { resolutionHash?: string; browserContractHash?: string }
+      if (metadata.resolutionHash === undefined) return undefined
+      return `${metadata.resolutionHash}|${metadata.browserContractHash ?? 'none'}`
     } catch {
       return undefined
     }
@@ -202,13 +208,13 @@ await check('/__qualy/release', async (response) => {
     fetch(`${base}/api/app/manifest`, { headers: { 'x-qualy-web-release': releaseId } })
 
   const current = staged!.releaseId
-  const mine = assemblyOf(current)
+  const mine = contractOf(current)
   const retained = fs.existsSync(releasesDir)
     ? fs.readdirSync(releasesDir).filter((id) => id !== current)
     : []
-  const sameAssembly = retained.find((id) => assemblyOf(id) === mine)
+  const sameAssembly = retained.find((id) => contractOf(id) === mine)
   const otherAssembly = retained.find((id) => {
-    const hash = assemblyOf(id)
+    const hash = contractOf(id)
     return hash !== undefined && hash !== mine
   })
 

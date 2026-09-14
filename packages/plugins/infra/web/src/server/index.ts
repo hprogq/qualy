@@ -252,7 +252,7 @@ const production = Effect.fn('Web.production')(function* (
   return {
     current,
     middleware: serve(store, current, policy),
-    standingOf: judging(store, current, info),
+    standingOf: judging(store, current),
   }
 })
 
@@ -263,6 +263,15 @@ const production = Effect.fn('Web.production')(function* (
  * was built from is in the release's own metadata beside its shell. The host
  * asks through a registry, the way it asks for readiness, so it names no
  * plugin.
+ *
+ * Two hashes have to agree, because they answer different questions. The
+ * assembly hash says the same plugins were selected; it says nothing about
+ * what their browser halves offer, since page ids and slot keys are not part
+ * of what a lock records. A release of the same selection can therefore have
+ * added, renamed or removed a surface in ordinary code, and an older tab
+ * asking for its manifest would be handed one its own bundle cannot render.
+ * The browser contract hash is that half. Neither is ever named to the
+ * browser, and a difference in either is the same answer.
  *
  * Known answers are remembered - a release id names one build forever, which
  * the store enforces on the way in - and unknown ones are not. A release can
@@ -275,7 +284,6 @@ const production = Effect.fn('Web.production')(function* (
 const judging = (
   store: ReleaseStore,
   current: CurrentWebRelease,
-  info: { readonly resolutionHash: string },
 ): ((releaseId: string) => ReleaseStanding) => {
   const known = new Map<string, ReleaseStanding>()
   return (releaseId) => {
@@ -289,7 +297,10 @@ const judging = (
       return 'unknown'
     }
     const standing: ReleaseStanding =
-      installed.resolutionHash === info.resolutionHash ? 'compatible' : 'other-assembly'
+      installed.resolutionHash === current.release.resolutionHash &&
+      installed.browserContractHash === current.release.browserContractHash
+        ? 'compatible'
+        : 'other-assembly'
     known.set(releaseId, standing)
     return standing
   }

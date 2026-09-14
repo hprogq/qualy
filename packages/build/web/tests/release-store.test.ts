@@ -16,7 +16,7 @@ import {
   retentionFromEnv,
   storeAt,
 } from '../src/release-store.ts'
-import { WEB_BUILD_METADATA } from '../src/release-vite.ts'
+import { BROWSER_SURFACE_MAP, WEB_BUILD_METADATA } from '../src/release-vite.ts'
 
 // The store as a deployment uses it: builds arrive one after another, each
 // is installed whole, earlier ones stay for a while with their assets, and
@@ -41,6 +41,8 @@ const buildOutput = (
     readonly metadata?: boolean
     readonly index?: boolean
     readonly revision?: string
+    /** the surfaces this build's aggregate carries, by their public ids */
+    readonly surfaces?: readonly string[]
   } = {},
 ) => {
   const dist = temp('qualy-dist-')
@@ -59,6 +61,19 @@ const buildOutput = (
   for (const [name, content] of Object.entries(assets)) {
     fs.writeFileSync(path.join(dist, 'assets', name), content)
   }
+  // the private map the aggregate writes beside the output; the installer
+  // fingerprints its KEYS, which is what an older tab's bundle can render
+  fs.writeFileSync(
+    path.join(dist, BROWSER_SURFACE_MAP),
+    JSON.stringify(
+      Object.fromEntries(
+        (options.surfaces ?? ['page:test/one', 'layout:app-shell/v1']).map((surface) => [
+          surface,
+          { owner: '@qualy/plugin-test', module: './client/Whatever.tsx', export: 'default' },
+        ]),
+      ),
+    ),
+  )
   if (options.metadata !== false) {
     fs.writeFileSync(
       path.join(dist, WEB_BUILD_METADATA),
@@ -75,6 +90,7 @@ const buildOutput = (
 }
 
 const at = (iso: string) => () => new Date(iso)
+const WHEN = '2026-09-14T09:00:00.000Z'
 const HASH = 'sha256:assembly'
 
 const install = (
@@ -109,6 +125,8 @@ describe('installing', () => {
       mode: 'production',
       clientProtocol: 1,
       resolutionHash: HASH,
+      // the surfaces this build can render, fingerprinted on the way in
+      browserContractHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) as unknown as string,
       installedAt: '2026-09-14T09:00:00.000Z',
       assets: ['assets/index-A.js', 'assets/tiny-A.js'],
     })
@@ -124,6 +142,50 @@ describe('installing', () => {
     expect(exists(store.root, 'assets', 'index-A.js.br')).toBe(true)
     expect(exists(store.root, 'assets', 'index-A.js.gz')).toBe(true)
     expect(exists(store.root, 'assets', 'tiny-A.js.br')).toBe(false)
+  })
+
+  it('fingerprints the surfaces a release can render, and only their identities', () => {
+    const store = storeAt(temp('qualy-store-'))
+    install(store, 'A')
+    const first = readCurrentWebRelease(store)!.release.browserContractHash
+    expect(first).toMatch(/^sha256:[0-9a-f]{64}$/)
+
+    // the same surfaces from different modules: an ordinary rewrite, and an
+    // older tab of the earlier release must keep working through it
+    const rewritten = storeAt(temp('qualy-store-'))
+    const dist = buildOutput('B')
+    const map = path.join(dist, BROWSER_SURFACE_MAP)
+    fs.writeFileSync(
+      map,
+      JSON.stringify(
+        Object.fromEntries(
+          Object.keys(JSON.parse(fs.readFileSync(map, 'utf8')) as Record<string, unknown>).map(
+            (surface) => [
+              surface,
+              { owner: '@acme/somebody-else', module: './dist/Other.js', export: 'named' },
+            ],
+          ),
+        ),
+      ),
+    )
+    installWebRelease({ source: dist, store: rewritten, resolutionHash: HASH, now: at(WHEN) })
+    expect(readCurrentWebRelease(rewritten)!.release.browserContractHash).toBe(first)
+
+    // one surface renamed: a different contract, whatever else is equal
+    const renamed = storeAt(temp('qualy-store-'))
+    install(renamed, 'C', { surfaces: ['page:test/renamed', 'layout:app-shell/v1'] })
+    expect(readCurrentWebRelease(renamed)!.release.browserContractHash).not.toBe(first)
+  })
+
+  it('refuses a build whose aggregate wrote no surface map', () => {
+    const store = storeAt(temp('qualy-store-'))
+    const dist = buildOutput('A')
+    fs.rmSync(path.join(dist, BROWSER_SURFACE_MAP))
+    // a release installed without its browser contract cannot be shown to be
+    // compatible with any other, so it is not installed at all
+    expect(() =>
+      installWebRelease({ source: dist, store, resolutionHash: HASH, now: at(WHEN) }),
+    ).toThrow(BROWSER_SURFACE_MAP)
   })
 
   it('keeps the build revision in the store, where the public id cannot carry it', () => {

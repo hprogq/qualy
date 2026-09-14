@@ -14473,10 +14473,13 @@ active-only 带来一个新问题:两个 release 不再只差代码。插件选�
 无 X-Qualy-Web-Release → 不是网页(CLI/集成/测试),不判
 release == 本进程 pin 的 → 放行
 其他 release → 查 store 里它自己的 metadata
-    resolutionHash 相同 → 放行   ← 这正是保留旧 release 的目的
-    不同               → 409 assembly
-    查不到             → 409 release
+    resolutionHash 与 browserContractHash 都相同 → 放行  ← 保留旧 release 的目的
+    任一不同                                     → 409 assembly
+    查不到                                       → 409 release
 ```
+
+(`browserContractHash` 是 D1.1 补的第二个 hash,见下一节;D1 当天只比 `resolutionHash`,
+**那是不够的**。)
 
 **浏览器两个 hash 都看不到**,也不知道「装配」这个概念:它只拿到 409 和一个词
 (`protocol`/`assembly`/`release`),映射成阻断原因 `client-protocol`/`assembly-skew`/`release-expired`,
@@ -14519,3 +14522,34 @@ Tests 1660 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0 
 
 **下一步**:D2(`apps/web` 去掉插件实现依赖)→ D3(open-world 发现)→ D4(package-export ModuleRef /
 dist-only 插件)。RUM Phase 3 仍搁置。
+
+### D1.1 收口补丁:旧 tab 还要比 browser contract(2026-09-15,复审提出)
+
+**D1 的判定不够**。`resolutionHash` 证明的是「同一套插件被选中」,而 UI 的 page/layout/slot/login
+**surface 声明不属于 lock 记录的内容**,内部插件版本又都是 `0.0.0`——所以同一 active 插件集下,
+普通代码增删改一个 surface 完全可能得到**相同的** `resolutionHash`。旧 tab 之后重新 fetch manifest,
+就会拿到自己 bundle 里没有渲染器的 surface。这正是 active-only 之后新出现的洞。
+
+**补第二个私有指纹 `browserContractHash`**:安装时从**已经存在且明确私有**的
+`.qualy-browser-surfaces.json` 的**键**算——`page:<id>` / `layout:<contract>` /
+`slot:<slot>:<id>` / `login:<type>`,排序、带版本号(`qualy-browser-contract/1`)、canonical sha256
+——写进 release 自己的 `.qualy-release.json`。**只含 surface 身份**:没有模块路径、没有源文件名、
+没有包名。私有 map 本身仍然不进 store(`check-staged-web` 照旧拒绝)。
+
+判定改成三者同时成立:client protocol 兼容 + `resolutionHash` 相同 + `browserContractHash` 相同。
+后两者任一不同**仍统一答 409 `assembly`**——不新增浏览器可见的原因,不向浏览器透露任何 hash。
+schema 里该字段 optional:改动之前装好的 store 仍能读出来,而「读不出 contract」的 release
+无法被证明兼容,于是被拒——这是安全的读法。安装时该文件缺失则**硬失败**,不静默降级回只比一个 hash。
+
+**关键性质:纯实现变更不得打断旧 tab**。用例把同一组 surface 换成完全不同的模块/包名重新安装,
+断言 contract hash **不变**;把其中一个 surface 改名,断言**变**。
+
+**实测**:连续两次 `pnpm build` 得到两个不同 release id、**相同**的 `resolutionHash` 与
+`browserContractHash`,production smoke 里那个「同装配旧 release」用例因此命中真实数据
+(`r_V5eeZlkqv0gonFpvqhmsOg` → 200);store 里更早的 `local-*` 没有 contract hash,被判 `assembly`。
+
+**门禁验证过会红**:把判定改回只比 `resolutionHash` → plugin-web 用例失败
+(`expected 'compatible' to be 'other-assembly'`);删掉 surface map 再安装 → 安装拒绝。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;release-store 31 例、plugin-web 39 例全过;
+`pnpm build` ×2 exit 0;`check-staged-web` exit 0;`smoke-production` 四条旧 tab 用例全部命中并通过。
