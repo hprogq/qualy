@@ -68,9 +68,10 @@ describe('the reporting project', () => {
 
 describe('the version a report is filed under', () => {
   it('is the release id itself, which is what every real one fits in', () => {
-    expect(rumVersionForRelease('local-20260914T123712Z-633d6de6')).toBe(
-      'local-20260914T123712Z-633d6de6',
-    )
+    // a minted production id is 24 characters, so the fallback below is
+    // reached only by a deployment that names its releases itself
+    expect(rumVersionForRelease('r_hT3kQ9vXbN2mPzR7wL4sYd')).toBe('r_hT3kQ9vXbN2mPzR7wL4sYd')
+    expect(rumVersionForRelease('dev-633d6de6')).toBe('dev-633d6de6')
   })
 
   it('is a digest once the id is longer than the platform accepts', () => {

@@ -13,12 +13,29 @@ import { Schema } from 'effect'
 // generation between the browser and the api; it moves only on a breaking
 // api change, and a server serves a window of it while old tabs drain.
 //
+// The documents here are of two kinds, and only one of them is public. The
+// identity in the bundle, the metadata a build writes and a store keeps,
+// the pointer: those are private, read by a build tool and a host. The
+// probe is the one document a browser reads, so it carries the one fact a
+// browser acts on. They version apart for the same reason.
+//
 // This package is framework-free: the browser reads the probe before its
 // runtime is up, the build tool writes the metadata, the server pins it.
 // The schemas are Effect Schema, as every contract's are - a value read off
 // disk or off the wire is decoded, never trusted.
 
+/** the private documents' generation: the identity, the build metadata, the pointer */
 export const RELEASE_SCHEMA = 1 as const
+
+/**
+ * The public probe's generation, which moves on its own.
+ *
+ * It is 2 because the probe used to answer with the deployment's mode and
+ * the server's protocol window as well, and a reader that expects those is
+ * reading a different document. The private documents did not change, so
+ * their number did not move: one version per document, not one per package.
+ */
+export const RELEASE_PROBE_SCHEMA = 2 as const
 
 /** where any Qualy web host answers which release it is serving; outside /api on purpose */
 export const QUALY_RELEASE_ENDPOINT = '/__qualy/release'
@@ -70,9 +87,31 @@ export const WebReleaseIdentitySchema = Schema.Struct({
 
 export type WebReleaseIdentity = typeof WebReleaseIdentitySchema.Type
 
+/**
+ * What a build was made from, for whoever has to find it again.
+ *
+ * A public release id says nothing about its build on purpose, so the
+ * mapping back to a commit has to live somewhere - here, in the metadata
+ * beside the output and in the store, both of which a deployment reads and
+ * nothing serves. The bundle never carries it and the probe never answers
+ * it: that is the whole point of naming releases opaquely.
+ */
+export const BuildRevisionSchema = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(200),
+)
+
+/** what a build writes beside its output, for the installer; never served */
+export const WebBuildMetadataSchema = Schema.Struct({
+  ...WebReleaseIdentitySchema.fields,
+  revision: Schema.optional(BuildRevisionSchema),
+})
+
+export type WebBuildMetadata = typeof WebBuildMetadataSchema.Type
+
 /** a release installed into a production store, as its own metadata records it */
 export const InstalledWebReleaseSchema = Schema.Struct({
-  ...WebReleaseIdentitySchema.fields,
+  ...WebBuildMetadataSchema.fields,
   resolutionHash: Schema.String.check(Schema.isMinLength(1)),
   installedAt: InstantSchema,
   assets: Schema.Array(Schema.String.check(Schema.isMinLength(1))),
@@ -88,16 +127,20 @@ export const CurrentReleasePointerSchema = Schema.Struct({
 
 export type CurrentReleasePointer = typeof CurrentReleasePointerSchema.Type
 
-/** what a host answers at the release endpoint */
+/**
+ * What a host answers at the release endpoint: which release it serves.
+ *
+ * This is the whole public wire of the protocol, so it answers the one
+ * question a page asks here - is the host still on the release I am - and
+ * the only operation on the answer is equality. Whether the two may still
+ * talk is a different question with a different answer: the api settles it
+ * on the first request that matters. Telling every visitor the deployment's
+ * mode and the protocol window the server accepts bought nothing the page
+ * does, and both are facts about the server rather than about the page.
+ */
 export const ReleaseProbeSchema = Schema.Struct({
-  schema: Schema.Literal(RELEASE_SCHEMA),
+  schema: Schema.Literal(RELEASE_PROBE_SCHEMA),
   releaseId: ReleaseIdSchema,
-  mode: ReleaseModeSchema,
-  clientProtocol: ClientProtocolSchema,
-  serverProtocol: Schema.Struct({
-    min: ClientProtocolSchema,
-    max: ClientProtocolSchema,
-  }),
 })
 
 export type ReleaseProbe = typeof ReleaseProbeSchema.Type
@@ -113,19 +156,17 @@ export const ReleaseObservedSchema = Schema.Struct({
 
 export type ReleaseObserved = typeof ReleaseObservedSchema.Type
 
-/** the probe a host answers for the release it is serving, with the protocol window it accepts */
-export const releaseProbeOf = (
-  identity: WebReleaseIdentity,
-  serverProtocol: { readonly min: number; readonly max: number } = {
-    min: SERVER_MIN_CLIENT_PROTOCOL,
-    max: SERVER_MAX_CLIENT_PROTOCOL,
-  },
-): ReleaseProbe => ({
-  schema: RELEASE_SCHEMA,
+/**
+ * The probe a host answers for the release it is serving.
+ *
+ * Written field by field out of the private identity rather than spread
+ * from it: what a public document carries is a decision, and a decision
+ * that reads `...identity` is made again, silently, every time a private
+ * field is added.
+ */
+export const releaseProbeOf = (identity: WebReleaseIdentity): ReleaseProbe => ({
+  schema: RELEASE_PROBE_SCHEMA,
   releaseId: identity.releaseId,
-  mode: identity.mode,
-  clientProtocol: identity.clientProtocol,
-  serverProtocol: { min: serverProtocol.min, max: serverProtocol.max },
 })
 
 // The readers: a parse throws with the reason, for a value off disk that a
@@ -134,6 +175,9 @@ export const releaseProbeOf = (
 
 export const parseWebReleaseIdentity: (value: unknown) => WebReleaseIdentity =
   Schema.decodeUnknownSync(WebReleaseIdentitySchema)
+
+export const parseWebBuildMetadata: (value: unknown) => WebBuildMetadata =
+  Schema.decodeUnknownSync(WebBuildMetadataSchema)
 
 export const parseInstalledWebRelease: (value: unknown) => InstalledWebRelease =
   Schema.decodeUnknownSync(InstalledWebReleaseSchema)

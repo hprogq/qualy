@@ -40,6 +40,7 @@ const buildOutput = (
     readonly shell?: string
     readonly metadata?: boolean
     readonly index?: boolean
+    readonly revision?: string
   } = {},
 ) => {
   const dist = temp('qualy-dist-')
@@ -61,7 +62,13 @@ const buildOutput = (
   if (options.metadata !== false) {
     fs.writeFileSync(
       path.join(dist, WEB_BUILD_METADATA),
-      JSON.stringify({ schema: 1, releaseId, mode: 'production', clientProtocol: 1 }),
+      JSON.stringify({
+        schema: 1,
+        releaseId,
+        mode: 'production',
+        clientProtocol: 1,
+        ...(options.revision === undefined ? {} : { revision: options.revision }),
+      }),
     )
   }
   return dist
@@ -117,6 +124,27 @@ describe('installing', () => {
     expect(exists(store.root, 'assets', 'index-A.js.br')).toBe(true)
     expect(exists(store.root, 'assets', 'index-A.js.gz')).toBe(true)
     expect(exists(store.root, 'assets', 'tiny-A.js.br')).toBe(false)
+  })
+
+  it('keeps the build revision in the store, where the public id cannot carry it', () => {
+    const store = storeAt(temp('qualy-store-'))
+    const revision = '3e01e6a2d9cbeda2581671b45727ef268861d564'
+    install(store, 'A', { revision })
+    const current = readCurrentWebRelease(store)!
+    // the private half of an opaque release id: this is where a deployment
+    // asks what r_... was built from. It sits in the release's own metadata
+    // file, which is a dotfile and never served.
+    expect(current.release.revision).toBe(revision)
+    expect(RELEASE_METADATA.startsWith('.')).toBe(true)
+  })
+
+  it('refuses a second build under one release id when the revision differs', () => {
+    const store = storeAt(temp('qualy-store-'))
+    install(store, 'A', { revision: 'aaa' })
+    // one id, one build: the same bytes from another commit is still
+    // another build, and a store that overwrote it would answer two
+    // questions with one name
+    expect(() => install(store, 'A', { revision: 'bbb' })).toThrow('different content')
   })
 
   it('installs a second release beside the first and keeps both, shells and assets alike', () => {

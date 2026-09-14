@@ -1,6 +1,8 @@
 # Qualy Web Release Protocol 与运行中版本漂移恢复机制实施方案
 
 > 状态:Phase A–F 已于 2026-09-14 落地,实现形态与运维要点见 docs/web-release.md;本文保留为设计依据。
+> 2026-09-15 起 `/__qualy/release` 收窄为 `{schema: 2, releaseId}`(最小披露,裁决见 docs/plugin-refactor.md §17
+> 与 docs/browser-public-surface.md),本文下面关于探针含 `mode` / `serverProtocol` 的段落记录的是当时的设计。
 
 ## 0. 任务目标
 

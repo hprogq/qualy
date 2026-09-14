@@ -5,6 +5,7 @@ import {
   isReleaseId,
   isReleaseProbe,
   parseInstalledWebRelease,
+  parseWebBuildMetadata,
   parseWebReleaseIdentity,
   releaseProbeOf,
 } from '../src/index.ts'
@@ -12,6 +13,7 @@ import {
 describe('release ids', () => {
   it('accepts the names a directory and a header both take without escaping', () => {
     for (const id of [
+      'r_hT3kQ9vXbN2mPzR7wL4sYd',
       'local-20260914T090000Z-3f9a1c2d',
       'dev-8ab12c9f',
       'a',
@@ -77,20 +79,39 @@ describe('release documents', () => {
     expect(() => parseInstalledWebRelease({ ...installed, resolutionHash: '' })).toThrow()
   })
 
-  it('answers a probe for an identity with the protocol window, and reads one back as a guard', () => {
+  it('answers a probe carrying the release and nothing else, and reads one back as a guard', () => {
     const probe = releaseProbeOf(identity)
-    expect(probe).toEqual({
-      schema: 1,
-      releaseId: identity.releaseId,
-      mode: 'production' as const,
-      clientProtocol: 1,
-      serverProtocol: { min: 1, max: 1 },
-    })
-    expect(releaseProbeOf(identity, { min: 1, max: 2 }).serverProtocol).toEqual({ min: 1, max: 2 })
+    expect(probe).toEqual({ schema: 2, releaseId: identity.releaseId })
+    // the private identity's other fields are not the browser's business,
+    // and the projection is what keeps them off the wire
+    expect(Object.keys(probe).sort()).toEqual(['releaseId', 'schema'])
     expect(isReleaseProbe(probe)).toBe(true)
-    expect(isReleaseProbe({ ...probe, serverProtocol: { min: 1 } })).toBe(false)
     expect(isReleaseProbe({ ...probe, releaseId: 'a/b' })).toBe(false)
     expect(isReleaseProbe(undefined)).toBe(false)
     expect(isReleaseProbe('B')).toBe(false)
+  })
+
+  it('refuses the probe the previous generation answered', () => {
+    // a page of one generation reading the other's answer learns nothing
+    // rather than mistaking it: an unreadable probe is a failed probe, and
+    // a failed probe never reports an update
+    expect(
+      isReleaseProbe({
+        schema: 1,
+        releaseId: identity.releaseId,
+        mode: 'production',
+        clientProtocol: 1,
+        serverProtocol: { min: 1, max: 1 },
+      }),
+    ).toBe(false)
+  })
+
+  it('parses build metadata with the revision the release id does not carry', () => {
+    const revision = '3e01e6a2d9cbeda2581671b45727ef268861d564'
+    expect(parseWebBuildMetadata({ ...identity, revision })).toEqual({ ...identity, revision })
+    // it is optional: a build nobody told what it was built from is normal
+    expect(parseWebBuildMetadata(identity)).toEqual(identity)
+    expect(() => parseWebBuildMetadata({ ...identity, revision: '' })).toThrow()
+    expect(() => parseWebBuildMetadata({ ...identity, revision: 'x'.repeat(201) })).toThrow()
   })
 })

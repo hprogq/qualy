@@ -16,13 +16,7 @@ const current = {
   mode: 'production' as const,
   clientProtocol: 1,
 }
-const probeFor = (releaseId: string): ReleaseProbe => ({
-  schema: 1,
-  releaseId,
-  mode: 'production',
-  clientProtocol: 1,
-  serverProtocol: { min: 1, max: 1 },
-})
+const probeFor = (releaseId: string): ReleaseProbe => ({ schema: 2, releaseId })
 
 const setUp = (answer: ReleaseProbe) => {
   const reload = vi.fn()

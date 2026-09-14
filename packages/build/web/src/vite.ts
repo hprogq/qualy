@@ -6,6 +6,7 @@ import { repoRoot } from './manifest.ts'
 import { buildPluginModuleSource, buildPluginScanSource } from './collect.ts'
 
 export {
+  BUILD_REVISION_VARIABLE,
   RELEASE_ID_VARIABLE,
   RELEASE_MODULE_ID,
   WEB_BUILD_METADATA,

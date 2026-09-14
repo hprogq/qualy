@@ -14229,3 +14229,54 @@ docs/notes/aegis-web-sdk.md。上传之前的整条链路已对真实 API 跑通
   `check-csp-build` exit 0;`smoke-production` 全 ok;`check-csp-enforce` 三页 0 violation。
 - **下一步**:Phase 3(API speed + requestId 关联),或按 docs/rum.md §42 先做 Phase 4 的上线前准备。
   上线前必须把真实部署域名加进 RUM 应用的来源白名单,否则线上一条都收不到。
+
+## 插件重构 Phase A:公开面最小披露(2026-09-15)
+
+docs/plugin-refactor.md 的 Phase A(§36 / §100):只动公开 wire 上低风险的几处,**不碰 component
+registry**。政策本身落成 **docs/browser-public-surface.md**——只写当前真实成立的形状、守它的那条
+测试,以及仍未收口的项(manifest 的 `component` / `provider`、409 体里的协议窗口、chunk 名带组件名、
+平台层仍 import plugin-rum、产物仍是 installed 超集),各自注明属于后面哪个阶段。
+
+**五处改动**:
+
+- **readiness 失败不再点名**。`NotReady` 去掉 `check` 字段,体只剩 `{"_tag":"NotReady"}`。这个端点
+  不鉴权、在 `/api` 之外,任何能连上端口的人都能问;把探针名写进体等于告诉对方这套部署跑着什么
+  基础设施——而「host 里不点名插件」本来就是 readiness 注册表存在的理由,名字连同 cause 进日志,
+  那里才是运维在的地方。
+- **HTML description 改产品描述**。`Qualy: Plugin based comprehensive quality evaluation system`
+  是主动向爬虫宣告内部架构;「插件化」属于实现信息,不是页面 SEO 必需内容。
+- **`/__qualy/release` 收窄为 `{schema: 2, releaseId}`**。页面在这里只问「服务端换 release 了吗」,
+  答案唯一的用法是比较相等;能不能继续通话是另一个问题,由 API 在第一个真实请求上回答(409 + 头)。
+  探针因此有了自己的代次 `RELEASE_PROBE_SCHEMA = 2`,私有三份文档仍是 `RELEASE_SCHEMA = 1`——
+  一份文档一个版本号,不是一个包一个。`releaseProbeOf` 逐字段写而不 spread identity:公开面带什么
+  是一个决定,写成 `...identity` 就等于以后每加一个私有字段都重新做一次这个决定,而且是悄悄做。
+- **生产 release id 改不透明,私有 revision 单独分出**。不给 `QUALY_RELEASE_ID` 时自铸
+  `r_` + 22 位 base64url(16 字节随机):没有时钟、没有顺序、没有 revision——旧的
+  `local-<时间戳>-<骰子>` 把构建时刻发给每个访客,还带排序语义,而 release id 的契约从一开始就
+  只承诺相等性。私有的另一半是 `QUALY_BUILD_REVISION`(commit / 构建号),只落
+  `dist/.qualy-web-build.json` 与 store 的 `.qualy-release.json`(dotfile,静态服务对 `/.` 一律
+  404),不进 bundle、不进探针。所以「r_xxx 是哪个 commit」有答案,答案不在浏览器手里。
+  RUM 版本不受影响:24 字符远在腾讯 60 字符限内,`rumVersionForRelease` 原样透传。
+- **生产 API docs 有验收了**。机制本来就对(`QUALY_API_DOCS=auto` 在 production 关),缺的是从没
+  有人证明过:补 `apiReferenceEnabled` 的矩阵单测(含「`on` 这种没定义的值直接拒绝而不是猜」)
+  与 smoke 的 `/api/docs`、`/api/openapi.json` 404。
+
+**一个行为后果,记在这里**:旧 tab 读到 v2 探针时 `isReleaseProbe` 判假,按既有语义等同「探测失败」
+——静默,不会误报「已更新」,也不会阻断页面。反向同理。这是可接受的降级,真正的 breaking 由
+client protocol 承担(Manifest V2 时再动,见 §68)。
+
+**三道新门禁都验证过会红**:
+
+- 把 `check` 字段加回 `NotReady` → effect-shell 那例失败,实测体是 `{_tag:'NotReady', check:'postgres'}`。
+- 让 `releaseProbeOf` 改回 spread identity → release-contract 与 effect-web 两例同时失败。
+- `QUALY_API_DOCS=public` 跑 smoke → 停在 `/api/docs: status 200, expected 404`。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0(0 warning);`pnpm test` Test Files 231 passed | 3
+skipped (234),Tests 1648 passed | 17 skipped (1665);`pnpm test:browser` 50 / 369(含 release
+recovery,即 §109 给 Phase A 定的 rollback 判据);`pnpm test:browser:webkit` 2 / 14;
+`pnpm build` exit 0 → `staged web release r_h-4kWIEjnh1FwWvKFGIKDQ (123 assets, production,
+protocol 1)`(第一个不透明 id 的真实产物);`check-csp-build` exit 0;`smoke-production` 全 ok
+(含新增的两条 404 与「探针只带 releaseId,schema」);`check-csp-enforce` 三页 0 violation。
+
+**下一步**:Phase B(surface-addressed component registry + Manifest V2,§101),本轮风险最高的一段,
+单独提交;RUM Phase 3 仍搁置。

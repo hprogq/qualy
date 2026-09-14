@@ -4,7 +4,7 @@ import { HttpRouter } from 'effect/unstable/http'
 import { HttpApiBuilder, HttpApiScalar } from 'effect/unstable/httpapi'
 import { createServer, get as httpGet } from 'node:http'
 import { describe, expect, it } from 'vitest'
-import { readinessLayer } from '@qualy/api-kit/readiness'
+import { Readiness, readinessLayer } from '@qualy/api-kit/readiness'
 import { createTestContext, databaseFor, postgresAvailable } from '@qualy/plugin-database/testkit'
 import { MigrationsBehind } from '@qualy/plugin-database/server'
 import { healthApi, healthHandlers } from '../src/health.ts'
@@ -19,6 +19,7 @@ import { healthApi, healthHandlers } from '../src/health.ts'
 const port = 3197
 // its own, because suites are separate files and files run in parallel
 const barePort = 3208
+const refusingPort = 3212
 const base = `http://127.0.0.1:${port}`
 
 const shell = (url: string, migrations: 'apply' | 'off' = 'apply') =>
@@ -84,6 +85,48 @@ describe('readiness without anything to probe', () => {
       expect(response.status).toBe(200)
       expect(JSON.parse(response.body)).toEqual({ status: 'ready' })
       expect((await probe(`http://127.0.0.1:${barePort}/health/live`)).status).toBe(200)
+    } finally {
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+    }
+  })
+})
+
+// A probe that fails, and what the caller is told about it. The endpoint is
+// unauthenticated and reachable by anyone who can reach the port, so the
+// answer names neither the check nor what broke it: an orchestrator acts on
+// 503, and the operator reads the rest in the log.
+describe('readiness with a probe that fails', () => {
+  const refusing = HttpRouter.serve(
+    HttpApiBuilder.layer(healthApi).pipe(Layer.provide(healthHandlers)),
+  ).pipe(
+    Layer.provide(NodeHttpServer.layer(createServer, { port: refusingPort })),
+    Layer.provideMerge(
+      Layer.effectDiscard(
+        Effect.gen(function* () {
+          const readiness = yield* Readiness
+          yield* readiness.register({
+            name: 'postgres',
+            probe: Effect.fail('connect ECONNREFUSED 127.0.0.1:5432'),
+          })
+        }),
+      ).pipe(Layer.provideMerge(readinessLayer)),
+    ),
+  )
+
+  it('answers 503 with its tag alone, naming no check and no cause', async () => {
+    const scope = await Effect.runPromise(Scope.make())
+    try {
+      await Effect.runPromise(Layer.buildWithScope(refusing, scope))
+      const response = await probe(`http://127.0.0.1:${refusingPort}/health/ready`)
+      expect(response.status).toBe(503)
+      expect(JSON.parse(response.body)).toEqual({ _tag: 'NotReady' })
+      // spelled out, because every one of these was reachable from the body
+      // at some point: the probe's name, the resource behind it, the reason
+      for (const leak of ['postgres', '5432', 'ECONNREFUSED', 'check']) {
+        expect(response.body).not.toContain(leak)
+      }
+      // liveness is a different question and still answers
+      expect((await probe(`http://127.0.0.1:${refusingPort}/health/live`)).status).toBe(200)
     } finally {
       await Effect.runPromise(Scope.close(scope, Exit.void))
     }

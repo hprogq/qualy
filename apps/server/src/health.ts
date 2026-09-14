@@ -17,9 +17,20 @@ import { Readiness } from '@qualy/api-kit/readiness'
 // nothing to probe is ready, which is the only honest answer: ready has never
 // claimed the assembly is complete, only that what is loaded is healthy.
 
+/**
+ * Not ready, and that is the whole answer.
+ *
+ * The endpoint is unauthenticated and outside the api: an orchestrator acts
+ * on the status, and a caller who is not one learns nothing from it. Naming
+ * the probe that failed told anyone who asked which infrastructure this
+ * deployment runs - the point of collecting probes rather than naming a
+ * plugin here was to stop the host knowing that, and putting the name on
+ * the wire gave it away to strangers instead. The name goes to the log,
+ * with its cause, where the operator is.
+ */
 export class NotReady extends Schema.TaggedError<NotReady>()(
   'NotReady',
-  { check: Schema.String },
+  {},
   { httpApiStatus: 503, identifier: 'NotReady' },
 ) {}
 
@@ -54,12 +65,12 @@ export const healthHandlers = HttpApiBuilder.group(healthApi, 'health', (handler
           // what keeps this handler from naming a single plugin
           for (const check of yield* readiness.checks) {
             yield* check.probe.pipe(
-              // why it failed belongs in the log, not in the body of an
-              // unauthenticated endpoint
+              // why it failed, and what failed, belong in the log rather
+              // than in the body of an unauthenticated endpoint
               Effect.tapCause((cause) =>
                 Effect.logWarning(`readiness check ${check.name} failed`, cause),
               ),
-              Effect.mapError(() => new NotReady({ check: check.name })),
+              Effect.mapError(() => new NotReady()),
             )
           }
           return { status: 'ready' as const }

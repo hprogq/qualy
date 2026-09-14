@@ -7,7 +7,7 @@ import {
   isReleaseId,
   parseCurrentReleasePointer,
   parseInstalledWebRelease,
-  parseWebReleaseIdentity,
+  parseWebBuildMetadata,
   type InstalledWebRelease,
 } from '@qualy/release-contract'
 import { WEB_BUILD_METADATA } from './release-vite.ts'
@@ -341,6 +341,7 @@ const sameRelease = (a: InstalledWebRelease, b: InstalledWebRelease) =>
   a.releaseId === b.releaseId &&
   a.mode === b.mode &&
   a.clientProtocol === b.clientProtocol &&
+  a.revision === b.revision &&
   a.resolutionHash === b.resolutionHash &&
   a.assets.length === b.assets.length &&
   a.assets.every((asset, index) => asset === b.assets[index])
@@ -354,9 +355,11 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
   if (!fs.existsSync(metadataFile)) {
     throw new Error(`${metadataFile} is missing; the web build did not run the release plugin`)
   }
-  const identity = parseWebReleaseIdentity(readJson(metadataFile))
-  if (identity.mode !== 'production') {
-    throw new Error(`${metadataFile} names a ${identity.mode} release; install a production build`)
+  // the build's metadata, revision and all: the store is the private side
+  // of the mapping a public release id deliberately does not carry
+  const built = parseWebBuildMetadata(readJson(metadataFile))
+  if (built.mode !== 'production') {
+    throw new Error(`${metadataFile} names a ${built.mode} release; install a production build`)
   }
   if (!fs.existsSync(path.join(source, 'index.html'))) {
     throw new Error(`${source} has no index.html; run the web build first`)
@@ -372,17 +375,17 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
       !isDebugArtifact(file),
   )
   const release: InstalledWebRelease = {
-    ...identity,
+    ...built,
     resolutionHash: options.resolutionHash,
     installedAt: now().toISOString(),
     assets: assetFiles.map((file) => `${SHARED_ASSETS}/${file}`),
   }
-  const root = resolveReleaseRoot(store, identity.releaseId)
+  const root = resolveReleaseRoot(store, built.releaseId)
 
   // 3. the same id twice is fine when it is the same release, and refused when it is not
   let reused = false
   if (fs.existsSync(root)) {
-    const existing = readInstalledRelease(store, identity.releaseId)
+    const existing = readInstalledRelease(store, built.releaseId)
     const same =
       sameRelease(existing, release) &&
       shellFiles.every(
@@ -392,7 +395,7 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
       )
     if (!same) {
       throw new Error(
-        `release ${identity.releaseId} is already installed with different content; a release id names one build`,
+        `release ${built.releaseId} is already installed with different content; a release id names one build`,
       )
     }
     reused = true
@@ -423,7 +426,7 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
   // 5-7. the shell, whole, then in place
   if (!reused) {
     fs.mkdirSync(path.join(store.root, RELEASES), { recursive: true })
-    const staging = path.join(store.root, RELEASES, `.tmp-${identity.releaseId}-${nonce()}`)
+    const staging = path.join(store.root, RELEASES, `.tmp-${built.releaseId}-${nonce()}`)
     try {
       for (const file of shellFiles) {
         const to = path.join(staging, file)
@@ -444,14 +447,14 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
   // 8. the pointer, last
   writeAtomically(
     path.join(store.root, CURRENT_POINTER),
-    `${JSON.stringify({ schema: RELEASE_SCHEMA, releaseId: identity.releaseId }, null, 2)}\n`,
+    `${JSON.stringify({ schema: RELEASE_SCHEMA, releaseId: built.releaseId }, null, 2)}\n`,
   )
 
   // 9. and only then, what is no longer needed
   const retention = options.retention ?? DEFAULT_RETENTION
   const gc = retention === false ? undefined : gcWebReleases(store, { ...retention, now })
   return {
-    release: reused ? readInstalledRelease(store, identity.releaseId) : release,
+    release: reused ? readInstalledRelease(store, built.releaseId) : release,
     root,
     reused,
     gc,

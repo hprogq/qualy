@@ -206,14 +206,10 @@ describe('the shell against the api mount', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin')
-    const probe = Schema.decodeUnknownSync(ReleaseProbeSchema)(await response.json())
-    expect(probe).toEqual({
-      schema: 1,
-      releaseId: 'test-release',
-      mode: 'production',
-      clientProtocol: 1,
-      serverProtocol: { min: 1, max: 1 },
-    })
+    // the bytes as they go out: which release, and nothing about the host
+    const body: unknown = await response.json()
+    expect(body).toEqual({ schema: 2, releaseId: 'test-release' })
+    expect(Schema.decodeUnknownSync(ReleaseProbeSchema)(body).releaseId).toBe('test-release')
   })
 
   it('serves the release it pinned at boot, whatever the pointer says later', async () => {

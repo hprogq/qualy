@@ -112,6 +112,18 @@ await check('/api/nope', async (response) => {
   const body = (await response.json()) as { _tag?: string }
   return body._tag === 'API_ROUTE_NOT_FOUND' ? undefined : `tag ${body._tag ?? 'absent'}`
 })
+// The api reference and the document behind it, which a production
+// deployment does not publish. QUALY_API_DOCS is unset here, exactly as it
+// is in a deployment, and `auto` reads that as off outside development; a
+// deployment that wants them says QUALY_API_DOCS=public. Not registered
+// means not there, so the refusal is the api's ordinary unknown route.
+for (const route of ['/api/docs', '/api/openapi.json']) {
+  await check(route, async (response) => {
+    if (response.status !== 404) return `status ${response.status}, expected 404`
+    const body = (await response.json()) as { _tag?: string }
+    return body._tag === 'API_ROUTE_NOT_FOUND' ? undefined : `tag ${body._tag ?? 'absent'}`
+  })
+}
 await check('/api/app/manifest', async (response) => {
   if (response.status !== 200) return `status ${response.status}`
   // an api answer is never cached and never sniffed; set by the serve
@@ -153,11 +165,14 @@ await check('/__qualy/release', async (response) => {
   if (response.headers.get('cache-control') !== 'no-store') {
     return `cache-control: ${response.headers.get('cache-control') ?? 'absent'}, expected no-store`
   }
-  const probe = (await response.json()) as { releaseId?: string; mode?: string }
+  const probe = (await response.json()) as { releaseId?: string }
   if (probe.releaseId !== staged!.releaseId) {
     return `release ${probe.releaseId ?? 'absent'}, the store points at ${staged!.releaseId}`
   }
-  if (probe.mode !== 'production') return `mode ${probe.mode ?? 'absent'}`
+  // which release, and nothing else about this host: no deployment mode, no
+  // protocol window. A page compares ids here and asks the api the rest.
+  const fields = Object.keys(probe).sort().join(',')
+  if (fields !== 'releaseId,schema') return `the probe carries ${fields}`
   console.log(`smoke: /__qualy/release ${probe.releaseId}`)
   return undefined
 })

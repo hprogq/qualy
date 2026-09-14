@@ -10,10 +10,11 @@ import {
   QUALY_RELEASE_ENDPOINT,
   RELEASE_ID_PATTERN,
   isReleaseId,
-  parseWebReleaseIdentity,
+  parseWebBuildMetadata,
   ReleaseProbeSchema,
 } from '@qualy/release-contract'
 import {
+  BUILD_REVISION_VARIABLE,
   RELEASE_ID_VARIABLE,
   RELEASE_MODULE_ID,
   WEB_BUILD_METADATA,
@@ -50,7 +51,7 @@ const buildWith = async (root: string, plugin = qualyRelease()) => {
     build: { outDir: 'dist', emptyOutDir: true },
   })
   const dist = path.join(root, 'dist')
-  const metadata = parseWebReleaseIdentity(
+  const metadata = parseWebBuildMetadata(
     JSON.parse(fs.readFileSync(path.join(dist, WEB_BUILD_METADATA), 'utf8')),
   )
   const bundle = fs
@@ -101,14 +102,14 @@ describe('release ids', () => {
     )
   })
 
-  it('names a local production build by the clock and a die, so two builds never share one', () => {
-    const now = () => new Date('2026-09-14T09:00:00.000Z')
-    expect(releaseIdFor('production', { env: {}, now, random: () => 'ff00ff00' })).toBe(
-      'local-20260914T090000Z-ff00ff00',
+  it('mints an unnamed production build an opaque id: no clock, no order, no revision', () => {
+    expect(releaseIdFor('production', { env: {}, token: () => 'AAAABBBBCCCCDDDDEEEEFF' })).toBe(
+      'r_AAAABBBBCCCCDDDDEEEEFF',
     )
     const one = releaseIdFor('production', { env: {} })
     const two = releaseIdFor('production', { env: {} })
-    expect(one).toMatch(/^local-\d{8}T\d{6}Z-[0-9a-f]{8}$/)
+    // 16 bytes as base64url: nothing in it to read, and nothing to sort by
+    expect(one).toMatch(/^r_[A-Za-z0-9_-]{22}$/)
     expect(one).not.toBe(two)
     expect(isReleaseId(one)).toBe(true)
     expect(isReleaseId(releaseIdFor('development'))).toBe(true)
@@ -120,7 +121,7 @@ describe('release ids', () => {
     )
     expect(() => releaseIdFor('production', { env: { [RELEASE_ID_VARIABLE]: 'a b' } })).toThrow()
     // an empty value is no value
-    expect(releaseIdFor('production', { env: { [RELEASE_ID_VARIABLE]: '' } })).toMatch(/^local-/)
+    expect(releaseIdFor('production', { env: { [RELEASE_ID_VARIABLE]: '' } })).toMatch(/^r_/)
   })
 
   it('hands the identity to the bundle frozen', () => {
@@ -160,10 +161,35 @@ describe('a production build', () => {
     const first = await buildWith(root, qualyRelease({ env: {} }))
     const second = await buildWith(root, qualyRelease({ env: {} }))
     expect(first.metadata.releaseId).toMatch(RELEASE_ID_PATTERN)
-    expect(first.metadata.releaseId).toMatch(/^local-/)
+    expect(first.metadata.releaseId).toMatch(/^r_/)
     expect(second.metadata.releaseId).not.toBe(first.metadata.releaseId)
     expect(second.bundle).toContain(second.metadata.releaseId)
     expect(second.bundle).not.toContain(first.metadata.releaseId)
+  })
+
+  it('keeps the revision in the metadata beside the output, out of the bundle', async () => {
+    const root = fixture()
+    roots.push(root)
+    const revision = '3e01e6a2d9cbeda2581671b45727ef268861d564'
+    const { metadata, bundle } = await buildWith(
+      root,
+      qualyRelease({
+        env: { [RELEASE_ID_VARIABLE]: 'r_public', [BUILD_REVISION_VARIABLE]: revision },
+      }),
+    )
+    // the installer reads it, and it is how an opaque id is traced back to
+    // a commit; the browser is handed the id alone
+    expect(metadata.revision).toBe(revision)
+    expect(bundle).not.toContain(revision)
+    expect(bundle).toContain('r_public')
+  })
+
+  it('refuses a revision longer than the metadata takes', async () => {
+    const root = fixture()
+    roots.push(root)
+    await expect(
+      buildWith(root, qualyRelease({ env: { [BUILD_REVISION_VARIABLE]: 'x'.repeat(201) } })),
+    ).rejects.toThrow(BUILD_REVISION_VARIABLE)
   })
 
   it('refuses a deployment name that is not a release id', async () => {
@@ -185,10 +211,12 @@ describe('a development server', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(response.headers.get('x-content-type-options')).toBe('nosniff')
     expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin')
-    const probe = Schema.decodeUnknownSync(ReleaseProbeSchema)(await response.json())
-    expect(probe.mode).toBe('development')
+    // the bytes on the wire, before the contract narrows them: the release
+    // it serves, and nothing about the host that serves it
+    const body: unknown = await response.json()
+    expect(Object.keys(body as object).sort()).toEqual(['releaseId', 'schema'])
+    const probe = Schema.decodeUnknownSync(ReleaseProbeSchema)(body)
     expect(probe.releaseId).toMatch(/^dev-[0-9a-f]{8}$/)
-    expect(probe.serverProtocol).toEqual({ min: 1, max: 1 })
     // the same release the bundle is given
     const served = await server.transformRequest(RELEASE_MODULE_ID)
     expect(served?.code).toContain(probe.releaseId)

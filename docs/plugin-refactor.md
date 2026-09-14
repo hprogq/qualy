@@ -2,6 +2,11 @@
 
 对应代码基线：`3e01e6a2d9cbeda2581671b45727ef268861d564`
 
+> 进度:**Phase A 已落地(2026-09-15)**——health `NotReady` 收为空体、HTML description 去架构宣告、
+> 生产 API docs 404 有验收、`ReleaseProbe` V2(`{schema, releaseId}`)、生产 release id 改不透明
+> 并分出私有 `QUALY_BUILD_REVISION`、新增 docs/browser-public-surface.md。落地形态与仍未收口的项
+> 以那份文档为准,本文保持为设计依据不回改。
+
 ## 1. 背景与目标
 
 Qualy 现有插件底座已经具备比较完整的服务端装配能力：

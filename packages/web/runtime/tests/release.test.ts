@@ -11,13 +11,7 @@ const current = {
   mode: 'production' as const,
   clientProtocol: 1,
 }
-const probeFor = (releaseId: string): ReleaseProbe => ({
-  schema: 1,
-  releaseId,
-  mode: 'production',
-  clientProtocol: 1,
-  serverProtocol: { min: 1, max: 1 },
-})
+const probeFor = (releaseId: string): ReleaseProbe => ({ schema: 2, releaseId })
 
 /** a host answering the probe with a fixed release, or failing */
 const host = (answer: () => ReleaseProbe | Error) => {
