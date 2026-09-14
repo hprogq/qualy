@@ -37,6 +37,32 @@ if (missing.length > 0) {
     `release ${releaseId} names ${String(missing.length)} asset(s) the store does not hold: ${missing.slice(0, 5).join(', ')}`,
   )
 }
+// Nothing in the store may be a source map.
+//
+// This is the load-bearing half of turning source maps on. A map carries
+// `sourcesContent` - the whole source of this product, directory structure
+// included - and the store is served publicly, so one that got in would be a
+// download link to the codebase with nothing saying so. The release store
+// filters them out on the way in; this asserts the result, because the two
+// failures that matter are silent: a filter that stops matching a new
+// extension, and a file placed in the store by something other than the
+// installer.
+const debug: string[] = []
+const scan = (dir: string, within: string) => {
+  if (!fs.existsSync(dir)) return
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) scan(full, path.posix.join(within, entry.name))
+    else if (/\.map(?:\.br|\.gz)?$/.test(entry.name)) debug.push(path.posix.join(within, entry.name))
+  }
+}
+scan(store.root, '')
+if (debug.length > 0) {
+  fail(
+    `the store holds ${String(debug.length)} source map(s), which must never be served: ${debug.slice(0, 5).join(', ')}`,
+  )
+}
+
 const lock = readLock(lockPathFor(manifestPath()))
 if (!lock) fail('no assembly lock; run `pnpm qualy resolve`')
 if (release.resolutionHash !== lock!.resolutionHash) {

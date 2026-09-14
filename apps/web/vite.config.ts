@@ -48,6 +48,13 @@ export default defineConfig(({ mode }) => ({
     dedupe: ['react', 'react-dom'],
   },
   build: {
+    // Written, and never pointed at: `hidden` emits the maps without the
+    // `sourceMappingURL` comment, so no browser ever asks for one. They are
+    // not web assets - a map carries `sourcesContent`, which is the whole
+    // source of this product - and the release store refuses to stage them.
+    // They travel one way only: from this directory to the reporting
+    // platform, by the uploader a release pipeline runs.
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         // How the pieces are pooled, decided by what a request costs.

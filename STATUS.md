@@ -14144,3 +14144,42 @@ package.json 的四行公共字段、`FROZEN_ROUTES`(它是独立 oracle,自动�
   `check-csp-enforce` 三页 0 violation(同样经新 harness)。
 - **实测记录一条**:`tsc --showConfig` **不打印 `compilerOptions.plugins`**,所以它不能用来确认
   Effect 语言服务还在;确认办法是 effect-diagnostics 门禁(编译故意写错的 fixture,要求诊断出现)。
+
+## 浏览器可观测性 Phase 2:SourceMap 管线(2026-09-14,未完)
+
+- **Vite 产 hidden source map**。`sourcemap: 'hidden'` 写出 map 但不写 `sourceMappingURL` 注释,
+  所以没有任何浏览器会去要它。实测 `apps/web/dist` 112 个 map。
+- **release store 拒绝调试产物**。新增 `isDebugArtifact`,`.map` / `.map.br` / `.map.gz` 不进
+  assets 也不进 shell;`.map` 同时从 `COMPRESSIBLE` 移除(压它没有意义,它根本不该被服务)。
+  理由是 map 带 `sourcesContent`——整个产品的源码,而 store 是公开服务的。
+- **两道门禁,都验证过会红**:release-store 套件新增用例(把 map 放进 build 输出,断言 store 里
+  一个都没有、而 build 目录里还在);`check-staged-web` 递归扫 store 拒绝任何 `.map*`。
+  分别用「把 `isDebugArtifact` 改成恒 false」和「往 store 里植一个 map」证明过会失败。
+- **`tools/observability/tencent-rum-sourcemaps.ts` + `pnpm rum:tencent:sourcemaps`**。
+  版本不是参数:从 `apps/web/dist/.qualy-web-build.json` 读 releaseId,经浏览器上报用的同一个
+  `rumVersionForRelease` 映射,所以「map 归档到了一个没有任何上报使用的版本」不是它能犯的错。
+  幂等靠 `DescribeReleaseFiles` 先列后比(同名同 MD5 跳过)。与 `pnpm build` 解耦:普通 CI 不需要
+  腾讯凭据,构建也不会因为厂商 API 不可达而失败。
+- **依赖按实际取舍偏离了 docs/rum.md §47**:用 `tencentcloud-sdk-nodejs-rum`(220 KB)而不是
+  `tencentcloud-sdk-nodejs`(解包 44 MB),三个调用不值得拖整包。catalog 精确 pin 4.1.281。
+
+**对真实 API 实查到的四条**(项目 159421,凭据已配置):
+
+- `DescribeReleaseFileSign` 的临时凭据**默认只有 10 秒**窗口,必须显式传 `Timeout`(实测 3600 有效);
+- `CreateReleaseFile` **会先校验对象是否真的存在**,不存在则报 `<FileKey> is not exist`——
+  所以「记录存在」等于「map 读得到」,不需要额外校验;
+- `FileKey` 形状 `<ProjectID>-<version>-<timestamp>-<文件名>` 被接受(报错只关于存在性,不关于格式);
+- 临时凭据与账号永久凭据都被拒绝 `getService`(策略很窄),所以**无法从凭据反推出 bucket**。
+
+**卡住的一处,已停下来问用户**:`DescribeReleaseFileSign` 只返回凭据,**不返回 bucket / region / key
+前缀**,而这条约定在腾讯公开文档里查不到(API 概览里「获取存储临时密钥」那页没有说明,
+Terraform provider、各语言 SDK 也只有 `file_key` 的样例值)。按不凭记忆猜 API 的纪律,
+没有硬编码一个 bucket 名;uploader 目前把它读作
+`QUALY_TENCENT_RUM_SOURCEMAP_BUCKET` / `_REGION`,拿到真实值后会改成常量并记进
+docs/notes/aegis-web-sdk.md。上传之前的整条链路已对真实 API 跑通(读 metadata → 映射版本 →
+列已归档文件),停在缺这两个值的地方。
+
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 230 passed | 3 skipped (233);
+  Tests 1637 passed | 17 skipped (1654);`pnpm test:browser` 50 / 369;`pnpm build` exit 0;
+  `check-staged-web` exit 0(store 里 0 个 map,而 dist 里 112 个);`check-csp-build` exit 0;
+  `smoke-production` 全 ok。

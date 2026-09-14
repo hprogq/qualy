@@ -97,10 +97,25 @@ export const readCurrentWebRelease = (store: ReleaseStore): CurrentWebRelease | 
  * to consider forever. Brotli at its highest setting is affordable exactly
  * because it happens once: a shared asset already twinned is left alone.
  */
-const COMPRESSIBLE = new Set(['.js', '.css', '.html', '.json', '.svg', '.map'])
+const COMPRESSIBLE = new Set(['.js', '.css', '.html', '.json', '.svg'])
 const TWINS = ['.br', '.gz'] as const
 
 const isTwin = (file: string) => TWINS.some((twin) => file.endsWith(twin))
+
+/**
+ * A file that exists to debug the build, and must never be served.
+ *
+ * A source map carries `sourcesContent`: the entire source of this product,
+ * its directory structure included. The build writes them because a minified
+ * stack trace is not something anybody can act on, and they go to the
+ * reporting platform - which is private - and nowhere else.
+ *
+ * Checked on the way into the store rather than trusted to stay out of the
+ * build: the walk below copies whatever it finds, so the moment source maps
+ * were turned on they would have been published beside the chunks they
+ * explain, with nothing saying so.
+ */
+const isDebugArtifact = (file: string): boolean => /\.map(?:\.br|\.gz)?$/.test(file)
 
 export const ensureCompressed = (file: string): boolean => {
   if (!COMPRESSIBLE.has(path.extname(file)) || isTwin(file)) return false
@@ -346,9 +361,15 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
   if (!fs.existsSync(path.join(source, 'index.html'))) {
     throw new Error(`${source} has no index.html; run the web build first`)
   }
-  const assetFiles = walk(path.join(source, SHARED_ASSETS)).filter((file) => !isTwin(file))
+  const assetFiles = walk(path.join(source, SHARED_ASSETS)).filter(
+    (file) => !isTwin(file) && !isDebugArtifact(file),
+  )
   const shellFiles = walk(source).filter(
-    (file) => !file.startsWith(`${SHARED_ASSETS}/`) && file !== WEB_BUILD_METADATA && !isTwin(file),
+    (file) =>
+      !file.startsWith(`${SHARED_ASSETS}/`) &&
+      file !== WEB_BUILD_METADATA &&
+      !isTwin(file) &&
+      !isDebugArtifact(file),
   )
   const release: InstalledWebRelease = {
     ...identity,

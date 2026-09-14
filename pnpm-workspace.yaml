@@ -101,6 +101,10 @@ catalog:
   # browser - the behaviour that was actually verified is recorded in
   # docs/notes/aegis-web-sdk.md, and an upgrade repeats those checks.
   aegis-web-sdk: 1.41.15
+  # the rum control plane, for the source map uploader a release pipeline runs.
+  # The per-product package rather than `tencentcloud-sdk-nodejs`: the whole
+  # sdk unpacks to 44 MB for three calls, and this one to 220 KB.
+  tencentcloud-sdk-nodejs-rum: 4.1.281
 patchedDependencies:
   '@stylexjs/unplugin@0.19.0': patches/@stylexjs__unplugin@0.19.0.patch
 minimumReleaseAgeExclude:

@@ -207,6 +207,43 @@ describe('installing', () => {
     expect(currentId(store)).toBe('A')
   })
 
+  it('leaves every source map in the build directory, and stages none of them', () => {
+    // The build writes maps so that a minified stack can be read back, and a
+    // map carries `sourcesContent` - the whole source of this product. The
+    // store is served publicly, so a map that got in would be a download link
+    // to the codebase with nothing saying so. Filtered here, and asserted
+    // again by check-staged-web on the real store.
+    const store = storeAt(temp('qualy-store-'))
+    const dist = buildOutput('M', {
+      assets: {
+        'index-M.js': `// M\n${'export const x = 1\n'.repeat(120)}`,
+        'index-M.js.map': `{"version":3,"sourcesContent":["the whole source"]}`,
+      },
+    })
+    // and one beside the shell, where a twin could also have been written
+    fs.writeFileSync(path.join(dist, 'boot.js.map'), '{"version":3}')
+    fs.writeFileSync(path.join(dist, 'assets', 'index-M.js.map.br'), 'compressed')
+    const result = installWebRelease({
+      source: dist,
+      store,
+      resolutionHash: HASH,
+      now: at('2026-09-14T09:00:00.000Z'),
+    })
+    expect(result.release.assets).toEqual(['assets/index-M.js'])
+    const staged: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else staged.push(entry.name)
+      }
+    }
+    walk(store.root)
+    expect(staged.filter((name) => name.includes('.map'))).toEqual([])
+    // the build keeps its own copy: that is where the uploader reads them
+    expect(exists(dist, 'assets', 'index-M.js.map')).toBe(true)
+  })
+
   it('reads nothing from an empty store and refuses a broken one', () => {
     const store = storeAt(temp('qualy-store-'))
     expect(readCurrentWebRelease(store)).toBeUndefined()

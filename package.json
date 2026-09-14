@@ -24,8 +24,10 @@
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-org": "workspace:*",
     "@qualy/plugin-ping": "workspace:*",
+    "@qualy/plugin-rum-tencent": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@qualy/web-build": "workspace:*",
     "@stylexjs/unplugin": "catalog:",
@@ -33,10 +35,12 @@
     "@types/pg": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@vitest/browser-playwright": "catalog:",
+    "cos-nodejs-sdk-v5": "catalog:",
     "effect": "catalog:",
     "pg": "catalog:",
     "playwright": "catalog:",
     "prettier": "catalog:",
+    "tencentcloud-sdk-nodejs-rum": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",
@@ -70,6 +74,7 @@
     "sandbox:up": "node tools/quality/sandbox-uds-gate.ts && docker compose --profile sandbox up -d sandbox-runtime sandbox-authoring",
     "sandbox:down": "docker compose --profile sandbox down sandbox-runtime sandbox-authoring",
     "sandbox:smoke": "node tools/quality/sandbox-smoke.ts",
-    "smoke:formula-production": "node tools/quality/formula-production-smoke.ts"
+    "smoke:formula-production": "node tools/quality/formula-production-smoke.ts",
+    "rum:tencent:sourcemaps": "node --env-file-if-exists=.env tools/observability/tencent-rum-sourcemaps.ts"
   }
 }
