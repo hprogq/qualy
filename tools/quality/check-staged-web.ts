@@ -55,12 +55,19 @@ if (missing.length > 0) {
 // the build keeps what implements it, and a store holding that map would hand
 // the mapping back to anyone who asked.
 const debug: string[] = []
+const isPrivateBuildFile = (name: string) =>
+  PRIVATE_BUILD_FILES.some(
+    (file) => name === file || name === `${file}.br` || name === `${file}.gz`,
+  )
 const scan = (dir: string, within: string) => {
   if (!fs.existsSync(dir)) return
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) scan(full, path.posix.join(within, entry.name))
-    else if (/\.map(?:\.br|\.gz)?$/.test(entry.name) || PRIVATE_BUILD_FILES.includes(entry.name)) {
+    // the compressed twins too: the installer writes none of these, so
+    // anything here arrived by hand, and a hand that copied the file could
+    // as easily have copied the brotli beside it
+    else if (/\.map(?:\.br|\.gz)?$/.test(entry.name) || isPrivateBuildFile(entry.name)) {
       debug.push(path.posix.join(within, entry.name))
     }
   }

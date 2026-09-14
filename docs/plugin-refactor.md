@@ -3619,6 +3619,21 @@ browser another copy
 tests another hand-written shape
 ```
 
+> **裁决(2026-09-15,Phase B 落地时):`schema: Schema.Literal(2)` 这一条否决,不再实施。**
+> 「Manifest 由一份 Effect Schema 单源」这半条已经成立,而且本来就是实情:形状定义在
+> `plugin-ui-registry/src/api.ts` 的 HttpApiEndpoint 上,服务端投影与浏览器 typed client
+> 同出一源,测试不另写手抄形状。**被否决的只有版本字段本身**——
+>
+> manifest 经 typed client 传输,而 client protocol 已经在 handler 之前拒绝了不兼容的浏览器;
+> §68 自己也把「Manifest wire shape breaking」定义为 client protocol change。再加一个没有任何
+> 消费者会分支的 `schema`,就是同一条规则的第二个版本源,而两个版本源迟早不同步。
+>
+> 版本所有权因此明确为:**manifest 文档的代次由 `CURRENT_CLIENT_PROTOCOL` 单独承载**。
+> 与 `/__qualy/release` 探针的 `schema` 不同——那份文档在 typed client 之外被裸 fetch、由一个
+> guard 读,没有传输层替它把关,所以它需要自己的代次。
+>
+> 谁要把 `schema` 加回 manifest,先推翻这段裁决。
+
 ---
 
 # 68. Manifest V1 不需要长期兼容
@@ -5015,6 +5030,13 @@ packages/plugins/infra/rum-tencent/src/client/*
 ---
 
 # 104. Phase D1 文件级修改
+
+> **前置修复(2026-09-15 记,Phase B 复审提出)**:`apps/web/scripts/check-chunks.ts` 的
+> `--expect-absent` 分支在找不到 binding 时仍然 `expectAbsent.split(':').pop()`,想从 surface
+> 名猜出 chunk basename。surface 与 module 在 Phase B 已经正式解耦,这个 fallback 不再可靠。
+> D1 要做 disabled sentinel,**必须先换掉它**:absent 判定改用 build metadata / Rollup 输出,
+> 或一个专门的 disabled sentinel,不要再从 surface 名推 chunk 名。正向的「每个 surface 都有
+> 独立 chunk」已改成按 module basename 统计唯一模块数,不受影响。
 
 修改：
 
