@@ -25,12 +25,7 @@
   "devDependencies": {
     "@qualy/assembly": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
-    "@qualy/plugin-assessment": "workspace:*",
-    "@qualy/plugin-assessment-formula": "workspace:*",
-    "@qualy/plugin-auth": "workspace:*",
-    "@qualy/plugin-rbac": "workspace:*",
-    "@qualy/plugin-rum": "workspace:*",
-    "@qualy/plugin-rum-tencent": "workspace:*",
+    "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
     "@qualy/value-schema": "workspace:*",
     "@qualy/web-build": "workspace:*",

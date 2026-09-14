@@ -19,5 +19,11 @@
     "packages/plugins/*/*/src",
     "packages/plugins/*/*/tests"
   ],
-  "exclude": ["packages/web", "packages/plugins/*/*/src/client", "repos"]
+  "exclude": [
+    "packages/web",
+    "packages/plugins/*/*/src/client",
+    "packages/plugins/*/*/tests/**/*.tsx",
+    "tools/fixtures/*/tests/**/*.tsx",
+    "repos"
+  ]
 }

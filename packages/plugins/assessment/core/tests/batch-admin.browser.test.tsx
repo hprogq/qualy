@@ -1,3 +1,10 @@
+import BatchListPage from '../src/client/BatchListPage.tsx'
+import BatchPhasesPage from '../src/client/BatchPhasesPage.tsx'
+import BatchParticipantsPage from '../src/client/BatchParticipantsPage.tsx'
+import BatchAccessPage from '../src/client/BatchAccessPage.tsx'
+import BatchOverviewPage from '../src/client/BatchOverviewPage.tsx'
+import BatchSettingsPage from '../src/client/BatchSettingsPage.tsx'
+import WorkspaceShell from '@qualy/plugin-layout-default/client/WorkspaceShell'
 import { lazy, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
@@ -5,30 +12,18 @@ import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { layoutComponents, pageComponents, slotComponents } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
-const BatchListPage = (await pageComponents['assessment/batches']!()).default
-const BatchPhasesPage = (await pageComponents['assessment/batch-phases']!()).default
-const BatchParticipantsPage = (await pageComponents['assessment/batch-participants']!()).default
-const BatchAccessPage = (await pageComponents['assessment/batch-access']!()).default
-const BatchOverviewPage = (await pageComponents['assessment/batch']!()).default
-const BatchSettingsPage = (await pageComponents['assessment/batch-settings']!()).default
 // the picker iam contributes, held the way the registry holds one
-const PeopleImportPicker = lazy(
-  slotComponents['iam/people-import-picker']!['auth/people-import-picker']!,
-)
+const PeopleImportPicker = lazy(() => import('@qualy/plugin-auth/client/iam/PeopleImportPicker'))
 // the bar the workspace shell puts above its rail: which batch is open, where
 // it stands, and what can be done to it. Mounted here the way the shell
 // mounts it, because half of what these cases drive lives in it.
-const BatchContextBar = (
-  await slotComponents['workspace-shell/context']!['assessment/batch-context']!()
-).default
+const BatchContextBar = (await (() => import('../src/client/batch/BatchContextBar.tsx'))()).default
 // the shell these sections actually live in, mounted as their layout so the
 // page scrolls where the app scrolls it
-const WorkspaceShell = (await layoutComponents['workspace-shell/v1']!()).default
 
 // What a service test cannot see: that a plan can be built with no template
 // at all, that the two template kinds stay in their own pickers and both stay
@@ -1268,9 +1263,7 @@ describe('a section inside the workspace shell', () => {
         slots: {
           'workspace-shell/context': {
             'assessment/batch-context': lazy(
-              slotComponents['workspace-shell/context']![
-                'assessment/batch-context'
-              ]! as () => Promise<never>,
+              (() => import('../src/client/batch/BatchContextBar.tsx')) as () => Promise<never>,
             ),
           },
         },

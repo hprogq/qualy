@@ -14748,3 +14748,99 @@ packages/web/runtime/package.json  -> @qualy/plugin-ui-registry       ← 删除
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 234 passed | 3 skipped,
 Tests 1681 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0;
 `check-staged-web` exit 0。
+
+## 组件引用检查器跟丢了 ModuleRef(2026-09-15)
+
+Phase D 把 `Ui.react(...)` 的含义从「src/ 下的文件路径」改成「本包的 export 子路径」,
+`tools/quality/check-client-components.ts` **没有跟上**:它照旧 `path.resolve(packageDir, 'src', module)`,
+于是每个插件的每条引用都被报成 `does not exist`——40 条,全仓库。
+
+后果是双重的:这个门禁**从那一刻起什么都没在检查**,而 `pnpm typecheck` 从那一刻起就是 **exit 1**。
+D/E/F 三节里「`pnpm typecheck` exit 0」的记录**是错的**,在此更正:那三个 commit 上它是红的,
+红的原因只有这一条(`error TS` 一条没有),且与各阶段的产物无关。教训是我当时只 grep 了 `error TS`
+就当它绿——而这个脚本的失败不长那个样子。
+
+修法:引用按包的 exports map 解析(与构建同一条 `resolvePluginExport`),包自己说 `./client/X`
+背后是 `src/**.tsx` 还是 `dist/**.js`。**两条负面用例都实测过会红**:把 `./client/OrgPage` 改成
+一个包没导出的名字 → 点名「add it to that package's exports」;给 `OrgPage` 加一个必填 prop →
+`Type '(props: {...}) => Element' is not assignable to type 'ComponentType<{}>'`。
+
+## 插件重构 Phase G:浏览器测试归属插件,harness 成包(2026-09-15)
+
+### 一、harness 出仓成包
+
+`apps/web/tests/support/harness.tsx` 整体搬成 `@qualy/testkit`(导出 `./browser`),
+**catalogs 与 errorMessages 从写死改成入参**,样式表改由渲染方自己 import。原先它从
+`virtual:qualy/plugins` 取整个聚合,于是每一条「某插件某屏」的断言实际跑在**全量装配**之上:
+文案对不上时分不清是自己的 catalog 错还是邻居的 message id 撞了;更要紧的是**仓库外的插件根本
+写不了这种测试**——它没有那个 virtual module。
+
+`apps/web/tests/support/harness.tsx` 留成一层薄包装,把真实聚合的 catalogs 注进去:host 自己的
+测试(壳、冷启动、release 协议、跨屏 localization)本来就该拿产品的全量文案。
+
+### 二、21 个测试搬到 owner
+
+```text
+assessment/core      9    assessment/formula  6    base/auth          3
+base/org             1    infra/rum           1    infra/rum-tencent  1
+```
+
+`apps/web/tests` 剩 30 个,全是 host 与平台的:壳、冷启动、release 协议与恢复、localization、
+主题,以及 widget 平台那一摞(overlay / 表单 / 日期 / 时间线 / 字段系统)。**没有一个再 import
+`@qualy/plugin-*`**,于是 `apps/web/package.json` 的 6 个插件 devDependency 一并删掉,
+`plugin-isolation` 的 `WEB_APP_TESTS` 清单**清空**——不是放宽:它的形状仍在,新增一条就得连同
+「哪个阶段拿掉它」一起写下来。
+
+搬过去的测试改成 import 自己的组件(`../src/client/X.tsx`)与邻居的**已发布子路径**
+(`@qualy/plugin-x/client/X`);每个包新增 `tests/support/screen.tsx`,点名自己的 catalog 加上
+「本包的屏确实会渲染到的邻居」的 catalog,再无第二处聚合。**这条规则当场就被验证了**:
+`item-chain` 的三例先是红的,因为 core 的屏会把 formula 的 calculator seat 渲染进槽位,
+而选项名 `assessment-formula/binding/calculator` 归 formula 的 catalog——补上后 30/30,
+单文件耗时从 101s 回到 13.5s。
+
+### 三、一个仓库外的插件,自己写 browser test
+
+`tools/fixtures/acme-browser-probe`:第三方 scope,**只有 package.json + dist/**(编译产物加 `.d.ts`,
+没有 src)。它的 `tests/probe.browser.test.tsx` 只 import 三样东西——`@qualy/testkit/browser`、
+**自己包的 export 子路径**、自己的 catalog;渲染出的屏按 `getByRole` 定位、按 `data-probe-standing`
+断言事实、文案走自己的 zh-CN catalog。这就是 DoD 那条「fixture plugin 独立使用 testkit」的实物。
+(它是 workspace 成员,`acme-dist-probe` **仍然不是**——后者要证明的正是「这个 workspace 从没装过
+的包也能解析」。)
+
+### 四、类型门禁:浏览器测试进浏览器程序
+
+搬过去的 `.browser.test.tsx` 落进了根 node 程序(无 `--jsx`、无 DOM lib)。修法是让它们进**自己的
+浏览器程序**:每个有 browser test 的包一份 `tests/tsconfig.browser.json`(extends
+`@qualy/tsconfig/vite-browser.json`),根工程排除 `packages/plugins/*/*/tests/**/*.tsx` 与
+`tools/fixtures/*/tests/**/*.tsx`,`tools/quality/typecheck.ts` 按**文件名**发现这些程序(与 client
+目录同一套发现方式,根脚本不点名插件)。CLAUDE 的「测试目录必须在某个 tsconfig 的 include 里」
+两半都兑现:`.ts` 归根程序,`.tsx` 归浏览器程序。
+
+### 五、新门禁
+
+- `plugin-isolation` 的 PLATFORM 加入 `packages/testkit`:**harness 自己不许 import 任何插件实现**。
+- 新增一组用例「host 之外的 browser test 既不碰聚合也不碰 host」:逐文件扫
+  `packages/plugins/*/*/tests` 与 `tools/fixtures/*/tests`——禁止 `virtual:qualy/*`;禁止从
+  `apps/web/` import(样式表是唯一例外,它是产品的那一份);**相对 import 必须指向存在的文件**。
+  最后一条是被咬出来的:`vite/client` 把 `*.css` 声明成通配模块,所以 screen.tsx 里少爬一层目录的
+  样式表路径**类型门禁完全看不见**,只在 runner 去 serve 它的时候才炸。
+
+**三条门禁都实测过会红**:给 `org-admin.browser.test.tsx` 加回 `virtual:qualy/plugins` 与
+`apps/web/tests/support/harness.tsx` 两个 import → 前两条同时红并点名该文件;把 org 的样式表路径
+少写一层 `..` → 第三条红并打印那条 specifier。
+
+### 门禁(实际执行)
+
+```text
+pnpm typecheck            exit 0
+pnpm test                 234 passed | 3 skipped (237),  Tests 1684 passed | 17 skipped (1701)
+pnpm test:browser         52 passed (52),                Tests 377 passed (377)
+pnpm test:browser:webkit  2 passed (2),                  Tests 14 passed (14)
+pnpm build                exit 0 -> r_u45jV8xQWFsd5hGZVqv2Bg (123 assets, production, protocol 2)
+check-staged-web          exit 0
+```
+
+浏览器套件从 51/376 变 52/377,多出来的一个文件一条用例正是上面那个第三方 fixture——
+**没有测试在搬家过程中被删掉或减弱**。
+
+**下一步**:Phase H(`qualy plugin add / enable / disable / remove`)。

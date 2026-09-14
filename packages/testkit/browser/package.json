@@ -1,0 +1,28 @@
+{
+  "name": "@qualy/testkit",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./browser": "./src/browser.tsx",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "react": "catalog:"
+  },
+  "dependencies": {
+    "@qualy/ui": "workspace:*",
+    "@qualy/web-i18n": "workspace:*",
+    "@qualy/web-runtime": "workspace:*",
+    "effect": "catalog:",
+    "react-router": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/tsconfig": "workspace:*",
+    "@types/react": "catalog:",
+    "vitest": "catalog:",
+    "vitest-browser-react": "catalog:"
+  }
+}

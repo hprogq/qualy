@@ -1,9 +1,9 @@
+import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
 import { Effect } from 'effect'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
-import { pageComponents } from 'virtual:qualy/plugins'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Offering one published version to somebody, and taking it back.
 //
@@ -12,8 +12,6 @@ import { apiError, emptyManifest, fakeClient, renderScreen } from './support/har
 // shown nothing to add. Narrowing never does - otherwise losing the
 // permission would trap whatever was already offered - so the controls
 // that remove stay, and this file bears exactly that asymmetry.
-
-const FormulaEditorPage = (await pageComponents['assessment-formula/editor']!()).default
 
 const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
 const COLLEGE = '01920000-0000-7000-8000-0000000000e1'

@@ -1,8 +1,8 @@
+import LoginPage from '../src/client/LoginPage.tsx'
 import { lazy } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { loginComponents, pageComponents } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The sign-in screen finds a driver's renderer by the driver's TYPE.
 //
@@ -11,8 +11,6 @@ import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 // visitor was told which package implements the way in. `local` is what a
 // way of signing in is called, the build files the renderer under the same
 // word, and this is the only test that walks that resolution.
-
-const LoginPage = (await pageComponents['auth/login']!()).default
 
 const password = {
   code: 'password',
@@ -36,7 +34,7 @@ const screen = (login: Record<string, ReturnType<typeof lazy>>) =>
 
 describe('the sign-in screen', () => {
   it('renders the driver filed under the type the method names', async () => {
-    screen({ local: lazy(loginComponents['local']!) })
+    screen({ local: lazy(() => import('@qualy/plugin-auth-local/client/LoginMethod')) })
     // the local driver's own form, which is the only thing that proves the
     // renderer was resolved rather than the shell drawing an empty card
     await expect.element(page.getByLabelText('用户名')).toBeVisible()

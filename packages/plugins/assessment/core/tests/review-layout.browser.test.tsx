@@ -1,12 +1,12 @@
+import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
+import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
-import { pageComponents } from 'virtual:qualy/plugins'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
 // screen. Test files run in their own frame, so this stays here.
-import '../src/app.css'
 
 // The workbench at the widths it is actually used at.
 //
@@ -16,9 +16,6 @@ import '../src/app.css'
 // thumb, sending is a press held down rather than a tap. Each of those is a
 // different screen built from the same parts, and none of them is exercised
 // by a test that only ever runs at one width.
-
-const ReviewInstancePage = (await pageComponents['assessment/review-instance']!()).default
-const ReviewInboxPage = (await pageComponents['assessment/batch-reviews']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_ID = '22222222-2222-4222-8222-222222222222'

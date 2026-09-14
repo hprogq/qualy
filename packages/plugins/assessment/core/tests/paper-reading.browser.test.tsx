@@ -1,9 +1,8 @@
-import '../src/app.css'
+import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { pageComponents } from 'virtual:qualy/plugins'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // Reading the paper is scrolling, and the rail beside it has to keep up.
 // Three things have to hold at once: an address lands the paper on the row
@@ -11,8 +10,6 @@ import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/h
 // is the one the rail marks, and the tail of the paper - which no scroll
 // can lift as far as the reading line - is still reachable and still
 // marked. Styles are loaded here because every one of those is geometry.
-
-const MyEntriesPage = (await pageComponents['assessment/batch-my-entries']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const PARTICIPANT_ID = '44444444-4444-4444-8444-444444444444'

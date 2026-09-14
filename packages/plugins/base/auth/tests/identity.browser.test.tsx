@@ -1,3 +1,7 @@
+import UserTypesPage from '../src/client/iam/UserTypesPage.tsx'
+import RolesPage from '@qualy/plugin-rbac/client/RolesPage'
+import UserDetailPage from '../src/client/iam/UserDetailPage.tsx'
+import UsersPage from '../src/client/iam/UsersPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
@@ -9,22 +13,11 @@ import type { accessApi } from '@qualy/plugin-rbac/client/api'
 type UserTypeDto = ApiResult<typeof authApi, 'identity', 'listUserTypes'>['userTypes'][number]
 type RoleDto = ApiResult<typeof accessApi, 'access', 'listRoles'>['roles'][number]
 type UserDto = ApiResult<typeof authApi, 'identity', 'getUser'>['user']
-import { pageComponents } from 'virtual:qualy/plugins'
 import { Effect } from 'effect'
-import {
-  addressNow,
-  apiError,
-  emptyManifest,
-  fakeClient,
-  renderScreen,
-} from './support/harness.tsx'
+import { addressNow, apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
-const UserTypesPage = (await pageComponents['auth/user-types']!()).default
-const RolesPage = (await pageComponents['rbac/roles']!()).default
-const UserDetailPage = (await pageComponents['auth/user-detail']!()).default
-const UsersPage = (await pageComponents['auth/users']!()).default
 
 // What these cover is exactly what a service test cannot: whether the screen
 // offers an action, whether a refusal reaches the reader in their own

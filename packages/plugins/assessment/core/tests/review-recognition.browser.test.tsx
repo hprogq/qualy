@@ -1,9 +1,8 @@
+import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { pageComponents } from 'virtual:qualy/plugins'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
-import '../src/app.css'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The approval collecting an explicit determination.
 //
@@ -14,8 +13,6 @@ import '../src/app.css'
 // and a sitting's frozen text is confirmed read-only and verbatim. A fixed
 // question offers no form at all, which must leave the dialog exactly as it
 // was before any of this existed.
-
-const ReviewInstancePage = (await pageComponents['assessment/review-instance']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_ID = '22222222-2222-4222-8222-222222222222'

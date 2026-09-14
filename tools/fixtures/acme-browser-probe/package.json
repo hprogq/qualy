@@ -1,0 +1,26 @@
+{
+  "name": "@acme/qualy-browser-probe",
+  "version": "2.0.1",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    "./client/ProbePage": "./dist/client/ProbePage.js",
+    "./client/i18n": "./dist/client/i18n.js"
+  },
+  "peerDependencies": {
+    "@qualy/i18n-contract": "*",
+    "@qualy/web-i18n": "*",
+    "react": "*"
+  },
+  "devDependencies": {
+    "@qualy/i18n-contract": "workspace:*",
+    "@qualy/testkit": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
+    "@qualy/web-i18n": "workspace:*",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "vitest": "catalog:"
+  }
+}

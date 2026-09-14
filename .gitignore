@@ -68,8 +68,9 @@ Thumbs.db
 .vitest-attachments/
 
 # vitest browser writes these when a test fails; they are diagnostics,
-# not baselines, and nothing compares against them
-apps/web/tests/__screenshots__/
+# not baselines, and nothing compares against them. Wherever the test lives:
+# a browser test belongs to its package now, and so does its debris
+__screenshots__/
 
 # resolved runtime entry list, generated from qualy.yml
 cordis.gen.yml

@@ -3,8 +3,13 @@ packages:
   - packages/contracts/*
   - packages/web/*
   - packages/build/*
+  - packages/testkit/*
   - packages/plugins/*/*
   - apps/*
+  # A third party's plugin, dist-only, which owns a browser test of its own.
+  # Named rather than globbed: the fixture next to it proves that a plugin
+  # this workspace has never installed still resolves, so it must stay out.
+  - tools/fixtures/acme-browser-probe
 allowBuilds:
   argon2: true
   cos-js-sdk-v5: false

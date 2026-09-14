@@ -65,10 +65,14 @@
   },
   "devDependencies": {
     "@qualy/plugin-assessment-evidence": "workspace:*",
+    "@qualy/plugin-assessment-formula": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",
+    "@qualy/plugin-layout-default": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
-    "@types/react": "catalog:"
+    "@types/react": "catalog:",
+    "react-router": "catalog:"
   },
   "peerDependencies": {
     "react": "catalog:"

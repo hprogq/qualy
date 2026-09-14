@@ -57,7 +57,17 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   test: {
-    include: ['tests/**/*.browser.test.tsx'],
+    // The host's own tests, and every plugin's - one runner, wherever the
+    // file lives. A test belongs to whatever it is about, and the runner
+    // stays single because React, the router, StyleX and the widget library
+    // must resolve to one instance across all of them (§82).
+    include: [
+      'tests/**/*.browser.test.tsx',
+      '../../packages/plugins/*/*/tests/**/*.browser.test.tsx',
+      // and a plugin from outside this repository, proving the harness is
+      // usable by one
+      '../../tools/fixtures/*/tests/**/*.browser.test.tsx',
+    ],
     // One retry, for one diagnosed reason: the runner dispatches real input
     // at page coordinates computed from the tester iframe's offset, and
     // when that offset shifts mid-click the press lands outside the frame -

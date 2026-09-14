@@ -24,6 +24,23 @@ function findClientProjects(root: string): string[] {
   return projects.sort()
 }
 
+// A browser test renders the same code the browser runs, so it is checked by
+// a browser program rather than the node one - discovered by the file name
+// every such program carries, the way client directories are.
+function findBrowserTestProjects(root: string): string[] {
+  const projects: string[] = []
+  const stack = [root]
+  while (stack.length > 0) {
+    const dir = stack.pop()!
+    for (const child of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, child.name)
+      if (child.isFile() && child.name === 'tsconfig.browser.json') projects.push(full)
+      else if (child.isDirectory() && child.name !== 'node_modules') stack.push(full)
+    }
+  }
+  return projects.sort()
+}
+
 /** the browser-side packages, each its own program: whatever has a tsconfig */
 function findPackageProjects(root: string): string[] {
   return fs
@@ -41,8 +58,11 @@ function findPackageProjects(root: string): string[] {
 const projects = [
   '.',
   ...findPackageProjects('packages/web'),
+  ...findPackageProjects('packages/testkit'),
   'apps/web',
   ...findClientProjects('packages'),
+  ...findBrowserTestProjects('packages'),
+  ...findBrowserTestProjects('tools/fixtures'),
 ]
 // Build info per project, so a second run rechecks what changed rather than
 // every program from scratch - the difference between nine seconds and one.

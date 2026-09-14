@@ -1,11 +1,9 @@
+import TemplatesPage from '../src/client/FormulaTemplatesPage.tsx'
+import TemplatePage from '../src/client/FormulaTemplatePage.tsx'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { pageComponents } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
-
-const TemplatesPage = (await pageComponents['assessment-formula/templates']!()).default
-const TemplatePage = (await pageComponents['assessment-formula/template']!()).default
+import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The library of formulas other people offered you.
 //

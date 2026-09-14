@@ -1,21 +1,19 @@
+import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
+import BatchOverviewPage from '../src/client/BatchOverviewPage.tsx'
+import ReviewInboxPage from '../src/client/review/ReviewInboxPage.tsx'
+import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
+import MyResultPage from '../src/client/result/MyResultPage.tsx'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { pageComponents } from 'virtual:qualy/plugins'
-import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The entry workflow as a person drives it: filing a claim on a question,
 // following what a reviewer did to it, judging one from the queue, and
 // reading one's own standing. Every case runs the real screens over a
 // stubbed wire and asserts by role and label, the way a person would look.
-
-const MyEntriesPage = (await pageComponents['assessment/batch-my-entries']!()).default
-const BatchOverviewPage = (await pageComponents['assessment/batch']!()).default
-const ReviewInboxPage = (await pageComponents['assessment/batch-reviews']!()).default
-const ReviewInstancePage = (await pageComponents['assessment/review-instance']!()).default
-const MyResultPage = (await pageComponents['assessment/batch-my-result']!()).default
 
 type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch']
 type ItemDto = ApiResult<typeof assessmentApi, 'assessment', 'listItems'>['items'][number]

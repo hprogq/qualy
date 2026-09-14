@@ -30,6 +30,7 @@
     "tencentcloud-sdk-nodejs-rum": "catalog:"
   },
   "devDependencies": {
+    "@qualy/testkit": "workspace:*",
     "@qualy/tsconfig": "workspace:*"
   }
 }

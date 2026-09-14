@@ -1,15 +1,13 @@
+import FormulaEditorPage from '../src/client/FormulaEditorPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
-import { pageComponents } from 'virtual:qualy/plugins'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The authoring loop around the editor: the draft contract preview turns
 // the JSON test box into a typed form, the try-run and the regression rows
 // share one evaluator wire, results go stale with the code, and a save
 // never holds the code hostage to broken cases.
-
-const FormulaEditorPage = (await pageComponents['assessment-formula/editor']!()).default
 
 const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
 

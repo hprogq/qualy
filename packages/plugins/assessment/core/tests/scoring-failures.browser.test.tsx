@@ -1,10 +1,11 @@
+import ReviewInstancePage from '../src/client/review/ReviewInstancePage.tsx'
+import MyResultPage from '../src/client/result/MyResultPage.tsx'
+import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
 import { lazy } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { pageComponents, slotComponents } from 'virtual:qualy/plugins'
-import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
-import '../src/app.css'
+import { apiError, emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // What a person sees when the arithmetic will not, or cannot, score.
 //
@@ -13,10 +14,6 @@ import '../src/app.css'
 // student whose account cannot be computed sees that, and no total; an
 // administrator whose new rule re-prices what stands is told how many, and
 // told that a rule refusing what stands has no way through.
-
-const ReviewInstancePage = (await pageComponents['assessment/review-instance']!()).default
-const MyResultPage = (await pageComponents['assessment/batch-my-result']!()).default
-const ItemSettingsPage = (await pageComponents['assessment/batch-items']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_ID = '22222222-2222-4222-8222-222222222222'
@@ -409,10 +406,7 @@ describe('a rule that re-prices what stands', () => {
         slots: {
           'assessment/calculator-editor': {
             'assessment/fixed-calculator-editor': lazy(
-              () =>
-                slotComponents['assessment/calculator-editor']![
-                  'assessment/fixed-calculator-editor'
-                ]!() as never,
+              () => (() => import('../src/client/items/FixedCalculatorEditor.tsx'))() as never,
             ),
           },
         },

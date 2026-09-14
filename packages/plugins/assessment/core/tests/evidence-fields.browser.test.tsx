@@ -1,9 +1,8 @@
+import MyEntriesPage from '../src/client/entry/MyEntriesPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { pageComponents } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
-import '../src/app.css'
+import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The typed evidence fields, from a student's keyboard to the wire.
 //
@@ -13,8 +12,6 @@ import '../src/app.css'
 // materialize holds the door shut - for an optional field especially,
 // because "invalid" quietly read as "left blank" is how a typo submits as
 // an omission.
-
-const MyEntriesPage = (await pageComponents['assessment/batch-my-entries']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const GROUP_ID = '66666666-6666-4666-8666-666666666666'

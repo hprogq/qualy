@@ -2,10 +2,9 @@ import { StrictMode } from 'react'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render } from 'vitest-browser-react'
 import { I18nProvider } from '@qualy/web-i18n'
-import { catalogs, errorMessages } from 'virtual:qualy/plugins'
+import { catalogs, errorMessages } from './support/screen.tsx'
 import { monaco } from '@qualy/plugin-assessment-formula/client/monaco-setup'
 import FormulaCodeEditor from '@qualy/plugin-assessment-formula/client/FormulaCodeEditor'
-import '../src/app.css'
 
 // The React face of the editor: the model is an editing buffer with its own
 // life, ordinary rerenders keep their hands off it, and unmounting tears

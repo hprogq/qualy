@@ -1,9 +1,8 @@
+import RecordPage from '../src/client/record/RecordPage.tsx'
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { pageComponents } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
-import '../src/app.css'
+import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 
 // The registrar making a determination while they file the fact.
 //
@@ -13,8 +12,6 @@ import '../src/app.css'
 // contract's drafts must never leak into the next. Whatever the screen
 // shows, the submission is explicit: the wire carries the values the
 // registrar confirmed.
-
-const RecordPage = (await pageComponents['assessment/batch-record']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_A = '22222222-2222-4222-8222-222222222222'

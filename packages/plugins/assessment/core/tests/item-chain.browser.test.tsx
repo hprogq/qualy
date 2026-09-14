@@ -1,19 +1,16 @@
+import ItemSettingsPage from '../src/client/items/ItemSettingsPage.tsx'
 import { lazy } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { pageComponents, slotComponents } from 'virtual:qualy/plugins'
-import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
+import { emptyManifest, fakeClient, renderScreen } from './support/screen.tsx'
 // the real stylesheet, because one assertion here is about visibility
 // classes: the add key must not hide behind a hover
-import '../src/app.css'
 
 // The review chain as its author composes it: every step must be named and
 // staffed before the question can be saved, and the chain itself has to say
 // which step is unfinished; steps are added, reordered and removed with
 // controls that are on show rather than discovered by hovering.
-
-const ItemSettingsPage = (await pageComponents['assessment/batch-items']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const PAPER_ID = '22222222-2222-4222-8222-222222222222'
@@ -361,16 +358,11 @@ const open = (
       slots: {
         'assessment/calculator-editor': {
           'assessment/fixed-calculator-editor': lazy(
-            () =>
-              slotComponents['assessment/calculator-editor']![
-                'assessment/fixed-calculator-editor'
-              ]!() as never,
+            () => (() => import('../src/client/items/FixedCalculatorEditor.tsx'))() as never,
           ),
           'assessment-formula/calculator-editor': lazy(
             () =>
-              slotComponents['assessment/calculator-editor']![
-                'assessment-formula/calculator-editor'
-              ]!() as never,
+              (() => import('@qualy/plugin-assessment-formula/client/CalculatorEditor'))() as never,
           ),
         },
       },

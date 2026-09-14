@@ -41,6 +41,8 @@ describe('a plugin published the ordinary way, with no sources', () => {
     // below prove something weaker than it says
     const files = (dir: string): string[] =>
       fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        // what an install put there is not what the package ships
+        if (entry.name === 'node_modules') return []
         const at = path.join(dir, entry.name)
         return entry.isDirectory() ? files(at) : [path.relative(FIXTURE, at)]
       })

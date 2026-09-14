@@ -88,8 +88,12 @@ const typecheckAlone = (dir: string) => {
  * capability facade (`@qualy/plugin-x/plugin`) is how a contributor declares a
  * contribution, and §79 of the refactor keeps it allowed until those move to
  * their contract packages; and the two edges below are what is left.
+ *
+ * `packages/testkit` is held to the same rule for the same reason: a
+ * harness that imported one plugin's catalogs would make every test using
+ * it a test of an assembly containing that plugin.
  */
-const PLATFORM = ['packages/web', 'packages/core', 'packages/contracts']
+const PLATFORM = ['packages/web', 'packages/core', 'packages/contracts', 'packages/testkit']
 const PLUGIN_KIT = /^@qualy\/plugin-kit(\/|$)/
 const CAPABILITY_FACADE = /^@qualy\/plugin-[a-z-]+\/plugin$/
 
@@ -139,7 +143,7 @@ const importsOf = (source: string): string[] =>
 const relative = (file: string) => path.relative(repoRoot, file).split(path.sep).join('/')
 
 describe('the platform depends on no plugin implementation', () => {
-  it('imports none, in any browser, core or contract package', () => {
+  it('imports none, in any browser, core, contract or testkit package', () => {
     const offenders: string[] = []
     for (const root of PLATFORM) {
       for (const file of walkSources(path.join(repoRoot, root))) {
@@ -155,7 +159,7 @@ describe('the platform depends on no plugin implementation', () => {
     expect(offenders).toEqual([])
   })
 
-  it('declares none, in any browser, core or contract package manifest', () => {
+  it('declares none, in any browser, core, contract or testkit manifest', () => {
     const offenders: string[] = []
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -211,15 +215,16 @@ const WEB_APP = 'apps/web/package.json'
  */
 const WEB_APP_RUNTIME = ['@qualy/plugin-kit']
 
-/** imported by browser tests that still live here; Phase G moves them to their owners */
-const WEB_APP_TESTS = [
-  '@qualy/plugin-assessment',
-  '@qualy/plugin-assessment-formula',
-  '@qualy/plugin-auth',
-  '@qualy/plugin-rbac',
-  '@qualy/plugin-rum',
-  '@qualy/plugin-rum-tencent',
-]
+/**
+ * Imported by the browser tests that live here.
+ *
+ * Nothing. A test in apps/web is about the host - the shell, the cold
+ * start, the release protocol, localisation across screens - and a test
+ * about one plugin's screens lives in that plugin, with that plugin's
+ * catalogs. The host harness is the shared one from `@qualy/testkit`,
+ * which knows no plugin either.
+ */
+const WEB_APP_TESTS: readonly string[] = []
 
 describe('the composition root names no plugin it does not import', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, WEB_APP), 'utf8')) as {
@@ -333,6 +338,86 @@ describe('one plugin reaching into another', () => {
       '@qualy/plugin-assessment/server/errors',
       '@qualy/plugin-ui-registry/server/registry',
     ])
+  })
+})
+
+/**
+ * A browser test about one plugin's screens belongs to that plugin.
+ *
+ * They all lived in apps/web, which made each of them a test of the whole
+ * composition wearing a smaller name: the harness took its catalogs from
+ * the generated aggregate, so a screen's copy was asserted against every
+ * plugin's catalogs at once, and a plugin outside this repository had no
+ * way to write one at all.
+ *
+ * Now the harness is `@qualy/testkit/browser` and takes both as arguments.
+ * What these cases hold is the property that makes it usable by a stranger:
+ * a test that lives with its plugin may not reach for the aggregate, and
+ * may not reach into the host.
+ */
+describe('a browser test outside the host reaches for neither aggregate nor host', () => {
+  const owned = (root: string): string[] => {
+    const found: string[] = []
+    const stack = [path.join(repoRoot, root)]
+    while (stack.length > 0) {
+      const dir = stack.pop()!
+      if (!fs.existsSync(dir)) continue
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules') continue
+        const at = path.join(dir, entry.name)
+        if (entry.isDirectory()) stack.push(at)
+        else if (/\.browser\.test\.tsx$/.test(entry.name) || entry.name === 'screen.tsx') {
+          found.push(at)
+        }
+      }
+    }
+    return found.sort()
+  }
+  const files = [...owned('packages/plugins'), ...owned('tools/fixtures')]
+
+  it('found the tests that moved', () => {
+    // the cases below say nothing at all if the walk found nothing
+    expect(files.length).toBeGreaterThan(20)
+  })
+
+  it('names no generated aggregate', () => {
+    const offenders = files.filter((file) =>
+      importsOf(fs.readFileSync(file, 'utf8')).some((specifier) =>
+        specifier.startsWith('virtual:qualy/'),
+      ),
+    )
+    expect(offenders.map(relative)).toEqual([])
+  })
+
+  it('points its relative imports at files that exist', () => {
+    // a `.css` side-effect import is invisible to the type gate - the vite
+    // client types declare every stylesheet as a module - so a path that
+    // climbed the wrong number of directories typechecked clean and only
+    // failed when the runner tried to serve it
+    const offenders: string[] = []
+    for (const file of files) {
+      for (const specifier of importsOf(fs.readFileSync(file, 'utf8'))) {
+        if (!specifier.startsWith('.')) continue
+        if (!fs.existsSync(path.resolve(path.dirname(file), specifier))) {
+          offenders.push(`${relative(file)} imports ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('imports nothing from the host', () => {
+    // the one thing it does take from apps/web is the stylesheet, which is
+    // the product's and belongs to whoever renders a screen
+    const offenders: string[] = []
+    for (const file of files) {
+      for (const specifier of importsOf(fs.readFileSync(file, 'utf8'))) {
+        if (!/(^|\/)apps\/web\//.test(specifier)) continue
+        if (specifier.endsWith('/apps/web/src/app.css')) continue
+        offenders.push(`${relative(file)} imports ${specifier}`)
+      }
+    }
+    expect(offenders).toEqual([])
   })
 })
 
