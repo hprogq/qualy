@@ -1,4 +1,5 @@
 import { Component, Suspense, type ComponentType, type ReactNode } from 'react'
+import { captureDiagnostic, captureException } from '@qualy/plugin-rum/client'
 
 // One plugin component must never take down the shell. Every dynamically
 // resolved component — layout, page, slot item, driver renderer — renders
@@ -30,6 +31,13 @@ export class PluginComponentBoundary extends Component<BoundaryProps, BoundarySt
   override componentDidCatch(error: unknown) {
     // the id and kind are what makes a plugin failure diagnosable at all
     console.error(`[qualy] ${this.props.kind} component ${this.props.componentId} failed`, error)
+    // and the same two facts are what a report is worth reading with: this is
+    // the one seam where a component failure is already identified, so it is
+    // where it gets reported rather than at each of them
+    captureException(error, {
+      componentId: this.props.componentId,
+      componentKind: this.props.kind,
+    })
     this.props.onError?.(error)
   }
 
@@ -72,6 +80,11 @@ export function PluginComponent({
       `[qualy] ${kind} component ${componentId} is missing from this build; ` +
         'the manifest and the browser bundle disagree',
     )
+    // A deployment fact, not an exception: the manifest offered a component
+    // this build does not carry, which says the two were assembled apart.
+    // Reported as a diagnostic so it keeps its own shape instead of arriving
+    // as a crash with a stack that points at this line.
+    captureDiagnostic('component-missing', { componentId, componentKind: kind })
     return <>{missing}</>
   }
   return (

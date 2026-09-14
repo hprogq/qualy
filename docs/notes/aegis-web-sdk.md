@@ -229,6 +229,25 @@ SDK 产物里**没有**对 `version` 做长度或字符校验,60 的上限是平
 只能对真实项目验。`rumVersionForRelease` 仍按 docs/rum.md §12 实现(≤60 原样,否则 `q-<digest>`),
 浏览器与 uploader 共用同一实现。
 
+## 打包与类型:default 比运行时多一层(Phase 1 补记)
+
+产物是 UMD,wrapper 写的是 `module.exports = t()`,`t()` 返回的就是 Aegis 类本身,
+**整包 0 个 `__esModule`**。而包里唯一那份 d.ts 写的是 `export default Aegis`。
+
+于是类型和运行时差了一层 `default`:
+
+```ts
+// 运行时(Vite/rollup interop):module.default 就是类
+// 类型:module.default 被读成整个模块命名空间,没有构造签名
+const Aegis = loaded.default as unknown as (typeof import('aegis-web-sdk'))['default']
+```
+
+仓库里 `@stylexjs/unplugin` 踩过同一个坑(见 apps/web/vite.config.ts 顶部注释),处理方式一致:
+就地 cast 并写清楚为什么。不要为此改 tsconfig 的 interop 选项——那会影响所有包。
+
+`import('aegis-web-sdk')` 打出来是独立 chunk(生产构建实测 128 KB / gzip 41 KB),
+入口只在动态 `import()` 里出现它的文件名,与旁边的 `cos-js-sdk-v5` 同型。
+
 ## Phase 1 据此应写的配置
 
 在 docs/rum.md §39 基础上的修订:

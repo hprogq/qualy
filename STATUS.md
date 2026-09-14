@@ -14027,3 +14027,69 @@ catalog 里的 pin 属于 Phase 1。
   `use_gzip`。这五条不阻塞 Phase 1,但 Phase 2 之前必须有答案。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 226 passed | 3 skipped (229);
   Tests 1604 passed | 17 skipped (1621),exit 0。本阶段零代码改动,两项只用于证明工作树仍是绿的。
+
+## 浏览器可观测性 Phase 1:能力与 provider 分家(2026-09-14)
+
+用户在 Phase 1 开始前推翻了 docs/rum.md 的两处结构设计,两处都采纳:
+
+- **不再新建 `packages/web/observability`**。RUM 照 Storage 已经验证过的能力/provider 模式做成两个插件:
+  `@qualy/plugin-rum` 拥有词汇、浏览器 API 与 provider 注册表,`@qualy/plugin-rum-tencent` 只拥有腾讯。
+  多一个 `web-observability` 包等于多一层几乎相同的抽象,而 `@qualy/plugin-storage/client` 已经证明
+  能力插件自己提供浏览器 API 是这个仓库的既有写法。`@qualy/web-runtime` 依赖它不算破层——它本来就依赖
+  `@qualy/plugin-ui-registry`。
+- **配置端点归能力层**,响应带 `provider` 判别字段,provider 的设置放在不透明的 `config` 里。
+  以后换 Sentry 时浏览器 runtime 一行不动。
+
+另外撤掉了我自己加的一层错误抽象,详见上一节的 commit。
+
+- **一次只允许一个 provider**,在装配期按插件名硬拒。这是与 Storage 唯一的规则差异,理由是实的:
+  每家 vendor 的 SDK 都接管同一批全局(`onerror`、`unhandledrejection`、fetch、history),两家同时在
+  等于每条失败上报两遍、两层 patch 互相包住,而且靠 import 顺序决定谁赢。
+- **能力默认开、provider 默认关**。能力开着只多一个很小的请求,换来两件事:端点进入
+  `effect-api-parity` 与生产 smoke 的门禁,以及以后开启上报只需要改一行而不是两行。
+  provider 关着时 CSP 里没有腾讯域名,浏览器拿到 `provider: null` 就停,vendor chunk 永不下载。
+- **每页启动图的重量被既有门禁抓到了**:`@qualy/plugin-rum/client` 一开始把配置探测(经
+  `HttpApiClient.urlBuilder` 取地址)放在同一个模块里,browser-graph 的「每页 24 KB 上限」立刻报
+  129 KB。拆成两个:`/client` 是词汇(每个页面、每个 provider 注册模块都 import),`/client/start`
+  是探测(组合根 import 一次)。这条门禁是自动发现新浏览器模块的,没人需要记得加。
+- **Phase 0 量到的每条腾讯行为都落进了 provider**:`gzip: { useWorker: false }`(blob worker 撞
+  `worker-src 'self'`)、`repeat: 5`(默认是 60)、`beforeReport` 改写 `originFrom` 并丢弃
+  IMAGE_ERROR、`beforeRequest` 丢弃 pv、构造后 `extendBean('referer','')`、`reportApiSpeed: false`
+  (此时 SDK 根本不产生 AJAX_ERROR)。
+- **新发现的 interop 坑**:aegis 的 UMD wrapper 是 `module.exports = Aegis` 且全包没有 `__esModule`,
+  而 d.ts 写的是 `export default`——类型比运行时多一层 `default`。与仓库里 `@stylexjs/unplugin`
+  同型,按同样的办法就地 cast 并注明。已补进 docs/notes/aegis-web-sdk.md。
+- **`requestId` 没有进 `ExceptionContext`**:Phase 1 没有任何地方能提供它,留一个没人写没人读的可选
+  字段是预防性建设。Phase 3 接 API 观测时再加。
+- **dedup 只做对象身份(`WeakSet`),没有做 TTL 指纹**:Phase 0 实测 React 19 生产构建下
+  ErrorBoundary 捕获的错误不会再进 `window.onerror`,指纹防的是一条量到不存在的路径,
+  代价却是会把两条恰好文案相同的真实失败合成一条。
+
+- **顺带修了一个探针的判据**:`effect-api.test.ts` 的「文档里的路径是否真的被服务」原本用
+  「状态码不是 404」判断,而收回 contract 的上传门对未知票据的正确答复恰好就是 404。改成读
+  mount 自己的 `API_ROUTE_NOT_FOUND` 标签,比原来的启发式更准。
+
+- **真机验证(生产宿主 + enforce CSP + 真实上报 ID,请求被本地拦截应答,不向腾讯项目发数据)**:
+  `GET /api/app/observability` → `{"schema":1,"provider":"tencent","config":{"id":"Dv3J…","environment":"production","sampleRate":1}}`;
+  CSP 变成 `connect-src 'self' https://rumt-zh.com` 且**其余各行一字未动**;
+  aegis chunk 被请求 1 次(懒加载成立,128 KB 独立 chunk);**0 条 CSP violation**;
+  向上报域名形成 5 个请求(whitelist / rateConfig×2 / speed.performance / collect),每个都带
+  `id`、`version=local-20260914T143003Z-a1259db4`(真实 release id)、`env=production`,而
+  `aid=`、`uin=`、`referer=` 全空,`from=/login` 是路由模板;**两枚隐私哨兵 0 命中**;
+  故意抛出的 `qualy-rum-probe` 出现在 POST body 里;PV 请求不在列表中(被 `beforeRequest` 丢掉)。
+  验证完把 provider 改回 `enabled: false` 并重新 resolve/build。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 230 passed | 3 skipped (233);
+  Tests 1636 passed | 17 skipped (1653);`pnpm test:browser` Test Files 50 passed (50);
+  Tests 369 passed (369);`pnpm test:browser:webkit` 2 / 14;`pnpm build` exit 0
+  (`installed web release local-20260914T143120Z-ed99587a`,123 assets——多出来的就是 aegis chunk,
+  superset 构建即使 provider 关着也会带上它,这正是 docs/rum.md §2.5 说的那件事);
+  `check-staged-web` exit 0;`check-csp-build` exit 0(真实 Vite 打出的 aegis chunk 过了 no-eval 谓词,
+  Phase 0 只是用同一条谓词模拟过);`smoke-production` 全 ok,含新增的 `/api/app/observability` 检查;
+  `check-csp-enforce` 三页 0 violation。docs/rum.md §46 列的 `check-chunks` 在当前仓库已不存在,没跑。
+
+**开启方式**(部署侧):`qualy.yml` 里把 `@qualy/plugin-rum-tencent` 的 `enabled: false` 去掉,
+并给进程 `QUALY_RUM_TENCENT_ID`(本地已写进 gitignored 的 `.env`)。没有 id 的进程会拒绝启动,
+这是有意的——装了上报却静默不报是最难发现的那种失败。
+
+**下一步**:Phase 2(SourceMap)。需要的 numeric ProjectID 是 159421,与浏览器上报 ID 不是一回事,
+它属于 release pipeline 的 secret,不进应用进程。

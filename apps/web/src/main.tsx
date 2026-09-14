@@ -1,6 +1,13 @@
+// First, before the application's own graph: two listeners that hold whatever
+// fails while the rest of this file's imports are still evaluating. A
+// reporting provider cannot exist that early - it needs a request and a chunk -
+// and a module that throws on the way in is exactly the failure worth keeping.
+import '@qualy/plugin-rum/client/bootstrap'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
+import { captureDiagnostic } from '@qualy/plugin-rum/client'
+import { startBrowserRum } from '@qualy/plugin-rum/client/start'
 import App from './App.tsx'
 import { releases, webRelease } from './release.ts'
 import { ReleaseRecoveryGate } from './release-ui.tsx'
@@ -15,6 +22,28 @@ document.documentElement.dataset['release'] = webRelease.releaseId
 // gate it feeds stands above every provider, so it can take the page over
 // when nothing below it can be counted on.
 releases.start()
+
+// Two of the coordinator's verdicts say something went wrong rather than
+// something moved on, and both are worth knowing about in aggregate: a tab
+// forced to reload because the store no longer keeps its release says
+// something about retention, and one refused by protocol says a deployment
+// went out that old tabs cannot talk to. An update being available is neither,
+// and a chunk that failed to load is already reported as the resource failure
+// it is, so neither is sent. Once per reason: a page that cannot go on will
+// keep saying so.
+let told = ''
+releases.subscribe(() => {
+  const state = releases.getSnapshot()
+  if (state.kind !== 'reload-required') return
+  if (state.reason === 'asset-load-failed' || told === state.reason) return
+  told = state.reason
+  captureDiagnostic(state.reason)
+})
+
+// Not awaited, and deliberately before the first render rather than after: the
+// browser modules have already registered whatever providers this build
+// carries, and nothing on the screen waits for the answer.
+void startBrowserRum(webRelease)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

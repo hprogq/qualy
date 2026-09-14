@@ -1,0 +1,26 @@
+{
+  "name": "@qualy/plugin-rum-tencent",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": [
+    "./src/client/register.ts"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./settings": "./src/settings.ts",
+    "./version": "./src/version.ts",
+    "./client": "./src/client/register.ts",
+    "./client/privacy": "./src/client/privacy.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "@qualy/plugin-rum": "workspace:*",
+    "@qualy/plugin-ui-registry": "workspace:*",
+    "aegis-web-sdk": "catalog:",
+    "effect": "catalog:"
+  }
+}

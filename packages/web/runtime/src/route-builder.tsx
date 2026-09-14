@@ -1,6 +1,7 @@
 import { useEffect, useMemo, type ComponentType, type ReactNode } from 'react'
 import { matchPath, Navigate, useLocation, useRoutes, type RouteObject } from 'react-router'
 import { useI18n } from '@qualy/web-i18n'
+import { setObservedPage } from '@qualy/plugin-rum/client'
 import type { ComponentRegistry, Manifest } from './index.tsx'
 import { PluginComponent } from './component-boundary.tsx'
 
@@ -121,9 +122,36 @@ export function ManifestRoutes(options: RouteBuilderOptions) {
   return (
     <>
       <DocumentTitle pages={options.manifest.pages} />
+      <ObservedRoute pages={options.manifest.pages} />
       {useRoutes(routes)}
     </>
   )
+}
+
+/**
+ * Which screen a browser failure happened on, named the way the manifest
+ * names it.
+ *
+ * A reporting platform must never be told the real address. `/assessment/
+ * batches/019a.../review?student=...` identifies a batch and a person and
+ * groups into an issue nobody can read; `assessment/review` with its route
+ * template identifies a screen, which is the thing anybody would actually
+ * ask about. Both come from the authorized manifest, so a page a viewer may
+ * not see never names itself here either.
+ *
+ * Beside `DocumentTitle` and matching the same way on purpose: the two
+ * answer the same question - which page is this - and a second way of
+ * deciding it would eventually disagree with the first.
+ */
+function ObservedRoute({ pages }: { pages: Manifest['pages'] }) {
+  const { pathname } = useLocation()
+  const page = pages.find((candidate) => matchPath({ path: candidate.path, end: true }, pathname))
+  const pageId = page?.id
+  const route = page?.path
+  useEffect(() => {
+    setObservedPage(pageId === undefined || route === undefined ? {} : { pageId, route })
+  }, [pageId, route])
+  return null
 }
 
 // Whatever index.html called the product, kept as the suffix every page

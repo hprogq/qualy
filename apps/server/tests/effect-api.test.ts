@@ -392,12 +392,19 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
         expect(path.startsWith(QUALY_API_PREFIX), `${path} is outside the prefix`).toBe(true)
         for (const method of Object.keys(methods)) {
           // path templates get a plausible id: what is being checked is that
-          // the route exists, so anything but 404 counts. An endpoint behind
-          // the session middleware answers 401, which is still a route.
+          // the route exists, so any answer at all counts. An endpoint behind
+          // the session middleware answers 401, which is still a route - and
+          // one that looks its argument up answers 404 for an id nobody
+          // minted, which is also still a route. What says a path is NOT
+          // mounted is the mount's own catch-all, by its tag, so that is what
+          // is read rather than the status.
           const url = path.replace(/\{[^}]+\}/g, '00000000-0000-7000-8000-000000000000')
-          const status = (await fetch(`${base}${url}`, { method: method.toUpperCase() })).status
-          expect(status, `${method.toUpperCase()} ${path} is documented but not served`).not.toBe(
-            404,
+          const response = await fetch(`${base}${url}`, { method: method.toUpperCase() })
+          const unmatched =
+            response.status === 404 &&
+            ((await response.clone().text().catch(() => '')).includes('API_ROUTE_NOT_FOUND'))
+          expect(unmatched, `${method.toUpperCase()} ${path} is documented but not served`).toBe(
+            false,
           )
         }
       }

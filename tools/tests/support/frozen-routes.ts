@@ -19,6 +19,7 @@ export const FROZEN_ROUTES = [
   'POST /auth/local/{providerCode}/login',
 
   'GET /app/manifest',
+  'GET /app/observability',
 
   'GET /audit/events',
   'GET /audit/event-options',

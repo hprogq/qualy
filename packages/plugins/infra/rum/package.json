@@ -1,0 +1,26 @@
+{
+  "name": "@qualy/plugin-rum",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": [
+    "./src/client/bootstrap.ts"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": "./src/plugin.ts",
+    "./api": "./src/api.ts",
+    "./client": "./src/client/index.ts",
+    "./client/start": "./src/client/start.ts",
+    "./client/bootstrap": "./src/client/bootstrap.ts",
+    "./server": "./src/server/index.ts",
+    "./server/registry": "./src/server/registry.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@qualy/api-kit": "workspace:*",
+    "@qualy/plugin-kit": "workspace:*",
+    "effect": "catalog:"
+  }
+}

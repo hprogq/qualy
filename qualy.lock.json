@@ -1,7 +1,7 @@
 {
   "lockfileVersion": 2,
-  "manifestHash": "sha256:8c5003b64df8f0d20d793c103e46a9256725c1a3ae0230507c42f7b9df82e8e8",
-  "resolutionHash": "sha256:99988db662c8cb3246c00087d45fe094e985269d5ac487b0c982db8b804a9204",
+  "manifestHash": "sha256:b13c8ce27647511208c322b5c8f86b6f2a77b8a0f19f36cab4290c883eb35191",
+  "resolutionHash": "sha256:5d875660e56e2f37af9b868581cb7529915d5a7d914a7164d0f921ff73fa1f13",
   "plugins": {
     "@qualy/plugin-assessment": {
       "version": "0.0.0",
@@ -232,6 +232,14 @@
         }
       }
     },
+    "@qualy/plugin-rum": {
+      "version": "0.0.0",
+      "state": "active"
+    },
+    "@qualy/plugin-rum-tencent": {
+      "version": "0.0.0",
+      "state": "disabled"
+    },
     "@qualy/plugin-sandbox": {
       "version": "0.0.0",
       "state": "active"
@@ -308,6 +316,7 @@
       "@qualy/plugin-layout-default",
       "@qualy/plugin-org",
       "@qualy/plugin-rbac",
+      "@qualy/plugin-rum",
       "@qualy/plugin-sandbox",
       "@qualy/plugin-storage",
       "@qualy/plugin-storage-local",

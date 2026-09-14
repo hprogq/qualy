@@ -95,6 +95,12 @@ catalog:
   cos-nodejs-sdk-v5: 3.0.0
   qcloud-cos-sts: 3.1.3
   cos-js-sdk-v5: 1.10.1
+  # tencent cloud real user monitoring, browser only: the reporting sdk the
+  # rum-tencent provider loads when a deployment has reporting switched on.
+  # Pinned exactly, because a minor release of it changes what leaves a
+  # browser - the behaviour that was actually verified is recorded in
+  # docs/notes/aegis-web-sdk.md, and an upgrade repeats those checks.
+  aegis-web-sdk: 1.41.15
 patchedDependencies:
   '@stylexjs/unplugin@0.19.0': patches/@stylexjs__unplugin@0.19.0.patch
 minimumReleaseAgeExclude:

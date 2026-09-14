@@ -1,0 +1,76 @@
+import { observedPageUrl } from '@qualy/plugin-rum/client'
+
+// What this vendor sends that it should not, removed before it goes.
+//
+// Not guesswork: the sdk was run against a local stand-in for the reporting
+// host with a sentinel in the address and in the referrer, and every request
+// it made was read off the wire. Out of the box a navigation carrying one
+// sentinel put it on the wire seventeen times. The findings and the method are
+// in docs/notes/aegis-web-sdk.md; the three leaks are below, and each needs a
+// different lever because the sdk attaches them at three different moments.
+//
+// The load-bearing one is `beforeReport`. A hook that only rewrites the
+// request url leaves the same address sitting inside the body, which was
+// measured: seven sentinels survived that way.
+
+/** what the sdk hands the log hook; its own types say `Function`, so this is ours */
+interface ReportedLog {
+  msg?: unknown
+  level?: string
+  originFrom?: unknown
+  [key: string]: unknown
+}
+
+/** LogType.IMAGE_ERROR, from the sdk's own enum */
+const IMAGE_ERROR = '64'
+
+/**
+ * A url inside a message, with its query removed.
+ *
+ * Narrow on purpose: anchored to a url so that a message which merely ends in
+ * a question mark keeps its words. Resource failures arrive as
+ * `script load fail: <url>`, and this product's assets are hashed names with
+ * nothing after them - but a url that did carry a query would carry it here.
+ */
+const withoutQueryStrings = (text: string): string =>
+  text.replaceAll(/(https?:\/\/[^\s)'"]+?)\?[^\s)'"]*/g, '$1')
+
+/**
+ * Runs on every log, before it is queued.
+ *
+ * `originFrom` is the sdk's own copy of `location.href`, attached to each log
+ * and reachable by nothing else: the global url handler governs `from` and not
+ * this. Replacing it in place works because the hook receives the log itself,
+ * which is also why this function must not throw - the sdk wraps the whole
+ * batch in one try, so a throw here drops every log in it silently.
+ */
+export const beforeReport = (log: ReportedLog): boolean => {
+  try {
+    // an image that failed to load says more about a url than about the page,
+    // and this product's pages do not depend on one
+    if (log.level === IMAGE_ERROR) return false
+    if ('originFrom' in log) log.originFrom = observedPageUrl()
+    if (typeof log.msg === 'string') log.msg = withoutQueryStrings(log.msg)
+  } catch {
+    // a scrub that failed is not a reason to lose the batch; the report goes
+    // as it is, and the wire-level checks in the browser suite are what would
+    // catch this having happened
+  }
+  return true
+}
+
+/**
+ * Runs once per log on its way out, and is the only place a whole report can
+ * be dropped by type.
+ *
+ * The page view is dropped because its address is built from
+ * `location.href` directly, before any log-level hook exists, and there is no
+ * setting that turns it off. Nothing is lost: this is reporting, not product
+ * analytics, and a page view is exactly the record this deployment said it
+ * would not keep.
+ */
+export const beforeRequest = (entry: {
+  readonly logs: unknown
+  readonly logType: string
+}): false | { readonly logs: unknown; readonly logType: string } =>
+  entry.logType === 'pv' ? false : entry

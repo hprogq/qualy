@@ -37,6 +37,22 @@ plugins:
       region: ap-beijing
       bucket: qualy-dev-files-1301296774
 
+  # Browser failure reporting. The capability owns the vocabulary the runtime
+  # reports through and answers whether this deployment reports at all; where
+  # the reports go is a provider's, and at most one provider may be enabled -
+  # the assembly refuses two by name. Switching platforms is one line here,
+  # with no change to any screen.
+  #
+  # The capability stays on with no provider selected, which is what makes
+  # that one line enough: the endpoint answers "nobody", the browser stops
+  # there, and no vendor bundle is ever fetched. Turning reporting on needs a
+  # project to report to, which a development machine does not have - so the
+  # provider is off here, and a deployment that wants it enables the provider
+  # and sets QUALY_RUM_TENCENT_ID.
+  '@qualy/plugin-rum': {}
+  '@qualy/plugin-rum-tencent':
+    enabled: false
+
   '@qualy/plugin-assessment': {}
   '@qualy/plugin-assessment-evidence': {}
   '@qualy/plugin-audit': {}

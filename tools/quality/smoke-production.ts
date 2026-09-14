@@ -145,6 +145,17 @@ await check('/api/app/manifest', async (response) => {
   const body = (await response.json()) as { pages?: unknown[] }
   return Array.isArray(body.pages) ? undefined : 'no pages in the manifest'
 })
+// The browser asks this before it decides whether to report anything, on a
+// deployment that reports and on one that does not. Here nothing is selected,
+// which is the answer that has to be as clear as the other one: a page that
+// cannot tell "nobody" from "the request failed" either reports nowhere for
+// the wrong reason or keeps asking.
+await check('/api/app/observability', async (response) => {
+  if (response.status !== 200) return `status ${response.status}`
+  const body = (await response.json()) as { schema?: number; provider?: unknown }
+  if (body.schema !== 1) return `schema ${String(body.schema)}`
+  return body.provider === null ? undefined : `provider ${String(body.provider)}`
+})
 // an icon is a public file of the release, not a hashed asset: never cached
 // as immutable (it was, by the single server this replaced)
 await check('/favicon.svg', async (response) => {
