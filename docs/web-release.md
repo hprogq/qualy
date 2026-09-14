@@ -42,6 +42,14 @@
 
 ## Breaking change 的发布顺序
 
+**2026-09-15:`CURRENT_CLIENT_PROTOCOL` 已升到 2**,窗口同为 `min = max = 2`。原因是 manifest 去掉了
+每个 surface 背后的模块名(见 docs/browser-public-surface.md),那是每个页面都要读的文档、服务端
+无法同时服务两种形状——所以下面的 expand → contract 顺序**不适用于这一类改动**:它适用于服务端
+能同时服务新旧两种形状的变更。形状本身破坏时只能一次到位,旧 tab 在第一个 API 请求上收到 409,
+被阻断屏要求刷新。
+
+以下是能同时服务时的顺序:
+
 1. Expand:server 窗口 `min..max+1`,部署 server。
 2. 发布 Web(`CURRENT_CLIENT_PROTOCOL` = max+1)。
 3. 等旧 tab 自然淘汰(通知 + 刷新)。

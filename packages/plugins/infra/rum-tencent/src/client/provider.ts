@@ -1,3 +1,4 @@
+import { surfaceLabel } from '@qualy/ui-contract'
 import {
   observedPageUrl,
   type BrowserRumProvider,
@@ -134,8 +135,8 @@ export const tencentRumProvider: BrowserRumProvider = {
         aegis.error({
           msg: message(error),
           ext1: context?.pageId ?? '',
-          ext2: context?.componentKind ?? '',
-          ext3: context?.componentId ?? '',
+          ext2: context?.surface?.kind ?? '',
+          ext3: context?.surface === undefined ? '' : surfaceLabel(context.surface),
         })
       },
 

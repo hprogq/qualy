@@ -1,3 +1,4 @@
+import type { BrowserSurface } from '@qualy/ui-contract'
 import { drainEarlyFailures } from './queue.ts'
 import { currentObservedPage, rememberObservedPage, type ObservedPage } from './context.ts'
 
@@ -11,7 +12,7 @@ import { currentObservedPage, rememberObservedPage, type ObservedPage } from './
 // deployment reports or not. Asking the server for the settings therefore
 // lives next door in `start.ts`, which the composition root imports once.
 //
-// A page calls `captureException(error, { componentId, componentKind })`. It
+// A page calls `captureException(error, { surface })`. It
 // never branches on the provider, never imports a vendor sdk, and never sees a
 // reporting id - which is the point: the day a deployment moves from one
 // platform to another, nothing on any screen changes. The same shape the
@@ -29,8 +30,14 @@ export { observedPageUrl } from './context.ts'
 export { sanitizePath, sanitizeUrl } from './sanitize.ts'
 
 export interface ExceptionContext {
-  readonly componentId?: string
-  readonly componentKind?: 'layout' | 'page' | 'slot' | 'renderer'
+  /**
+   * Which surface it happened on: `{kind: 'page', id: 'assessment/review'}`.
+   *
+   * A product address rather than the module behind it. The two are the same
+   * failure, but only one of them is something the reader of a report can
+   * ask about, and only one of them is safe to send off this machine.
+   */
+  readonly surface?: BrowserSurface
   readonly pageId?: string
   readonly route?: string
 }
@@ -68,10 +75,7 @@ export interface BrowserRumProvider {
    * it has nothing to do is the normal disabled case. Whatever it costs - a
    * vendor bundle, a handshake - is paid here and never in the boot graph.
    */
-  start(
-    config: Record<string, unknown>,
-    release: ObservedRelease,
-  ): Promise<BrowserRumSink | null>
+  start(config: Record<string, unknown>, release: ObservedRelease): Promise<BrowserRumSink | null>
 }
 
 const providers = new Map<string, BrowserRumProvider>()

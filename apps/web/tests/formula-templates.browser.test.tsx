@@ -1,11 +1,11 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
-const TemplatesPage = (await components['assessment-formula/FormulaTemplatesPage']!()).default
-const TemplatePage = (await components['assessment-formula/FormulaTemplatePage']!()).default
+const TemplatesPage = (await pageComponents['assessment-formula/templates']!()).default
+const TemplatePage = (await pageComponents['assessment-formula/template']!()).default
 
 // The library of formulas other people offered you.
 //
@@ -35,7 +35,7 @@ const PAGES = [
   { id: 'assessment-formula/templates', path: '/assessment/formula-templates' },
   { id: 'assessment-formula/template', path: '/assessment/formula-templates/:versionId' },
   { id: 'assessment-formula/editor', path: '/assessment/formulas/:functionId' },
-].map((one) => ({ ...one, component: one.id, layout: 'admin' }))
+].map((one) => ({ ...one, layout: 'admin' }))
 
 const open = (
   had: {

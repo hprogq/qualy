@@ -2,7 +2,7 @@ import { lazy } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents, slotComponents } from 'virtual:qualy/plugins'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 import '../src/app.css'
 
@@ -14,9 +14,9 @@ import '../src/app.css'
 // administrator whose new rule re-prices what stands is told how many, and
 // told that a rule refusing what stands has no way through.
 
-const ReviewInstancePage = (await components['assessment/ReviewInstancePage']!()).default
-const MyResultPage = (await components['assessment/MyResultPage']!()).default
-const ItemSettingsPage = (await components['assessment/ItemSettingsPage']!()).default
+const ReviewInstancePage = (await pageComponents['assessment/review-instance']!()).default
+const MyResultPage = (await pageComponents['assessment/batch-my-result']!()).default
+const ItemSettingsPage = (await pageComponents['assessment/batch-items']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_ID = '22222222-2222-4222-8222-222222222222'
@@ -123,7 +123,7 @@ const PAGES = [
   { id: 'assessment/batch-reviews', path: '/assessment/batches/:batchId/reviews' },
   { id: 'assessment/review-instance', path: '/assessment/batches/:batchId/reviews/:instanceId' },
   { id: 'assessment/batch-my-result', path: '/assessment/batches/:batchId/my-result' },
-].map((entry) => ({ ...entry, component: entry.id, layout: 'admin' }))
+].map((entry) => ({ ...entry, layout: 'admin' }))
 
 afterEach(() => page.viewport(1280, 800))
 
@@ -353,7 +353,7 @@ describe('a rule that re-prices what stands', () => {
               ...emptyManifest(),
               pages: [
                 { id: 'assessment/batch-items', path: '/assessment/batches/:batchId/items' },
-              ].map((entry) => ({ ...entry, component: entry.id, layout: 'admin' })),
+              ].map((entry) => ({ ...entry, layout: 'admin' })),
               collections: {
                 'assessment/calculator-authoring-options': [
                   {
@@ -370,11 +370,7 @@ describe('a rule that re-prices what stands', () => {
               },
               slots: {
                 'assessment/calculator-editor': [
-                  {
-                    id: 'assessment/fixed-calculator-editor',
-                    component: 'assessment/FixedCalculatorEditor',
-                    order: 10,
-                  },
+                  { id: 'assessment/fixed-calculator-editor', order: 10 },
                 ],
               },
             }),
@@ -410,9 +406,16 @@ describe('a rule that re-prices what stands', () => {
         { path: '/assessment/batches/:batchId/items', element: <ItemSettingsPage /> },
       ] as never,
       registry: {
-        'assessment/FixedCalculatorEditor': lazy(
-          () => components['assessment/FixedCalculatorEditor']!() as never,
-        ),
+        slots: {
+          'assessment/calculator-editor': {
+            'assessment/fixed-calculator-editor': lazy(
+              () =>
+                slotComponents['assessment/calculator-editor']![
+                  'assessment/fixed-calculator-editor'
+                ]!() as never,
+            ),
+          },
+        },
       } as never,
       route: `/assessment/batches/${BATCH_ID}/items?question=${ITEM_ID}`,
     })

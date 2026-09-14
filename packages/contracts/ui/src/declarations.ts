@@ -54,10 +54,17 @@ export interface PageDeclaration {
   }
 }
 
-/** a concrete implementation of a layout contract, shipped by a layout plugin */
+/**
+ * A concrete implementation of a layout contract, shipped by a layout plugin.
+ *
+ * It names the contract it satisfies and the module that does it, and not
+ * itself: who provides a layout is the assembly's answer - the registry
+ * already records the declaring plugin - and a second copy written by hand
+ * could disagree with it. Nothing ever read the declared one but the error
+ * message for declaring a contract twice, which now names real owners.
+ */
 export interface LayoutDeclaration {
   readonly contract: LayoutContractId
-  readonly provider: NamespacedId
   readonly component: ClientComponentRef
 }
 

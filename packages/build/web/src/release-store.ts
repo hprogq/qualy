@@ -10,7 +10,7 @@ import {
   parseWebBuildMetadata,
   type InstalledWebRelease,
 } from '@qualy/release-contract'
-import { WEB_BUILD_METADATA } from './release-vite.ts'
+import { PRIVATE_BUILD_FILES, WEB_BUILD_METADATA } from './release-vite.ts'
 
 // The release store: where web builds are installed, and how they are kept.
 //
@@ -370,7 +370,7 @@ export const installWebRelease = (options: InstallOptions): InstallResult => {
   const shellFiles = walk(source).filter(
     (file) =>
       !file.startsWith(`${SHARED_ASSETS}/`) &&
-      file !== WEB_BUILD_METADATA &&
+      !PRIVATE_BUILD_FILES.includes(file) &&
       !isTwin(file) &&
       !isDebugArtifact(file),
   )

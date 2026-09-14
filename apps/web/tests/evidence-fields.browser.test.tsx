@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 import '../src/app.css'
 
@@ -14,7 +14,7 @@ import '../src/app.css'
 // because "invalid" quietly read as "left blank" is how a typo submits as
 // an omission.
 
-const MyEntriesPage = (await components['assessment/MyEntriesPage']!()).default
+const MyEntriesPage = (await pageComponents['assessment/batch-my-entries']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const GROUP_ID = '66666666-6666-4666-8666-666666666666'
@@ -24,7 +24,7 @@ const PARTICIPANT_ID = '44444444-4444-4444-8444-444444444444'
 
 const PAGES = [
   { id: 'assessment/batch-my-entries', path: '/assessment/batches/:batchId/my-entries' },
-].map((entry) => ({ ...entry, component: entry.id, layout: 'admin' }))
+].map((entry) => ({ ...entry, layout: 'admin' }))
 
 const batch = () => ({
   id: BATCH_ID,

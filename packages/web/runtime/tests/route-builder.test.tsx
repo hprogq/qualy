@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { matchRoutes } from 'react-router'
+import { surfaceLabel } from '@qualy/ui-contract'
 import { buildManifestRoutes } from '../src/route-builder.tsx'
+import { emptyComponentRegistry } from '../src/registry.ts'
 import type { Manifest } from '../src/index.tsx'
 import type { RouteSlots } from '../src/route-builder.tsx'
 
@@ -17,7 +19,7 @@ const slots: RouteSlots = {
   layoutLoading: 'layout-loading',
   pageError: () => 'page-error',
   layoutError: () => 'layout-error',
-  componentMissing: (id) => `missing:${id}`,
+  componentMissing: (surface) => `missing:${surfaceLabel(surface)}`,
   notFound: () => 'NOT_FOUND',
   empty: 'EMPTY',
 }
@@ -26,11 +28,7 @@ const ADMIN = 'app-shell/v1'
 const BLANK = 'blank-shell/v1'
 
 const manifest = (pages: Manifest['pages'], layouts = [ADMIN, BLANK]): Manifest => ({
-  layouts: layouts.map((contract) => ({
-    contract,
-    provider: 'layout-default/provider',
-    component: `layout-default/${contract}`,
-  })),
+  layouts: layouts.map((contract) => ({ contract })),
   pages,
   collections: {},
   slots: {},
@@ -40,8 +38,12 @@ const page = (id: string, path: string, layout = ADMIN): Manifest['pages'][numbe
   id,
   path,
   layout,
-  component: `${id}/Component`,
 })
+
+// the tree is the subject here, not what renders in it: every surface
+// resolves to nothing, which is the `missing` branch and is fine for asking
+// which route hangs where
+const registry = emptyComponentRegistry()
 
 // what the router would actually render for a url, innermost element last
 const render = (routes: ReturnType<typeof buildManifestRoutes>, url: string) =>
@@ -51,14 +53,14 @@ describe('manifest route projection', () => {
   const pages = [page('ping/page', '/ping'), page('auth/login', '/login', BLANK)]
 
   it('groups pages under the layout contract each one names', () => {
-    const routes = buildManifestRoutes({ manifest: manifest(pages), registry: {}, slots })
+    const routes = buildManifestRoutes({ manifest: manifest(pages), registry, slots })
     const paths = routes.map((route) => route.children?.map((child) => child.path))
     expect(paths).toEqual([['/ping', undefined, '*'], ['/login']])
   })
 
   it('drops a page whose layout contract nobody provides', () => {
     const orphan = [page('ping/page', '/ping'), page('ghost/page', '/ghost', 'ghost-shell/v1')]
-    const routes = buildManifestRoutes({ manifest: manifest(orphan, [ADMIN]), registry: {}, slots })
+    const routes = buildManifestRoutes({ manifest: manifest(orphan, [ADMIN]), registry, slots })
     expect(routes.flatMap((route) => route.children ?? []).map((child) => child.path)).toEqual([
       '/ping',
       undefined,
@@ -69,7 +71,7 @@ describe('manifest route projection', () => {
   it('renders the not-found screen inside the shell the home page lives in', () => {
     const routes = buildManifestRoutes({
       manifest: manifest(pages),
-      registry: {},
+      registry,
       homePath: '/ping',
       slots,
     })
@@ -83,7 +85,7 @@ describe('manifest route projection', () => {
     // home page is the one that decides where a stray address lands
     const routes = buildManifestRoutes({
       manifest: manifest([page('auth/login', '/login', BLANK), page('ping/page', '/ping')]),
-      registry: {},
+      registry,
       homePath: '/ping',
       slots,
     })
@@ -96,7 +98,7 @@ describe('manifest route projection', () => {
   it('never lets the catch-all outrank a real page in another shell', () => {
     const routes = buildManifestRoutes({
       manifest: manifest([...pages, page('auth/user-detail', '/admin/users/:userId')]),
-      registry: {},
+      registry,
       homePath: '/ping',
       slots,
     })
@@ -119,7 +121,7 @@ describe('manifest route projection', () => {
         [page('ghost/page', '/ghost', 'ghost-shell/v1'), ...pages],
         [ADMIN, BLANK],
       ),
-      registry: {},
+      registry,
       homePath: '/ghost',
       slots,
     })
@@ -132,14 +134,14 @@ describe('manifest route projection', () => {
     // tree with no terminal route at all
     const routes = buildManifestRoutes({
       manifest: manifest([page('ghost/page', '/ghost', 'ghost-shell/v1')], []),
-      registry: {},
+      registry,
       slots,
     })
     expect(render(routes, '/ghost')).toEqual(['NOT_FOUND'])
   })
 
   it('still answers when the viewer can see nothing at all', () => {
-    const routes = buildManifestRoutes({ manifest: manifest([], []), registry: {}, slots })
+    const routes = buildManifestRoutes({ manifest: manifest([], []), registry, slots })
     // no shell exists to nest into, so the screens stand on their own
     expect(render(routes, '/anything')).toEqual(['NOT_FOUND'])
     expect(render(routes, '/')).toEqual(['EMPTY'])
@@ -150,7 +152,7 @@ describe('manifest route projection', () => {
     // there would bounce the origin onto the not-found screen
     const routes = buildManifestRoutes({
       manifest: manifest(pages),
-      registry: {},
+      registry,
       homePath: '/withdrawn',
       slots,
     })
@@ -161,7 +163,7 @@ describe('manifest route projection', () => {
   it('sends the origin to the home page when there is one', () => {
     const routes = buildManifestRoutes({
       manifest: manifest(pages),
-      registry: {},
+      registry,
       homePath: '/ping',
       slots,
     })
@@ -173,7 +175,7 @@ describe('manifest route projection', () => {
   it('mounts exactly one index and one catch-all however many layouts there are', () => {
     const routes = buildManifestRoutes({
       manifest: manifest(pages),
-      registry: {},
+      registry,
       homePath: '/ping',
       slots,
     })

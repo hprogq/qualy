@@ -21,6 +21,7 @@
     "@qualy/plugin-rum": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/release-contract": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
     "aegis-web-sdk": "catalog:",
     "cos-nodejs-sdk-v5": "catalog:",
     "effect": "catalog:",

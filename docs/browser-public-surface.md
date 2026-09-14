@@ -47,14 +47,58 @@ resolutionHash、数据库/模块/源码实现细节
 
 ## 当前各公开面的形状
 
-| 公开面                           | 现在的形状                                 | 守卫                                                                                                |
-| -------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| `GET /__qualy/release`           | `{schema: 2, releaseId}`                   | release-contract.test / release-vite.test / effect-web.test / apps/web release.browser.test / smoke |
-| `GET /health/ready` 失败         | `{_tag: "NotReady"}`,503                   | apps/server/tests/effect-shell.test「readiness with a probe that fails」                            |
-| `/api/docs`、`/api/openapi.json` | 生产默认 404(`QUALY_API_DOCS=public` 才开) | apps/server/tests/api-docs.test + smoke                                                             |
-| API 错误                         | `{_tag, 公开字段}`,诊断只进 header 与日志  | tools/tests/error-codes.test、effect-error-shape.test                                               |
-| public HTML                      | 只有产品描述,不宣告架构                    | 人工:`apps/web/index.html`                                                                          |
-| SourceMap                        | 生成 → 上传 RUM → **不进 release store**   | check-staged-web、release-store.test                                                                |
+| 公开面                           | 现在的形状                                                         | 守卫                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `GET /api/app/manifest`          | 只有产品身份:page id / path / layout contract / slot key + item id | ui-registry effect-manifest.test「names product surfaces and never what implements them」(三种 viewer) |
+| `GET /api/auth/login-methods`    | `{code, type, name, mode}`,renderer 按 `type` 找                   | effect-sign-in.test / effect-api.test                                                                  |
+| `GET /__qualy/release`           | `{schema: 2, releaseId}`                                           | release-contract.test / release-vite.test / effect-web.test / apps/web release.browser.test / smoke    |
+| `GET /health/ready` 失败         | `{_tag: "NotReady"}`,503                                           | apps/server/tests/effect-shell.test「readiness with a probe that fails」                               |
+| `/api/docs`、`/api/openapi.json` | 生产默认 404(`QUALY_API_DOCS=public` 才开)                         | apps/server/tests/api-docs.test + smoke                                                                |
+| API 错误                         | `{_tag, 公开字段}`,诊断只进 header 与日志                          | tools/tests/error-codes.test、effect-error-shape.test                                                  |
+| 浏览器 console / RUM 上报        | surface 地址(`page:assessment/review`),不含模块路径                | apps/web/tests/rum.browser.test「the seams the runtime reports at」                                    |
+| public HTML                      | 只有产品描述,不宣告架构                                            | 人工:`apps/web/index.html`                                                                             |
+| SourceMap、surface→模块映射      | 生成 → 留在构建产物 → **不进 release store**                       | check-staged-web、release-store.test                                                                   |
+
+## 浏览器按 surface 寻址
+
+这是本轮最关键的一处结构改动。浏览器拿到的是**产品身份**,解析出的是渲染器:
+
+```text
+manifest: { id: "assessment/batches", path, layout: "workspace-shell/v1" }
+browser:  pageComponents["assessment/batches"]      → import(...) → 组件
+```
+
+四个地址空间各一张表(page id / layout contract / slot key + item id / login driver type),
+由 collector 从描述器直接生成并逐个查重(build 拒绝重复认领,不依赖 server 先启动)。
+`ClientComponentRef`(`./client/X.tsx`)仍在,但**只活在构建期**。
+
+以前 manifest 发的是 `componentKey(pluginId, ref)` 派生的 `<插件>/<源文件名>`——
+`assessment/ReviewPage`、`auth-local/LoginMethod`——那是把包布局和源码文件名变成了公开协议,
+而且两个插件同名组件会无谓相撞。`componentKey()` 已删除。
+
+诊断同步改成 surface:console 打 `page:assessment/review failed`,RUM 上报
+`{surface: {kind, id}}`,缺组件的诊断码从 `component-missing` 改为 `surface-missing`。
+
+这是一次 **client protocol 破坏性变更**(1 → 2):manifest 是每个页面都读的文档,服务端无法同时
+服务两种形状,所以旧 tab 在第一个 API 请求上收到 409 并被要求刷新——那正是这套机制存在的理由。
+
+### 私有的另一半
+
+surface 不再说出实现,但实现不能因此消失,否则 `surface-missing` 和「这个页面落在哪个 chunk」
+都无从回答。构建把答案写在 `apps/web/dist/.qualy-browser-surfaces.json`:
+
+```json
+{
+  "page:assessment/review": {
+    "owner": "@qualy/plugin-assessment",
+    "module": "./client/review/ReviewPage.tsx",
+    "export": "default"
+  }
+}
+```
+
+规则与 sourcemap 完全相同:随构建产物归档,**不进 release store、不服务**;
+`check-staged-web` 递归扫描 store 并拒绝任何 `PRIVATE_BUILD_FILES`。
 
 ## 两个发布标识,一公一私
 
@@ -78,8 +122,6 @@ apps/web/dist/.qualy-web-build.json        构建产物旁(安装器读,不进 r
 
 ## 已知仍未收口(各自属于后续阶段)
 
-- **Manifest 仍带实现身份**:`pages[].component`、`layouts[].provider` / `.component`、
-  `slots[].component` 都是 `componentKey()` 派生的 `<插件>/<源文件名>`(plugin-refactor Phase B)。
 - **409 响应体仍带服务端协议窗口**:`QUALY_CLIENT_PROTOCOL_UNSUPPORTED` 的 `supported: {min,max}`
   (Phase D1 §43 会连同 assembly 兼容一起重做)。
 - **生产 JS chunk 名仍带组件名**:`assets/<chunk.name>-[hash].js`(§23)。

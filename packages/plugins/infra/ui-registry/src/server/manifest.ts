@@ -1,7 +1,6 @@
 import type { UiText } from '@qualy/i18n-contract'
 import { Context, Effect, Layer } from 'effect'
 import {
-  componentKey,
   isVisibleTo,
   navigationCollections,
   navigationGroups,
@@ -17,24 +16,28 @@ import type { Principal } from '@qualy/rbac-contract'
 import { UiAuthorizer } from './authorizer.ts'
 import { Ui } from './registry.ts'
 
-// The manifest is an authorized projection.
+// The manifest is an authorized projection, and everything in it is a
+// product fact.
 //
 // One authorizer lookup per request decides which surfaces the viewer may
 // DISCOVER. Hiding a page is never authorization, since every api call is
 // authorized on its own, but a viewer must not learn that a capability, its
-// route or its component even exists. Internal declarations, visibility and
-// permission codes among them, never leave.
+// route or its implementation even exists. Internal declarations, visibility
+// and permission codes among them, never leave.
+//
+// Nor does the implementation. A surface is named by what it IS - the page
+// id, the layout contract, the slot and the item filed under it - and the
+// browser resolves its renderer from that name. It used to be named by the
+// package and source file behind it, which is how `@qualy/plugin-assessment`
+// and `./client/ReviewPage.tsx` became public protocol.
 
 export interface ManifestLayout {
   readonly contract: string
-  readonly provider: string
-  readonly component: string
 }
 
 export interface ManifestPage {
   readonly id: string
   readonly path: string
-  readonly component: string
   readonly layout: string
   /** what a tab should call it, in the viewer's own language once resolved */
   readonly title?: UiText
@@ -44,9 +47,7 @@ export interface Manifest {
   readonly layouts: readonly ManifestLayout[]
   readonly pages: readonly ManifestPage[]
   readonly collections: Readonly<Record<string, readonly unknown[]>>
-  readonly slots: Readonly<
-    Record<string, readonly { id: string; component: string; order: number }[]>
-  >
+  readonly slots: Readonly<Record<string, readonly { id: string; order: number }[]>>
 }
 
 const sorted = <T extends { order?: number; id: string }>(items: readonly T[]) =>
@@ -193,11 +194,9 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
         )
       }
 
-      // The component that crosses the wire is the derived registry key,
-      // computed from the declaring plugin and the module reference - the
-      // same derivation the build used to key the browser registry, so the
-      // two cannot disagree. The reference itself never leaves the server.
-      const projectedSlots: Record<string, { id: string; component: string; order: number }[]> = {}
+      // An item is its slot and its id. That pair is what the browser
+      // resolves the renderer by, and the module reference stays here.
+      const projectedSlots: Record<string, { id: string; order: number }[]> = {}
       const visibleSlots = slots.filter((slot) => visible(slot.declaration.visibility, viewer))
       for (const slot of [...visibleSlots].sort(
         (a, b) =>
@@ -206,7 +205,6 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
       )) {
         ;(projectedSlots[slot.declaration.key] ??= []).push({
           id: slot.declaration.id,
-          component: componentKey(slot.owner, slot.declaration.component),
           order: slot.declaration.order ?? 99,
         })
       }
@@ -217,11 +215,7 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
         layouts: layouts
           .filter((layout) => used.has(layout.declaration.contract))
           .sort((a, b) => a.declaration.contract.localeCompare(b.declaration.contract))
-          .map((layout) => ({
-            contract: layout.declaration.contract,
-            provider: layout.declaration.provider,
-            component: componentKey(layout.owner, layout.declaration.component),
-          })),
+          .map((layout) => ({ contract: layout.declaration.contract })),
         pages: shown.map((page) => {
           // the menu entry's words when there is one, so a page and its tab
           // cannot come to disagree about what the page is called
@@ -229,7 +223,6 @@ export const make = Effect.fn('Ui.manifest.make')(function* () {
           return {
             id: page.declaration.page.id,
             path: page.declaration.page.path,
-            component: componentKey(page.owner, page.declaration.component),
             layout: page.declaration.layout,
             ...(title === undefined ? {} : { title }),
           }

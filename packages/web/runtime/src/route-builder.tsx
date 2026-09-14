@@ -1,8 +1,10 @@
-import { useEffect, useMemo, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { matchPath, Navigate, useLocation, useRoutes, type RouteObject } from 'react-router'
+import type { BrowserSurface } from '@qualy/ui-contract'
 import { useI18n } from '@qualy/web-i18n'
 import { setObservedPage } from '@qualy/plugin-rum/client'
-import type { ComponentRegistry, Manifest } from './index.tsx'
+import type { Manifest } from './index.tsx'
+import type { ComponentRegistry } from './registry.ts'
 import { PluginComponent } from './component-boundary.tsx'
 
 // turns the authorized manifest into react-router route objects. Kept out of
@@ -16,7 +18,8 @@ export interface RouteSlots {
   layoutLoading: ReactNode
   pageError: (retry: () => void) => ReactNode
   layoutError: (retry: () => void) => ReactNode
-  componentMissing: (componentId: string) => ReactNode
+  /** the surface the manifest named and this build does not carry */
+  componentMissing: (surface: BrowserSurface) => ReactNode
   /**
    * the screen for an address that leads nowhere, told the way home as the
    * builder resolved it - the host's preferred page when that is routable,
@@ -77,37 +80,39 @@ export function buildManifestRoutes({
     element: slots.notFound({ homePath: home?.path, standalone: shell === undefined }),
   }
 
-  const routes: RouteObject[] = manifest.layouts.map((layout) => ({
-    element: (
-      <PluginComponent
-        componentId={layout.component}
-        kind="layout"
-        component={registry[layout.component] as ComponentType<Record<string, unknown>> | undefined}
-        loading={slots.layoutLoading}
-        fallback={slots.layoutError}
-        missing={slots.componentMissing(layout.component)}
-      />
-    ),
-    children: [
-      ...(byLayout.get(layout.contract) ?? []).map((page) => ({
-        path: page.path,
-        element: (
-          <PluginComponent
-            componentId={page.component}
-            kind="page"
-            component={
-              registry[page.component] as ComponentType<Record<string, unknown>> | undefined
-            }
-            loading={slots.pageLoading}
-            fallback={slots.pageError}
-            missing={slots.componentMissing(page.component)}
-          />
-        ),
-      })),
-      // exactly one layout carries them, or the tree would be ambiguous
-      ...(layout.contract === shell ? [index, catchAll] : []),
-    ],
-  }))
+  const routes: RouteObject[] = manifest.layouts.map((layout) => {
+    const shellSurface: BrowserSurface = { kind: 'layout', id: layout.contract }
+    return {
+      element: (
+        <PluginComponent
+          surface={shellSurface}
+          registry={registry}
+          loading={slots.layoutLoading}
+          fallback={slots.layoutError}
+          missing={slots.componentMissing(shellSurface)}
+        />
+      ),
+      children: [
+        ...(byLayout.get(layout.contract) ?? []).map((page) => {
+          const surface: BrowserSurface = { kind: 'page', id: page.id }
+          return {
+            path: page.path,
+            element: (
+              <PluginComponent
+                surface={surface}
+                registry={registry}
+                loading={slots.pageLoading}
+                fallback={slots.pageError}
+                missing={slots.componentMissing(surface)}
+              />
+            ),
+          }
+        }),
+        // exactly one layout carries them, or the tree would be ambiguous
+        ...(layout.contract === shell ? [index, catchAll] : []),
+      ],
+    }
+  })
 
   return shell === undefined ? [...routes, index, catchAll] : routes
 }

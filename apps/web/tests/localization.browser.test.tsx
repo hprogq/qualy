@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The one suite whose subject IS the copy.
@@ -14,8 +14,8 @@ import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 // other locale - the shapes that break silently rather than the whole
 // catalog, which its own completeness gate already holds.
 
-const MyResultPage = (await components['assessment/MyResultPage']!()).default
-const MyEntriesPage = (await components['assessment/MyEntriesPage']!()).default
+const MyResultPage = (await pageComponents['assessment/batch-my-result']!()).default
+const MyEntriesPage = (await pageComponents['assessment/batch-my-entries']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_ID = '22222222-2222-4222-8222-222222222222'

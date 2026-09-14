@@ -1469,6 +1469,9 @@ importers:
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/ui
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
@@ -1494,6 +1497,9 @@ importers:
       '@qualy/release-contract':
         specifier: workspace:*
         version: link:../../../contracts/release
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/ui
       aegis-web-sdk:
         specifier: 'catalog:'
         version: 1.41.15

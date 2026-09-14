@@ -12,17 +12,14 @@ const plugin = Plugin.define(
   Ui.i18n('./client/i18n.ts'),
   Ui.layout({
     contract: APP_SHELL,
-    provider: 'layout-default/app',
     component: Ui.react('./client/AppShell.tsx'),
   }),
   Ui.layout({
     contract: WORKSPACE_SHELL,
-    provider: 'layout-default/workspace',
     component: Ui.react('./client/WorkspaceShell.tsx'),
   }),
   Ui.layout({
     contract: BLANK_SHELL,
-    provider: 'layout-default/blank',
     component: Ui.react('./client/BlankShell.tsx'),
   }),
 )

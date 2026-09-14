@@ -15,6 +15,7 @@ import {
 import { Effect } from 'effect'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type {
+  BrowserSurface,
   PageParams,
   PageRef,
   ParamsOption,
@@ -27,6 +28,12 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { LoadingScreen } from '@qualy/ui/spinner'
 import { clientFor, type ClientIdentity, type ClientOf, type TransportOptions } from './api.ts'
+import {
+  emptyComponentRegistry,
+  resolveSurface,
+  type ComponentRegistry,
+  type RegisteredComponent,
+} from './registry.ts'
 import {
   createQueryUtils,
   retryDelay,
@@ -54,10 +61,12 @@ export {
   type SessionDestination,
 } from './pages.ts'
 export {
-  PluginComponent,
-  PluginComponentBoundary,
-  type PluginComponentKind,
-} from './component-boundary.tsx'
+  emptyComponentRegistry,
+  resolveSurface,
+  type ComponentRegistry,
+  type RegisteredComponent,
+} from './registry.ts'
+export { PluginComponent, PluginComponentBoundary } from './component-boundary.tsx'
 export {
   buildManifestRoutes,
   ManifestRoutes,
@@ -82,15 +91,6 @@ export { ThemeProvider, useTheme, type ThemeChoice } from './theme.tsx'
 // for the one endpoint the runtime itself calls.
 const appApi = Api.local(appApiGroup)
 export type Manifest = Effect.Success<ReturnType<ClientOf<typeof appApi>['app']['getManifest']>>
-// heterogeneous by design: each page or renderer declares its own props,
-// consumers pass whatever the target component expects
-export type ComponentRegistry = Record<string, RegisteredComponent>
-
-/** a lazy component that can be fetched ahead of its first render */
-export type RegisteredComponent = LazyExoticComponent<ComponentType<any>> & {
-  preload?: () => Promise<void>
-}
-
 /**
  * A lazy component whose module can be fetched ahead of time, and which
  * then renders without suspending.
@@ -270,7 +270,7 @@ function RuntimeLoader({
     if (layouts === undefined) return
     let cancelled = false
     void Promise.all(
-      layouts.map((layout) => registry[layout.component]?.preload?.() ?? Promise.resolve()),
+      layouts.map((layout) => registry.layouts[layout.contract]?.preload?.() ?? Promise.resolve()),
     ).then(() => {
       if (!cancelled) setWarm(layouts)
     })
@@ -348,9 +348,16 @@ export function useApi<Api extends HttpApi.Constraint>(api: Api): ClientOf<Api> 
  * one of those lines.
  */
 export const useRunApi = () => runMutation()
-// resolve one registered component by its namespaced key ('plugin/Component');
-// undefined means the owning plugin is not part of this build
-export const useComponent = (name: string) => useRuntime().registry[name]
+/**
+ * The renderer for one surface of this build, or nothing.
+ *
+ * For the few callers that draw their own state around a contribution - the
+ * sign-in screen picks a driver's renderer and has its own way of saying it
+ * is not here. Everything routine goes through `PluginComponent`, which
+ * resolves, isolates and reports in one place.
+ */
+export const useSurfaceComponent = (surface: BrowserSurface) =>
+  resolveSurface(useRuntime().registry, surface)
 /** query utilities for an api definition, memoised per definition */
 export function useApiQuery<Api extends HttpApi.Constraint>(api: Api): QueryUtils<ClientOf<Api>> {
   return useRuntime().utilsFor(api) as QueryUtils<ClientOf<Api>>
@@ -543,22 +550,17 @@ export function UiSlot({
   // fallback is the same person drawn the plain way, so the swap is invisible.
   return (
     <>
-      {items.map((item) => {
-        const Renderer = registry[item.component] as
-          ComponentType<Record<string, unknown>> | undefined
-        return (
-          <PluginComponent
-            key={item.id}
-            componentId={item.component}
-            kind="slot"
-            component={Renderer}
-            props={{ context }}
-            loading={loading ?? fallback ?? null}
-            fallback={() => null}
-            missing={null}
-          />
-        )
-      })}
+      {items.map((item) => (
+        <PluginComponent
+          key={item.id}
+          surface={{ kind: 'slot', slot: token.key, id: item.id }}
+          registry={registry}
+          props={{ context }}
+          loading={loading ?? fallback ?? null}
+          fallback={() => null}
+          missing={null}
+        />
+      ))}
     </>
   )
 }

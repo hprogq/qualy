@@ -14,19 +14,26 @@ import type { ClientComponentRef } from '@qualy/ui-contract'
 // module, a subpath export and a declaration per driver - four places to
 // change to add a way of signing in.
 
-/** how a driver asks to be presented on the sign-in screen */
+/**
+ * How a driver asks to be presented on the sign-in screen.
+ *
+ * `component` says only that there is one: which renderer draws it is
+ * answered by the driver's TYPE, which the method already carries and the
+ * browser build filed the renderer under. The wire used to carry a module
+ * key beside the mode, so every visitor to the login screen was told which
+ * package and which file implement the way in.
+ */
 export type LoginPresentation =
-  | { readonly mode: 'component'; readonly component: string }
+  | { readonly mode: 'component' }
   /** a same-origin path; an absolute url is dropped rather than followed */
   | { readonly mode: 'redirect'; readonly href: string }
 
 /**
  * The same statement as a declaration. A component is a module REFERENCE,
- * static so the build can collect it without running anything - the wire key
- * is derived from the declaring plugin and this reference by the methods
- * endpoint, the same derivation the manifest and the build use. A redirect
- * href stays a function of the provider row, because an SSO entry point is
- * per provider and never enters a browser bundle.
+ * static so the build can collect it without running anything: the build
+ * files it under the driver's type and nothing else ever needs it. A
+ * redirect href stays a function of the provider row, because an SSO entry
+ * point is per provider and never enters a browser bundle.
  */
 export type LoginPresentationDeclaration =
   | { readonly mode: 'component'; readonly component: ClientComponentRef }

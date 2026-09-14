@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
-const OrgPage = (await components['org/OrgPage']!()).default
+const OrgPage = (await pageComponents['org/page']!()).default
 
 // The organization screen: a tree to find a unit, a panel to manage it, and
 // a second face where the type grammar is edited per type. What is pinned

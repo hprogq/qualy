@@ -99,11 +99,11 @@ describe('the web client protocol', () => {
   })
 
   it('serves the generation it speaks', async () => {
-    expect((await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: '1' })).status).toBe(200)
+    expect((await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: '2' })).status).toBe(200)
   })
 
   it('refuses a generation outside the window, at once, with the signal the page reads', async () => {
-    for (const declared of ['0', '2', 'one', '-1', '1.0']) {
+    for (const declared of ['0', '1', '3', 'one', '-1', '2.0']) {
       const response = await api({ [QUALY_CLIENT_PROTOCOL_HEADER]: declared })
       expect(response.status, declared).toBe(409)
       expect(response.headers.get(QUALY_CLIENT_UNSUPPORTED_HEADER)).toBe('1')
@@ -112,7 +112,7 @@ describe('the web client protocol', () => {
       expect(await response.json()).toEqual({
         _tag: CLIENT_PROTOCOL_UNSUPPORTED,
         received: /^\d+$/.test(declared) ? Number(declared) : declared,
-        supported: { min: 1, max: 1 },
+        supported: { min: 2, max: 2 },
       })
     }
   })

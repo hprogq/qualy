@@ -1,7 +1,7 @@
 import { useEffect, useMemo, type ComponentType, type ReactNode } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import { BrowserRouter, Link } from 'react-router'
-import { primaryNavigation } from '@qualy/ui-contract'
+import { primaryNavigation, surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
 import {
   ManifestRoutes,
   preloadable,
@@ -19,7 +19,14 @@ import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Button } from '@qualy/ui/button'
 import { ColdStart, LoadingScreen, PageLoading } from '@qualy/ui/spinner'
-import { catalogs, components, errorMessages } from 'virtual:qualy/plugins'
+import {
+  catalogs,
+  errorMessages,
+  layoutComponents,
+  loginComponents,
+  pageComponents,
+  slotComponents,
+} from 'virtual:qualy/plugins'
 import { releases, webRelease } from './release.ts'
 
 // There is no global client to build: each plugin derives its own from the
@@ -87,12 +94,22 @@ const styles = stylex.create({
   },
 })
 
-const registry: ComponentRegistry = Object.fromEntries(
-  Object.entries(components).map(([name, thunk]) => [
-    name,
-    preloadable(thunk as () => Promise<{ default: ComponentType<any> }>),
-  ]),
-)
+// The aggregate hands over loaders keyed by surface; the shell wraps each in
+// the lazy component the router and the slots render. One table per address
+// space, kept apart the whole way: a page id and a layout contract are not
+// the same kind of name and never share a namespace.
+type Loaders = Record<string, () => Promise<{ readonly default: ComponentType<any> }>>
+const lazily = (loaders: Loaders) =>
+  Object.fromEntries(Object.entries(loaders).map(([key, load]) => [key, preloadable(load)]))
+
+const registry: ComponentRegistry = {
+  pages: lazily(pageComponents),
+  layouts: lazily(layoutComponents),
+  slots: Object.fromEntries(
+    Object.entries(slotComponents).map(([slot, items]) => [slot, lazily(items)]),
+  ),
+  login: lazily(loginComponents),
+}
 
 // The cold start's own copy, in the reader's language: the host stands above
 // the catalogs, which is the point of it, so it reads the small table the
@@ -153,8 +170,8 @@ function ManifestRouter() {
       layoutError: (retry) => (
         <Failure message={format(commonMessages.layoutFailed)} onRetry={retry} fullscreen />
       ),
-      componentMissing: (component) => (
-        <MissingComponent component={component} message={format(commonMessages.componentMissing)} />
+      componentMissing: (surface) => (
+        <MissingComponent surface={surface} message={format(commonMessages.componentMissing)} />
       ),
       // the way out of a mistyped address is the home the route builder
       // resolved - one resolution, the same one the origin redirects to - so
@@ -226,13 +243,14 @@ function Notice({
   )
 }
 
-// a page's module is not in the bundle: the reader is told the page cannot
-// open, and the console is told which module and in which release it was
-// looked for - a fact for whoever ships the bundle, never for the screen
-function MissingComponent({ component, message }: { component: string; message: string }) {
+// a surface the manifest named is not in this bundle: the reader is told the
+// page cannot open, and the console is told which surface and in which
+// release - a fact for whoever ships the bundle, never for the screen
+function MissingComponent({ surface, message }: { surface: BrowserSurface; message: string }) {
+  const label = surfaceLabel(surface)
   useEffect(() => {
-    console.error(`[qualy] component missing: ${component} (release ${webRelease.releaseId})`)
-  }, [component])
+    console.error(`[qualy] missing from this build: ${label} (release ${webRelease.releaseId})`)
+  }, [label])
   return <Failure message={message} />
 }
 

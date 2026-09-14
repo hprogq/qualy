@@ -169,7 +169,7 @@ web 插件 production 拒绝错配/无指纹)+ `scripts/smoke-production.ts` 生
 
 `Ui.react(module)` = ClientComponentRef 纯数据(不跨进程传 React 值——Node/浏览器双 realm、
 函数不可序列化、RSC 级魔法不值得);`Ui.page` 一次声明页面全部事实,`ui.ts`/`pages.ts`/
-`messages.ts`/client components 表全灭。键 `<plugin>/<Basename>` 由 componentKey 派生,
+`messages.ts`/client components 表全灭。(2026-09-15 起键改为 surface 身份,见 docs/browser-public-surface.md;下文描述的 `<plugin>/<Basename>` 派生键已删除。)原文:键 `<plugin>/<Basename>` 由 componentKey 派生,
 四个消费方同源,wire 不变。客户端按 id 引用注册面(manifest 解析路径),同插件组件互引
 保持普通 import。类型检查前移:typecheck 内组件引用检查器(存在/包内/React 组件/页面零
 必需 props),红绿已验;`Ui.vue`/`Ui.svelte` 是未来的兄弟构造器,renderer 字段已开放。

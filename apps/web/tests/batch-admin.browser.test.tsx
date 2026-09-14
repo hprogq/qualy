@@ -5,26 +5,30 @@ import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { components } from 'virtual:qualy/plugins'
+import { layoutComponents, pageComponents, slotComponents } from 'virtual:qualy/plugins'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
-const BatchListPage = (await components['assessment/BatchListPage']!()).default
-const BatchPhasesPage = (await components['assessment/BatchPhasesPage']!()).default
-const BatchParticipantsPage = (await components['assessment/BatchParticipantsPage']!()).default
-const BatchAccessPage = (await components['assessment/BatchAccessPage']!()).default
-const BatchOverviewPage = (await components['assessment/BatchOverviewPage']!()).default
-const BatchSettingsPage = (await components['assessment/BatchSettingsPage']!()).default
+const BatchListPage = (await pageComponents['assessment/batches']!()).default
+const BatchPhasesPage = (await pageComponents['assessment/batch-phases']!()).default
+const BatchParticipantsPage = (await pageComponents['assessment/batch-participants']!()).default
+const BatchAccessPage = (await pageComponents['assessment/batch-access']!()).default
+const BatchOverviewPage = (await pageComponents['assessment/batch']!()).default
+const BatchSettingsPage = (await pageComponents['assessment/batch-settings']!()).default
 // the picker iam contributes, held the way the registry holds one
-const PeopleImportPicker = lazy(components['auth/PeopleImportPicker']!)
+const PeopleImportPicker = lazy(
+  slotComponents['iam/people-import-picker']!['auth/people-import-picker']!,
+)
 // the bar the workspace shell puts above its rail: which batch is open, where
 // it stands, and what can be done to it. Mounted here the way the shell
 // mounts it, because half of what these cases drive lives in it.
-const BatchContextBar = (await components['assessment/BatchContextBar']!()).default
+const BatchContextBar = (
+  await slotComponents['workspace-shell/context']!['assessment/batch-context']!()
+).default
 // the shell these sections actually live in, mounted as their layout so the
 // page scrolls where the app scrolls it
-const WorkspaceShell = (await components['layout-default/WorkspaceShell']!()).default
+const WorkspaceShell = (await layoutComponents['workspace-shell/v1']!()).default
 
 // What a service test cannot see: that a plan can be built with no template
 // at all, that the two template kinds stay in their own pickers and both stay
@@ -207,7 +211,7 @@ const PAGES = [
   // only the manifest entry that makes the links resolve
   { id: 'assessment/batch-my-entries', path: '/assessment/batches/:batchId/my-entries' },
   { id: 'assessment/batch-reviews', path: '/assessment/batches/:batchId/reviews' },
-].map((page) => ({ ...page, component: page.id, layout: 'admin' }))
+].map((page) => ({ ...page, layout: 'admin' }))
 
 /** a section of the batch, inside the chrome the workspace shell gives it */
 const workspace = (element: ReactNode) => (
@@ -906,9 +910,7 @@ describe('the participants tab', () => {
               // the picker belongs to iam and arrives through the surface it
               // contributes to, exactly as it does in the running application
               slots: {
-                'iam/people-import-picker': [
-                  { id: 'auth/people-import-picker', component: 'auth/PeopleImportPicker' },
-                ],
+                'iam/people-import-picker': [{ id: 'auth/people-import-picker', order: 0 }],
               },
             }),
         },
@@ -943,7 +945,9 @@ describe('the participants tab', () => {
         },
       ],
       route: `/assessment/batches/${BATCH_ID}/participants`,
-      registry: { 'auth/PeopleImportPicker': PeopleImportPicker },
+      registry: {
+        slots: { 'iam/people-import-picker': { 'auth/people-import-picker': PeopleImportPicker } },
+      },
     })
 
     await page.getByRole('button', { name: '从组织导入' }).click()
@@ -1261,9 +1265,15 @@ describe('a section inside the workspace shell', () => {
         }),
       }),
       registry: {
-        'assessment/BatchContextBar': lazy(
-          components['assessment/BatchContextBar']! as () => Promise<never>,
-        ),
+        slots: {
+          'workspace-shell/context': {
+            'assessment/batch-context': lazy(
+              slotComponents['workspace-shell/context']![
+                'assessment/batch-context'
+              ]! as () => Promise<never>,
+            ),
+          },
+        },
       },
       route: `/assessment/batches/${BATCH_ID}/settings`,
       children: (

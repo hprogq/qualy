@@ -3,6 +3,7 @@ import path from 'node:path'
 import { lockPathFor, readLock } from '@qualy/assembly'
 import { manifestPath, repoRoot } from '../lib/manifest.ts'
 import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/release-store.ts'
+import { PRIVATE_BUILD_FILES } from '../../packages/build/web/src/release-vite.ts'
 
 // The staged web release, whole: the store points at a release, the release
 // has its shell and every asset it names, and it was built from the assembly
@@ -37,7 +38,8 @@ if (missing.length > 0) {
     `release ${releaseId} names ${String(missing.length)} asset(s) the store does not hold: ${missing.slice(0, 5).join(', ')}`,
   )
 }
-// Nothing in the store may be a source map.
+// Nothing in the store may be a source map, or any other file the build
+// keeps for itself.
 //
 // This is the load-bearing half of turning source maps on. A map carries
 // `sourcesContent` - the whole source of this product, directory structure
@@ -47,19 +49,26 @@ if (missing.length > 0) {
 // failures that matter are silent: a filter that stops matching a new
 // extension, and a file placed in the store by something other than the
 // installer.
+//
+// The map from a public surface to the module behind it is the same kind of
+// file for the same reason: the browser is given `page:assessment/review` and
+// the build keeps what implements it, and a store holding that map would hand
+// the mapping back to anyone who asked.
 const debug: string[] = []
 const scan = (dir: string, within: string) => {
   if (!fs.existsSync(dir)) return
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name)
     if (entry.isDirectory()) scan(full, path.posix.join(within, entry.name))
-    else if (/\.map(?:\.br|\.gz)?$/.test(entry.name)) debug.push(path.posix.join(within, entry.name))
+    else if (/\.map(?:\.br|\.gz)?$/.test(entry.name) || PRIVATE_BUILD_FILES.includes(entry.name)) {
+      debug.push(path.posix.join(within, entry.name))
+    }
   }
 }
 scan(store.root, '')
 if (debug.length > 0) {
   fail(
-    `the store holds ${String(debug.length)} source map(s), which must never be served: ${debug.slice(0, 5).join(', ')}`,
+    `the store holds ${String(debug.length)} private build file(s), which must never be served: ${debug.slice(0, 5).join(', ')}`,
   )
 }
 

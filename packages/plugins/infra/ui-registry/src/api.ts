@@ -7,16 +7,21 @@ import { Viewer } from '@qualy/plugin-auth/server/session-contract'
 //
 // /app rather than /ui-registry or /ui: the registry is how it is built, but
 // what a browser asks for here is the application it may see.
+//
+// Every identity here is a product one - a page id, a layout contract, a slot
+// and the item under it - and the browser resolves its renderer from that.
+// Naming the package and the source file instead is what this stopped doing;
+// the shape change rides on the client protocol, which is what a breaking
+// browser wire change is for.
 
 const namespaced = Schema.String.check(
   Schema.isPattern(/^[a-z][a-z0-9-]*(\/[a-z0-9][a-z0-9-]*)+$/i),
 )
 
-const layout = Schema.Struct({
-  contract: namespaced,
-  provider: namespaced,
-  component: Schema.String,
-})
+// A layout is the contract it satisfies. Which plugin provides it, and which
+// module renders it, are the assembly's business: the browser resolves the
+// shell by the contract its pages name.
+const layout = Schema.Struct({ contract: namespaced })
 
 // a message the browser translates, or business data that must not be
 // translated at all: the i18n contract's own schema of it
@@ -25,14 +30,14 @@ const uiText = UiTextSchema
 const page = Schema.Struct({
   id: namespaced,
   path: Schema.String,
-  component: Schema.String,
   layout: namespaced,
   title: Schema.optional(uiText),
 })
 
+// its id under its slot: the pair the browser resolves a renderer by, and
+// the whole of what it is told about the contribution
 const slotItem = Schema.Struct({
   id: namespaced,
-  component: Schema.String,
   order: Schema.Number,
 })
 

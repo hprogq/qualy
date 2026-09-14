@@ -3,7 +3,7 @@ import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import type { ApiResult, ClientOf } from '@qualy/web-runtime/api'
 import type { assessmentApi } from '@qualy/plugin-assessment/client/api'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The entry workflow as a person drives it: filing a claim on a question,
@@ -11,11 +11,11 @@ import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/h
 // reading one's own standing. Every case runs the real screens over a
 // stubbed wire and asserts by role and label, the way a person would look.
 
-const MyEntriesPage = (await components['assessment/MyEntriesPage']!()).default
-const BatchOverviewPage = (await components['assessment/BatchOverviewPage']!()).default
-const ReviewInboxPage = (await components['assessment/ReviewInboxPage']!()).default
-const ReviewInstancePage = (await components['assessment/ReviewInstancePage']!()).default
-const MyResultPage = (await components['assessment/MyResultPage']!()).default
+const MyEntriesPage = (await pageComponents['assessment/batch-my-entries']!()).default
+const BatchOverviewPage = (await pageComponents['assessment/batch']!()).default
+const ReviewInboxPage = (await pageComponents['assessment/batch-reviews']!()).default
+const ReviewInstancePage = (await pageComponents['assessment/review-instance']!()).default
+const MyResultPage = (await pageComponents['assessment/batch-my-result']!()).default
 
 type BatchDto = ApiResult<typeof assessmentApi, 'assessment', 'getBatch'>['batch']
 type ItemDto = ApiResult<typeof assessmentApi, 'assessment', 'listItems'>['items'][number]
@@ -69,7 +69,7 @@ const PAGES = [
     path: '/assessment/batches/:batchId/reviews/:instanceId',
   },
   { id: 'assessment/batch-my-result', path: '/assessment/batches/:batchId/my-result' },
-].map((entry) => ({ ...entry, component: entry.id, layout: 'admin' }))
+].map((entry) => ({ ...entry, layout: 'admin' }))
 
 const batch = (): BatchDto => ({
   id: BATCH_ID,

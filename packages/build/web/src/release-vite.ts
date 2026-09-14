@@ -41,6 +41,26 @@ const RESOLVED_RELEASE_MODULE_ID = `\0${RELEASE_MODULE_ID}`
 /** written into the build output, for the installer; never served */
 export const WEB_BUILD_METADATA = '.qualy-web-build.json'
 
+/**
+ * Which module stands behind each public surface, written beside the output.
+ *
+ * The browser addresses surfaces - `page:assessment/review` - and is never
+ * told what implements them. Somebody diagnosing a report or a missing chunk
+ * still wants to know, so the build writes the answer down where a build
+ * artifact lives. Same rule as a source map: produced, archived with the
+ * build, never installed into the store and never served.
+ */
+export const BROWSER_SURFACE_MAP = '.qualy-browser-surfaces.json'
+
+/**
+ * What a build writes for itself. None of it is part of a release.
+ *
+ * Named in one place because two things have to agree: the installer, which
+ * leaves them out of the store, and the gate that walks a staged store and
+ * refuses them if they turn up anyway.
+ */
+export const PRIVATE_BUILD_FILES: readonly string[] = [WEB_BUILD_METADATA, BROWSER_SURFACE_MAP]
+
 /** how a deployment names a production build: public, opaque, one build */
 export const RELEASE_ID_VARIABLE = 'QUALY_RELEASE_ID'
 

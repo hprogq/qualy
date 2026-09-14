@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 import '../src/app.css'
 
@@ -14,7 +14,7 @@ import '../src/app.css'
 // shows, the submission is explicit: the wire carries the values the
 // registrar confirmed.
 
-const RecordPage = (await components['assessment/RecordPage']!()).default
+const RecordPage = (await pageComponents['assessment/batch-record']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_A = '22222222-2222-4222-8222-222222222222'
@@ -25,7 +25,7 @@ const PARTICIPANT_ID = '44444444-4444-4444-8444-444444444444'
 const PARTICIPANT_B = '44444444-4444-4444-8444-444444444445'
 
 const PAGES = [{ id: 'assessment/batch-record', path: '/assessment/batches/:batchId/record' }].map(
-  (entry) => ({ ...entry, component: entry.id, layout: 'admin' }),
+  (entry) => ({ ...entry, layout: 'admin' }),
 )
 
 const batch = () => ({

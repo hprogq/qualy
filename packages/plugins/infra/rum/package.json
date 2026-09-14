@@ -21,6 +21,7 @@
   "dependencies": {
     "@qualy/api-kit": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

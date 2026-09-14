@@ -3,7 +3,7 @@ import { Route, Routes } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { layoutComponents, slotComponents } from 'virtual:qualy/plugins'
 import { usePageTitle } from '@qualy/web-runtime'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
@@ -14,8 +14,8 @@ import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/h
 // quietly wrong - an entry pointing at ":batchId" is a link that 404s, and an
 // application whose pages the viewer cannot open is a tab leading nowhere.
 
-const AppShell = (await components['layout-default/AppShell']!()).default
-const WorkspaceShell = (await components['layout-default/WorkspaceShell']!()).default
+const AppShell = (await layoutComponents['app-shell/v1']!()).default
+const WorkspaceShell = (await layoutComponents['workspace-shell/v1']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 
@@ -341,15 +341,9 @@ describe('the workspace shell', () => {
             Effect.succeed({
               ...manifest(),
               slots: {
-                'app-shell/drawer-identity': [
-                  { id: 'auth/drawer-identity', component: 'auth/DrawerIdentity', order: 0 },
-                ],
-                'app-shell/drawer-account': [
-                  { id: 'auth/drawer-account', component: 'auth/DrawerAccount', order: 0 },
-                ],
-                'app-shell/drawer-sign-out': [
-                  { id: 'auth/drawer-sign-out', component: 'auth/DrawerSignOut', order: 0 },
-                ],
+                'app-shell/drawer-identity': [{ id: 'auth/drawer-identity', order: 0 }],
+                'app-shell/drawer-account': [{ id: 'auth/drawer-account', order: 0 }],
+                'app-shell/drawer-sign-out': [{ id: 'auth/drawer-sign-out', order: 0 }],
               },
             }),
         },
@@ -382,9 +376,32 @@ describe('the workspace shell', () => {
         },
       } as never),
       registry: {
-        'auth/DrawerIdentity': lazy(() => components['auth/DrawerIdentity']!() as Promise<never>),
-        'auth/DrawerAccount': lazy(() => components['auth/DrawerAccount']!() as Promise<never>),
-        'auth/DrawerSignOut': lazy(() => components['auth/DrawerSignOut']!() as Promise<never>),
+        slots: {
+          'app-shell/drawer-identity': {
+            'auth/drawer-identity': lazy(
+              () =>
+                slotComponents['app-shell/drawer-identity']![
+                  'auth/drawer-identity'
+                ]!() as Promise<never>,
+            ),
+          },
+          'app-shell/drawer-account': {
+            'auth/drawer-account': lazy(
+              () =>
+                slotComponents['app-shell/drawer-account']![
+                  'auth/drawer-account'
+                ]!() as Promise<never>,
+            ),
+          },
+          'app-shell/drawer-sign-out': {
+            'auth/drawer-sign-out': lazy(
+              () =>
+                slotComponents['app-shell/drawer-sign-out']![
+                  'auth/drawer-sign-out'
+                ]!() as Promise<never>,
+            ),
+          },
+        },
       },
       routes: [
         {
@@ -629,19 +646,16 @@ describe('a press on the rail', () => {
                 {
                   id: 'assessment/batch-phases',
                   path: '/assessment/batches/:batchId/phases',
-                  component: 'x/Phases',
                   layout: 'workspace-shell/v1',
                 },
                 {
                   id: 'assessment/batch-entries',
                   path: '/assessment/batches/:batchId/entries',
-                  component: 'x/Entries',
                   layout: 'workspace-shell/v1',
                 },
                 {
                   id: 'auth/users',
                   path: '/organization/users',
-                  component: 'x/Users',
                   layout: 'app-shell/v1',
                 },
               ],
@@ -649,9 +663,11 @@ describe('a press on the rail', () => {
         },
       }),
       registry: {
-        'x/Phases': registered(preloads.phases),
-        'x/Entries': registered(preloads.entries),
-        'x/Users': registered(preloads.users),
+        pages: {
+          'assessment/batch-phases': registered(preloads.phases),
+          'assessment/batch-entries': registered(preloads.entries),
+          'auth/users': registered(preloads.users),
+        },
       },
       routes: [{ path: '/assessment/batches/:batchId/phases', element: <WorkspaceShell /> }],
       route: `/assessment/batches/${BATCH_ID}/phases`,

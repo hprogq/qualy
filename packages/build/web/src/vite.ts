@@ -3,10 +3,13 @@ import path from 'node:path'
 import type { Plugin } from 'vite'
 import { BOOT_COPY_ID, BOOT_PLACEHOLDER, bootFrame } from '@qualy/brand/boot'
 import { repoRoot } from './manifest.ts'
-import { buildPluginModuleSource, buildPluginScanSource } from './collect.ts'
+import { BROWSER_SURFACE_MAP } from './release-vite.ts'
+import { buildPluginModuleSource, buildPluginScanSource, buildSurfaceMapSource } from './collect.ts'
 
 export {
+  BROWSER_SURFACE_MAP,
   BUILD_REVISION_VARIABLE,
+  PRIVATE_BUILD_FILES,
   RELEASE_ID_VARIABLE,
   RELEASE_MODULE_ID,
   WEB_BUILD_METADATA,
@@ -71,6 +74,17 @@ export const qualyPlugins = (): Plugin => {
     },
     resolveId(id) {
       return id === virtualId ? cacheFile : undefined
+    },
+    async generateBundle() {
+      // Only a build writes it: a dev server has the sources themselves, and
+      // the file exists so a build can be diagnosed long after the machine
+      // that made it is gone. It travels with the output and the installer
+      // leaves it there.
+      this.emitFile({
+        type: 'asset',
+        fileName: BROWSER_SURFACE_MAP,
+        source: await buildSurfaceMapSource({ all }),
+      })
     },
   }
 }

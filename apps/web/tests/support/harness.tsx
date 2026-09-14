@@ -5,6 +5,7 @@ import { I18nProvider } from '@qualy/web-i18n'
 import {
   ThemeProvider,
   RuntimeProvider,
+  emptyComponentRegistry,
   useTheme,
   type ComponentRegistry,
 } from '@qualy/web-runtime'
@@ -25,10 +26,10 @@ import '../../src/app.css'
 // test-only seams.
 
 export interface FakeManifest {
-  layouts: { contract: string; component: string }[]
-  pages: { id: string; path: string; component: string; layout: string }[]
+  layouts: { contract: string }[]
+  pages: { id: string; path: string; layout: string }[]
   collections: Record<string, unknown[]>
-  slots: Record<string, { id: string; component: string; order: number }[]>
+  slots: Record<string, { id: string; order: number }[]>
 }
 
 export const emptyManifest = (): FakeManifest => ({
@@ -91,7 +92,14 @@ export function renderScreen({
   locale = 'zh-CN',
 }: {
   client: FakeClient
-  registry?: ComponentRegistry
+  /**
+   * The renderers this screen may resolve, by surface.
+   *
+   * Partial: a test names the tables it cares about - usually one slot - and
+   * the rest are empty, which is the honest state for a screen rendered on
+   * its own.
+   */
+  registry?: Partial<ComponentRegistry>
   children?: ReactNode
   /**
    * More than one screen, mounted at their real paths.
@@ -128,7 +136,10 @@ export function renderScreen({
             component reading the theme works here exactly as it does there */}
         <ThemeProvider>
           <WidgetBridge>
-            <RuntimeProvider clientFor={() => client} registry={registry ?? {}}>
+            <RuntimeProvider
+              clientFor={() => client}
+              registry={{ ...emptyComponentRegistry(), ...registry }}
+            >
               <MemoryRouter initialEntries={[route]}>
                 <Address />
                 {routes ? (

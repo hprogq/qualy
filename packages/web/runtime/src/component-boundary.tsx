@@ -1,16 +1,20 @@
 import { Component, Suspense, type ComponentType, type ReactNode } from 'react'
+import { surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
 import { captureDiagnostic, captureException } from '@qualy/plugin-rum/client'
+import { resolveSurface, type ComponentRegistry } from './registry.ts'
 
-// One plugin component must never take down the shell. Every dynamically
-// resolved component — layout, page, slot item, driver renderer — renders
-// inside this boundary, which reports the failing component id and kind and
-// shows the caller's fallback instead of a blank screen or a raw stack.
-
-export type PluginComponentKind = 'layout' | 'page' | 'slot' | 'renderer'
+// One plugin component must never take down the shell. Every surface the
+// manifest names — layout, page, slot item, sign-in renderer — renders inside
+// this boundary, which reports the failing SURFACE and shows the caller's
+// fallback instead of a blank screen or a raw stack.
+//
+// The surface is the address, so this resolves it too. A caller that looked
+// the component up itself and passed both could pass a component belonging to
+// one address under another, and the console line and the report would then
+// name the wrong screen - which is the one thing they exist for.
 
 interface BoundaryProps {
-  componentId: string
-  kind: PluginComponentKind
+  surface: BrowserSurface
   // rendered when the component throws; a slot may choose to render nothing
   fallback: (retry: () => void) => ReactNode
   onError?: (error: unknown) => void
@@ -29,15 +33,14 @@ export class PluginComponentBoundary extends Component<BoundaryProps, BoundarySt
   }
 
   override componentDidCatch(error: unknown) {
-    // the id and kind are what makes a plugin failure diagnosable at all
-    console.error(`[qualy] ${this.props.kind} component ${this.props.componentId} failed`, error)
-    // and the same two facts are what a report is worth reading with: this is
-    // the one seam where a component failure is already identified, so it is
-    // where it gets reported rather than at each of them
-    captureException(error, {
-      componentId: this.props.componentId,
-      componentKind: this.props.kind,
-    })
+    // which screen it was is what makes a plugin failure diagnosable at all -
+    // and `page assessment/review` is a product fact, where the module path
+    // it used to print was a piece of this repository's layout
+    console.error(`[qualy] ${surfaceLabel(this.props.surface)} failed`, error)
+    // the same fact is what a report is worth reading with: this is the one
+    // seam where a component failure is already identified, so it is where it
+    // gets reported rather than at each of them
+    captureException(error, { surface: this.props.surface })
     this.props.onError?.(error)
   }
 
@@ -47,21 +50,19 @@ export class PluginComponentBoundary extends Component<BoundaryProps, BoundarySt
   }
 }
 
-// resolves a component from the registry and renders it inside the boundary
-// plus its own suspense; a component the build does not contain is reported
+// resolves a surface against the registry and renders it inside the boundary
+// plus its own suspense; a surface the build does not carry is reported
 // rather than silently skipped
 export function PluginComponent({
-  componentId,
-  kind,
-  component: Resolved,
+  surface,
+  registry,
   props,
   loading,
   fallback,
   missing,
 }: {
-  componentId: string
-  kind: PluginComponentKind
-  component: ComponentType<Record<string, unknown>> | undefined
+  surface: BrowserSurface
+  registry: ComponentRegistry
   /**
    * What the contribution is rendered with.
    *
@@ -75,20 +76,25 @@ export function PluginComponent({
   fallback: (retry: () => void) => ReactNode
   missing: ReactNode
 }) {
+  const Resolved = resolveSurface(registry, surface) as
+    ComponentType<Record<string, unknown>> | undefined
   if (!Resolved) {
     console.error(
-      `[qualy] ${kind} component ${componentId} is missing from this build; ` +
+      `[qualy] ${surfaceLabel(surface)} is missing from this build; ` +
         'the manifest and the browser bundle disagree',
     )
-    // A deployment fact, not an exception: the manifest offered a component
+    // A deployment fact, not an exception: the manifest offered a surface
     // this build does not carry, which says the two were assembled apart.
     // Reported as a diagnostic so it keeps its own shape instead of arriving
     // as a crash with a stack that points at this line.
-    captureDiagnostic('component-missing', { componentId, componentKind: kind })
+    captureDiagnostic('surface-missing', {
+      surfaceKind: surface.kind,
+      surface: surfaceLabel(surface),
+    })
     return <>{missing}</>
   }
   return (
-    <PluginComponentBoundary componentId={componentId} kind={kind} fallback={fallback}>
+    <PluginComponentBoundary surface={surface} fallback={fallback}>
       <Suspense fallback={loading}>
         <Resolved {...(props ?? {})} />
       </Suspense>

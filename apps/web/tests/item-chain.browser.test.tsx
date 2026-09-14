@@ -2,7 +2,7 @@ import { lazy } from 'react'
 import { describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents, slotComponents } from 'virtual:qualy/plugins'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 // the real stylesheet, because one assertion here is about visibility
 // classes: the add key must not hide behind a hover
@@ -13,7 +13,7 @@ import '../src/app.css'
 // which step is unfinished; steps are added, reordered and removed with
 // controls that are on show rather than discovered by hovering.
 
-const ItemSettingsPage = (await components['assessment/ItemSettingsPage']!()).default
+const ItemSettingsPage = (await pageComponents['assessment/batch-items']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const PAPER_ID = '22222222-2222-4222-8222-222222222222'
@@ -24,7 +24,7 @@ const ITEM_ID = '66666666-6666-4666-8666-666666666666'
 const REVISION_ID = '77777777-7777-4777-8777-777777777777'
 
 const PAGES = [{ id: 'assessment/batch-items', path: '/assessment/batches/:batchId/items' }].map(
-  (entry) => ({ ...entry, component: entry.id, layout: 'admin' }),
+  (entry) => ({ ...entry, layout: 'admin' }),
 )
 
 const batch = () => ({
@@ -157,13 +157,7 @@ const CALCULATOR_SURFACES = {
     ],
   },
   slots: {
-    'assessment/calculator-editor': [
-      {
-        id: 'assessment/fixed-calculator-editor',
-        component: 'assessment/FixedCalculatorEditor',
-        order: 10,
-      },
-    ],
+    'assessment/calculator-editor': [{ id: 'assessment/fixed-calculator-editor', order: 10 }],
   },
 }
 
@@ -187,11 +181,7 @@ const BOTH_CALCULATORS = {
   slots: {
     'assessment/calculator-editor': [
       ...CALCULATOR_SURFACES.slots['assessment/calculator-editor'],
-      {
-        id: 'assessment-formula/calculator-editor',
-        component: 'assessment-formula/CalculatorEditor',
-        order: 20,
-      },
+      { id: 'assessment-formula/calculator-editor', order: 20 },
     ],
   },
 }
@@ -368,12 +358,22 @@ const open = (
       },
     ] as never,
     registry: {
-      'assessment/FixedCalculatorEditor': lazy(
-        () => components['assessment/FixedCalculatorEditor']!() as never,
-      ),
-      'assessment-formula/CalculatorEditor': lazy(
-        () => components['assessment-formula/CalculatorEditor']!() as never,
-      ),
+      slots: {
+        'assessment/calculator-editor': {
+          'assessment/fixed-calculator-editor': lazy(
+            () =>
+              slotComponents['assessment/calculator-editor']![
+                'assessment/fixed-calculator-editor'
+              ]!() as never,
+          ),
+          'assessment-formula/calculator-editor': lazy(
+            () =>
+              slotComponents['assessment/calculator-editor']![
+                'assessment-formula/calculator-editor'
+              ]!() as never,
+          ),
+        },
+      },
     } as never,
     route:
       had.question === undefined

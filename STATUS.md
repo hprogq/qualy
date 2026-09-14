@@ -14280,3 +14280,68 @@ protocol 1)`(第一个不透明 id 的真实产物);`check-csp-build` exit 0;`sm
 
 **下一步**:Phase B(surface-addressed component registry + Manifest V2,§101),本轮风险最高的一段,
 单独提交;RUM Phase 3 仍搁置。
+
+## 插件重构 Phase B:浏览器按 surface 寻址 + Manifest V2(2026-09-15)
+
+docs/plugin-refactor.md 的 Phase B(§36 / §47–§54 / §101),本轮风险最高的一段,单独提交。
+一句话:**浏览器拿产品身份,构建拿实现**。
+
+**改了什么**
+
+- **manifest 只发产品身份**。`pages[].component`、`layouts[].provider` / `.component`、
+  `slots[].component` 全部删除;页面是 `{id, path, layout, title?}`,布局是 `{contract}`,
+  槽位项是 `{id, order}`。以前发的是 `componentKey(pluginId, ref)` 派生的 `<插件>/<源文件名>`
+  ——`assessment/ReviewPage`、`auth-local/LoginMethod`——那等于把包布局和源码文件名变成公开协议,
+  顺带让两个插件的同名组件无谓相撞。`componentKey()` 已删除。
+- **浏览器 registry 变四张按 surface 寻址的表**:`pageComponents[page.id]`、
+  `layoutComponents[contract]`、`slotComponents[slot][itemId]`、`loginComponents[driverType]`,
+  由 collector 从描述器直接生成。四张而不是一张,是因为这是四个不同的地址空间,合并就得发明前缀。
+  `useComponent(name: string)` 这种无类型 key API 换成结构化地址:
+  `PluginComponent` 直接吃 `surface` 并自己解析(调用方再也不能把 A 的组件挂在 B 的地址下),
+  少数要自绘状态的地方用 `useSurfaceComponent({kind, id})`。
+- **登录渲染器按驱动 type 找**。`LoginPresentation` 收为 `{mode:'component'} | {mode:'redirect',href}`
+  ——一个登录方式**是什么**就是它的 type,renderer 就归档在同一个词下面;以前每个匿名访客都被告知
+  哪个包实现了这条入口。
+- **`LayoutDeclaration.provider` 连内部声明一起删**。谁提供某个 layout 是装配的答案(registry 本来
+  就记着 owner),插件手写的第二份可能和真实 owner 不一致。重复认领的报错改用真实 owner。
+- **诊断全部改 surface**:console 打 `page:assessment/review failed`,RUM 上报
+  `{surface:{kind,id}}`(腾讯侧仍拍平成 ext2/ext3 两个字符串字段),缺组件的诊断码
+  `component-missing` → `surface-missing`。
+- **build 期查重不再让位给 server**:page id / layout contract / (slot,id) / login type 每一个
+  都在 collector 里认领一次。server registry 也补了 (slot,id) 的席位唯一性——浏览器按这对解析,
+  第二次认领会让构建保留哪个全看顺序。
+- **私有的那一半**:`apps/web/dist/.qualy-browser-surfaces.json` 记 surface → {owner, module, export}。
+  与 sourcemap 同规则——随构建归档,不进 release store、不服务;`PRIVATE_BUILD_FILES` 一处命名,
+  installer 与 `check-staged-web` 共用。**去掉公开映射不等于让映射消失**,否则 `surface-missing`
+  和「这个页面落在哪个 chunk」都没人答得上来。
+- **client protocol 1 → 2**(`min = max = 2`)。manifest 是每个页面都读的文档,服务端无法同时服务
+  两种形状,所以 expand → contract 不适用;旧 tab 在第一个 API 请求上收到 409 被要求刷新——
+  那正是这套机制存在的理由(§68)。
+
+**两处按阶段划分推迟,已在设计文档标注**
+
+- `@qualy/app-contract`:§101 把它列在 Phase B,§36 与 §99 的依赖链把它列在 Phase F(平台→插件
+  依赖方向那一轮)。按后者,Phase B 只做 surface 寻址,contract 搬家不混进这次提交。
+- manifest **不加** `schema: 2` 字段(§7/§67 建议加):它经 typed client 走,而 client protocol 已经
+  在传输层拦掉了不兼容的浏览器,再加一个没人分支的版本号就是同一条规则的第二个所有者。
+
+**三道新门禁都验证过会红**
+
+- 把模块名塞回 manifest 投影 → ui-registry 的「names product surfaces and never what implements
+  them」失败(三种 viewer 各查一遍 owner/`./client/`/`.tsx`/源文件名/权限码)。
+- 把 `.qualy-browser-surfaces.json` 放进 store → `check-staged-web` 报
+  `the store holds 1 private build file(s)`。
+- 一个 slot 下同一个 id 认领两次 → registry 构建失败;换成两个不同 slot 则通过(同一用例两半)。
+
+**新增**:`apps/web/tests/sign-in.browser.test.tsx`——登录页按 type 找到本地驱动的表单,
+本次构建没有该 type 的渲染器时 fail closed。这条解析路径此前**没有任何测试**。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0(0 warning);`pnpm test` Test Files 231 passed |
+3 skipped (234),Tests 1650 passed | 17 skipped (1667);`pnpm test:browser` 51 / 371;
+`pnpm test:browser:webkit` 2 / 14;`pnpm build` exit 0 → `staged web release
+r_6dTCRVgdVvxu8pzXfVlDgw (123 assets, production, protocol 2)`;`check-chunks` 全部 chunk present
+(改成按**模块**而不是按 key 计数——surface 地址和 chunk 名再无关系);`check-staged-web` exit 0;
+`check-csp-build` exit 0;`smoke-production` 全 ok;`check-csp-enforce` 三页 0 violation。
+
+**下一步**:Phase C(browser observability 抽到 `@qualy/browser-observability`,§103),
+之后 D1(active-only 构建 + 旧 tab assembly 兼容)。RUM Phase 3 仍搁置。

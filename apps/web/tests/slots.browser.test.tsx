@@ -40,8 +40,11 @@ describe('a slot contribution', () => {
       client: fakeClient({
         app: { getManifest: { ...emptyManifest(), slots: { 'test/slot': [contribution] } } },
       }),
-      // the registry holds what the aggregate puts there: lazy components
-      registry: { 'test/Counter': lazy(async () => ({ default: Counter })) },
+      // the registry holds what the aggregate puts there, under the slot
+      // and the item's id: lazy components
+      registry: {
+        slots: { 'test/slot': { 'test/counter': lazy(async () => ({ default: Counter })) } },
+      },
       children: <Host />,
     })
 
@@ -54,4 +57,4 @@ describe('a slot contribution', () => {
   })
 })
 
-const contribution = { id: 'test/counter', component: 'test/Counter', order: 0 }
+const contribution = { id: 'test/counter', order: 0 }

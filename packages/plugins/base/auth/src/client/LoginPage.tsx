@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Suspense, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery, useComponent, useSessionTransition } from '@qualy/web-runtime'
+import { useApiQuery, useSessionTransition, useSurfaceComponent } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
@@ -166,7 +166,10 @@ function MethodRenderer({
   children: ReactNode
 }) {
   const { format } = useI18n()
-  const Renderer = useComponent(method.component)
+  // by the driver's type, which is what a way of signing in IS: the build
+  // filed the renderer under the same word, and the wire no longer carries a
+  // module name for the browser to look up
+  const Renderer = useSurfaceComponent({ kind: 'login', id: method.type })
   if (!Renderer) {
     // fail closed: the driver's client is not part of this build
     return (

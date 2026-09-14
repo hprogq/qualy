@@ -141,13 +141,7 @@ describe.runIf(postgresAvailable)('signing in', () => {
     // the cas row is enabled and has no driver here: offering it would render
     // a sign-in form nothing can answer
     expect(body.methods).toEqual([
-      {
-        code: 'password',
-        type: 'local',
-        name: 'Password',
-        mode: 'component',
-        component: 'auth-local/LoginMethod',
-      },
+      { code: 'password', type: 'local', name: 'Password', mode: 'component' },
     ])
   })
 

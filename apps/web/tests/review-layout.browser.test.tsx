@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect, Stream } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 // The only suite that needs the real stylesheet: what it asserts is which
 // parts a width shows, and without the sheet every breakpoint is the same
@@ -17,8 +17,8 @@ import '../src/app.css'
 // different screen built from the same parts, and none of them is exercised
 // by a test that only ever runs at one width.
 
-const ReviewInstancePage = (await components['assessment/ReviewInstancePage']!()).default
-const ReviewInboxPage = (await components['assessment/ReviewInboxPage']!()).default
+const ReviewInstancePage = (await pageComponents['assessment/review-instance']!()).default
+const ReviewInboxPage = (await pageComponents['assessment/batch-reviews']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_ID = '22222222-2222-4222-8222-222222222222'
@@ -32,7 +32,7 @@ const DEFAULT_VIEWPORT = { width: 414, height: 896 }
 const PAGES = [
   { id: 'assessment/batch-reviews', path: '/assessment/batches/:batchId/reviews' },
   { id: 'assessment/review-instance', path: '/assessment/batches/:batchId/reviews/:instanceId' },
-].map((entry) => ({ ...entry, component: entry.id, layout: 'admin' }))
+].map((entry) => ({ ...entry, layout: 'admin' }))
 
 const batch = () => ({
   id: BATCH_ID,

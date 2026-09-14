@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { apiError, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 import '../src/app.css'
 
@@ -15,7 +15,7 @@ import '../src/app.css'
 // question offers no form at all, which must leave the dialog exactly as it
 // was before any of this existed.
 
-const ReviewInstancePage = (await components['assessment/ReviewInstancePage']!()).default
+const ReviewInstancePage = (await pageComponents['assessment/review-instance']!()).default
 
 const BATCH_ID = '11111111-1111-4111-8111-111111111111'
 const ITEM_ID = '22222222-2222-4222-8222-222222222222'
@@ -24,7 +24,7 @@ const INSTANCE_ID = '55555555-5555-4555-8555-555555555555'
 
 const PAGES = [
   { id: 'assessment/review-instance', path: '/assessment/batches/:batchId/reviews/:instanceId' },
-].map((entry) => ({ ...entry, component: entry.id, layout: 'admin' }))
+].map((entry) => ({ ...entry, layout: 'admin' }))
 
 const batch = () => ({
   id: BATCH_ID,

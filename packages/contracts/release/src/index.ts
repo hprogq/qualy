@@ -44,9 +44,15 @@ export const QUALY_CLIENT_RELEASE_HEADER = 'x-qualy-web-release'
 export const QUALY_CLIENT_PROTOCOL_HEADER = 'x-qualy-client-protocol'
 export const QUALY_CLIENT_UNSUPPORTED_HEADER = 'x-qualy-client-unsupported'
 
-export const CURRENT_CLIENT_PROTOCOL = 1
-export const SERVER_MIN_CLIENT_PROTOCOL = 1
-export const SERVER_MAX_CLIENT_PROTOCOL = 1
+// Generation 2: the shell manifest stopped naming the module behind each
+// surface, which is a breaking change to a document every page reads. The
+// window is a single generation because a server cannot serve both shapes -
+// expand-then-contract is for changes where it can - so a tab from the
+// previous release is refused on its first api call and told to reload,
+// which is exactly what that refusal is for.
+export const CURRENT_CLIENT_PROTOCOL = 2
+export const SERVER_MIN_CLIENT_PROTOCOL = 2
+export const SERVER_MAX_CLIENT_PROTOCOL = 2
 
 export type ReleaseMode = 'development' | 'production'
 

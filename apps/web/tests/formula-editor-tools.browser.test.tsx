@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { normalizeAtomicSchema, normalizeInputSchema } from '@qualy/value-schema'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
@@ -9,7 +9,7 @@ import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 // share one evaluator wire, results go stale with the code, and a save
 // never holds the code hostage to broken cases.
 
-const FormulaEditorPage = (await components['assessment-formula/FormulaEditorPage']!()).default
+const FormulaEditorPage = (await pageComponents['assessment-formula/editor']!()).default
 
 const FN_ID = '01a04f4b-83a1-763f-9fbc-bfa53bc98ecb'
 

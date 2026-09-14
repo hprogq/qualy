@@ -6,6 +6,12 @@
 > 生产 API docs 404 有验收、`ReleaseProbe` V2(`{schema, releaseId}`)、生产 release id 改不透明
 > 并分出私有 `QUALY_BUILD_REVISION`、新增 docs/browser-public-surface.md。落地形态与仍未收口的项
 > 以那份文档为准,本文保持为设计依据不回改。
+>
+> 进度:**Phase B 已落地(2026-09-15)**——浏览器按 surface 寻址(四张 loader 表)、Manifest V2、
+> `componentKey()` 删除、`LayoutDeclaration.provider` 删除、`LoginPresentation.component` 删除、
+> 诊断改 surface、私有 `.qualy-browser-surfaces.json`、client protocol 1 → 2。
+> 两处按 §36/§99 的阶段划分推迟:`@qualy/app-contract`(§101 列在 B,§36/§99 列在 F)留给 Phase F,
+> manifest 不加冗余的 `schema` 字段(§7/§67)——破坏性由 client protocol 承担,见 §68。
 
 ## 1. 背景与目标
 

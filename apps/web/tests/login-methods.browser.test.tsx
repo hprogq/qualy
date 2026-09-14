@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import type { ApiResult } from '@qualy/web-runtime/api'
 import type { authApi } from '@qualy/plugin-auth/client/api'
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { Effect } from 'effect'
 import { emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
-const LoginMethodsPage = (await components['auth/LoginMethodsPage']!()).default
+const LoginMethodsPage = (await pageComponents['auth/login-methods']!()).default
 
 type ProviderDto = ApiResult<typeof authApi, 'identity', 'listAuthProviders'>['providers'][number]
 type UserTypeDto = ApiResult<typeof authApi, 'identity', 'listUserTypes'>['userTypes'][number]

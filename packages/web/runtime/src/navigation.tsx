@@ -86,7 +86,7 @@ export function usePendingNavigation(to: string): PendingNavigation {
  * over on the spot with no fallback. Prefetching turns a press that would
  * have waited for a chunk into a press that waits for nothing, which is the
  * only real cure for the wait above. A page the manifest does not carry,
- * or a component the build does not contain, is silently nothing to fetch.
+ * or a page this build has no renderer for, is silently nothing to fetch.
  */
 export function usePagePrefetch(): (page: NamespacedId) => void {
   const { manifest, registry } = useRuntime()
@@ -94,7 +94,7 @@ export function usePagePrefetch(): (page: NamespacedId) => void {
     (page: NamespacedId) => {
       const entry = manifest.pages.find((candidate) => candidate.id === page)
       if (entry === undefined) return
-      void registry[entry.component]?.preload?.()
+      void registry.pages[entry.id]?.preload?.()
     },
     [manifest, registry],
   )

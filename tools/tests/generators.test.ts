@@ -17,14 +17,15 @@ describe('the browser aggregate', () => {
       { disabled: ['@qualy/plugin-ping'] },
     )
     try {
+      // by the surface it contributes, which is what the aggregate keys on
       expect(await buildPluginModuleSource({ ymlPath: workspace.manifestPath })).not.toContain(
-        'ping/PingPage',
+        'ping/page',
       )
       // the superset a release build carries, so enabling a plugin needs no
       // rebuild of the assets
       expect(
         await buildPluginModuleSource({ all: true, ymlPath: workspace.manifestPath }),
-      ).toContain('ping/PingPage')
+      ).toContain('ping/page')
     } finally {
       workspace.dispose()
     }

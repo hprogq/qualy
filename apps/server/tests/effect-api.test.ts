@@ -287,13 +287,15 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       const response = await fetch(`${base}${QUALY_API_PREFIX}/auth/login-methods`)
       expect(response.status).toBe(200)
       const { methods } = (await response.json()) as {
-        methods: readonly { type: string; mode: string; component?: string }[]
+        methods: readonly { type: string; mode: string }[]
       }
       expect(methods.map((method) => method.type)).toContain('local')
+      // the type IS the address: the browser finds the renderer filed under
+      // `local`, and nothing here names the package that ships it
       expect(methods.find((method) => method.type === 'local')).toMatchObject({
         mode: 'component',
-        component: 'auth-local/LoginMethod',
       })
+      expect(JSON.stringify(methods)).not.toContain('auth-local')
     } finally {
       await teardownStaged('login-methods', scope, db)
     }
@@ -314,7 +316,6 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
         pages: readonly {
           id: string
           path: string
-          component: string
           layout: string
           title?: unknown
         }[]
@@ -327,7 +328,6 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
       expect(manifest.pages).toContainEqual({
         id: 'ping/page',
         path: '/ping',
-        component: 'ping/PingPage',
         layout: 'app-shell/v1',
         title: { kind: 'message', id: 'ping/navigation/ping', defaultMessage: 'Ping' },
       })
@@ -402,7 +402,12 @@ describe.runIf(postgresAvailable)('the generated api aggregate', () => {
           const response = await fetch(`${base}${url}`, { method: method.toUpperCase() })
           const unmatched =
             response.status === 404 &&
-            ((await response.clone().text().catch(() => '')).includes('API_ROUTE_NOT_FOUND'))
+            (
+              await response
+                .clone()
+                .text()
+                .catch(() => '')
+            ).includes('API_ROUTE_NOT_FOUND')
           expect(unmatched, `${method.toUpperCase()} ${path} is documented but not served`).toBe(
             false,
           )

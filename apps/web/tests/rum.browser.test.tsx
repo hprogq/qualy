@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 import { MemoryRouter } from 'react-router'
-import { PluginComponent } from '@qualy/web-runtime'
+import { PluginComponent, emptyComponentRegistry, type ComponentRegistry } from '@qualy/web-runtime'
 import {
   captureDiagnostic,
   captureException,
@@ -166,7 +166,7 @@ describe('what a report carries', () => {
   it('reports one error object once, however many paths it travels', async () => {
     const seen = await started()
     const error = new Error('boom')
-    captureException(error, { componentId: 'a/B', componentKind: 'page' })
+    captureException(error, { surface: { kind: 'page', id: 'a/b' } })
     captureException(error)
     expect(seen.exceptions).toHaveLength(1)
   })
@@ -198,16 +198,22 @@ describe('the seams the runtime reports at', () => {
     throw new Error('POC component exploded')
   }
 
-  it('reports a plugin component that threw, with its id and kind, and shows the fallback', async () => {
+  const registryWith = (page: ComponentRegistry['pages']): ComponentRegistry => ({
+    ...emptyComponentRegistry(),
+    pages: page,
+  })
+
+  it('reports the surface a plugin component threw on, and shows the fallback', async () => {
     answering({ schema: 1, provider: 'fake', config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
     render(
       <MemoryRouter>
         <PluginComponent
-          componentId="demo/Boom"
-          kind="page"
-          component={Boom}
+          surface={{ kind: 'page', id: 'demo/boom' }}
+          registry={registryWith({
+            'demo/boom': Boom as unknown as ComponentRegistry['pages'][string],
+          })}
           loading={null}
           fallback={() => <p>something went wrong</p>}
           missing={null}
@@ -218,22 +224,22 @@ describe('the seams the runtime reports at', () => {
     // what the screen does when a component fails
     await expect.element(page.getByText('something went wrong')).toBeVisible()
     expect(seen.exceptions).toHaveLength(1)
+    // the product address, and nothing about the module behind it
     expect(seen.exceptions[0]?.context).toMatchObject({
-      componentId: 'demo/Boom',
-      componentKind: 'page',
+      surface: { kind: 'page', id: 'demo/boom' },
     })
+    expect(JSON.stringify(seen.exceptions[0]?.context)).not.toContain('Boom')
   })
 
-  it('reports a component the manifest promised and the build does not have', async () => {
+  it('reports a surface the manifest promised and the build does not have', async () => {
     answering({ schema: 1, provider: 'fake', config: {} })
     const seen = fakeProvider()
     await startBrowserRum(release)
     render(
       <MemoryRouter>
         <PluginComponent
-          componentId="demo/Gone"
-          kind="slot"
-          component={undefined}
+          surface={{ kind: 'slot', slot: 'demo/bar', id: 'demo/gone' }}
+          registry={emptyComponentRegistry()}
           loading={null}
           fallback={() => null}
           missing={<p>missing</p>}
@@ -245,7 +251,10 @@ describe('the seams the runtime reports at', () => {
     // deployment disagree
     expect(seen.exceptions).toHaveLength(0)
     expect(seen.diagnostics).toEqual([
-      { code: 'component-missing', context: { componentId: 'demo/Gone', componentKind: 'slot' } },
+      {
+        code: 'surface-missing',
+        context: { surfaceKind: 'slot', surface: 'slot:demo/bar:demo/gone' },
+      },
     ])
   })
 })

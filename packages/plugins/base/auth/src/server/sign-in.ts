@@ -1,4 +1,3 @@
-import { componentKey } from '@qualy/ui-contract'
 import { Context, Duration, Effect, Layer, Option } from 'effect'
 import { HttpServerRequest } from 'effect/unstable/http'
 import { bindSessionId, currentRequestContext } from '@qualy/api-kit/request'
@@ -579,11 +578,11 @@ export const make = Effect.fn('Auth.signIn.make')(function* () {
           const found = yield* drivers.forType(provider.type)
           if (!found) continue
           const declared = found.driver.presentation
-          // the declaration names a module; the wire carries the derived
-          // registry key, the same one the browser registry is built under
+          // the declaration names a module and the wire does not: a renderer
+          // is found by the driver's type, which the method already carries
           let presentation: LoginPresentation =
             declared.mode === 'component'
-              ? { mode: 'component', component: componentKey(found.owner, declared.component) }
+              ? { mode: 'component' }
               : { mode: 'redirect', href: declared.href({ code: provider.code }) }
           if (presentation.mode === 'redirect') {
             const path = sameOriginPath(presentation.href)

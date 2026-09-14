@@ -45,7 +45,6 @@ import {
 // through an idempotent subresource rather than an action segment, which is
 // why enabling a type is a PUT on /status and not a POST to /enable.
 
-
 const resourceStatus = Schema.Literals(['active', 'disabled'])
 
 /**
@@ -523,8 +522,9 @@ const loginMethod = Schema.Union([
     code: Schema.String,
     type: Schema.String,
     name: Schema.String,
+    // the renderer is found by `type`; naming its module here told every
+    // anonymous visitor which package implements this way in
     mode: Schema.Literal('component'),
-    component: Schema.String,
   }),
   Schema.Struct({
     code: Schema.String,

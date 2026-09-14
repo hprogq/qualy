@@ -80,6 +80,7 @@ export const uiLayer: Layer.Layer<Ui> = Layer.sync(Ui, () => {
   const layouts = new Map<string, { declaration: LayoutDeclaration; owner: string }>()
   const collections: CollectionDeclaration[] = []
   const slots: { declaration: SlotDeclaration; owner: string }[] = []
+  const filled = new Map<string, string>()
 
   // A claim made twice has no owner and the shell would serve whichever
   // registered last, which is a broken assembly rather than a condition
@@ -142,8 +143,11 @@ export const uiLayer: Layer.Layer<Ui> = Layer.sync(Ui, () => {
         Effect.sync(() => {
           const previous = layouts.get(declaration.contract)
           if (previous) {
+            // named by the assembly, which knows who registered: the
+            // declaration no longer says who provides it, and a name a
+            // plugin writes about itself could be another plugin's
             throw new Error(
-              `layout contract ${declaration.contract} is claimed by ${previous.declaration.provider} and ${declaration.provider}`,
+              `layout contract ${declaration.contract} is claimed by ${previous.owner} and ${owner ?? 'an unnamed contributor'}`,
             )
           }
           layouts.set(declaration.contract, {
@@ -168,10 +172,23 @@ export const uiLayer: Layer.Layer<Ui> = Layer.sync(Ui, () => {
     fillSlot: (declaration, owner) =>
       Effect.acquireRelease(
         Effect.sync(() => {
+          // A slot item is addressed by its slot AND its id, so two ids are
+          // free to repeat across different slots and must not repeat inside
+          // one: the browser resolves the renderer by that pair, and a second
+          // claim on it would render whichever the build happened to keep.
+          const seat = `${declaration.key}\u0000${declaration.id}`
+          const previous = filled.get(seat)
+          if (previous) {
+            throw new Error(
+              `slot ${declaration.key} item ${declaration.id} is claimed by ${previous} and ${owner ?? 'an unnamed contributor'}`,
+            )
+          }
+          filled.set(seat, owner ?? 'an unnamed contributor')
           slots.push({ declaration, owner: owner ?? 'an unnamed contributor' })
         }),
         () =>
           Effect.sync(() => {
+            filled.delete(`${declaration.key}\u0000${declaration.id}`)
             const at = slots.findIndex((entry) => entry.declaration === declaration)
             if (at >= 0) slots.splice(at, 1)
           }),

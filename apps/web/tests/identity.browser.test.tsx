@@ -9,7 +9,7 @@ import type { accessApi } from '@qualy/plugin-rbac/client/api'
 type UserTypeDto = ApiResult<typeof authApi, 'identity', 'listUserTypes'>['userTypes'][number]
 type RoleDto = ApiResult<typeof accessApi, 'access', 'listRoles'>['roles'][number]
 type UserDto = ApiResult<typeof authApi, 'identity', 'getUser'>['user']
-import { components } from 'virtual:qualy/plugins'
+import { pageComponents } from 'virtual:qualy/plugins'
 import { Effect } from 'effect'
 import {
   addressNow,
@@ -21,10 +21,10 @@ import {
 
 // loaded through the registry the host actually uses, so a screen that lost
 // its key would fail here rather than at runtime
-const UserTypesPage = (await components['auth/UserTypesPage']!()).default
-const RolesPage = (await components['rbac/RolesPage']!()).default
-const UserDetailPage = (await components['auth/UserDetailPage']!()).default
-const UsersPage = (await components['auth/UsersPage']!()).default
+const UserTypesPage = (await pageComponents['auth/user-types']!()).default
+const RolesPage = (await pageComponents['rbac/roles']!()).default
+const UserDetailPage = (await pageComponents['auth/user-detail']!()).default
+const UsersPage = (await pageComponents['auth/users']!()).default
 
 // What these cover is exactly what a service test cannot: whether the screen
 // offers an action, whether a refusal reaches the reader in their own

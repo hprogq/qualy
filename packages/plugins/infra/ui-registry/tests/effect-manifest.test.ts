@@ -56,12 +56,10 @@ const surfaces = [
     layouts: [
       {
         contract: APP_SHELL,
-        provider: 'test/admin',
         component: reactComponent('./client/AdminShell.tsx'),
       },
       {
         contract: BLANK_SHELL,
-        provider: 'test/blank',
         component: reactComponent('./client/BlankShell.tsx'),
       },
     ],
@@ -126,6 +124,14 @@ const surfaces = [
 
 const viewer: Principal = { tenantId: 't', userId: 'u', sessionId: 's' }
 
+/**
+ * A loud owner and loud module names, so the disclosure case has something to
+ * fail on. The fixture's implementation identity is deliberately nothing like
+ * its product identity: the pages are `test/public`, `test/member`, and what
+ * implements them is this package and files called `PublicPage.tsx`.
+ */
+const OWNER = '@fixture/qualy-public-surface-probe'
+
 const build = (principal: Principal | undefined, held: readonly string[]) =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -136,7 +142,7 @@ const build = (principal: Principal | undefined, held: readonly string[]) =>
         manifestLayer.pipe(
           Layer.provideMerge(
             Layer.mergeAll(
-              registerSurfaces(merged(surfaces)).pipe(Layer.provideMerge(uiLayer)),
+              registerSurfaces(merged(surfaces), OWNER).pipe(Layer.provideMerge(uiLayer)),
               Layer.succeed(UiAuthorizer, {
                 permissionsFor: () => Effect.succeed(new Set(held)),
               }),
@@ -262,13 +268,37 @@ describe('the manifest a viewer receives', () => {
     const manifest = await build(viewer, [])
     expect(manifest.pages.map((page) => page.id).sort()).toEqual(['test/member', 'test/public'])
     // the gated page is absent entirely: not its id, not its path, not its
-    // component. A viewer must not learn the capability exists.
+    // renderer. A viewer must not learn the capability exists.
     expect(JSON.stringify(manifest)).not.toContain('Gated')
     expect(JSON.stringify(manifest)).not.toContain('/gated')
-    // the wire carries the derived registry key, never the reference
-    expect(manifest.slots[headerActions.key]).toEqual([
-      { id: 'test/menu', component: 'an unnamed contributor/Menu', order: 10 },
-    ])
+    // a contribution is its id under its slot, and that is all
+    expect(manifest.slots[headerActions.key]).toEqual([{ id: 'test/menu', order: 10 }])
+  })
+
+  it('names product surfaces and never what implements them, whoever is asking', async () => {
+    // three viewers, because the projection differs for each and the rule
+    // does not: anonymous, an ordinary member, somebody holding the code
+    for (const manifest of [
+      await build(undefined, []),
+      await build(viewer, []),
+      await build(viewer, ['test.thing.read']),
+    ]) {
+      const wire = JSON.stringify(manifest)
+      // who ships it
+      expect(wire).not.toContain(OWNER)
+      expect(wire).not.toContain('fixture')
+      // which file renders it, and the directory it sits in
+      expect(wire).not.toContain('./client/')
+      expect(wire).not.toContain('.tsx')
+      for (const source of ['PublicPage', 'MemberPage', 'AdminShell', 'BlankShell', 'Menu']) {
+        expect(wire, source).not.toContain(source)
+      }
+      // and the rule that was always here: a permission code is how the
+      // server decides, never something the browser is told
+      expect(wire).not.toContain('test.thing.read')
+      // what it does carry is the product's own vocabulary
+      expect(wire).toContain('test/public')
+    }
   })
 
   it('adds a gated surface exactly when the viewer holds its code', async () => {
@@ -412,21 +442,26 @@ describe('a claim made twice', () => {
     expect(Exit.isFailure(exit)).toBe(true)
   })
 
-  it('refuses one layout contract claimed by two providers', async () => {
+  it('refuses one layout contract claimed twice', async () => {
     const exit = await build({
       layouts: [
-        {
-          contract: APP_SHELL,
-          provider: 'a/shell',
-          component: reactComponent('./client/Shell.tsx'),
-        },
-        {
-          contract: APP_SHELL,
-          provider: 'b/shell',
-          component: reactComponent('./client/Shell.tsx'),
-        },
+        { contract: APP_SHELL, component: reactComponent('./client/Shell.tsx') },
+        { contract: APP_SHELL, component: reactComponent('./client/Other.tsx') },
       ],
     })
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  it('refuses one id claimed twice under the same slot, and allows it across slots', async () => {
+    const item = (key: string) => ({
+      key,
+      id: 'test/thing' as const,
+      component: reactComponent('./client/Thing.tsx'),
+      visibility: PUBLIC,
+    })
+    // the browser resolves a renderer by slot AND id, so the pair is the
+    // claim; the same id under another slot is a different seat
+    expect(Exit.isFailure(await build({ slots: [item('a/one'), item('a/one')] }))).toBe(true)
+    expect(Exit.isFailure(await build({ slots: [item('a/one'), item('b/two')] }))).toBe(false)
   })
 })
