@@ -7,12 +7,14 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./db": "./src/db/entities.ts",
-    "./permissions": "./src/permissions.ts",
-    "./server": "./src/server/index.ts",
     "./api": "./src/api.ts",
+    "./client/AuditEventsPage": "./src/client/AuditEventsPage.tsx",
+    "./client/api": "./src/client/api.ts",
+    "./client/i18n": "./src/client/i18n.ts",
+    "./db": "./src/db/entities.ts",
     "./package.json": "./package.json",
-    "./client/api": "./src/client/api.ts"
+    "./permissions": "./src/permissions.ts",
+    "./server": "./src/server/index.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

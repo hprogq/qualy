@@ -14621,3 +14621,43 @@ node_modules 里那样。
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 232 passed | 3 skipped,
 Tests 1669 passed | 17 skipped(比 D2 多 4 例)。
+
+## 插件重构 Phase D4:模块引用走包导出,dist-only 第三方插件跑通(2026-09-15)
+
+`ClientComponentRef.module` 原本是**文件路径**——相对插件 `src/`、带扩展名——于是本产品唯一能构建的
+插件,是源码按本仓库形状摊在磁盘上的那种。**那不是任何人发布的形态。**
+
+**改成包导出子路径**(§56/§57):`Ui.react('./client/ReviewPage')`、`Ui.i18n('./client/i18n')`、
+`Ui.browser('./client/boot')` 指的是**本插件包的导出子路径**,由包自己的 `exports` 说明落在哪。
+新增 `resolvePluginExport(id, subpath, manifestPath)`(`@qualy/assembly/host`),经 Node 的包解析
+——也就是 exports 映射——拿到真实文件。**构建工具从此不知道 `src`、`dist`、`.tsx`、`.js` 是什么。**
+带扩展名的引用在**声明处**硬失败(它是包装细节漏出来了)。
+
+**同批更新**:51 个引用去扩展名,12 个插件包补上对应 exports 条目。顺带发现并修掉一个真实缺陷:
+`tools/tests/side-effects.test.ts` 靠 `join('src', ref)` 推文件路径来判 `sideEffects`——正是这轮要
+废掉的假设,改成问 exports;而且它现在对「声明了 `Ui.browser` 却没导出该子路径」也会报错。
+
+**验收 fixture 是真的 dist-only**:`tools/fixtures/acme-dist-probe/` 只有
+`package.json` + `dist/index.js` + `dist/client/{ProbePage,i18n,boot}.js`,**没有 src/、没有 .ts**,
+第三方 scope(`@acme/`),不依赖仓库里的任何相对源码路径。第一条用例就是列文件断言「只有这五个」,
+免得后面几条证明的东西比它们声称的弱。
+
+`tools/tests/dist-only-plugin.test.ts` 证明:
+
+- **resolve**:`resolveAssembly` 认得它,导入的描述器就是 `dist/index.js` 里那个;
+- **宿主 assemble**:`loadAssembly(resolution, {host})` 不抛——它贡献的每个扩展点都有 provider;
+- **浏览器聚合**:collector 收到 `page:acme/probe`、catalog 与 browser module,且**每个解析出来的
+  文件都在 `dist/` 下、都不在 `src/` 下**(逐个断言);
+- **生产构建**:把聚合写进临时 root 跑**真实 `vite build`**,断言页面进了**自己的 chunk**
+  (`ProbePage-*.js`,证明动态 import 是真的分割点),页面标记串在产物里,boot 模块的标记也在
+  (它是副作用模块,不该被分走)。
+
+**门禁验证过会红**:把 fixture 的 `./client/ProbePage` 导出删掉 → 两例失败,报
+`@acme/qualy-dist-probe does not export ./client/ProbePage`——证明解析真的走 exports,没有在猜布局。
+
+**testkit 小改**:`createWorkspace` 增 `external`(按 id 从指定目录安装),让第三方包像从 registry
+装进来那样被链接,而不是从本仓库 host 解析。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 233 passed | 3 skipped,
+Tests 1673 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0(111 个 JS asset);
+`check-chunks` exit 0。

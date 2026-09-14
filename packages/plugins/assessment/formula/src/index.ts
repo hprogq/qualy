@@ -79,7 +79,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment-formula/list',
     path: '/library/formulas',
-    component: Ui.react('./client/FormulaListPage.tsx'),
+    component: Ui.react('./client/FormulaListPage'),
     layout: APP_SHELL,
     title: message('assessment-formula/list/title', 'Scoring formulas'),
     visibility: permissionOf('assessment.formula.author'),
@@ -92,7 +92,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment-formula/templates',
     path: '/library/formula-templates',
-    component: Ui.react('./client/FormulaTemplatesPage.tsx'),
+    component: Ui.react('./client/FormulaTemplatesPage'),
     layout: APP_SHELL,
     title: message('assessment-formula/templates/title', 'Formula templates'),
     // the same capability the library itself takes: the only thing to do
@@ -109,7 +109,7 @@ const plugin = Plugin.define(
     // declares no entry of its own
     id: 'assessment-formula/template',
     path: '/library/formula-templates/:versionId',
-    component: Ui.react('./client/FormulaTemplatePage.tsx'),
+    component: Ui.react('./client/FormulaTemplatePage'),
     layout: APP_SHELL,
     title: message('assessment-formula/templates/title', 'Formula templates'),
     visibility: permissionOf('assessment.formula.author'),
@@ -117,7 +117,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment-formula/editor',
     path: '/library/formulas/:functionId',
-    component: Ui.react('./client/FormulaEditorPage.tsx'),
+    component: Ui.react('./client/FormulaEditorPage'),
     layout: APP_SHELL,
     title: message('assessment-formula/list/title', 'Scoring formulas'),
     visibility: permissionOf('assessment.formula.author'),
@@ -132,13 +132,13 @@ const plugin = Plugin.define(
       {
         key: calculatorEditorSlot.key,
         id: 'assessment-formula/calculator-editor',
-        component: Ui.react('./client/CalculatorEditor.tsx'),
+        component: Ui.react('./client/CalculatorEditor'),
         visibility: permissionOf('assessment.batch.manage'),
         order: 20,
       },
     ],
   }),
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
 )
 
 export default plugin

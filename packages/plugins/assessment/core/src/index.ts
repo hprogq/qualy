@@ -86,7 +86,7 @@ const plugin = Plugin.define(
     context: 'runtime',
     load: () => import('./cli/audit-scoring.ts'),
   }),
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
   // the sidebar section this domain owns; its pages file under it by id
   // This plugin's own arithmetic takes a seat in the chooser like anybody
   // else's, and edits its configuration in the same slot: a built-in with a
@@ -109,7 +109,7 @@ const plugin = Plugin.define(
       {
         key: calculatorEditorSlot.key,
         id: 'assessment/fixed-calculator-editor',
-        component: Ui.react('./client/items/FixedCalculatorEditor.tsx'),
+        component: Ui.react('./client/items/FixedCalculatorEditor'),
         visibility: permissionOf('assessment.batch.manage'),
         order: 10,
       },
@@ -187,7 +187,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batches',
     path: '/assessment/batches',
-    component: Ui.react('./client/BatchListPage.tsx'),
+    component: Ui.react('./client/BatchListPage'),
     layout: APP_SHELL,
     // the list answers "which rounds are mine", which everybody has an answer
     // to; what it contains is decided per reader, not per permission
@@ -206,7 +206,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch',
     path: '/assessment/batches/:batchId',
-    component: Ui.react('./client/BatchOverviewPage.tsx'),
+    component: Ui.react('./client/BatchOverviewPage'),
     layout: WORKSPACE_SHELL,
     visibility: AUTHENTICATED,
     title: message('assessment/navigation/overview', 'Overview'),
@@ -214,7 +214,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-phases',
     path: '/assessment/batches/:batchId/phases',
-    component: Ui.react('./client/BatchPhasesPage.tsx'),
+    component: Ui.react('./client/BatchPhasesPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/navigation/phases', 'Stage plan'),
     visibility: permissionOf('assessment.batch.manage'),
@@ -222,7 +222,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-participants',
     path: '/assessment/batches/:batchId/participants',
-    component: Ui.react('./client/BatchParticipantsPage.tsx'),
+    component: Ui.react('./client/BatchParticipantsPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/navigation/participants', 'Participants'),
     visibility: permissionOf('assessment.batch.manage'),
@@ -230,7 +230,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-access',
     path: '/assessment/batches/:batchId/access',
-    component: Ui.react('./client/BatchAccessPage.tsx'),
+    component: Ui.react('./client/BatchAccessPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/navigation/access', 'Staffs'),
     visibility: permissionOf('assessment.batch.manage'),
@@ -238,7 +238,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-settings',
     path: '/assessment/batches/:batchId/settings',
-    component: Ui.react('./client/BatchSettingsPage.tsx'),
+    component: Ui.react('./client/BatchSettingsPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/navigation/settings', 'Settings'),
     visibility: permissionOf('assessment.batch.manage'),
@@ -248,7 +248,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-my-entries',
     path: '/assessment/batches/:batchId/my-entries',
-    component: Ui.react('./client/entry/MyEntriesPage.tsx'),
+    component: Ui.react('./client/entry/MyEntriesPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/entry/tab', 'My entries'),
     visibility: AUTHENTICATED,
@@ -256,7 +256,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-my-result',
     path: '/assessment/batches/:batchId/my-result',
-    component: Ui.react('./client/result/MyResultPage.tsx'),
+    component: Ui.react('./client/result/MyResultPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/result/tab', 'My standing'),
     visibility: AUTHENTICATED,
@@ -266,7 +266,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-reviews',
     path: '/assessment/batches/:batchId/reviews',
-    component: Ui.react('./client/review/ReviewInboxPage.tsx'),
+    component: Ui.react('./client/review/ReviewInboxPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/review/tab', 'Reviewing'),
     visibility: permissionOf('assessment.review.process'),
@@ -274,7 +274,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/review-instance',
     path: '/assessment/batches/:batchId/reviews/:instanceId',
-    component: Ui.react('./client/review/ReviewInstancePage.tsx'),
+    component: Ui.react('./client/review/ReviewInstancePage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/review/detail-tab', 'Review'),
     visibility: permissionOf('assessment.review.process'),
@@ -282,7 +282,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-record',
     path: '/assessment/batches/:batchId/record',
-    component: Ui.react('./client/record/RecordPage.tsx'),
+    component: Ui.react('./client/record/RecordPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/record/tab', 'Record for someone'),
     visibility: permissionOf('assessment.entry.record'),
@@ -290,7 +290,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'assessment/batch-items',
     path: '/assessment/batches/:batchId/items',
-    component: Ui.react('./client/items/ItemSettingsPage.tsx'),
+    component: Ui.react('./client/items/ItemSettingsPage'),
     layout: WORKSPACE_SHELL,
     title: message('assessment/items/tab', 'Questions'),
     visibility: permissionOf('assessment.batch.manage'),
@@ -446,7 +446,7 @@ const plugin = Plugin.define(
       {
         key: workspaceContext.key,
         id: 'assessment/batch-context',
-        component: Ui.react('./client/batch/BatchContextBar.tsx'),
+        component: Ui.react('./client/batch/BatchContextBar'),
         visibility: AUTHENTICATED,
       },
       {
@@ -455,7 +455,7 @@ const plugin = Plugin.define(
         // reviewer works
         key: workspaceNavigationBadge.key,
         id: 'assessment/reviews-waiting',
-        component: Ui.react('./client/review/QueueBadge.tsx'),
+        component: Ui.react('./client/review/QueueBadge'),
         visibility: permissionOf('assessment.review.process'),
       },
     ],

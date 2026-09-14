@@ -7,9 +7,11 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./password": "./src/password.ts",
     "./api": "./src/api.ts",
-    "./package.json": "./package.json"
+    "./client/LoginMethod": "./src/client/LoginMethod.tsx",
+    "./client/i18n": "./src/client/i18n.ts",
+    "./package.json": "./package.json",
+    "./password": "./src/password.ts"
   },
   "peerDependencies": {
     "react": "catalog:"

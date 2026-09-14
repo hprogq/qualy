@@ -9,11 +9,12 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./server": "./src/server/backend.ts",
     "./api": "./src/api.ts",
     "./client": "./src/client/upload.ts",
+    "./client/upload": "./src/client/upload.ts",
+    "./config": "./src/server/config.ts",
     "./package.json": "./package.json",
-    "./config": "./src/server/config.ts"
+    "./server": "./src/server/backend.ts"
   },
   "dependencies": {
     "@qualy/api-kit": "workspace:*",

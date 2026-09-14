@@ -56,11 +56,11 @@ const surfaces = [
     layouts: [
       {
         contract: APP_SHELL,
-        component: reactComponent('./client/AdminShell.tsx'),
+        component: reactComponent('./client/AdminShell'),
       },
       {
         contract: BLANK_SHELL,
-        component: reactComponent('./client/BlankShell.tsx'),
+        component: reactComponent('./client/BlankShell'),
       },
     ],
   }),
@@ -68,21 +68,21 @@ const surfaces = [
     pages: [
       {
         page: publicPage,
-        component: reactComponent('./client/PublicPage.tsx'),
+        component: reactComponent('./client/PublicPage'),
         layout: BLANK_SHELL,
         visibility: PUBLIC,
         navigation: { label, order: 1 },
       },
       {
         page: memberPage,
-        component: reactComponent('./client/MemberPage.tsx'),
+        component: reactComponent('./client/MemberPage'),
         layout: APP_SHELL,
         visibility: AUTHENTICATED,
         navigation: { label, order: 2 },
       },
       {
         page: gatedPage,
-        component: reactComponent('./client/GatedPage.tsx'),
+        component: reactComponent('./client/GatedPage'),
         layout: APP_SHELL,
         visibility: permissionOf('test.thing.read'),
         navigation: { label, order: 3, group: 'test/restricted' },
@@ -90,7 +90,7 @@ const surfaces = [
       // no provider ships this contract, so the page cannot be framed
       {
         page: orphanPage,
-        component: reactComponent('./client/OrphanPage.tsx'),
+        component: reactComponent('./client/OrphanPage'),
         layout: 'nobody/ships-this',
         visibility: PUBLIC,
       },
@@ -114,7 +114,7 @@ const surfaces = [
       {
         key: headerActions.key,
         id: 'test/menu',
-        component: reactComponent('./client/Menu.tsx'),
+        component: reactComponent('./client/Menu'),
         visibility: AUTHENTICATED,
         order: 10,
       },
@@ -388,7 +388,7 @@ describe('a claim made twice', () => {
   it('refuses one page id claimed by two registrations', async () => {
     const declaration = {
       page,
-      component: reactComponent('./client/P.tsx'),
+      component: reactComponent('./client/P'),
       layout: APP_SHELL,
       visibility: PUBLIC,
     }
@@ -401,7 +401,7 @@ describe('a claim made twice', () => {
     // say which two plugins collided, not just which id
     const declaration = {
       page,
-      component: reactComponent('./client/P.tsx'),
+      component: reactComponent('./client/P'),
       layout: APP_SHELL,
       visibility: PUBLIC,
     }
@@ -427,13 +427,13 @@ describe('a claim made twice', () => {
       pages: [
         {
           page,
-          component: reactComponent('./client/P.tsx'),
+          component: reactComponent('./client/P'),
           layout: APP_SHELL,
           visibility: PUBLIC,
         },
         {
           page: other,
-          component: reactComponent('./client/O.tsx'),
+          component: reactComponent('./client/O'),
           layout: APP_SHELL,
           visibility: PUBLIC,
         },
@@ -445,8 +445,8 @@ describe('a claim made twice', () => {
   it('refuses one layout contract claimed twice', async () => {
     const exit = await build({
       layouts: [
-        { contract: APP_SHELL, component: reactComponent('./client/Shell.tsx') },
-        { contract: APP_SHELL, component: reactComponent('./client/Other.tsx') },
+        { contract: APP_SHELL, component: reactComponent('./client/Shell') },
+        { contract: APP_SHELL, component: reactComponent('./client/Other') },
       ],
     })
     expect(Exit.isFailure(exit)).toBe(true)
@@ -456,7 +456,7 @@ describe('a claim made twice', () => {
     const item = (key: string) => ({
       key,
       id: 'test/thing' as const,
-      component: reactComponent('./client/Thing.tsx'),
+      component: reactComponent('./client/Thing'),
       visibility: PUBLIC,
     })
     // the browser resolves a renderer by slot AND id, so the pair is the

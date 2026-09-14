@@ -9,18 +9,18 @@ import { APP_SHELL, BLANK_SHELL, WORKSPACE_SHELL } from '@qualy/ui-contract'
 const plugin = Plugin.define(
   '@qualy/plugin-layout-default',
   { dependsOn: ['@qualy/plugin-ui-registry'] },
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
   Ui.layout({
     contract: APP_SHELL,
-    component: Ui.react('./client/AppShell.tsx'),
+    component: Ui.react('./client/AppShell'),
   }),
   Ui.layout({
     contract: WORKSPACE_SHELL,
-    component: Ui.react('./client/WorkspaceShell.tsx'),
+    component: Ui.react('./client/WorkspaceShell'),
   }),
   Ui.layout({
     contract: BLANK_SHELL,
-    component: Ui.react('./client/BlankShell.tsx'),
+    component: Ui.react('./client/BlankShell'),
   }),
 )
 

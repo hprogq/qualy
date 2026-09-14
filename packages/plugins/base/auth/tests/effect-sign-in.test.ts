@@ -75,7 +75,7 @@ beforeAll(async () => {
             type: 'local',
             presentation: {
               mode: 'component',
-              component: reactComponent('./client/LoginMethod.tsx'),
+              component: reactComponent('./client/LoginMethod'),
             },
           },
           '@qualy/plugin-auth-local',

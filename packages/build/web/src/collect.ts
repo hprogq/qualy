@@ -10,7 +10,7 @@ import {
 } from '@qualy/plugin-ui-registry/plugin'
 import { LoginDriverDeclarations } from '@qualy/auth-contract/plugin'
 import { surfaceLabel, type BrowserSurface, type ClientComponentRef } from '@qualy/ui-contract'
-import { currentResolution, readEntries, resolvePackageDir } from '@qualy/assembly/host'
+import { currentResolution, readEntries, resolvePluginExport } from '@qualy/assembly/host'
 import { manifestPath, repoRoot } from './manifest.ts'
 
 // The browser's plugin aggregate, as a module SOURCE rather than a file.
@@ -126,15 +126,14 @@ export async function collectWebPlugins(
     if (!isPluginDescriptor(descriptor)) {
       throw new Error(`${entry.name} is selected but is not a plugin descriptor`)
     }
-    const packageDir = resolvePackageDir(entry.name, manifest)
+    // Through the package's own exports, never through a guess at its
+    // layout: a workspace plugin answers with a source file and a published
+    // one with whatever it ships, and neither has to be this repository.
+    const moduleOf = (subpath: string) => resolvePluginExport(entry.name, subpath, manifest)
 
     const surfaces: SurfaceBinding[] = []
     for (const { surface, ref } of declaredSurfaces(descriptor)) {
-      // relative to src/, where the descriptor that declared it lives
-      const file = path.resolve(packageDir, 'src', ref.module)
-      if (!file.startsWith(packageDir + path.sep) || !fs.existsSync(file)) {
-        throw new Error(`${entry.name}: component module ${ref.module} does not exist`)
-      }
+      const file = moduleOf(ref.module)
       claim(claimedSurfaces, surfaceLabel(surface), entry.name, 'surface')
       surfaces.push({ surface, module: ref.module, export: ref.export, file })
     }
@@ -149,10 +148,7 @@ export async function collectWebPlugins(
     let hasErrorMessages = false
     let i18nModule: string | undefined
     if (declaredI18n.length === 1) {
-      i18nModule = path.resolve(packageDir, 'src', declaredI18n[0]!.module)
-      if (!i18nModule.startsWith(packageDir + path.sep) || !fs.existsSync(i18nModule)) {
-        throw new Error(`${entry.name}: i18n module ${declaredI18n[0]!.module} does not exist`)
-      }
+      i18nModule = moduleOf(declaredI18n[0]!.module)
       const module = (await import(pathToFileURL(i18nModule).href)) as {
         catalogs?: unknown
         errorMessages?: unknown
@@ -191,11 +187,7 @@ export async function collectWebPlugins(
 
     const browserModules: string[] = []
     for (const declared of Plugin.contributionsOf(descriptor, BrowserModules)) {
-      const resolved = path.resolve(packageDir, 'src', declared.module)
-      if (!resolved.startsWith(packageDir + path.sep) || !fs.existsSync(resolved)) {
-        throw new Error(`${entry.name}: browser module ${declared.module} does not exist`)
-      }
-      browserModules.push(resolved)
+      browserModules.push(moduleOf(declared.module))
     }
 
     if (surfaces.length > 0 || hasCatalogs || hasErrorMessages || browserModules.length > 0) {

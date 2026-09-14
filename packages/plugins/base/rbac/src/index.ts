@@ -23,11 +23,11 @@ const plugin = Plugin.define(
     compositeForeignKeys,
     dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'],
   }),
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'rbac/roles',
     path: '/organization/roles',
-    component: Ui.react('./client/RolesPage.tsx'),
+    component: Ui.react('./client/RolesPage'),
     layout: APP_SHELL,
     visibility: permissionOf('iam.role.read'),
     navigation: {

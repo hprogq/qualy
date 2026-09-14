@@ -15,21 +15,36 @@
 export interface ClientComponentRef {
   readonly renderer: string
   /**
-   * Module path relative to the plugin's `src/` - the descriptor's own home -
-   * so a declaration reads like the import it stands for: './client/X.tsx'.
+   * An export subpath of the plugin's own package: './client/ReviewPage'.
+   *
+   * Not a file path. It used to be one - relative to the package's `src/`,
+   * extension and all - which meant a plugin could only be built from its
+   * sources, so a third party publishing the ordinary way (a `dist/`, no
+   * `src/`) could not be built at all. The package decides where its modules
+   * really are, in the one place a package already says so, and the build
+   * tool stops knowing about `src`, `dist`, `.tsx` and `.js`.
    */
   readonly module: string
   readonly export: string
 }
 
-const MODULE = /^\.\/[^\s]+\.(tsx|ts|jsx|js)$/
+/** `./client/ReviewPage`: a subpath, no extension, nothing climbing out */
+const MODULE = /^\.\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/
 
 export const clientComponent = (renderer: string, module: string): ClientComponentRef => {
   // validated at declaration, so a broken reference fails when the plugin
   // loads instead of when a user opens the page
   if (!MODULE.test(module) || module.includes('..')) {
     throw new Error(
-      `client component module "${module}" must be a package-relative ./ path to a script file`,
+      `client component module "${module}" must be a package export subpath like './client/ReviewPage'`,
+    )
+  }
+  if (/\.(tsx|ts|jsx|js|mjs|cjs)$/.test(module)) {
+    // a file extension is the packaging showing through: it says the module
+    // is a source file of this repository's shape, and a published package
+    // ships something else under the same subpath
+    throw new Error(
+      `client component module "${module}" names a file extension; it is an export subpath, and the package decides what stands behind it`,
     )
   }
   return Object.freeze({ renderer, module, export: 'default' })

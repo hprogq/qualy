@@ -38,6 +38,12 @@
 > 一个 `@acme/qualy-probe` 合成包(另一 scope、自带 exports、用已发布的 kit 写描述器、带组件/catalog/
 > browser module)走完 resolve 与 collector,并验证跨 scope 的 surface 冲突照样硬失败;另有一例扫全树
 > 禁止 scope 判据回潮(测试目录除外,`plugin:add` 具名例外)。
+>
+> 进度:**Phase D4 已落地(2026-09-15)**——`ClientComponentRef.module`(以及 i18n / browser 模块)
+> 改为**包导出子路径**,经 `resolvePluginExport` 走包自己的 `exports` 解析;51 个引用与 12 个包的
+> exports 同批更新;带扩展名在声明处硬失败。新增 `tools/fixtures/acme-dist-probe`
+> (**只有 package.json + dist/**)与 `tools/tests/dist-only-plugin.test.ts`,证明 resolve、
+> 宿主 assemble、浏览器聚合、真实 `vite build` 下的动态 import 分块、i18n 与 browser 贡献全部成立。
 
 ## 1. 背景与目标
 

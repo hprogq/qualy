@@ -27,11 +27,11 @@ const plugin = Plugin.define(
     ],
   },
   Db.entities(entities, { compositeForeignKeys, baselineDir: 'db/baseline' }),
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'org/page',
     path: '/organization/tree',
-    component: Ui.react('./client/OrgPage.tsx'),
+    component: Ui.react('./client/OrgPage'),
     layout: APP_SHELL,
     visibility: permissionOf('org.tree.read'),
     navigation: {

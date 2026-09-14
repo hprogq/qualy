@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { createPackageResolver, type PackageResolver } from './metadata.ts'
 import { hostDirFor, lockPathFor, readManifest } from './manifest.ts'
 import { readLock } from './lock.ts'
@@ -28,6 +29,27 @@ export const resolvePluginModuleUrl = (specifier: string, manifestPath: string):
 
 export const resolvePackageDir = (id: string, manifestPath: string): string =>
   hostResolver(manifestPath).resolvePackageDir(id)
+
+/**
+ * Where a plugin's own export subpath really is: `./client/ReviewPage` of
+ * `@acme/probe` -> the file its package says stands behind that name.
+ *
+ * Through the package's exports map, which is the one place a package
+ * already declares this - so a workspace plugin can answer with a `.tsx`
+ * under `src/` and a published one with a `.js` under `dist/`, and nothing
+ * asking has to know which.
+ */
+export const resolvePluginExport = (id: string, subpath: string, manifestPath: string): string => {
+  const specifier = subpath === '.' ? id : `${id}${subpath.replace(/^\./, '')}`
+  try {
+    return fileURLToPath(hostResolver(manifestPath).resolveModuleUrl(specifier))
+  } catch (error) {
+    throw new Error(
+      `${id} does not export ${subpath}; a plugin's modules are named by its own export subpaths, so add it to that package's "exports"`,
+      { cause: error },
+    )
+  }
+}
 
 // resolution walks every plugin package and imports every capability
 // provider, and callers ask once per entry; keyed by content rather than by

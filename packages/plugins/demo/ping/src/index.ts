@@ -45,11 +45,11 @@ const plugin = Plugin.define(
   '@qualy/plugin-ping',
   { dependsOn: ['@qualy/plugin-database', '@qualy/plugin-ui-registry'] },
   Db.entities(entities),
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'ping/page',
     path: '/ping',
-    component: Ui.react('./client/PingPage.tsx'),
+    component: Ui.react('./client/PingPage'),
     layout: APP_SHELL,
     // the demo endpoint is deliberately open; a real plugin would gate this
     visibility: PUBLIC,

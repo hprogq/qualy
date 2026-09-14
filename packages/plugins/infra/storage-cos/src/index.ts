@@ -38,7 +38,7 @@ const plugin = Plugin.define(
   { dependsOn: ['@qualy/plugin-storage'], config },
   Storage.backend({ code: 'cos', uploadDriver: 'cos' }),
   // the browser half announces how to spend this provider's grants
-  Ui.browser('./client/upload.ts'),
+  Ui.browser('./client/upload'),
   Plugin.layer(registration),
 )
 

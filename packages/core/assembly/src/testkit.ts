@@ -44,6 +44,15 @@ export interface ManifestOptions {
    * Linked from the host, so they are the same copies the product uses.
    */
   linked?: readonly string[]
+  /**
+   * Packages installed from a directory of their own, by id.
+   *
+   * For a package that is not the host's to resolve: a third party's, as it
+   * would arrive from a registry. The workspace links it exactly the way
+   * pnpm links a dependency, so what resolves it is ordinary package
+   * resolution and nothing of this repository.
+   */
+  external?: Readonly<Record<string, string>>
 }
 
 export interface SyntheticPackage {
@@ -154,8 +163,11 @@ export function createWorkspace(
       // manifest but is still on disk passes through, and they are most of what
       // this testkit exists to exercise. A case that wants a selected plugin to
       // be missing says so by deleting it.
+      const external = (overrides ?? options).external ?? {}
       for (const id of selection) {
-        if (!synthetic.has(id)) link(id, host.resolvePackageDir(id))
+        if (synthetic.has(id)) continue
+        const outside = external[id]
+        link(id, outside ?? host.resolvePackageDir(id))
       }
       for (const id of (overrides ?? options).linked ?? []) {
         link(id, host.resolvePackageDir(id))

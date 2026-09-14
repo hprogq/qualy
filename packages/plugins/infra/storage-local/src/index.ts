@@ -31,7 +31,7 @@ const plugin = Plugin.define(
   { dependsOn: ['@qualy/plugin-storage'], config },
   Storage.backend({ code: 'local', uploadDriver: 'local' }),
   // the browser half announces how to spend this provider's grants
-  Ui.browser('./client/upload.ts'),
+  Ui.browser('./client/upload'),
   Plugin.layer(registration),
   // the door the grants point at; a grant is the credential, not a session
   Api.group(storageLocalApiGroup, storageLocalApiHandlers),

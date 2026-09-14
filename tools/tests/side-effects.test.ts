@@ -33,14 +33,32 @@ const packageDirs = (): string[] =>
         .map((one) => path.join(PLUGINS, group.name, one.name)),
     )
 
-/** the modules a descriptor asks the browser to import for their side effect */
+/**
+ * The modules a descriptor asks the browser to import for their side effect,
+ * as files of the package.
+ *
+ * A descriptor names an export SUBPATH; where that really is, the package's
+ * own exports map says. Deriving it by joining `src/` was an assumption about
+ * this repository's layout, and the thing that broke it - a package that
+ * ships a `dist/` - is the one this rule most needs to hold for.
+ */
 const browserModulesOf = (dir: string): string[] => {
   const descriptor = path.join(dir, 'src/index.ts')
   if (!fs.existsSync(descriptor)) return []
-  // as the package declares its own paths: rooted at the package, with the
-  // leading './' npm's grammar writes and path.join would normalise away
+  const exported = (
+    JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
+      exports?: Record<string, unknown>
+    }
+  ).exports
   return [...fs.readFileSync(descriptor, 'utf8').matchAll(/Ui\.browser\(\s*'([^']+)'/g)].map(
-    (match) => `./${path.posix.join('src', match[1]!.replace(/^\.\//, ''))}`,
+    (match) => {
+      const subpath = match[1]!
+      const target = exported?.[subpath]
+      if (typeof target !== 'string') {
+        throw new Error(`${dir} declares Ui.browser(${subpath}) and exports no such subpath`)
+      }
+      return target
+    },
   )
 }
 

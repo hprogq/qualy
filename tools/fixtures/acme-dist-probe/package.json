@@ -1,0 +1,21 @@
+{
+  "name": "@acme/qualy-dist-probe",
+  "version": "1.4.2",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "./dist/client/boot.js"
+  ],
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json",
+    "./client/ProbePage": "./dist/client/ProbePage.js",
+    "./client/i18n": "./dist/client/i18n.js",
+    "./client/boot": "./dist/client/boot.js"
+  },
+  "peerDependencies": {
+    "@qualy/plugin-kit": "*",
+    "@qualy/plugin-ui-registry": "*",
+    "@qualy/ui-contract": "*"
+  }
+}

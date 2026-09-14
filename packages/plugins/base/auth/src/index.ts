@@ -44,11 +44,11 @@ const plugin = Plugin.define(
   },
   Db.entities(entities, { compositeForeignKeys, dependsOn: ['@qualy/plugin-org'] }),
   Audit.actions('auth', userActions),
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'auth/login',
     path: '/login',
-    component: Ui.react('./client/LoginPage.tsx'),
+    component: Ui.react('./client/LoginPage'),
     layout: BLANK_SHELL,
     visibility: PUBLIC,
     // no menu entry to borrow the words from: a page reached before there is
@@ -58,7 +58,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'auth/users',
     path: '/organization/users',
-    component: Ui.react('./client/iam/UsersPage.tsx'),
+    component: Ui.react('./client/iam/UsersPage'),
     layout: APP_SHELL,
     visibility: permissionOf('auth.user.read'),
     navigation: {
@@ -72,7 +72,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'auth/user-detail',
     path: '/organization/users/:userId',
-    component: Ui.react('./client/iam/UserDetailPage.tsx'),
+    component: Ui.react('./client/iam/UserDetailPage'),
     layout: APP_SHELL,
     visibility: permissionOf('auth.user.read'),
     title: message('auth/navigation/user-detail', 'Person'),
@@ -80,7 +80,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'auth/user-types',
     path: '/organization/user-types',
-    component: Ui.react('./client/iam/UserTypesPage.tsx'),
+    component: Ui.react('./client/iam/UserTypesPage'),
     layout: APP_SHELL,
     visibility: permissionOf('auth.user-type.read'),
     navigation: {
@@ -92,7 +92,7 @@ const plugin = Plugin.define(
   Ui.page({
     id: 'auth/login-methods',
     path: '/organization/login-methods',
-    component: Ui.react('./client/iam/LoginMethodsPage.tsx'),
+    component: Ui.react('./client/iam/LoginMethodsPage'),
     layout: APP_SHELL,
     visibility: permissionOf('auth.provider.read'),
     navigation: {
@@ -106,7 +106,7 @@ const plugin = Plugin.define(
   Ui.slot({
     key: sidebarUser.key,
     id: 'auth/user-menu',
-    component: Ui.react('./client/UserMenu.tsx'),
+    component: Ui.react('./client/UserMenu'),
     visibility: PUBLIC,
   }),
   // the same account, on the narrow shell's navigation drawer: who is in at
@@ -116,19 +116,19 @@ const plugin = Plugin.define(
   Ui.slot({
     key: drawerIdentity.key,
     id: 'auth/drawer-identity',
-    component: Ui.react('./client/DrawerIdentity.tsx'),
+    component: Ui.react('./client/DrawerIdentity'),
     visibility: PUBLIC,
   }),
   Ui.slot({
     key: drawerAccount.key,
     id: 'auth/drawer-account',
-    component: Ui.react('./client/DrawerAccount.tsx'),
+    component: Ui.react('./client/DrawerAccount'),
     visibility: PUBLIC,
   }),
   Ui.slot({
     key: drawerSignOut.key,
     id: 'auth/drawer-sign-out',
-    component: Ui.react('./client/DrawerSignOut.tsx'),
+    component: Ui.react('./client/DrawerSignOut'),
     visibility: PUBLIC,
   }),
   // A person, wherever another screen names one. Behind the same permission
@@ -137,7 +137,7 @@ const plugin = Plugin.define(
   Ui.slot({
     key: personCard.key,
     id: 'auth/person-card',
-    component: Ui.react('./client/iam/PersonCard.tsx'),
+    component: Ui.react('./client/iam/PersonCard'),
     visibility: permissionOf('auth.user.read'),
   }),
   // Choosing people, and choosing a slice of the organization to take people
@@ -146,19 +146,19 @@ const plugin = Plugin.define(
   Ui.slot({
     key: peoplePicker.key,
     id: 'auth/people-picker',
-    component: Ui.react('./client/iam/PeoplePicker.tsx'),
+    component: Ui.react('./client/iam/PeoplePicker'),
     visibility: permissionOf('auth.user.read'),
   }),
   Ui.slot({
     key: peopleImportPicker.key,
     id: 'auth/people-import-picker',
-    component: Ui.react('./client/iam/PeopleImportPicker.tsx'),
+    component: Ui.react('./client/iam/PeopleImportPicker'),
     visibility: permissionOf('auth.user.read'),
   }),
   Ui.slot({
     key: orgNodePicker.key,
     id: 'auth/org-node-picker',
-    component: Ui.react('./client/iam/OrgNodePicker.tsx'),
+    component: Ui.react('./client/iam/OrgNodePicker'),
     visibility: permissionOf('auth.user.read'),
   }),
   Access.permissions('auth', permissions),

@@ -23,7 +23,7 @@ import { normalizeLocalIdentifier, timingEqualizerHash, verifyPassword } from '.
  */
 const driver: LoginDriver = {
   type: 'local',
-  presentation: { mode: 'component', component: Ui.react('./client/LoginMethod.tsx') },
+  presentation: { mode: 'component', component: Ui.react('./client/LoginMethod') },
 }
 
 /**
@@ -99,7 +99,7 @@ const handlers = HttpApiBuilder.group(local, 'authLocal', (handlers) =>
 const plugin = Plugin.define(
   '@qualy/plugin-auth-local',
   { dependsOn: ['@qualy/plugin-auth'] },
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
   Login.driver(driver),
   Api.group(authLocalApiGroup, handlers),
 )

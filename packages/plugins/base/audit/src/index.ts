@@ -26,11 +26,11 @@ const plugin = Plugin.define(
   // org for the tenant edge; auth read-only, so the trail can show an
   // actor's current name when the event kept no snapshot
   Db.entities(entities, { dependsOn: ['@qualy/plugin-org', '@qualy/plugin-auth'] }),
-  Ui.i18n('./client/i18n.ts'),
+  Ui.i18n('./client/i18n'),
   Ui.page({
     id: 'audit/events',
     path: '/organization/audit',
-    component: Ui.react('./client/AuditEventsPage.tsx'),
+    component: Ui.react('./client/AuditEventsPage'),
     layout: APP_SHELL,
     visibility: permissionOf('audit.event.read'),
     navigation: {

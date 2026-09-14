@@ -49,7 +49,7 @@ const plugin = Plugin.define(
   { dependsOn: ['@qualy/plugin-rum'], config },
   Rum.provider({ code: TENCENT_RUM_PROVIDER }),
   // the browser half announces itself; the sdk arrives only if it is used
-  Ui.browser('./client/register.ts'),
+  Ui.browser('./client/register'),
   // Filing this build's source maps, run by a release pipeline and never by
   // the serving process. The namespace is this provider's because the
   // capability has no commands of its own and only one provider may be

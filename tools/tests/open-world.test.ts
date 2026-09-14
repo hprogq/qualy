@@ -39,12 +39,12 @@ export default Plugin.define(
   Ui.page({
     id: ${JSON.stringify(surfaceId)},
     path: ${JSON.stringify(path)},
-    component: Ui.react('./client/ProbePage.jsx'),
+    component: Ui.react('./client/ProbePage'),
     layout: APP_SHELL,
     visibility: PUBLIC,
   }),
-  Ui.i18n('./client/i18n.js'),
-  Ui.browser('./client/boot.js'),
+  Ui.i18n('./client/i18n'),
+  Ui.browser('./client/boot'),
 )
 `
 
@@ -62,7 +62,14 @@ const files = (namespace: string) => ({
 
 const probe = (options: { id: string; surface: string; path: string; namespace: string }) => ({
   id: options.id,
-  exports: { './plugin': './index.js' },
+  // the package says where its modules are, which is the whole point: the
+  // build asks the exports map and never guesses at src/ or an extension
+  exports: {
+    './plugin': './index.js',
+    './client/ProbePage': './src/client/ProbePage.jsx',
+    './client/i18n': './src/client/i18n.js',
+    './client/boot': './src/client/boot.js',
+  },
   files: {
     ...files(options.namespace),
     'index.js': descriptor(options.id, options.surface, options.path),
@@ -149,7 +156,12 @@ describe('a plugin published under somebody else’s scope', () => {
   it('refuses a package whose descriptor calls itself something else', async () => {
     const workspace = workspaceWith({
       id: '@acme/qualy-probe',
-      exports: { './plugin': './index.js' },
+      exports: {
+        './plugin': './index.js',
+        './client/ProbePage': './src/client/ProbePage.jsx',
+        './client/i18n': './src/client/i18n.js',
+        './client/boot': './src/client/boot.js',
+      },
       files: {
         ...files('acme'),
         // a copied-and-renamed package, which resolution has to catch: every
