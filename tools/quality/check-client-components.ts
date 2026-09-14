@@ -3,7 +3,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
 import { UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
-import { currentResolution, resolvePackageDir, resolvePluginModuleUrl } from '@qualy/assembly/host'
+import {
+  currentResolution,
+  resolvePackageDir,
+  resolvePluginExport,
+  resolvePluginModuleUrl,
+} from '@qualy/assembly/host'
 import { manifestPath } from '../lib/manifest.ts'
 
 // Ui.react("./client/X.tsx") is a string, and TypeScript resolves modules
@@ -72,14 +77,18 @@ function checkPlugin(packageDir: string, references: readonly Reference[]): stri
   const failures: string[] = []
   const checkable: (Reference & { file: string })[] = []
   for (const reference of references) {
-    // relative to src/, where the descriptor that declared it lives
-    const file = path.resolve(packageDir, 'src', reference.module)
-    if (!file.startsWith(packageDir + path.sep)) {
-      failures.push(`${reference.pluginId}: ${reference.module} escapes its package`)
+    // an export subpath of the plugin's own package, resolved the way the
+    // build resolves it - the package decides whether that name stands for a
+    // .tsx under src/ or a .js under dist/, and this check may not guess
+    let file: string
+    try {
+      file = resolvePluginExport(reference.pluginId, reference.module, manifestPath())
+    } catch (error) {
+      failures.push(`${reference.pluginId}: ${(error as Error).message}`)
       continue
     }
-    if (!fs.existsSync(file)) {
-      failures.push(`${reference.pluginId}: ${reference.module} does not exist`)
+    if (!file.startsWith(packageDir + path.sep)) {
+      failures.push(`${reference.pluginId}: ${reference.module} escapes its package`)
       continue
     }
     checkable.push({ ...reference, file })
