@@ -387,11 +387,11 @@ const phone = stylex.create({
   head: { display: 'flex', flexDirection: 'column', gap: 8 },
   title: {
     margin: 0,
-    // two lines' worth of room whatever the name's length, and never a
-    // third: the deck is flicked through, and a name that takes one line on
-    // one card and two on the next moves everything under it on every card
+    // two lines at most, and no room held for a second one: a name that
+    // takes one line moves what is under it by a line, which is cheaper
+    // than holding a strip of nothing open on every card that has a short
+    // name. A third line is refused - past two it stops being a name
     display: '-webkit-box',
-    minHeight: '2.7em',
     overflow: 'hidden',
     WebkitBoxOrient: 'vertical',
     WebkitLineClamp: 2,
@@ -403,26 +403,26 @@ const phone = stylex.create({
   },
   // the two lines of work as one block, so they read as a pair of things
   // to do rather than two unrelated strips
-  // The block takes whatever height the card has spare, and its lines sit
-  // in the middle of it. A card with less to say then reads as a panel with
-  // room in it rather than as a card with a hole: the same pixels, and the
-  // ones on a coloured ground are the ones nobody reads as missing.
+  // the two or three lines of the round as one block, at the height its
+  // lines come to
   agenda: {
     display: 'flex',
-    flexGrow: 1,
     flexDirection: 'column',
-    justifyContent: 'center',
     borderRadius: 10,
     backgroundColor: tokens.surfaceInset,
   },
+  // One line, not two stacked. The wide card can afford a label above its
+  // value; here the height of a line is what a card costs when it has one
+  // line fewer than the card beside it, and two stacked lines made that
+  // cost a whole row of white.
   agendaRow: {
     display: 'flex',
-    minHeight: 56,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
     paddingInline: 14,
-    paddingBlock: 10,
+    paddingBlock: 8,
     color: tokens.foreground,
     textDecoration: 'none',
     // the whole row is the target, which is what makes it big enough
@@ -430,9 +430,15 @@ const phone = stylex.create({
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
   },
-  agendaWords: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
-  agendaLabel: { fontSize: 12, color: tokens.mutedForeground },
-  agendaValue: { fontSize: 15, fontWeight: 600 },
+  agendaWords: { display: 'flex', minWidth: 0, alignItems: 'baseline', gap: 10 },
+  agendaLabel: { flexShrink: 0, fontSize: 13, color: tokens.mutedForeground },
+  agendaValue: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 15,
+    fontWeight: 600,
+  },
   agendaValueIdle: { fontWeight: 500, color: tokens.mutedForeground },
   agendaClock: { flexShrink: 0, fontSize: 12, color: tokens.mutedForeground },
   agendaGlyph: { flexShrink: 0, color: tokens.foreground },
@@ -443,7 +449,11 @@ const phone = stylex.create({
   // the spare height falls above them - between what the reader has to do
   // and where the round has got to, which is where the card's own break
   // already is.
-  foot: { display: 'flex', flexDirection: 'column', gap: 14 },
+  // Where the round stands and the way into it are one thing, and that
+  // thing is the foot of the card. Whatever height a card has spare falls
+  // above them, in one place - a line's worth of it now that the lines are
+  // single, which reads as spacing rather than as something missing.
+  foot: { display: 'flex', marginTop: 'auto', flexDirection: 'column', gap: 14 },
   plan: { display: 'flex', flexDirection: 'column', gap: 8 },
   // no labels: at this width a name under every stage is a row of cut-off
   // words, and the one that matters is said in full on the line below
