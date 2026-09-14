@@ -327,6 +327,37 @@ export const markMyEntryReads = (input: {
       .execute(),
   )
 
+/**
+ * What this reader has filed in each of these rounds, counted by status.
+ *
+ * By the person rather than by a membership id: the caller is asking about
+ * several rounds at once and holds a different membership in each, so the
+ * join finds them. One row per round and status; a round the reader has
+ * filed nothing in has no row at all, which is how the caller tells "not
+ * filing here" from "filing here with nothing outstanding".
+ */
+export const entryCountsByBatchOf = (input: {
+  tenantId: string
+  userId: string
+  batchIds: readonly string[]
+}) =>
+  input.batchIds.length === 0
+    ? Effect.succeed([] as { batchId: string; status: string; total: string }[])
+    : db.query((k) =>
+        k
+          .selectFrom('Entry as e')
+          .innerJoin('BatchParticipant as bp', (join) =>
+            join.onRef('bp.tenantId', '=', 'e.tenantId').onRef('bp.id', '=', 'e.participantId'),
+          )
+          .select(['e.batchId', 'e.status'])
+          .select(({ fn }) => fn.countAll<string>().as('total'))
+          .where('e.tenantId', '=', input.tenantId)
+          .where('e.batchId', 'in', [...input.batchIds])
+          .where('bp.userId', '=', input.userId)
+          .groupBy(['e.batchId', 'e.status'])
+          .execute(),
+      )
+
 /** the questions holding anything their owner has not seen yet */
 export const unreadItemIdsOf = (input: {
   tenantId: string

@@ -415,6 +415,31 @@ export const countBatchesByStatus = (
     )
 
 /**
+ * The rounds under way this person may see, all of them.
+ *
+ * The same reach as the list above, narrowed to the rounds that are
+ * running: what a reader has to do is asked of those and no others, and a
+ * page that paged this answer would leave the card on page two guessing.
+ * Unpaged because the set is what a tenant runs at once - the list's own
+ * card stops offering to switch between them past twenty.
+ */
+export const activeBatchIdsVisibleTo = (
+  tenantId: string,
+  viewer: { held: AuthorizationScope; userId: string },
+) =>
+  db
+    .query((k) =>
+      k
+        .selectFrom('AssessmentBatch')
+        .select('id')
+        .where('tenantId', '=', tenantId)
+        .where('status', '=', 'active')
+        .where(visibleTo(viewer))
+        .execute(),
+    )
+    .pipe(Effect.map((rows) => rows.map((row) => row.id)))
+
+/**
  * One page of the batches this person may see, newest first. The
  * authorization scope is pushed into the statement: the database intersects,
  * nothing is fetched and filtered.

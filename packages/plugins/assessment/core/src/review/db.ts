@@ -643,6 +643,55 @@ export const activeReviewBatches = (tenantId: string) =>
     .pipe(Effect.map((rows) => rows.map((row) => row.batchId)))
 
 /**
+ * How much is waiting for this reader in each of these rounds.
+ *
+ * The same composition the queue itself is drawn with - stage membership,
+ * independence, a seat - counted rather than listed and grouped by round,
+ * so a screen showing several rounds at once asks once instead of once per
+ * round. A round with nothing waiting has no row: a caller reads a missing
+ * round as nought, and tells that apart from "not a judge here" by asking
+ * the round's own authority, which is a different question from this one.
+ */
+export const reviewsWaitingByBatchOf = (input: {
+  tenantId: string
+  userId: string
+  batchIds: readonly string[]
+}) =>
+  input.batchIds.length === 0
+    ? Effect.succeed([] as { batchId: string; waiting: number }[])
+    : db
+        .query((k) =>
+          sql<{ batch_id: string; waiting: string }>`
+            select e.batch_id, count(*)::text as waiting
+            from review_instances ri
+            join entries e on e.tenant_id = ri.tenant_id and e.id = ri.entry_id
+            join batch_participants bp
+              on bp.tenant_id = e.tenant_id and bp.id = e.participant_id
+            join entry_revisions er on er.tenant_id = ri.tenant_id and er.id = ri.revision_id
+            where ri.tenant_id = ${input.tenantId}
+              and e.batch_id = any(${sql.val(`{${input.batchIds.join(',')}}`)}::uuid[])
+              and ri.state = 'active'
+              and ${mayActOn({
+                tenantId: sql`${input.tenantId}`,
+                batchId: sql.ref('e.batch_id'),
+                nodeId: sql.ref('ri.current_node_id'),
+                roleIds: sql.ref('ri.current_role_ids'),
+                userId: sql`${input.userId}`,
+                subjectUserId: sql.ref('bp.user_id'),
+                actorId: sql.ref('er.actor_id'),
+                instanceId: sql.ref('ri.id'),
+                route: sql.ref('ri.current_route'),
+              })}
+            group by e.batch_id
+          `.execute(k),
+        )
+        .pipe(
+          Effect.map(({ rows }) =>
+            rows.map((row) => ({ batchId: row.batch_id, waiting: Number(row.waiting) })),
+          ),
+        )
+
+/**
  * One reviewer's queue, oldest first: every active round whose stage the
  * caller may judge, in batches where judging is open now. Pull model - the
  * stage names roles, never a person, so nothing here is assigned, only

@@ -35,7 +35,12 @@ import { makeItemMethods, type ItemMethods, type ItemView } from '../item/servic
 import { currentBatchConfigs, liveBatchPayloads } from '../item/db.ts'
 import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/service.ts'
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
-import { entrySummaryRowsOf, insertReviewEvent, userActivityPage } from '../entry/db.ts'
+import {
+  entryCountsByBatchOf,
+  entrySummaryRowsOf,
+  insertReviewEvent,
+  userActivityPage,
+} from '../entry/db.ts'
 import {
   blockedGroups,
   chainNames,
@@ -48,6 +53,7 @@ import {
   setInstanceState,
   stageNodesOf,
   reviewerDeskOf,
+  reviewsWaitingByBatchOf,
   tenantsWithOpenRounds,
 } from '../review/db.ts'
 import { stageById } from '../review/chain.ts'
@@ -123,6 +129,7 @@ import {
   batchVisibleTo,
   batchWithinReach,
   countBatches,
+  activeBatchIdsVisibleTo,
   listBatchesPage,
   countBatchesByStatus,
   listParticipantsPage,
@@ -532,6 +539,29 @@ export type UserActivityKind =
   | 'supplement-answered'
   | 'review-vote-approved'
   | 'review-vote-rejected'
+
+/**
+ * What one reader has to do in each round under way.
+ *
+ * The cross-round form of the reviewer branch of `MyOverview`, and it must
+ * agree with it: both say what is waiting for this person in a round, and
+ * two endpoints that disagreed about that would be read as the round
+ * changing under the reader. `reviewsWaiting` is null for somebody who does
+ * not judge in that round at all - "not your job" and "your job, nothing
+ * pending" are different facts, and only the first one means the line has
+ * nothing to say.
+ */
+export interface MyStanding {
+  readonly items: readonly {
+    readonly batchId: string
+    readonly myEntries: {
+      readonly toFix: number
+      readonly draft: number
+      readonly submitted: number
+    }
+    readonly reviewsWaiting: number | null
+  }[]
+}
 
 export interface MyOverview {
   readonly participant: {
@@ -964,6 +994,11 @@ export class Assessment extends Context.Service<
       batchId: string,
       as: Principal,
     ) => Effect.Effect<MyOverview, BatchNotFound | AccessDenied>
+    /**
+     * The same question as `getMyOverview`'s reviewer branch, asked of every
+     * round under way at once: what is waiting for this reader where.
+     */
+    readonly listMyStanding: (tenantId: string, as: Principal) => Effect.Effect<MyStanding>
     /** the user's own recent story across their standings, newest first */
     readonly listMyActivity: (
       tenantId: string,
@@ -2211,6 +2246,51 @@ export const make = Effect.fn('Assessment.make')(function* () {
         ? yield* dieQuery(withDb(reviewerDeskOf({ tenantId, batchId, userId: as.userId })))
         : null
       return { participant, reviewer }
+    }),
+
+    listMyStanding: Effect.fn('Assessment.listMyStanding')(function* (
+      tenantId: string,
+      as: Principal,
+    ) {
+      const viewer = yield* viewerOf(as)
+      const batchIds = yield* dieQuery(withDb(activeBatchIdsVisibleTo(tenantId, viewer)))
+      if (batchIds.length === 0) return { items: [] }
+      const filings = yield* dieQuery(
+        withDb(entryCountsByBatchOf({ tenantId, userId: as.userId, batchIds })),
+      )
+      const waiting = new Map(
+        (yield* dieQuery(
+          withDb(reviewsWaitingByBatchOf({ tenantId, userId: as.userId, batchIds })),
+        )).map((row) => [row.batchId, row.waiting]),
+      )
+      const mine = new Map<string, { toFix: number; draft: number; submitted: number }>()
+      for (const row of filings) {
+        const counts = mine.get(row.batchId) ?? { toFix: 0, draft: 0, submitted: 0 }
+        // three of the six statuses, because three is what the reader can
+        // act on: what came back to be revised, what was never sent, what
+        // is out for judgement. A refusal is a fourth thing with a fourth
+        // next step (§32.65) and is not folded into 'to fix'
+        if (row.status === 'needs_revision') counts.toFix = Number(row.total)
+        if (row.status === 'draft') counts.draft = Number(row.total)
+        if (row.status === 'in_review') counts.submitted = Number(row.total)
+        mine.set(row.batchId, counts)
+      }
+      // Whether the line is drawn at all is the batch's own authority to
+      // answer, not the count: a judge who is caught up holds the standing
+      // still, and the count alone cannot tell that from not judging here.
+      // Asked per round, as the round's own desk asks it.
+      const items: MyStanding['items'][number][] = []
+      for (const batchId of batchIds) {
+        const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+        items.push({
+          batchId,
+          myEntries: mine.get(batchId) ?? { toFix: 0, draft: 0, submitted: 0 },
+          reviewsWaiting: authority.has('assessment.review.process')
+            ? (waiting.get(batchId) ?? 0)
+            : null,
+        })
+      }
+      return { items }
     }),
 
     listMyActivity: Effect.fn('Assessment.listMyActivity')(function* (
@@ -5118,6 +5198,14 @@ export const assessmentApiHandlers = HttpApiBuilder.group(local, 'assessment', (
           params.itemId,
           principal,
         )
+      }),
+    )
+    .handle(
+      'listMyStanding',
+      Effect.fn('assessment.listMyStanding.handler')(function* () {
+        const assessment = yield* Assessment
+        const principal = yield* CurrentUser
+        return yield* assessment.listMyStanding(principal.tenantId, principal)
       }),
     )
     .handle(

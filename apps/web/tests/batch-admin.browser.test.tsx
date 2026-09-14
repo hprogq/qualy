@@ -174,6 +174,9 @@ const assessmentStubs = (over: Stubs = {}): Stubs => ({
   // the participant's desk on the overview: this harness plays an
   // administrator, whose desk is empty by design
   getMyOverview: () => Effect.succeed({ participant: null, reviewer: null }),
+  // and nothing of their own to do in any round under way, so the card's
+  // right column is the stage alone
+  listMyStanding: () => Effect.succeed({ items: [] }),
   listMyActivity: () => Effect.succeed({ items: [], nextCursor: null }),
   listTemplates: templates,
   listScopeOptions: () =>

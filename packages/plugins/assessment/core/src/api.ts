@@ -1249,6 +1249,39 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     /**
+     * What this reader has to do in every round under way, one row each.
+     *
+     * Its own endpoint rather than a column on the batch list: that list is
+     * paged and filtered, and a reader's standing is not a fact about the
+     * batch - computing it for every row of every page would make a list of
+     * rounds pay for a question only the card above it asks.
+     *
+     * `reviewsWaiting` is null for a reader who does not judge in that round
+     * at all, and a number - nought included - for one who does: "not your
+     * job" and "your job, nothing pending" are different answers, and only
+     * the first means there is no line to draw. The path carries no batch
+     * and no user for the same reason the review queue's does not: there is
+     * nothing here to ask on somebody else's behalf.
+     */
+    HttpApiEndpoint.get('listMyStanding', '/assessment/standing', {
+      success: Schema.Struct({
+        items: Schema.Array(
+          Schema.Struct({
+            batchId: Schema.String,
+            /** this reader's own filings, by what each one is waiting for */
+            myEntries: Schema.Struct({
+              toFix: Schema.Number,
+              draft: Schema.Number,
+              submitted: Schema.Number,
+            }),
+            reviewsWaiting: Schema.NullOr(Schema.Number),
+          }),
+        ),
+      }),
+    }).middleware(Authenticated),
+  )
+  .add(
+    /**
      * What happened around this user in the batch lately, newest first and
      * in business words: their own claims' story as a participant, their
      * own review acts as a reviewer - never raw event kinds, and never the

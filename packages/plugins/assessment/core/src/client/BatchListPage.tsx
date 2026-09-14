@@ -31,7 +31,13 @@ import { NewBatchDialog } from './NewBatchForm.tsx'
 import { standingOf, type BatchStanding } from './batch/standing.ts'
 import { dotDay } from './batch/dates.ts'
 import { HeroSkeleton, ListSkeleton } from './batch/ListSkeleton.tsx'
-import { BatchCard, type BatchAgenda, type BatchCardRow, type HeroFrame } from './batch/BatchCard.tsx'
+import {
+  BatchCard,
+  NO_AGENDA,
+  type BatchAgenda,
+  type BatchCardRow,
+  type HeroFrame,
+} from './batch/BatchCard.tsx'
 
 // Every batch there is, and the way into one.
 //
@@ -50,14 +56,40 @@ import { BatchCard, type BatchAgenda, type BatchCardRow, type HeroFrame } from '
 /** rows per page; the page indicator divides the total by it */
 const PAGE_SIZE = 20
 
-// Stand-in for what the reader has to do in a round, until the api that
-// answers it lands: the same two lines the design shows, so the card's
-// right column is there to be judged. Nothing here is true of any batch.
-const PLACEHOLDER_AGENDA: BatchAgenda = { review: { count: 12 }, own: { count: 2 } }
-
 // the card shows one running batch and says which; up to this many the
 // others are a pair of arrows away, past it they are a name to pick
 const ARROWS_UP_TO = 4
+
+/**
+ * The two lines of the card's right column, from what the server said.
+ *
+ * Each line is something to do, so each is drawn only while there is some:
+ * a reader with nothing to do sees the stage alone, and a line reading
+ * nought is a line saying nothing. The server's null is the stronger
+ * answer and is read first - somebody who does not judge in this round has
+ * no queue to be on top of, which is not the same as being on top of it.
+ *
+ * The reader's drafts and sent filings are counted on the wire but not
+ * shown: this line is about what has come back to be revised, and the one
+ * number it has is that. What to make of a draft left unfinished is the
+ * filing page's question, and it says it there.
+ */
+function agendaOf(
+  items: readonly {
+    batchId: string
+    myEntries: { toFix: number; draft: number; submitted: number }
+    reviewsWaiting: number | null
+  }[],
+  batchId: string | undefined,
+): BatchAgenda {
+  const mine = batchId === undefined ? undefined : items.find((row) => row.batchId === batchId)
+  if (mine === undefined) return NO_AGENDA
+  const waiting = mine.reviewsWaiting
+  return {
+    review: waiting === null || waiting === 0 ? null : { count: waiting },
+    own: mine.myEntries.toFix === 0 ? null : { count: mine.myEntries.toFix },
+  }
+}
 
 const styles = stylex.create({
   wide: { width: 'max-content' },
@@ -339,7 +371,9 @@ function timeOf(
       : format(m.flowEndPending)
   }
   const first = timeline.find((entry) => entry.entry.kind === 'planned' && entry.entry.at !== null)
-  return first?.entry.at ? format(m.startsOn, { date: dotDay(first.entry.at) }) : format(m.timeUnset)
+  return first?.entry.at
+    ? format(m.startsOn, { date: dotDay(first.entry.at) })
+    : format(m.timeUnset)
 }
 
 export default function BatchListPage() {
@@ -396,6 +430,16 @@ export default function BatchListPage() {
     }),
   )
 
+  // What this reader has to do in the rounds under way, for the card's
+  // right column. Its own question rather than a column on the list: the
+  // list is paged and filtered, and this is not a fact about the batch.
+  // Polled on the same beat as the review rail's badge - the queue it
+  // counts is the one that badge counts.
+  const agendas = useQuery({
+    ...query.assessment.listMyStanding.queryOptions({}),
+    refetchInterval: 30_000,
+  })
+
   // said by the server, not guessed here: a control the api would refuse is
   // not drawn, and this reader's own list is still theirs to read
   const canCreate = batches.data?.capabilities.create ?? false
@@ -437,6 +481,7 @@ export default function BatchListPage() {
       index: (heroIndex + by + running.length) % running.length,
       entered: by === 1 ? 'forward' : 'backward',
     })
+  const agenda = agendaOf(agendas.data?.items ?? [], shown?.id)
   const frame: HeroFrame =
     running.length <= 1
       ? { kind: 'single' }
@@ -474,9 +519,12 @@ export default function BatchListPage() {
   const emptyLine = () => {
     if (settledSearch !== '') return format(m.emptySearch, { q: settledSearch })
     return format(
-      { all: m.batchesEmpty, active: m.emptyActive, draft: m.emptyDraft, archived: m.emptyArchived }[
-        statusFilter
-      ],
+      {
+        all: m.batchesEmpty,
+        active: m.emptyActive,
+        draft: m.emptyDraft,
+        archived: m.emptyArchived,
+      }[statusFilter],
     )
   }
 
@@ -553,7 +601,7 @@ export default function BatchListPage() {
                 <BatchCard
                   key={shown.id}
                   row={shown}
-                  agenda={PLACEHOLDER_AGENDA}
+                  agenda={agenda}
                   frame={frame}
                   entered={hero.entered}
                 />
@@ -567,38 +615,38 @@ export default function BatchListPage() {
                   the table that is being asked again */}
               <div {...stylex.props(styles.listHead)}>
                 <div {...stylex.props(styles.pillScroller)}>
-                <ToggleGroup
-                  className={stylex.props(styles.wide).className}
-                  value={statusFilter}
-                  aria-label={format(m.filterStatus)}
-                  // a filter group always has an answer: clicking the active
-                  // item would otherwise clear the group and mean nothing
-                  onValueChange={(next) => next !== '' && setStatusFilter(next as StatusFilter)}
-                >
-                  <ToggleGroupItem value="all">
-                    {format(m.filterAll)}
-                    {chipCount(counts && counts.draft + counts.active + counts.archived)}
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="active">
-                    {format(m.statusActive)}
-                    {chipCount(counts?.active)}
-                  </ToggleGroupItem>
-                  {/* a draft is a round being set up, and it is only ever
+                  <ToggleGroup
+                    className={stylex.props(styles.wide).className}
+                    value={statusFilter}
+                    aria-label={format(m.filterStatus)}
+                    // a filter group always has an answer: clicking the active
+                    // item would otherwise clear the group and mean nothing
+                    onValueChange={(next) => next !== '' && setStatusFilter(next as StatusFilter)}
+                  >
+                    <ToggleGroupItem value="all">
+                      {format(m.filterAll)}
+                      {chipCount(counts && counts.draft + counts.active + counts.archived)}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="active">
+                      {format(m.statusActive)}
+                      {chipCount(counts?.active)}
+                    </ToggleGroupItem>
+                    {/* a draft is a round being set up, and it is only ever
                       listed for whoever sets rounds up: offered to a
                       participant the filter is a promise of an empty page */}
-                  {canCreate && (
-                    <ToggleGroupItem value="draft">
-                      {format(m.statusDraft)}
-                      {chipCount(counts?.draft)}
-                    </ToggleGroupItem>
-                  )}
-                  {/* "archived" is the word the column stores; what a reader
+                    {canCreate && (
+                      <ToggleGroupItem value="draft">
+                        {format(m.statusDraft)}
+                        {chipCount(counts?.draft)}
+                      </ToggleGroupItem>
+                    )}
+                    {/* "archived" is the word the column stores; what a reader
                       recognises is that the assessment is over */}
-                  <ToggleGroupItem value="archived">
-                    {format(m.filterEnded)}
-                    {chipCount(counts?.archived)}
-                  </ToggleGroupItem>
-                </ToggleGroup>
+                    <ToggleGroupItem value="archived">
+                      {format(m.filterEnded)}
+                      {chipCount(counts?.archived)}
+                    </ToggleGroupItem>
+                  </ToggleGroup>
                 </div>
                 {refreshing && (
                   <Spinner
