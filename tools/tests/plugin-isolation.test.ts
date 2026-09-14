@@ -87,37 +87,67 @@ const typecheckAlone = (dir: string) => {
  * WRITTEN with and belongs to the platform whatever its name says; a
  * capability facade (`@qualy/plugin-x/plugin`) is how a contributor declares a
  * contribution, and §79 of the refactor keeps it allowed until those move to
- * their contract packages; and the list below is what is left, each entry
- * with the work that removes it.
+ * their contract packages; and the two edges below are what is left.
  */
 const PLATFORM = ['packages/web', 'packages/core', 'packages/contracts']
 const PLUGIN_KIT = /^@qualy\/plugin-kit(\/|$)/
 const CAPABILITY_FACADE = /^@qualy\/plugin-[a-z-]+\/plugin$/
 
 /**
- * What still crosses, and when it stops.
+ * What still crosses, named one edge at a time.
  *
- * Empty is the goal and the list is how it gets there: an edge nobody wrote
- * down cannot be noticed, and one written down cannot be added to by
- * accident. Nothing may join this list without the phase that removes it.
+ * A package-level exemption would have been a hole rather than a record: it
+ * would let any platform file import any subpath of that plugin, and the
+ * list would still read as one exception. An edge is a file and a specifier,
+ * so removing it in Phase F is removing exactly these, and a new edge to the
+ * same plugin is a failure like any other.
  */
-const REMAINING: { readonly package: string; readonly why: string }[] = [
+const REMAINING_IMPORTS = [
   {
-    package: '@qualy/plugin-ui-registry',
+    importer: 'packages/web/runtime/src/index.tsx',
+    specifier: '@qualy/plugin-ui-registry/api',
     // the shell manifest's own contract, which the runtime consumes and this
     // plugin happens to hold; Phase F moves it to @qualy/app-contract
     why: 'the app manifest contract has not moved out of the plugin yet',
   },
-]
-const remaining = new Set(REMAINING.map((entry) => entry.package))
+] as const
 
-/** the workspace package a specifier names: `@qualy/plugin-x/api` -> `@qualy/plugin-x` */
-const packageOf = (specifier: string) => specifier.split('/').slice(0, 2).join('/')
+const REMAINING_DEPENDENCIES = [
+  {
+    manifest: 'packages/web/runtime/package.json',
+    dependency: '@qualy/plugin-ui-registry',
+    why: 'the same edge, declared',
+  },
+] as const
 
+const allowedImport = (importer: string, specifier: string) =>
+  REMAINING_IMPORTS.some((edge) => edge.importer === importer && edge.specifier === specifier)
+
+const allowedDependency = (manifest: string, dependency: string) =>
+  REMAINING_DEPENDENCIES.some(
+    (edge) => edge.manifest === manifest && edge.dependency === dependency,
+  )
+
+/**
+ * Every module specifier a file names.
+ *
+ * A regex rather than a syntax tree because there is no longer a syntax tree
+ * to be had: TypeScript 7 is a native executable and ships no `createProgram`,
+ * which is why the component checker next door writes a file and runs `tsc`
+ * over it instead. So this covers the four forms that exist - `from`, a
+ * side-effect import, `export ... from`, and a dynamic `import()` - in either
+ * quote, and a fifth form arriving is the thing to watch for.
+ */
 const importsOf = (source: string): string[] =>
-  [...source.matchAll(/\bfrom\s+'([^']+)'|\bimport\s+'([^']+)'/g)]
+  [
+    ...source.matchAll(
+      /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"]([^'"]+)['"]|\bimport\s+['"]([^'"]+)['"]/g,
+    ),
+  ]
     .map((match) => match[1] ?? match[2] ?? '')
     .filter((specifier) => specifier !== '')
+
+const relative = (file: string) => path.relative(repoRoot, file).split(path.sep).join('/')
 
 describe('the platform depends on no plugin implementation', () => {
   it('imports none, in any browser, core or contract package', () => {
@@ -128,8 +158,8 @@ describe('the platform depends on no plugin implementation', () => {
         for (const specifier of importsOf(fs.readFileSync(file, 'utf8'))) {
           if (!specifier.startsWith('@qualy/plugin-')) continue
           if (PLUGIN_KIT.test(specifier) || CAPABILITY_FACADE.test(specifier)) continue
-          if (remaining.has(packageOf(specifier))) continue
-          offenders.push(`${path.relative(repoRoot, file)} imports ${specifier}`)
+          if (allowedImport(relative(file), specifier)) continue
+          offenders.push(`${relative(file)} imports ${specifier}`)
         }
       }
     }
@@ -152,8 +182,8 @@ describe('the platform depends on no plugin implementation', () => {
         }
         for (const name of Object.keys(manifest.dependencies ?? {})) {
           if (!name.startsWith('@qualy/plugin-')) continue
-          if (PLUGIN_KIT.test(name) || remaining.has(name)) continue
-          offenders.push(`${path.relative(repoRoot, at)} depends on ${name}`)
+          if (PLUGIN_KIT.test(name) || allowedDependency(relative(at), name)) continue
+          offenders.push(`${relative(at)} depends on ${name}`)
         }
       }
     }
@@ -162,9 +192,15 @@ describe('the platform depends on no plugin implementation', () => {
   })
 
   it('names every edge that is left, so the list shrinks on purpose', () => {
-    // one entry today. When Phase F moves the manifest contract out this is
-    // empty, and the two cases above become the plain statement they read as.
-    expect(REMAINING.map((entry) => entry.package)).toEqual(['@qualy/plugin-ui-registry'])
+    // two entries today, one edge stated twice: the import and the manifest
+    // line that declares it. Phase F deletes both, and the two cases above
+    // become the plain statement they read as.
+    expect(REMAINING_IMPORTS.map((edge) => `${edge.importer} -> ${edge.specifier}`)).toEqual([
+      'packages/web/runtime/src/index.tsx -> @qualy/plugin-ui-registry/api',
+    ])
+    expect(REMAINING_DEPENDENCIES.map((edge) => `${edge.manifest} -> ${edge.dependency}`)).toEqual([
+      'packages/web/runtime/package.json -> @qualy/plugin-ui-registry',
+    ])
   })
 })
 

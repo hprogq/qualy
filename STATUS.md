@@ -14404,10 +14404,36 @@ r_feuCerD3YnzyLs-GJgQkGA (123 assets, production, protocol 2)`;`check-chunks` �
 `check-staged-web` exit 0;`check-csp-build` exit 0;`smoke-production` 全 ok
 (`/api/app/observability` 仍答 `provider: null`,即「装配里没有 provider」这条路照常)。
 
-**没有重新验证的一条,说明白**:「Tencent RUM SourceMap 仍能还原」这条 DoD 没有再对着真实平台跑一遍。
+**没有重新验证的一条,标为 manual acceptance pending(不算绿)**:「Tencent RUM SourceMap 仍能还原」
+这条 DoD 没有再对着真实平台跑一遍。
 版本映射(`rumVersionForRelease`)与上传命令这次一行未改,受影响的只有上报里的 `ext2/ext3` 两个字段;
 要真正确认,得再走一次「构建 → `qualy rum sourcemaps` → 白名单内触发异常 → 控制台看还原」。
 
 **下一步**:Phase D1(active-only 构建 + 旧 tab assembly 兼容)。它有一条**前置修复**已立案:
 `check-chunks --expect-absent` 仍在从 surface 名猜 chunk 名,disabled sentinel 之前必须换掉
 (记在 docs/plugin-refactor.md §104)。RUM Phase 3 仍搁置。
+
+### Phase C 收口补丁(2026-09-15,复审提出的两条)
+
+- **sink 到达之前主动上报的失败不再丢**。首屏与 `startBrowserRum` 是正常竞争(谁也不该等谁),
+  而 `captureException` 以前先把 Error 放进去重 WeakSet、再发现没有 sink 就什么都不做——于是
+  **最值得要的那批失败(首屏 render error)既没被上报,又被标记成已上报**,vendor 自己的全局 handler
+  后来也不会再报它。early queue 补不回来:它听的是 `window.error`,而 React boundary 捕获的 render
+  error 根本不到 window——这正是旁边那段按对象身份去重的注释在说的事。
+  修法是平台自己持有一个**有界的 pre-sink 队列**(上限 20,与 early queue 同理):
+  `captureException` / `captureDiagnostic` 在没有 sink 时入队(上下文按**发生时**的页面快照),
+  `installSink` 接管并回放,`noSinkArriving` 释放。去重的含义同步改成「已交付**或**已入队待交付」
+  ——那本来就是它想表达的意思。**这个 bug 不是 Phase C 制造的**(旧 registry 同样的顺序),
+  但 C 之后「平台端到端拥有 pre-sink handoff」成了它的职责,所以在这里闭环。
+  回归用例:provider.start 挂起 → 报一条异常 + 一条诊断 + 同一个对象再报一次 → 此时 sink 不存在 →
+  provider 到达 → sink **恰好收到一次**且 surface context 完整;另一例证明「没有 provider」时队列释放。
+  把入队那几行删掉,该用例即红。
+- **isolation 门禁的剩余边从「按包豁免」改成「按边具名」**。原实现豁免的是所有
+  platform → `@qualy/plugin-ui-registry/*`,而 STATUS 里宣称的是唯一那条边;第三条用例只钉了包名,
+  所以新增的边不会让它变红。现在清单是 `{importer, specifier}` 与 `{manifest, dependency}` 两条
+  字面量,第三条用例钉死两者。实测三个原本会漏过去的写法现在都被点名:另一个平台包 import 同一子路径、
+  `export ... from` 该插件、`import()` 动态引入。
+  顺带把 specifier 提取从「只认单引号 `from`/side-effect import」扩到 `export ... from`、
+  动态 `import()` 与双引号。**仍是正则,原因写在代码注释里**:TypeScript 7 是原生可执行文件、不再导出
+  `createProgram`,旁边的组件检查器正是为此改成「写断言文件 + 跑 tsc」;所以 AST 遍历这条路在当前
+  工具链上没有现成入口,若 Phase F 要做需另选 parser,而不是「直接用 TS AST」。

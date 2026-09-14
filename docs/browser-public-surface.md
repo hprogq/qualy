@@ -130,8 +130,12 @@ apps/web/dist/.qualy-web-build.json        构建产物旁(安装器读,不进 r
 这条现在由门禁守:`tools/tests/plugin-isolation.test.ts` 的「the platform depends on no plugin
 implementation」逐文件扫 `packages/web` / `packages/core` / `packages/contracts` 的 import 与
 package.json 依赖。`@qualy/plugin-kit`(写插件用的 kit)与 capability facade
-(`@qualy/plugin-x/plugin`)不算;**剩下的边写在一张具名清单里**,目前只有一条
-(`web-runtime → @qualy/plugin-ui-registry/api`,Phase F 移进 `@qualy/app-contract` 后清空)。
+(`@qualy/plugin-x/plugin`)不算;**剩下的边逐条具名**——一条 import(文件 + specifier)加一条
+package.json 依赖,都是同一条边的两面:`packages/web/runtime/src/index.tsx →
+@qualy/plugin-ui-registry/api`,Phase F 移进 `@qualy/app-contract` 后删掉这两条例外。
+
+清单是**逐边**而不是逐包:按包豁免会让任何 platform 文件 import 该插件的任意子路径都静默通过,
+而清单看上去仍然「只有一条例外」。第三条用例把两条边的字面量钉死,所以清单只会变短。
 
 ## 已知仍未收口(各自属于后续阶段)
 
