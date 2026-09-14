@@ -14,12 +14,12 @@ import {
   lockPathFor,
   readLock,
   resolveAssembly,
-  writeAtomic,
-  writeLock,
   type AssemblyLock,
   type Resolution,
   runtimeLayers,
 } from '@qualy/assembly'
+import { PLUGIN_USAGE, runPluginCommand } from './plugin.ts'
+import { writeResolution } from './resolution.ts'
 
 // deploy and the capability commands reach real systems, and the connection
 // details for them live in .env exactly as they do for `pnpm dev`
@@ -42,11 +42,12 @@ const USAGE = [
   '  pnpm qualy generate [capability args]',
   '  pnpm qualy deploy',
   '  pnpm qualy list',
+  PLUGIN_USAGE,
   '  pnpm qualy <namespace> <command> [args]',
 ].join('\n')
 
 /** the lifecycle's own verbs; a plugin namespace may not shadow one */
-const RESERVED = ['resolve', 'plan', 'generate', 'deploy', 'list', 'help']
+const RESERVED = ['resolve', 'plan', 'generate', 'deploy', 'list', 'plugin', 'help']
 
 const argv = process.argv.slice(2)
 const [command, ...rest] = argv
@@ -116,26 +117,31 @@ async function main(): Promise<void> {
       }
       console.log(`${relative(lockPath)} is up to date`)
     } else {
-      console.log(
-        writeLock(lockPath, lockFromResolution(resolution))
-          ? `${relative(lockPath)} written`
-          : `${relative(lockPath)} unchanged`,
-      )
       // The other half of the module contract. The frozen gate above compares
       // these files, so the non-frozen resolve must be what writes them - with
       // no writer, the first capability to declare a module would brick every
       // gated command with a drift error whose prescribed fix is this very
       // command, changing nothing.
-      const out = process.env.QUALY_GEN_OUT ?? path.dirname(manifestPath)
-      for (const module of capabilityModules(resolution)) {
-        const file = path.resolve(out, module.path)
-        if (writeAtomic(file, module.content)) console.log(`${relative(file)} written`)
+      for (const line of writeResolution(resolution, { lockPath, manifestPath })) {
+        console.log(line)
       }
     }
     for (const plugin of resolution.plugins.values()) {
       if (plugin.state === 'active') continue
       const kept = plugin.retainedBy?.length ? ` (kept by ${plugin.retainedBy.join(', ')})` : ''
       console.log(`  ${plugin.state}: ${plugin.id}${kept}`)
+    }
+    return
+  }
+
+  if (command === 'plugin') {
+    // Deliberately ahead of the drift gate the other commands sit behind: a
+    // selection that changed is exactly what makes a lock stale, and this is
+    // the command that changes it.
+    try {
+      await runPluginCommand(rest, { manifestPath })
+    } catch (error) {
+      die(error instanceof Error ? error.message : String(error))
     }
     return
   }
@@ -190,7 +196,7 @@ async function main(): Promise<void> {
   if (command === 'list') {
     const resolution = await resolveCurrent('list')
     const { commands } = await descriptorCommands(resolution)
-    console.log('lifecycle: resolve, plan, generate, deploy')
+    console.log('lifecycle: resolve, plan, generate, deploy, plugin')
     for (const [key, entry] of [...commands.entries()].sort()) {
       console.log(`${key}  -  ${entry.command.summary} (${entry.plugin})`)
     }

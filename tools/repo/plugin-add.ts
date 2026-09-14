@@ -46,13 +46,13 @@ rootManifest.dependencies = Object.fromEntries(
 )
 fs.writeFileSync(rootManifestPath, JSON.stringify(rootManifest, null, 2) + '\n')
 
-// appended rather than rewritten through the parser, so a hand-maintained
-// manifest keeps its comments, blank lines and grouping
+// The manifest entry is the product command's to write, not this script's:
+// `qualy plugin add` is what a deployment runs for a published plugin, and
+// having a second writer here meant two answers to "what does adding a
+// plugin do". This script's own job is the part that is only true inside
+// this repository - the workspace dependency.
 const manifestPath = 'qualy.yml'
-const manifest = fs.readFileSync(manifestPath, 'utf8')
-if (!new RegExp(`^\\s*'?${name}'?:`, 'm').test(manifest)) {
-  fs.writeFileSync(manifestPath, `${manifest.trimEnd()}\n  '${name}': {}\n`)
-}
+const selected = new RegExp(`^\\s*'?${name}'?:`, 'm').test(fs.readFileSync(manifestPath, 'utf8'))
 
 const pluginManifest = (() => {
   const stack = ['packages']
@@ -80,7 +80,11 @@ const pluginManifest = (() => {
 void pluginManifest
 
 execSync('pnpm install', { stdio: 'inherit' })
-execSync(`pnpm exec tsx ${CLI} resolve`, { stdio: 'inherit' })
+// after the install, because the product command asks whether the package is
+// actually installed before it writes anything; re-running on a plugin that
+// is already selected skips straight to resolving, which is why this is safe
+// to run twice
+execSync(`node ${CLI} ${selected ? 'resolve' : `plugin add ${name}`}`, { stdio: 'inherit' })
 console.log(
   `${name} added; declare what it contributes on its descriptor (Db.entities, Ui.surfaces, ...)`,
 )

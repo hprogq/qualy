@@ -196,6 +196,87 @@ export function renderManifest(manifest: AssemblyManifest): string {
 }
 
 /**
+ * One entry changed, and the rest of the file left alone.
+ *
+ * `renderManifest` writes the parsed value back out, which is right for a
+ * file a tool owns and wrong for this one: qualy.yml is maintained by hand
+ * and carries comments explaining why a backend is off and which bucket a
+ * deployment writes to. Rendering it would take all of that with it, so a
+ * management command edits the document instead and touches one key.
+ *
+ * Every mutation goes through `parseManifest` first, so an edit can only be
+ * applied to a file that already parses as a manifest.
+ */
+export interface ManifestEdit {
+  has(id: string): boolean
+  /** as the file says it, where `enabled` defaults to true */
+  isEnabled(id: string): boolean
+  /** a new entry, enabled and with no configuration */
+  add(id: string): void
+  setEnabled(id: string, enabled: boolean): void
+  remove(id: string): void
+  /** the file as it should now be written */
+  toString(): string
+}
+
+export function editManifest(text: string, source: string): ManifestEdit {
+  const parsed = parseManifest(text, source)
+  const doc = YAML.parseDocument(text, { uniqueKeys: true })
+  let plugins = doc.get('plugins')
+  if (!YAML.isMap(plugins)) {
+    plugins = doc.createNode({})
+    doc.set('plugins', plugins)
+  }
+  const map = plugins as YAML.YAMLMap
+  /** the entry as a map, materialising `'@qualy/plugin-x':` with nothing after it */
+  const entryOf = (id: string): YAML.YAMLMap => {
+    const existing = map.get(id, true)
+    if (YAML.isMap(existing)) return existing
+    const created = doc.createNode({}) as YAML.YAMLMap
+    map.set(id, created)
+    return created
+  }
+  const require = (id: string) => {
+    if (!parsed.plugins.has(id)) fail(source, `${id} is not in this manifest`)
+  }
+  return {
+    has: (id) => parsed.plugins.has(id),
+    isEnabled: (id) => parsed.plugins.get(id)?.enabled ?? false,
+    add(id) {
+      if (parsed.plugins.has(id)) fail(source, `${id} is already in this manifest`)
+      // quoted the way every other id in the file is: a scoped package name
+      // starts with @, which yaml would otherwise have to quote its own way
+      const key = doc.createNode(id) as YAML.Scalar
+      key.type = 'QUOTE_SINGLE'
+      const entry = doc.createNode({}) as YAML.YAMLMap
+      entry.flow = true
+      map.set(key, entry)
+      parsed.plugins.set(id, { enabled: true, config: undefined })
+    },
+    setEnabled(id, enabled) {
+      require(id)
+      const entry = entryOf(id)
+      if (enabled) {
+        // true is what the absence of the key means, and writing it out would
+        // leave the file saying twice what it already said once
+        entry.delete('enabled')
+        entry.flow = entry.items.length === 0
+      } else {
+        entry.flow = false
+        entry.set('enabled', false)
+      }
+      parsed.plugins.set(id, { ...parsed.plugins.get(id)!, enabled })
+    },
+    remove(id) {
+      require(id)
+      map.delete(id)
+      parsed.plugins.delete(id)
+    },
+    toString: () => doc.toString({ lineWidth: 0 }),
+  }
+}
+
+/**
  * The lock lives beside the manifest that produced it, and is named after it.
  *
  * A fixed name meant every manifest in a directory shared one lock, so

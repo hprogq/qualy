@@ -3,6 +3,7 @@ export { runtimeLayers, runtimeLevels, type RuntimeLayer } from './runtime-plan.
 export { canonicalHash, shortId } from './hash.ts'
 export {
   MANIFEST_VERSION,
+  editManifest,
   hostDirFor,
   lockPathFor,
   manifestHash,
@@ -10,6 +11,7 @@ export {
   readManifest,
   renderManifest,
   type AssemblyManifest,
+  type ManifestEdit,
   type ManifestEntry,
 } from './manifest.ts'
 export { createPackageResolver, type PackageResolver, type PluginMetadata } from './metadata.ts'

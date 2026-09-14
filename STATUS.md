@@ -14844,3 +14844,69 @@ check-staged-web          exit 0
 **没有测试在搬家过程中被删掉或减弱**。
 
 **下一步**:Phase H(`qualy plugin add / enable / disable / remove`)。
+
+## 插件重构 Phase H:选择本身成了命令(2026-09-15)
+
+```text
+qualy plugin add <package>
+qualy plugin enable <package>
+qualy plugin disable <package>
+qualy plugin remove <package>
+```
+
+四个动词是插件系统面向产品的**全部**表面。它们属于 lifecycle 保留字而不是某个插件的命名空间:
+`qualy plugin add` 必须能在一个还什么都没有的装配上工作,也必须能在 lock 已经过期时工作——
+**它就是把 lock 变成最新的那条命令**,不能站在「要求 lock 最新」的门后面。
+
+**没有一处知道插件的名字、scope 或目录形状**。包按清单 `application.workspace` 的依赖解析找到,
+它是什么由它自己的描述器说了算。于是「装一个仓库外的插件」和「装一个仓库内的插件」是同一条命令,
+两者都**不写这个应用的任何一行源码**。
+
+### 一、编辑的是人维护的那个文件
+
+`qualy.yml` 满是注释——哪个后端为什么关着、哪个 bucket 归哪个部署。`renderManifest` 会把解析出来的
+值重新写一遍,注释、分组、空行全部消失。所以新增的 `editManifest`(@qualy/assembly)走 YAML
+**document** 层改一个键,其余字节原样保留;`enabled: true` 是默认值,启用时**删掉这个键**而不是
+写上去,条目空了就回到 `{}`——和文件里现有的写法一致。
+
+**在真实清单上跑过一次往返**:`plugin disable @qualy/plugin-audit` → `enable`,`qualy.yml` 与
+`qualy.lock.json` 都回到逐字节相同(`git status` 干净),`plugin-storage-cos` 那段带注释、带
+`enabled: false`、带 config 的条目一个字没动。
+
+### 二、两条性质,各有一条负面用例钉住
+
+**被拒绝的命令什么都不改**。流程是:写清单 → 解析装配 → 解析拒绝就把清单**放回原来的字节**。
+拒绝的理由可以是包没装、描述器自称另一个 id、贡献了没人提供的能力。一次失败的 `add` 留下的树
+仍然可以 resolve——用例里紧接着跑一条 `disable` 证明这一点。
+
+**下架不等于删数据**。`disable` 与 `remove` 是选择动词;能力如果还握着这个插件的东西,resolve 期
+就会说出来,插件以 `detached` 留在 lock 里(`retainedBy: ['database']`),命令也如实打印
+「its data is untouched」。真正的 destructive 动词(purge)**不存在**,本轮也不发明。
+
+**门禁验证过会红**:去掉回滚那一行 → 两条「puts the manifest back」用例同时红;
+把 resolve 的 `previousLock` 换成 `undefined` → retention 用例红(被保留的插件直接离开 lock)。
+
+### 三、`add` 只写选择
+
+happy path 里对**整个工作区**做了前后内容比对,断言变化的文件恰好是
+`['qualy.lock.json', 'qualy.yml']`。这一条正是本轮要证明的事:装一个插件曾经意味着去改应用自己的
+源码(collector 当年拒绝构建未在 apps/web 声明的插件),现在它写的只有清单和清单蕴含的东西。
+
+### 四、`pnpm plugin:add` 交出清单那一半
+
+仓库内脚手架与产品命令分工:脚手架只做「只在这个仓库里成立」的那半——写 apps/server 的 workspace
+依赖;清单条目改由 `qualy plugin add` 写。此前脚手架用正则往文件尾追加一行,是「加一个插件到底
+做了什么」的第二个答案。重复运行仍然安全:已经在清单里就直接走 `resolve`。
+
+### 门禁(实际执行)
+
+```text
+pnpm typecheck    exit 0
+pnpm test         235 passed | 3 skipped (238),  Tests 1696 passed | 17 skipped (1713)
+tools/tests       41 passed (41),                Tests 278 passed (278)
+plugin-cli        11 passed
+```
+
+真实清单 `disable` → `enable` 往返后 `git status` 干净。
+
+**下一步**:Phase H 是本轮计划的最后一节,收尾做全量验收。
