@@ -1,5 +1,6 @@
 import { Config, Context, Effect, Layer, Schema } from 'effect'
 import type { CosSettings } from './backend.ts'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // Which bucket, and who this process is to it.
 //
@@ -33,9 +34,7 @@ export const config = (
   Layer.effect(
     CosStorageConfig,
     Effect.gen(function* () {
-      const declared = yield* Schema.decodeUnknownEffect(CosManifestConfig)(manifest, {
-        onExcessProperty: 'error',
-      })
+      const declared = yield* decodePluginConfig(CosManifestConfig, manifest)
       const region = yield* stringOr('QUALY_STORAGE_COS_REGION', declared.region)
       const bucket = yield* stringOr('QUALY_STORAGE_COS_BUCKET', declared.bucket)
       const secretId = yield* Config.redacted('QUALY_STORAGE_COS_SECRET_ID')

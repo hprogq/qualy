@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./config": "./src/config.ts",
     "./package.json": "./package.json",
     "./assemble": "./src/assemble.ts",
     "./dev": "./src/dev.ts",

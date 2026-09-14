@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { useMemo, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageNavigate, useRunApi, cursorPages} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Button } from '@qualy/ui/button'
@@ -48,8 +48,7 @@ export default function FormulaTemplatesPage() {
           query: pageParam !== undefined ? { cursor: pageParam } : {},
         }),
       ),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    ...cursorPages,
   })
   const items = useMemo(
     () => templates.data?.pages.flatMap((page) => page.items) ?? [],

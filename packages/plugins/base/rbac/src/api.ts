@@ -37,6 +37,7 @@ import {
   pageQuery,
   trimmedName,
   uiText,
+  uuidInput,
 } from '@qualy/api-kit/schema'
 import { AccessDenied, LastAdministrator } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
@@ -46,7 +47,6 @@ import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 // A grant is created and removed rather than edited: it names a role, a
 // person and where it applies, and changing any of those is a different grant.
 
-const id = Schema.String.check(Schema.isUUID())
 
 const roleKind = Schema.Literals(['tenant', 'org'])
 const permissionTarget = Schema.Literals(['tenant', 'org-node'])
@@ -81,7 +81,7 @@ const holderPolicyWrite = Schema.Union([
   Schema.Struct({ mode: Schema.Literal('unrestricted') }),
   Schema.Struct({
     mode: Schema.Literal('allow-list'),
-    userTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+    userTypeIds: Schema.Array(uuidInput).check(Schema.isMaxLength(50)),
   }),
 ])
 
@@ -89,7 +89,7 @@ const anchorPolicyWrite = Schema.Union([
   Schema.Struct({ mode: Schema.Literal('unrestricted') }),
   Schema.Struct({
     mode: Schema.Literal('allow-list'),
-    orgTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+    orgTypeIds: Schema.Array(uuidInput).check(Schema.isMaxLength(50)),
   }),
 ])
 
@@ -156,7 +156,7 @@ const grantTarget = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('tenant') }),
   Schema.Struct({
     kind: Schema.Literal('org-node'),
-    orgNodeId: id,
+    orgNodeId: uuidInput,
     coverage: Schema.Literals(['self', 'subtree']),
   }),
 ])
@@ -217,7 +217,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.get('getRole', '/iam/roles/:roleId', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       success: Schema.Struct({ role: roleShape }),
       error: [RoleNotFound, AccessDenied],
     }).middleware(Authenticated),
@@ -244,7 +244,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.patch('updateRole', '/iam/roles/:roleId', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       payload: changed(
         {
           version: expectedVersion,
@@ -260,7 +260,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.put('setRoleStatus', '/iam/roles/:roleId/status', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       payload: Schema.Struct({
         version: expectedVersion,
         status: Schema.Literals(['active', 'disabled']),
@@ -281,7 +281,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.get('getRolePermissions', '/iam/roles/:roleId/permissions', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       // the codes the role carries AND can still use. A code whose plugin is
       // unloaded grants nothing, and the contract answers only the usable set
       success: Schema.Struct({ codes: Schema.Array(Schema.String), version: Schema.Number }),
@@ -290,7 +290,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.put('setRolePermissions', '/iam/roles/:roleId/permissions', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       payload: Schema.Struct({
         version: expectedVersion,
         codes: Schema.Array(Schema.String),
@@ -316,7 +316,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.get('getRoleEligibility', '/iam/roles/:roleId/eligibility', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       success: Schema.Struct({
         holderPolicy: holderPolicyView,
         anchorPolicy: Schema.NullOr(anchorPolicyView),
@@ -329,7 +329,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
     // which user types may hold the role, and at which org node types it may
     // be anchored. "allowed" said neither
     HttpApiEndpoint.put('setRoleEligibility', '/iam/roles/:roleId/eligibility', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       payload: Schema.Struct({
         version: expectedVersion,
         // a full replacement names both policies: omitting one and having it
@@ -357,7 +357,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
     // Which roles this one may appoint people to: the WHAT of appointment,
     // beside iam.grant.manage's WHERE. An empty list appoints nothing.
     HttpApiEndpoint.get('getRoleGrantableRoles', '/iam/roles/:roleId/grantable-roles', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       success: Schema.Struct({
         roleIds: Schema.Array(Schema.String),
         /** the offices that appoint this one: what a duty edit will echo through */
@@ -369,10 +369,10 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.put('setRoleGrantableRoles', '/iam/roles/:roleId/grantable-roles', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       payload: Schema.Struct({
         version: expectedVersion,
-        roleIds: Schema.Array(id),
+        roleIds: Schema.Array(uuidInput),
       }),
       success: Schema.Struct({ version: Schema.Number }),
       error: [
@@ -388,7 +388,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.delete('deleteRole', '/iam/roles/:roleId', {
-      params: Schema.Struct({ roleId: id }),
+      params: Schema.Struct({ roleId: uuidInput }),
       query: Schema.Struct({ version: Schema.String }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
@@ -410,9 +410,9 @@ export const accessApiGroup = HttpApiGroup.make('access')
       // "tenant" and an absent coverage quietly became "self", so a caller
       // that forgot a parameter got an answer to a different question
       query: Schema.Struct({
-        userId: id,
+        userId: uuidInput,
         target: Schema.Literals(['tenant', 'org-node']),
-        orgNodeId: Schema.optional(id),
+        orgNodeId: Schema.optional(uuidInput),
         coverage: Schema.optional(coverage),
       }),
       success: Schema.Struct({
@@ -430,21 +430,21 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.get('listRoleGrants', '/iam/role-grants', {
-      query: Schema.Struct({ orgNodeId: Schema.optional(id), ...pageQuery }),
+      query: Schema.Struct({ orgNodeId: Schema.optional(uuidInput), ...pageQuery }),
       success: pageOf(grantShape),
       error: [BadRequest, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.get('getUserRoleGrants', '/iam/users/:userId/role-grants', {
-      params: Schema.Struct({ userId: id }),
+      params: Schema.Struct({ userId: uuidInput }),
       success: Schema.Struct({ grants: Schema.Array(grantShape) }),
       error: [AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.post('createRoleGrant', '/iam/role-grants', {
-      payload: Schema.Struct({ userId: id, roleId: id, target: grantTarget }),
+      payload: Schema.Struct({ userId: uuidInput, roleId: uuidInput, target: grantTarget }),
       success: Schema.Struct({ id: Schema.String }),
       error: [
         RoleNotFound,
@@ -461,7 +461,7 @@ export const accessApiGroup = HttpApiGroup.make('access')
   )
   .add(
     HttpApiEndpoint.delete('deleteRoleGrant', '/iam/role-grants/:grantId', {
-      params: Schema.Struct({ grantId: id }),
+      params: Schema.Struct({ grantId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [GrantNotFound, RoleNotFound, TenantAdminRequired, LastAdministrator, AccessDenied],
     }).middleware(Authenticated),
@@ -470,8 +470,8 @@ export const accessApiGroup = HttpApiGroup.make('access')
     // why someone holds what they hold. Answering "allowed?" is easy; the
     // reason is what makes a wrong answer fixable, and what an audit needs
     HttpApiEndpoint.get('getUserEffectivePermissions', '/iam/users/:userId/effective-permissions', {
-      params: Schema.Struct({ userId: id }),
-      query: Schema.Struct({ orgNodeId: Schema.optional(id) }),
+      params: Schema.Struct({ userId: uuidInput }),
+      query: Schema.Struct({ orgNodeId: Schema.optional(uuidInput) }),
       success: Schema.Struct({
         permissions: Schema.Array(
           Schema.Struct({
@@ -488,9 +488,9 @@ export const accessApiGroup = HttpApiGroup.make('access')
   .add(
     HttpApiEndpoint.post('evaluateAccess', '/iam/access-evaluations', {
       payload: Schema.Struct({
-        userId: id,
+        userId: uuidInput,
         permissionCode: Schema.String.check(Schema.isMaxLength(127)),
-        orgNodeId: Schema.optional(id),
+        orgNodeId: Schema.optional(uuidInput),
       }),
       success: Schema.Struct({
         allowed: Schema.Boolean,

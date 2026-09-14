@@ -1,5 +1,6 @@
 import { Config, Context, Effect, Layer, Schema } from 'effect'
 import { sessionCookieNameFor } from './session-cookie.ts'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // What this plugin knows about its own deployment, and how it works it out.
 //
@@ -52,9 +53,7 @@ export const config = (
   Layer.effect(
     AuthConfig,
     Effect.gen(function* () {
-      yield* Schema.decodeUnknownEffect(AuthManifestConfig)(manifest, {
-        onExcessProperty: 'error',
-      })
+      yield* decodePluginConfig(AuthManifestConfig, manifest)
       // secure whenever the process is not a development one, which is the
       // rule the cordis config expressed as an 'auto' setting
       const secureCookies =

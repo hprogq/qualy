@@ -16,6 +16,7 @@ import {
   type CurrentWebRelease,
   type ReleaseStore,
 } from '@qualy/web-build/release-store'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 import { WebManifestConfig, rootsFrom } from '../config.ts'
 import { addReportRoute } from './csp-reports.ts'
 import {
@@ -71,9 +72,7 @@ export const config = (
   Layer.effect(
     WebConfig,
     Effect.gen(function* () {
-      const declared = yield* Schema.decodeUnknownEffect(WebManifestConfig)(manifest, {
-        onExcessProperty: 'error',
-      })
+      const declared = yield* decodePluginConfig(WebManifestConfig, manifest)
       // an environment setting rather than a manifest key: it changes per
       // deployment and per day, and the manifest hash must not move with it
       const cspMode = yield* Schema.decodeUnknownEffect(CspModeSetting)(

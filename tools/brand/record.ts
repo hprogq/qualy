@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
@@ -7,6 +6,7 @@ import { chromium, type BrowserContext } from 'playwright'
 
 import { repoRoot } from '../lib/manifest.ts'
 import { sessionCookieNames } from '../../packages/plugins/base/auth/src/server/session-cookie.ts'
+import { startQualyServer } from '../lib/qualy-server.ts'
 
 // Two cold starts of the real product, twelve frames each.
 //
@@ -62,35 +62,20 @@ const env = (name: string): string => {
 
 // --- the server ------------------------------------------------------------
 
-const server = spawn(
-  process.execPath,
-  ['--env-file-if-exists=.env', path.join(repoRoot, 'apps/server/src/run.ts'), 'production'],
-  { cwd: repoRoot, env: { ...process.env, PORT }, stdio: ['ignore', 'pipe', 'pipe'] },
-)
-const output: string[] = []
-server.stdout.on('data', (chunk: Buffer) => output.push(chunk.toString()))
-server.stderr.on('data', (chunk: Buffer) => output.push(chunk.toString()))
+const server = startQualyServer({ port: PORT })
 
 const stop = async () => {
-  if (server.exitCode !== null) return
-  const exited = new Promise((resolve) => server.once('exit', resolve))
-  server.kill('SIGTERM')
-  await Promise.race([exited, delay(10_000)])
-  if (server.exitCode === null) {
-    server.kill('SIGKILL')
-    await exited
-  }
+  if (server.exited() !== null) return
+  await server.stop()
 }
 
 const ready = async () => {
-  const deadline = Date.now() + 30_000
-  while (Date.now() < deadline) {
-    const response = await fetch(`${BASE}/health/ready`).catch(() => undefined)
-    if (response?.ok) return
-    await delay(200)
+  try {
+    await server.waitUntilReady()
+  } catch (error) {
+    await stop()
+    throw new Error(`the server did not become ready\n${server.output()}`, { cause: error })
   }
-  await stop()
-  throw new Error(`the server did not become ready\n${output.join('')}`)
 }
 
 /**

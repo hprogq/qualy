@@ -87,6 +87,7 @@
     "sonner": "^2.0.8"
   },
   "devDependencies": {
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:"
   }

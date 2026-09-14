@@ -1,4 +1,5 @@
 import type { BindableFormulaVersion } from './binding-catalog.ts'
+import { isoInstant } from './instant.ts'
 
 // The binding-options answer, apart from the queries behind it.
 //
@@ -9,15 +10,13 @@ import type { BindableFormulaVersion } from './binding-catalog.ts'
 // as history only: nobody may bind anything afresh today, whatever the
 // catalog would have said about this one version.
 
-const iso = (value: Date | string): string =>
-  value instanceof Date ? value.toISOString() : new Date(value).toISOString()
 
 export const bindingOptionDto = (version: BindableFormulaVersion) => ({
   versionId: version.versionId,
   functionId: version.functionId,
   functionName: version.functionName,
   versionNo: version.versionNo,
-  publishedAt: iso(version.publishedAt),
+  publishedAt: isoInstant(version.publishedAt),
   parameters: Object.keys(version.inputSchema.properties).sort(),
 })
 

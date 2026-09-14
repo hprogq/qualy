@@ -54,6 +54,7 @@ import { formulaApiGroup } from '../api.ts'
 import { FormulaLanguage } from './language.ts'
 import { FormulaLspQuota, bridgeSocket } from './lsp-bridge.ts'
 import { db } from './db.ts'
+import { isoInstant } from './instant.ts'
 import {
   FormulaTemplateLibrary,
   type TemplateDetail,
@@ -121,7 +122,7 @@ const templateSummaryDto = (row: TemplateSummary) => ({
   functionName: row.functionName,
   description: row.description,
   versionNo: Number(row.versionNo),
-  publishedAt: iso(row.publishedAt),
+  publishedAt: isoInstant(row.publishedAt),
   authorUserId: row.authorUserId,
   authorName: row.authorName,
   parameters: row.parameters,
@@ -216,8 +217,6 @@ export interface EvaluatedCase {
   readonly defect?: string
 }
 
-const iso = (value: Date | string): string =>
-  value instanceof Date ? value.toISOString() : new Date(value).toISOString()
 
 const functionDto = (row: FunctionRow) => ({
   id: row.id,
@@ -227,7 +226,7 @@ const functionDto = (row: FunctionRow) => ({
   status: (row.archivedAt === null ? 'active' : 'archived') as 'active' | 'archived',
   draftRevision: row.draftRevision,
   latestVersionNo: row.latestVersionNo === null ? null : Number(row.latestVersionNo),
-  updatedAt: iso(row.updatedAt),
+  updatedAt: isoInstant(row.updatedAt),
 })
 
 const functionDetailDto = (row: FunctionRow) => ({
@@ -241,7 +240,7 @@ const versionViewDto = (row: VersionRow) => ({
   contractSha256: row.contractSha256,
   runtimeSha256: row.runtimeSha256,
   publishedBy: row.publishedBy,
-  publishedAt: iso(row.publishedAt),
+  publishedAt: isoInstant(row.publishedAt),
 })
 
 const versionDetailDto = (row: VersionRow) => ({
@@ -942,7 +941,7 @@ export const make = Effect.fn('FormulaLibrary.make')(function* () {
     const nextCursor =
       rows.length > size
         ? encodeQueryCursor(LIST_FINGERPRINT, [
-            iso(sliced[sliced.length - 1]!.updatedAt),
+            isoInstant(sliced[sliced.length - 1]!.updatedAt),
             sliced[sliced.length - 1]!.id,
           ])
         : null

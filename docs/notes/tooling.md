@@ -4,6 +4,27 @@
 CodegenRegistry + Vite adapter),并把迁移执行下沉到 database 插件。按 CLAUDE 元规则
 (复杂度必须由已发生的问题证明其存在,外部评审意见按此过滤)与 P1 时间盒逐项裁决如下。
 
+## 后续改判:@qualy/tsconfig 建了(2026-09-14)
+
+原判是「不建共享 tsconfig 包」,CLAUDE.md 里那条还指向本文的缓建表——但表里其实没有这一行,
+引用一直是悬空的。改判的依据是数出来的:浏览器侧 19 份 tsconfig 里,
+
+```json
+"types": [], "lib": ["ES2023", "DOM", "DOM.Iterable"], "jsx": "react-jsx"
+```
+
+这三行逐字重复 15 次,每份还各自背一串 `../../../../../../tsconfig.base.json`。
+它不是「几行重复」,是**一条仓库级规则(浏览器代码不许看见 Node 全局)靠复制粘贴维持**:
+新插件少写一行 `types: []`,Node 的全局类型就静悄悄漏进浏览器程序,而没有任何门禁会说话。
+
+`packages/build/tsconfig` 现在owns三份:`base.json`(原根 base 原样搬过来)、
+`browser.json`、`vite-browser.json`。根 `tsconfig.base.json` 变成一行转发,所以服务端那些
+`extends: ../../tsconfig.base.json` 一个字都不用改。
+
+顺带记一条实测:`tsc --showConfig` **不打印 `compilerOptions.plugins`**,所以不能用它确认
+Effect 语言服务还在;确认的办法是跑 tools/tests/effect-diagnostics.test.ts,它编译一个故意写错的
+fixture 并要求诊断出现。
+
 ## 现在采纳(有真实事故/摩擦支撑)
 
 - **迁移执行下沉 database 插件**:此前 `pnpm dev` 前置 db:migrate,但直接

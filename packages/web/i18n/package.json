@@ -20,6 +20,7 @@
     "@qualy/i18n-contract": "workspace:*"
   },
   "devDependencies": {
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   }
 }

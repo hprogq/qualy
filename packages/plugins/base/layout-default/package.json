@@ -27,6 +27,7 @@
     "react-router": "catalog:"
   },
   "devDependencies": {
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   }
 }

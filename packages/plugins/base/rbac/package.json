@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@qualy/plugin-audit": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   }
 }

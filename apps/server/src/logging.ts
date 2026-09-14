@@ -2,6 +2,7 @@ import { inspect } from 'node:util'
 import chalk from 'chalk'
 import { Cause, Context, Layer, Logger, LogLevel, Option, References } from 'effect'
 import { RequestContext } from '@qualy/api-kit/request'
+import { HEALTH_LIVE_PATH, HEALTH_READY_PATH } from '@qualy/api-kit'
 
 // How this process speaks, resolved before it says anything.
 //
@@ -87,7 +88,7 @@ export function resolveLogging(
     throw new Error(`${where}.access.mode must be off, api or all`)
   }
 
-  const exclude = access.exclude ?? ['/health/live', '/health/ready']
+  const exclude = access.exclude ?? [HEALTH_LIVE_PATH, HEALTH_READY_PATH]
   if (!Array.isArray(exclude) || exclude.some((path) => typeof path !== 'string')) {
     throw new Error(`${where}.access.exclude must be a list of paths`)
   }

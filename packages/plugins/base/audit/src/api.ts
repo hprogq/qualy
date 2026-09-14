@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
-import { BadRequest, pageOf, pageQuery, uiText } from '@qualy/api-kit/schema'
+import { BadRequest, pageOf, pageQuery, uiText, uuidInput } from '@qualy/api-kit/schema'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
 import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 
@@ -10,7 +10,6 @@ import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 // by operations, so this group offers a list and the catalog that explains
 // it, and nothing else - no update, no delete, ever.
 
-const id = Schema.String.check(Schema.isUUID())
 
 const outcome = Schema.Literals(['success', 'denied', 'failure'])
 
@@ -44,7 +43,7 @@ export const auditApiGroup = HttpApiGroup.make('audit')
     HttpApiEndpoint.get('listAuditEvents', '/audit/events', {
       query: Schema.Struct({
         actionCode: Schema.optional(Schema.String.check(Schema.isMaxLength(127))),
-        actorUserId: Schema.optional(id),
+        actorUserId: Schema.optional(uuidInput),
         outcome: Schema.optional(outcome),
         targetKind: Schema.optional(Schema.String.check(Schema.isMaxLength(127))),
         targetId: Schema.optional(Schema.String.check(Schema.isMaxLength(255))),

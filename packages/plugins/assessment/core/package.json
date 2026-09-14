@@ -50,6 +50,7 @@
     "@qualy/plugin-assessment-evidence": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   },
   "peerDependencies": {

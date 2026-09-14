@@ -23,5 +23,8 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "effect": "catalog:",
     "kysely": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/tsconfig": "workspace:*"
   }
 }

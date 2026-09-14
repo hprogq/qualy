@@ -24,6 +24,7 @@
     "qcloud-cos-sts": "catalog:"
   },
   "devDependencies": {
-    "@qualy/plugin-database": "workspace:*"
+    "@qualy/plugin-database": "workspace:*",
+    "@qualy/tsconfig": "workspace:*"
   }
 }

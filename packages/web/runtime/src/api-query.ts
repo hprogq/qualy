@@ -88,6 +88,28 @@ export const effectQueryOptions = <const Key extends QueryKey, A, E>(
     queryFn: ({ signal }) => runtime.runPromise(make(), { signal }),
   })
 
+/**
+ * How every keyset list is paged, said once.
+ *
+ * Two lines, and they are two lines of PROTOCOL rather than of preference:
+ * the api answers a page with `nextCursor`, null when there is no next one,
+ * and the pager's job is to turn that into "stop". Six screens had spelled it
+ * out, and a seventh that wrote `?? null` instead of `?? undefined` would
+ * loop on the last page forever - a page that has a next cursor of null is
+ * not the same as one that has none.
+ *
+ * Deliberately just the pager. How a screen builds its query, what goes in
+ * its key, which filters take part - those differ per screen and are not
+ * boilerplate, they are the screen.
+ */
+export const cursorPages = {
+  initialPageParam: undefined as string | undefined,
+  // the page type stays the caller's: a reader that asks for less than the
+  // page carries is assignable where one asking for the whole page is wanted,
+  // so this needs no type argument at the call site
+  getNextPageParam: (last: { readonly nextCursor: string | null }) => last.nextCursor ?? undefined,
+} as const
+
 // --- the shape a page actually calls ---
 //
 // A derived client is a tree of functions returning effects; a page wants

@@ -51,6 +51,7 @@
     "@qualy/plugin-auth-local": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   }
 }

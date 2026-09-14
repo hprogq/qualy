@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
-import { QUALY_API_ID } from '@qualy/api-kit'
+import { HEALTH_LIVE_PATH, HEALTH_READY_PATH, QUALY_API_ID } from '@qualy/api-kit'
 import { Readiness } from '@qualy/api-kit/readiness'
 
 // Liveness says the process is up. Readiness says it can take traffic.
@@ -25,12 +25,12 @@ export class NotReady extends Schema.TaggedError<NotReady>()(
 
 export const healthApiGroup = HttpApiGroup.make('health')
   .add(
-    HttpApiEndpoint.get('live', '/health/live', {
+    HttpApiEndpoint.get('live', HEALTH_LIVE_PATH, {
       success: Schema.Struct({ status: Schema.Literal('live') }),
     }),
   )
   .add(
-    HttpApiEndpoint.get('ready', '/health/ready', {
+    HttpApiEndpoint.get('ready', HEALTH_READY_PATH, {
       success: Schema.Struct({ status: Schema.Literal('ready') }),
       error: NotReady,
     }),

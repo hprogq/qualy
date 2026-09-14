@@ -22,5 +22,8 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "aegis-web-sdk": "catalog:",
     "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/tsconfig": "workspace:*"
   }
 }

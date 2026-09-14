@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Building2Icon, PlusIcon, SearchIcon, UserRoundIcon } from 'lucide-react'
-import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState } from '@qualy/web-runtime'
+import { PageLink, useApi, useRunApi, useApiQuery, usePageQueryState, cursorPages} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import * as stylex from '@stylexjs/stylex'
@@ -268,8 +268,7 @@ export default function UsersPage() {
           query: { ...filter, ...(pageParam !== undefined ? { cursor: pageParam } : {}) },
         }),
       ),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    ...cursorPages,
     enabled: active !== undefined,
   })
   const rows = useMemo(() => users.data?.pages.flatMap((page) => page.items) ?? [], [users.data])

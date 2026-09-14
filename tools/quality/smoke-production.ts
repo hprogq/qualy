@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process'
 import path from 'node:path'
-import { setTimeout as delay } from 'node:timers/promises'
 import { repoRoot } from '../lib/manifest.ts'
+import { startQualyServer } from '../lib/qualy-server.ts'
+import { HEALTH_LIVE_PATH, HEALTH_READY_PATH } from '@qualy/api-kit'
 import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/release-store.ts'
 
 // The production boot, actually booted - through the same runner `pnpm
@@ -18,32 +18,21 @@ import { readCurrentWebRelease, storeAt } from '../../packages/build/web/src/rel
 const PORT = process.env.SMOKE_PORT ?? '3197'
 const base = `http://127.0.0.1:${PORT}`
 
-const server = spawn(
-  process.execPath,
-  ['--env-file-if-exists=.env', path.join(repoRoot, 'apps/server/src/run.ts'), 'production'],
-  {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      PORT,
-      // production refuses to assume a database; the smoke falls back to the
-      // compose stack's url, the same one development assumes. Migrations
-      // follow the runner's production default (off): the lineage was applied
-      // by `pnpm qualy deploy`, exactly as a deployment would have.
-      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
+const server = startQualyServer({
+  port: PORT,
+  env: {
+    // production refuses to assume a database; the smoke falls back to the
+    // compose stack's url, the same one development assumes. Migrations
+    // follow the runner's production default (off): the lineage was applied
+    // by `pnpm qualy deploy`, exactly as a deployment would have.
+    DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
   },
-)
-const output: string[] = []
-server.stdout.on('data', (chunk: Buffer) => output.push(chunk.toString()))
-server.stderr.on('data', (chunk: Buffer) => output.push(chunk.toString()))
-const exited = new Promise<number | null>((resolve) => server.on('exit', resolve))
+})
 
 const fail = (message: string): never => {
   console.error(`smoke: ${message}`)
-  console.error(output.join(''))
-  server.kill('SIGKILL')
+  console.error(server.output())
+  server.kill()
   process.exit(1)
 }
 
@@ -58,21 +47,10 @@ const check = async (
   console.log(`smoke: ${route} ok`)
 }
 
-// readiness includes migrations and the database probe, so give it time
-const deadline = Date.now() + 90_000
-for (;;) {
-  const ready = await fetch(`${base}/health/ready`).then(
-    (response) => response.status,
-    () => 0,
-  )
-  if (ready === 200) break
-  if (server.exitCode !== null) fail(`process exited ${server.exitCode} before becoming ready`)
-  if (Date.now() > deadline) fail('never became ready')
-  await delay(500)
-}
-console.log('smoke: /health/ready ok')
+await server.waitUntilReady().catch((error: unknown) => fail(String(error)))
+console.log(`smoke: ${HEALTH_READY_PATH} ok`)
 
-await check('/health/live', async (response) =>
+await check(HEALTH_LIVE_PATH, async (response) =>
   response.status === 200 ? undefined : `status ${response.status}`,
 )
 let shell = ''
@@ -210,8 +188,7 @@ await check(asset!, async (response) => {
   console.log(`smoke: ${asset} served brotli-compressed`)
 }
 
-server.kill('SIGTERM')
-const code = await Promise.race([exited, delay(15_000).then(() => 'timeout' as const)])
-if (code === 'timeout') fail('SIGTERM did not stop the process within 15s')
-if (code !== 0) fail(`shutdown exited ${code}`)
+const stopped = await server.stop()
+if (stopped.timedOut) fail(`SIGTERM did not stop the process within ${String(stopped.ms)}ms`)
+if (stopped.exitCode !== 0) fail(`shutdown exited ${String(stopped.exitCode)}`)
 console.log('smoke: shutdown clean (exit 0)')

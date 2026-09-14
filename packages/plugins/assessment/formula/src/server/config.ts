@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Schema } from 'effect'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // What the manifest says about this plugin.
 //
@@ -35,9 +36,7 @@ export const config = (
   Layer.effect(
     FormulaSettings,
     Effect.gen(function* () {
-      const declared = yield* Schema.decodeUnknownEffect(FormulaManifestConfig)(manifest, {
-        onExcessProperty: 'error',
-      })
+      const declared = yield* decodePluginConfig(FormulaManifestConfig, manifest)
       return FormulaSettings.of({ authoring: declared.authoring ?? false })
     }),
   )

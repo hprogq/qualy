@@ -22,6 +22,7 @@
     "@qualy/plugin-auth": "workspace:*",
     "@qualy/plugin-database": "workspace:*",
     "@qualy/plugin-rbac": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   },
   "dependencies": {

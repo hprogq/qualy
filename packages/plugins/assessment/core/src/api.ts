@@ -10,6 +10,7 @@ import {
   countedPageOf,
   pageOf,
   trimmedName,
+  uuidInput,
 } from '@qualy/api-kit/schema'
 import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 
@@ -74,7 +75,6 @@ import {
 // discipline: product-domain first segment, nouns, no action segments, state
 // as an idempotent subresource PUT.
 
-const id = Schema.String.check(Schema.isUUID())
 
 /** an instant on the wire; the service parses it and refuses the unreadable */
 const isoInstant = Schema.String.check(Schema.isMaxLength(64))
@@ -211,15 +211,15 @@ const phaseView = Schema.Struct({
  * cannot blank what it never rendered.
  */
 const phaseSpec = Schema.Struct({
-  id: Schema.optional(id),
+  id: Schema.optional(uuidInput),
   phaseKey: kebabCode,
   displayName: trimmedName(100),
   description: Schema.optional(boundedText(500)),
   /** what the phase is waiting for, while it has no time of its own */
   entryNote: Schema.optional(boundedText(200)),
   permissionProfile: Schema.optional(Schema.Array(Schema.String)),
-  itemScope: Schema.optional(Schema.Array(id)),
-  participantScope: Schema.optional(Schema.Array(id)),
+  itemScope: Schema.optional(Schema.Array(uuidInput)),
+  participantScope: Schema.optional(Schema.Array(uuidInput)),
 })
 
 const planWarning = Schema.Struct({
@@ -333,12 +333,12 @@ const accessSyncPageView = Schema.Struct({
  * UrlParams.ts). A schema asking for an array therefore refused every request
  * that named exactly one thing, which is most of them.
  */
-export const idList = Schema.Union([Schema.Array(id), id])
+export const idList = Schema.Union([Schema.Array(uuidInput), uuidInput])
 
 /** the query one import runs: units to look under, and which kinds of people */
 const importSelection = Schema.Struct({
-  orgNodeIds: Schema.Array(id),
-  userTypeIds: Schema.Array(id),
+  orgNodeIds: Schema.Array(uuidInput),
+  userTypeIds: Schema.Array(uuidInput),
 })
 
 const templateKind = Schema.Literals(['timeline', 'phase'])
@@ -478,14 +478,14 @@ const sortOrder = Schema.Number.check(
 )
 
 const scoreGroupSpec = Schema.Struct({
-  id: Schema.optional(id),
+  id: Schema.optional(uuidInput),
   /**
    * The group this one adds up into; null is top level.
    *
    * Stated rather than optional: a payload that left it out moved every group
    * it named to the top, so forgetting the field flattened the tree.
    */
-  parentGroupId: Schema.NullOr(id),
+  parentGroupId: Schema.NullOr(uuidInput),
   name: trimmedName(255),
   /**
    * Stated for the same reason as the parent: a set replacement reads an
@@ -870,7 +870,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // the rounds nobody can act on: an appointment away from moving again
     HttpApiEndpoint.get('reviewAlerts', '/assessment/batches/:batchId/review-alerts', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({
         groups: Schema.Array(
           Schema.Struct({
@@ -893,8 +893,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // whether a review stage as composed has anybody in it, unit by unit
     HttpApiEndpoint.get('reviewCoverage', '/assessment/batches/:batchId/review-coverage', {
-      params: Schema.Struct({ batchId: id }),
-      query: Schema.Struct({ nodeTypeId: id, roleIds: idList }),
+      params: Schema.Struct({ batchId: uuidInput }),
+      query: Schema.Struct({ nodeTypeId: uuidInput, roleIds: idList }),
       success: Schema.Struct({
         nodes: Schema.Array(
           Schema.Struct({
@@ -912,14 +912,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // the real compile a save would run, so a screen never offers a binding
     // the save is about to refuse
     HttpApiEndpoint.post('previewScoring', '/assessment/batches/:batchId/scoring-preview', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
         itemType: Schema.String,
         formConfig: Schema.Unknown,
         calculator: Schema.Struct({ ref: Schema.String, config: Schema.Unknown }),
         /** the question being edited, when there is one: the server reads
          *  ITS frozen plan for the binding being continued */
-        itemId: Schema.optional(id),
+        itemId: Schema.optional(uuidInput),
       }),
       success: Schema.Struct({
         calculator: Schema.Struct({ ref: Schema.String, contractHash: Schema.String }),
@@ -940,7 +940,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // what a question's configuration may point at, for whoever runs the round
     HttpApiEndpoint.get('itemOptions', '/assessment/batches/:batchId/item-options', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({
         orgTypes: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
         roles: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
@@ -951,7 +951,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // gone without ceremony: only for questions nothing ever happened to
     HttpApiEndpoint.delete('deleteItem', '/assessment/items/:itemId', {
-      params: Schema.Struct({ itemId: id }),
+      params: Schema.Struct({ itemId: uuidInput }),
       success: Schema.Struct({}),
       error: [ItemNotFound, BatchReadOnly, ItemActionRefused, AccessDenied],
     }).middleware(Authenticated),
@@ -962,7 +962,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // the round answers for its configuration too, so it refuses the way a
     // save of that configuration would
     HttpApiEndpoint.put('setItemStatus', '/assessment/items/:itemId/status', {
-      params: Schema.Struct({ itemId: id }),
+      params: Schema.Struct({ itemId: uuidInput }),
       payload: Schema.Union([
         Schema.Struct({ status: Schema.Literals(['voided']), reason: boundedText(500) }),
         Schema.Struct({ status: Schema.Literals(['active']) }),
@@ -982,7 +982,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // the caller's own standing in the round, computed on request by the
     // one scorer; never anybody else's through this path
     HttpApiEndpoint.get('getMyResult', '/assessment/batches/:batchId/me/result', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: myResultView,
       error: [BatchNotFound, ParticipantNotFound, ScoringUnavailable, AccessDenied],
     }).middleware(Authenticated),
@@ -994,7 +994,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       query: Schema.Struct({
         ...pageQuery,
         /** narrow the queue to one batch; the workbench always asks this way */
-        batchId: Schema.optional(id),
+        batchId: Schema.optional(uuidInput),
       }),
       success: Schema.Struct({
         items: Schema.Array(reviewInboxItem),
@@ -1014,7 +1014,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // list, because the queue is what can be decided now and a round paused
     // for material cannot (§32.65 ⑤).
     HttpApiEndpoint.get('listAwaitingSupplements', '/assessment/review/supplement-requests', {
-      query: Schema.Struct({ ...pageQuery, batchId: id }),
+      query: Schema.Struct({ ...pageQuery, batchId: uuidInput }),
       success: Schema.Struct({
         items: Schema.Array(
           Schema.Struct({
@@ -1040,14 +1040,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('getReviewInstance', '/assessment/review/instances/:instanceId', {
-      params: Schema.Struct({ instanceId: id }),
+      params: Schema.Struct({ instanceId: uuidInput }),
       success: Schema.Struct({ review: reviewDetailView }),
       error: [ReviewNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.post('decideReview', '/assessment/review/instances/:instanceId/decisions', {
-      params: Schema.Struct({ instanceId: id }),
+      params: Schema.Struct({ instanceId: uuidInput }),
       payload: Schema.Struct({
         decision: Schema.Literals(['approve', 'reject', 'escalate']),
         /**
@@ -1089,8 +1089,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // grant is provider-shaped and the page never looks inside it
     HttpApiEndpoint.post('prepareAttachmentUpload', '/assessment/attachments/uploads', {
       payload: Schema.Struct({
-        batchId: id,
-        itemId: id,
+        batchId: uuidInput,
+        itemId: uuidInput,
         filename: trimmedName(255),
         declaredMime: boundedText(127),
         /** decimal bytes; a string because numbers this size deserve exactness */
@@ -1111,7 +1111,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       'completeAttachmentUpload',
       '/assessment/attachments/uploads/:reservationId/complete',
       {
-        params: Schema.Struct({ reservationId: id }),
+        params: Schema.Struct({ reservationId: uuidInput }),
         success: Schema.Struct({
           id: Schema.String,
           filename: Schema.String,
@@ -1129,7 +1129,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // it is bounded by the ids asked for and carries no cursor; ids the
     // reader may not touch are omitted, indistinguishable from absent ones.
     HttpApiEndpoint.get('listAttachmentDescriptors', '/assessment/attachments', {
-      query: Schema.Struct({ id: Schema.ArrayEnsure(id) }),
+      query: Schema.Struct({ id: Schema.ArrayEnsure(uuidInput) }),
       success: Schema.Struct({ attachments: Schema.Array(attachmentDescriptor) }),
       error: [BadRequest, AccessDenied],
     }).middleware(Authenticated),
@@ -1138,7 +1138,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // what the file is and how to fetch it: a short-lived url for stores
     // that sign their own, or this api's own content door
     HttpApiEndpoint.get('describeAttachment', '/assessment/attachments/:attachmentId', {
-      params: Schema.Struct({ attachmentId: id }),
+      params: Schema.Struct({ attachmentId: uuidInput }),
       success: attachmentDescriptor,
       error: [AttachmentUnavailable, AccessDenied],
     }).middleware(Authenticated),
@@ -1146,7 +1146,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // the bytes themselves, for deployments whose store has no public door
     HttpApiEndpoint.get('getAttachmentContent', '/assessment/attachments/:attachmentId/content', {
-      params: Schema.Struct({ attachmentId: id }),
+      params: Schema.Struct({ attachmentId: uuidInput }),
       success: HttpApiSchema.StreamUint8Array(),
       error: [AttachmentUnavailable, AccessDenied],
     }).middleware(Authenticated),
@@ -1155,7 +1155,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // the way back in after a refresh: everything the caller has filed in
     // this round, whatever state it is in now
     HttpApiEndpoint.get('listMyEntries', '/assessment/batches/:batchId/me/entries', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct(pageQuery),
       success: Schema.Struct({
         /** the caller's own membership row: what a first filing names */
@@ -1195,7 +1195,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * only the caller's own participant row is the whole authorization.
      */
     HttpApiEndpoint.put('markMyEntryRead', '/assessment/batches/:batchId/me/items/:itemId/read', {
-      params: Schema.Struct({ batchId: id, itemId: id }),
+      params: Schema.Struct({ batchId: uuidInput, itemId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [BatchNotFound, ParticipantNotFound, AccessDenied],
     }).middleware(Authenticated),
@@ -1210,7 +1210,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * something the round asked of them.
      */
     HttpApiEndpoint.get('getMyOverview', '/assessment/batches/:batchId/me/overview', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({
         participant: Schema.NullOr(
           Schema.Struct({
@@ -1295,7 +1295,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * stays on that object's own page.
      */
     HttpApiEndpoint.get('listMyActivity', '/assessment/batches/:batchId/me/activity', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({
         ...pageQuery,
         perspective: Schema.optional(Schema.Literals(['participant', 'reviewer'])),
@@ -1355,7 +1355,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // the whole account of one claim: every revision as written, every
     // round it went through, every word said in them
     HttpApiEndpoint.get('getEntryHistory', '/assessment/entries/:entryId/revisions', {
-      params: Schema.Struct({ entryId: id }),
+      params: Schema.Struct({ entryId: uuidInput }),
       success: Schema.Struct({
         entry: entryView,
         revisions: Schema.Array(
@@ -1412,8 +1412,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     HttpApiEndpoint.post('createEntry', '/assessment/entries', {
       payload: Schema.Struct({
-        itemId: id,
-        participantId: id,
+        itemId: uuidInput,
+        participantId: uuidInput,
         /**
          * Which version of the question the screen was drawn from.
          *
@@ -1421,7 +1421,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
          * must send it, or an answer written against yesterday's rules is
          * filed against today's without anybody being told.
          */
-        expectedItemRevisionId: Schema.optional(id),
+        expectedItemRevisionId: Schema.optional(uuidInput),
         payload: configJson,
         note: Schema.optional(boundedText(500)),
         /**
@@ -1452,17 +1452,17 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('getEntry', '/assessment/entries/:entryId', {
-      params: Schema.Struct({ entryId: id }),
+      params: Schema.Struct({ entryId: uuidInput }),
       success: Schema.Struct({ entry: entryView }),
       error: [EntryNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.post('reviseEntry', '/assessment/entries/:entryId/revisions', {
-      params: Schema.Struct({ entryId: id }),
+      params: Schema.Struct({ entryId: uuidInput }),
       payload: Schema.Struct({
         /** the version of the question this revision answers; see createEntry */
-        expectedItemRevisionId: Schema.optional(id),
+        expectedItemRevisionId: Schema.optional(uuidInput),
         payload: configJson,
         note: Schema.optional(boundedText(500)),
       }),
@@ -1480,7 +1480,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.put('setEntryStatus', '/assessment/entries/:entryId/status', {
-      params: Schema.Struct({ entryId: id }),
+      params: Schema.Struct({ entryId: uuidInput }),
       /** submit is in_review, withdraw is draft, abandoning the claim is voided */
       payload: Schema.Struct({
         status: Schema.Literals(['in_review', 'draft', 'voided']),
@@ -1490,7 +1490,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
          * filing on is a decision about today's rules, and this says which
          * rules the person deciding had in front of them.
          */
-        expectedItemRevisionId: Schema.optional(id),
+        expectedItemRevisionId: Schema.optional(uuidInput),
       }),
       success: Schema.Struct({ entry: entryView }),
       error: [
@@ -1511,7 +1511,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // decideReview, which keeps asking whether the caller really holds the
     // level the round is standing at (§32.62).
     HttpApiEndpoint.post('interveneOnEntry', '/assessment/entries/:entryId/interventions', {
-      params: Schema.Struct({ entryId: id }),
+      params: Schema.Struct({ entryId: uuidInput }),
       payload: Schema.Struct({
         kind: Schema.Literals(['return-for-revision', 'void']),
         /** what the person filing it has to act on; never optional */
@@ -1527,7 +1527,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // by the claim, not by the round: an administrative record has no round
     // and is still a decision its subject may disagree with
     HttpApiEndpoint.post('appealEntry', '/assessment/entries/:entryId/appeals', {
-      params: Schema.Struct({ entryId: id }),
+      params: Schema.Struct({ entryId: uuidInput }),
       payload: Schema.Struct({ reason: boundedText(2000) }),
       success: Schema.Struct({ review: reviewDetailView }),
       error: [
@@ -1547,7 +1547,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       'requestSupplement',
       '/assessment/review/instances/:instanceId/supplement-requests',
       {
-        params: Schema.Struct({ instanceId: id }),
+        params: Schema.Struct({ instanceId: uuidInput }),
         payload: Schema.Struct({
           instructions: boundedText(2000),
           requirements: Schema.Array(
@@ -1577,7 +1577,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       'cancelSupplement',
       '/assessment/review/supplement-requests/:requestId/status',
       {
-        params: Schema.Struct({ requestId: id }),
+        params: Schema.Struct({ requestId: uuidInput }),
         payload: Schema.Struct({ status: Schema.Literals(['cancelled']) }),
         success: Schema.Struct({ review: reviewDetailView }),
         error: [
@@ -1597,7 +1597,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       'answerSupplement',
       '/assessment/review/supplement-requests/:requestId/responses',
       {
-        params: Schema.Struct({ requestId: id }),
+        params: Schema.Struct({ requestId: uuidInput }),
         payload: Schema.Struct({ payload: configJson }),
         success: Schema.Struct({ review: reviewDetailView }),
         error: [
@@ -1614,7 +1614,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('listItems', '/assessment/batches/:batchId/items', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({
         items: Schema.Array(itemView),
         capabilities: Schema.Struct({ canManage: Schema.Boolean }),
@@ -1624,11 +1624,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.post('createItem', '/assessment/batches/:batchId/items', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
         itemType: itemTypeCode,
         title: trimmedName(255),
-        scoreGroupId: id,
+        scoreGroupId: uuidInput,
         maxEntries: Schema.optional(Schema.NullOr(positiveCount)),
         sortOrder: Schema.optional(sortOrder),
         config: itemConfigPayload,
@@ -1644,11 +1644,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       'getRecognitionContract',
       '/assessment/items/:itemId/recognition-contract',
       {
-        params: Schema.Struct({ itemId: id }),
+        params: Schema.Struct({ itemId: uuidInput }),
         success: Schema.Struct({
           contract: Schema.NullOr(
             Schema.Struct({
-              itemRevisionId: id,
+              itemRevisionId: uuidInput,
               /** opaque recognition ids with their frozen schemas, in display order */
               fields: Schema.Array(Schema.Struct({ id: Schema.String, schema: configJson })),
               defaults: Schema.Array(
@@ -1674,7 +1674,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('getItem', '/assessment/items/:itemId', {
-      params: Schema.Struct({ itemId: id }),
+      params: Schema.Struct({ itemId: uuidInput }),
       success: Schema.Struct({
         item: itemView,
         capabilities: Schema.Struct({ canManage: Schema.Boolean }),
@@ -1684,11 +1684,11 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.patch('updateItem', '/assessment/items/:itemId', {
-      params: Schema.Struct({ itemId: id }),
+      params: Schema.Struct({ itemId: uuidInput }),
       payload: changed(
         {
           title: Schema.optional(trimmedName(255)),
-          scoreGroupId: Schema.optional(id),
+          scoreGroupId: Schema.optional(uuidInput),
           maxEntries: Schema.optional(Schema.NullOr(positiveCount)),
           sortOrder: Schema.optional(sortOrder),
           config: Schema.optional(itemConfigPayload),
@@ -1699,7 +1699,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
            * second would be answering an impact report drawn from a state
            * that no longer exists.
            */
-          expectedRevisionId: Schema.optional(Schema.NullOr(id)),
+          expectedRevisionId: Schema.optional(Schema.NullOr(uuidInput)),
           /**
            * What should happen to work already under way. Absent on the
            * first pass: a save that would disturb something comes back with
@@ -1725,7 +1725,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('listScoreGroups', '/assessment/batches/:batchId/score-groups', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({
         groups: Schema.Array(scoreGroupView),
         /** what a save of this tree has to state it was composed against */
@@ -1737,7 +1737,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.put('replaceScoreGroups', '/assessment/batches/:batchId/score-groups', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
         groups: Schema.Array(scoreGroupSpec),
         expectedVersion,
@@ -1801,19 +1801,19 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // Nothing rides this stream that its holder was not already entitled to
     // ask for.
     HttpApiEndpoint.get('watchBatch', '/assessment/batches/:batchId/events', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: HttpApiSchema.StreamSse({ data: batchLiveEvent }),
       error: [AccessDenied],
     }).middleware(Authenticated),
     HttpApiEndpoint.get('getBatch', '/assessment/batches/:batchId', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({ batch: batchView }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.patch('updateBatch', '/assessment/batches/:batchId', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: changed(
         {
           name: Schema.optional(trimmedName(255)),
@@ -1847,7 +1847,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // brings the phase it continues into, because the round that follows an
     // archive is a new period, not the old one resumed.
     HttpApiEndpoint.put('setBatchStatus', '/assessment/batches/:batchId/status', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Union([
         Schema.Struct({
           status: Schema.Literal('archived'),
@@ -1880,7 +1880,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // Who may work on this batch. Not "roles": a role is the tenant's word for
     // what somebody generally does, and this is what this batch accepted of it.
     HttpApiEndpoint.get('listAccess', '/assessment/batches/:batchId/access', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct(pageQuery),
       // paged over people, not over the rows behind them: a limit on sources
       // would show one of somebody's two roles and call it their standing
@@ -1895,7 +1895,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // what the organization now offers that this batch has not accepted, and
     // what has already lapsed; a preview because widening needs a decision
     HttpApiEndpoint.get('previewAccessSync', '/assessment/batches/:batchId/access/sync', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct(pageQuery),
       success: accessSyncPageView,
       error: [BatchNotFound, AccessDenied, BadRequest],
@@ -1905,12 +1905,12 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // Only what was chosen, and only as much of it as the organization still
     // offers: the selection narrows the change, it cannot invent one.
     HttpApiEndpoint.post('applyAccessSync', '/assessment/batches/:batchId/access/sync', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
         accept: Schema.Array(
           Schema.Struct({
             kind: Schema.Literals(['new', 'widened']),
-            id,
+            id: uuidInput,
             permissions: Schema.Array(Schema.String),
           }),
         ),
@@ -1925,7 +1925,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       'setAccessDeny',
       '/assessment/batches/:batchId/access/:userId/permissions/:permission',
       {
-        params: Schema.Struct({ batchId: id, userId: id, permission: Schema.String }),
+        params: Schema.Struct({ batchId: uuidInput, userId: uuidInput, permission: Schema.String }),
         payload: Schema.Struct({
           denied: Schema.Boolean,
           reason: Schema.optional(boundedText(500)),
@@ -1941,10 +1941,10 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // could actually give them there. Served from this domain so the screen
     // needs no authority over the tenant's roles beyond its own.
     HttpApiEndpoint.get('staffOptions', '/assessment/batches/:batchId/staff-options', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({
-        userId: Schema.optional(id),
-        orgNodeId: Schema.optional(id),
+        userId: Schema.optional(uuidInput),
+        orgNodeId: Schema.optional(uuidInput),
       }),
       success: Schema.Struct({
         nodes: Schema.Array(
@@ -1981,14 +1981,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // somebody brought in for this round: an ordinary assignment confined to
     // this batch, accepted into it in the same breath
     HttpApiEndpoint.post('addStaff', '/assessment/batches/:batchId/access', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
         // both sides are sets: one person over two classes and two people over
         // one are the same errand, and doing either one pair at a time is a
         // sequence of writes somebody can be interrupted halfway through
-        userIds: Schema.Array(id),
-        orgNodeIds: Schema.Array(id),
-        roleId: id,
+        userIds: Schema.Array(uuidInput),
+        orgNodeIds: Schema.Array(uuidInput),
+        roleId: uuidInput,
         validUntil: Schema.optional(isoInstant),
       }),
       success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
@@ -1997,7 +1997,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.delete('removeStaff', '/assessment/batches/:batchId/access/sources/:sourceId', {
-      params: Schema.Struct({ batchId: id, sourceId: id }),
+      params: Schema.Struct({ batchId: uuidInput, sourceId: uuidInput }),
       success: Schema.Struct({ staff: Schema.Array(accessSubjectView) }),
       error: [BatchNotFound, AccessInvalid, AccessDenied],
     }).middleware(Authenticated),
@@ -2006,14 +2006,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // A draft nobody ever started. Anything that ran is archived, never
     // deleted: the history is the point.
     HttpApiEndpoint.delete('deleteBatch', '/assessment/batches/:batchId', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({ deleted: Schema.Boolean }),
       error: [BatchNotFound, BatchStatusInvalid, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.get('getPhases', '/assessment/batches/:batchId/phases', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({ phases: Schema.Array(phaseView) }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
@@ -2024,9 +2024,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // phases to the end, copied server-side so its provenance lands with
     // them. Times are not part of it. Exactly one of the two fields.
     HttpApiEndpoint.put('putPhases', '/assessment/batches/:batchId/phases', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
-        fromTemplateId: Schema.optional(id),
+        fromTemplateId: Schema.optional(uuidInput),
         phases: Schema.optional(Schema.Array(phaseSpec)),
       }).check(
         Schema.makeFilter(
@@ -2054,7 +2054,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // schedules it, null withdraws the schedule. Time is committed from the
     // top of the plan down and withdrawn from the bottom up (32.41)
     HttpApiEndpoint.put('schedulePhase', '/assessment/batches/:batchId/phases/:phaseId/schedule', {
-      params: Schema.Struct({ batchId: id, phaseId: id }),
+      params: Schema.Struct({ batchId: uuidInput, phaseId: uuidInput }),
       payload: Schema.Struct({ plannedEntryAt: Schema.NullOr(isoInstant) }),
       success: Schema.Struct({ phases: Schema.Array(phaseView) }),
       error: [
@@ -2073,9 +2073,9 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   .add(
     // advancement replaces which phase is current, one boundary at a time
     HttpApiEndpoint.put('advancePhase', '/assessment/batches/:batchId/phase', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: Schema.Struct({
-        to: id,
+        to: uuidInput,
         force: Schema.optional(Schema.Boolean),
         reason: Schema.optional(boundedText(500)),
       }),
@@ -2085,14 +2085,14 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('getTimeline', '/assessment/batches/:batchId/timeline', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       success: Schema.Struct({ timeline: Schema.Array(timelineEntry) }),
       error: [BatchNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.get('listParticipants', '/assessment/batches/:batchId/participants', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({
         ...pageQuery,
         status: Schema.optional(Schema.Literals(['active', 'excluded'])),
@@ -2110,8 +2110,8 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // organization resolves its units to people first, so there is one way in
     // and it takes user ids.
     HttpApiEndpoint.post('addParticipants', '/assessment/batches/:batchId/participants', {
-      params: Schema.Struct({ batchId: id }),
-      payload: Schema.Struct({ userIds: Schema.Array(id) }),
+      params: Schema.Struct({ batchId: uuidInput }),
+      payload: Schema.Struct({ userIds: Schema.Array(uuidInput) }),
       success: Schema.Struct({ added: Schema.Number, skipped: Schema.Number }),
       error: [BatchNotFound, BatchReadOnly, ParticipantInvalid, AccessDenied],
     }).middleware(Authenticated),
@@ -2120,7 +2120,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // how many people a selection would add, so the number can be confirmed
     // before anybody is added
     HttpApiEndpoint.get('previewImport', '/assessment/batches/:batchId/import-candidates', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({
         orgNodeIds: idList,
         userTypeIds: idList,
@@ -2134,7 +2134,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
     // asked for and how many people it added, and nothing reads it to decide
     // anything afterwards.
     HttpApiEndpoint.post('importParticipants', '/assessment/batches/:batchId/participant-imports', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       payload: importSelection,
       success: Schema.Struct({ added: Schema.Number }),
       error: [
@@ -2148,7 +2148,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.get('listImports', '/assessment/batches/:batchId/participant-imports', {
-      params: Schema.Struct({ batchId: id }),
+      params: Schema.Struct({ batchId: uuidInput }),
       query: Schema.Struct({ ...pageQuery }),
       success: Schema.Struct({
         nextCursor: Schema.NullOr(Schema.String),
@@ -2175,7 +2175,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
       'setParticipantStatus',
       '/assessment/batches/:batchId/participants/:participantId/status',
       {
-        params: Schema.Struct({ batchId: id, participantId: id }),
+        params: Schema.Struct({ batchId: uuidInput, participantId: uuidInput }),
         payload: Schema.Struct({
           status: Schema.Literals(['active', 'excluded']),
           reason: Schema.optional(boundedText(500)),
@@ -2241,7 +2241,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.patch('updateTemplate', '/assessment/phase-templates/:templateId', {
-      params: Schema.Struct({ templateId: id }),
+      params: Schema.Struct({ templateId: uuidInput }),
       payload: changed(
         {
           name: Schema.optional(trimmedName(100)),
@@ -2255,7 +2255,7 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
   )
   .add(
     HttpApiEndpoint.delete('deleteTemplate', '/assessment/phase-templates/:templateId', {
-      params: Schema.Struct({ templateId: id }),
+      params: Schema.Struct({ templateId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [TemplateNotFound, AccessDenied],
     }).middleware(Authenticated),

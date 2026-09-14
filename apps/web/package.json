@@ -37,6 +37,7 @@
   "devDependencies": {
     "@qualy/assembly": "workspace:*",
     "@qualy/i18n-contract": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
     "@qualy/value-schema": "workspace:*",
     "@qualy/web-build": "workspace:*",
     "@stylexjs/stylex": "catalog:",

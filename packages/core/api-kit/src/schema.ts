@@ -133,6 +133,21 @@ export const pageSize = (limit: string | undefined, fallback: number): number =>
 // boundary, it fails at the database, where a check violation is not a
 // translatable sqlstate and so becomes a 500 rather than a 400.
 
+/**
+ * An identifier a caller supplies, validated at the boundary.
+ *
+ * Checked before any work happens, so a malformed id is a 400 rather than a
+ * query that finds nothing and answers 404 - two very different things to
+ * whoever is reading the failure.
+ *
+ * Deliberately named for the direction it travels. A response is NOT built
+ * from this: a row written before the check existed is still a legitimate
+ * row, and a stricter encoder would make it unserializable - the api would
+ * answer 500 for data it is perfectly able to read. Inputs get the narrow
+ * schema; outputs stay `Schema.String`.
+ */
+export const uuidInput = Schema.String.check(Schema.isUUID())
+
 /** lowercase kebab-case, the shape every stable code in the system has */
 export const kebabCode = Schema.String.check(
   Schema.isPattern(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),

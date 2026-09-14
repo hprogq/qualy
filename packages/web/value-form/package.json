@@ -18,6 +18,7 @@
     "react": "catalog:"
   },
   "devDependencies": {
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:"
   }
 }

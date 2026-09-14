@@ -8,6 +8,7 @@ import {
   usePageNavigate,
   usePageRouteParams,
   useRunApi,
+  cursorPages,
 } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -728,8 +729,7 @@ function MyDesk({
           },
         }),
       ),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    ...cursorPages,
   })
 
   const rows = useMemo(

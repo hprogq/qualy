@@ -22,5 +22,8 @@
     "@qualy/api-kit": "workspace:*",
     "@qualy/plugin-kit": "workspace:*",
     "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@qualy/tsconfig": "workspace:*"
   }
 }

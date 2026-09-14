@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { boundedInt, changed, trimmedName } from '@qualy/api-kit/schema'
+import { boundedInt, changed, trimmedName, uuidInput } from '@qualy/api-kit/schema'
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi'
 import { Authenticated } from '@qualy/plugin-auth/server/session-contract'
 import { AccessDenied } from '@qualy/rbac-contract/effect'
@@ -31,11 +31,6 @@ import {
 // idempotent subresource replacement rather than an action segment, which is
 // why this is a PUT on /type and not a POST to /retype.
 
-// An id a caller supplies is validated before any work happens, so a
-// malformed one is a 400 rather than a query that finds nothing and answers
-// 404. The oRPC contract has always done this; the port had let it through as
-// a plain string.
-const id = Schema.String.check(Schema.isUUID())
 // Payload primitives only, the constants the contract declares. A
 // response DTO keeps a bare String: it describes what is stored, and putting an
 // input constraint there would refuse to encode a legitimate row written before
@@ -78,8 +73,8 @@ const orgRule = Schema.Struct({
 export const orgApiGroup = HttpApiGroup.make('org')
   .add(
     HttpApiEndpoint.put('changeNodeType', '/org/nodes/:nodeId/type', {
-      params: Schema.Struct({ nodeId: id }),
-      payload: Schema.Struct({ orgTypeId: id }),
+      params: Schema.Struct({ nodeId: uuidInput }),
+      payload: Schema.Struct({ orgTypeId: uuidInput }),
       success: Schema.Struct({ node: orgNode }),
       // every way this can be refused, each carrying its own status. The caller
       // has to deal with them, which is the point of declaring them here.
@@ -98,7 +93,7 @@ export const orgApiGroup = HttpApiGroup.make('org')
   )
   .add(
     HttpApiEndpoint.patch('updateNode', '/org/nodes/:nodeId', {
-      params: Schema.Struct({ nodeId: id }),
+      params: Schema.Struct({ nodeId: uuidInput }),
       payload: changed({ name: Schema.optional(nodeName), sortOrder: Schema.optional(sortOrder) }, [
         'name',
         'sortOrder',
@@ -111,7 +106,7 @@ export const orgApiGroup = HttpApiGroup.make('org')
   )
   .add(
     HttpApiEndpoint.delete('deleteNode', '/org/nodes/:nodeId', {
-      params: Schema.Struct({ nodeId: id }),
+      params: Schema.Struct({ nodeId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [NodeNotFound, NodeIsRoot, NodeHasChildren, AccessDenied, NodeConflict, NodeInUse],
     }).middleware(Authenticated),
@@ -134,7 +129,7 @@ export const orgApiGroup = HttpApiGroup.make('org')
   )
   .add(
     HttpApiEndpoint.patch('updateType', '/org/types/:typeId', {
-      params: Schema.Struct({ typeId: id }),
+      params: Schema.Struct({ typeId: uuidInput }),
       payload: changed({ name: Schema.optional(typeName), sortOrder: Schema.optional(sortOrder) }, [
         'name',
         'sortOrder',
@@ -147,7 +142,7 @@ export const orgApiGroup = HttpApiGroup.make('org')
   )
   .add(
     HttpApiEndpoint.delete('deleteType', '/org/types/:typeId', {
-      params: Schema.Struct({ typeId: id }),
+      params: Schema.Struct({ typeId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [TypeNotFound, TypeInUse, AccessDenied, TypeConflict],
     }).middleware(Authenticated),
@@ -162,14 +157,14 @@ export const orgApiGroup = HttpApiGroup.make('org')
     // idempotent: the pair identifies the rule, so repeating converges rather
     // than conflicting, which is why this is a PUT on the pair
     HttpApiEndpoint.put('putRule', '/org/type-rules/:parentTypeId/:childTypeId', {
-      params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
+      params: Schema.Struct({ parentTypeId: uuidInput, childTypeId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [RuleInvalid, TypeNotFound, RuleCycle, AccessDenied, TypeConflict, TypeInUse],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.delete('deleteRule', '/org/type-rules/:parentTypeId/:childTypeId', {
-      params: Schema.Struct({ parentTypeId: id, childTypeId: id }),
+      params: Schema.Struct({ parentTypeId: uuidInput, childTypeId: uuidInput }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [RuleNotFound, RuleInUse, AccessDenied, TypeConflict, TypeInUse],
     }).middleware(Authenticated),
@@ -178,7 +173,7 @@ export const orgApiGroup = HttpApiGroup.make('org')
     // the whole authorized projection, or one node's subtree when asked. A self
     // anchor yields the node alone; only a subtree anchor yields what is below.
     HttpApiEndpoint.get('getTree', '/org/tree', {
-      query: Schema.Struct({ nodeId: Schema.optional(id) }),
+      query: Schema.Struct({ nodeId: Schema.optional(uuidInput) }),
       success: Schema.Struct({
         roots: Schema.Array(Schema.String),
         nodes: Schema.Array(orgNode),
@@ -188,7 +183,7 @@ export const orgApiGroup = HttpApiGroup.make('org')
   )
   .add(
     HttpApiEndpoint.get('getNode', '/org/nodes/:nodeId', {
-      params: Schema.Struct({ nodeId: id }),
+      params: Schema.Struct({ nodeId: uuidInput }),
       success: Schema.Struct({ node: orgNode }),
       // a node the caller cannot see answers exactly as a missing one
       error: [NodeNotFound, AccessDenied],
@@ -197,8 +192,8 @@ export const orgApiGroup = HttpApiGroup.make('org')
   .add(
     HttpApiEndpoint.post('createNode', '/org/nodes', {
       payload: Schema.Struct({
-        parentId: id,
-        orgTypeId: id,
+        parentId: uuidInput,
+        orgTypeId: uuidInput,
         name: nodeName,
         sortOrder: Schema.optional(sortOrder),
       }),
@@ -210,9 +205,9 @@ export const orgApiGroup = HttpApiGroup.make('org')
     // a relocation is an idempotent replacement of where the node sits, not an
     // action, which is why it is a PUT on /placement
     HttpApiEndpoint.put('setNodePlacement', '/org/nodes/:nodeId/placement', {
-      params: Schema.Struct({ nodeId: id }),
+      params: Schema.Struct({ nodeId: uuidInput }),
       payload: Schema.Struct({
-        parentId: id,
+        parentId: uuidInput,
         sortOrder: Schema.optional(sortOrder),
       }),
       success: Schema.Struct({ node: orgNode }),

@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { useApi, useApiQuery, usePageNavigate, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageNavigate, useRunApi, cursorPages} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { Button } from '@qualy/ui/button'
 import { Input } from '@qualy/ui/input'
@@ -125,8 +125,7 @@ export default function FormulaListPage() {
           query: pageParam !== undefined ? { cursor: pageParam } : {},
         }),
       ),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    ...cursorPages,
   })
   const items = useMemo(
     () => functions.data?.pages.flatMap((page) => page.items) ?? [],

@@ -1,4 +1,5 @@
 import { Config, Context, Effect, Layer, Schema } from 'effect'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // What core storage was told about its own deployment: how much, and where
 // new uploads go.
@@ -144,9 +145,7 @@ export const config = (
   Layer.effect(
     StorageConfig,
     Effect.gen(function* () {
-      const declared = yield* Schema.decodeUnknownEffect(StorageManifestConfig)(manifest, {
-        onExcessProperty: 'error',
-      })
+      const declared = yield* decodePluginConfig(StorageManifestConfig, manifest)
       const defaultBackend = yield* Config.string('QUALY_STORAGE_DEFAULT_BACKEND').pipe(
         Config.withDefault(declared.defaultBackend ?? 'local'),
       )

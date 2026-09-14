@@ -2,6 +2,7 @@ import { Context, Effect, Option } from 'effect'
 import { Headers, HttpEffect, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { RequestContext } from '@qualy/api-kit/request'
+import { QUALY_REQUEST_ID_HEADER } from '@qualy/api-kit'
 
 // The headers every api and health response carries, unless the handler
 // already said otherwise.
@@ -65,7 +66,7 @@ export const withResponseHeaders = (
   // cached by name and a correlation header on it would name the wrong
   // request - and in a header, never in a body: it is transport metadata,
   // and every endpoint's schema stays the schema of its own answer.
-  if (requestId !== undefined) missing('x-qualy-request-id', requestId)
+  if (requestId !== undefined) missing(QUALY_REQUEST_ID_HEADER, requestId)
   missing('cache-control', isEventStream(response) ? 'no-cache' : 'no-store')
   missing('x-content-type-options', 'nosniff')
   missing('cross-origin-resource-policy', 'same-origin')

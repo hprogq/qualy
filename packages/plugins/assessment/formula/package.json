@@ -60,6 +60,7 @@
     "@qualy/plugin-audit": "workspace:*",
     "@qualy/sandbox-authoring": "workspace:*",
     "@qualy/sandbox-runtime": "workspace:*",
+    "@qualy/tsconfig": "workspace:*",
     "@types/react": "catalog:",
     "@types/ws": "^8.18.1",
     "ws": "8.21.3"

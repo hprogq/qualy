@@ -1,0 +1,13 @@
+{
+  "name": "@qualy/tsconfig",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    "./base.json": "./base.json",
+    "./browser.json": "./browser.json",
+    "./vite-browser.json": "./vite-browser.json",
+    "./package.json": "./package.json"
+  }
+}

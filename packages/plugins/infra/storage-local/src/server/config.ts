@@ -1,5 +1,6 @@
 import { Config, Context, Effect, Layer, Schema } from 'effect'
 import path from 'node:path'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // Where this machine keeps its files.
 //
@@ -25,9 +26,7 @@ export const config = (
   Layer.effect(
     LocalStorageConfig,
     Effect.gen(function* () {
-      const declared = yield* Schema.decodeUnknownEffect(LocalManifestConfig)(manifest, {
-        onExcessProperty: 'error',
-      })
+      const declared = yield* decodePluginConfig(LocalManifestConfig, manifest)
       const root = yield* Config.string('QUALY_STORAGE_LOCAL_ROOT').pipe(
         Config.withDefault(declared.root ?? './data/storage'),
       )

@@ -1,10 +1,11 @@
-import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { lockPathFor, readLock, readManifest, renderManifest, writeAtomic } from '@qualy/assembly'
 import { repoRoot } from '../../lib/manifest.ts'
+import { startQualyServer } from '../../lib/qualy-server.ts'
 
 // The system under test, from the outside: a benchmark assembly of its own,
 // the real production entry spawned over it, the readiness and shutdown the
@@ -158,46 +159,34 @@ export const startServer = (options: {
   /** flags for the server's own node - a heap ceiling, gc tracing - never the driver's */
   readonly nodeArgs?: readonly string[]
 }): RunningServer => {
-  const { QUALY_MIGRATIONS: _migrations, NODE_ENV: _mode, ...inherited } = process.env
-  const child: ChildProcess = spawn(
-    process.execPath,
-    [
-      ...(options.nodeArgs ?? []),
-      '--env-file-if-exists=.env',
-      path.join(repoRoot, 'apps/server/src/run.ts'),
-      'production',
-    ],
-    {
-      cwd: repoRoot,
-      env: {
-        ...inherited,
-        PORT: String(options.port),
-        QUALY_CONFIG: options.manifest,
-        DATABASE_URL: options.databaseUrl,
-        QUALY_LOG_FORMAT: 'json',
-        QUALY_LOG_LEVEL: options.level,
-        QUALY_ACCESS_LOG: 'off',
-        QUALY_BOOT_TIMING: '1',
-        QUALY_SHUTDOWN_TIMEOUT: '25',
-        ...(options.otlpEndpoint === null
-          ? {}
-          : {
-              OTEL_EXPORTER_OTLP_ENDPOINT: options.otlpEndpoint,
-              OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
-              OTEL_METRIC_EXPORT_INTERVAL: '1000',
-            }),
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  )
   const lines: LogLine[] = []
-  let pending = ''
-  const consume = (chunk: Buffer) => {
-    pending += chunk.toString()
-    const parts = pending.split('\n')
-    pending = parts.pop() ?? ''
-    for (const raw of parts) {
-      if (raw.trim() === '') continue
+  const server = startQualyServer({
+    port: options.port,
+    ...(options.nodeArgs === undefined ? {} : { nodeArgs: options.nodeArgs }),
+    env: {
+      // never inherited: the runner decides the mode, and migrations stay off
+      // the way a deployment has them
+      NODE_ENV: undefined,
+      QUALY_MIGRATIONS: undefined,
+      QUALY_CONFIG: options.manifest,
+      DATABASE_URL: options.databaseUrl,
+      QUALY_LOG_FORMAT: 'json',
+      QUALY_LOG_LEVEL: options.level,
+      QUALY_ACCESS_LOG: 'off',
+      QUALY_BOOT_TIMING: '1',
+      QUALY_SHUTDOWN_TIMEOUT: '25',
+      ...(options.otlpEndpoint === null
+        ? {}
+        : {
+            OTEL_EXPORTER_OTLP_ENDPOINT: options.otlpEndpoint,
+            OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+            OTEL_METRIC_EXPORT_INTERVAL: '1000',
+          }),
+    },
+    // the log is json here, and every number this benchmark reports is read
+    // out of it - which is the whole reason the shared harness hands lines
+    // over rather than keeping them
+    onLine: (raw) => {
       try {
         const parsed = JSON.parse(raw) as {
           level?: string
@@ -213,20 +202,9 @@ export const startServer = (options: {
       } catch {
         lines.push({ level: '', message: raw, annotations: {}, raw })
       }
-    }
-  }
-  child.stdout!.on('data', consume)
-  child.stderr!.on('data', consume)
-  let ended: string | null = null
-  const exited = new Promise<number | null>((resolve) =>
-    child.on('exit', (code, signal) => {
-      // a fatal error in v8 ends the process by signal, with no exit code:
-      // both spellings are "gone", and a request must not be sent to a ghost
-      ended = code === null ? String(signal) : String(code)
-      resolve(code)
-    }),
-  )
-  const base = `http://127.0.0.1:${options.port}`
+    },
+  })
+
   const bootMark = (name: string): number | null => {
     const found = lines.find(
       (line) => line.message.startsWith('boot ') && line.message.endsWith(name),
@@ -236,49 +214,34 @@ export const startServer = (options: {
   }
 
   return {
-    pid: child.pid!,
-    base,
+    pid: server.pid,
+    base: server.base,
     lines,
-    exited: () => ended,
+    exited: server.exited,
     ready: async () => {
-      // readiness includes the database probe, so give it time
-      const deadline = Date.now() + 90_000
-      for (;;) {
-        const status = await fetch(`${base}/health/ready`).then(
-          (response) => response.status,
-          () => 0,
-        )
-        if (status === 200) break
-        if (child.exitCode !== null) {
-          throw new Error(
-            `the server exited ${child.exitCode} before becoming ready:\n${lines.map((line) => line.raw).join('\n')}`,
-          )
-        }
-        if (Date.now() > deadline) throw new Error('the server never became ready')
-        await delay(500)
-      }
+      await server.waitUntilReady().catch((error: unknown) => {
+        throw new Error(`${String(error)}:\n${lines.map((line) => line.raw).join('\n')}`)
+      })
       return { listeningMs: bootMark('http listening') }
     },
     stop: async () => {
-      const started = performance.now()
-      child.kill('SIGTERM')
-      const code = await Promise.race([exited, delay(40_000).then(() => 'timeout' as const)])
-      const timedOut = code === 'timeout'
-      if (timedOut) child.kill('SIGKILL')
+      // longer than the shared default: this is the measurement, and a
+      // benchmark that killed the process would be measuring its own timeout
+      const stopped = await server.stop({ timeoutMs: 40_000 })
       const finalizers = lines.flatMap((line) => {
         const done = /^shutdown finalizer done:\s+(\S+) (\d+)ms$/.exec(line.message)
         return done ? [{ name: done[1]!, ms: Number(done[2]) }] : []
       })
       const stuck = lines.find((line) => line.message.includes('still releasing'))
       return {
-        exitCode: timedOut ? null : code,
-        shutdownMs: Math.round(performance.now() - started),
+        exitCode: stopped.exitCode,
+        shutdownMs: stopped.ms,
         finalizers,
         stillReleasing: stuck?.message ?? null,
-        timedOut,
+        timedOut: stopped.timedOut,
       }
     },
-    kill: () => child.kill('SIGKILL'),
+    kill: server.kill,
   }
 }
 

@@ -11,6 +11,7 @@ import {
   pageOf,
   pageQuery,
   trimmedName,
+  uuidInput,
 } from '@qualy/api-kit/schema'
 
 import { Authenticated, AuthRequired } from './server/session-contract.ts'
@@ -44,7 +45,6 @@ import {
 // through an idempotent subresource rather than an action segment, which is
 // why enabling a type is a PUT on /status and not a POST to /enable.
 
-const id = Schema.String.check(Schema.isUUID())
 
 const resourceStatus = Schema.Literals(['active', 'disabled'])
 
@@ -95,7 +95,7 @@ const placementPolicy = Schema.Union([
   Schema.Struct({ mode: Schema.Literal('unrestricted') }),
   Schema.Struct({
     mode: Schema.Literal('allow-list'),
-    orgTypeIds: Schema.Array(id).check(Schema.isMinLength(1), Schema.isMaxLength(50)),
+    orgTypeIds: Schema.Array(uuidInput).check(Schema.isMinLength(1), Schema.isMaxLength(50)),
   }),
 ])
 
@@ -175,7 +175,7 @@ const audiencePolicyWrite = Schema.Union([
   Schema.Struct({ mode: Schema.Literal('unrestricted') }),
   Schema.Struct({
     mode: Schema.Literal('allow-list'),
-    userTypeIds: Schema.Array(id).check(Schema.isMaxLength(50)),
+    userTypeIds: Schema.Array(uuidInput).check(Schema.isMaxLength(50)),
   }),
 ])
 
@@ -202,7 +202,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   )
   .add(
     HttpApiEndpoint.put('setAuthProviderAudience', '/auth/providers/:providerId/audience', {
-      params: Schema.Struct({ providerId: id }),
+      params: Schema.Struct({ providerId: uuidInput }),
       payload: Schema.Struct({ version: expectedVersion, audience: audiencePolicyWrite }),
       success: Schema.Struct({ version: Schema.Number }),
       error: [
@@ -255,14 +255,14 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   )
   .add(
     HttpApiEndpoint.get('getUserType', '/iam/user-types/:userTypeId', {
-      params: Schema.Struct({ userTypeId: id }),
+      params: Schema.Struct({ userTypeId: uuidInput }),
       success: Schema.Struct({ userType }),
       error: [UserTypeNotFound, AccessDenied],
     }).middleware(Authenticated),
   )
   .add(
     HttpApiEndpoint.patch('updateUserType', '/iam/user-types/:userTypeId', {
-      params: Schema.Struct({ userTypeId: id }),
+      params: Schema.Struct({ userTypeId: uuidInput }),
       payload: changed(
         {
           ...versioned,
@@ -278,7 +278,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   )
   .add(
     HttpApiEndpoint.put('setUserTypeStatus', '/iam/user-types/:userTypeId/status', {
-      params: Schema.Struct({ userTypeId: id }),
+      params: Schema.Struct({ userTypeId: uuidInput }),
       payload: Schema.Struct({ ...versioned, status: Schema.Literals(['active', 'disabled']) }),
       success: Schema.Struct({ version: Schema.Number }),
       error: [
@@ -292,7 +292,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   )
   .add(
     HttpApiEndpoint.delete('deleteUserType', '/iam/user-types/:userTypeId', {
-      params: Schema.Struct({ userTypeId: id }),
+      params: Schema.Struct({ userTypeId: uuidInput }),
       query: Schema.Struct({ version: Schema.String }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
@@ -308,7 +308,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   )
   .add(
     HttpApiEndpoint.get('getPlacementPolicy', '/iam/user-types/:userTypeId/placement-policy', {
-      params: Schema.Struct({ userTypeId: id }),
+      params: Schema.Struct({ userTypeId: uuidInput }),
       success: Schema.Struct({
         // nested as the contract declares it, and 'tenant-root' is readable
         // and not writable: it is the rule the database enforces for a system
@@ -323,7 +323,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     // replaced whole, and the mode is stated rather than inferred: an empty
     // allow-list means "nowhere", not "anywhere"
     HttpApiEndpoint.put('setPlacementPolicy', '/iam/user-types/:userTypeId/placement-policy', {
-      params: Schema.Struct({ userTypeId: id }),
+      params: Schema.Struct({ userTypeId: uuidInput }),
       // the same constrained union createUserType takes: an empty allow-list
       // commits a type nobody may stand anywhere with, which the contract
       // refuses and this accepted
@@ -394,13 +394,13 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     HttpApiEndpoint.get('listUsers', '/iam/users', {
       query: Schema.Struct({
-        orgNodeId: id,
+        orgNodeId: uuidInput,
         // an enum says what it means; `subtree=false` never did
         scope: Schema.optional(Schema.Literals(['self', 'subtree'])),
         /** absent = the living; 'deleted' = the removed, for the restore view */
         status: Schema.optional(Schema.Literals(['active', 'disabled', 'deleted'])),
         search: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
-        userTypeId: Schema.optional(id),
+        userTypeId: Schema.optional(uuidInput),
         ...pageQuery,
       }),
       success: pageOf(user),
@@ -411,7 +411,7 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     // the whole of one person, which is also what a card opened on their name
     // shows: no separate endpoint, because there is no second kind of person
     HttpApiEndpoint.get('getUser', '/iam/users/:userId', {
-      params: Schema.Struct({ userId: id }),
+      params: Schema.Struct({ userId: uuidInput }),
       success: userDetail,
       error: [UserNotFound, AccessDenied],
     }).middleware(Authenticated),
@@ -420,8 +420,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     HttpApiEndpoint.post('createUser', '/iam/users', {
       payload: Schema.Struct({
         displayName: trimmedName(100),
-        userTypeId: id,
-        primaryOrgNodeId: id,
+        userTypeId: uuidInput,
+        primaryOrgNodeId: uuidInput,
         businessNo: Schema.optional(trimmedName(64)),
       }),
       success: Schema.Struct({ id: Schema.String }),
@@ -437,12 +437,12 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   )
   .add(
     HttpApiEndpoint.patch('updateUser', '/iam/users/:userId', {
-      params: Schema.Struct({ userId: id }),
+      params: Schema.Struct({ userId: uuidInput }),
       payload: changed(
         {
           version: expectedVersion,
           displayName: Schema.optional(trimmedName(100)),
-          userTypeId: Schema.optional(id),
+          userTypeId: Schema.optional(uuidInput),
           businessNo: Schema.optional(trimmedName(64)),
         },
         ['displayName', 'userTypeId', 'businessNo'],
@@ -467,8 +467,8 @@ export const identityApiGroup = HttpApiGroup.make('identity')
   .add(
     // where someone stands, replaced rather than acted on
     HttpApiEndpoint.put('setUserPlacement', '/iam/users/:userId/placement', {
-      params: Schema.Struct({ userId: id }),
-      payload: Schema.Struct({ primaryOrgNodeId: id, version: expectedVersion }),
+      params: Schema.Struct({ userId: uuidInput }),
+      payload: Schema.Struct({ primaryOrgNodeId: uuidInput, version: expectedVersion }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [
         UserNotFound,
@@ -488,12 +488,12 @@ export const identityApiGroup = HttpApiGroup.make('identity')
     // restore each answer to their own permission; the two optional fields
     // are for restoring somebody whose old standing no longer exists.
     HttpApiEndpoint.put('setUserStatus', '/iam/users/:userId/status', {
-      params: Schema.Struct({ userId: id }),
+      params: Schema.Struct({ userId: uuidInput }),
       payload: Schema.Struct({
         status: Schema.Literals(['active', 'disabled', 'deleted']),
         version: expectedVersion,
-        userTypeId: Schema.optional(id),
-        primaryOrgNodeId: Schema.optional(id),
+        userTypeId: Schema.optional(uuidInput),
+        primaryOrgNodeId: Schema.optional(uuidInput),
       }),
       success: Schema.Struct({ ok: Schema.Literal(true) }),
       error: [

@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import * as stylex from '@stylexjs/stylex'
-import { useApi, useApiQuery, usePageQueryState, useRunApi } from '@qualy/web-runtime'
+import { useApi, useApiQuery, usePageQueryState, useRunApi, cursorPages} from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { AsyncSection } from '@qualy/ui/admin'
@@ -255,8 +255,7 @@ export default function AuditEventsPage() {
           query: { ...filter, ...(pageParam !== undefined ? { cursor: pageParam } : {}) },
         }),
       ),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    ...cursorPages,
   })
   const rows = useMemo(() => events.data?.pages.flatMap((page) => page.items) ?? [], [events.data])
 

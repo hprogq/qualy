@@ -14093,3 +14093,54 @@ catalog 里的 pin 属于 Phase 1。
 
 **下一步**:Phase 2(SourceMap)。需要的 numeric ProjectID 是 159421,与浏览器上报 ID 不是一回事,
 它属于 release pipeline 的 secret,不进应用进程。
+
+## 给已成事实的仓库级规则一个 owner(2026-09-14)
+
+用户系统扫了一轮 `main`,列出八类「已经形成仓库级约束,但靠各处复制粘贴维持」的重复,并明确了
+优先级与**哪些不该抽**。按那份裁决做,共五项;P2 的 mutation 样板按用户意见克制不动。
+
+判断标准是用户给的那句:**不是为了减少代码行数,而是给已经存在的规则一个唯一 owner。**
+
+- **`@qualy/tsconfig`(与 CLAUDE.md 原判相反,已改判并更新宪法)**。浏览器侧 19 份 tsconfig 里
+  `types: [] / lib: [...DOM] / jsx: react-jsx` 逐字重复 15 次。它不是几行重复,是「浏览器代码不许
+  看见 Node 全局」这条规则靠复制粘贴维持——新插件少写一行 `types: []`,Node 全局类型就静悄悄漏进去,
+  没有任何门禁会说话。`packages/build/tsconfig` 现在 owns `base.json` / `browser.json` /
+  `vite-browser.json`;根 `tsconfig.base.json` 变成一行转发,服务端那些 `extends` 一个字没改。
+  插件 client 配置从 8 行降到 4 行,`../../../../../../` 消失。理由记进 notes/tooling.md
+  (CLAUDE.md 原来那条指向的缓建表其实没有这一行,引用一直是悬空的)。
+- **`uuidInput` 进 `@qualy/api-kit/schema`**。五个插件各写一份 `Schema.String.check(Schema.isUUID())`,
+  而那个模块的职责本来就是「每个 payload 的输入原语」。按用户的理由命名为 `uuidInput` 而不是 `id`:
+  **输入要校验 UUID,响应 DTO 不该套同一约束**——一条早于约束写入的合法旧行会连 encode 都出不去,
+  把 400 变成 500。org 那处解释「为什么校验」的注释搬进了公共处。
+- **`decodePluginConfig` 进 `@qualy/plugin-kit/config`**。9 处插件清单 decode 各自拼
+  `onExcessProperty: 'error'`。重复的不是语法而是一条策略:**清单里插件不认识的键必须拒绝**,
+  否则 `sampleRtae: 0.5` 看起来配置成功、实际无人读取。按用户意见**只收口清单通道**,
+  不做泛滥的 `strictDecode`——assessment 的评分语言与 ui-registry 的 collection 各有各的理由,
+  那是它们自己的决定。现在全仓 `onExcessProperty: 'error'` 的字面量只剩 helper 自己一处。
+- **`tools/lib/qualy-server.ts`**。smoke / CSP gate / brand recorder / benchmark 四份各自
+  spawn+轮询+SIGTERM。真正的问题不是那二十行,是**语义已经漂了**:同一个 readiness 有 90s 和 30s
+  两种 deadline,SIGTERM 之后有的等退出有的不等——而「等不等」正是部署滚动重启依赖的那件事。
+  benchmark 原来那份最完整却躲在 `tools/benchmarks/support/`,质量门禁不该反过来依赖 benchmark。
+  现在四份共用 `startQualyServer`,benchmark 在它上面加自己的 JSON 日志解析、boot mark、
+  finalizer 计时(它的 stop 超时显式写 40s,因为那是它要测的量)。
+- **协议 token 归 `@qualy/api-kit` 根导出**:`HEALTH_LIVE_PATH`、`HEALTH_READY_PATH`、
+  `QUALY_REQUEST_ID_HEADER`。放根而不是新建 `/health` 叶子,因为根本来就是零 import 的常量模块、
+  `QUALY_API_PREFIX` 的家,浏览器和工具都能安全读。按用户的原则:**兼容性 golden test 继续硬编码**
+  ——一个读常量的 golden test 会跟着改名一起沉默。
+- **`cursorPages` 进 web-runtime**。六个页面重复同样两行。同样是协议而非偏好:写 `?? null` 而不是
+  `?? undefined` 的第七个页面会在最后一页无限循环。按用户意见只抽这两行,不去碰
+  `infiniteQueryOptions` 那层泛型。
+- **formula 插件内的 `isoInstant`** 两处合一,留在插件内,不上升。
+
+明确**没有**抽的(用户列的「不建议抽」,采纳):`src/client/api.ts` 每插件一份(它表达的是这个插件的
+浏览器 API 面,是有意义的边界)、`Schema.TaggedError` 不做 factory(class 本身就是领域词汇)、
+package.json 的四行公共字段、`FROZEN_ROUTES`(它是独立 oracle,自动生成就失去发现误改的能力)、
+长得一样的领域字面量(`active`/`disabled`/`archived` 在不同领域不是同一个概念)。
+
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 230 passed | 3 skipped (233);
+  Tests 1636 passed | 17 skipped (1653);`pnpm test:browser` 50 / 369;`pnpm test:browser:webkit` 2 / 14;
+  `pnpm build` exit 0(`local-20260914T160440Z-98a992f2`,123 assets);`check-staged-web` exit 0;
+  `check-csp-build` exit 0;`smoke-production` 全 ok(经新 harness 启停,shutdown exit 0);
+  `check-csp-enforce` 三页 0 violation(同样经新 harness)。
+- **实测记录一条**:`tsc --showConfig` **不打印 `compilerOptions.plugins`**,所以它不能用来确认
+  Effect 语言服务还在;确认办法是 effect-diagnostics 门禁(编译故意写错的 fixture,要求诊断出现)。

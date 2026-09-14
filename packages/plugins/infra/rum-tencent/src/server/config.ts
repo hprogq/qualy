@@ -1,5 +1,6 @@
 import { Config, Effect, Layer, Schema, Context } from 'effect'
 import { RUM_ENVIRONMENTS, type TencentRumPublicConfig } from '../settings.ts'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // Which reporting project this deployment writes to.
 //
@@ -49,9 +50,7 @@ export const config = (
   Layer.effect(
     TencentRumConfig,
     Effect.gen(function* () {
-      const declared = yield* Schema.decodeUnknownEffect(TencentRumManifestConfig)(manifest, {
-        onExcessProperty: 'error',
-      })
+      const declared = yield* decodePluginConfig(TencentRumManifestConfig, manifest)
       const id = yield* stringOr('QUALY_RUM_TENCENT_ID', declared.id)
       const environment = yield* Config.literals(RUM_ENVIRONMENTS, 'QUALY_RUM_TENCENT_ENV').pipe(
         Config.withDefault(declared.environment ?? 'production'),

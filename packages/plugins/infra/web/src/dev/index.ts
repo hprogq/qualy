@@ -5,6 +5,7 @@ import type { Logger as ViteLogger } from 'vite'
 import type { DevServiceContext } from '@qualy/plugin-kit/dev'
 import { proxyTable } from './proxy.ts'
 import { WebManifestConfig, rootsFrom } from '../config.ts'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 // The browser's development server, in its own process
 // (docs/runtime-redesign.md §29, §31).
@@ -105,9 +106,7 @@ export interface PreparedWeb {
  * executed; `acquire` is what runs it.
  */
 export const prepare = Effect.fn('Web.prepare')(function* (context: DevServiceContext) {
-  const declared = yield* Schema.decodeUnknownEffect(WebManifestConfig)(context.plugin.config, {
-    onExcessProperty: 'error',
-  }).pipe(
+  const declared = yield* decodePluginConfig(WebManifestConfig, context.plugin.config).pipe(
     Effect.mapError(
       (error) => new WebUnservable({ message: `web configuration is invalid: ${error.message}` }),
     ),

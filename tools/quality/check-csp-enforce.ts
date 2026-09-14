@@ -1,8 +1,6 @@
-import { spawn } from 'node:child_process'
-import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
-import { repoRoot } from '../lib/manifest.ts'
+import { startQualyServer } from '../lib/qualy-server.ts'
 
 // The shell's content security policy, enforced, in a browser.
 //
@@ -20,43 +18,22 @@ import { repoRoot } from '../lib/manifest.ts'
 const PORT = process.env.CSP_SMOKE_PORT ?? '3198'
 const base = `http://127.0.0.1:${PORT}`
 
-const server = spawn(
-  process.execPath,
-  ['--env-file-if-exists=.env', path.join(repoRoot, 'apps/server/src/run.ts'), 'production'],
-  {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      PORT,
-      QUALY_CSP_MODE: 'enforce',
-      DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
+const server = startQualyServer({
+  port: PORT,
+  env: {
+    QUALY_CSP_MODE: 'enforce',
+    DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://qualy:qualy@localhost:5432/qualy',
   },
-)
-const output: string[] = []
-server.stdout.on('data', (chunk: Buffer) => output.push(chunk.toString()))
-server.stderr.on('data', (chunk: Buffer) => output.push(chunk.toString()))
+})
 
 const fail = (message: string): never => {
   console.error(`check-csp-enforce: ${message}`)
-  console.error(output.join('').split('\n').slice(-20).join('\n'))
-  server.kill('SIGKILL')
+  console.error(server.output().split('\n').slice(-20).join('\n'))
+  server.kill()
   process.exit(1)
 }
 
-const deadline = Date.now() + 90_000
-for (;;) {
-  const ready = await fetch(`${base}/health/ready`).then(
-    (response) => response.status,
-    () => 0,
-  )
-  if (ready === 200) break
-  if (server.exitCode !== null)
-    fail(`process exited ${String(server.exitCode)} before becoming ready`)
-  if (Date.now() > deadline) fail('never became ready')
-  await delay(500)
-}
+await server.waitUntilReady().catch((error: unknown) => fail(String(error)))
 const policy = (await fetch(`${base}/`)).headers.get('content-security-policy')
 if (policy === null) fail('the shell carries no enforced content-security-policy header')
 console.log(`check-csp-enforce: enforcing ${policy}`)
@@ -122,5 +99,5 @@ try {
 if (violations.length > 0) {
   fail(`${String(violations.length)} policy violation(s):\n  ${violations.join('\n  ')}`)
 }
-server.kill('SIGTERM')
+await server.stop()
 console.log('check-csp-enforce: no violations under the enforced policy')

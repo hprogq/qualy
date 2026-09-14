@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { Config, Context, Effect, Layer, Option, Redacted, Schema } from 'effect'
 import { LOCAL_FALLBACK, MIGRATIONS_FOLDER } from '../defaults.ts'
+import { decodePluginConfig } from '@qualy/plugin-kit/config'
 
 /**
  * What the database needs to know.
@@ -65,9 +66,7 @@ export const config = (
       // the whole channel exists to prevent. `url` is the one that would hurt
       // - a manifest is committed, so a connection string in it is a
       // credential in version control, and it is read from the environment.
-      const declared = yield* Schema.decodeUnknownEffect(DatabaseManifestConfig)(manifest, {
-        onExcessProperty: 'error',
-      })
+      const declared = yield* decodePluginConfig(DatabaseManifestConfig, manifest)
       const environment = yield* Config.string('NODE_ENV').pipe(Config.withDefault('development'))
       // asking whether it was set, rather than comparing the value: the local
       // default is a real connection string somebody may well have configured

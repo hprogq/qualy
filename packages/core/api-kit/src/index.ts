@@ -39,6 +39,33 @@ export const QUALY_API_ID = 'qualy'
  */
 export const QUALY_API_PREFIX = '/api'
 
+// --- the wire names that outlive the code behind them ---
+//
+// A path an orchestrator probes and a header an operator greps for are public
+// protocol, the same way a route is: whoever depends on one is outside this
+// repository, or outside the process. They live here, in the one module of the
+// api kit that imports nothing, so that operational tooling and a browser can
+// both read them without dragging a server in.
+//
+// Compatibility tests deliberately keep their own literals. A golden test
+// exists to notice a rename, and one that read the constant would follow the
+// rename in silence - the same reasoning as the frozen route table.
+
+/** the probe that says the process is up, deliberately outside the api prefix */
+export const HEALTH_LIVE_PATH = '/health/live'
+
+/** the probe that says the process can take traffic */
+export const HEALTH_READY_PATH = '/health/ready'
+
+/**
+ * The header every api and health response carries, and the one thing that
+ * ties a browser report to a server log line.
+ *
+ * Lowercase because that is how it travels on http/2 and how every reader of
+ * it - `Headers.get`, a log pipeline, an sdk's response allowlist - spells it.
+ */
+export const QUALY_REQUEST_ID_HEADER = 'x-qualy-request-id'
+
 // --- pagination ---
 
 // Keyset pagination, in the kit because the alternative is what every list
