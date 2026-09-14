@@ -13973,3 +13973,57 @@ P5。hero 右栏此前是 `PLACEHOLDER_AGENDA`(写死 12 / 2),`listBatches` 只�
 - **`root` 补 `background-color: tokens.background`**:回弹时露出的是页面自己的底,不是浏览器画布。
 - **已知取舍(接受)**:页面停在顶部时顶栏是透明无线的,此时下拉会看到内容从字标那一行底下经过。要消掉得让"已滚动"的玻璃在 `scrollTop < 0` 时也保持,那需要 scroll 监听,与现有 observer 方案冲突;回弹只有几十毫秒,且只在页面已在顶部时发生,那时下面没多少内容会穿上来。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 226 passed | 3 skipped (229); Tests 1604 passed | 17 skipped (1621);`pnpm test:browser` Test Files 48 passed (48); Tests 347 passed (347)(shell 套件里"栏仍贴着 scrollport 顶"那条原样通过:覆盖层 top 与 main top 都是 0);`pnpm build` exit 0(`installed web release local-20260914T123712Z-633d6de6`,122 assets)。实测 390:栏高 48 / 占位 48 / `scroll-padding-top: 48px` / `overscroll-behavior-y: contain`,滚动 400 后玻璃开、标题进栏;1280:栏高 56 / 占位 56 / 同上。
+
+## 浏览器 RUM 接入 Phase 0:SDK 实查与危险点验证(2026-09-14)
+
+按 docs/rum.md 的 Phase 0 执行。**本阶段不改任何代码**,产出只有 `docs/notes/aegis-web-sdk.md`
+(实查记录,以后升级 SDK 按同一组用例重跑)。PoC 建在会话临时目录,不进仓库,也不装依赖进 workspace ——
+catalog 里的 pin 属于 Phase 1。
+
+验证方式:最小 Vite 8.2.0 + React 19.2.8 应用(与 catalog 同版本,`sourcemap: 'hidden'`,复刻
+`PluginComponentBoundary` 的上报路径,Aegis 走 `await import()`),配一个本地靶场:一端按
+`packages/plugins/infra/web/src/server/shell-policy.ts` 的固定指令逐字发同一份 **enforce** CSP,
+另一端假扮上报域名记录每条 outbound 请求的 URL 与 body;Playwright 驱动 **Chromium 与 WebKit**,
+页面里挂 `securitypolicyviolation`。导航地址与 referrer 各带隐私哨兵,验收标准是哨兵在 outbound 数据里 0 命中。
+
+**Gate 判定:不触发否决条件,可进 Phase 1。** 三条里 CSP 与隐私 hooks 都通过,SourceMap 本地链路
+逐行精确(腾讯侧待真实项目)。
+
+- **CSP 不用放宽 script-src**:用 `tools/quality/check-csp-build.ts` 的同一条谓词扫 Vite 打出的
+  aegis chunk,PASS,没有从字符串造代码。上报只走 `sendBeacon` 与 XHR,都归 `connect-src`;
+  不把域名加进 `connect-src` 时 **0 字节发出**,8 条 connect-src violation。
+- **但发现一处会撞 CSP 的默认值**:`gzip` 默认开且默认用 Web Worker,而 Worker 是
+  `new Worker(URL.createObjectURL(blob))` 造的,blob URL 在 `worker-src 'self'` 下不被允许。
+  单独探过:构造函数不抛(失败是异步的,SDK 靠 `onerror` 兜底),但浏览器照样报一条 violation,
+  Chromium 与 WebKit 都报 —— SDK 的 try/catch 兜得住功能,兜不住 `check-csp-enforce` 的 0 violation 断言。
+  **Phase 1 必须显式写 `gzip: { useWorker: false }`**,不能往 `worker-src` 加 `blob:`(那与 DoD
+  「CSP 只增加 https://rumt-zh.com」冲突)。关掉后同样用例 0 violation。
+- **默认配置直接违反仓库禁令,哨兵命中 17 次与 8 次**,三个泄漏源:每条日志的 `originFrom` 是原始
+  `location.href`(全局 `urlHandler` 只管 `from`,管不到它);`referer` bean 在构造时读
+  `document.referrer`,之后每个请求的 URL 都带;PV 请求的 URL 由 `getOriginFrom()` 直接拼,不过任何日志级钩子。
+  三层一起上(`beforeReport` 就地改写 `originFrom`、`beforeRequest` 对 `logType === 'pv'` 返回 `false`、
+  构造后 `extendBean('referer', '')`)后哨兵 **0 命中**,两个引擎一致。只做 wire 级改 URL 不够,
+  日志体里还在,实测仍有 7 次 —— 决定性的一层是 `beforeReport`,不是最后那层。
+- **docs/rum.md 有四处与实际不符,已在 notes 里逐条更正**:`repeat` 默认是 60 不是 5;
+  `hostUrl` 默认已经是 `rumt-zh.com`;§39 的建议配置缺 `gzip`;最重要的一条 —— 文档描述的
+  「上报前可改可拦」的能力属于**未文档化的 `onBeforeRequest(options, aegis)`**,
+  而配置里叫 `beforeRequest` 的那个收到的是 `{logs, logType}`,**改不到 URL**。
+  四个钩子的契约(返回值语义、抛异常的后果、是否传原对象)全部从 pin 版本产物里逐字读出并实测确认。
+- **开放问题答掉四条**:①`aegis-web-sdk@1.41.15` 过 no-eval 门禁;②懒加载后 page performance 与
+  Web Vitals 仍能采到(PoC 规模,不等于采得准,真实首屏的偏差要接上去再看);③
+  `reportApiSpeed: false` 时 **一条 `AJAX_ERROR` 都不产生**(200/404/500/连接中断、fetch 与 XHR 各试),
+  所以 Phase 1 不需要写任何 Ajax 过滤,§14 的担忧在第一阶段不存在;④React 19 生产构建下
+  ErrorBoundary 捕获的错误**不会**再进 `window.onerror`,不重复上报。⑦WebKit 与 Chromium 全项一致。
+- **SourceMap**:`sourcemap: 'hidden'` 产物里确实没有 `sourceMappingURL` 注释;拿实测抓到的压缩堆栈
+  `assets/index-<hash>.js:9:38826`,用 Node 内置 `module.SourceMap` 还原到 `src/main.tsx 40:26`,
+  正是那行 `throw`,**列号也对**。`.map` 带 `sourcesContent`,印证 §50 把它当私有调试产物。
+- **顺带确认的两件事**:包没有任何 install script(不触发 pnpm 审批);`uin` 会被 SDK 从
+  `document.cookie` 刮(`/\buin=/`、`/\bilive_uin=/`),Qualy 的会话 cookie 叫 `qualy_session` 且是
+  httpOnly,两条正则都不匹配、JS 也读不到,实测全程为空 —— 这是结构性安全不是配置出来的,
+  Phase 1 应有断言守住「不新增 JS 可读且名字以 uin 结尾的 cookie」。
+- **还欠五条,只能对真实腾讯项目答**:测试 RUM application 的 reporting id 与 numeric ProjectID;
+  SourceMap 的 `FileName` 对 Vite `assets/foo-HASH.js.map` 匹配 basename 还是相对路径;
+  `version` 超 60 字符是截断还是拒绝;`aid: false` 对控制台聚合的实际影响;真实 whitelist 下发的
+  `use_gzip`。这五条不阻塞 Phase 1,但 Phase 2 之前必须有答案。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 226 passed | 3 skipped (229);
+  Tests 1604 passed | 17 skipped (1621),exit 0。本阶段零代码改动,两项只用于证明工作树仍是绿的。
