@@ -32,15 +32,23 @@ const BAR_LAYER = 45
 const styles = stylex.create({
   bar: {
     display: { default: 'none', [breakpoints.phone]: 'block' },
-    // Against the shell, not against the window. The shell is the height of
-    // the window already, so the bar sits where a fixed one would - but it
-    // is also as wide as the shell, and the shell has a floor under its
-    // width. Fixed to the window, the bar went on shrinking under that
-    // floor while everything above it stopped, and it does not scroll
-    // sideways with the page it belongs to.
-    position: 'absolute',
+    // Fixed to the window, not to the shell. Against the shell it would be
+    // as wide as the page and would scroll sideways with it, which is
+    // tidier at widths no device has - and wrong on the one that matters:
+    // on iOS an absolutely placed bar follows the layout, which the
+    // browser settles only after its own bars have finished moving, so it
+    // spent those frames behind them. The window is what a bar at the foot
+    // belongs to.
+    position: 'fixed',
     insetInline: 0,
     bottom: 0,
+    // ...but it keeps the floor the page keeps. Under 320 the page holds
+    // its width and the window scrolls; a bar that went on shrinking with
+    // the window was the one thing on screen still being squeezed, three
+    // applications into a hundred and fifty pixels. It now runs off the
+    // right edge the way everything else does, which at least says the
+    // same thing about the window.
+    minWidth: 320,
     zIndex: BAR_LAYER,
     backgroundColor: `color-mix(in oklch, ${tokens.background} 86%, transparent)`,
     backdropFilter: 'blur(18px)',

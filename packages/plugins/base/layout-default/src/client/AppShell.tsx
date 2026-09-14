@@ -35,9 +35,6 @@ const HEAD_LAYER = 50
 const styles = stylex.create({
   root: {
     display: 'flex',
-    // the bar at the foot is positioned against this, so it is as wide as
-    // the shell rather than as the window
-    position: 'relative',
     height: '100dvh',
     width: '100%',
     flexDirection: 'column',
@@ -51,6 +48,16 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     overflowY: 'auto',
+    // No rubber band here. The bars are inside this scroller rather than
+    // above it - that is what lets the page pass under their glass - so a
+    // bounce at either end carries them with it, and a navigation bar that
+    // slides away from the top of the window reads as the shell coming
+    // loose. Taking the bars out into an overlay would let the content
+    // alone bounce, at the cost of the shell measuring their height before
+    // it can lay the page out; not worth it for the last twenty pixels of
+    // a gesture. This also stops a flick at the end of the list from
+    // chaining out to the window.
+    overscrollBehavior: 'none',
   },
   head: {
     position: 'sticky',

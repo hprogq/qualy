@@ -13948,3 +13948,15 @@ P5。hero 右栏此前是 `PLACEHOLDER_AGENDA`(写死 12 / 2),`listBatches` 只�
 - **底栏跟着下限走**:它原本 `position: fixed`,贴的是窗口,所以内容停在 320 之后它还在继续缩;而且窗口横向滚动时它不跟着走。改成相对 shell 根的 `position: absolute`(根加 `position: relative`)——根本来就是 `100dvh`,视觉位置不变,但宽度随 shell(有 320 下限),也随页面一起横滚。实测视口 240 时底栏 320@0。
 - **筛选 pill 轨道不用改**:320 下 `clientWidth 320 / scrollWidth 339`,它本来就是可横滑的出血轨道(稿子 2a 的做法),19px 的溢出是"还有内容在右边"的提示而不是裁切;360 以上正好放下。不藏数字——数字是这一行的信息,而且低于 phone 断点再加一条媒体查询也违反本仓库的断点纪律。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 226 passed | 3 skipped (229); Tests 1604 passed | 17 skipped (1621);`pnpm test:browser` 第一遍 1 红(baseline 快照 body 的 minWidth),更新快照后 Test Files 48 passed (48); Tests 347 passed (347);`pnpm build` exit 0(`installed web release local-20260914T120202Z-93b984ee`,122 assets)。
+
+## 窄屏收尾:两次改错与最后的做法(2026-09-14)
+
+底栏在 320 以下继续被压缩,以及回弹时顶栏跟着走。**两次结构性尝试都失败,如实记录**:
+
+- **失败一:底栏改 `position: absolute` 贴 shell 根**(想让它随页面横滚、并继承 320 下限)。真机 iOS Safari 上底栏被浏览器自己的栏挡住——绝对定位跟的是布局,而 iOS 要等自己的栏动完才结算布局,那几帧里它就在栏后面。已回退成 `fixed`。
+- **失败二:shell 高度改 `min(100dvh, 100%)` + `html/body { height: 100% }`**(想让横向滚动条出现时高度自动减去它)。`100%` 在移动端解析到的是布局视口,内容少时根的高度直接塌成内容高度,底栏跑到页面中间;桌面上 shell 变成 886 高、比视口还高。已整条回退,两个 shell 都回到 `height: 100dvh`。
+- **最后采用的做法(一行,零结构风险)**:底栏 `fixed` 不变,加 `min-width: 320`,和 `body` 同一条下限。低于 320 时它保持 320 的排布、从右边缘出画,**和页面本身的行为一致**;此前它是全屏唯一还在被挤的东西(三个应用挤进 150px)。代价是最右一项在那个宽度下看不到——那个宽度本来就要横向滚动,没有设备是这样的。
+- **横向滚动条压住底栏这一条不修**:`fixed` 贴的是窗口,滚动条画在窗口底边,两者必然重叠。能修的办法就是上面失败的那两条中的一条,拿真机正确性换一个没有设备会遇到的宽度,不划算。
+- **回弹带着顶栏走**:栏是 sticky 在 `main` 里面的(这正是页面能从玻璃底下穿过去的原因),所以 `main` 一回弹就带着它们走。`main` 加 `overscroll-behavior: none`——顺带也断掉了列表甩到底时向窗口的滚动链。真正"只有内容回弹"要把栏提成覆盖层,代价是 shell 得先量出栏高才能排版,为一个手势的最后二十像素不值得。
+- **手机时钟的圆环加回来**:上一轮按审计意见关掉了(理由是与格子重复、12px 下是噪点),用户要求恢复。`BatchProgress` 的 `ring` 开关随之删掉——没有调用方的开关就是死 API。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 226 passed | 3 skipped (229); Tests 1604 passed | 17 skipped (1621);`pnpm test:browser` Test Files 48 passed (48); Tests 347 passed (347);`pnpm build` exit 0(`installed web release local-20260914T121638Z-4e453849`,122 assets)。实测底栏宽度:视口 150/240/320 时都是 320(三项各 107),390 时 390(各 130),430 时 430(各 143);shell 高度在各宽度下都等于视口高。

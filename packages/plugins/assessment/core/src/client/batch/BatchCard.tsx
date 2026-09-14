@@ -941,12 +941,7 @@ export function BatchCard({
                     <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
                   )}
                 </span>
-                <BatchProgress
-                  timeline={row.timeline}
-                  single
-                  ring={false}
-                  xstyle={phone.metaClock}
-                />
+                <BatchProgress timeline={row.timeline} single xstyle={phone.metaClock} />
               </div>
             </div>
           )}
