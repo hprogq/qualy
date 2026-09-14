@@ -3,9 +3,10 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
-import { CheckboxGroup, Feedback, Field, FormDialog } from '@qualy/ui/admin'
+import { CheckboxGroup, Feedback, Field, FormDialog, SidePanel } from '@qualy/ui/admin'
 import { Button } from '@qualy/ui/button'
 import { toast } from '@qualy/ui/toast'
 import { DateRangePicker } from '@qualy/ui/date-range-picker'
@@ -22,6 +23,11 @@ import { assessmentApi } from './api.ts'
 // picker that opens its own dialog on top of this one buries the thing being
 // decided. The options come from this domain's own endpoints, so an
 // administrator needs assessment permissions and nothing else.
+//
+// Nothing here needs a wide screen - a name, a pair of dates, a tree and a
+// set of checkboxes - so on a phone it is the same four answers in a panel
+// that takes the whole screen, rather than a centred box with the page
+// showing round its edges.
 const styles = stylex.create({
   scopeTreeFrame: {
     maxHeight: 256,
@@ -104,34 +110,33 @@ export function NewBatchDialog({
     onClose()
   }
 
-  return (
-    <FormDialog
-      open={open}
-      title={format(m.newBatch)}
-      onClose={close}
-      footer={
-        <>
-          {step === 0 ? (
-            <Button variant="outline" onClick={close}>
-              {format(m.cancel)}
-            </Button>
-          ) : (
-            <Button variant="outline" onClick={() => setStep(0)}>
-              {format(m.back)}
-            </Button>
-          )}
-          {step === 0 ? (
-            <Button disabled={!basicsReady} onClick={() => setStep(1)}>
-              {format(m.next)}
-            </Button>
-          ) : (
-            <Button disabled={create.isPending || !scopeReady} onClick={() => create.mutate()}>
-              {format(m.create)}
-            </Button>
-          )}
-        </>
-      }
-    >
+  const narrow = useIsBelow(768)
+
+  const footer = (
+    <>
+      {step === 0 ? (
+        <Button variant="outline" onClick={close}>
+          {format(m.cancel)}
+        </Button>
+      ) : (
+        <Button variant="outline" onClick={() => setStep(0)}>
+          {format(m.back)}
+        </Button>
+      )}
+      {step === 0 ? (
+        <Button disabled={!basicsReady} onClick={() => setStep(1)}>
+          {format(m.next)}
+        </Button>
+      ) : (
+        <Button disabled={create.isPending || !scopeReady} onClick={() => create.mutate()}>
+          {format(m.create)}
+        </Button>
+      )}
+    </>
+  )
+
+  const body = (
+    <>
       <Steps steps={[format(m.stepBasics), format(m.stepScope)]} current={step} />
       <Feedback message={failure} />
 
@@ -187,6 +192,16 @@ export function NewBatchDialog({
           />
         </FieldGroup>
       )}
+    </>
+  )
+
+  return narrow ? (
+    <SidePanel open={open} title={format(m.newBatch)} onClose={close} footer={footer}>
+      {body}
+    </SidePanel>
+  ) : (
+    <FormDialog open={open} title={format(m.newBatch)} onClose={close} footer={footer}>
+      {body}
     </FormDialog>
   )
 }

@@ -3,6 +3,7 @@ import { NavLink } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import {
   headerActions,
   sidebarUser,
@@ -33,15 +34,23 @@ import { LocalizedText } from '@qualy/web-i18n'
 // in a lighter ink, grown from the centre.
 
 const INK_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
 const styles = stylex.create({
   bar: {
+    // the centred title is positioned against this box, so the wordmark and
+    // the account keep the places they hold when nothing is said there
+    position: 'relative',
     display: 'flex',
-    height: 56,
+    // a phone bar carries the brand and the account and nothing else, so it
+    // needs no room for a row of words
+    height: { default: 56, [breakpoints.phone]: 48 },
     flexShrink: 0,
     alignItems: 'center',
-    gap: 32,
-    paddingInline: 24,
+    // the applications sit closer to the wordmark once the window stops
+    // being wide enough for them to want the distance
+    gap: { default: 32, [breakpoints.tablet]: 24 },
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: 'transparent',
@@ -56,12 +65,45 @@ const styles = stylex.create({
     WebkitBackdropFilter: 'blur(18px)',
     borderBottomColor: `color-mix(in oklch, ${tokens.foreground} 8%, transparent)`,
   },
+  /**
+   * What the page is called, once its own heading has gone.
+   *
+   * Centred on the bar rather than set beside the wordmark: the bar is the
+   * brand's line, and a title starting where the brand ends reads as a
+   * second brand. It only ever appears where the applications are not
+   * drawn, so it has the middle of the bar to itself.
+   */
+  barTitle: {
+    // only where the applications are not in the way; a wide bar already
+    // says where the reader is, in the word that carries the ink
+    display: { default: 'none', [breakpoints.phone]: 'block' },
+    position: 'absolute',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    maxWidth: '58%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 15,
+    fontWeight: 600,
+    letterSpacing: '-0.01em',
+    color: tokens.foreground,
+    opacity: 0,
+    transitionProperty: { default: 'opacity', [REDUCE]: 'none' },
+    transitionDuration: { default: '120ms', [REDUCE]: '0s' },
+    transitionTimingFunction: 'ease',
+    pointerEvents: 'none',
+  },
+  barTitleShown: { opacity: 1 },
   brand: {
     display: 'flex',
     flexShrink: 0,
     alignItems: 'center',
     color: tokens.foreground,
   },
+  // the applications are a row of words on a wide window and a bar at the
+  // foot of a narrow one, so on a phone this seat is simply not drawn
+  tabsPhone: { display: { default: null, [breakpoints.phone]: 'none' } },
   tabsNav: {
     minWidth: 0,
     flexGrow: 1,
@@ -134,6 +176,9 @@ const styles = stylex.create({
     flexShrink: 0,
     alignItems: 'center',
     gap: 8,
+    // the row of applications is what holds this against the right edge on
+    // a wide window; where that row is not drawn, the space does it
+    marginInlineStart: { default: null, [breakpoints.phone]: 'auto' },
   },
   sectionBar: {
     display: 'flex',
@@ -141,8 +186,19 @@ const styles = stylex.create({
     flexShrink: 0,
     alignItems: 'center',
     backgroundColor: tokens.background,
-    paddingInline: 24,
+    paddingInline: { default: 24, [breakpoints.phone]: 16 },
   },
+  // On a narrow window the sections run off the side rather than on to a
+  // second line: a bar that grows a row pushes the page down by its own
+  // height, and the reader loses the top of what they came to read. The
+  // track scrolls; its bar is hidden, since a 40px band has no room for one
+  // and the row's own overflow is the affordance.
+  sectionScroller: {
+    overflowX: { default: null, [breakpoints.phone]: 'auto' },
+    scrollbarWidth: { default: null, [breakpoints.phone]: 'none' },
+    '::-webkit-scrollbar': { display: { default: null, [breakpoints.phone]: 'none' } },
+  },
+  sectionList: { flexWrap: { default: null, [breakpoints.phone]: 'nowrap' } },
   sectionLink: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -266,11 +322,20 @@ export function TopBar({
   apps,
   activeApp,
   scrolled = false,
+  title = null,
+  titleShown = false,
 }: {
   apps: readonly AppEntry[]
   activeApp?: string
   /** the page has moved under the bar: it turns to glass */
   scrolled?: boolean
+  /**
+   * The open page's name, shown once the page's own heading has scrolled
+   * away. Only where the applications are not drawn beside it, which is
+   * the one place the bar has a middle to spare.
+   */
+  title?: string | null
+  titleShown?: boolean
 }) {
   return (
     <div {...stylex.props(styles.bar, scrolled && styles.barScrolled)}>
@@ -278,7 +343,16 @@ export function TopBar({
           than to a literal origin: where "home" is depends on who is
           reading, and only the manifest knows */}
       <Brand to={apps[0]?.path} />
-      <nav {...stylex.props(styles.tabsNav)}>
+      {title !== null && (
+        <span
+          aria-hidden
+          data-shell-title={titleShown ? '' : undefined}
+          {...stylex.props(styles.barTitle, titleShown && styles.barTitleShown)}
+        >
+          {title}
+        </span>
+      )}
+      <nav {...stylex.props(styles.tabsNav, styles.tabsPhone)}>
         <ul {...stylex.props(styles.tabsList)}>
           {apps.map((app) => (
             <li key={app.id}>
@@ -309,8 +383,8 @@ export function SectionBar({ items }: { items: readonly ResolvedNavigationItem[]
   if (items.length < 2) return null
   return (
     <div {...stylex.props(styles.sectionBar)}>
-      <nav {...stylex.props(styles.tabsNav)}>
-        <ul {...stylex.props(styles.tabsList)}>
+      <nav {...stylex.props(styles.tabsNav, styles.sectionScroller)}>
+        <ul {...stylex.props(styles.tabsList, styles.sectionList)}>
           {items.map((item) => (
             <li key={item.id}>
               {item.target.kind === 'page' ? (

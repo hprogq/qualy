@@ -115,6 +115,9 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: 8,
     padding: 24,
+    // a panel that reaches the bottom of a phone puts its buttons where the
+    // device draws its own gesture bar; the inset wins when there is one
+    paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))',
   },
   title: {
     fontSize: 16,
@@ -434,7 +437,11 @@ function SheetContent({
       >
         <div
           aria-hidden
-          {...stylex.props(veil.tint, closing && veil.tintClosing, closing && veil.tintExit(EXIT_MS))}
+          {...stylex.props(
+            veil.tint,
+            closing && veil.tintClosing,
+            closing && veil.tintExit(EXIT_MS),
+          )}
         />
       </MDrawer.Overlay>
       <MDrawer.Content

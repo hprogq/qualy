@@ -1020,6 +1020,7 @@ export default {
   'assessment/batch/empty-hint': '创建批次后，可继续设置阶段、参评人员和测评项目。',
   'assessment/batch/search': '搜索批次名称',
   'assessment/batch/filter-status': '状态',
+  'assessment/batch/all': '全部批次',
   'assessment/batch/filter-all': '全部',
   'assessment/batch/no-match': '未找到匹配的批次',
   'assessment/batch/switcher-only-this': '你目前只在这一个批次里。',

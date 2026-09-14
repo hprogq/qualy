@@ -44,10 +44,18 @@ const closing = (text: string, open: number): number => {
   return text.length
 }
 
-/** every style key a file declares, with how each property was written */
+/**
+ * Every style key a file declares, with how each property was written.
+ *
+ * Keyed by the whole reference - `styles.row`, `phone.row` - because a file
+ * with two sheets in it often names the same part in both, and a shape read
+ * off the wrong sheet is worse than no reading: it invents overrides that
+ * cannot happen and hides the ones that can.
+ */
 const declared = (text: string): Map<string, Shape> => {
   const styles = new Map<string, Shape>()
-  for (const call of text.matchAll(/stylex\.create\(\s*\{/g)) {
+  for (const call of text.matchAll(/(?:(?:const|let|var)\s+(\w+)\s*=\s*)?stylex\.create\(\s*\{/g)) {
+    const sheet = call[1]
     const open = text.indexOf('{', call.index)
     const body = text.slice(open + 1, closing(text, open))
     for (const key of body.matchAll(/(\w+)\s*:\s*\{/g)) {
@@ -66,7 +74,7 @@ const declared = (text: string): Map<string, Shape> => {
         )
         shape.set(property[1]!, /default\s*:\s*null/.test(inner) ? 'null-default' : 'conditional')
       }
-      styles.set(key[1]!, shape)
+      styles.set(sheet === undefined ? key[1]! : `${sheet}.${key[1]!}`, shape)
     }
   }
   return styles
@@ -79,7 +87,8 @@ const declared = (text: string): Map<string, Shape> => {
  * expanded into separate compositions rather than flattened together -
  * otherwise every `active ? filled : hollow` pair reads as a conflict.
  */
-const names = (part: string) => [...part.matchAll(/\b\w+\.(\w+)/g)].map((match) => match[1]!)
+const names = (part: string) =>
+  [...part.matchAll(/\b(\w+)\.(\w+)/g)].map((match) => `${match[1]!}.${match[2]!}`)
 
 /** the ':' that answers a given '?', skipping the ones nested inside it */
 const answering = (text: string, question: number): number => {

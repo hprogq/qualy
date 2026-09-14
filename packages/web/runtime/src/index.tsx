@@ -568,3 +568,4 @@ export {
   type WorkspaceCapabilities,
 } from './workspace-capabilities.tsx'
 export { ScreenFootScope, useScreenFootClaimed, useClaimScreenFoot } from './screen-foot.tsx'
+export { PageTitleScope, usePageTitle, usePageTitleClaim } from './page-title.tsx'

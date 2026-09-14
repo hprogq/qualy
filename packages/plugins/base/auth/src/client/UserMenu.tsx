@@ -57,7 +57,13 @@ const styles = stylex.create({
     gap: 8,
     borderRadius: tokens.radiusMd,
     padding: 4,
-    paddingRight: 8,
+    // room for the name only where the name is shown; without it the seat
+    // is square around a round face rather than a lopsided pill
+    paddingRight: {
+      default: 8,
+      [breakpoints.phone]: 4,
+      [breakpoints.tablet]: 4,
+    },
     textAlign: 'left',
     transitionProperty: 'background-color',
     transitionDuration: '150ms',
@@ -81,6 +87,9 @@ const styles = stylex.create({
     width: 28,
     height: 28,
     flexShrink: 0,
+    // a face, not a tile: round is what tells a reader at a glance that the
+    // thing at the end of the bar is them
+    borderRadius: '9999px',
   },
   smallFace: {
     fontSize: '0.75rem',
@@ -93,9 +102,12 @@ const styles = stylex.create({
     fontSize: '0.875rem',
     lineHeight: '1.25rem',
     fontWeight: 500,
+    // the name goes as soon as the bar is tight: from a tablet down the
+    // account is the face alone, which is all the bar has room to say
     display: {
       default: 'block',
       [breakpoints.phone]: 'none',
+      [breakpoints.tablet]: 'none',
     },
   },
   menu: {

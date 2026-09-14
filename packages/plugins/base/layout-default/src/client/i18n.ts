@@ -19,6 +19,11 @@ const i18n = definePluginMessages({
       id: 'layout/shell/other-modules',
       defaultMessage: 'Other modules',
     },
+    /** names the bar at the foot of a narrow window, which a reader hears */
+    appsNav: {
+      id: 'layout/shell/apps',
+      defaultMessage: 'Applications',
+    },
     // the foot of an application's page
     tagline: {
       id: 'layout/footer/tagline',

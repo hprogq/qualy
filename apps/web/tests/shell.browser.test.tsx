@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { Effect } from 'effect'
 import { components } from 'virtual:qualy/plugins'
+import { usePageTitle } from '@qualy/web-runtime'
 import { addressNow, emptyManifest, fakeClient, renderScreen } from './support/harness.tsx'
 
 // The two shells, against a manifest rather than against props: what the top
@@ -114,6 +115,32 @@ const manifest = () => ({
   },
 })
 
+// the same manifest with one application in it: the reader who can open
+// only their own assessment, which is most of this product's readers
+const oneAppManifest = () => {
+  const full = manifest()
+  const groups = full.collections['app-shell/navigation-groups']!
+  const pages = full.collections['app-shell/navigation-primary']!
+  return {
+    ...full,
+    collections: {
+      ...full.collections,
+      'app-shell/navigation-groups': groups.filter((group) => group.id !== 'app/organization'),
+      'app-shell/navigation-primary': pages.filter((entry) => entry.group !== 'app/organization'),
+    },
+  }
+}
+
+// a page that hands the shell its name, the way a real one does
+function NamedPage() {
+  const heading = usePageTitle('用户管理')
+  return (
+    <div data-testid="named" style={{ height: 3000 }}>
+      <h1 ref={heading}>用户管理</h1>
+    </div>
+  )
+}
+
 const shell = (element: React.ReactNode, path: string, route: string) =>
   renderScreen({
     client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
@@ -169,6 +196,52 @@ describe('the application shell', () => {
     expect(head.getBoundingClientRect().top).toBeCloseTo(main.getBoundingClientRect().top, 0)
     main.scrollTo({ top: 0 })
     await vi.waitFor(() => expect(head.hasAttribute('data-scrolled')).toBe(false))
+  })
+
+  it('carries the applications at the foot as well, and only where there are two', async () => {
+    shell(<AppShell />, '/organization/users', '/organization/users')
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+    const foot = document.querySelector('[data-shell-bottom]')
+    expect(foot).not.toBeNull()
+    // the same applications as the bar at the top, in the same order
+    expect([...foot!.querySelectorAll('a')].map((link) => link.getAttribute('href'))).toEqual([
+      '/assessment/batches',
+      '/organization/users',
+    ])
+  })
+
+  it('leaves the foot bare for a reader with one application', async () => {
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(oneAppManifest()) } }),
+      routes: [{ path: '/assessment/batches', element: <AppShell /> }],
+      route: '/assessment/batches',
+    })
+    await expect.element(page.getByRole('link', { name: 'Qualy' })).toBeVisible()
+    expect(document.querySelector('[data-shell-bottom]')).toBeNull()
+  })
+
+  it("says the page's own name once its heading has gone under the bars", async () => {
+    renderScreen({
+      client: fakeClient({ app: { getManifest: () => Effect.succeed(manifest()) } }),
+      route: '/organization/users',
+      children: (
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route path="/organization/users" element={<NamedPage />} />
+          </Route>
+        </Routes>
+      ),
+    })
+    await expect.element(page.getByTestId('named')).toBeInTheDocument()
+    // while the heading is in view the bar says nothing: two names, one screen
+    await vi.waitFor(() => expect(document.querySelector('[data-shell-title]')).toBeNull())
+    const main = document.querySelector('main')!
+    main.scrollTo({ top: 400 })
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-shell-title]')?.textContent).toBe('用户管理'),
+    )
+    main.scrollTo({ top: 0 })
+    await vi.waitFor(() => expect(document.querySelector('[data-shell-title]')).toBeNull())
   })
 
   it('sends an application tab to its first page', async () => {

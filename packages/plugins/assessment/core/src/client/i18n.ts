@@ -386,6 +386,8 @@ const i18n = definePluginMessages({
       id: 'assessment/batch/search',
       defaultMessage: 'Search batch names',
     },
+    /** names the section under the hero card: the whole list, not just the running rounds */
+    batchesAll: { id: 'assessment/batch/all', defaultMessage: 'All batches' },
     filterStatus: { id: 'assessment/batch/filter-status', defaultMessage: 'Status' },
     filterAll: { id: 'assessment/batch/filter-all', defaultMessage: 'All' },
     noMatchTitle: { id: 'assessment/batch/no-match', defaultMessage: 'No matching batches' },
@@ -411,7 +413,10 @@ const i18n = definePluginMessages({
     previousBatch: { id: 'assessment/batch/previous', defaultMessage: 'Previous batch' },
     nextBatch: { id: 'assessment/batch/next', defaultMessage: 'Next batch' },
     pickBatch: { id: 'assessment/batch/pick', defaultMessage: 'Choose a batch' },
-    awaitingReview: { id: 'assessment/batch/awaiting-review', defaultMessage: 'Awaiting your review' },
+    awaitingReview: {
+      id: 'assessment/batch/awaiting-review',
+      defaultMessage: 'Awaiting your review',
+    },
     startReview: { id: 'assessment/batch/start-review', defaultMessage: 'Start reviewing' },
     myEntries: { id: 'assessment/batch/my-entries', defaultMessage: 'My entries' },
     continueEntries: { id: 'assessment/batch/continue-entries', defaultMessage: 'Continue' },

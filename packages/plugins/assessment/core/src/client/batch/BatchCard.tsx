@@ -6,6 +6,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -13,6 +14,7 @@ import { dotDay, dotMoment } from './dates.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import type { TimelineLike } from './progress.ts'
+import type { BatchAgenda, BatchCardRow, HeroFrame } from './hero.ts'
 
 // The batch that is running, as the thing the page leads with.
 //
@@ -30,48 +32,6 @@ import type { TimelineLike } from './progress.ts'
 // never turns on its own - a page that rearranges itself while somebody
 // reads it is a page nobody trusts.
 
-export interface BatchCardRow {
-  id: string
-  name: string
-  status: 'draft' | 'active' | 'archived'
-  currentPhaseId: string | null
-  currentPhaseName: string | null
-  participantCount: number
-  materialRange: { start: string; end: string }
-  timeline: readonly TimelineLike[]
-}
-
-/**
- * What this reader has to do in the round.
- *
- * `review` is other people's work waiting on them and is only ever present
- * for somebody who reviews here; `own` is their own filing. The api that
- * answers this arrives with the next step; until then a page hands the card
- * `NO_AGENDA` and the right column says only where the round stands.
- */
-export interface BatchAgenda {
-  readonly review: { readonly count: number } | null
-  readonly own: { readonly count: number } | null
-}
-
-export const NO_AGENDA: BatchAgenda = { review: null, own: null }
-
-/** how the card says which of several running rounds it is showing */
-export type HeroFrame =
-  | { readonly kind: 'single' }
-  | {
-      readonly kind: 'arrows'
-      readonly index: number
-      readonly total: number
-      readonly onPrevious: () => void
-      readonly onNext: () => void
-    }
-  | {
-      readonly kind: 'picker'
-      readonly options: readonly { readonly id: string; readonly name: string }[]
-      readonly onPick: (id: string) => void
-    }
-
 const arrive = stylex.keyframes({
   from: { opacity: 0, transform: 'translateX(8px)' },
   to: { opacity: 1, transform: 'translateX(0)' },
@@ -84,12 +44,25 @@ const arriveBack = stylex.keyframes({
 
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
+/**
+ * Where the card stops having room for a column beside the plan.
+ *
+ * Asked of the card's own width, not the window's: the same card sits in a
+ * page container that is one width on a tablet and another beside a rail,
+ * and it is the card's width that decides whether two columns fit. An
+ * element cannot query itself, so the width is read on the seat the card
+ * sits in and the card answers for it.
+ */
+const NARROW = '@container (max-width: 959.98px)'
+
 const styles = stylex.create({
+  // the seat exists to be measured; the card inside it draws
+  seat: { containerType: 'inline-size' },
   card: {
     display: 'grid',
     gridTemplateColumns: {
       default: 'minmax(0, 1.7fr) minmax(0, 1fr)',
-      [breakpoints.phone]: 'minmax(0, 1fr)',
+      [NARROW]: 'minmax(0, 1fr)',
     },
     overflow: 'hidden',
     borderRadius: tokens.radiusLg,
@@ -276,24 +249,37 @@ const styles = stylex.create({
     gap: 10,
     marginTop: 'auto',
   },
+  // Beside the plan while there is room for it, under the plan as a row of
+  // cells once there is not - the same three things either way, and the
+  // cells divide themselves: two when there is one line of work, three
+  // when there are two.
   side: {
-    display: 'flex',
+    display: { default: 'flex', [NARROW]: 'grid' },
+    gridAutoFlow: { default: null, [NARROW]: 'column' },
+    gridAutoColumns: { default: null, [NARROW]: 'minmax(0, 1fr)' },
     flexDirection: 'column',
     justifyContent: 'center',
-    paddingBlock: 8,
-    paddingInline: 26,
-    borderLeftWidth: {
-      default: 1,
-      [breakpoints.phone]: 0,
-    },
-    borderTopWidth: {
-      default: 0,
-      [breakpoints.phone]: 1,
-    },
+    paddingBlock: { default: 8, [NARROW]: 0 },
+    paddingInline: { default: 26, [NARROW]: 0 },
+    borderLeftWidth: { default: 1, [NARROW]: 0 },
+    borderTopWidth: { default: 0, [NARROW]: 1 },
     borderStyle: 'solid',
     borderColor: tokens.divider,
     backgroundColor: tokens.surfaceInset,
   },
+  // In a row of cells each one keeps its own side, and the padding that was
+  // the column's becomes the cell's. It says nothing about the block
+  // padding or the rule between stacked cells: those belong to the cells
+  // themselves, and a `null` here would not defer to them - it would strike
+  // them out, which is how the column lost its dividers once already.
+  cell: {
+    paddingInline: { default: null, [NARROW]: 26 },
+    borderLeftWidth: { default: 0, [NARROW]: 1 },
+    borderLeftStyle: 'solid',
+    borderLeftColor: tokens.divider,
+  },
+  // the first cell owns no dividing line: it is the one the row starts at
+  cellFirst: { borderLeftWidth: { default: 0, [NARROW]: 0 } },
   stage: {
     display: 'flex',
     flexDirection: 'column',
@@ -322,10 +308,14 @@ const styles = stylex.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    paddingBlock: 14,
-    borderTopWidth: 1,
+    paddingBlock: { default: 14, [NARROW]: 16 },
+    // stacked under the stage it belongs to, the rule above it is what
+    // separates them; standing beside it in a row, the cell's own left
+    // rule does that instead
+    borderTopWidth: { default: 1, [NARROW]: 0 },
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
+    minWidth: 0,
   },
   agendaWords: {
     display: 'flex',
@@ -351,6 +341,85 @@ const styles = stylex.create({
   },
 })
 
+// The same round on a phone, in the order somebody holding one reads it.
+//
+// A student opens this page to find their own filing, so what they have to
+// do comes second, straight after the name - before the run of stages,
+// which is context for it rather than the point. The card is not a link:
+// it already holds two targets of its own, and a card that is also a
+// target puts a third one two pixels outside them (§2d).
+const phone = stylex.create({
+  card: {
+    display: 'flex',
+    boxSizing: 'border-box',
+    flexDirection: 'column',
+    gap: 14,
+    paddingInline: 18,
+    paddingTop: 18,
+    paddingBottom: 16,
+    borderRadius: 16,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation2,
+  },
+  head: { display: 'flex', flexDirection: 'column', gap: 8 },
+  title: {
+    margin: 0,
+    fontSize: 18,
+    lineHeight: 1.35,
+    fontWeight: 600,
+    letterSpacing: '-0.02em',
+    textWrap: 'pretty',
+  },
+  // the two lines of work as one block, so they read as a pair of things
+  // to do rather than two unrelated strips
+  agenda: {
+    display: 'flex',
+    flexDirection: 'column',
+    borderRadius: 10,
+    backgroundColor: tokens.surfaceInset,
+  },
+  agendaRow: {
+    display: 'flex',
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingInline: 14,
+    paddingBlock: 10,
+    color: tokens.foreground,
+    textDecoration: 'none',
+    // the whole row is the target, which is what makes it big enough
+    borderTopWidth: { default: 0, ':not(:first-child)': 1 },
+    borderTopStyle: 'solid',
+    borderTopColor: tokens.divider,
+  },
+  agendaWords: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  agendaLabel: { fontSize: 12, color: tokens.mutedForeground },
+  agendaValue: { fontSize: 15, fontWeight: 600 },
+  agendaGlyph: { flexShrink: 0, color: tokens.foreground },
+  plan: { display: 'flex', flexDirection: 'column', gap: 8 },
+  // no labels: at this width a name under every stage is a row of cut-off
+  // words, and the one that matters is said in full on the line below
+  lanes: { display: 'flex', alignItems: 'flex-end', gap: 4 },
+  lane: { minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: '0%', height: 4, borderRadius: 2 },
+  laneEnded: {
+    backgroundColor: `color-mix(in oklab, ${tokens.mutedForeground} 30%, transparent)`,
+  },
+  laneCurrent: { height: 6, borderRadius: 3, backgroundColor: tokens.success },
+  laneFuture: { backgroundColor: tokens.surfaceMuted },
+  meta: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 10,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  metaStage: { fontWeight: 500, color: tokens.foreground },
+  enter: { width: '100%', height: 44 },
+})
+
 /**
  * The plan along the bar: where today falls, and the dates at its ends.
  *
@@ -360,7 +429,9 @@ const styles = stylex.create({
  * nothing after it has a date yet. A plan that has not begun has no today.
  */
 function planOf(timeline: readonly TimelineLike[], now: number) {
-  const dates = timeline.map((entry) => (entry.entry.at === null ? null : Date.parse(entry.entry.at)))
+  const dates = timeline.map((entry) =>
+    entry.entry.at === null ? null : Date.parse(entry.entry.at),
+  )
   const dated = dates.filter((date): date is number => date !== null)
   const start = dates[0] ?? null
   const end = dated.length > 0 ? dated[dated.length - 1]! : null
@@ -531,7 +602,12 @@ function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
       >
         <ChevronLeftIcon size={14} aria-hidden />
       </button>
-      <span data-testid="hero-position" data-index={String(frame.index + 1)} data-total={String(frame.total)} {...stylex.props(styles.frameCount)}>
+      <span
+        data-testid="hero-position"
+        data-index={String(frame.index + 1)}
+        data-total={String(frame.total)}
+        {...stylex.props(styles.frameCount)}
+      >
         {`${String(frame.index + 1)} / ${String(frame.total)}`}
       </span>
       <button
@@ -560,7 +636,11 @@ function AgendaRow({
   batchId: string
 }) {
   return (
-    <div data-testid="hero-agenda" data-agenda={page} {...stylex.props(styles.agendaRow)}>
+    <div
+      data-testid="hero-agenda"
+      data-agenda={page}
+      {...stylex.props(styles.agendaRow, styles.cell)}
+    >
       <div {...stylex.props(styles.agendaWords)}>
         <span {...stylex.props(styles.agendaLabel)}>{label}</span>
         <span {...stylex.props(styles.agendaValue)}>{value}</span>
@@ -575,6 +655,45 @@ function AgendaRow({
         <ArrowRightIcon size={13} aria-hidden />
       </PageLink>
     </div>
+  )
+}
+
+/** one line of work, the whole of it a way to that work */
+function PhoneAgendaRow({
+  label,
+  value,
+  page,
+  batchId,
+}: {
+  label: string
+  value: string
+  page: 'assessment/batch-reviews' | 'assessment/batch-my-entries'
+  batchId: string
+}) {
+  const words = (
+    <>
+      <span {...stylex.props(phone.agendaWords)}>
+        <span {...stylex.props(phone.agendaLabel)}>{label}</span>
+        <span {...stylex.props(phone.agendaValue)}>{value}</span>
+      </span>
+      <ArrowRightIcon size={16} aria-hidden {...stylex.props(phone.agendaGlyph)} />
+    </>
+  )
+  return (
+    <PageLink
+      page={page}
+      params={{ batchId }}
+      data-testid="hero-agenda"
+      data-agenda={page}
+      className={stylex.props(phone.agendaRow).className}
+      unavailable={
+        <span data-testid="hero-agenda" data-agenda={page} {...stylex.props(phone.agendaRow)}>
+          {words}
+        </span>
+      }
+    >
+      {words}
+    </PageLink>
   )
 }
 
@@ -595,90 +714,182 @@ export function BatchCard({
   now?: number
 }): ReactNode {
   const { format } = useI18n()
+  // the card's own shape changes, not just its width, so the choice is made
+  // here rather than in a media query
+  const narrow = useIsBelow(768)
   const at = row.timeline.findIndex((entry) => entry.status === 'current')
   const next = at === -1 ? undefined : row.timeline[at + 1]
-  const closes = next?.entry.kind === 'planned' && next.entry.at !== null ? Date.parse(next.entry.at) : null
+  const closes =
+    next?.entry.kind === 'planned' && next.entry.at !== null ? Date.parse(next.entry.at) : null
 
-  return (
-    <article
-      data-testid="batch-hero"
-      data-batch={row.id}
-      {...stylex.props(
-        styles.card,
-        entered === 'forward' && styles.arriveForward,
-        entered === 'backward' && styles.arriveBackward,
-      )}
-    >
-      <div {...stylex.props(styles.main)}>
-        <div {...stylex.props(styles.head)}>
-          <div {...stylex.props(styles.headRow)}>
-            <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
-            <Frame frame={frame} current={row.id} />
+  // The phone card is a different order, not a narrower one: what the
+  // reader has to do moves above the run of stages. Two orders cannot be
+  // one tree reflowed, because the work belongs to the right-hand column
+  // on a wide window and to the middle of the card on a narrow one.
+  if (narrow) {
+    return (
+      <article
+        data-testid="batch-hero"
+        data-batch={row.id}
+        {...stylex.props(
+          phone.card,
+          entered === 'forward' && styles.arriveForward,
+          entered === 'backward' && styles.arriveBackward,
+        )}
+      >
+        <div {...stylex.props(phone.head)}>
+          <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
+          <h2 {...stylex.props(phone.title)}>{row.name}</h2>
+        </div>
+
+        {(agenda.review !== null || agenda.own !== null) && (
+          <div {...stylex.props(phone.agenda)}>
+            {/* other people's work first: it blocks them, one's own blocks
+                only oneself */}
+            {agenda.review !== null && (
+              <PhoneAgendaRow
+                label={format(m.awaitingReview)}
+                value={format(m.submissionsCount, { count: agenda.review.count })}
+                page="assessment/batch-reviews"
+                batchId={row.id}
+              />
+            )}
+            {agenda.own !== null && (
+              <PhoneAgendaRow
+                label={format(m.myEntries)}
+                value={format(m.toRevise, { count: agenda.own.count })}
+                page="assessment/batch-my-entries"
+                batchId={row.id}
+              />
+            )}
           </div>
-          <h2 {...stylex.props(styles.title)}>{row.name}</h2>
-          <div {...stylex.props(styles.facts)}>
-            <span>
-              {format(m.materialWindow, {
-                from: dotDay(row.materialRange.start),
-                until: dotDay(row.materialRange.end),
-              })}
-            </span>
-            {row.timeline.length > 0 && (
+        )}
+
+        {row.timeline.length > 0 && (
+          <div {...stylex.props(phone.plan)}>
+            <div {...stylex.props(phone.lanes)} aria-hidden>
+              {row.timeline.map((entry, index) => (
+                <span
+                  key={entry.displayName + String(index)}
+                  {...stylex.props(
+                    phone.lane,
+                    entry.status === 'ended'
+                      ? phone.laneEnded
+                      : entry.status === 'current'
+                        ? phone.laneCurrent
+                        : phone.laneFuture,
+                  )}
+                />
+              ))}
+            </div>
+            <div {...stylex.props(phone.meta)}>
               <span>
                 {at === -1
                   ? format(m.stageCount, { total: row.timeline.length })
                   : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
               </span>
-            )}
+              {row.currentPhaseName !== null && (
+                <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
+              )}
+              <BatchProgress timeline={row.timeline} single />
+            </div>
+          </div>
+        )}
+
+        <Button asChild className={stylex.props(phone.enter).className}>
+          <PageLink page="assessment/batch" params={{ batchId: row.id }}>
+            {format(m.enterBatch)}
+            <ArrowRightIcon aria-hidden />
+          </PageLink>
+        </Button>
+      </article>
+    )
+  }
+
+  return (
+    <div {...stylex.props(styles.seat)}>
+      <article
+        data-testid="batch-hero"
+        data-batch={row.id}
+        {...stylex.props(
+          styles.card,
+          entered === 'forward' && styles.arriveForward,
+          entered === 'backward' && styles.arriveBackward,
+        )}
+      >
+        <div {...stylex.props(styles.main)}>
+          <div {...stylex.props(styles.head)}>
+            <div {...stylex.props(styles.headRow)}>
+              <StatusBadge status={row.status} currentPhaseId={row.currentPhaseId} />
+              <Frame frame={frame} current={row.id} />
+            </div>
+            <h2 {...stylex.props(styles.title)}>{row.name}</h2>
+            <div {...stylex.props(styles.facts)}>
+              <span>
+                {format(m.materialWindow, {
+                  from: dotDay(row.materialRange.start),
+                  until: dotDay(row.materialRange.end),
+                })}
+              </span>
+              {row.timeline.length > 0 && (
+                <span>
+                  {at === -1
+                    ? format(m.stageCount, { total: row.timeline.length })
+                    : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {row.timeline.length > 0 && <StageLanes timeline={row.timeline} now={now} />}
+
+          <div {...stylex.props(styles.actions)}>
+            <Button asChild>
+              <PageLink page="assessment/batch" params={{ batchId: row.id }}>
+                {format(m.enterBatch)}
+                <ArrowRightIcon aria-hidden />
+              </PageLink>
+            </Button>
           </div>
         </div>
 
-        {row.timeline.length > 0 && <StageLanes timeline={row.timeline} now={now} />}
-
-        <div {...stylex.props(styles.actions)}>
-          <Button asChild>
-            <PageLink page="assessment/batch" params={{ batchId: row.id }}>
-              {format(m.enterBatch)}
-              <ArrowRightIcon aria-hidden />
-            </PageLink>
-          </Button>
-        </div>
-      </div>
-
-      <aside {...stylex.props(styles.side)}>
-        <div {...stylex.props(styles.stage)}>
-          <span {...stylex.props(styles.stageLabel)}>{format(m.currentStage)}</span>
-          <span {...stylex.props(styles.stageName)}>
-            {row.currentPhaseName ?? format(m.notScheduled)}
-          </span>
-          <span {...stylex.props(styles.stageClock)}>
-            {/* the close and what is left to it, one unit: "03.01 23:59
+        <aside {...stylex.props(styles.side)}>
+          <div {...stylex.props(styles.stage, styles.cell, styles.cellFirst)}>
+            <span {...stylex.props(styles.stageLabel)}>{format(m.currentStage)}</span>
+            <span {...stylex.props(styles.stageName)}>
+              {row.currentPhaseName ?? format(m.notScheduled)}
+            </span>
+            <span {...stylex.props(styles.stageClock)}>
+              {/* the close and what is left to it, one unit: "03.01 23:59
                 截止 · 12 days left"; a stage with no close only says how
                 long it has run */}
-            {closes !== null && <span>{format(m.stageDeadline, { when: dotMoment(closes) })}</span>}
-            <BatchProgress timeline={row.timeline} single />
-          </span>
-        </div>
-        {/* other people's work first: it blocks them, one's own blocks only oneself */}
-        {agenda.review !== null && (
-          <AgendaRow
-            label={format(m.awaitingReview)}
-            value={format(m.submissionsCount, { count: agenda.review.count })}
-            action={format(m.startReview)}
-            page="assessment/batch-reviews"
-            batchId={row.id}
-          />
-        )}
-        {agenda.own !== null && (
-          <AgendaRow
-            label={format(m.myEntries)}
-            value={format(m.toRevise, { count: agenda.own.count })}
-            action={format(m.continueEntries)}
-            page="assessment/batch-my-entries"
-            batchId={row.id}
-          />
-        )}
-      </aside>
-    </article>
+              {closes !== null && (
+                <span>{format(m.stageDeadline, { when: dotMoment(closes) })}</span>
+              )}
+              <BatchProgress timeline={row.timeline} single />
+            </span>
+          </div>
+          {/* other people's work first: it blocks them, one's own blocks only oneself */}
+          {agenda.review !== null && (
+            <AgendaRow
+              label={format(m.awaitingReview)}
+              value={format(m.submissionsCount, { count: agenda.review.count })}
+              action={format(m.startReview)}
+              page="assessment/batch-reviews"
+              batchId={row.id}
+            />
+          )}
+          {agenda.own !== null && (
+            <AgendaRow
+              label={format(m.myEntries)}
+              value={format(m.toRevise, { count: agenda.own.count })}
+              action={format(m.continueEntries)}
+              page="assessment/batch-my-entries"
+              batchId={row.id}
+            />
+          )}
+        </aside>
+      </article>
+    </div>
   )
 }

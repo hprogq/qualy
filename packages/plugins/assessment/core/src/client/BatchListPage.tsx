@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import * as stylex from '@stylexjs/stylex'
-import { PageLink, useApiQuery, usePageNavigate } from '@qualy/web-runtime'
+import { PageLink, useApiQuery, usePageNavigate, usePageTitle } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
@@ -21,23 +21,26 @@ import { EmptyRow } from '@qualy/ui/empty-row'
 import { Reveal } from '@qualy/ui/reveal'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Input } from '@qualy/ui/input'
+import { useIsBelow } from '@qualy/ui/use-mobile'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { Count } from '@qualy/ui/count'
-import { ChevronLeftIcon, ChevronRightIcon, LayersIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  LayersIcon,
+  PlusIcon,
+  SearchIcon,
+  XIcon,
+} from 'lucide-react'
 import { assessmentMessages as m } from './i18n.ts'
 import { assessmentApi } from './api.ts'
 import { NewBatchDialog } from './NewBatchForm.tsx'
 import { standingOf, type BatchStanding } from './batch/standing.ts'
 import { dotDay } from './batch/dates.ts'
 import { HeroSkeleton, ListSkeleton } from './batch/ListSkeleton.tsx'
-import {
-  BatchCard,
-  NO_AGENDA,
-  type BatchAgenda,
-  type BatchCardRow,
-  type HeroFrame,
-} from './batch/BatchCard.tsx'
+import { BatchCard } from './batch/BatchCard.tsx'
+import { NO_AGENDA, type BatchAgenda, type BatchCardRow, type HeroFrame } from './batch/hero.ts'
 
 // Every batch there is, and the way into one.
 //
@@ -117,24 +120,54 @@ const styles = stylex.create({
   },
   title: {
     margin: 0,
-    fontSize: 20,
+    fontSize: { default: 20, [breakpoints.phone]: 22 },
     fontWeight: 600,
-    letterSpacing: '-0.025em',
+    letterSpacing: { default: '-0.025em', [breakpoints.phone]: '-0.03em' },
+    lineHeight: { default: null, [breakpoints.phone]: 1.2 },
   },
+  // On a phone the search is a place to go rather than a field standing
+  // open: the row already has the page's name in it, and a box wide enough
+  // to type a batch name into would leave nowhere to put that name. It
+  // opens in the row it sits in, and closes back to its glyph.
+  iconButton: {
+    display: 'inline-flex',
+    width: 40,
+    height: 40,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 0,
+    backgroundColor: { default: 'transparent', ':hover': tokens.surfaceMuted },
+    color: tokens.surfaceMutedForeground,
+    cursor: 'pointer',
+  },
+  /** the one that starts something is the one that is filled in */
+  iconButtonInk: {
+    backgroundColor: { default: tokens.primary, ':hover': tokens.primary },
+    color: tokens.primaryForeground,
+  },
+  searchOpenSeat: { minWidth: 0, flexGrow: 1 },
   mastheadTools: {
     display: 'flex',
+    // it grows only so the search box can have the rest of the row when it
+    // opens; with the box shut the glyphs still belong at the far edge,
+    // not floated against the page's name
     flexGrow: {
       default: 0,
       [breakpoints.phone]: 1,
     },
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'flex-end',
+    gap: { default: 10, [breakpoints.phone]: 4 },
   },
   searchSeat: {
     width: '100%',
+    // narrower on a tablet, where the row it shares with the page's name
+    // and the button that starts a round has less to go round
     maxWidth: {
       default: null,
-      [breakpoints.tablet]: 320,
+      [breakpoints.tablet]: 200,
       [breakpoints.desktop]: 320,
     },
   },
@@ -169,20 +202,136 @@ const styles = stylex.create({
   },
   listHead: {
     display: 'flex',
+    flexDirection: { default: 'row', [breakpoints.phone]: 'column' },
+    alignItems: { default: 'center', [breakpoints.phone]: 'stretch' },
+    gap: { default: 16, [breakpoints.phone]: 10 },
+  },
+  listHeadLine: {
+    display: 'flex',
+    flexShrink: 0,
     alignItems: 'center',
     gap: 12,
   },
-  // one line whatever the width: on a phone the pills scroll sideways
-  // rather than stacking under each other
+  listLabel: {
+    fontSize: 13,
+    fontWeight: 500,
+    color: tokens.mutedForeground,
+  },
+  // One line whatever the width: on a phone the pills scroll sideways
+  // rather than stacking under each other, and the track runs to both
+  // edges of the screen - a row that scrolls should look like it carries
+  // on, and a pill stopped by a gutter looks like a pill drawn wrong.
   pillScroller: {
     width: {
       default: null,
-      [breakpoints.phone]: '100%',
+      [breakpoints.phone]: 'auto',
     },
     overflowX: {
       default: null,
       [breakpoints.phone]: 'auto',
     },
+    marginInline: { default: null, [breakpoints.phone]: -16 },
+    paddingInline: { default: null, [breakpoints.phone]: 16 },
+    scrollbarWidth: { default: null, [breakpoints.phone]: 'none' },
+    '::-webkit-scrollbar': { display: { default: null, [breakpoints.phone]: 'none' } },
+  },
+
+  // Several rounds under way, on a phone: one card at a time with the next
+  // one showing its edge, so there is something to pull at. Snapped, so a
+  // flick lands on a card rather than between two.
+  deck: {
+    display: 'flex',
+    gap: 12,
+    overflowX: 'auto',
+    scrollSnapType: 'x mandatory',
+    marginInline: -16,
+    paddingInline: 16,
+    // A track that scrolls sideways clips top and bottom too, and what it
+    // was clipping was the cards' own shadow. The padding is that shadow's
+    // reach - it falls 12 below the card and blurs 24, less 8 of spread,
+    // so 28 under and 4 over - and the margin hands the room straight back
+    // to the page, leaving the cards where they were.
+    marginTop: -6,
+    paddingTop: 6,
+    marginBottom: -28,
+    paddingBottom: 28,
+    scrollbarWidth: 'none',
+    '::-webkit-scrollbar': { display: 'none' },
+  },
+  deckCard: {
+    flexGrow: 0,
+    flexShrink: 0,
+    // the screen's width less its two gutters, whatever the screen: the
+    // card was drawn 358 wide on a 390 phone, which is that measure, and a
+    // fixed 358 on any other phone is a card that misses one edge
+    flexBasis: '100%',
+    scrollSnapAlign: 'center',
+  },
+  deckDots: { display: 'flex', justifyContent: 'center', gap: 6 },
+  deckDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '9999px',
+    backgroundColor: `color-mix(in oklch, ${tokens.foreground} 15%, transparent)`,
+  },
+  deckDotHere: { backgroundColor: tokens.foreground },
+
+  // The table's rows, as cards. Five columns do not become narrow, they
+  // become a sideways scroll, and a list nobody can read without dragging
+  // it sideways is not a list. Two lines: what it is called, and where it
+  // stands.
+  rows: {
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    borderRadius: tokens.radiusLg,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.elevation1,
+  },
+  rowCard: {
+    display: 'flex',
+    minHeight: 64,
+    alignItems: 'center',
+    gap: 12,
+    paddingBlock: 12,
+    paddingLeft: 16,
+    paddingRight: 14,
+    color: tokens.foreground,
+    textDecoration: 'none',
+    borderBottomWidth: { default: 1, ':last-child': 0 },
+    borderBottomStyle: 'solid',
+    borderBottomColor: tokens.divider,
+  },
+  rowWords: { display: 'flex', minWidth: 0, flexGrow: 1, flexDirection: 'column', gap: 4 },
+  rowName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: 15,
+    fontWeight: 500,
+  },
+  rowMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    fontSize: 12,
+    color: tokens.mutedForeground,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  rowGlyph: { flexShrink: 0, color: tokens.surfaceMutedForeground },
+  // one more page, asked for rather than paged to: on a phone the list is
+  // one column somebody is already scrolling down
+  more: {
+    display: 'flex',
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontSize: 13,
+    fontWeight: 500,
+    color: tokens.surfaceMutedForeground,
+    cursor: 'pointer',
   },
   sheet: {
     overflow: 'hidden',
@@ -207,7 +356,7 @@ const styles = stylex.create({
   },
   cell: {
     paddingBlock: 14,
-    paddingInline: 12,
+    paddingInline: { default: 12, [breakpoints.tablet]: 14 },
   },
   leading: {
     paddingInlineStart: 20,
@@ -216,9 +365,10 @@ const styles = stylex.create({
     paddingInlineEnd: 20,
     textAlign: 'right',
   },
-  colStatus: { width: 110 },
-  colStage: { width: 150 },
-  colTime: { width: 190 },
+  // a tablet keeps all four columns by giving each of them a little less
+  colStatus: { width: { default: 110, [breakpoints.tablet]: 96 } },
+  colStage: { width: { default: 150, [breakpoints.tablet]: 120 } },
+  colTime: { width: { default: 190, [breakpoints.tablet]: 176 } },
   colOpen: { width: 64 },
   // the header is not a row anybody opens, so it does not light up as one
   headRow: {
@@ -378,7 +528,13 @@ function timeOf(
 
 export default function BatchListPage() {
   const query = useApiQuery(assessmentApi)
+  // the page changes shape, not just its measurements, so the choice is
+  // made here rather than in a media query
+  const narrow = useIsBelow(768)
+  const [searchOpen, setSearchOpen] = useState(false)
   const { format, formatError } = useI18n()
+  // the shell repeats this once the heading itself has scrolled away
+  const titleRef = usePageTitle(format(m.batchesTitle))
   const navigate = usePageNavigate()
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
@@ -401,9 +557,11 @@ export default function BatchListPage() {
   const [pageIndex, setPageIndex] = useState(0)
   const filtered = settledSearch !== '' || statusFilter !== 'all'
   useEffect(() => {
-    // a different question deserves a first page
+    // a different question deserves a first page, and none of the pages
+    // held for the old one answer it
     setCursors([undefined])
     setPageIndex(0)
+    setPiles({})
   }, [settledSearch, statusFilter])
 
   const batches = useQuery({
@@ -454,6 +612,20 @@ export default function BatchListPage() {
   const open = (batchId: string) => navigate('assessment/batch', { params: { batchId } })
 
   const rows = batches.data?.items ?? []
+  // On a phone the pages pile up instead of replacing each other: the list
+  // is one column somebody is already scrolling, and a pager that swapped
+  // the rows under them would lose their place. Kept by the cursor that
+  // fetched each page, so asking twice cannot count a page twice and
+  // stepping back is a page already held.
+  const [piles, setPiles] = useState<Readonly<Record<string, readonly (typeof rows)[number][]>>>({})
+  const pileKey = cursors[pageIndex] ?? ''
+  useEffect(() => {
+    const items = batches.data?.items
+    if (items === undefined) return
+    setPiles((held) => (held[pileKey] === items ? held : { ...held, [pileKey]: items }))
+  }, [batches.data, pileKey])
+  const piled = cursors.slice(0, pageIndex + 1).flatMap((cursor) => piles[cursor ?? ''] ?? [])
+  const shownRows = narrow ? piled : rows
   const total = batches.data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const standing = (row: (typeof rows)[number]) => standingOf(row.status, row.currentPhaseId)
@@ -553,27 +725,71 @@ export default function BatchListPage() {
     <PageContainer xstyle={styles.column}>
       <Reveal className={stylex.props(styles.page).className}>
         <div {...stylex.props(styles.masthead)}>
-          <h1 {...stylex.props(styles.title)}>{format(m.batchesTitle)}</h1>
+          {/* on a phone the row holds either the page's name or the box to
+              search it, never both: there is room for one of them */}
+          {(!narrow || !searchOpen) && (
+            <h1 ref={titleRef} {...stylex.props(styles.title)}>
+              {format(m.batchesTitle)}
+            </h1>
+          )}
           <div {...stylex.props(styles.mastheadTools)}>
-            <Input
-              name="batches-search"
-              value={search}
-              placeholder={format(m.searchPlaceholder)}
-              aria-label={format(m.searchPlaceholder)}
-              onChange={(event) => setSearch(event.target.value)}
-              lead={
-                <SearchIcon aria-hidden className={stylex.props(styles.searchGlyph).className} />
-              }
-              wrapperXstyle={styles.searchSeat}
-            />
-            {canCreate && (
-              <Button
-                className={stylex.props(styles.createButton).className}
-                onClick={() => setCreating(true)}
+            {narrow && !searchOpen ? (
+              <button
+                type="button"
+                aria-label={format(m.searchPlaceholder)}
+                onClick={() => setSearchOpen(true)}
+                {...stylex.props(styles.iconButton)}
               >
-                <PlusIcon />
-                {format(m.newBatch)}
-              </Button>
+                <SearchIcon size={20} aria-hidden />
+              </button>
+            ) : (
+              <Input
+                name="batches-search"
+                value={search}
+                autoFocus={narrow}
+                placeholder={format(m.searchPlaceholder)}
+                aria-label={format(m.searchPlaceholder)}
+                onChange={(event) => setSearch(event.target.value)}
+                lead={
+                  <SearchIcon aria-hidden className={stylex.props(styles.searchGlyph).className} />
+                }
+                wrapperXstyle={narrow ? styles.searchOpenSeat : styles.searchSeat}
+              />
+            )}
+            {narrow && searchOpen && (
+              <button
+                type="button"
+                aria-label={format(commonMessages.close)}
+                onClick={() => {
+                  setSearchOpen(false)
+                  setSearch('')
+                }}
+                {...stylex.props(styles.iconButton)}
+              >
+                <XIcon size={20} aria-hidden />
+              </button>
+            )}
+            {canCreate && !(narrow && searchOpen) && (
+              <>
+                {narrow ? (
+                  <button
+                    type="button"
+                    aria-label={format(m.newBatch)}
+                    onClick={() => setCreating(true)}
+                    {...stylex.props(styles.iconButton, styles.iconButtonInk)}
+                  >
+                    <PlusIcon size={20} aria-hidden />
+                  </button>
+                ) : (
+                  <Button
+                    className={stylex.props(styles.createButton).className}
+                    onClick={() => setCreating(true)}
+                  >
+                    <PlusIcon />
+                    {format(m.newBatch)}
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -594,6 +810,40 @@ export default function BatchListPage() {
           <div {...stylex.props(styles.results)}>
             {heroPending ? (
               <HeroSkeleton />
+            ) : narrow ? (
+              // On a phone every running round is a card in a row that
+              // snaps, rather than one card with a way to step between
+              // them: a thumb already knows how to do this, and arrows
+              // would be two more targets on the busiest part of the page.
+              running.length > 0 && (
+                <div {...stylex.props(styles.list)}>
+                  <div {...stylex.props(styles.deck)}>
+                    {running.map((one) => (
+                      <div key={one.id} {...stylex.props(styles.deckCard)}>
+                        <BatchCard
+                          row={one}
+                          agenda={agendaOf(agendas.data?.items ?? [], one.id)}
+                          frame={{ kind: 'single' }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {/* one card is not a choice, so it gets no marks */}
+                  {running.length > 1 && (
+                    <div aria-hidden {...stylex.props(styles.deckDots)}>
+                      {running.map((one, index) => (
+                        <span
+                          key={one.id}
+                          {...stylex.props(
+                            styles.deckDot,
+                            index === heroIndex && styles.deckDotHere,
+                          )}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
             ) : (
               shown !== undefined && (
                 // keyed by the batch, so a change of batch is a new card
@@ -609,11 +859,20 @@ export default function BatchListPage() {
             )}
 
             <section {...stylex.props(styles.list)}>
-              {/* the pills are the section's title: they say what the table
-                  below is scoped to, and a label beside them said it twice;
-                  a refresh that runs long is said beside them, since it is
-                  the table that is being asked again */}
+              {/* the list has a name of its own because the cards above it
+                  are batches too: without it the pills read as filtering
+                  the whole page. A refresh that runs long is said beside
+                  that name, since it is the table being asked again */}
               <div {...stylex.props(styles.listHead)}>
+                <div {...stylex.props(styles.listHeadLine)}>
+                  <span {...stylex.props(styles.listLabel)}>{format(m.batchesAll)}</span>
+                  {refreshing && (
+                    <Spinner
+                      aria-label={format(commonMessages.loading)}
+                      className={stylex.props(styles.refreshing).className}
+                    />
+                  )}
+                </div>
                 <div {...stylex.props(styles.pillScroller)}>
                   <ToggleGroup
                     className={stylex.props(styles.wide).className}
@@ -648,16 +907,10 @@ export default function BatchListPage() {
                     </ToggleGroupItem>
                   </ToggleGroup>
                 </div>
-                {refreshing && (
-                  <Spinner
-                    aria-label={format(commonMessages.loading)}
-                    className={stylex.props(styles.refreshing).className}
-                  />
-                )}
               </div>
 
               <div {...stylex.props(styles.sheet)}>
-                {rows.length === 0 ? (
+                {shownRows.length === 0 ? (
                   // an empty list and an empty result set are different
                   // situations: the first is answered by creating a batch,
                   // the second by the search box and the pills already on
@@ -685,6 +938,60 @@ export default function BatchListPage() {
                       )}
                     </Empty>
                   )
+                ) : narrow ? (
+                  <div {...stylex.props(styles.rows)}>
+                    {shownRows.map((row) => {
+                      const at = standing(row)
+                      return (
+                        <PageLink
+                          key={row.id}
+                          page="assessment/batch"
+                          params={{ batchId: row.id }}
+                          data-testid="batch-row"
+                          data-batch={row.id}
+                          data-standing={at}
+                          className={stylex.props(styles.rowCard).className}
+                        >
+                          <span {...stylex.props(styles.rowWords)}>
+                            <span {...stylex.props(styles.rowName)}>{row.name}</span>
+                            <span {...stylex.props(styles.rowMeta)}>
+                              <span {...stylex.props(styles.standing, standingStyle[at])}>
+                                <span aria-hidden {...stylex.props(styles.dot, dotStyle[at])} />
+                                {format(
+                                  {
+                                    draft: m.statusDraft,
+                                    pending: m.statusPending,
+                                    active: m.statusActive,
+                                    archived: m.statusArchived,
+                                  }[at],
+                                )}
+                              </span>
+                              <span>{stageOf(row, format)}</span>
+                              {/* a round still being set up has no date to
+                                  give, and its stage has just said so */}
+                              {at !== 'draft' && <span>{timeOf(row, at, format)}</span>}
+                            </span>
+                          </span>
+                          <ChevronRightIcon
+                            size={16}
+                            aria-hidden
+                            {...stylex.props(styles.rowGlyph)}
+                          />
+                        </PageLink>
+                      )
+                    })}
+                    {/* one more page, where a pager would be */}
+                    {nextCursor !== null && (
+                      <button
+                        type="button"
+                        data-testid="batch-more"
+                        onClick={() => setPageIndex((index) => index + 1)}
+                        {...stylex.props(styles.more)}
+                      >
+                        {format(m.nextPage)}
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <div {...stylex.props(styles.sheetScroller)}>
                     <Table xstyle={styles.table}>
@@ -762,7 +1069,7 @@ export default function BatchListPage() {
                 )}
                 {/* the foot exists only when there is somewhere to page to:
                     how many there are is on the pills already */}
-                {paged && (
+                {paged && !narrow && (
                   <div {...stylex.props(styles.pagerRow)}>
                     <span
                       data-testid="batch-pager"

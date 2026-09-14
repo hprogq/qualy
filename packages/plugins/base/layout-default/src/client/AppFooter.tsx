@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
+import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { PageContainer } from '@qualy/ui/page-container'
 import { useI18n } from '@qualy/web-i18n'
 import { layoutMessages as m } from './i18n.ts'
@@ -20,6 +21,11 @@ import { layoutMessages as m } from './i18n.ts'
 
 const styles = stylex.create({
   foot: {
+    // Not on a phone. The signature is a desktop courtesy - a wordmark and
+    // four secondary links under the last row - and on a narrow screen it
+    // is a second navigation sitting right above the real one, which the
+    // reader reaches by scrolling past the content they came for.
+    display: { default: null, [breakpoints.phone]: 'none' },
     flexShrink: 0,
     width: '100%',
     paddingTop: 22,
