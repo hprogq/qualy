@@ -248,6 +248,39 @@ const Aegis = loaded.default as unknown as (typeof import('aegis-web-sdk'))['def
 `import('aegis-web-sdk')` 打出来是独立 chunk(生产构建实测 128 KB / gzip 41 KB),
 入口只在动态 `import()` 里出现它的文件名,与旁边的 `cos-js-sdk-v5` 同型。
 
+## 被拒时先读 `rum-error` 响应头(Phase 1 真机实测)
+
+真机第一次打向 `rumt-zh.com` 时一条也没进去,而响应体只有 `403 forbidden` 五个字,
+whitelist 则回 `{"retcode":0,"result":{"is_in_white_list":false,"rate":0,"shutdown":true}}`——
+**这段是拒绝态的答复,不是项目状态**,任何 id(包括空 id)都拿到同一段,据此判断不了任何事。
+
+真正的诊断在**响应头** `rum-error` 里,它带业务错误码:
+
+| 码       | 含义                                                      |
+| -------- | --------------------------------------------------------- |
+| `111`    | `id(...) in referer(...)/origin(...) is not allowed to report from this origin`——来源域名不在该应用的白名单里 |
+| `41`     | `project(...) is not exist`——id 不存在                    |
+| `12`     | `failed to match any pattern`——路径/方法不对(例如 GET /collect) |
+
+`41` 与 `111` 的区别正好可以用来判断「id 对不对」与「域名允不允许」,不必去控制台猜。
+
+来源允许之后,同一个 whitelist 接口改回 `{"retcode":0,"result":{"is_in_white_list":false,"rate":1,"use_gzip":0}}`,
+数据端点返回 `204`。
+
+**白名单按 origin 精确匹配,端口算在内**:实测 `http://localhost:5173` 通过,而同一台机器上的
+`http://localhost:3199` 与 `http://127.0.0.1:3199` 都被 `111` 拒绝。上线前必须把真实部署域名加进去。
+
+## 一个 403 会直接销毁 SDK 实例
+
+产物里对这个字符串有专门处理(`FORBIDDEN_RESPONSE_DATA`):
+
+```js
+if ((''+response).indexOf('403 forbidden') > -1) { isErr = true; core.destroy() }
+```
+
+所以**第一条被拒的请求就会把 Aegis 实例销毁**,之后整页不再尝试任何上报。排查时看到「只发了一轮就没了」
+是这个原因,不是采样、不是限流。
+
 ## 平台可以在运行时把采样率改成 0(Phase 1 真机实测)
 
 第一次真的把上报打向 `rumt-zh.com` 时,一条日志都没出去,而客户端一切正常(0 条 CSP violation,
@@ -265,11 +298,10 @@ isHidden = true,整页此后不再发送任何东西
 所以 **`random` / `sampleRate` 是一个上限,不是保证**:whitelist 接口返回的 `rate` 会直接覆盖
 我们配置的值,平台可以随时把它压到 0。运维上要知道「配置了全量」不等于「全量到达」。
 
-另外实测:`/collect/whitelist` 对**任何 id 都返回同一段内容**(试过两个不可能存在的 id,答复逐字相同),
-所以这段答复本身**不能用来判断 id 是否已注册**。当时那个项目侧处于不收数据的状态,
-`/speed/performance` 同时返回 `403 forbidden`。
+(第一次实测拿到 `rate: 0` 是因为来源被拒,见上一节;来源允许后是 `rate: 1`。机制照样成立,
+只是当时那次的原因不是采样策略。)
 
-这也顺带验证了一条设计要求:上报端完全不工作时,应用毫发无损。
+这也顺带验证了一条设计要求:上报端完全不工作时,应用毫发无损——0 条 CSP violation,页面无任何异常。
 
 ## Phase 1 据此应写的配置
 
