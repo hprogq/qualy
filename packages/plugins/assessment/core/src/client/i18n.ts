@@ -443,8 +443,8 @@ const i18n = definePluginMessages({
     /** on the roster, nothing filed yet */
     entriesNone: { id: 'assessment/batch/entries-none', defaultMessage: 'Nothing filed yet' },
     startEntries: { id: 'assessment/batch/start-entries', defaultMessage: 'Start filing' },
-    /** the quiet way in, for filings that are out of the reader's hands */
-    viewEntries: { id: 'assessment/batch/view-entries', defaultMessage: 'View' },
+    /** the quiet way in, for a line that is open without asking anything */
+    viewLine: { id: 'assessment/batch/view', defaultMessage: 'View' },
     today: { id: 'assessment/batch/today', defaultMessage: 'Today' },
     columnBatch: { id: 'assessment/batch/column-batch', defaultMessage: 'Batch' },
     columnStage: { id: 'assessment/batch/column-stage', defaultMessage: 'Stage' },
@@ -515,7 +515,7 @@ const i18n = definePluginMessages({
     // is a promise it has made, not a state it is in
     statusPending: { id: 'assessment/status/pending', defaultMessage: 'Scheduled' },
     statusActive: { id: 'assessment/status/active', defaultMessage: 'In progress' },
-    statusArchived: { id: 'assessment/status/archived', defaultMessage: 'Archived' },
+    statusArchived: { id: 'assessment/status/archived', defaultMessage: 'Ended' },
     deleteBatch: { id: 'assessment/action/delete', defaultMessage: 'Delete batch' },
     deleteConfirmTitle: {
       id: 'assessment/action/delete-confirm-title',
@@ -547,10 +547,10 @@ const i18n = definePluginMessages({
       id: 'assessment/action/reopen-phase-placeholder',
       defaultMessage: 'e.g. Supplementary submission period',
     },
-    archive: { id: 'assessment/action/archive', defaultMessage: 'Archive' },
+    archive: { id: 'assessment/action/archive', defaultMessage: 'End batch' },
     archiveConfirmTitle: {
       id: 'assessment/action/archive-confirm-title',
-      defaultMessage: 'Archive the batch?',
+      defaultMessage: 'End the batch?',
     },
     archiveConfirmBody: {
       id: 'assessment/action/archive-confirm-body',
@@ -3900,7 +3900,7 @@ const i18n = definePluginMessages({
     settingsLifecycleHint: {
       id: 'assessment/settings/lifecycle-hint',
       defaultMessage:
-        'Archived batches are read-only and no longer allow submissions, reviews, or configuration changes.',
+        'A batch that has ended is read-only: no more submissions, reviews or changes to its setup.',
     },
     phasesHint: {
       id: 'assessment/phase/hint',
@@ -4086,7 +4086,7 @@ const i18n = definePluginMessages({
     toastAdjusted: { id: 'assessment/toast/adjusted', defaultMessage: 'Saved' },
     toastBatchCreated: { id: 'assessment/toast/batch-created', defaultMessage: 'Batch created' },
     toastBatchSaved: { id: 'assessment/toast/batch-saved', defaultMessage: 'Saved' },
-    toastBatchArchived: { id: 'assessment/toast/batch-archived', defaultMessage: 'Batch archived' },
+    toastBatchArchived: { id: 'assessment/toast/batch-archived', defaultMessage: 'Batch ended' },
     toastBatchReopened: { id: 'assessment/toast/batch-reopened', defaultMessage: 'Batch reopened' },
     toastBatchDeleted: { id: 'assessment/toast/batch-deleted', defaultMessage: 'Batch deleted' },
     toastPlanSaved: { id: 'assessment/toast/plan-saved', defaultMessage: 'Stage plan saved' },
@@ -4558,7 +4558,7 @@ const i18n = definePluginMessages({
     },
     ASSESSMENT_BATCH_READ_ONLY: {
       id: 'assessment/error/batch-read-only',
-      defaultMessage: 'The batch is archived and cannot be modified.',
+      defaultMessage: 'The batch has ended and cannot be modified.',
     },
     ASSESSMENT_BATCH_STATUS_INVALID: {
       id: 'assessment/error/batch-status-invalid',

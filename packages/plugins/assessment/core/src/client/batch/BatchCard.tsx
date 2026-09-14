@@ -13,7 +13,7 @@ import { assessmentMessages as m } from '../i18n.ts'
 import { dotDay, dotMoment } from './dates.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
-import type { TimelineLike } from './progress.ts'
+import { progressOf, type TimelineLike } from './progress.ts'
 import type { AgendaRow as AgendaKind, BatchAgenda, BatchCardRow, HeroFrame } from './hero.ts'
 
 // The batch that is running, as the thing the page leads with.
@@ -411,18 +411,14 @@ const phone = stylex.create({
     borderRadius: 10,
     backgroundColor: tokens.surfaceInset,
   },
-  // One line, not two stacked. The wide card can afford a label above its
-  // value; here the height of a line is what a card costs when it has one
-  // line fewer than the card beside it, and two stacked lines made that
-  // cost a whole row of white.
   agendaRow: {
     display: 'flex',
-    minHeight: 48,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
     paddingInline: 14,
-    paddingBlock: 8,
+    paddingBlock: 10,
     color: tokens.foreground,
     textDecoration: 'none',
     // the whole row is the target, which is what makes it big enough
@@ -430,8 +426,8 @@ const phone = stylex.create({
     borderTopStyle: 'solid',
     borderTopColor: tokens.divider,
   },
-  agendaWords: { display: 'flex', minWidth: 0, alignItems: 'baseline', gap: 10 },
-  agendaLabel: { flexShrink: 0, fontSize: 13, color: tokens.mutedForeground },
+  agendaWords: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
+  agendaLabel: { fontSize: 12, color: tokens.mutedForeground },
   agendaValue: {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -440,7 +436,6 @@ const phone = stylex.create({
     fontWeight: 600,
   },
   agendaValueIdle: { fontWeight: 500, color: tokens.mutedForeground },
-  agendaClock: { flexShrink: 0, fontSize: 12, color: tokens.mutedForeground },
   agendaGlyph: { flexShrink: 0, color: tokens.foreground },
   agendaGlyphIdle: { color: tokens.mutedForeground },
   // Where the round stands and the way into it are one thing, and that
@@ -466,13 +461,30 @@ const phone = stylex.create({
   laneFuture: { backgroundColor: tokens.surfaceMuted },
   meta: {
     display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
     gap: 10,
     fontSize: 12,
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
+  // the name is the part that can run long - it is whatever somebody called
+  // the stage - so it is the part that gives way, never the clock
+  metaWhere: {
+    display: 'flex',
+    minWidth: 0,
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  metaAt: { flexShrink: 0 },
+  metaStage: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontWeight: 500,
+    color: tokens.foreground,
+  },
+  metaClock: { flexShrink: 0 },
   enter: { width: '100%', height: 44 },
 })
 
@@ -685,13 +697,14 @@ function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
  * nowhere to go: an empty queue holds nothing to look at, and the line
  * that says so is the whole answer.
  *
- * `quiet` is the middle case - somewhere to go that is asking nothing.
- * Filings out for judgement are the reader's to look over whenever they
- * like, so the way in stays; it is drawn in the weight of a fact rather
- * than of an instruction, which is how a line can be open without
- * competing with the one that does need doing. Open with no mark at all
- * would be worse than shut: a target nobody can see is a target nobody
- * finds.
+ * Every line leads somewhere, because every line is about something the
+ * reader has a place for: a queue, their own filings. A block in which
+ * some lines that look alike can be pressed and others cannot is a block
+ * whose rule nobody can state.
+ *
+ * `quiet` carries the difference instead: a line that asks nothing is
+ * drawn in the weight of a fact rather than of an instruction, so it
+ * neither calls out nor stands in the way.
  */
 function wordsOf(
   row: AgendaKind,
@@ -699,7 +712,7 @@ function wordsOf(
 ): {
   label: string
   value: string
-  action: string | null
+  action: string
   quiet: boolean
   page: 'assessment/batch-reviews' | 'assessment/batch-my-entries'
   state: string
@@ -711,8 +724,8 @@ function wordsOf(
         row.waiting > 0
           ? format(m.submissionsCount, { count: row.waiting })
           : format(m.reviewsClear),
-      action: row.waiting > 0 ? format(m.startReview) : null,
-      quiet: false,
+      action: row.waiting > 0 ? format(m.startReview) : format(m.viewLine),
+      quiet: row.waiting === 0,
       page: 'assessment/batch-reviews',
       state: row.waiting > 0 ? 'waiting' : 'clear',
     }
@@ -723,7 +736,7 @@ function wordsOf(
       : row.state === 'draft'
         ? [format(m.toSubmit, { count: row.count }), format(m.continueDraft)]
         : row.state === 'submitted'
-          ? [format(m.underReview, { count: row.count }), format(m.viewEntries)]
+          ? [format(m.underReview, { count: row.count }), format(m.viewLine)]
           : [format(m.entriesNone), format(m.startEntries)]
   return {
     label: format(m.myEntries),
@@ -755,64 +768,22 @@ function AgendaRow({
     >
       <div {...stylex.props(styles.agendaWords)}>
         <span {...stylex.props(styles.agendaLabel)}>{label}</span>
-        <span
-          {...stylex.props(
-            styles.agendaValue,
-            (action === null || quiet) && styles.agendaValueIdle,
-          )}
-        >
-          {value}
-        </span>
+        <span {...stylex.props(styles.agendaValue, quiet && styles.agendaValueIdle)}>{value}</span>
       </div>
-      {action !== null && (
-        <PageLink
-          page={page}
-          params={{ batchId }}
-          className={stylex.props(styles.agendaAction, softly).className}
-          unavailable={<span {...stylex.props(styles.agendaAction, softly)}>{action}</span>}
-        >
-          {action}
-          <ArrowRightIcon size={13} aria-hidden />
-        </PageLink>
-      )}
+      <PageLink
+        page={page}
+        params={{ batchId }}
+        className={stylex.props(styles.agendaAction, softly).className}
+        unavailable={<span {...stylex.props(styles.agendaAction, softly)}>{action}</span>}
+      >
+        {action}
+        <ArrowRightIcon size={13} aria-hidden />
+      </PageLink>
     </div>
   )
 }
 
-/**
- * Where the round itself has got to, at the head of the same block.
- *
- * It is not an agenda line - nothing is asked of anybody by it - so it does
- * not go through `AgendaRow`, whose whole business is ranking what is being
- * asked. It shares the block and the shape because a reader takes in "what
- * is happening" and "what of it is mine" in one glance, which is how the
- * wide card has always drawn them: one inset column, the stage at its head.
- *
- * It also means every card has at least one line here, so a deck of them
- * differs by one line rather than by two, and the card of somebody who has
- * nothing to do is not an empty panel.
- */
-function PhoneClockRow({
-  row,
-  format,
-}: {
-  row: BatchCardRow
-  format: ReturnType<typeof useI18n>['format']
-}) {
-  return (
-    <span data-testid="hero-clock" {...stylex.props(phone.agendaRow)}>
-      <span {...stylex.props(phone.agendaWords)}>
-        <span {...stylex.props(phone.agendaLabel)}>{format(m.currentStage)}</span>
-        <span {...stylex.props(phone.agendaValue)}>
-          {row.currentPhaseName ?? format(m.notScheduled)}
-        </span>
-      </span>
-      <BatchProgress timeline={row.timeline} single xstyle={phone.agendaClock} />
-    </span>
-  )
-}
-
-/** one line of work, the whole of it a way to that work - where there is one */
+/** one line of work, the whole of it a way to that work */
 function PhoneAgendaRow({
   row,
   batchId,
@@ -822,34 +793,21 @@ function PhoneAgendaRow({
   batchId: string
   format: ReturnType<typeof useI18n>['format']
 }) {
-  const { label, value, action, quiet, page, state } = wordsOf(row, format)
+  const { label, value, quiet, page, state } = wordsOf(row, format)
   const words = (
     <>
       <span {...stylex.props(phone.agendaWords)}>
         <span {...stylex.props(phone.agendaLabel)}>{label}</span>
-        <span
-          {...stylex.props(phone.agendaValue, (action === null || quiet) && phone.agendaValueIdle)}
-        >
-          {value}
-        </span>
+        <span {...stylex.props(phone.agendaValue, quiet && phone.agendaValueIdle)}>{value}</span>
       </span>
-      {action !== null && (
-        <ArrowRightIcon
-          size={16}
-          aria-hidden
-          {...stylex.props(phone.agendaGlyph, quiet && phone.agendaGlyphIdle)}
-        />
-      )}
+      <ArrowRightIcon
+        size={16}
+        aria-hidden
+        {...stylex.props(phone.agendaGlyph, quiet && phone.agendaGlyphIdle)}
+      />
     </>
   )
   const marks = { 'data-testid': 'hero-agenda', 'data-agenda': page, 'data-agenda-state': state }
-  if (action === null) {
-    return (
-      <span {...marks} {...stylex.props(phone.agendaRow)}>
-        {words}
-      </span>
-    )
-  }
   return (
     <PageLink
       page={page}
@@ -888,9 +846,12 @@ export function BatchCard({
   // here rather than in a media query
   const narrow = useIsMobile()
   const at = row.timeline.findIndex((entry) => entry.status === 'current')
-  const next = at === -1 ? undefined : row.timeline[at + 1]
-  const closes =
-    next?.entry.kind === 'planned' && next.entry.at !== null ? Date.parse(next.entry.at) : null
+  // asked of the clock rather than worked out here: a stage ends when the
+  // next one begins, and this card used to say so in its own words - the
+  // same reasoning written a second time, and only one of the two knew
+  // what to do with a round that is unscheduled or has not begun
+  const where = progressOf(row.timeline, now)
+  const closes = where.kind === 'until' ? where.at : null
 
   // The phone card is a different order, not a narrower one: what the
   // reader has to do moves above the run of stages. Two orders cannot be
@@ -912,12 +873,16 @@ export function BatchCard({
           <h2 {...stylex.props(phone.title)}>{row.name}</h2>
         </div>
 
-        <div {...stylex.props(phone.agenda)}>
-          <PhoneClockRow row={row} format={format} />
-          {agenda.rows.map((line) => (
-            <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} format={format} />
-          ))}
-        </div>
+        {/* the reader's own business, and only that: somebody the round is
+            neither about nor answerable to gets no block at all rather
+            than a sentence made up to fill one */}
+        {agenda.rows.length > 0 && (
+          <div {...stylex.props(phone.agenda)}>
+            {agenda.rows.map((line) => (
+              <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} format={format} />
+            ))}
+          </div>
+        )}
 
         <div {...stylex.props(phone.foot)}>
           {row.timeline.length > 0 && (
@@ -937,13 +902,24 @@ export function BatchCard({
                   />
                 ))}
               </div>
-              {/* the stage's name and its clock are said above, in the
-                  weight they deserve; all this line has left is which of
-                  the stages it is */}
+              {/* Where the round stands, in one line under the bar it
+                  belongs to: which stage of how many, its name, and the
+                  clock. The clock is the shared one - it tells a stage
+                  that has not been scheduled from one that has not begun,
+                  and it turns amber and then red as the close comes up,
+                  which is the thing on this card worth noticing. */}
               <div {...stylex.props(phone.meta)}>
-                {at === -1
-                  ? format(m.stageCount, { total: row.timeline.length })
-                  : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
+                <span {...stylex.props(phone.metaWhere)}>
+                  <span {...stylex.props(phone.metaAt)}>
+                    {at === -1
+                      ? format(m.stageCount, { total: row.timeline.length })
+                      : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
+                  </span>
+                  {row.currentPhaseName !== null && (
+                    <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
+                  )}
+                </span>
+                <BatchProgress timeline={row.timeline} single xstyle={phone.metaClock} />
               </div>
             </div>
           )}

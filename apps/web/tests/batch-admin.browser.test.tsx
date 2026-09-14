@@ -364,12 +364,14 @@ describe('the batch list', () => {
     await expect.element(page.getByRole('link', { name: '查看' })).toBeVisible()
   })
 
-  it('leads nowhere from a queue with nothing in it', async () => {
+  it('leads on from a line that asks nothing, in a quieter voice', async () => {
     screen(standing(null, 0), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await agendaStates()).toEqual(['clear'])
-    // an empty queue holds nothing to look at, so the line is the whole answer
-    expect(await page.getByTestId('hero-agenda').getByRole('link').elements()).toHaveLength(0)
+    // every line in the block leads somewhere - a block where some lines
+    // that look alike can be pressed and others cannot has no rule anybody
+    // can state - and the ones asking nothing say so in a quieter word
+    await expect.element(page.getByRole('link', { name: '查看' })).toBeVisible()
   })
 
   it('tells an empty result apart from an empty list', async () => {

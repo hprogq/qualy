@@ -279,14 +279,25 @@ const styles = stylex.create({
     fontSize: 15,
     fontWeight: 500,
   },
+  // Three things on one line, and only one of them can run long: the stage
+  // is whatever somebody called it. So the standing and the time hold their
+  // width and the name gives way - a line that wraps instead turns a row of
+  // the same height as every other into a row of its own.
   rowMeta: {
     display: 'flex',
+    minWidth: 0,
     alignItems: 'center',
     gap: 10,
     fontSize: 12,
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
+  rowStage: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  rowWhen: { flexShrink: 0, whiteSpace: 'nowrap' },
   rowGlyph: { flexShrink: 0, color: tokens.surfaceMutedForeground },
   // one more page, asked for rather than paged to: on a phone the list is
   // one column somebody is already scrolling down
@@ -361,10 +372,12 @@ const styles = stylex.create({
   },
   standing: {
     display: 'inline-flex',
+    flexShrink: 0,
     alignItems: 'center',
     gap: 6,
     fontSize: 12,
     color: tokens.mutedForeground,
+    whiteSpace: 'nowrap',
   },
   standingActive: {
     color: tokens.successForeground,
@@ -935,10 +948,14 @@ export default function BatchListPage() {
                                   }[at],
                                 )}
                               </span>
-                              <span>{stageOf(row, format)}</span>
+                              <span {...stylex.props(styles.rowStage)}>{stageOf(row, format)}</span>
                               {/* a round still being set up has no date to
                                   give, and its stage has just said so */}
-                              {at !== 'draft' && <span>{timeOf(row, at, format)}</span>}
+                              {at !== 'draft' && (
+                                <span {...stylex.props(styles.rowWhen)}>
+                                  {timeOf(row, at, format)}
+                                </span>
+                              )}
                             </span>
                           </span>
                           <ChevronRightIcon

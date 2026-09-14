@@ -63,6 +63,8 @@ export type Progress =
   | {
       readonly kind: 'until'
       readonly span: Elapsed
+      /** when it ends, for whoever says the moment rather than the distance */
+      readonly at: number
       /** what is left, for whoever has to decide how loudly to say it */
       readonly remaining: number
       /** how much of this stage has gone, when its start is known */
@@ -98,6 +100,7 @@ export function progressOf(timeline: readonly TimelineLike[], now: number): Prog
     return {
       kind: 'until',
       span: spanOf(end - now),
+      at: end,
       remaining: Math.max(0, end - now),
       // a stage whose own start was never recorded has no length to divide
       // by, and a bar filled from an invented start is a bar that lies
