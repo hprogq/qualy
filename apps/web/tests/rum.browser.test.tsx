@@ -7,6 +7,7 @@ import {
   captureDiagnostic,
   captureException,
   installEarlyListeners,
+  installSink,
   observedPageUrl,
   setObservedPage,
   type DiagnosticContext,
@@ -43,7 +44,7 @@ const fakeProvider = (over: { start?: BrowserRumProviderStart } = {}) => {
     provider: 'fake',
     start: over.start ?? (() => Promise.resolve(sink)),
   })
-  return { exceptions, diagnostics, pages }
+  return { exceptions, diagnostics, pages, sink }
 }
 
 type BrowserRumProviderStart = (
@@ -105,6 +106,56 @@ describe('starting up', () => {
     expect(seen.exceptions.map((one) => (one.error as Error).message)).toContain(
       'thrown while the graph was evaluating',
     )
+  })
+
+  it('holds what the application reports while the provider is still starting', async () => {
+    // The race the first screen actually runs: nothing awaits `startBrowserRum`
+    // - a reporting platform must never hold a render back - so the settings
+    // request and the vendor chunk are still in flight while the first
+    // components mount. A page that throws there used to report into nothing
+    // AND be marked as already reported on the way out, so no later path
+    // could report it either. The window listeners do not cover it: a React
+    // boundary's report never reaches the window.
+    answering({ schema: 1, provider: 'fake', config: {} })
+    let arrive!: (sink: ObservabilitySink) => void
+    const onItsWay = new Promise<ObservabilitySink>((resolve) => {
+      arrive = resolve
+    })
+    const seen = fakeProvider({ start: () => onItsWay })
+    const starting = startBrowserRum(release)
+
+    const failure = new Error('the first screen exploded')
+    captureException(failure, { surface: { kind: 'login', id: 'local' } })
+    captureDiagnostic('surface-missing', { surface: 'page:demo/gone' })
+    // the same object down a second path, which is what the dedup is for
+    captureException(failure)
+    expect(seen.exceptions).toHaveLength(0)
+
+    arrive(seen.sink)
+    await starting
+    // once, with the context it had at the time
+    expect(seen.exceptions).toHaveLength(1)
+    expect(seen.exceptions[0]?.error).toBe(failure)
+    expect(seen.exceptions[0]?.context).toMatchObject({ surface: { kind: 'login', id: 'local' } })
+    expect(seen.diagnostics).toEqual([
+      { code: 'surface-missing', context: { surface: 'page:demo/gone' } },
+    ])
+  })
+
+  it('lets go of what it held once the answer is that nobody reports', async () => {
+    answering({ schema: 1, provider: null, config: {} })
+    captureException(new Error('held for a sink that never comes'))
+    await startBrowserRum(release)
+    // a sink installed afterwards is the only way to look at what was kept,
+    // and it finds nothing: the question was answered, so the queue let go
+    // rather than waiting out the life of the page
+    const late: Reported[] = []
+    installSink({
+      captureException: (error, context) => late.push({ error, context }),
+      captureDiagnostic: () => undefined,
+      setPage: () => undefined,
+    })
+    expect(late).toEqual([])
   })
 
   it('treats an assembly without the capability as reporting off, not as a failure', async () => {

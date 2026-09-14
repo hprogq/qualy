@@ -58,6 +58,42 @@ export interface ObservabilitySink {
 
 let sink: ObservabilitySink | null = null
 
+/**
+ * What the application reported while no sink existed yet.
+ *
+ * A sink cannot be up during the first screen: bringing one up needs the
+ * deployment's settings, which is a request, and a vendor chunk - and the
+ * first render happens without waiting for either, on purpose, because a
+ * reporting platform must never be able to hold the product back. So the
+ * failures most worth having are exactly the ones that arrive too early:
+ * a page that throws on its first render reported into nothing at all, and
+ * was marked as already reported on the way out, so no later path could
+ * report it either.
+ *
+ * The window listeners next door do not cover this. They catch what reaches
+ * the window; a React error boundary's report never does - that is the whole
+ * reason the dedup beside them is identity-based rather than a global
+ * handler's problem.
+ *
+ * Bounded for the same reason the early queue is: a failing render loop
+ * reports thousands of times, and holding them all is a leak in the one
+ * situation where the page is already in trouble.
+ */
+const PENDING_LIMIT = 20
+
+type PendingReport =
+  | { readonly kind: 'exception'; readonly error: unknown; readonly context: ExceptionContext }
+  | { readonly kind: 'diagnostic'; readonly code: string; readonly context?: DiagnosticContext }
+
+const pending: PendingReport[] = []
+/** whether the question "does this deployment report, and where" has an answer */
+let settled = false
+
+const hold = (report: PendingReport): void => {
+  if (settled || pending.length >= PENDING_LIMIT) return
+  pending.push(report)
+}
+
 /** one line per distinct problem, never a line per occurrence */
 const warned = new Set<string>()
 const warnOnce = (key: string, cause: unknown): void => {
@@ -92,7 +128,19 @@ export const installSink = (target: ObservabilitySink): Dispose => {
   }
   sink = target
   safely('page', (installed) => installed.setPage(currentObservedPage()))
+  // what the window caught before anything was listening for it, in the
+  // order it happened - module evaluation comes before the first render
   for (const failure of drainEarlyFailures()) captureException(failure.error)
+  // and what the application itself reported while this sink was on its way
+  const held = pending.splice(0)
+  settled = true
+  for (const report of held) {
+    if (report.kind === 'exception') {
+      safely('capture', (installed) => installed.captureException(report.error, report.context))
+    } else {
+      safely('diagnostic', (installed) => installed.captureDiagnostic(report.code, report.context))
+    }
+  }
   return () => {
     if (sink !== target) return
     try {
@@ -113,6 +161,8 @@ export const installSink = (target: ObservabilitySink): Dispose => {
  * the one situation where the page is already in trouble.
  */
 export const noSinkArriving = (): void => {
+  settled = true
+  pending.splice(0)
   stopEarlyCapture()
 }
 
@@ -127,18 +177,36 @@ export const noSinkArriving = (): void => {
  * failures that happen to read alike, which is a worse answer to a problem
  * nothing has shown.
  */
-const reported = new WeakSet<object>()
+let accounted = new WeakSet<object>()
+
+/**
+ * Whether this failure is ours to carry, or already somebody's.
+ *
+ * Accounted for means delivered OR held for delivery - not "captureException
+ * was once called with it". Those were the same thing while a report with no
+ * sink was simply dropped, and the difference is a lost first screen: the
+ * error was marked on the way into a sink that did not exist yet.
+ */
+const account = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) return true
+  if (accounted.has(error)) return false
+  accounted.add(error)
+  return true
+}
 
 export const captureException = (error: unknown, context?: ExceptionContext): void => {
-  if (typeof error === 'object' && error !== null) {
-    if (reported.has(error)) return
-    reported.add(error)
-  }
+  if (!account(error)) return
+  // the page as it was when this happened, not as it is when a sink finally
+  // arrives and the held reports go out
   const page = currentObservedPage()
   const full: ExceptionContext = {
     ...(page.pageId === undefined ? {} : { pageId: page.pageId }),
     ...(page.route === undefined ? {} : { route: page.route }),
     ...context,
+  }
+  if (sink === null) {
+    hold({ kind: 'exception', error, context: full })
+    return
   }
   safely('capture', (target) => target.captureException(error, full))
 }
@@ -150,6 +218,15 @@ export const captureException = (error: unknown, context?: ExceptionContext): vo
  * cardinality on purpose; neither is a place to put an error message.
  */
 export const captureDiagnostic = (code: string, context?: DiagnosticContext): void => {
+  if (sink === null) {
+    // held for the same reason an exception is: a surface the manifest
+    // promised and the build does not have is discovered on the first
+    // render, which is before any sink exists
+    hold(
+      context === undefined ? { kind: 'diagnostic', code } : { kind: 'diagnostic', code, context },
+    )
+    return
+  }
   safely('diagnostic', (target) => target.captureDiagnostic(code, context))
 }
 
@@ -167,6 +244,11 @@ export const resetObservability = (): void => {
   }
   sink = null
   warned.clear()
+  pending.splice(0)
+  settled = false
+  // a WeakSet cannot be emptied, and a suite's next case must be able to
+  // report the same object again
+  accounted = new WeakSet<object>()
   rememberObservedPage({})
   drainEarlyFailures()
 }
