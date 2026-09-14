@@ -14935,3 +14935,77 @@ installed release / current pointer 与它们的 parser,外加 `releaseProbeOf`(
 **门禁(实际执行)**:`pnpm typecheck` exit 0;release-contract / web-build / package-exports /
 browser-graph 五个文件 54 例全过;`pnpm build` exit 0;`check-staged-web`、`check-chunks`、
 `check-csp-build` 全过。
+
+## 插件重构 D1.1→H 全量验收(2026-09-15)
+
+从 `f0bde522` 起自主推进到 Phase H,阶段commit 如下(自新到旧):
+
+```text
+32d0f042  refactor(contracts): keep the private release documents out of the browser   验收发现
+21df500d  docs(repo): correct what the constitution says about plugins and tests       文档纠偏
+f5e44ec4  feat(cli): manage the plugin selection from the command line                 Phase H
+d8cef710  refactor(tests): return browser tests to their owning packages               Phase G
+54c33b70  fix(repo): commit the dist a dist-only fixture is made of                    D4 缺陷
+d1126a50  fix(repo): resolve component references through package exports              D4 缺陷
+66db0dde  refactor(contracts): move the shell and session protocols out of plugins     Phase F
+db788e29  refactor(web): give a plugin's browser half a lifecycle                      Phase E
+eebb8ea8  feat(plugins): resolve plugin modules through their package exports          Phase D4
+c7f09a62  refactor(plugins): discover plugins by descriptor rather than package scope  Phase D3
+bfb97546  refactor(web): stop naming plugins in the composition root                   Phase D2
+9663a9ed  fix(web): judge an old tab by its browser contract as well                   Phase D1.1
+```
+
+### 验收命令(逐条实际执行,当前 HEAD)
+
+```text
+qualy resolve --frozen-lockfile   qualy.lock.json is up to date
+pnpm typecheck                    exit 0
+pnpm test                         235 passed | 3 skipped (238),  Tests 1696 passed | 17 skipped (1713)
+pnpm test:browser                 52 passed (52),                Tests 377 passed (377)
+pnpm test:browser:webkit          2 passed (2),                  Tests 14 passed (14)
+pnpm build                        exit 0 -> r_zuzfYyQEu1U82mK3wUgvJQ (123 assets, production, protocol 2)
+check-staged-web                  exit 0
+check-chunks                      exit 0(36 个 surface 逐条 chunk present)
+check-csp-build                   exit 0
+smoke-production                  exit 0,四条旧 tab 用例全部命中
+plugin-isolation                  31 例(含新增 4 例)
+dist-only-plugin                  4 例
+plugin-cli                        11 例
+```
+
+### 六条不变量,全仓复核
+
+1. **公开产物不新增披露**:逐 asset 扫当前 release 的 123 个文件——`resolutionHash` /
+   `browserContractHash` / `installedAt` / `.tsx` / `src/client` / `componentKey` 全部 **0 命中**;
+   `index.html` 不含 plugin / assembly / resolution / provider 任何一词;probe 只答
+   `{schema, releaseId}`;manifest wire 只有 `layouts[].contract`、`pages[]{id,path,layout,title}`、
+   `slots[]{id,order}`,没有 component / plugin / provider / module 字段。
+   **扫出过一处并已修**(见上一节)。仍存在**三处旧有**、未新增的字符串,如实记录:
+   - `@qualy/plugin-kit/browser-modules`:Phase E 的 ExtensionPoint id,平台 kit 的名字,
+     不透露装配;
+   - `@qualy/plugin-auth/CurrentUser` 等 Effect Context/Schema identifier:Phase F 之前就是这个
+     字面量,搬包没改标识符;
+   - permissions 模块里一句开发者断言文案含 `@qualy/plugin-assessment`。
+     三者都只是**平台/契约词汇**,不含模块路径、装配图或启停名单;若要清掉,是各自独立的一次
+     identifier 重命名,不在本轮范围内。
+2. **不恢复**:`componentKey` 0、`useSurfaceComponent` 0、`vite build` 的 superset 开关 0、
+   `apps/web` 的插件依赖只剩 `@qualy/plugin-kit`(平台 SDK)。
+3. **isolation allowlist 没放宽**:`REMAINING_IMPORTS` / `REMAINING_DEPENDENCIES` 仍是空数组;
+   `CROSS_PLUGIN_SURFACES` 里带 `/server/` 的仍**恰好是那四条**(有用例钉住);
+   PLATFORM 这轮**只增不减**地加了 `packages/testkit`。
+4. **`@qualy/*` 不是插件的必要命名**:全树 `startsWith('@qualy/…')` 在测试与
+   `tools/repo/plugin-add.ts` 之外 **0 处**;两个 `@acme/*` fixture 分别跑通 resolve / build /
+   boot / browser test / add / remove。
+5. **没有 Java**:`*.java` / `pom.xml` / `build.gradle*` 全仓 0 个。
+6. **Browser 懂产品语义,server 懂装配语义**:浏览器按 `BrowserSurface`
+   (`page` / `layout` / `slot` / `login` + id)寻址,拿不到模块、包名与装配;两个 hash 的比较、
+   retention、能力图全部在服务端,浏览器只收到 409 与一个词。
+
+### 未验证项(如实记录)
+
+- **腾讯 RUM SourceMap 上传**:仍是 manual acceptance pending,没有真实凭据与白名单验证,
+  不写成通过。
+- `qualy plugin add` 对**真实第三方 registry 包**的端到端(`pnpm add` → `qualy plugin add`)
+  只在临时 workspace 里跑过,没在本仓库的 apps/server 上实做过一次。
+
+**本轮到此为止**,不自行开 Phase I。
