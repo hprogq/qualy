@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { setObservedPage, resetBrowserRum } from '@qualy/plugin-rum/client'
+import { setObservedPage } from '@qualy/browser-observability'
+import { resetBrowserRum } from '@qualy/plugin-rum/client'
 import { beforeReport, beforeRequest } from '@qualy/plugin-rum-tencent/client/privacy'
 
 // The three leaks this vendor's sdk has, and the levers that close them.

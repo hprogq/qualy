@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
+import { walkSources } from '../lib/walk.ts'
 
 // A plugin must typecheck on its own, not merely in company.
 //
@@ -72,6 +73,100 @@ const typecheckAlone = (dir: string) => {
     return (error as { stdout?: string }).stdout ?? String(error)
   }
 }
+
+/**
+ * The platform, and what it is allowed to know about.
+ *
+ * A plugin is optional by definition, so a platform package that imports one
+ * makes it not optional: the browser runtime used to import the reporting
+ * plugin in order to report a component failure, which meant a deployment
+ * reporting nowhere still carried it, and a product assembled without that
+ * plugin could not have been built at all.
+ *
+ * Three things are not that. `@qualy/plugin-kit` is the kit a plugin is
+ * WRITTEN with and belongs to the platform whatever its name says; a
+ * capability facade (`@qualy/plugin-x/plugin`) is how a contributor declares a
+ * contribution, and §79 of the refactor keeps it allowed until those move to
+ * their contract packages; and the list below is what is left, each entry
+ * with the work that removes it.
+ */
+const PLATFORM = ['packages/web', 'packages/core', 'packages/contracts']
+const PLUGIN_KIT = /^@qualy\/plugin-kit(\/|$)/
+const CAPABILITY_FACADE = /^@qualy\/plugin-[a-z-]+\/plugin$/
+
+/**
+ * What still crosses, and when it stops.
+ *
+ * Empty is the goal and the list is how it gets there: an edge nobody wrote
+ * down cannot be noticed, and one written down cannot be added to by
+ * accident. Nothing may join this list without the phase that removes it.
+ */
+const REMAINING: { readonly package: string; readonly why: string }[] = [
+  {
+    package: '@qualy/plugin-ui-registry',
+    // the shell manifest's own contract, which the runtime consumes and this
+    // plugin happens to hold; Phase F moves it to @qualy/app-contract
+    why: 'the app manifest contract has not moved out of the plugin yet',
+  },
+]
+const remaining = new Set(REMAINING.map((entry) => entry.package))
+
+/** the workspace package a specifier names: `@qualy/plugin-x/api` -> `@qualy/plugin-x` */
+const packageOf = (specifier: string) => specifier.split('/').slice(0, 2).join('/')
+
+const importsOf = (source: string): string[] =>
+  [...source.matchAll(/\bfrom\s+'([^']+)'|\bimport\s+'([^']+)'/g)]
+    .map((match) => match[1] ?? match[2] ?? '')
+    .filter((specifier) => specifier !== '')
+
+describe('the platform depends on no plugin implementation', () => {
+  it('imports none, in any browser, core or contract package', () => {
+    const offenders: string[] = []
+    for (const root of PLATFORM) {
+      for (const file of walkSources(path.join(repoRoot, root))) {
+        if (/[\\/]tests[\\/]/.test(file)) continue
+        for (const specifier of importsOf(fs.readFileSync(file, 'utf8'))) {
+          if (!specifier.startsWith('@qualy/plugin-')) continue
+          if (PLUGIN_KIT.test(specifier) || CAPABILITY_FACADE.test(specifier)) continue
+          if (remaining.has(packageOf(specifier))) continue
+          offenders.push(`${path.relative(repoRoot, file)} imports ${specifier}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('declares none, in any browser, core or contract package manifest', () => {
+    const offenders: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules') continue
+        const at = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          walk(at)
+          continue
+        }
+        if (entry.name !== 'package.json') continue
+        const manifest = JSON.parse(fs.readFileSync(at, 'utf8')) as {
+          dependencies?: Record<string, string>
+        }
+        for (const name of Object.keys(manifest.dependencies ?? {})) {
+          if (!name.startsWith('@qualy/plugin-')) continue
+          if (PLUGIN_KIT.test(name) || remaining.has(name)) continue
+          offenders.push(`${path.relative(repoRoot, at)} depends on ${name}`)
+        }
+      }
+    }
+    for (const root of PLATFORM) walk(path.join(repoRoot, root))
+    expect(offenders).toEqual([])
+  })
+
+  it('names every edge that is left, so the list shrinks on purpose', () => {
+    // one entry today. When Phase F moves the manifest contract out this is
+    // empty, and the two cases above become the plain statement they read as.
+    expect(REMAINING.map((entry) => entry.package)).toEqual(['@qualy/plugin-ui-registry'])
+  })
+})
 
 // concurrent: each case compiles one plugin in its own subprocess, and they
 // share nothing but the disk. Run in sequence this file was the whole suite's

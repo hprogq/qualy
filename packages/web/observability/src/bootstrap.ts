@@ -4,7 +4,7 @@ import { installEarlyListeners } from './queue.ts'
 // effect.
 //
 // It is a module of its own so the order is stated rather than hoped for:
-// `import '@qualy/plugin-rum/client/bootstrap'` at the top of the entry runs
+// `import '@qualy/browser-observability/bootstrap'` at the top of the entry runs
 // before the application's own graph, which is the window this exists for.
 //
 // Deliberately NOT moved into the shell's inline boot script. That script is

@@ -45,6 +45,19 @@ describe('the sign-in screen', () => {
     await expect.element(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
   })
 
+  it('catches a renderer that throws instead of taking the screen down', async () => {
+    // the sign-in screen used to render the driver itself, outside the
+    // surface boundary: a driver that threw on its first render took the
+    // whole door with it and nothing said which way in had failed
+    const Broken = () => {
+      throw new Error('this driver exploded')
+    }
+    screen({ local: lazy(() => Promise.resolve({ default: Broken })) })
+    await expect.element(page.getByText('该登录方式暂不可用')).toBeVisible()
+    // and the way out is still there, which is the whole point of catching it
+    await expect.element(page.getByRole('button', { name: '← 其他登录方式' })).toBeVisible()
+  })
+
   it('fails closed when this build carries no renderer for that type', async () => {
     // a deployment whose api offers a driver the browser bundle does not
     // have: the screen says so and offers the way back, rather than showing
@@ -52,5 +65,6 @@ describe('the sign-in screen', () => {
     screen({})
     await expect.element(page.getByText('该登录方式暂不可用')).toBeVisible()
     await expect.element(page.getByLabelText('用户名')).not.toBeInTheDocument()
+    await expect.element(page.getByRole('button', { name: '← 其他登录方式' })).toBeVisible()
   })
 })

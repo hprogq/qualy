@@ -1,4 +1,4 @@
-import { observedPageUrl } from '@qualy/plugin-rum/client'
+import { observedPageUrl } from '@qualy/browser-observability'
 
 // What this vendor sends that it should not, removed before it goes.
 //

@@ -1,11 +1,11 @@
 import { surfaceLabel } from '@qualy/ui-contract'
 import {
   observedPageUrl,
-  type BrowserRumProvider,
-  type BrowserRumSink,
   type DiagnosticContext,
   type ExceptionContext,
-} from '@qualy/plugin-rum/client'
+  type ObservabilitySink,
+} from '@qualy/browser-observability'
+import type { BrowserRumProvider } from '@qualy/plugin-rum/client'
 import { isTencentRumPublicConfig, TENCENT_RUM_HOST, TENCENT_RUM_PROVIDER } from '../settings.ts'
 import { rumVersionForRelease } from '../version.ts'
 import { beforeReport, beforeRequest } from './privacy.ts'
@@ -55,7 +55,7 @@ const oneLine = (context: DiagnosticContext | undefined): string =>
 export const tencentRumProvider: BrowserRumProvider = {
   provider: TENCENT_RUM_PROVIDER,
 
-  async start(config, release): Promise<BrowserRumSink | null> {
+  async start(config, release): Promise<ObservabilitySink | null> {
     // the capability hands the provider's settings over verbatim; a
     // deployment whose configuration does not decode is one that reports
     // nothing, not one that throws on every page

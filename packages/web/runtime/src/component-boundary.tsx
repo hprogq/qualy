@@ -1,6 +1,6 @@
 import { Component, Suspense, type ComponentType, type ReactNode } from 'react'
 import { surfaceLabel, type BrowserSurface } from '@qualy/ui-contract'
-import { captureDiagnostic, captureException } from '@qualy/plugin-rum/client'
+import { captureDiagnostic, captureException } from '@qualy/browser-observability'
 import { resolveSurface, type ComponentRegistry } from './registry.ts'
 
 // One plugin component must never take down the shell. Every surface the
@@ -53,14 +53,7 @@ export class PluginComponentBoundary extends Component<BoundaryProps, BoundarySt
 // resolves a surface against the registry and renders it inside the boundary
 // plus its own suspense; a surface the build does not carry is reported
 // rather than silently skipped
-export function PluginComponent({
-  surface,
-  registry,
-  props,
-  loading,
-  fallback,
-  missing,
-}: {
+export interface PluginComponentProps {
   surface: BrowserSurface
   registry: ComponentRegistry
   /**
@@ -75,7 +68,16 @@ export function PluginComponent({
   loading: ReactNode
   fallback: (retry: () => void) => ReactNode
   missing: ReactNode
-}) {
+}
+
+export function PluginComponent({
+  surface,
+  registry,
+  props,
+  loading,
+  fallback,
+  missing,
+}: PluginComponentProps) {
   const Resolved = resolveSurface(registry, surface) as
     ComponentType<Record<string, unknown>> | undefined
   if (!Resolved) {

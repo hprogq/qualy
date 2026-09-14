@@ -12,6 +12,12 @@
 > 诊断改 surface、私有 `.qualy-browser-surfaces.json`、client protocol 1 → 2。
 > 两处按 §36/§99 的阶段划分推迟:`@qualy/app-contract`(§101 列在 B,§36/§99 列在 F)留给 Phase F,
 > manifest 不加冗余的 `schema` 字段(§7/§67)——破坏性由 client protocol 承担,见 §68。
+>
+> 进度:**Phase C 已落地(2026-09-15)**——`@qualy/browser-observability` 建立(port + early queue +
+> sanitize + context + bootstrap),`web-runtime` 与 `apps/web` 不再 import `@qualy/plugin-rum` 的
+> 上报词汇;`plugin-rum` 只剩 provider 选择;登录渲染器接入统一 surface 边界(复审提出);
+> 平台不依赖插件实现由 `plugin-isolation` 门禁守,剩余边具名列出。
+> `apps/web` 仍有一行 `startBrowserRum` import——浏览器插件还没有可以运行的生命周期,归 Phase E。
 
 ## 1. 背景与目标
 

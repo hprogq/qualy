@@ -6,14 +6,14 @@ import { PluginComponent, emptyComponentRegistry, type ComponentRegistry } from 
 import {
   captureDiagnostic,
   captureException,
-  registerRumProvider,
-  resetBrowserRum,
-  setObservedPage,
+  installEarlyListeners,
   observedPageUrl,
-  type BrowserRumSink,
+  setObservedPage,
   type DiagnosticContext,
   type ExceptionContext,
-} from '@qualy/plugin-rum/client'
+  type ObservabilitySink,
+} from '@qualy/browser-observability'
+import { registerRumProvider, resetBrowserRum } from '@qualy/plugin-rum/client'
 import { startBrowserRum } from '@qualy/plugin-rum/client/start'
 
 // Browser failure reporting, from the two seams the runtime reports at to the
@@ -34,7 +34,7 @@ const fakeProvider = (over: { start?: BrowserRumProviderStart } = {}) => {
   const exceptions: Reported[] = []
   const diagnostics: { code: string; context: DiagnosticContext | undefined }[] = []
   const pages: unknown[] = []
-  const sink: BrowserRumSink = {
+  const sink: ObservabilitySink = {
     captureException: (error, context) => exceptions.push({ error, context }),
     captureDiagnostic: (code, context) => diagnostics.push({ code, context }),
     setPage: (page) => pages.push(page),
@@ -49,7 +49,7 @@ const fakeProvider = (over: { start?: BrowserRumProviderStart } = {}) => {
 type BrowserRumProviderStart = (
   config: Record<string, unknown>,
   release: { releaseId: string; mode: 'development' | 'production' },
-) => Promise<BrowserRumSink | null>
+) => Promise<ObservabilitySink | null>
 
 /** the deployment's answer, without a server: this runs before the api runtime exists */
 const answering = (body: unknown, ok = true) =>
@@ -84,6 +84,27 @@ describe('starting up', () => {
     await startBrowserRum(release)
     captureException(new Error('boom'))
     expect(seen.exceptions).toHaveLength(0)
+  })
+
+  it('hands over what failed before any provider existed', async () => {
+    // The window this whole queue exists for: a module that throws while the
+    // application's own imports evaluate does so before a provider can be up,
+    // since bringing one up needs a request and a chunk. The entry arms these
+    // two listeners first; the suite arms them the same way, because a reset
+    // stood them down after the last case.
+    answering({ schema: 1, provider: 'fake', config: {} })
+    const seen = fakeProvider()
+    installEarlyListeners()
+    window.dispatchEvent(
+      new ErrorEvent('error', {
+        error: new Error('thrown while the graph was evaluating'),
+        message: 'thrown while the graph was evaluating',
+      }),
+    )
+    await startBrowserRum(release)
+    expect(seen.exceptions.map((one) => (one.error as Error).message)).toContain(
+      'thrown while the graph was evaluating',
+    )
   })
 
   it('treats an assembly without the capability as reporting off, not as a failure', async () => {
@@ -229,6 +250,28 @@ describe('the seams the runtime reports at', () => {
       surface: { kind: 'page', id: 'demo/boom' },
     })
     expect(JSON.stringify(seen.exceptions[0]?.context)).not.toContain('Boom')
+  })
+
+  it('reports a sign-in renderer by its driver type, like any other surface', async () => {
+    answering({ schema: 1, provider: 'fake', config: {} })
+    const seen = fakeProvider()
+    await startBrowserRum(release)
+    render(
+      <MemoryRouter>
+        <PluginComponent
+          surface={{ kind: 'login', id: 'local' }}
+          registry={{
+            ...emptyComponentRegistry(),
+            login: { local: Boom as unknown as ComponentRegistry['login'][string] },
+          }}
+          loading={null}
+          fallback={() => <p>this way in is not working</p>}
+          missing={null}
+        />
+      </MemoryRouter>,
+    )
+    await expect.element(page.getByText('this way in is not working')).toBeVisible()
+    expect(seen.exceptions[0]?.context).toMatchObject({ surface: { kind: 'login', id: 'local' } })
   })
 
   it('reports a surface the manifest promised and the build does not have', async () => {

@@ -47,16 +47,22 @@ export const installEarlyListeners = (): void => {
 }
 
 /**
- * Hands over what was missed and stands down.
+ * Stops listening. Idempotent, and safe before anything was installed.
  *
- * Once a provider is up it has its own global handlers, and keeping these
- * would mean every later failure arriving twice.
+ * Once a sink is up it has its own global handlers, and keeping these would
+ * mean every later failure arriving twice.
  */
+export const stopEarlyCapture = (): void => {
+  if (!listening || typeof window === 'undefined') return
+  listening = false
+  window.removeEventListener('error', onError)
+  window.removeEventListener('unhandledrejection', onRejection)
+  held.splice(0)
+}
+
+/** hands over what was missed and stands down */
 export const drainEarlyFailures = (): readonly EarlyFailure[] => {
-  if (listening && typeof window !== 'undefined') {
-    listening = false
-    window.removeEventListener('error', onError)
-    window.removeEventListener('unhandledrejection', onRejection)
-  }
-  return held.splice(0)
+  const missed = held.splice(0)
+  stopEarlyCapture()
+  return missed
 }

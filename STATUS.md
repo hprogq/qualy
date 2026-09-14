@@ -14345,3 +14345,69 @@ r_6dTCRVgdVvxu8pzXfVlDgw (123 assets, production, protocol 2)`;`check-chunks` �
 
 **下一步**:Phase C(browser observability 抽到 `@qualy/browser-observability`,§103),
 之后 D1(active-only 构建 + 旧 tab assembly 兼容)。RUM Phase 3 仍搁置。
+
+## 插件重构 Phase C:上报端口抽到平台(2026-09-15)
+
+docs/plugin-refactor.md 的 Phase C(§13/§14/§103)。理由不是「observability 该有个包」——
+RUM Phase 1 恰恰取消过这个包——而是**平台层不得依赖可选插件**:组件边界、路由观察器和组合根
+都要调用 `captureException`,而它们是平台;平台 import 一个可选插件,那个插件就不再可选。
+
+**新包 `@qualy/browser-observability`**(`packages/web/observability/`):port 本身——
+`captureException` / `captureDiagnostic` / `setObservedPage` / `observedPageUrl` /
+`sanitizePath` / `sanitizeUrl` / `installSink(sink): Dispose` / `noSinkArriving()` /
+early queue / bootstrap。零 vendor、零 api client。
+
+**`@qualy/plugin-rum` 只剩「哪个 provider」**:`BrowserRumProvider`、注册表、`startBrowserRum`。
+它的 `./client/bootstrap` 与 vocabulary 导出都没了;`resetBrowserRum()` 作为测试缝保留,清自己的
+provider 再转调平台的 `resetObservability()`。
+
+**early queue 的交接明确成两句话**。以前 `activateRumProvider` 自己 drain 队列再回放;现在
+`installSink(sink)` 安装即回放(平台端到端拥有「sink 出现之前发生的失败」),而「没有 provider」
+这条路显式调 `noSinkArriving()`——两种结局都必须说出来,否则页面会替一个永远不来的 sink 一直攥着
+那些失败。
+
+**复审提出的那处补齐了**:登录渲染器原来是 `LoginPage` 自己 `<Renderer />`,**不经过 surface 边界**
+——而 `component-boundary.tsx` 的注释已经声称 sign-in renderer 在里面。现在经
+`PluginSurface`(新导出:同一个 `PluginComponent`,registry 从 runtime context 取),
+所以渲染器 throw 会被捕获并按 `login:<type>` 上报。顺带删掉了 `useSurfaceComponent`——
+**不再提供「把组件取出来自己渲染」的口子**,那正是这个洞的来源;边界之外拿到组件就等于绕过上报。
+UI 上也少了一个重复控件:缺渲染器/渲染器崩溃现在共用一句「该登录方式暂不可用」,出口只留下面那个
+「← 其他登录方式」。
+
+**平台独立性从此有门禁**:`tools/tests/plugin-isolation.test.ts` 新增「the platform depends on no
+plugin implementation」,逐文件扫 `packages/web` / `packages/core` / `packages/contracts` 的 import
+与 package.json 依赖。`@qualy/plugin-kit`(写插件用的 kit)与 capability facade
+(`@qualy/plugin-x/plugin`,§79 过渡期允许)不算;**剩下的边写在一张具名清单里**,现在只有一条
+(`web-runtime → @qualy/plugin-ui-registry/api`,Phase F 清空),第三条用例钉住清单内容,
+所以它只会变短。
+
+**`apps/web` 还剩一行** `import { startBrowserRum } from '@qualy/plugin-rum/client/start'`:
+浏览器插件目前没有可以运行的生命周期(§72 的 `BrowserPlugin.start()` 是 Phase E),组合根只好替它
+调。已在源码就地注明归属。
+
+**顺手**:`tools/quality/typecheck.ts` 的 `packages/web/*` 从手写五项改成按 tsconfig 发现——
+这个列表这次正好因为新增第六个包而过期,而过期的表现是「新包没人做类型检查,且没有任何提示」。
+
+**两道门禁验证过会红**:让 `activateRumProvider` 不调 `installSink` → rum 套件 8 例失败
+(含新增的 early queue 交接用例);往 `packages/web/runtime` 里加一行 `@qualy/plugin-rum/client`
+import → isolation 门禁点名该文件。
+
+**一次 flake,如实记录**:第一轮 `pnpm test` 有 1 例失败——`web-survives-backend`,后端 SIGTERM 后
+数据库连接池有一条连接卡在 `Client/ClientRead`,30s 超时后进程退 1。单独重跑 2.7s 通过(满载时
+33.9s),与本轮改动无关(Phase C 不碰服务端与数据库);随后两次全量 `pnpm test` 均为 231/1653 全绿。
+**这是并行满载下的既有 flake,不是新引入的**,记在这里以免下次被当成新问题。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0(0 warning);`pnpm test` Test Files 231 passed |
+3 skipped (234),Tests 1653 passed | 17 skipped (1670);`pnpm test:browser` 51 / 374;
+`pnpm test:browser:webkit` 2 / 14;`pnpm build` exit 0 → `staged web release
+r_feuCerD3YnzyLs-GJgQkGA (123 assets, production, protocol 2)`;`check-chunks` 全 present;
+`check-staged-web` exit 0;`check-csp-build` exit 0;`smoke-production` 全 ok
+(`/api/app/observability` 仍答 `provider: null`,即「装配里没有 provider」这条路照常)。
+
+**没有重新验证的一条,说明白**:「Tencent RUM SourceMap 仍能还原」这条 DoD 没有再对着真实平台跑一遍。
+版本映射(`rumVersionForRelease`)与上传命令这次一行未改,受影响的只有上报里的 `ext2/ext3` 两个字段;
+要真正确认,得再走一次「构建 → `qualy rum sourcemaps` → 白名单内触发异常 → 控制台看还原」。
+
+**下一步**:Phase D1(active-only 构建 + 旧 tab assembly 兼容)。它有一条**前置修复**已立案:
+`check-chunks --expect-absent` 仍在从 surface 名猜 chunk 名,disabled sentinel 之前必须换掉
+(记在 docs/plugin-refactor.md §104)。RUM Phase 3 仍搁置。

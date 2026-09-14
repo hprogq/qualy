@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { Suspense, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import * as stylex from '@stylexjs/stylex'
-import { useApiQuery, useSessionTransition, useSurfaceComponent } from '@qualy/web-runtime'
+import { PluginSurface, useApiQuery, useSessionTransition } from '@qualy/web-runtime'
 import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { Alert, AlertDescription, AlertTitle } from '@qualy/ui/alert'
@@ -112,11 +112,7 @@ export default function LoginPage() {
     )
     if (selected && selected.mode === 'component') {
       return (
-        <MethodRenderer
-          method={selected}
-          onBack={() => setSearchParams({})}
-          onAuthenticated={onAuthenticated}
-        >
+        <MethodRenderer method={selected} onAuthenticated={onAuthenticated}>
           <Button variant="ghost" size="sm" onClick={() => setSearchParams({})}>
             {format(m.otherMethods)}
           </Button>
@@ -156,46 +152,43 @@ export default function LoginPage() {
 
 function MethodRenderer({
   method,
-  onBack,
   onAuthenticated,
   children,
 }: {
   method: LoginMethod & { mode: 'component' }
-  onBack: () => void
   onAuthenticated: () => void
   children: ReactNode
 }) {
   const { format } = useI18n()
-  // by the driver's type, which is what a way of signing in IS: the build
-  // filed the renderer under the same word, and the wire no longer carries a
-  // module name for the browser to look up
-  const Renderer = useSurfaceComponent({ kind: 'login', id: method.type })
-  if (!Renderer) {
-    // fail closed: the driver's client is not part of this build
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>{format(m.rendererMissing)}</AlertTitle>
-        <AlertDescription>
-          <div {...stylex.props(styles.failBody)}>
-            <Button variant="outline" size="sm" onClick={onBack}>
-              {format(commonMessages.back)}
-            </Button>
-          </div>
-        </AlertDescription>
-      </Alert>
-    )
-  }
+  // Two ways a driver can fail to draw its form, one thing to say about
+  // them. Not in this build is a deployment fault and throwing is a defect,
+  // and from the doorstep both mean the same thing: this way in is not
+  // working, use another. The way out is the one below, not a second button
+  // of its own.
+  const unavailable = (
+    <Alert variant="destructive">
+      <AlertTitle>{format(m.rendererMissing)}</AlertTitle>
+    </Alert>
+  )
   return (
     <div {...stylex.props(styles.renderer)}>
-      <Suspense
-        fallback={
+      {/* By the driver's type, which is what a way of signing in IS: the
+          build filed the renderer under the same word, and the wire carries
+          no module name for the browser to look up. Through the platform's
+          surface component rather than rendered here, so a renderer that
+          throws is caught and reported as `login:<type>` like every other
+          surface, instead of taking the sign-in screen down with it. */}
+      <PluginSurface
+        surface={{ kind: 'login', id: method.type }}
+        props={{ method, onAuthenticated }}
+        loading={
           <div {...stylex.props(styles.waiting)}>
             <Spinner />
           </div>
         }
-      >
-        <Renderer method={method} onAuthenticated={onAuthenticated} />
-      </Suspense>
+        fallback={() => unavailable}
+        missing={unavailable}
+      />
       {children}
     </div>
   )

@@ -424,6 +424,9 @@ importers:
       '@qualy/brand':
         specifier: workspace:*
         version: link:../../packages/web/brand
+      '@qualy/browser-observability':
+        specifier: workspace:*
+        version: link:../../packages/web/observability
       '@qualy/plugin-assessment':
         specifier: workspace:*
         version: link:../../packages/plugins/assessment/core
@@ -1466,12 +1469,12 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/browser-observability':
+        specifier: workspace:*
+        version: link:../../../web/observability
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
-      '@qualy/ui-contract':
-        specifier: workspace:*
-        version: link:../../../contracts/ui
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
@@ -1485,6 +1488,9 @@ importers:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../../core/api-kit
+      '@qualy/browser-observability':
+        specifier: workspace:*
+        version: link:../../../web/observability
       '@qualy/plugin-kit':
         specifier: workspace:*
         version: link:../../../core/plugin-kit
@@ -1719,14 +1725,24 @@ importers:
         specifier: 'catalog:'
         version: 19.2.18
 
+  packages/web/observability:
+    dependencies:
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:../../contracts/ui
+    devDependencies:
+      '@qualy/tsconfig':
+        specifier: workspace:*
+        version: link:../../build/tsconfig
+
   packages/web/runtime:
     dependencies:
       '@qualy/api-kit':
         specifier: workspace:*
         version: link:../../core/api-kit
-      '@qualy/plugin-rum':
+      '@qualy/browser-observability':
         specifier: workspace:*
-        version: link:../../plugins/infra/rum
+        version: link:../observability
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../../plugins/infra/ui-registry

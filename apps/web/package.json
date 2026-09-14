@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@qualy/brand": "workspace:*",
+    "@qualy/browser-observability": "workspace:*",
     "@qualy/plugin-assessment": "workspace:*",
     "@qualy/plugin-assessment-formula": "workspace:*",
     "@qualy/plugin-audit": "workspace:*",

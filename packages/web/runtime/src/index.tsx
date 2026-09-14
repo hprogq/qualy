@@ -52,7 +52,7 @@ import {
   type PageHrefOptions,
   type SessionDestination,
 } from './pages.ts'
-import { PluginComponent } from './component-boundary.tsx'
+import { PluginComponent, type PluginComponentProps } from './component-boundary.tsx'
 
 export {
   buildPageHref,
@@ -66,7 +66,11 @@ export {
   type ComponentRegistry,
   type RegisteredComponent,
 } from './registry.ts'
-export { PluginComponent, PluginComponentBoundary } from './component-boundary.tsx'
+export {
+  PluginComponent,
+  PluginComponentBoundary,
+  type PluginComponentProps,
+} from './component-boundary.tsx'
 export {
   buildManifestRoutes,
   ManifestRoutes,
@@ -349,15 +353,19 @@ export function useApi<Api extends HttpApi.Constraint>(api: Api): ClientOf<Api> 
  */
 export const useRunApi = () => runMutation()
 /**
- * The renderer for one surface of this build, or nothing.
+ * One surface of this build, rendered: isolated, reported, and drawn with the
+ * caller's own states for loading, failing and not being here at all.
  *
- * For the few callers that draw their own state around a contribution - the
- * sign-in screen picks a driver's renderer and has its own way of saying it
- * is not here. Everything routine goes through `PluginComponent`, which
- * resolves, isolates and reports in one place.
+ * The same component the route tree and the slots use, resolved against the
+ * runtime's registry instead of one passed in - which is what a plugin has.
+ * There is deliberately no way to get the raw component out: a caller that
+ * rendered it itself would be outside the boundary, so a renderer that threw
+ * would take the screen with it and nothing would report which surface it
+ * was. That is exactly what the sign-in screen used to do.
  */
-export const useSurfaceComponent = (surface: BrowserSurface) =>
-  resolveSurface(useRuntime().registry, surface)
+export function PluginSurface(props: Omit<PluginComponentProps, 'registry'>) {
+  return <PluginComponent {...props} registry={useRuntime().registry} />
+}
 /** query utilities for an api definition, memoised per definition */
 export function useApiQuery<Api extends HttpApi.Constraint>(api: Api): QueryUtils<ClientOf<Api>> {
   return useRuntime().utilsFor(api) as QueryUtils<ClientOf<Api>>

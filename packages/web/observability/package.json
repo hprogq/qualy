@@ -1,0 +1,21 @@
+{
+  "name": "@qualy/browser-observability",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "sideEffects": [
+    "./src/bootstrap.ts"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./bootstrap": "./src/bootstrap.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@qualy/ui-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@qualy/tsconfig": "workspace:*"
+  }
+}

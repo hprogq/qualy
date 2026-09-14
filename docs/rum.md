@@ -403,6 +403,22 @@ SourceMap control-plane tooling
 
 # 6. `@qualy/web-observability` 设计
 
+> **实施经过两次移动,最终形态如下(2026-09-15)**:
+>
+> 1. **RUM Phase 1 取消了这个包**,整套(vocabulary + provider 注册表)按 Storage 的能力/提供者
+>    模式落在 `@qualy/plugin-rum`(能力)与 `@qualy/plugin-rum-tencent`(提供者)。
+> 2. **plugin-refactor Phase C 把其中 vendor-neutral 的一半抽了回来**,原因与本节当初的理由不同:
+>    不是「observability 该有个包」,而是**平台层不得依赖可选插件**——组件边界、路由观察器和组合根
+>    都要调用 `captureException`,而它们是平台。
+>
+> 现在:`@qualy/browser-observability`(`packages/web/observability/`)持有 port——
+> `captureException` / `captureDiagnostic` / `setObservedPage` / `observedPageUrl` /
+> `sanitizePath` / `sanitizeUrl` / `installSink(sink): Dispose` / early queue / bootstrap;
+> `@qualy/plugin-rum` 只剩「哪个 provider」这件事(`BrowserRumProvider`、注册表、`startBrowserRum`);
+> vendor 代码全在 `@qualy/plugin-rum-tencent`。下面的类型名 `BrowserObservabilitySink` 实际叫
+> `ObservabilitySink`,`ExceptionContext` 的 `componentId` / `componentKind` 在 Phase B 换成了
+> `surface: BrowserSurface`(见 docs/browser-public-surface.md)。
+
 建议新建：
 
 ```text

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizePath, sanitizeUrl } from '../src/client/sanitize.ts'
+import { sanitizePath, sanitizeUrl } from '../src/sanitize.ts'
 
 // What a reporting platform may be told an address was.
 //

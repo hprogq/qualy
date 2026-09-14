@@ -2,11 +2,17 @@
 // fails while the rest of this file's imports are still evaluating. A
 // reporting provider cannot exist that early - it needs a request and a chunk -
 // and a module that throws on the way in is exactly the failure worth keeping.
-import '@qualy/plugin-rum/client/bootstrap'
+import '@qualy/browser-observability/bootstrap'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
-import { captureDiagnostic } from '@qualy/plugin-rum/client'
+import { captureDiagnostic } from '@qualy/browser-observability'
+// The one line of this file that names a plugin. Asking the assembly whether
+// it reports, and through whom, is the reporting capability's own question -
+// but nothing yet gives a browser plugin a moment to run in, so the
+// composition root still calls it. That is what `Browser.module()` and its
+// start hook are for; until then this stays, and the platform's port above
+// is what every other file uses.
 import { startBrowserRum } from '@qualy/plugin-rum/client/start'
 import App from './App.tsx'
 import { releases, webRelease } from './release.ts'

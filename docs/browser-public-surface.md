@@ -120,13 +120,24 @@ apps/web/dist/.qualy-web-build.json        构建产物旁(安装器读,不进 r
 因此「r_xxx 是哪个 commit」有答案,而答案不在浏览器手里。部署侧若自己命名 release,
 同样应当给不透明值,并把 commit 放进 `QUALY_BUILD_REVISION`。
 
+## 报告端口属于平台,不属于插件
+
+浏览器侧的上报词汇——`captureException` / `captureDiagnostic` / `setObservedPage`——在
+`@qualy/browser-observability`(`packages/web/observability/`)。调用它的是组件边界、路由观察器
+和组合根,这些都是平台;平台 import 一个可选插件,那个插件就不再可选。插件那边只剩「哪个 provider」:
+`@qualy/plugin-rum` 持有注册表与 `startBrowserRum`,vendor 代码全在 `@qualy/plugin-rum-tencent`。
+
+这条现在由门禁守:`tools/tests/plugin-isolation.test.ts` 的「the platform depends on no plugin
+implementation」逐文件扫 `packages/web` / `packages/core` / `packages/contracts` 的 import 与
+package.json 依赖。`@qualy/plugin-kit`(写插件用的 kit)与 capability facade
+(`@qualy/plugin-x/plugin`)不算;**剩下的边写在一张具名清单里**,目前只有一条
+(`web-runtime → @qualy/plugin-ui-registry/api`,Phase F 移进 `@qualy/app-contract` 后清空)。
+
 ## 已知仍未收口(各自属于后续阶段)
 
 - **409 响应体仍带服务端协议窗口**:`QUALY_CLIENT_PROTOCOL_UNSUPPORTED` 的 `supported: {min,max}`
   (Phase D1 §43 会连同 assembly 兼容一起重做)。
 - **生产 JS chunk 名仍带组件名**:`assets/<chunk.name>-[hash].js`(§23)。
-- **平台层仍依赖 RUM 插件实现**:`apps/web` 与 `web-runtime` 直接 import `@qualy/plugin-rum`
-  (Phase C 抽到 `@qualy/browser-observability`)。
 - **生产 Web artifact 仍是 installed 超集**:停用插件的浏览器代码仍进产物(Phase D1)。
 
 ## 明确不做

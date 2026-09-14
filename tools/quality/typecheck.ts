@@ -3,7 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 // no plugin names in root scripts: web-side programs are discovered from the
-// packages tree (every plugin client directory owns a tsconfig.json)
+// packages tree (every plugin client directory owns a tsconfig.json, and so
+// does every browser-side package)
 
 function findClientProjects(root: string): string[] {
   const projects: string[] = []
@@ -23,13 +24,23 @@ function findClientProjects(root: string): string[] {
   return projects.sort()
 }
 
+/** the browser-side packages, each its own program: whatever has a tsconfig */
+function findPackageProjects(root: string): string[] {
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter(
+      (child) => child.isDirectory() && fs.existsSync(path.join(root, child.name, 'tsconfig.json')),
+    )
+    .map((child) => path.join(root, child.name))
+    .sort()
+}
+
+// Discovered rather than listed. The list was five names long and went stale
+// the first time a sixth package arrived: it was added, it compiled locally,
+// and nothing would have told anybody that the type gate never opened it.
 const projects = [
   '.',
-  'packages/web/runtime',
-  'packages/web/i18n',
-  'packages/web/ui',
-  'packages/web/value-form',
-  'packages/web/brand',
+  ...findPackageProjects('packages/web'),
   'apps/web',
   ...findClientProjects('packages'),
 ]
