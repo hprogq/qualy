@@ -44,6 +44,28 @@ export const QUALY_CLIENT_RELEASE_HEADER = 'x-qualy-web-release'
 export const QUALY_CLIENT_PROTOCOL_HEADER = 'x-qualy-client-protocol'
 export const QUALY_CLIENT_UNSUPPORTED_HEADER = 'x-qualy-client-unsupported'
 
+/**
+ * Why a server will not talk to this page, as the header says it.
+ *
+ * Three different facts, one consequence. `protocol` is the api generation
+ * this page speaks; `assembly` is a page built from a different set of
+ * plugins than the one answering it, which active-only builds made possible -
+ * a page whose bundle has screens this server has no api for, or the other
+ * way round; `release` is a page naming a build this host cannot identify at
+ * all, usually one the store stopped keeping.
+ *
+ * The page does the same thing about all three - it cannot go on, and says
+ * so - and the difference is for whoever reads the diagnostics: one says a
+ * deployment shipped a breaking api change, one says the plugin selection
+ * moved, one says retention is too short for how long tabs stay open.
+ */
+export type ClientUnsupportedReason = 'protocol' | 'assembly' | 'release'
+
+export const CLIENT_UNSUPPORTED_REASONS = ['protocol', 'assembly', 'release'] as const
+
+export const isClientUnsupportedReason = (value: unknown): value is ClientUnsupportedReason =>
+  typeof value === 'string' && (CLIENT_UNSUPPORTED_REASONS as readonly string[]).includes(value)
+
 // Generation 2: the shell manifest stopped naming the module behind each
 // surface, which is a breaking change to a document every page reads. The
 // window is a single generation because a server cannot serve both shapes -

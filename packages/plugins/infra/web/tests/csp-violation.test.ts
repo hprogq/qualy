@@ -1,4 +1,5 @@
 import { NodeHttpServer } from '@effect/platform-node'
+import { clientAssemblyLayer } from '@qualy/api-kit/client-assembly'
 import { Effect, Exit, Layer, Logger, References, Scope } from 'effect'
 import { HttpRouter } from 'effect/unstable/http'
 import fs from 'node:fs'
@@ -96,6 +97,7 @@ beforeAll(async () => {
         Layer.sync(NodeServer, () => createServer()),
         Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH })),
         Layer.succeed(ShellPolicyHeader, ShellPolicyHeader.of({ value: () => withoutReportTo })),
+        clientAssemblyLayer,
       ),
     ),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),

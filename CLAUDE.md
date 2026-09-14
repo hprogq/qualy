@@ -63,6 +63,10 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 
 - 宿主 = apps/server(后端)与 apps/web(前端),是部署单元;基础设施插件 = plugins/infra/\*;业务插件 = 其余 @qualy/plugin-\*;共享库 = packages/web/\*、packages/core/\*(零后端插件依赖)。纪律一:**根脚本与根配置禁止枚举可选业务插件**(chunk 哨兵与浏览器聚合都从 resolution 现算键集、typecheck 以 glob 发现 client tsconfig);引用稳定组合根(apps/web、apps/server)不受此限。纪律二:**宿主与聚合方拥有插件依赖**——清单插件按 `application.workspace`(apps/server)的依赖解析;贡献组件的插件必须出现在 apps/web 依赖里(收集器对未声明输入硬失败)。
 - 新增插件一律 `pnpm plugin:add <名>`:自动写 apps/server 依赖 + qualy.yml 条目 + `qualy resolve`,按 exports 声明补 apps/web 依赖。新包 package.json 一律带 `"license": "AGPL-3.0-only"`。
+- **Web 产物 = active assembly 的浏览器投影**(不是 installed 超集):`qualyPlugins()` 一律读 active,
+  `vite build` 不再切超集;插件启停 → resolution 变 → **部署必须重建 Web release**。旧 tab 由服务端
+  按 `X-Qualy-Web-Release` 反查该 release 的 `resolutionHash` 判定:同装配放行(纯代码发布不打断旧 tab),
+  异装配 409 `assembly`,查不到 409 `release`;**浏览器永远看不到任何 hash**。
 - **浏览器上报的 port 归平台**:`captureException` / `captureDiagnostic` / `setObservedPage` 在
   `@qualy/browser-observability`(`packages/web/observability`),组件边界、路由观察器与组合根都用它;
   「哪个 provider」才归插件(`@qualy/plugin-rum` 注册表 + `startBrowserRum`,vendor 在

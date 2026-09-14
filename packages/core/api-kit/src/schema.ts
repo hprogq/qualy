@@ -98,17 +98,43 @@ export class ApiRouteNotFound extends Schema.TaggedError<ApiRouteNotFound>()(
 /**
  * A web page whose protocol generation this api no longer speaks.
  *
- * Raised by the host's compatibility check in front of the router; the
- * browser's transport reads the header beside it and blocks the page, and
- * the body says which generation came and which the server serves.
+ * Raised by the host's compatibility check in front of the router. The
+ * browser branches on the HEADER beside it, never on the body, so the body
+ * is the tag alone: the generation the page sent and the window this server
+ * serves are in the log, where the operator is, and telling every caller
+ * the window was a disclosure that bought nothing the page does.
  */
 export class ClientProtocolUnsupported extends Schema.TaggedError<ClientProtocolUnsupported>()(
   'QUALY_CLIENT_PROTOCOL_UNSUPPORTED',
-  {
-    received: Schema.Union([Schema.Number, Schema.String]),
-    supported: Schema.Struct({ min: Schema.Number, max: Schema.Number }),
-  },
+  {},
   { httpApiStatus: 409, identifier: 'ClientProtocolUnsupported' },
+) {}
+
+/**
+ * The page was built from a different set of plugins than this process runs.
+ *
+ * Possible at all because a build carries only the active assembly: the
+ * page has screens whose api is not here, or will ask a manifest for
+ * surfaces its own bundle does not contain. Which assemblies, and how they
+ * differ, stays on the server - the page reloads either way.
+ */
+export class ClientAssemblyUnsupported extends Schema.TaggedError<ClientAssemblyUnsupported>()(
+  'QUALY_CLIENT_ASSEMBLY_UNSUPPORTED',
+  {},
+  { httpApiStatus: 409, identifier: 'ClientAssemblyUnsupported' },
+) {}
+
+/**
+ * The page names a release this host cannot identify.
+ *
+ * Normally a tab left open past the store's retention, which is a fact about
+ * retention rather than about the tab; the page cannot be judged, so it is
+ * not served.
+ */
+export class ClientReleaseUnsupported extends Schema.TaggedError<ClientReleaseUnsupported>()(
+  'QUALY_CLIENT_RELEASE_UNSUPPORTED',
+  {},
+  { httpApiStatus: 409, identifier: 'ClientReleaseUnsupported' },
 ) {}
 
 /**

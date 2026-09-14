@@ -7,6 +7,7 @@ import { QUALY_API_PREFIX } from '@qualy/api-kit'
 import { Api, type ApiDocumentation } from '@qualy/api-kit/plugin'
 import { NodeServer } from '@qualy/api-kit/node'
 import { AssemblyInfo, assembledBarrier, assembledLayer } from '@qualy/api-kit/assembled'
+import { clientAssemblyLayer } from '@qualy/api-kit/client-assembly'
 import { readinessLayer } from '@qualy/api-kit/readiness'
 import { shellPolicyLayer } from '@qualy/api-kit/shell-policy'
 import { Plugin } from '@qualy/plugin-kit'
@@ -211,6 +212,10 @@ export async function makeApplication(
     // reads: it belongs to the server base, not to whoever happens to own a
     // resource in this assembly
     Layer.provideMerge(readinessLayer),
+    // and the registry the release judgement goes into, read by the serve
+    // chain per request: whoever serves releases knows which assembly each
+    // one was built from, and this file must not know who that is
+    Layer.provideMerge(clientAssemblyLayer),
     // the sources a plugin adds to the shell's content security policy,
     // read by the web plugin at the barrier; same reasoning as readiness
     Layer.provideMerge(shellPolicyLayer),

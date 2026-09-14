@@ -136,6 +136,11 @@ function isNetworkError(error: unknown): boolean {
 //
 // as const keeps the message ids literal, which is what lets CatalogFor derive
 // the exact key set the catalogs must cover.
+const clientUnsupported = {
+  id: 'common/error/client-unsupported',
+  defaultMessage: 'Reload the page to continue.',
+} as const satisfies MessageDescriptor
+
 export const commonErrorMessages = {
   AUTH_REQUIRED: {
     message: { id: 'common/error/auth-required', defaultMessage: 'Please sign in to continue.' },
@@ -162,19 +167,21 @@ export const commonErrorMessages = {
     },
   },
   // both mean the page and the api have drifted apart: the reader's move
-  // is a reload, and the release coordinator blocks the page on the second
+  // is a reload, and the release coordinator blocks the page on the rest
   API_ROUTE_NOT_FOUND: {
     message: {
       id: 'common/error/api-route-not-found',
       defaultMessage: 'Reload the page to continue.',
     },
   },
-  QUALY_CLIENT_PROTOCOL_UNSUPPORTED: {
-    message: {
-      id: 'common/error/client-protocol-unsupported',
-      defaultMessage: 'Reload the page to continue.',
-    },
-  },
+  // Three findings, one sentence, one id. The api refuses a page whose
+  // protocol generation it does not speak, one built from a different plugin
+  // selection, and one naming a release it cannot identify; a reader does the
+  // same thing about all three, and which it was belongs to the diagnostic
+  // rather than to the screen.
+  QUALY_CLIENT_PROTOCOL_UNSUPPORTED: { message: clientUnsupported },
+  QUALY_CLIENT_ASSEMBLY_UNSUPPORTED: { message: clientUnsupported },
+  QUALY_CLIENT_RELEASE_UNSUPPORTED: { message: clientUnsupported },
 } as const satisfies ErrorMessageMap
 
 export const networkErrorMessage = {

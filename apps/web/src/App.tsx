@@ -132,7 +132,7 @@ export default function App() {
             <RuntimeProvider
               registry={registry}
               clientIdentity={webRelease}
-              onClientUnsupported={() => releases.notifyClientUnsupported()}
+              onClientUnsupported={(reason) => releases.notifyClientUnsupported(reason)}
             >
               <BrowserRouter>
                 <ManifestRouter />

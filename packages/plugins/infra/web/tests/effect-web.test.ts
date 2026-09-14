@@ -1,5 +1,10 @@
 import { NodeHttpServer } from '@effect/platform-node'
-import { Effect, Exit, Layer, Logger, Schema, Scope } from 'effect'
+import {
+  ClientAssembly,
+  clientAssemblyLayer,
+  type ReleaseStanding,
+} from '@qualy/api-kit/client-assembly'
+import { Context, Effect, Exit, Layer, Logger, Schema, Scope } from 'effect'
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import fs from 'node:fs'
 import { createServer } from 'node:http'
@@ -47,6 +52,13 @@ const HASH = TEST_HASH
 const installFixture = installTestRelease
 
 const assetRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-web-assets-'))
+// Two releases an open tab could still be running, beside the one this
+// process pins: one from an earlier deployment of the SAME assembly, which
+// is the tab this store exists to keep working, and one built from a
+// different plugin selection. The default install goes last so the pointer
+// names it again.
+installFixture(assetRoot, { releaseId: 'kept-release' })
+installFixture(assetRoot, { releaseId: 'foreign-release', hash: 'sha256:another-assembly' })
 installFixture(assetRoot)
 const assemblyInfo = Layer.succeed(AssemblyInfo, AssemblyInfo.of({ resolutionHash: HASH }))
 // a policy already frozen: which header the shell sends is another suite's question
@@ -56,8 +68,18 @@ const policy = Layer.succeed(
 )
 
 let scope: Scope.Scope
+/** what this process says about a release a page claims to be running */
+let standingOf: (releaseId: string) => ReleaseStanding
 
 beforeAll(async () => {
+  scope = await Effect.runPromise(Scope.make())
+  // built first and handed in, so the test can ask the registry the same
+  // question the serve chain asks it per request. The judgement itself is
+  // registered by the plugin while its own layer builds; nothing here
+  // reaches into the plugin to get it.
+  const registry = await Effect.runPromise(Layer.buildWithScope(clientAssemblyLayer, scope))
+  const assembly = Context.getUnsafe(registry, ClientAssembly)
+  standingOf = assembly.standingOf
   const application = HttpRouter.serve(
     Layer.mergeAll(
       // one declared api route, so "unmatched inside the prefix" is a real
@@ -75,11 +97,11 @@ beforeAll(async () => {
         Layer.sync(NodeServer, () => createServer()),
         assemblyInfo,
         policy,
+        Layer.succeed(ClientAssembly, assembly),
       ),
     ),
     Layer.provide(NodeHttpServer.layer(createServer, { port })),
   )
-  scope = await Effect.runPromise(Scope.make())
   await Effect.runPromise(Layer.buildWithScope(application, scope))
 }, 30_000)
 
@@ -122,6 +144,7 @@ describe('the shell against the api mount', () => {
                   Layer.sync(NodeServer, () => createServer()),
                   assemblyInfo,
                   policy,
+                  clientAssemblyLayer,
                   HttpRouter.layer,
                 ),
               ),
@@ -150,6 +173,7 @@ describe('the shell against the api mount', () => {
                     WebConfig.of({ assetRoot: root, sourceRoot: root, cspMode: 'report' }),
                   ),
                   Layer.sync(NodeServer, () => createServer()),
+                  clientAssemblyLayer,
                   info,
                   policy,
                   HttpRouter.layer,
@@ -210,6 +234,24 @@ describe('the shell against the api mount', () => {
     const body: unknown = await response.json()
     expect(body).toEqual({ schema: 2, releaseId: 'test-release' })
     expect(Schema.decodeUnknownSync(ReleaseProbeSchema)(body).releaseId).toBe('test-release')
+  })
+
+  it('tells the host which assembly each release a page might claim was built from', () => {
+    // The judgement the serve chain asks for per request, answered by the
+    // only thing that can: the store records, beside each installed
+    // release's shell, the assembly it was built from.
+    //
+    // Same assembly is one answer for two cases on purpose - this process's
+    // own release and an older one built the same way - because an older tab
+    // going on working is what keeping releases around is FOR. A different
+    // selection is not a code difference: that page has screens whose api
+    // may not be here, and will ask a manifest for surfaces its own bundle
+    // does not carry.
+    expect(standingOf('test-release')).toBe('compatible')
+    expect(standingOf('kept-release')).toBe('compatible')
+    expect(standingOf('foreign-release')).toBe('other-assembly')
+    // collected, or never here at all: nothing to compare, so nothing to allow
+    expect(standingOf('r_collectedLongAgo')).toBe('unknown')
   })
 
   it('serves the release it pinned at boot, whatever the pointer says later', async () => {

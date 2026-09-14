@@ -3,6 +3,7 @@ import {
   QUALY_RELEASE_ENDPOINT,
   isReleaseObserved,
   isReleaseProbe,
+  type ClientUnsupportedReason,
   type ReleaseProbe,
   type WebReleaseIdentity,
 } from '@qualy/release-contract'
@@ -30,7 +31,26 @@ import {
 // and document, the channel, the reload - so the state machine is tested
 // without one. This module imports no virtual module and no React.
 
-export type ReloadReason = 'release-skew' | 'asset-load-failed' | 'client-protocol'
+/**
+ * Why a page cannot go on.
+ *
+ * Three of them are the server refusing this page and one is this page
+ * failing to load its own code. The reader is told the same thing about all
+ * four - reload - and the distinction is for whoever reads the diagnostics:
+ * `client-protocol` says a deployment shipped a breaking api change,
+ * `assembly-skew` says the plugin selection moved under an open tab, and
+ * `release-expired` says releases are being collected faster than tabs are
+ * being closed.
+ */
+export type ReloadReason =
+  'release-skew' | 'asset-load-failed' | 'client-protocol' | 'assembly-skew' | 'release-expired'
+
+/** what the api said, as a reason this page cannot continue */
+const REFUSED: Record<ClientUnsupportedReason, ReloadReason> = {
+  protocol: 'client-protocol',
+  assembly: 'assembly-skew',
+  release: 'release-expired',
+}
 
 export type ReleaseState =
   | { readonly kind: 'current' }
@@ -86,8 +106,8 @@ export interface ReleaseCoordinator {
   dismissAvailable(): void
   /** the page can no longer go on: block until a reload */
   requireReload(reason: ReloadReason, latest?: ReleaseProbe): void
-  /** the server refused this page's protocol (from the api transport) */
-  notifyClientUnsupported(): void
+  /** the server will not talk to this page (from the api transport) */
+  notifyClientUnsupported(reason: ClientUnsupportedReason): void
   reload(): void
   /** listen to the browser; idempotent */
   start(): void
@@ -236,7 +256,7 @@ export function createReleaseCoordinator(options: ReleaseCoordinatorOptions): Re
       set(CURRENT)
     },
     requireReload,
-    notifyClientUnsupported: () => requireReload('client-protocol'),
+    notifyClientUnsupported: (reason) => requireReload(REFUSED[reason]),
     reload,
     start() {
       if (started) return

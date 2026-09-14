@@ -74,17 +74,20 @@ describe('the identity a browser request carries', () => {
 
 describe('the server refusing this page', () => {
   const refused = () =>
-    new Response(
-      JSON.stringify({
-        code: 'QUALY_CLIENT_PROTOCOL_UNSUPPORTED',
-        received: 1,
-        supported: { min: 2, max: 2 },
-      }),
-      {
-        status: 409,
-        headers: { 'content-type': 'application/json', [QUALY_CLIENT_UNSUPPORTED_HEADER]: '1' },
+    new Response(JSON.stringify({ _tag: 'QUALY_CLIENT_PROTOCOL_UNSUPPORTED' }), {
+      status: 409,
+      headers: {
+        'content-type': 'application/json',
+        [QUALY_CLIENT_UNSUPPORTED_HEADER]: 'protocol',
       },
-    )
+    })
+
+  /** the same refusal under each reason a server may give */
+  const refusing = (said: string) => () =>
+    new Response('{}', {
+      status: 409,
+      headers: { 'content-type': 'application/json', [QUALY_CLIENT_UNSUPPORTED_HEADER]: said },
+    })
 
   it('is heard off the raw response, and the request still fails the way it would have', async () => {
     const heard = vi.fn()
@@ -98,7 +101,33 @@ describe('the server refusing this page', () => {
       }).pipe(Effect.provideService(FetchHttpClient.Fetch, answering([], refused))),
     )
     expect(heard).toHaveBeenCalledTimes(1)
+    expect(heard).toHaveBeenCalledWith('protocol')
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  it('passes on which of the refusals it was, and calls an unknown one a protocol refusal', async () => {
+    // three findings the page cannot go on from, and a fourth word a newer
+    // server might use: the header's presence is the fact, and a page that
+    // ignored a reason it did not know would leave the reader with api
+    // errors and nothing to do about them
+    for (const [said, expected] of [
+      ['protocol', 'protocol'],
+      ['assembly', 'assembly'],
+      ['release', 'release'],
+      ['something-newer', 'protocol'],
+    ] as const) {
+      const heard = vi.fn()
+      await Effect.runPromiseExit(
+        Effect.gen(function* () {
+          const client = yield* clientFor(api, 'http://qualy.test', {
+            identity,
+            onClientUnsupported: heard,
+          })
+          return yield* client.ping.hello()
+        }).pipe(Effect.provideService(FetchHttpClient.Fetch, answering([], refusing(said)))),
+      )
+      expect(heard, said).toHaveBeenCalledWith(expected)
+    }
   })
 
   it('is not heard for any other 409, nor for a refusal nobody listens for', async () => {

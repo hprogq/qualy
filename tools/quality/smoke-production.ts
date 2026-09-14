@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { repoRoot } from '../lib/manifest.ts'
 import { startQualyServer } from '../lib/qualy-server.ts'
@@ -176,6 +177,78 @@ await check('/__qualy/release', async (response) => {
   console.log(`smoke: /__qualy/release ${probe.releaseId}`)
   return undefined
 })
+// The old-tab matrix, against the real store this process pinned from.
+//
+// A deployment that only changed code must leave every open tab working, and
+// one that changed which plugins are in the product must not - that page has
+// screens whose api is not here. Both answers come from the same place: the
+// release a page names, looked up in the store, compared by the assembly it
+// was built from. Which cases can be exercised depends on what the store
+// happens to hold, so the check reads it and says which ones it found; the
+// current release and an unknown one are always there to ask about.
+{
+  const releasesDir = path.join(repoRoot, 'packages/plugins/infra/web/client-dist', 'releases')
+  const assemblyOf = (releaseId: string): string | undefined => {
+    try {
+      const metadata = JSON.parse(
+        fs.readFileSync(path.join(releasesDir, releaseId, '.qualy-release.json'), 'utf8'),
+      ) as { resolutionHash?: string }
+      return metadata.resolutionHash
+    } catch {
+      return undefined
+    }
+  }
+  const claiming = (releaseId: string) =>
+    fetch(`${base}/api/app/manifest`, { headers: { 'x-qualy-web-release': releaseId } })
+
+  const current = staged!.releaseId
+  const mine = assemblyOf(current)
+  const retained = fs.existsSync(releasesDir)
+    ? fs.readdirSync(releasesDir).filter((id) => id !== current)
+    : []
+  const sameAssembly = retained.find((id) => assemblyOf(id) === mine)
+  const otherAssembly = retained.find((id) => {
+    const hash = assemblyOf(id)
+    return hash !== undefined && hash !== mine
+  })
+
+  const own = await claiming(current)
+  if (own.status !== 200) fail(`the pinned release was refused: ${own.status}`)
+  console.log('smoke: a page on the pinned release is served')
+
+  const gone = await claiming('r_collectedLongAgo')
+  if (gone.status !== 409 || gone.headers.get('x-qualy-client-unsupported') !== 'release') {
+    fail(
+      `a page naming an unknown release got ${gone.status} / ${gone.headers.get('x-qualy-client-unsupported') ?? 'no reason'}`,
+    )
+  }
+  console.log('smoke: a page naming a release this host never installed is told to reload')
+
+  if (sameAssembly === undefined) {
+    console.log('smoke: no retained release of this assembly in the store; old-tab case not run')
+  } else {
+    const older = await claiming(sameAssembly)
+    if (older.status !== 200) {
+      fail(`an older page of this same assembly was refused: ${older.status}`)
+    }
+    console.log(`smoke: an older page (${sameAssembly}) of this assembly goes on being served`)
+  }
+  if (otherAssembly === undefined) {
+    console.log('smoke: no release of another assembly in the store; skew case not run')
+  } else {
+    const foreign = await claiming(otherAssembly)
+    if (
+      foreign.status !== 409 ||
+      foreign.headers.get('x-qualy-client-unsupported') !== 'assembly'
+    ) {
+      fail(
+        `a page of another assembly got ${foreign.status} / ${foreign.headers.get('x-qualy-client-unsupported') ?? 'no reason'}`,
+      )
+    }
+    console.log(`smoke: a page of another assembly (${otherAssembly}) is told to reload`)
+  }
+}
+
 // one hashed asset out of the shell it actually served, so the check follows
 // the build instead of hardcoding a chunk name
 const asset = /(?:src|href)="(\/assets\/[^"]+\.js)"/.exec(shell)?.[1]

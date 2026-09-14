@@ -31,7 +31,7 @@ export default {
   'common/error/bad-request': '输入内容有误。',
   'common/error/request-origin-refused': '当前页面无法完成该操作，请刷新后重试。',
   'common/error/api-route-not-found': '页面需要刷新后才能继续使用。',
-  'common/error/client-protocol-unsupported': '页面需要刷新后才能继续使用。',
+  'common/error/client-unsupported': '页面需要刷新后才能继续使用。',
   'common/error/network': '暂时无法连接 Qualy，请检查网络后重试。',
   'common/error/unexpected': '操作失败，请重试。',
   'common/clock/hour': '小时',

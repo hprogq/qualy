@@ -18,6 +18,13 @@
 > 上报词汇;`plugin-rum` 只剩 provider 选择;登录渲染器接入统一 surface 边界(复审提出);
 > 平台不依赖插件实现由 `plugin-isolation` 门禁守,剩余边具名列出。
 > `apps/web` 仍有一行 `startBrowserRum` import——浏览器插件还没有可以运行的生命周期,归 Phase E。
+>
+> 进度:**Phase D1 已落地(2026-09-15)**——Web 构建改 active-only(`all` 从聚合彻底消失,
+> `environment.command` 不再决定装配语义),旧 tab assembly 兼容按 §42–§46 实现
+> (`X-Qualy-Web-Release` → store 查 `resolutionHash` → 同则放行、异则 409 `assembly`、
+> 查不到则 409 `release`;判断经 `@qualy/api-kit/client-assembly` 单槽注册表倒置,host 不点名插件),
+> 409 body 去掉 `received`/`supported`,`check-chunks --expect-absent` 按 binding 判定。
+> §111 的旧 tab 矩阵进了 production smoke,对真实 store 跑。
 
 ## 1. 背景与目标
 

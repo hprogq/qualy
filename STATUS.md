@@ -14437,3 +14437,85 @@ r_feuCerD3YnzyLs-GJgQkGA (123 assets, production, protocol 2)`;`check-chunks` �
   动态 `import()` 与双引号。**仍是正则,原因写在代码注释里**:TypeScript 7 是原生可执行文件、不再导出
   `createProgram`,旁边的组件检查器正是为此改成「写断言文件 + 跑 tsc」;所以 AST 遍历这条路在当前
   工具链上没有现成入口,若 Phase F 要做需另选 parser,而不是「直接用 TS AST」。
+
+## 插件重构 Phase D1:只构建 active 装配 + 旧 tab 兼容(2026-09-15)
+
+docs/plugin-refactor.md 的 Phase D1(§40–§46、§89、§104、§111)。两半,一半是产物,一半是协议。
+
+### 一、Web 产物只含 active 装配
+
+`vite build` 以前把自己切到「已安装插件的超集」,于是部署把自己**关掉的**插件的浏览器代码也发给了
+每个访客,只是不执行。**实测(不是推断)**:同一个 commit,改之前 113 个 JS asset,里面有
+`aegis.min-*.js` 与 `cos-js-sdk-v5-*.js`——两个 `enabled: false` 插件的 vendor SDK;改之后 111 个,
+两个都没了。再把 `@qualy/plugin-assessment-formula` 停掉重建:100 个,没有 editor chunk,
+**整个 Monaco 都不在**。
+
+理由不是体积,是**构建工具的命令不该决定装配语义**(§89):什么是 active 由 qualy.yml 和 resolution
+说了算,dev、browser runner、release 一视同仁。启用一个插件的代价是一次会重建的部署——
+这本来就是部署为其他一切付的价。`all` 从聚合彻底消失(`buildPluginModuleSource` /
+`buildPluginScanSource` / surface map 都不再有这个参数);`collectWebPlugins` 保留 `all`,
+因为工具确实要问另一个问题(「这个没被构建的 surface 本来由哪个模块实现」),
+而**猜**正是 chunk 哨兵刚停下来的事。
+
+**前置修复兑现**:`check-chunks --expect-absent` 不再从 surface 名 `split(':').pop()` 猜 chunk 名。
+它读两份集合——built 决定「必须有 chunk」,installed 回答「本该是哪个模块」;没有任何已安装插件声明
+的 surface 直接报「这是个拼写错误」而不是「不存在,符合预期」。三条路径都实跑过:
+正常 exit 0;问一个还在构建里的 surface → exit 1;停掉 formula 重建后问同一个 → `absent as expected`。
+
+### 二、旧 tab 的 assembly 兼容(§42–§46)
+
+active-only 带来一个新问题:两个 release 不再只差代码。插件选择变了,页面里就有这台服务端没有 API
+的屏,或者它会向 manifest 要自己 bundle 里没有的 surface——**而协议代次看不见这件事,形状没变**。
+
+所以 `/api/*` 现在问两个问题,顺序固定:先协议(API 的形状),再 release 属于哪套装配(API 的内容)。
+
+```text
+无 X-Qualy-Web-Release → 不是网页(CLI/集成/测试),不判
+release == 本进程 pin 的 → 放行
+其他 release → 查 store 里它自己的 metadata
+    resolutionHash 相同 → 放行   ← 这正是保留旧 release 的目的
+    不同               → 409 assembly
+    查不到             → 409 release
+```
+
+**浏览器两个 hash 都看不到**,也不知道「装配」这个概念:它只拿到 409 和一个词
+(`protocol`/`assembly`/`release`),映射成阻断原因 `client-protocol`/`assembly-skew`/`release-expired`,
+三者在界面上共用同一句「需要刷新页面」,区别只进 RUM 诊断。认不出的 header 值按 `protocol` 处理
+并照样阻断——header 在就是事实,忽略它只会让读者面对一堆无从解释的 API 错误。
+
+**谁能回答这个问题不由 host 决定**:store 归 `@qualy/plugin-web`,它建层时把判断注册进
+`@qualy/api-kit/client-assembly` 的单槽注册表(与 readiness 同一套倒置),serve 链逐请求读;
+没人注册 = 没有 release 可判(headless)= 不拒绝。已知答案记住,**查不到的不记**——
+release 可能在本进程运行期间被装上(滚动发布 + 负载均衡),记住「曾经查不到」会让它余生都被拒。
+
+**顺带关掉一处披露**:409 body 去掉了 `received` 与 `supported`,只剩 `_tag`。浏览器只按 header
+分支,把服务端的协议窗口告诉每个调用方不换来任何页面行为。三个 code 共用一句文案、一个 message id
+(`common/error/client-unsupported`)——一个读者对三者做的是同一件事。
+
+### 验收
+
+**§111 的旧 tab 矩阵进了 production smoke,对真实 store 跑**(不是 mock):
+
+- pin 的 release → 200
+- 同装配的旧 release(`local-20260914T142510Z-731db563`)→ **200,继续服务**
+- 另一套装配的 release(`local-20260913T185526Z-4b948cc6`,历史构建)→ 409 `assembly`
+- 从未安装过的 release → 409 `release`
+
+smoke 按 store 实际持有的内容选用例并说明跑了哪几条(新 store 上只有前两条可跑,不会假绿)。
+「纯代码发布只是 update-available,不强制刷新」由 coordinator 既有用例守。
+
+**三处门禁验证过会红**:让 judge 恒返回 `compatible` → plugin-web 用例红、smoke 停在
+`a page of another assembly got 200`;让中间件不再判 release → serve-middleware 两例红。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 231 passed | 3 skipped,
+Tests 1660 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0 →
+`staged web release r_N1Vo9-UxNHEn3gC3DLOH4Q (121 assets, production, protocol 2)`;
+`check-chunks`、`check-staged-web`、`check-csp-build`、`smoke-production`(含新矩阵)全过。
+
+**又一次同类 flake,如实记录**:收尾时有一轮 `pnpm test` 出现 15 例失败,全是
+`Hook timed out` / `Connection terminated unexpectedly`,且跳过文件从 3 涨到 37——是 postgres
+连接在满载下耗尽(`max_connections=100`),不是断言失败。等其他后台任务跑完后单独重跑即 231/1660 全绿,
+容器随后查为 healthy、9/100 连接。与 Phase C 记的那条同一类:**并行满载下的既有 flake**。
+
+**下一步**:D2(`apps/web` 去掉插件实现依赖)→ D3(open-world 发现)→ D4(package-export ModuleRef /
+dist-only 插件)。RUM Phase 3 仍搁置。

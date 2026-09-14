@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./local": "./src/local.ts",
     "./readiness": "./src/readiness.ts",
+    "./client-assembly": "./src/client-assembly.ts",
     "./schema": "./src/schema.ts",
     "./node": "./src/node.ts",
     "./request": "./src/request.ts",

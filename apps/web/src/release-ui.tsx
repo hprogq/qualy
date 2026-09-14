@@ -147,7 +147,15 @@ const words = (
   switch (state.reason) {
     case 'release-skew':
       return { title: copy.releaseSkewTitle, hint: copy.releaseSkewHint }
+    // Three refusals, one thing to say. The reader is not told which of the
+    // server's reasons it was, because there is nothing different to do
+    // about them and "the plugin selection moved" is not a sentence anybody
+    // outside this repository can act on. The reason is on the element as a
+    // data attribute and in the diagnostic, where it is read by somebody who
+    // can.
     case 'client-protocol':
+    case 'assembly-skew':
+    case 'release-expired':
       return { title: copy.clientProtocolTitle, hint: copy.clientProtocolHint }
     case 'asset-load-failed':
       return { title: copy.assetFailedTitle, hint: copy.assetFailedHint }

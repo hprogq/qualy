@@ -5,13 +5,19 @@ import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
 import { apiRouteNotFound, insideApi } from '@qualy/api-kit/route-fallback'
-import { QUALY_RELEASE_ENDPOINT, releaseProbeOf } from '@qualy/release-contract'
+import {
+  QUALY_RELEASE_ENDPOINT,
+  releaseProbeOf,
+  type InstalledWebRelease,
+} from '@qualy/release-contract'
 import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
+import { ClientAssembly, type ReleaseStanding } from '@qualy/api-kit/client-assembly'
 import type { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { fromConnect, type ConnectMiddleware } from '@qualy/api-kit/node'
 import {
   SHARED_ASSETS,
   readCurrentWebRelease,
+  readInstalledRelease,
   storeAt,
   type CurrentWebRelease,
   type ReleaseStore,
@@ -243,8 +249,51 @@ const production = Effect.fn('Web.production')(function* (
     )
   }
   yield* Effect.logInfo(`serving web release ${current.releaseId} from ${current.root}`)
-  return { current, middleware: serve(store, current, policy) }
+  return {
+    current,
+    middleware: serve(store, current, policy),
+    standingOf: judging(store, current, info),
+  }
 })
+
+/**
+ * What a page's claimed release is to this process, for the serve chain.
+ *
+ * Only this plugin can answer it: the store is its, and the hash a release
+ * was built from is in the release's own metadata beside its shell. The host
+ * asks through a registry, the way it asks for readiness, so it names no
+ * plugin.
+ *
+ * Known answers are remembered - a release id names one build forever, which
+ * the store enforces on the way in - and unknown ones are not. A release can
+ * be installed while this process runs, and behind a load balancer a page
+ * from that release can reach this process; remembering that it was once
+ * unknown would refuse it for the rest of this process's life. The cost of
+ * not remembering is one failed file read per request naming a release that
+ * is not there, which is what serving a missing file costs anyway.
+ */
+const judging = (
+  store: ReleaseStore,
+  current: CurrentWebRelease,
+  info: { readonly resolutionHash: string },
+): ((releaseId: string) => ReleaseStanding) => {
+  const known = new Map<string, ReleaseStanding>()
+  return (releaseId) => {
+    if (releaseId === current.releaseId) return 'compatible'
+    const remembered = known.get(releaseId)
+    if (remembered !== undefined) return remembered
+    let installed: InstalledWebRelease
+    try {
+      installed = readInstalledRelease(store, releaseId)
+    } catch {
+      return 'unknown'
+    }
+    const standing: ReleaseStanding =
+      installed.resolutionHash === info.resolutionHash ? 'compatible' : 'other-assembly'
+    known.set(releaseId, standing)
+    return standing
+  }
+}
 
 /**
  * The fallback route.
@@ -260,7 +309,7 @@ const production = Effect.fn('Web.production')(function* (
 export const routes: Layer.Layer<
   never,
   never,
-  HttpRouter.HttpRouter | WebConfig | AssemblyInfo | ShellPolicyHeader
+  HttpRouter.HttpRouter | WebConfig | AssemblyInfo | ShellPolicyHeader | ClientAssembly
 > = HttpRouter.use(
   Effect.fnUntraced(function* (router) {
     const config = yield* WebConfig
@@ -283,10 +332,14 @@ export const routes: Layer.Layer<
     }
     // built after the barrier, so the frozen policy is there to read
     const policy = yield* ShellPolicyHeader
-    const { current, middleware } = yield* production(config.assetRoot, {
+    const { current, middleware, standingOf } = yield* production(config.assetRoot, {
       header: CSP_HEADER[config.cspMode],
       value: policy.value(),
     })
+    // The serve chain asks this of every request that names a release, and
+    // nothing else can answer it: a page built from another plugin selection
+    // must not go on talking to this api, and neither half can tell alone.
+    yield* (yield* ClientAssembly).register(standingOf)
     // Which release this process serves, for the page asking whether the
     // server has moved on. Outside the api mount on purpose: it is the
     // page's way of recovering when the api may already refuse it, so it

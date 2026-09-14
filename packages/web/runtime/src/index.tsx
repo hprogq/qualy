@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Effect } from 'effect'
+import type { ClientUnsupportedReason } from '@qualy/release-contract'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type {
   BrowserSurface,
@@ -172,7 +173,7 @@ export interface RuntimeProviderProps {
    */
   clientIdentity?: ClientIdentity
   /** the server refused this page's protocol: told to whoever blocks the page */
-  onClientUnsupported?: () => void
+  onClientUnsupported?: (reason: ClientUnsupportedReason) => void
   registry: ComponentRegistry
   children: ReactNode
 }

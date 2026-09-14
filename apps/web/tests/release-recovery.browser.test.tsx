@@ -122,7 +122,7 @@ for (const locale of ['zh-CN', 'en-US'] as const) {
           <main>the page</main>
         </ReleaseRecoveryGate>,
       )
-      coordinator.notifyClientUnsupported()
+      coordinator.notifyClientUnsupported('protocol')
       await expect
         .element(page.getByRole('heading', { name: copy.clientProtocolTitle }))
         .toBeVisible()

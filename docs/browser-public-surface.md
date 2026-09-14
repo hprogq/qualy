@@ -55,6 +55,7 @@ resolutionHash、数据库/模块/源码实现细节
 | `GET /health/ready` 失败         | `{_tag: "NotReady"}`,503                                           | apps/server/tests/effect-shell.test「readiness with a probe that fails」                               |
 | `/api/docs`、`/api/openapi.json` | 生产默认 404(`QUALY_API_DOCS=public` 才开)                         | apps/server/tests/api-docs.test + smoke                                                                |
 | API 错误                         | `{_tag, 公开字段}`,诊断只进 header 与日志                          | tools/tests/error-codes.test、effect-error-shape.test                                                  |
+| 409 拒绝(协议/装配/release)      | header 说哪一种,body 只有 `_tag`;不含协议窗口、不含任何 hash       | apps/server/tests/serve-middleware.test、smoke 的旧 tab 矩阵                                           |
 | 浏览器 console / RUM 上报        | surface 地址(`page:assessment/review`),不含模块路径                | apps/web/tests/rum.browser.test「the seams the runtime reports at」                                    |
 | public HTML                      | 只有产品描述,不宣告架构                                            | 人工:`apps/web/index.html`                                                                             |
 | SourceMap、surface→模块映射      | 生成 → 留在构建产物 → **不进 release store**                       | check-staged-web、release-store.test                                                                   |
@@ -137,12 +138,19 @@ package.json 依赖,都是同一条边的两面:`packages/web/runtime/src/index.
 清单是**逐边**而不是逐包:按包豁免会让任何 platform 文件 import 该插件的任意子路径都静默通过,
 而清单看上去仍然「只有一条例外」。第三条用例把两条边的字面量钉死,所以清单只会变短。
 
+## 旧 tab 兼容不向浏览器泄露 assembly
+
+active-only 构建之后,「这个页面还能不能跟这台服务端说话」多了一问:它是不是同一套插件装配构建出来的。
+判断整个发生在服务端——页面每个请求已经带 `X-Qualy-Web-Release`,服务端拿它去 store 里查那个
+release 自己的 metadata,和本进程的 `resolutionHash` 比。**浏览器两个 hash 都看不到,也不知道
+「装配」这个概念**;它只收到 409 和一个词:`protocol` / `assembly` / `release`,三者在界面上是同
+一句「需要刷新页面」,区别只进 RUM 诊断。
+
+详见 docs/web-release.md 的「服务端兼容检查」。
+
 ## 已知仍未收口(各自属于后续阶段)
 
-- **409 响应体仍带服务端协议窗口**:`QUALY_CLIENT_PROTOCOL_UNSUPPORTED` 的 `supported: {min,max}`
-  (Phase D1 §43 会连同 assembly 兼容一起重做)。
 - **生产 JS chunk 名仍带组件名**:`assets/<chunk.name>-[hash].js`(§23)。
-- **生产 Web artifact 仍是 installed 超集**:停用插件的浏览器代码仍进产物(Phase D1)。
 
 ## 明确不做
 

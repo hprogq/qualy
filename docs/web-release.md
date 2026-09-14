@@ -38,7 +38,40 @@
 
 ## 服务端兼容检查(`apps/server/src/client-compatibility.ts`)
 
-只看 `/api/*`。无 `X-Qualy-Client-Protocol` 通过(CLI、外部集成、测试 client);在 `min..max` 内通过;否则 409 + `X-Qualy-Client-Unsupported: 1` + `no-store` + `{ code: 'QUALY_CLIENT_PROTOCOL_UNSUPPORTED', received, supported }`,不进入 handler。顺序:request context → access log → metrics → response headers → origin guard → client compatibility → router(测试证明:跨站请求先被 403,得不到窗口信息)。`releaseId` 不做兼容门槛。
+只看 `/api/*`,问两个问题,顺序固定。
+
+**一、协议代次**(API 的**形状**)。无 `X-Qualy-Client-Protocol` 通过(CLI、外部集成、测试 client);
+在 `min..max` 内通过;否则 409 + `X-Qualy-Client-Unsupported: protocol`。顺序:request context →
+access log → metrics → response headers → origin guard → client compatibility → router
+(测试证明:跨站请求先被 403)。
+
+**二、release 属于哪套装配**(API 的**内容**,2026-09-15 起)。active-only 构建之后,两个 release
+不再只差代码:插件选择变了,页面里就有这台服务端没有 API 的屏,或者它会向 manifest 要自己 bundle
+里没有的 surface——而协议看不见这件事,形状没变。
+
+```text
+无 X-Qualy-Web-Release        → 不是网页(CLI/集成/测试),不判
+release == 本进程 pin 的那个   → 放行
+其他 release                   → 查 store 里那个 release 自己的 metadata
+    resolutionHash 相同        → 放行(这正是保留旧 release 的目的:旧 tab 继续工作)
+    resolutionHash 不同        → 409 + X-Qualy-Client-Unsupported: assembly
+    查不到(已回收/不是合法 id)→ 409 + X-Qualy-Client-Unsupported: release
+```
+
+判断只发生在服务端,**浏览器永远不知道任何 hash**,也不知道「装配」这个概念存在。
+谁能回答这个问题也不由 host 决定:store 归 `@qualy/plugin-web`,它在建层时把判断注册进
+`@qualy/api-kit/client-assembly` 的单槽注册表(与 readiness 同一套倒置),serve 链逐请求读。
+没人注册 = 没有 release 可判(headless 部署)= 不拒绝。已知答案会记住(一个 release id 永远
+只对应一次构建),查不到的**不记**——release 可能在本进程运行期间被装上,记住「曾经查不到」
+会让它余生都被拒。
+
+三种拒绝同一个形状:409、header 说是哪一种、body 只有 `_tag`
+(`QUALY_CLIENT_PROTOCOL_UNSUPPORTED` / `..._ASSEMBLY_...` / `..._RELEASE_...`)。
+**body 不再带 `received` 与 `supported`**:浏览器只按 header 分支,把服务端的协议窗口告诉每个
+调用方不换来任何页面行为。浏览器侧 `protocol|assembly|release` 映射成阻断原因
+`client-protocol|assembly-skew|release-expired`,三者共用同一句「需要刷新页面」文案,
+区别只进 RUM 诊断(低基数工程事实)。认不出的 header 值按 `protocol` 处理并照样阻断——
+header 在就是事实,忽略它只会让读者面对一堆无从解释的 API 错误。
 
 ## Breaking change 的发布顺序
 
@@ -57,6 +90,9 @@
 
 禁止:同时删旧字段 + 发新 Web + 假设所有浏览器立刻刷新。
 
+**插件启停不走这条**:那是 assembly 变化,不是协议变化。旧 tab 在第一个 API 请求上收到 `assembly`
+拒绝并被要求刷新;同一套装配的纯代码发布则照常让旧 tab 继续工作。
+
 ## 明确不做
 
-Service Worker / PWA 预缓存;每 30 秒轮询;`vite:preloadError` 无条件自动刷新;给 hashed asset `no-cache` 或给 favicon `immutable`;每个请求重读 `current.json`;把 `releaseId` 当兼容门槛;把 `resolutionHash` 当 build id。
+Service Worker / PWA 预缓存;每 30 秒轮询;`vite:preloadError` 无条件自动刷新;给 hashed asset `no-cache` 或给 favicon `immutable`;每个请求重读 `current.json`;把 `releaseId` 当**版本**门槛(它没有顺序语义;判的只是它属于哪套装配、同不同);把 `resolutionHash` 当 build id;把 assembly 这个概念暴露给浏览器。

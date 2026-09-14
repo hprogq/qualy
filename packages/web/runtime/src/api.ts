@@ -5,6 +5,8 @@ import {
   QUALY_CLIENT_PROTOCOL_HEADER,
   QUALY_CLIENT_RELEASE_HEADER,
   QUALY_CLIENT_UNSUPPORTED_HEADER,
+  isClientUnsupportedReason,
+  type ClientUnsupportedReason,
 } from '@qualy/release-contract'
 
 // A client is derived from an api DEFINITION, and every plugin holds its own:
@@ -45,7 +47,7 @@ export interface TransportOptions {
   /** named on every request, here and nowhere else; a harness may leave it out */
   readonly identity?: ClientIdentity
   /** the server has refused this page's protocol: the release coordinator's to hear */
-  readonly onClientUnsupported?: () => void
+  readonly onClientUnsupported?: (reason: ClientUnsupportedReason) => void
 }
 
 /**
@@ -74,12 +76,16 @@ const withIdentity = (options: TransportOptions) => {
       ? identity
       : HttpClient.tap((response) =>
           Effect.sync(() => {
-            if (
-              response.status === 409 &&
-              response.headers[QUALY_CLIENT_UNSUPPORTED_HEADER] === '1'
-            ) {
-              heard()
-            }
+            if (response.status !== 409) return
+            const said = response.headers[QUALY_CLIENT_UNSUPPORTED_HEADER]
+            if (said === undefined) return
+            // The header's PRESENCE is the fact: this server will not talk to
+            // this page. Its value says which of three it was, and a value
+            // this page does not know is a server newer than the page - still
+            // a refusal, reported under the oldest of the names rather than
+            // ignored, since ignoring it leaves the reader with api errors
+            // and no way to understand them.
+            heard(isClientUnsupportedReason(said) ? said : 'protocol')
           }),
         )
   return <E, R>(client: HttpClient.HttpClient.With<E, R>): HttpClient.HttpClient.With<E, R> =>

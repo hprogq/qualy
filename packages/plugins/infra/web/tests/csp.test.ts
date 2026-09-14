@@ -6,6 +6,7 @@ import { createServer } from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { clientAssemblyLayer } from '@qualy/api-kit/client-assembly'
 import { assembledBarrier, assembledLayer, AssemblyInfo } from '@qualy/api-kit/assembled'
 import { NodeServer } from '@qualy/api-kit/node'
 import { requestOriginGuard } from '@qualy/api-kit/origin'
@@ -62,7 +63,7 @@ const serve = (at: number, cspMode: CspMode) =>
         policyLayer,
       ),
     ),
-    Layer.provide(Layer.mergeAll(shellPolicyLayer, assembledLayer)),
+    Layer.provide(Layer.mergeAll(shellPolicyLayer, assembledLayer, clientAssemblyLayer)),
     Layer.provide(NodeHttpServer.layer(createServer, { port: at })),
     Layer.provide(capture),
   )

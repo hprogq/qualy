@@ -248,13 +248,20 @@ describe('the reader and the block', () => {
     expect(states).toEqual(['update-available', 'current', 'update-available'])
   })
 
-  it('blocks on the api refusing this protocol', () => {
-    const { coordinator } = setUp(() => probeFor('A'))
-    coordinator.notifyClientUnsupported()
-    expect(coordinator.getSnapshot()).toEqual({
-      kind: 'reload-required',
-      reason: 'client-protocol',
-    })
+  it('blocks on the api refusing this page, under the reason the api gave', () => {
+    // three different findings, one consequence, and the reason is kept
+    // because it is the difference between "somebody shipped a breaking api
+    // change", "the plugin selection moved under an open tab" and "releases
+    // are collected faster than tabs are closed"
+    for (const [said, expected] of [
+      ['protocol', 'client-protocol'],
+      ['assembly', 'assembly-skew'],
+      ['release', 'release-expired'],
+    ] as const) {
+      const { coordinator } = setUp(() => probeFor('A'))
+      coordinator.notifyClientUnsupported(said)
+      expect(coordinator.getSnapshot()).toEqual({ kind: 'reload-required', reason: expected })
+    }
   })
 
   it('never softens a block on a later probe, and never reloads on its own', async () => {
