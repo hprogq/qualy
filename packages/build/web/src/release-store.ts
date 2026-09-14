@@ -2,14 +2,14 @@ import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
+import { isReleaseId } from '@qualy/release-contract'
 import {
   RELEASE_SCHEMA,
-  isReleaseId,
   parseCurrentReleasePointer,
   parseInstalledWebRelease,
   parseWebBuildMetadata,
   type InstalledWebRelease,
-} from '@qualy/release-contract'
+} from '@qualy/release-contract/private'
 import {
   BROWSER_SURFACE_MAP,
   PRIVATE_BUILD_FILES,

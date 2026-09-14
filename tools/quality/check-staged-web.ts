@@ -79,6 +79,32 @@ if (debug.length > 0) {
   )
 }
 
+// And nothing a release serves may name the private half of the protocol.
+//
+// Not a value - no build ever put one in a bundle - but the FIELD NAMES,
+// which rode in because the private documents lived in the same module as
+// the public probe and the browser imports the probe. A minified bundle
+// spelling out `resolutionHash`, `browserContractHash` and `assets` tells a
+// reader exactly what this deployment keeps about itself and what to go
+// looking for. The split that fixed it is a module boundary, and a module
+// boundary holds only as long as nobody re-exports across it.
+const PRIVATE_VOCABULARY = ['resolutionHash', 'browserContractHash', 'installedAt']
+const leaked: string[] = []
+for (const asset of release.assets) {
+  if (!/\.(?:js|css|html)$/.test(asset)) continue
+  const at = path.join(store.root, asset)
+  if (!fs.existsSync(at)) continue
+  const body = fs.readFileSync(at, 'utf8')
+  for (const word of PRIVATE_VOCABULARY) {
+    if (body.includes(word)) leaked.push(`${asset} names ${word}`)
+  }
+}
+if (leaked.length > 0) {
+  fail(
+    `release ${releaseId} serves the private release vocabulary: ${leaked.slice(0, 5).join(', ')}`,
+  )
+}
+
 const lock = readLock(lockPathFor(manifestPath()))
 if (!lock) fail('no assembly lock; run `pnpm qualy resolve`')
 if (release.resolutionHash !== lock!.resolutionHash) {

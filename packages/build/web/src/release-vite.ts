@@ -4,13 +4,15 @@ import type { Plugin } from 'vite'
 import {
   CURRENT_CLIENT_PROTOCOL,
   QUALY_RELEASE_ENDPOINT,
-  RELEASE_SCHEMA,
   isReleaseId,
-  releaseProbeOf,
   type ReleaseMode,
-  type WebBuildMetadata,
   type WebReleaseIdentity,
 } from '@qualy/release-contract'
+import {
+  RELEASE_SCHEMA,
+  releaseProbeOf,
+  type WebBuildMetadata,
+} from '@qualy/release-contract/private'
 
 // The web release's identity, minted where the bundle is made.
 //

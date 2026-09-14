@@ -14910,3 +14910,28 @@ plugin-cli        11 passed
 真实清单 `disable` → `enable` 往返后 `git status` 干净。
 
 **下一步**:Phase H 是本轮计划的最后一节,收尾做全量验收。
+
+## 验收发现:私有 release 词汇进了公开产物(2026-09-15)
+
+全仓不变量复核时逐 asset 扫当前 release,发现服务出去的 JS 里出现
+`resolutionHash` / `browserContractHash` / `installedAt` / `assets` ——**没有值,是字段名**。
+根因是模块边界:`@qualy/release-contract` 的 index 里同时住着「浏览器读的 probe」和
+「构建工具与 host 读的私有文档」,而**模块是打包器保留或丢弃的单位**,浏览器 import 了前者,
+后者的 Schema 值(Effect Schema 的构造不是纯的,摇不掉)就跟着进了 bundle。
+D1.1 新增 `browserContractHash` 时因此把一个新名字送进了公开产物——正是本轮不变量点名禁止的那个。
+
+修法是把私有那一半整体搬进 `@qualy/release-contract/private`:identity / build metadata /
+installed release / current pointer 与它们的 parser,外加 `releaseProbeOf`(只有服务端与构建调用)。
+公开的 index 只留 probe、channel、header、协议代次与 `ClientUnsupportedReason`;
+`WebReleaseIdentity` **只以 type 再导出**,类型在打包前就被擦掉。
+
+**新门禁**:`check-staged-web` 现在逐个扫 release 自己的 `.js/.css/.html`,出现私有词汇即失败。
+**实测过会红**:让 `packages/web/runtime/src/release.ts` 真正使用一次
+`InstalledWebReleaseSchema`(可达代码,不是 `void`)→ 重建后门禁点名
+`assets/index-*.js names resolutionHash / browserContractHash / installedAt`。
+第一次试的写法是 `void Schema`,被摇掉了、门禁照旧绿——这条记下来:**验证负面门禁时,
+断言的必须是真的会进产物的用法**。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;release-contract / web-build / package-exports /
+browser-graph 五个文件 54 例全过;`pnpm build` exit 0;`check-staged-web`、`check-chunks`、
+`check-csp-build` 全过。

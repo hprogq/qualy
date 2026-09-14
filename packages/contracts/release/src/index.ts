@@ -13,19 +13,18 @@ import { Schema } from 'effect'
 // generation between the browser and the api; it moves only on a breaking
 // api change, and a server serves a window of it while old tabs drain.
 //
-// The documents here are of two kinds, and only one of them is public. The
-// identity in the bundle, the metadata a build writes and a store keeps,
-// the pointer: those are private, read by a build tool and a host. The
-// probe is the one document a browser reads, so it carries the one fact a
-// browser acts on. They version apart for the same reason.
+// The documents of this protocol are of two kinds, and only one of them is
+// public: the probe, the one a browser reads, carrying the one fact a
+// browser acts on. The identity in the bundle, the metadata a build writes
+// and a store keeps, the pointer a host starts from - those are private and
+// live in `./private`, because a module is the unit a bundler keeps or
+// drops and they used to ride into the browser on this one's back. They
+// version apart for the same reason they are split.
 //
 // This package is framework-free: the browser reads the probe before its
 // runtime is up, the build tool writes the metadata, the server pins it.
 // The schemas are Effect Schema, as every contract's are - a value read off
 // disk or off the wire is decoded, never trusted.
-
-/** the private documents' generation: the identity, the build metadata, the pointer */
-export const RELEASE_SCHEMA = 1 as const
 
 /**
  * The public probe's generation, which moves on its own.
@@ -92,89 +91,6 @@ export const isReleaseId = (value: unknown): value is string =>
 
 export const ReleaseIdSchema = Schema.String.check(Schema.isPattern(RELEASE_ID_PATTERN))
 
-export const ReleaseModeSchema = Schema.Literals(['development', 'production'])
-
-/** a protocol generation: a small non-negative integer */
-export const ClientProtocolSchema = Schema.Number.check(
-  Schema.isInt(),
-  Schema.isGreaterThanOrEqualTo(0),
-  Schema.isLessThanOrEqualTo(1_000_000),
-)
-
-/** an instant as JSON carries it: the ISO 8601 form `Date.toISOString` writes, kept a string */
-const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
-export const InstantSchema = Schema.String.check(Schema.isPattern(INSTANT))
-
-/** what the browser is running: written into the bundle at build time */
-export const WebReleaseIdentitySchema = Schema.Struct({
-  schema: Schema.Literal(RELEASE_SCHEMA),
-  releaseId: ReleaseIdSchema,
-  mode: ReleaseModeSchema,
-  clientProtocol: ClientProtocolSchema,
-})
-
-export type WebReleaseIdentity = typeof WebReleaseIdentitySchema.Type
-
-/**
- * What a build was made from, for whoever has to find it again.
- *
- * A public release id says nothing about its build on purpose, so the
- * mapping back to a commit has to live somewhere - here, in the metadata
- * beside the output and in the store, both of which a deployment reads and
- * nothing serves. The bundle never carries it and the probe never answers
- * it: that is the whole point of naming releases opaquely.
- */
-export const BuildRevisionSchema = Schema.String.check(
-  Schema.isMinLength(1),
-  Schema.isMaxLength(200),
-)
-
-/** what a build writes beside its output, for the installer; never served */
-export const WebBuildMetadataSchema = Schema.Struct({
-  ...WebReleaseIdentitySchema.fields,
-  revision: Schema.optional(BuildRevisionSchema),
-})
-
-export type WebBuildMetadata = typeof WebBuildMetadataSchema.Type
-
-/**
- * Which browser surfaces a build carries, as one value.
- *
- * The assembly hash says which plugins were selected; it does not say what
- * their browser halves offer, because a plugin's page ids and slot keys are
- * not part of what a lock records. So two releases of the same selection can
- * disagree about what the shell manifest may name - a page added, renamed or
- * removed by ordinary code - and an older tab asking for its manifest would
- * be handed a surface its own bundle has no renderer for.
- *
- * It is a fingerprint of the surface IDENTITIES alone, which is why ordinary
- * implementation changes leave it alone and an older tab keeps working. It
- * lives in the store beside the release and never goes near a browser: a page
- * is told to reload, never why.
- */
-export const BrowserContractHashSchema = Schema.String.check(Schema.isMinLength(1))
-
-/** a release installed into a production store, as its own metadata records it */
-export const InstalledWebReleaseSchema = Schema.Struct({
-  ...WebBuildMetadataSchema.fields,
-  resolutionHash: Schema.String.check(Schema.isMinLength(1)),
-  // optional so a store written before this existed still parses; a release
-  // without one cannot be shown to be compatible, which is the safe reading
-  browserContractHash: Schema.optional(BrowserContractHashSchema),
-  installedAt: InstantSchema,
-  assets: Schema.Array(Schema.String.check(Schema.isMinLength(1))),
-})
-
-export type InstalledWebRelease = typeof InstalledWebReleaseSchema.Type
-
-/** the store's pointer to the release a host starting now should pin */
-export const CurrentReleasePointerSchema = Schema.Struct({
-  schema: Schema.Literal(RELEASE_SCHEMA),
-  releaseId: ReleaseIdSchema,
-})
-
-export type CurrentReleasePointer = typeof CurrentReleasePointerSchema.Type
-
 /**
  * What a host answers at the release endpoint: which release it serves.
  *
@@ -193,6 +109,14 @@ export const ReleaseProbeSchema = Schema.Struct({
 
 export type ReleaseProbe = typeof ReleaseProbeSchema.Type
 
+/**
+ * What the bundle carries about itself.
+ *
+ * The type only. The schema that describes it is private, along with every
+ * other document a build tool writes and a host reads - see `./private`.
+ */
+export type { WebReleaseIdentity } from './private.ts'
+
 /** the channel tabs of one origin tell each other about a release they saw */
 export const QUALY_RELEASE_CHANNEL = 'qualy:release'
 
@@ -204,34 +128,9 @@ export const ReleaseObservedSchema = Schema.Struct({
 
 export type ReleaseObserved = typeof ReleaseObservedSchema.Type
 
-/**
- * The probe a host answers for the release it is serving.
- *
- * Written field by field out of the private identity rather than spread
- * from it: what a public document carries is a decision, and a decision
- * that reads `...identity` is made again, silently, every time a private
- * field is added.
- */
-export const releaseProbeOf = (identity: WebReleaseIdentity): ReleaseProbe => ({
-  schema: RELEASE_PROBE_SCHEMA,
-  releaseId: identity.releaseId,
-})
-
-// The readers: a parse throws with the reason, for a value off disk that a
-// tool or a host must refuse loudly; a guard answers yes or no, for a
-// value off the wire that a page reads and would not throw at.
-
-export const parseWebReleaseIdentity: (value: unknown) => WebReleaseIdentity =
-  Schema.decodeUnknownSync(WebReleaseIdentitySchema)
-
-export const parseWebBuildMetadata: (value: unknown) => WebBuildMetadata =
-  Schema.decodeUnknownSync(WebBuildMetadataSchema)
-
-export const parseInstalledWebRelease: (value: unknown) => InstalledWebRelease =
-  Schema.decodeUnknownSync(InstalledWebReleaseSchema)
-
-export const parseCurrentReleasePointer: (value: unknown) => CurrentReleasePointer =
-  Schema.decodeUnknownSync(CurrentReleasePointerSchema)
+// A guard answers yes or no: these are values off the wire that a page
+// reads, and a page would not throw at one. The parsers for the documents
+// off disk live next door, with the documents.
 
 export const isReleaseProbe: (value: unknown) => value is ReleaseProbe =
   Schema.is(ReleaseProbeSchema)

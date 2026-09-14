@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { CURRENT_CLIENT_PROTOCOL, isReleaseId, isReleaseProbe } from '../src/index.ts'
 import {
-  CURRENT_CLIENT_PROTOCOL,
   RELEASE_SCHEMA,
-  isReleaseId,
-  isReleaseProbe,
   parseInstalledWebRelease,
   parseWebBuildMetadata,
   parseWebReleaseIdentity,
   releaseProbeOf,
-} from '../src/index.ts'
+} from '../src/private.ts'
 
 describe('release ids', () => {
   it('accepts the names a directory and a header both take without escaping', () => {

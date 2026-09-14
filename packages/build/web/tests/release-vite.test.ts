@@ -10,9 +10,9 @@ import {
   QUALY_RELEASE_ENDPOINT,
   RELEASE_ID_PATTERN,
   isReleaseId,
-  parseWebBuildMetadata,
   ReleaseProbeSchema,
 } from '@qualy/release-contract'
+import { parseWebBuildMetadata } from '@qualy/release-contract/private'
 import {
   BUILD_REVISION_VARIABLE,
   RELEASE_ID_VARIABLE,

@@ -5,11 +5,8 @@ import { Config, Context, Data, Effect, Layer, Schema } from 'effect'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import sirv from 'sirv'
 import { apiRouteNotFound, insideApi } from '@qualy/api-kit/route-fallback'
-import {
-  QUALY_RELEASE_ENDPOINT,
-  releaseProbeOf,
-  type InstalledWebRelease,
-} from '@qualy/release-contract'
+import { QUALY_RELEASE_ENDPOINT } from '@qualy/release-contract'
+import { releaseProbeOf, type InstalledWebRelease } from '@qualy/release-contract/private'
 import { Assembled, AssemblyInfo } from '@qualy/api-kit/assembled'
 import { ClientAssembly, type ReleaseStanding } from '@qualy/api-kit/client-assembly'
 import type { ShellPolicy } from '@qualy/api-kit/shell-policy'

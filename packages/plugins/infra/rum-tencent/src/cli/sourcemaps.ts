@@ -4,7 +4,7 @@ import path from 'node:path'
 import COS from 'cos-nodejs-sdk-v5'
 import tencentcloud from 'tencentcloud-sdk-nodejs-rum'
 import { CliRefused, type CliContext } from '@qualy/plugin-kit/cli'
-import { parseWebReleaseIdentity } from '@qualy/release-contract'
+import { parseWebReleaseIdentity } from '@qualy/release-contract/private'
 import { rumVersionForRelease } from '../version.ts'
 
 // `qualy rum sourcemaps [dist]` - filing this build's source maps with the
@@ -79,10 +79,7 @@ const mapsUnder = (dist: string): { readonly file: string; readonly name: string
   return found.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-const inBatches = async <T, R>(
-  items: readonly T[],
-  run: (item: T) => Promise<R>,
-): Promise<R[]> => {
+const inBatches = async <T, R>(items: readonly T[], run: (item: T) => Promise<R>): Promise<R[]> => {
   const out: R[] = []
   for (let at = 0; at < items.length; at += CONCURRENCY) {
     out.push(...(await Promise.all(items.slice(at, at + CONCURRENCY).map(run))))
@@ -100,7 +97,9 @@ export async function run(context: CliContext): Promise<void> {
     JSON.parse(fs.readFileSync(metadataFile, 'utf8')) as unknown,
   )
   if (identity.mode !== 'production') {
-    refuse(`${metadataFile} names a ${identity.mode} build; only a production build has maps to file`)
+    refuse(
+      `${metadataFile} names a ${identity.mode} build; only a production build has maps to file`,
+    )
   }
   const version = rumVersionForRelease(identity.releaseId)
 
