@@ -4,6 +4,7 @@ import * as stylex from '@stylexjs/stylex'
 import { Wordmark } from '@qualy/brand/wordmark'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { shell } from './shell.stylex.ts'
 import {
   headerActions,
   sidebarUser,
@@ -43,8 +44,9 @@ const styles = stylex.create({
     position: 'relative',
     display: 'flex',
     // a phone bar carries the brand and the account and nothing else, so it
-    // needs no room for a row of words
-    height: { default: 56, [breakpoints.phone]: 48 },
+    // needs no room for a row of words. The heights are the shell's, since
+    // the page has to keep exactly this much room open above itself
+    height: { default: shell.topBarHeight, [breakpoints.phone]: shell.phoneTopBarHeight },
     flexShrink: 0,
     alignItems: 'center',
     // the applications sit closer to the wordmark once the window stops
@@ -182,7 +184,7 @@ const styles = stylex.create({
   },
   sectionBar: {
     display: 'flex',
-    height: 40,
+    height: shell.sectionBarHeight,
     flexShrink: 0,
     alignItems: 'center',
     backgroundColor: tokens.background,

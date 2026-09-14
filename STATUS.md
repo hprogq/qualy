@@ -13957,6 +13957,19 @@ P5。hero 右栏此前是 `PLACEHOLDER_AGENDA`(写死 12 / 2),`listBatches` 只�
 - **失败二:shell 高度改 `min(100dvh, 100%)` + `html/body { height: 100% }`**(想让横向滚动条出现时高度自动减去它)。`100%` 在移动端解析到的是布局视口,内容少时根的高度直接塌成内容高度,底栏跑到页面中间;桌面上 shell 变成 886 高、比视口还高。已整条回退,两个 shell 都回到 `height: 100dvh`。
 - **最后采用的做法(一行,零结构风险)**:底栏 `fixed` 不变,加 `min-width: 320`,和 `body` 同一条下限。低于 320 时它保持 320 的排布、从右边缘出画,**和页面本身的行为一致**;此前它是全屏唯一还在被挤的东西(三个应用挤进 150px)。代价是最右一项在那个宽度下看不到——那个宽度本来就要横向滚动,没有设备是这样的。
 - **横向滚动条压住底栏这一条不修**:`fixed` 贴的是窗口,滚动条画在窗口底边,两者必然重叠。能修的办法就是上面失败的那两条中的一条,拿真机正确性换一个没有设备会遇到的宽度,不划算。
-- **回弹带着顶栏走**:栏是 sticky 在 `main` 里面的(这正是页面能从玻璃底下穿过去的原因),所以 `main` 一回弹就带着它们走。`main` 加 `overscroll-behavior: none`——顺带也断掉了列表甩到底时向窗口的滚动链。真正"只有内容回弹"要把栏提成覆盖层,代价是 shell 得先量出栏高才能排版,为一个手势的最后二十像素不值得。
+- **回弹带着顶栏走**:先用 `overscroll-behavior: none` 把回弹整个关掉,并以"要把栏提成覆盖层、shell 得先量出栏高"为由说不值得。**这个判断是错的,已改**(见下一节):栏高早就在量了,理由不成立;而 `none` 换掉的不是"最后二十像素",是整个移动端的物理反馈。
 - **手机时钟的圆环加回来**:上一轮按审计意见关掉了(理由是与格子重复、12px 下是噪点),用户要求恢复。`BatchProgress` 的 `ring` 开关随之删掉——没有调用方的开关就是死 API。
 - **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 226 passed | 3 skipped (229); Tests 1604 passed | 17 skipped (1621);`pnpm test:browser` Test Files 48 passed (48); Tests 347 passed (347);`pnpm build` exit 0(`installed web release local-20260914T121638Z-4e453849`,122 assets)。实测底栏宽度:视口 150/240/320 时都是 320(三项各 107),390 时 390(各 130),430 时 430(各 143);shell 高度在各宽度下都等于视口高。
+
+## 顶栏离开滚动层,回弹回到内容上(2026-09-14)
+
+两份审计都指出上一节那个"不值得"的判断错在哪:`overscroll-behavior` 的两个值解决两件事——`contain` 只断滚动链、保留本元素的回弹,`none` 连回弹一起去掉;而顶栏跟着弹的原因根本不是这个属性,是**栏在滚动容器里面**,回弹时整段滚动内容一起位移,sticky 拦不住。而我给出的代价("shell 得先量出栏高")早已付过:`barHeight` 一直在用 `ResizeObserver` 量,只是拿去喂两个 `IntersectionObserver` 的 `rootMargin`,没用于布局。commit:`fix(web): the bars stand still while the page bounces`。
+
+- **栏提成覆盖层**:`head` 从 `<main>` 里搬到 `root` 下,`position: absolute` + `inset-inline: 0` + `top: 0`(`root` 加 `position: relative`)。不用 `fixed`——`root` 自己不纵向滚动,`absolute` 就够把它摘出滚动层,而且没有 `fixed` 在 iOS、横向溢出、320 下限上的那些边角。
+- **滚动区顶部放等高占位**:`headRoom` 的高度先由 CSS 给对(`shell.stylex.ts` 新增 `topBarHeight: 56` / `phoneTopBarHeight: 48` / `sectionBarHeight: 40`,有分区时两者相加),`TopBar` 的 `bar` 与 `sectionBar` 改用同一组常量,首帧就不会把内容顶到栏下面;量出来的真实高度只在栏因字号或旋转变高时以行内样式覆盖。
+- **`overscroll-behavior: none` → `overscrollBehaviorY: 'contain'`**:回弹回来了,滚动链仍然断着。指定轴向,不去干涉横向的浏览器手势。
+- **`scrollPaddingTop = barHeight`**:栏成了覆盖层之后,`scrollIntoView`、锚点、键盘聚焦引起的自动滚动会把目标停在栏底下。这是这个改动最容易漏的一处。
+- **两个 observer 一行没动**:root 仍是 `main`,遮挡高度仍是 `barHeight`——占位块让内容在 `scrollTop = 0` 时正好从栏的下边缘开始,与原先 sticky 在流里时的几何完全一致。
+- **`root` 补 `background-color: tokens.background`**:回弹时露出的是页面自己的底,不是浏览器画布。
+- **已知取舍(接受)**:页面停在顶部时顶栏是透明无线的,此时下拉会看到内容从字标那一行底下经过。要消掉得让"已滚动"的玻璃在 `scrollTop < 0` 时也保持,那需要 scroll 监听,与现有 observer 方案冲突;回弹只有几十毫秒,且只在页面已在顶部时发生,那时下面没多少内容会穿上来。
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 226 passed | 3 skipped (229); Tests 1604 passed | 17 skipped (1621);`pnpm test:browser` Test Files 48 passed (48); Tests 347 passed (347)(shell 套件里"栏仍贴着 scrollport 顶"那条原样通过:覆盖层 top 与 main top 都是 0);`pnpm build` exit 0(`installed web release local-20260914T123712Z-633d6de6`,122 assets)。实测 390:栏高 48 / 占位 48 / `scroll-padding-top: 48px` / `overscroll-behavior-y: contain`,滚动 400 后玻璃开、标题进栏;1280:栏高 56 / 占位 56 / 同上。

@@ -34,11 +34,16 @@ const HEAD_LAYER = 50
 
 const styles = stylex.create({
   root: {
+    // the bars float against this, so they are not part of what scrolls
+    position: 'relative',
     display: 'flex',
     height: '100dvh',
     width: '100%',
     flexDirection: 'column',
     overflow: 'hidden',
+    // what a rubber band pulls the page away from: the page's own ground,
+    // not whatever the browser would paint behind an empty box
+    backgroundColor: tokens.background,
   },
   main: {
     display: 'flex',
@@ -48,21 +53,33 @@ const styles = stylex.create({
     flexShrink: 1,
     flexBasis: '0%',
     overflowY: 'auto',
-    // No rubber band here. The bars are inside this scroller rather than
-    // above it - that is what lets the page pass under their glass - so a
-    // bounce at either end carries them with it, and a navigation bar that
-    // slides away from the top of the window reads as the shell coming
-    // loose. Taking the bars out into an overlay would let the content
-    // alone bounce, at the cost of the shell measuring their height before
-    // it can lay the page out; not worth it for the last twenty pixels of
-    // a gesture. This also stops a flick at the end of the list from
-    // chaining out to the window.
-    overscrollBehavior: 'none',
+    // The page bounces at its ends and the bars do not, which is what a
+    // phone has always done and what the bars being an overlay is for.
+    // `contain` keeps the bounce and stops only the chaining - a flick at
+    // the end of the list does not go on to pull the browser's own
+    // furniture about. `none` would take the bounce with it. The axis is
+    // named because nothing here wants a say in a sideways edge swipe.
+    overscrollBehaviorY: 'contain',
   },
   head: {
-    position: 'sticky',
+    position: 'absolute',
+    insetInline: 0,
     top: 0,
     zIndex: HEAD_LAYER,
+  },
+  // The room the bars float over, inside the scroller so the page scrolls
+  // up through it. Its height is the bars' own, declared in CSS so the
+  // first frame is already right; the measurement below only corrects it
+  // where a rotation or a text setting has made them taller.
+  headRoom: {
+    flexShrink: 0,
+    height: { default: shell.topBarHeight, [breakpoints.phone]: shell.phoneTopBarHeight },
+  },
+  headRoomSections: {
+    height: {
+      default: `calc(${shell.topBarHeight} + ${shell.sectionBarHeight})`,
+      [breakpoints.phone]: `calc(${shell.phoneTopBarHeight} + ${shell.sectionBarHeight})`,
+    },
   },
   // occupies the band the page scrolls out of first, and no room in the flow
   sentinel: {
@@ -160,29 +177,39 @@ function Shell() {
 
   return (
     <div {...stylex.props(styles.root)}>
+      <div
+        ref={head}
+        data-shell-head=""
+        data-scrolled={scrolled ? '' : undefined}
+        {...stylex.props(styles.head)}
+      >
+        <TopBar
+          apps={apps}
+          activeApp={activeApp}
+          scrolled={scrolled}
+          title={title}
+          titleShown={titleShown}
+        />
+        <SectionBar items={sections} />
+      </div>
       {/* auto, so a page that fits shows nothing. The width this once
           protected only moves where scrollbars take space, and there a track
           with no thumb is its own defect; a reserved gutter is worse still,
-          being a blank strip a full-width band cannot paint into. */}
+          being a blank strip a full-width band cannot paint into.
+          `scrollPaddingTop` is where the scrollport's top really is, for
+          everything that scrolls something into view - a focused control,
+          an anchor, `scrollIntoView` - which would otherwise park it under
+          the bars. */}
       <main
         ref={main}
+        style={barHeight === 0 ? undefined : { scrollPaddingTop: barHeight }}
         {...stylex.props(styles.main, bottomBar ? styles.footRoom : styles.safeRoom)}
       >
         <div
-          ref={head}
-          data-shell-head=""
-          data-scrolled={scrolled ? '' : undefined}
-          {...stylex.props(styles.head)}
-        >
-          <TopBar
-            apps={apps}
-            activeApp={activeApp}
-            scrolled={scrolled}
-            title={title}
-            titleShown={titleShown}
-          />
-          <SectionBar items={sections} />
-        </div>
+          aria-hidden
+          style={barHeight === 0 ? undefined : { height: barHeight }}
+          {...stylex.props(styles.headRoom, withSections && styles.headRoomSections)}
+        />
         <div ref={sentinel} aria-hidden {...stylex.props(styles.sentinel)} />
         <div {...stylex.props(styles.page)}>
           <Outlet />
