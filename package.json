@@ -27,6 +27,7 @@
     "@qualy/plugin-ui-registry": "workspace:*",
     "@qualy/rbac-contract": "workspace:*",
     "@qualy/tsconfig": "workspace:*",
+    "@qualy/ui-contract": "workspace:*",
     "@qualy/web-build": "workspace:*",
     "@stylexjs/unplugin": "catalog:",
     "@types/node": "catalog:",

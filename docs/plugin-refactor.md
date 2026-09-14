@@ -32,6 +32,12 @@
 > 进度:**Phase D2 已落地(2026-09-15)**——collector 不再把 apps/web 的依赖当作「这个插件能否构建」
 > 的依据,`apps/web/package.json` 的插件清单随之删除(生产依赖只剩 `@qualy/plugin-rum`,归 Phase E;
 > 五个测试用依赖归 Phase G),`plugin:add` 不再写这份清单。两者都由 `plugin-isolation` 具名钉住。
+>
+> 进度:**Phase D3 已落地(2026-09-15)**——三处 `startsWith('@qualy/')` 发现过滤删除,身份判据统一为
+> 「default export 是自称本包名的描述器」(resolve 期已有,硬失败);新增 `tools/tests/open-world.test.ts`:
+> 一个 `@acme/qualy-probe` 合成包(另一 scope、自带 exports、用已发布的 kit 写描述器、带组件/catalog/
+> browser module)走完 resolve 与 collector,并验证跨 scope 的 surface 冲突照样硬失败;另有一例扫全树
+> 禁止 scope 判据回潮(测试目录除外,`plugin:add` 具名例外)。
 
 ## 1. 背景与目标
 

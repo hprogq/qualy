@@ -14584,3 +14584,40 @@ collector 经 assembly resolver 拿到包目录后写出的**相对路径**,组�
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 231 passed | 3 skipped,
 Tests 1665 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0;
 `check-chunks` exit 0;`check-staged-web` exit 0。
+
+## 插件重构 Phase D3:按描述器发现,不按 scope(2026-09-15)
+
+三处代码把 `entry.name.startsWith('@qualy/')` 当成「这是不是插件」:浏览器 collector、
+权限目录 fixture、catalogs 门禁。后果不是报错而是**沉默**——第三方插件可以被安装、resolve、选中,
+然后在浏览器构建、权限目录和 i18n 门禁里凭空消失。
+
+**身份判据统一**成:default export 是一个**自称本包名**的描述器。这条 `resolveAssembly` 本来就在查
+(`id does not default-export a plugin descriptor` / `default-exports a descriptor that calls itself X`),
+所以三处过滤是纯冗余;删掉后 collector 与 catalogs 对「被选中但不是描述器」改为**抛错**而不是跳过——
+沉默跳过正是这轮要消灭的行为。
+
+**新增 `tools/tests/open-world.test.ts`(4 例)**:
+
+- 一个 `@acme/qualy-probe` 合成包:**另一个 scope**、自带 package.json 与 exports、用已发布的
+  `@qualy/plugin-kit` + `@qualy/plugin-ui-registry/plugin` 写描述器,带 `Ui.page` / `Ui.i18n` /
+  `Ui.browser` 与真实的组件、catalog、boot 文件。装进临时 workspace(不是本仓库),**不改宿主任何文件**,
+  断言 resolve 认得它、collector 收到它的 surface(`page:acme/probe`)、catalog 与 browser module,
+  且聚合里的 import 确实指向它的组件文件。
+- 两个不同 scope 的第三方**认领同一个 page id** → collector 硬失败并点名双方。
+- 包名与描述器自称不一致 → resolve 硬失败并点名那个假名字。
+- 第四例**扫 packages/apps/tools 全树**,禁止 `startsWith('@qualy/...')` 回潮;测试目录除外
+  (`plugin-isolation` 等是在问「本仓库自己的包」,与发现无关),`tools/repo/plugin-add.ts` 具名例外
+  ——它是往本仓库树里 scaffold 一个新包,不做发现,产品级的 `qualy plugin add` 归 Phase H。
+
+**testkit 小改**:`createWorkspace` 增 `linked`(把选择之外的包也链进临时 workspace)——
+合成包的描述器要 `import { Plugin } from '@qualy/plugin-kit'`,它得能解析,就像第三方插件的
+node_modules 里那样。
+
+**顺带修一个真实缺陷**:`@qualy/ui-contract` 的 exports 没有声明 `./package.json`,
+于是 assembly 的包解析器根本定位不到它(报错信息本身就写着这条要求)。补上。
+
+**门禁验证过会红**:把 `@qualy/` 过滤放回 collector → 前两例失败(`the browser build did not see it`);
+把它放回 permission fixture → 第四例点名该文件。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 232 passed | 3 skipped,
+Tests 1669 passed | 17 skipped(比 D2 多 4 例)。

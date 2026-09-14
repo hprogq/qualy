@@ -35,6 +35,15 @@ export interface ManifestOptions {
   configs?: Record<string, unknown>
   /** where the plugins are installed, relative to the manifest; defaults to '.' */
   workspace?: string
+  /**
+   * Packages to install besides the selection.
+   *
+   * A synthetic package written by a test is a real package: if its descriptor
+   * imports the plugin kit or a contract, those have to resolve from the
+   * workspace the way they would from a published plugin's node_modules.
+   * Linked from the host, so they are the same copies the product uses.
+   */
+  linked?: readonly string[]
 }
 
 export interface SyntheticPackage {
@@ -147,6 +156,9 @@ export function createWorkspace(
       // be missing says so by deleting it.
       for (const id of selection) {
         if (!synthetic.has(id)) link(id, host.resolvePackageDir(id))
+      }
+      for (const id of (overrides ?? options).linked ?? []) {
+        link(id, host.resolvePackageDir(id))
       }
       fs.writeFileSync(manifestPath, renderManifestText(selection, overrides ?? options))
     },

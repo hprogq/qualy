@@ -28,7 +28,8 @@ export async function resolvePermissionCatalogs(): Promise<PermissionCatalog[]> 
   const catalogs: PermissionCatalog[] = []
   const seen = new Set<string>()
   for (const entry of await readEntries({ manifestPath: manifestPath(), all: true })) {
-    if (!entry.name.startsWith('@qualy/') || seen.has(entry.name)) continue
+    // every selected plugin, under whatever scope it is published
+    if (seen.has(entry.name)) continue
     seen.add(entry.name)
     const module = (await import(resolvePluginModuleUrl(entry.name, manifestPath()))) as {
       default?: unknown

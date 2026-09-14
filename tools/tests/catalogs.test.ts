@@ -34,11 +34,15 @@ interface ClientModule {
 const declaredCatalogs = async () => {
   const found: { name: string; module: string }[] = []
   for (const entry of await readEntries({ manifestPath: manifestPath(), all: true })) {
-    if (!entry.name.startsWith('@qualy/')) continue
     const descriptor = (
       (await import(resolvePluginModuleUrl(entry.name, manifestPath()))) as { default?: unknown }
     ).default
-    if (!isPluginDescriptor(descriptor)) continue
+    // not a scope check: a selected package that is not a descriptor is a
+    // broken assembly, and skipping it quietly would drop its catalog from
+    // every rule below
+    if (!isPluginDescriptor(descriptor)) {
+      throw new Error(`${entry.name} is selected but is not a plugin descriptor`)
+    }
     const declared = Plugin.contributionsOf(descriptor, I18nCatalogs)
     if (declared.length === 0) continue
     found.push({

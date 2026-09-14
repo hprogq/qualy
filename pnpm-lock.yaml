@@ -216,6 +216,9 @@ importers:
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:packages/build/tsconfig
+      '@qualy/ui-contract':
+        specifier: workspace:*
+        version: link:packages/contracts/ui
       '@qualy/web-build':
         specifier: workspace:*
         version: link:packages/build/web

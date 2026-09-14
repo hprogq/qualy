@@ -115,9 +115,17 @@ export async function collectWebPlugins(
   }
 
   for (const entry of await readEntries({ manifestPath: manifest, all: options.all ?? false })) {
-    if (!entry.name.startsWith('@qualy/')) continue
+    // A plugin is a package whose default export is a descriptor calling
+    // itself by that package's name, which resolution has already checked and
+    // refused loudly where it was not. The scope it is published under says
+    // nothing: `@qualy/plugin-*` is this repository's naming convention, and
+    // reading it as the definition made a third-party plugin silently invisible
+    // to the browser build - installed, resolved, selected, and then skipped
+    // here without a word.
     const descriptor = resolution.descriptors.get(entry.name)
-    if (!isPluginDescriptor(descriptor)) continue
+    if (!isPluginDescriptor(descriptor)) {
+      throw new Error(`${entry.name} is selected but is not a plugin descriptor`)
+    }
     const packageDir = resolvePackageDir(entry.name, manifest)
 
     const surfaces: SurfaceBinding[] = []
