@@ -3,6 +3,10 @@ node_modules/
 
 # build outputs (anchored: packages/build/ is source, not output)
 dist/
+# except a third-party fixture's, where the compiled output IS the fixture:
+# these packages ship no sources on purpose, so an ignored dist leaves them
+# empty on a fresh clone and the gates that use them prove nothing
+!tools/fixtures/*/dist/
 /build/
 out/
 *.tsbuildinfo
