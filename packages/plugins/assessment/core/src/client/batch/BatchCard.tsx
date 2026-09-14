@@ -422,6 +422,13 @@ const phone = stylex.create({
   agendaValueIdle: { fontWeight: 500, color: tokens.mutedForeground },
   agendaGlyph: { flexShrink: 0, color: tokens.foreground },
   agendaGlyphIdle: { color: tokens.mutedForeground },
+  // Where the round stands and the way into it are one thing, and that
+  // thing is the foot of the card: on the tall card they already sit
+  // together above the bottom edge, so on a short one they stay there and
+  // the spare height falls above them - between what the reader has to do
+  // and where the round has got to, which is where the card's own break
+  // already is.
+  foot: { display: 'flex', marginTop: 'auto', flexDirection: 'column', gap: 14 },
   plan: { display: 'flex', flexDirection: 'column', gap: 8 },
   // no labels: at this width a name under every stage is a row of cut-off
   // words, and the one that matters is said in full on the line below
@@ -442,7 +449,7 @@ const phone = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   metaStage: { fontWeight: 500, color: tokens.foreground },
-  enter: { width: '100%', height: 44, marginTop: 'auto' },
+  enter: { width: '100%', height: 44 },
 })
 
 /**
@@ -856,43 +863,45 @@ export function BatchCard({
           </div>
         )}
 
-        {row.timeline.length > 0 && (
-          <div {...stylex.props(phone.plan)}>
-            <div {...stylex.props(phone.lanes)} aria-hidden>
-              {row.timeline.map((entry, index) => (
-                <span
-                  key={entry.displayName + String(index)}
-                  {...stylex.props(
-                    phone.lane,
-                    entry.status === 'ended'
-                      ? phone.laneEnded
-                      : entry.status === 'current'
-                        ? phone.laneCurrent
-                        : phone.laneFuture,
-                  )}
-                />
-              ))}
+        <div {...stylex.props(phone.foot)}>
+          {row.timeline.length > 0 && (
+            <div {...stylex.props(phone.plan)}>
+              <div {...stylex.props(phone.lanes)} aria-hidden>
+                {row.timeline.map((entry, index) => (
+                  <span
+                    key={entry.displayName + String(index)}
+                    {...stylex.props(
+                      phone.lane,
+                      entry.status === 'ended'
+                        ? phone.laneEnded
+                        : entry.status === 'current'
+                          ? phone.laneCurrent
+                          : phone.laneFuture,
+                    )}
+                  />
+                ))}
+              </div>
+              <div {...stylex.props(phone.meta)}>
+                <span>
+                  {at === -1
+                    ? format(m.stageCount, { total: row.timeline.length })
+                    : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
+                </span>
+                {row.currentPhaseName !== null && (
+                  <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
+                )}
+                <BatchProgress timeline={row.timeline} single />
+              </div>
             </div>
-            <div {...stylex.props(phone.meta)}>
-              <span>
-                {at === -1
-                  ? format(m.stageCount, { total: row.timeline.length })
-                  : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
-              </span>
-              {row.currentPhaseName !== null && (
-                <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
-              )}
-              <BatchProgress timeline={row.timeline} single />
-            </div>
-          </div>
-        )}
+          )}
 
-        <Button asChild className={stylex.props(phone.enter).className}>
-          <PageLink page="assessment/batch" params={{ batchId: row.id }}>
-            {format(m.enterBatch)}
-            <ArrowRightIcon aria-hidden />
-          </PageLink>
-        </Button>
+          <Button asChild className={stylex.props(phone.enter).className}>
+            <PageLink page="assessment/batch" params={{ batchId: row.id }}>
+              {format(m.enterBatch)}
+              <ArrowRightIcon aria-hidden />
+            </PageLink>
+          </Button>
+        </div>
       </article>
     )
   }
