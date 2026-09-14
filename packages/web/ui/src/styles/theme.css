@@ -142,6 +142,15 @@
   body {
     color: var(--q-foreground);
     line-height: inherit;
+    /* The narrowest the product is laid out for, and the floor under every
+       layout below it. 320 is a width phones actually have; 360 is the
+       commonest Android one, and choosing it would make a real 320 device
+       scroll sideways forever. Under 320 the page keeps its 320 and the
+       window scrolls, which is a wart somebody can see and get out of -
+       the alternative is a hero card wider than the screen and rows of two
+       characters, which looks like the product is broken rather than like
+       the window is too small. */
+    min-width: 320px;
   }
   /* the page's ground is painted once, here, on the root: the boot style
      paints the same value before this sheet arrives, and nothing below the

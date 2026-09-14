@@ -55,6 +55,18 @@ const REDUCE = '@media (prefers-reduced-motion: reduce)'
  */
 const NARROW = '@container (max-width: 959.98px)'
 
+/**
+ * Narrower still: where the stage's cell has no room for both halves of its
+ * clock on one line.
+ *
+ * Measured rather than guessed. In the row-of-cells layout the cell is a
+ * third of the card, and the moment plus the countdown come to about 247px:
+ * at a container of 732 the cell has 244 and they wrap, at 742 it has 247
+ * and they do not. The threshold sits just above that with a few pixels to
+ * spare for a longer count.
+ */
+const TIGHT = '@container (max-width: 747.98px)'
+
 const styles = stylex.create({
   // the seat exists to be measured; the card inside it draws
   seat: { containerType: 'inline-size' },
@@ -303,6 +315,11 @@ const styles = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
+  // The moment it closes, beside how long is left - until the cell is too
+  // narrow to hold both on one line. Wrapped, they stood the stage's cell
+  // a line taller than the two beside it, for a date the table below
+  // repeats in its own time column.
+  stageWhen: { display: { default: 'inline', [TIGHT]: 'none' } },
   agendaRow: {
     display: 'flex',
     alignItems: 'center',
@@ -1003,7 +1020,9 @@ export function BatchCard({
                 截止 · 12 days left"; a stage with no close only says how
                 long it has run */}
               {closes !== null && (
-                <span>{format(m.stageDeadline, { when: dotMoment(closes) })}</span>
+                <span {...stylex.props(styles.stageWhen)}>
+                  {format(m.stageDeadline, { when: dotMoment(closes) })}
+                </span>
               )}
               <BatchProgress timeline={row.timeline} single />
             </span>

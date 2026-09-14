@@ -35,6 +35,9 @@ const HEAD_LAYER = 50
 const styles = stylex.create({
   root: {
     display: 'flex',
+    // the bar at the foot is positioned against this, so it is as wide as
+    // the shell rather than as the window
+    position: 'relative',
     height: '100dvh',
     width: '100%',
     flexDirection: 'column',

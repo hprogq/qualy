@@ -32,7 +32,13 @@ const BAR_LAYER = 45
 const styles = stylex.create({
   bar: {
     display: { default: 'none', [breakpoints.phone]: 'block' },
-    position: 'fixed',
+    // Against the shell, not against the window. The shell is the height of
+    // the window already, so the bar sits where a fixed one would - but it
+    // is also as wide as the shell, and the shell has a floor under its
+    // width. Fixed to the window, the bar went on shrinking under that
+    // floor while everything above it stopped, and it does not scroll
+    // sideways with the page it belongs to.
+    position: 'absolute',
     insetInline: 0,
     bottom: 0,
     zIndex: BAR_LAYER,

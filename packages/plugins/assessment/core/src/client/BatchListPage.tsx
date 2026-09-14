@@ -327,8 +327,16 @@ const styles = stylex.create({
   sheetScroller: {
     overflowX: 'auto',
   },
+  // Fixed, so the declared column widths are the widths. Left automatic,
+  // a column is never narrower than its own longest unbreakable run, and
+  // the name - a single nowrap line - simply refused to give any of its
+  // 304px back: at 768 the four columns and the name came to eighteen
+  // pixels more than the page had, and the whole table grew a scrollbar
+  // for them. Fixed makes the name the column that gives way, which is
+  // what it was always meant to be.
   table: {
     minWidth: 640,
+    tableLayout: 'fixed',
   },
   head: {
     height: 'auto',
@@ -352,8 +360,8 @@ const styles = stylex.create({
   },
   // a tablet keeps all four columns by giving each of them a little less
   colStatus: { width: { default: 110, [breakpoints.tablet]: 96 } },
-  colStage: { width: { default: 150, [breakpoints.tablet]: 120 } },
-  colTime: { width: { default: 190, [breakpoints.tablet]: 176 } },
+  colStage: { width: { default: 164, [breakpoints.tablet]: 132 } },
+  colTime: { width: { default: 190, [breakpoints.tablet]: 172 } },
   colOpen: { width: 64 },
   // the header is not a row anybody opens, so it does not light up as one
   headRow: {
@@ -411,10 +419,18 @@ const styles = stylex.create({
   // the stage is what the row says about the batch, the time is when: a
   // row of one ink cell and three grey ones read as a row of nothing
   stage: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
     fontSize: 13,
     color: tokens.foreground,
   },
+  // a column of a fixed width holds what it holds; what will not fit ends
+  // in an ellipsis rather than running under the column beside it
   time: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
     fontVariantNumeric: 'tabular-nums',
   },
   openGlyph: {
