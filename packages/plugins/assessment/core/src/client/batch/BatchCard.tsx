@@ -387,6 +387,14 @@ const phone = stylex.create({
   head: { display: 'flex', flexDirection: 'column', gap: 8 },
   title: {
     margin: 0,
+    // two lines' worth of room whatever the name's length, and never a
+    // third: the deck is flicked through, and a name that takes one line on
+    // one card and two on the next moves everything under it on every card
+    display: '-webkit-box',
+    minHeight: '2.7em',
+    overflow: 'hidden',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
     fontSize: 18,
     lineHeight: 1.35,
     fontWeight: 600,
@@ -395,9 +403,15 @@ const phone = stylex.create({
   },
   // the two lines of work as one block, so they read as a pair of things
   // to do rather than two unrelated strips
+  // The block takes whatever height the card has spare, and its lines sit
+  // in the middle of it. A card with less to say then reads as a panel with
+  // room in it rather than as a card with a hole: the same pixels, and the
+  // ones on a coloured ground are the ones nobody reads as missing.
   agenda: {
     display: 'flex',
+    flexGrow: 1,
     flexDirection: 'column',
+    justifyContent: 'center',
     borderRadius: 10,
     backgroundColor: tokens.surfaceInset,
   },
@@ -420,6 +434,7 @@ const phone = stylex.create({
   agendaLabel: { fontSize: 12, color: tokens.mutedForeground },
   agendaValue: { fontSize: 15, fontWeight: 600 },
   agendaValueIdle: { fontWeight: 500, color: tokens.mutedForeground },
+  agendaClock: { flexShrink: 0, fontSize: 12, color: tokens.mutedForeground },
   agendaGlyph: { flexShrink: 0, color: tokens.foreground },
   agendaGlyphIdle: { color: tokens.mutedForeground },
   // Where the round stands and the way into it are one thing, and that
@@ -428,7 +443,7 @@ const phone = stylex.create({
   // the spare height falls above them - between what the reader has to do
   // and where the round has got to, which is where the card's own break
   // already is.
-  foot: { display: 'flex', marginTop: 'auto', flexDirection: 'column', gap: 14 },
+  foot: { display: 'flex', flexDirection: 'column', gap: 14 },
   plan: { display: 'flex', flexDirection: 'column', gap: 8 },
   // no labels: at this width a name under every stage is a row of cut-off
   // words, and the one that matters is said in full on the line below
@@ -448,7 +463,6 @@ const phone = stylex.create({
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
   },
-  metaStage: { fontWeight: 500, color: tokens.foreground },
   enter: { width: '100%', height: 44 },
 })
 
@@ -755,6 +769,39 @@ function AgendaRow({
   )
 }
 
+/**
+ * Where the round itself has got to, at the head of the same block.
+ *
+ * It is not an agenda line - nothing is asked of anybody by it - so it does
+ * not go through `AgendaRow`, whose whole business is ranking what is being
+ * asked. It shares the block and the shape because a reader takes in "what
+ * is happening" and "what of it is mine" in one glance, which is how the
+ * wide card has always drawn them: one inset column, the stage at its head.
+ *
+ * It also means every card has at least one line here, so a deck of them
+ * differs by one line rather than by two, and the card of somebody who has
+ * nothing to do is not an empty panel.
+ */
+function PhoneClockRow({
+  row,
+  format,
+}: {
+  row: BatchCardRow
+  format: ReturnType<typeof useI18n>['format']
+}) {
+  return (
+    <span data-testid="hero-clock" {...stylex.props(phone.agendaRow)}>
+      <span {...stylex.props(phone.agendaWords)}>
+        <span {...stylex.props(phone.agendaLabel)}>{format(m.currentStage)}</span>
+        <span {...stylex.props(phone.agendaValue)}>
+          {row.currentPhaseName ?? format(m.notScheduled)}
+        </span>
+      </span>
+      <BatchProgress timeline={row.timeline} single xstyle={phone.agendaClock} />
+    </span>
+  )
+}
+
 /** one line of work, the whole of it a way to that work - where there is one */
 function PhoneAgendaRow({
   row,
@@ -855,13 +902,12 @@ export function BatchCard({
           <h2 {...stylex.props(phone.title)}>{row.name}</h2>
         </div>
 
-        {agenda.rows.length > 0 && (
-          <div {...stylex.props(phone.agenda)}>
-            {agenda.rows.map((line) => (
-              <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} format={format} />
-            ))}
-          </div>
-        )}
+        <div {...stylex.props(phone.agenda)}>
+          <PhoneClockRow row={row} format={format} />
+          {agenda.rows.map((line) => (
+            <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} format={format} />
+          ))}
+        </div>
 
         <div {...stylex.props(phone.foot)}>
           {row.timeline.length > 0 && (
@@ -881,16 +927,13 @@ export function BatchCard({
                   />
                 ))}
               </div>
+              {/* the stage's name and its clock are said above, in the
+                  weight they deserve; all this line has left is which of
+                  the stages it is */}
               <div {...stylex.props(phone.meta)}>
-                <span>
-                  {at === -1
-                    ? format(m.stageCount, { total: row.timeline.length })
-                    : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
-                </span>
-                {row.currentPhaseName !== null && (
-                  <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
-                )}
-                <BatchProgress timeline={row.timeline} single />
+                {at === -1
+                  ? format(m.stageCount, { total: row.timeline.length })
+                  : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
               </div>
             </div>
           )}

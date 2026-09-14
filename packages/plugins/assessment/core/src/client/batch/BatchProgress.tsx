@@ -198,9 +198,11 @@ export function BatchProgress({
   const { format, locale } = useI18n()
   // One threshold: under a tablet the bar has no room for the stage, so the
   // stage goes and the clock takes its name instead - "3 hours left in stage"
-  // rather than a number beside nothing.
+  // rather than a number beside nothing. A caller that asks for `single` has
+  // said the stage's name itself, right beside this, so it keeps the short
+  // form at every width - the bar's own name for it would say it twice.
   const tight = useIsMobile()
-  const form = dense || tight ? 'bare' : single ? 'single' : 'full'
+  const form = dense ? 'bare' : single ? 'single' : tight ? 'bare' : 'full'
   const [now, setNow] = useState(() => Date.now())
   const progress = progressOf(timeline, now)
   const tick = tickOf(progress)
