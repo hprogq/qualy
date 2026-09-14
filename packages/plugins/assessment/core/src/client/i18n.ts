@@ -303,6 +303,12 @@ const underReview = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, one {# with the reviewers} other {# with the reviewers}}',
 })
 
+/** the stage's place in the run, where the run itself is drawn alongside */
+const stageAt = defineMessage<{ current: number; total: number }>()({
+  id: 'assessment/batch/stage-at',
+  defaultMessage: '{current} / {total}',
+})
+
 const stageDeadline = defineMessage<{ when: string }>()({
   id: 'assessment/batch/stage-deadline',
   defaultMessage: 'Closes {when}',
@@ -419,6 +425,7 @@ const i18n = definePluginMessages({
     toRevise,
     toSubmit,
     underReview,
+    stageAt,
     stageDeadline,
     stageUntil,
     startsOn,

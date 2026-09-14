@@ -1115,6 +1115,7 @@ export default {
   'assessment/batch/entries-none': '还没有开始',
   'assessment/batch/start-entries': '去填报',
   'assessment/batch/view': '查看',
+  'assessment/batch/stage-at': '第 {current} / {total}',
   'assessment/batch/stage-deadline': '{when} 截止',
   'assessment/batch/stage-until': '本阶段至 {date}',
   'assessment/batch/empty-search': '没有匹配「{q}」的批次',

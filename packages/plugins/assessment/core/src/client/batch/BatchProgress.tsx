@@ -184,6 +184,7 @@ export function BatchProgress({
   showStage = false,
   dense = false,
   single = false,
+  ring = true,
   xstyle,
 }: {
   timeline: readonly TimelineLike[]
@@ -193,6 +194,14 @@ export function BatchProgress({
   dense?: boolean
   /** the larger unit alone, in a sentence: "12 days left", never the hours */
   single?: boolean
+  /**
+   * Whether to draw the ring.
+   *
+   * Off where the run of stages is already drawn beside it: two pictures
+   * of how far through this is, and at twelve pixels the smaller one is a
+   * speck rather than a reading.
+   */
+  ring?: boolean
   xstyle?: stylex.StyleXStyles
 }) {
   const { format, locale } = useI18n()
@@ -240,7 +249,7 @@ export function BatchProgress({
   if (stage === null && said === null) return null
 
   const tone = TONES[toneOf(progress)]
-  const filled = progress.kind === 'until' ? progress.fraction : null
+  const filled = ring && progress.kind === 'until' ? progress.fraction : null
 
   return (
     <span {...stylex.props(styles.root, xstyle)}>

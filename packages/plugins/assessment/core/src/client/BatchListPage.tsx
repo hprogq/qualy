@@ -6,6 +6,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
+import { layout } from '@qualy/ui/theme/layout.stylex'
 import { AsyncSection } from '@qualy/ui/admin'
 import { Spinner } from '@qualy/ui/spinner'
 import { Button } from '@qualy/ui/button'
@@ -199,8 +200,8 @@ const styles = stylex.create({
       default: null,
       [breakpoints.phone]: 'auto',
     },
-    marginInline: { default: null, [breakpoints.phone]: -16 },
-    paddingInline: { default: null, [breakpoints.phone]: 16 },
+    marginInline: { default: null, [breakpoints.phone]: `calc(${layout.pageGutter} * -1)` },
+    paddingInline: { default: null, [breakpoints.phone]: layout.pageGutter },
     scrollbarWidth: { default: null, [breakpoints.phone]: 'none' },
     '::-webkit-scrollbar': { display: { default: null, [breakpoints.phone]: 'none' } },
   },
@@ -213,8 +214,8 @@ const styles = stylex.create({
     gap: 12,
     overflowX: 'auto',
     scrollSnapType: 'x mandatory',
-    marginInline: -16,
-    paddingInline: 16,
+    marginInline: `calc(${layout.pageGutter} * -1)`,
+    paddingInline: layout.pageGutter,
     // A track that scrolls sideways clips top and bottom too, and what it
     // was clipping was the cards' own shadow. The padding is that shadow's
     // reach - it falls 12 below the card and blurs 24, less 8 of spread,
@@ -230,9 +231,10 @@ const styles = stylex.create({
   deckCard: {
     flexGrow: 0,
     flexShrink: 0,
-    // the screen's width less its two gutters, whatever the screen: the
-    // card was drawn 358 wide on a 390 phone, which is that measure, and a
-    // fixed 358 on any other phone is a card that misses one edge
+    // the screen's width less its two gutters, whatever the screen and
+    // whatever the gutter: the card was drawn 358 wide on a 390 phone,
+    // which is that measure, and a fixed 358 on any other phone is a card
+    // that misses one edge
     flexBasis: '100%',
     scrollSnapAlign: 'center',
   },
@@ -263,8 +265,11 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: 12,
     paddingBlock: 12,
-    paddingLeft: 16,
-    paddingRight: 14,
+    // the name starts where the card above it starts its own title: two
+    // white surfaces one under the other, and a reader's eye runs down
+    // their left edge whether or not anybody meant it to
+    paddingLeft: 20,
+    paddingRight: 16,
     color: tokens.foreground,
     textDecoration: 'none',
     borderBottomWidth: { default: 1, ':last-child': 0 },

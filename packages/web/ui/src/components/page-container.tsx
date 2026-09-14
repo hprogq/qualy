@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react'
 import * as stylex from '@stylexjs/stylex'
 import type { StyleXStylesWithout } from '@stylexjs/stylex'
 import { breakpoints } from '../theme/breakpoints.stylex.ts'
+import { layout } from '../theme/layout.stylex.ts'
 
 // How wide a page is allowed to be.
 //
@@ -19,9 +20,11 @@ const styles = stylex.create({
     flexBasis: '0%',
     // A phone gives back what it cannot spare: at 375px, 24 on each side is
     // an eighth of the screen spent on nothing, and the rows inside are
-    // already the narrow thing. The top of a tablet page gets a little more
-    // room than its sides, since the bars above it are tighter there.
-    paddingInline: { default: 24, [breakpoints.phone]: 16 },
+    // already the narrow thing. What it can spare grows with it, which is
+    // what the clamp behind this name is for. The top of a tablet page gets
+    // a little more room than its sides, since the bars above it are
+    // tighter there.
+    paddingInline: { default: 24, [breakpoints.phone]: layout.pageGutter },
     paddingBlock: 24,
     paddingTop: { default: null, [breakpoints.tablet]: 32 },
   },

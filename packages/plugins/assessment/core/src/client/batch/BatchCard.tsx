@@ -376,10 +376,13 @@ const phone = stylex.create({
     // flick. Empty space is not followed.
     height: '100%',
     flexDirection: 'column',
-    gap: 14,
-    paddingInline: 18,
-    paddingTop: 18,
-    paddingBottom: 16,
+    // as much air between the card's parts as around them: at 14 against
+    // an inset of 20 the stack read tighter than the sides, which is the
+    // one place a reader notices a card being cramped
+    gap: 16,
+    paddingInline: 20,
+    paddingTop: 20,
+    paddingBottom: 18,
     borderRadius: 16,
     backgroundColor: tokens.surface,
     boxShadow: tokens.elevation2,
@@ -417,7 +420,7 @@ const phone = stylex.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    paddingInline: 14,
+    paddingInline: 16,
     paddingBlock: 10,
     color: tokens.foreground,
     textDecoration: 'none',
@@ -463,7 +466,7 @@ const phone = stylex.create({
     display: 'flex',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
     fontSize: 12,
     color: tokens.mutedForeground,
     fontVariantNumeric: 'tabular-nums',
@@ -910,16 +913,23 @@ export function BatchCard({
                   which is the thing on this card worth noticing. */}
               <div {...stylex.props(phone.meta)}>
                 <span {...stylex.props(phone.metaWhere)}>
+                  {/* the bar above has just drawn the stages, so the count
+                      needs no noun after it */}
                   <span {...stylex.props(phone.metaAt)}>
                     {at === -1
                       ? format(m.stageCount, { total: row.timeline.length })
-                      : format(m.stagePosition, { current: at + 1, total: row.timeline.length })}
+                      : format(m.stageAt, { current: at + 1, total: row.timeline.length })}
                   </span>
                   {row.currentPhaseName !== null && (
                     <span {...stylex.props(phone.metaStage)}>{row.currentPhaseName}</span>
                   )}
                 </span>
-                <BatchProgress timeline={row.timeline} single xstyle={phone.metaClock} />
+                <BatchProgress
+                  timeline={row.timeline}
+                  single
+                  ring={false}
+                  xstyle={phone.metaClock}
+                />
               </div>
             </div>
           )}

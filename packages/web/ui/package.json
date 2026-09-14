@@ -64,7 +64,8 @@
     "./stylex-probe": "./src/components/stylex-probe.tsx",
     "./theme/tokens.stylex": "./src/theme/tokens.stylex.ts",
     "./provider": "./src/theme/mantine.tsx",
-    "./theme/breakpoints.stylex": "./src/theme/breakpoints.stylex.ts"
+    "./theme/breakpoints.stylex": "./src/theme/breakpoints.stylex.ts",
+    "./theme/layout.stylex": "./src/theme/layout.stylex.ts"
   },
   "peerDependencies": {
     "react": "catalog:",

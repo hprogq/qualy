@@ -516,24 +516,28 @@ function ColdStart({ copy, children }: { copy: ColdStartCopy; children?: React.R
         data-cold-start-phase={phase}
         {...stylex.props(overlayStyles.overlay, phase === 'fading' && overlayStyles.fading)}
       >
-      <div {...stylex.props(overlayStyles.seat(seatTop))}>
-        <Wordmark height={CAP} live={phase === 'waiting' || phase === 'stalled'} liveDelay={delay} />
-      </div>
-      <VisuallyHidden>{copy.loading}</VisuallyHidden>
-      {hint || phase === 'stalled' ? (
-        <div {...stylex.props(overlayStyles.below(hintTop))} data-testid="cold-start-hint">
-          <span>{copy.stillLoading}</span>
-          {phase === 'stalled' ? (
-            <button
-              type="button"
-              {...stylex.props(overlayStyles.retry)}
-              onClick={() => window.location.reload()}
-            >
-              {copy.retry}
-            </button>
-          ) : null}
+        <div {...stylex.props(overlayStyles.seat(seatTop))}>
+          <Wordmark
+            height={CAP}
+            live={phase === 'waiting' || phase === 'stalled'}
+            liveDelay={delay}
+          />
         </div>
-      ) : null}
+        <VisuallyHidden>{copy.loading}</VisuallyHidden>
+        {hint || phase === 'stalled' ? (
+          <div {...stylex.props(overlayStyles.below(hintTop))} data-testid="cold-start-hint">
+            <span>{copy.stillLoading}</span>
+            {phase === 'stalled' ? (
+              <button
+                type="button"
+                {...stylex.props(overlayStyles.retry)}
+                onClick={() => window.location.reload()}
+              >
+                {copy.retry}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </>
   )
