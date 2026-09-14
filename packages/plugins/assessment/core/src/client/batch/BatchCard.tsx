@@ -336,6 +336,8 @@ const styles = stylex.create({
     fontWeight: 400,
     color: tokens.mutedForeground,
   },
+  /** a way in that is not asking: the same shape, the weight of a note */
+  agendaActionIdle: { fontWeight: 400, color: tokens.mutedForeground },
   agendaAction: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -367,12 +369,13 @@ const phone = stylex.create({
     boxSizing: 'border-box',
     // The cards in a deck are as tall as the tallest of them: side by side
     // in a track somebody flicks through, a short one would leave its way
-    // in floating at a different height on every card. A card with less to
-    // say spends the difference on its own gaps rather than pooling it
-    // into one hole above the way in.
+    // in floating at a different height on every card. The difference goes
+    // above the way in and nowhere else - spread across the card's own
+    // gaps it moved every line a little, and a line that sits at a
+    // different height on every card is what the eye follows across a
+    // flick. Empty space is not followed.
     height: '100%',
     flexDirection: 'column',
-    justifyContent: 'space-between',
     gap: 14,
     paddingInline: 18,
     paddingTop: 18,
@@ -418,6 +421,7 @@ const phone = stylex.create({
   agendaValue: { fontSize: 15, fontWeight: 600 },
   agendaValueIdle: { fontWeight: 500, color: tokens.mutedForeground },
   agendaGlyph: { flexShrink: 0, color: tokens.foreground },
+  agendaGlyphIdle: { color: tokens.mutedForeground },
   plan: { display: 'flex', flexDirection: 'column', gap: 8 },
   // no labels: at this width a name under every stage is a row of cut-off
   // words, and the one that matters is said in full on the line below
@@ -438,7 +442,7 @@ const phone = stylex.create({
     fontVariantNumeric: 'tabular-nums',
   },
   metaStage: { fontWeight: 500, color: tokens.foreground },
-  enter: { width: '100%', height: 44 },
+  enter: { width: '100%', height: 44, marginTop: 'auto' },
 })
 
 /**
@@ -647,9 +651,16 @@ function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
  * One agenda line, in words.
  *
  * `action` is what the reader would go and do, and `null` where there is
- * nothing to do: a filing out for judgement and an empty review queue are
- * both worth saying and neither is worth a way in, so those lines are
- * stated and not offered.
+ * nowhere to go: an empty queue holds nothing to look at, and the line
+ * that says so is the whole answer.
+ *
+ * `quiet` is the middle case - somewhere to go that is asking nothing.
+ * Filings out for judgement are the reader's to look over whenever they
+ * like, so the way in stays; it is drawn in the weight of a fact rather
+ * than of an instruction, which is how a line can be open without
+ * competing with the one that does need doing. Open with no mark at all
+ * would be worse than shut: a target nobody can see is a target nobody
+ * finds.
  */
 function wordsOf(
   row: AgendaKind,
@@ -658,6 +669,7 @@ function wordsOf(
   label: string
   value: string
   action: string | null
+  quiet: boolean
   page: 'assessment/batch-reviews' | 'assessment/batch-my-entries'
   state: string
 } {
@@ -669,6 +681,7 @@ function wordsOf(
           ? format(m.submissionsCount, { count: row.waiting })
           : format(m.reviewsClear),
       action: row.waiting > 0 ? format(m.startReview) : null,
+      quiet: false,
       page: 'assessment/batch-reviews',
       state: row.waiting > 0 ? 'waiting' : 'clear',
     }
@@ -679,12 +692,13 @@ function wordsOf(
       : row.state === 'draft'
         ? [format(m.toSubmit, { count: row.count }), format(m.continueDraft)]
         : row.state === 'submitted'
-          ? [format(m.underReview, { count: row.count }), null]
+          ? [format(m.underReview, { count: row.count }), format(m.viewEntries)]
           : [format(m.entriesNone), format(m.startEntries)]
   return {
     label: format(m.myEntries),
     value,
     action,
+    quiet: row.state === 'submitted',
     page: 'assessment/batch-my-entries',
     state: row.state,
   }
@@ -699,7 +713,8 @@ function AgendaRow({
   batchId: string
   format: ReturnType<typeof useI18n>['format']
 }) {
-  const { label, value, action, page, state } = wordsOf(row, format)
+  const { label, value, action, quiet, page, state } = wordsOf(row, format)
+  const softly = quiet && styles.agendaActionIdle
   return (
     <div
       data-testid="hero-agenda"
@@ -709,7 +724,12 @@ function AgendaRow({
     >
       <div {...stylex.props(styles.agendaWords)}>
         <span {...stylex.props(styles.agendaLabel)}>{label}</span>
-        <span {...stylex.props(styles.agendaValue, action === null && styles.agendaValueIdle)}>
+        <span
+          {...stylex.props(
+            styles.agendaValue,
+            (action === null || quiet) && styles.agendaValueIdle,
+          )}
+        >
           {value}
         </span>
       </div>
@@ -717,8 +737,8 @@ function AgendaRow({
         <PageLink
           page={page}
           params={{ batchId }}
-          className={stylex.props(styles.agendaAction).className}
-          unavailable={<span {...stylex.props(styles.agendaAction)}>{action}</span>}
+          className={stylex.props(styles.agendaAction, softly).className}
+          unavailable={<span {...stylex.props(styles.agendaAction, softly)}>{action}</span>}
         >
           {action}
           <ArrowRightIcon size={13} aria-hidden />
@@ -738,17 +758,23 @@ function PhoneAgendaRow({
   batchId: string
   format: ReturnType<typeof useI18n>['format']
 }) {
-  const { label, value, action, page, state } = wordsOf(row, format)
+  const { label, value, action, quiet, page, state } = wordsOf(row, format)
   const words = (
     <>
       <span {...stylex.props(phone.agendaWords)}>
         <span {...stylex.props(phone.agendaLabel)}>{label}</span>
-        <span {...stylex.props(phone.agendaValue, action === null && phone.agendaValueIdle)}>
+        <span
+          {...stylex.props(phone.agendaValue, (action === null || quiet) && phone.agendaValueIdle)}
+        >
           {value}
         </span>
       </span>
       {action !== null && (
-        <ArrowRightIcon size={16} aria-hidden {...stylex.props(phone.agendaGlyph)} />
+        <ArrowRightIcon
+          size={16}
+          aria-hidden
+          {...stylex.props(phone.agendaGlyph, quiet && phone.agendaGlyphIdle)}
+        />
       )}
     </>
   )

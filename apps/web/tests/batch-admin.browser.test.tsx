@@ -354,13 +354,22 @@ describe('the batch list', () => {
     expect(await agendaStates()).toEqual(['toFix', 'clear'])
   })
 
-  it('offers a way on only where there is something to do', async () => {
+  it('leads on from a line that is asking, and from one that is only open', async () => {
     screen(standing({ toFix: 0, draft: 0, submitted: 3 }, 4), '/assessment/batches')
     await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
     expect(await agendaStates()).toEqual(['waiting', 'submitted'])
-    // the queue leads somewhere; filings already with the reviewers do not
+    // the queue asks; filings already with the reviewers are the reader's
+    // to look over whenever they like, so that line is open too
     await expect.element(page.getByRole('link', { name: '开始审核' })).toBeVisible()
-    expect(await page.getByRole('link', { name: '继续处理' }).elements()).toHaveLength(0)
+    await expect.element(page.getByRole('link', { name: '查看' })).toBeVisible()
+  })
+
+  it('leads nowhere from a queue with nothing in it', async () => {
+    screen(standing(null, 0), '/assessment/batches')
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    expect(await agendaStates()).toEqual(['clear'])
+    // an empty queue holds nothing to look at, so the line is the whole answer
+    expect(await page.getByTestId('hero-agenda').getByRole('link').elements()).toHaveLength(0)
   })
 
   it('tells an empty result apart from an empty list', async () => {

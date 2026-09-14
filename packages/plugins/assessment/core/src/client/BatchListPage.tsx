@@ -63,20 +63,6 @@ const PAGE_SIZE = 20
 // others are a pair of arrows away, past it they are a name to pick
 const ARROWS_UP_TO = 4
 
-/**
- * The two lines of the card's right column, from what the server said.
- *
- * Each line is something to do, so each is drawn only while there is some:
- * a reader with nothing to do sees the stage alone, and a line reading
- * nought is a line saying nothing. The server's null is the stronger
- * answer and is read first - somebody who does not judge in this round has
- * no queue to be on top of, which is not the same as being on top of it.
- *
- * The reader's drafts and sent filings are counted on the wire but not
- * shown: this line is about what has come back to be revised, and the one
- * number it has is that. What to make of a draft left unfinished is the
- * filing page's question, and it says it there.
- */
 const styles = stylex.create({
   wide: { width: 'max-content' },
   // the container takes the shell's height and stacks; the page inside it

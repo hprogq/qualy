@@ -430,14 +430,21 @@ const i18n = definePluginMessages({
       defaultMessage: 'Awaiting your review',
     },
     startReview: { id: 'assessment/batch/start-review', defaultMessage: 'Start reviewing' },
-    /** a reader who judges here and has nothing pending: still their post */
-    reviewsClear: { id: 'assessment/batch/reviews-clear', defaultMessage: 'All caught up' },
+    /**
+     * A reader who judges here and has nothing pending: still their post.
+     * Neutral about why the queue is empty - in a round that has not
+     * reached its first review, "all caught up" credits them with work
+     * they have not been given yet.
+     */
+    reviewsClear: { id: 'assessment/batch/reviews-clear', defaultMessage: 'Nothing waiting' },
     myEntries: { id: 'assessment/batch/my-entries', defaultMessage: 'My entries' },
     continueEntries: { id: 'assessment/batch/continue-entries', defaultMessage: 'Continue' },
     continueDraft: { id: 'assessment/batch/continue-draft', defaultMessage: 'Keep filling in' },
     /** on the roster, nothing filed yet */
     entriesNone: { id: 'assessment/batch/entries-none', defaultMessage: 'Nothing filed yet' },
     startEntries: { id: 'assessment/batch/start-entries', defaultMessage: 'Start filing' },
+    /** the quiet way in, for filings that are out of the reader's hands */
+    viewEntries: { id: 'assessment/batch/view-entries', defaultMessage: 'View' },
     today: { id: 'assessment/batch/today', defaultMessage: 'Today' },
     columnBatch: { id: 'assessment/batch/column-batch', defaultMessage: 'Batch' },
     columnStage: { id: 'assessment/batch/column-stage', defaultMessage: 'Stage' },
