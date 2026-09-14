@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApi, useRunApi } from '@qualy/web-runtime'
-import { assessmentApi } from '../api.ts'
+import { assessmentApi, assessmentUrls } from '../api.ts'
 
 // The five-second window between deciding and having decided.
 //
@@ -64,8 +64,8 @@ const WINDOW_MS = 5_000
 /** the wire path whatever is waiting goes out on, for the send that outlives the page */
 const beaconPath = (staged: StagedDecision) =>
   staged.kind === 'supplement'
-    ? `/api/assessment/review/instances/${staged.instanceId}/supplement-requests`
-    : `/api/assessment/review/instances/${staged.instanceId}/decisions`
+    ? assessmentUrls.assessment.requestSupplement({ params: { instanceId: staged.instanceId } })
+    : assessmentUrls.assessment.decideReview({ params: { instanceId: staged.instanceId } })
 
 export function useDeferredDecision({
   onCommitted,

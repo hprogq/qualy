@@ -1,5 +1,6 @@
 import type { MessageDescriptor } from '@qualy/i18n-contract'
 import { assessmentMessages as m } from '../i18n.ts'
+import { assessmentUrls } from '../api.ts'
 
 // The wire shapes these screens read, named once. They mirror the api
 // group's views; the typed client checks the calls, these keep the pages
@@ -157,7 +158,7 @@ export const displayValueOf = (
 
 /** the url the api serves bytes at, for stores without their own door */
 export const attachmentContentUrl = (attachmentId: string) =>
-  `/api/assessment/attachments/${attachmentId}/content`
+  assessmentUrls.assessment.getAttachmentContent({ params: { attachmentId } })
 
 /**
  * The last day a half-open material range actually admits.

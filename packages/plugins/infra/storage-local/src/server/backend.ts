@@ -8,6 +8,7 @@ import { Effect } from 'effect'
 import { backendFailure, type BackendUnavailable } from '@qualy/plugin-storage/errors'
 import type { BlobStat, StorageBackend } from '@qualy/plugin-storage/backend'
 import type { LocalUploadPayload } from '../payload.ts'
+import { localUploadUrl } from '../urls.ts'
 
 // The disk as an object store.
 //
@@ -153,9 +154,7 @@ export const localBackend = (root: string): StorageBackend => ({
     Effect.succeed({
       driver: 'local',
       payload: {
-        // relative, so the browser resolves it against whichever host answered;
-        // a name configured here is one more thing to configure wrongly
-        url: `/api/storage/local/uploads/${request.reservationId}`,
+        url: localUploadUrl(request.reservationId),
         reservationId: request.reservationId,
         maxBytes: request.maxBytes.toString(),
         expiresAt: request.grantExpiresAt.toISOString(),

@@ -1,9 +1,14 @@
 // Every route the assembled api serves, under the server's /api prefix.
 //
 // A path is the only thing that lives longer than the code behind it, so this
-// table is the contract: a rename has to be made here in the same change, and
-// two suites read it rather than each keeping a copy. The oRPC surface checks
-// it is complete; the Effect port checks it invents nothing.
+// table is a golden snapshot OF the contract, held beside it: the endpoints
+// in each plugin's `src/api.ts` are the source of truth, and this is the
+// independent copy that notices when one of them moves. A rename has to be
+// made here in the same change, which is the point - derived from the
+// declarations it would follow every change silently and witness nothing.
+// It is the one place a path is deliberately written twice. Two suites read
+// it rather than each keeping a copy: the oRPC surface checks it is
+// complete; the Effect port checks it invents nothing.
 
 export const FROZEN_ROUTES = [
   'DELETE /auth/session',
@@ -145,6 +150,8 @@ export const FROZEN_ROUTES = [
   'POST /assessment/phase-templates',
   'PATCH /assessment/phase-templates/{templateId}',
   'DELETE /assessment/phase-templates/{templateId}',
+
+  'PUT /storage/local/uploads/{reservationId}',
 
   'GET /org/tree',
   'GET /org/types',

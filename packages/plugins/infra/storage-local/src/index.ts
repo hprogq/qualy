@@ -6,7 +6,8 @@ import { Ui } from '@qualy/plugin-ui-registry/plugin'
 import { StorageBackends } from '@qualy/plugin-storage/server'
 import { localBackend } from './server/backend.ts'
 import { config, LocalStorageConfig } from './server/config.ts'
-import { routes } from './server/routes.ts'
+import { storageLocalApiHandlers } from './server/upload.ts'
+import { storageLocalApiGroup } from './api.ts'
 
 // Keeping attachments on the machine that serves them.
 //
@@ -33,7 +34,7 @@ const plugin = Plugin.define(
   Ui.browser('./client/upload.ts'),
   Plugin.layer(registration),
   // the door the grants point at; a grant is the credential, not a session
-  Api.routes(routes),
+  Api.group(storageLocalApiGroup, storageLocalApiHandlers),
 )
 
 export default plugin
