@@ -353,10 +353,13 @@ function DialogContent({
       transitionProps={{ duration: 0 }}
       size={size}
     >
-      <MModal.Overlay data-slot="dialog-overlay" {...stylex.props(veil.blur)}>
+      <MModal.Overlay
+        data-slot="dialog-overlay"
+        {...stylex.props(veil.blur, closing && veil.closing, closing && veil.exit(EXIT_MS))}
+      >
         <div
           aria-hidden
-          {...stylex.props(veil.tint, closing && veil.tintClosing, closing && veil.tintExit(EXIT_MS))}
+          {...stylex.props(veil.tint, closing && veil.closing, closing && veil.exit(EXIT_MS))}
         />
       </MModal.Overlay>
       <MModal.Content

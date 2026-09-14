@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react'
 
-/** the width below which the shell stops being a two-column layout */
+/**
+ * The width below which this is a phone.
+ *
+ * The same boundary `breakpoints.phone` draws in CSS, written once here for
+ * the screens that have to change their tree rather than their rules - a
+ * reordering across two subtrees is not something a media query can say.
+ * Anything else passing a width to `useIsBelow` is naming its own layout's
+ * limit, which is a different number and belongs at that call site.
+ */
 const MOBILE_BREAKPOINT = 768
 
 /**

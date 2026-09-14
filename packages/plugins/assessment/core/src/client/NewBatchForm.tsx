@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApi, useApiQuery, useRunApi } from '@qualy/web-runtime'
-import { useIsBelow } from '@qualy/ui/use-mobile'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { useI18n, useLocale } from '@qualy/web-i18n'
 import { commonMessages } from '@qualy/web-i18n/messages'
 import { CheckboxGroup, Feedback, Field, FormDialog, SidePanel } from '@qualy/ui/admin'
@@ -110,7 +110,7 @@ export function NewBatchDialog({
     onClose()
   }
 
-  const narrow = useIsBelow(768)
+  const narrow = useIsMobile()
 
   const footer = (
     <>

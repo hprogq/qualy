@@ -293,6 +293,16 @@ const toRevise = defineMessage<{ count: number }>()({
   defaultMessage: '{count, plural, one {# to revise} other {# to revise}}',
 })
 
+const toSubmit = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/to-submit',
+  defaultMessage: '{count, plural, one {# not sent} other {# not sent}}',
+})
+
+const underReview = defineMessage<{ count: number }>()({
+  id: 'assessment/batch/under-review',
+  defaultMessage: '{count, plural, one {# with the reviewers} other {# with the reviewers}}',
+})
+
 const stageDeadline = defineMessage<{ when: string }>()({
   id: 'assessment/batch/stage-deadline',
   defaultMessage: 'Closes {when}',
@@ -407,6 +417,8 @@ const i18n = definePluginMessages({
     pageOfTotal,
     submissionsCount,
     toRevise,
+    toSubmit,
+    underReview,
     stageDeadline,
     stageUntil,
     startsOn,
@@ -418,8 +430,14 @@ const i18n = definePluginMessages({
       defaultMessage: 'Awaiting your review',
     },
     startReview: { id: 'assessment/batch/start-review', defaultMessage: 'Start reviewing' },
+    /** a reader who judges here and has nothing pending: still their post */
+    reviewsClear: { id: 'assessment/batch/reviews-clear', defaultMessage: 'All caught up' },
     myEntries: { id: 'assessment/batch/my-entries', defaultMessage: 'My entries' },
     continueEntries: { id: 'assessment/batch/continue-entries', defaultMessage: 'Continue' },
+    continueDraft: { id: 'assessment/batch/continue-draft', defaultMessage: 'Keep filling in' },
+    /** on the roster, nothing filed yet */
+    entriesNone: { id: 'assessment/batch/entries-none', defaultMessage: 'Nothing filed yet' },
+    startEntries: { id: 'assessment/batch/start-entries', defaultMessage: 'Start filing' },
     today: { id: 'assessment/batch/today', defaultMessage: 'Today' },
     columnBatch: { id: 'assessment/batch/column-batch', defaultMessage: 'Batch' },
     columnStage: { id: 'assessment/batch/column-stage', defaultMessage: 'Stage' },

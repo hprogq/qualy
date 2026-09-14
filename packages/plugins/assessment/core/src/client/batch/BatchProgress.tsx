@@ -5,7 +5,7 @@ import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { useI18n } from '@qualy/web-i18n'
 import { Badge } from '@qualy/ui/badge'
 import { Ticker } from '@qualy/ui/ticker'
-import { useIsBelow } from '@qualy/ui/use-mobile'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { assessmentMessages as m } from '../i18n.ts'
 import {
   displayKey,
@@ -199,7 +199,7 @@ export function BatchProgress({
   // One threshold: under a tablet the bar has no room for the stage, so the
   // stage goes and the clock takes its name instead - "3 hours left in stage"
   // rather than a number beside nothing.
-  const tight = useIsBelow(768)
+  const tight = useIsMobile()
   const form = dense || tight ? 'bare' : single ? 'single' : 'full'
   const [now, setNow] = useState(() => Date.now())
   const progress = progressOf(timeline, now)

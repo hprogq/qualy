@@ -1256,12 +1256,16 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
      * batch - computing it for every row of every page would make a list of
      * rounds pay for a question only the card above it asks.
      *
-     * `reviewsWaiting` is null for a reader who does not judge in that round
-     * at all, and a number - nought included - for one who does: "not your
-     * job" and "your job, nothing pending" are different answers, and only
-     * the first means there is no line to draw. The path carries no batch
-     * and no user for the same reason the review queue's does not: there is
-     * nothing here to ask on somebody else's behalf.
+     * Both halves are null for a reader the half is not about, and present
+     * - nought included - for one it is: "not your job" and "your job,
+     * nothing pending" are different answers, and only the first means
+     * there is no line to draw. So `reviewsWaiting` is null for somebody
+     * who does not judge in that round, and `myEntries` is null for
+     * somebody who is not on its roster; a participant who has filed
+     * nothing yet gets three noughts, which is a line worth drawing. The
+     * path carries no batch and no user for the same reason the review
+     * queue's does not: there is nothing here to ask on somebody else's
+     * behalf.
      */
     HttpApiEndpoint.get('listMyStanding', '/assessment/standing', {
       success: Schema.Struct({
@@ -1269,11 +1273,13 @@ export const assessmentApiGroup = HttpApiGroup.make('assessment')
           Schema.Struct({
             batchId: Schema.String,
             /** this reader's own filings, by what each one is waiting for */
-            myEntries: Schema.Struct({
-              toFix: Schema.Number,
-              draft: Schema.Number,
-              submitted: Schema.Number,
-            }),
+            myEntries: Schema.NullOr(
+              Schema.Struct({
+                toFix: Schema.Number,
+                draft: Schema.Number,
+                submitted: Schema.Number,
+              }),
+            ),
             reviewsWaiting: Schema.NullOr(Schema.Number),
           }),
         ),

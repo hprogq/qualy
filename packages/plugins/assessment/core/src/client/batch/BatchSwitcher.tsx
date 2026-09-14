@@ -10,7 +10,7 @@ import { Button } from '@qualy/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@qualy/ui/popover'
 import { Skeleton } from '@qualy/ui/skeleton'
 import { Spinner } from '@qualy/ui/spinner'
-import { useIsBelow } from '@qualy/ui/use-mobile'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { assessmentApi } from '../api.ts'
 import { assessmentMessages as m } from '../i18n.ts'
 import { StatusBadge } from './StatusBadge.tsx'
@@ -234,7 +234,7 @@ export function BatchSwitcher({
   // below a tablet the standing keeps its colour and its dot and loses its
   // word: the name of the batch is what the bar is for, and the word is what
   // pushed the stage name beside it into an ellipsis
-  const narrow = useIsBelow(768)
+  const narrow = useIsMobile()
   const [open, setOpen] = useState(false)
 
   const [search, setSearch] = useState('')

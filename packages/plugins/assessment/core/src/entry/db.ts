@@ -358,6 +358,34 @@ export const entryCountsByBatchOf = (input: {
           .execute(),
       )
 
+/**
+ * Which of these rounds this user takes part in at all.
+ *
+ * Asked apart from the counts above because nought filings and no place on
+ * the roster are different answers: the first is a participant who has not
+ * started, the second is somebody the round is not about. Counting cannot
+ * tell them apart, and the card says a different line for each.
+ */
+export const participatingBatchIdsOf = (input: {
+  tenantId: string
+  userId: string
+  batchIds: readonly string[]
+}) =>
+  input.batchIds.length === 0
+    ? Effect.succeed([] as string[])
+    : db
+        .query((k) =>
+          k
+            .selectFrom('BatchParticipant')
+            .select('batchId')
+            .distinct()
+            .where('tenantId', '=', input.tenantId)
+            .where('batchId', 'in', [...input.batchIds])
+            .where('userId', '=', input.userId)
+            .execute(),
+        )
+        .pipe(Effect.map((rows) => rows.map((row) => row.batchId)))
+
 /** the questions holding anything their owner has not seen yet */
 export const unreadItemIdsOf = (input: {
   tenantId: string

@@ -203,6 +203,10 @@ const PAGES = [
   { id: 'assessment/batch-participants', path: '/assessment/batches/:batchId/participants' },
   { id: 'assessment/batch-access', path: '/assessment/batches/:batchId/access' },
   { id: 'assessment/batch-settings', path: '/assessment/batches/:batchId/settings' },
+  // where the card's agenda lines lead; no route is mounted for them here,
+  // only the manifest entry that makes the links resolve
+  { id: 'assessment/batch-my-entries', path: '/assessment/batches/:batchId/my-entries' },
+  { id: 'assessment/batch-reviews', path: '/assessment/batches/:batchId/reviews' },
 ].map((page) => ({ ...page, component: page.id, layout: 'admin' }))
 
 /** a section of the batch, inside the chrome the workspace shell gives it */
@@ -302,6 +306,61 @@ describe('the batch list', () => {
     expect(await page.getByRole('button', { name: '新建批次' }).elements()).toHaveLength(0)
     // and a filter that could only ever answer with an empty page is not offered
     expect(await page.getByRole('radio', { name: '草稿' }).elements()).toHaveLength(0)
+  })
+
+  // The lines above the table are drawn from the reader's standing in the
+  // round, not from the counts: the counts say WHAT a line says, the
+  // standing says WHETHER there is one. Asserted through the rows' own
+  // facts rather than through their words, which are copy.
+  const standing = (
+    myEntries: { toFix: number; draft: number; submitted: number } | null,
+    reviewsWaiting: number | null,
+  ) => ({
+    listBatches: () =>
+      Effect.succeed({
+        items: [listRow({ status: 'active', currentPhaseId: ENTRY_PHASE_ID })],
+        nextCursor: null,
+        total: 1,
+        capabilities: { create: true },
+      }),
+    listMyStanding: () =>
+      Effect.succeed({ items: [{ batchId: BATCH_ID, myEntries, reviewsWaiting }] }),
+  })
+
+  const agendaStates = async () =>
+    (await page.getByTestId('hero-agenda').elements()).map((node) =>
+      node.getAttribute('data-agenda-state'),
+    )
+
+  it('keeps a line for every standing the reader holds, empty or not', async () => {
+    screen(standing({ toFix: 0, draft: 0, submitted: 0 }, 0), '/assessment/batches')
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    // a judge with an empty queue is still a judge, and somebody on the
+    // roster who has filed nothing is still expected to - and the one with
+    // something to get on with leads
+    expect(await agendaStates()).toEqual(['none', 'clear'])
+  })
+
+  it('draws no line for a standing the reader does not hold', async () => {
+    screen(standing(null, null), '/assessment/batches')
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    expect(await agendaStates()).toEqual([])
+  })
+
+  it('puts what is waiting on the reader above what is not', async () => {
+    // nothing in the queue, work of their own to redo: their own goes first
+    screen(standing({ toFix: 2, draft: 0, submitted: 0 }, 0), '/assessment/batches')
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    expect(await agendaStates()).toEqual(['toFix', 'clear'])
+  })
+
+  it('offers a way on only where there is something to do', async () => {
+    screen(standing({ toFix: 0, draft: 0, submitted: 3 }, 4), '/assessment/batches')
+    await expect.element(page.getByRole('heading', { name: '2026 春季综测' })).toBeVisible()
+    expect(await agendaStates()).toEqual(['waiting', 'submitted'])
+    // the queue leads somewhere; filings already with the reviewers do not
+    await expect.element(page.getByRole('link', { name: '开始审核' })).toBeVisible()
+    expect(await page.getByRole('link', { name: '继续处理' }).elements()).toHaveLength(0)
   })
 
   it('tells an empty result apart from an empty list', async () => {

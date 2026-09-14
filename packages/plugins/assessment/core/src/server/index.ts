@@ -37,6 +37,7 @@ import { makeEntryMethods, type EntryMethods, type EntryView } from '../entry/se
 import { makeReviewMethods, type ReviewDetailView, type ReviewMethods } from '../review/service.ts'
 import {
   entryCountsByBatchOf,
+  participatingBatchIdsOf,
   entrySummaryRowsOf,
   insertReviewEvent,
   userActivityPage,
@@ -546,10 +547,11 @@ export type UserActivityKind =
  * The cross-round form of the reviewer branch of `MyOverview`, and it must
  * agree with it: both say what is waiting for this person in a round, and
  * two endpoints that disagreed about that would be read as the round
- * changing under the reader. `reviewsWaiting` is null for somebody who does
- * not judge in that round at all - "not your job" and "your job, nothing
- * pending" are different facts, and only the first one means the line has
- * nothing to say.
+ * changing under the reader. Either half is null for somebody the half is
+ * not about - `reviewsWaiting` for one who does not judge in that round,
+ * `myEntries` for one who is not on its roster - because "not your job" and
+ * "your job, nothing pending" are different facts, and only the first one
+ * means the line has nothing to say.
  */
 export interface MyStanding {
   readonly items: readonly {
@@ -558,7 +560,7 @@ export interface MyStanding {
       readonly toFix: number
       readonly draft: number
       readonly submitted: number
-    }
+    } | null
     readonly reviewsWaiting: number | null
   }[]
 }
@@ -2279,12 +2281,17 @@ export const make = Effect.fn('Assessment.make')(function* () {
       // answer, not the count: a judge who is caught up holds the standing
       // still, and the count alone cannot tell that from not judging here.
       // Asked per round, as the round's own desk asks it.
+      const taking = new Set(
+        yield* dieQuery(withDb(participatingBatchIdsOf({ tenantId, userId: as.userId, batchIds }))),
+      )
       const items: MyStanding['items'][number][] = []
       for (const batchId of batchIds) {
         const authority = yield* batchAuthority(tenantId, batchId, as.userId)
         items.push({
           batchId,
-          myEntries: mine.get(batchId) ?? { toFix: 0, draft: 0, submitted: 0 },
+          myEntries: taking.has(batchId)
+            ? (mine.get(batchId) ?? { toFix: 0, draft: 0, submitted: 0 })
+            : null,
           reviewsWaiting: authority.has('assessment.review.process')
             ? (waiting.get(batchId) ?? 0)
             : null,

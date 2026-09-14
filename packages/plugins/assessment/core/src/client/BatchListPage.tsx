@@ -21,7 +21,7 @@ import { EmptyRow } from '@qualy/ui/empty-row'
 import { Reveal } from '@qualy/ui/reveal'
 import { PageContainer } from '@qualy/ui/page-container'
 import { Input } from '@qualy/ui/input'
-import { useIsBelow } from '@qualy/ui/use-mobile'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@qualy/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@qualy/ui/toggle-group'
 import { Count } from '@qualy/ui/count'
@@ -40,7 +40,7 @@ import { standingOf, type BatchStanding } from './batch/standing.ts'
 import { dotDay } from './batch/dates.ts'
 import { HeroSkeleton, ListSkeleton } from './batch/ListSkeleton.tsx'
 import { BatchCard } from './batch/BatchCard.tsx'
-import { NO_AGENDA, type BatchAgenda, type BatchCardRow, type HeroFrame } from './batch/hero.ts'
+import { agendaOf, type BatchCardRow, type HeroFrame } from './batch/hero.ts'
 
 // Every batch there is, and the way into one.
 //
@@ -77,23 +77,6 @@ const ARROWS_UP_TO = 4
  * number it has is that. What to make of a draft left unfinished is the
  * filing page's question, and it says it there.
  */
-function agendaOf(
-  items: readonly {
-    batchId: string
-    myEntries: { toFix: number; draft: number; submitted: number }
-    reviewsWaiting: number | null
-  }[],
-  batchId: string | undefined,
-): BatchAgenda {
-  const mine = batchId === undefined ? undefined : items.find((row) => row.batchId === batchId)
-  if (mine === undefined) return NO_AGENDA
-  const waiting = mine.reviewsWaiting
-  return {
-    review: waiting === null || waiting === 0 ? null : { count: waiting },
-    own: mine.myEntries.toFix === 0 ? null : { count: mine.myEntries.toFix },
-  }
-}
-
 const styles = stylex.create({
   wide: { width: 'max-content' },
   // the container takes the shell's height and stacks; the page inside it
@@ -530,7 +513,7 @@ export default function BatchListPage() {
   const query = useApiQuery(assessmentApi)
   // the page changes shape, not just its measurements, so the choice is
   // made here rather than in a media query
-  const narrow = useIsBelow(768)
+  const narrow = useIsMobile()
   const [searchOpen, setSearchOpen] = useState(false)
   const { format, formatError } = useI18n()
   // the shell repeats this once the heading itself has scrolled away

@@ -16,10 +16,19 @@ import { tokens } from '../theme/tokens.stylex.ts'
 // own contents rather than the page.
 //
 // The blur layer keeps a faint tint of its own, so the browser's chrome has
-// a colour to read off the page's edge before the child has faded in, and
-// the veil's leaving is a smaller step: by then the child has faded out and
-// only the blur and this trace remain. The two tints compose to the scrim
-// token - a third of it below, two thirds above.
+// a colour to read off the page's edge before the child has faded in. The
+// two tints compose to the scrim token - a third of it below, two thirds
+// above.
+//
+// The rule about never changing governs the veil's LIFE, not its leaving.
+// Fading only the child left the blur and its trace standing at full
+// strength until the panel had gone and the whole veil unmounted, and then
+// cut in a single frame - small on a desktop dialog, the whole screen on a
+// phone, where the panel covers it. So the last EXIT_MS fades both layers.
+// Recomputing the blur for those few frames costs nothing anybody waits
+// on: nothing follows them but the unmount. An element's own opacity does
+// not make it the blur's backdrop root - only an ancestor's does - so the
+// blur goes on seeing the page while it fades.
 
 const REDUCE = '@media (prefers-reduced-motion: reduce)'
 
@@ -39,13 +48,13 @@ export const veil = stylex.create({
     animationDuration: { default: '150ms', [REDUCE]: '0s' },
     animationTimingFunction: 'ease-out',
   },
-  // the way out, as long as the panel's own
-  tintClosing: {
+  // the way out, as long as the panel's own, worn by both layers
+  closing: {
     opacity: 0,
     transitionProperty: { default: 'opacity', [REDUCE]: 'none' },
     transitionTimingFunction: 'ease',
   },
-  tintExit: (ms: number) => ({
+  exit: (ms: number) => ({
     transitionDuration: `${String(ms)}ms`,
   }),
 })

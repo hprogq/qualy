@@ -433,15 +433,11 @@ function SheetContent({
       <MDrawer.Overlay
         data-slot="sheet-overlay"
         {...(closing ? { 'data-closing': '' } : {})}
-        {...stylex.props(veil.blur)}
+        {...stylex.props(veil.blur, closing && veil.closing, closing && veil.exit(EXIT_MS))}
       >
         <div
           aria-hidden
-          {...stylex.props(
-            veil.tint,
-            closing && veil.tintClosing,
-            closing && veil.tintExit(EXIT_MS),
-          )}
+          {...stylex.props(veil.tint, closing && veil.closing, closing && veil.exit(EXIT_MS))}
         />
       </MDrawer.Overlay>
       <MDrawer.Content

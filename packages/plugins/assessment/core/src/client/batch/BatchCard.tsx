@@ -6,7 +6,7 @@ import { useI18n } from '@qualy/web-i18n'
 import { tokens } from '@qualy/ui/theme/tokens.stylex'
 import { breakpoints } from '@qualy/ui/theme/breakpoints.stylex'
 import { Button } from '@qualy/ui/button'
-import { useIsBelow } from '@qualy/ui/use-mobile'
+import { useIsMobile } from '@qualy/ui/use-mobile'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@qualy/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@qualy/ui/tooltip'
 import { assessmentMessages as m } from '../i18n.ts'
@@ -14,7 +14,7 @@ import { dotDay, dotMoment } from './dates.ts'
 import { StatusBadge } from './StatusBadge.tsx'
 import { BatchProgress } from './BatchProgress.tsx'
 import type { TimelineLike } from './progress.ts'
-import type { BatchAgenda, BatchCardRow, HeroFrame } from './hero.ts'
+import type { AgendaRow as AgendaKind, BatchAgenda, BatchCardRow, HeroFrame } from './hero.ts'
 
 // The batch that is running, as the thing the page leads with.
 //
@@ -330,6 +330,12 @@ const styles = stylex.create({
     fontSize: 14,
     fontWeight: 500,
   },
+  // a line with nothing to do about it still says where things stand, and
+  // says it in the weight of a fact rather than of an instruction
+  agendaValueIdle: {
+    fontWeight: 400,
+    color: tokens.mutedForeground,
+  },
   agendaAction: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -338,6 +344,13 @@ const styles = stylex.create({
     fontSize: 13,
     fontWeight: 500,
     color: tokens.foreground,
+    textDecoration: 'none',
+    // it says "go", so under the pointer it goes: the words and the arrow
+    // travel together, which is the whole line leaning the way it leads
+    transform: { default: null, ':hover': 'translateX(2px)' },
+    transitionProperty: { default: 'transform', [REDUCE]: 'none' },
+    transitionDuration: { default: '120ms', [REDUCE]: '0s' },
+    transitionTimingFunction: 'ease-out',
   },
 })
 
@@ -352,7 +365,14 @@ const phone = stylex.create({
   card: {
     display: 'flex',
     boxSizing: 'border-box',
+    // The cards in a deck are as tall as the tallest of them: side by side
+    // in a track somebody flicks through, a short one would leave its way
+    // in floating at a different height on every card. A card with less to
+    // say spends the difference on its own gaps rather than pooling it
+    // into one hole above the way in.
+    height: '100%',
     flexDirection: 'column',
+    justifyContent: 'space-between',
     gap: 14,
     paddingInline: 18,
     paddingTop: 18,
@@ -396,6 +416,7 @@ const phone = stylex.create({
   agendaWords: { display: 'flex', minWidth: 0, flexDirection: 'column', gap: 2 },
   agendaLabel: { fontSize: 12, color: tokens.mutedForeground },
   agendaValue: { fontSize: 15, fontWeight: 600 },
+  agendaValueIdle: { fontWeight: 500, color: tokens.mutedForeground },
   agendaGlyph: { flexShrink: 0, color: tokens.foreground },
   plan: { display: 'flex', flexDirection: 'column', gap: 8 },
   // no labels: at this width a name under every stage is a row of cut-off
@@ -622,72 +643,131 @@ function Frame({ frame, current }: { frame: HeroFrame; current: string }) {
   )
 }
 
-function AgendaRow({
-  label,
-  value,
-  action,
-  page,
-  batchId,
-}: {
+/**
+ * One agenda line, in words.
+ *
+ * `action` is what the reader would go and do, and `null` where there is
+ * nothing to do: a filing out for judgement and an empty review queue are
+ * both worth saying and neither is worth a way in, so those lines are
+ * stated and not offered.
+ */
+function wordsOf(
+  row: AgendaKind,
+  format: ReturnType<typeof useI18n>['format'],
+): {
   label: string
   value: string
-  action: string
+  action: string | null
   page: 'assessment/batch-reviews' | 'assessment/batch-my-entries'
+  state: string
+} {
+  if (row.kind === 'review') {
+    return {
+      label: format(m.awaitingReview),
+      value:
+        row.waiting > 0
+          ? format(m.submissionsCount, { count: row.waiting })
+          : format(m.reviewsClear),
+      action: row.waiting > 0 ? format(m.startReview) : null,
+      page: 'assessment/batch-reviews',
+      state: row.waiting > 0 ? 'waiting' : 'clear',
+    }
+  }
+  const [value, action] =
+    row.state === 'toFix'
+      ? [format(m.toRevise, { count: row.count }), format(m.continueEntries)]
+      : row.state === 'draft'
+        ? [format(m.toSubmit, { count: row.count }), format(m.continueDraft)]
+        : row.state === 'submitted'
+          ? [format(m.underReview, { count: row.count }), null]
+          : [format(m.entriesNone), format(m.startEntries)]
+  return {
+    label: format(m.myEntries),
+    value,
+    action,
+    page: 'assessment/batch-my-entries',
+    state: row.state,
+  }
+}
+
+function AgendaRow({
+  row,
+  batchId,
+  format,
+}: {
+  row: AgendaKind
   batchId: string
+  format: ReturnType<typeof useI18n>['format']
 }) {
+  const { label, value, action, page, state } = wordsOf(row, format)
   return (
     <div
       data-testid="hero-agenda"
       data-agenda={page}
+      data-agenda-state={state}
       {...stylex.props(styles.agendaRow, styles.cell)}
     >
       <div {...stylex.props(styles.agendaWords)}>
         <span {...stylex.props(styles.agendaLabel)}>{label}</span>
-        <span {...stylex.props(styles.agendaValue)}>{value}</span>
+        <span {...stylex.props(styles.agendaValue, action === null && styles.agendaValueIdle)}>
+          {value}
+        </span>
       </div>
-      <PageLink
-        page={page}
-        params={{ batchId }}
-        className={stylex.props(styles.agendaAction).className}
-        unavailable={<span {...stylex.props(styles.agendaAction)}>{action}</span>}
-      >
-        {action}
-        <ArrowRightIcon size={13} aria-hidden />
-      </PageLink>
+      {action !== null && (
+        <PageLink
+          page={page}
+          params={{ batchId }}
+          className={stylex.props(styles.agendaAction).className}
+          unavailable={<span {...stylex.props(styles.agendaAction)}>{action}</span>}
+        >
+          {action}
+          <ArrowRightIcon size={13} aria-hidden />
+        </PageLink>
+      )}
     </div>
   )
 }
 
-/** one line of work, the whole of it a way to that work */
+/** one line of work, the whole of it a way to that work - where there is one */
 function PhoneAgendaRow({
-  label,
-  value,
-  page,
+  row,
   batchId,
+  format,
 }: {
-  label: string
-  value: string
-  page: 'assessment/batch-reviews' | 'assessment/batch-my-entries'
+  row: AgendaKind
   batchId: string
+  format: ReturnType<typeof useI18n>['format']
 }) {
+  const { label, value, action, page, state } = wordsOf(row, format)
   const words = (
     <>
       <span {...stylex.props(phone.agendaWords)}>
         <span {...stylex.props(phone.agendaLabel)}>{label}</span>
-        <span {...stylex.props(phone.agendaValue)}>{value}</span>
+        <span {...stylex.props(phone.agendaValue, action === null && phone.agendaValueIdle)}>
+          {value}
+        </span>
       </span>
-      <ArrowRightIcon size={16} aria-hidden {...stylex.props(phone.agendaGlyph)} />
+      {action !== null && (
+        <ArrowRightIcon size={16} aria-hidden {...stylex.props(phone.agendaGlyph)} />
+      )}
     </>
   )
+  const marks = { 'data-testid': 'hero-agenda', 'data-agenda': page, 'data-agenda-state': state }
+  if (action === null) {
+    return (
+      <span {...marks} {...stylex.props(phone.agendaRow)}>
+        {words}
+      </span>
+    )
+  }
   return (
     <PageLink
       page={page}
       params={{ batchId }}
-      data-testid="hero-agenda"
-      data-agenda={page}
+      {...marks}
       className={stylex.props(phone.agendaRow).className}
       unavailable={
-        <span data-testid="hero-agenda" data-agenda={page} {...stylex.props(phone.agendaRow)}>
+        <span {...marks} {...stylex.props(phone.agendaRow)}>
           {words}
         </span>
       }
@@ -716,7 +796,7 @@ export function BatchCard({
   const { format } = useI18n()
   // the card's own shape changes, not just its width, so the choice is made
   // here rather than in a media query
-  const narrow = useIsBelow(768)
+  const narrow = useIsMobile()
   const at = row.timeline.findIndex((entry) => entry.status === 'current')
   const next = at === -1 ? undefined : row.timeline[at + 1]
   const closes =
@@ -742,26 +822,11 @@ export function BatchCard({
           <h2 {...stylex.props(phone.title)}>{row.name}</h2>
         </div>
 
-        {(agenda.review !== null || agenda.own !== null) && (
+        {agenda.rows.length > 0 && (
           <div {...stylex.props(phone.agenda)}>
-            {/* other people's work first: it blocks them, one's own blocks
-                only oneself */}
-            {agenda.review !== null && (
-              <PhoneAgendaRow
-                label={format(m.awaitingReview)}
-                value={format(m.submissionsCount, { count: agenda.review.count })}
-                page="assessment/batch-reviews"
-                batchId={row.id}
-              />
-            )}
-            {agenda.own !== null && (
-              <PhoneAgendaRow
-                label={format(m.myEntries)}
-                value={format(m.toRevise, { count: agenda.own.count })}
-                page="assessment/batch-my-entries"
-                batchId={row.id}
-              />
-            )}
+            {agenda.rows.map((line) => (
+              <PhoneAgendaRow key={line.kind} row={line} batchId={row.id} format={format} />
+            ))}
           </div>
         )}
 
@@ -869,25 +934,9 @@ export function BatchCard({
               <BatchProgress timeline={row.timeline} single />
             </span>
           </div>
-          {/* other people's work first: it blocks them, one's own blocks only oneself */}
-          {agenda.review !== null && (
-            <AgendaRow
-              label={format(m.awaitingReview)}
-              value={format(m.submissionsCount, { count: agenda.review.count })}
-              action={format(m.startReview)}
-              page="assessment/batch-reviews"
-              batchId={row.id}
-            />
-          )}
-          {agenda.own !== null && (
-            <AgendaRow
-              label={format(m.myEntries)}
-              value={format(m.toRevise, { count: agenda.own.count })}
-              action={format(m.continueEntries)}
-              page="assessment/batch-my-entries"
-              batchId={row.id}
-            />
-          )}
+          {agenda.rows.map((line) => (
+            <AgendaRow key={line.kind} row={line} batchId={row.id} format={format} />
+          ))}
         </aside>
       </article>
     </div>

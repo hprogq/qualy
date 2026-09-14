@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
+import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createTestContext, postgresAvailable } from '@qualy/plugin-database/testkit'
+import { createTestContext, postgresAvailable, runSql } from '@qualy/plugin-database/testkit'
 import { Assessment, type MyStanding } from '../src/server/index.ts'
 import { GATED, ok, run, runningBatch, seed } from './support/round.ts'
 
@@ -9,11 +10,12 @@ import { GATED, ok, run, runningBatch, seed } from './support/round.ts'
 //
 // The two facts the card above the batch list stands on: how much of this
 // reader's own filing is waiting on them, and how much of other people's is.
-// The second is null for somebody who does not judge in that round - "not
-// your job" and "your job, nothing pending" are different answers, and only
-// the first one means there is no line to draw. The fixture gives both
-// readers in one round: the student holds no reviewing authority, the
-// reviewer holds a role that carries it.
+// Either is null for somebody it is not about - one who does not judge in
+// that round, one who is not on its roster - because "not your job" and
+// "your job, nothing pending" are different answers, and only the first one
+// means there is no line to draw. The fixture gives both readers in one
+// round: the student holds no reviewing authority, the reviewer holds a
+// role that carries it.
 
 const PROFILE = [...GATED, 'assessment.review.process']
 
@@ -64,7 +66,24 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
           const returned = yield* assessment.listMyStanding(f.t, s1)
           const emptied = yield* assessment.listMyStanding(f.t, judge)
 
-          return { batchId: g.batch.id, drafted, sent, waiting, returned, emptied, submitted }
+          // somebody who administers the round without taking part in it.
+          // The fixture's import sweeps every user type into every round,
+          // so the roster row is taken away rather than never made.
+          yield* runSql(sql`
+            delete from batch_participants
+            where tenant_id = ${f.t} and batch_id = ${g.batch.id} and user_id = ${f.admin}`)
+          const outside = yield* assessment.listMyStanding(f.t, admin)
+
+          return {
+            batchId: g.batch.id,
+            drafted,
+            sent,
+            waiting,
+            returned,
+            emptied,
+            outside,
+            submitted,
+          }
         }),
       ),
     )
@@ -92,5 +111,9 @@ describe.runIf(postgresAvailable)('the standing of a reader across the rounds un
     // the fixture's org-scope import sweeps the reviewer onto the roster
     // too, so their own filing exists and is simply empty
     expect(row(result.waiting).myEntries).toEqual({ toFix: 0, draft: 0, submitted: 0 })
+
+    // off the roster is not the same as on it with nothing filed: the first
+    // has no line to draw, the second has one that says so
+    expect(row(result.outside).myEntries).toBeNull()
   }, 120_000)
 })
