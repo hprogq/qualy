@@ -1,3 +1,4 @@
+import type { BrowserPlugin } from '@qualy/plugin-kit/browser'
 import {
   registerUploadDriver,
   type UploadGrant,
@@ -67,4 +68,10 @@ export const cosUploadDriver = {
     put(grant.payload as CosUploadPayload, file, options),
 }
 
-registerUploadDriver(cosUploadDriver)
+// announced while the page sets up, and taken back when it stops; the vendor
+// sdk itself is still loaded only when a grant names this driver
+const plugin: BrowserPlugin = {
+  setup: () => registerUploadDriver(cosUploadDriver),
+}
+
+export default plugin

@@ -1,13 +1,19 @@
+import type { BrowserPlugin } from '@qualy/plugin-kit/browser'
 import { registerRumProvider } from '@qualy/plugin-rum/client'
 import { tencentRumProvider } from './provider.ts'
 
 // The browser half's announcement, and nothing else.
 //
-// Declared `Ui.browser`, which means it runs on EVERY page load of every
-// deployment that has this plugin installed - including ones with reporting
-// switched off, because a production build is a superset. So it must stay a
-// name and a function: whether anything is reported is decided by the
-// capability, after it has asked the server, and the vendor sdk is imported
-// only once that answer is yes.
+// Every page of every deployment with this plugin active evaluates this
+// module, so it stays a name and a function: whether anything is reported is
+// decided by the capability, after it has asked the server, and the vendor
+// sdk is imported only once that answer is yes.
+//
+// Setup rather than start, because announcing is exactly what setup is for -
+// synchronous, cheap, and undone by the disposer it hands back.
 
-registerRumProvider(tencentRumProvider)
+const plugin: BrowserPlugin = {
+  setup: () => registerRumProvider(tencentRumProvider),
+}
+
+export default plugin

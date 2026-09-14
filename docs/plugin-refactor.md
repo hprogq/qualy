@@ -44,6 +44,12 @@
 > exports 同批更新;带扩展名在声明处硬失败。新增 `tools/fixtures/acme-dist-probe`
 > (**只有 package.json + dist/**)与 `tools/tests/dist-only-plugin.test.ts`,证明 resolve、
 > 宿主 assemble、浏览器聚合、真实 `vite build` 下的动态 import 分块、i18n 与 browser 贡献全部成立。
+>
+> 进度:**Phase E 已落地(2026-09-15)**——`@qualy/plugin-kit/browser` 提供 `Browser.module()` /
+> `BrowserPlugin` / `Dispose` / `startBrowserPlugins`;`Ui.browser()` 与顶层副作用注册删除;
+> rum-tencent、storage-local、storage-cos 迁为 `setup` + disposer,RUM 能力自己用 `start` 起
+> (`./start.ts` 改**动态** import——静态会把 128 KB api client 拉回冷启,browser-graph 门禁当场抓到);
+> `apps/web` 最后一条插件实现 import 删除。
 
 ## 1. 背景与目标
 

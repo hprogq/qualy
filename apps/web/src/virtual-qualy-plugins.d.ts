@@ -5,6 +5,7 @@
 // drift from what I18nProvider accepts.
 declare module 'virtual:qualy/plugins' {
   import type { ComponentType } from 'react'
+  import type { BrowserPlugin } from '@qualy/plugin-kit/browser'
   import type { I18nProviderProps } from '@qualy/web-i18n'
 
   // the tables are heterogeneous by nature; the shell wraps every entry in
@@ -20,6 +21,8 @@ declare module 'virtual:qualy/plugins' {
   export const slotComponents: Record<string, Record<string, Loader>>
   /** by login driver type */
   export const loginComponents: Record<string, Loader>
+  /** every active plugin's browser half, in the assembly's own order */
+  export const browserPlugins: readonly BrowserPlugin[]
   export const catalogs: NonNullable<I18nProviderProps['catalogs']>
   export const errorMessages: NonNullable<I18nProviderProps['errorMessages']>
 }

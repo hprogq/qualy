@@ -1,4 +1,5 @@
 import { Plugin } from '@qualy/plugin-kit'
+import { Browser } from '@qualy/plugin-kit/browser'
 import { Api } from '@qualy/api-kit/plugin'
 import { Rum } from './plugin.ts'
 import { rumApiGroup } from './api.ts'
@@ -24,6 +25,9 @@ const plugin = Plugin.define(
   Plugin.layer(registryLayer),
   Plugin.layer(barrierLayer),
   Api.group(rumApiGroup, rumApiHandlers),
+  // the browser half: asking this deployment whether it reports, at the one
+  // moment a browser plugin has to do anything in
+  Browser.module('./client/browser'),
 )
 
 export default plugin

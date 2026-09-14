@@ -28,19 +28,30 @@ export interface UploadDriver {
 
 const drivers = new Map<string, UploadDriver>()
 
+/** the way to undo a registration; the kit's own word for it */
+export type Dispose = () => void
+
 /**
- * A provider offering its browser half.
+ * A provider offering its browser half, for as long as it is set up.
  *
- * Called by the provider's own client module. Registering twice under one name
- * is refused rather than resolved by import order: which of two drivers spends
- * a grant is not a question a race should answer.
+ * Called from the provider's own browser lifecycle. Registering twice under
+ * one name is refused rather than resolved by import order: which of two
+ * drivers spends a grant is not a question a race should answer.
+ *
+ * It hands back the way to undo it, which is what makes the registry a
+ * lifecycle rather than a pile: a suite can reset between cases, a hot
+ * reload can replace a driver instead of colliding with itself, and a
+ * plugin that goes away takes its driver with it.
  */
-export const registerUploadDriver = (driver: UploadDriver): void => {
+export const registerUploadDriver = (driver: UploadDriver): Dispose => {
   const existing = drivers.get(driver.driver)
   if (existing !== undefined && existing !== driver) {
     throw new Error(`two upload drivers registered as "${driver.driver}"`)
   }
   drivers.set(driver.driver, driver)
+  return () => {
+    if (drivers.get(driver.driver) === driver) drivers.delete(driver.driver)
+  }
 }
 
 export class UploadUnsupported extends Error {

@@ -1,3 +1,4 @@
+import type { BrowserPlugin } from '@qualy/plugin-kit/browser'
 import {
   registerUploadDriver,
   type UploadGrant,
@@ -36,4 +37,10 @@ export const localUploadDriver = {
     put(grant.payload as LocalUploadPayload, file, options),
 }
 
-registerUploadDriver(localUploadDriver)
+// announced while the page sets up, and taken back when it stops: a driver
+// is a seat in a registry, which is what setup is for
+const plugin: BrowserPlugin = {
+  setup: () => registerUploadDriver(localUploadDriver),
+}
+
+export default plugin

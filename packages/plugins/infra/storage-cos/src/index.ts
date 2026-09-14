@@ -1,5 +1,6 @@
 import { Effect, Layer } from 'effect'
 import { Plugin } from '@qualy/plugin-kit'
+import { Browser } from '@qualy/plugin-kit/browser'
 import { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { Storage } from '@qualy/plugin-storage/plugin'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
@@ -38,7 +39,7 @@ const plugin = Plugin.define(
   { dependsOn: ['@qualy/plugin-storage'], config },
   Storage.backend({ code: 'cos', uploadDriver: 'cos' }),
   // the browser half announces how to spend this provider's grants
-  Ui.browser('./client/upload'),
+  Browser.module('./client/upload'),
   Plugin.layer(registration),
 )
 

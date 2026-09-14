@@ -7,13 +7,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { bootstrapMessages } from '@qualy/web-i18n/bootstrap'
 import { captureDiagnostic } from '@qualy/browser-observability'
-// The one line of this file that names a plugin. Asking the assembly whether
-// it reports, and through whom, is the reporting capability's own question -
-// but nothing yet gives a browser plugin a moment to run in, so the
-// composition root still calls it. That is what `Browser.module()` and its
-// start hook are for; until then this stays, and the platform's port above
-// is what every other file uses.
-import { startBrowserRum } from '@qualy/plugin-rum/client/start'
+import { startBrowserPlugins } from '@qualy/plugin-kit/browser'
+import { browserPlugins } from 'virtual:qualy/plugins'
 import App from './App.tsx'
 import { releases, webRelease } from './release.ts'
 import { ReleaseRecoveryGate } from './release-ui.tsx'
@@ -22,6 +17,11 @@ import './app.css'
 // the release this page runs, on the root: public diagnostic, and what a
 // deployment's acceptance reads to know which build a tab is on
 document.documentElement.dataset['release'] = webRelease.releaseId
+
+// kept so a hot reload can put the browser halves back rather than register
+// them twice; a page that is simply closed never needs it
+let stopBrowserPlugins: (() => void) | undefined
+import.meta.hot?.dispose(() => stopBrowserPlugins?.())
 
 // The page's side of the release protocol, started before anything renders:
 // it hears a chunk failing to load from the first navigation on, and the
@@ -46,10 +46,16 @@ releases.subscribe(() => {
   captureDiagnostic(state.reason)
 })
 
-// Not awaited, and deliberately before the first render rather than after: the
-// browser modules have already registered whatever providers this build
-// carries, and nothing on the screen waits for the answer.
-void startBrowserRum(webRelease)
+// Every active plugin's browser half, in the order the assembly put them:
+// each one sets up - synchronous, cheap, undoable - and then each one starts,
+// with nothing awaited. This file names none of them, and a plugin that is
+// not in this assembly has no browser behaviour at all rather than code that
+// happens not to run.
+//
+// Before the first render rather than after: whatever a screen may look for -
+// an upload driver, a reporting provider - is registered by the time anything
+// asks, while the expensive half is still in flight.
+stopBrowserPlugins = startBrowserPlugins(browserPlugins, { release: webRelease })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

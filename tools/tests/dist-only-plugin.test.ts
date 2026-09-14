@@ -117,7 +117,10 @@ describe('a plugin published the ordinary way, with no sources', () => {
       )
       fs.writeFileSync(
         path.join(root, 'main.js'),
-        `import { pageComponents } from './plugins.js'\n` +
+        // the shell's own two uses of the aggregate: run every browser half,
+        // then resolve a surface by the address the manifest names
+        `import { browserPlugins, pageComponents } from './plugins.js'\n` +
+          `for (const plugin of browserPlugins) plugin.setup?.({ release: { releaseId: 'r_x', clientProtocol: 2 } })\n` +
           `const load = pageComponents['acme/probe']\n` +
           `document.title = String(load)\n` +
           `void load().then((module) => { document.body.textContent = module.default() })\n`,
@@ -141,8 +144,9 @@ describe('a plugin published the ordinary way, with no sources', () => {
       const page = chunks.filter((name) => name.startsWith('ProbePage-'))
       expect(page, chunks.join(', ')).toHaveLength(1)
       expect(sources.join('\n')).toContain('acme-dist-probe-page-8f21c6')
-      // and the browser module the descriptor asked to run at boot is in the
-      // entry, not split away: it exists for its side effect
+      // and the browser half the descriptor declared is in the entry, where
+      // the host runs it: a value now, so it is there because something uses
+      // it rather than because an import had a side effect
       expect(sources.join('\n')).toContain('acme-dist-probe-boot-4d90ab')
     } finally {
       fs.rmSync(root, { recursive: true, force: true })

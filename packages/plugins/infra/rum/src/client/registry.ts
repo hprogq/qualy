@@ -1,3 +1,4 @@
+import type { Dispose } from '@qualy/plugin-kit/browser'
 import {
   installSink,
   noSinkArriving,
@@ -19,10 +20,17 @@ import {
 // Asking the server which provider was selected costs a client and lives in
 // `start.ts`, which the composition root imports once.
 
-/** what the browser is running, which only the bundle knows */
+/**
+ * What the browser is running, which only the bundle knows.
+ *
+ * The id alone. It also carried the deployment's mode, and nothing ever read
+ * it: a provider that needs to know which environment it is reporting for
+ * gets that from its own settings, which is where a deployment says such
+ * things - the bundle's mode is a build fact, and a staging deployment built
+ * in production mode would have answered wrong.
+ */
 export interface ObservedRelease {
   readonly releaseId: string
-  readonly mode: 'development' | 'production'
 }
 
 export interface BrowserRumProvider {
@@ -60,13 +68,16 @@ const warnOnce = (key: string, cause: unknown): void => {
  * so it must stay this cheap. Registering costs a name and a function, and
  * whether this deployment reports at all is decided in `startBrowserRum`.
  */
-export const registerRumProvider = (provider: BrowserRumProvider): void => {
+export const registerRumProvider = (provider: BrowserRumProvider): Dispose => {
   const existing = providers.get(provider.provider)
   if (existing !== undefined && existing !== provider) {
     warnOnce(provider.provider, 'registered twice; the second registration was ignored')
-    return
+    return () => undefined
   }
   providers.set(provider.provider, provider)
+  return () => {
+    if (providers.get(provider.provider) === provider) providers.delete(provider.provider)
+  }
 }
 
 /**

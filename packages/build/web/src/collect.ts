@@ -3,11 +3,8 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { commonErrorCodes } from '@qualy/i18n-contract'
 import { isPluginDescriptor, Plugin, type PluginDescriptor } from '@qualy/plugin-kit'
-import {
-  BrowserModules,
-  I18nCatalogs,
-  UiSurfaceDeclarations,
-} from '@qualy/plugin-ui-registry/plugin'
+import { BrowserModules } from '@qualy/plugin-kit/browser'
+import { I18nCatalogs, UiSurfaceDeclarations } from '@qualy/plugin-ui-registry/plugin'
 import { LoginDriverDeclarations } from '@qualy/auth-contract/plugin'
 import { surfaceLabel, type BrowserSurface, type ClientComponentRef } from '@qualy/ui-contract'
 import { currentResolution, readEntries, resolvePluginExport } from '@qualy/assembly/host'
@@ -63,7 +60,7 @@ export interface WebPluginEntry {
   i18nModule?: string
   hasCatalogs: boolean
   hasErrorMessages: boolean
-  /** modules the browser imports at boot for their side effects, absolute */
+  /** the modules whose default export is this plugin's browser half, absolute */
   browserModules: string[]
 }
 
@@ -235,13 +232,17 @@ export async function buildPluginModuleSource(
   const layoutEntries: string[] = []
   const slotEntries = new Map<string, string[]>()
   const loginEntries: string[] = []
+  const browserEntries: string[] = []
   const catalogEntries: string[] = []
   const errorSpreads: string[] = []
   for (const entry of await collectWebPlugins(options)) {
     const ns = entry.name.split('/').pop()!.replace('plugin-', '').replaceAll('-', '_')
     for (const module of entry.browserModules) {
-      // for its side effects: a provider half announcing itself at boot
-      imports.push(`import ${JSON.stringify(specifier(module, options.fromDir))}`)
+      // a value with a lifecycle, not an import for its side effect: the
+      // host decides when it sets up, when it starts and when it stops
+      const name = `browser${String(browserEntries.length)}`
+      imports.push(`import ${name} from ${JSON.stringify(specifier(module, options.fromDir))}`)
+      browserEntries.push(`  ${name},`)
     }
     for (const binding of entry.surfaces) {
       // a real dynamic import per surface: the edge Vite splits chunks on
@@ -293,6 +294,10 @@ export async function buildPluginModuleSource(
     'export const loginComponents = {',
     ...loginEntries,
     '}',
+    '',
+    'export const browserPlugins = [',
+    ...browserEntries,
+    ']',
     '',
     'export const catalogs = [',
     ...catalogEntries,

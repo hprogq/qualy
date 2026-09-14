@@ -219,8 +219,14 @@ describe('the platform depends on no plugin implementation', () => {
  */
 const WEB_APP = 'apps/web/package.json'
 
-/** imported by production source; Phase E gives browser plugins a lifecycle to start in */
-const WEB_APP_RUNTIME = ['@qualy/plugin-rum']
+/**
+ * Imported by production source.
+ *
+ * The kit a plugin is written with, which the shell uses to RUN browser
+ * halves rather than to be one of them - the same exemption the platform
+ * list makes, for the same reason. No plugin implementation is left.
+ */
+const WEB_APP_RUNTIME = ['@qualy/plugin-kit']
 
 /** imported by browser tests that still live here; Phase G moves them to their owners */
 const WEB_APP_TESTS = [
@@ -228,6 +234,7 @@ const WEB_APP_TESTS = [
   '@qualy/plugin-assessment-formula',
   '@qualy/plugin-auth',
   '@qualy/plugin-rbac',
+  '@qualy/plugin-rum',
   '@qualy/plugin-rum-tencent',
 ]
 

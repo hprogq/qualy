@@ -31,6 +31,7 @@ const NEEDED = ['@qualy/plugin-database', '@qualy/plugin-ui-registry']
 const descriptor = (id: string, surfaceId: string, path: string) => `
 import { Plugin } from '@qualy/plugin-kit'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
+import { Browser } from '@qualy/plugin-kit/browser'
 import { APP_SHELL, PUBLIC } from '@qualy/ui-contract'
 
 export default Plugin.define(
@@ -44,7 +45,7 @@ export default Plugin.define(
     visibility: PUBLIC,
   }),
   Ui.i18n('./client/i18n'),
-  Ui.browser('./client/boot'),
+  Browser.module('./client/boot'),
 )
 `
 
@@ -57,7 +58,7 @@ const files = (namespace: string) => ({
   locales: {},
 }
 `,
-  'src/client/boot.js': 'export {}\n',
+  'src/client/boot.js': 'export default {}\n',
 })
 
 const probe = (options: { id: string; surface: string; path: string; namespace: string }) => ({

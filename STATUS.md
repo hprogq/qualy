@@ -14661,3 +14661,47 @@ Tests 1669 passed | 17 skipped(比 D2 多 4 例)。
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 233 passed | 3 skipped,
 Tests 1673 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0(111 个 JS asset);
 `check-chunks` exit 0。
+
+## 插件重构 Phase E:浏览器侧贡献有了生命周期(2026-09-15)
+
+以前插件的浏览器半边是**一次 import 的副作用**:模块被聚合拉进来,在模块图求值时自己注册。
+这一个形态同时带来两个问题——它**没有时刻**(发生在页面还不知道自己是哪个 release、还没决定渲染之前),
+也**没有终点**(什么都撤不回:测试无法重置,热重载注册两次,「停用」只能是「还在,只是没人问」)。
+
+**`@qualy/plugin-kit/browser`**:`Browser.module('./client/browser')` 指向一个 default export 为
+`BrowserPlugin` 的模块。
+
+- `setup(ctx)`:同步、廉价、**返回 disposer**——注册一个能力、在注册表里占个座。
+- `start(ctx)`:放昂贵的事(请求、vendor chunk、握手),**宿主从不 await**。
+- `startBrowserPlugins(plugins, ctx)`:按装配顺序**先全部 setup、再全部 start**,返回停止函数;
+  teardown **逆序**(后设置的可能拿着先设置的东西);**单个插件的失败是它自己的**——
+  setup 抛错只警告一次并跳过(它没能存在,于是也不 start),disposer 抛错不拖累后面的 disposer。
+- `ctx` 只有 `{release: {releaseId, clientProtocol}}`(§73):**不是第二个 DI 容器**,
+  插件要自己的能力就 import 自己的包,和屏幕一样。
+
+**迁移**:rum-tencent / storage-local / storage-cos 从「顶层 `registerX(...)`」改为
+`setup: () => registerX(...)`,而两个注册表的 `registerUploadDriver` / `registerRumProvider`
+**都改成返回 Dispose**(§12)。RUM 能力自己有了浏览器半边,用 `start` 去问服务端。
+
+**`apps/web` 最后一条插件实现 import 删除**。生产依赖里现在只剩 `@qualy/plugin-kit`
+——那是写插件用的 kit,组合根用它来**运行**浏览器半边,不是它自己是插件;与平台那张表同一条豁免。
+
+**门禁当场抓到一个真实回归**:RUM 的浏览器模块第一版**静态** import `./start.ts`,
+于是把 128 KB 的 api client 拉回了冷启动路径——`browser-graph` 的 24 KB boot 上限立刻报
+`costs 128 KB on every page load`。改成在 `start()` 里**动态** import 后通过。
+这正是当初把 `/client` 与 `/client/start` 拆开的那条理由,生命周期差点把它撤销。
+(同一门禁逐个量每个插件的浏览器半边:rum、rum-tencent、storage-cos、storage-local 全在 24 KB 内,
+所以 Aegis 与 COS SDK 仍然只在被用到时才加载。)
+
+**新增 `packages/core/plugin-kit/tests/browser-lifecycle.test.ts`(5 例)**:先全部 setup 再全部 start、
+teardown 逆序;stop 多次只生效一次;`start` 挂起不挡住后面的人(证明宿主没在 await);
+setup 抛错的插件不被 start 且不影响别人、disposer 抛错不拖累后面的;start 的 rejection 被报告而不冒泡。
+
+**停用/移除的语义更强了**:active-only 构建(D1)之后,未启用插件的浏览器半边**根本不在产物里**
+——不是「在但不跑」。dist-only fixture 的 boot 模块同样改成生命周期值,并在真实 `vite build` 里
+验证它因为被 `browserPlugins` 用到而进入产物(而不是因为 import 有副作用)。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 234 passed | 3 skipped,
+Tests 1679 passed | 17 skipped;`pnpm test:browser` 51 / 376;`pnpm build` exit 0 →
+`staged web release r_TGtgSnakIeX-lbn24iwE6A (123 assets)`——比 D4 多两个 chunk,正是 api client
+从冷启路径移到自己的 chunk;`check-chunks`、`check-staged-web`、`smoke-production` 全过。
