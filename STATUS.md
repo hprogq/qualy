@@ -14183,3 +14183,49 @@ docs/notes/aegis-web-sdk.md。上传之前的整条链路已对真实 API 跑通
   Tests 1637 passed | 17 skipped (1654);`pnpm test:browser` 50 / 369;`pnpm build` exit 0;
   `check-staged-web` exit 0(store 里 0 个 map,而 dist 里 112 个);`check-csp-build` exit 0;
   `smoke-production` 全 ok。
+
+## Phase 2 收口:命令归插件,以及还原真的通了(2026-09-14)
+
+**上一节有两处要更正**:
+
+- 上一节写的 `tools/observability/tencent-rum-sourcemaps.ts` + `pnpm rum:tencent:sourcemaps` 是错的。
+  用户指出这是插拔式系统、终端命令应由插件注册,而根 package.json 不该出现插件级命令——这正是
+  本仓库「根脚本与根配置禁止枚举可选业务插件」那条纪律。已改为 **`qualy rum sourcemaps`**:
+  `Cli.command` 声明,命名空间 `rum` 归当前 provider(一次只允许一个 provider,不会有第二个来抢),
+  `context: 'assembly'`,`load` 懒加载,所以服务端 boot 不为两个云 SDK 付费。实现移进
+  `packages/plugins/infra/rum-tencent/src/cli/sourcemaps.ts`,依赖也从根挪到插件。
+  docs/rum.md §29 加了实施偏离说明。`runtime-imports` 门禁当场抓到新增的动态 import,按它的登记簿
+  写明了加载带(这正是那份登记簿存在的意义)。
+- 上一节把 `DescribeReleaseFiles` 只回 10 条**误读成了「项目最多保留 10 个 sourcemap」**。
+  判据是按 `FileName` 逐个查被「淘汰」的那几个——**全都在**。控制台也证实了:共 336 条 / 34 页
+  (112 × 3 次上传)。真相是**列表默认最多回 10 条且没有任何分页参数**,详见
+  docs/notes/aegis-web-sdk.md。实现据此改成:先用 `FileVersion` 问一次「这个版本归档过吗」,
+  没有就整批上传(常见路径一次调用),重跑时才按 `FileName` 逐个查;上传后的校验同样按名字逐个查。
+
+**验收全部达成(真机,非模拟)**:
+
+- `apps/web/dist` 112 个 map;`client-dist` **0 个**;两道门禁都验证过会红。
+- `qualy rum sourcemaps` 对真实项目 159421 上传并归档 112 个,逐个校验通过;再跑一次是
+  `all 112 map(s) are already filed; nothing to do`(幂等成立)。
+- **堆栈还原成功**:从白名单内的 `localhost:5173` 用生产构建打一条**真正从 chunk 内部抛出**的异常
+  (第一次探针是用 `page.evaluate` 抛的,堆栈全是 `<anonymous>`,**根本没有 bundle 帧可还原**——
+  探针设计错误,不是管线问题;改成打断 `window.matchMedia`,让 throw 落在应用自己的调用点上)。
+  控制台显示:`assets/shared-Dz0oly_X.js` 行 2 列 655 →
+  `packages/web/runtime/src/theme.tsx` 行 42,高亮那行正是 `window.matchMedia(...)`。
+  本地用 Node 内置 `module.SourceMap` 独立算出同一位置(列差 1,0/1 起点之别)。
+
+**对真实 API 实查到的,已写进 docs/notes/aegis-web-sdk.md**:目的地是固定的
+`rumprod-1258344699` / `ap-guangzhou`(腾讯自己账号里的桶,所以从凭据反推不出来,本账号 `getService`
+也看不到);临时凭据**默认只有 10 秒**,必须显式传 `Timeout`;`DescribeReleaseFiles` 最多回 10 条
+且无分页;`CreateReleaseFile` 会先校验对象真的存在;`DeleteReleaseFile` 需要单独的 CAM 授权。
+
+**留在项目里的测试数据**:三次探针上传共 336 条记录,外加 3 条 `cap-probe` 版本的空记录
+(我探测配额时建的,`DeleteReleaseFile` 无权限删不掉)。都不影响使用——没有任何上报用那些版本号——
+要清理在控制台删。
+
+- **门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` Test Files 230 passed | 3 skipped (233);
+  Tests 1637 passed | 17 skipped (1654);`pnpm test:browser` 50 / 369;`pnpm test:browser:webkit` 2 / 14;
+  `pnpm build` exit 0;`check-staged-web` exit 0(dist 112 个 map,store 0 个);
+  `check-csp-build` exit 0;`smoke-production` 全 ok;`check-csp-enforce` 三页 0 violation。
+- **下一步**:Phase 3(API speed + requestId 关联),或按 docs/rum.md §42 先做 Phase 4 的上线前准备。
+  上线前必须把真实部署域名加进 RUM 应用的来源白名单,否则线上一条都收不到。

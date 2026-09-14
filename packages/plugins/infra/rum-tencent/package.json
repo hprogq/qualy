@@ -20,8 +20,11 @@
     "@qualy/plugin-kit": "workspace:*",
     "@qualy/plugin-rum": "workspace:*",
     "@qualy/plugin-ui-registry": "workspace:*",
+    "@qualy/release-contract": "workspace:*",
     "aegis-web-sdk": "catalog:",
-    "effect": "catalog:"
+    "cos-nodejs-sdk-v5": "catalog:",
+    "effect": "catalog:",
+    "tencentcloud-sdk-nodejs-rum": "catalog:"
   },
   "devDependencies": {
     "@qualy/tsconfig": "workspace:*"

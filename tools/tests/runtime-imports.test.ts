@@ -59,6 +59,8 @@ const REGISTERED: Record<string, string> = {
   'packages/plugins/base/rbac/src/index.ts': 'a capability module, loaded by the assembly tooling',
   'packages/plugins/assessment/core/src/index.ts':
     'a runtime-tier CLI command, loaded by the command runner rather than by a running server',
+  'packages/plugins/infra/rum-tencent/src/index.ts':
+    'an assembly-tier CLI command that files source maps, loaded by the command runner; it reaches two cloud sdks the serving process must never pay for',
   'packages/plugins/infra/database/src/assembly/index.ts':
     'inside the capability module: the generator, the differ and the migrator, each loaded by the command that needs it',
 }

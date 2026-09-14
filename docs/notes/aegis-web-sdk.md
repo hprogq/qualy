@@ -303,6 +303,46 @@ isHidden = true,整页此后不再发送任何东西
 
 这也顺带验证了一条设计要求:上报端完全不工作时,应用毫发无损——0 条 CSP violation,页面无任何异常。
 
+## SourceMap 上传:控制台 API 的三个坑(Phase 2 实测)
+
+上传流程本身与 docs/rum.md §27 一致(`DescribeReleaseFileSign` → COS → `CreateReleaseFile` →
+`DescribeReleaseFiles`),但有三件事只有真打过才知道。
+
+### 目的地是固定值,而且推不出来
+
+`DescribeReleaseFileSign` **只返回临时凭据,不返回 bucket / region / key 前缀**。目的地是
+
+```text
+Bucket: rumprod-1258344699    Region: ap-guangzhou
+```
+
+腾讯自己账号里的桶(appid 1258344699),对所有客户是同一个。所以**无法从凭据反推**:
+它授权的是别人账号里的桶,本账号 `getService` 看不到也列不出。这条只在官方上传示例里,
+公开 API 文档没有。`FileKey` 形如 `${projectID}-${version}-${timestamp}-${fileName}`,
+`FileName` 用 basename。
+
+### 临时凭据默认只有 10 秒
+
+`DescribeReleaseFileSign({})` 给的窗口是 **10 秒**,文档没写。一次上传一个文件都未必够。
+显式传 `Timeout`(实测 3600 有效)。官方示例走的是 COS 的 `getAuthorization` 回调、过期了再要一次;
+一次要够整批更简单。
+
+### `DescribeReleaseFiles` 最多回 10 条,而且没有分页参数
+
+这条最坑。请求结构里只有 `ProjectID` / `FileVersion` / `FileName` / `IgnoreDefaultTimeRange`,
+响应里没有任何游标或总数。一次 `CreateReleaseFile` 提交 112 个文件**全部创建成功**,
+但随后的 `DescribeReleaseFiles` 只回 10 条——看起来像「只归档了 10 个、其余被淘汰」,
+实际逐个用 `FileName` 查,**112 个一个不少**。
+
+差点据此报出一个不存在的「项目最多 10 个 sourcemap」的产品限制。判据是:按名字查被「淘汰」的那几个,
+全都在。
+
+所以幂等判断与上传后校验**都必须按 `FileName` 逐个查**,不能靠列表比对。代价可接受(一次 release
+一百多个调用),实现里先用 `FileVersion` 问一次「这个版本以前归档过吗」,没有就整批上传,
+只有重跑才逐个查。
+
+顺带:`DeleteReleaseFile` 需要单独的 CAM 授权,只有 Create/Describe 权限的密钥删不掉记录。
+
 ## Phase 1 据此应写的配置
 
 在 docs/rum.md §39 基础上的修订:

@@ -1599,6 +1599,13 @@ pnpm build
 pnpm rum:tencent:sourcemaps
 ```
 
+> **实施偏离（2026-09-14）**：根 package.json 不放插件级命令——这是插拔式系统，终端命令由插件经
+> `Cli.command` 注册。实际落地为 `qualy rum sourcemaps`：命名空间 `rum` 归当前 provider
+> （`@qualy/plugin-rum-tencent`，一次只允许一个 provider，所以不会有第二个来抢），
+> `context: 'assembly'`，模块懒加载，服务端 boot 不付费。实现从 `tools/observability/` 移进插件
+> （`packages/plugins/infra/rum-tencent/src/cli/sourcemaps.ts`）。依赖用
+> `tencentcloud-sdk-nodejs-rum`（220 KB）而不是 §47 写的整包（解包 44 MB）。
+
 Deployment/release pipeline：
 
 ```text

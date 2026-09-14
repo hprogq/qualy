@@ -4,6 +4,7 @@ import { ShellPolicy } from '@qualy/api-kit/shell-policy'
 import { Rum } from '@qualy/plugin-rum/plugin'
 import { RumProviders } from '@qualy/plugin-rum/server'
 import { Ui } from '@qualy/plugin-ui-registry/plugin'
+import { Cli } from '@qualy/plugin-kit/cli'
 import { config, TencentRumConfig } from './server/config.ts'
 import { TENCENT_RUM_HOST, TENCENT_RUM_PROVIDER } from './settings.ts'
 
@@ -49,6 +50,18 @@ const plugin = Plugin.define(
   Rum.provider({ code: TENCENT_RUM_PROVIDER }),
   // the browser half announces itself; the sdk arrives only if it is used
   Ui.browser('./client/register.ts'),
+  // Filing this build's source maps, run by a release pipeline and never by
+  // the serving process. The namespace is this provider's because the
+  // capability has no commands of its own and only one provider may be
+  // enabled at a time; a different provider would claim it in its turn, with
+  // its own platform's upload flow behind the same words.
+  Cli.command({
+    namespace: 'rum',
+    name: 'sourcemaps',
+    summary: "file this build's source maps with the reporting platform",
+    context: 'assembly',
+    load: () => import('./cli/sourcemaps.ts'),
+  }),
   Plugin.layer(registration),
 )
 

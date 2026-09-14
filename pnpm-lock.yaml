@@ -207,18 +207,12 @@ importers:
       '@qualy/plugin-ping':
         specifier: workspace:*
         version: link:packages/plugins/demo/ping
-      '@qualy/plugin-rum-tencent':
-        specifier: workspace:*
-        version: link:packages/plugins/infra/rum-tencent
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:packages/plugins/infra/ui-registry
       '@qualy/rbac-contract':
         specifier: workspace:*
         version: link:packages/contracts/rbac
-      '@qualy/release-contract':
-        specifier: workspace:*
-        version: link:packages/contracts/release
       '@qualy/tsconfig':
         specifier: workspace:*
         version: link:packages/build/tsconfig
@@ -240,9 +234,6 @@ importers:
       '@vitest/browser-playwright':
         specifier: 'catalog:'
         version: 4.1.10(playwright@1.62.1)(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@4.1.10)
-      cos-nodejs-sdk-v5:
-        specifier: 'catalog:'
-        version: 3.0.0
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
@@ -255,9 +246,6 @@ importers:
       prettier:
         specifier: 'catalog:'
         version: 3.9.6
-      tencentcloud-sdk-nodejs-rum:
-        specifier: 'catalog:'
-        version: 4.1.281(supports-color@7.2.0)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -1503,12 +1491,21 @@ importers:
       '@qualy/plugin-ui-registry':
         specifier: workspace:*
         version: link:../ui-registry
+      '@qualy/release-contract':
+        specifier: workspace:*
+        version: link:../../../contracts/release
       aegis-web-sdk:
         specifier: 'catalog:'
         version: 1.41.15
+      cos-nodejs-sdk-v5:
+        specifier: 'catalog:'
+        version: 3.0.0
       effect:
         specifier: 'catalog:'
         version: 4.0.0-rc.111
+      tencentcloud-sdk-nodejs-rum:
+        specifier: 'catalog:'
+        version: 4.1.281(supports-color@7.2.0)
     devDependencies:
       '@qualy/tsconfig':
         specifier: workspace:*
