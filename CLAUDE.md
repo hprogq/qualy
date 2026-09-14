@@ -59,7 +59,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
   浏览器代码在 `src/client/`(自带 tsconfig,根工程与 plugin-isolation 门禁 exclude)。叶子子路径:`./db` `./permissions` `./api`(HttpApiGroup 契约,服务端实现与浏览器 typed client 共用的叶子)`./client/api`(本插件 `Api.local(...groups)` typed client)等,禁止 barrel。
 - 插件读自己的清单块一律 `decodePluginConfig`(@qualy/plugin-kit/config):**未声明的键必须拒绝而不是忽略**,否则 `sampleRtae: 0.5` 这类 typo 看起来配置成功、实际无人读取。这条策略只管清单通道,不要推广成「所有 decode 都 strict」。
 - contribution 声明源:provider 的 `contributionFromDescriptor(pluginId, descriptor, packageRoot)` 单源读描述器(同键的 package.json 声明硬拒);resolve **import 描述器**取运行时元数据(描述器是纯值,import 无副作用);能力扩展点带 `capability` 键,resolve 据此在写 lock 前拒绝「贡献了没人提供的能力」。
-- **CLI 命令**:名词优先两级——`qualy <lifecycle>`(resolve/plan/generate/deploy/list,保留字)+ `qualy <namespace> <command>`(插件经 `Cli.command` 声明,@qualy/plugin-kit/cli)。命名空间一次认领一个所有者,`aliases` 支持(`db`→`database`),实现惰性加载。context 档位:`assembly` / `capability` / `runtime`。`runtime` 档(宿主 `apps/cli/src/runtime.ts`,seam `@qualy/assembly/runtime` + `@qualy/api-kit/headless`)= 解析 frozen resolution → 按 server 同一 assembly 建 prepared/services/runtime → **不起 HTTP、不跑 boot hook、migrations 强制 off(显式 `apply` 直接拒绝)** → 命令模块交出的 Effect 程序在 scoped runtime 上执行 → dispose;不是 job framework,不建 daemon。`qualy list` 列出全部。
+- **CLI 命令**:名词优先两级——`qualy <lifecycle>`(resolve/plan/generate/deploy/list/plugin,保留字)+ `qualy <namespace> <command>`(插件经 `Cli.command` 声明,@qualy/plugin-kit/cli)。命名空间一次认领一个所有者,`aliases` 支持(`db`→`database`),实现惰性加载。context 档位:`assembly` / `capability` / `runtime`。`runtime` 档(宿主 `apps/cli/src/runtime.ts`,seam `@qualy/assembly/runtime` + `@qualy/api-kit/headless`)= 解析 frozen resolution → 按 server 同一 assembly 建 prepared/services/runtime → **不起 HTTP、不跑 boot hook、migrations 强制 off(显式 `apply` 直接拒绝)** → 命令模块交出的 Effect 程序在 scoped runtime 上执行 → dispose;不是 job framework,不建 daemon。`qualy list` 列出全部。**装配的选择本身也是 lifecycle**:`qualy plugin add/enable/disable/remove` 改的是 qualy.yml 与 lock,按 document 层编辑保住注释,失败整体回滚,**下架与移除都不删数据**(能力仍握有的插件以 `detached` 留在 lock);它刻意不在「lock 必须最新」的门后面。
 
 ## 角色与隔离
 
@@ -68,7 +68,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
   **发布在哪个 scope 与此无关**:`@qualy/plugin-*` 只是本仓库自己的命名约定,
   代码里不得把它当判据(`tools/tests/open-world.test.ts` 扫全树守住;`plugin:add` 例外,
   它是往本仓库树里 scaffold 而非发现)。
-- 新增插件一律 `pnpm plugin:add <名>`:自动写 apps/server 依赖 + qualy.yml 条目 + `qualy resolve`,按 exports 声明补 apps/web 依赖。新包 package.json 一律带 `"license": "AGPL-3.0-only"`。
+- 新增插件一律 `pnpm plugin:add <名>`:它只做「只在本仓库成立」的那半——写 apps/server 的 workspace 依赖,然后 `pnpm install`,清单条目交给 `qualy plugin add`(重复运行安全,已在清单里就直接 resolve)。apps/web 不再需要任何插件声明。新包 package.json 一律带 `"license": "AGPL-3.0-only"`。
 - **Web 产物 = active assembly 的浏览器投影**(不是 installed 超集):`qualyPlugins()` 一律读 active,
   `vite build` 不再切超集;插件启停 → resolution 变 → **部署必须重建 Web release**。旧 tab 由服务端
   按 `X-Qualy-Web-Release` 反查该 release 的 `resolutionHash` 判定:同装配放行(纯代码发布不打断旧 tab),
@@ -119,7 +119,7 @@ Conventional Commits,永远用英文编写,scope 用对外的模块名(如 web/s
 
 ## 测试分层
 
-- node 套件(`pnpm test`)跑服务/契约/授权与 HTTP(真实 URL、状态码);`*.browser.test.tsx` 经 `pnpm test:browser`(Vitest Browser Mode + Chromium,root 是 apps/web——拥有 react 的包)跑组件,覆盖模拟 DOM 盖不住的部分;harness 放 `apps/web/tests/support/`。断言按 role/label 查询,不查内部 state。
+- node 套件(`pnpm test`)跑服务/契约/授权与 HTTP(真实 URL、状态码);`*.browser.test.tsx` 经 `pnpm test:browser`(Vitest Browser Mode + Chromium,root 是 apps/web——拥有 react 的包)跑组件,覆盖模拟 DOM 盖不住的部分。**harness 是包**(`@qualy/testkit/browser`,catalogs 与样式表都是入参,它不 import 任何插件也不读 `virtual:qualy/plugins`);**浏览器测试跟着它测的那个包走**——某个插件的屏归该插件的 `tests/`(带 `tests/support/screen.tsx` 点名自己与真正渲染到的邻居的 catalog,以及 `tests/tsconfig.browser.json` 让它进浏览器程序),`apps/web/tests` 只留 host 与 widget 平台自己的。断言按 role/label 查询,不查内部 state。
 - **禁止**为白盒测试暴露生产内部;资源所有者可提供显式 `<包>/testkit` 子路径(如 @qualy/plugin-database/testkit),testkit 不进包根导出,生产源码不得 import 任何 testkit(门禁守)。
 - **业务插件测试不得自己持有数据库**:scratch 库全生命周期归 `createTestContext()`(按生产路径注册数据库插件,`migrations: 'apply'`);fixture 播种一律 testkit 的 `runSql`。正常路径永不 force;force 只在普通 drop 失败后清残留,且所有错误一并 AggregateError 抛出。约束测试照旧直接写非法 SQL(走 `db.query()`/`runSql`)。直接用 `pg` 只允许 database 基础设施、迁移升级测试与以 PoolClient 为公开入参的脚本测试;业务插件包不得声明 `pg`(tools/tests/test-layers.test.ts 守)。
 - **浏览器测试的三层纪律(2026-08-20 立)**:①**定位**可以用用户看得见的名字——`getByRole(角色, {name})`、`getByLabelText`,那正是使用者识别控件的方式,控件改名时测试跟着改是应该的;②**业务断言不得依赖界面文案**——空状态、状态片、计数句、提示、拒绝语都是 copy,改文案不改行为却让测试全红,是耦合过重。给没有天然语义的元素加稳定钩子(`data-testid` + 承载事实的 `data-*`,如 `data-entry-standing`、`data-count`、`data-origin`),断言那个事实与它的值;③**只有以文案为对象的测试才断言原文**,集中在 `apps/web/tests/localization.browser.test.tsx`(ICU 复数、插值落位、第二人称声部、切 locale),数量保持很少。**fixture 里的业务数据不是 copy**(批次名、人名、参评人填的字),照常直接断言。定位优先级:role+name → label → 稳定 testid → 文本(仅当文本就是测试对象)→ CSS 选择器(最后手段);不要为省事给一切加 testid,`getByRole('button', {name})` 同时验证了可访问性,比 testid 更值钱。
