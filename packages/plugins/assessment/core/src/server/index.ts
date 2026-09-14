@@ -2284,19 +2284,25 @@ export const make = Effect.fn('Assessment.make')(function* () {
       const taking = new Set(
         yield* dieQuery(withDb(participatingBatchIdsOf({ tenantId, userId: as.userId, batchIds }))),
       )
-      const items: MyStanding['items'][number][] = []
-      for (const batchId of batchIds) {
-        const authority = yield* batchAuthority(tenantId, batchId, as.userId)
-        items.push({
-          batchId,
-          myEntries: taking.has(batchId)
-            ? (mine.get(batchId) ?? { toFix: 0, draft: 0, submitted: 0 })
-            : null,
-          reviewsWaiting: authority.has('assessment.review.process')
-            ? (waiting.get(batchId) ?? 0)
-            : null,
-        })
-      }
+      // Every round asks rbac its own question, so the rounds ask at once:
+      // in series a reader with a dozen rounds under way waited for a dozen
+      // round trips to answer a card that shows one of them.
+      const items = yield* Effect.forEach(
+        batchIds,
+        Effect.fn(function* (batchId: string) {
+          const authority = yield* batchAuthority(tenantId, batchId, as.userId)
+          return {
+            batchId,
+            myEntries: taking.has(batchId)
+              ? (mine.get(batchId) ?? { toFix: 0, draft: 0, submitted: 0 })
+              : null,
+            reviewsWaiting: authority.has('assessment.review.process')
+              ? (waiting.get(batchId) ?? 0)
+              : null,
+          }
+        }),
+        { concurrency: 8 },
+      )
       return { items }
     }),
 
