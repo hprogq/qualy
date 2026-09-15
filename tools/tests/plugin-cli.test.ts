@@ -2,7 +2,9 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import os from 'node:os'
 import { commitLock, createWorkspace, type Workspace } from '@qualy/assembly/testkit'
+import { openFileSet } from '../../apps/cli/src/resolution.ts'
 import { lockPathFor, readLock } from '@qualy/assembly'
 
 // Managing the selection from the command line.
@@ -47,6 +49,8 @@ function run(workspace: Workspace, args: readonly string[]) {
 }
 
 const manifestOf = (workspace: Workspace) => fs.readFileSync(workspace.manifestPath, 'utf8')
+const lockTextOf = (workspace: Workspace) =>
+  fs.readFileSync(lockPathFor(workspace.manifestPath), 'utf8')
 
 /** every file the workspace itself holds, by content, ignoring what was installed */
 function contents(dir: string, at = dir): Map<string, string> {
@@ -127,10 +131,12 @@ describe('qualy plugin add', () => {
     const workspace = await ready()
     try {
       const before = manifestOf(workspace)
+      const lockBefore = lockTextOf(workspace)
       const again = run(workspace, ['add', '@qualy/plugin-database'])
       expect(again.ok).toBe(false)
       expect(again.output).toContain('is already in')
       expect(manifestOf(workspace)).toBe(before)
+      expect(lockTextOf(workspace)).toBe(lockBefore)
     } finally {
       workspace.dispose()
     }
@@ -140,10 +146,12 @@ describe('qualy plugin add', () => {
     const workspace = await ready()
     try {
       const before = manifestOf(workspace)
+      const lockBefore = lockTextOf(workspace)
       const missing = run(workspace, ['add', '@acme/qualy-not-installed'])
       expect(missing.ok).toBe(false)
       expect(missing.output).toContain('is not installed')
       expect(manifestOf(workspace)).toBe(before)
+      expect(lockTextOf(workspace)).toBe(lockBefore)
     } finally {
       workspace.dispose()
     }
@@ -166,11 +174,13 @@ describe('qualy plugin add', () => {
     try {
       await commitLock(workspace)
       const before = manifestOf(workspace)
+      const lockBefore = lockTextOf(workspace)
       const refused = run(workspace, ['add', '@acme/qualy-impostor'])
       expect(refused.ok).toBe(false)
       expect(refused.output).toContain('calls itself')
       // the whole point of the rollback: the tree still resolves
       expect(manifestOf(workspace)).toBe(before)
+      expect(lockTextOf(workspace)).toBe(lockBefore)
       expect(run(workspace, ['disable', '@qualy/plugin-ui-registry']).ok).toBe(true)
     } finally {
       workspace.dispose()
@@ -191,13 +201,76 @@ describe('qualy plugin add', () => {
     try {
       await commitLock(workspace)
       const before = manifestOf(workspace)
+      const lockBefore = lockTextOf(workspace)
       const refused = run(workspace, ['add', '@acme/qualy-orphan'])
       expect(refused.ok).toBe(false)
       expect(refused.output).toContain('contributes to capability nosuch')
       expect(refused.output).toContain('unchanged')
       expect(manifestOf(workspace)).toBe(before)
+      expect(lockTextOf(workspace)).toBe(lockBefore)
     } finally {
       workspace.dispose()
+    }
+  })
+})
+
+describe('the files a selection owns are written together or not at all', () => {
+  // The manifest, the lock and every module a capability derives. `writeAtomic`
+  // makes ONE of them all-or-nothing, which is not the same claim: a command
+  // that wrote the first three and failed on the fourth left a tree carrying a
+  // new selection, a new lock and a mixture of old and new generated modules -
+  // and every command that could have fixed it is gated on the lock matching
+  // those modules.
+  //
+  // The fault is a real one rather than a stubbed writer: a directory standing
+  // where a file must go, which is what a botched deploy or a stray `mkdir -p`
+  // leaves behind. The repository's capabilities derive no modules today, so
+  // the four-file set is built here directly - at the seam the CLI itself
+  // writes through.
+  it('puts every earlier file back when a later one cannot be written', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-file-set-'))
+    try {
+      const at = (name: string) => path.join(dir, name)
+      fs.writeFileSync(at('qualy.yml'), 'version: 2\n')
+      fs.writeFileSync(at('qualy.lock.json'), '{"old":true}\n')
+      fs.writeFileSync(at('one.ts'), 'export const one = 1\n')
+      // the fourth write cannot succeed: its path is a directory
+      fs.mkdirSync(at('two.ts'))
+
+      const files = openFileSet()
+      expect(() => {
+        files.write(at('qualy.yml'), 'version: 2\nplugins:\n  a: {}\n')
+        files.write(at('qualy.lock.json'), '{"new":true}\n')
+        files.write(at('one.ts'), 'export const one = 2\n')
+        files.write(at('three.ts'), 'export const three = 3\n')
+        files.write(at('two.ts'), 'export const two = 2\n')
+      }).toThrow()
+
+      files.rollback()
+
+      expect(fs.readFileSync(at('qualy.yml'), 'utf8')).toBe('version: 2\n')
+      expect(fs.readFileSync(at('qualy.lock.json'), 'utf8')).toBe('{"old":true}\n')
+      expect(fs.readFileSync(at('one.ts'), 'utf8')).toBe('export const one = 1\n')
+      // one the set created rather than replaced: it goes away entirely
+      expect(fs.existsSync(at('three.ts'))).toBe(false)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves a file it never changed alone', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qualy-file-set-'))
+    try {
+      const at = path.join(dir, 'same.ts')
+      fs.writeFileSync(at, 'export const same = 1\n')
+      const files = openFileSet()
+      // a write of the bytes already there is not a change, so a rollback
+      // has nothing to put back and must not rewrite the file either
+      expect(files.write(at, 'export const same = 1\n')).toBe(false)
+      files.rollback()
+      expect(fs.readFileSync(at, 'utf8')).toBe('export const same = 1\n')
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
     }
   })
 })
@@ -229,10 +302,12 @@ describe('qualy plugin enable and disable', () => {
     const workspace = await ready()
     try {
       const before = manifestOf(workspace)
+      const lockBefore = lockTextOf(workspace)
       const again = run(workspace, ['enable', '@qualy/plugin-database'])
       expect(again.ok).toBe(true)
       expect(again.output).toContain('already enabled')
       expect(manifestOf(workspace)).toBe(before)
+      expect(lockTextOf(workspace)).toBe(lockBefore)
     } finally {
       workspace.dispose()
     }
@@ -292,10 +367,12 @@ describe('qualy plugin remove', () => {
     const workspace = await ready()
     try {
       const before = manifestOf(workspace)
+      const lockBefore = lockTextOf(workspace)
       const refused = run(workspace, ['remove', '@qualy/plugin-org'])
       expect(refused.ok).toBe(false)
       expect(refused.output).toContain('is not in')
       expect(manifestOf(workspace)).toBe(before)
+      expect(lockTextOf(workspace)).toBe(lockBefore)
     } finally {
       workspace.dispose()
     }

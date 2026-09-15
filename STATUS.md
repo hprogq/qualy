@@ -15009,3 +15009,32 @@ plugin-cli                        11 例
   只在临时 workspace 里跑过,没在本仓库的 apps/server 上实做过一次。
 
 **本轮到此为止**,不自行开 Phase I。
+
+## post-H 验收修复(一):选择的那组文件要么全写,要么全不写(2026-09-15)
+
+复审点出的 correctness issue,确实成立。Phase H 的回滚只包住了 `resolveAssembly()`,
+而 `writeResolution()` 跑在 `try/catch` 外面;`writeAtomic` 保证的是**单个文件**写入原子,
+不是这一组文件的事务。于是这条路径存在:
+
+```text
+manifest 写成功 → resolve 成功 → lock 写成功 → 第 2 个 derived module 写失败
+留下:新 manifest + 新 lock + 新旧混合的 generated modules
+```
+
+而这正是 frozen gate 要拦的状态,且**每条能修它的命令都被那道门挡着**。
+
+修法是 undo log,不是 WAL:`openFileSet()` 每次写之前记下被替换的字节(或「原本不存在」),
+`rollback()` 逆序放回或删除。manifest / lock / 每个 derived module 走同一个 set,
+`qualy plugin *` 与 `qualy resolve` **两条写路径都改了**——后者同样会先写 lock 再逐个写 module。
+rollback 不回收写入时创建的空目录,那是它唯一不撤的东西(空目录对这些文件的任何读者都与不存在无异)。
+
+**fault-injection regression**:在目标路径上事先 `mkdir` 一个同名目录,让第 4 次写真实失败
+(EISDIR,不是打桩的 writer),断言 manifest、lock、先写成功的 module 全部逐字节回原样,
+而 set 新建的那个文件整个消失。本仓库当前的能力**一个 derived module 都没有声明**,
+所以这组四文件是在 CLI 自己写入的那个接缝上直接构造的——如实记下这一点。
+端到端那几条「被拒绝」用例也补了断言:**lock 也必须逐字节不变**,不再只看 manifest。
+
+**门禁验证过会红**:去掉 `undo.push(...)` → 三条用例红;去掉命令里的 `files.rollback()` → 两条红。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`plugin-cli` 13 例全过;
+真实清单 `resolve` → `disable` → `enable` 往返后 `git status` 干净。

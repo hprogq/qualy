@@ -19,7 +19,7 @@ import {
   runtimeLayers,
 } from '@qualy/assembly'
 import { PLUGIN_USAGE, runPluginCommand } from './plugin.ts'
-import { writeResolution } from './resolution.ts'
+import { openFileSet, writeResolution } from './resolution.ts'
 
 // deploy and the capability commands reach real systems, and the connection
 // details for them live in .env exactly as they do for `pnpm dev`
@@ -122,8 +122,17 @@ async function main(): Promise<void> {
       // no writer, the first capability to declare a module would brick every
       // gated command with a drift error whose prescribed fix is this very
       // command, changing nothing.
-      for (const line of writeResolution(resolution, { lockPath, manifestPath })) {
-        console.log(line)
+      // one set, like every other writer of these files: a lock written
+      // beside half the derived modules is the state the frozen gate exists
+      // to catch, and no command could fix it
+      const files = openFileSet()
+      try {
+        for (const line of writeResolution(resolution, { lockPath, manifestPath, files })) {
+          console.log(line)
+        }
+      } catch (error) {
+        files.rollback()
+        throw error
       }
     }
     for (const plugin of resolution.plugins.values()) {

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
-import { editManifest, lockPathFor, readLock, resolveAssembly, writeAtomic } from '@qualy/assembly'
+import { editManifest, lockPathFor, readLock, resolveAssembly } from '@qualy/assembly'
 import { resolvePackageDir } from '@qualy/assembly/host'
-import { relativeToCwd, writeResolution } from './resolution.ts'
+import { openFileSet, relativeToCwd, writeResolution } from './resolution.ts'
 
 // Managing the selection: what this deployment runs, and what it keeps.
 //
@@ -19,11 +19,12 @@ import { relativeToCwd, writeResolution } from './resolution.ts'
 //
 // Two properties the tests hold:
 //
-//   Nothing is half-applied. The manifest is written, the assembly is
-//   resolved, and if resolving refuses - the package is not installed, its
-//   descriptor calls itself something else, two plugins claim one capability
-//   - the manifest goes back to the bytes it had. A refused command leaves a
-//   tree that still resolves.
+//   Nothing is half-applied. The manifest, the lock and every module a
+//   capability derives are one file set: they are written together and, if
+//   anything at all refuses - the package is not installed, its descriptor
+//   calls itself something else, two plugins claim one capability, a write
+//   fails on the disk - every one of them goes back to the bytes it had. A
+//   refused command leaves a tree that still resolves.
 //
 //   Nothing is dropped. `disable` and `remove` take a plugin off the runtime
 //   and out of the selection; neither touches a table. A capability that has
@@ -61,8 +62,7 @@ export async function runPluginCommand(
   }
   const { manifestPath } = options
   const lockPath = lockPathFor(manifestPath)
-  const before = fs.readFileSync(manifestPath, 'utf8')
-  const edit = editManifest(before, manifestPath)
+  const edit = editManifest(fs.readFileSync(manifestPath, 'utf8'), manifestPath)
 
   if (verb === 'add') {
     if (edit.has(id)) {
@@ -100,15 +100,21 @@ export async function runPluginCommand(
     edit.setEnabled(id, enabled)
   }
 
-  writeAtomic(manifestPath, edit.toString())
+  // read before the manifest moves under it: the lock this resolution builds
+  // on is the one that was there when the command started
+  const previousLock = readLock(lockPath)
+  const files = openFileSet()
   let resolution
+  let said: string[]
   try {
-    resolution = await resolveAssembly({ manifestPath, previousLock: readLock(lockPath) })
+    files.write(manifestPath, edit.toString())
+    resolution = await resolveAssembly({ manifestPath, previousLock })
+    said = writeResolution(resolution, { lockPath, manifestPath, files })
   } catch (error) {
-    // the selection this command proposed cannot be assembled, so it was
-    // never a selection: put the file back rather than leave a tree whose
-    // manifest and lock disagree
-    writeAtomic(manifestPath, before)
+    // the selection this command proposed cannot be written whole, so it was
+    // never a selection: put every file back rather than leave a tree whose
+    // manifest, lock and derived modules disagree
+    files.rollback()
     throw new Error(
       `${verb} ${id} refused, ${relativeToCwd(manifestPath)} unchanged: ${
         error instanceof Error ? error.message : String(error)
@@ -118,7 +124,7 @@ export async function runPluginCommand(
   }
 
   console.log(`${relativeToCwd(manifestPath)} written`)
-  for (const line of writeResolution(resolution, { lockPath, manifestPath })) console.log(line)
+  for (const line of said) console.log(line)
 
   if (verb === 'remove') {
     const kept = resolution.plugins.get(id)
