@@ -16209,7 +16209,7 @@ docs/notes/mounted-env.md):
 - `apps/web/vite.config.ts`:`envDir: false`(审计 `import.meta.env` 零使用;`MODE/DEV/PROD/BASE_URL`
   不来自 env file,不受影响)。
 - `.1password/environments.toml`:仅 `mount_paths = [".env"]` 与说明注释。无 SDK/CLI/MCP 依赖。
-- `.env.example` 头注释、README Development 段、docs/notes/mounted-env.md;docs/runtime-redesign.md
+- `.env.example` 头注释、~~README Development 段~~(已回退,见下一节)、docs/notes/mounted-env.md;docs/runtime-redesign.md
   §25 与两处 watch 清单、§57.6 第 38 条加 2026-09-16 修订标注。
 
 **真机验证(对 repo 根真实 `.env`,就地备份到 gitignored 的 `.env.real-backup`,trap 还原,md5/行数核对):**
@@ -16257,3 +16257,90 @@ prettier --check(本轮改动文件)                  clean
 ### 下一步
 
 代码侧 RUM 仍无待办;staging 按 docs/notes/rum-rollout.md 由人执行。
+
+## 修正:secret manager 归开发者;storage-local 路由改为首次上传时声明(2026-09-16)
+
+### 设计裁决
+
+**撤回 1Password 项目级配置,保留 FIFO/挂载式 `.env` 兼容。** 上一节提交的
+`.1password/environments.toml` 把某一个 secret manager 的挂载路径变成了项目约定,这不对:
+用普通 `.env`、shell 环境变量还是任何 secret manager,是每个开发者自己的选择,不属于仓库。
+已删除该文件;仓库里不含也不需要任何 secret manager 的配置、hook 或账号信息。
+
+**不撤回**的部分——它们与具体工具无关,是运行时设计:`apps/server/src/dev/env.ts` 在
+`pnpm dev` 启动时读一次 `.env` 形成不可变快照,所有 reload 继承;`.env` 不进 watcher;改变量要
+重启 `pnpm dev`;普通文件与 FIFO 都支持;shell 覆盖 `.env`;`envDir: false`。
+`.env.example` 头注释、docs/notes/mounted-env.md、docs/runtime-redesign.md §25 的措辞改为:
+Qualy 使用标准 `.env` / process environment,普通磁盘 `.env` 是默认且完全支持;secret manager
+可以把 `.env` 挂载为 FIFO,1Password Environments 只作为一个兼容例子出现。
+
+措辞里「shell 覆盖 `.env`」先实测再写:`--env-file-if-exists` 与 `process.loadEnvFile` 均不覆盖
+已设置的变量(`PROBE=shell` 时两者都读出 `shell`);`docker compose` 的 `env_file` 不遵循这条,
+所以文档把它限定在「Qualy 自己的 Node 进程」。
+
+**根目录 README 回退到 e48cb8dd 之前的版本**:那一笔写入的 Development 段落(提到
+`.1password/environments.toml` 与挂载式 `.env`)整体移除,README 不承载这类说明;
+挂载式 `.env` 的说明留在 `.env.example` 与 docs/notes/mounted-env.md。
+
+### storage-local:从 `start()` 后台注册改为首次上传前 await
+
+上一版在 `setup()` 注册 driver,却在**不被 await** 的 `start()` 里 dynamic import 契约再注册路由,
+所以理论上首次很快的上传会先于路由发出,被 RUM fail closed 丢掉;同时每个页面都会触发这次加载。
+现在 `declareRoute()` memoize 一个 Promise,`upload()` 先 await 它再发 XHR,`start()` 删除。
+
+改写时顺带抓到三处 lazy 化本身会引入的缺陷,均已处理并有用例:
+
+- 第一版写成 `.then(onFulfilled, onRejected)`,**`onRejected` 接不住 `onFulfilled` 里的异常**——
+  注册抛错时 rejected Promise 会被 memoize,此后所有上传永久失败。改为 `.then().catch()`,
+  失败时清空 memo,且**不阻断本次上传**(上报不是上传的依赖,代价只是一条被拒的 timing record);
+- 在 await 期间取消:`put()` 之后才给 signal 挂 `abort` 监听,对已 aborted 的 signal 挂监听永远
+  不会触发,取消会被吞掉。await 之后显式检查 `signal.aborted`;
+- 测试侧:浏览器模式下 `vi.resetModules()` **不会给出新的模块图**,第一版 5 个用例里有 3 个是
+  复用已完成声明的实例空转通过的(计数器始终为 0 才暴露)。改为按所需初始状态拆成两个文件
+  (浏览器套件一个文件一个页面),mock 用顶部 hoist 的 `vi.mock`;「不上传就不下载」用浏览器
+  真实的 resource timing 观察,不靠 mock。mock factory 直接 throw 在 Playwright 路由层会变成
+  unhandled rejection,所以失败路径用「注册抛错」驱动,与 chunk 加载失败走同一个 `.catch`。
+
+**反向验证(逐条实测):**
+
+| 故意破坏                                        | 结果                               |
+| ----------------------------------------------- | ---------------------------------- |
+| 回到 `start()` 后台注册、upload 不等待           | 6/6 红                             |
+| 不 memoize                                      | 「declared once」红                |
+| await 后不检查取消                              | 3 例红(含 cancelled、route known) |
+| 失败后不清空 memo                               | 「asks again」红                   |
+| 失败时让上传一起失败                            | 2 例红                             |
+| 恢复原 `.then(ok, fail)` 写法                   | 2 例红                             |
+| `setup()` 里预加载契约(无 `start`)             | 「costs a page … nothing」红,resource timing 读数 1 |
+
+**生产产物实测**(`pnpm build` 后分析 `apps/web/dist`):契约 chunk `c-DDcqIr072.js` 284 字节,
+不在 `index.html`、不在首屏静态可达图(11 个 chunk)里;入口中为
+`pr??=C(async()=>{…await import(`./c-DDcqIr072.js`)…})`。它的预加载清单另外 5 个 chunk
+**首屏都已加载**,所以在完整装配的应用里,首次上传真正新增的只有这 284 字节。
+审计里「每页后台下载 126 KB」对完整应用偏大:126 KB 是 browser-graph 门禁**单独打包** boot
+模块的量,api kit 在整个应用里本就经 `clientFor` 进入首屏。首传竞态本身是真实的,已修。
+
+### 本机环境的一个观察(未改动)
+
+本轮 gate 期间,仓库根 `.env` 是一个 FIFO(`prw-------`,02:57 创建,晚于上一轮全部实验,
+且无 `.env.real-backup` 残留),判断为开发者自己配置的挂载。未读取、未修改。gate 中读取
+`.env` 的步骤(`pnpm qualy …`、smoke-production 等)经这个挂载正常完成——即挂载式 `.env`
+在真实 gate 下工作。
+
+### 门禁(实际执行,2026-09-16,每条带超时)
+
+```text
+pnpm typecheck                                  exit=0
+pnpm test                  242 passed | 3 skipped (245) / 1740 passed | 17 skipped (1757)
+pnpm test:browser          54 passed (54) / 405 passed (405)
+pnpm test:browser:webkit   2 passed (2) / 14 passed (14)
+pnpm vendor:check / qualy resolve --frozen-lockfile / database check / drop-guard  exit=0
+pnpm build / check-staged-web / check-chunks / check-csp-build / check-public-web  exit=0
+smoke-production / check-csp-enforce                                              exit=0
+```
+
+中途一次 gate 因会话结束中断(exit 144),那一轮 typecheck 报出
+`storage-local/tests/support.ts` 被根 node 程序编译(无 DOM)——已移到 `tests/support/requests.tsx`
+(根 tsconfig 排除 tests 下的 `.tsx`),上表是修复后完整的一轮。
+
+**不含腾讯 staging rollout。**
