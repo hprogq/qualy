@@ -189,9 +189,15 @@ await check('/__qualy/release', async (response) => {
 // one that changed which plugins are in the product must not - that page has
 // screens whose api is not here. Both answers come from the same place: the
 // release a page names, looked up in the store, compared by the assembly it
-// was built from. Which cases can be exercised depends on what the store
-// happens to hold, so the check reads it and says which ones it found; the
-// current release and an unknown one are always there to ask about.
+// was built from.
+//
+// All four cases run every time, because the two interesting ones are PUT
+// there rather than looked for. They used to depend on what the store
+// happened to hold, which on a developer's machine is months of builds and on
+// a fresh checkout is one - so the two cases that matter most were the two
+// that only ever ran where they were least needed. A retained release is a
+// directory with a metadata file in it; the smoke writes two, asks, and takes
+// them away again.
 {
   const releasesDir = path.join(repoRoot, 'packages/plugins/infra/web/client-dist', 'releases')
   // Both halves of what makes an old tab safe: the same plugins (the
@@ -199,30 +205,33 @@ await check('/__qualy/release', async (response) => {
   // same selection can still have added or renamed a page in ordinary code,
   // and that page's manifest would name a surface the older bundle cannot
   // render.
-  const contractOf = (releaseId: string): string | undefined => {
-    try {
-      const metadata = JSON.parse(
-        fs.readFileSync(path.join(releasesDir, releaseId, '.qualy-release.json'), 'utf8'),
-      ) as { resolutionHash?: string; browserContractHash?: string }
-      if (metadata.resolutionHash === undefined) return undefined
-      return `${metadata.resolutionHash}|${metadata.browserContractHash ?? 'none'}`
-    } catch {
-      return undefined
-    }
-  }
   const claiming = (releaseId: string) =>
     fetch(`${base}/api/app/manifest`, { headers: { 'x-qualy-web-release': releaseId } })
 
   const current = staged!.releaseId
-  const mine = contractOf(current)
-  const retained = fs.existsSync(releasesDir)
-    ? fs.readdirSync(releasesDir).filter((id) => id !== current)
-    : []
-  const sameAssembly = retained.find((id) => contractOf(id) === mine)
-  const otherAssembly = retained.find((id) => {
-    const hash = contractOf(id)
-    return hash !== undefined && hash !== mine
-  })
+  const mine = JSON.parse(
+    fs.readFileSync(path.join(releasesDir, current, '.qualy-release.json'), 'utf8'),
+  ) as Record<string, unknown>
+
+  /** a release the store holds and this process did not build */
+  const plant = (id: string, differing: Record<string, unknown>) => {
+    const at = path.join(releasesDir, id)
+    fs.mkdirSync(at, { recursive: true })
+    fs.writeFileSync(
+      path.join(at, '.qualy-release.json'),
+      `${JSON.stringify({ ...mine, releaseId: id, ...differing }, null, 2)}\n`,
+    )
+    return at
+  }
+  const sameAssembly = 'r_smoke_same_assembly'
+  const otherAssembly = 'r_smoke_other_assembly'
+  const planted = [
+    // one an ordinary code-only deployment leaves behind: same plugins, same
+    // surfaces, different build
+    plant(sameAssembly, {}),
+    // and one from a deployment whose plugin selection moved
+    plant(otherAssembly, { resolutionHash: 'sha256:another-assembly-entirely' }),
+  ]
 
   const own = await claiming(current)
   if (own.status !== 200) fail(`the pinned release was refused: ${own.status}`)
@@ -236,18 +245,14 @@ await check('/__qualy/release', async (response) => {
   }
   console.log('smoke: a page naming a release this host never installed is told to reload')
 
-  if (sameAssembly === undefined) {
-    console.log('smoke: no retained release of this assembly in the store; old-tab case not run')
-  } else {
+  {
     const older = await claiming(sameAssembly)
     if (older.status !== 200) {
       fail(`an older page of this same assembly was refused: ${older.status}`)
     }
     console.log(`smoke: an older page (${sameAssembly}) of this assembly goes on being served`)
   }
-  if (otherAssembly === undefined) {
-    console.log('smoke: no release of another assembly in the store; skew case not run')
-  } else {
+  {
     const foreign = await claiming(otherAssembly)
     if (
       foreign.status !== 409 ||
@@ -259,6 +264,25 @@ await check('/__qualy/release', async (response) => {
     }
     console.log(`smoke: a page of another assembly (${otherAssembly}) is told to reload`)
   }
+
+  // A release this host also refuses, for the other half of the contract: the
+  // same plugins, a different set of browser surfaces. Ordinary code can add
+  // or rename a page without moving the assembly hash at all.
+  const movedSurfaces = plant('r_smoke_moved_surfaces', {
+    browserContractHash: 'sha256:one-page-more',
+  })
+  planted.push(movedSurfaces)
+  {
+    const skewed = await claiming('r_smoke_moved_surfaces')
+    if (skewed.status !== 409 || skewed.headers.get('x-qualy-client-unsupported') !== 'assembly') {
+      fail(
+        `a page whose surfaces moved got ${skewed.status} / ${skewed.headers.get('x-qualy-client-unsupported') ?? 'no reason'}`,
+      )
+    }
+    console.log('smoke: a page built from a different set of surfaces is told to reload')
+  }
+
+  for (const at of planted) fs.rmSync(at, { recursive: true, force: true })
 }
 
 // one hashed asset out of the shell it actually served, so the check follows

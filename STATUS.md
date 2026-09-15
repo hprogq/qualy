@@ -15366,3 +15366,48 @@ formula 只 `contribute` 一个 collection item,不带渲染器),但公开面比
 新增一条用例钉住这个视图的形状恰好是 `['contribute']`。
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;formula 全套 + `plugin-isolation` 25 文件 134 例。
+
+## 设计符合性收口(四):旧 tab 矩阵确定化,以及一条 disable/remove 残留矩阵(2026-09-15)
+
+### §111 的四条,现在每次都跑
+
+`smoke-production` 的 retained release 用例以前是**条件执行**——store 里有历史版本才跑。
+开发机上攒了几个月的构建,所以一直「四条全中」;而 GitHub CI 是 fresh checkout,
+`pnpm build` 之后只有一个 release,**最该跑的两条恰好只在最不需要的地方跑**。
+
+改成 smoke 自己**植入**:retained release 不过是一个目录加一份 metadata,
+所以它写两份(同装配 / 异装配)、问完再删。顺带补上第三条——**同装配但 surface 集合不同**
+(`browserContractHash` 变了),那正是 D1.1 新加的那一半,以前 smoke 里没有对应用例。
+现在四条固定跑:
+
+```text
+pinned release            → 200
+从未安装过的 release      → 409 release
+同装配的旧 release        → 200
+异装配的 release          → 409 assembly
+surface 集合变了的 release → 409 assembly
+```
+
+### §113:一条把三种状态问完的用例
+
+`tools/tests/plugin-lifecycle.test.ts`。其他每道门禁各问一个机制(谁 import 谁、lock 记了什么、
+产物服务了什么),这条把它们真正在问的那件事,对**同一个插件**、在**三种状态**下问一遍——
+残留恰恰是单条检查没有理由去找的东西。
+
+选 `@qualy/plugin-org` 当被试,因为它每一种痕迹都留:api group、page、表、runtime layer。
+
+```text
+active    → 在 runtime layer 里、有 api group、有 surface、浏览器聚合里有它
+disabled  → 0 layer(因此 0 CSP 贡献 / 0 后台 fiber / 0 boot hook,三者都发生在建层期)
+            0 api、0 surface、0 command、浏览器聚合 0 字节;lock 仍记着它 → 数据没动
+removed   → detached,`retainedBy: ['database']`,其余同上
+```
+
+「0 CSP / 0 job」不是逐项去数,而是断言**它的 layer 根本不建**——那三件事都只发生在建层期,
+这是比逐项枚举更强也更诚实的说法。至于 disabled 插件在**产物**里留下什么,那是另一个问题,
+由 `check-public-web` 对一次真实构建去问。
+
+**实测过会红**:把聚合改成 `all: true`(模拟「构建不再尊重选择」)→ 第一条当场红。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`plugin-lifecycle` 2 例;
+`smoke-production` 五条旧 tab 用例全部命中并通过;`check-staged-web` exit 0(植入的 release 已清理)。
