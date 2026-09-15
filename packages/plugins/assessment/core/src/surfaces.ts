@@ -15,8 +15,9 @@
  * through them.
  */
 
+import { Schema } from 'effect'
 import { defineUiCollection, defineUiSlot } from '@qualy/ui-contract'
-import type { UiText } from '@qualy/i18n-contract'
+import { UiTextSchema, type UiText } from '@qualy/i18n-contract'
 
 /** one calculator an administrator may choose for a question */
 export interface CalculatorAuthoringOption {
@@ -36,6 +37,14 @@ export interface CalculatorAuthoringOption {
  */
 export const calculatorAuthoringOptions = defineUiCollection<CalculatorAuthoringOption>({
   key: 'assessment/calculator-authoring-options',
+  // decoded where it is contributed, so a malformed entry fails at the plugin
+  // that wrote it, at boot - rather than reaching a chooser through the
+  // manifest and failing in front of whoever opened the screen
+  schema: Schema.Struct({
+    ref: Schema.String.check(Schema.isMinLength(1)),
+    label: UiTextSchema,
+    order: Schema.optional(Schema.Number),
+  }),
 })
 
 /**

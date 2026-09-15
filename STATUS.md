@@ -15449,3 +15449,44 @@ qualy plugin remove          → 干净离开 lock,且不删数据
 **实测过会红**:把 `files` 去掉 → 两条用例同时红。
 
 **门禁(实际执行)**:`pnpm typecheck` exit 0;`packed-plugin` 2 例。
+
+## 设计符合性收口(六):文档校正,与两处顺手(2026-09-15)
+
+### `docs/browser-public-surface.md` 已经落后于 D4/F/H
+
+它开头声称「记录当前仓库真实成立的形状」,而「已知仍未收口」只剩一条(chunk 名)——
+在 RUM 还向浏览器发 provider code、public config 还是 spread 的时候,这句话是不准的。
+私有 surface map 的示例也还写着 `./client/ReviewPage.tsx`,而 D4 之后存的是**包导出子路径**。
+
+现在更新到:公开面表格补 `/api/app/observability`(schema 2、不说 provider)、public 文件名、
+public HTML 三行及其守卫;私有 map 示例改成 `module` + 新增的 `chunk`;
+「报告端口属于平台」一节补上单槽注册表与 `publicConfigOf` 的逐字段投影;
+平台门禁那段的具名例外从「Phase F 后删掉」改成**已经一条不剩**;
+「仍未收口」只剩 `PluginModuleRef` 尚未抽成 plugin-kit 的共享原语(§59,归 SDK 化那轮)。
+
+### `docs/plugin-refactor.md` 的两处内部矛盾
+
+- §120 第 22 条 `purge 才是 destructive lifecycle` 与 §108「purge 本轮明确不实现」冲突。
+  在 §120 开头写明这一条**不属本轮**,本轮要证明的是第 21 条(disable/remove 不删数据)。
+- §120 第 23 条要求一个 fixture 跑完 `resolve → build → boot → browser test → disable → remove`。
+  实际是 `acme-dist-probe` 跑完除 browser test 外的全链路(含真实 pack/install),
+  browser test 归 `acme-browser-probe`。字面上的一包一链**没有实现,也不打算实现**:
+  浏览器测试需要一个带 React 的包,而 dist-only 那个包的意义正是它什么都不带。写进文档。
+- Phase G 的 DoD `Chromium + WebKit 都通过` 改成与真实策略一致:
+  **Chromium 全套 + WebKit engine-sensitive smoke**,并写明为什么不是整套跑两遍。
+
+### §65:公开 collection 的 schema 变成必填
+
+唯一没带 schema 的 token 恰好是**第三方插件会去贡献的那个**(`assessment/calculator-authoring-options`)——
+也就是说,整个仓库里唯一「条目来自仓库外」的地方,正是唯一没人校验条目长什么样的地方。
+补上 schema,`UiCollectionToken.schema` 与 `defineUiCollection` 的参数都从可选改必填。
+
+### 一处门禁替我纠正
+
+`check-public-web` 第一版用 `name.startsWith('@qualy/')` 过滤「第三方依赖」——
+`open-world` 门禁当场点名(全树禁止把 scope 当判据),而且那个写法对一个依赖 `@acme/*` 内部包的
+第三方插件本来就是错的。改成**全部依赖**,再减去「active 插件也依赖的」——共享才是真正相关的性质,
+scope 不是。
+
+**门禁(实际执行)**:`pnpm typecheck` exit 0;`pnpm test` 238 passed | 3 skipped (241),
+Tests 1709 passed | 17 skipped (1726);`pnpm test:browser` 52 / 379;`pnpm test:browser:webkit` 2 / 14。

@@ -124,11 +124,15 @@ const shellBody = fs.existsSync(shell) ? fs.readFileSync(shell, 'utf8') : ''
   const markersOf = new Map<string, string[]>()
   for (const entry of await collectWebPlugins({ all: true })) {
     const manifest = path.join(resolvePackageDir(entry.name, manifestPath()), 'package.json')
-    const vendors = Object.keys(
+    const dependencies = Object.keys(
       (JSON.parse(fs.readFileSync(manifest, 'utf8')) as { dependencies?: object }).dependencies ??
         {},
-    ).filter((name) => !name.startsWith('@qualy/'))
-    markersOf.set(entry.name, [...entry.surfaces.map((one) => one.surface.id), ...vendors])
+    )
+    // every dependency, not "the third-party ones": which scope a package is
+    // published under says nothing about anything here, and the ones a
+    // selected plugin also depends on are filtered out below - by being
+    // shared, which is the property that actually matters
+    markersOf.set(entry.name, [...entry.surfaces.map((one) => one.surface.id), ...dependencies])
   }
   const carries = (marker: string) => text.some((one) => one.body.includes(marker))
   const off = [...resolution.plugins.values()].filter((one) => one.state !== 'active')

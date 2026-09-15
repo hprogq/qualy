@@ -57,7 +57,9 @@ resolutionHash、数据库/模块/源码实现细节
 | API 错误                         | `{_tag, 公开字段}`,诊断只进 header 与日志                          | tools/tests/error-codes.test、effect-error-shape.test                                                  |
 | 409 拒绝(协议/装配/release)      | header 说哪一种,body 只有 `_tag`;不含协议窗口、不含任何 hash       | apps/server/tests/serve-middleware.test、smoke 的旧 tab 矩阵                                           |
 | 浏览器 console / RUM 上报        | surface 地址(`page:assessment/review`),不含模块路径                | apps/web/tests/rum.browser.test「the seams the runtime reports at」                                    |
-| public HTML                      | 只有产品描述,不宣告架构                                            | 人工:`apps/web/index.html`                                                                             |
+| `GET /api/app/observability`     | `{schema: 2, config}`——是否上报与上报设置;**不说 provider 是谁**   | rum provider.test「what the browser is told」、rum.browser.test、smoke                                 |
+| public 文件名                    | `e-/c-/w-/a-` + 内容哈希,不含任何源文件名                          | check-public-web                                                                                       |
+| public HTML                      | 只有产品描述,不宣告架构                                            | check-public-web                                                                                       |
 | SourceMap、surface→模块映射      | 生成 → 留在构建产物 → **不进 release store**                       | check-staged-web、release-store.test                                                                   |
 
 ## 浏览器按 surface 寻址
@@ -92,11 +94,15 @@ surface 不再说出实现,但实现不能因此消失,否则 `surface-missing` 
 {
   "page:assessment/review": {
     "owner": "@qualy/plugin-assessment",
-    "module": "./client/review/ReviewPage.tsx",
-    "export": "default"
+    "module": "./client/review/ReviewPage",
+    "export": "default",
+    "chunk": "assets/c-CMxgAsb62.js"
   }
 }
 ```
+
+`module` 是**包的导出子路径**,不是文件路径(D4 起);`chunk` 是构建把它放进了哪个输出文件——
+`check-chunks` 读这一项,因为公开文件名已经不再说出模块叫什么。
 
 规则与 sourcemap 完全相同:随构建产物归档,**不进 release store、不服务**;
 `check-staged-web` 递归扫描 store 并拒绝任何 `PRIVATE_BUILD_FILES`。
@@ -129,11 +135,16 @@ apps/web/dist/.qualy-web-build.json        构建产物旁(安装器读,不进 r
 `@qualy/plugin-rum` 持有注册表与 `startBrowserRum`,vendor 代码全在 `@qualy/plugin-rum-tencent`。
 
 这条现在由门禁守:`tools/tests/plugin-isolation.test.ts` 的「the platform depends on no plugin
-implementation」逐文件扫 `packages/web` / `packages/core` / `packages/contracts` 的 import 与
-package.json 依赖。`@qualy/plugin-kit`(写插件用的 kit)与 capability facade
-(`@qualy/plugin-x/plugin`)不算;**剩下的边逐条具名**——一条 import(文件 + specifier)加一条
-package.json 依赖,都是同一条边的两面:`packages/web/runtime/src/index.tsx →
-@qualy/plugin-ui-registry/api`,Phase F 移进 `@qualy/app-contract` 后删掉这两条例外。
+implementation」逐文件扫 `packages/web` / `packages/core` / `packages/contracts` / `packages/testkit`
+的 import 与 package.json 依赖。`@qualy/plugin-kit`(写插件用的 kit)与 capability facade
+(`@qualy/plugin-x/plugin`)不算;**剩下的边逐条具名**,而现在**一条都不剩**——
+Phase F 把 `@qualy/app-contract` 与 `@qualy/auth-contract/session` 分出去之后,两条具名例外都删了。
+
+**浏览器不知道 provider 是谁**:`/api/app/observability` 只答「上报吗、用什么设置」
+(schema 2)。构建只带 active 选集的浏览器代码,所以问的那个页面手上就只有一个 provider;
+浏览器侧注册表因此是**单槽**,不是按名字查表。provider 的 public config 由服务端**逐字段投影**
+(`publicConfigOf`),不是 spread——server config 与 browser public config 是两份契约,
+即使今天字段恰好一样。
 
 清单是**逐边**而不是逐包:按包豁免会让任何 platform 文件 import 该插件的任意子路径都静默通过,
 而清单看上去仍然「只有一条例外」。第三条用例把两条边的字面量钉死,所以清单只会变短。
@@ -148,9 +159,25 @@ release 自己的 metadata,和本进程的 `resolutionHash` 比。**浏览器两
 
 详见 docs/web-release.md 的「服务端兼容检查」。
 
+## 公开文件名不说出源文件
+
+```text
+assets/e-[hash].js          入口
+assets/c-[hash].js          chunk
+assets/w-[hash].js          worker
+assets/a-[hash][extname]    样式表、字体与其他资源
+```
+
+默认命名是模块 basename,于是生产部署一直在服务 `BatchSettingsPage-<hash>.js`——
+打开 Network 面板就是一份屏幕目录。§23 只要求处理 JS;样式表与 worker 一并改了,
+因为 `FormulaCodeEditor-<hash>.css` 和 `editor.worker-<hash>.js` 说的是同一件事。
+`check-public-web` 拿私有 surface map 里的模块名逐个去比被服务的文件名,守住这条。
+
 ## 已知仍未收口(各自属于后续阶段)
 
-- **生产 JS chunk 名仍带组件名**:`assets/<chunk.name>-[hash].js`(§23)。
+- **`PluginModuleRef` 还没抽成 `@qualy/plugin-kit` 的共享原语**(§59):
+  package-export ABI 已经成立,但 `ClientComponentRef.module` 与 `BrowserModules` 各自用普通
+  `string` 加各自的校验。归 SDK 化那一轮。
 
 ## 明确不做
 

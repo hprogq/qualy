@@ -34,11 +34,16 @@ export const BLANK_SHELL: LayoutContractId = 'blank-shell/v1'
 export interface UiCollectionToken<TContribution, TResolved = TContribution> {
   readonly kind: 'collection'
   readonly key: NamespacedId
-  // the item's runtime schema, decoded by the registry when a plugin
+  // The item's runtime schema, decoded by the registry when a plugin
   // contributes: a malformed item fails at its plugin, at boot, not in the
   // browser once the manifest has carried it there. A contribution names
-  // the token, not the key, so the schema travels with it
-  readonly schema?: Schema.Top
+  // the token, not the key, so the schema travels with it.
+  //
+  // Required. It was optional, and the one token that left it out was the one
+  // a third-party plugin contributes to - so the single place where the item
+  // comes from outside this repository was the single place nothing checked
+  // what it looked like.
+  readonly schema: Schema.Top
   // phantom members so both types survive inference; never assigned
   readonly __item?: TContribution
   readonly __resolved?: TResolved
@@ -52,13 +57,9 @@ export interface UiSlotToken {
 
 export function defineUiCollection<TContribution, TResolved = TContribution>(options: {
   key: NamespacedId
-  schema?: Schema.Top
+  schema: Schema.Top
 }): UiCollectionToken<TContribution, TResolved> {
-  return {
-    kind: 'collection',
-    key: options.key,
-    ...(options.schema === undefined ? {} : { schema: options.schema }),
-  }
+  return { kind: 'collection', key: options.key, schema: options.schema }
 }
 
 export function defineUiSlot(options: {

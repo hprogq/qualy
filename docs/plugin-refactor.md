@@ -2128,8 +2128,12 @@ DoD：
 ```text
 一个 fixture plugin 独立使用 testkit 可以完成 browser test
 无 virtual:qualy/plugins dependency
-Chromium + WebKit 都通过
+Chromium 全套 + WebKit engine-sensitive smoke 都通过
 ```
+
+(最后一条按实际策略写:Chromium 跑 host + 每个包的 browser test + 第三方 fixture;
+WebKit 只跑对引擎差异敏感的那两个文件——冷启动交接与品牌绘制,两处 WebKit 曾经抓到、
+Chromium 看不到的缺陷就在那里。整套跑两遍是为一类只存在于两个文件里的缺陷付全套成本。)
 
 ---
 
@@ -5629,7 +5633,17 @@ SourceMap private gate
 
 # 120. 本轮最终 Definition of Done
 
-完成后必须能陈述以下事实，而且都有自动测试证明：
+完成后必须能陈述以下事实，而且都有自动测试证明。
+
+**两处与 §108 的裁决对齐**(2026-09-15 收尾时校正):
+
+- 第 22 条 `purge 才是 destructive lifecycle` **不属于本轮**。§108 已裁决 purge 本轮明确不实现;
+  这一条描述的是插件平台未来的形状,不是 A–H 的验收项。留在这里只是因为它说明了
+  「为什么 disable/remove 不删数据」——**第 21 条才是本轮要证明的**。
+- 第 23 条的 `browser test` 一段由**另一个** fixture 完成(`acme-browser-probe`,它自己的包、
+  自己的 `@qualy/testkit/browser` 用例);其余各段由 `acme-dist-probe` 一条链跑通,
+  包含真实的 `pnpm pack` → `pnpm install`。一条链一个包的字面读法没有实现,也不打算实现:
+  浏览器测试需要一个带 React 的包,而 dist-only 那个包的意义正是它什么都不带。
 
 ```text
 1.
