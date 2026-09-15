@@ -32,31 +32,51 @@ const put = (payload: LocalUploadPayload, file: Blob, options: UploadOptions) =>
     request.send(file)
   })
 
+/**
+ * The route this upload will be reported as, declared the first time one runs.
+ *
+ * Every other api call in the browser goes through `clientFor`, which hands
+ * the contract's routes to reporting as it builds each client. This one is an
+ * XHR, for the progress events, so nothing else declares it - and reporting
+ * refuses an api address no contract claims. So the route is declared here,
+ * and it is declared BEFORE the request leaves: an upload that raced the
+ * declaration would be the one call with no timing, and nothing would say so.
+ *
+ * On first use rather than at page setup, because the contract module carries
+ * the api kit with it and most pages never upload anything; they should not
+ * pay for the chunk. One promise for the page's lifetime, so every later
+ * upload waits on the same declaration instead of importing again.
+ *
+ * Reporting is not something an upload depends on. If the chunk cannot be
+ * loaded the upload goes ahead anyway - its timing record is refused, which is
+ * the cost - and the failure is not kept, so the next upload tries again.
+ */
+let routeDeclared: Promise<void> | undefined
+const declareRoute = (): Promise<void> =>
+  (routeDeclared ??= import('../urls.ts')
+    .then(({ localUploadRoutes }) => registerApiRoutes(localUploadRoutes))
+    // one handler for both ways this can fail - the chunk not loading, and
+    // reporting refusing what it was given - so neither is remembered
+    .catch(() => {
+      routeDeclared = undefined
+    }))
+
 export const localUploadDriver = {
   driver: 'local',
-  upload: (grant: UploadGrant, file: Blob, options: UploadOptions) =>
-    put(grant.payload as LocalUploadPayload, file, options),
+  upload: async (grant: UploadGrant, file: Blob, options: UploadOptions) => {
+    await declareRoute()
+    // Asked again after the wait: a signal that fired while the route was
+    // being declared has already dispatched its event, and the listener `put`
+    // adds would never hear it - the cancelled upload would be sent.
+    if (options.signal?.aborted === true) throw new Error('upload cancelled')
+    return put(grant.payload as LocalUploadPayload, file, options)
+  },
 }
 
 // announced while the page sets up, and taken back when it stops: a driver
 // is a seat in a registry, which is what setup is for
 const plugin: BrowserPlugin = {
   setup: () => registerUploadDriver(localUploadDriver),
-
-  // What this call will be reported as, told to reporting once the page is up.
-  //
-  // Every other api call in the browser is dispatched by `clientFor`, which
-  // hands the contract's routes over as it builds each client. This one is an
-  // XHR, for the progress events, so nobody would otherwise declare it - and
-  // reporting refuses an api address no contract claims, which would make the
-  // upload the one call in the product with no timing and say nothing about
-  // why. The import is deferred because the contract module carries the api
-  // kit with it, and this module runs on every page load whether or not
-  // anybody uploads anything.
-  start: async () => {
-    const { localUploadRoutes } = await import('../urls.ts')
-    registerApiRoutes(localUploadRoutes)
-  },
 }
 
 export default plugin

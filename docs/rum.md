@@ -1134,8 +1134,10 @@ UUID → :id
 >   `@qualy/browser-observability/api-routes` 这个叶子子路径暴露；
 > - 注册点是 `clientFor(api)`——浏览器里每一个 typed client 的唯一出口；
 >   唯一绕开它的 API 调用是 storage-local 的 XHR 上传（要进度事件），
->   它在自己的 `start()` 里 dynamic import 契约后注册（静态 import 会把
->   api kit 拖进每页必加载的 boot graph，browser-graph 门禁实测 126 KB）。
+>   它在**第一次真正上传时**、发出 XHR 之前 await 一次 memoize 的 dynamic import
+>   并注册（静态 import 会把 api kit 拖进每页必加载的 boot graph，browser-graph
+>   门禁实测 126 KB；放进不被 await 的 `start()` 则既有首传竞态，又让每个页面在后台
+>   下载契约 chunk——这是 2026-09-16 第二轮修正的内容）。注册失败不阻断上传，也不被记住。
 > - 匹配顺序：先同源，再 method + pathname；literal 必须字面相等，`:param`
 >   吃一段且不问内容；literal 多者胜；两个不同 template 打平 = 不回答。
 > - **匹配不到就 fail closed**：`/api/**` 的 speed record 直接丢弃，错误日志里
