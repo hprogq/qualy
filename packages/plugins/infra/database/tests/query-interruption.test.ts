@@ -1,4 +1,4 @@
-import { Effect, Fiber } from 'effect'
+import { Effect, Fiber, Metric } from 'effect'
 import { describe, expect, it } from 'vitest'
 import { query } from '../src/server/orm.ts'
 
@@ -88,5 +88,30 @@ describe('interrupting a query', () => {
     expect(exit._tag).toBe('Failure')
     const reason = (exit as Extract<typeof exit, { _tag: 'Failure' }>).cause.reasons[0]
     expect((reason as { error?: { _tag?: string } }).error?._tag).toBe('QueryFailed')
+  })
+
+  // A caller that was cancelled is not a database that refused. The statement
+  // here succeeds; only the fiber waiting on it went away, so recording it as
+  // a failed query would put every shutdown into the error rate of a server
+  // that did nothing wrong.
+  it('records a cancelled caller as interrupted, not as a query that failed', async () => {
+    const { open, run } = gated()
+    const registry = new Map()
+    const fiber = Effect.runFork(
+      query(run).pipe(Effect.provideService(Metric.MetricRegistry, registry)),
+    )
+    await settle()
+    const interrupting = Effect.runPromise(Fiber.interrupt(fiber))
+    await settle()
+    open()
+    await interrupting
+
+    const snapshot = await Effect.runPromise(
+      Metric.snapshot.pipe(Effect.provideService(Metric.MetricRegistry, registry)),
+    )
+    const kinds = snapshot
+      .filter((state) => state.id === 'db.client.operation.duration')
+      .map((state) => state.attributes?.['error.type'])
+    expect(kinds).toEqual(['Interrupted'])
   })
 })

@@ -2,6 +2,7 @@ import { MikroORM, type EntityManager as PostgresEntityManager } from '@mikro-or
 import { type EntitySchema } from '@mikro-orm/core'
 import type { Pool } from 'pg'
 import {
+  Cause,
   Context,
   Duration,
   Effect,
@@ -155,6 +156,12 @@ const SQLSTATE = /^[0-9A-Z]{5}$/
 
 const operationAttributes = (exit: Exit.Exit<unknown, QueryFailed>): Record<string, string> => {
   if (Exit.isSuccess(exit)) return DB_METRIC
+  // A caller that was cancelled is not a database that refused. The statement
+  // may well have succeeded - this effect waits for it either way - so calling
+  // it `QueryFailed` would put every shutdown into the error rate of a server
+  // that did nothing wrong. It still carries an `error.type`, because an
+  // operation nobody waited for has no completion to report as a success.
+  if (Cause.hasInterruptsOnly(exit.cause)) return { ...DB_METRIC, 'error.type': 'Interrupted' }
   let code: string | undefined
   for (const reason of exit.cause.reasons) {
     if (reason._tag !== 'Fail') continue
@@ -381,9 +388,10 @@ export const query = <A>(run: () => Promise<A>): Effect.Effect<A, QueryFailed> =
       // while the statement it started is still out. It may not, and the
       // reason is the connection: the driver returns it in the `finally` of
       // that same chain, so a fiber that outran it would leave a checkout
-      // behind with nobody left to attribute it to. The pool then closes
-      // onto a connection whose owner is already collected, which is the
-      // "still releasing" line with a backend PostgreSQL calls idle.
+      // held by an operation whose owning fiber has already finished being
+      // interrupted. The ledger can still say whose it was; what is gone is
+      // anyone waiting to hand it back. The pool then closes onto it, which
+      // is the "still releasing" line with a backend PostgreSQL calls idle.
       //
       // `Effect.tryPromise` will not do this on its own. It fits a
       // cancellation finalizer only when the callback takes the AbortSignal
